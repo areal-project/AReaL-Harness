@@ -15,17 +15,21 @@ Host 启动初始化兼容旧配置创建的 0755 home：只对当前用户拥�
 
 正常停止在释放 `host.lock` 前移除本代运行描述 `host/host.json` 与 socket；稳定 `host/identity.json` 和原操作回执继续保留。
 
-## 实验性回环 WebSocket
+## 回环 WebSocket 与共享读路径
 
-Host 进程设置 `AREAL_HOST_WEBSOCKET=1` 时监听 `127.0.0.1` 的随机端口。默认关闭。私有 `host/endpoint.json` 保存 `version`、`hostId`、`generation`、HTTP `origin` 和 `websocketUrl`。客户端必须与已认证 Unix 连接的 Host 身份核对。该文件不含凭据，旧 `host/host.json` 格式不变，正常退出移除本代 endpoint。
+Host 默认监听 `127.0.0.1`，`AREAL_HOST_WEBSOCKET=0` 可关闭。首次选择随机端口，私有 `host/web-bind.json` 保留本 Host 的端口以维持浏览器 origin；端口被占用时重新选择。`host/endpoint.json` 保存本代 `{version,hostId,generation,origin,websocketUrl}`，正常退出移除。地址来自运行时发现，不写入 Renderer 构建。
 
-已认证 Unix 连接可调用 `web.ticket`，参数为 `{origin, expectedGeneration}`。`origin` 必须精确等于 `areal-ui://app` 或本代 HTTP origin。结果为 `{version, hostId, generation, origin, websocketUrl, ticket, expiresAt}`，其中 `origin` 是票据绑定的调用方 origin，`expiresAt` 是 Unix epoch 毫秒。票据使用 32 随机字节，Host 仅保存摘要，单次有效 30 秒，最多保留 64 张未过期票据。错误 generation、Origin 或已用、过期票据不能认证。每次重连重新取票，不能重复使用旧票据。
+已认证 Unix 连接调用 `web.ticket`，参数为 `{origin,expectedGeneration,profile?}`。origin 必须精确等于 `areal-ui://app` 或本代 HTTP origin；可选 profile 只选择已提交来源的导航偏好。结果包含上述身份、调用方 origin、`ticket`、`expiresAt` 和可选 `preferredSourceId`。32 随机字节票据只保存摘要，有效 30 秒，单次使用，最多保留 64 张。每次重连重新取票。
 
-WS 只接受 `/host/socket`，禁止 query，校验精确 Host authority 与 Origin。没有匿名取票或 HTML 注入票据入口。同源网页仍需已认证 Unix 主体授权，HTTP origin 本身不授予身份。HTTP header 限制为 8 KiB，HTTP 升级、首帧认证和每次发送各限时 10 秒，最多 32 个连接，单帧与完整消息最大 1 MiB。
+WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单个 Origin。首帧为 `{version:1,id,method:"hello",params:{protocolVersions:[1],capabilities,ticket,expectedGeneration}}`。未协商时仅支持 `host.status`；加入 `gui-read-v1` 后返回协商能力、连接身份、方法与资源上限。Unix 的既有 hello 和未协商 Remote 客户端的方法、字段和限制保持原样。HTTP header 上限 8 KiB，升级、首帧和发送各限时 10 秒，连接最多 32 个，帧和消息最多 1 MiB。
 
-第一帧必须是 `{version:1,id,method:"hello",params:{protocolVersions:[1],capabilities:[],ticket,expectedGeneration}}`。成功响应保留本机响应封装，返回 `version`、`hostId`、`generation`、`executableVersion`、空 `capabilities`，并声明 `methods:["host.status"]`、`transport:"loopback"`、`scopes:["observe"]`、`limits:{maxFrameBytes:1048576}`。认证失败关闭连接，不返回 Host 元数据。认证后仅接受 `host.status`，调用现有 Host 状态分发器，其他方法返回 `methodNotFound`。WS request id 最长 256 字节。旧 Unix `hello` 仍拒绝票据及未知字段，Remote 方法和握手不变。
+`gui-read-v1` 提供 `shell.subscribe`、`shell.unsubscribe`、`session.open`、`session.history`、`subscription.close` 和 `artifact.read`。清单为快照加递增序号增量，使用 Host 的 canonical projectId；已停止项目只读现有导航缓存，不启动 Core。导航限定在已提交来源，过滤凭据和业务配置。会话以 `{threadId,view:"conversation"}` 打开，context 绑定项目；保留 Core 原生快照、归档与继承来源，不转换为旧 Remote 摘要。历史按 own、inherited、reference 分页，默认及最大 128 KiB。媒体绑定当前订阅与 Core generation，经 Core 校验所属 Thread 后按块读取，最多 16 MiB。连接就绪与数据新鲜分开表示；序号缺口或失效要求重新打开订阅，不重放写操作。
 
-票据只经认证 Unix 响应与 WS 首帧传递，不放 URL、进程参数、日志或诊断。此入口仅提供实验性状态读取，不代表项目清单、会话详情或浏览器首次授权流程已完成。
+Remote 的新读方法和原生会话格式只在 hello 协商 `gui-read-v1` 后提供，仍受现有设备项目授权约束；旧方法表仍为 24 项。共享客户端通过 Noise 或本机 WS 使用同一读模型。具体消息、字段与边界见 `schemas/areal-host-protocol-v1.json`。
+
+Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 origin，`areal web --json` 只返回不含秘密的 endpoint。浏览器在 IndexedDB 保存不可导出的 P-256 私钥，向同源 `POST /host/auth/challenge` 提交公钥。未授权返回有效 120 秒的请求；用户在本机执行 `areal host web approve REQUEST_ID`，再在浏览器检查批准状态。已授权公钥获取有效 30 秒的一次性 challenge，对 Host 身份、nonce 和 origin 签名，再向 `POST /host/auth/ticket` 换票。HTTP origin 本身不授予访问权。
+
+`areal host web devices` 列出设备身份、公钥指纹和 observe 范围；`areal host web revoke DEVICE_ID` 持久撤销该浏览器，未使用票据和活跃连接随之失效。撤销和批准只在已认证 Unix 连接上提供。私钥、凭据和票据不进入 URL、进程参数、日志或诊断。当前浏览器只读，A1 不迁移写路径。
 
 ## 消息封装与公共类型
 

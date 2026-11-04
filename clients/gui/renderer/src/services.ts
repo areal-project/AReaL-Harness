@@ -151,7 +151,39 @@ export interface UpdateState {
   detail?: string;
 }
 export type { NotificationTarget, QuitProgress } from "./desktop-services.js";
+export interface PlatformReadServices {
+  status(): import("@areal/client").HostReadState;
+  subscribe(listener: () => void): () => void;
+  selectSession(target: { projectId: string; threadId: string } | null): Promise<void>;
+  history(options: {
+    view: "own" | "inherited" | "reference";
+    cursor?: string;
+    maxBytes?: number;
+  }): Promise<import("./host-services.js").HostHistoryPage>;
+  media(
+    source: import("@areal/client").MediaSource,
+    signal?: AbortSignal,
+  ): Promise<import("@areal/client").MediaBytes>;
+  acquire(viewId: string, generation: string): Promise<void>;
+  release(viewId: string, generation: string): Promise<void>;
+  retain(
+    viewId: string,
+    revision: number,
+    anchor: Pick<import("./readingViews.js").ReadingAnchor, "turnId" | "itemId"> | null,
+    generation: string,
+  ): Promise<void>;
+  ensureAnchor(
+    viewId: string,
+    revision: number,
+    anchor: Pick<import("./readingViews.js").ReadingAnchor, "turnId" | "itemId">,
+    generation: string,
+  ): Promise<"ready" | import("./conversationReading.js").ReadingBlock>;
+  loadOlder(pageId?: string): Promise<void>;
+  loadItem(itemId: string): Promise<void>;
+}
 export interface PlatformServices {
+  capabilities?: { mutations: boolean; native: boolean };
+  reads?: PlatformReadServices;
   getHostTicket?(): Promise<unknown>;
   snapShots?: SnapShotServices;
   mcpApp?: McpAppCommand;

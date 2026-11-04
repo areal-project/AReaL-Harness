@@ -25,6 +25,11 @@
       "import": "./client/state-projection.js",
       "require": "./client/state-projection.cjs"
     },
+    "./history-projection": {
+      "types": "./client/history-projection.cjs",
+      "import": "./client/history-projection.js",
+      "require": "./client/history-projection.cjs"
+    },
     "./core-model": "./client/core-model.js",
     "./core-panels": "./client/core-panels.js",
     "./core-model-contract": {

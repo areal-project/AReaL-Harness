@@ -1,5 +1,6 @@
 //! 每用户共享 Host。客户端发现与项目激活不承载 Core 执行或生命期。
 mod activity;
+mod browser_auth;
 mod client;
 mod gateway;
 mod journal;
@@ -12,6 +13,7 @@ mod schedule_resources;
 mod server;
 mod service;
 mod service_run;
+mod shell;
 mod subscription;
 mod vault;
 mod wire;

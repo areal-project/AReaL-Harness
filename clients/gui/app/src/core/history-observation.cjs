@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 const { historyCommand } = require("./history-navigation.cjs");
-const { mergeHistory, historyGaps, pageTopology } = require("./history-projection.cjs");
+const { mergeHistory, historyGaps, pageTopology } = require("@areal/workbench/history-projection");
 const { randomUUID } = require("node:crypto");
 const {
   readObservationResult,

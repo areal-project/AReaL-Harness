@@ -1,6 +1,7 @@
 import copy
 import importlib.util
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -25,7 +26,13 @@ class HostProtocolSchemaTests(unittest.TestCase):
         GEN.check_inventory(self.schema, ROOT)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for name in ("server.rs", "subscription/host.rs", "gateway/session.rs", "loopback.rs"):
+            for name in (
+                "server.rs",
+                "subscription/host.rs",
+                "gateway/session.rs",
+                "gateway/shared_reads.rs",
+                "loopback.rs",
+            ):
                 target = root / "core/host/src" / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / "core/host/src" / name, target)
@@ -51,9 +58,11 @@ class HostProtocolSchemaTests(unittest.TestCase):
             shutil.copyfile(ROOT / "core/host/src/server.rs", source)
             source = root / "core/host/src/loopback.rs"
             source.write_text(
-                source.read_text().replace(
-                    'const METHODS: &[&str] = &["host.status"];',
-                    'const METHODS: &[&str] = &["host.status", "loopback.added"];',
+                re.sub(
+                    r"(const METHODS: &\[&str\] = &\[)",
+                    r'\1"loopback.added", ',
+                    source.read_text(),
+                    count=1,
                 )
             )
             with self.assertRaisesRegex(ValueError, "loopback.added"):
@@ -68,6 +77,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 Path("core/host/src/loopback.rs"),
                 Path("core/host/src/subscription/host.rs"),
                 Path("core/host/src/gateway/session.rs"),
+                Path("core/host/src/gateway/shared_reads.rs"),
             ):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -174,7 +184,9 @@ validate('#/$defs/RemoteSessionControlParams', {threadId:'t',operation:'queuePau
 validate('#/$defs/RemoteSessionControlParams', {threadId:'t',operation:'goalCreate',expectedRevision:0,values:{goalId:'wrong'}}, false);
 validate('#/$defs/RemoteSessionControlParams', {threadId:'t',operation:'configure',expectedRevision:0,values:{model:null}});
 validate('#/$defs/RemoteSessionControlParams', {threadId:'t',operation:'configure',expectedRevision:0,values:{}}, false);
-for (const name of Object.keys(schema['x-current'].remote.methods)) assert(!/upload|shell\./.test(name));
+const legacyMethods = schema.$defs.RemoteReady.properties.methods.items.enum;
+for (const name of legacyMethods) assert(!/upload|shell\./.test(name));
+assert(schema['x-current'].remote.methods['shell.subscribe']);
 assert.deepEqual(schema.$defs.ProposalHelloParams.properties.grants.items.enum, ['observe','submit','approve','manage']);
 """
         subprocess.run(["node", "-e", script], cwd=ROOT, check=True)

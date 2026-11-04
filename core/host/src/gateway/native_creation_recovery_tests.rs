@@ -151,7 +151,11 @@ server.listen(0,'127.0.0.1',()=>writeFileSync({ready},String(server.address().po
             .arg("--ready-file")
             .arg(&ready)
             .arg("--runtime")
-            .arg(binary.with_file_name("areal-runtime"))
+            .arg(
+                std::env::var_os("AREAL_RUNTIME_BIN")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| binary.with_file_name("areal-runtime")),
+            )
             .arg("--workspace")
             .arg(&workspace)
             .arg("--allow-write")
@@ -163,9 +167,10 @@ server.listen(0,'127.0.0.1',()=>writeFileSync({ready},String(server.address().po
             .unwrap(),
     );
     for _ in 0..800 {
+        let status = core.0.try_wait().unwrap();
         assert!(
-            core.0.try_wait().unwrap().is_none(),
-            "native Core exited; inspect core.log"
+            status.is_none(),
+            "native Core exited {status:?}; inspect core.log"
         );
         if ready.exists() {
             break;
@@ -844,4 +849,143 @@ async fn run_native_send_case() {
         "boundary":"finite T19 Host owner+journal fixture with real Core/Runtime; no Remote Noise wire, independent Host process crash or 100-race gate"
     })).unwrap();
     println!("native send fault evidence: {}", run.display());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "real Core/Runtime; requires AREAL_CORE_BIN and AREAL_NATIVE_FAULT_EVIDENCE; isolated stored-history fixture, not packaged GUI"]
+async fn native_conversation_read_preserves_archive_fragments_and_inherited_identity() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        (f.close)();
+        f.server.abort();
+        let mut native = start_native_core(&f).await;
+        let created = areal_local_service::rpc(&native.direct, "areal/thread/start", json!({
+            "requestId":uuid::Uuid::new_v4().to_string(),"cwd":native.direct.identity.workspace
+        })).await.unwrap();
+        let thread = created["thread"]["id"].as_str().unwrap().to_owned();
+        unsafe { libc::kill(native.core.0.id() as i32, libc::SIGINT); }
+        for _ in 0..400 {
+            if native.core.0.try_wait().unwrap().is_some() { break; }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(native.core.0.try_wait().unwrap().is_some());
+        let data = native.run.join("data");
+        let record_path = data.join(format!("{thread}.json"));
+        let mut record: Value = storage::read(&record_path).unwrap();
+        let turns: Vec<Value> = (0..40).map(|n| json!({
+            "id":format!("turn-{n}"),"status":"completed","error":null,
+            "instructionSnapshot":format!("native instruction {n}"),
+            "items":[
+                {"id":format!("user-{n}"),"type":"userMessage","content":[{"type":"text","text":format!("question {n}"),"text_elements":[]}]},
+                {"id":format!("answer-{n}"),"type":"agentMessage","text":if n == 39 { "escaped\"\\\n🦀".repeat(40000) } else { format!("answer {n} ").repeat(600) }}
+            ]
+        })).collect();
+        let segment = json!({"version":1,"previous":null,"turns":turns[..20]});
+        let bytes = serde_json::to_vec(&segment).unwrap();
+        let digest = storage::digest(&bytes);
+        storage::private_dir(&data.join("history")).unwrap();
+        std::fs::write(data.join("history").join(&digest), &bytes).unwrap();
+        record["thread"]["turns"] = json!(turns[20..]);
+        record["thread"]["historyArchive"] = json!({"head":digest,"throughItemId":"answer-19","completedTurns":20,"items":40,"bytes":bytes.len()});
+        record["thread"]["desktop"]["configuration"]["options"]["appendInstructions"] = json!("native metadata".repeat(100));
+        storage::write(&record_path, &record).unwrap();
+        let ready = native.run.join("ready");
+        assert!(!ready.exists(), "stopped Core must remove its ready file");
+        native.core = OwnedChild(Command::new(&native.binary)
+            .arg("app-server").arg("--desktop-config").arg(native.run.join("deployment.json"))
+            .arg("--config").arg(native.run.join("config.toml"))
+            .args(["--listen","127.0.0.1:0"]).arg("--data-dir").arg(&data)
+            .arg("--ready-file").arg(&ready).arg("--runtime").arg(std::env::var_os("AREAL_RUNTIME_BIN").map(PathBuf::from).unwrap_or_else(|| native.binary.with_file_name("areal-runtime")))
+            .arg("--workspace").arg(&native.direct.identity.workspace).arg("--allow-write")
+            .env("HOME", &native.run).env("AREAL_HARNESS_HOME", native.run.join("user"))
+            .stdout(Stdio::null()).stderr(std::fs::File::create(native.run.join("core-restored.log")).unwrap()).spawn().unwrap());
+        for _ in 0..800 {
+            assert!(native.core.0.try_wait().unwrap().is_none(), "restored Core exited");
+            if ready.exists() { break; }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        native.direct.endpoint = std::fs::read_to_string(&ready).unwrap();
+        native.direct.core_pid = native.core.0.id();
+        let fork = areal_local_service::rpc(&native.direct,"areal/thread/fork",json!({
+            "requestId":uuid::Uuid::new_v4().to_string(),"sourceThreadId":thread,
+            "anchor":{"turnId":"turn-19","boundary":"after"},"workspaceMode":"sharedCurrent"
+        })).await.unwrap();
+        let fork_id = fork["thread"]["id"].as_str().unwrap().to_owned();
+        areal_local_service::rpc(&native.direct,"areal/thread/archive",json!({"threadId":thread})).await.unwrap();
+        let proxy = attach_native_proxy(&mut f, &native, "unused-read-test-fault", NativeReplyFault::DropSuccess).await;
+        let mut session = f.session("a");
+        session.gui_read = true;
+        let opened = session.request(&f.native_read_request("session.open",json!({"threadId":thread,"view":"conversation"}))).await.unwrap();
+        assert_eq!(opened["snapshot"]["thread"]["desktop"]["archived"],true);
+        assert_eq!(opened["snapshot"]["thread"]["desktop"]["configuration"]["options"]["appendInstructions"],record["thread"]["desktop"]["configuration"]["options"]["appendInstructions"]);
+        assert_eq!(opened["snapshot"]["history"]["complete"],false);
+        let subscription = opened["subscriptionId"].clone();
+        let mut found = std::collections::BTreeMap::<String,Value>::new();
+        let mut deferred = Vec::new();
+        for turn in opened["snapshot"]["thread"]["turns"].as_array().unwrap() {
+            for item in turn["items"].as_array().unwrap() {
+                if item["type"] == "historyDeferred" { deferred.push(item.clone()); }
+                else { found.insert(item["id"].as_str().unwrap().into(),item.clone()); }
+            }
+        }
+        let mut page_count = 0;
+        let mut largest_page = 0;
+        for item in deferred {
+            let mut cursor = item["cursor"].clone();
+            let mut text = String::new();
+            loop {
+                let response = session.request(&f.native_read_request("session.history",json!({"threadId":thread,"subscriptionId":subscription,"view":"own","cursor":cursor,"maxBytes":65536}))).await.unwrap();
+                let page = &response["page"];
+                page_count += 1;
+                largest_page = largest_page.max(serde_json::to_vec(page).unwrap().len());
+                let fragment = &page["data"][0]["fragment"];
+                assert_eq!(fragment["version"],item["version"]);
+                assert_eq!(fragment["offsetUtf8"].as_u64().unwrap() as usize,text.len());
+                text.push_str(fragment["text"].as_str().unwrap());
+                if text.len() == fragment["totalBytes"].as_u64().unwrap() as usize { break; }
+                cursor = page["nextCursor"].clone();
+                assert!(cursor.is_string());
+            }
+            let entry: Value = serde_json::from_str(&text).unwrap();
+            found.insert(item["id"].as_str().unwrap().into(),entry["item"].clone());
+        }
+        let mut cursor = opened["snapshot"]["history"]["nextCursor"].clone();
+        while cursor.is_string() {
+            let response = session.request(&f.native_read_request("session.history",json!({"threadId":thread,"subscriptionId":subscription,"view":"own","cursor":cursor,"maxBytes":65536}))).await.unwrap();
+            let page = &response["page"];
+            page_count += 1;
+            largest_page = largest_page.max(serde_json::to_vec(page).unwrap().len());
+            for entry in page["data"].as_array().unwrap() {
+                assert_eq!(entry["sourceThreadId"],thread);
+                assert!(entry["sourceTurnId"].is_string());
+                assert!(found.insert(entry["sourceItemId"].as_str().unwrap().into(),entry["item"].clone()).is_none());
+            }
+            cursor = page["nextCursor"].clone();
+        }
+        let expected: std::collections::BTreeMap<String,Value> = turns.iter().flat_map(|turn|turn["items"].as_array().unwrap()).map(|item|(item["id"].as_str().unwrap().into(),item.clone())).collect();
+        storage::write(&native.run.join("observed-items.json"), &found).unwrap();
+        storage::write(&native.run.join("expected-items.json"), &expected).unwrap();
+        assert!(found == expected, "native history differs; inspect observed-items.json and expected-items.json");
+        assert!(page_count > 2);
+        assert!(largest_page <= 65536);
+        let fork_open = session.request(&f.native_read_request("session.open",json!({"threadId":fork_id,"view":"conversation"}))).await.unwrap();
+        let mut inherited = Vec::new();
+        let mut cursor = Value::Null;
+        loop {
+            let response = session.request(&f.native_read_request("session.history",json!({"threadId":fork_id,"subscriptionId":fork_open["subscriptionId"],"view":"inherited","cursor":cursor,"maxBytes":65536}))).await.unwrap();
+            let page = &response["page"];
+            for entry in page["data"].as_array().unwrap() {
+                assert_eq!(entry["sourceThreadId"],thread);
+                assert!(entry["sourceTurnId"].is_string());
+                inherited.push(entry["sourceItemId"].clone());
+            }
+            cursor = page["nextCursor"].clone();
+            if cursor.is_null() { break; }
+        }
+        assert_eq!(inherited,turns[..20].iter().flat_map(|turn|turn["items"].as_array().unwrap()).map(|item|item["id"].clone()).collect::<Vec<_>>());
+        assert_eq!(session.request(&f.native_read_request("subscription.close",json!({"subscriptionId":fork_open["subscriptionId"]}))).await.unwrap()["closed"],true);
+        stop_native(&mut f, &mut native, proxy).await;
+        storage::write(&native.run.join("conversation-result.json"),&json!({"passed":true,"cleanupPassed":true,"sourceThreadId":thread,"forkThreadId":fork_id,"ownItems":found.len(),"inheritedItems":inherited.len(),"historyPages":page_count,"largestNativePageBytes":largest_page,"boundary":"new Host ConversationReader and negotiated Remote adapter with real Core; isolated archived history fixture; no packaged renderer or Noise wire"})).unwrap();
+        println!("native conversation evidence: {}",native.run.display());
+    }).await;
 }

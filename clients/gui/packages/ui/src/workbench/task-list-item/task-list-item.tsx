@@ -38,6 +38,7 @@ export const MemoTaskItem = memo(function TaskListItem({
   worktreeLabel,
   worktreeTitle,
   organizationActions,
+  readOnly = false,
   onSelect,
   onRename,
   onPin,
@@ -61,6 +62,7 @@ export const MemoTaskItem = memo(function TaskListItem({
   worktreeLabel?: string;
   worktreeTitle?: string;
   organizationActions?: ReactNode;
+  readOnly?: boolean;
   onSelect: () => void;
   onRename: () => void;
   onPin: () => void;
@@ -132,55 +134,57 @@ export const MemoTaskItem = memo(function TaskListItem({
           </span>
         </TitleTooltip>
       )}
-      <HoverActions
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-        className="task-row-actions"
-      >
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={`${pinned ? "取消置顶" : "置顶"} ${title}`}
-          disabled={disabled}
-          onClick={onPin}
+      {!readOnly && (
+        <HoverActions
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="task-row-actions"
         >
-          <Pin className="size-4" />
-        </Button>
-        {/* 运行中仍交给 Core 拒绝并显示原因，不在本地提前禁用或移走。 */}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={`归档 ${title}`}
-          disabled={disabled || archived}
-          onClick={onArchive}
-        >
-          <Archive className="size-4" />
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" size="icon-xs" aria-label={`任务操作 ${title}`}>
-                <MoreHorizontal className="size-4" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={onRename} disabled={disabled}>
-              <PenLine />
-              重命名
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onPin} disabled={disabled}>
-              <Pin />
-              {pinned ? "取消置顶" : "置顶"}
-            </DropdownMenuItem>
-            {organizationActions}
-            <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
-              <Archive />
-              归档
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </HoverActions>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`${pinned ? "取消置顶" : "置顶"} ${title}`}
+            disabled={disabled}
+            onClick={onPin}
+          >
+            <Pin className="size-4" />
+          </Button>
+          {/* 运行中仍交给 Core 拒绝并显示原因，不在本地提前禁用或移走。 */}
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`归档 ${title}`}
+            disabled={disabled || archived}
+            onClick={onArchive}
+          >
+            <Archive className="size-4" />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon-xs" aria-label={`任务操作 ${title}`}>
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={onRename} disabled={disabled}>
+                <PenLine />
+                重命名
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onPin} disabled={disabled}>
+                <Pin />
+                {pinned ? "取消置顶" : "置顶"}
+              </DropdownMenuItem>
+              {organizationActions}
+              <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
+                <Archive />
+                归档
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </HoverActions>
+      )}
     </li>
   );
   return renderSurface ? renderSurface(surface.props) : surface;

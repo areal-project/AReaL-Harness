@@ -149,6 +149,32 @@ impl Client {
         )
         .await
     }
+    pub async fn web_endpoint(&self) -> Result<areal_protocol::host::LoopbackEndpoint> {
+        self.call("web.endpoint", json!({})).await
+    }
+    pub async fn approve_browser(
+        &self,
+        request_id: &str,
+    ) -> Result<areal_protocol::host::LocalWebApproveResult> {
+        self.call(
+            "web.approve",
+            json!({"requestId":request_id,"expectedGeneration":self.identity.generation}),
+        )
+        .await
+    }
+    pub async fn browser_devices(&self) -> Result<areal_protocol::host::LocalWebDevicesResult> {
+        self.call("web.devices", json!({})).await
+    }
+    pub async fn revoke_browser(
+        &self,
+        device_id: &str,
+    ) -> Result<areal_protocol::host::LocalWebRevokeResult> {
+        self.call(
+            "web.revoke",
+            json!({"deviceId":device_id,"expectedGeneration":self.identity.generation}),
+        )
+        .await
+    }
     pub async fn status(&self) -> Result<HostStatus> {
         self.call("host.status", json!({})).await
     }

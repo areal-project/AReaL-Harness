@@ -18,6 +18,8 @@ export function readHostBootstrap(value: unknown): HostBootstrap {
     typeof value.ticket !== "string" ||
     !value.ticket ||
     value.ticket.length > 1024 ||
+    (value.preferredSourceId !== undefined &&
+      (typeof value.preferredSourceId !== "string" || !value.preferredSourceId)) ||
     typeof value.expiresAt !== "number" ||
     !Number.isSafeInteger(value.expiresAt) ||
     value.expiresAt <= Date.now()

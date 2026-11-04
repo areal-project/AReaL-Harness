@@ -48,10 +48,12 @@ export function ToolEvent({
   onLoadDetails,
   detailsLoading,
   detailsError,
+  mediaGeneration,
 }: {
   onLoadDetails?: () => Promise<void>;
   detailsLoading?: boolean;
   detailsError?: string;
+  mediaGeneration?: string;
   onOpenResult?: (source: McpResultSource) => Promise<void>;
   resultState?: McpResultState;
   /** Accepted for host compatibility; running rows stay static (CONV-STATUS-01). */
@@ -211,6 +213,14 @@ export function ToolEvent({
     item.execution?.outcome === "succeeded" &&
     item.execution?.backend === "mcp";
   const current = review?.itemId === item.id ? review : undefined;
+  const mediaSource = turnId
+    ? {
+        generation: mediaGeneration,
+        turnId: item.historySource?.turnId ?? turnId,
+        itemId: item.historySource?.itemId ?? item.id,
+        sourceThreadId: item.historySource?.threadId,
+      }
+    : undefined;
   return (
     <Collapsible.Root
       open={open}
@@ -289,6 +299,7 @@ export function ToolEvent({
             <div className="tool-image-preview">
               {images.map((part) => (
                 <SentAttachment
+                  mediaSource={mediaSource}
                   key={part.media.uri}
                   onError={setImageError}
                   part={{ type: "image", uri: part.media.uri, name: "工具图片" }}
@@ -503,6 +514,7 @@ export function ToolEvent({
                   .filter((c: Data) => c.type === "arealMedia" && c.modality === "image")
                   .map((c: Data) => (
                     <SentAttachment
+                      mediaSource={mediaSource}
                       key={c.media.uri}
                       part={{ type: "image", uri: c.media.uri, name: "页面截图" }}
                       projectId={projectId}
@@ -516,6 +528,7 @@ export function ToolEvent({
       </Collapsible.Panel>
       {open && action && projectId && threadId && item.execution?.resultSnapshot?.uri && (
         <SentAttachment
+          mediaSource={mediaSource}
           part={{ type: "file", uri: item.execution.resultSnapshot.uri, name: "原始结果" }}
           projectId={projectId}
           threadId={threadId}

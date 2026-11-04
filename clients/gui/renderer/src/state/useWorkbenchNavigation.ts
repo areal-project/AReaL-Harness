@@ -32,7 +32,7 @@ export function useWorkbenchNavigation(
   } = session;
   const { settingsOpen } = surfaces;
   const choose = async () => {
-    if (!initialReleased) return;
+    if (!initialReleased || services.capabilities?.mutations === false) return;
     try {
       const id = await services.chooseProject();
       if (id) {
@@ -63,7 +63,7 @@ export function useWorkbenchNavigation(
     [initialReleased, snapshot.projects, restoreConversation, recordWorkspaceLocation],
   );
   const newTask = (pid = project?.id, record = true) => {
-    if (!initialReleased) return;
+    if (!initialReleased || services.capabilities?.mutations === false) return;
     if (!pid || snapshot.projects.find((p) => p.id === pid)?.projectless) {
       leaveProject(record);
       return;
@@ -108,7 +108,7 @@ export function useWorkbenchNavigation(
     });
   };
   const startResourceDraft = async (seed: ResourceDraftSeed) => {
-    if (!initialReleased) return;
+    if (!initialReleased || services.capabilities?.mutations === false) return;
     const { owner, key } = await prepareResourceDraft(
       seed,
       project,

@@ -232,11 +232,15 @@ def current_inventory(root):
     loopback_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", loopback, re.S)
     if not loopback_match:
         raise ValueError("Loopback METHODS declaration moved; update inventory extractor")
+    shared_reads = (root / "core/host/src/gateway/shared_reads.rs").read_text()
+    read_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", shared_reads, re.S)
+    if not read_match:
+        raise ValueError("Negotiated read METHODS declaration moved; update inventory extractor")
     return {
         "loopback": {"hello"}
         | set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', loopback_match[1])),
         "local": local,
-        "remote": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1])),
+        "remote": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1] + read_match[1])),
     }
 
 

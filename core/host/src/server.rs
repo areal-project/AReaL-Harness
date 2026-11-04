@@ -1,3 +1,7 @@
+#[path = "conversation_media.rs"]
+pub(crate) mod conversation_media;
+#[path = "conversation_read.rs"]
+mod conversation_read;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
 #[path = "loopback.rs"]
@@ -8,6 +12,8 @@ mod power;
 mod schedule_connection;
 #[path = "schedules.rs"]
 mod schedules;
+#[path = "shell_subscription.rs"]
+mod shell_subscription;
 #[path = "subscription/host.rs"]
 mod subscriptions;
 #[path = "updates.rs"]
@@ -95,6 +101,7 @@ struct Host {
     schedules: schedules::Schedules,
     power: power::Power,
     loopback: loopback::Loopback,
+    read_models: shell_subscription::ReadModels,
 }
 impl Slot {
     fn imported(registration: ProjectRegistration) -> Self {
@@ -310,6 +317,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         gateway: gateway_owner::Gateway::default(),
         subscriptions: subscriptions::Subscriptions::default(),
         power: power::Power::default(),
+        read_models: Default::default(),
         loopback: loopback::Loopback::default(),
     });
     host.schedules.import(
@@ -338,7 +346,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     host.restore_subscriptions().await?;
     let mut loopback = loopback::bind(
         host.clone(),
-        std::env::var_os("AREAL_HOST_WEBSOCKET").is_some_and(|value| value == "1"),
+        std::env::var_os("AREAL_HOST_WEBSOCKET").is_none_or(|value| value != "0"),
     )
     .await?;
     storage::write(&directory.join("host.json"), &host.identity)?;
@@ -969,9 +977,39 @@ impl Host {
         connection: &ConnectionGuard,
     ) -> Result<Value> {
         if method == "web.ticket" {
-            return Ok(serde_json::to_value(
-                self.loopback.ticket(serde_json::from_value(params)?)?,
-            )?);
+            let input: areal_protocol::host::LocalWebTicketParams = serde_json::from_value(params)?;
+            let preferred = input
+                .profile
+                .as_deref()
+                .map(|profile| {
+                    self.migration
+                        .navigation_source_id(std::path::Path::new(profile))
+                })
+                .transpose()?
+                .flatten();
+            let mut ticket = self.loopback.ticket(input)?;
+            ticket.preferred_source_id = preferred;
+            return Ok(serde_json::to_value(ticket)?);
+        }
+        if method == "web.endpoint" {
+            ensure!(
+                params.as_object().is_some_and(|params| params.is_empty()),
+                wire::error("invalidRequest", "endpoint takes no arguments")
+            );
+            return Ok(serde_json::to_value(self.loopback.endpoint()?)?);
+        }
+        if method == "web.approve" {
+            return self.loopback.approve(self, params);
+        }
+        if method == "web.devices" {
+            ensure!(
+                params.as_object().is_some_and(|params| params.is_empty()),
+                wire::error("invalidRequest", "devices takes no arguments")
+            );
+            return self.loopback.devices();
+        }
+        if method == "web.revoke" {
+            return self.loopback.revoke(self, params);
         }
         if method == "remote.gateway.control" {
             return connection.host.gateway_control(params).await;
@@ -2374,6 +2412,7 @@ mod tests {
             gateway: gateway_owner::Gateway::default(),
             subscriptions: subscriptions::Subscriptions::default(),
             power: power::Power::default(),
+            read_models: Default::default(),
             loopback: loopback::Loopback::default(),
             schedules: schedules::Schedules::load(&home).unwrap(),
         });
@@ -2789,7 +2828,10 @@ mod tests {
             let stop_id=uuid::Uuid::new_v4().to_string();let stop=client.stop(&stop_id,&identity.generation,StopStrategy::IfIdle).await.unwrap();assert_eq!(stop["state"],"completed");assert!(matches!(task.await.unwrap().unwrap(),HostExit::Stopped));
             assert!(!home.join("host/host.json").exists());
             let stopped_record=std::fs::read(home.join("host/stop.json")).unwrap();
-            assert!(matches!(run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true).await.unwrap(),HostExit::Stopped));
+            match run_local_mode(RunOptions {home:home.clone(),bin_dir:bin.clone()},true).await.unwrap() {
+                HostExit::Stopped => {},
+                HostExit::AlreadyRunning => panic!("stopped Host retained its exclusive lock"),
+            }
             assert!(!home.join("host/host.json").exists());
             assert_eq!(std::fs::read(home.join("host/stop.json")).unwrap(),stopped_record);
             let offline=crate::offline_service_status(&home).unwrap();
@@ -2982,7 +3024,7 @@ mod tests {
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
             for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
-            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
+            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();
             let activation=uuid::Uuid::new_v4().to_string();let record=Operation {digest:"fixture".into(),receipt:json!({"version":1,"requestId":activation,"method":"project.ensure","projectId":"b","state":"acceptedPending"}),evidence:json!({"serviceId":instance,"fingerprint":"fixture","owner":host.owner(),"registration":registration,"previousService":null})};storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
@@ -3120,6 +3162,7 @@ mod tests {
             subscriptions: subscriptions::Subscriptions::default(),
             schedules: schedules::Schedules::load(&home).unwrap(),
             power: power::Power::default(),
+            read_models: Default::default(),
             loopback: loopback::Loopback::default(),
         };
         let mut original = json!({"requestId":"original-stop","hostId":"same-host","generation":"original-generation","projects":[],"localRelay":{"state":"acceptedPending"}});

@@ -1,3 +1,4 @@
+import { useReadOnly } from "../PlatformReadContext.js";
 import React from "react";
 import { ComposerSurface } from "../prompt-editor/ComposerSurface.js";
 import { Button } from "../components/ui/button.js";
@@ -97,6 +98,7 @@ function ConversationContent() {
     setError,
   } = useConversationContext();
   const { project, thread, threadId, retryRestoration } = session;
+  const readOnly = useReadOnly();
 
   const { onLink } = preview;
 
@@ -146,7 +148,7 @@ function ConversationContent() {
                 />
               </div>
             </div>
-          ) : (
+          ) : readOnly ? null : (
             <DraftConversation />
           )}
         </section>
@@ -211,6 +213,7 @@ function ActiveConversation() {
     setError,
   } = useConversationContext();
   const { project, thread, threadId, library, snapshot, resourceAction } = session;
+  const readOnly = useReadOnly();
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
   const { workspaceView } = workspacePanels.view;
   const {
@@ -263,13 +266,18 @@ function ActiveConversation() {
           }
           thread={thread}
           action={action}
+          readOnly={readOnly}
           decisionShown
           onOpenResult={mcpWorkspace.openResult}
           resultStates={mcpWorkspace.resultStates}
-          onFork={thread.cloud ? undefined : forkFromTurn}
-          onAddSelection={!thread.cloud && canStageSelection ? addSelectionToChat : undefined}
+          onFork={readOnly || thread.cloud ? undefined : forkFromTurn}
+          onAddSelection={
+            !readOnly && !thread.cloud && canStageSelection ? addSelectionToChat : undefined
+          }
           onSideSelection={
-            !thread.cloud && canStageSelection && canCreateSide ? openSideSelection : undefined
+            !readOnly && !thread.cloud && canStageSelection && canCreateSide
+              ? openSideSelection
+              : undefined
           }
           dark={dark}
           onLink={onLink}
@@ -285,92 +293,94 @@ function ActiveConversation() {
           onAgent={(id) => showPanel(`agent:${id}`)}
         />
       )}
-      <div className={empty ? "draft-composer" : "active-composer"}>
-        {empty && (
-          <div className="composer-project-bar">
-            <div className="composer-project-leading">
-              <div className="composer-project">
-                <ProjectFolderIcon />
-                <span>
-                  {library.projects?.[project.id]?.title ||
-                    (project.projectless
-                      ? thread?.title || t("operations.schedules.newTitle")
-                      : project.root.split("/").pop())}
-                </span>
+      {!readOnly && (
+        <div className={empty ? "draft-composer" : "active-composer"}>
+          {empty && (
+            <div className="composer-project-bar">
+              <div className="composer-project-leading">
+                <div className="composer-project">
+                  <ProjectFolderIcon />
+                  <span>
+                    {library.projects?.[project.id]?.title ||
+                      (project.projectless
+                        ? thread?.title || t("operations.schedules.newTitle")
+                        : project.root.split("/").pop())}
+                  </span>
+                </div>
+                <ComposerWorkspaceContext
+                  project={project}
+                  threadId={thread?.id}
+                  cloud={!!thread.cloud}
+                  action={resourceAction}
+                  backendReady={snapshot.connection?.state === "ready"}
+                />
               </div>
-              <ComposerWorkspaceContext
-                project={project}
-                threadId={thread?.id}
-                cloud={!!thread.cloud}
-                action={resourceAction}
-                backendReady={snapshot.connection?.state === "ready"}
-              />
             </div>
-          </div>
-        )}
-        {pendingSide && (
-          <FeedbackNotice
-            tone="warning"
-            requestId={pendingSide.requestId}
-            message={t("chat.side.createUnconfirmed")}
-            actions={
-              <Button variant="ghost" size="sm" onClick={newSide}>
-                {t("chat.side.inspectCreation")}
-              </Button>
-            }
-          />
-        )}
-        {!thread.cloud && mcpWorkspace.contexts}
-        {!thread.cloud && mcpWorkspace.formsView}
-        {!thread.cloud && mcpMentionsOpen && (
-          <McpMentionsPicker
-            servers={mcpWorkspace.servers}
-            projectId={project.id}
-            threadId={thread.id}
-            action={resourceAction}
-            onClose={() => setMcpMentionsOpen(false)}
-          />
-        )}
-        {thread.cloud ? (
-          <CloudComposer
-            key={`${project.id}:${thread.id}`}
-            project={project}
-            thread={thread}
-            action={resourceAction}
-          />
-        ) : (
-          <Composer
-            surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
-            onAnnotate={openImageAnnotation}
-            key={`${project.id}:${thread.id}`}
-            onMcpMention={() => setMcpMentionsOpen(true)}
-            appEntries={appEntries}
-            conversationReferences={conversationReferences}
-            project={project}
-            thread={thread}
-            executionBlocked={
-              snapshot.connection?.state !== "ready" ||
-              viewRefreshing ||
-              projectExecutionBlocked(snapshot.lifecycle, project.id)
-            }
-            action={action}
-            readAction={resourceAction}
-            onPanel={showPanel}
-            onSide={
-              canCreateSide
-                ? async (text) => {
-                    await createSide(text);
-                  }
-                : undefined
-            }
-            onNew={() => void newTask()}
-            onOpenTask={(target) => {
-              surfaces.leaveSettings();
-              tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
-            }}
-          />
-        )}
-      </div>
+          )}
+          {pendingSide && (
+            <FeedbackNotice
+              tone="warning"
+              requestId={pendingSide.requestId}
+              message={t("chat.side.createUnconfirmed")}
+              actions={
+                <Button variant="ghost" size="sm" onClick={newSide}>
+                  {t("chat.side.inspectCreation")}
+                </Button>
+              }
+            />
+          )}
+          {!thread.cloud && mcpWorkspace.contexts}
+          {!thread.cloud && mcpWorkspace.formsView}
+          {!thread.cloud && mcpMentionsOpen && (
+            <McpMentionsPicker
+              servers={mcpWorkspace.servers}
+              projectId={project.id}
+              threadId={thread.id}
+              action={resourceAction}
+              onClose={() => setMcpMentionsOpen(false)}
+            />
+          )}
+          {thread.cloud ? (
+            <CloudComposer
+              key={`${project.id}:${thread.id}`}
+              project={project}
+              thread={thread}
+              action={resourceAction}
+            />
+          ) : (
+            <Composer
+              surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+              onAnnotate={openImageAnnotation}
+              key={`${project.id}:${thread.id}`}
+              onMcpMention={() => setMcpMentionsOpen(true)}
+              appEntries={appEntries}
+              conversationReferences={conversationReferences}
+              project={project}
+              thread={thread}
+              executionBlocked={
+                snapshot.connection?.state !== "ready" ||
+                viewRefreshing ||
+                projectExecutionBlocked(snapshot.lifecycle, project.id)
+              }
+              action={action}
+              readAction={resourceAction}
+              onPanel={showPanel}
+              onSide={
+                canCreateSide
+                  ? async (text) => {
+                      await createSide(text);
+                    }
+                  : undefined
+              }
+              onNew={() => void newTask()}
+              onOpenTask={(target) => {
+                surfaces.leaveSettings();
+                tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
+              }}
+            />
+          )}
+        </div>
+      )}
     </>
   );
 }

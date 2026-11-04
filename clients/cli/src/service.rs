@@ -425,21 +425,19 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
     Ok(())
 }
 
-pub async fn web(local: LocalArgs, json: bool) -> Result<()> {
-    let opened = areal_host::Client::connect_or_start()
+pub async fn web(_local: LocalArgs, json: bool) -> Result<()> {
+    let endpoint = areal_host::Client::connect_or_start()
         .await?
-        .open(areal_host::ResolveProject::from_local_args(&local)?)
+        .web_endpoint()
         .await?;
-    let service = opened.service()?;
     if !json {
-        let login_url = areal_local_service::browser_login_url(&service).await?;
         let opener = if cfg!(target_os = "macos") {
             "/usr/bin/open"
         } else {
             "/usr/bin/xdg-open"
         };
         let result = tokio::process::Command::new(opener)
-            .arg(&login_url)
+            .arg(&endpoint.origin)
             // 打开失败时系统工具可能回显完整 URL，不能将登录码写入终端或日志。
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
@@ -449,10 +447,10 @@ pub async fn web(local: LocalArgs, json: bool) -> Result<()> {
         ensure!(
             result.success(),
             "could not open browser; visit {}",
-            service.web_url
+            endpoint.origin
         );
     }
-    println!("{}", serde_json::to_string_pretty(&service)?);
+    println!("{}", serde_json::to_string_pretty(&endpoint)?);
     Ok(())
 }
 

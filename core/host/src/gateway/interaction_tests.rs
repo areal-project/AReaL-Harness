@@ -264,6 +264,8 @@ impl Fixture {
             kind: gateway_owner::TransportKind::Direct,
             source_id: self.source.clone(),
             viewer: None,
+            shell: None,
+            gui_read: false,
             token_key: [7; 32],
         }
     }
@@ -295,6 +297,11 @@ impl Fixture {
             request["context"]["grantRevision"] = json!(1);
             request["context"]["serviceGeneration"] = json!("core-generation");
         }
+        request
+    }
+    fn native_read_request(&self, method: &str, params: Value) -> Value {
+        let mut request = self.request(method, params, None);
+        request["context"]["projectId"] = json!("project");
         request
     }
     fn item(status: &str) -> Value {
@@ -1099,6 +1106,100 @@ async fn rc07_stale_cursor_rejects_same_digest_body_change_and_replaced_core_gen
                 assert_eq!(result.unwrap_err().to_string(), "TARGET_CHANGED", "{mode}");
                 assert_eq!(f.host.journal.native_snapshot("project").unwrap(), journal);
                 assert!(f.calls.try_recv().is_err());
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn conversation_view_negotiation_native_pages_and_selection_fencing() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let request = f.native_read_request("session.open", json!({"threadId":"thread","view":"conversation"}));
+        let mut legacy = f.session("a");
+        let legacy_description = legacy.describe(false);
+        assert!(legacy_description.get("negotiatedCapabilities").is_none());
+        assert_eq!(legacy_description["limits"]["nativeHistoryBytes"], json!(4 * 1024 * 1024));
+        let legacy_request = f.request("session.open", json!({"threadId":"thread","view":"conversation"}), None);
+        assert_eq!(legacy.request(&legacy_request).await.unwrap_err().to_string(), "INVALID_PARAMS");
+        assert!(f.calls.try_recv().is_err());
+        let mut session = f.session("a");
+        session.gui_read = true;
+        assert_eq!(session.describe(false)["negotiatedCapabilities"], json!(["gui-read-v1"]));
+        let opening = Fixture::dispatch(session, request);
+        f.call("areal/capabilities").await.reply(json!({"features":{"conversationObservation":true}}));
+        let observe = f.call("areal/thread/observe").await;
+        assert_eq!(observe.request["params"], json!({"threadId":"thread","mode":"conversation","maxBytes":131072}));
+        let native = json!({"thread":{"id":"thread","archived":true,"desktop":{"configuration":{"model":{"id":"actual-model","contextWindow":100000}}},"turns":[{"id":"turn","sourceTurnId":"source-turn","items":[{"id":"deferred","sourceItemId":"original-item","type":"historyDeferred","cursor":"native-body","version":"native-version","preview":{"type":"dynamicToolCall","tool":"shell"}}]}]},"ownership":{"kind":"main"},"history":{"nextCursor":"native-next","complete":false},"window":{"source":"native-topology"}});
+        let notifications = observe.responses.clone();
+        let initial_revision = f.host.schedules.connections.shell_revision(&f.host, "project").unwrap();
+        notifications.send(CoreResponse::Message(json!({"method":"item/agentMessage/delta","params":{"threadId":"thread","turnId":"turn","itemId":"answer","delta":"token"}}))).unwrap();
+        observe.reply(native.clone());
+        let (mut session, result) = opening.await.unwrap();
+        let opened = result.unwrap();
+        assert_eq!(opened["snapshot"], native);
+        assert_eq!(opened["view"], "conversation");
+        assert_eq!(opened["projectId"], "project");
+        let prior = session.next_event().await.unwrap();
+        assert!(session.event(prior).await.unwrap().is_none(), "pre-snapshot notifications must remain behind its barrier");
+        assert_eq!(f.host.schedules.connections.shell_revision(&f.host, "project").unwrap(), initial_revision);
+        notifications.send(CoreResponse::Message(json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"turn"}}}))).unwrap();
+        session.next_event().await.unwrap();
+        assert_eq!(f.host.schedules.connections.shell_revision(&f.host, "project").unwrap().2, initial_revision.2 + 1);
+        let subscription = opened["subscriptionId"].clone();
+        let reading = Fixture::dispatch(session, f.native_read_request("session.history", json!({"threadId":"thread","subscriptionId":subscription,"view":"inherited","cursor":"native-next","maxBytes":4096})));
+        let history = f.call("areal/conversation/history").await;
+        assert_eq!(history.request["params"], json!({"threadId":"thread","view":"inherited","cursor":"native-next","maxBytes":4096}));
+        let page = json!({"data":[{"sourceTurnId":"source-turn","sourceItemId":"original-item","fragment":{"text":"native fragment","offset":0,"totalBytes":15}}],"nextCursor":"native-more","complete":false});
+        history.reply(page.clone());
+        let (mut session, read) = reading.await.unwrap();
+        assert_eq!(read.unwrap()["page"], page);
+        let wrong = f.native_read_request("session.history", json!({"threadId":"thread","subscriptionId":"prior-selection","view":"own"}));
+        assert_eq!(session.request(&wrong).await.unwrap_err().to_string(), "INVALID_PARAMS");
+        assert!(f.calls.try_recv().is_err());
+        let closed = session.request(&f.native_read_request("subscription.close", json!({"subscriptionId":subscription}))).await.unwrap();
+        assert_eq!(closed, json!({"closed":true}));
+        assert!(session.viewer.is_none());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn conversation_open_discards_reply_after_grant_or_core_generation_changes() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            for failure in ["grant", "generation"] {
+                let mut f = Fixture::new().await;
+                let mut session = f.session("a");
+                session.gui_read = true;
+                let opening = Fixture::dispatch(
+                    session,
+                    f.native_read_request(
+                        "session.open",
+                        json!({"threadId":"thread","view":"conversation"}),
+                    ),
+                );
+                f.call("areal/capabilities")
+                    .await
+                    .reply(json!({"features":{"conversationObservation":true}}));
+                let observe = f.call("areal/thread/observe").await;
+                if failure == "grant" {
+                    f.grant("a", |grant| grant["status"] = json!("revoked"));
+                } else {
+                    f.host
+                        .slots
+                        .borrow_mut()
+                        .get_mut("project")
+                        .unwrap()
+                        .service
+                        .as_mut()
+                        .unwrap()
+                        .identity
+                        .generation = "replacement".into();
+                }
+                observe.reply(json!({"thread":{"id":"thread","turns":[]}}));
+                let (session, result) = opening.await.unwrap();
+                assert!(result.is_err(), "{failure}");
+                assert!(session.viewer.is_none());
             }
         })
         .await;

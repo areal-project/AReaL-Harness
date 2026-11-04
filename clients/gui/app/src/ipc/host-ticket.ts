@@ -14,6 +14,7 @@ export const hostTicketSchema = {
 export function registerHostTicket(options: {
   home: string;
   binary: string;
+  profile: string;
   trusted(event: IpcMainInvokeEvent): unknown;
 }) {
   ipcMain.handle(hostTicketChannel, async (event, ...args: unknown[]) => {
@@ -26,6 +27,7 @@ export function registerHostTicket(options: {
         await client.request("web.ticket", {
           origin: "areal-ui://app",
           expectedGeneration: client.generation,
+          profile: options.profile,
         }),
       );
       options.trusted(event);
@@ -37,7 +39,6 @@ export function registerHostTicket(options: {
     }
   });
   return async () => {
-    if (process.env.AREAL_HOST_WEBSOCKET !== "1") return "";
     const client = new HostClient();
     try {
       await client.connectOrStart(options.home, options.binary);

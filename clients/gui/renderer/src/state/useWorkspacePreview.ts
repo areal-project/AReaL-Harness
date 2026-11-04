@@ -67,6 +67,14 @@ export function useWorkspacePreview(
   );
   const onLink = useCallback(
     (url: string) => {
+      if (services.capabilities?.native === false) {
+        try {
+          const target = new URL(url);
+          if (["http:", "https:", "mailto:"].includes(target.protocol))
+            window.open(target.href, "_blank", "noopener,noreferrer");
+        } catch {}
+        return;
+      }
       if (!project) return;
       const owner = `${project.id}:${threadId}`;
       void services

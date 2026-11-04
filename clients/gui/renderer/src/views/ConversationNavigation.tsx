@@ -1,3 +1,4 @@
+import { useReadOnly } from "../PlatformReadContext.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { Input } from "../components/ui/input.js";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
@@ -191,6 +192,7 @@ function SidebarTaskRow({ row }: { row: Data }) {
   );
 }
 function SidebarProjectGroup({ owner }: { owner: Data }) {
+  const readOnly = useReadOnly();
   const { t } = useI18n();
   const {
     services,
@@ -259,125 +261,127 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
           {collapsed ? <ProjectFolderIcon /> : <ProjectOpenFolderIcon />}
           <span>{library.projects?.[owner.id]?.title || owner.root.split("/").pop()}</span>
         </Button>
-        <HoverActions className="project-actions">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  unstyled
-                  className="icon-button"
-                  aria-label={t("common.navigation.projectActions", {
-                    project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
-                  })}
-                >
-                  <MoreOptionsIcon size={16} />
-                </Button>
-              }
-            />
-            <DropdownMenuContent>
-              <DropdownMenuItem
-                onClick={() =>
-                  startRename(
-                    { operation: "renameProject", projectId: owner.id },
-                    library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
-                  )
-                }
-              >
-                {t("common.navigation.rename")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!services.fileOpen}
-                onClick={() =>
-                  void services
-                    .fileOpen?.({
-                      operation: "open",
-                      projectId: owner.id,
-                      path: ".",
-                    })
-                    .catch((cause) => setError(cause.message))
-                }
-              >
-                {t("common.navigation.openDefault")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                disabled={!services.fileOpen}
-                onClick={() =>
-                  void services
-                    .fileOpen?.({
-                      operation: "reveal",
-                      projectId: owner.id,
-                      path: ".",
-                    })
-                    .catch((cause) => setError(cause.message))
-                }
-              >
-                {t("common.navigation.reveal")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  organize({
-                    operation: "pinProject",
-                    projectId: owner.id,
-                    pinned: !library.projects?.[owner.id]?.pinned,
-                  })
-                }
-              >
-                {library.projects?.[owner.id]?.pinned
-                  ? t("common.navigation.unpinProject")
-                  : t("common.navigation.pinProject")}
-              </DropdownMenuItem>
-              {(
-                [
-                  [-1, "common.navigation.moveUp"],
-                  [1, "common.navigation.moveDown"],
-                ] as const
-              ).map(([direction, label]) => {
-                const siblings = projects.filter(
-                  (candidate) =>
-                    !!library.projects?.[candidate.id]?.pinned ===
-                    !!library.projects?.[owner.id]?.pinned,
-                );
-                const index = siblings.findIndex((candidate) => candidate.id === owner.id);
-                return (
-                  <DropdownMenuItem
-                    key={label}
-                    disabled={
-                      (library.projects?.[owner.id]?.pinned && sortMode("Pinned") !== "manual") ||
-                      index + direction < 0 ||
-                      index + direction >= siblings.length
-                    }
-                    onClick={() =>
-                      organize({
-                        operation: "orderProject",
-                        projectId: owner.id,
-                        before:
-                          direction < 0
-                            ? siblings[index - 1].id
-                            : (siblings[index + 2]?.id ?? null),
-                      })
-                    }
+        {!readOnly && (
+          <HoverActions className="project-actions">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    unstyled
+                    className="icon-button"
+                    aria-label={t("common.navigation.projectActions", {
+                      project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
+                    })}
                   >
-                    {t(label)}
-                  </DropdownMenuItem>
-                );
+                    <MoreOptionsIcon size={16} />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  onClick={() =>
+                    startRename(
+                      { operation: "renameProject", projectId: owner.id },
+                      library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
+                    )
+                  }
+                >
+                  {t("common.navigation.rename")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!services.fileOpen}
+                  onClick={() =>
+                    void services
+                      .fileOpen?.({
+                        operation: "open",
+                        projectId: owner.id,
+                        path: ".",
+                      })
+                      .catch((cause) => setError(cause.message))
+                  }
+                >
+                  {t("common.navigation.openDefault")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={!services.fileOpen}
+                  onClick={() =>
+                    void services
+                      .fileOpen?.({
+                        operation: "reveal",
+                        projectId: owner.id,
+                        path: ".",
+                      })
+                      .catch((cause) => setError(cause.message))
+                  }
+                >
+                  {t("common.navigation.reveal")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    organize({
+                      operation: "pinProject",
+                      projectId: owner.id,
+                      pinned: !library.projects?.[owner.id]?.pinned,
+                    })
+                  }
+                >
+                  {library.projects?.[owner.id]?.pinned
+                    ? t("common.navigation.unpinProject")
+                    : t("common.navigation.pinProject")}
+                </DropdownMenuItem>
+                {(
+                  [
+                    [-1, "common.navigation.moveUp"],
+                    [1, "common.navigation.moveDown"],
+                  ] as const
+                ).map(([direction, label]) => {
+                  const siblings = projects.filter(
+                    (candidate) =>
+                      !!library.projects?.[candidate.id]?.pinned ===
+                      !!library.projects?.[owner.id]?.pinned,
+                  );
+                  const index = siblings.findIndex((candidate) => candidate.id === owner.id);
+                  return (
+                    <DropdownMenuItem
+                      key={label}
+                      disabled={
+                        (library.projects?.[owner.id]?.pinned && sortMode("Pinned") !== "manual") ||
+                        index + direction < 0 ||
+                        index + direction >= siblings.length
+                      }
+                      onClick={() =>
+                        organize({
+                          operation: "orderProject",
+                          projectId: owner.id,
+                          before:
+                            direction < 0
+                              ? siblings[index - 1].id
+                              : (siblings[index + 2]?.id ?? null),
+                        })
+                      }
+                    >
+                      {t(label)}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button
+              unstyled
+              type="button"
+              className="icon-button"
+              aria-label={t("common.navigation.newProjectChat", {
+                project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
               })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button
-            unstyled
-            type="button"
-            className="icon-button"
-            aria-label={t("common.navigation.newProjectChat", {
-              project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
-            })}
-            title={t("common.navigation.newProjectChat", {
-              project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
-            })}
-            onClick={() => newTask(owner.id)}
-          >
-            <ProjectNewChatIcon />
-          </Button>
-        </HoverActions>
+              title={t("common.navigation.newProjectChat", {
+                project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
+              })}
+              onClick={() => newTask(owner.id)}
+            >
+              <ProjectNewChatIcon />
+            </Button>
+          </HoverActions>
+        )}
       </SidebarDragSurface>
       <div id={`project-threads-${owner.id}`} hidden={collapsed}>
         <ul>
@@ -405,6 +409,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
   );
 }
 function SidebarContent() {
+  const readOnly = useReadOnly();
   const {
     library,
     projects,
@@ -448,9 +453,11 @@ function SidebarContent() {
     >
       <>
         <SidebarWorkspaceHeader title="AReaL Harness" onSearch={() => setSearchOpen(true)} />
-        <div className="sidebar-tools">
-          <NewTaskButtonGroup onCreateTask={() => void newTask()} />
-        </div>
+        {!readOnly && (
+          <div className="sidebar-tools">
+            <NewTaskButtonGroup onCreateTask={() => void newTask()} />
+          </div>
+        )}
         {
           <DndContext {...sidebarDrag.context}>
             <div className="sidebar-scroll">
@@ -503,76 +510,82 @@ function SidebarContent() {
                     expanded={!collapsedProjects["sidebar:projects"]}
                     onToggle={() => toggleSidebarGroup("sidebar:projects")}
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="section-action-btn"
-                    aria-label={t("settings.openProject")}
-                    title={t("settings.openProject")}
-                    onClick={() => void requestNavigation(() => void choose())}
-                  >
-                    <ComposerPlusIcon width={16} height={16} />
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          unstyled
-                          className="section-action-btn"
-                          aria-label={t("common.navigation.organize")}
-                        >
-                          <MoreOptionsIcon size={16} />
-                        </Button>
-                      }
-                    />
-                    <DropdownMenuContent>
-                      <DropdownMenuItem onClick={() => void requestNavigation(() => void choose())}>
-                        {t("chat.newProject")}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {(
-                        [
-                          ["Chats", "独立任务排序"],
-                          ["Projects", "项目内任务排序"],
-                          ["Pinned", "置顶项排序"],
-                        ] as const
-                      ).map(([area, label]) => (
-                        <DropdownMenuSub key={area}>
-                          <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
-                          <DropdownMenuSubContent>
-                            <DropdownMenuRadioGroup
-                              value={sortMode(area)}
-                              onValueChange={(value) =>
-                                organize({
-                                  operation: "settings",
-                                  key: `sidebarSort${area}`,
-                                  value,
-                                  order: visibleRows.map(sidebarKey),
-                                })
-                              }
+                  {!readOnly && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="section-action-btn"
+                        aria-label={t("settings.openProject")}
+                        title={t("settings.openProject")}
+                        onClick={() => void requestNavigation(() => void choose())}
+                      >
+                        <ComposerPlusIcon width={16} height={16} />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              unstyled
+                              className="section-action-btn"
+                              aria-label={t("common.navigation.organize")}
                             >
-                              {(
-                                [
-                                  ["updated_at", "最近更新"],
-                                  ["priority", "优先处理"],
-                                  ["manual", "手动排序"],
-                                ] as const
-                              ).map(([value, title]) => (
-                                <DropdownMenuRadioItem key={value} value={value}>
-                                  {title}
-                                </DropdownMenuRadioItem>
-                              ))}
-                            </DropdownMenuRadioGroup>
-                          </DropdownMenuSubContent>
-                        </DropdownMenuSub>
-                      ))}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => organize({ operation: "markAllRead" })}>
-                        {t("common.navigation.markAllRead")}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                              <MoreOptionsIcon size={16} />
+                            </Button>
+                          }
+                        />
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            onClick={() => void requestNavigation(() => void choose())}
+                          >
+                            {t("chat.newProject")}
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          {(
+                            [
+                              ["Chats", "独立任务排序"],
+                              ["Projects", "项目内任务排序"],
+                              ["Pinned", "置顶项排序"],
+                            ] as const
+                          ).map(([area, label]) => (
+                            <DropdownMenuSub key={area}>
+                              <DropdownMenuSubTrigger>{label}</DropdownMenuSubTrigger>
+                              <DropdownMenuSubContent>
+                                <DropdownMenuRadioGroup
+                                  value={sortMode(area)}
+                                  onValueChange={(value) =>
+                                    organize({
+                                      operation: "settings",
+                                      key: `sidebarSort${area}`,
+                                      value,
+                                      order: visibleRows.map(sidebarKey),
+                                    })
+                                  }
+                                >
+                                  {(
+                                    [
+                                      ["updated_at", "最近更新"],
+                                      ["priority", "优先处理"],
+                                      ["manual", "手动排序"],
+                                    ] as const
+                                  ).map(([value, title]) => (
+                                    <DropdownMenuRadioItem key={value} value={value}>
+                                      {title}
+                                    </DropdownMenuRadioItem>
+                                  ))}
+                                </DropdownMenuRadioGroup>
+                              </DropdownMenuSubContent>
+                            </DropdownMenuSub>
+                          ))}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => organize({ operation: "markAllRead" })}>
+                            {t("common.navigation.markAllRead")}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </>
+                  )}
                 </SidebarDragSurface>
                 <div id="sidebar-projects" hidden={!!collapsedProjects["sidebar:projects"]}>
                   {projects

@@ -1,3 +1,4 @@
+import { BrowserHostAuthStatus } from "./BrowserHostAuthStatus.js";
 import {
   getApplicationPreferences,
   subscribeApplicationPreferences,
@@ -12,21 +13,34 @@ import { TooltipProvider } from "./components/ui/tooltip.js";
 import { App } from "./App.js";
 import { initializeDesktopServices } from "./desktop-services.js";
 import { hostReadsEnabled, HostReadStatus } from "./HostReadStatus.js";
-const services = initializeDesktopServices(
+const desktop = initializeDesktopServices(
   () => getApplicationPreferences().locale,
   subscribeApplicationPreferences,
 );
-if (!services)
-  document.getElementById("root")!.textContent = "请通过 AReaL Harness 桌面入口打开此界面。";
-else {
+async function start() {
+  let services = desktop;
+  if (!desktop || (hostReadsEnabled() && desktop.getHostTicket)) {
+    const { createHostReadServices } = await import("./host-services.js");
+    services = createHostReadServices(desktop, {
+      bootstrap:
+        desktop?.getHostTicket ??
+        (async () => {
+          const { getBrowserHostBootstrap } = await import("./browser-host-bootstrap.js");
+          return getBrowserHostBootstrap();
+        }),
+      origin: desktop ? "areal-ui://app" : location.origin,
+      events: window,
+    });
+  }
+  if (!services) throw new Error("Platform services unavailable");
   createRoot(document.getElementById("root")!).render(
     <ApplicationIntlProvider>
       <TooltipProvider>
-        {hostReadsEnabled() && services.getHostTicket && (
-          <HostReadStatus bootstrap={services.getHostTicket} />
-        )}
+        {!desktop && <BrowserHostAuthStatus />}
+        {services.reads && <HostReadStatus reads={services.reads} />}
         <App services={services} />
       </TooltipProvider>
     </ApplicationIntlProvider>,
   );
 }
+void start();

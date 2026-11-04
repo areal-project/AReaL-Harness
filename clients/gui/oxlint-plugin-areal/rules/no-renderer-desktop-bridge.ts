@@ -6,6 +6,7 @@ const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const CONTRACT_ADAPTERS = new Set([
   "renderer/src/desktop-services.ts",
   "renderer/src/desktop-response.ts",
+  "renderer/src/host-services.ts",
 ]);
 const GLOBAL_OBJECTS = new Set(["window", "globalThis", "self"]);
 const PRELOAD_OBJECTS = new Set(["arealDesktop", "arealHost"]);
@@ -105,7 +106,7 @@ export default defineRule({
       context.report({
         node,
         message:
-          "Use PlatformServices from services.ts. Desktop transport imports belong only in desktop-services.ts or desktop-response.ts.",
+          "Use PlatformServices from services.ts. Desktop transport imports belong only in the registered platform adapters.",
       });
     }
     function checkBinding(target: ESTree.Node, source: ESTree.Node) {

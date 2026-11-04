@@ -221,7 +221,11 @@ importers:
         specifier: 6.5.0
         version: 6.5.0
 
-  packages/client: {}
+  packages/client:
+    dependencies:
+      '@areal/remote-client':
+        specifier: workspace:*
+        version: link:../remote-client
 
   packages/gen-ui:
     dependencies:

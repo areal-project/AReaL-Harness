@@ -2,7 +2,15 @@ import { secureChannel } from "@areal/remote";
 import { createRemoteWire } from "@areal/remote/wire";
 
 export class RemoteConnection {
-  constructor({ socket, identity, host, room = null, hello, isCurrent, onClose }) {
+  constructor({
+    socket,
+    identity,
+    host,
+    room = /** @type {string | null} */ (null),
+    hello,
+    isCurrent,
+    onClose,
+  }) {
     this.socket = socket;
     this.identity = identity;
     this.host = host;
@@ -108,7 +116,11 @@ export class RemoteConnection {
     try {
       for await (const message of messages) {
         if (this.closed || !this.isCurrent()) continue;
-        if (message.event?.startsWith("session.")) {
+        if (
+          message.event?.startsWith("session.") ||
+          (this.ready?.negotiatedCapabilities?.includes("gui-read-v1") &&
+            message.event?.startsWith("shell."))
+        ) {
           onSession(message);
           continue;
         }

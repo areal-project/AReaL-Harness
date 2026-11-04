@@ -907,6 +907,7 @@ function startDesktop() {
           const hostConnectSource = require("../ipc/generated/host-ticket.cjs").registerHostTicket({
             home: serviceOptions(app).hostHome,
             binary: serviceOptions(app).binary,
+            profile: app.getPath("userData"),
             trusted,
           });
           if (process.platform === "darwin")

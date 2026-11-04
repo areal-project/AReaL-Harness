@@ -1,3 +1,4 @@
+import { usePlatformReads, useReadOnly, type MediaOwner } from "./PlatformReadContext.js";
 import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
 import type { SnapShotSource } from "./services.js";
@@ -372,6 +373,7 @@ export function SentAttachment({
   annotation,
   onError,
   snapShotSource,
+  mediaSource,
 }: {
   part: Data;
   projectId: string;
@@ -381,14 +383,33 @@ export function SentAttachment({
   annotation?: SentImageAnnotation;
   onError?: (message: string) => void;
   snapShotSource?: SnapShotSource;
+  mediaSource?: MediaOwner;
 }) {
+  const reads = usePlatformReads();
+  const source = mediaSource;
+  const readOnly = useReadOnly();
   const [media, setMedia] = useState<{ url: string; mime: string } | null>(null);
   const [failure, setFailure] = useState("");
   useEffect(() => {
     let active = true;
     let objectUrl = "";
+    const abort = new AbortController();
     setFailure("");
-    void action("media", { projectId, threadId, operation: "read", uri: part.url ?? part.uri })
+    setMedia(null);
+    const reading = reads
+      ? source
+        ? reads.media(
+            {
+              turnId: source.turnId,
+              itemId: source.itemId,
+              sourceThreadId: source.sourceThreadId,
+              uri: part.url ?? part.uri,
+            },
+            abort.signal,
+          )
+        : Promise.reject(new Error("Media source unavailable"))
+      : action("media", { projectId, threadId, operation: "read", uri: part.url ?? part.uri });
+    void reading
       .then((value) => {
         if (!active) return;
         const blobMime = value.mime ?? "application/octet-stream";
@@ -408,9 +429,22 @@ export function SentAttachment({
       });
     return () => {
       active = false;
+      abort.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [part.url, part.uri, projectId, threadId, action, onError]);
+  }, [
+    part.url,
+    part.uri,
+    projectId,
+    threadId,
+    action,
+    onError,
+    reads,
+    source?.turnId,
+    source?.itemId,
+    source?.sourceThreadId,
+    source?.generation,
+  ]);
   const name =
     annotation?.name ??
     part.name ??
@@ -442,7 +476,7 @@ export function SentAttachment({
         </Button>
       </div>
     );
-  if (snapShotSource && part.type === "image")
+  if (!readOnly && snapShotSource && part.type === "image")
     return <SnapShotAttachment source={snapShotSource} url={media.url} name={name} />;
   return (
     <AttachmentTile
@@ -454,4 +488,13 @@ export function SentAttachment({
       annotation={annotation}
     />
   );
+}
+
+export function mediaOwner(item: Data, turnId: string, generation?: string): MediaOwner {
+  return {
+    generation,
+    turnId: item.historySource?.turnId ?? turnId,
+    itemId: item.historySource?.itemId ?? item.id,
+    sourceThreadId: item.historySource?.threadId,
+  };
 }

@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { pageTopology } = require("./history-projection.cjs");
+const { pageTopology } = require("@areal/workbench/history-projection");
 const { randomUUID } = require("node:crypto");
 const {
   readHistoryPage,

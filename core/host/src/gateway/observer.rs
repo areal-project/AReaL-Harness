@@ -1,7 +1,29 @@
 use super::*;
+use crate::server::conversation_read::{ConversationReader, HistoryParams};
 use crate::server::schedule_connection::{CoreEvent, CoreObservation};
 
-pub(super) struct Viewer {
+pub(super) enum Viewer {
+    Remote(RemoteViewer),
+    Conversation {
+        project: String,
+        reader: ConversationReader,
+    },
+}
+impl Viewer {
+    fn project(&self) -> &str {
+        match self {
+            Self::Remote(viewer) => &viewer.project,
+            Self::Conversation { project, .. } => project,
+        }
+    }
+    fn id(&self) -> &str {
+        match self {
+            Self::Remote(viewer) => &viewer.id,
+            Self::Conversation { reader, .. } => reader.subscription(),
+        }
+    }
+}
+pub(super) struct RemoteViewer {
     project: String,
     thread_id: String,
     generation: String,
@@ -20,7 +42,7 @@ struct FrozenBody {
     item_id: String,
     expires: Instant,
 }
-impl Viewer {
+impl RemoteViewer {
     fn keys(&self, session: &Session) -> Value {
         json!({"connectionId":session.connection,"gatewayGeneration":session.generation,"projectId":self.project,"serviceGeneration":self.generation,"subscriptionId":self.id})
     }
@@ -30,26 +52,74 @@ impl Session {
         let Some(viewer) = self
             .viewer
             .as_ref()
-            .filter(|viewer| viewer.project == project)
+            .filter(|viewer| viewer.project() == project)
         else {
             return Ok(None);
         };
-        ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
-        Ok(viewer.model.clone())
+        match viewer {
+            Viewer::Remote(viewer) => {
+                ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
+                Ok(viewer.model.clone())
+            }
+            Viewer::Conversation { reader, .. } => {
+                ensure!(reader.current(&self.host), "RESYNC_REQUIRED");
+                Ok(reader.model())
+            }
+        }
     }
     pub(super) async fn next_event(&mut self) -> Result<CoreEvent> {
         match &mut self.viewer {
-            Some(viewer) => viewer
+            Some(Viewer::Remote(viewer)) => viewer
                 .observation
                 .events
                 .recv()
                 .await
                 .context("RESYNC_REQUIRED"),
+            Some(Viewer::Conversation { reader, .. }) => reader.next_event().await,
             None => std::future::pending().await,
         }
     }
+    fn conversation_keys(&self, mut value: Value, project: &str) -> Value {
+        value["connectionId"] = json!(self.connection);
+        value["gatewayGeneration"] = json!(self.generation);
+        let _ = project;
+        value
+    }
+    pub(super) fn conversation_active(&self) -> bool {
+        matches!(self.viewer, Some(Viewer::Conversation { .. }))
+    }
+    pub(super) async fn conversation_media(
+        &mut self,
+        project: &str,
+        generation: &str,
+        params: &Value,
+    ) -> Result<Value> {
+        self.authorize(Some(project), "observe")?;
+        let (id, current) = self.project(project)?;
+        ensure!(current == generation, "RESYNC_REQUIRED");
+        let Some(Viewer::Conversation { reader, .. }) = &mut self.viewer else {
+            anyhow::bail!("RESYNC_REQUIRED")
+        };
+        ensure!(
+            reader.project() == id && reader.generation() == generation,
+            "RESYNC_REQUIRED"
+        );
+        let value = reader.media(&self.host, params).await;
+        self.authorize(Some(project), "observe")?;
+        Ok(self.conversation_keys(value?, project))
+    }
     pub(super) async fn event(&mut self, event: CoreEvent) -> Result<Option<Value>> {
-        let Some(viewer) = &self.viewer else {
+        if let Some(Viewer::Conversation { project, .. }) = &self.viewer {
+            let project = project.clone();
+            self.authorize(Some(&project), "observe")?;
+            let Some(Viewer::Conversation { reader, .. }) = &mut self.viewer else {
+                unreachable!()
+            };
+            let value = reader.event(&self.host, event).await?;
+            self.authorize(Some(&project), "observe")?;
+            return Ok(value.map(|value| self.conversation_keys(value, &project)));
+        }
+        let Some(Viewer::Remote(viewer)) = &self.viewer else {
             return Ok(None);
         };
         ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
@@ -88,7 +158,9 @@ impl Session {
                     .cloned())
             })
             .await?;
-        let viewer = self.viewer.as_mut().context("RESYNC_REQUIRED")?;
+        let Some(Viewer::Remote(viewer)) = self.viewer.as_mut() else {
+            anyhow::bail!("RESYNC_REQUIRED")
+        };
         ensure!(viewer.observation.current(&self.host), "RESYNC_REQUIRED");
         let mut snapshot = projection::snapshot(
             &native["thread"],
@@ -104,7 +176,10 @@ impl Session {
             .cloned();
         viewer.barrier = barrier;
         let sequence = viewer.sequence;
-        let mut value = self.viewer.as_ref().unwrap().keys(self);
+        let Some(Viewer::Remote(viewer)) = self.viewer.as_ref() else {
+            unreachable!()
+        };
+        let mut value = viewer.keys(self);
         value["event"] = json!("session.updated");
         value["sequence"] = json!(sequence);
         value["snapshot"] = snapshot;
@@ -112,6 +187,12 @@ impl Session {
     }
     pub(super) fn invalidate_session(&mut self, error: &anyhow::Error) -> Option<Value> {
         let viewer = self.viewer.take()?;
+        let viewer = match viewer {
+            Viewer::Conversation { project, reader } => {
+                return Some(self.conversation_keys(reader.invalidated(error), &project));
+            }
+            Viewer::Remote(viewer) => viewer,
+        };
         let mut value = viewer.keys(self);
         let code = if error.to_string() == "RESOURCE_UNAVAILABLE" {
             "RESOURCE_UNAVAILABLE"
@@ -130,6 +211,27 @@ impl Session {
         generation: &str,
         params: &Value,
     ) -> Result<Value> {
+        if params.get("view").is_some() {
+            ensure!(
+                self.gui_read
+                    && params["view"] == "conversation"
+                    && exact(params, &["threadId", "view"]),
+                "INVALID_PARAMS"
+            );
+            let thread_id = text(params, "threadId")?;
+            self.viewer = None;
+            self.authorize(Some(project), "observe")?;
+            let (id, current) = self.project(project)?;
+            ensure!(current == generation, "RESYNC_REQUIRED");
+            let opened = ConversationReader::open(&self.host, &id, generation, thread_id).await;
+            self.authorize(Some(project), "observe")?;
+            let (reader, result) = opened?;
+            self.viewer = Some(Viewer::Conversation {
+                project: project.into(),
+                reader,
+            });
+            return Ok(self.conversation_keys(result, project));
+        }
         ensure!(exact(params, &["threadId"]), "INVALID_PARAMS");
         let thread_id = text(params, "threadId")?.to_owned();
         self.viewer = None;
@@ -174,7 +276,7 @@ impl Session {
         snapshot["goalControlAllowed"] =
             json!(self.goal_control_allowed(project, &native["thread"])?);
         snapshot = projection::with_models(snapshot, &models["models"])?;
-        let viewer = Viewer {
+        let viewer = RemoteViewer {
             project: project.into(),
             thread_id,
             generation: generation.into(),
@@ -191,7 +293,7 @@ impl Session {
         let mut result = viewer.keys(self);
         result["sequence"] = json!(0);
         result["snapshot"] = snapshot;
-        self.viewer = Some(viewer);
+        self.viewer = Some(Viewer::Remote(viewer));
         Ok(result)
     }
     pub(super) fn close_session(&mut self, project: &str, params: &Value) -> Result<Value> {
@@ -200,10 +302,10 @@ impl Session {
         ensure!(
             self.viewer
                 .as_ref()
-                .is_none_or(|viewer| viewer.project == project),
+                .is_none_or(|viewer| viewer.project() == project),
             "FORBIDDEN"
         );
-        let closed = self.viewer.as_ref().is_some_and(|viewer| viewer.id == id);
+        let closed = self.viewer.as_ref().is_some_and(|viewer| viewer.id() == id);
         if closed {
             self.viewer = None;
         }
@@ -215,6 +317,22 @@ impl Session {
         generation: &str,
         params: &Value,
     ) -> Result<Value> {
+        if let Some(Viewer::Conversation {
+            project: alias,
+            reader,
+        }) = &self.viewer
+        {
+            ensure!(
+                self.gui_read && alias == project && reader.generation() == generation,
+                "INVALID_PARAMS"
+            );
+            self.authorize(Some(project), "observe")?;
+            let params: HistoryParams = serde_json::from_value(params.clone())
+                .map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
+            let result = reader.history(&self.host, params).await;
+            self.authorize(Some(project), "observe")?;
+            return Ok(self.conversation_keys(result?, project));
+        }
         ensure!(
             exact(params, &["threadId", "cursor", "limit"]),
             "INVALID_PARAMS"
@@ -222,6 +340,10 @@ impl Session {
         let viewer = self
             .viewer
             .as_ref()
+            .and_then(|viewer| match viewer {
+                Viewer::Remote(viewer) => Some(viewer),
+                _ => None,
+            })
             .filter(|viewer| {
                 viewer.project == project
                     && viewer.thread_id == params["threadId"]
@@ -271,6 +393,10 @@ impl Session {
         let viewer = self
             .viewer
             .as_ref()
+            .and_then(|viewer| match viewer {
+                Viewer::Remote(viewer) => Some(viewer),
+                _ => None,
+            })
             .filter(|viewer| {
                 viewer.project == project
                     && viewer.thread_id == thread_id
@@ -296,7 +422,10 @@ impl Session {
             let body = projection::body(item).context("FORBIDDEN")?;
             let encoded = serde_json::to_string(&body)?;
             ensure!(encoded.len() <= 4 * 1024 * 1024, "RESOURCE_UNAVAILABLE");
-            self.viewer.as_mut().unwrap().body = Some(FrozenBody {
+            let Some(Viewer::Remote(viewer)) = self.viewer.as_mut() else {
+                unreachable!()
+            };
+            viewer.body = Some(FrozenBody {
                 id: uuid::Uuid::new_v4().to_string(),
                 encoded,
                 turn_id: turn_id.into(),
@@ -304,7 +433,9 @@ impl Session {
                 expires: Instant::now() + Duration::from_secs(45),
             });
         }
-        let viewer = self.viewer.as_ref().context("RESYNC_REQUIRED")?;
+        let Some(Viewer::Remote(viewer)) = self.viewer.as_ref() else {
+            anyhow::bail!("RESYNC_REQUIRED")
+        };
         let body = viewer.body.as_ref().context("RESYNC_REQUIRED")?;
         let cursor = params
             .get("cursor")
@@ -341,7 +472,10 @@ impl Session {
             json!(format!("{}:{end}", body.id))
         };
         if complete {
-            self.viewer.as_mut().unwrap().body = None;
+            let Some(Viewer::Remote(viewer)) = self.viewer.as_mut() else {
+                unreachable!()
+            };
+            viewer.body = None;
         }
         Ok(result)
     }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { on, once } from "node:events";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -79,6 +80,12 @@ async function localConnection(t, fixture) {
     send(value);
     for (;;) {
       const response = await next();
+      if (typeof response?.method === "string") {
+        const ref = schema["x-current"].local.events[response.method];
+        assert.equal(typeof ref, "string", `actual local event ${response.method} is declared`);
+        conforms(ref, response);
+        continue;
+      }
       conforms("#/$defs/LocalResponse", response);
       if (response.id !== value.id) continue;
       assert.equal(response.error, undefined);
@@ -89,7 +96,7 @@ async function localConnection(t, fixture) {
   await request("hello", { protocolVersions: [1], capabilities: [], authToken });
   return { request, send, next };
 }
-async function remoteConnection(t, fixture, relay, projectId) {
+async function remoteConnection(t, fixture, relay, projectId, capabilities) {
   const invite = new URLSearchParams(
     new URL(
       (await fixture.remote.control({ operation: "pair", transport: "relay" })).payload,
@@ -120,6 +127,7 @@ async function remoteConnection(t, fixture, relay, projectId) {
     displayName: "A0 conformance",
     clientKind: "ios",
     inviteSecret: invite,
+    ...(capabilities ? { capabilities } : {}),
   };
   conforms(schema["x-current"].remote.hello, hello);
   secure.send(hello);
@@ -137,7 +145,10 @@ async function remoteConnection(t, fixture, relay, projectId) {
   assert.equal(active.event, "ready");
   assert.deepEqual(
     [...active.methods].sort(),
-    Object.keys(schema["x-current"].remote.methods).sort(),
+    Object.entries(schema["x-current"].remote.methods)
+      .filter(([, entry]) => !entry.capability)
+      .map(([method]) => method)
+      .sort(),
   );
   return {
     active,
@@ -185,6 +196,69 @@ if (!process.env.RC12_TLS_HOME) {
     assert.equal(event.params.subscriptionId, subscription.subscriptionId);
     assert.equal(event.params.sequence, 1);
     assert.notDeepEqual(event.params.status, before);
+
+    const endpoint = await local.request("web.endpoint");
+    const ticket = await local.request("web.ticket", {
+      origin: "areal-ui://app",
+      expectedGeneration: endpoint.generation,
+    });
+    const ws = new WebSocket(ticket.websocketUrl, { origin: ticket.origin });
+    t.after(() => ws.terminate());
+    const messages = on(ws, "message");
+    await once(ws, "open");
+    const rpc = async (method, params) => {
+      const request = { version: 1, id: randomUUID(), method, params };
+      conforms(methodRef("loopback", method, "request"), request);
+      ws.send(JSON.stringify(request));
+      for (;;) {
+        const { value } = await deadline(messages.next());
+        const response = JSON.parse(value[0].toString());
+        if (response.id !== request.id) continue;
+        assert.equal(response.error, undefined);
+        conforms(methodRef("loopback", method, "result"), response.result);
+        return response.result;
+      }
+    };
+    const negotiated = await rpc("hello", {
+      protocolVersions: [1],
+      capabilities: ["gui-read-v1"],
+      ticket: ticket.ticket,
+      expectedGeneration: ticket.generation,
+    });
+    assert.deepEqual(negotiated.negotiatedCapabilities, ["gui-read-v1"]);
+    const subscribed = await rpc("shell.subscribe", {});
+    assert.ok(subscribed.snapshot.projects.length > 0);
+    assert.ok(subscribed.snapshot.projects.every((project) => project.summaries.state !== "fresh"));
+    const nextWorkspace = join(fixture.evidence.root, "Second Protocol Project");
+    await mkdir(nextWorkspace);
+    await fixture.source.register(randomUUID(), {
+      id: randomUUID().replaceAll("-", "").slice(0, 24),
+      root: nextWorkspace,
+    });
+    const localUpdate = await local.next();
+    conforms(schema["x-current"].local.events[localUpdate.method], localUpdate);
+    const {
+      value: [bytes],
+    } = await deadline(messages.next());
+    const update = JSON.parse(bytes.toString());
+    assert.equal(update.method, "shell.updated");
+    conforms(schema["x-current"].loopback.events[update.method], update);
+    assert.equal(update.params.sequence, 1);
+    assert.equal(update.params.subscriptionId, subscribed.subscriptionId);
+    assert.deepEqual(
+      update.params.delta.projects.upsert.map((project) => project.workspace),
+      [nextWorkspace],
+    );
+    assert.equal(update.params.snapshot, undefined);
+    const after = await local.request("host.status");
+    assert.equal(
+      after.projects.some((project) => project.state === "ready"),
+      false,
+    );
+    assert.deepEqual(
+      await rpc("shell.unsubscribe", { subscriptionId: subscribed.subscriptionId }),
+      { closed: true },
+    );
 
     const invalid = await localConnection(t, fixture);
     const request = {
@@ -329,6 +403,48 @@ if (!process.env.RC12_TLS_HOME) {
       assert.equal(offset, totalBytes);
       const decoded = JSON.parse(encoded);
       assert.equal(decoded.content.map((part) => part.text ?? "").join(""), text);
+      const shared = await remoteConnection(t, fixture, relay, native.alias, ["gui-read-v1"]);
+      assert.deepEqual(shared.active.negotiatedCapabilities, ["gui-read-v1"]);
+      assert.equal(shared.active.authorityHostId, (await fixture.client.status()).hostId);
+      const shell = await shared.rpc({ method: "shell.subscribe", params: {} });
+      assert.ok(
+        shell.result.snapshot.projects.some((entry) => entry.projectId === native.projectId),
+      );
+      const nativeContext = {
+        projectId: native.projectId,
+        serviceGeneration: project.serviceGeneration,
+      };
+      const openedNative = await shared.rpc({
+        method: "session.open",
+        context: nativeContext,
+        params: { threadId, view: "conversation" },
+      });
+      assert.equal(openedNative.result.projectId, native.projectId);
+      const authoritativeNative = await native.core.call("areal/thread/observe", {
+        threadId,
+        mode: "conversation",
+        maxBytes: 131072,
+      });
+      assert.deepEqual(openedNative.result.snapshot.thread, authoritativeNative.thread);
+      assert.deepEqual(
+        (
+          await shared.rpc({
+            method: "subscription.close",
+            context: nativeContext,
+            params: { subscriptionId: openedNative.result.subscriptionId },
+          })
+        ).result,
+        { closed: true },
+      );
+      assert.deepEqual(
+        (
+          await shared.rpc({
+            method: "shell.unsubscribe",
+            params: { subscriptionId: shell.result.subscriptionId },
+          })
+        ).result,
+        { closed: true },
+      );
       fixture.evidence.protocolConformance = {
         transport: "real Host/Relay/Noise",
         utf8TextBytes: Buffer.byteLength(text),

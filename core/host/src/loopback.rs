@@ -1,3 +1,5 @@
+#[path = "web_http.rs"]
+mod http;
 use super::Host;
 use crate::{VERSION, wire};
 use anyhow::{Context, Result, ensure};
@@ -8,7 +10,7 @@ use areal_protocol::host::{
 };
 use bytes::Bytes;
 use futures_util::{SinkExt, StreamExt};
-use http_body_util::Full;
+use http_body_util::{BodyExt, Full, Limited};
 use hyper::{Request, Response, body::Incoming, service::service_fn};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use serde_json::{Value, json};
@@ -17,6 +19,7 @@ use std::{
     collections::BTreeMap,
     convert::Infallible,
     io::Read,
+    path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -34,15 +37,43 @@ use tokio_tungstenite::{
     },
 };
 
-const METHODS: &[&str] = &["host.status"];
+const METHODS: &[&str] = &[
+    "host.status",
+    "shell.subscribe",
+    "shell.unsubscribe",
+    "session.open",
+    "session.history",
+    "subscription.close",
+    "artifact.read",
+];
 const TTL: Duration = Duration::from_secs(30);
 const TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_TICKETS: usize = 64;
 const MAX_CONNECTIONS: usize = 32;
 const ELECTRON_ORIGIN: &str = "areal-ui://app";
 type Socket = WebSocketStream<TokioIo<hyper::upgrade::Upgraded>>;
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BrowserBinding {
+    host_id: String,
+    port: u16,
+}
+
+fn ui_root(bin: &Path) -> Option<PathBuf> {
+    [
+        bin.join("../../areal-gui"),
+        bin.join("../share/areal-gui"),
+        bin.join("../../clients/gui/renderer/dist"),
+    ]
+    .into_iter()
+    .find_map(|candidate| {
+        let root = candidate.canonicalize().ok()?;
+        root.join("index.html").is_file().then_some(root)
+    })
+}
 
 struct Ticket {
+    device_id: Option<String>,
     origin: String,
     generation: String,
     deadline: Instant,
@@ -51,9 +82,18 @@ struct Ticket {
 pub(super) struct Loopback {
     endpoint: RefCell<Option<LoopbackEndpoint>>,
     tickets: RefCell<BTreeMap<String, Ticket>>,
+    browser: RefCell<Option<crate::browser_auth::BrowserAuth>>,
+    ui_root: RefCell<Option<PathBuf>>,
 }
 impl Loopback {
     pub(super) fn ticket(&self, input: LocalWebTicketParams) -> Result<LocalWebTicketResult> {
+        self.mint_ticket(input, None)
+    }
+    fn mint_ticket(
+        &self,
+        input: LocalWebTicketParams,
+        device_id: Option<String>,
+    ) -> Result<LocalWebTicketResult> {
         let endpoint = self.endpoint.borrow();
         let endpoint = endpoint
             .as_ref()
@@ -81,6 +121,7 @@ impl Loopback {
         tickets.insert(
             storage::digest(ticket.as_bytes()),
             Ticket {
+                device_id,
                 origin: input.origin.clone(),
                 generation: endpoint.generation.clone(),
                 deadline: Instant::now() + TTL,
@@ -94,9 +135,62 @@ impl Loopback {
             websocket_url: endpoint.websocket_url.clone(),
             ticket,
             expires_at: (SystemTime::now().duration_since(UNIX_EPOCH)? + TTL).as_millis() as u64,
+            preferred_source_id: None,
         })
     }
-    fn consume(&self, secret: &str, origin: &str, generation: &str) -> Result<()> {
+    pub(super) fn endpoint(&self) -> Result<LoopbackEndpoint> {
+        self.endpoint
+            .borrow()
+            .clone()
+            .context("loopback unavailable")
+    }
+    pub(super) fn approve(&self, host: &Host, params: Value) -> Result<Value> {
+        let input: protocol::LocalWebApproveParams = serde_json::from_value(params)?;
+        ensure!(
+            input.expected_generation == host.identity.generation,
+            wire::error("generationMismatch", "Host generation changed")
+        );
+        self.browser
+            .borrow_mut()
+            .as_mut()
+            .context("loopback unavailable")?
+            .approve(&input.request_id)
+    }
+    pub(super) fn devices(&self) -> Result<Value> {
+        Ok(self
+            .browser
+            .borrow()
+            .as_ref()
+            .context("loopback unavailable")?
+            .devices())
+    }
+    pub(super) fn revoke(&self, host: &Host, params: Value) -> Result<Value> {
+        let input: protocol::LocalWebRevokeParams = serde_json::from_value(params)?;
+        ensure!(
+            input.expected_generation == host.identity.generation,
+            wire::error("generationMismatch", "Host generation changed")
+        );
+        let result = self
+            .browser
+            .borrow_mut()
+            .as_mut()
+            .context("loopback unavailable")?
+            .revoke(&input.device_id)?;
+        self.tickets
+            .borrow_mut()
+            .retain(|_, ticket| ticket.device_id.as_deref() != Some(input.device_id.as_str()));
+        host.changed();
+        Ok(result)
+    }
+    fn current(&self, device_id: Option<&str>) -> bool {
+        device_id.is_none_or(|id| {
+            self.browser
+                .borrow()
+                .as_ref()
+                .is_some_and(|auth| auth.current(id))
+        })
+    }
+    fn consume(&self, secret: &str, origin: &str, generation: &str) -> Result<Option<String>> {
         ensure!(secret.len() == 64, "authentication failed");
         let key = storage::digest(secret.as_bytes());
         let mut tickets = self.tickets.borrow_mut();
@@ -104,11 +198,11 @@ impl Loopback {
         ensure!(
             ticket.deadline > Instant::now()
                 && ticket.origin == origin
-                && ticket.generation == generation,
+                && ticket.generation == generation
+                && self.current(ticket.device_id.as_deref()),
             "authentication failed"
         );
-        tickets.remove(&key);
-        Ok(())
+        Ok(tickets.remove(&key).unwrap().device_id)
     }
 }
 
@@ -122,6 +216,8 @@ impl Drop for Listener {
         self.connections.abort_all();
         self.host.loopback.tickets.borrow_mut().clear();
         self.host.loopback.endpoint.borrow_mut().take();
+        self.host.loopback.browser.borrow_mut().take();
+        self.host.loopback.ui_root.borrow_mut().take();
         let path = self.host.home.join("host/endpoint.json");
         if storage::read_optional::<LoopbackEndpoint>(&path)
             .ok()
@@ -139,8 +235,26 @@ pub(super) async fn bind(host: Rc<Host>, enabled: bool) -> Result<Listener> {
         std::fs::remove_file(&path)?;
     }
     let listener = if enabled {
-        let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?;
+        let previous: Option<BrowserBinding> =
+            storage::read_optional(&host.home.join("host/web-bind.json"))?;
+        let port = previous
+            .filter(|binding| binding.host_id == host.identity.host_id)
+            .map_or(0, |binding| binding.port);
+        let listener = match TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
+            Ok(listener) => listener,
+            Err(error) if port != 0 && error.kind() == std::io::ErrorKind::AddrInUse => {
+                TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).await?
+            }
+            Err(error) => return Err(error.into()),
+        };
         let authority = listener.local_addr()?.to_string();
+        storage::write(
+            &host.home.join("host/web-bind.json"),
+            &BrowserBinding {
+                host_id: host.identity.host_id.clone(),
+                port: listener.local_addr()?.port(),
+            },
+        )?;
         let endpoint = LoopbackEndpoint {
             version: VERSION.into(),
             host_id: host.identity.host_id.clone(),
@@ -149,6 +263,11 @@ pub(super) async fn bind(host: Rc<Host>, enabled: bool) -> Result<Listener> {
             websocket_url: format!("ws://{authority}/host/socket"),
         };
         storage::write(&path, &endpoint)?;
+        *host.loopback.browser.borrow_mut() = Some(crate::browser_auth::BrowserAuth::new(
+            &host.home,
+            &host.identity.host_id,
+        )?);
+        *host.loopback.ui_root.borrow_mut() = ui_root(&host.bin);
         *host.loopback.endpoint.borrow_mut() = Some(endpoint);
         Some(listener)
     } else {
@@ -193,44 +312,62 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         .to_owned();
     let (sender, receiver) = oneshot::channel();
     let sender = Rc::new(RefCell::new(Some(sender)));
+    let http_host = host.clone();
     let service = service_fn(move |mut request: Request<Incoming>| {
-        let valid = request.uri().path() == "/host/socket"
-            && request.uri().query().is_none()
-            && request.uri().authority().is_none()
-            && request.headers().get_all("host").iter().count() == 1
-            && request.headers().get("host").and_then(|v| v.to_str().ok())
-                == Some(authority.as_str())
-            && request.headers().get_all("origin").iter().count() == 1;
-        let origin = request
-            .headers()
-            .get("origin")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_owned();
-        let valid = valid && (origin == ELECTRON_ORIGIN || origin == endpoint.origin);
-        let mut handshake = Request::builder()
-            .method(request.method())
-            .uri(request.uri())
-            .version(request.version())
-            .body(())
-            .unwrap();
-        *handshake.headers_mut() = request.headers().clone();
-        let response = if valid {
-            tokio_tungstenite::tungstenite::handshake::server::create_response(&handshake).ok()
-        } else {
-            None
-        };
-        let response =
-            if let (Some(response), Some(sender)) = (response, sender.borrow_mut().take()) {
-                let _ = sender.send((hyper::upgrade::on(&mut request), origin));
-                response.map(|_| Full::new(Bytes::new()))
-            } else {
-                Response::builder()
-                    .status(403)
-                    .body(Full::new(Bytes::new()))
-                    .unwrap()
-            };
-        async move { Ok::<_, Infallible>(response) }
+        let authority = authority.clone();
+        let endpoint = endpoint.clone();
+        let sender = sender.clone();
+        let host = http_host.clone();
+        async move {
+            let valid = request.uri().query().is_none()
+                && request.uri().authority().is_none()
+                && request.headers().get_all("host").iter().count() == 1
+                && request.headers().get("host").and_then(|v| v.to_str().ok())
+                    == Some(authority.as_str());
+            if !valid {
+                return Ok::<_, Infallible>(
+                    Response::builder()
+                        .status(403)
+                        .body(Full::new(Bytes::new()))
+                        .unwrap(),
+                );
+            }
+            if request.uri().path() != "/host/socket" {
+                return Ok(http::request(&host, &endpoint, request).await);
+            }
+            let origin = request
+                .headers()
+                .get("origin")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .to_owned();
+            let valid = request.headers().get_all("origin").iter().count() == 1
+                && (origin == ELECTRON_ORIGIN || origin == endpoint.origin);
+            let mut handshake = Request::builder()
+                .method(request.method())
+                .uri(request.uri())
+                .version(request.version())
+                .body(())
+                .unwrap();
+            *handshake.headers_mut() = request.headers().clone();
+            let response = valid
+                .then(|| {
+                    tokio_tungstenite::tungstenite::handshake::server::create_response(&handshake)
+                        .ok()
+                })
+                .flatten();
+            let response =
+                if let (Some(response), Some(sender)) = (response, sender.borrow_mut().take()) {
+                    let _ = sender.send((hyper::upgrade::on(&mut request), origin));
+                    response.map(|_| Full::new(Bytes::new()))
+                } else {
+                    Response::builder()
+                        .status(403)
+                        .body(Full::new(Bytes::new()))
+                        .unwrap()
+                };
+            Ok(response)
+        }
     });
     tokio::time::timeout(
         TIMEOUT,
@@ -275,68 +412,202 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                 .all(|v| *v <= u32::MAX.into()),
         "authentication failed"
     );
-    host.loopback
+    let mut changes = host.changes.subscribe();
+    let device_id = host
+        .loopback
         .consume(&hello.ticket, &origin, &hello.expected_generation)?;
+    let negotiated = hello
+        .capabilities
+        .iter()
+        .any(|capability| capability == "gui-read-v1");
+    let connection_id = uuid::Uuid::new_v4().to_string();
     let result = protocol::LoopbackHelloResult {
         version: VERSION.into(),
         host_id: host.identity.host_id.clone(),
         generation: host.identity.generation.clone(),
         executable_version: host.identity.executable_version.clone(),
         capabilities: Vec::new(),
-        methods: vec![protocol::LoopbackHelloResultFieldMethodsItem::Value1],
+        methods: if negotiated {
+            METHODS.iter().map(|method| (*method).into()).collect()
+        } else {
+            vec!["host.status".into()]
+        },
         transport: protocol::LoopbackHelloResultFieldTransport::Value1,
         scopes: vec![protocol::LoopbackHelloResultFieldScopesItem::Value1],
         limits: protocol::LoopbackLimits {
             max_frame_bytes: wire::MAX_FRAME as i64,
         },
+        connection_id: negotiated.then(|| connection_id.clone()),
+        gateway_generation: negotiated.then(|| host.identity.generation.clone()),
+        negotiated_capabilities: negotiated
+            .then(|| vec![protocol::LoopbackHelloResultFieldNegotiatedCapabilitiesItem::Value1]),
     };
     send(
         &mut socket,
         &json!({"version":VERSION,"id":request.id,"result":result}),
     )
     .await?;
-    while let Some(message) = socket.next().await {
-        match message? {
-            Message::Text(bytes) => {
-                let request: wire::Request = serde_json::from_str(&bytes)?;
-                ensure!(request.id.len() <= 256, "invalid request");
-                let result = if request.version != VERSION {
-                    Err(wire::error("unsupportedVersion", "Host requires version 1"))
-                } else if request.id.is_empty() {
-                    Err(wire::error("invalidRequest", "id must be nonempty"))
-                } else if !METHODS.contains(&request.method.as_str()) {
-                    Err(wire::error(
-                        "methodNotFound",
-                        "method is not available on this connection",
-                    ))
-                } else {
-                    host.dispatch(&request.method, request.params).await
-                };
-                let response = match result {
-                    Ok(value) => json!({"version":VERSION,"id":request.id,"result":value}),
-                    Err(error) => {
-                        let code = error
-                            .downcast_ref::<wire::Error>()
-                            .map(|error| error.code)
-                            .unwrap_or(if error.downcast_ref::<serde_json::Error>().is_some() {
-                                "invalidRequest"
-                            } else {
-                                "internalError"
-                            });
-                        json!({"version":VERSION,"id":request.id,"error":{"code":code,"message":"Host request failed"}})
+    let mut shell: Option<super::shell_subscription::Subscription> = None;
+    let mut reader: Option<super::conversation_read::ConversationReader> = None;
+    let mut tick = tokio::time::interval(Duration::from_millis(500));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            message = socket.next() => {
+                let Some(message) = message else { break; };
+                match message? {
+                    Message::Text(bytes) => {
+                        ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                        let input: ReadRequest = serde_json::from_str(&bytes)?;
+                        ensure!(input.id.len() <= 256, "invalid request");
+                        let result: Result<Value> = async {
+                            ensure!(input.version == VERSION, wire::error("unsupportedVersion","Host requires version 1"));
+                            ensure!(!input.id.is_empty(), wire::error("invalidRequest","id must be nonempty"));
+                            ensure!(METHODS.contains(&input.method.as_str()) && (negotiated || input.method == "host.status"), wire::error("methodNotFound","method is not available on this connection"));
+                            match input.method.as_str() {
+                                "host.status" => { ensure!(input.context.is_none() && input.params.as_object().is_some_and(|params|params.is_empty()), wire::error("invalidRequest","status takes no arguments")); host.dispatch("host.status",input.params).await },
+                                "shell.subscribe" => {
+                                    ensure!(input.context.is_none() && input.params.as_object().is_some_and(|params|params.is_empty()), "INVALID_PARAMS");
+                                    let (subscription,value) = super::shell_subscription::Subscription::open(&host,&connection_id).await?;
+                                    shell=Some(subscription); Ok(value)
+                                }
+                                "shell.unsubscribe" => {
+                                    ensure!(input.context.is_none(), "INVALID_PARAMS");
+                                    let params: protocol::ReadSubscriptionParams = serde_json::from_value(input.params)?;
+                                    let closed=shell.as_ref().is_some_and(|sub|sub.id()==params.subscription_id);
+                                    if closed {shell=None;}
+                                    Ok(json!({"closed":closed}))
+                                }
+                                "session.open" => {
+                                    let context=input.context.context("INVALID_PARAMS")?;
+                                    let generation=context.service_generation.context("INVALID_PARAMS")?;
+                                    let params: protocol::ConversationOpenParams=serde_json::from_value(input.params)?;
+                                    reader=None;
+                                    let (opened,value)=super::conversation_read::ConversationReader::open(&host,&context.project_id,&generation,&params.thread_id).await?;
+                                    reader=Some(opened); Ok(keys(&host,&connection_id,value))
+                                }
+                                "session.history" | "artifact.read" => {
+                                    let context=input.context.context("INVALID_PARAMS")?;
+                                    let active=reader.as_mut().context("RESYNC_REQUIRED")?;
+                                    ensure!(active.project()==context.project_id && context.service_generation.as_deref()==Some(active.generation()), "RESYNC_REQUIRED");
+                                    let value=if input.method=="session.history" {
+                                        active.history(&host,serde_json::from_value(input.params)?).await?
+                                    } else {active.media(&host,&input.params).await?};
+                                    Ok(keys(&host,&connection_id,value))
+                                }
+                                "subscription.close" => {
+                                    let context=input.context.context("INVALID_PARAMS")?;
+                                    let params: protocol::ReadSubscriptionParams=serde_json::from_value(input.params)?;
+                                    if let Some(active)=&reader {ensure!(active.project()==context.project_id, "FORBIDDEN");}
+                                    let closed=reader.as_ref().is_some_and(|active|active.subscription()==params.subscription_id);
+                                    if closed {reader=None;}
+                                    Ok(json!({"closed":closed}))
+                                }
+                                _=>unreachable!(),
+                            }
+                        }.await;
+                        ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                        let response=match result {
+                            Ok(value)=>json!({"version":VERSION,"id":input.id,"result":value}),
+                            Err(error)=>json!({"version":VERSION,"id":input.id,"error":read_error(&error)}),
+                        };
+                        send(&mut socket,&response).await?;
                     }
-                };
-                send(&mut socket, &response).await?;
+                    Message::Ping(_)=>{tokio::time::timeout(TIMEOUT,socket.flush()).await??;}
+                    Message::Pong(_)=>{},
+                    _=>break,
+                }
             }
-            Message::Ping(_) => {
-                tokio::time::timeout(TIMEOUT, socket.flush()).await??;
+            event=async {match reader.as_mut(){Some(reader)=>reader.next_event().await,None=>std::future::pending().await}} => {
+                let active=reader.as_mut().unwrap();
+                let outcome=match event {Ok(event)=>active.event(&host,event).await,Err(error)=>Err(error)};
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                match outcome {
+                    Ok(Some(event))=>notify(&mut socket,keys(&host,&connection_id,event)).await?,
+                    Ok(None)=>{},
+                    Err(error)=>{
+                        let value=keys(&host,&connection_id,active.invalidated(&error));
+                        reader=None;
+                        notify(&mut socket,value).await?;
+                    }
+                }
             }
-            Message::Pong(_) => {}
-            _ => break,
+            _=tick.tick(), if shell.is_some()=>{
+                let active=shell.as_mut().unwrap();
+                let refreshed = active.refresh(&host).await;
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                match refreshed {
+                    Ok(Some(event))=>notify(&mut socket,event).await?,
+                    Ok(None)=>{},
+                    Err(error)=>{
+                        let mut event=active.invalidated();
+                        event["error"]=read_error(&error);
+                        shell=None;
+                        notify(&mut socket,event).await?;
+                    }
+                }
+            }
+            _=changes.changed()=>{
+                if !host.loopback.current(device_id.as_deref()) { break; }
+                if let Some(active)=&reader {
+                    if !active.current(&host) {
+                        let event=keys(&host,&connection_id,active.invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
+                        reader=None;
+                        notify(&mut socket,event).await?;
+                    }
+                }
+            }
         }
     }
     Ok(())
 }
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReadContext {
+    project_id: String,
+    service_generation: Option<String>,
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReadRequest {
+    version: u32,
+    id: String,
+    method: String,
+    params: Value,
+    context: Option<ReadContext>,
+}
+fn keys(host: &Host, connection: &str, mut value: Value) -> Value {
+    value["connectionId"] = json!(connection);
+    value["gatewayGeneration"] = json!(host.identity.generation);
+    value
+}
+fn read_error(error: &anyhow::Error) -> Value {
+    let code = error
+        .downcast_ref::<wire::Error>()
+        .map(|error| error.code)
+        .unwrap_or_else(|| match error.to_string().as_str() {
+            _ if error.downcast_ref::<serde_json::Error>().is_some() => "INVALID_PARAMS",
+            "INVALID_PARAMS" => "INVALID_PARAMS",
+            "FORBIDDEN" => "FORBIDDEN",
+            "RESYNC_REQUIRED" => "RESYNC_REQUIRED",
+            "RESOURCE_UNAVAILABLE" => "RESOURCE_UNAVAILABLE",
+            _ => "CORE_UNAVAILABLE",
+        });
+    let mut value = json!({"code":code,"message":"Host read request failed"});
+    if let Some(native) = error.downcast_ref::<super::schedule_connection::RpcFailure>() {
+        value["coreError"] = native.0.clone();
+    }
+    value
+}
+async fn notify(socket: &mut Socket, event: Value) -> Result<()> {
+    let method = event["event"].as_str().context("invalid event")?;
+    send(
+        socket,
+        &json!({"version":VERSION,"method":method,"params":event}),
+    )
+    .await
+}
+
 async fn send(socket: &mut Socket, value: &Value) -> Result<()> {
     let bytes = serde_json::to_string(value)?;
     ensure!(
@@ -351,6 +622,12 @@ async fn send(socket: &mut Socket, value: &Value) -> Result<()> {
 mod tests {
     use super::*;
     use crate::{Client, HostIdentity};
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    use ring::{
+        rand::SystemRandom,
+        signature::{self, KeyPair},
+    };
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::{
         net::UnixListener,
         sync::{Mutex, Notify, watch},
@@ -408,6 +685,7 @@ mod tests {
                 subscriptions: super::super::subscriptions::Subscriptions::default(),
                 schedules: super::super::schedules::Schedules::load(&home).unwrap(),
                 power: super::super::power::Power::default(),
+                read_models: Default::default(),
                 loopback: Loopback::default(),
                 home,
             });
@@ -489,6 +767,140 @@ mod tests {
             ticket.generation
         );
         socket
+    }
+
+    fn browser_key() -> signature::EcdsaKeyPair {
+        let random = SystemRandom::new();
+        let pkcs8 = signature::EcdsaKeyPair::generate_pkcs8(
+            &signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+            &random,
+        )
+        .unwrap();
+        signature::EcdsaKeyPair::from_pkcs8(
+            &signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+            pkcs8.as_ref(),
+            &random,
+        )
+        .unwrap()
+    }
+    fn browser_params(key: &signature::EcdsaKeyPair) -> Value {
+        json!({"publicKey":URL_SAFE_NO_PAD.encode(key.public_key().as_ref())})
+    }
+    fn browser_proof(key: &signature::EcdsaKeyPair, challenge: &Value, origin: &str) -> Value {
+        let message = format!(
+            "{}\n{}\n{}",
+            challenge["hostId"].as_str().unwrap(),
+            challenge["nonce"].as_str().unwrap(),
+            origin
+        );
+        let signature = key.sign(&SystemRandom::new(), message.as_bytes()).unwrap();
+        json!({"publicKey":browser_params(key)["publicKey"],"nonce":challenge["nonce"],"signature":URL_SAFE_NO_PAD.encode(signature.as_ref())})
+    }
+    async fn browser_post(
+        endpoint: &LoopbackEndpoint,
+        origin: &str,
+        path: &str,
+        params: Value,
+    ) -> (u16, Value) {
+        let authority = endpoint.origin.strip_prefix("http://").unwrap();
+        let mut stream = TcpStream::connect(authority).await.unwrap();
+        let body = params.to_string();
+        let request = format!(
+            "POST /host/auth/{path} HTTP/1.1\r\nHost: {authority}\r\nOrigin: {origin}\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut response = Vec::new();
+        tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut response))
+            .await
+            .unwrap()
+            .unwrap();
+        let text = std::str::from_utf8(&response).unwrap();
+        let (headers, body) = text.split_once("\r\n\r\n").unwrap();
+        let status = headers.split_whitespace().nth(1).unwrap().parse().unwrap();
+        (status, serde_json::from_str(body).unwrap_or(Value::Null))
+    }
+    async fn approve_browser(fixture: &Fixture, key: &signature::EcdsaKeyPair) -> String {
+        let endpoint = fixture.host.loopback.endpoint().unwrap();
+        let (status, pending) = browser_post(
+            &endpoint,
+            &endpoint.origin,
+            "challenge",
+            browser_params(key),
+        )
+        .await;
+        assert_eq!(status, 200);
+        assert_eq!(pending["state"], "pending");
+        fixture
+            .client()
+            .await
+            .approve_browser(pending["requestId"].as_str().unwrap())
+            .await
+            .unwrap()
+            .device_id
+    }
+    async fn browser_ticket(
+        fixture: &Fixture,
+        key: &signature::EcdsaKeyPair,
+    ) -> LocalWebTicketResult {
+        let endpoint = fixture.host.loopback.endpoint().unwrap();
+        let (status, challenge) = browser_post(
+            &endpoint,
+            &endpoint.origin,
+            "challenge",
+            browser_params(key),
+        )
+        .await;
+        assert_eq!(status, 200);
+        assert_eq!(challenge["state"], "challenge");
+        let (status, ticket) = browser_post(
+            &endpoint,
+            &endpoint.origin,
+            "ticket",
+            browser_proof(key, &challenge, &endpoint.origin),
+        )
+        .await;
+        assert_eq!(status, 200);
+        serde_json::from_value(ticket).unwrap()
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn browser_revoke_invalidates_unused_tickets_active_connections_and_persisted_grants() {
+        tokio::task::LocalSet::new().run_until(async {
+            let mut fixture = Fixture::start().await;
+            let key = browser_key();
+            let device_id = approve_browser(&fixture, &key).await;
+            let devices = serde_json::to_value(fixture.client().await.browser_devices().await.unwrap()).unwrap();
+            assert_eq!(devices["devices"].as_array().unwrap().len(), 1);
+            assert_eq!(devices["devices"][0]["deviceId"], device_id);
+            assert_eq!(devices["devices"][0]["scopes"], json!(["observe"]));
+            assert_eq!(devices["devices"][0]["fingerprint"], storage::digest(key.public_key().as_ref()));
+            let unused = browser_ticket(&fixture, &key).await;
+            let active = browser_ticket(&fixture, &key).await;
+            let mut socket = authenticate(&active).await;
+            write(&mut socket, json!({"version":1,"id":"devices","method":"web.devices","params":{}})).await;
+            assert_eq!(read(&mut socket).await["error"]["code"], "methodNotFound");
+            write(&mut socket, json!({"version":1,"id":"revoke","method":"web.revoke","params":{"deviceId":device_id,"expectedGeneration":active.generation}})).await;
+            assert_eq!(read(&mut socket).await["error"]["code"], "methodNotFound");
+            let receipt = fixture.client().await.revoke_browser(&device_id).await.unwrap();
+            assert_eq!(receipt.device_id, device_id);
+            assert!(receipt.revoked);
+            closed(&mut socket).await;
+            let mut unused_socket = connect(&unused, &unused.origin).await;
+            write(&mut unused_socket, hello(&unused)).await;
+            closed(&mut unused_socket).await;
+            assert!(fixture.client().await.revoke_browser(&device_id).await.unwrap().revoked);
+            assert!(fixture.client().await.browser_devices().await.unwrap().devices.is_empty());
+            let root = fixture._root.clone();
+            fixture.tasks.shutdown().await;
+            drop(fixture);
+            let restarted = Fixture::start_in(root).await;
+            assert!(restarted.client().await.browser_devices().await.unwrap().devices.is_empty());
+            let endpoint = restarted.host.loopback.endpoint().unwrap();
+            let (status, pending) = browser_post(&endpoint, &endpoint.origin, "challenge", browser_params(&key)).await;
+            assert_eq!(status, 200);
+            assert_eq!(pending["state"], "pending");
+        }).await;
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -678,11 +1090,14 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn restart_closes_old_connections_replaces_endpoint_and_invalidates_tickets() {
+    async fn restart_preserves_browser_origin_and_port_collision_rejects_old_origin_credentials() {
         tokio::task::LocalSet::new()
             .run_until(async {
                 let mut fixture = Fixture::start().await;
                 let client = fixture.client().await;
+                let key = browser_key();
+                let device_id = approve_browser(&fixture, &key).await;
+                let original_endpoint = fixture.host.loopback.endpoint().unwrap();
                 let unused = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
                 let active = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
                 let mut socket = authenticate(&active).await;
@@ -692,7 +1107,22 @@ mod tests {
                 assert!(!path.exists());
                 closed(&mut socket).await;
                 drop(fixture);
-                let restarted = Fixture::start_in(root).await;
+                let mut restarted = Fixture::start_in(root).await;
+                let endpoint = restarted.host.loopback.endpoint().unwrap();
+                assert_eq!(endpoint.origin, original_endpoint.origin);
+                assert_eq!(
+                    restarted
+                        .client()
+                        .await
+                        .browser_devices()
+                        .await
+                        .unwrap()
+                        .devices[0]
+                        .device_id,
+                    device_id
+                );
+                let browser = browser_ticket(&restarted, &key).await;
+                let mut browser_socket = authenticate(&browser).await;
                 let fresh = restarted
                     .client()
                     .await
@@ -707,6 +1137,67 @@ mod tests {
                 write(&mut socket, old).await;
                 closed(&mut socket).await;
                 let _valid = authenticate(&fresh).await;
+                let (status, challenge) = browser_post(
+                    &endpoint,
+                    &endpoint.origin,
+                    "challenge",
+                    browser_params(&key),
+                )
+                .await;
+                assert_eq!(status, 200);
+                let old_proof = browser_proof(&key, &challenge, &endpoint.origin);
+                let unused_browser = browser_ticket(&restarted, &key).await;
+                let root = restarted._root.clone();
+                restarted.tasks.shutdown().await;
+                closed(&mut browser_socket).await;
+                drop(restarted);
+                let blocker = TcpListener::bind(endpoint.origin.strip_prefix("http://").unwrap())
+                    .await
+                    .unwrap();
+                let moved = Fixture::start_in(root).await;
+                let moved_endpoint = moved.host.loopback.endpoint().unwrap();
+                assert_ne!(moved_endpoint.origin, endpoint.origin);
+                assert_eq!(moved_endpoint.host_id, endpoint.host_id);
+                assert_ne!(moved_endpoint.generation, endpoint.generation);
+                let mut old_origin_request = moved_endpoint
+                    .websocket_url
+                    .clone()
+                    .into_client_request()
+                    .unwrap();
+                old_origin_request
+                    .headers_mut()
+                    .insert("origin", endpoint.origin.parse().unwrap());
+                assert!(
+                    tokio_tungstenite::connect_async(old_origin_request)
+                        .await
+                        .is_err()
+                );
+                let (status, error) =
+                    browser_post(&moved_endpoint, &moved_endpoint.origin, "ticket", old_proof)
+                        .await;
+                assert_eq!(status, 403);
+                assert_eq!(error, json!({"error":"authentication failed"}));
+                let mut stale = unused_browser.clone();
+                stale.origin = moved_endpoint.origin.clone();
+                stale.websocket_url = moved_endpoint.websocket_url.clone();
+                stale.generation = moved_endpoint.generation.clone();
+                let mut stale_socket = connect(&stale, &stale.origin).await;
+                write(&mut stale_socket, hello(&stale)).await;
+                closed(&mut stale_socket).await;
+                let new_ticket = browser_ticket(&moved, &key).await;
+                let _new_socket = authenticate(&new_ticket).await;
+                assert_eq!(
+                    moved
+                        .client()
+                        .await
+                        .browser_devices()
+                        .await
+                        .unwrap()
+                        .devices[0]
+                        .device_id,
+                    device_id
+                );
+                drop(blocker);
             })
             .await;
     }

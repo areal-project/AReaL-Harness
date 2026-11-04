@@ -19,6 +19,8 @@ mod projection;
 mod review;
 #[path = "send.rs"]
 pub(super) mod send;
+#[path = "shared_reads.rs"]
+mod shared_reads;
 #[path = "stop.rs"]
 mod stop;
 #[path = "tasks.rs"]
@@ -178,6 +180,8 @@ pub(crate) struct Session {
     kind: gateway_owner::TransportKind,
     source_id: String,
     viewer: Option<observer::Viewer>,
+    shell: Option<crate::server::shell_subscription::Subscription>,
+    gui_read: bool,
     token_key: [u8; 32],
 }
 struct SessionSlot {
@@ -344,8 +348,18 @@ impl Session {
                 "displayName",
                 "clientKind",
                 "inviteSecret",
+                "capabilities",
             ],
-        ) && hello["method"] == "hello"
+        ) && hello.get("capabilities").is_none_or(|capabilities| {
+            capabilities.as_array().is_some_and(|capabilities| {
+                capabilities.len() <= 32
+                    && capabilities.iter().all(|capability| {
+                        capability
+                            .as_str()
+                            .is_some_and(|value| !value.is_empty() && value.len() <= 80)
+                    })
+            })
+        }) && hello["method"] == "hello"
             && hello["displayName"]
                 .as_str()
                 .is_some_and(|name| !name.trim().is_empty() && name.chars().count() <= 80)
@@ -428,6 +442,14 @@ impl Session {
             host_peer: identity.peer().to_string(),
             token_key,
             viewer: None,
+            shell: None,
+            gui_read: hello["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities
+                        .iter()
+                        .any(|capability| capability == "gui-read-v1")
+                }),
             transport: admission.transport,
             kind: admission.kind,
             source_id: config["sourceId"]
@@ -456,16 +478,26 @@ impl Session {
         let ready = session.describe(true);
         wire::write_json(&mut writer, &serde_json::to_vec(&ready)?, limits).await?;
         let mut budget = RequestBudget::new(Instant::now());
+        let mut shell_tick = tokio::time::interval(Duration::from_millis(500));
+        shell_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             enum Incoming {
                 Request(Option<RequestMessage>),
                 Event(Result<crate::server::schedule_connection::CoreEvent>),
+                Shell,
             }
             let incoming = tokio::select! {
                 request = requests.recv() => Incoming::Request(request),
                 event = session.next_event() => Incoming::Event(event),
+                _ = shell_tick.tick(), if session.shell.is_some() => Incoming::Shell,
             };
             let bytes = match incoming {
+                Incoming::Shell => {
+                    if let Some(event) = session.shell_event().await? {
+                        wire::write_json(&mut writer, &serde_json::to_vec(&event)?, limits).await?;
+                    }
+                    continue;
+                }
                 Incoming::Request(bytes) => bytes,
                 Incoming::Event(event) => {
                     let update = match event {
@@ -534,6 +566,15 @@ impl Session {
                     };
                     let mut response =
                         json!({"id":request["id"],"error":{"code":code,"message":description}});
+                    if session.gui_read
+                        && matches!(method, Some("session.history" | "artifact.read"))
+                    {
+                        if let Some(native) =
+                            error.downcast_ref::<crate::server::schedule_connection::RpcFailure>()
+                        {
+                            response["error"]["coreError"] = native.0.clone();
+                        }
+                    }
                     if matches!(
                         request["method"].as_str(),
                         Some(
@@ -649,6 +690,20 @@ impl Session {
                 .collect(),
         );
         let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits});
+        if self.gui_read {
+            value["negotiatedCapabilities"] = json!(["gui-read-v1"]);
+            value["authorityHostId"] = json!(self.host.identity.host_id);
+            value["hostGeneration"] = json!(self.host.identity.generation);
+            value["readMethods"] = json!([
+                "shell.subscribe",
+                "shell.unsubscribe",
+                "session.open",
+                "session.history",
+                "subscription.close",
+                "artifact.read"
+            ]);
+            value["readLimits"] = json!({"historyPageBytes":131072,"mediaChunkBytes":65536});
+        }
         if self.host.gateway.push_supported.get() {
             value["capabilities"]
                 .as_array_mut()
@@ -864,6 +919,10 @@ impl Session {
         let params = &request["params"];
         ensure!(params.is_object(), "INVALID_PARAMS");
         self.authorize(None, "observe")?;
+        if shared_reads::METHODS.contains(&method) {
+            ensure!(request.get("context").is_none(), "INVALID_PARAMS");
+            return self.shell_request(method, params).await;
+        }
         if method == "host.describe" {
             ensure!(
                 request.get("context").is_none() && exact(params, &[]),
@@ -915,8 +974,20 @@ impl Session {
                 json!({"projects":projects[offset..end],"nextCursor":(end<projects.len()).then(||end.to_string())}),
             );
         }
-        let project = text(&request["context"], "projectId")?.to_owned();
+        let native = self.gui_read
+            && (params["view"] == "conversation"
+                || (method == "session.history" && params.get("subscriptionId").is_some())
+                || (method == "subscription.close" && self.conversation_active()));
+        let project = if native {
+            self.native_alias(text(&request["context"], "projectId")?)?
+        } else {
+            text(&request["context"], "projectId")?.to_owned()
+        };
         self.authorize(Some(&project), "observe")?;
+        if method == "artifact.read" && native {
+            let generation = text(&request["context"], "serviceGeneration")?;
+            return self.conversation_media(&project, generation, params).await;
+        }
         if method == "command.read" {
             return self.command_read(&project, params).await;
         }

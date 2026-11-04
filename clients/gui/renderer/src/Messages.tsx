@@ -1,3 +1,4 @@
+import type { MediaOwner } from "./PlatformReadContext.js";
 import { commandResourceLabel } from "./conversationPresentation.js";
 import { scheduledRunTask, scheduledTaskName } from "./scheduleText.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
@@ -83,7 +84,7 @@ import { Popover, PopoverContent } from "./components/ui/popover.js";
 import { MessageResponse } from "./components/ai-elements/message.js";
 import { DiagramReader, type DiagramSelection } from "./components/ai-elements/diagram-reader.js";
 import { Dialog } from "./components/ui/dialog.js";
-import { SentAttachment } from "./MessageAttachment.js";
+import { mediaOwner, SentAttachment } from "./MessageAttachment.js";
 import {
   WorkspaceFileCard,
   WorkspaceImage,
@@ -154,6 +155,7 @@ export function Messages({
   onReview: (turnId: string) => void;
   readTurnReview: (turnId: string, itemId?: string) => Promise<Data>;
 }) {
+  const mediaGeneration = localThread.displayHistory?.viewGeneration;
   const { t } = useI18n();
   const draftKey = `areal-gui:draft:${project.id}:${localThread.id}`;
   const outgoing = usePendingMessage(draftKey);
@@ -483,9 +485,10 @@ export function Messages({
     updateReading();
   };
   const renderImage = useCallback(
-    (uri: string, name: string) =>
+    (uri: string, name: string, mediaSource?: MediaOwner) =>
       /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(uri) ? (
         <SentAttachment
+          mediaSource={mediaSource}
           part={{ type: "image", uri, name: name || "回复图片" }}
           projectId={project.id}
           threadId={thread.id}
@@ -598,7 +601,9 @@ export function Messages({
               theme={dark ? "dark" : "light"}
               onOpenExternalUrl={onLink}
               onOpenFileLink={openReplyFile}
-              onRenderImage={renderImage}
+              onRenderImage={(uri, name) =>
+                renderImage(uri, name, mediaOwner(entry, turn.id, mediaGeneration))
+              }
               onRenderFileCard={renderFileCard}
               fileLinks
               webPreviews
@@ -607,7 +612,7 @@ export function Messages({
             </MessageResponse>
           )}
           interactive={(part) =>
-            !inheritedIds.has(turn.id) ? (
+            !readOnly && !inheritedIds.has(turn.id) ? (
               <GenUiCard
                 key={`${entry.id}:${part.offset}`}
                 source={{
@@ -1315,6 +1320,7 @@ export function Messages({
                                 )}
                                 <SentUserMessage
                                   item={item}
+                                  mediaSource={mediaOwner(item, turn.id, mediaGeneration)}
                                   owner={owner}
                                   project={project}
                                   localThread={localThread}
@@ -1322,7 +1328,7 @@ export function Messages({
                                   dark={dark}
                                   editable={item.id === editable}
                                   onLink={live.onLink}
-                                  onFile={live.onFile}
+                                  onFile={readOnly ? undefined : live.onFile}
                                   onExpand={() => {
                                     if (reading.current.kind === "following")
                                       reading.current = changeReadingIntent(reading.current, {
@@ -1351,6 +1357,7 @@ export function Messages({
                             return (
                               <div className="assistant-media flex flex-wrap gap-2" key={item.id}>
                                 <SentAttachment
+                                  mediaSource={mediaOwner(item, turn.id, mediaGeneration)}
                                   part={{
                                     type: item.modality,
                                     uri: item.media.uri,
@@ -1393,6 +1400,7 @@ export function Messages({
                                     <div data-side-item-id={entry.id} key={entry.id}>
                                       <ToolEvent
                                         item={entry}
+                                        mediaGeneration={localThread.displayHistory?.viewGeneration}
                                         onLoadDetails={
                                           (entry.processRecords ?? [entry]).some(
                                             (record: Data) => record.deferredHistory,
@@ -1442,8 +1450,8 @@ export function Messages({
                                             })
                                           ]
                                         }
-                                        onFile={live.onFile}
-                                        onAgent={isInherited ? undefined : live.onAgent}
+                                        onFile={readOnly ? undefined : live.onFile}
+                                        onAgent={readOnly || isInherited ? undefined : live.onAgent}
                                         agents={isInherited ? undefined : project.state?.threads}
                                         agentTaskOf={(id) => agentAssignment(thread, id)}
                                         turnId={turn.id}
@@ -1451,7 +1459,7 @@ export function Messages({
                                         projectId={project.id}
                                         threadId={thread.id}
                                         readTurnReview={
-                                          turn.status === "completed"
+                                          !readOnly && turn.status === "completed"
                                             ? live.readTurnReview
                                             : undefined
                                         }
@@ -1534,6 +1542,7 @@ export function Messages({
                         latest={latestSchedules}
                       />
                       <TurnFileSummary
+                        nativeActions={!readOnly}
                         turn={turn}
                         readTurnReview={live.readTurnReview}
                         onFile={live.onFile}

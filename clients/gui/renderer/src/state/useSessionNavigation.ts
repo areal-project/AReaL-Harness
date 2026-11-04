@@ -92,13 +92,15 @@ export function useSessionNavigation(
     ? undefined
     : (snapshot.projects.find((p) => p.id === projectId) ??
       (snapshot.connection?.state === "ready" ? projects.find((p) => !p.projectless) : undefined));
-  const executionThread = logicalProject?.state?.threads[threadId];
+  const executionThread =
+    logicalProject?.state?.threads[threadId] ??
+    logicalProject?.summaries?.find((summary: { id: string }) => summary.id === threadId);
   const project =
-    logicalProject && executionThread?.worktree?.directory
+    logicalProject && (executionThread?.executionRoot || executionThread?.worktree?.directory)
       ? {
           ...logicalProject,
           logicalRoot: logicalProject.root,
-          root: executionThread.worktree.directory,
+          root: executionThread.executionRoot ?? executionThread.worktree.directory,
           core: { ...logicalProject.core, ...executionThread.executionCore },
           state: {
             ...logicalProject.state,
@@ -138,6 +140,7 @@ export function useSessionNavigation(
   );
   useEffect(() => {
     if (
+      services.reads ||
       resourceBrowsing.current ||
       !project?.id ||
       threadId ||
@@ -216,6 +219,22 @@ export function useSessionNavigation(
         sameRecoveryOwner(selectedRestoration.current, owner);
       attempt.promise = (async () => {
         try {
+          if (services.reads) {
+            await services.reads.selectSession(
+              owner.threadId ? { projectId: owner.projectId, threadId: owner.threadId } : null,
+            );
+            if (current()) {
+              setRestoration({ ...owner, pending: false, error: "" });
+              if (owner.threadId && services.capabilities?.mutations !== false)
+                void resourceAction("library", {
+                  operation: "readThread",
+                  projectId: owner.projectId,
+                  threadId: owner.threadId,
+                  read: true,
+                }).catch(() => {});
+            }
+            return;
+          }
           if (options.connectService) {
             await resourceAction("connectService", {});
             if (!current()) return;
@@ -256,7 +275,7 @@ export function useSessionNavigation(
       })();
       return attempt.promise;
     },
-    [resourceAction],
+    [resourceAction, services.reads],
   );
   const subscribe = () => {
     const unsubscribe = services.onState(setSnapshot);
@@ -322,7 +341,12 @@ export function useSessionNavigation(
     const owner = {
       projectId: pid,
       threadId: id,
-      connectionGeneration: target?.core?.connectionGeneration ?? 0,
+      connectionGeneration:
+        target?.state?.threads?.[id]?.executionCore?.connectionGeneration ??
+        target?.summaries?.find((summary: { id: string }) => summary.id === id)?.executionCore
+          ?.connectionGeneration ??
+        target?.core?.connectionGeneration ??
+        0,
     };
     selectedRestoration.current = owner;
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
@@ -336,6 +360,8 @@ export function useSessionNavigation(
   };
   return {
     resourceBrowsing,
+    services,
+    readOnly: services.capabilities?.mutations === false,
     snapshot,
     library,
     projects,

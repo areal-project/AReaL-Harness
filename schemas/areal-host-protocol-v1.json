@@ -86,6 +86,9 @@
         },
         "coreCode": {
           "type": "integer"
+        },
+        "coreError": {
+          "$ref": "#/$defs/NativeCoreObject"
         }
       },
       "required": [
@@ -8916,56 +8919,24 @@
       ]
     },
     "RemoteSessionOpenParams": {
-      "type": "object",
-      "properties": {
-        "threadId": {
-          "type": "string",
-          "minLength": 1,
-          "x-maxUtf8Bytes": 128
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteLegacySessionOpenParams"
+        },
+        {
+          "$ref": "#/$defs/ConversationOpenParams"
         }
-      },
-      "required": [
-        "threadId"
-      ],
-      "additionalProperties": false
+      ]
     },
     "RemoteSessionOpenResult": {
-      "type": "object",
-      "properties": {
-        "connectionId": {
-          "type": "string"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteLegacySessionOpenResult"
         },
-        "gatewayGeneration": {
-          "type": "string"
-        },
-        "projectId": {
-          "type": "string"
-        },
-        "serviceGeneration": {
-          "type": "string"
-        },
-        "subscriptionId": {
-          "type": "string"
-        },
-        "sequence": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 18446744073709551615
-        },
-        "snapshot": {
-          "$ref": "#/$defs/RemoteSessionSnapshot"
+        {
+          "$ref": "#/$defs/ConversationOpenResult"
         }
-      },
-      "required": [
-        "connectionId",
-        "gatewayGeneration",
-        "projectId",
-        "serviceGeneration",
-        "subscriptionId",
-        "sequence",
-        "snapshot"
       ],
-      "additionalProperties": false,
       "examples": [
         {
           "connectionId": "example",
@@ -9133,93 +9104,24 @@
       ]
     },
     "RemoteSessionHistoryParams": {
-      "type": "object",
-      "properties": {
-        "threadId": {
-          "type": "string",
-          "minLength": 1,
-          "x-maxUtf8Bytes": 128
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteLegacySessionHistoryParams"
         },
-        "cursor": {
-          "type": "string"
-        },
-        "limit": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 100
+        {
+          "$ref": "#/$defs/ConversationHistoryParams"
         }
-      },
-      "required": [
-        "threadId"
-      ],
-      "additionalProperties": false
+      ]
     },
     "RemoteSessionHistoryResult": {
-      "type": "object",
-      "properties": {
-        "connectionId": {
-          "type": "string"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteLegacySessionHistoryResult"
         },
-        "gatewayGeneration": {
-          "type": "string"
-        },
-        "projectId": {
-          "type": "string"
-        },
-        "serviceGeneration": {
-          "type": "string"
-        },
-        "subscriptionId": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
-        },
-        "turns": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/RemoteTurn"
-          }
-        },
-        "nextCursor": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "hasMore": {
-          "type": "boolean"
-        },
-        "truncated": {
-          "type": "boolean"
-        },
-        "unavailable": {
-          "type": "boolean"
-        },
-        "range": {
-          "type": "string",
-          "const": "coreAccessible"
+        {
+          "$ref": "#/$defs/ConversationHistoryResult"
         }
-      },
-      "required": [
-        "connectionId",
-        "gatewayGeneration",
-        "projectId",
-        "serviceGeneration",
-        "subscriptionId",
-        "threadId",
-        "turns",
-        "nextCursor",
-        "hasMore",
-        "truncated",
-        "unavailable",
-        "range"
       ],
-      "additionalProperties": false,
       "examples": [
         {
           "connectionId": "example",
@@ -11030,123 +10932,24 @@
       ]
     },
     "RemoteArtifactReadParams": {
-      "type": "object",
-      "properties": {
-        "artifactRef": {
-          "type": "string",
-          "x-maxUtf8Bytes": 2048
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteLegacyArtifactReadParams"
         },
-        "offset": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 9007199254740991
-        },
-        "length": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 49152
+        {
+          "$ref": "#/$defs/ConversationMediaParams"
         }
-      },
-      "required": [
-        "artifactRef",
-        "offset",
-        "length"
-      ],
-      "additionalProperties": false
+      ]
     },
     "RemoteArtifactReadResult": {
-      "type": "object",
-      "properties": {
-        "projectId": {
-          "type": "string"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteLegacyArtifactReadResult"
         },
-        "threadId": {
-          "type": "string"
-        },
-        "turnId": {
-          "type": "string"
-        },
-        "itemId": {
-          "type": "string"
-        },
-        "connectionId": {
-          "type": "string"
-        },
-        "gatewayGeneration": {
-          "type": "string"
-        },
-        "serviceGeneration": {
-          "type": "string"
-        },
-        "artifactRef": {
-          "type": "string"
-        },
-        "offset": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 18446744073709551615
-        },
-        "totalBytes": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 18446744073709551615
-        },
-        "nextOffset": {
-          "anyOf": [
-            {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 18446744073709551615
-            },
-            {
-              "type": "null"
-            }
-          ]
-        },
-        "base64": {
-          "type": "string"
-        },
-        "raster": {
-          "type": "object",
-          "properties": {
-            "mime": {
-              "type": "string"
-            },
-            "width": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 18446744073709551615
-            },
-            "height": {
-              "type": "integer",
-              "minimum": 0,
-              "maximum": 18446744073709551615
-            }
-          },
-          "required": [
-            "mime",
-            "width",
-            "height"
-          ],
-          "additionalProperties": false
+        {
+          "$ref": "#/$defs/ConversationMediaResult"
         }
-      },
-      "required": [
-        "projectId",
-        "threadId",
-        "turnId",
-        "itemId",
-        "connectionId",
-        "gatewayGeneration",
-        "serviceGeneration",
-        "artifactRef",
-        "offset",
-        "totalBytes",
-        "nextOffset",
-        "base64",
-        "raster"
       ],
-      "additionalProperties": false,
       "examples": [
         {
           "projectId": "example",
@@ -11386,6 +11189,15 @@
         "inviteSecret": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
         }
       },
       "required": [
@@ -11473,6 +11285,45 @@
         },
         "limits": {
           "$ref": "#/$defs/RemoteLimits"
+        },
+        "authorityHostId": {
+          "type": "string"
+        },
+        "hostGeneration": {
+          "type": "string"
+        },
+        "negotiatedCapabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "gui-read-v1"
+            ]
+          }
+        },
+        "readMethods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "readLimits": {
+          "type": "object",
+          "properties": {
+            "historyPageBytes": {
+              "type": "integer",
+              "const": 131072
+            },
+            "mediaChunkBytes": {
+              "type": "integer",
+              "const": 65536
+            }
+          },
+          "required": [
+            "historyPageBytes",
+            "mediaChunkBytes"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -11506,109 +11357,24 @@
       "additionalProperties": false
     },
     "RemoteSessionUpdated": {
-      "type": "object",
-      "properties": {
-        "event": {
-          "type": "string",
-          "const": "session.updated"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteLegacySessionUpdated"
         },
-        "connectionId": {
-          "type": "string"
-        },
-        "gatewayGeneration": {
-          "type": "string"
-        },
-        "projectId": {
-          "type": "string"
-        },
-        "serviceGeneration": {
-          "type": "string"
-        },
-        "subscriptionId": {
-          "type": "string"
-        },
-        "sequence": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 18446744073709551615
-        },
-        "snapshot": {
-          "$ref": "#/$defs/RemoteSessionSnapshot"
+        {
+          "$ref": "#/$defs/ConversationUpdated"
         }
-      },
-      "required": [
-        "event",
-        "connectionId",
-        "gatewayGeneration",
-        "projectId",
-        "serviceGeneration",
-        "subscriptionId",
-        "sequence",
-        "snapshot"
-      ],
-      "additionalProperties": false
+      ]
     },
     "RemoteSessionInvalidated": {
-      "type": "object",
-      "properties": {
-        "event": {
-          "type": "string",
-          "const": "session.invalidated"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RemoteLegacySessionInvalidated"
         },
-        "connectionId": {
-          "type": "string"
-        },
-        "gatewayGeneration": {
-          "type": "string"
-        },
-        "projectId": {
-          "type": "string"
-        },
-        "serviceGeneration": {
-          "type": "string"
-        },
-        "subscriptionId": {
-          "type": "string"
-        },
-        "sequence": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 18446744073709551615
-        },
-        "error": {
-          "$ref": "#/$defs/RemoteError"
-        },
-        "history": {
-          "type": "object",
-          "properties": {
-            "truncated": {
-              "type": "boolean",
-              "const": true
-            },
-            "unavailable": {
-              "type": "boolean",
-              "const": true
-            }
-          },
-          "required": [
-            "truncated",
-            "unavailable"
-          ],
-          "additionalProperties": false
+        {
+          "$ref": "#/$defs/ConversationInvalidated"
         }
-      },
-      "required": [
-        "event",
-        "connectionId",
-        "gatewayGeneration",
-        "projectId",
-        "serviceGeneration",
-        "subscriptionId",
-        "sequence",
-        "error",
-        "history"
-      ],
-      "additionalProperties": false
+      ]
     },
     "LocalStatusChanged": {
       "type": "object",
@@ -11866,6 +11632,18 @@
         },
         {
           "$ref": "#/$defs/LocalWebTicketRequest"
+        },
+        {
+          "$ref": "#/$defs/LocalWebApproveRequest"
+        },
+        {
+          "$ref": "#/$defs/LocalWebEndpointRequest"
+        },
+        {
+          "$ref": "#/$defs/LocalWebDevicesRequest"
+        },
+        {
+          "$ref": "#/$defs/LocalWebRevokeRequest"
         }
       ]
     },
@@ -11987,6 +11765,18 @@
         },
         {
           "$ref": "#/$defs/LocalWebTicketResult"
+        },
+        {
+          "$ref": "#/$defs/LocalWebApproveResult"
+        },
+        {
+          "$ref": "#/$defs/LoopbackEndpoint"
+        },
+        {
+          "$ref": "#/$defs/LocalWebDevicesResult"
+        },
+        {
+          "$ref": "#/$defs/LocalWebRevokeResult"
         }
       ]
     },
@@ -12109,6 +11899,12 @@
         },
         {
           "$ref": "#/$defs/RemoteWorkListRequest"
+        },
+        {
+          "$ref": "#/$defs/RemoteShellSubscribeRequest"
+        },
+        {
+          "$ref": "#/$defs/RemoteShellUnsubscribeRequest"
         }
       ]
     },
@@ -12185,6 +11981,12 @@
         },
         {
           "$ref": "#/$defs/RemoteWorkListResult"
+        },
+        {
+          "$ref": "#/$defs/ShellSubscriptionResult"
+        },
+        {
+          "$ref": "#/$defs/ReadSubscriptionClosed"
         }
       ]
     },
@@ -12247,6 +12049,12 @@
         },
         {
           "$ref": "#/$defs/RemoteSessionInvalidated"
+        },
+        {
+          "$ref": "#/$defs/ShellUpdated"
+        },
+        {
+          "$ref": "#/$defs/ShellInvalidated"
         }
       ]
     },
@@ -12605,6 +12413,10 @@
         },
         "expectedGeneration": {
           "type": "string"
+        },
+        "profile": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [
@@ -12640,7 +12452,16 @@
         "origin",
         "websocketUrl"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "hostId": "01234567-89ab-cdef-0123-456789abcdef",
+          "generation": "host-generation",
+          "origin": "http://127.0.0.1:54321",
+          "websocketUrl": "ws://127.0.0.1:54321/host/socket"
+        }
+      ]
     },
     "LocalWebTicketResult": {
       "type": "object",
@@ -12667,6 +12488,10 @@
         "expiresAt": {
           "type": "integer",
           "minimum": 0
+        },
+        "preferredSourceId": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [
@@ -12843,10 +12668,7 @@
         "methods": {
           "type": "array",
           "items": {
-            "type": "string",
-            "enum": [
-              "host.status"
-            ]
+            "type": "string"
           }
         },
         "transport": {
@@ -12864,6 +12686,23 @@
         },
         "limits": {
           "$ref": "#/$defs/LoopbackLimits"
+        },
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "negotiatedCapabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "gui-read-v1"
+            ]
+          }
         }
       },
       "required": [
@@ -12915,11 +12754,29 @@
         },
         {
           "$ref": "#/$defs/LocalHostStatusResult"
+        },
+        {
+          "$ref": "#/$defs/ShellSubscriptionResult"
+        },
+        {
+          "$ref": "#/$defs/ReadSubscriptionClosed"
+        },
+        {
+          "$ref": "#/$defs/ConversationOpenResult"
+        },
+        {
+          "$ref": "#/$defs/ConversationHistoryResult"
+        },
+        {
+          "$ref": "#/$defs/ReadSubscriptionClosed"
+        },
+        {
+          "$ref": "#/$defs/ConversationMediaResult"
         }
       ]
     },
     "LoopbackResponse": {
-      "oneOf": [
+      "anyOf": [
         {
           "type": "object",
           "properties": {
@@ -12928,7 +12785,8 @@
               "const": 1
             },
             "id": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "result": {
               "$ref": "#/$defs/LoopbackResult"
@@ -12949,10 +12807,11 @@
               "const": 1
             },
             "id": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "error": {
-              "$ref": "#/$defs/LocalError"
+              "$ref": "#/$defs/ReadError"
             }
           },
           "required": [
@@ -12961,6 +12820,2571 @@
             "error"
           ],
           "additionalProperties": false
+        }
+      ]
+    },
+    "NativeCoreObject": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Unmodified native Core payload; Core owns its nested schema and history cursors. Host validates subscription identity and per-page byte limits.",
+      "x-source": "core/protocol/src/desktop.rs and core/app-server conversation observation/history serializers; fields validated by their Core owner and existing GUI read decoders"
+    },
+    "NavigationSummary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentThreadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conversation": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        "name": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "number"
+        },
+        "updatedAt": {
+          "type": "number"
+        },
+        "desktop": {
+          "type": "object",
+          "properties": {
+            "archived": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "archived"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "desktop"
+      ],
+      "additionalProperties": false
+    },
+    "NavigationMetadata": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "sectionId": {
+          "type": "string"
+        },
+        "completionId": {
+          "type": "string"
+        },
+        "scheduledCompletionId": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "unread": {
+          "type": "boolean"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "threadOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "ShellProject": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "alias": {
+          "type": "object",
+          "properties": {
+            "sourceId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "projectId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "sourceId",
+            "projectId"
+          ],
+          "additionalProperties": false
+        },
+        "logicalProjectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectless": {
+          "type": "boolean"
+        },
+        "workspace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summaries": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "fresh",
+                "cached",
+                "unknown"
+              ]
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/NavigationSummary"
+              }
+            }
+          },
+          "required": [
+            "state",
+            "items"
+          ],
+          "additionalProperties": false
+        },
+        "attention": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "const": "fresh"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "state",
+                "count"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "state": {
+                  "type": "string",
+                  "const": "unknown"
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "worktree": {
+          "$ref": "#/$defs/WorktreeDisplay"
+        }
+      },
+      "required": [
+        "projectId",
+        "projectless",
+        "workspace",
+        "state",
+        "summaries",
+        "attention"
+      ],
+      "additionalProperties": false
+    },
+    "SourceNavigation": {
+      "type": "object",
+      "properties": {
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "available",
+            "unknown"
+          ]
+        },
+        "bindings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "alias": {
+                "type": "string",
+                "minLength": 1
+              },
+              "logicalProjectId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "projectless": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "projectId",
+              "alias",
+              "projectless"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "projects": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/NavigationMetadata"
+          }
+        },
+        "threads": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/NavigationMetadata"
+          }
+        },
+        "projectOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "sidebarThreadOrder": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "sidebarRevision": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "preferences": {
+          "$ref": "#/$defs/NavigationPreferences"
+        }
+      },
+      "required": [
+        "sourceId",
+        "state",
+        "bindings",
+        "projects",
+        "threads",
+        "projectOrder",
+        "sections",
+        "sidebarThreadOrder",
+        "sidebarRevision",
+        "preferences"
+      ],
+      "additionalProperties": false
+    },
+    "ShellView": {
+      "type": "object",
+      "properties": {
+        "projects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ShellProject"
+          }
+        },
+        "navigation": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceNavigation"
+          }
+        }
+      },
+      "required": [
+        "projects",
+        "navigation"
+      ],
+      "additionalProperties": false
+    },
+    "ShellSubscriptionResult": {
+      "type": "object",
+      "properties": {
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "snapshot": {
+          "$ref": "#/$defs/ShellView"
+        }
+      },
+      "required": [
+        "connectionId",
+        "gatewayGeneration",
+        "subscriptionId",
+        "sequence",
+        "snapshot"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "connectionId": "01234567-89ab-cdef-0123-456789abcdef",
+          "gatewayGeneration": "host-generation",
+          "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef",
+          "sequence": 0,
+          "snapshot": {
+            "projects": [],
+            "navigation": []
+          }
+        }
+      ]
+    },
+    "ShellDelta": {
+      "type": "object",
+      "properties": {
+        "projects": {
+          "type": "object",
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/ShellProject"
+              }
+            },
+            "remove": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "upsert",
+            "remove"
+          ],
+          "additionalProperties": false
+        },
+        "navigation": {
+          "type": "object",
+          "properties": {
+            "upsert": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/SourceNavigation"
+              }
+            },
+            "remove": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "upsert",
+            "remove"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "projects",
+        "navigation"
+      ],
+      "additionalProperties": false
+    },
+    "ShellUpdated": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "string",
+          "const": "shell.updated"
+        },
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "delta": {
+          "$ref": "#/$defs/ShellDelta"
+        }
+      },
+      "required": [
+        "event",
+        "connectionId",
+        "gatewayGeneration",
+        "subscriptionId",
+        "sequence",
+        "delta"
+      ],
+      "additionalProperties": false
+    },
+    "ShellInvalidated": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "string",
+          "const": "shell.invalidated"
+        },
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "error": {
+          "$ref": "#/$defs/ReadError"
+        }
+      },
+      "required": [
+        "event",
+        "connectionId",
+        "gatewayGeneration",
+        "subscriptionId",
+        "sequence",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "ReadSubscriptionParams": {
+      "type": "object",
+      "properties": {
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "subscriptionId"
+      ],
+      "additionalProperties": false
+    },
+    "ReadSubscriptionClosed": {
+      "type": "object",
+      "properties": {
+        "closed": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "closed"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "closed": true
+        }
+      ]
+    },
+    "ConversationOpenParams": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "view": {
+          "type": "string",
+          "const": "conversation"
+        }
+      },
+      "required": [
+        "threadId",
+        "view"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationHistoryParams": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "view": {
+          "type": "string",
+          "enum": [
+            "own",
+            "inherited",
+            "reference"
+          ]
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "maxLength": 16384,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "maxBytes": {
+          "anyOf": [
+            {
+              "minimum": 1024,
+              "maximum": 131072,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "threadId",
+        "subscriptionId",
+        "view"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationOpenResult": {
+      "type": "object",
+      "properties": {
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "view": {
+          "type": "string",
+          "const": "conversation"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/NativeCoreObject"
+        }
+      },
+      "required": [
+        "connectionId",
+        "gatewayGeneration",
+        "subscriptionId",
+        "sequence",
+        "projectId",
+        "serviceGeneration",
+        "threadId",
+        "view",
+        "snapshot"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "connectionId": "01234567-89ab-cdef-0123-456789abcdef",
+          "gatewayGeneration": "host-generation",
+          "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef",
+          "sequence": 0,
+          "projectId": "project",
+          "serviceGeneration": "core-generation",
+          "threadId": "thread",
+          "view": "conversation",
+          "snapshot": {
+            "thread": {
+              "id": "thread",
+              "turns": []
+            }
+          }
+        }
+      ]
+    },
+    "ConversationHistoryResult": {
+      "type": "object",
+      "properties": {
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "view": {
+          "type": "string",
+          "const": "conversation"
+        },
+        "page": {
+          "$ref": "#/$defs/NativeCoreObject"
+        }
+      },
+      "required": [
+        "connectionId",
+        "gatewayGeneration",
+        "subscriptionId",
+        "sequence",
+        "projectId",
+        "serviceGeneration",
+        "threadId",
+        "view",
+        "page"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "connectionId": "01234567-89ab-cdef-0123-456789abcdef",
+          "gatewayGeneration": "host-generation",
+          "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef",
+          "sequence": 0,
+          "projectId": "project",
+          "serviceGeneration": "core-generation",
+          "threadId": "thread",
+          "view": "conversation",
+          "page": {
+            "data": [],
+            "nextCursor": null
+          }
+        }
+      ]
+    },
+    "ConversationItemPatch": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "$ref": "#/$defs/NativeCoreObject"
+        }
+      },
+      "required": [
+        "id",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationTurnPatch": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head": {
+          "$ref": "#/$defs/NativeCoreObject"
+        },
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConversationItemPatch"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationPatch": {
+      "type": "object",
+      "properties": {
+        "head": {
+          "$ref": "#/$defs/NativeCoreObject"
+        },
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "turns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ConversationTurnPatch"
+          }
+        }
+      },
+      "required": [
+        "turns"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationUpdated": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "string",
+          "const": "session.updated"
+        },
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "view": {
+          "type": "string",
+          "const": "conversation"
+        },
+        "patch": {
+          "$ref": "#/$defs/ConversationPatch"
+        }
+      },
+      "required": [
+        "event",
+        "connectionId",
+        "gatewayGeneration",
+        "subscriptionId",
+        "sequence",
+        "projectId",
+        "serviceGeneration",
+        "threadId",
+        "view",
+        "patch"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationInvalidated": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "string",
+          "const": "session.invalidated"
+        },
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "view": {
+          "type": "string",
+          "const": "conversation"
+        },
+        "error": {
+          "$ref": "#/$defs/ReadError"
+        }
+      },
+      "required": [
+        "event",
+        "connectionId",
+        "gatewayGeneration",
+        "subscriptionId",
+        "sequence",
+        "projectId",
+        "serviceGeneration",
+        "threadId",
+        "view",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "ReadContext": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "projectId"
+      ],
+      "additionalProperties": false
+    },
+    "LoopbackShellSubscribeRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "shell.subscribe"
+        },
+        "params": {
+          "$ref": "#/$defs/EmptyParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "shell.subscribe",
+          "params": {},
+          "version": 1
+        }
+      ]
+    },
+    "LoopbackShellUnsubscribeRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "shell.unsubscribe"
+        },
+        "params": {
+          "$ref": "#/$defs/ReadSubscriptionParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "shell.unsubscribe",
+          "params": {
+            "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef"
+          },
+          "version": 1
+        }
+      ]
+    },
+    "LoopbackSessionOpenRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "session.open"
+        },
+        "params": {
+          "$ref": "#/$defs/ConversationOpenParams"
+        },
+        "context": {
+          "$ref": "#/$defs/ReadContext"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "session.open",
+          "params": {
+            "threadId": "thread",
+            "view": "conversation"
+          },
+          "version": 1,
+          "context": {
+            "projectId": "project",
+            "serviceGeneration": "core-generation"
+          }
+        }
+      ]
+    },
+    "LoopbackSessionHistoryRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "session.history"
+        },
+        "params": {
+          "$ref": "#/$defs/ConversationHistoryParams"
+        },
+        "context": {
+          "$ref": "#/$defs/ReadContext"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "session.history",
+          "params": {
+            "threadId": "thread",
+            "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef",
+            "view": "own",
+            "maxBytes": 131072
+          },
+          "version": 1,
+          "context": {
+            "projectId": "project",
+            "serviceGeneration": "core-generation"
+          }
+        }
+      ]
+    },
+    "LoopbackSubscriptionCloseRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "subscription.close"
+        },
+        "params": {
+          "$ref": "#/$defs/ReadSubscriptionParams"
+        },
+        "context": {
+          "$ref": "#/$defs/ReadContext"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "subscription.close",
+          "params": {
+            "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef"
+          },
+          "version": 1,
+          "context": {
+            "projectId": "project",
+            "serviceGeneration": "core-generation"
+          }
+        }
+      ]
+    },
+    "LoopbackReadRequest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LocalHostStatusRequest"
+        },
+        {
+          "$ref": "#/$defs/LoopbackShellSubscribeRequest"
+        },
+        {
+          "$ref": "#/$defs/LoopbackShellUnsubscribeRequest"
+        },
+        {
+          "$ref": "#/$defs/LoopbackSessionOpenRequest"
+        },
+        {
+          "$ref": "#/$defs/LoopbackSessionHistoryRequest"
+        },
+        {
+          "$ref": "#/$defs/LoopbackSubscriptionCloseRequest"
+        },
+        {
+          "$ref": "#/$defs/LoopbackArtifactReadRequest"
+        }
+      ]
+    },
+    "LoopbackNotification": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "const": 1
+            },
+            "method": {
+              "type": "string",
+              "const": "shell.updated"
+            },
+            "params": {
+              "$ref": "#/$defs/ShellUpdated"
+            }
+          },
+          "required": [
+            "version",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "const": 1
+            },
+            "method": {
+              "type": "string",
+              "const": "shell.invalidated"
+            },
+            "params": {
+              "$ref": "#/$defs/ShellInvalidated"
+            }
+          },
+          "required": [
+            "version",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "const": 1
+            },
+            "method": {
+              "type": "string",
+              "const": "session.updated"
+            },
+            "params": {
+              "$ref": "#/$defs/ConversationUpdated"
+            }
+          },
+          "required": [
+            "version",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "const": 1
+            },
+            "method": {
+              "type": "string",
+              "const": "session.invalidated"
+            },
+            "params": {
+              "$ref": "#/$defs/ConversationInvalidated"
+            }
+          },
+          "required": [
+            "version",
+            "method",
+            "params"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RemoteLegacySessionOpenParams": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 128
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteLegacySessionOpenResult": {
+      "type": "object",
+      "properties": {
+        "connectionId": {
+          "type": "string"
+        },
+        "gatewayGeneration": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "serviceGeneration": {
+          "type": "string"
+        },
+        "subscriptionId": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "snapshot": {
+          "$ref": "#/$defs/RemoteSessionSnapshot"
+        }
+      },
+      "required": [
+        "connectionId",
+        "gatewayGeneration",
+        "projectId",
+        "serviceGeneration",
+        "subscriptionId",
+        "sequence",
+        "snapshot"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "connectionId": "example",
+          "gatewayGeneration": "example",
+          "projectId": "example",
+          "serviceGeneration": "example",
+          "subscriptionId": "example",
+          "sequence": 0,
+          "snapshot": {
+            "threadId": "example",
+            "title": "example",
+            "configRevision": 0,
+            "configuration": {},
+            "goals": {
+              "revision": 0,
+              "eventSequence": 0,
+              "goal": {
+                "objective": "example"
+              }
+            },
+            "goalControlAllowed": false,
+            "ownership": {
+              "kind": "ordinary"
+            },
+            "activeTurnId": "example",
+            "status": "example",
+            "turns": [],
+            "attentionRefs": [],
+            "attentionComplete": false,
+            "queue": {
+              "pendingCount": 0,
+              "paused": false,
+              "revision": 0,
+              "complete": false,
+              "items": []
+            },
+            "history": {
+              "nextCursor": "example",
+              "hasMore": false,
+              "truncated": false,
+              "unavailable": false,
+              "range": "coreAccessible"
+            },
+            "permissionCapabilities": {
+              "supported": false,
+              "fullAccessAvailable": false
+            }
+          }
+        }
+      ]
+    },
+    "RemoteLegacySessionHistoryParams": {
+      "type": "object",
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 128
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteLegacySessionHistoryResult": {
+      "type": "object",
+      "properties": {
+        "connectionId": {
+          "type": "string"
+        },
+        "gatewayGeneration": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "serviceGeneration": {
+          "type": "string"
+        },
+        "subscriptionId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RemoteTurn"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hasMore": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "unavailable": {
+          "type": "boolean"
+        },
+        "range": {
+          "type": "string",
+          "const": "coreAccessible"
+        }
+      },
+      "required": [
+        "connectionId",
+        "gatewayGeneration",
+        "projectId",
+        "serviceGeneration",
+        "subscriptionId",
+        "threadId",
+        "turns",
+        "nextCursor",
+        "hasMore",
+        "truncated",
+        "unavailable",
+        "range"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "connectionId": "example",
+          "gatewayGeneration": "example",
+          "projectId": "example",
+          "serviceGeneration": "example",
+          "subscriptionId": "example",
+          "threadId": "example",
+          "turns": [],
+          "nextCursor": "example",
+          "hasMore": false,
+          "truncated": false,
+          "unavailable": false,
+          "range": "coreAccessible"
+        }
+      ]
+    },
+    "RemoteLegacySessionUpdated": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "string",
+          "const": "session.updated"
+        },
+        "connectionId": {
+          "type": "string"
+        },
+        "gatewayGeneration": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "serviceGeneration": {
+          "type": "string"
+        },
+        "subscriptionId": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "snapshot": {
+          "$ref": "#/$defs/RemoteSessionSnapshot"
+        }
+      },
+      "required": [
+        "event",
+        "connectionId",
+        "gatewayGeneration",
+        "projectId",
+        "serviceGeneration",
+        "subscriptionId",
+        "sequence",
+        "snapshot"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteLegacySessionInvalidated": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "string",
+          "const": "session.invalidated"
+        },
+        "connectionId": {
+          "type": "string"
+        },
+        "gatewayGeneration": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "serviceGeneration": {
+          "type": "string"
+        },
+        "subscriptionId": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "error": {
+          "$ref": "#/$defs/RemoteError"
+        },
+        "history": {
+          "type": "object",
+          "properties": {
+            "truncated": {
+              "type": "boolean",
+              "const": true
+            },
+            "unavailable": {
+              "type": "boolean",
+              "const": true
+            }
+          },
+          "required": [
+            "truncated",
+            "unavailable"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event",
+        "connectionId",
+        "gatewayGeneration",
+        "projectId",
+        "serviceGeneration",
+        "subscriptionId",
+        "sequence",
+        "error",
+        "history"
+      ],
+      "additionalProperties": false
+    },
+    "BrowserChallengeParams": {
+      "type": "object",
+      "properties": {
+        "publicKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "publicKey"
+      ],
+      "additionalProperties": false,
+      "x-sensitive": true
+    },
+    "BrowserTicketParams": {
+      "type": "object",
+      "properties": {
+        "publicKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "nonce": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "signature": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "publicKey",
+        "nonce",
+        "signature"
+      ],
+      "additionalProperties": false,
+      "x-sensitive": true
+    },
+    "BrowserChallengeResult": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "pending"
+            },
+            "requestId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "fingerprint": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expiresAt": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "state",
+            "requestId",
+            "fingerprint",
+            "expiresAt"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "const": "challenge"
+            },
+            "nonce": {
+              "type": "string",
+              "minLength": 1
+            },
+            "hostId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expiresAt": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "state",
+            "nonce",
+            "hostId",
+            "expiresAt"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "LocalWebApproveParams": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedGeneration": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "requestId",
+        "expectedGeneration"
+      ],
+      "additionalProperties": false
+    },
+    "LocalWebApproveResult": {
+      "type": "object",
+      "properties": {
+        "deviceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "observe"
+            ]
+          }
+        }
+      },
+      "required": [
+        "deviceId",
+        "scopes"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "deviceId": "01234567-89ab-cdef-0123-456789abcdef",
+          "scopes": [
+            "observe"
+          ]
+        }
+      ]
+    },
+    "LocalWebApproveRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "web.approve"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalWebApproveParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "approve",
+          "method": "web.approve",
+          "params": {
+            "requestId": "01234567-89ab-cdef-0123-456789abcdef",
+            "expectedGeneration": "host-generation"
+          }
+        }
+      ]
+    },
+    "LocalWebEndpointRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "web.endpoint"
+        },
+        "params": {
+          "$ref": "#/$defs/EmptyParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "endpoint",
+          "method": "web.endpoint",
+          "params": {}
+        }
+      ]
+    },
+    "WorktreeDisplay": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string"
+        },
+        "directory": {
+          "type": "string"
+        },
+        "checkoutRoot": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "base": {
+          "type": "string"
+        },
+        "sourceRoot": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "automatic": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "state",
+        "directory",
+        "checkoutRoot",
+        "branch",
+        "base",
+        "sourceRoot",
+        "requestId",
+        "automatic"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationMediaParams": {
+      "type": "object",
+      "properties": {
+        "view": {
+          "type": "string",
+          "const": "conversation"
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceThreadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uri": {
+          "type": "string",
+          "pattern": "^areal://blob/[0-9a-f]{64}$"
+        },
+        "offset": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "maximum": 16777215,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "length": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "maximum": 65536,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "view",
+        "threadId",
+        "subscriptionId",
+        "serviceGeneration",
+        "turnId",
+        "itemId",
+        "uri"
+      ],
+      "additionalProperties": false
+    },
+    "ConversationMediaResult": {
+      "type": "object",
+      "properties": {
+        "connectionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "gatewayGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subscriptionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "serviceGeneration": {
+          "type": "string",
+          "minLength": 1
+        },
+        "threadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceThreadId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "turnId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "itemId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uri": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "view": {
+          "type": "string",
+          "const": "conversation"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777216
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base64": {
+          "type": "string"
+        },
+        "raster": {
+          "$ref": "#/$defs/NativeCoreObject"
+        }
+      },
+      "required": [
+        "connectionId",
+        "gatewayGeneration",
+        "subscriptionId",
+        "projectId",
+        "serviceGeneration",
+        "threadId",
+        "sourceThreadId",
+        "turnId",
+        "itemId",
+        "uri",
+        "mimeType",
+        "sequence",
+        "view",
+        "offset",
+        "totalBytes",
+        "nextOffset",
+        "base64"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "connectionId": "01234567-89ab-cdef-0123-456789abcdef",
+          "gatewayGeneration": "host-generation",
+          "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef",
+          "sequence": 0,
+          "projectId": "project",
+          "serviceGeneration": "core-generation",
+          "threadId": "thread",
+          "view": "conversation",
+          "sourceThreadId": "thread",
+          "turnId": "turn",
+          "itemId": "item",
+          "uri": "areal://blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "mimeType": "application/octet-stream",
+          "offset": 0,
+          "totalBytes": 1,
+          "nextOffset": null,
+          "base64": "AA=="
+        }
+      ]
+    },
+    "LoopbackArtifactReadRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "artifact.read"
+        },
+        "context": {
+          "$ref": "#/$defs/ReadContext"
+        },
+        "params": {
+          "$ref": "#/$defs/ConversationMediaParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "context",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "artifact.read",
+          "params": {
+            "threadId": "thread",
+            "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef",
+            "serviceGeneration": "core-generation",
+            "view": "conversation",
+            "turnId": "turn",
+            "itemId": "item",
+            "uri": "areal://blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "version": 1,
+          "context": {
+            "projectId": "project",
+            "serviceGeneration": "core-generation"
+          }
+        }
+      ]
+    },
+    "RemoteLegacyArtifactReadParams": {
+      "type": "object",
+      "properties": {
+        "artifactRef": {
+          "type": "string",
+          "x-maxUtf8Bytes": 2048
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 49152
+        }
+      },
+      "required": [
+        "artifactRef",
+        "offset",
+        "length"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteLegacyArtifactReadResult": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "turnId": {
+          "type": "string"
+        },
+        "itemId": {
+          "type": "string"
+        },
+        "connectionId": {
+          "type": "string"
+        },
+        "gatewayGeneration": {
+          "type": "string"
+        },
+        "serviceGeneration": {
+          "type": "string"
+        },
+        "artifactRef": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "totalBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18446744073709551615
+        },
+        "nextOffset": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "base64": {
+          "type": "string"
+        },
+        "raster": {
+          "type": "object",
+          "properties": {
+            "mime": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 18446744073709551615
+            }
+          },
+          "required": [
+            "mime",
+            "width",
+            "height"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "projectId",
+        "threadId",
+        "turnId",
+        "itemId",
+        "connectionId",
+        "gatewayGeneration",
+        "serviceGeneration",
+        "artifactRef",
+        "offset",
+        "totalBytes",
+        "nextOffset",
+        "base64",
+        "raster"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "projectId": "example",
+          "threadId": "example",
+          "turnId": "example",
+          "itemId": "example",
+          "connectionId": "example",
+          "gatewayGeneration": "example",
+          "serviceGeneration": "example",
+          "artifactRef": "example",
+          "offset": 0,
+          "totalBytes": 0,
+          "nextOffset": 0,
+          "base64": "example",
+          "raster": {
+            "mime": "example",
+            "width": 0,
+            "height": 0
+          }
+        }
+      ]
+    },
+    "ReadError": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "coreError": {
+          "$ref": "#/$defs/NativeCoreObject"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "NavigationPreferences": {
+      "type": "object",
+      "properties": {
+        "sidebarSort": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "priority",
+            "updated_at"
+          ]
+        },
+        "sidebarSortChats": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "priority",
+            "updated_at"
+          ]
+        },
+        "sidebarSortProjects": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "priority",
+            "updated_at"
+          ]
+        },
+        "sidebarSortPinned": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "priority",
+            "updated_at"
+          ]
+        },
+        "showPinned": {
+          "type": "boolean"
+        },
+        "showCompleted": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "RemoteShellSubscribeRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "shell.subscribe"
+        },
+        "params": {
+          "$ref": "#/$defs/EmptyParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "description": "Available only after gui-read-v1 hello negotiation; project and navigation content remain constrained by the existing device grant.",
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "shell.subscribe",
+          "params": {}
+        }
+      ]
+    },
+    "RemoteShellUnsubscribeRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "shell.unsubscribe"
+        },
+        "params": {
+          "$ref": "#/$defs/ReadSubscriptionParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "description": "Available only after gui-read-v1 hello negotiation; project and navigation content remain constrained by the existing device grant.",
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "shell.unsubscribe",
+          "params": {
+            "subscriptionId": "01234567-89ab-cdef-0123-456789abcdef"
+          }
+        }
+      ]
+    },
+    "LocalWebDevice": {
+      "type": "object",
+      "properties": {
+        "deviceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "observe"
+            ]
+          }
+        },
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "deviceId",
+        "scopes",
+        "fingerprint"
+      ],
+      "additionalProperties": false
+    },
+    "LocalWebDevicesResult": {
+      "type": "object",
+      "properties": {
+        "devices": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/LocalWebDevice"
+          }
+        }
+      },
+      "required": [
+        "devices"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "devices": [
+            {
+              "deviceId": "01234567-89ab-cdef-0123-456789abcdef",
+              "scopes": [
+                "observe"
+              ],
+              "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          ]
+        }
+      ]
+    },
+    "LocalWebRevokeParams": {
+      "type": "object",
+      "properties": {
+        "deviceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedGeneration": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "deviceId",
+        "expectedGeneration"
+      ],
+      "additionalProperties": false
+    },
+    "LocalWebRevokeResult": {
+      "type": "object",
+      "properties": {
+        "deviceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revoked": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "required": [
+        "deviceId",
+        "revoked"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "deviceId": "01234567-89ab-cdef-0123-456789abcdef",
+          "revoked": true
+        }
+      ]
+    },
+    "LocalWebDevicesRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "web.devices"
+        },
+        "params": {
+          "$ref": "#/$defs/EmptyParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "browser-devices",
+          "method": "web.devices",
+          "params": {}
+        }
+      ]
+    },
+    "LocalWebRevokeRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "web.revoke"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalWebRevokeParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "browser-revoke",
+          "method": "web.revoke",
+          "params": {
+            "deviceId": "01234567-89ab-cdef-0123-456789abcdef",
+            "expectedGeneration": "host-generation"
+          }
         }
       ]
     }
@@ -13162,6 +15586,26 @@
           "request": "#/$defs/LocalWebTicketRequest",
           "result": "#/$defs/LocalWebTicketResult",
           "source": "core/host/src/server.rs"
+        },
+        "web.approve": {
+          "request": "#/$defs/LocalWebApproveRequest",
+          "result": "#/$defs/LocalWebApproveResult",
+          "source": "core/host/src/server.rs"
+        },
+        "web.endpoint": {
+          "request": "#/$defs/LocalWebEndpointRequest",
+          "result": "#/$defs/LoopbackEndpoint",
+          "source": "core/host/src/server.rs"
+        },
+        "web.devices": {
+          "request": "#/$defs/LocalWebDevicesRequest",
+          "result": "#/$defs/LocalWebDevicesResult",
+          "source": "core/host/src/server.rs"
+        },
+        "web.revoke": {
+          "request": "#/$defs/LocalWebRevokeRequest",
+          "result": "#/$defs/LocalWebRevokeResult",
+          "source": "core/host/src/server.rs"
         }
       },
       "framing": {
@@ -13295,6 +15739,18 @@
           "request": "#/$defs/RemoteDevicePushUnregisterRequest",
           "result": "#/$defs/RemoteDevicePushUnregisterResult",
           "source": "core/host/src/gateway/push.rs"
+        },
+        "shell.subscribe": {
+          "request": "#/$defs/RemoteShellSubscribeRequest",
+          "result": "#/$defs/ShellSubscriptionResult",
+          "source": "core/host/src/gateway/shared_reads.rs",
+          "capability": "gui-read-v1"
+        },
+        "shell.unsubscribe": {
+          "request": "#/$defs/RemoteShellUnsubscribeRequest",
+          "result": "#/$defs/ReadSubscriptionClosed",
+          "source": "core/host/src/gateway/shared_reads.rs",
+          "capability": "gui-read-v1"
         }
       },
       "hello": "#/$defs/RemoteHello",
@@ -13303,7 +15759,9 @@
         "pairing": "#/$defs/RemotePairing",
         "ready": "#/$defs/RemoteReady",
         "session.updated": "#/$defs/RemoteSessionUpdated",
-        "session.invalidated": "#/$defs/RemoteSessionInvalidated"
+        "session.invalidated": "#/$defs/RemoteSessionInvalidated",
+        "shell.updated": "#/$defs/ShellUpdated",
+        "shell.invalidated": "#/$defs/ShellInvalidated"
       },
       "limits": {
         "applicationMessageBytes": 262144,
@@ -13364,6 +15822,36 @@
           "request": "#/$defs/LocalHostStatusRequest",
           "result": "#/$defs/LocalHostStatusResult",
           "source": "core/host/src/server.rs"
+        },
+        "shell.subscribe": {
+          "request": "#/$defs/LoopbackShellSubscribeRequest",
+          "result": "#/$defs/ShellSubscriptionResult",
+          "source": "core/host/src/loopback.rs"
+        },
+        "shell.unsubscribe": {
+          "request": "#/$defs/LoopbackShellUnsubscribeRequest",
+          "result": "#/$defs/ReadSubscriptionClosed",
+          "source": "core/host/src/loopback.rs"
+        },
+        "session.open": {
+          "request": "#/$defs/LoopbackSessionOpenRequest",
+          "result": "#/$defs/ConversationOpenResult",
+          "source": "core/host/src/loopback.rs"
+        },
+        "session.history": {
+          "request": "#/$defs/LoopbackSessionHistoryRequest",
+          "result": "#/$defs/ConversationHistoryResult",
+          "source": "core/host/src/loopback.rs"
+        },
+        "subscription.close": {
+          "request": "#/$defs/LoopbackSubscriptionCloseRequest",
+          "result": "#/$defs/ReadSubscriptionClosed",
+          "source": "core/host/src/loopback.rs"
+        },
+        "artifact.read": {
+          "request": "#/$defs/LoopbackArtifactReadRequest",
+          "result": "#/$defs/ConversationMediaResult",
+          "source": "core/host/src/loopback.rs"
         }
       },
       "framing": {
@@ -13376,6 +15864,24 @@
         "pendingTickets": 64,
         "connections": 32,
         "handshakeTimeoutMs": 10000
+      },
+      "http": {
+        "/host/auth/challenge": {
+          "method": "POST",
+          "request": "#/$defs/BrowserChallengeParams",
+          "result": "#/$defs/BrowserChallengeResult"
+        },
+        "/host/auth/ticket": {
+          "method": "POST",
+          "request": "#/$defs/BrowserTicketParams",
+          "result": "#/$defs/LocalWebTicketResult"
+        }
+      },
+      "events": {
+        "shell.updated": "#/$defs/LoopbackNotification",
+        "shell.invalidated": "#/$defs/LoopbackNotification",
+        "session.updated": "#/$defs/LoopbackNotification",
+        "session.invalidated": "#/$defs/LoopbackNotification"
       }
     }
   },
@@ -13406,6 +15912,12 @@
     },
     {
       "$ref": "#/$defs/LoopbackResponse"
+    },
+    {
+      "$ref": "#/$defs/LoopbackReadRequest"
+    },
+    {
+      "$ref": "#/$defs/LoopbackNotification"
     }
   ],
   "x-proposals": {

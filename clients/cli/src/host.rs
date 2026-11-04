@@ -35,7 +35,17 @@ pub enum UpdateCommand {
     },
 }
 #[derive(Subcommand)]
+pub enum WebCommand {
+    Approve { request_id: String },
+    Devices,
+    Revoke { device_id: String },
+}
+#[derive(Subcommand)]
 pub enum HostCommand {
+    Web {
+        #[command(subcommand)]
+        action: WebCommand,
+    },
     Run {
         #[arg(long)]
         managed: bool,
@@ -93,6 +103,20 @@ pub enum HostCommand {
 }
 pub async fn execute(command: HostCommand) -> Result<()> {
     let value = match command {
+        HostCommand::Web {
+            action: WebCommand::Approve { request_id },
+        } => serde_json::to_value(
+            Client::connect()
+                .await?
+                .approve_browser(&request_id)
+                .await?,
+        )?,
+        HostCommand::Web {
+            action: WebCommand::Devices,
+        } => serde_json::to_value(Client::connect().await?.browser_devices().await?)?,
+        HostCommand::Web {
+            action: WebCommand::Revoke { device_id },
+        } => serde_json::to_value(Client::connect().await?.revoke_browser(&device_id).await?)?,
         HostCommand::Run { managed } => {
             let options = areal_host::RunOptions::current()?;
             if !managed && areal_host::ServiceInstallation::start_installed(&options.home).await? {
