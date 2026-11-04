@@ -217,16 +217,36 @@ describe("no-renderer-desktop-bridge", () => {
     );
     expect(result.status).toBe(0);
   });
-  test("allows decoding contracts but not preload access in desktop-response.ts", () => {
-    const filename = "clients/gui/renderer/src/desktop-response.ts";
-    expect(
-      lint(
-        "no-renderer-desktop-bridge",
-        'import { desktopError } from "@areal/workbench/desktop-contract/transport";',
-        filename,
-      ).status,
-    ).toBe(0);
-    expect(lint("no-renderer-desktop-bridge", "window.arealDesktop;", filename).status).toBe(1);
+  test.each([
+    {
+      filename: "clients/gui/renderer/src/desktop-response.ts",
+      source: 'import { desktopError } from "@areal/workbench/desktop-contract/transport";',
+    },
+    {
+      filename: "clients/gui/renderer/src/host-services.ts",
+      source:
+        'import { readObservationResult } from "@areal/workbench/desktop-contract/conversation-history";',
+    },
+  ])("allows decoding contracts but not preload access in $filename", ({ filename, source }) => {
+    expect(lint("no-renderer-desktop-bridge", source, filename).status).toBe(0);
+    for (const preload of ["window.arealDesktop;", "window.arealHost;"]) {
+      const result = lint("no-renderer-desktop-bridge", preload, filename);
+      expect(result.status).toBe(1);
+      expect(result.output).toContain("areal(no-renderer-desktop-bridge)");
+    }
+  });
+  test.each([
+    "clients/gui/renderer/src/settings/host-services.ts",
+    "clients/gui/renderer/src/host-services.tsx",
+    "clients/gui/renderer/src/host-services-helper.ts",
+  ])("rejects contract decoding in a lookalike Host adapter: %s", (filename) => {
+    const result = lint(
+      "no-renderer-desktop-bridge",
+      'import { readObservationResult } from "@areal/workbench/desktop-contract/conversation-history";',
+      filename,
+    );
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("areal(no-renderer-desktop-bridge)");
   });
   test.each([
     "clients/gui/renderer/src/settings/desktop-services.ts",
