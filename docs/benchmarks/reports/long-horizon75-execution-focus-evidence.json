@@ -13,7 +13,7 @@
     "bw": 20
   },
   "candidate_valid": 75,
-  "candidate_quality_known": 73,
+  "candidate_quality_known": 74,
   "versions": {
     "core": "1f6cc627a1754b32c32a5c396a9e58c8dd727deb",
     "codex": "0.166.0",
@@ -36,7 +36,7 @@
   },
   "ratios_direction": "candidate/comparator, below1usesless; absolutewalltimesnotpooledacrosslocalDockerandArena",
   "quality_scales_pooled": false,
-  "source_effective75_sha256": "4bde660b49b3d33a8876729d0626a50dd9453f2c0b8d3297d4e591b7f4d735d2",
+  "source_effective75_sha256": "aedb93ac79ea9d0d6e7fb9c19dbafbe392bcb2ed7090950f850e740c6f4b2bd1",
   "comparisons": [
     {
       "comparator": "areal_baseline",
@@ -3175,14 +3175,14 @@
       "transport_cohort": "original_frozen_environment",
       "candidate": {
         "execution_confident": true,
-        "status": "EVALUATING",
+        "status": "DONE",
         "duration_seconds": 2598.45915733,
         "known_total_tokens": 791281,
         "requests": 37,
         "unknown_usage_requests": 0,
-        "quality_status": "UNKNOWN",
-        "quality": null,
-        "source_record_sha256": "14e5d4a0f8c0bed32e5c6d4279e2b34e50c93848b87a0a51b7e12032e3648ae4"
+        "quality_status": "ORIGINAL_REWARD_WITH_PRIMARY_PROVENANCE",
+        "quality": 0.3893,
+        "source_record_sha256": "1382bd303eca433255f214820de54958bae88cf28800d093b528e5c779d422fe"
       },
       "areal_baseline": {
         "execution_confident": false,
@@ -3305,5 +3305,14 @@
     "tests_source_sha256": "0c8cc199037f1dbf402374724b87b04d0f7f45f0120ec14e9520d890ca3f8f53",
     "prior_checkpoint_metrics_unchanged": true,
     "known_chrome_anomalies_retained": true
+  },
+  "original_quality_update": {
+    "sample": "bw-20",
+    "score": 0.3893,
+    "native_valid_comparator_available": false,
+    "all_author_efficiency_records_unchanged": 225,
+    "new_author_attempts": 0,
+    "new_judge_calls": 0,
+    "source_record_digest_format": "SHA256 of json.dumps(original record, sort_keys=True) with Python default separators and ensure_ascii=True"
   }
 }
