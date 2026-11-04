@@ -638,6 +638,21 @@
     "requires": ["browser", "core-binary", "gui-build", "git"]
   },
   {
+    "script": "test:remote-crash-recovery",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote"],
+    "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl"]
+  },
+  {
+    "script": "test:remote-crash-recovery-lldb",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "The deterministic barrier uses macOS LLDB attachment.",
+    "areas": ["remote"],
+    "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl", "lldb"]
+  },
+  {
     "script": "test:remote-session",
     "layer": "contract",
     "platforms": ["darwin", "linux"],

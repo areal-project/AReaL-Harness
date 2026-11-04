@@ -98,10 +98,13 @@ export async function nativeHostFixture(
   let child = await startHost();
   let restartReference;
   let identity;
+  let crashStopped = false;
   t.after(async () => {
+    let phase = "remote-close";
     try {
       await Promise.all(instances.map((remote) => remote.close()));
       source.close();
+      phase = "restart-receipt";
       if (restartReference) {
         const receipt = readHostReceipt(
           restartReference,
@@ -114,6 +117,7 @@ export async function nativeHostFixture(
           "original restart stop remains UNKNOWN; preserve fixture",
         );
       }
+      phase = "successor-identity";
       if (!identity && evidence.restarts?.length && child.exitCode === null) {
         const current = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
         assert.equal(current.pid, child.pid);
@@ -125,7 +129,21 @@ export async function nativeHostFixture(
         identity = current;
         evidence.host = current;
       }
+      if (!identity && evidence.crashes?.length && !crashStopped && child.exitCode === null) {
+        const current = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+        const previous = evidence.crashes.at(-1).before;
+        assert.equal(current.pid, child.pid);
+        assert.equal(current.hostId, previous.hostId);
+        assert.notEqual(current.generation, previous.generation);
+        host.close();
+        await host.connect(home);
+        assert.equal(host.hostId, current.hostId);
+        assert.equal(host.generation, current.generation);
+        identity = current;
+        evidence.host = current;
+      }
       if (identity) {
+        phase = "ensure-receipt";
         if (evidence.ensure) {
           const original = evidence.ensure.reference;
           await until(async () => {
@@ -139,6 +157,7 @@ export async function nativeHostFixture(
             return ["completed", "blocked"].includes(operation.state);
           }, "original project ensure settlement before fixture stop");
         }
+        phase = "host-stop";
         const reference = expectedUnknownSettlement?.reference ?? {
           kind: "stopHost",
           requestId: randomUUID(),
@@ -237,10 +256,13 @@ export async function nativeHostFixture(
         assert.ok(receipt, `UNKNOWN original fixture stop ${reference.requestId}; no replay`);
         if (!observation.harnessTermination) assert.equal(receipt.state, "completed");
       }
+      phase = "host-exit";
       await until(() => child.exitCode !== null || child.signalCode !== null, "owned Host exit");
-      if (evidence.cleanup.some((entry) => entry.harnessTermination))
+      if (crashStopped) assert.equal(child.signalCode, "SIGKILL");
+      else if (evidence.cleanup.some((entry) => entry.harnessTermination))
         assert(child.exitCode === 0 || child.signalCode === "SIGTERM");
       else assert.equal(child.exitCode, 0);
+      phase = "synthetic-keychain-cleanup";
       const service = `org.areal.host.v1.${digest(home)}`;
       for (const directory of ["vault-operations", "remote-operations"]) {
         for (const name of await readdir(join(home, "host", directory)).catch((error) => {
@@ -283,12 +305,18 @@ export async function nativeHostFixture(
           }
         }
       }
+      phase = "binary-identity";
       assert.equal(
         digest(await readFile(binary)),
         evidence.binarySha256,
         "fixed binary remained unchanged",
       );
+    } catch (error) {
+      evidence.cleanupError = { phase, message: String(error) };
+      throw error;
     } finally {
+      for (const remote of instances) remote.storage.close();
+      source.close();
       host.close();
       if (child.exitCode === null && child.signalCode === null) {
         evidence.cleanupRequired =
@@ -395,10 +423,63 @@ export async function nativeHostFixture(
     await writeFile(join(root, "evidence.json"), JSON.stringify(evidence, null, 2));
     return remote;
   };
+  const crashRestart = async (
+    beforeRestart,
+    terminate = () => assert.equal(child.kill("SIGKILL"), true),
+  ) => {
+    const previous = structuredClone(identity);
+    assert.equal(child.pid, previous.pid);
+    const current = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+    assert.deepEqual(current, previous);
+    await terminate(child.pid);
+    await until(() => child.exitCode !== null || child.signalCode !== null, "crashed Host exit");
+    assert.equal(child.signalCode, "SIGKILL");
+    const observation = { before: previous, originalExited: true, signal: "SIGKILL" };
+    (evidence.crashes ??= []).push(observation);
+    identity = undefined;
+    delete evidence.host;
+    crashStopped = true;
+    host.close();
+    try {
+      await beforeRestart();
+    } catch (error) {
+      observation.beforeRestartError = String(error);
+      throw error;
+    }
+    child = await startHost();
+    crashStopped = false;
+    await until(async () => {
+      assert.equal(child.exitCode, null);
+      try {
+        await host.connect(home);
+        return true;
+      } catch {
+        host.close();
+        return false;
+      }
+    }, "crash successor authenticated startup");
+    identity = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+    assert.equal(identity.hostId, previous.hostId);
+    assert.notEqual(identity.generation, previous.generation);
+    assert.equal(identity.pid, child.pid);
+    evidence.host = identity;
+    observation.after = identity;
+    await source.reconnect();
+    return make();
+  };
+  const resumeOwnedHost = async (pid) => {
+    assert.equal(child.pid, pid);
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    const current = JSON.parse(await readFile(join(home, "host/host.json"), "utf8"));
+    assert.deepEqual(current, identity);
+    assert.equal(child.kill("SIGCONT"), true);
+  };
   return {
     remote: deferNative ? null : await make(),
     make,
     restart,
+    crashRestart,
+    resumeOwnedHost,
     home,
     source,
     client: host,
