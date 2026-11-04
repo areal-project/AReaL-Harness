@@ -131,7 +131,9 @@ impl Fixture {
             &deployment,
             serde_json::to_vec(
                 &json!({"profiles":[{"id":"services","revision":"v1","displayName":"Services",
-            "instructions":"","allowThreadProcesses":true}]}),
+            "instructions":"","allowThreadProcesses":true},
+            {"id":"no-services","revision":"v1","displayName":"No services",
+            "instructions":"","allowThreadProcesses":false}]}),
             )
             .unwrap(),
         )
@@ -182,6 +184,80 @@ fn request(thread: &Thread, timeout: u64) -> ProcessStart {
         "argv":["fixture-service"],"timeoutMs":timeout}),
     )
     .unwrap()
+}
+
+#[tokio::test]
+async fn development_service_visibility_matches_profile_admission() {
+    for (profile, allowed) in [
+        (None, false),
+        (Some("no-services"), false),
+        (Some("services"), true),
+    ] {
+        let fixture = Fixture::new(false).await;
+        let thread = fixture
+            .engine
+            .create(
+                fixture
+                    ._directory
+                    .path()
+                    .join("workspace")
+                    .to_string_lossy()
+                    .into_owned(),
+            )
+            .await
+            .unwrap();
+        fixture
+            .engine
+            .configure_thread(
+                serde_json::from_value(json!({
+                    "threadId":thread.id,"expectedRevision":1,
+                    "agentProfile":profile.map(|id| json!({"id":id,"revision":"v1"}))
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        let inspection = fixture.engine.inspect(&thread.id).await.unwrap();
+        let tools = inspection["tools"].as_array().unwrap();
+        assert_eq!(
+            tools
+                .iter()
+                .any(|tool| tool["function"]["name"] == "development_service_start"),
+            allowed,
+            "profile {profile:?}"
+        );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["function"]["name"] == "development_service_inspect")
+        );
+        // 隐藏 schema 不能替代执行授权；旧调用仍走相同的拒绝路径。
+        let result = fixture
+            .engine
+            .process_start("fixture".into(), request(&thread, 120000))
+            .await;
+        if allowed {
+            assert!(result.is_ok());
+        } else {
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("profile does not authorize thread resources")
+            );
+        }
+        assert_eq!(
+            fixture
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|call| call["method"] == "process.start")
+                .count(),
+            usize::from(allowed)
+        );
+        fixture.close().await;
+    }
 }
 
 #[tokio::test]

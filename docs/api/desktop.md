@@ -292,6 +292,8 @@ GUI 终端选择账户中可执行的登录 shell，缺失时依次尝试 `SHELL
 
 面向模型的 `development_service_inspect` 只列出当前 Thread 的受管记录，或返回单条记录的 Runtime 当前状态与最多 16 KiB 输出。`development_service_start` 通过同一持久 process/start 所有者提交 thread 生命周期进程，请求身份由可信的 Core Thread、Turn 和工具调用 ID 生成。省略 `timeoutMs` 时继承已授权的服务父限额，不另申请固定 24 小时。Core 审批、Profile 权限和 Runtime 写入序列化检查仍然生效。启动结果未知时检查原记录，不自动重发。这两个工具不另建进程执行器，也不推断监听端口。
 
+有效配置没有 Profile 或其 `allowThreadProcesses` 为 false 时，Core 不向模型展示原生 `development_service_start`；`development_service_inspect` 仍可用于查看已有记录。允许线程进程的 Profile 继续展示启动工具，但不替代其他权限和资源检查。此过滤只影响原生工具的模型输入，旧的显式调用仍由原执行准入规则处理，不改变 RPC 或持久记录格式。
+
 显式配置较长 `--desktop-process-timeout-ms` 时，已获 Profile 授权的根 Thread 服务使用部署生命周期 Scope，普通命令继续使用 `--command-timeout-ms` 的收窄 Scope。服务省略 `timeoutMs` 时继承父 Scope 的上限；显式值仍只能收窄。子 Thread 服务必须继承仍可确认的父 Turn Scope，父边界不可用时拒绝启动。命令与服务的 hook 参与 Scope 分别保留身份和 UNKNOWN 回执，关闭 Thread 时全部收尾。
 
 旧 epoch 句柄为 STALE_HANDLE，不恢复活进程。Thread 进程清理未确认、活动组或压缩阻止 restartSafe。纯历史工具或 Hook UNKNOWN 不阻止停止服务，但原 Thread 继续前仍需检查。归档需空闲且队列/资源结算，释放热历史并保留磁盘和去重键；GC 在 drain 完成后扫描冷热引用，不能删除历史仍引用的 Blob。

@@ -1171,6 +1171,15 @@ impl Engine {
             {
                 return false;
             }
+            // Profile 明确禁止的原生启动能力不进入模型输入；历史服务仍可检查。
+            if name == "development_service_start"
+                && !config.profile.as_ref().is_some_and(|profile| profile.allow_thread_processes)
+                && bindings.registry.get(name).is_ok_and(|entry| {
+                    matches!(entry.backend, crate::tools::Backend::Core)
+                })
+            {
+                return false;
+            }
             (name != "mcp_tool_search" || self.extensions.policy.lazy_mcp_schemas)
                 && (!name.starts_with("scheduled_task_") || schedules_available)
                 && (!matches!(name, "task_spawn" | "task_wait" | "task_channel_read") || goal_enabled)
