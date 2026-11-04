@@ -2,11 +2,12 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { AppProviders } = require("../app/src/core/providers.cjs");
+const { legacyOpenAI } = require("./fixtures/legacy-subscription-owner.cjs");
 const { mkdtemp, readFile, rm, stat } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 
-test("optional desktop audit preserves routing presence without persisting opaque state", async (t) => {
+test("legacy Desktop reference audit preserves routing presence without persisting opaque state", async (t) => {
   const previous = process.env.AREAL_CORE_PROVIDER_AUDIT;
   process.env.AREAL_CORE_PROVIDER_AUDIT = "1";
   t.after(() => {
@@ -17,7 +18,7 @@ test("optional desktop audit preserves routing presence without persisting opaqu
   t.after(() => rm(home, { recursive: true, force: true }));
   const providers = new AppProviders({ home, host: { sourceId: "fixture" } }, {});
   providers.transport = { port: 0 };
-  const service = await providers.openai();
+  const service = await legacyOpenAI.call(providers);
   t.after(() => service.close());
   await service.onRequest({
     providerId: "fixture",
@@ -45,7 +46,7 @@ test("optional desktop audit preserves routing presence without persisting opaqu
   delete process.env.AREAL_CORE_PROVIDER_AUDIT;
   const disabled = new AppProviders({ home, host: { sourceId: "fixture" } }, {});
   disabled.transport = { port: 0 };
-  const quiet = await disabled.openai();
+  const quiet = await legacyOpenAI.call(disabled);
   t.after(() => quiet.close());
   assert.equal(quiet.onRequest, undefined);
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRequire } from "node:module";
-import { mkdtemp, rm, stat } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -144,7 +144,7 @@ test("dependency failure reaches the connection snapshot before any background o
   await assert.rejects(backend.init(), { code: "HOST_PREREQUISITE_UNAVAILABLE" });
   assert.equal(backend.snapshot().connection.state, "unavailable");
   assert.equal(backend.snapshot().connection.prerequisite.reason, "developer-tools-unavailable");
-  assert.equal(backend.desktopLifetimes.size, 0);
+  assert.equal(backend.mainDesktop, undefined);
   await assert.rejects(stat(join(home, "service.log")), { code: "ENOENT" });
   assert.equal(backend.reconnectTimer, null, "dependency failures wait for an explicit retry");
 });
@@ -152,7 +152,9 @@ test("dependency failure reaches the connection snapshot before any background o
 test("reattaching an existing backend does not require a new interpreter launch", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "areal-prerequisite-attach-"));
   t.after(() => rm(home, { recursive: true, force: true }));
+  await writeFile(join(home, "service.json"), "{}", { mode: 0o600 });
   let probes = 0;
+  let attaches = 0;
   const backend = new SharedCoreBackend({
     app: { isPackaged: false, getPath: () => home },
     home,
@@ -163,15 +165,12 @@ test("reattaching an existing backend does not require a new interpreter launch"
     },
   });
   backend.attach = async () => {
+    attaches++;
     backend.status.connected = true;
     return true;
   };
   await backend.init();
+  assert.equal(attaches, 1);
   assert.equal(probes, 0);
   assert.equal(backend.status.connected, true);
-  assert.equal(
-    backend.backendUpdate.state,
-    "failed",
-    "an unavailable update identity does not interrupt the existing backend",
-  );
 });

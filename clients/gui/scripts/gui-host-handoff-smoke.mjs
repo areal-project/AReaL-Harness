@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { applicationFixture } from "./application-fixture.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import { lockVerificationSlot, verificationDoctor } from "./verification-build.mjs";
+import { makeTempDir } from "./support/temp.mjs";
 
 assert.ok(
   process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
@@ -48,7 +49,7 @@ const source = async () => {
 const evidenceRoot = join(root, ".scratch/shared-host/h2-gui-tui-handoff");
 await mkdir(evidenceRoot, { recursive: true });
 const evidence = await mkdtemp(join(evidenceRoot, "run-"));
-const state = await realpath(await mkdtemp("/private/tmp/ah-handoff-"));
+const state = await makeTempDir("ah-handoff-");
 const workspace = join(state, "workspace");
 const cliWorkspace = join(state, "cli-workspace");
 const exec = promisify(execFile);

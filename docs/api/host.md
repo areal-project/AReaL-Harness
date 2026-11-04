@@ -2,7 +2,7 @@
 
 # 共享 Host 协议
 
-本文包含已实现接口与后续目标契约。Host 提供认证后的项目管理、停止回执、订阅、旧服务迁移，以及 H2 的来源导入、旧秘密退役、提交 journal、固定凭据槽与 Remote 状态接口。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault` 和 `remoteState`，尚不提供 `updates`。普通 GUI 的项目连接、journal、凭据与 Remote 状态消费者使用 Host。完整退出语义、连接资源撤销、Remote 执行迁移和服务管理器交付仍在实施。协议定义不代表运行或安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
+当前实现提供认证后的项目管理、停止回执、状态订阅、旧服务迁移、来源导入、旧秘密退役、提交 journal 和固定凭据槽。Remote Gateway、定时激活与准备、provider subscription transport 和防休眠由 Host 持有；GUI 通过 Host 使用这些服务。`hello` 声明 `projects`、`stopOperations`、`subscriptions`、`legacyMigration`、`guiImport`、`submissionJournal`、`credentialVault`、`remoteState`、`remoteGatewayV1`、`subscriptionOwnerV1`、`activity`、`scheduledActivation`、`scheduledPreparation`、`powerV1` 和 `updates`。客户端按能力协商，开发布局仍可对受控更新返回 `updateUnavailable`。系统服务安装和受控更新接口已实现，完整 H0–H4 验收仍未完成；协议定义不代表真机、真实登录或签名安装包验收通过。另见[实施规格](../development/shared-host-spec.md)、[所有权决策](../adr/0016-shared-host.md)与[每项目服务契约](local-service.md)。
 
 ## 传输与认证
 
@@ -294,6 +294,8 @@ Host 仅通过已存在的共享 Core 连接读取 `areal/server/status`。活�
 macOS 由 Host 持有 `caffeinate -i -w <HostPID>`，Linux 使用 `systemd-inhibit` 与随 Host 关闭的标准输入租约。没有受保护活动或来源关闭该选项时释放对应保护；正常 Host 停止关闭并等待 helper，Host 崩溃时通过进程或管道生命期释放。helper 不可用只更新保护诊断，不停止 Core 业务。GUI 的通知仍仅在 GUI 在线时通过 Main 显示；此接口不负责手机推送。
 
 ## 退出与服务管理器契约
+
+描述发布使用同目录固定的 `.<服务名>.tmp`，以独占创建和私有权限写入、同步后原子替换。同一 home 的安装重试使用相同临时路径，便于按精确路径授权。已有临时文件或链接一律拒绝覆盖；写入或发布失败后的残留保留并报告路径，需核查归属后再清理。创建被拒绝且未留下文件时，可在系统授权后重跑同一安装命令。
 
 `areal host install` 在没有活动 Host 时注册当前 home 的用户级服务；已有 Host 持锁时先拒绝，要求显式停止后再安装。服务名为 `org.areal.host.<home摘要前16位>`，macOS 描述位于用户 `Library/LaunchAgents`，Linux 位于用户配置目录的 `systemd/user`。描述固定可执行入口和两个 Host home 环境变量。安装器或 Homebrew 的稳定 `bin/areal` 符号链接保留为启动入口，不固化它当前指向的版本目录。安装回执保存描述路径及摘要；不覆盖或删除无法与原回执匹配的描述。路径相关的安装错误标明失败阶段和路径，并保留底层原因；服务管理器错误保留其输出。
 
