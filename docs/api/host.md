@@ -101,6 +101,10 @@ GUI 的 `LaunchInputs.schedulePreparation` 显式选择 `managed` 或 `external`
 
 ## 停止回执与部分结算
 
+本机 Relay 纳入 `HostStopReceipt.localRelay` 的结算。该字段的 `state` 为 `acceptedPending`、`settlementIncomplete` 或 `completed`；后者要求服务关闭、受监督子进程退出及旧 Desktop 持锁进程退出。项目全部完成仍不足以结算尚未退出的 Relay。旧回执缺少此字段时保留原语义。
+
+Host 换代后，没有原子进程退出证明的未完成 Relay 目标保持 `settlementIncomplete`。新 Host 没有子进程句柄或观察到锁已释放，均不构成原请求成功结算；已经持久化的 `completed` 保留。
+
 `StopReceipt` 包含 `version:1`、`requestId`、`projectId`、`serviceId`、`serviceGeneration`、`strategy`、`state`，以及可选 `message`、`lifecycle`。状态沿用既有服务停止语义，即 `acceptedPending`、`blocked`、`admissionUnknown`、`settlementIncomplete`、`completed`。
 
 `HostStopReceipt` 包含 `version:1`、`requestId`、`hostId`、`generation`、`strategy`、`state`、`projects:StopTarget[]`。`StopTarget` 包含 `projectId`、`serviceId`、`serviceGeneration`、子操作 `requestId`、`dispatch:"notStarted"|"started"` 和可选 `receipt:StopReceipt`。`notStarted` 只表示 Host 尚未下发，不能伪装 Core 已受理。Host 在发送前持久化 `started`；崩溃后没有下层回执时按 UNKNOWN 对账，不假定未发送。汇总状态为 `acceptedPending`、`blocked`、`partial`、`admissionUnknown`、`settlementIncomplete` 或 `completed`。`partial` 表示至少一个目标完成且至少一个未完成；每个目标保留精确状态。`completed` 要求所有目标完成，且 Host 退出交接已持久化。已知忙碌拒绝为 `blocked`，不算 UNKNOWN。`admissionUnknown` 表示尚不能判定受理。UNKNOWN 只能用原 ID 查询，不能重放或自动改成新请求。
@@ -184,6 +188,8 @@ prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每�
 | `remote.gateway.subscribe` | `{sourceId}` | `{subscriptionId,generation,sequence:0,state:RemoteStatus}`；在同一认证连接上建立来源状态订阅。 |
 | `remote.gateway.control` | `{requestId,expectedGeneration,sourceId,request,assetRoot?}` | 沿用本机 `RemoteRequest` 与响应形状；配对二维码由 GUI Main 生成。 |
 | `remote.gateway.replace` | `{requestId,expectedGeneration,expectedRevision,sourceId,config}` | 沿用 `remote.replace` 的持久回执与 CAS 语义。 |
+
+本机 Relay 控制沿用 `relayServiceStartLocal`、`relayServiceStopLocal` 及 `relayUse`（含 `origin`）。原请求回执的 `completed` 证明配置意图已保存，不能单独证明监听就绪或子进程退出；实际阶段读取 `RemoteStatus.relayService.local`。`relayUse` 只选择已登记 profile，本机 profile 必须已由 Host 运行，外部 profile 仍要求 HTTPS。包内运行时不可用时报告启动失败，不查找系统 Node。旧 Store 只从已提交的迁移来源取得，核对原导入配置及源文件隔离标记，并持有旧 Desktop 单实例锁；原本机 Store 丢失时拒绝以空 Store 替代。
 
 `remote.gateway.subscribe` 需要 `remoteGatewayV1`。初始快照与订阅在同一连接中建立，后续 `remote.gateway.stateChanged` 通知使用 `{version:1,method,params:{subscriptionId,generation,sequence,state}}`，只发送实际状态变化。客户端核对原订阅 ID、Host generation 和连续递增序号后替换投影；缺口或身份变化关闭原连接并重新读取快照。断连即撤销订阅，旧投影不能接收新连接的事件。配对请求和在线状态通过该通道更新 GUI，秘密不进入通知。
 

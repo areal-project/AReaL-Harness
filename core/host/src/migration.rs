@@ -1749,6 +1749,52 @@ impl Migration {
         }
         Ok(sources)
     }
+    pub(crate) fn local_relay_home(&self, source: &str) -> Result<Option<PathBuf>> {
+        for record in self.records()? {
+            if record.source_id != source || self.committed(&record)?.is_none() {
+                continue;
+            }
+            let store = record.source.core_home.join("relay-service/local");
+            if !store.exists() {
+                if let Some(receipt) = record
+                    .vault_receipts
+                    .iter()
+                    .find(|receipt| receipt.slot == vault::Slot::RemoteIdentity)
+                {
+                    let original = self
+                        .vault
+                        .read(&receipt.entry_id)?
+                        .context("original Remote vault entry missing")?;
+                    ensure!(
+                        !original["relayLocal"].is_object()
+                            && !original["relayProfiles"]
+                                .as_array()
+                                .is_some_and(|profiles| profiles
+                                    .iter()
+                                    .any(|profile| profile["kind"] == "local")),
+                        "original local Relay store is missing"
+                    );
+                }
+                return Ok(None);
+            }
+            ensure!(
+                store.canonicalize()? == store,
+                "legacy Relay store path changed"
+            );
+            let original = record
+                .originals
+                .iter()
+                .find(|file| file.relative_name == "provider-credentials.json")
+                .context("legacy Relay source fence missing")?;
+            ensure!(
+                read_bytes(&record.source.core_home.join("provider-credentials.json"))?.as_deref()
+                    == Some(self.fence_bytes(&record, original)?.as_slice()),
+                "legacy Relay source fence changed"
+            );
+            return Ok(Some(record.source.core_home));
+        }
+        Ok(None)
+    }
     pub fn credential(
         &self,
         project: &ProjectRegistration,
@@ -1882,6 +1928,70 @@ mod tests {
             self.migration
                 .attach(self.source.clone(), "connection", None)
                 .unwrap();
+        }
+    }
+    #[test]
+    fn local_relay_requires_committed_source_and_exact_current_fence() {
+        let f = Fixture::new();
+        storage::private_dir(&f.source.core_home.join("relay-service/local")).unwrap();
+        f.import().unwrap();
+        let source = f.migration.read(&f.request).unwrap().source_id;
+        assert!(f.migration.local_relay_home(&source).unwrap().is_none());
+        f.attach();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        assert_eq!(
+            f.migration.local_relay_home(&source).unwrap(),
+            Some(f.source.core_home.clone())
+        );
+        let fence = std::fs::read(f.source.core_home.join("provider-credentials.json")).unwrap();
+        assert!(serde_json::from_slice::<Value>(&fence).is_err());
+        std::fs::write(
+            f.source.core_home.join("provider-credentials.json"),
+            b"AREAL_HOST_MIGRATED\n{}",
+        )
+        .unwrap();
+        assert!(f.migration.local_relay_home(&source).is_err());
+    }
+    #[test]
+    fn missing_original_local_store_is_not_recreated_from_current_configuration() {
+        for (original, missing) in [
+            (json!({"relayLocal":{"enabled":false}}), true),
+            (json!({"relayProfiles":[{"kind":"local"}]}), true),
+            (json!({"enabled":false}), false),
+        ] {
+            let f = Fixture::new();
+            storage::write(
+                &f.source.core_home.join("remote.json"),
+                &json!({"encrypted":"fixture-only"}),
+            )
+            .unwrap();
+            f.attach();
+            assert_eq!(f.import().unwrap()["phase"], "secretsPending");
+            let record = f.migration.read(&f.request).unwrap();
+            let secret = record
+                .secrets
+                .iter()
+                .find(|secret| secret.slot == vault::Slot::RemoteIdentity)
+                .unwrap();
+            f.migration
+                .import_secret(
+                    ImportSecret {
+                        request_id: uuid::Uuid::new_v4().to_string(),
+                        expected_generation: "fixture".into(),
+                        migration_id: f.request.clone(),
+                        slot: secret.slot.clone(),
+                        source_digest: secret.source_digest.clone(),
+                        value: original,
+                    },
+                    "connection",
+                )
+                .unwrap();
+            assert_eq!(f.import().unwrap()["kind"], "ready");
+            assert_eq!(
+                f.migration.local_relay_home(&record.source_id).is_err(),
+                missing
+            );
+            assert!(!f.source.core_home.join("relay-service/local").exists());
         }
     }
     #[test]

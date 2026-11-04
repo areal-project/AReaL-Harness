@@ -4,6 +4,7 @@ mod client;
 mod gateway;
 mod journal;
 mod launch;
+mod local_relay;
 mod migration;
 mod remote_state;
 mod schedule_admission;

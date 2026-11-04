@@ -1818,9 +1818,10 @@ impl Host {
             self.check_pending(id, &input.request_id).await?;
         }
         let (digest, _) = self.accepted(&input.request_id, "host.stop", &input, "")?;
-        let mut receipt = json!({"version":VERSION,"requestId":input.request_id,"hostId":self.identity.host_id,"generation":self.identity.generation,"strategy":input.strategy,"state":"acceptedPending","projects":[]});
+        let mut receipt = json!({"version":VERSION,"requestId":input.request_id,"hostId":self.identity.host_id,"generation":self.identity.generation,"strategy":input.strategy,"state":"acceptedPending","projects":[],"localRelay":{"state":"acceptedPending"}});
         storage::write(&self.home.join("host/stop.json"), &receipt)?;
         *self.stop.borrow_mut() = Some(receipt.clone());
+        self.gateway.local_relay.quiesce(true);
         self.changed();
         let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
         let mut guards = Vec::new();
@@ -1868,14 +1869,39 @@ impl Host {
             receipt["state"] = json!(aggregate(&receipt));
             self.save_host_stop(&input.request_id, &digest, &receipt)?;
         }
+        self.settle_local_relay(&mut receipt).await;
         receipt["state"] = json!(aggregate(&receipt));
         self.save_host_stop(&input.request_id, &digest, &receipt)?;
         Ok(receipt)
+    }
+    async fn settle_local_relay(&self, receipt: &mut Value) {
+        if receipt.get("localRelay").is_none() || receipt["localRelay"]["state"] == "completed" {
+            return;
+        }
+        if receipt["hostId"] != self.identity.host_id
+            || receipt["generation"] != self.identity.generation
+        {
+            receipt["localRelay"]["state"] = json!("settlementIncomplete");
+            return;
+        }
+        if !receipt["projects"].as_array().is_some_and(|targets| {
+            targets
+                .iter()
+                .all(|target| target["receipt"]["state"] == "completed")
+        }) {
+            return;
+        }
+        receipt["localRelay"]["state"] = json!(if self.gateway.local_relay.stop().await.is_ok() {
+            "completed"
+        } else {
+            "settlementIncomplete"
+        });
     }
     fn save_host_stop(&self, id: &str, digest: &str, receipt: &Value) -> Result<()> {
         self.save(id, digest, receipt)?;
         storage::write(&self.home.join("host/stop.json"), receipt)?;
         *self.stop.borrow_mut() = (!settled_refusal(receipt)).then(|| receipt.clone());
+        self.gateway.local_relay.quiesce(!settled_refusal(receipt));
         self.changed();
         Ok(())
     }
@@ -2073,10 +2099,8 @@ impl Host {
                     }
                 }
             }
-            if record.receipt["projects"]
-                .as_array()
-                .is_some_and(|targets| !targets.is_empty())
-            {
+            self.settle_local_relay(&mut record.receipt).await;
+            if record.receipt["projects"].is_array() {
                 record.receipt["state"] = json!(aggregate(&record.receipt));
             }
             let current = self
@@ -2142,6 +2166,15 @@ pub(crate) fn settled_refusal(receipt: &Value) -> bool {
 }
 fn aggregate(receipt: &Value) -> &'static str {
     let targets = receipt["projects"].as_array().unwrap();
+    if targets.iter().all(|t| t["receipt"]["state"] == "completed") {
+        if let Some(relay) = receipt.get("localRelay") {
+            return match relay["state"].as_str() {
+                Some("completed") => "completed",
+                Some("settlementIncomplete") => "settlementIncomplete",
+                _ => "acceptedPending",
+            };
+        }
+    }
     if targets.iter().all(|t| t["receipt"]["state"] == "completed") {
         return "completed";
     }
@@ -3001,6 +3034,20 @@ mod tests {
 
     #[test]
     fn aggregate_keeps_unknown_and_partial_targets_distinct() {
+        for state in ["acceptedPending", "settlementIncomplete", "completed"] {
+            assert_eq!(
+                aggregate(
+                    &json!({"projects":[{"receipt":{"state":"completed"}}],"localRelay":{"state":state}})
+                ),
+                state
+            );
+        }
+        assert_eq!(
+            aggregate(
+                &json!({"projects":[{"receipt":{"state":"blocked"}}],"localRelay":{"state":"acceptedPending"}})
+            ),
+            "blocked"
+        );
         assert_eq!(
             aggregate(
                 &json!({"projects":[{"receipt":{"state":"completed"}},{"dispatch":"notStarted"}]})
@@ -3013,5 +3060,50 @@ mod tests {
             ),
             "admissionUnknown"
         );
+    }
+
+    #[tokio::test]
+    async fn restored_host_does_not_settle_an_old_relay_without_original_exit_evidence() {
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().canonicalize().unwrap();
+        let (changes, _) = watch::channel(0);
+        let host = Host {
+            home: home.clone(),
+            bin: home.clone(),
+            identity: HostIdentity {
+                version: VERSION,
+                host_id: "same-host".into(),
+                generation: "replacement-generation".into(),
+                socket_path: home.join("socket"),
+                auth_file: home.join("auth"),
+                pid: std::process::id(),
+                executable_version: "fixture".into(),
+            },
+            token: "fixture".into(),
+            slots: RefCell::new(BTreeMap::new()),
+            stop: RefCell::new(None),
+            host_stop_gate: Mutex::new(()),
+            changes,
+            exit: Notify::new(),
+            migration: crate::migration::Migration::new(&home).unwrap().into(),
+            journal: crate::journal::Journal::new(&home).unwrap(),
+            remote: crate::remote_state::RemoteState::new(&home),
+            gateway: gateway_owner::Gateway::default(),
+            subscriptions: subscriptions::Subscriptions::default(),
+            schedules: schedules::Schedules::load(&home).unwrap(),
+            power: power::Power::default(),
+        };
+        let mut original = json!({"requestId":"original-stop","hostId":"same-host","generation":"original-generation","projects":[],"localRelay":{"state":"acceptedPending"}});
+        host.settle_local_relay(&mut original).await;
+        assert_eq!(original["localRelay"]["state"], "settlementIncomplete");
+        assert_eq!(aggregate(&original), "settlementIncomplete");
+        let mut completed = original.clone();
+        completed["localRelay"]["state"] = json!("completed");
+        host.settle_local_relay(&mut completed).await;
+        assert_eq!(completed["localRelay"]["state"], "completed");
+        let mut current = original.clone();
+        current["generation"] = json!(host.identity.generation);
+        host.settle_local_relay(&mut current).await;
+        assert_eq!(current["localRelay"]["state"], "completed");
     }
 }

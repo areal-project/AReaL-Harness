@@ -110,9 +110,9 @@ impl Host {
             } else {
                 String::new()
             };
-        Ok(
-            json!({"enabled":config["enabled"]==true,"connected":config["enabled"]==true && status["connected"]==true,"relay":relay,"relayError":if config["enabled"]==true && status["state"]=="unavailable"{match status["relayDiagnostic"].as_str(){Some("replaced")=>"Relay Host 已被替换；请确认后重新启用",Some("unsupported")=>"Relay 协议或传输限额不可用，请升级服务或调整配置后重新启用",_=>"远程入口暂不可用"}}else{""},"relayUrl":relay_url,"directEnabled":config["directEnabled"]==true,"directUrl":self.gateway.direct.borrow().as_ref().map(|handle|handle.origin().to_owned()).unwrap_or_default(),"directHostId":if config["directEnabled"]==true{host_peer.as_str()}else{""},"directError":self.gateway.direct_error.borrow().as_str(),"migrationError":"","pushSupported":status["pushSupported"]==true,"deviceGrants":grants,"devices":[],"pending":self.gateway.pairs.borrow().iter().filter(|(_,pair)|pair.expires_at>now() && pair.rejected.get().is_none()).map(|(peer,pair)|{let mut value=json!({"id":peer,"name":pair.name,"fingerprint":peer,"expiresAt":pair.expires_at});if let Some(kind)=&pair.client_kind{value["clientKind"]=json!(kind);}value}).collect::<Vec<_>>(),"network":{"kind":config["network"].get("kind").cloned().unwrap_or(Value::Null),"scope":config["network"].get("visibility").cloned().unwrap_or(Value::Null),"reconciliation":null,"publicOrigin":"","diagnostic":"","policy":"unknown","phoneAccess":"unknown","inspection":null}}),
-        )
+        let mut state = json!({"enabled":config["enabled"]==true,"connected":config["enabled"]==true && status["connected"]==true,"relay":relay,"relayError":if config["enabled"]==true && status["state"]=="unavailable"{match status["relayDiagnostic"].as_str(){Some("replaced")=>"Relay Host 已被替换；请确认后重新启用",Some("unsupported")=>"Relay 协议或传输限额不可用，请升级服务或调整配置后重新启用",_=>"远程入口暂不可用"}}else{""},"relayUrl":relay_url,"directEnabled":config["directEnabled"]==true,"directUrl":self.gateway.direct.borrow().as_ref().map(|handle|handle.origin().to_owned()).unwrap_or_default(),"directHostId":if config["directEnabled"]==true{host_peer.as_str()}else{""},"directError":self.gateway.direct_error.borrow().as_str(),"migrationError":"","pushSupported":status["pushSupported"]==true,"deviceGrants":grants,"devices":[],"pending":self.gateway.pairs.borrow().iter().filter(|(_,pair)|pair.expires_at>now() && pair.rejected.get().is_none()).map(|(peer,pair)|{let mut value=json!({"id":peer,"name":pair.name,"fingerprint":peer,"expiresAt":pair.expires_at});if let Some(kind)=&pair.client_kind{value["clientKind"]=json!(kind);}value}).collect::<Vec<_>>(),"network":{"kind":config["network"].get("kind").cloned().unwrap_or(Value::Null),"scope":config["network"].get("visibility").cloned().unwrap_or(Value::Null),"reconciliation":null,"publicOrigin":"","diagnostic":"","policy":"unknown","phoneAccess":"unknown","inspection":null}});
+        state["relayService"] = json!({"local":self.gateway.local_relay.state(),"deployment":null,"job":null,"profiles":config["relayProfiles"].as_array().into_iter().flatten().map(|profile|json!({"origin":profile["origin"],"kind":profile["kind"],"active":config["enabled"]==true && config["relay"]==profile["origin"]})).collect::<Vec<_>>()});
+        Ok(state)
     }
     pub(in crate::server) async fn gateway_control(
         self: &Rc<Self>,
@@ -203,10 +203,17 @@ impl Host {
             .as_str()
             .context("invalid Remote operation")?;
         let fields: &[&str] = match operation {
-            "status" | "disable" | "enableDirect" | "disableDirect" | "forgetRevoked"
-            | "cancelPair" => &["operation"],
+            "status"
+            | "disable"
+            | "enableDirect"
+            | "disableDirect"
+            | "forgetRevoked"
+            | "cancelPair"
+            | "relayServiceStartLocal"
+            | "relayServiceStopLocal" => &["operation"],
             "pair" => &["operation", "transport"],
             "enable" => &["operation", "relay", "code", "confirmed"],
+            "relayUse" => &["operation", "origin"],
             "revoke" | "reject" => &["operation", "id"],
             "renameDevice" => &["operation", "id", "name"],
             "updateGrant" | "approve" => &["operation", "id", "projects", "preset"],
@@ -225,6 +232,54 @@ impl Host {
             error("invalidRequest", "Remote operation fields are invalid")
         );
         match operation {
+            "relayServiceStartLocal" => {
+                self.local_relay_source(&input.source_id)?;
+                crate::local_relay::configure(&mut config)?;
+            }
+            "relayServiceStopLocal" => {
+                config["relayLocal"]["enabled"] = json!(false);
+                if config["relay"] == config["relayLocal"]["origin"] {
+                    config["enabled"] = json!(false);
+                }
+            }
+            "relayUse" => {
+                let profile = config["relayProfiles"]
+                    .as_array()
+                    .and_then(|profiles| {
+                        profiles
+                            .iter()
+                            .find(|profile| profile["origin"] == input.request["origin"])
+                    })
+                    .cloned()
+                    .context("Relay profile is not registered")?;
+                if profile["kind"] == "local" {
+                    let local = self.gateway.local_relay.state();
+                    ensure!(
+                        local["phase"] == "running" && local["address"] == profile["origin"],
+                        "start the local Relay before selecting it"
+                    );
+                } else {
+                    let origin = url::Url::parse(
+                        profile["origin"]
+                            .as_str()
+                            .context("Relay profile origin missing")?,
+                    )?;
+                    ensure!(
+                        origin.scheme() == "https"
+                            && origin.username().is_empty()
+                            && origin.password().is_none()
+                            && origin.path() == "/"
+                            && origin.query().is_none()
+                            && origin.fragment().is_none(),
+                        "invalid external Relay profile"
+                    );
+                }
+                config["relay"] = profile["origin"].clone();
+                config["room"] = profile["room"].clone();
+                config["capability"] = profile["capability"].clone();
+                config["relayProtocol"] = json!("areal.remote.v2");
+                config["enabled"] = json!(true);
+            }
             "pair" => {
                 let transport = input
                     .request
@@ -553,7 +608,23 @@ impl Host {
             )?;
         }
 
-        if operation == "enable" {
+        if operation == "relayServiceStartLocal" {
+            let legacy_home = self.local_relay_source(&input.source_id)?;
+            let result = self
+                .gateway
+                .local_relay
+                .start(&self.home, &self.bin, &config, legacy_home.as_deref())
+                .await;
+            self.changed();
+            result?;
+        }
+        if operation == "relayServiceStopLocal" {
+            let result = self.gateway.local_relay.stop().await;
+            self.changed();
+            result?;
+        }
+        if operation == "enable" || operation == "relayServiceStartLocal" || operation == "relayUse"
+        {
             self.gateway.relay_reconnect.set(true);
         }
         if operation == "forgetRevoked" {

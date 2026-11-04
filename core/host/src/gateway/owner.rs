@@ -17,6 +17,7 @@ mod session;
 
 #[derive(Default)]
 pub(super) struct Gateway {
+    pub(super) local_relay: crate::local_relay::LocalRelay,
     generation: RefCell<String>,
     status: RefCell<Value>,
     pub pending: std::cell::Cell<usize>,
@@ -187,7 +188,7 @@ pub(super) fn grant(config: &Value, peer: &str) -> Option<Value> {
         })
         .cloned()
 }
-fn relay(config: &Value) -> Result<Option<RelayConfig>> {
+fn relay(config: &Value, local: &Value) -> Result<Option<RelayConfig>> {
     if config["enabled"] != true {
         return Ok(None);
     }
@@ -208,9 +209,29 @@ fn relay(config: &Value) -> Result<Option<RelayConfig>> {
             && origin.path() == "/",
         "invalid Relay origin"
     );
-    ensure!(origin.scheme() == "https", "Relay requires HTTPS");
+    let local_host = if origin.scheme() == "http" {
+        let expected = crate::local_relay::local_origin(config)?;
+        ensure!(
+            config["relayLocal"]["enabled"] == true
+                && local["phase"] == "running"
+                && local["address"] == origin.origin().ascii_serialization()
+                && origin == expected,
+            "local Relay is not owned"
+        );
+        let authority = origin[url::Position::BeforeHost..url::Position::AfterPort].to_owned();
+        let loopback = if origin.host_str().unwrap().contains(':') {
+            "::1"
+        } else {
+            "127.0.0.1"
+        };
+        origin.set_host(Some(loopback))?;
+        Some(authority)
+    } else {
+        ensure!(origin.scheme() == "https", "Relay requires HTTPS");
+        None
+    };
     origin
-        .set_scheme("wss")
+        .set_scheme(if local_host.is_some() { "ws" } else { "wss" })
         .map_err(|_| anyhow::anyhow!("Relay scheme"))?;
     origin.set_path("/remote/socket");
     Ok(Some(RelayConfig {
@@ -223,7 +244,7 @@ fn relay(config: &Value) -> Result<Option<RelayConfig>> {
             .as_str()
             .context("Relay capability missing")?
             .into(),
-        local_host: None,
+        local_host,
     }))
 }
 struct Running {
@@ -285,7 +306,7 @@ async fn run_relay(host: Rc<Host>) {
             if let Some(snapshot) = desired {
                 let config = &snapshot["config"];
                 let startup = (|| -> Result<_> {
-                    let Some(configured) = relay(config)? else {
+                    let Some(configured) = relay(config, &host.gateway.local_relay.state())? else {
                         return Ok(None);
                     };
                     let identity = Rc::new(wire::Identity::from_base64(
@@ -539,5 +560,71 @@ async fn run_direct(host: Rc<Host>) {
     }
 }
 pub(super) async fn run(host: Rc<Host>) {
-    tokio::join!(run_relay(host.clone()), run_direct(host));
+    tokio::join!(
+        run_relay(host.clone()),
+        run_direct(host.clone()),
+        run_local_relay(host)
+    );
+}
+async fn run_local_relay(host: Rc<Host>) {
+    loop {
+        let previous = host.gateway.local_relay.state();
+        let _ = host.gateway.local_relay.poll().await;
+        if host.admission().is_ok() && host.remote.native_owner().ok().flatten().is_some() {
+            if let Ok(snapshot) = host.remote.snapshot(&host.migration) {
+                if snapshot["config"]["relayLocal"]["enabled"] == true {
+                    match host.local_relay_source(snapshot["sourceId"].as_str().unwrap_or_default())
+                    {
+                        Ok(legacy_home) => {
+                            let _ = host
+                                .gateway
+                                .local_relay
+                                .start(
+                                    &host.home,
+                                    &host.bin,
+                                    &snapshot["config"],
+                                    legacy_home.as_deref(),
+                                )
+                                .await;
+                        }
+                        Err(_) => host.gateway.local_relay.block_source().await,
+                    }
+                } else {
+                    let _ = host.gateway.local_relay.stop().await;
+                }
+            }
+        }
+        if previous != host.gateway.local_relay.state() {
+            host.changed();
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+impl Host {
+    fn local_relay_source(&self, source: &str) -> Result<Option<PathBuf>> {
+        self.migration.local_relay_home(source)
+    }
+}
+
+#[cfg(test)]
+mod local_relay_tests {
+    use super::*;
+
+    #[test]
+    fn http_requires_the_exact_supervised_local_origin() {
+        let config = json!({"enabled":true,"relay":"http://192.168.1.2:47820","relayProtocol":"areal.remote.v2","room":"room","capability":"capability","relayLocal":{"enabled":true,"origin":"http://192.168.1.2:47820","port":47820}});
+        let local = json!({"phase":"running","address":"http://192.168.1.2:47820"});
+        let connected = relay(&config, &local).unwrap().unwrap();
+        assert_eq!(connected.url, "ws://127.0.0.1:47820/remote/socket");
+        assert_eq!(connected.local_host.as_deref(), Some("192.168.1.2:47820"));
+        assert!(relay(&config, &json!({"phase":"stopped"})).is_err());
+        let mut changed = config.clone();
+        changed["relay"] = json!("http://192.168.1.3:47820");
+        assert!(relay(&changed, &local).is_err());
+        changed["relay"] = json!("https://relay.example");
+        assert_eq!(
+            relay(&changed, &json!({})).unwrap().unwrap().local_host,
+            None
+        );
+    }
 }
