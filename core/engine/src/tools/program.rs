@@ -169,14 +169,33 @@ impl Engine {
             definitions.retain(|d| d["function"]["name"] != "tool_program");
             return definitions;
         }
+        let direct = &self.extensions.policy.programmatic_direct_tools;
+        let retained = |name: &Value| name.as_str().is_some_and(|n| direct.iter().any(|d| d == n));
         if self.extensions.policy.programmatic_tools_only {
-            definitions.retain(|d| !catalog.iter().any(|c| c["name"] == d["function"]["name"]));
+            definitions.retain(|d| {
+                retained(&d["function"]["name"])
+                    || !catalog.iter().any(|c| c["name"] == d["function"]["name"])
+            });
         }
         let catalog_description = if self.extensions.policy.programmatic_tools_only {
-            format!(
+            // 直达工具只引用已展示 schema，避免程序目录再次携带整份定义。
+            let inline: Vec<_> = catalog.iter().filter(|c| !retained(&c["name"])).collect();
+            let names: Vec<_> = catalog
+                .iter()
+                .filter(|c| retained(&c["name"]))
+                .filter_map(|c| c["name"].as_str())
+                .collect();
+            let mut description = format!(
                 "Native tool catalog (exact existing schemas):\n{}",
-                serde_json::to_string(&catalog).unwrap()
-            )
+                serde_json::to_string(&inline).unwrap()
+            );
+            if !names.is_empty() {
+                description.push_str(&format!(
+                    "\nAlso callable as tools.NAME using their directly exposed schemas: {}",
+                    names.join(", ")
+                ));
+            }
+            description
         } else {
             // 原生定义已经展示，组合入口只列名字；不把同一份 schema 再计入上下文。
             format!(

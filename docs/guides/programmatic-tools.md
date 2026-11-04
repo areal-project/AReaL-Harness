@@ -49,11 +49,13 @@ if (e.success && e.data.allApplied) {
 精简配置使用较短基础说明和程序描述；不改变执行内核。`programmaticTools` 可独立开关，不按模型名称选择。`programmaticToolsOnly` 仍会把 schema 移入程序描述，不能据入口减少推断 token 下降。可将下面片段并入现有 extensions 文件，保留部署原有 tools/hooks/权限；它是显式候选，不是通用性能默认。
 
 ```json
-{"policy":{"compactTools":true,"programmaticTools":true,"programmaticToolsOnly":false,"resultViews":{"repeatedObservations":true}}}
+{"policy":{"compactTools":true,"programmaticTools":true,"programmaticToolsOnly":true,"programmaticDirectTools":["edit_files"],"resultViews":{"repeatedObservations":true}}}
 ```
 
 准入分别核对最终请求大小、真实采用率、实际 provider 输入/缓存/输出及总结/恢复子请求。确定性回放只能证明操作与权限不变量，不能证明模型选择了组合路径。
 
 程序结果分别报告 `programCompleted`（解释器结束）、`allChildrenSucceeded`（每个原生子调用均成功）和 `pendingProcesses`（按进程最新收据去重）。外层 success 只有解释器及全部子调用成功才为 true；后续成功不能覆盖先前失败，已知失败对照仍如实保留失败，由模型判断其预期含义。此为结果契约变化，不自动阻断已明确编排的后续步骤，也不添加重试。
 
-混合组合配置使用 [compact-composition.json](../../examples/tool-profiles/compact-composition.json)：大段文件创建保持 `edit_files` 直达，收到 `allApplied` 后将已选执行和回收放入程序；小补丁可与测试一起编排。`collect` 自动展示观察，不再手写轮询循环或重复 `text()`。默认配置不变。原 [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json) 仅保留为全程序化对照：它把 schema 搬入描述，可能增加固定输入和代码转义/恢复成本，不能以较小菜单证明效率。比较最终说明、schema、历史、缓存输入与未缓存输入，不能只比较命中率；减少高缓存的机械轮次也会改变该比例。
+保留编辑直达的组合配置使用 [compact-composition.json](../../examples/tool-profiles/compact-composition.json)：大段文件创建保持 `edit_files` 直达，收到 `allApplied` 后将已选执行和回收放入程序；小补丁可与测试一起编排。`collect` 自动展示观察，不再手写轮询循环或重复 `text()`。默认配置不变。原 [compact-programmatic.json](../../examples/tool-profiles/compact-programmatic.json) 仅保留为全程序化对照：它把 schema 搬入描述，可能增加固定输入和代码转义/恢复成本，不能以较小菜单证明效率。比较最终说明、schema、历史、缓存输入与未缓存输入，不能只比较命中率；减少高缓存的机械轮次也会改变该比例。
+
+`programmaticDirectTools`（默认空数组）可在 `programmaticToolsOnly:true` 时保留最多 16 个不同原生工具的直达入口；仅与当前可见、已授权目录求交集，不能借此暴露隐藏工具。直达定义不再重复嵌入程序目录，`tools.NAME` 内部调用仍可用。不启用 only 模式时配置非空数组会报错。显式组合配置使用 `programmaticDirectTools:["edit_files"]`：保留大段文件的 JSON 表达，同时将确定的读取、执行和回收集中于程序入口。需要更自由的直接操作时可显式选择 only=false 并清空该数组；采用率与净成本必须单独验证。Rust 的完整 `ToolPolicy` 字面量需包含新字段或使用默认展开。

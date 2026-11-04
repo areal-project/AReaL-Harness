@@ -2,7 +2,8 @@
   "policy": {
     "compactTools": true,
     "programmaticTools": true,
-    "programmaticToolsOnly": false,
+    "programmaticToolsOnly": true,
+    "programmaticDirectTools": ["edit_files"],
     "resultViews": {
       "repeatedObservations": true
     }

@@ -652,6 +652,6 @@ hooks = [{ type = "command", command = "python3 /absolute/path/hook.py", timeout
 
 See the [plugin guide](plugins.en.md#hooks-p2-candidate) for sources, review, execution and remaining limits.
 
-`programmaticTools` defaults to true and exposes composition alongside native tools in Runtime sessions; false restores native-only exposure. `programmaticToolsOnly` remains false and explicitly narrows model exposure. See [programmatic tool calling](programmatic-tools.en.md) for configuration and compatibility.
+`programmaticTools` defaults to true and exposes composition alongside native tools in Runtime sessions; false restores native-only exposure. `programmaticToolsOnly` remains false and explicitly narrows model exposure. See [programmatic tool calling](programmatic-tools.en.md) for configuration and compatibility. `programmaticDirectTools` defaults to an empty list. In only mode it can retain selected already-visible native direct entries, for example `["edit_files"]`, without extending permissions or discovery.
 
 `model.summary_quoted_retry` (`AREAL_HARNESS_SUMMARY_QUOTED_RETRY`) is opt-in, default unset/false. It switches an invalid preserved-prefix summary to quoted evidence within the existing second attempt; it adds no retry or budget. Format acceptance does not establish semantic accuracy. Known formula corruption remains negative evidence; neither this policy nor `summary_preserve_prefix=false` certifies recovery quality. Ordinary truncation/empty responses retain their separate failure/usage contracts.

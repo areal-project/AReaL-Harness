@@ -364,6 +364,7 @@ async fn instruction_facts_distinguish_empty_missing_and_loaded_and_refresh_next
 struct SurfaceModel {
     round: AtomicUsize,
     program_only: bool,
+    direct_edit: bool,
 }
 #[async_trait]
 impl Model for SurfaceModel {
@@ -387,7 +388,14 @@ impl Model for SurfaceModel {
             .as_str()
             .unwrap();
         assert!(catalog.contains("edit_files") && catalog.contains("environment_info"));
-        assert_eq!(names.contains(&"edit_files"), !self.program_only);
+        assert_eq!(
+            names.contains(&"edit_files"),
+            !self.program_only || self.direct_edit
+        );
+        assert_eq!(
+            catalog.contains("\"name\":\"edit_files\""),
+            self.program_only && !self.direct_edit
+        );
         assert_eq!(names.contains(&"environment_info"), !self.program_only);
         assert!(!names.contains(&"fs_apply_patches") && !names.contains(&"fs_create"));
         assert_eq!(
@@ -406,6 +414,11 @@ impl Model for SurfaceModel {
                 }));
                 call("tool_search", json!({"query":"read_history","limit":1}), 0)
             }
+            1 if self.direct_edit => call(
+                "edit_files",
+                json!({"files":[{"path":"created","text":"content"}]}),
+                1,
+            ),
             1 => call(
                 "tool_program",
                 json!({"code":"text(await tools.edit_files({files:[{path:'created',text:'content'}]}));"}),
@@ -431,12 +444,12 @@ impl Model for SurfaceModel {
 
 #[tokio::test]
 async fn compact_surface_discovers_next_request_and_keeps_hidden_edit_children() {
-    for program_only in [false, true] {
-        compact_surface(program_only).await;
+    for (program_only, direct_edit) in [(false, false), (true, false), (true, true)] {
+        compact_surface(program_only, direct_edit).await;
     }
 }
 
-async fn compact_surface(program_only: bool) {
+async fn compact_surface(program_only: bool, direct_edit: bool) {
     use areal_engine::tools::{ToolExtensions, ToolPolicy};
     let dir = tempfile::tempdir().unwrap();
     let workspace = dir.path().join("workspace");
@@ -447,6 +460,7 @@ async fn compact_surface(program_only: bool) {
         Arc::new(SurfaceModel {
             round: AtomicUsize::new(0),
             program_only,
+            direct_edit,
         }),
         Limits::default(),
         Some(RuntimeConfig {
@@ -460,6 +474,11 @@ async fn compact_surface(program_only: bool) {
             policy: ToolPolicy {
                 compact_tools: true,
                 programmatic_tools_only: program_only,
+                programmatic_direct_tools: if direct_edit {
+                    vec!["edit_files".into(), "fs_create".into()]
+                } else {
+                    Vec::new()
+                },
                 ..Default::default()
             },
             ..Default::default()
