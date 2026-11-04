@@ -433,7 +433,9 @@ Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric
 
 `cargo test -p areal-host --lib server::loopback::tests` 通过真实 Unix 和 WebSocket 连接核对票据、Origin、代际、过期、重放及资源边界。`pnpm --dir clients/gui test:host-client` 检查共享客户端的连接身份、断线新鲜度与取消；它的 WS 服务是确定性测试服务，不代表真实 Host 或安装包通过。
 
-隔离启动 GUI 时设置 `AREAL_HOST_WEBSOCKET=1`，并在该隔离界面的 localStorage 中设置 `areal.oneProtocol.reads=1`，可启用状态探测。Host 必须以该环境开关启动；已有关闭此能力的 Host 不会被自动重启。清除此 localStorage 项关闭探测。当前探测只调用 `host.status`，项目清单、会话历史与写入仍由原桌面路径提供，不能据此判定 A1 或 OP-01 至 OP-03 完成。GUI CSP 从运行时私有描述授权回环主机的动态端口；票据只由原生能力提供并放进 WS 首帧。
+隔离启动 GUI 时设置 `AREAL_HOST_WEBSOCKET=1`，并在该隔离界面的 localStorage 中设置 `areal.oneProtocol.reads=1`，可启用状态探测。Host 必须以该环境开关启动；已有关闭此能力的 Host 不会被自动重启。清除此 localStorage 项恢复原读路径。打开后项目清单与会话详情由共享 Host 订阅读取，写入仍用原桌面路径；协议检查不能替代 A1 的安装包真实历史对照与恢复验收。GUI CSP 从运行时私有描述授权回环主机的动态端口；票据只由原生能力提供并放进 WS 首帧。
+
+开发验收可运行 `node clients/gui/scripts/seed-host-copy.mjs --from <旧 Core home> --home <隔离 Host home> --binary <待验收包内 areal>`，一致性快照后通过现有 CLI 登记路径创建测试项目，不调用导入器。工具只读源，副本不携带待提交、调度、凭据或远程身份，来源摘要和测试标记保存在隔离 home；历史 UNKNOWN 不阻塞项目。登记仍指向原代码目录，验收发消息须使用确定性模型或另行复制代码目录，不能在真实仓库执行真实 Agent。
 
 `node scripts/runtime-rotation-smoke.mjs` 使用隔离目录、真实 Core/Runtime 和本地模型，分别降低 Scope、operation 与累计输出容量，验证达到预警但未耗尽时的自动轮换、活动轮次推迟、旧 Core/Runtime 退出、部署漂移保护、新 epoch、历史与 Queue 意图保留、跨轮换请求去重及后续续轮。该检查进入 `make local-service-smoke` 和 `make harness-smoke`。宿主测试覆盖维护 RPC 超时与退出取消；Engine 生命周期测试同时验证并发新轮与轮换的原子准入，以及历史 UNKNOWN 保留和未确认资源清理的阻塞；这些是确定性契约回归，不代表整体 Agent 能力提升。
 

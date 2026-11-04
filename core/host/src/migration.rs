@@ -40,6 +40,12 @@ impl Source {
             }
             *path = storage::canonical_pending(path)?;
         }
+        if std::fs::symlink_metadata(self.core_home.join(".areal-test-copy.json")).is_ok() {
+            return Err(error(
+                "testCopySource",
+                "development test copies cannot enter GUI source migration",
+            ));
+        }
         Ok(self)
     }
 }
@@ -2706,6 +2712,40 @@ mod tests {
         .unwrap();
         assert_eq!(f.import().unwrap()["kind"], "legacyPending");
         assert!(f.migration.published().unwrap().is_empty());
+    }
+    #[test]
+    fn development_test_copy_cannot_attach_or_enter_migration() {
+        let f = Fixture::new();
+        storage::write(
+            &f.source.core_home.join(".areal-test-copy.json"),
+            &json!({"testCopy":true,"sourceDigest":"source-snapshot"}),
+        )
+        .unwrap();
+        assert!(
+            f.migration
+                .attach(f.source.clone(), "connection", None)
+                .unwrap_err()
+                .to_string()
+                .contains("development test copies")
+        );
+        assert!(f.import().is_err());
+        assert!(f.migration.records().unwrap().is_empty());
+        assert!(f.migration.published().unwrap().is_empty());
+        assert!(
+            !f.source
+                .core_home
+                .join("provider-credentials.json")
+                .exists()
+        );
+        assert_eq!(
+            std::fs::read(
+                f.source
+                    .core_home
+                    .join(format!("{}-pending.json", f.ids[0]))
+            )
+            .unwrap(),
+            f.original
+        );
     }
     #[test]
     fn manifest_rejects_path_traversal_and_symlink_source_files() {

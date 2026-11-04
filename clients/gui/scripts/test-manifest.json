@@ -1208,5 +1208,13 @@
     "areas": ["remote", "protocol"],
     "requires": [],
     "notes": "A1 shared client over an actual WebSocket server: ticket refresh, stale state, identity rejection, close cancellation and URL boundaries."
+  },
+  {
+    "script": "test:host-seed-copy",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["service", "development"],
+    "requires": [],
+    "notes": "Development-only read-only snapshot, native test registration, and operational-state exclusion. Packaged real-data acceptance is separate."
   }
 ]
