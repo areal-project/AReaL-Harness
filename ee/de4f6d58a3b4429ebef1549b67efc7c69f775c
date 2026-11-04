@@ -1,0 +1,22 @@
+core/engine/src/tools.rs
+  h_247f0d3940ae9c 451
+core/engine/src/tools/environment.py
+  h_247f0d3940ae9c 7-8,10,14,49-174,176,224,231-234,241-243,252,259-264,285,301
+docs/guides/tools.en.md
+  h_247f0d3940ae9c 190
+docs/guides/tools.md
+  h_247f0d3940ae9c 193
+scripts/tests/test_environment_facts.py
+  h_247f0d3940ae9c 8,10,29-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "eede4f6d58a3b4429ebef1549b67efc7c69f775c",
+  "prompts": {},
+  "humans": {
+    "h_247f0d3940ae9c": {
+      "author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
