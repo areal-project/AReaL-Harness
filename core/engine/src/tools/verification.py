@@ -160,12 +160,15 @@ def run(request):
             process.wait()
     process.stdout.close()
     after = fingerprint(request["workspace"])
+    tail_start = max(0, log.stat().st_size - 8192)
     with log.open("rb") as output:
-        output.seek(max(0, log.stat().st_size - 8192))
+        output.seek(tail_start)
         tail = output.read().decode("utf-8", errors="replace")
     environment_after = environment_binding(argv, request["cwd"])
     result = {
         "outputTail": tail,
+        "outputTailStartByte": tail_start,
+        "outputTailTruncated": tail_start > 0,
         "schema": "areal.verification.v1",
         "logLimitHit": limited,
         "argv": argv,

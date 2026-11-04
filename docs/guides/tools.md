@@ -45,7 +45,7 @@ Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后�
 
 超长行（包括压缩为一行的 JSON）返回有界原文片段，行项带 `column`（从 1 开始的 Unicode 字符位置）及 `complete`。`nextRead` 包含 path/offset/column/expectedSha256，原样传给 read_file 续读；版本变化拒绝拼接。片段不是完整 JSON 值，不能把截断视为解析失败或文件末尾。普通行的 nextLine 行为保持不变；片段保留原结构，不套用 file-lines 无损行合并。
 
-`verify_command` 将完整输出（最多 64 MiB）及 receipt 写入 scratch/verification，记录退出状态、日志与执行前后源码指纹。指纹覆盖 Git 跟踪和未忽略文件，非 Git 目录使用排除依赖/构建/缓存的扫描；源码变化使验证过期。receipt 位于任务可写目录，不是对恶意任务的认证。Blender Python 验证必须在 `--python/-P/--python-expr` 前显式提供 `--python-exit-code 1..255`，缺失或无效时派发前拒绝，不自动改写 argv；receipt 的 `exitContract` 说明失败传播边界，不证明检查覆盖。其它解释器仍按实际退出状态记录。收尾时未结束的验证进程需要续读终态或显式终止；普通后台 run_command 不受此约束，也不会唤醒已结束 Turn。
+`verify_command` 将完整输出（最多 64 MiB）及 receipt 写入 scratch/verification，记录退出状态、日志与执行前后源码指纹。模型返回保留最多 8 KiB 原始日志尾部 `outputTail`，以 `outputTailStartByte` 和 `outputTailTruncated` 标明前部遗漏；显示预算不足时另记 `outputTailDisplayOmittedBytes`，完整日志仍通过 `logPath` 回取。尾部包含真实错误及验证结果，不以退出码替代必要诊断。指纹覆盖 Git 跟踪和未忽略文件，非 Git 目录使用排除依赖/构建/缓存的扫描；源码变化使验证过期。receipt 位于任务可写目录，不是对恶意任务的认证。Blender Python 验证必须在 `--python/-P/--python-expr` 前显式提供 `--python-exit-code 1..255`，缺失或无效时派发前拒绝，不自动改写 argv；receipt 的 `exitContract` 说明失败传播边界，不证明检查覆盖。其它解释器仍按实际退出状态记录。收尾时未结束的验证进程需要续读终态或显式终止；普通后台 run_command 不受此约束，也不会唤醒已结束 Turn。
 
 macOS 的受限命令直接调用 `bash`/`sh` 时使用随 Runtime 发布的私有 Bash，here-document 使用独立 scratch；系统 Git 在沙箱前解析到可信工具链程序，默认不读取工作区外的系统/用户 Git 配置。源码写入、网络和外部临时文件权限仍由原 Scope 限制。嵌套硬编码 `/bin/bash` 或其 shebang 仍是系统旧 Bash，完整边界见 [Runtime 契约](../api/runtime.md#macos-受限命令的系统工具)。
 

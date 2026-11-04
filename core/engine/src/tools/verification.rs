@@ -26,7 +26,7 @@ pub(super) async fn attach(client: &Client, scope: &str, receipt: &str, result: 
             if let Some(mut value) =
                 parsed.filter(|v| v["schema"] == "areal.verification.v1" && reply["eof"] == true)
             {
-                value.as_object_mut().unwrap().remove("outputTail");
+                // helper 的 stdout 只有收据位置；尾部才包含测试结论和错误，不能删除。
                 value.as_object_mut().unwrap().remove("argv");
                 value["status"] = json!("complete");
                 result["verification"] = value;

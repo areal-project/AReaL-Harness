@@ -126,8 +126,10 @@ pub(super) fn bounded_preview(
 ) -> Option<serde_json::Value> {
     use serde_json::json;
     raw.get("processId")?;
-    let raw_bytes =
-        raw["stdout"].as_str().unwrap_or("").len() + raw["stderr"].as_str().unwrap_or("").len();
+    let verification_tail = raw["verification"]["outputTail"].as_str();
+    let raw_bytes = raw["stdout"].as_str().unwrap_or("").len()
+        + raw["stderr"].as_str().unwrap_or("").len()
+        + verification_tail.map_or(0, str::len);
     let mut value = raw.clone();
     for limit in [max_bytes, max_bytes / 2, 2048, 1024, 512, 128, 0] {
         let mut displayed = 0;
@@ -148,6 +150,13 @@ pub(super) fn bounded_preview(
             }
             value[key] = json!(view);
         }
+        if let Some(text) = verification_tail {
+            // 转义密集的验证日志也必须保持结构化终态；缩短尾部时保留原文引用及遗漏量。
+            let view = super::suffix(text, limit / 2);
+            displayed += view.len();
+            value["verification"]["outputTail"] = json!(view);
+            value["verification"]["outputTailDisplayOmittedBytes"] = json!(text.len() - view.len());
+        }
         // 二进制证据留在快照或 Runtime 原文中，不能把 base64 再带进模型预览。
         value.as_object_mut()?.remove("stdoutBase64");
         value.as_object_mut()?.remove("stderrBase64");
@@ -166,9 +175,38 @@ pub(super) fn bounded_preview(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn argv(values: &[&str]) -> Vec<String> {
         values.iter().map(|s| (*s).into()).collect()
+    }
+
+    #[test]
+    fn escaped_verification_tail_keeps_failed_exit_and_raw_reference() {
+        let tail = format!("{}required failure", "\"\\\n".repeat(2700));
+        let raw = json!({"processId":"p","state":"exited","exitCode":7,
+            "outputReadComplete":true,"stdout":"receipt.json\n","stderr":"",
+            "verification":{"exitCode":7,"outputTail":tail,"outputTailStartByte":1000,
+                "outputTailTruncated":true,"logPath":"check.log"},
+            "rawResult":{"resultId":"saved-result"}});
+        let view = bounded_preview(&raw, 8192).unwrap();
+        assert!(view.to_string().len() <= super::super::MAX_RESULT);
+        assert_eq!(view["exitCode"], 7);
+        assert_eq!(view["outputReadComplete"], true);
+        assert_eq!(view["rawResult"], raw["rawResult"]);
+        assert_eq!(view["verification"]["logPath"], "check.log");
+        assert!(
+            view["verification"]["outputTail"]
+                .as_str()
+                .unwrap()
+                .ends_with("required failure")
+        );
+        assert!(
+            view["verification"]["outputTailDisplayOmittedBytes"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
     }
 
     #[test]

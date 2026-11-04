@@ -877,6 +877,81 @@ async fn verification_waits_for_exit_after_an_early_output_burst() {
 }
 
 #[tokio::test]
+async fn verification_attachment_preserves_diagnostics_and_omissions() {
+    let (pipe, peer) = tokio::io::duplex(64 * 1024);
+    let (read, write) = tokio::io::split(pipe);
+    let (peer_read, mut peer_write) = tokio::io::split(peer);
+    let receipt = json!({"schema":"areal.verification.v1","exitCode":7,
+        "argv":["python","check.py"],"outputTail":"AssertionError: required invariant failed\n",
+        "outputTailStartByte":1000,"outputTailTruncated":true,"logBytes":1042,
+        "logPath":"workspace://scratch/check.log","sourceUnchanged":true});
+    let expected = receipt.clone();
+    let server = tokio::spawn(async move {
+        let mut lines = BufReader::new(peer_read).lines();
+        let mut reads = 0;
+        while let Some(line) = lines.next_line().await.unwrap() {
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let method = request["method"].as_str().unwrap();
+            let result = match method {
+                "connection.open" => json!({"protocolVersion":rt::VERSION,"runtimeEpoch":"epoch",
+                    "connectionId":"fixture","rootScopeId":"scope","capabilities":{"methods":["fs.execute"]}}),
+                "fs.execute" => {
+                    reads += 1;
+                    assert_eq!(request["params"]["scopeId"], "scope");
+                    assert_eq!(
+                        request["params"]["command"]["path"],
+                        "workspace://scratch/check.json"
+                    );
+                    json!({"dataBase64":STANDARD.encode(receipt.to_string()),"eof":true})
+                }
+                "connection.close" => json!({"closed":true}),
+                _ => panic!("unexpected {method}"),
+            };
+            peer_write
+                .write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
+                .await
+                .unwrap();
+            if method == "connection.close" {
+                return reads;
+            }
+        }
+        reads
+    });
+    let client = Client::connect(read, write).await.unwrap();
+    let mut result = json!({"state":"running"});
+    verification::attach(
+        &client,
+        "scope",
+        "workspace://scratch/check.json",
+        &mut result,
+    )
+    .await;
+    assert_eq!(result["verification"]["status"], "pending");
+    result["state"] = json!("exited");
+    verification::attach(
+        &client,
+        "scope",
+        "workspace://scratch/check.json",
+        &mut result,
+    )
+    .await;
+    for key in [
+        "exitCode",
+        "outputTail",
+        "outputTailStartByte",
+        "outputTailTruncated",
+        "logPath",
+        "sourceUnchanged",
+    ] {
+        assert_eq!(result["verification"][key], expected[key]);
+    }
+    assert!(result["verification"].get("argv").is_none());
+    assert_eq!(result["verification"]["status"], "complete");
+    client.shutdown().await.unwrap();
+    assert_eq!(server.await.unwrap(), 1);
+}
+
+#[tokio::test]
 async fn aliases_reject_cross_process_cursor_and_cross_file_version() {
     let client = process_fixture(0, None, None, false).await;
     let runtime = RuntimeConfig {

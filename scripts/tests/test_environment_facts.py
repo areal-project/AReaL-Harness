@@ -147,7 +147,30 @@ class EnvironmentFactsTests(unittest.TestCase):
             receipt = json.loads((root / "scratch/verification" / ("b" * 32 + ".json")).read_text())
             self.assertEqual(receipt["exitCode"], 1)
             self.assertIn("negative control", Path(receipt["logPath"]).read_text())
+            self.assertIn("negative control", receipt["outputTail"])
+            self.assertEqual(receipt["outputTailStartByte"], 0)
+            self.assertFalse(receipt["outputTailTruncated"])
             self.assertTrue(receipt["sourceUnchanged"])
+
+    def test_validation_tail_is_bounded_with_full_log_preserved(self):
+        with tempfile.TemporaryDirectory() as path:
+            root = Path(path)
+            workspace = root / "workspace"
+            workspace.mkdir()
+            request = {
+                "scratch": str(root / "scratch"),
+                "workspace": str(workspace),
+                "cwd": str(workspace),
+                "argv": [sys.executable, "-c", "print('x'*20000); print('FINAL_CHECK_RESULT')"],
+                "identity": "c" * 32,
+            }
+            self.assertEqual(verification.run(request), 0)
+            receipt = json.loads((root / "scratch/verification" / ("c" * 32 + ".json")).read_text())
+            raw = Path(receipt["logPath"]).read_bytes()
+            self.assertEqual(receipt["outputTail"].encode(), raw[-8192:])
+            self.assertEqual(receipt["outputTailStartByte"], len(raw) - 8192)
+            self.assertTrue(receipt["outputTailTruncated"])
+            self.assertIn("FINAL_CHECK_RESULT", receipt["outputTail"])
 
 
 if __name__ == "__main__":
