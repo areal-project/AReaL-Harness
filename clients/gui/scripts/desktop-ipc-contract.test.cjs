@@ -315,13 +315,48 @@ function coreTargets(file, checker) {
     });
   };
   visit(file, (node) => {
-    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
+    if (!ts.isCallExpression(node)) return;
+    const callee = node.expression;
+    if (
+      ts.isParenthesizedExpression(callee) &&
+      ts.isBinaryExpression(callee.expression) &&
+      callee.expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+      ts.isCallExpression(callee.expression.right) &&
+      ts.isPropertyAccessExpression(callee.expression.right.expression) &&
+      callee.expression.right.expression.name.text === "bind" &&
+      ts.isPropertyAccessExpression(callee.expression.right.expression.expression) &&
+      callee.expression.right.expression.expression.name.text === "request" &&
+      node.arguments[0]
+    )
+      strings(node.arguments[0]);
+    if (!ts.isPropertyAccessExpression(node.expression)) return;
     if (node.expression.name.text === "request" && node.arguments[0]) strings(node.arguments[0]);
     if (["submit", "readSubmission"].includes(node.expression.name.text) && node.arguments[1])
       strings(node.arguments[1]);
   });
   return { methods, templates };
 }
+
+test("Core target scanner recognizes a bound request without collecting unrelated callbacks", () => {
+  const root = mkdtempSync(join(tmpdir(), "areal-ipc-targets-"));
+  try {
+    const path = join(root, "fixture.cjs");
+    writeFileSync(
+      path,
+      'const method = "areal/thread/read";\n' +
+        "(terminalRequest ?? current.request.bind(current))(method);\n" +
+        'unrelated("areal/unrelated/read");\n' +
+        '(callback ?? current.other.bind(current))("areal/other/read");\n',
+    );
+    const program = ts.createProgram([path], { allowJs: true, noResolve: true, noLib: true });
+    assert.deepEqual(
+      sorted(coreTargets(program.getSourceFile(path), program.getTypeChecker()).methods),
+      ["areal/thread/read"],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("Desktop commands map to their own dispatch layer and Core catalog through actual RPC targets", () => {
   const main = commandBranches(mainSource()),
