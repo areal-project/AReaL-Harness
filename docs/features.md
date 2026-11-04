@@ -11,7 +11,7 @@
 | 项目规则 | 按工作区根到会话 cwd 加载规则，同层 `AGENTS.override.md` 优先于 `AGENTS.md`，空白回退、子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
 | 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。桌面可独立切换 Fast 服务档位，配置与供应商请求沿现有模型参数链路保存；请求不保证实际加速。[客户端](guides/clients.md) |
 | 会话名称 | 普通根会话首个成功 Turn 后异步总结名称，手动名称优先；失败保留预览，重启不重复请求。可通过 `options.automaticSessionName=false` 或 CLI `--no-session-name` 显式关闭，保留持久历史与恢复。[Core 契约](api/core.md#会话名称) |
-| 文件与进程 | 条件文件写入、命令、stdin、PTY、有界输出、Scope 权限收窄及清理。原生只读工具可经逐操作审批读取具体外部目录，图片沿媒体链路进入支持视觉输入的模型。[Runtime](api/runtime.md) |
+| 文件与进程 | 条件文件写入、命令、stdin、PTY、有界输出、Scope 权限收窄及清理；共享服务在容量预警后空闲轮换执行 epoch。原生只读工具可经逐操作审批读取具体外部目录，图片沿媒体链路进入支持视觉输入的模型。[Runtime](api/runtime.md) |
 | 工具结果 | 内置固定版本 rg、历史结果原文分页回取；可配置的搜索分组与精确重复行视图，默认 observe。[工具](guides/tools.md) |
 | 公开多模态输入 | 原生 CLI 只读附件绑定；按需 PNG/JPEG/WebP/GIF 视图，独立模型请求字节限额。[评测输入](benchmarks/README.md#原生平台接入) |
 | 工具扩展 | 命令工具、hooks、客户端动态工具、MCP stdio/Streamable HTTP、可信 Node 插件 Host。[工具](guides/tools.md) |

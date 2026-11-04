@@ -23,7 +23,7 @@ target/debug/areal web --workspace /absolute/workspace
 target/debug/areal web --workspace /absolute/workspace --json
 ```
 
-`ensure`、`restart` 和 `web` 接受同一组本地参数：`--config`、`--workspace`、`--data-dir`、`--allow-write`、`--allow-network`、`--allow-concurrent-writes`、`--workgroup-policy`、`--workgroup-toolchain`、`--command-timeout-ms`、`--desktop-process-timeout-ms`、`--command-output-bytes`、`--runtime-max-processes`、`--model-endpoint`、`--model-protocol`、`--model`、`--model-provider`、`--api-key-env`、`--desktop-config`。`--agent id@revision` 是 TUI/headless/exec 创建 Thread 时的客户端选择项，也可与远程 `--endpoint` 同用，不改变本地服务身份。默认工作区是当前目录；服务监听随机 loopback 端口。未配置模型时可启动管理服务，运行模型任务仍需有效配置。
+`ensure`、`restart` 和 `web` 接受同一组本地参数：`--config`、`--workspace`、`--data-dir`、`--allow-write`、`--allow-network`、`--allow-concurrent-writes`、`--workgroup-policy`、`--workgroup-toolchain`、`--command-timeout-ms`、`--desktop-process-timeout-ms`、`--command-output-bytes`、`--runtime-max-processes`、`--runtime-max-scopes`、`--runtime-max-operations`、`--model-endpoint`、`--model-protocol`、`--model`、`--model-provider`、`--api-key-env`、`--desktop-config`。`--agent id@revision` 是 TUI/headless/exec 创建 Thread 时的客户端选择项，也可与远程 `--endpoint` 同用，不改变本地服务身份。默认工作区是当前目录；服务监听随机 loopback 端口。未配置模型时可启动管理服务，运行模型任务仍需有效配置。
 
 启动 GUI 前可显式设置 `AREAL_CORE_SANDBOX_PROFILE=native`，或在 `areal service ensure/restart` 使用 `--sandbox-profile native`，请求原生 Runtime 沙箱。默认仍为 `full-access`。此选择纳入部署兼容性；切换时需先停止活动任务并显式重启服务。只有 Core 验证原生隔离能力后，Side 对话才提供只读访问当前工作区文件的选项。原生隔离不可用时启动失败，不降级为 full-access。
 
@@ -73,6 +73,8 @@ areal service task-catalog --workspace /absolute/workspace \
 实时有界目录和 owner watch 的参数、分页、断流恢复及通知基线见 [Task API](tasks.md#轻量目录与-owner-更新)。摘要包与 Task、收据和归属引用由同一个根提交，发布失败不能转成空目录或推翻已经确认的原操作。
 
 ## 可核查的停止操作
+
+共享 Host 在 Runtime Scope、operation 或累计输出容量达到 80% 时执行[空闲容量轮换](../guides/runtime.md#生命周期)。轮换沿用原 Host generation、owner 和实例锁，仅在旧 Core/Runtime 正常清理后发布新的 Core PID、endpoint 与 Runtime epoch；服务描述格式不变。控制查询与轮换串行，客户端通过原发现入口重连，不重放已受理请求。二进制、权限、部署或非模型配置漂移阻止自动轮换；模型文件版本须已由原 Core 热应用确认。该维护不属于 `ensure --no-auto-restart` 的配置替换，也不生成或覆盖用户的停止回执。
 
 `status` 在原实例仍持锁但控制端点已关闭或断开时报告 `unavailable`，不将 socket 消失或响应丢失当作停止；协议、权限和超时错误仍显式失败。`ensure` 不接管这类仍有 owner 的实例。Store 启动仅为派生进程继承描述符的短暂交接等待约 100 ms，未取得独占锁前不清理临时写入，仍拒绝持续持锁的 owner。
 

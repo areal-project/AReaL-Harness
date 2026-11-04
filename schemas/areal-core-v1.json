@@ -25092,7 +25092,8 @@
           "enum": [
             "wait",
             "cancel",
-            "ifIdle"
+            "ifIdle",
+            "runtimeRotation"
           ]
         },
         "timeoutMs": {

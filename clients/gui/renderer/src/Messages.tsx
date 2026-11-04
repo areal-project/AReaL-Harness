@@ -235,6 +235,7 @@ export function Messages({
     onAddSelection,
     onSideSelection,
     readOnly,
+    onSelectionIntent: embedded ? undefined : () => readHere(),
   });
   const canFork =
     !!onFork &&

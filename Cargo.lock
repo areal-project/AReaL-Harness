@@ -543,10 +543,12 @@ dependencies = [
  "areal-runtime-host-tools",
  "clap",
  "fs2",
+ "futures-util",
  "libc",
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
  "uuid",
 ]

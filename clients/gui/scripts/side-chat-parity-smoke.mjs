@@ -673,6 +673,23 @@ async function selectText(body, text, keyboard = false) {
       await page.keyboard.up("Shift");
     }
     assert.equal(await page.evaluate(() => window.getSelection().toString()), text);
+    assert.ok(
+      await body.evaluate((element) => {
+        const viewport = (element.closest(".messages") ?? element).getBoundingClientRect();
+        const selection = window.getSelection();
+        return (
+          selection?.rangeCount === 1 &&
+          [...selection.getRangeAt(0).getClientRects()].some(
+            (rect) =>
+              rect.bottom > Math.max(0, viewport.top) &&
+              rect.top < Math.min(innerHeight, viewport.bottom) &&
+              rect.right > Math.max(0, viewport.left) &&
+              rect.left < Math.min(innerWidth, viewport.right),
+          )
+        );
+      }),
+      "native keyboard selection stays in the transcript viewport before quoting",
+    );
   }
 }
 async function addReference(body, text, target = "main", keyboard = false) {
@@ -683,6 +700,7 @@ async function addReference(body, text, target = "main", keyboard = false) {
     name: target === "main" ? "添加到聊天" : "在旁路中询问所选内容",
     exact: true,
   });
+  if (keyboard) await shot("P4-keyboard-selection");
   await action.focus();
   await action.press("Enter");
   await page.evaluate(() => window.getSelection()?.removeAllRanges());

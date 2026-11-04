@@ -90,6 +90,11 @@ async fn historical_unknown_outcomes_preserve_inspection_without_blocking_servic
             settled(&engine, &next.id).await.turns[0].status,
             TurnStatus::Completed
         );
+        let before_rotation = std::fs::read(&path).unwrap();
+        let rotated = engine.drain("runtimeRotation".into(), 0).await.unwrap();
+        assert_eq!(rotated["draining"], true);
+        assert_eq!(rotated["unresolvedTools"], status["unresolvedTools"]);
+        assert_eq!(std::fs::read(&path).unwrap(), before_rotation);
         let drained = engine.drain("ifIdle".into(), 1000).await.unwrap();
         assert_eq!(drained["restartSafe"], true, "{drained}");
         assert_eq!(drained["unresolvedTools"], status["unresolvedTools"]);
@@ -127,6 +132,10 @@ async fn historical_process_cleanup_unknown_still_blocks_service_drain() {
         json!([{"code":"resource", "count":1}])
     );
     assert!(engine.drain("ifIdle".into(), 1000).await.is_err());
+    assert_eq!(
+        engine.drain("runtimeRotation".into(), 0).await.unwrap()["draining"],
+        false
+    );
     assert_eq!(engine.server_status().await["acceptingWork"], true);
     assert_eq!(
         engine.drain("cancel".into(), 1000).await.unwrap()["restartSafe"],
@@ -220,6 +229,10 @@ async fn runtime_resource_observation_blocks_unconfirmed_cleanup_and_active_proc
                 "{condition}: {status}"
             );
             assert!(engine.drain("ifIdle".into(), 1000).await.is_err());
+            assert_eq!(
+                engine.drain("runtimeRotation".into(), 0).await.unwrap()["draining"],
+                false
+            );
         }
         engine.shutdown().await;
         client.shutdown().await.unwrap();
@@ -279,6 +292,124 @@ async fn settled(engine: &Engine, id: &str) -> areal_protocol::Thread {
         .await
         .unwrap()
         .unwrap()
+}
+
+#[tokio::test]
+async fn runtime_rotation_defers_active_work_and_preserves_idle_thread_state() {
+    let (dir, engine, model, mut entered) = setup(Limits::default());
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    let turn = engine
+        .start(&thread.id, vec![Input::text("hold")])
+        .await
+        .unwrap();
+    entered.recv().await.unwrap();
+    let busy = engine.drain("runtimeRotation".into(), 0).await.unwrap();
+    assert_eq!(busy["draining"], false);
+    assert_eq!(busy["acceptingWork"], true);
+    assert_eq!(
+        engine.read(&thread.id, true).await.unwrap().turns[0].status,
+        TurnStatus::InProgress
+    );
+    engine.interrupt(&thread.id, &turn.id).await.unwrap();
+    settled(&engine, &thread.id).await;
+    let path = dir.path().join(format!("{}.json", thread.id));
+    let original = std::fs::read(&path).unwrap();
+    let calls = model.calls.load(Ordering::SeqCst);
+    let idle = engine.drain("runtimeRotation".into(), 0).await.unwrap();
+    assert_eq!(idle["draining"], true);
+    assert_eq!(idle["restartSafe"], true);
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    assert!(matches!(
+        engine
+            .start(&thread.id, vec![Input::text("after fence")])
+            .await,
+        Err(areal_engine::Error::Closed)
+    ));
+    assert_eq!(model.calls.load(Ordering::SeqCst), calls);
+    engine.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn runtime_rotation_and_turn_admission_have_one_winner() {
+    for _ in 0..16 {
+        let (_dir, engine, _model, _entered) = setup(Limits::default());
+        let thread = engine.create("/workspace".into()).await.unwrap();
+        let submitted = {
+            let engine = engine.clone();
+            let thread_id = thread.id.clone();
+            tokio::spawn(async move { engine.start(&thread_id, vec![Input::text("hold")]).await })
+        };
+        let status = engine.drain("runtimeRotation".into(), 0).await.unwrap();
+        let result = submitted.await.unwrap();
+        if status["draining"] == true {
+            assert!(matches!(result, Err(areal_engine::Error::Closed)));
+            assert!(
+                engine
+                    .read(&thread.id, true)
+                    .await
+                    .unwrap()
+                    .turns
+                    .is_empty()
+            );
+        } else {
+            let turn = result.unwrap();
+            engine.interrupt(&thread.id, &turn.id).await.unwrap();
+            settled(&engine, &thread.id).await;
+        }
+        engine.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn runtime_rotation_does_not_pause_or_discard_pending_input() {
+    use areal_protocol::desktop::{DesktopState, QueueItem};
+    use serde_json::Value;
+    let (dir, engine, model, _entered) = setup(Limits::default());
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    engine.shutdown().await;
+    drop(engine);
+    let path = dir.path().join(format!("{}.json", thread.id));
+    let mut record: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let mut data = DesktopState::default();
+    data.queue.paused = true;
+    data.queue.pause_reason = Some("userPaused".into());
+    data.queue.revision = 7;
+    data.queue.items.push(QueueItem {
+        id: "queued-message".into(),
+        input: vec![Input::text("preserve this input")],
+        configuration: data.configuration.clone(),
+        submitted_by: "owner".into(),
+        status: "pending".into(),
+        turn_id: None,
+        queued_at_ms: None,
+    });
+    record["thread"]["desktop"] = serde_json::to_value(data).unwrap();
+    std::fs::write(&path, serde_json::to_vec(&record).unwrap()).unwrap();
+    let engine = Engine::open(dir.path(), model.clone(), Limits::default()).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let status = engine.drain("runtimeRotation".into(), 0).await.unwrap();
+    assert_eq!(status["pendingQueueItems"], 1);
+    assert_eq!(status["draining"], false);
+    assert_eq!(status["acceptingWork"], true);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    assert_eq!(model.calls.load(Ordering::SeqCst), 0);
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn runtime_rotation_cannot_adopt_an_explicit_drain() {
+    let (_dir, engine, _model, _entered) = setup(Limits::default());
+    let drained = engine.drain("ifIdle".into(), 0).await.unwrap();
+    assert_eq!(drained["draining"], true);
+    assert!(matches!(
+        engine.drain("runtimeRotation".into(), 0).await,
+        Err(areal_engine::Error::Closed)
+    ));
+    let after = engine.server_status().await;
+    assert_eq!(after["draining"], drained["draining"]);
+    assert_eq!(after["acceptingWork"], drained["acceptingWork"]);
+    assert_eq!(after["lifecycle"], drained["lifecycle"]);
+    engine.shutdown().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

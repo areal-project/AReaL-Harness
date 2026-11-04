@@ -24,6 +24,11 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 新的 history view 在 acquire 时若发现既有窗口已失效，只重建一次基线后按原预算补全；已有 view 的重复注册不触发恢复循环。恢复等待前固定原连接身份与代际；同一连接可生成新窗口，等待期间的新连接不能接管旧请求。读取期间窗口再次换代、失效或本次 view 被释放仍返回真实失败，即使其他 view 存活。并发读取者共享补全，关闭一个读取者只拒绝其自身 acquire，不取消其他仍存活的 view。
 
 调度候选通过 GUI 的 `workflow_dispatch` 输入 `smoke_parallel` 显式比较 4/5；默认值和普通 PR/main 固定为 4，不自动提高共享资源占用。该开关只改变 smoke 矩阵上限，不改变测试、门禁、超时或真实产物依赖。完成同一成功 ref/SHA 的缓存预热后，以同一个 `comparison_base` 和 `qualification=none` 串行运行两个值，记录真实缓存命中、同期工作流、首次失败反馈、总反馈和累计 runner 时间；若有 main 等待或重叠运行，应先结束本次对照再比较。矩阵与共享池空档不能据 created→started 自动解释为容量不足；排序或五并发仅是待证伪候选，不宣称能消除长等待。
+Worktree 集成夹具将自动命名响应保持到真实文件工具完成后，确认命名已进入观察状态，再重新打开会话并租用历史视图，避免把合法的命名编辑误判为工具失败。文件、Shell、受管进程、目录隔离与重启断言保持不变。
+
+Side Chat parity 的 P4 使用真实 Shift/方向键与 Enter，读取选区矩形并确认选中文字仍在对话视口内，再执行引用操作；旧阅读锚点不能抢回原生键盘移动后的视口。数量、字数限制、冻结的引用正文及不自动提交断言继续由原场景检查。
+
+模型选择专项在模型回合断言之后，先观察公开的 serviceStatus.canStop，确认后台命令、启动、模型配置更新和资源均已结算，再通过原生菜单发起一次退出；真实退出仍受原有 15 秒断言约束。退出失败时复用已有清理器，只回收本次启动的 Electron 子进程，保留失败与现场，避免存活进程把一次清理失败拖到整个 CI job 超时。
 
 | 入口 | 范围 |
 |---|---|
@@ -413,6 +418,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 `node examples/desktop-api/run.mjs goal-mode` 使用真实 Core/Runtime 与 HTTP/SSE fixture，通过生成 schema 验证 Goal API、两次 Turn 的文件创建/验证、隔离 Workgroup 共享计量、观察权限、重复请求、多客户端恢复和 headless 跨 Turn 等待；已纳入 `make examples-desktop-api`。它不替代真实模型的任务成功率评估。
 
 ## 共享本地服务
+
+`node scripts/runtime-rotation-smoke.mjs` 使用隔离目录、真实 Core/Runtime 和本地模型，分别降低 Scope、operation 与累计输出容量，验证达到预警但未耗尽时的自动轮换、活动轮次推迟、旧 Core/Runtime 退出、部署漂移保护、新 epoch、历史与 Queue 意图保留、跨轮换请求去重及后续续轮。该检查进入 `make local-service-smoke` 和 `make harness-smoke`。宿主测试覆盖维护 RPC 超时与退出取消；Engine 生命周期测试同时验证并发新轮与轮换的原子准入，以及历史 UNKNOWN 保留和未确认资源清理的阻塞；这些是确定性契约回归，不代表整体 Agent 能力提升。
 
 `make local-service-smoke` 使用临时目录、真实 Core/Runtime、两个 PTY 和 HTTP 模型 fixture，验证并发 ensure、工作区/符号链接身份、配置冲突、认证、Web 发现、窗口退出、忙碌拒绝停止/显式取消、历史保留、launcher/host 强杀清理与重新连接。已纳入 `make harness-smoke`。`make desktop-schemas` 同时导出 `schemas/local-service-v1.json`。
 

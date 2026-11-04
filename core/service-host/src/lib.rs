@@ -21,6 +21,14 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 mod retention;
+mod rotation;
+
+#[derive(Clone, Copy)]
+struct LaunchContext<'a> {
+    ready: &'a std::path::Path,
+    info: &'a std::path::Path,
+    lease_fd: i32,
+}
 
 #[derive(Default)]
 struct StopState {
@@ -147,40 +155,18 @@ async fn run_host(
     storage::write(&info, &identity)?;
     let ready = run.join("ready.json");
     let lease_fd = ownership.as_raw_fd();
+    let launch = LaunchContext {
+        ready: &ready,
+        info: &info,
+        lease_fd,
+    };
     ensure!(
         !shutdown.is_cancelled(),
         "GUI application ended before launcher startup"
     );
-    let mut command = TrustedCommand::supervised(&spec.bin_dir.join("areal"), &[lease_fd])?;
-    command
-        .env_remove(gui_owner::OWNER_ENV)
-        .env_remove(gui_owner::LIFETIME_FD_ENV)
-        .env_remove(gui_owner::SERVICE_OWNER_ENV)
-        .env_remove(gui_owner::SERVICE_LIFETIME_FD_ENV)
-        .arg("launcher")
-        .arg("--lease-fd")
-        .arg(ownership.as_raw_fd().to_string())
-        .arg("--bin-dir")
-        .arg(&spec.bin_dir)
-        .args(spec.args.launcher_args())
-        .arg("--desktop")
-        .arg("--ready-metadata-file")
-        .arg(&ready)
-        .arg("--service-info")
-        .arg(&info)
-        .current_dir(&spec.launch_cwd)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::inherit())
-        .kill_on_drop(false);
     // launcher 共同持有实例锁：宿主被强杀后，在旧 Core/Runtime 清理完之前仍禁止替代启动。
     // Rust launcher 保留此锁并在启动 Core/Runtime 前恢复 close-on-exec。
-    command.parent_pid_arg();
-    let mut child = command
-        .spawn()
-        .await
-        .context("start trusted Core/Runtime launcher")?;
-    drop(command);
+    let mut child = start_launcher(&spec, launch).await?;
     let signal_stop = shutdown.clone();
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
@@ -193,7 +179,7 @@ async fn run_host(
     let result = serve(
         &spec,
         identity.clone(),
-        &ready,
+        launch,
         &socket,
         &mut child,
         shutdown.clone(),
@@ -296,7 +282,7 @@ fn tempfile_dir(parent: &std::path::Path, generation: &str) -> Result<PathBuf> {
 async fn serve(
     spec: &LaunchSpec,
     identity: Identity,
-    ready: &std::path::Path,
+    launch: LaunchContext<'_>,
     socket: &std::path::Path,
     child: &mut Child,
     shutdown: CancellationToken,
@@ -304,8 +290,87 @@ async fn serve(
 ) -> Result<()> {
     let directory = spec.directory()?;
     let log_file = directory.join("host.log");
+    let service = wait_ready(spec, &identity, launch.ready, child, &shutdown).await?;
+    if socket.exists() {
+        std::fs::remove_file(socket)?;
+    }
+    let listener = UnixListener::bind(socket)?;
+    storage::write(&directory.join("components.json"), &spec.components)?;
+    storage::write(&directory.join("service.json"), &service)?;
+    let service = Arc::new(Mutex::new(service));
+    let mut requests = tokio::task::JoinSet::new();
+    let mut log_tick = tokio::time::interval(Duration::from_secs(1));
+    let mut rotation = rotation::Rotation::default();
+    let outcome = loop {
+        tokio::select! {
+            _ = log_tick.tick() => {
+                retention::bound_log(&log_file);
+                let mut service = service.lock().await;
+                let stopping = stopping.lock().await;
+                if !stopping.stopping && !shutdown.is_cancelled()
+                    && let Err(error) = rotation.check(spec, launch, &mut service, child, &shutdown).await {
+                    break Err(error);
+                }
+                if shutdown.is_cancelled() { break Ok(()); }
+            },
+            _ = shutdown.cancelled() => break Ok(()),
+            result = child.wait() => break Err(anyhow::anyhow!("Core/Runtime launcher exited: {:?}", result?)),
+            incoming = listener.accept() => {
+                let (socket, _) = incoming?;
+                if requests.len() >= 32 { drop(socket); continue; }
+                let service = service.clone();
+                let stopping = stopping.clone();
+                let shutdown = shutdown.clone();
+                requests.spawn(async move { let _ = control(socket, &service, stopping, shutdown).await; });
+            },
+            _ = requests.join_next(), if !requests.is_empty() => {}
+        }
+    };
+    requests.abort_all();
+    while requests.join_next().await.is_some() {}
+    outcome
+}
+
+async fn start_launcher(spec: &LaunchSpec, launch: LaunchContext<'_>) -> Result<Child> {
+    let mut command = TrustedCommand::supervised(&spec.bin_dir.join("areal"), &[launch.lease_fd])?;
+    command
+        .env_remove(gui_owner::OWNER_ENV)
+        .env_remove(gui_owner::LIFETIME_FD_ENV)
+        .env_remove(gui_owner::SERVICE_OWNER_ENV)
+        .env_remove(gui_owner::SERVICE_LIFETIME_FD_ENV)
+        .arg("launcher")
+        .arg("--lease-fd")
+        .arg(launch.lease_fd.to_string())
+        .arg("--bin-dir")
+        .arg(&spec.bin_dir)
+        .args(spec.args.launcher_args())
+        .arg("--desktop")
+        .arg("--ready-metadata-file")
+        .arg(launch.ready)
+        .arg("--service-info")
+        .arg(launch.info)
+        .current_dir(&spec.launch_cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(false);
+    command.parent_pid_arg();
+    command
+        .spawn()
+        .await
+        .context("start trusted Core/Runtime launcher")
+}
+
+async fn wait_ready(
+    spec: &LaunchSpec,
+    identity: &Identity,
+    ready: &std::path::Path,
+    child: &mut Child,
+    shutdown: &CancellationToken,
+) -> Result<Service> {
+    let log_file = spec.directory()?.join("host.log");
     let deadline = Instant::now() + Duration::from_secs(40);
-    let service = loop {
+    loop {
         ensure!(!shutdown.is_cancelled(), "service startup cancelled");
         ensure!(
             child.try_wait()?.is_none(),
@@ -332,45 +397,17 @@ async fn serve(
                 state: State::Ready,
             };
             if probe(&service).await.is_ok() {
-                break service;
+                return Ok(service);
             }
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
         retention::bound_log(&log_file);
-    };
-    if socket.exists() {
-        std::fs::remove_file(socket)?;
     }
-    let listener = UnixListener::bind(socket)?;
-    storage::write(&directory.join("components.json"), &spec.components)?;
-    storage::write(&directory.join("service.json"), &service)?;
-    let service = Arc::new(service);
-    let mut requests = tokio::task::JoinSet::new();
-    let mut log_tick = tokio::time::interval(Duration::from_secs(1));
-    let outcome = loop {
-        tokio::select! {
-            _ = log_tick.tick() => retention::bound_log(&log_file),
-            _ = shutdown.cancelled() => break Ok(()),
-            result = child.wait() => break Err(anyhow::anyhow!("Core/Runtime launcher exited: {:?}", result?)),
-            incoming = listener.accept() => {
-                let (socket, _) = incoming?;
-                if requests.len() >= 32 { drop(socket); continue; }
-                let service = service.clone();
-                let stopping = stopping.clone();
-                let shutdown = shutdown.clone();
-                requests.spawn(async move { let _ = control(socket, &service, stopping, shutdown).await; });
-            },
-            _ = requests.join_next(), if !requests.is_empty() => {}
-        }
-    };
-    requests.abort_all();
-    while requests.join_next().await.is_some() {}
-    outcome
 }
 
 async fn control(
     socket: UnixStream,
-    service: &Service,
+    service: &Mutex<Service>,
     stopping: Arc<Mutex<StopState>>,
     shutdown: CancellationToken,
 ) -> Result<()> {
@@ -382,6 +419,9 @@ async fn control(
     )
     .await??;
     let request: Request = serde_json::from_str(&line)?;
+    // 容量轮换持有同一锁，控制查询不能拿到已退出 Core 的旧 endpoint。
+    let service = service.lock().await;
+    let service = &*service;
     let mut should_stop = false;
     let outcome: Result<Response> = async {
         match request {
