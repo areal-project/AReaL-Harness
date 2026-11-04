@@ -167,10 +167,11 @@ function AppContent({ services }: { services: PlatformServices }) {
     startupLifecycle,
     startupLifecycleBlocked,
     startupReady,
+    projectFailureReady,
   } = startup;
   const { shellReady, initialReleased, startupDelayed } = useStartupPresentation(
     services,
-    { themeReady, startupReady, restorationFailed },
+    { themeReady, startupReady, restorationFailed, projectFailureReady },
     restoration,
     restorationOwner,
   );

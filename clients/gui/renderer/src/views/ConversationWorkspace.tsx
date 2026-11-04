@@ -115,7 +115,7 @@ function ConversationContent() {
         >
           {thread && project ? (
             <ActiveConversation />
-          ) : threadId ? (
+          ) : threadId || (project && restorationFailed) ? (
             <div className="conversation-loading" role="status" aria-busy={!restorationFailed}>
               <div className="settings-empty conversation-loading-body">
                 <p>

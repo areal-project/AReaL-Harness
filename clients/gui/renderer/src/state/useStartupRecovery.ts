@@ -56,6 +56,13 @@ export function useStartupRecovery(
     !restorationFailed &&
     !startupLifecycleBlocked &&
     (!project || (currentRestoration && !currentRestoration.pending && (!threadId || !!thread)));
+  const projectFailureReady =
+    themeReady &&
+    snapshot.connection?.state === "ready" &&
+    selectionReady &&
+    !!project &&
+    restorationFailed &&
+    !startupLifecycleBlocked;
   const restorationNoticeId =
     currentObservationFailure?.id ??
     currentRestoration?.failureId ??
@@ -70,6 +77,7 @@ export function useStartupRecovery(
     startupLifecycle,
     startupLifecycleBlocked,
     startupReady,
+    projectFailureReady,
     restorationNoticeId,
   };
 }

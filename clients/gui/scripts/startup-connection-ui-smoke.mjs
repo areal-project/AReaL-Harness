@@ -87,9 +87,15 @@ try {
         pluginId: "startup-plugin",
         installedDigest: "startup-digest",
         generation: 1,
+        capabilities: {},
+        icons: null,
+        instructions: null,
+        protocolVersion: "2025-11-25",
+        title: null,
         tools: [
           {
             name: "startup.open",
+            toolName: "startup.open",
             title: "Startup queued app",
             inputSchema: { type: "object" },
             _meta: { "openai/ui": { entrypoints: [{ type: "global" }] } },
@@ -122,6 +128,7 @@ try {
     }
     if (vanished) snapshot.projects = [];
     let startupConnectPending = true;
+    let pendingConnect;
     let stopOutcome = "cancel";
     const publish = () => {
       snapshot.revision++;
@@ -240,6 +247,8 @@ try {
       },
       theme: async () => ({ platform: "darwin", dark: !light, id: light ? "light" : "dark" }),
       onTheme: () => () => {},
+      onUpdate: () => () => {},
+      updateState: async () => ({ enabled: false, status: "idle" }),
       onMcpAppEvent: () => () => {},
       onMcpAppDeepLink: (callback) => {
         window.deepLinks.subscriptions++;
@@ -266,6 +275,7 @@ try {
         window.calls.push({ name: "mcpApp", params: request });
         if (request.operation === "open")
           return {
+            kind: "mcp",
             token: "startup-app-token",
             instanceId: "startup-app-instance",
             serverId: "startup-app",
@@ -295,6 +305,7 @@ try {
         return null;
       },
       preview: async () => ({}),
+      onPreviewEvent: () => () => {},
       command: async (name, params) => {
         window.calls.push({ name, params });
         if (name === "serviceLifecycle") {
@@ -341,15 +352,20 @@ try {
           publish();
           return { ok: true, value: {} };
         }
-        if (name === "connect" && startupConnectPending)
-          return await new Promise((resolve) => {
+        if (name === "connect" && startupConnectPending) {
+          pendingConnect ??= new Promise((resolve) => {
             releaseConnect = (result = { ok: true, value: {} }) => {
               startupConnectPending = false;
               resolve(result);
             };
           });
+          return await pendingConnect;
+        }
         if (name === "manage" && params.operation === "mcpApps")
-          return { ok: true, value: { data: deepLink ? appCatalog : [] } };
+          return {
+            ok: true,
+            value: { data: deepLink ? appCatalog : [], requestEpoch: "startup-fixture" },
+          };
         if (name === "open" && openPending)
           return await new Promise((resolve) => {
             releaseOpen = resolve;
@@ -656,7 +672,7 @@ try {
     assert.deepEqual(
       regressionResults
         .filter((result) => result.status === "rejected")
-        .map((result) => result.reason.message),
+        .map((result) => result.reason.stack || result.reason.message),
       [],
     );
     await page.addInitScript(installFixture);
@@ -806,18 +822,24 @@ try {
       );
       assert.equal(await page.getByTestId("chat-input").count(), 0);
       await page.evaluate(() => window.failStartup());
-      await page.getByRole("alert").filter({ hasText: "暂时无法完成加载" }).waitFor();
-      assert.equal(await page.getByTestId("areal-sidebar").count(), 0);
+      await page.getByTestId("areal-sidebar").waitFor();
+      await page.getByText("暂时无法加载对话，请重试或切换对话。", { exact: true }).waitFor();
+      assert.equal(await page.getByTestId("startup-loading").count(), 0);
       assert.equal(
         await page.getByTestId("areal-workbench").getAttribute("data-startup-ready"),
         "false",
       );
       assert.equal(await page.getByTestId("chat-input").count(), 0);
-      await page.getByText("查看详情", { exact: true }).click();
+      await page.getByRole("button", { name: "查看详情", exact: true }).click();
       await page.getByText("STARTUP_FAILURE", { exact: true }).waitFor();
-      checks.push("failed initial observation exposes retry feedback");
+      await page.keyboard.press("Escape");
+      assert.equal(await page.getByRole("button", { name: "设置", exact: true }).isEnabled(), true);
+      assert.deepEqual(await writes(), []);
+      checks.push(
+        "failed project observation keeps navigation and settings available without admitting a draft",
+      );
       await page.screenshot({ path: join(scratch, "failure.png"), animations: "disabled" });
-      await page.getByRole("button", { name: "重试加载对话", exact: true }).click();
+      await page.getByRole("button", { name: "重试加载对话", exact: true }).first().click();
       await page.evaluate((state) => {
         window.startupReleased = true;
         window.updateProject(state);
