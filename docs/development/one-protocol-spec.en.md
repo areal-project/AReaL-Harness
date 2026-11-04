@@ -34,7 +34,7 @@ Implement A0 → A4 in order. A0 is documents and schema only and may run alongs
 These turn problems from the previous shared Host migration into hard requirements.
 
 1. **Report progress by real journeys.** The first line of every report answers: can the maintainer's real old environment (installed package plus a copy of real data) complete this package's acceptance journey? Unit tests and static checks come after. Partial passes never replace that answer.
-2. **Connect end to end first, then fill in.** The first step of every package is to run the shortest end-to-end journey (even one method) on the packaged build with a copy of real data, proving every wire reaches the Host. Only then write the full implementation and unit tests. Installed-package verification is never left to the end.
+2. **Connect end to end first, then fill in.** The first step of every package is to run the shortest end-to-end journey (even one method) on the packaged build with a copy of real data, proving every wire reaches the Host. Only then write the full implementation and unit tests. Installed-package verification is never left to the end. A0 is static only and is accepted by conformance tests and freeze checks; installed-package journeys with real data start at A1.
 3. **Close one package at a time.** Do not start the next package until every completion condition of the current one is met. Problems that belong to another package or to the shared Host go into the PR's "Known issues" and are reported, not fixed on the side.
 4. **Keep historical facts separate from the current switch.** This spec migrates no storage and rewrites no history. Every data-path switch sits behind a flag and can fall back to the old IPC path, which stays intact during the switch. An UNKNOWN on a historical command affects only that command's display and lookup; it must not block a project from working, a flag from being turned on, or a package from completing.
 5. **Stop when stuck and come back with options.** If the same blocker survives two rounds of investigation without new evidence, stop searching. Write a table of what can and cannot be proven, and give two or three options in which the software carries the complexity, for the maintainer to choose. Never work around it by disabling a project, skipping tests, loosening assertions or deleting data.
@@ -96,10 +96,11 @@ Fix one protocol definition from which every later method is generated, and free
 
 ### Work
 
-1. Add `schemas/areal-host-protocol-v1.json` covering existing `host.*` and Gateway methods without changing semantics; generate Rust and TS types, with a conformance test proving the schema matches messages the current implementation sends and receives. Switching the Host and `@areal/remote-client` to the generated types is the first step of A1, to avoid conflicts with Host code under H3–H4 acceptance.
-2. Extend `hello`: protocol version, method list, grant scope (observe/submit/approve/manage), resource limits (frame size, paging, upload chunk), transport type.
-3. Map each of the 48 desktop commands to a destination: existing protocol method, new protocol method (owned by the Host, the workbench service or Core), or the Electron shell. Put the table in an appendix of this spec or a separate development doc.
-4. Add a check: `desktop-contract.cjs` may only lose commands; adding one fails CI.
+1. Add `schemas/areal-host-protocol-v1.json` covering every existing local and Gateway method without changing semantics. Record the two existing envelopes as they are: local `{version,id,method,params}` (`core/host/src/wire.rs`) and Remote `{id,method,context,params,commandId}` (`core/host/src/gateway/session.rs`), including their strict rejection of unknown fields. The unified envelope and the `hello` extension go in a separately marked "proposal" section; A0 does not claim the current implementation accepts them.
+2. Generate Rust and TS types into their own `generated/` directories, not yet wired into the runtime, with deterministic generation and `--check`. Conformance tests reuse the real wire implementations and existing Host/Relay fixtures to check actual messages, illegal fields and resource limits. Switching the Host and `@areal/remote-client` to the generated types is the first step of A1, to avoid conflicts with Host code under H3–H4 acceptance.
+3. The proposal section defines the `hello` extension: protocol version, method list, grant scope (observe/submit/approve/manage), resource limits (frame size, paging, upload chunk), transport type.
+4. The destination table keeps the 48 top-level commands as rows; commands with mixed responsibilities are split by operation or parameter. Rule: native interaction (pickers, confirmation dialogs, quit UI, login windows) stays in the shell; business handling goes to the Host, the workbench service or Core; combined operations are split and explained. Behavior the Gateway covers only partly is marked "partly covered by an existing method", never treated as a drop-in alias, and old semantics are not changed. The table goes in an appendix of this spec.
+5. The freeze check covers both top-level command names and business operation sets (such as the operations under `manage`), only allowing removals relative to the PR base; additions fail CI. The shell's native bridge is outside the A0 freeze.
 
 ### Constraints
 
@@ -113,9 +114,10 @@ Fix one protocol definition from which every later method is generated, and free
 
 ### Done when
 
-- The generated types pass the conformance test and existing Remote tests pass unchanged.
-- The destination table covers all 48 commands and the maintainer has confirmed it.
-- CI rejects new desktop IPC commands.
+- The schema accurately describes both existing envelopes and every existing method, generated output passes `--check`, conformance tests pass, and existing Remote tests pass unchanged.
+- The destination table covers all 48 commands (with their split operations) and the maintainer has confirmed it.
+- Injecting a new command and a new business operation each makes CI fail, with raw output attached.
+- The PR's target branch already contains the integration baseline, so the diff holds only A0 changes; integration work such as merging upstream main goes to `codex/shared-host` on its own, not into the A0 PR.
 
 ## Package A1: local WebSocket, shared data layer and the GUI read path
 
