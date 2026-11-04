@@ -288,11 +288,14 @@ export async function seedHostCopy({ from, home, binary }, { registerProject, be
       const require = createRequire(new URL("../packages/client/package.json", import.meta.url));
       const { HostClient } = require("@areal/client/node");
       client = new HostClient();
-      const isolatedUser = join(destination, "seed-copy/user");
-      await mkdir(join(isolatedUser, ".areal"), { recursive: true, mode: 0o700 });
+      // macOS 按 HOME 查找登录钥匙串；Host 数据仍由显式私有 home 隔离。
+      const hostUser =
+        process.platform === "darwin" ? actualHome : join(destination, "seed-copy/user");
+      if (process.platform !== "darwin")
+        await mkdir(join(hostUser, ".areal"), { recursive: true, mode: 0o700 });
       const previousHome = process.env.HOME;
       try {
-        process.env.HOME = isolatedUser;
+        process.env.HOME = hostUser;
         await client.connectOrStart(destination, resolve(binary));
       } finally {
         if (previousHome === undefined) delete process.env.HOME;
