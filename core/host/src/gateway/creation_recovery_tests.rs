@@ -1,5 +1,30 @@
 use super::*;
 
+#[tokio::test(flavor = "current_thread")]
+async fn creation_outcome_failure_never_projects_changed_pending_as_original_unknown() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let command = uuid::Uuid::new_v4().to_string();
+        let creating = Fixture::dispatch(f.session("a"), f.request("session.create", json!({}), Some(&command)));
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":binding()}},"methods":["areal/thread/start","areal/request/read"]}));
+        let held = f.call("areal/thread/start").await;
+        let (revision, mut snapshot) = f.host.journal.native_snapshot("project").unwrap();
+        let operation = snapshot["pending"][0]["operationId"].clone();
+        assert_eq!(held.request["params"]["requestId"], operation);
+        snapshot["pending"][0]["nativeDigest"] = json!("changed-pending-digest");
+        f.host.journal.native_replace("project", revision, snapshot).unwrap();
+        let before = f.host.journal.native_snapshot("project").unwrap();
+        let directory = f.host.home.join("host/journals/records");
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+        held.reply(json!({"thread":{"id":"created-thread"}}));
+        let (_, result) = creating.await.unwrap();
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(result.unwrap_err().downcast_ref::<std::io::Error>().is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied));
+        assert_eq!(f.host.journal.native_snapshot("project").unwrap(), before);
+        assert!(f.calls.try_recv().is_err());
+    }).await;
+}
+
 fn binding() -> Value {
     json!({"identity":"store","journalEpoch":"11111111-1111-4111-8111-111111111111","coreInstanceId":"22222222-2222-4222-8222-222222222222"})
 }

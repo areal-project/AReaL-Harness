@@ -20,7 +20,7 @@ if (!process.env.RC12_TLS_HOME) {
       const proof = {
         passed: false,
         boundary:
-          "single real Host/Noise outcome write fault; original JS response shape remains open",
+          "single real Host/Noise outcome write fault with original UNKNOWN response; no full-suite or 100-race claim",
         scriptSha256: createHash("sha256")
           .update(await readFile(import.meta.filename))
           .digest("hex"),
@@ -114,10 +114,14 @@ if (!process.env.RC12_TLS_HOME) {
         } while (response.id !== requestId);
         proof.response = response;
         assert.equal(response.id, requestId);
-        assert.equal(response.result, undefined);
-        assert.equal(response.error.code, "CORE_UNAVAILABLE");
-        assert.equal(response.error.submissionUnknown, true);
-        assert.equal(response.error.commandId, commandId);
+        assert.equal(response.error, undefined);
+        assert.equal(response.result.admissionState, "unknown");
+        assert.equal(response.result.submissionUnknown, true);
+        assert.equal(response.result.commandId, commandId);
+        assert.equal(response.result.operationId, pending.operationId);
+        assert.equal(response.result.nativeRequestId, pending.operationId);
+        assert.equal(response.result.threadId, undefined);
+        assert.equal(response.result.receipt, undefined);
         assert.deepEqual(await readFile(filename), bytes);
         await chmod(records, originalMode);
         modeChanged = false;

@@ -1,5 +1,14 @@
 use super::*;
 
+#[derive(Debug)]
+struct OutcomeWrite;
+impl std::fmt::Display for OutcomeWrite {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("persist command outcome")
+    }
+}
+impl std::error::Error for OutcomeWrite {}
+
 impl Session {
     pub(super) async fn create_session(
         &self,
@@ -188,7 +197,19 @@ impl Session {
                 };
             }
         }
-        let settled = self.settle_command(&id, settled)?;
+        let settled = match self.settle_command(&id, settled) {
+            Ok(settled) => settled,
+            Err(error)
+                if error.is::<OutcomeWrite>()
+                    && error.downcast_ref::<std::io::Error>().is_some() =>
+            {
+                match self.command_record(project, &command) {
+                    Ok(Some(pending)) if pending == record => pending,
+                    _ => return Err(error),
+                }
+            }
+            Err(error) => return Err(error),
+        };
         self.authorize(Some(project), "submit")?;
         Ok(Self::command_view(Some(&settled), &command))
     }
@@ -211,7 +232,10 @@ impl Session {
             .unwrap()
             .retain(|entry| entry["operationId"] != operation);
         snapshot["outcomes"][&operation] = record.clone();
-        self.host.journal.native_replace(id, revision, snapshot)?;
+        self.host
+            .journal
+            .native_replace(id, revision, snapshot)
+            .context(OutcomeWrite)?;
         Ok(record)
     }
     pub(super) async fn reconcile_creation(&self, project: &str, record: &Value) -> Result<Value> {

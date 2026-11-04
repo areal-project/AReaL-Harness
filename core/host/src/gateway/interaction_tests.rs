@@ -718,7 +718,13 @@ async fn create_lost_outcome_recovers_original_receipt_after_owner_reconstructio
         held.reply(json!({"thread":{"id":"created-thread"}}));
         let (_, result) = creating.await.unwrap();
         std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(result.unwrap_err().chain().any(|error| error.downcast_ref::<std::io::Error>().is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)));
+        let unknown = result.unwrap();
+        assert_eq!(unknown["commandId"], command);
+        assert_eq!(unknown["operationId"], operation);
+        assert_eq!(unknown["admissionState"], "unknown");
+        assert_eq!(unknown["submissionUnknown"], true);
+        assert!(unknown.get("threadId").is_none());
+        assert!(unknown.get("receipt").is_none());
         assert_eq!(f.host.journal.native_snapshot("project").unwrap(), (revision, pending));
         let service = f.host.slots.borrow()["project"].service.clone().unwrap();
         (f.close)();
