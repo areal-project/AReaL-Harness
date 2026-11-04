@@ -61,18 +61,16 @@ test("refactored summary reads persist isolated host routing before returning na
   );
 });
 
-test("refactored connection guards scheduled start and resume before resources and preserves logical browser identity", async (t) => {
+test("Main rejects scheduled preparation and preserves logical browser identity", async (t) => {
   const { backend } = await backendFixture(t);
   const project = await backend.loadProjectJournal(physical),
     calls = [];
   backend.providers = { value: {}, manages: () => true };
   backend.supportsBrowser = () => false;
+  const owner = {};
+  backend.desktopToolOwner = () => owner;
   backend.resources.beforeCreate = async () => calls.push("resources");
-  backend.scheduleAdmission.prepare = async (_project, params) => {
-    calls.push(params.intent);
-    if (params.taskId === "unreserved")
-      throw Object.assign(new Error("unreserved"), { code: "WORKTREE_REQUIRED" });
-  };
+  backend.scheduleAdmission.prepare = async () => calls.push("schedule");
   const original = CoreClient.prototype.connect;
   CoreClient.prototype.connect = async () => {
     throw new Error("fixture before transport");
@@ -84,14 +82,13 @@ test("refactored connection guards scheduled start and resume before resources a
   }
   const callback = project.client.onServerRequest;
   for (const intent of ["start", "resume"]) {
-    await assert.rejects(callback("areal/task/prepare", { intent, taskId: "unreserved" }), {
-      code: "WORKTREE_REQUIRED",
-    });
+    for (const taskId of ["unreserved", "reserved"])
+      await assert.rejects(
+        callback("areal/task/prepare", { intent, taskId }),
+        /Unsupported client tool/,
+      );
   }
-  assert.deepEqual(calls, ["start", "resume"]);
-  await callback("areal/task/prepare", { intent: "start", taskId: "reserved" });
-  await callback("areal/task/prepare", { intent: "resume", taskId: "reserved" });
-  assert.deepEqual(calls, ["start", "resume", "start", "resources", "resume"]);
+  assert.deepEqual(calls, []);
   backend.browserRead = async (request) => request;
   const browser = await callback(
     "item/tool/call",
