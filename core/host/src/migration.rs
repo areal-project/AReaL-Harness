@@ -1319,9 +1319,13 @@ impl Migration {
                     let receipt: storage::StopReceipt = storage::read(&entry?.path())?;
                     confirmed |= receipt.service.identity == service.identity
                         && receipt.service.owner == service.owner
+                        && receipt.operation.version == 1
                         && receipt.operation.service_id == service_id
                         && receipt.operation.generation == service.identity.generation
-                        && receipt.operation.state == StopOperationState::Completed
+                        && matches!(
+                            receipt.operation.state,
+                            StopOperationState::AcceptedPending | StopOperationState::Completed
+                        )
                         && receipt.cleanup_confirmed;
                 }
             }
@@ -2634,6 +2638,90 @@ mod tests {
         assert!(f.migration.published().is_err());
     }
 
+    #[test]
+    fn legacy_stop_cleanup_receipt_uses_public_completion_semantics() {
+        for case in [
+            "pending-cleaned",
+            "completed",
+            "cleanup-missing",
+            "owner-changed",
+            "generation-changed",
+            "unsupported-version",
+            "admission-unknown",
+            "service-locked",
+            "store-locked",
+        ] {
+            let f = Fixture::new();
+            f.attach();
+            let data = f.source.core_home.join(&f.ids[0]).join("state");
+            storage::private_dir(&data).unwrap();
+            let service_id = storage::digest(data.as_os_str().as_encoded_bytes())[..24].to_owned();
+            let directory = storage::registry(&f.source.legacy_service_home, &service_id).unwrap();
+            storage::private_dir(&directory).unwrap();
+            let service: Service = serde_json::from_value(json!({
+                "protocolVersion":1,"serviceId":service_id,"generation":uuid::Uuid::new_v4().to_string(),
+                "workspace":f.source.core_home.parent().unwrap().join("workspace"),"dataDir":data,
+                "configFingerprint":"legacy-v1","owner":{"kind":"gui","appRunId":uuid::Uuid::new_v4().to_string(),"profile":f.source.profile},
+                "endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1",
+                "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+                "hostPid":std::process::id(),"corePid":std::process::id(),"state":"stopped"
+            })).unwrap();
+            storage::write(&directory.join("service.json"), &service).unwrap();
+            let mut receipt = storage::StopReceipt {
+                operation: areal_protocol::service::StopOperation {
+                    version: 1,
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    service_id,
+                    generation: service.identity.generation.clone(),
+                    cancel: true,
+                    state: if case == "completed" {
+                        StopOperationState::Completed
+                    } else if case == "admission-unknown" {
+                        StopOperationState::AdmissionUnknown
+                    } else {
+                        StopOperationState::AcceptedPending
+                    },
+                    message: None,
+                    lifecycle: None,
+                },
+                service,
+                cleanup_confirmed: case != "cleanup-missing",
+            };
+            if case == "owner-changed" {
+                receipt.service.owner = None;
+            }
+            if case == "generation-changed" {
+                receipt.operation.generation = uuid::Uuid::new_v4().to_string();
+            }
+            if case == "unsupported-version" {
+                receipt.operation.version = 2;
+            }
+            storage::write_stop_receipt(&directory, &receipt).unwrap();
+            let receipt_path =
+                storage::stop_receipt_path(&directory, &receipt.operation.request_id).unwrap();
+            let original = std::fs::read(&receipt_path).unwrap();
+            let _lock = match case {
+                "service-locked" | "store-locked" => {
+                    let name = if case == "service-locked" {
+                        "service.lock"
+                    } else {
+                        "owner.lock"
+                    };
+                    let lock = storage::open_private(&data.join(name), true).unwrap();
+                    lock.try_lock_exclusive().unwrap();
+                    Some(lock)
+                }
+                _ => None,
+            };
+            let expected = if matches!(case, "pending-cleaned" | "completed") {
+                "ready"
+            } else {
+                "legacyPending"
+            };
+            assert_eq!(f.import().unwrap()["kind"], expected, "{case}");
+            assert_eq!(std::fs::read(&receipt_path).unwrap(), original, "{case}");
+        }
+    }
     #[test]
     fn cleanup_proof_must_match_original_owner_and_generation() {
         let f = Fixture::new();
