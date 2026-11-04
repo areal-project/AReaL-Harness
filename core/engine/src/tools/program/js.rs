@@ -345,6 +345,27 @@ mod tests {
     }
 
     #[test]
+    fn omitted_native_arguments_reach_validation_as_an_empty_object() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let worker = std::thread::spawn(move || {
+            run(
+                "text(await tools.probe());text(await tools.probe(undefined));text(await tools.probe(null));".into(),
+                vec!["probe".into()], tx, CancellationToken::new(),
+                Instant::now() + std::time::Duration::from_secs(2),
+            )
+        });
+        for expected in [serde_json::json!({}), serde_json::json!({}), Json::Null] {
+            let request = rx.blocking_recv().unwrap();
+            assert_eq!(request.arguments, expected);
+            request
+                .reply
+                .send(Ok(serde_json::json!({"data":expected})))
+                .unwrap();
+        }
+        assert_eq!(worker.join().unwrap().error, None);
+    }
+
+    #[test]
     fn json_input_preserves_short_source_and_regex_without_executing_data() {
         let input = serde_json::json!({"argv":["python","-c","print('中😀\\n` ${text(\"injected\")} \\\\')\n"],"pattern":r"def query\(","__proto__":{"injected":true}});
         let expected = input.clone();

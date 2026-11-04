@@ -12,7 +12,7 @@
 
 ## 执行和观察
 
-`tool_program({code, input?, timeoutMs?})` 在新的 QuickJS 上下文执行顶层 await。没有 Node、文件、网络、模块导入、计时器或跨调用状态；文件和进程操作只能调用目录里列出的原生工具。每个调用沿原 Core/Runtime 入口完成 schema、权限、hooks、文件版本、预算与持久化。只包含本次可见的内置工具以及 `read_history/read_tool_result/edit_files`，不支持递归编排、MCP 或委派。
+`tool_program({code, input?, timeoutMs?})` 在新的 QuickJS 上下文执行顶层 await。没有 Node、文件、网络、模块导入、计时器或跨调用状态；文件和进程操作只能调用目录里列出的原生工具。每个调用沿原 Core/Runtime 入口完成 schema、权限、hooks、文件版本、预算与持久化。 `tools.NAME()` 省略参数按空对象处理；显式 null 保持不变，必填字段仍由原生 schema 拒绝，不触发执行。只包含本次可见的内置工具以及 `read_history/read_tool_result/edit_files`，不支持递归编排、MCP 或委派。
 
 模型已读过文件并确定补丁和测试入口后，可以把关联修改、验证及有界回收放进同一程序。新错误、冲突、权限、UNKNOWN 或视觉判断必须回到模型；不在循环里安装依赖或更换方案。无独立工作时使用正常等待预算，不显式用 1 秒制造回收轮次。
 

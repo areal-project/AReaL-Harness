@@ -116,11 +116,27 @@ impl Engine {
         if raw.get("mcpResult").is_some() {
             crate::desktop::mcp_apps::strip_meta(&mut baseline);
         }
+        let mut selected_observations = Vec::new();
+        if program && let Some(parts) = baseline["contentItems"].as_array_mut() {
+            for (index, part) in parts.iter_mut().enumerate() {
+                if let Some(key) = part
+                    .as_object_mut()
+                    .and_then(|p| p.remove("nativeObservationKey"))
+                    .and_then(|v| v.as_str().map(str::to_owned))
+                    && policy.repeated_observations
+                {
+                    selected_observations.push((index, key));
+                }
+            }
+        }
         let file_compacted = name == "read_file" && baseline != *raw;
         let identity_compacted = coordination && baseline != *raw;
         if let Some(argv) = argv {
             apply_output_view(&mut baseline, argv);
         }
+        let before_verification = baseline.clone();
+        verification_view(&mut baseline);
+        let verification_only = before_verification == *raw && baseline != before_verification;
         let candidate = if policy.mode == ResultViewMode::Off {
             None
         } else if name == "search_files" && policy.search_groups {
@@ -200,10 +216,18 @@ impl Engine {
         if snapshot.is_none() && value != *raw && raw.get("mcpResult").is_none() {
             value = raw.clone();
         }
+        if program && let Some(parts) = value["contentItems"].as_array_mut() {
+            for part in parts {
+                if let Some(object) = part.as_object_mut() {
+                    object.remove("nativeObservationKey");
+                }
+            }
+        }
         // 观察候选需要留存原文，但未变且未超限的结果无需增加模型侧回取包装。
         // 候选随后与实际发送的基线比较，不能靠先扩大基线满足净节省门槛。
         if (value != *raw || bytes.len() > MAX_RESULT || raw.get("mcpResult").is_some())
             && !program
+            && !verification_only
             && let Some(reference) = &reference
         {
             if !value.is_object() {
@@ -219,6 +243,9 @@ impl Engine {
         let mut candidate_bytes = None;
         let mut kind = if identity_compacted {
             "coordination-v2"
+        } else if verification_only && snapshot.is_some() {
+            reason = "losslessDuplicateFacts";
+            "verification-receipt-v1"
         } else if file_compacted && snapshot.is_some() {
             "file-lines-v1"
         } else {
@@ -259,18 +286,7 @@ impl Engine {
                 if let Some(previous) = active.observation_results.get(&key)
                     && previous != item_id
                 {
-                    let mut proposed = raw.clone();
-                    for field in [
-                        "lines",
-                        "text",
-                        "declarations",
-                        "absentDeclarations",
-                        "executables",
-                    ] {
-                        proposed.as_object_mut().unwrap().remove(field);
-                    }
-                    proposed["unchangedObservation"] = json!({"previousResultId":previous,"basis":"fresh observation matched exactly; current versions and pagination retained"});
-                    proposed["rawResult"] = reference.clone().unwrap();
+                    let proposed = repeated_observation(raw, previous, reference.as_ref().unwrap());
                     if worthwhile(&value.to_string(), &proposed.to_string()) {
                         value = proposed;
                         kind = "repeated-observation-v1";
@@ -281,6 +297,32 @@ impl Engine {
                         active.observation_results.clear();
                     }
                     active.observation_results.insert(key, item_id.into());
+                }
+            }
+        }
+        let mut observed_selections = Vec::new();
+        if let Some(reference) = &reference
+            && !selected_observations.is_empty()
+        {
+            let state = cell.state.lock().await;
+            if let Some(active) = &state.active {
+                for (index, key) in selected_observations {
+                    let part = &mut value["contentItems"][index];
+                    if let Some(previous) = active
+                        .observation_results
+                        .get(&key)
+                        .filter(|p| *p != item_id)
+                        && let Some(mut selected) = part["text"]
+                            .as_str()
+                            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                    {
+                        let proposed = repeated_observation(&selected["data"], previous, reference);
+                        if worthwhile(&selected["data"].to_string(), &proposed.to_string()) {
+                            selected["data"] = proposed;
+                            part["text"] = json!(selected.to_string());
+                        }
+                    }
+                    observed_selections.push((key, part["text"].clone()));
                 }
             }
         }
@@ -332,6 +374,22 @@ impl Engine {
             } else {
                 kind = "native-program-selected-v1";
                 reason = "boundedSelectedOutputAndReceipts";
+            }
+            // 只有最终模型投影完整保留的选定观察才能登记；被预览截掉的正文不算已见。
+            if let Some(parts) = value["contentItems"].as_array() {
+                let mut state = cell.state.lock().await;
+                if let Some(active) = state.active.as_mut() {
+                    for (key, text) in observed_selections {
+                        if parts.iter().any(|p| p["text"] == text)
+                            && !active.observation_results.contains_key(&key)
+                        {
+                            if active.observation_results.len() >= 128 {
+                                active.observation_results.clear();
+                            }
+                            active.observation_results.insert(key, item_id.into());
+                        }
+                    }
+                }
             }
         }
         let displayed_bytes = value.to_string().len();
@@ -395,6 +453,34 @@ impl Engine {
         let max_bytes = args["maxBytes"].as_u64().unwrap_or(8192) as usize;
         anyhow::ensure!((4..=8192).contains(&max_bytes), "maxBytes must be 4..8192");
         result_page(result_id, &text, offset, max_bytes)
+    }
+}
+
+fn verification_view(value: &mut Value) {
+    let receipt = &value["verification"];
+    if value["state"] != "exited"
+        || receipt["status"] != "complete"
+        || receipt["schema"] != "areal.verification.v1"
+        || !receipt["receiptPath"].is_string()
+        || !receipt["logPath"].is_string()
+    {
+        return;
+    }
+    // 只去除 helper 的完全重复定位通知，未知 stdout、stderr、失败尾部和绑定事实均保留。
+    let notice = value["stdout"]
+        .as_str()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok());
+    let expected = json!({"receiptPath":receipt["receiptPath"],"logPath":receipt["logPath"],
+        "exitCode":receipt["exitCode"],"sourceUnchanged":receipt["sourceUnchanged"]});
+    if notice.as_ref() == Some(&expected) {
+        value["stdout"] = json!("");
+    }
+    let receipt = &mut value["verification"];
+    if receipt["sourceUnchanged"] == true
+        && receipt.get("sourceBefore").is_some()
+        && receipt["sourceBefore"] == receipt["sourceAfter"]
+    {
+        receipt.as_object_mut().unwrap().remove("sourceAfter");
     }
 }
 
@@ -1208,13 +1294,40 @@ mod tests {
 }
 
 // 必须先执行只读操作再比较；不省略 I/O、不复用旧版本、不折叠错误或进程输出。
-fn observation_key(name: &str, raw: &Value) -> Option<String> {
+fn repeated_observation(raw: &Value, previous: &str, reference: &Value) -> Value {
+    let mut proposed = raw.clone();
+    if let Some(object) = proposed.as_object_mut() {
+        for field in [
+            "lines",
+            "source",
+            "text",
+            "declarations",
+            "absentDeclarations",
+            "executables",
+            "discovery",
+        ] {
+            object.remove(field);
+        }
+    }
+    proposed["unchangedObservation"] = json!({"previousResultId":previous,"basis":"fresh observation matched exactly; current versions and pagination retained"});
+    proposed["rawResult"] = reference.clone();
+    proposed
+}
+
+pub(super) fn observation_key(name: &str, raw: &Value) -> Option<String> {
     if raw.get("error").is_some() || raw.to_string().len() < 1024 {
         return None;
     }
+    let canonical = crate::history::compact_file_text(&raw.to_string())
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .unwrap_or_else(|| raw.clone());
+    let raw = &canonical;
     let body = match name {
-        "read_file" if raw["sha256"].is_string() && raw["lines"].is_array() => {
-            json!({"path":raw["path"],"sha256":raw["sha256"],"offset":raw["offset"],"lines":raw["lines"],"nextLine":raw["nextLine"],"nextColumn":raw["nextColumn"],"nextRead":raw["nextRead"],"eof":raw["eof"],"truncated":raw["truncated"]})
+        "read_file"
+            if raw["sha256"].is_string()
+                && (raw["lines"].is_array() || raw["source"].is_string()) =>
+        {
+            json!({"path":raw["path"],"sha256":raw["sha256"],"offset":raw["offset"],"lines":raw["lines"],"source":raw["source"],"firstLine":raw["firstLine"],"lineCount":raw["lineCount"],"nextLine":raw["nextLine"],"nextColumn":raw["nextColumn"],"nextRead":raw["nextRead"],"eof":raw["eof"],"truncated":raw["truncated"]})
         }
         "environment_info" if raw["fingerprint"].is_string() => {
             json!({"fingerprint":raw["fingerprint"]})
@@ -1227,6 +1340,43 @@ fn observation_key(name: &str, raw: &Value) -> Option<String> {
 #[cfg(test)]
 mod observation_tests {
     use super::*;
+    #[test]
+    fn verification_projection_only_removes_exact_duplicate_facts() {
+        let receipt = json!({"status":"complete","schema":"areal.verification.v1",
+            "receiptPath":"receipt.json","logPath":"log","exitCode":7,"sourceUnchanged":true,
+            "sourceBefore":"hash","sourceAfter":"hash","outputTail":"AssertionError: failed",
+            "environment":{"commandDigest":"command"}});
+        let notice = json!({"receiptPath":"receipt.json","logPath":"log","exitCode":7,"sourceUnchanged":true}).to_string();
+        let original = json!({"state":"exited","stdout":notice,"stderr":"diagnostic","exitCode":7,"verification":receipt});
+        let mut value = original.clone();
+        verification_view(&mut value);
+        assert_eq!(value["stdout"], "");
+        assert_eq!(value["stderr"], "diagnostic");
+        assert_eq!(value["exitCode"], 7);
+        assert_eq!(
+            value["verification"]["outputTail"],
+            "AssertionError: failed"
+        );
+        assert_eq!(
+            value["verification"]["environment"],
+            original["verification"]["environment"]
+        );
+        assert!(value["verification"].get("sourceAfter").is_none());
+        for status in ["pending", "unavailable"] {
+            let mut value = original.clone();
+            value["verification"]["status"] = json!(status);
+            let before = value.clone();
+            verification_view(&mut value);
+            assert_eq!(value, before);
+        }
+        let mut value = original.clone();
+        value["stdout"] = json!("unexpected output\n");
+        value["verification"]["sourceAfter"] = json!("changed");
+        verification_view(&mut value);
+        assert_eq!(value["stdout"], "unexpected output\n");
+        assert_eq!(value["verification"]["sourceAfter"], "changed");
+    }
+
     #[test]
     fn repeated_observation_key_is_content_and_range_bound_but_preserves_new_versions() {
         let mut value = json!({"path":"workspace://repo/a", "sha256":"a", "fileVersion":"v1", "offset":1,"nextLine":2,"eof":true,"lines":[{"number":1,"text":"x".repeat(1600)}]});
@@ -1261,6 +1411,95 @@ mod repeated_projection_tests {
             self.0.notify_one();
             Ok(Box::pin(futures_util::stream::pending()))
         }
+    }
+    #[tokio::test]
+    async fn selected_program_observations_fold_only_after_complete_model_display() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut extensions = ToolExtensions::default();
+        extensions.policy.result_views.repeated_observations = true;
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let engine = Engine::open_with_extensions(
+            directory.path(),
+            Arc::new(PendingModel(entered.clone())),
+            Limits::default(),
+            None,
+            extensions,
+        )
+        .unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("observe")])
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(10), entered.notified())
+            .await
+            .unwrap();
+        let cell = engine.cell(&thread.id).await.unwrap();
+        let data = json!({"fingerprint":"env","declarations":[{"text":"source".repeat(600)}]});
+        let key = observation_key("environment_info", &data).unwrap();
+        let selected = json!({"type":"inputText","nativeObservationKey":key,"text":json!({"itemId":"child","data":data}).to_string()});
+        let receipt =
+            json!({"type":"inputText","text":"{\"children\":[],\"programCompleted\":true}"});
+        let raw = json!({"contentItems":[receipt, selected]});
+        let first = engine
+            .prepare_program_result(&cell, "parent-1", &raw)
+            .await
+            .unwrap();
+        assert!(!first.value.to_string().contains("nativeObservationKey"));
+        assert!(!first.value.to_string().contains("unchangedObservation"));
+        let second = engine
+            .prepare_program_result(&cell, "parent-2", &raw)
+            .await
+            .unwrap();
+        let view: Value =
+            serde_json::from_str(second.value["contentItems"][1]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(
+            view["data"]["unchangedObservation"]["previousResultId"],
+            "parent-1"
+        );
+        assert_eq!(view["data"]["rawResult"]["resultId"], "parent-2");
+        assert!(second.snapshot.is_some());
+        assert_eq!(
+            first.value["contentItems"][1]["text"],
+            raw["contentItems"][1]["text"]
+        );
+        // 完整保存但未展示的选定观察不能让下轮正文被错误折叠。
+        cell.state
+            .lock()
+            .await
+            .active
+            .as_mut()
+            .unwrap()
+            .observation_results
+            .clear();
+        let large = json!({"contentItems":[raw["contentItems"][0],{"type":"inputText","text":"x".repeat(MAX_RESULT + 1)},raw["contentItems"][1]]});
+        let preview = engine
+            .prepare_program_result(&cell, "truncated", &large)
+            .await
+            .unwrap();
+        assert!(
+            preview
+                .value
+                .to_string()
+                .contains("selectedOutputTruncated")
+        );
+        assert!(
+            cell.state
+                .lock()
+                .await
+                .active
+                .as_ref()
+                .unwrap()
+                .observation_results
+                .is_empty()
+        );
+        let after = engine
+            .prepare_program_result(&cell, "after-truncation", &raw)
+            .await
+            .unwrap();
+        assert!(!after.value.to_string().contains("unchangedObservation"));
+        engine.shutdown().await;
     }
     #[tokio::test]
     async fn repeated_read_retains_new_version_and_retrievable_full_observation() {

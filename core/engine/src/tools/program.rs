@@ -106,6 +106,31 @@ fn child_receipts(items: &[Item], parent: &str) -> Vec<Value> {
         .filter_map(receipt).collect()
 }
 
+fn selected_observation(part: &mut Value, items: &[Item], parent: &str) {
+    // WeakMap 来源还需对照权威子调用；被程序修改或自行拼接的对象不是原始观察。
+    let native_id = part.as_object_mut().and_then(|p| p.remove("nativeItemId"));
+    let Some(native_id) = native_id.and_then(|v| v.as_str().map(str::to_owned)) else {
+        return;
+    };
+    let Some(item @ Item::DynamicToolCall { tool, .. }) = items.iter().find(|item| {
+        matches!(item, Item::DynamicToolCall { id, success: Some(true), execution, .. }
+            if id == &native_id && execution.parent_call_id.as_deref() == Some(parent)
+                && execution.outcome == areal_protocol::ToolOutcome::Succeeded)
+    }) else {
+        return;
+    };
+    let child = child_view(item);
+    let selected = part["text"]
+        .as_str()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok());
+    if selected.as_ref() != Some(&json!({"itemId":native_id,"data":child["data"]})) {
+        return;
+    }
+    if let Some(key) = results::observation_key(tool, &child["data"]) {
+        part["nativeObservationKey"] = json!(key);
+    }
+}
+
 fn all_children_succeeded(receipts: &[Value]) -> bool {
     receipts
         .iter()
@@ -400,7 +425,7 @@ impl Engine {
                 &receipts,
             )];
             let mut text_bytes = 0;
-            for part in output.parts {
+            for mut part in output.parts {
                 if part["type"] == "inputText" {
                     text_bytes += part["text"].as_str().map_or(0, str::len);
                     if text_bytes > MAX_TEXT {
@@ -409,6 +434,7 @@ impl Engine {
                             "program selected output exceeds limit",
                         ));
                     }
+                    selected_observation(&mut part, items, &invocation.call.id);
                     content.push(part);
                 } else if part["type"] == "programImage" {
                     let original = items
@@ -458,6 +484,58 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_arguments_do_not_relax_native_schema_requirements() {
+        let registry = registry::Registry::new(true, &ToolExtensions::default()).unwrap();
+        assert!(
+            registry
+                .get("environment_info")
+                .unwrap()
+                .validate_input(&json!({}))
+                .is_ok()
+        );
+        assert!(
+            registry
+                .get("environment_info")
+                .unwrap()
+                .validate_input(&Value::Null)
+                .is_err()
+        );
+        assert!(
+            registry
+                .get("run_command")
+                .unwrap()
+                .validate_input(&json!({}))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn selected_observations_require_unmodified_successful_native_children() {
+        let data = json!({"fingerprint":"environment","declarations":[{"text":"x".repeat(2000)}]});
+        let item: Item = serde_json::from_value(json!({"type":"dynamicToolCall","id":"child","tool":"environment_info","callId":"call","arguments":{},"status":"completed","success":true,"contentItems":[{"type":"inputText","text":data.to_string()}],"execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"operation","outcome":"succeeded","parentCallId":"parent"}})).unwrap();
+        let original = json!({"type":"inputText","nativeItemId":"child","text":json!({"itemId":"child","data":data}).to_string()});
+        let mut part = original.clone();
+        selected_observation(&mut part, std::slice::from_ref(&item), "parent");
+        assert!(part["nativeObservationKey"].is_string());
+        assert!(part.get("nativeItemId").is_none());
+        for mode in ["modified", "plain", "wrongParent", "failed"] {
+            let mut part = original.clone();
+            let mut child = item.clone();
+            let mut parent = "parent";
+            match mode {
+                "modified" => part["text"] = json!(json!({"itemId":"child","data":{"fingerprint":"environment","declarations":[]}}).to_string()),
+                "plain" => { part.as_object_mut().unwrap().remove("nativeItemId"); },
+                "wrongParent" => parent = "other",
+                "failed" => { if let Item::DynamicToolCall { success, .. } = &mut child { *success = Some(false); } },
+                _ => unreachable!(),
+            }
+            selected_observation(&mut part, &[child], parent);
+            assert!(part.get("nativeObservationKey").is_none(), "{mode}");
+            assert!(part.get("nativeItemId").is_none());
+        }
+    }
 
     #[test]
     fn parse_guidance_never_claims_recorded_effects_did_not_run() {

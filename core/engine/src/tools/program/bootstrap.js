@@ -7,12 +7,15 @@
   let textBytes = 0;
   let imageCount = 0;
   const nativeResults = new WeakSet();
+  const nativeIds = new WeakMap();
   const emittedViews = new WeakMap();
   const tools = Object.create(null);
   for (const name of parse(namesJson)) {
     tools[name] = function (args) {
-      const result = parse(hostCall(name, stringify(args)));
+      // 省略参数等同空对象，仍由原生 schema 校验必填字段；显式 null 不改写。
+      const result = parse(hostCall(name, stringify(args === undefined ? {} : args)));
       nativeResults.add(result);
+      nativeIds.set(result, result.itemId);
       return result;
     };
   }
@@ -36,7 +39,9 @@
       throw new Error(
         "program selected text exceeds the 1 MiB archive limit; completed effects are retained",
       );
-    parts.push({ type: "inputText", text: s });
+    const part = { type: "inputText", text: s };
+    if (native) part.nativeItemId = nativeIds.get(native);
+    parts.push(part);
     if (native) emittedViews.set(native, s);
   }
   function image(result) {

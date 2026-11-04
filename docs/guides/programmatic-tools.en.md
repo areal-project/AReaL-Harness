@@ -12,7 +12,7 @@ Set `programmaticTools:false` to restore native-only tool exposure. Save this JS
 
 ## Execution and observations
 
-`tool_program({code, input?, timeoutMs?})` runs top-level await in a fresh QuickJS context. There is no Node, filesystem, network, module import, timer or cross-call state. File and process operations must use declared native tools. Every child follows the original Core/Runtime schema, permissions, hooks, file versions, budget and journal. The catalog contains currently visible built-ins and `read_history/read_tool_result/edit_files`; recursive programs, MCP and delegation are excluded.
+`tool_program({code, input?, timeoutMs?})` runs top-level await in a fresh QuickJS context. There is no Node, filesystem, network, module import, timer or cross-call state. File and process operations must use declared native tools. Every child follows the original Core/Runtime schema, permissions, hooks, file versions, budget and journal. Omitted arguments in `tools.NAME()` become an empty object; explicit null remains unchanged. Native schema validation still rejects missing required fields before execution. The catalog contains currently visible built-ins and `read_history/read_tool_result/edit_files`; recursive programs, MCP and delegation are excluded.
 
 After reading the files and choosing the edits and test entry point, compose edits, verification and bounded collection. Return to the model for unexpected failures, conflicts, permissions, UNKNOWN or visual judgment; do not install dependencies or choose new plans inside a loop. With no independent work, use the normal wait budget instead of explicit one-second status turns.
 
