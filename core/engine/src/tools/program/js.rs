@@ -504,6 +504,8 @@ mod tests {
         assert_eq!(view["itemId"], "item");
         assert!(view.get("outcome").is_none());
         assert_eq!(result.parts.len(), 2);
+        assert_eq!(result.parts[0]["nativeItemId"], "item");
+        assert!(result.parts[1].get("nativeItemId").is_none());
         assert!(
             result.parts[1]["text"]
                 .as_str()

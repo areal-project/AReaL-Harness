@@ -8,6 +8,7 @@
   let imageCount = 0;
   const nativeResults = new WeakSet();
   const nativeIds = new WeakMap();
+  const originalViews = new WeakMap();
   const emittedViews = new WeakMap();
   const tools = Object.create(null);
   for (const name of parse(namesJson)) {
@@ -16,6 +17,7 @@
       const result = parse(hostCall(name, stringify(args === undefined ? {} : args)));
       nativeResults.add(result);
       nativeIds.set(result, result.itemId);
+      originalViews.set(result, stringify({ itemId: result.itemId, data: result.data }));
       return result;
     };
   }
@@ -40,7 +42,7 @@
         "program selected text exceeds the 1 MiB archive limit; completed effects are retained",
       );
     const part = { type: "inputText", text: s };
-    if (native) part.nativeItemId = nativeIds.get(native);
+    if (native && s === originalViews.get(native)) part.nativeItemId = nativeIds.get(native);
     parts.push(part);
     if (native) emittedViews.set(native, s);
   }

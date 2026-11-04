@@ -123,11 +123,30 @@ fn selected_observation(part: &mut Value, items: &[Item], parent: &str) {
     let selected = part["text"]
         .as_str()
         .and_then(|s| serde_json::from_str::<Value>(s).ok());
-    if selected.as_ref() != Some(&json!({"itemId":native_id,"data":child["data"]})) {
+    if !selected.as_ref().is_some_and(|selected| {
+        js_observation_equal(selected, &json!({"itemId":native_id,"data":child["data"]}))
+    }) {
         return;
     }
     if let Some(key) = results::observation_key(tool, &child["data"]) {
         part["nativeObservationKey"] = json!(key);
+    }
+}
+
+fn js_observation_equal(selected: &Value, original: &Value) -> bool {
+    // 原生数据先经过 JSON.parse；纳秒整数可超出 JS 精度。只接受同一 Number 表示，
+    // 其余字段逐项核对；bootstrap 还要求与私有 WeakMap 中未修改的首份序列化完全一致。
+    match (selected, original) {
+        (Value::Number(a), Value::Number(b)) => a.as_f64() == b.as_f64(),
+        (Value::Array(a), Value::Array(b)) => {
+            a.len() == b.len() && a.iter().zip(b).all(|(a, b)| js_observation_equal(a, b))
+        }
+        (Value::Object(a), Value::Object(b)) => {
+            a.len() == b.len()
+                && a.iter()
+                    .all(|(key, a)| b.get(key).is_some_and(|b| js_observation_equal(a, b)))
+        }
+        _ => selected == original,
     }
 }
 
@@ -513,19 +532,32 @@ mod tests {
 
     #[test]
     fn selected_observations_require_unmodified_successful_native_children() {
-        let data = json!({"fingerprint":"environment","declarations":[{"text":"x".repeat(2000)}]});
+        let data = json!({"fingerprint":"environment","mtimeNs":1789799245140573999_i64,"declarations":[{"text":"x".repeat(2000)}]});
         let item: Item = serde_json::from_value(json!({"type":"dynamicToolCall","id":"child","tool":"environment_info","callId":"call","arguments":{},"status":"completed","success":true,"contentItems":[{"type":"inputText","text":data.to_string()}],"execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"operation","outcome":"succeeded","parentCallId":"parent"}})).unwrap();
-        let original = json!({"type":"inputText","nativeItemId":"child","text":json!({"itemId":"child","data":data}).to_string()});
+        let mut displayed = data.clone();
+        displayed["mtimeNs"] = json!(1789799245140574000_i64);
+        let original = json!({"type":"inputText","nativeItemId":"child","text":json!({"itemId":"child","data":displayed}).to_string()});
         let mut part = original.clone();
         selected_observation(&mut part, std::slice::from_ref(&item), "parent");
         assert!(part["nativeObservationKey"].is_string());
         assert!(part.get("nativeItemId").is_none());
-        for mode in ["modified", "plain", "wrongParent", "failed"] {
+        for mode in [
+            "modified",
+            "plain",
+            "wrongParent",
+            "failed",
+            "changedTimestamp",
+        ] {
             let mut part = original.clone();
             let mut child = item.clone();
             let mut parent = "parent";
             match mode {
                 "modified" => part["text"] = json!(json!({"itemId":"child","data":{"fingerprint":"environment","declarations":[]}}).to_string()),
+                "changedTimestamp" => {
+                    let mut changed = displayed.clone();
+                    changed["mtimeNs"] = json!(1789799245140579000_i64);
+                    part["text"] = json!(json!({"itemId":"child","data":changed}).to_string());
+                },
                 "plain" => { part.as_object_mut().unwrap().remove("nativeItemId"); },
                 "wrongParent" => parent = "other",
                 "failed" => { if let Item::DynamicToolCall { success, .. } = &mut child { *success = Some(false); } },
