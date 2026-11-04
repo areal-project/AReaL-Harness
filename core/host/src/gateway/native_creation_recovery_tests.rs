@@ -9,6 +9,9 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 #[path = "native_outcome_recovery_tests.rs"]
 mod native_outcome_recovery_tests;
 
+#[path = "native_stop_recovery_tests.rs"]
+mod native_stop_recovery_tests;
+
 struct OwnedChild(Child);
 impl Drop for OwnedChild {
     fn drop(&mut self) {
@@ -45,6 +48,7 @@ struct NativeCore {
     model: OwnedChild,
     core: OwnedChild,
     direct: Service,
+    model_origin: String,
 }
 
 struct NativeProxy {
@@ -78,11 +82,26 @@ async fn start_native_core(f: &Fixture) -> NativeCore {
         r#"
 const {{createServer}} = require('node:http');
 const {{writeFileSync}} = require('node:fs');
+const held = new Map();
 const server = createServer(async (req,res) => {{
+ if (req.url.startsWith('/native-stop/')) {{
+  const url=new URL(req.url,'http://127.0.0.1'); const marker=url.searchParams.get('marker');
+  const response=held.get(marker);
+  if (url.pathname==='/native-stop/release' && response) {{
+   held.delete(marker);
+   if (!response.destroyed) {{
+    response.writeHead(200,{{'content-type':'text/event-stream'}});
+    response.end('data: '+JSON.stringify({{choices:[{{index:0,delta:{{content:'Original held model complete'}},finish_reason:'stop'}}]}})+'\n\ndata: [DONE]\n\n');
+   }}
+  }}
+  res.writeHead(200,{{'content-type':'application/json'}});res.end(JSON.stringify({{held:held.has(marker)}}));return;
+ }}
  let raw=''; for await (const c of req) raw+=c;
  const body=JSON.parse(raw);
  const naming=body.messages.some(m=>m.role==='system' && typeof m.content==='string' && m.content.startsWith('Generate a concise semantic session title'));
  const latestUser=body.messages.findLastIndex(m=>m.role==='user');
+ const marker=JSON.stringify(body.messages[latestUser]??{{}}).match(/NATIVE_STOP:[a-z0-9-]+/)?.[0];
+ if (!naming && marker) {{held.set(marker,res);return;}}
  const tool=!naming && !body.messages.slice(latestUser+1).some(m=>m.role==='tool');
  const delta=tool ? {{tool_calls:[{{index:0,id:'native-effect',type:'function',function:{{name:'run_command',arguments:JSON.stringify({{command:{command}}})}}}}]}} : {{content:'Native fixture complete'}};
  res.writeHead(200,{{'content-type':'text/event-stream'}});
@@ -163,6 +182,7 @@ server.listen(0,'127.0.0.1',()=>writeFileSync({ready},String(server.address().po
         model,
         core,
         direct,
+        model_origin: format!("http://127.0.0.1:{port}"),
     }
 }
 
