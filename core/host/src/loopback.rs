@@ -61,6 +61,7 @@ const WRITE_METHODS: &[&str] = &[
     "attention.read",
     "project.models",
     "command.read",
+    "attachment.upload",
 ];
 const TTL: Duration = Duration::from_secs(30);
 const TIMEOUT: Duration = Duration::from_secs(10);

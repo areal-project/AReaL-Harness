@@ -11421,6 +11421,14 @@
             "mcpContentBytes": {
               "type": "integer",
               "const": 524288
+            },
+            "uploadChunkBytes": {
+              "type": "integer",
+              "const": 262144
+            },
+            "uploadBytes": {
+              "type": "integer",
+              "const": 16777216
             }
           },
           "required": [
@@ -11431,7 +11439,9 @@
             "quoteUnits",
             "mcpBlocks",
             "mcpBlockBytes",
-            "mcpContentBytes"
+            "mcpContentBytes",
+            "uploadChunkBytes",
+            "uploadBytes"
           ],
           "additionalProperties": false
         }
@@ -12833,7 +12843,8 @@
               "review.read",
               "attention.read",
               "project.models",
-              "command.read"
+              "command.read",
+              "attachment.upload"
             ]
           }
         },
@@ -12872,6 +12883,14 @@
             "mcpContentBytes": {
               "type": "integer",
               "const": 524288
+            },
+            "uploadChunkBytes": {
+              "type": "integer",
+              "const": 262144
+            },
+            "uploadBytes": {
+              "type": "integer",
+              "const": 16777216
             }
           },
           "required": [
@@ -12882,7 +12901,9 @@
             "quoteUnits",
             "mcpBlocks",
             "mcpBlockBytes",
-            "mcpContentBytes"
+            "mcpContentBytes",
+            "uploadChunkBytes",
+            "uploadBytes"
           ],
           "additionalProperties": false
         }
@@ -15569,6 +15590,148 @@
           }
         }
       ]
+    },
+    "RemoteAttachmentUploadParams": {
+      "type": "object",
+      "description": "One chunk of a desktop attachment. Chunks arrive in order at exact offsets; the final chunk hands the bytes to Core and returns the attachment receipt.",
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 128
+        },
+        "uploadId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 128
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777215
+        },
+        "base64": {
+          "type": "string",
+          "minLength": 1,
+          "description": "At most 262144 decoded bytes."
+        }
+      },
+      "required": [
+        "threadId",
+        "uploadId",
+        "mimeType",
+        "sizeBytes",
+        "offset",
+        "base64"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteAttachmentUploadRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "attachment.upload"
+        },
+        "params": {
+          "$ref": "#/$defs/RemoteAttachmentUploadParams"
+        },
+        "context": {
+          "$ref": "#/$defs/RemoteMutationContext"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "attachment.upload",
+          "params": {
+            "threadId": "example",
+            "uploadId": "11111111-1111-4111-8111-111111111111",
+            "mimeType": "application/pdf",
+            "sizeBytes": 4,
+            "offset": 0,
+            "base64": "JVBERg=="
+          },
+          "context": {
+            "projectId": "example"
+          }
+        }
+      ]
+    },
+    "RemoteAttachmentUploadResult": {
+      "type": "object",
+      "properties": {
+        "uploadId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "receivedBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "attachment": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "pattern": "^areal://blob/[0-9a-f]{64}$"
+            },
+            "mimeType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16777216
+            }
+          },
+          "required": [
+            "uri",
+            "mimeType",
+            "sizeBytes"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "uploadId",
+        "receivedBytes"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "uploadId": "11111111-1111-4111-8111-111111111111",
+          "receivedBytes": 4,
+          "attachment": {
+            "uri": "areal://blob/0000000000000000000000000000000000000000000000000000000000000000",
+            "mimeType": "application/pdf",
+            "sizeBytes": 4
+          }
+        }
+      ]
     }
   },
   "x-current": {
@@ -15933,6 +16096,12 @@
           "result": "#/$defs/ReadSubscriptionClosed",
           "source": "core/host/src/gateway/shared_reads.rs",
           "capability": "gui-read-v1"
+        },
+        "attachment.upload": {
+          "request": "#/$defs/RemoteAttachmentUploadRequest",
+          "result": "#/$defs/RemoteAttachmentUploadResult",
+          "source": "core/host/src/gateway/uploads.rs",
+          "capability": "gui-write-v1"
         }
       },
       "hello": "#/$defs/RemoteHello",

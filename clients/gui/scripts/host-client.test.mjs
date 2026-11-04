@@ -914,8 +914,13 @@ test("desktop writes negotiate gui-write-v1, carry the Gateway context and never
         negotiatedCapabilities: frame.params.capabilities,
         connectionId: "connection",
         gatewayGeneration: generation,
-        writeMethods: ["session.send", "command.read"],
-        writeLimits: { commandTextBytes: 65536, attachments: 16 },
+        writeMethods: ["session.send", "command.read", "attachment.upload"],
+        writeLimits: {
+          commandTextBytes: 65536,
+          attachments: 16,
+          uploadChunkBytes: 4,
+          uploadBytes: 64,
+        },
       });
     if (frame.method === "shell.subscribe")
       return reply({
@@ -935,6 +940,16 @@ test("desktop writes negotiate gui-write-v1, carry the Gateway context and never
       return reply({ admissionState: "accepted", turnId: "turn" });
     if (frame.method === "command.read")
       return reply({ commandId: frame.params.commandId, admissionState: "accepted" });
+    if (frame.method === "attachment.upload") {
+      const received = frame.params.offset + Buffer.from(frame.params.base64, "base64").length;
+      return reply({
+        uploadId: frame.params.uploadId,
+        receivedBytes: received,
+        ...(received === frame.params.sizeBytes && {
+          attachment: { uri: "areal://blob/abc", mimeType: "text/plain", sizeBytes: received },
+        }),
+      });
+    }
   });
   const client = new HostClient({
     origin,
@@ -996,6 +1011,30 @@ test("desktop writes negotiate gui-write-v1, carry the Gateway context and never
     admissionState: "accepted",
   });
   assert.equal(frames.filter((frame) => frame.params?.text === "lost").length, 1);
+  const uploaded = await client.upload(
+    project.projectId,
+    "t",
+    new TextEncoder().encode("0123456789"),
+    "text/plain",
+  );
+  assert.deepEqual(uploaded, { uri: "areal://blob/abc", mimeType: "text/plain", sizeBytes: 10 });
+  const chunks = frames.filter((frame) => frame.method === "attachment.upload");
+  assert.deepEqual(
+    chunks.map((frame) => [
+      frame.params.offset,
+      Buffer.from(frame.params.base64, "base64").toString(),
+    ]),
+    [
+      [0, "0123"],
+      [4, "4567"],
+      [8, "89"],
+    ],
+  );
+  assert.equal(new Set(chunks.map((frame) => frame.params.uploadId)).size, 1);
+  assert.ok(chunks.every((frame) => frame.commandId === undefined));
+  await assert.rejects(client.upload(project.projectId, "t", new Uint8Array(65), "text/plain"), {
+    code: "LIMIT_EXCEEDED",
+  });
 });
 
 test("browser clients never offer gui-write-v1", async (t) => {

@@ -25,6 +25,8 @@ mod shared_reads;
 mod stop;
 #[path = "tasks.rs"]
 pub(super) mod tasks;
+#[path = "uploads.rs"]
+mod uploads;
 use super::wire;
 use crate::server::{Host, gateway_owner};
 use anyhow::{Context, Result, ensure};
@@ -195,7 +197,7 @@ pub(crate) const LOCAL_PEER: &str = "local-desktop";
 /// 另加 MCP 总量上限，保证整条命令放得进 1 MiB 帧。
 pub(crate) const GUI_WRITE_PENDING_BYTES: usize = 704 * 1024;
 pub(crate) fn write_limits() -> Value {
-    json!({"commandTextBytes":64 * 1024,"commandPendingBytes":GUI_WRITE_PENDING_BYTES,"attachments":16,"quotes":8,"quoteUnits":16000,"mcpBlocks":32,"mcpBlockBytes":64 * 1024,"mcpContentBytes":send::MCP_CONTENT_BYTES})
+    json!({"commandTextBytes":64 * 1024,"commandPendingBytes":GUI_WRITE_PENDING_BYTES,"attachments":16,"quotes":8,"quoteUnits":16000,"mcpBlocks":32,"mcpBlockBytes":64 * 1024,"mcpContentBytes":send::MCP_CONTENT_BYTES,"uploadChunkBytes":uploads::CHUNK_BYTES,"uploadBytes":crate::server::conversation_media::MAX_BYTES})
 }
 
 pub(crate) struct Session {
@@ -213,6 +215,7 @@ pub(crate) struct Session {
     gui_read: bool,
     gui_write: bool,
     local: bool,
+    uploads: uploads::Uploads,
     token_key: [u8; 32],
 }
 struct SessionSlot {
@@ -489,6 +492,7 @@ impl Session {
                         .any(|capability| capability == "gui-write-v1")
                 }),
             local: false,
+            uploads: Default::default(),
             transport: admission.transport,
             kind: admission.kind,
             source_id: config["sourceId"]
@@ -762,6 +766,7 @@ impl Session {
             gui_read: true,
             gui_write: true,
             local: true,
+            uploads: Default::default(),
             transport: String::new(),
             kind: gateway_owner::TransportKind::Direct,
             source_id: String::new(),
@@ -1074,6 +1079,10 @@ impl Session {
         }
         if method == "command.read" {
             return self.command_read(&project, params).await;
+        }
+        if uploads::METHODS.contains(&method) {
+            let generation = text(&request["context"], "serviceGeneration")?.to_owned();
+            return self.upload_attachment(&project, &generation, request).await;
         }
         if method == "subscription.close" {
             return self.close_session(&project, params);

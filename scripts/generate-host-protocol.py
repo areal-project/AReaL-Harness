@@ -236,11 +236,15 @@ def current_inventory(root):
     read_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", shared_reads, re.S)
     if not read_match:
         raise ValueError("Negotiated read METHODS declaration moved; update inventory extractor")
+    uploads = (root / "core/host/src/gateway/uploads.rs").read_text()
+    upload_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", uploads, re.S)
+    if not upload_match:
+        raise ValueError("Negotiated write METHODS declaration moved; update inventory extractor")
     return {
         "loopback": {"hello"}
         | set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', loopback_match[1])),
         "local": local,
-        "remote": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1] + read_match[1])),
+        "remote": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1] + read_match[1] + upload_match[1])),
     }
 
 

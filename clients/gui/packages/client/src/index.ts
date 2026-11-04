@@ -553,6 +553,61 @@ export class HostClient {
     if (!transport?.write || !this.writable(method)) throw new Error("Host writes unavailable");
     return transport.write(method, params, this.#commandContext(projectId));
   }
+  /**
+   * 附件分块交给 Host，再由 Host 存进 Core；返回 areal://blob/ 引用。
+   * Host 校验重发块与已收内容一致，所以传输失败时同一块可以原样重发一次。
+   */
+  async upload(
+    projectId: string,
+    threadId: string,
+    bytes: Uint8Array,
+    mimeType: string,
+    uploadId: string = crypto.randomUUID(),
+  ): Promise<{ uri: string; mimeType: string; sizeBytes: number }> {
+    const limits =
+      this.#state.connection === "ready" ? this.#state.identity.writeLimits : undefined;
+    const chunk = limits?.uploadChunkBytes ?? 256 * 1024;
+    if (bytes.length === 0 || bytes.length > (limits?.uploadBytes ?? 16 * 1024 * 1024))
+      throw Object.assign(new Error("Attachment too large"), { code: "LIMIT_EXCEEDED" });
+    for (let offset = 0; ; offset += chunk) {
+      const part = bytes.subarray(offset, offset + chunk);
+      let binary = "";
+      for (let at = 0; at < part.length; at += 0x8000)
+        binary += String.fromCharCode(...part.subarray(at, at + 0x8000));
+      const params = {
+        threadId,
+        uploadId,
+        mimeType,
+        sizeBytes: bytes.length,
+        offset,
+        base64: btoa(binary),
+      };
+      let value: unknown;
+      try {
+        value = await this.query("attachment.upload", projectId, params);
+      } catch (error) {
+        if (record(error) && typeof error.code === "string") throw error;
+        value = await this.query("attachment.upload", projectId, params);
+      }
+      if (!record(value) || typeof value.receivedBytes !== "number")
+        throw new Error("Invalid Host upload result");
+      const attachment = value.attachment;
+      if (record(attachment)) {
+        if (
+          typeof attachment.uri !== "string" ||
+          typeof attachment.mimeType !== "string" ||
+          typeof attachment.sizeBytes !== "number"
+        )
+          throw new Error("Invalid Host upload result");
+        return {
+          uri: attachment.uri,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+        };
+      }
+      if (offset + part.length >= bytes.length) throw new Error("Invalid Host upload result");
+    }
+  }
   commandStatus(projectId: string, commandId: string) {
     return this.query("command.read", projectId, { commandId });
   }

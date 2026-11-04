@@ -268,6 +268,7 @@ impl Fixture {
             gui_read: false,
             gui_write: false,
             local: false,
+            uploads: Default::default(),
             token_key: [7; 32],
         }
     }
@@ -1290,6 +1291,63 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
             assert!(foreign.is_err() || foreign.unwrap()["admissionState"] == "notFound");
             let (_, recovered) = Fixture::dispatch(session, read).await.unwrap();
             assert_eq!(recovered.unwrap()["turnId"], "desktop-turn");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn gui_write_uploads_attachments_in_chunks_and_replays_the_final_receipt() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let generation = f.host.identity.generation.clone();
+            let upload = uuid::Uuid::new_v4().to_string();
+            let bytes = b"%PDF-1.7\nhello attachment".to_vec();
+            let chunk = |offset: usize, part: &[u8]| {
+                let mut request = f.request("attachment.upload", json!({"threadId":"thread","uploadId":upload,"mimeType":"application/pdf","sizeBytes":bytes.len(),"offset":offset,"base64":base64::engine::general_purpose::STANDARD.encode(part)}), None);
+                request["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+                request
+            };
+            let (_, legacy) = Fixture::dispatch(f.session("a"), chunk(0, &bytes[..10])).await.unwrap();
+            assert!(legacy.is_err());
+            let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+            let (session, first) = Fixture::dispatch(session, chunk(0, &bytes[..10])).await.unwrap();
+            assert_eq!(first.unwrap()["receivedBytes"], 10);
+            let (session, again) = Fixture::dispatch(session, chunk(0, &bytes[..10])).await.unwrap();
+            assert_eq!(again.unwrap()["receivedBytes"], 10);
+            let (session, changed) = Fixture::dispatch(session, chunk(0, b"0123456789")).await.unwrap();
+            assert_eq!(changed.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            let (session, gap) = Fixture::dispatch(session, chunk(12, &bytes[12..])).await.unwrap();
+            assert_eq!(gap.unwrap_err().to_string(), "TARGET_CHANGED");
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            f.host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().endpoint = format!("ws://{}/", listener.local_addr().unwrap());
+            let uri = format!("areal://blob/{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes));
+            let core = async {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut head = Vec::new();
+                while !head.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0];
+                    socket.read_exact(&mut byte).await.unwrap();
+                    head.push(byte[0]);
+                }
+                let head = String::from_utf8(head).unwrap().to_lowercase();
+                assert!(head.starts_with("post /areal/blobs?threadid=thread "));
+                assert!(head.contains("authorization: bearer original-owner-token\r\n"));
+                assert!(head.contains("content-type: application/pdf\r\n"));
+                let mut body = vec![0; bytes.len()];
+                socket.read_exact(&mut body).await.unwrap();
+                assert_eq!(body, bytes);
+                let reply = json!({"uri":uri,"mimeType":"application/pdf","sizeBytes":bytes.len()}).to_string();
+                socket.write_all(format!("HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{reply}", reply.len()).as_bytes()).await.unwrap();
+            };
+            let ((session, done), _) = tokio::join!(async { Fixture::dispatch(session, chunk(10, &bytes[10..])).await.unwrap() }, core);
+            let done = done.unwrap();
+            assert_eq!(done["attachment"]["uri"], uri);
+            assert_eq!(done["attachment"]["sizeBytes"], bytes.len());
+            // 末块回复丢失后重发：直接拿回同一份回执，不再访问 Core。
+            let (_, replay) = Fixture::dispatch(session, chunk(10, &bytes[10..])).await.unwrap();
+            assert_eq!(replay.unwrap(), done);
         })
         .await;
 }
