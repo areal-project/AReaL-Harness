@@ -53,7 +53,7 @@ impl Session {
                 && params.thread_id.len() <= 128
                 && params.expected_config_revision <= 9_007_199_254_740_991
                 && !params.text.trim().is_empty()
-                && params.text.len() <= 64 * 1024
+                && params.text.len() <= self.command_text_bytes()
                 && params
                     .expected_turn_id
                     .as_ref()

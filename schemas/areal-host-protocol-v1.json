@@ -11297,7 +11297,8 @@
           "items": {
             "type": "string",
             "enum": [
-              "gui-read-v1"
+              "gui-read-v1",
+              "gui-write-v1"
             ]
           }
         },
@@ -11322,6 +11323,25 @@
           "required": [
             "historyPageBytes",
             "mediaChunkBytes"
+          ],
+          "additionalProperties": false
+        },
+        "writeLimits": {
+          "type": "object",
+          "description": "Present only after gui-write-v1 hello negotiation; released clients keep limits.commandTextBytes.",
+          "properties": {
+            "commandTextBytes": {
+              "type": "integer",
+              "const": 196608
+            },
+            "commandPendingBytes": {
+              "type": "integer",
+              "const": 204800
+            }
+          },
+          "required": [
+            "commandTextBytes",
+            "commandPendingBytes"
           ],
           "additionalProperties": false
         }

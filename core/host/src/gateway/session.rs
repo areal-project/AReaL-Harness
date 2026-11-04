@@ -169,6 +169,9 @@ impl RequestBudget {
     }
 }
 
+// 留出封装与 JSON 转义的余量，整条消息仍在 applicationMessageBytes（256 KiB）以内。
+pub(super) const GUI_WRITE_TEXT_BYTES: usize = 192 * 1024;
+
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
     pub(crate) peer: String,
@@ -182,6 +185,7 @@ pub(crate) struct Session {
     viewer: Option<observer::Viewer>,
     shell: Option<crate::server::shell_subscription::Subscription>,
     gui_read: bool,
+    gui_write: bool,
     token_key: [u8; 32],
 }
 struct SessionSlot {
@@ -450,6 +454,13 @@ impl Session {
                         .iter()
                         .any(|capability| capability == "gui-read-v1")
                 }),
+            gui_write: hello["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities
+                        .iter()
+                        .any(|capability| capability == "gui-write-v1")
+                }),
             transport: admission.transport,
             kind: admission.kind,
             source_id: config["sourceId"]
@@ -690,8 +701,15 @@ impl Session {
                 .collect(),
         );
         let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits});
+        if self.gui_write {
+            value["writeLimits"] = json!({"commandTextBytes":GUI_WRITE_TEXT_BYTES,"commandPendingBytes":GUI_WRITE_TEXT_BYTES + 8 * 1024});
+        }
         if self.gui_read {
-            value["negotiatedCapabilities"] = json!(["gui-read-v1"]);
+            value["negotiatedCapabilities"] = json!(if self.gui_write {
+                json!(["gui-read-v1", "gui-write-v1"])
+            } else {
+                json!(["gui-read-v1"])
+            });
             value["authorityHostId"] = json!(self.host.identity.host_id);
             value["hostGeneration"] = json!(self.host.identity.generation);
             value["readMethods"] = json!([
@@ -714,6 +732,17 @@ impl Session {
             value["event"] = json!("ready");
         }
         value
+    }
+    /// 已发布的 iOS 与 PWA 只认 64 KiB；只有声明 gui-write-v1 的客户端放宽。
+    pub(super) fn command_text_bytes(&self) -> usize {
+        if self.gui_write {
+            GUI_WRITE_TEXT_BYTES
+        } else {
+            64 * 1024
+        }
+    }
+    pub(super) fn command_pending_bytes(&self) -> usize {
+        self.command_text_bytes() + 8 * 1024
     }
     fn authorize(&self, project: Option<&str>, capability: &str) -> Result<()> {
         let snapshot = self.host.remote.snapshot(&self.host.migration)?;

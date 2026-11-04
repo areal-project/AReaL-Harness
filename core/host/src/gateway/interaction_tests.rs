@@ -266,6 +266,7 @@ impl Fixture {
             viewer: None,
             shell: None,
             gui_read: false,
+            gui_write: false,
             token_key: [7; 32],
         }
     }
@@ -1201,6 +1202,42 @@ async fn conversation_open_discards_reply_after_grant_or_core_generation_changes
                 assert!(result.is_err(), "{failure}");
                 assert!(session.viewer.is_none());
             }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn gui_write_negotiation_raises_text_limit_only_for_declaring_clients() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let long = "x".repeat(64 * 1024 + 1);
+            let legacy = f.session("a");
+            assert!(legacy.describe(false).get("writeLimits").is_none());
+            let rejected = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":long}), Some(&uuid::Uuid::new_v4().to_string()));
+            let (legacy, result) = Fixture::dispatch(legacy, rejected).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            assert!(f.calls.try_recv().is_err());
+            drop(legacy);
+            let mut session = f.session("a");
+            session.gui_read = true;
+            session.gui_write = true;
+            let description = session.describe(false);
+            assert_eq!(description["negotiatedCapabilities"], json!(["gui-read-v1", "gui-write-v1"]));
+            assert_eq!(description["writeLimits"]["commandTextBytes"], json!(GUI_WRITE_TEXT_BYTES));
+            assert_eq!(description["limits"]["commandTextBytes"], json!(64 * 1024));
+            let too_long = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"x".repeat(GUI_WRITE_TEXT_BYTES + 1)}), Some(&uuid::Uuid::new_v4().to_string()));
+            let (session, result) = Fixture::dispatch(session, too_long).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            assert!(f.calls.try_recv().is_err());
+            let accepted = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":long}), Some(&uuid::Uuid::new_v4().to_string()));
+            let sending = Fixture::dispatch(session, accepted);
+            f.call("areal/capabilities").await.reply(Fixture::capabilities());
+            f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            let turn = f.call("areal/turn/start").await;
+            assert_eq!(turn.request["params"]["input"][0]["text"].as_str().unwrap().len(), 64 * 1024 + 1);
+            turn.reply(json!({"turn":{"id":"long-turn"}}));
+            assert_eq!(sending.await.unwrap().1.unwrap()["admissionState"], "accepted");
         })
         .await;
 }
