@@ -44,6 +44,7 @@ test("packaged Relay resources retain every manifest file and load their own ws"
   const manifest = JSON.parse(await readFile(join(packaged, "bundle.json"), "utf8"));
   assert.equal(manifest.version, relayBundle.version);
   assert.ok(manifest.files.some(({ path }) => path === "node_modules/ws/package.json"));
+  assert.ok(manifest.files.some(({ path }) => path === "src/host-runner.mjs"));
   for (const file of manifest.files) {
     const bytes = await readFile(join(packaged, file.path));
     assert.equal(createHash("sha256").update(bytes).digest("hex"), file.sha256, file.path);

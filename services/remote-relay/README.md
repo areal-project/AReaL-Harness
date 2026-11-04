@@ -21,6 +21,8 @@ node src/cli.mjs serve --config config.development.json
 
 精确使用 **Node 24.2.0**（`.node-version`），本服务独立检查，不修改 GUI 的运行时要求。此版本内置 `node:sqlite` 仍为实验功能，会打印警告。唯一包依赖为 MIT 许可的 `ws` 8.21.3，公共 registry 地址与完整性固定在 `package-lock.json`。不需要安装脚本或可选原生包。
 
+内部 `src/host-runner.mjs` 为 Host 监督的本机 Relay 提供私有进程接口：stdin 首行接收配置和 room，stdout 在监听成功后发送 ready，stdin EOF 后关闭服务与 store 并释放本次锁。GUI 包可使用其受控 Electron 无头 Node；普通 Relay CLI 仍要求上述 Node 24.2.0。该内部入口不改变对外 HTTP/WebSocket 协议。
+
 管理员本地 `enrollment` 命令输出 256 位随机、十分钟、一次性 code，经私密渠道交给 Host 操作者。`POST /enroll` 只接收 `{"code":"..."}`，要求 `Content-Type: application/json` 且**无 Origin**；成功（201）仅返回 `{"capability":"...","room":"..."}`。capability 为 32 字节随机数的无 padding base64url；room 为 capability UTF-8 的小写十六进制 SHA-256。capability 保存到 Host 安全存储，绝不进入浏览器邀请/二维码。响应丢失须生成新 code，没有凭据找回 API。
 
 `GET /healthz` 返回 `{"ok":true}`，没有公开管理路由。`assetsDir` 必须显式指向包含 `remote.html` 的已构建 PWA 目录；`/` 提供该文件。纯传输服务可省略该目录（静态请求返回 404）。只提供目录内文件，设置 CSP、no-referrer、MIME 防护和 no-store；不要将凭据或私有文件放在该目录。
