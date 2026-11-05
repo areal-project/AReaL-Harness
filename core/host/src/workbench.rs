@@ -1,0 +1,318 @@
+//! Host 监督的 Node 工作台服务：私有通道、方法登记与反向调用。设计见 docs/design/workbench-service.md。
+use anyhow::{Context, Result, bail, ensure};
+use areal_local_service::native_process::{TrustedChild, TrustedCommand};
+use futures_util::future::LocalBoxFuture;
+use serde_json::{Value, json};
+use std::{
+    cell::{Cell, RefCell},
+    collections::{BTreeSet, HashMap},
+    os::fd::OwnedFd,
+    path::Path,
+    process::Stdio,
+    rc::Rc,
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    sync::oneshot,
+};
+
+pub(crate) const MAX_FRAME: usize = crate::wire::MAX_FRAME;
+const READY: Duration = Duration::from_secs(20);
+const REQUEST: Duration = Duration::from_secs(30);
+
+/// 服务向 Host 发起的调用（`core.request`、`vault.read`）；由 Host 决定是否允许。
+pub(crate) type Reverse = Rc<dyn Fn(String, Value) -> LocalBoxFuture<'static, Result<Value>>>;
+
+type Pending = Rc<RefCell<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
+
+pub(crate) struct Workbench {
+    child: TrustedChild,
+    methods: BTreeSet<String>,
+    pending: Pending,
+    next: Cell<u64>,
+    closed: Rc<Cell<bool>>,
+    writer: RefCell<Option<Rc<tokio::sync::Mutex<tokio::process::ChildStdin>>>>,
+}
+
+/// 异常退出后的重启间隔；返回 None 表示停止重启并报告不可用。
+pub(crate) fn restart_delay(recent_failures: u32) -> Option<Duration> {
+    (recent_failures < 5).then(|| Duration::from_secs((1u64 << recent_failures.min(6)).min(60)))
+}
+
+impl Workbench {
+    pub(crate) async fn start(
+        runtime: &Path,
+        runner: &Path,
+        home: &Path,
+        reverse: Reverse,
+    ) -> Result<Self> {
+        let (reader, writer) = std::os::unix::net::UnixStream::pair()?;
+        reader.set_nonblocking(true)?;
+        let mut command = TrustedCommand::supervised(runtime, &[])?;
+        command
+            .arg(runner)
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", home)
+            .env("TMPDIR", std::env::temp_dir())
+            .env("ELECTRON_RUN_AS_NODE", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::from(OwnedFd::from(writer)))
+            .stderr(Stdio::inherit())
+            .kill_on_drop(true);
+        let mut child = command.spawn().await?;
+        let mut lines = BufReader::new(tokio::net::UnixStream::from_std(reader)?);
+        let ready = tokio::time::timeout(READY, read_frame(&mut lines))
+            .await
+            .context("workbench ready timed out")??
+            .context("workbench exited before ready")?;
+        ensure!(
+            ready["version"] == 1 && ready["event"] == "ready",
+            "invalid workbench ready frame"
+        );
+        let methods = ready["methods"]
+            .as_array()
+            .context("invalid workbench ready frame")?
+            .iter()
+            .map(|method| method.as_str().map(str::to_owned))
+            .collect::<Option<BTreeSet<_>>>()
+            .context("invalid workbench ready frame")?;
+        let pending: Pending = Rc::default();
+        let closed = Rc::new(Cell::new(false));
+        let stdin = Rc::new(tokio::sync::Mutex::new(
+            child.stdin.take().context("workbench stdin missing")?,
+        ));
+        let workbench = Self {
+            child,
+            methods,
+            pending: pending.clone(),
+            next: Cell::new(0),
+            closed: closed.clone(),
+            writer: RefCell::new(Some(stdin.clone())),
+        };
+        tokio::task::spawn_local(async move {
+            loop {
+                let frame = match read_frame(&mut lines).await {
+                    Ok(Some(frame)) => frame,
+                    _ => break,
+                };
+                if let Some(call) = frame["call"].as_str() {
+                    let id = frame["id"].clone();
+                    let reply = reverse(call.to_owned(), frame["params"].clone());
+                    let stdin = stdin.clone();
+                    tokio::task::spawn_local(async move {
+                        let body = match reply.await {
+                            Ok(result) => json!({"version":1,"id":id,"result":result}),
+                            Err(error) => {
+                                json!({"version":1,"id":id,"error":{"code":crate::server::error_code(&error.to_string()),"message":"Host call failed"}})
+                            }
+                        };
+                        let _ = write_frame(&mut *stdin.lock().await, &body).await;
+                    });
+                    continue;
+                }
+                let Some(sender) = frame["id"]
+                    .as_u64()
+                    .and_then(|id| pending.borrow_mut().remove(&id))
+                else {
+                    continue;
+                };
+                let _ = sender.send(match frame.get("error") {
+                    Some(error) => Err(anyhow::anyhow!(
+                        "{}",
+                        crate::server::error_code(
+                            error["code"].as_str().unwrap_or("CORE_UNAVAILABLE")
+                        )
+                    )),
+                    None => Ok(frame["result"].clone()),
+                });
+            }
+            closed.set(true);
+            for (_, sender) in pending.borrow_mut().drain() {
+                let _ = sender.send(Err(anyhow::anyhow!("CAPABILITY_UNAVAILABLE")));
+            }
+        });
+        Ok(workbench)
+    }
+
+    pub(crate) fn methods(&self) -> &BTreeSet<String> {
+        &self.methods
+    }
+
+    /// 授权与回执已在 Host 完成；服务只拿到已验证的 context。
+    pub(crate) async fn request(
+        &self,
+        method: &str,
+        params: Value,
+        context: Value,
+    ) -> Result<Value> {
+        if self.closed.get() {
+            bail!("CAPABILITY_UNAVAILABLE");
+        }
+        ensure!(self.methods.contains(method), "methodNotFound");
+        let id = self.next.get() + 1;
+        self.next.set(id);
+        let (sender, receiver) = oneshot::channel();
+        self.pending.borrow_mut().insert(id, sender);
+        let frame = json!({"version":1,"id":id,"method":method,"params":params,"context":context});
+        let writer = self
+            .writer
+            .borrow()
+            .clone()
+            .context("CAPABILITY_UNAVAILABLE")?;
+        if write_frame(&mut *writer.lock().await, &frame)
+            .await
+            .is_err()
+        {
+            self.pending.borrow_mut().remove(&id);
+            bail!("CAPABILITY_UNAVAILABLE");
+        }
+        match tokio::time::timeout(REQUEST, receiver).await {
+            Ok(Ok(result)) => result,
+            _ => {
+                self.pending.borrow_mut().remove(&id);
+                bail!("CORE_UNAVAILABLE")
+            }
+        }
+    }
+
+    /// 关闭标准输入让服务自行退出，超时后强制结束。
+    pub(crate) async fn stop(mut self) -> Result<()> {
+        self.writer.replace(None);
+        if tokio::time::timeout(Duration::from_secs(5), self.child.wait())
+            .await
+            .is_err()
+        {
+            self.child.kill().await?;
+        }
+        Ok(())
+    }
+}
+
+async fn read_frame(lines: &mut BufReader<tokio::net::UnixStream>) -> Result<Option<Value>> {
+    let mut line = Vec::new();
+    let read = lines
+        .take(MAX_FRAME as u64 + 1)
+        .read_until(b'\n', &mut line)
+        .await?;
+    if read == 0 {
+        return Ok(None);
+    }
+    ensure!(
+        line.len() <= MAX_FRAME && line.ends_with(b"\n"),
+        "workbench frame too large"
+    );
+    Ok(Some(serde_json::from_slice(&line)?))
+}
+
+async fn write_frame(stdin: &mut tokio::process::ChildStdin, frame: &Value) -> Result<()> {
+    let mut bytes = serde_json::to_vec(frame)?;
+    ensure!(bytes.len() < MAX_FRAME, "LIMIT_EXCEEDED");
+    bytes.push(b'\n');
+    stdin.write_all(&bytes).await?;
+    stdin.flush().await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node() -> Option<std::path::PathBuf> {
+        [
+            "/opt/node22/bin/node",
+            "/usr/local/bin/node",
+            "/usr/bin/node",
+            "/opt/homebrew/bin/node",
+        ]
+        .into_iter()
+        .map(std::path::PathBuf::from)
+        .find(|path| path.is_file())
+    }
+
+    const RUNNER: &str = r#"
+const readline = require("node:readline");
+const out = (frame) => process.stdout.write(JSON.stringify({ version: 1, ...frame }) + "\n");
+out({ event: "ready", methods: ["library.read", "library.crash"] });
+const calls = new Map();
+let next = 0;
+readline.createInterface({ input: process.stdin }).on("line", async (line) => {
+  const frame = JSON.parse(line);
+  if (frame.method === undefined) return calls.get(frame.id)?.(frame);
+  if (frame.method === "library.crash") process.exit(3);
+  const id = `w${++next}`;
+  const reply = await new Promise((resolve) => {
+    calls.set(id, resolve);
+    out({ id, call: "core.request", params: { projectId: frame.context.projectId } });
+  });
+  out({ id: frame.id, result: { echo: frame.params, core: reply.result ?? reply.error } });
+});
+"#;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn routes_requests_and_reverse_calls_and_reports_exit() {
+        let Some(node) = node() else { return };
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let runner = root.path().join("runner.cjs");
+                std::fs::write(&runner, RUNNER).unwrap();
+                let calls: Rc<RefCell<Vec<(String, Value)>>> = Rc::default();
+                let seen = calls.clone();
+                let reverse: Reverse = Rc::new(move |call, params| {
+                    seen.borrow_mut().push((call.clone(), params.clone()));
+                    Box::pin(async move {
+                        ensure!(call == "core.request", "FORBIDDEN");
+                        Ok(json!({"project":params["projectId"]}))
+                    })
+                });
+                let workbench = Workbench::start(&node, &runner, root.path(), reverse)
+                    .await
+                    .unwrap();
+                assert!(workbench.methods().contains("library.read"));
+                let result = workbench
+                    .request("library.read", json!({"q":1}), json!({"projectId":"p"}))
+                    .await
+                    .unwrap();
+                assert_eq!(result, json!({"echo":{"q":1},"core":{"project":"p"}}));
+                assert_eq!(calls.borrow()[0].0, "core.request");
+                assert_eq!(
+                    workbench
+                        .request("library.write", json!({}), json!({}))
+                        .await
+                        .unwrap_err()
+                        .to_string(),
+                    "methodNotFound"
+                );
+                let crashed = workbench
+                    .request("library.crash", json!({}), json!({}))
+                    .await
+                    .unwrap_err();
+                assert_eq!(crashed.to_string(), "CAPABILITY_UNAVAILABLE");
+                assert_eq!(
+                    workbench
+                        .request("library.read", json!({}), json!({}))
+                        .await
+                        .unwrap_err()
+                        .to_string(),
+                    "CAPABILITY_UNAVAILABLE"
+                );
+                workbench.stop().await.unwrap();
+            })
+            .await;
+    }
+
+    #[test]
+    fn restart_backs_off_then_gives_up() {
+        let delays: Vec<_> = (0..6).map(restart_delay).collect();
+        assert_eq!(
+            delays,
+            [1, 2, 4, 8, 16]
+                .into_iter()
+                .map(|s| Some(Duration::from_secs(s)))
+                .chain([None])
+                .collect::<Vec<_>>()
+        );
+    }
+}

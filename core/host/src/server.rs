@@ -4,6 +4,7 @@ pub(crate) mod conversation_media;
 mod conversation_read;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
+pub(crate) use gateway_owner::error_code;
 #[path = "loopback.rs"]
 mod loopback;
 #[path = "power.rs"]

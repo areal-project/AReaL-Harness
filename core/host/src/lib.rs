@@ -17,6 +17,7 @@ mod shell;
 mod subscription;
 mod vault;
 mod wire;
+mod workbench;
 use areal_local_service::LocalArgs;
 use areal_protocol::service::Service;
 pub use client::{Client, Subscription};
