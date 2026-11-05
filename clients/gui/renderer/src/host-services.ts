@@ -68,6 +68,8 @@ type ReadProject = Record<string, unknown> & {
   logicalProjectId?: string;
   root: string;
   projectless: boolean;
+  models: readonly unknown[];
+  profiles: readonly unknown[];
   core: ExecutionView["executionCore"] & Record<string, unknown>;
   state: {
     connected: boolean;
@@ -373,6 +375,8 @@ export function createHostReadServices(
       const desktop = thread?.desktop;
       const value: ReadProject = {
         ...auxiliary,
+        models: auxiliary?.models ?? [],
+        profiles: auxiliary?.profiles ?? [],
         id,
         hostProjectId: project.projectId,
         root: project.workspace,

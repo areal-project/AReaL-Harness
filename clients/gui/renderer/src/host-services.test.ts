@@ -6,6 +6,8 @@ import { createHostReadServices } from "./host-services.js";
 import type { Action, PlatformServices, Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
+import { draftModelOptions, draftModelSelection } from "./lib/draftModelSelection.js";
+import { resolveDraftProfile } from "./ProfileDetails.js";
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 const connection = {
   hostId: "host",
@@ -158,6 +160,28 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
   };
 }
 describe("Host renderer read authority", () => {
+  it("keeps model and profile consumers usable before desktop catalogs arrive", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    const wire = transport();
+    const services = createHostReadServices(undefined, options(wire.factory));
+    try {
+      await until(services);
+      const snapshot = await services.snapshot();
+      const projected = snapshot.projects.find((item) => item.id === "alias");
+      if (!projected) throw new Error("Host shell did not publish its project");
+      const selection = draftModelSelection(projected, undefined, null, {});
+      expect(selection.effectiveModel).toBe("");
+      expect(
+        draftModelOptions(projected, selection.effectiveModel, selection.currentModel),
+      ).toEqual([]);
+      expect(resolveDraftProfile(projected, '{"id":"historical","revision":"1"}')).toBeUndefined();
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reconnects after a persisted page returns without permanently closing its read owner", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);
