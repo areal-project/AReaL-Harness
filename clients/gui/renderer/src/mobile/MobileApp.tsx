@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, Input } from "@areal/ui";
 import { Monitor, Settings } from "lucide-react";
 import { FeedbackNotice } from "@areal/ui/experimental";
@@ -7,6 +7,7 @@ import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { ApplicationIntlProvider, useI18n, type MessageId } from "../i18n/IntlProvider.js";
 import { MobileClient } from "./mobile-client.mjs";
+import { sharedUiEnabled } from "../shared-ui-flag.js";
 import {
   clientKind,
   keychain,
@@ -22,8 +23,23 @@ import "../styles.css";
 import "../workbench.css";
 import "./mobile.layout.css";
 
-const client = new MobileClient({ keychain, clientKind });
-const workspace = new MobileWorkspace(client);
+const sharedUi = sharedUiEnabled();
+const SharedPairedWorkbench = lazy(() =>
+  import("../SharedPairedWorkbench.js").then((module) => ({
+    default: module.SharedPairedWorkbench,
+  })),
+);
+const client = new MobileClient({
+  keychain,
+  clientKind,
+  capabilities: sharedUi ? ["gui-read-v1", "gui-write-v1"] : undefined,
+});
+// 共享界面模式下旧工作区不接连接，避免同一连接上两套读。
+const workspace = new MobileWorkspace(
+  sharedUi
+    ? { subscribe: () => () => {}, snapshot: () => ({ kind: "loading" }), onSession: () => {} }
+    : client,
+);
 const commands = new MobileCommands(client, workspace);
 
 function MobileApp() {
@@ -316,7 +332,12 @@ function MobileApp() {
           {state.kind === "connected" && !state.remembered && (
             <FeedbackNotice tone="warning" message={t("mobile.storageFailed")} />
           )}
-          {state.kind === "connected" && (
+          {state.kind === "connected" && sharedUi && (
+            <Suspense fallback={null}>
+              <SharedPairedWorkbench client={client} />
+            </Suspense>
+          )}
+          {state.kind === "connected" && !sharedUi && (
             <MobileWorkspaceView
               workspace={workspace}
               client={client}

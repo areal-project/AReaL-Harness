@@ -1000,4 +1000,4 @@ function readStatus(value: JsonObject): HostStatus {
       throw new Error("Invalid Host project status");
   return value as unknown as HostStatus;
 }
-export { createNoiseReadTransport } from "./noise.js";
+export { createNoiseReadTransport, remoteCapabilities, remoteReadConnection } from "./noise.js";
