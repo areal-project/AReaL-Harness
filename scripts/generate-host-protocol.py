@@ -341,9 +341,10 @@ class Emitter:
         if "oneOf" in value or "anyOf" in value:
             variants = value.get("oneOf", value.get("anyOf"))
             lines = [derive, "#[serde(untagged)]", f"pub enum {name} {{"]
+            # 联合分支大小由 schema 决定，间接存储避免最大对象撑大每个枚举。
             for index, child in enumerate(variants):
                 lines.append(
-                    f"    Variant{index + 1}({self.rust_type(child, name + 'Variant' + str(index + 1))}),"
+                    f"    Variant{index + 1}(Box<{self.rust_type(child, name + 'Variant' + str(index + 1))}>),"
                 )
             return "\n".join(lines + ["}"])
         if "enum" in value or isinstance(value.get("const"), str):
