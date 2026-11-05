@@ -1396,3 +1396,29 @@ async fn remembered_approvals_need_gui_write_and_core_permission() {
         })
         .await;
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn gui_write_create_carries_permission_preset_and_profile_only_for_declaring_clients() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let options = json!({"permissionPreset":"autoReview","agentProfile":{"id":"reviewer","revision":"r3"}});
+            let legacy = f.request("session.create", options.clone(), Some(&uuid::Uuid::new_v4().to_string()));
+            let (_, rejected) = Fixture::dispatch(f.session("a"), legacy).await.unwrap();
+            assert_eq!(rejected.unwrap_err().to_string(), "INVALID_PARAMS");
+            let generation = f.host.identity.generation.clone();
+            let mut create = f.request("session.create", options, Some(&uuid::Uuid::new_v4().to_string()));
+            create["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+            let creating = Fixture::dispatch(session, create);
+            f.call("areal/capabilities").await.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}},"methods":["areal/thread/start","areal/request/read"]}));
+            f.call("areal/profile/list").await.reply(json!({"data":[{"id":"reviewer","revision":"r3"}]}));
+            let start = f.call("areal/thread/start").await;
+            assert_eq!(start.request["params"]["options"]["permissionPreset"], "autoReview");
+            assert_eq!(start.request["params"]["agentProfile"], json!({"id":"reviewer","revision":"r3"}));
+            // 只核对交给 Core 的参数；回执语义由已有创建恢复测试覆盖。
+            creating.abort();
+            drop(start);
+        })
+        .await;
+}

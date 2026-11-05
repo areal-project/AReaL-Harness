@@ -7928,7 +7928,37 @@
     },
     "RemoteSessionCreateParams": {
       "type": "object",
-      "properties": {},
+      "description": "Released clients send an empty object. permissionPreset and agentProfile are accepted only after gui-write-v1 negotiation; fullAccess also needs the manage capability.",
+      "properties": {
+        "permissionPreset": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "autoReview",
+            "fullAccess"
+          ]
+        },
+        "agentProfile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "x-maxUtf8Bytes": 128
+            },
+            "revision": {
+              "type": "string",
+              "minLength": 1,
+              "x-maxUtf8Bytes": 128
+            }
+          },
+          "required": [
+            "id",
+            "revision"
+          ],
+          "additionalProperties": false
+        }
+      },
       "required": [],
       "additionalProperties": false
     },

@@ -16,8 +16,25 @@ impl Session {
         generation: &str,
         request: &Value,
     ) -> Result<Value> {
+        let params = &request["params"];
+        // gui-write-v1 可选权限预设与 Agent Profile；已发布客户端仍只能用默认 ask 与项目远程 Profile。
         ensure!(
-            exact(&request["params"], &[])
+            (exact(params, &[])
+                || (self.gui_write
+                    && exact(params, &["permissionPreset", "agentProfile"])
+                    && params.get("permissionPreset").is_none_or(|preset| matches!(
+                        preset.as_str(),
+                        Some("ask" | "autoReview" | "fullAccess")
+                    ))
+                    && params.get("agentProfile").is_none_or(|profile| {
+                        exact(profile, &["id", "revision"])
+                            && profile["id"]
+                                .as_str()
+                                .is_some_and(|id| !id.is_empty() && id.len() <= 128)
+                            && profile["revision"].as_str().is_some_and(|revision| {
+                                !revision.is_empty() && revision.len() <= 128
+                            })
+                    })))
                 && exact(
                     &request["context"],
                     &[
@@ -32,9 +49,15 @@ impl Session {
         let command = text(request, "commandId")?.to_ascii_lowercase();
         uuid::Uuid::parse_str(&command).map_err(|_| fail("INVALID_PARAMS"))?;
         self.authorize(Some(project), "submit")?;
-        let digest = areal_local_service::storage::digest(&serde_json::to_vec(
-            &json!({"method":"session.create"}),
-        )?);
+        if params["permissionPreset"] == "fullAccess" {
+            self.authorize(Some(project), "manage")?;
+        }
+        let digest =
+            areal_local_service::storage::digest(&serde_json::to_vec(&if exact(params, &[]) {
+                json!({"method":"session.create"})
+            } else {
+                json!({"method":"session.create","params":params})
+            })?);
         if let Some(record) = self.command_record(project, &command)? {
             ensure!(
                 record["remote"]["semanticDigest"] == digest,
@@ -64,9 +87,13 @@ impl Session {
             );
             return self.command_result(project, Some(&record), &command).await;
         }
-        let profile = crate::launch::remote_profile(&crate::server::schedule_connection::inputs(
-            &self.host, &id,
-        )?)?;
+        let configured = crate::launch::remote_profile(
+            &crate::server::schedule_connection::inputs(&self.host, &id)?,
+        )?;
+        let profile = match params.get("agentProfile") {
+            Some(requested) => Some(serde_json::from_value(requested.clone())?),
+            None => configured.clone(),
+        };
         let profiles = if profile.is_some() {
             Some(
                 self.rpc(project, generation, "areal/profile/list", json!({}))
@@ -92,6 +119,11 @@ impl Session {
             );
         }
         ensure!(
+            params["permissionPreset"] != "fullAccess"
+                || caps["features"]["permissionFullAccess"] == true,
+            "CORE_INCOMPATIBLE"
+        );
+        ensure!(
             caps["features"]["threadStartAdmissionGuard"] == true
                 && caps["features"]["permissionPresets"] == true
                 && caps["features"]["threadCreationJournal"]["binding"].is_object()
@@ -112,17 +144,17 @@ impl Session {
         ensure!(
             crate::launch::remote_profile(&crate::server::schedule_connection::inputs(
                 &self.host, &id
-            )?)? == profile,
+            )?)? == configured,
             "RESYNC_REQUIRED"
         );
         let operation = uuid::Uuid::new_v4().to_string();
         let workspace = self.host.slots.borrow()[&id].registration.workspace.clone();
         let native: areal_protocol::desktop::ThreadStart = serde_json::from_value(
-            json!({"requestId":operation,"cwd":workspace,"options":{"permissionPreset":"ask"},"agentProfile":profile,"admissionGuard":{"ordinarySession":true},"creationAdmission":caps["features"]["threadCreationJournal"]["binding"]}),
+            json!({"requestId":operation,"cwd":workspace,"options":{"permissionPreset":params.get("permissionPreset").cloned().unwrap_or(json!("ask"))},"agentProfile":profile,"admissionGuard":{"ordinarySession":true},"creationAdmission":caps["features"]["threadCreationJournal"]["binding"]}),
         )?;
         let native_digest = areal_local_service::storage::digest(&serde_json::to_vec(&native)?);
         let native = serde_json::to_value(native)?;
-        let record = json!({"method":"areal/thread/start","operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2},"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.create","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":{}}});
+        let record = json!({"method":"areal/thread/start","operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2},"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.create","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":if exact(params, &[]) {json!({})} else {params.clone()}}});
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
         ensure!(
             snapshot["pending"].as_array().unwrap().len()
