@@ -205,7 +205,7 @@ export function Messages({
   const touchReading = useRef<{ y: number; requested: boolean } | undefined>(undefined);
   const readingViewport = useRef<{ width: number; height: number } | undefined>(undefined);
   const owner = JSON.stringify([project.id, thread.id, embedded]);
-  // 完成后的历史投影可能重挂消息，阅读器由对话持有并以消息身份找回入口。
+  // 历史投影可能重挂消息，阅读器由对话按消息身份持有。
   const [diagram, setDiagram] = useState<(DiagramSelection & { owner: string }) | null>(null);
   useEffect(() => setDiagram(null), [owner]);
   const reading = useRef(createReadingState(owner, history.generation));

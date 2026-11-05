@@ -26,11 +26,11 @@ export function GrantReview({
 }) {
   const { t } = useI18n();
   const id = device.devicePeerId ?? device.id;
-  // 只有一个项目时默认勾选它；多个项目时由用户明确选择，不默认放开全部。
+  // 单项目默认勾选，多项目必须明确选择，不默认放开全部。
   const [selected, setSelected] = useState<string[]>(
     device.projectIds ?? (projects.length === 1 ? [projects[0].id] : []),
   );
-  // 新配对默认可查看、提交、审批；已配对设备保持原授权。管理单独勾选，默认不开。
+  // 新配对默认可查看、提交、审批；旧授权不变，管理需单独勾选。
   const [preset, setPreset] = useState<"Observer" | "Operator">(
     pending || device.capabilities?.includes("submit") ? "Operator" : "Observer",
   );

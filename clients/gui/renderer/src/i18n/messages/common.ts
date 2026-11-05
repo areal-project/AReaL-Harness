@@ -796,8 +796,7 @@ export const commonMessages = {
   "settings.service.title": { "zh-CN": "高级诊断", en: "Advanced diagnostics" },
   "settings.diagnostics.details": { "zh-CN": "诊断与维护", en: "Diagnostics and maintenance" },
   "settings.diagnostics.description": {
-    "zh-CN":
-      "应用自动管理连接、配置应用和断线恢复。遇到持续问题时，可在这里查看技术详情、导出诊断包或进行手动维护。",
+    "zh-CN": "连接与恢复由应用管理；持续异常时可查看详情、导出诊断或维护。",
     en: "The app manages connections, configuration updates, and reconnection automatically. For persistent problems, inspect technical details, export diagnostics, or perform manual maintenance here.",
   },
   "settings.diagnostics.open": { "zh-CN": "打开高级诊断", en: "Open advanced diagnostics" },

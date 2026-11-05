@@ -4,8 +4,7 @@ export const browserHostMessages = {
     en: "Approve this browser",
   },
   "browserHost.pairingHelp": {
-    "zh-CN":
-      "仅批准你亲自打开的浏览器中显示的请求。在这台电脑上运行下方命令，此操作仅授予查看权限。",
+    "zh-CN": "在本机运行命令，仅批准你打开的浏览器请求，只授予查看权限。",
     en: "Only approve the request shown in the browser you opened. Run the command below on this computer. This grants read-only access.",
   },
   "browserHost.fingerprint": {

@@ -29,8 +29,7 @@ export const bugReportMessages = {
     en: "Paste, drop, or choose PNG / JPEG / WebP images. Up to 5 images, each up to 2 MiB as PNG and 4096 × 4096 pixels.",
   },
   "bugReport.privacy": {
-    "zh-CN":
-      "请检查描述和截图中的隐私信息。图片像素和手动输入的文字不会自动脱敏；图片元数据会被移除。",
+    "zh-CN": "请检查隐私：截图和文字不自动脱敏，图片元数据会移除。",
     en: "Review your description and screenshots for private information. Image pixels and your text are not automatically redacted; image metadata is removed.",
   },
   "bugReport.diagnostics": {
@@ -38,8 +37,7 @@ export const bugReportMessages = {
     en: "Include diagnostic context",
   },
   "bugReport.diagnosticHint": {
-    "zh-CN":
-      "从当前本机保留记录采集运行版本、进程状态、连接事件、操作耗时和模型请求结果分类，可能涉及多个工作区。不含聊天正文、代码、凭据、原始路径、供应商地址或模型名称。",
+    "zh-CN": "附带本机各工作区运行摘要；不含聊天、代码、凭据和原始路径。",
     en: "Uses retained local records, potentially across workspaces: runtime versions, process state, connection events, operation timing, and model request outcome categories. Excludes chat text, code, credentials, raw paths, provider addresses, and model names.",
   },
   "bugReport.preview": {
