@@ -184,6 +184,14 @@ export interface PlatformReadServices {
 export interface PlatformServices {
   capabilities?: { mutations: boolean; native: boolean };
   reads?: PlatformReadServices;
+  /** 写开关打开时由 Host 接管的命令；返回 undefined 表示仍走桌面原路径。 */
+  writes?: {
+    route(name: string, params: Record<string, unknown>): Promise<{ routed: true } | undefined>;
+  };
+  /** 按领域切到 Host 工作台服务的命令；返回 undefined 表示仍走桌面原路径。 */
+  workbench?: {
+    call(name: string, params: Record<string, unknown>): Promise<{ value: unknown } | undefined>;
+  };
   getHostTicket?(): Promise<unknown>;
   snapShots?: SnapShotServices;
   mcpApp?: McpAppCommand;
@@ -236,6 +244,16 @@ export async function call<N extends CommandName, P extends CommandParams<N>>(
 ): Promise<CommandResponse<N, P>> {
   const contract: typeof import("./desktop-services.js") = await import("./desktop-services.js");
   contract.validateCommand(name, params);
+  const routed = await services.workbench?.call(name, params as Record<string, unknown>);
+  if (routed) {
+    contract.validateCommandResponse(name, params, routed.value);
+    return routed.value as CommandResponse<N, P>;
+  }
+  if (services.writes && (await services.writes.route(name, params as Record<string, unknown>)))
+    return (name === "respond" ? await services.snapshot() : { stopped: true }) as CommandResponse<
+      N,
+      P
+    >;
   const result = await services.command(name, params);
   if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
   try {

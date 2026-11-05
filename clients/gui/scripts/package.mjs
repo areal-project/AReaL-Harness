@@ -12,6 +12,7 @@ import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
 import relayResources from "../app/src/core/relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
+import { buildWorkbenchResources } from "./workbench-resources.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -185,6 +186,10 @@ const relayBundle = await relayResources.buildRelayResources({
   site: join(gui, "renderer/dist"),
   destination: join(output, "areal-relay"),
 });
+const workbenchBundle = await buildWorkbenchResources({
+  source: join(root, "services/workbench"),
+  destination: join(output, "areal-workbench"),
+});
 await build({
   publish: "never",
   targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
@@ -210,6 +215,7 @@ await build({
         from: join(relayBundle.bundleDir, "node_modules"),
         to: "areal-relay/node_modules",
       },
+      { from: workbenchBundle.bundleDir, to: "areal-workbench" },
       { from: join(gui, "renderer/dist"), to: "areal-gui" },
       {
         from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),

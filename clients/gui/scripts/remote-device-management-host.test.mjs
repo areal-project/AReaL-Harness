@@ -108,6 +108,25 @@ test("same-named devices get distinct names, pairing time and live presence", as
     preset: "Operator",
   });
   assert.equal(grantOf(remote, first.peer).pairedAt, pairedAt, "updates keep pairing time");
+  assert.ok(!grantOf(remote, first.peer).capabilities.includes("manage"));
+  await remote.control({
+    operation: "updateGrant",
+    id: first.peer,
+    projects: [f.projectAlias],
+    preset: "Operator",
+    manage: true,
+  });
+  assert.ok(grantOf(remote, first.peer).capabilities.includes("manage"));
+  await assert.rejects(async () =>
+    remote.control({
+      operation: "updateGrant",
+      id: first.peer,
+      projects: [f.projectAlias],
+      preset: "Observer",
+      manage: true,
+    }),
+  );
+  assert.ok(grantOf(remote, first.peer).capabilities.includes("submit"));
 });
 
 test("rename keeps the connection and revision; revoked devices can be forgotten", async (t) => {

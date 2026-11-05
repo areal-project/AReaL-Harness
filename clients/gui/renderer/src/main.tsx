@@ -12,7 +12,8 @@ import "./workbench.css";
 import { TooltipProvider } from "./components/ui/tooltip.js";
 import { App } from "./App.js";
 import { initializeDesktopServices } from "./desktop-services.js";
-import { hostReadsEnabled, HostReadStatus } from "./HostReadStatus.js";
+import { hostReadsEnabled, hostWritesEnabled, HostReadStatus } from "./HostReadStatus.js";
+import { hostDomains } from "./host-workbench.js";
 const desktop = initializeDesktopServices(
   () => getApplicationPreferences().locale,
   subscribeApplicationPreferences,
@@ -29,6 +30,8 @@ async function start() {
           return getBrowserHostBootstrap();
         }),
       origin: desktop ? "areal-ui://app" : location.origin,
+      writes: desktop !== undefined && hostWritesEnabled(),
+      domains: desktop ? hostDomains() : new Set(),
       events: window,
     });
   }

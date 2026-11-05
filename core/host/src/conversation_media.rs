@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::time::Duration;
 
-pub(super) const MAX_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -206,18 +206,8 @@ impl MediaCache {
     }
 }
 
-pub(super) async fn fetch(
-    service: &Service,
-    thread_id: &str,
-    reference: MediaReference,
-    guard: impl Fn() -> Result<()>,
-) -> Result<MediaCache> {
-    guard()?;
-    ensure!(
-        reference.mime.as_deref().is_none_or(supported_mime)
-            && reference.size.is_none_or(|size| size <= MAX_BYTES),
-        "RESOURCE_UNAVAILABLE"
-    );
+/// Core 的 blob HTTP 入口只认本机主人令牌；地址由 Core 服务登记给出，不写进构建产物。
+fn core_blob_url(service: &Service, path: &str, thread_id: &str) -> Result<(url::Url, String)> {
     let auth: Value = areal_local_service::storage::read(&service.auth_file)
         .map_err(|_| anyhow::anyhow!("RESOURCE_UNAVAILABLE"))?;
     let token = auth["principals"]
@@ -227,7 +217,8 @@ pub(super) async fn fetch(
         .find(|principal| principal["id"] == "desktop-owner")
         .and_then(|principal| principal["token"].as_str())
         .filter(|token| !token.is_empty())
-        .context("RESOURCE_UNAVAILABLE")?;
+        .context("RESOURCE_UNAVAILABLE")?
+        .to_owned();
     let mut url =
         url::Url::parse(&service.endpoint).map_err(|_| anyhow::anyhow!("RESOURCE_UNAVAILABLE"))?;
     ensure!(
@@ -241,17 +232,87 @@ pub(super) async fn fetch(
     };
     url.set_scheme(scheme)
         .map_err(|_| anyhow::anyhow!("RESOURCE_UNAVAILABLE"))?;
-    url.set_path(&format!("/areal/blobs/{}", digest(&reference.uri)?));
+    url.set_path(path);
     url.set_query(None);
     url.set_fragment(None);
     url.query_pairs_mut().append_pair("threadId", thread_id);
-    let client = reqwest::Client::builder()
+    Ok((url, token))
+}
+
+fn core_client() -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
         .no_proxy()
         .retry(reqwest::retry::never())
         .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(30))
-        .build()?;
-    let response = client.get(url).bearer_auth(token).send().await;
+        .build()?)
+}
+
+/// 桌面附件上传：Core 按内容寻址去重，同一份字节重发只会得到同一个 URI。
+pub(crate) async fn upload(
+    service: &Service,
+    thread_id: &str,
+    mime: &str,
+    bytes: Vec<u8>,
+) -> Result<Value> {
+    ensure!(
+        !bytes.is_empty() && bytes.len() <= MAX_BYTES,
+        "LIMIT_EXCEEDED"
+    );
+    let expected = format!("areal://blob/{:x}", Sha256::digest(&bytes));
+    let size = bytes.len() as u64;
+    let (url, token) = core_blob_url(service, "/areal/blobs", thread_id)?;
+    let response = core_client()?
+        .post(url)
+        .bearer_auth(token)
+        .header(reqwest::header::CONTENT_TYPE, mime)
+        .body(bytes)
+        .send()
+        .await
+        .map_err(|_| anyhow::anyhow!("SUBMISSION_UNKNOWN"))?;
+    let status = response.status();
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|_| anyhow::anyhow!("SUBMISSION_UNKNOWN"))?;
+    match status.as_u16() {
+        200 | 201 => {}
+        400 => match body["error"]["code"].as_i64() {
+            Some(-32001) => anyhow::bail!("LIMIT_EXCEEDED"),
+            Some(-32004 | -32009) => anyhow::bail!("RESOURCE_UNAVAILABLE"),
+            Some(-32000) => anyhow::bail!("CORE_UNAVAILABLE"),
+            _ => anyhow::bail!("INVALID_PARAMS"),
+        },
+        401 | 403 | 404 => anyhow::bail!("RESOURCE_UNAVAILABLE"),
+        _ => anyhow::bail!("CORE_UNAVAILABLE"),
+    }
+    ensure!(
+        body["uri"] == expected.as_str()
+            && body["sizeBytes"] == size
+            && body["mimeType"].as_str().is_some_and(|m| !m.is_empty()),
+        "CORE_UNAVAILABLE"
+    );
+    Ok(json!({"uri":body["uri"],"mimeType":body["mimeType"],"sizeBytes":size}))
+}
+
+pub(super) async fn fetch(
+    service: &Service,
+    thread_id: &str,
+    reference: MediaReference,
+    guard: impl Fn() -> Result<()>,
+) -> Result<MediaCache> {
+    guard()?;
+    ensure!(
+        reference.mime.as_deref().is_none_or(supported_mime)
+            && reference.size.is_none_or(|size| size <= MAX_BYTES),
+        "RESOURCE_UNAVAILABLE"
+    );
+    let (url, token) = core_blob_url(
+        service,
+        &format!("/areal/blobs/{}", digest(&reference.uri)?),
+        thread_id,
+    )?;
+    let response = core_client()?.get(url).bearer_auth(token).send().await;
     guard()?;
     let mut response = response.map_err(|_| anyhow::anyhow!("RESOURCE_UNAVAILABLE"))?;
     ensure!(response.status().is_success(), "RESOURCE_UNAVAILABLE");

@@ -1998,6 +1998,10 @@ function startDesktop() {
             publish();
           })();
           await windowLoaded;
+          void require("../ipc/generated/host-library.cjs").enableHostLibrary(
+            window,
+            serviceBackend,
+          );
           const activityPauses = new Set();
           const sampleActivity = () => {
             refreshHostMenu();

@@ -266,6 +266,9 @@ impl Fixture {
             viewer: None,
             shell: None,
             gui_read: false,
+            gui_write: false,
+            local: false,
+            uploads: Default::default(),
             token_key: [7; 32],
         }
     }
@@ -1201,6 +1204,221 @@ async fn conversation_open_discards_reply_after_grant_or_core_generation_changes
                 assert!(result.is_err(), "{failure}");
                 assert!(session.viewer.is_none());
             }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn gui_write_negotiation_accepts_desktop_rich_input_only_for_declaring_clients() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let rich = json!({"threadId":"thread","expectedConfigRevision":1,"text":"look","conversationQuotes":[{"text":"quoted"}],"attachments":[{"type":"image","url":"areal://blob/img_1"},{"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mimeType":"application/pdf","_meta":{"source":"snap"}}],"mcpContent":[{"type":"text","text":"tool note"}]});
+            let legacy = f.session("a");
+            assert!(legacy.describe(false).get("writeLimits").is_none());
+            let (legacy, result) = Fixture::dispatch(legacy, f.request("session.send", rich.clone(), Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            let long = json!({"threadId":"thread","expectedConfigRevision":1,"text":"x".repeat(64 * 1024 + 1)});
+            let (_, result) = Fixture::dispatch(legacy, f.request("session.send", long.clone(), Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            assert!(f.calls.try_recv().is_err());
+            let mut session = f.session("a");
+            session.gui_read = true;
+            session.gui_write = true;
+            let description = session.describe(false);
+            assert_eq!(description["negotiatedCapabilities"], json!(["gui-read-v1", "gui-write-v1"]));
+            assert_eq!(description["writeLimits"], write_limits());
+            let (session, result) = Fixture::dispatch(session, f.request("session.send", long, Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            let mut crowded = rich.clone();
+            crowded["attachments"] = json!(vec![json!({"type":"image","url":"areal://blob/a"}); 17]);
+            let (session, result) = Fixture::dispatch(session, f.request("session.send", crowded, Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            let mut foreign = rich.clone();
+            foreign["attachments"] = json!([{"type":"image","url":"https://example.com/a.png"}]);
+            let (session, result) = Fixture::dispatch(session, f.request("session.send", foreign, Some(&uuid::Uuid::new_v4().to_string()))).await.unwrap();
+            assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+            assert!(f.calls.try_recv().is_err());
+            let sending = Fixture::dispatch(session, f.request("session.send", rich, Some(&uuid::Uuid::new_v4().to_string())));
+            f.call("areal/capabilities").await.reply(Fixture::capabilities());
+            f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            let turn = f.call("areal/turn/start").await;
+            let input = turn.request["params"]["input"].as_array().unwrap().clone();
+            assert_eq!(input[0], json!({"type":"text","text":"look","text_elements":[]}));
+            assert_eq!(input[1]["text"], "# userselect:\n```userselect\n[{\"text\":\"quoted\"}]\n```");
+            assert_eq!(input[2], json!({"type":"image","url":"areal://blob/img_1","detail":null}));
+            assert_eq!(input[3], json!({"type":"file","url":"areal://blob/doc-2","name":"spec.pdf","mime_type":"application/pdf"}));
+            assert_eq!(input[4]["mcpContent"], json!({"type":"text","text":"tool note"}));
+            assert_eq!(input[5]["mcpContent"]["type"], "resource_link");
+            assert_eq!(input[5]["mcpContent"]["_meta"], json!({"source":"snap"}));
+            assert_eq!(input.len(), 6);
+            turn.reply(json!({"turn":{"id":"rich-turn"}}));
+            assert_eq!(sending.await.unwrap().1.unwrap()["admissionState"], "accepted");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn local_desktop_principal_sends_through_the_shared_journal_without_device_grants() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+            let generation = f.host.identity.generation.clone();
+            let command = uuid::Uuid::new_v4().to_string();
+            let mut send = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"from desktop"}), Some(&command));
+            send["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            let mut alias = send.clone();
+            alias["context"]["projectId"] = json!(f.alias);
+            let (session, rejected) = Fixture::dispatch(session, alias).await.unwrap();
+            assert_eq!(rejected.unwrap_err().to_string(), "FORBIDDEN");
+            let sending = Fixture::dispatch(session, send);
+            f.call("areal/capabilities").await.reply(Fixture::capabilities());
+            f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            let turn = f.call("areal/turn/start").await;
+            assert_eq!(turn.request["params"]["input"][0]["text"], "from desktop");
+            turn.reply(json!({"turn":{"id":"desktop-turn"}}));
+            let (session, sent) = sending.await.unwrap();
+            assert_eq!(sent.unwrap()["admissionState"], "accepted");
+            let (_, snapshot) = f.host.journal.native_snapshot("project").unwrap();
+            let record = snapshot["outcomes"].as_object().unwrap().values().chain(snapshot["pending"].as_array().unwrap()).find(|entry| entry["remote"]["commandId"] == command).unwrap().clone();
+            assert_eq!(record["remote"]["devicePeerId"], LOCAL_PEER);
+            assert_eq!(record["remote"]["projectId"], "project");
+            let mut read = f.request("command.read", json!({"commandId":command}), None);
+            read["context"]["projectId"] = json!("project");
+            let remote = f.session("a");
+            let (_, foreign) = Fixture::dispatch(remote, read.clone()).await.unwrap();
+            assert!(foreign.is_err() || foreign.unwrap()["admissionState"] == "notFound");
+            let (_, recovered) = Fixture::dispatch(session, read).await.unwrap();
+            assert_eq!(recovered.unwrap()["turnId"], "desktop-turn");
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn gui_write_uploads_attachments_in_chunks_and_replays_the_final_receipt() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let generation = f.host.identity.generation.clone();
+            let upload = uuid::Uuid::new_v4().to_string();
+            let bytes = b"%PDF-1.7\nhello attachment".to_vec();
+            let chunk = |offset: usize, part: &[u8]| {
+                let mut request = f.request("attachment.upload", json!({"threadId":"thread","uploadId":upload,"mimeType":"application/pdf","sizeBytes":bytes.len(),"offset":offset,"base64":base64::engine::general_purpose::STANDARD.encode(part)}), None);
+                request["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+                request
+            };
+            let (_, legacy) = Fixture::dispatch(f.session("a"), chunk(0, &bytes[..10])).await.unwrap();
+            assert!(legacy.is_err());
+            let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+            let (session, first) = Fixture::dispatch(session, chunk(0, &bytes[..10])).await.unwrap();
+            assert_eq!(first.unwrap()["receivedBytes"], 10);
+            let (session, again) = Fixture::dispatch(session, chunk(0, &bytes[..10])).await.unwrap();
+            assert_eq!(again.unwrap()["receivedBytes"], 10);
+            let (session, changed) = Fixture::dispatch(session, chunk(0, b"0123456789")).await.unwrap();
+            assert_eq!(changed.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            let (session, gap) = Fixture::dispatch(session, chunk(12, &bytes[12..])).await.unwrap();
+            assert_eq!(gap.unwrap_err().to_string(), "TARGET_CHANGED");
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            f.host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().endpoint = format!("ws://{}/", listener.local_addr().unwrap());
+            let uri = format!("areal://blob/{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes));
+            let core = async {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut head = Vec::new();
+                while !head.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0];
+                    socket.read_exact(&mut byte).await.unwrap();
+                    head.push(byte[0]);
+                }
+                let head = String::from_utf8(head).unwrap().to_lowercase();
+                assert!(head.starts_with("post /areal/blobs?threadid=thread "));
+                assert!(head.contains("authorization: bearer original-owner-token\r\n"));
+                assert!(head.contains("content-type: application/pdf\r\n"));
+                let mut body = vec![0; bytes.len()];
+                socket.read_exact(&mut body).await.unwrap();
+                assert_eq!(body, bytes);
+                let reply = json!({"uri":uri,"mimeType":"application/pdf","sizeBytes":bytes.len()}).to_string();
+                socket.write_all(format!("HTTP/1.1 201 Created\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{reply}", reply.len()).as_bytes()).await.unwrap();
+            };
+            let ((session, done), _) = tokio::join!(async { Fixture::dispatch(session, chunk(10, &bytes[10..])).await.unwrap() }, core);
+            let done = done.unwrap();
+            assert_eq!(done["attachment"]["uri"], uri);
+            assert_eq!(done["attachment"]["sizeBytes"], bytes.len());
+            // 末块回复丢失后重发：直接拿回同一份回执，不再访问 Core。
+            let (_, replay) = Fixture::dispatch(session, chunk(10, &bytes[10..])).await.unwrap();
+            assert_eq!(replay.unwrap(), done);
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn remembered_approvals_need_gui_write_and_core_permission() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let mut legacy = f.answer(json!("token"), &uuid::Uuid::new_v4().to_string());
+            legacy["params"]["decision"] = json!("allowSession");
+            let (_, rejected) = Fixture::dispatch(f.session("a"), legacy).await.unwrap();
+            assert_eq!(rejected.unwrap_err().to_string(), "INVALID_PARAMS");
+            let generation = f.host.identity.generation.clone();
+            let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+            for remember in [false, true] {
+                let mut item = Fixture::item("pending");
+                item["effectivePermissions"] = json!({"rememberAllowed":remember});
+                let mut read = f.request("attention.read", Fixture::target(), None);
+                read["context"] = json!({"projectId":"project"});
+                let reading = Fixture::dispatch(session, read);
+                f.call("areal/interaction/list").await.reply(json!({"data":[item.clone()]}));
+                let (next, detail) = reading.await.unwrap();
+                let detail = detail.unwrap();
+                let mut answer = f.answer(detail["reviewToken"].clone(), &uuid::Uuid::new_v4().to_string());
+                answer["params"]["decision"] = json!("allowProject");
+                answer["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+                let answering = Fixture::dispatch(next, answer);
+                f.call("areal/interaction/list").await.reply(json!({"data":[item]}));
+                if remember {
+                    let call = f.call("areal/interaction/respond").await;
+                    assert_eq!(call.request["params"]["decision"], "allowProject");
+                    call.reply(json!({"answered":true,"requestId":"interaction"}));
+                    let mut answered = Fixture::item("answered");
+                    answered["effectivePermissions"] = json!({"rememberAllowed":true});
+                    f.call("areal/interaction/list").await.reply(json!({"data":[answered]}));
+                }
+                let (next, result) = answering.await.unwrap();
+                if remember {
+                    assert_eq!(result.unwrap()["admissionState"], "accepted");
+                } else {
+                    assert_eq!(result.unwrap_err().to_string(), "INVALID_PARAMS");
+                }
+                session = next;
+            }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn gui_write_create_carries_permission_preset_and_profile_only_for_declaring_clients() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let options = json!({"permissionPreset":"autoReview","agentProfile":{"id":"reviewer","revision":"r3"}});
+            let legacy = f.request("session.create", options.clone(), Some(&uuid::Uuid::new_v4().to_string()));
+            let (_, rejected) = Fixture::dispatch(f.session("a"), legacy).await.unwrap();
+            assert_eq!(rejected.unwrap_err().to_string(), "INVALID_PARAMS");
+            let generation = f.host.identity.generation.clone();
+            let mut create = f.request("session.create", options, Some(&uuid::Uuid::new_v4().to_string()));
+            create["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+            let creating = Fixture::dispatch(session, create);
+            f.call("areal/capabilities").await.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}},"methods":["areal/thread/start","areal/request/read"]}));
+            f.call("areal/profile/list").await.reply(json!({"data":[{"id":"reviewer","revision":"r3"}]}));
+            let start = f.call("areal/thread/start").await;
+            assert_eq!(start.request["params"]["options"]["permissionPreset"], "autoReview");
+            assert_eq!(start.request["params"]["agentProfile"], json!({"id":"reviewer","revision":"r3"}));
+            // 只核对交给 Core 的参数；回执语义由已有创建恢复测试覆盖。
+            creating.abort();
+            drop(start);
         })
         .await;
 }

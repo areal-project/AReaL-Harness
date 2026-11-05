@@ -254,6 +254,13 @@ class SharedCoreBackend {
       },
       flush: async () => {},
     };
+    /** 一套协议过渡开关；后台重连后重发。 @type {{library:boolean}|null} */
+    this.oneProtocol = null;
+  }
+  /** @param {{library:boolean}} flags */
+  setOneProtocol(flags) {
+    this.oneProtocol = flags;
+    if (this.status.connected) void this.connection?.request("oneProtocol", flags).catch(() => {});
   }
   /** @param {import("./gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
   genUiScope(project, threadId) {
@@ -584,6 +591,7 @@ class SharedCoreBackend {
     }
     helloTrace.finish("ok");
     if (this.lastActivity) void connection.request("activity", this.lastActivity).catch(() => {});
+    if (this.oneProtocol) void connection.request("oneProtocol", this.oneProtocol).catch(() => {});
     this.metadata = metadata;
     this.exitConfirmation = null;
     if (this.foreignOwner) {
@@ -793,6 +801,7 @@ class SharedCoreBackend {
         this.computerHostOwned = record(packet) && packet.computerHostOwned === true;
         this.accept(packet, metadata);
         if (this.lastActivity) await connection.request("activity", this.lastActivity);
+        if (this.oneProtocol) await connection.request("oneProtocol", this.oneProtocol);
         this.backendUpdate = undefined;
       } catch (error) {
         this.connection = null;

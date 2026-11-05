@@ -4,6 +4,9 @@ pub(crate) mod conversation_media;
 mod conversation_read;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
+pub(crate) use gateway_owner::error_code;
+#[path = "library_store.rs"]
+mod library_store;
 #[path = "loopback.rs"]
 mod loopback;
 #[path = "power.rs"]
@@ -18,6 +21,8 @@ mod shell_subscription;
 mod subscriptions;
 #[path = "updates.rs"]
 pub(crate) mod updates;
+#[path = "workbench_route.rs"]
+mod workbench_route;
 use crate::{
     Activity, CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectActivity,
     ProjectRegistration, ProjectStatus, StopStrategy, VERSION, launch,
@@ -374,6 +379,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         }
     }
     drop(loopback);
+    host.gateway.workbench.stop().await;
     host.close_subscriptions().await;
     host.power.close().await;
     std::fs::remove_file(socket)?;
@@ -1071,6 +1077,7 @@ impl Host {
                 self.update_status()
             }
             "host.update" => self.update(serde_json::from_value(params)?).await,
+            "library.write" => library_store::write(self, serde_json::from_value(params)?),
             _ => Err(error("methodNotFound", "unknown Host method")),
         }
     }

@@ -765,4 +765,94 @@ describe("Host renderer read authority", () => {
     expect(next.projects[1]).toBe(previous);
     expect(next.projects[0].state.threads.thread.turns[0].items[0].text).toBe("changed");
   });
+  it("routes stop and approvals through Host receipts and falls back only when Host declines", async () => {
+    const pending = {
+      threadId: "thread",
+      requestId: "approval",
+      turnId: "latest-turn",
+      kind: "approval",
+      status: "pending",
+      argumentsDigest: "a".repeat(64),
+    };
+    const native = {
+      ...observation,
+      thread: { ...observation.thread, desktop: { interactions: [pending] } },
+    };
+    const wire = transport(native);
+    const writes: { method: string; params: Record<string, unknown>; commandId?: string }[] = [];
+    let stopReply: unknown = { admissionState: "accepted" };
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const opened = await wire.factory(lifecycle);
+      return {
+        identity: {
+          ...opened.identity,
+          writeMethods: ["turn.stop", "interaction.respond", "attention.read"],
+        },
+        transport: {
+          ...opened.transport,
+          async write(method, params, _context, commandId) {
+            writes.push({ method, params, commandId });
+            if (method === "attention.read")
+              return params.cursor
+                ? { reviewToken: "token", argumentsDigest: "b".repeat(64) }
+                : { nextCursor: "more" };
+            if (method === "turn.stop" && stopReply instanceof Error) throw stopReply;
+            return method === "turn.stop" ? stopReply : { admissionState: "accepted" };
+          },
+        },
+      };
+    };
+    // 只核对是否退回桌面路径；桌面回执结构由桌面契约测试覆盖。
+    const native_ = vi.fn(async () => ({ ok: false as const, error: { message: "desktop path" } }));
+    const desktop: PlatformServices = {
+      snapshot: async () => ({ projects: [] }),
+      onState: () => () => {},
+      chooseProject: async () => null,
+      command: native_ as PlatformServices["command"],
+      theme: async () => ({ dark: true, id: "dark" }),
+      onTheme: () => () => {},
+      preview: async () => ({}),
+    };
+    const services = createHostReadServices(desktop, { ...options(factory), writes: true });
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const { call } = await import("./services.js");
+    const stop = {
+      projectId: "alias",
+      threadId: "thread",
+      turnId: "latest-turn",
+      requestId: "11111111-1111-4111-8111-111111111111",
+    };
+    await call(services, "stop", stop);
+    expect(writes.at(-1)).toMatchObject({
+      method: "turn.stop",
+      params: { threadId: "thread", expectedTurnId: "latest-turn" },
+    });
+    expect(native_).not.toHaveBeenCalled();
+    stopReply = { admissionState: "unknown", commandId: "lost" };
+    await expect(call(services, "stop", stop)).rejects.toMatchObject({ submissionUnknown: true });
+    expect(native_).not.toHaveBeenCalled();
+    stopReply = Object.assign(new Error("workflow"), { code: "TASK_CONTROL_REQUIRED" });
+    await expect(call(services, "stop", stop)).rejects.toThrow("desktop path");
+    expect(native_).toHaveBeenCalledTimes(1);
+    await call(services, "respond", {
+      projectId: "alias",
+      threadId: "thread",
+      requestId: "approval",
+      decision: "allowSession",
+    });
+    expect(writes.at(-1)).toMatchObject({
+      method: "interaction.respond",
+      params: {
+        threadId: "thread",
+        turnId: "latest-turn",
+        interactionId: "approval",
+        decision: "allowSession",
+        argumentsDigest: "b".repeat(64),
+        reviewToken: "token",
+      },
+    });
+    expect(writes.filter((entry) => entry.method === "attention.read")).toHaveLength(2);
+    expect(native_).toHaveBeenCalledTimes(1);
+  });
 });

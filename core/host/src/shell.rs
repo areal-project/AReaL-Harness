@@ -594,6 +594,19 @@ fn read_library(path: &Path) -> Result<Option<Library>> {
     let Some(value) = read_document::<Value>(path)? else {
         return Ok(None);
     };
+    check_library(value).map(Some)
+}
+
+/// Host 代桌面写资料库前，用读取时的同一套限制检查要写的内容。
+pub(crate) fn validate_library(bytes: &[u8]) -> Result<()> {
+    ensure!(
+        bytes.len() as u64 <= MAX_LIBRARY_BYTES,
+        "invalid navigation library file"
+    );
+    check_library(serde_json::from_slice(bytes)?).map(|_| ())
+}
+
+fn check_library(value: Value) -> Result<Library> {
     ensure!(value.is_object(), "invalid navigation library");
     let library: Library = serde_json::from_value(value).context("invalid navigation library")?;
     let entries = library.projects.len()
@@ -613,7 +626,7 @@ fn read_library(path: &Path) -> Result<Option<Library>> {
         entries <= MAX_ENTRIES,
         "navigation library entry limit exceeded"
     );
-    Ok(Some(library))
+    Ok(library)
 }
 
 #[cfg(test)]

@@ -30,9 +30,11 @@ export function GrantReview({
   const [selected, setSelected] = useState<string[]>(
     device.projectIds ?? (projects.length === 1 ? [projects[0].id] : []),
   );
+  // 新配对默认可查看、提交、审批；已配对设备保持原授权。管理单独勾选，默认不开。
   const [preset, setPreset] = useState<"Observer" | "Operator">(
-    device.capabilities?.includes("submit") ? "Operator" : "Observer",
+    pending || device.capabilities?.includes("submit") ? "Operator" : "Observer",
   );
+  const [manage, setManage] = useState(device.capabilities?.includes("manage") === true);
   return (
     <fieldset
       aria-label={t(
@@ -120,6 +122,20 @@ export function GrantReview({
             </label>
           ))}
         </div>
+        <label className="remote-project-choice">
+          <Input
+            unstyled
+            data-slot={undefined}
+            type="checkbox"
+            checked={manage && preset === "Operator"}
+            disabled={preset !== "Operator"}
+            onChange={(event) => setManage(event.target.checked)}
+          />
+          <span>
+            <strong>{t("settings.mobileConnect.canManage")}</strong>
+            <small>{t("settings.mobileConnect.canManageDescription")}</small>
+          </span>
+        </label>
       </fieldset>
       <div className="remote-grant-actions">
         {pending ? (
@@ -145,6 +161,7 @@ export function GrantReview({
               id,
               projects: selected,
               preset,
+              ...(preset === "Operator" && manage && { manage: true }),
             })
           }
         >

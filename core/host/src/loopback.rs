@@ -46,6 +46,27 @@ const METHODS: &[&str] = &[
     "subscription.close",
     "artifact.read",
 ];
+// 桌面票据连接协商 gui-write-v1 后可用；沿用远程封装，由 Gateway 的本机主体执行。
+const WRITE_METHODS: &[&str] = &[
+    "session.create",
+    "session.send",
+    "session.control",
+    "turn.stop",
+    "interaction.respond",
+    "task.pause",
+    "task.question.reply",
+    "task.read",
+    "task.question.read",
+    "review.read",
+    "attention.read",
+    "project.models",
+    "command.read",
+    "attachment.upload",
+    "analytics.activity",
+    "analytics.import",
+    "analytics.read",
+    "analytics.sync",
+];
 const TTL: Duration = Duration::from_secs(30);
 const TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_TICKETS: usize = 64;
@@ -421,6 +442,15 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         .iter()
         .any(|capability| capability == "gui-read-v1");
     let connection_id = uuid::Uuid::new_v4().to_string();
+    // 浏览器设备只有查看授权；只有经本机 socket 签发的桌面票据才能写。
+    let mut writer = (negotiated
+        && device_id.is_none()
+        && hello
+            .capabilities
+            .iter()
+            .any(|capability| capability == "gui-write-v1"))
+    .then(|| super::gateway_owner::LocalSession::new(host.clone(), connection_id.clone()))
+    .transpose()?;
     let result = protocol::LoopbackHelloResult {
         version: VERSION.into(),
         host_id: host.identity.host_id.clone(),
@@ -439,9 +469,23 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         },
         connection_id: negotiated.then(|| connection_id.clone()),
         gateway_generation: negotiated.then(|| host.identity.generation.clone()),
-        negotiated_capabilities: negotiated
-            .then(|| vec![protocol::LoopbackHelloResultFieldNegotiatedCapabilitiesItem::Value1]),
+        negotiated_capabilities: negotiated.then(|| {
+            let mut capabilities =
+                vec![protocol::LoopbackHelloResultFieldNegotiatedCapabilitiesItem::Value1];
+            if writer.is_some() {
+                capabilities
+                    .push(protocol::LoopbackHelloResultFieldNegotiatedCapabilitiesItem::Value2);
+            }
+            capabilities
+        }),
+        write_methods: None,
+        write_limits: None,
     };
+    let mut result = serde_json::to_value(result)?;
+    if writer.is_some() {
+        result["writeMethods"] = json!(WRITE_METHODS);
+        result["writeLimits"] = super::gateway_owner::write_limits();
+    }
     send(
         &mut socket,
         &json!({"version":VERSION,"id":request.id,"result":result}),
@@ -458,7 +502,34 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                 match message? {
                     Message::Text(bytes) => {
                         ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
-                        let input: ReadRequest = serde_json::from_str(&bytes)?;
+                        let raw: Value = serde_json::from_str(&bytes)?;
+                        if let Some(local) = writer.as_mut().filter(|_| raw["method"].as_str().is_some_and(|method| WRITE_METHODS.contains(&method))) {
+                            let id = raw["id"].as_str().filter(|id| !id.is_empty() && id.len() <= 64).context("invalid request")?.to_owned();
+                            let result = async {
+                                ensure!(raw["version"] == VERSION, wire::error("unsupportedVersion","Host requires version 1"));
+                                let object = raw.as_object().context("INVALID_PARAMS")?;
+                                ensure!(object.keys().all(|key| matches!(key.as_str(), "version"|"id"|"method"|"params"|"context"|"commandId")), "INVALID_PARAMS");
+                                let mut envelope = raw.clone();
+                                envelope.as_object_mut().unwrap().remove("version");
+                                local.request(&envelope).await
+                            }.await;
+                            ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                            let response=match result {
+                                Ok(value)=>json!({"version":VERSION,"id":id,"result":value}),
+                                Err(error)=>{
+                                    let message=error.to_string();
+                                    let code=error.downcast_ref::<wire::Error>().map(|error|error.code).unwrap_or_else(||super::gateway_owner::error_code(&message));
+                                    json!({"version":VERSION,"id":id,"error":{"code":code,"message":"Host command failed"}})
+                                },
+                            };
+                            send(&mut socket,&response).await?;
+                            continue;
+                        }
+                        if let (None, Some(id)) = (writer.as_ref(), raw["method"].as_str().filter(|method| WRITE_METHODS.contains(method)).and(raw["id"].as_str())) {
+                            send(&mut socket,&json!({"version":VERSION,"id":id,"error":read_error(&anyhow::Error::from(wire::error("methodNotFound","method is not available on this connection")))})).await?;
+                            continue;
+                        }
+                        let input: ReadRequest = serde_json::from_value(raw)?;
                         ensure!(input.id.len() <= 256, "invalid request");
                         let result: Result<Value> = async {
                             ensure!(input.version == VERSION, wire::error("unsupportedVersion","Host requires version 1"));
@@ -1041,6 +1112,37 @@ mod tests {
                 assert!(tokio::time::timeout(Duration::from_secs(2), wire::read(&mut stream)).await.unwrap().unwrap().is_none());
             }
             assert_eq!(fixture.client().await.status().await.unwrap().host_id, ticket.host_id);
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn only_desktop_tickets_negotiate_local_writes() {
+        tokio::task::LocalSet::new().run_until(async {
+            let fixture = Fixture::start().await;
+            let client = fixture.client().await;
+            let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+            let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+            write(&mut socket, json!({"version":1,"id":"hello","method":"hello","params":{"protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],"ticket":ticket.ticket,"expectedGeneration":ticket.generation}})).await;
+            let hello = read(&mut socket).await["result"].clone();
+            assert_eq!(hello["negotiatedCapabilities"], json!(["gui-read-v1", "gui-write-v1"]));
+            assert_eq!(hello["writeMethods"], json!(WRITE_METHODS));
+            assert_eq!(hello["writeLimits"], super::super::gateway_owner::write_limits());
+            write(&mut socket, json!({"version":1,"id":"read","method":"command.read","params":{"commandId":uuid::Uuid::new_v4().to_string()},"context":{"projectId":"missing"}})).await;
+            assert_eq!(read(&mut socket).await["error"]["code"], "FORBIDDEN");
+            write(&mut socket, json!({"version":1,"id":"x".repeat(65),"method":"command.read","params":{}})).await;
+            closed(&mut socket).await;
+
+            let key = browser_key();
+            approve_browser(&fixture, &key).await;
+            let browser = browser_ticket(&fixture, &key).await;
+            let endpoint = fixture.host.loopback.endpoint().unwrap();
+            let mut socket = connect(&browser, &endpoint.origin).await;
+            write(&mut socket, json!({"version":1,"id":"hello","method":"hello","params":{"protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],"ticket":browser.ticket,"expectedGeneration":browser.generation}})).await;
+            let hello = read(&mut socket).await["result"].clone();
+            assert_eq!(hello["negotiatedCapabilities"], json!(["gui-read-v1"]));
+            assert!(hello.get("writeMethods").is_none() && hello.get("writeLimits").is_none());
+            write(&mut socket, json!({"version":1,"id":"send","method":"session.send","params":{},"context":{"projectId":"p"},"commandId":uuid::Uuid::new_v4().to_string()})).await;
+            assert_eq!(read(&mut socket).await["error"]["code"], "methodNotFound");
         }).await;
     }
 

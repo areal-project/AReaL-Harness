@@ -4987,6 +4987,10 @@
                 "Observer",
                 "Operator"
               ]
+            },
+            "manage": {
+              "type": "boolean",
+              "description": "Adds the manage capability on top of Operator. Existing grants are never widened automatically."
             }
           },
           "required": [
@@ -5016,6 +5020,10 @@
                 "Observer",
                 "Operator"
               ]
+            },
+            "manage": {
+              "type": "boolean",
+              "description": "Adds the manage capability on top of Operator. Existing grants are never widened automatically."
             }
           },
           "required": [
@@ -7920,7 +7928,37 @@
     },
     "RemoteSessionCreateParams": {
       "type": "object",
-      "properties": {},
+      "description": "Released clients send an empty object. permissionPreset and agentProfile are accepted only after gui-write-v1 negotiation; fullAccess also needs the manage capability.",
+      "properties": {
+        "permissionPreset": {
+          "type": "string",
+          "enum": [
+            "ask",
+            "autoReview",
+            "fullAccess"
+          ]
+        },
+        "agentProfile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "x-maxUtf8Bytes": 128
+            },
+            "revision": {
+              "type": "string",
+              "minLength": 1,
+              "x-maxUtf8Bytes": 128
+            }
+          },
+          "required": [
+            "id",
+            "revision"
+          ],
+          "additionalProperties": false
+        }
+      },
       "required": [],
       "additionalProperties": false
     },
@@ -7992,7 +8030,7 @@
         },
         "text": {
           "type": "string",
-          "pattern": "\\S",
+          "description": "Released clients must send non-whitespace text; gui-write-v1 clients may send empty text when other input is present.",
           "x-maxUtf8Bytes": 65536
         },
         "enqueue": {
@@ -8001,6 +8039,66 @@
         "expectedTurnId": {
           "type": "string",
           "x-maxUtf8Bytes": 128
+        },
+        "attachments": {
+          "type": "array",
+          "description": "gui-write-v1 only. Blob references from attachment upload.",
+          "maxItems": 16,
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "image",
+                  "audio",
+                  "file"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^areal://blob/[A-Za-z0-9_-]+$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "mimeType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "url"
+            ],
+            "additionalProperties": true,
+            "description": "May also carry _meta, which Host forwards as an MCP resource_link block."
+          }
+        },
+        "conversationQuotes": {
+          "type": "array",
+          "description": "gui-write-v1 only. At most 16000 UTF-16 units in total.",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "pattern": "\\S"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "mcpContent": {
+          "type": "array",
+          "description": "gui-write-v1 only. MCP content blocks, each at most 64 KiB, 512 KiB in total.",
+          "maxItems": 32,
+          "items": {
+            "type": "object"
+          }
         }
       },
       "required": [
@@ -10637,8 +10735,11 @@
               "type": "string",
               "enum": [
                 "allowOnce",
-                "deny"
-              ]
+                "deny",
+                "allowSession",
+                "allowProject"
+              ],
+              "description": "allowSession and allowProject are accepted only after gui-write-v1 negotiation and only when the interaction reports rememberAllowed."
             }
           },
           "required": [
@@ -11297,7 +11398,8 @@
           "items": {
             "type": "string",
             "enum": [
-              "gui-read-v1"
+              "gui-read-v1",
+              "gui-write-v1"
             ]
           }
         },
@@ -11322,6 +11424,65 @@
           "required": [
             "historyPageBytes",
             "mediaChunkBytes"
+          ],
+          "additionalProperties": false
+        },
+        "writeLimits": {
+          "type": "object",
+          "description": "Present only after gui-write-v1 negotiation. Input limits match the desktop composer; released clients keep limits.commandTextBytes and text-only sends.",
+          "properties": {
+            "commandTextBytes": {
+              "type": "integer",
+              "const": 65536
+            },
+            "commandPendingBytes": {
+              "type": "integer",
+              "const": 720896
+            },
+            "attachments": {
+              "type": "integer",
+              "const": 16
+            },
+            "quotes": {
+              "type": "integer",
+              "const": 8
+            },
+            "quoteUnits": {
+              "type": "integer",
+              "const": 16000
+            },
+            "mcpBlocks": {
+              "type": "integer",
+              "const": 32
+            },
+            "mcpBlockBytes": {
+              "type": "integer",
+              "const": 65536
+            },
+            "mcpContentBytes": {
+              "type": "integer",
+              "const": 524288
+            },
+            "uploadChunkBytes": {
+              "type": "integer",
+              "const": 262144
+            },
+            "uploadBytes": {
+              "type": "integer",
+              "const": 16777216
+            }
+          },
+          "required": [
+            "commandTextBytes",
+            "commandPendingBytes",
+            "attachments",
+            "quotes",
+            "quoteUnits",
+            "mcpBlocks",
+            "mcpBlockBytes",
+            "mcpContentBytes",
+            "uploadChunkBytes",
+            "uploadBytes"
           ],
           "additionalProperties": false
         }
@@ -12700,9 +12861,96 @@
           "items": {
             "type": "string",
             "enum": [
-              "gui-read-v1"
+              "gui-read-v1",
+              "gui-write-v1"
             ]
           }
+        },
+        "writeMethods": {
+          "type": "array",
+          "description": "Present only for a desktop-ticket connection that negotiated gui-write-v1. Requests use the Remote envelope fields context (projectId, serviceGeneration, gatewayGeneration, grantRevision 0) and commandId.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "session.create",
+              "session.send",
+              "session.control",
+              "turn.stop",
+              "interaction.respond",
+              "task.pause",
+              "task.question.reply",
+              "task.read",
+              "task.question.read",
+              "review.read",
+              "attention.read",
+              "project.models",
+              "command.read",
+              "attachment.upload",
+              "analytics.read",
+              "analytics.sync",
+              "analytics.activity",
+              "analytics.import"
+            ]
+          }
+        },
+        "writeLimits": {
+          "type": "object",
+          "description": "Present only after gui-write-v1 negotiation. Input limits match the desktop composer; released clients keep limits.commandTextBytes and text-only sends.",
+          "properties": {
+            "commandTextBytes": {
+              "type": "integer",
+              "const": 65536
+            },
+            "commandPendingBytes": {
+              "type": "integer",
+              "const": 720896
+            },
+            "attachments": {
+              "type": "integer",
+              "const": 16
+            },
+            "quotes": {
+              "type": "integer",
+              "const": 8
+            },
+            "quoteUnits": {
+              "type": "integer",
+              "const": 16000
+            },
+            "mcpBlocks": {
+              "type": "integer",
+              "const": 32
+            },
+            "mcpBlockBytes": {
+              "type": "integer",
+              "const": 65536
+            },
+            "mcpContentBytes": {
+              "type": "integer",
+              "const": 524288
+            },
+            "uploadChunkBytes": {
+              "type": "integer",
+              "const": 262144
+            },
+            "uploadBytes": {
+              "type": "integer",
+              "const": 16777216
+            }
+          },
+          "required": [
+            "commandTextBytes",
+            "commandPendingBytes",
+            "attachments",
+            "quotes",
+            "quoteUnits",
+            "mcpBlocks",
+            "mcpBlockBytes",
+            "mcpContentBytes",
+            "uploadChunkBytes",
+            "uploadBytes"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -15387,6 +15635,550 @@
           }
         }
       ]
+    },
+    "RemoteAttachmentUploadParams": {
+      "type": "object",
+      "description": "One chunk of a desktop attachment. Chunks arrive in order at exact offsets; the final chunk hands the bytes to Core and returns the attachment receipt.",
+      "properties": {
+        "threadId": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 128
+        },
+        "uploadId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 128
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16777215
+        },
+        "base64": {
+          "type": "string",
+          "minLength": 1,
+          "description": "At most 262144 decoded bytes."
+        }
+      },
+      "required": [
+        "threadId",
+        "uploadId",
+        "mimeType",
+        "sizeBytes",
+        "offset",
+        "base64"
+      ],
+      "additionalProperties": false
+    },
+    "RemoteAttachmentUploadRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "attachment.upload"
+        },
+        "params": {
+          "$ref": "#/$defs/RemoteAttachmentUploadParams"
+        },
+        "context": {
+          "$ref": "#/$defs/RemoteMutationContext"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "attachment.upload",
+          "params": {
+            "threadId": "example",
+            "uploadId": "11111111-1111-4111-8111-111111111111",
+            "mimeType": "application/pdf",
+            "sizeBytes": 4,
+            "offset": 0,
+            "base64": "JVBERg=="
+          },
+          "context": {
+            "projectId": "example"
+          }
+        }
+      ]
+    },
+    "RemoteAttachmentUploadResult": {
+      "type": "object",
+      "properties": {
+        "uploadId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "receivedBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16777216
+        },
+        "attachment": {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": "string",
+              "pattern": "^areal://blob/[0-9a-f]{64}$"
+            },
+            "mimeType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sizeBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16777216
+            }
+          },
+          "required": [
+            "uri",
+            "mimeType",
+            "sizeBytes"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "uploadId",
+        "receivedBytes"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "uploadId": "11111111-1111-4111-8111-111111111111",
+          "receivedBytes": 4,
+          "attachment": {
+            "uri": "areal://blob/0000000000000000000000000000000000000000000000000000000000000000",
+            "mimeType": "application/pdf",
+            "sizeBytes": 4
+          }
+        }
+      ]
+    },
+    "WorkbenchAnalyticsSummary": {
+      "type": "object",
+      "description": "Usage analytics across all local projects, the same shape the desktop analytics page reads.",
+      "properties": {
+        "since": {
+          "type": "number"
+        },
+        "today": {
+          "type": "string"
+        },
+        "yesterday": {
+          "type": "string"
+        },
+        "days": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "activeMs": {
+                "type": "number",
+                "minimum": 0
+              },
+              "tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "skillCalls": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "activeMs",
+              "tokens",
+              "skillCalls"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "activeMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "activeDays": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "streak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "longestStreak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "undatedTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reportedTurns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skillCalls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "undatedSkills": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "calls": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "name",
+              "calls"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "syncing": {
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "since",
+        "today",
+        "yesterday",
+        "days",
+        "activeMs",
+        "activeDays",
+        "streak",
+        "longestStreak",
+        "tokens",
+        "undatedTokens",
+        "reportedTurns",
+        "skillCalls",
+        "undatedSkills",
+        "skills",
+        "syncing",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsReadParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsReadResult": {
+      "$ref": "#/$defs/WorkbenchAnalyticsSummary"
+    },
+    "WorkbenchAnalyticsReadRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "analytics.read"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchAnalyticsReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "analytics.read",
+          "params": {}
+        }
+      ]
+    },
+    "WorkbenchAnalyticsSyncParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsSyncResult": {
+      "$ref": "#/$defs/WorkbenchAnalyticsSummary"
+    },
+    "WorkbenchAnalyticsSyncRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "analytics.sync"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchAnalyticsSyncParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "analytics.sync",
+          "params": {}
+        }
+      ]
+    },
+    "WorkbenchAnalyticsActivityParams": {
+      "type": "object",
+      "description": "This client's foreground state, reported about every 5 seconds. Active time counts the union of focused clients.",
+      "properties": {
+        "focused": {
+          "type": "boolean"
+        },
+        "idleSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "focused"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsActivityResult": {
+      "type": "null"
+    },
+    "WorkbenchAnalyticsActivityRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "analytics.activity"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchAnalyticsActivityParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "analytics.activity",
+          "params": {
+            "focused": true,
+            "idleSeconds": 0
+          }
+        }
+      ]
+    },
+    "WorkbenchAnalyticsImportParams": {
+      "type": "object",
+      "description": "Merges the desktop's legacy analytics file. Repeatable: days take the larger value, existing turns and skills win. At most 2000 entries per call.",
+      "properties": {
+        "state": {
+          "x-opaque": true,
+          "x-source": "services/workbench/src/domains/analytics.cjs",
+          "description": "The desktop's legacy analytics.json shape (version 1); the workbench service validates every entry."
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsImportResult": {
+      "$ref": "#/$defs/WorkbenchAnalyticsSummary"
+    },
+    "WorkbenchAnalyticsImportRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "analytics.import"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchAnalyticsImportParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "analytics.import",
+          "params": {
+            "state": {
+              "version": 1,
+              "since": 0,
+              "days": {},
+              "turns": {},
+              "skills": {}
+            }
+          }
+        }
+      ]
+    },
+    "LocalLibraryWriteParams": {
+      "type": "object",
+      "description": "Desktop library single writer: Main writes the whole next library.json to a staged file beside it (the library can exceed a 1 MiB frame); Host validates it and replaces library.json only if the file still has expectedDigest (sha256 hex, null when absent).",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedDigest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "staged": {
+          "type": "string",
+          "pattern": "^\\.library-next-[0-9a-f-]{36}\\.json$"
+        }
+      },
+      "required": [
+        "profile",
+        "expectedDigest",
+        "staged"
+      ],
+      "additionalProperties": false
+    },
+    "LocalLibraryWriteRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "library.write"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalLibraryWriteParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "library.write",
+          "params": {
+            "profile": "/example",
+            "expectedDigest": null,
+            "staged": ".library-next-11111111-1111-4111-8111-111111111111.json"
+          }
+        }
+      ]
+    },
+    "LocalLibraryWriteResult": {
+      "type": "object",
+      "properties": {
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "digest"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
     }
   },
   "x-current": {
@@ -15606,6 +16398,11 @@
           "request": "#/$defs/LocalWebRevokeRequest",
           "result": "#/$defs/LocalWebRevokeResult",
           "source": "core/host/src/server.rs"
+        },
+        "library.write": {
+          "request": "#/$defs/LocalLibraryWriteRequest",
+          "result": "#/$defs/LocalLibraryWriteResult",
+          "source": "core/host/src/library_store.rs"
         }
       },
       "framing": {
@@ -15751,6 +16548,40 @@
           "result": "#/$defs/ReadSubscriptionClosed",
           "source": "core/host/src/gateway/shared_reads.rs",
           "capability": "gui-read-v1"
+        },
+        "attachment.upload": {
+          "request": "#/$defs/RemoteAttachmentUploadRequest",
+          "result": "#/$defs/RemoteAttachmentUploadResult",
+          "source": "core/host/src/gateway/uploads.rs",
+          "capability": "gui-write-v1"
+        },
+        "analytics.read": {
+          "request": "#/$defs/WorkbenchAnalyticsReadRequest",
+          "result": "#/$defs/WorkbenchAnalyticsReadResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
+        },
+        "analytics.sync": {
+          "request": "#/$defs/WorkbenchAnalyticsSyncRequest",
+          "result": "#/$defs/WorkbenchAnalyticsSyncResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
+        },
+        "analytics.activity": {
+          "request": "#/$defs/WorkbenchAnalyticsActivityRequest",
+          "result": "#/$defs/WorkbenchAnalyticsActivityResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
+        },
+        "analytics.import": {
+          "request": "#/$defs/WorkbenchAnalyticsImportRequest",
+          "result": "#/$defs/WorkbenchAnalyticsImportResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
         }
       },
       "hello": "#/$defs/RemoteHello",

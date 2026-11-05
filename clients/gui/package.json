@@ -172,6 +172,7 @@
     "measure:gui": "node scripts/gui-performance.mjs",
     "contracts:check": "python3 scripts/generate-management-contracts.py --check",
     "test:cloud-contracts": "node --test scripts/cloud-*.test.cjs",
+    "test:library-store": "node --test scripts/library-host-store.test.cjs",
     "mobile:build": "pnpm mobile:prepare && pnpm --filter @areal/gui-renderer exec vp build --config vite.mobile.config.ts",
     "mobile:sync": "pnpm mobile:build && pnpm --filter @areal/mobile sync",
     "test:mobile-handshake": "node scripts/mobile-handshake-smoke.mjs",

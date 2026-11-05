@@ -248,9 +248,14 @@ const PRESETS = Object.freeze({
   Observer: ["observe", "review"],
   Operator: ["observe", "review", "submit", "interrupt", "answer", "pauseTask"],
 });
+/** 管理是第四级授权，只能叠在 Operator 上单独勾选；已配对设备不会自动获得。 @param {keyof typeof PRESETS} preset @param {boolean} [manage] */
+function presetCapabilities(preset, manage) {
+  return [...PRESETS[preset], ...(manage && preset === "Operator" ? ["manage"] : [])];
+}
 
 module.exports = {
   PRESETS,
+  presetCapabilities,
   selectRelayProfile,
   withCurrentProfile,
   migrateLegacyDevices,

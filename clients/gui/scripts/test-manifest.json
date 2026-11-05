@@ -996,6 +996,13 @@
     "requires": []
   },
   {
+    "script": "test:library-store",
+    "layer": "unit",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["desktop"],
+    "requires": []
+  },
+  {
     "script": "test:mobile-handshake",
     "layer": "e2e",
     "platforms": ["darwin"],

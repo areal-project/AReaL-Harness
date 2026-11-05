@@ -1279,6 +1279,11 @@ class DesktopService {
         response = await this.mcpPageTools(socket, params);
         return response;
       }
+      if (method === "oneProtocol") {
+        await this.backend.useHostLibrary(params?.library === true);
+        response = null;
+        return response;
+      }
       if (method === "snapshot") {
         const packet = this.packet();
         response = packet;
