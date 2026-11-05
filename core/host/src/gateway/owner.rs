@@ -30,6 +30,7 @@ impl LocalSession {
 #[derive(Default)]
 pub(super) struct Gateway {
     pub(super) local_relay: crate::local_relay::LocalRelay,
+    pub(super) workbench: super::workbench_route::Supervisor,
     generation: RefCell<String>,
     status: RefCell<Value>,
     pub pending: std::cell::Cell<usize>,

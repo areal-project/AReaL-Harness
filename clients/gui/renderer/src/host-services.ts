@@ -20,6 +20,7 @@ import {
 } from "@areal/workbench/desktop-contract/conversation-history";
 import { mergeHistory, historyGaps, pageTopology } from "@areal/workbench/history-projection";
 import type { ReadingAnchor } from "./readingViews.js";
+import { createWorkbenchRoutes } from "./host-workbench.js";
 import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
 
 type Observation = ReturnType<typeof readObservationResult>;
@@ -83,9 +84,14 @@ type ReadProject = Record<string, unknown> & {
 
 export function createHostReadServices(
   desktop: PlatformServices | undefined,
-  options: HostClientOptions & { preferredSourceId?: string },
+  options: HostClientOptions & {
+    preferredSourceId?: string;
+    domains?: Set<string>;
+  },
 ): PlatformServices {
-  const client = new HostClient(options);
+  const domains = options.domains ?? new Set<string>();
+  // 领域切换也要用 gui-write-v1 连接；停止、审批等写仍只看 writes 开关。
+  const client = new HostClient({ ...options, writes: options.writes || domains.size > 0 });
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let revision = 0;
   let legacy: Snapshot | undefined;
@@ -771,7 +777,8 @@ export function createHostReadServices(
     const threadId = params.threadId;
     if (typeof projectId !== "string" || typeof threadId !== "string") return undefined;
     const project = snapshot.projects.find((value) => value.id === projectId) as
-      ReadProject | undefined;
+      | ReadProject
+      | undefined;
     const hostProjectId = threadTargets.get(`${projectId}:${threadId}`) ?? project?.hostProjectId;
     return project && hostProjectId ? { project, hostProjectId, threadId } : undefined;
   }
@@ -818,7 +825,8 @@ export function createHostReadServices(
           typeof params.requestId === "string"
         ) {
           const interactions = target.project.state.interactions[target.threadId] as
-            { data?: Array<Record<string, unknown>> } | undefined;
+            | { data?: Array<Record<string, unknown>> }
+            | undefined;
           const item = interactions?.data?.find(
             (entry) => entry.requestId === params.requestId && entry.status === "pending",
           );
@@ -860,6 +868,8 @@ export function createHostReadServices(
       return undefined;
     },
   };
+  const workbench =
+    desktop && createWorkbenchRoutes(client, desktop, domains, options.events, globalThis.document);
   const unavailable = async () => {
     throw new Error("This capability requires the desktop application");
   };
@@ -877,6 +887,7 @@ export function createHostReadServices(
     capabilities: { mutations: desktop !== undefined, native: desktop !== undefined },
     reads,
     ...(options.writes && { writes }),
+    ...(workbench && { workbench }),
     snapshot: async () => snapshot,
     onState(listener) {
       listeners.add(listener);

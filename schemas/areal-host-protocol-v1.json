@@ -12885,7 +12885,11 @@
               "attention.read",
               "project.models",
               "command.read",
-              "attachment.upload"
+              "attachment.upload",
+              "analytics.read",
+              "analytics.sync",
+              "analytics.activity",
+              "analytics.import"
             ]
           }
         },
@@ -15773,6 +15777,320 @@
           }
         }
       ]
+    },
+    "WorkbenchAnalyticsSummary": {
+      "type": "object",
+      "description": "Usage analytics across all local projects, the same shape the desktop analytics page reads.",
+      "properties": {
+        "since": {
+          "type": "number"
+        },
+        "today": {
+          "type": "string"
+        },
+        "yesterday": {
+          "type": "string"
+        },
+        "days": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "activeMs": {
+                "type": "number",
+                "minimum": 0
+              },
+              "tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "skillCalls": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "activeMs",
+              "tokens",
+              "skillCalls"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "activeMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "activeDays": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "streak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "longestStreak": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "undatedTokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reportedTurns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skillCalls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "undatedSkills": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "calls": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "name",
+              "calls"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "syncing": {
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "since",
+        "today",
+        "yesterday",
+        "days",
+        "activeMs",
+        "activeDays",
+        "streak",
+        "longestStreak",
+        "tokens",
+        "undatedTokens",
+        "reportedTurns",
+        "skillCalls",
+        "undatedSkills",
+        "skills",
+        "syncing",
+        "error"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsReadParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsReadResult": {
+      "$ref": "#/$defs/WorkbenchAnalyticsSummary"
+    },
+    "WorkbenchAnalyticsReadRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "analytics.read"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchAnalyticsReadParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "analytics.read",
+          "params": {}
+        }
+      ]
+    },
+    "WorkbenchAnalyticsSyncParams": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsSyncResult": {
+      "$ref": "#/$defs/WorkbenchAnalyticsSummary"
+    },
+    "WorkbenchAnalyticsSyncRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "analytics.sync"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchAnalyticsSyncParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "analytics.sync",
+          "params": {}
+        }
+      ]
+    },
+    "WorkbenchAnalyticsActivityParams": {
+      "type": "object",
+      "description": "This client's foreground state, reported about every 5 seconds. Active time counts the union of focused clients.",
+      "properties": {
+        "focused": {
+          "type": "boolean"
+        },
+        "idleSeconds": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "focused"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsActivityResult": {
+      "type": "null"
+    },
+    "WorkbenchAnalyticsActivityRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "analytics.activity"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchAnalyticsActivityParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "analytics.activity",
+          "params": {
+            "focused": true,
+            "idleSeconds": 0
+          }
+        }
+      ]
+    },
+    "WorkbenchAnalyticsImportParams": {
+      "type": "object",
+      "description": "Merges the desktop's legacy analytics file. Repeatable: days take the larger value, existing turns and skills win. At most 2000 entries per call.",
+      "properties": {
+        "state": {
+          "x-opaque": true,
+          "x-source": "services/workbench/src/domains/analytics.cjs",
+          "description": "The desktop's legacy analytics.json shape (version 1); the workbench service validates every entry."
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchAnalyticsImportResult": {
+      "$ref": "#/$defs/WorkbenchAnalyticsSummary"
+    },
+    "WorkbenchAnalyticsImportRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "x-maxUtf8Bytes": 64
+        },
+        "method": {
+          "type": "string",
+          "const": "analytics.import"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchAnalyticsImportParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "example",
+          "method": "analytics.import",
+          "params": {
+            "state": {
+              "version": 1,
+              "since": 0,
+              "days": {},
+              "turns": {},
+              "skills": {}
+            }
+          }
+        }
+      ]
     }
   },
   "x-current": {
@@ -16143,6 +16461,34 @@
           "result": "#/$defs/RemoteAttachmentUploadResult",
           "source": "core/host/src/gateway/uploads.rs",
           "capability": "gui-write-v1"
+        },
+        "analytics.read": {
+          "request": "#/$defs/WorkbenchAnalyticsReadRequest",
+          "result": "#/$defs/WorkbenchAnalyticsReadResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
+        },
+        "analytics.sync": {
+          "request": "#/$defs/WorkbenchAnalyticsSyncRequest",
+          "result": "#/$defs/WorkbenchAnalyticsSyncResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
+        },
+        "analytics.activity": {
+          "request": "#/$defs/WorkbenchAnalyticsActivityRequest",
+          "result": "#/$defs/WorkbenchAnalyticsActivityResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
+        },
+        "analytics.import": {
+          "request": "#/$defs/WorkbenchAnalyticsImportRequest",
+          "result": "#/$defs/WorkbenchAnalyticsImportResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
         }
       },
       "hello": "#/$defs/RemoteHello",

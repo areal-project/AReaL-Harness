@@ -64,7 +64,7 @@ export interface ReadTransport {
   write?(
     method: string,
     params: JsonObject,
-    context: HostCommandContext,
+    context: HostCommandContext | null,
     commandId?: string,
   ): Promise<unknown>;
   request(
@@ -305,7 +305,7 @@ export class HostClient {
     const write = (
       method: string,
       params: JsonObject,
-      context: HostCommandContext,
+      context: HostCommandContext | null,
       commandId?: string,
     ) =>
       new Promise<unknown>((resolve, reject) => {
@@ -324,12 +324,16 @@ export class HostClient {
               id,
               method,
               params,
-              context: {
-                projectId: context.projectId,
-                serviceGeneration: context.serviceGeneration,
-                gatewayGeneration: generation,
-                grantRevision: 0,
-              },
+              ...(context
+                ? {
+                    context: {
+                      projectId: context.projectId,
+                      serviceGeneration: context.serviceGeneration,
+                      gatewayGeneration: generation,
+                      grantRevision: 0,
+                    },
+                  }
+                : {}),
               ...(commandId ? { commandId } : {}),
             }),
           );
@@ -607,6 +611,12 @@ export class HostClient {
       }
       if (offset + part.length >= bytes.length) throw new Error("Invalid Host upload result");
     }
+  }
+  /** 跨项目的工作台方法（由 Host 转给工作台服务），不带项目上下文与回执。 */
+  async workbench(method: string, params: JsonObject = {}) {
+    const transport = this.#transport;
+    if (!transport?.write || !this.writable(method)) throw new Error("Host writes unavailable");
+    return transport.write(method, params, null);
   }
   commandStatus(projectId: string, commandId: string) {
     return this.query("command.read", projectId, { commandId });

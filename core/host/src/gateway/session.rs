@@ -1008,6 +1008,20 @@ impl Session {
         let params = &request["params"];
         ensure!(params.is_object(), "INVALID_PARAMS");
         self.authorize(None, "observe")?;
+        if crate::server::workbench_route::METHODS.contains(&method) {
+            ensure!(self.local, "FORBIDDEN");
+            ensure!(
+                request.get("context").is_none() && request.get("commandId").is_none(),
+                "INVALID_PARAMS"
+            );
+            let context = json!({"principal":self.peer,"connection":self.connection});
+            return self
+                .host
+                .gateway
+                .workbench
+                .request(&self.host, method, params.clone(), context)
+                .await;
+        }
         if shared_reads::METHODS.contains(&method) {
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
             return self.shell_request(method, params).await;

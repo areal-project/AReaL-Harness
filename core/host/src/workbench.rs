@@ -17,7 +17,9 @@ use tokio::{
     sync::oneshot,
 };
 
-pub(crate) const MAX_FRAME: usize = crate::wire::MAX_FRAME;
+/// 私有通道帧上限。Core 的长历史读结果会经反向调用回到服务，沿用桌面 Core 客户端的 64 MiB；
+/// 交给客户端的结果仍受客户端协议 1 MiB 限制。
+pub(crate) const MAX_FRAME: usize = 64 * 1024 * 1024;
 const READY: Duration = Duration::from_secs(20);
 const REQUEST: Duration = Duration::from_secs(30);
 
@@ -27,7 +29,7 @@ pub(crate) type Reverse = Rc<dyn Fn(String, Value) -> LocalBoxFuture<'static, Re
 type Pending = Rc<RefCell<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
 
 pub(crate) struct Workbench {
-    child: TrustedChild,
+    child: tokio::sync::Mutex<TrustedChild>,
     methods: BTreeSet<String>,
     pending: Pending,
     next: Cell<u64>,
@@ -44,7 +46,7 @@ impl Workbench {
     pub(crate) async fn start(
         runtime: &Path,
         runner: &Path,
-        home: &Path,
+        data: &Path,
         reverse: Reverse,
     ) -> Result<Self> {
         let (reader, writer) = std::os::unix::net::UnixStream::pair()?;
@@ -54,7 +56,8 @@ impl Workbench {
             .arg(runner)
             .env_clear()
             .env("PATH", "/usr/bin:/bin")
-            .env("HOME", home)
+            .env("HOME", data)
+            .env("AREAL_WORKBENCH_DATA", data)
             .env("TMPDIR", std::env::temp_dir())
             .env("ELECTRON_RUN_AS_NODE", "1")
             .stdin(Stdio::piped())
@@ -84,7 +87,7 @@ impl Workbench {
             child.stdin.take().context("workbench stdin missing")?,
         )));
         let workbench = Self {
-            child,
+            child: tokio::sync::Mutex::new(child),
             methods,
             pending: pending.clone(),
             next: Cell::new(0),
@@ -138,8 +141,27 @@ impl Workbench {
         Ok(workbench)
     }
 
+    #[cfg(test)]
     pub(crate) fn methods(&self) -> &BTreeSet<String> {
         &self.methods
+    }
+
+    pub(crate) fn closed(&self) -> bool {
+        self.closed.get()
+    }
+
+    /// Host 推给服务的事件（如 Core 通知）；服务不回复，写不进去就丢弃。
+    pub(crate) async fn notify(&self, event: &str, body: Value) {
+        if self.closed.get() {
+            return;
+        }
+        let mut frame = json!({"version":1,"event":event});
+        if let (Some(frame), Value::Object(body)) = (frame.as_object_mut(), body) {
+            frame.extend(body);
+        }
+        if let Some(stdin) = self.writer.lock().await.as_mut() {
+            let _ = write_frame(stdin, &frame).await;
+        }
     }
 
     /// 授权与回执已在 Host 完成；服务只拿到已验证的 context。
@@ -176,13 +198,14 @@ impl Workbench {
     }
 
     /// 关闭标准输入让服务自行退出，超时后强制结束。
-    pub(crate) async fn stop(mut self) -> Result<()> {
+    pub(crate) async fn stop(&self) -> Result<()> {
         self.writer.lock().await.take();
-        if tokio::time::timeout(Duration::from_secs(5), self.child.wait())
+        let mut child = self.child.lock().await;
+        if tokio::time::timeout(Duration::from_secs(5), child.wait())
             .await
             .is_err()
         {
-            self.child.kill().await?;
+            child.kill().await?;
         }
         Ok(())
     }
@@ -315,8 +338,26 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
                 let workbench = Workbench::start(&node, &runner, root.path(), reverse)
                     .await
                     .unwrap();
-                assert!(workbench.methods().is_empty());
+                assert!(workbench.methods().contains("analytics.read"));
+                let turn = json!({"id":"t1","usage":{"inputTokens":4,"outputTokens":1,"cachedInputTokens":0}});
+                workbench
+                    .notify(
+                        "core.event",
+                        json!({"projectId":"p","method":"turn/completed","params":{"threadId":"a","turn":turn}}),
+                    )
+                    .await;
+                let summary = workbench
+                    .request("analytics.read", json!({}), json!({}))
+                    .await
+                    .unwrap();
+                assert_eq!(summary["tokens"], 5);
+                assert_eq!(summary["undatedTokens"], 0);
                 workbench.stop().await.unwrap();
+                let saved: Value = serde_json::from_slice(
+                    &std::fs::read(root.path().join("analytics.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(saved["turns"]["[\"p\",\"a\",\"t1\"]"]["usage"]["inputTokens"], 4);
             })
             .await;
     }

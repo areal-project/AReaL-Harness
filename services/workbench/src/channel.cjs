@@ -2,12 +2,13 @@
 // 与 Host 的私有通道：每行一个 JSON 帧。设计见 docs/design/workbench-service.md。
 const readline = require("node:readline");
 
-const MAX_FRAME = 1024 * 1024;
+// 与 Host 的 workbench.rs 一致：Core 长历史读结果经反向调用回来，沿用桌面 Core 客户端上限。
+const MAX_FRAME = 64 * 1024 * 1024;
 
 /**
- * @param {{input: NodeJS.ReadableStream, output: NodeJS.WritableStream, domains: Record<string, (params: unknown, context: {host: (call: string, params: unknown) => Promise<unknown>, projectId?: string, principal?: unknown}) => Promise<unknown>>}} options
+ * @param {{input: NodeJS.ReadableStream, output: NodeJS.WritableStream, domains: Record<string, (params: unknown, context: {host: (call: string, params: unknown) => Promise<unknown>, projectId?: string, principal?: unknown, connection?: string}) => Promise<unknown>>, onEvent?: (frame: Record<string, unknown>) => void, host?: (host: (call: string, params: unknown) => Promise<unknown>) => void}} options
  */
-function serve({ input, output, domains }) {
+function serve({ input, output, domains, onEvent, host: expose }) {
     const calls = new Map();
     let next = 0;
     const send = (frame) => {
@@ -22,6 +23,7 @@ function serve({ input, output, domains }) {
             calls.set(id, { resolve, reject });
             send({ id, call, params });
         });
+    expose?.(host);
     const lines = readline.createInterface({ input, crlfDelay: Infinity });
     lines.on("line", (line) => {
         if (Buffer.byteLength(line) >= MAX_FRAME) return;
@@ -32,6 +34,14 @@ function serve({ input, output, domains }) {
             return;
         }
         if (frame?.version !== 1) return;
+        if (typeof frame.event === "string") {
+            try {
+                onEvent?.(frame);
+            } catch {
+                // 事件不回复；单个事件处理失败不影响通道。
+            }
+            return;
+        }
         if (frame.method === undefined) {
             const pending = calls.get(frame.id);
             if (!pending) return;

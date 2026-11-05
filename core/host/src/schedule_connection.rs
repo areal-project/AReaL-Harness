@@ -495,7 +495,7 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
                         Message::Text(text) => {
                             let Ok(value) = serde_json::from_str::<Value>(&text) else { break; };
                             if let Some(method) = value["method"].as_str() {
-                                if value.get("id").is_none() { if changes_shell(&value) { connection.shell_revision.set(connection.shell_revision.get() + 1); } let sequence = connection.event_sequence.get() + 1; connection.event_sequence.set(sequence); let _ = connection.events.send(CoreEvent { sequence, value }); continue; }
+                                if value.get("id").is_none() { if changes_shell(&value) { connection.shell_revision.set(connection.shell_revision.get() + 1); } host.gateway.workbench.core_event(&connection.project_id, &value); let sequence = connection.event_sequence.get() + 1; connection.event_sequence.set(sequence); let _ = connection.events.send(CoreEvent { sequence, value }); continue; }
                                 if callbacks.len() >= MAX_PENDING { break; }
                                 let host = host.clone();
                                 let connection = connection.clone();

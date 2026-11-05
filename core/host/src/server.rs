@@ -19,6 +19,8 @@ mod shell_subscription;
 mod subscriptions;
 #[path = "updates.rs"]
 pub(crate) mod updates;
+#[path = "workbench_route.rs"]
+mod workbench_route;
 use crate::{
     Activity, CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectActivity,
     ProjectRegistration, ProjectStatus, StopStrategy, VERSION, launch,
@@ -375,6 +377,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         }
     }
     drop(loopback);
+    host.gateway.workbench.stop().await;
     host.close_subscriptions().await;
     host.power.close().await;
     std::fs::remove_file(socket)?;

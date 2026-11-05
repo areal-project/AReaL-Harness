@@ -240,11 +240,15 @@ def current_inventory(root):
     upload_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", uploads, re.S)
     if not upload_match:
         raise ValueError("Negotiated write METHODS declaration moved; update inventory extractor")
+    workbench = (root / "core/host/src/workbench_route.rs").read_text()
+    workbench_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", workbench, re.S)
+    if not workbench_match:
+        raise ValueError("Workbench METHODS declaration moved; update inventory extractor")
     return {
         "loopback": {"hello"}
         | set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', loopback_match[1])),
         "local": local,
-        "remote": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1] + read_match[1] + upload_match[1])),
+        "remote": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1] + read_match[1] + upload_match[1] + workbench_match[1])),
     }
 
 

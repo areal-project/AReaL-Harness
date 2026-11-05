@@ -62,6 +62,10 @@ const WRITE_METHODS: &[&str] = &[
     "project.models",
     "command.read",
     "attachment.upload",
+    "analytics.activity",
+    "analytics.import",
+    "analytics.read",
+    "analytics.sync",
 ];
 const TTL: Duration = Duration::from_secs(30);
 const TIMEOUT: Duration = Duration::from_secs(10);
