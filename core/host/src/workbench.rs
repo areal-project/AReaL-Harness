@@ -84,6 +84,8 @@ impl Workbench {
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
         let mut child = command.spawn().await?;
+        // 命令里还握着通道写端的副本；不释放的话子进程提前退出时读不到 EOF，只能等就绪超时。
+        drop(command);
         if let Some((method, params)) = bootstrap {
             let mut stdin = child.stdin.take().context("workbench stdin missing")?;
             write_frame(
@@ -427,6 +429,24 @@ lines.on("close", () => process.exit(0));
                 assert!(workbench.methods().is_empty());
                 assert_eq!(ready["service"]["identity"], "approot");
                 workbench.stop().await.unwrap();
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn exit_before_ready_is_reported_without_waiting_for_the_ready_deadline() {
+        let Some(node) = node() else { return };
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let runner = root.path().join("crash.cjs");
+                std::fs::write(&runner, "process.exit(1);\n").unwrap();
+                let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
+                let error = Workbench::start_with(&node, &runner, root.path(), reverse, None)
+                    .await
+                    .err()
+                    .unwrap();
+                assert_eq!(error.to_string(), "workbench exited before ready");
             })
             .await;
     }
