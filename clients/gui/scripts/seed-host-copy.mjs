@@ -10,6 +10,7 @@ import { parseArgs } from "node:util";
 
 const threadFile = /^[a-f0-9-]{36}\.json$/;
 const assetDirectories = new Set(["history", "blobs", "goals"]);
+const archivedTaskDirectories = new Set(["task-ledger", "task-legacy"]);
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const inside = (parent, child) => child === parent || child.startsWith(parent + sep);
 const json = (value) => JSON.stringify(value, null, 2) + "\n";
@@ -71,11 +72,16 @@ async function readOnly(path) {
 
 async function selectedSnapshot(source) {
   const entries = [];
-  async function directory(path, select = () => true) {
+  async function directory(
+    path,
+    select = () => true,
+    location = "core",
+    copyPath = relative(source, path),
+  ) {
     const stat = await statOrMissing(path);
     const name = relative(source, path);
     if (!stat) {
-      entries.push({ path: name, kind: "missing" });
+      entries.push({ path: name, location, copyPath, kind: "missing" });
       return;
     }
     assert.ok(
@@ -92,7 +98,7 @@ async function selectedSnapshot(source) {
         metadata(stat),
         "Source directory changed",
       );
-      entries.push({ path: name, kind: "directory", metadata: metadata(stat) });
+      entries.push({ path: name, location, copyPath, kind: "directory", metadata: metadata(stat) });
       for (const child of (await readdir(path)).sort()) {
         const childPath = join(path, child);
         const childStat = await lstat(childPath, { bigint: true });
@@ -105,11 +111,14 @@ async function selectedSnapshot(source) {
           `Source special file is unsupported: ${relative(source, childPath)}`,
         );
         if (!select(child, childStat)) continue;
-        if (childStat.isDirectory()) await directory(childPath);
+        if (childStat.isDirectory())
+          await directory(childPath, undefined, location, join(copyPath, child));
         else {
           const value = await readOnly(childPath);
           entries.push({
             path: relative(source, childPath),
+            location,
+            copyPath: join(copyPath, child),
             kind: "file",
             metadata: value.metadata,
             sha256: value.sha256,
@@ -128,6 +137,8 @@ async function selectedSnapshot(source) {
   const index = await readOnly(join(source, "projects.json"));
   entries.push({
     path: "projects.json",
+    location: "core",
+    copyPath: "projects.json",
     kind: "file",
     metadata: index.metadata,
     sha256: index.sha256,
@@ -151,6 +162,8 @@ async function selectedSnapshot(source) {
     );
     entries.push({
       path: project.id,
+      location: "core",
+      copyPath: project.id,
       kind: projectStat ? "directory" : "missing",
       ...(projectStat ? { metadata: metadata(projectStat) } : {}),
     });
@@ -159,6 +172,14 @@ async function selectedSnapshot(source) {
       (name, stat) =>
         (stat.isFile() && threadFile.test(name)) ||
         (stat.isDirectory() && assetDirectories.has(name)),
+    );
+    await directory(
+      join(projectPath, "state/desktop"),
+      (name, stat) =>
+        (stat.isFile() && name === "task-mode.json") ||
+        (stat.isDirectory() && archivedTaskDirectories.has(name)),
+      "archive",
+      join(project.id, "desktop"),
     );
   }
   return { projects, entries, digest: sha256(JSON.stringify(entries)) };
@@ -219,7 +240,10 @@ export async function seedHostCopy({ from, home, binary }, { registerProject, be
   await mkdir(dirname(destination), { recursive: true, mode: 0o700 });
   await mkdir(destination, { mode: 0o700 });
   const copyRoot = join(destination, "seed-copy/core");
+  const archiveRoot = join(destination, "seed-copy/archive");
+  const copyLocations = { core: copyRoot, archive: archiveRoot };
   const marker = join(copyRoot, ".areal-test-copy.json");
+  const archiveMarker = join(archiveRoot, ".areal-test-copy.json");
   const evidencePath = join(destination, "seed-copy/manifest.json");
   const evidence = {
     version: 1,
@@ -227,16 +251,21 @@ export async function seedHostCopy({ from, home, binary }, { registerProject, be
     source,
     status: "incomplete",
     sourceDigest: null,
-    scope: "projects.json and supported Store thread/history/blobs/goals assets only",
+    scope:
+      "projects.json, supported Store thread/history/blobs/goals assets, and inactive desktop task archives",
+    archiveRoot,
+    archivedFiles: [],
     sanitizedFiles: [],
     projects: [],
   };
   let client;
   await mkdir(copyRoot, { recursive: true, mode: 0o700 });
-  await writeFile(marker, json({ testCopy: true, status: "incomplete" }), {
-    mode: 0o600,
-    flag: "wx",
-  });
+  await mkdir(archiveRoot, { recursive: true, mode: 0o700 });
+  for (const path of [marker, archiveMarker])
+    await writeFile(path, json({ testCopy: true, status: "incomplete" }), {
+      mode: 0o600,
+      flag: "wx",
+    });
   await writeFile(evidencePath, json(evidence), { mode: 0o600, flag: "wx" });
   try {
     const before = await selectedSnapshot(source);
@@ -246,7 +275,7 @@ export async function seedHostCopy({ from, home, binary }, { registerProject, be
     await beforeCopy?.();
     const copiedFiles = [];
     for (const entry of before.entries) {
-      const target = join(copyRoot, entry.path);
+      const target = join(copyLocations[entry.location], entry.copyPath);
       if (entry.kind !== "file") {
         await mkdir(target, { recursive: true, mode: 0o700 });
         continue;
@@ -257,24 +286,36 @@ export async function seedHostCopy({ from, home, binary }, { registerProject, be
         { metadata: entry.metadata, sha256: entry.sha256 },
         "Source drift before copy",
       );
-      const bytes = copiedBytes(entry.path, value.bytes, evidence.sanitizedFiles);
+      const bytes =
+        entry.location === "core"
+          ? copiedBytes(entry.path, value.bytes, evidence.sanitizedFiles)
+          : value.bytes;
       await writeFile(target, bytes, { mode: 0o600, flag: "wx" });
-      copiedFiles.push({ path: entry.path, sha256: sha256(bytes) });
+      copiedFiles.push({
+        location: entry.location,
+        sourcePath: entry.path,
+        path: entry.copyPath,
+        sha256: sha256(bytes),
+      });
     }
     const after = await selectedSnapshot(source);
     assert.deepEqual(after, before, "Source drift during copy; no Host was started");
     for (const file of copiedFiles)
       assert.equal(
-        (await readOnly(join(copyRoot, file.path))).sha256,
+        (await readOnly(join(copyLocations[file.location], file.path))).sha256,
         file.sha256,
         "Copied bytes differ",
       );
     evidence.copyDigest = sha256(JSON.stringify(copiedFiles));
+    evidence.archivedFiles = copiedFiles
+      .filter((file) => file.location === "archive")
+      .map(({ sourcePath, path, sha256 }) => ({ sourcePath, path, sha256 }));
     evidence.status = "copied";
-    await writeFile(
-      marker,
-      json({ testCopy: true, status: "copied", sourceDigest: before.digest }),
-    );
+    for (const path of [marker, archiveMarker])
+      await writeFile(
+        path,
+        json({ testCopy: true, status: "copied", sourceDigest: before.digest }),
+      );
     await writeFile(evidencePath, json(evidence));
     const registrations = before.projects.map((project) => ({
       projectId: `test-copy-${randomUUID()}`,
@@ -344,10 +385,11 @@ export async function seedHostCopy({ from, home, binary }, { registerProject, be
   } catch (error) {
     evidence.status = "incomplete";
     evidence.failure = error.message;
-    await writeFile(
-      marker,
-      json({ testCopy: true, status: "incomplete", sourceDigest: evidence.sourceDigest }),
-    );
+    for (const path of [marker, archiveMarker])
+      await writeFile(
+        path,
+        json({ testCopy: true, status: "incomplete", sourceDigest: evidence.sourceDigest }),
+      );
     await writeFile(evidencePath, json(evidence));
     throw error;
   } finally {
