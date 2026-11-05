@@ -2188,6 +2188,14 @@ export const remoteMessages = {
     "zh-CN": "还能发送、停止、回答",
     en: "Also send, stop and answer",
   },
+  "settings.mobileConnect.canManage": {
+    "zh-CN": "允许管理",
+    en: "Allow managing",
+  },
+  "settings.mobileConnect.canManageDescription": {
+    "zh-CN": "还能改项目设置、插件和定时任务",
+    en: "Also change project settings, plugins and scheduled tasks",
+  },
   "settings.mobileConnect.doneTitle": {
     "zh-CN": "“{device}”已连接",
     en: "“{device}” is connected",

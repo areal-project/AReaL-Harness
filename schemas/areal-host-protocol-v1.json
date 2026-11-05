@@ -4987,6 +4987,10 @@
                 "Observer",
                 "Operator"
               ]
+            },
+            "manage": {
+              "type": "boolean",
+              "description": "Adds the manage capability on top of Operator. Existing grants are never widened automatically."
             }
           },
           "required": [
@@ -5016,6 +5020,10 @@
                 "Observer",
                 "Operator"
               ]
+            },
+            "manage": {
+              "type": "boolean",
+              "description": "Adds the manage capability on top of Operator. Existing grants are never widened automatically."
             }
           },
           "required": [
