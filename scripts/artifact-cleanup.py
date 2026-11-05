@@ -78,6 +78,8 @@ def zip_identity(path):
 
 def activity(roots):
     observations = []
+    root_names = {str(root) for root in roots}
+    root_prefixes = tuple(name + "/" for name in root_names)
     try:
         ps = command(["ps", "-axo", "pid=,ppid=,comm=,args="])
         opened = command(["lsof", "-n", "-P", "-Fpcfn"])
@@ -108,7 +110,7 @@ def activity(roots):
                 value = line[1:]
                 if fd == "cwd" and pid in processes:
                     processes[pid]["cwd"] = value
-                elif any(within(Path(value), root) for root in roots):
+                elif value in root_names or value.startswith(root_prefixes):
                     observations.append({"pid": pid, "type": "open-file", "path": value})
         builders = {
             "cargo",

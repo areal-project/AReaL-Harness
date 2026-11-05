@@ -2,6 +2,7 @@
 
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import plistlib
@@ -303,6 +304,38 @@ class TemporaryWorktreeCacheTest(CleanupFixture):
             finally:
                 os.killpg(builder.pid, signal.SIGTERM)
                 builder.communicate(timeout=10)
+        finally:
+            child.communicate(timeout=10)
+
+    def test_activity_matches_directory_boundaries_for_open_files(self):
+        sibling = self.root / "old checkout sibling"
+        sibling.mkdir()
+        outside = sibling / "areal"
+        outside.write_bytes(b"outside scanned worktrees")
+        inside = self.old / "target/debug/areal"
+        child = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; files=[open(p) for p in sys.argv[1:]]; "
+                "print('ready',flush=True); sys.stdin.read()",
+                str(inside),
+                str(outside),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "ready")
+            spec = importlib.util.spec_from_file_location("cleanup", SCRIPT)
+            cleanup = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cleanup)
+            observations, error = cleanup.activity([self.old])
+            self.assertIsNone(error)
+            self.assertEqual(
+                {o["path"] for o in observations if o["pid"] == child.pid}, {str(inside)}
+            )
         finally:
             child.communicate(timeout=10)
 
