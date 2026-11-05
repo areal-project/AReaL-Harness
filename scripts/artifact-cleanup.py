@@ -405,7 +405,7 @@ def rust_bundles(manifests, keep, roots, warnings):
     return public, items, len(retained_ids) >= keep
 
 
-def rust_plan(repos, roots, may_remove_loose, bundles, targets=None):
+def rust_plan(repos, roots, may_remove_loose, bundles, targets=None, loose_intermediates=False):
     profiles, items = [], []
     for repo, target in targets if targets is not None else [(r, r / "target") for r in repos]:
         if not safe(target, roots):
@@ -422,11 +422,21 @@ def rust_plan(repos, roots, may_remove_loose, bundles, targets=None):
                 and not (profile / d / "manifest.json").is_file()
             ]
             caches = [profile / name for name in sorted(CACHE_DIRS) if safe(profile / name, roots)]
-            if not caches:
+            loose = []
+            if loose_intermediates and (profile / ".cargo-lock").is_file():
+                loose = [
+                    path
+                    for path in profile.iterdir()
+                    if safe(path, roots)
+                    and path.is_file()
+                    and not path.stat().st_mode & 0o111
+                    and path.suffix in {".rlib", ".rmeta", ".o", ".d"}
+                ]
+            if not caches and not loose:
                 continue
             dirs[:] = []
             profiles.append({"path": str(profile), "repo": str(repo)})
-            for path in caches:
+            for path in [*caches, *sorted(loose)]:
                 items.append(
                     {
                         "path": str(path),
@@ -483,7 +493,16 @@ def file_identity(path):
 
 def intermediate_files(path):
     files, preserved = [], []
-    for base, dirs, names in os.walk(path, followlinks=False):
+
+    def scan_error(error):
+        raise error
+
+    entries = (
+        [(path.parent, [], [path.name])]
+        if path.is_file()
+        else os.walk(path, onerror=scan_error, followlinks=False)
+    )
+    for base, dirs, names in entries:
         folder = Path(base)
         for name in dirs[:]:
             child = folder / name
@@ -581,15 +600,15 @@ def remaining_cache_bytes(items):
 
 
 def measure_items(items, temporary, warnings):
-    if items and items[0].get("preserve_outputs"):
-        for item in items:
-            item["files"], item["preserved"] = intermediate_files(Path(item["path"]))
-            item["estimated_bytes"] = sum(f["estimated_bytes"] for f in item["files"])
-            item["size_known"] = True
-            if not item["files"] and item["status"] == "eligible":
-                item["status"] = "retained-protected"
-        return
-    groups = cache_groups(items).values() if temporary else [items]
+    measured = [i for i in items if i.get("preserve_outputs") and i["status"] == "eligible"]
+    for item in measured:
+        item["files"], item["preserved"] = intermediate_files(Path(item["path"]))
+        item["estimated_bytes"] = sum(f["estimated_bytes"] for f in item["files"])
+        item["size_known"] = True
+        if not item["files"]:
+            item["status"] = "retained-protected"
+    unmeasured = [i for i in items if i not in measured]
+    groups = cache_groups(unmeasured).values() if temporary else [unmeasured]
     for group in groups:
         if not group:
             continue
@@ -669,7 +688,7 @@ def plan_cache_budget(items, budget, min_free, min_idle_ns, warnings):
     remaining = remaining_cache_bytes(items)
     groups = cache_groups(items)
     for group in groups.values():
-        if all(i["status"] == "eligible" for i in group):
+        if all(i["status"] in {"eligible", "retained-protected"} for i in group):
             retained = reusable_cache_status(group, min_idle_ns, warnings)
             if retained:
                 for item in group:
@@ -684,17 +703,19 @@ def plan_cache_budget(items, budget, min_free, min_idle_ns, warnings):
     )
     selected = []
     for profile, group in ordered:
-        if any(i["status"] != "eligible" for i in group):
+        if any(i["status"] not in {"eligible", "retained-protected"} for i in group):
             for item in group:
                 if item["status"] == "eligible":
                     item["status"] = "blocked-profile"
             continue
         if remaining > budget or free_bytes(profile) < min_free:
-            selected.extend(group)
-            remaining -= sum(i["estimated_bytes"] for i in group)
+            eligible = [i for i in group if i["status"] == "eligible"]
+            selected.extend(eligible)
+            remaining -= sum(i["estimated_bytes"] for i in eligible)
         else:
             for item in group:
-                item["status"] = "retained-budget"
+                if item["status"] == "eligible":
+                    item["status"] = "retained-budget"
     return selected
 
 
@@ -716,7 +737,7 @@ def main():
     parser.add_argument(
         "--temporary-worktrees",
         action="store_true",
-        help="Only budget Rust intermediate caches in registered secondary worktrees",
+        help="Only budget non-executable Rust intermediates in registered secondary worktrees",
     )
     parser.add_argument(
         "--rust-intermediates",
@@ -818,7 +839,7 @@ def main():
             if (p / "Cargo.toml").is_file() and (p / "core/engine/Cargo.toml").is_file()
         ]
         gui, bundles, gui_items, bundle_items = [], [], [], []
-        rust, rust_items = rust_plan(repos, roots, False, [])
+        rust, rust_items = rust_plan(repos, roots, False, [], loose_intermediates=True)
         rust_items = [
             i
             for i in rust_items
@@ -827,6 +848,7 @@ def main():
         ]
         for item in rust_items:
             item["temporary_worktree"] = True
+            item["preserve_outputs"] = True
             item["last_modified_ns"] = max(
                 Path(item["path"]).stat().st_mtime_ns,
                 Path(item["profile"]).stat().st_mtime_ns,
@@ -884,12 +906,20 @@ def main():
             item["status"] = "blocked-mounted"
         item["mtime_ns"] = path.stat().st_mtime_ns
         items.append(item)
+    min_idle_ns = int(args.min_idle_hours * 3600 * 10**9)
+    if args.temporary_worktrees:
+        # 热缓存只统计容量；冷缓存才枚举逐文件回执，避免为开发中的巨大 target 生成冗余清单。
+        for group in cache_groups(items).values():
+            if all(i["status"] == "eligible" for i in group):
+                retained = reusable_cache_status(group, min_idle_ns, warnings)
+                if retained:
+                    for item in group:
+                        item["status"] = retained
     if items:
         print(f"Measuring {len(items)} cleanup paths (allocated blocks)...", file=sys.stderr)
         measure_items(items, args.temporary_worktrees, warnings)
     budget = int(args.cache_budget_gib * 1024**3)
     min_free = int(args.min_free_gib * 1024**3)
-    min_idle_ns = int(args.min_idle_hours * 3600 * 10**9)
     selected = (
         plan_cache_budget(items, budget, min_free, min_idle_ns, warnings)
         if args.temporary_worktrees
@@ -915,7 +945,7 @@ def main():
         "excluded_scopes": [
             "primary and custom targets",
             "unregistered worktrees",
-            "GUI/Core packages",
+            "executables and GUI/Core packages",
         ]
         if args.temporary_worktrees
         else ["GUI/Core packages", "other targets"]
@@ -925,6 +955,17 @@ def main():
         "pending_bytes": 0,
     }
     if args.temporary_worktrees:
+        report["worktree_targets"] = [
+            {
+                "repo": str(repo),
+                "target": str(repo / "target"),
+                "status": "scanned"
+                if safe(repo / "target", roots)
+                else "missing-or-symlink-skipped",
+                "cleanup_paths": sum(i["scope"] == str(repo) for i in items),
+            }
+            for repo in repos
+        ]
         report["cache_policy"] = {
             "budget_bytes": budget,
             "min_free_bytes": min_free,
@@ -979,7 +1020,7 @@ def main():
                                 for record in item["files"]:
                                     child = Path(record["path"])
                                     if (
-                                        not safe(child, [path])
+                                        not safe(child, [path.parent if path.is_file() else path])
                                         or file_identity(child) != record["identity"]
                                     ):
                                         raise RuntimeError(
@@ -993,6 +1034,18 @@ def main():
                                     for p in item["preserved"]
                                 ):
                                     raise RuntimeError(f"Preserved output changed: {path}")
+                                if args.temporary_worktrees and path.is_dir():
+                                    for base, dirs, _ in os.walk(
+                                        path, topdown=False, followlinks=False
+                                    ):
+                                        folder = Path(base)
+                                        if any(
+                                            within(folder, Path(p["path"]))
+                                            for p in item["preserved"]
+                                        ):
+                                            continue
+                                        if not any(folder.iterdir()):
+                                            folder.rmdir()
                             except (OSError, RuntimeError):
                                 item["status"] = "failed"
                                 args.report.write_text(

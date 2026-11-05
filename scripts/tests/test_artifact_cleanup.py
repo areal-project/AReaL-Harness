@@ -96,6 +96,55 @@ class CleanupFixture(unittest.TestCase):
 
 
 class TemporaryWorktreeCacheTest(CleanupFixture):
+    def test_managed_worktrees_collect_loose_intermediates_without_cache_directories(self):
+        for checkout, tool in [(self.old, "Codex"), (self.new, "T3 Code")]:
+            destination = self.root / tool / "worktrees" / checkout.name
+            destination.parent.mkdir(parents=True)
+            self.git("worktree", "move", str(checkout), str(destination))
+            profile = destination / "target/debug"
+            for name in ["deps", "incremental"]:
+                shutil.rmtree(profile / name)
+            loose = profile / "libareal_engine.rlib"
+            loose.write_bytes(b"old intermediate")
+            for path in [loose, profile]:
+                os.utime(path, (1000, 1000))
+            gitdir = Path(
+                self.git("-C", str(destination), "rev-parse", "--absolute-git-dir").strip()
+            )
+            for name in ["index", "logs/HEAD"]:
+                os.utime(gitdir / name, (100, 100))
+        report = self.run_cleanup("--apply")
+        for tool in ["Codex", "T3 Code"]:
+            profile = (
+                self.root
+                / tool
+                / "worktrees"
+                / ("old checkout" if tool == "Codex" else "new checkout")
+                / "target/debug"
+            )
+            self.assertFalse((profile / "libareal_engine.rlib").exists())
+            self.assertEqual((profile / "areal").read_bytes(), b"keep companion")
+        self.assertEqual(sum(i["status"] == "deleted" for i in report["items"]), 2)
+
+    def test_cold_cache_preserves_nested_executables_and_release_archives(self):
+        cache = self.old / "target/debug/deps"
+        protected = [cache / "test-binary", cache / "libplugin.dylib", cache / "release.tar.zst"]
+        for path in protected:
+            path.write_bytes(b"protected output")
+            os.utime(path, (1000, 1000))
+        protected[0].chmod(0o755)
+        (self.old / "target/debug/incremental/cache").unlink()
+        os.utime(self.old / "target/debug/incremental", (1000, 1000))
+        for path in [cache, cache.parent]:
+            os.utime(path, (1000, 1000))
+        self.run_cleanup("--apply")
+        self.assertFalse((cache / "cache").exists())
+        for path in protected:
+            self.assertTrue(
+                path.exists(), "Cold cache collection must preserve executable/package outputs"
+            )
+            self.assertEqual(path.read_bytes(), b"protected output")
+
     def test_recent_nested_build_survives_pressure_and_repeated_runs(self):
         cache = self.old / "target/debug/deps/cache"
         cache.write_bytes(b"recent build")
@@ -113,11 +162,17 @@ class TemporaryWorktreeCacheTest(CleanupFixture):
     def test_developing_worktree_keeps_even_old_caches(self):
         for checkout in [self.old, self.new]:
             (checkout / "work-in-progress.rs").write_text("// pending work\n")
+            loose = checkout / "target/debug/libareal_engine.rlib"
+            loose.write_bytes(b"old intermediate")
+            os.utime(loose, (1000, 1000))
         self.git("-C", str(self.old), "add", "work-in-progress.rs")
         report = self.run_cleanup("--apply", "--min-free-gib", "1000000")
         self.assertEqual({i["status"] for i in report["items"]}, {"retained-worktree-dirty"})
         for checkout in [self.old, self.new]:
             self.assertTrue((checkout / "target/debug/deps/cache").exists())
+            self.assertEqual(
+                (checkout / "target/debug/libareal_engine.rlib").read_bytes(), b"old intermediate"
+            )
 
     def test_recent_clean_checkout_is_retained_without_refreshing_git_index(self):
         gitdir = Path(self.git("-C", str(self.old), "rev-parse", "--absolute-git-dir").strip())

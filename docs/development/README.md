@@ -160,7 +160,7 @@ mbx setup
 make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-free-gib 30 --min-idle-hours 72 --report /private/tmp/worktree-cache-preview.json'
 ```
 
-审阅后追加 `--apply`，并为每次运行指定独立报告路径。该模式只选择本仓 Git 登记中仍存在的次级工作树，主工作树始终排除，不接受 `--root` 或 `--no-worktrees` 覆盖。它只回收已识别 Cargo profile 下的 `deps`、`incremental`、`build` 和 `.fingerprint`；保留 profile 中的可执行文件、shell、完整包、delivery 目录、依赖和符号链接。失效工作树登记只跳过，不移除。
+审阅后追加 `--apply`，并为每次运行指定独立报告路径。该模式只选择本仓 Git 登记中仍存在的次级工作树，包括 Codex、T3 Code 等工具创建的工作树，不按工具目录名猜测范围；主工作树始终排除，不接受 `--root` 或 `--no-worktrees` 覆盖。它回收已识别 Cargo profile 下的 `deps`、`incremental`、`build` 和 `.fingerprint` 中的非可执行文件，以及有 `.cargo-lock` 的 profile 根部遗留的非可执行 `.rlib`、`.rmeta`、`.o`、`.d`，即使缓存目录已经清空也能识别。可执行文件、动态库、shell、完整包、delivery 目录、依赖和符号链接始终保留，缓存目录内也适用。失效工作树登记只跳过，不移除。报告的 `worktree_targets` 列出各工作树默认 target 的扫描状态和候选路径数，零候选不代表整个 target 没有占用。
 
 40 GiB 是所有次级工作树缓存的分配块估算总预算，独立于 mbx 共享缓存的 40 GiB。先保护可复用缓存：有暂存、未暂存或未忽略的新文件的工作树整组保留；干净工作树的 profile 只有连续闲置至少 72 小时才参与预算回收，窗口可用 `--min-idle-hours` 调整。最近活动取 profile 内文件和目录的最新写入时间，以及该工作树 Git index、HEAD reflog 的修改时间，覆盖目录时间未改变的文件重写及近期提交/切换。检查 Git 时禁用可选锁，避免扫描自身刷新 index。它不是精确的读取 LRU。
 
