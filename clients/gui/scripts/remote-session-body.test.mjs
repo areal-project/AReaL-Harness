@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { test } from "node:test";
 const require = createRequire(import.meta.url);
-const { snapshot, update } = require("../app/src/core/remote-session-projection.cjs");
-const { SessionObservers } = require("../app/src/core/remote-session-observer.cjs");
+const { snapshot, update } = require("@areal/workbench-service/desktop/core/remote-session-projection.cjs");
+const { SessionObservers } = require("@areal/workbench-service/desktop/core/remote-session-observer.cjs");
 const longText = "完整正文 😀 界\n".repeat(20000) + "正文结束_END";
 const thread = {
   id: "t",

@@ -1,5 +1,6 @@
 packages:
   - app
+  - ../../services/workbench
   - ../mobile
   - renderer
   - packages/*

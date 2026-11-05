@@ -205,12 +205,12 @@ const createdSkillId = "creator-project-proof";
 const createdSkillBody =
   "---\nname: creator-project-proof\ndescription: Produce project-local acceptance proof when asked.\n---\n\n# Project proof\n\nRead the requested project task and report a concise result.\n";
 const creatorBody = await readFile(
-  join(gui, "app/assets/builtin-skills", fixture.creatorId, "SKILL.md"),
+  join(gui, "../../services/workbench/src/assets/builtin-skills", fixture.creatorId, "SKILL.md"),
   "utf8",
 );
 const creatorSource = JSON.parse(
   await readFile(
-    join(gui, "app/assets/builtin-skills", `${fixture.creatorId}.source.json`),
+    join(gui, "../../services/workbench/src/assets/builtin-skills", `${fixture.creatorId}.source.json`),
     "utf8",
   ),
 );
@@ -225,7 +225,7 @@ const creatorResources = await Promise.all(
       name,
       resource,
       sha256: expected.sha256,
-      size: (await readFile(join(gui, "app/assets/builtin-skills", fixture.creatorId, resource)))
+      size: (await readFile(join(gui, "../../services/workbench/src/assets/builtin-skills", fixture.creatorId, resource)))
         .length,
     };
   }),
@@ -512,7 +512,7 @@ async function launch() {
         };
       }
     },
-    join(gui, "app/src/core/mcp-apps.cjs"),
+    join(gui, "../../services/workbench/src/desktop/core/mcp-apps.cjs"),
   );
   await app.evaluate(({ dialog }) => {
     const original = dialog.showMessageBox;

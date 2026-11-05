@@ -6,8 +6,8 @@ const { access } = require("node:fs/promises");
 const { constants } = require("node:fs");
 const { isAbsolute, join } = require("node:path");
 const { promisify } = require("node:util");
-const { verifyCoreBundle } = require("./bundle.cjs");
-const { nativeText } = require("./native-i18n.cjs");
+const { verifyCoreBundle } = require("@areal/workbench-service/desktop/core/bundle.cjs");
+const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
 
 const executeFile = promisify(execFile);
 /** @param {string} path @param {string[]} args */

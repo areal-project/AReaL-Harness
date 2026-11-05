@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { mkdtemp, readFile, rm, writeFile } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
-const { ScopedResources } = require("../app/src/core/scoped-resources.cjs");
+const { ScopedResources } = require("@areal/workbench-service/desktop/core/scoped-resources.cjs");
 
 const config = {
   transport: {

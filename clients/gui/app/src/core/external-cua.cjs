@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { record } = require("./service-transport-contract.cjs");
+const { record } = require("@areal/workbench-service/desktop/core/service-transport-contract.cjs");
 const { access } = require("node:fs/promises");
 const { constants } = require("node:fs");
 const { isAbsolute } = require("node:path");
@@ -255,7 +255,7 @@ class ExternalCua {
       owner.turnId,
     ]);
   }
-  /** @param {import("./service-transport-contract.cjs").ToolHostInput} raw @returns {Promise<import("@modelcontextprotocol/sdk/types.js").CallToolResult>} */
+  /** @param {import("@areal/workbench-service/desktop/core/service-transport-contract.cjs").ToolHostInput} raw @returns {Promise<import("@modelcontextprotocol/sdk/types.js").CallToolResult>} */
   async call(raw) {
     const request = readCall(raw);
     const generation = this.generation;
@@ -490,7 +490,7 @@ function readOwner(value, thread = true) {
     ...(typeof value.callId === "string" ? { callId: value.callId } : {}),
   };
 }
-/** @param {import('./service-transport-contract.cjs').ToolHostInput} value @returns {CuaCall} */
+/** @param {import('@areal/workbench-service/desktop/core/service-transport-contract.cjs').ToolHostInput} value @returns {CuaCall} */
 function readCall(value) {
   const owner = readOwner(value);
   if (

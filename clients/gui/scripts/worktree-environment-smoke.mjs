@@ -168,8 +168,8 @@ const sha256 = (data) => createHash("sha256").update(data).digest("hex");
 const binaryHash = sha256(await readFile(binary));
 const sourceFiles = [
   "scripts/worktree-environment-smoke.mjs",
-  "app/src/core/worktrees.cjs",
-  "app/src/core/worktree-environment.cjs",
+  "../../services/workbench/src/desktop/core/worktrees.cjs",
+  "../../services/workbench/src/desktop/core/worktree-environment.cjs",
   "packages/workspace-git/worktrees.js",
   "renderer/src/WorktreeStarter.tsx",
   "renderer/src/WorktreeStatus.tsx",

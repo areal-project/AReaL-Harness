@@ -5,10 +5,48 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { freezeContext } = require("../app/src/core/feedback-context.cjs");
-const { UserFeedback } = require("../app/src/core/feedback.cjs");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { freezeContext } = require("@areal/workbench-service/feedback-context");
+const { UserFeedback } = require("@areal/workbench-service/feedback");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
+
+test("feedback CLI refreshes Host credentials and does not launch after refresh fails", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "areal-feedback-credentials-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const binary = join(home, "fixture.cjs");
+  await writeFile(
+    binary,
+    `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({credential:process.env.AREAL_CREDENTIAL_fixture}));
+`,
+    { mode: 0o700 },
+  );
+  let credential = "stale-fixture",
+    environments = 0;
+  const backend = {
+    binary,
+    hooks: { environment: () => ({ PATH: process.env.PATH, HOME: home }) },
+    providers: {
+      config: {
+        refreshCredentials: async () => {
+          credential = "rotated-fixture";
+        },
+      },
+      environment: () => {
+        environments++;
+        return { AREAL_CREDENTIAL_fixture: credential };
+      },
+      redact: (value) => value,
+    },
+  };
+  const feedback = new UserFeedback(backend);
+  assert.deepEqual(await feedback.cli("feedback-status"), { credential: "rotated-fixture" });
+  backend.providers.config.refreshCredentials = async () => {
+    throw new Error("Host unavailable");
+  };
+  await assert.rejects(feedback.cli("feedback-status"), /Host unavailable/);
+  assert.equal(environments, 1);
+});
 
 const thread = () => ({
   id: "main",

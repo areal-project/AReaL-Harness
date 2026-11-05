@@ -170,12 +170,12 @@ ${
     ? `const {Notification}=require("electron");
 const nativeShow=Notification.prototype.show;
 Notification.prototype.show=function(){record("native_show",{title:this.title,body:this.body});return nativeShow.call(this);};
-const {CoreNotifications}=require(${JSON.stringify(join(gui, "app/src/core/notifications.cjs"))});
+const {CoreNotifications}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/notifications.cjs"))});
 const publishNotice=CoreNotifications.prototype.publish;
 CoreNotifications.prototype.publish=function(notice){record("notice_publish",{notice});return publishNotice.call(this,notice);};`
     : ""
 }
-const {CoreBackend} = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const {CoreBackend} = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const command = CoreBackend.prototype.command;
 CoreBackend.prototype.command = async function(name, request, context) {
  if(name !== "tasks" || request.operation !== "observe" || !(request.viewEpoch >= 9000 && request.viewEpoch < 10000))

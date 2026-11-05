@@ -9,9 +9,9 @@ import { CoreClient } from "../packages/runtime-client/core.js";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { ScopedResources } = require("../app/src/core/scoped-resources.cjs");
-const { executeCore } = require("../app/src/core/core-process.cjs");
-const { BUILTIN_SKILL_ID } = require("../app/src/core/builtin-skills.cjs");
+const { ScopedResources } = require("@areal/workbench-service/desktop/core/scoped-resources.cjs");
+const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { BUILTIN_SKILL_ID } = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
 const WebSocket = require("ws");
 assert.ok(process.env.AREAL_CORE_BIN, "Set AREAL_CORE_BIN to the built Core under test");
 const binary = resolve(process.env.AREAL_CORE_BIN);
@@ -46,7 +46,7 @@ async function fixture(label) {
     home,
     userHome,
     saved: [project],
-    desktopConfig: join(gui, "app/src/core/desktop-profile.json"),
+    desktopConfig: require.resolve("@areal/workbench-service/desktop/core/desktop-profile.json"),
     save: (name, value) => writeFile(join(home, name), JSON.stringify(value)),
   };
   const resources = new ScopedResources(backend);

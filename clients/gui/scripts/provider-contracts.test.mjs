@@ -568,7 +568,7 @@ test("effort selection preserves service default and distinguishes unknown from 
 });
 
 test("projectless catalog uses declared API and fresh account efforts without a protocol-wide fallback", async () => {
-  const { ProjectlessWorkspaces } = await import("../app/src/core/projectless.cjs");
+  const { ProjectlessWorkspaces } = await import("@areal/workbench-service/desktop/core/projectless.cjs");
   const caps = { tools: true, vision: true, reasoning: true, reasoningEffortOptions: [] };
   const providers = {
     config: {
@@ -661,7 +661,7 @@ test("desktop provider parameter boundary preserves supported tiers and rejects 
 });
 
 test("projectless catalog carries selected tier into named and implicit defaults", async () => {
-  const { ProjectlessWorkspaces } = await import("../app/src/core/projectless.cjs");
+  const { ProjectlessWorkspaces } = await import("@areal/workbench-service/desktop/core/projectless.cjs");
   for (const serviceTier of ["fast", "default"]) {
     const providers = {
       config: {

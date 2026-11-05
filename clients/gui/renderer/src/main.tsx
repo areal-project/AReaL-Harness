@@ -30,8 +30,20 @@ async function start() {
           return getBrowserHostBootstrap();
         }),
       origin: desktop ? "areal-ui://app" : location.origin,
-      writes: desktop !== undefined && hostWritesEnabled(),
-      domains: desktop ? hostDomains() : new Set(),
+      writes: desktop ? hostWritesEnabled() : true,
+      domains: desktop
+        ? hostDomains()
+        : new Set([
+            "library",
+            "analytics",
+            "worktree",
+            "tasks",
+            "trajectory",
+            "feedback",
+            "manage",
+            "providers",
+            "pages",
+          ]),
       events: window,
     });
   }

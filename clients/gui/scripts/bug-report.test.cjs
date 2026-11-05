@@ -5,7 +5,7 @@ const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { BugReports, exportReport } = require("../app/src/core/bug-reports.cjs");
-const diagnostics = require("../app/src/core/diagnostics.cjs");
+const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 const contract = require("../packages/workbench/client/desktop-contract.cjs");
 
 test("local reports freeze reviewed diagnostic context and exclude private automatic data", async () => {

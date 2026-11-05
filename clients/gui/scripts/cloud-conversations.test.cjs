@@ -7,8 +7,8 @@ const { resolve } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const appRequire = createRequire(resolve(__dirname, "../app/package.json"));
 const { WebSocketServer } = appRequire("ws");
-const { CloudClient } = require("../app/src/core/cloud-client.cjs");
-const { CloudConversations } = require("../app/src/core/cloud-conversations.cjs");
+const { CloudClient } = require("@areal/workbench-service/desktop/core/cloud-client.cjs");
+const { CloudConversations } = require("@areal/workbench-service/desktop/core/cloud-conversations.cjs");
 
 test("原生 WS 协议夹具：并发创建去重、流式投影、重启复用绑定且不重发 query", async (t) => {
   let allocations = 0,

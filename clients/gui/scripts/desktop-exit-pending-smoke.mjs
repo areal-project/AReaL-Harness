@@ -70,14 +70,14 @@ const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding:
 const sourceFiles = [
   "app/src/main.cjs",
   "app/src/core/main.cjs",
-  "app/src/core/service-main.cjs",
-  "app/src/core/backend.cjs",
+  "../../services/workbench/src/desktop/core/service-main.cjs",
+  "../../services/workbench/src/desktop/core/backend.cjs",
   "app/src/core/service-client.cjs",
-  "app/src/core/service-protocol.cjs",
-  "app/src/core/diagnostics.cjs",
+  "../../services/workbench/src/desktop/core/service-protocol.cjs",
+  "../../services/workbench/src/desktop/core/diagnostics.cjs",
   "app/src/core/lifecycle.cjs",
-  "app/src/core/lifecycle-operations.cjs",
-  "app/src/core/resource-recovery.cjs",
+  "../../services/workbench/src/desktop/core/lifecycle-operations.cjs",
+  "../../services/workbench/src/desktop/core/resource-recovery.cjs",
   "app/src/core/startup-recovery.cjs",
   "scripts/desktop-exit-pending-smoke.mjs",
   "renderer/dist/index.html",
@@ -121,7 +121,7 @@ if (process.argv.includes('--areal-core-service')) {
   require('electron').app.on('before-quit', () => {
     require('node:fs').writeFileSync(${JSON.stringify(join(scratch, "before-quit-entered.json"))}, JSON.stringify({ pid: process.pid, boundary: 'app.before-quit' }));
   });
-  const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+  const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
   const initialize = CoreBackend.prototype.init;
   const disconnect = CoreBackend.prototype.disconnect;
   CoreBackend.prototype.disconnect = function (...args) {

@@ -1,0 +1,27 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block}</style></head>
+<body><iframe id="view" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe><script>
+"use strict";
+const view = document.getElementById("view");
+let parentOrigin, loaded = false;
+addEventListener("message", event => {
+  const message = event.data;
+  if (!message || message.jsonrpc !== "2.0") return;
+  if (event.source === parent) {
+    if (parentOrigin !== undefined && event.origin !== parentOrigin) return;
+    if (message.method === "ui/notifications/sandbox-resource-ready") {
+      if (loaded || typeof message.params?.html !== "string") return;
+      parentOrigin = event.origin;
+      loaded = true;
+      view.srcdoc = message.params.html;
+      return;
+    }
+    if (loaded && !String(message.method || "").startsWith("ui/notifications/sandbox-"))
+      view.contentWindow.postMessage(message, "*");
+  } else if (loaded && event.source === view.contentWindow &&
+      !String(message.method || "").startsWith("ui/notifications/sandbox-")) {
+    parent.postMessage(message, parentOrigin);
+  }
+});
+parent.postMessage({jsonrpc:"2.0",method:"ui/notifications/sandbox-proxy-ready"}, "*");
+</script></body></html>

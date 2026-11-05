@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(new URL('../app/package.json', import.meta.url));
-const { DesktopService, PROTOCOL } = require('../app/src/core/service-protocol.cjs');
+const { DesktopService, PROTOCOL } = require('@areal/workbench-service/desktop/core/service-protocol.cjs');
 const { ServiceConnection } = require('../app/src/core/service-client.cjs');
 const WebSocket = require('ws');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));

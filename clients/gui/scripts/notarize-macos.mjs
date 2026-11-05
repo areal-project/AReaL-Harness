@@ -345,7 +345,7 @@ async function main() {
     });
     assertApp();
     // 外层签名不得改变已签 Core 的字节；在任何 Apple 上传前检查，失败保留现场。
-    require(join(desktop, "app/src/core/bundle.cjs")).verifyCoreBundle(
+    require(join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs")).verifyCoreBundle(
       join(app, "Contents/Resources"),
       { hashes: true },
     );
@@ -472,7 +472,7 @@ async function main() {
     run("/usr/bin/xcrun", ["stapler", "validate", app]);
     assertApp();
     run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
-    require(join(desktop, "app/src/core/bundle.cjs")).verifyCoreBundle(
+    require(join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs")).verifyCoreBundle(
       join(app, "Contents/Resources"),
       { hashes: true },
     );

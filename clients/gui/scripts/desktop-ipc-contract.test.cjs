@@ -229,7 +229,7 @@ function assertCommands(file) {
   const declared = commandNames(file).map((property) => property.name.text);
   const dispatched = union(
     commandBranches(mainSource()),
-    commandBranches(source(resolve("app/src/core/backend.cjs"))),
+    commandBranches(source(resolve("../../services/workbench/src/desktop/core/backend.cjs"))),
   );
   assert.deepEqual(
     sorted(declared),
@@ -360,7 +360,7 @@ test("Core target scanner recognizes a bound request without collecting unrelate
 
 test("Desktop commands map to their own dispatch layer and Core catalog through actual RPC targets", () => {
   const main = commandBranches(mainSource()),
-    backend = commandBranches(source(resolve("app/src/core/backend.cjs")));
+    backend = commandBranches(source(resolve("../../services/workbench/src/desktop/core/backend.cjs")));
   for (const [name, [owner]] of Object.entries(commandDefinitions))
     assert.ok(
       (owner === "main" ? main : backend).has(name),

@@ -3,8 +3,8 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 const { randomUUID } = require("node:crypto");
-const { CloudClient } = require("../app/src/core/cloud-client.cjs");
-const { CloudSession } = require("../app/src/core/cloud-session.cjs");
+const { CloudClient } = require("@areal/workbench-service/desktop/core/cloud-client.cjs");
+const { CloudSession } = require("@areal/workbench-service/desktop/core/cloud-session.cjs");
 
 async function main() {
   const [configPath, output] = process.argv.slice(2);

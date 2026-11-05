@@ -1560,9 +1560,9 @@ try {
     new Promise((resolve) => model.close(resolve)),
   ]);
   const files = [
-    "app/src/core/browser-tool.cjs",
+    "../../services/workbench/src/desktop/core/browser-tool.cjs",
     "app/src/core/preview.cjs",
-    "app/src/core/service-protocol.cjs",
+    "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "renderer/src/ApprovalRequest.tsx",
     "scripts/browser-actions-smoke.mjs",
   ];

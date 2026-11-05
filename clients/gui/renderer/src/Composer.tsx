@@ -1,3 +1,4 @@
+import { useReadOnly, useConversationSubmitReadOnly } from "./PlatformReadContext.js";
 import { snapShotCommandEntries } from "./snapshots/shortcut.js";
 import { useSnapShotCapture } from "./snapshots/captureContext.js";
 import { useSnapShotDraft } from "./snapshots/activeDraft.js";
@@ -167,6 +168,8 @@ export function Composer({
   conversationReferences?: readonly ConversationReference[];
   onAnnotate?: (target: ImageAnnotationTarget) => void;
 }) {
+  const readOnly = useReadOnly();
+  const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const workspaceFiles = useComposerWorkspaceFiles(readAction, project, thread.id);
   const { t } = useI18n();
   const referenceEntries = conversationReferenceEntries(
@@ -288,7 +291,9 @@ export function Composer({
   const editorDisabled = baseDisabled || (queueEditor.busy && !configuring) || queueEditor.locked;
   const disabled = editorDisabled || executionBlocked || configuring;
   const compatibilityDescription = useId();
-  const desktopUnsupported = project.desktopCapabilities?.currentCommands === false;
+  const desktopUnsupported =
+    conversationSubmitReadOnly ||
+    (!readOnly && project.desktopCapabilities?.currentCommands === false);
   const stop = () => {
     if (executionBlocked) return;
     if (running)
@@ -370,7 +375,8 @@ export function Composer({
     !references.length &&
     !annotationEditing &&
     !mcpOpen;
-  const canContinue = !!interrupted && emptyDraft && !creatingGoal && !queueEditor.edit;
+  const canContinue =
+    !readOnly && !!interrupted && emptyDraft && !creatingGoal && !queueEditor.edit;
   const planActive = permissionMode(config ?? {}) === "plan";
   const executionPermission = planActive
     ? permissionMode({
@@ -475,7 +481,11 @@ export function Composer({
     if (thread.goals?.goal && goalMode) changeGoalMode(false);
   }, [thread.goals?.goal?.id]);
   const submit = async (value: string, invert = false, approvePlan = false) => {
-    if (workspaceReferencePending) return;
+    if (
+      workspaceReferencePending ||
+      (readOnly && (creatingGoal || approvePlan || queueEditor.edit))
+    )
+      return;
     if (desktopUnsupported && !creatingGoal && !queueEditor.edit) return;
     const submittedInput = composerInput(value, files);
     if (disabled || annotationEditing || invalidAnnotation || sending.has(key)) return;
@@ -638,7 +648,7 @@ export function Composer({
     }
   };
   const configure = async (values: Data) => {
-    if (queueEditor.edit || disabled || running || sending.has(key) || !config) return;
+    if (readOnly || queueEditor.edit || disabled || running || sending.has(key) || !config) return;
     const requestId = configuration.begin(config.revision);
     markSending(key, true);
     try {
@@ -669,7 +679,8 @@ export function Composer({
     }
   };
   const catalogActions: ComposerCatalogEntry[] = [
-    ...(onSide &&
+    ...(!readOnly &&
+    onSide &&
     !input.files.length &&
     !sideContextCount &&
     !isSide &&
@@ -745,7 +756,7 @@ export function Composer({
         void configure({ options: planModeOptions(!planActive, config?.options) });
       },
     },
-    ...(!isSide && !thread.goals?.goal
+    ...(!readOnly && !isSide && !thread.goals?.goal
       ? [
           {
             value: "goal",
@@ -901,7 +912,7 @@ export function Composer({
           }
         />
       )}
-      {planReady && !queueEditor.edit && (
+      {!readOnly && planReady && !queueEditor.edit && (
         <section
           className="flex items-center justify-between gap-3 px-3 py-2 text-ui-sm"
           aria-label="计划确认"
@@ -931,10 +942,10 @@ export function Composer({
           project={project}
           thread={thread}
           action={action}
-          disabled={baseDisabled || queueEditor.busy || executionBlocked}
+          disabled={readOnly || baseDisabled || queueEditor.busy || executionBlocked}
           editingId={queueEditor.edit?.id}
           onEdit={(item) => {
-            if (!disabled) void queueEditor.begin(item);
+            if (!readOnly && !disabled) void queueEditor.begin(item);
           }}
         />
         {/* Pending decisions stay reachable outside the scrolling transcript. */}
@@ -999,17 +1010,24 @@ export function Composer({
           surfaceLayout={surfaceLayout}
           project={project}
           contextControl={
-            <ContextMeter
-              key={`${project.id}:${thread.id}`}
-              project={project}
-              thread={thread}
-              action={readAction}
-              anchor={menuAnchor}
-            />
+            !readOnly && (
+              <ContextMeter
+                key={`${project.id}:${thread.id}`}
+                project={project}
+                thread={thread}
+                action={readAction}
+                anchor={menuAnchor}
+              />
+            )
           }
           modelConfig={config}
           modelDisabled={
-            editorDisabled || executionBlocked || !!queueEditor.edit || !!running || !config
+            readOnly ||
+            editorDisabled ||
+            executionBlocked ||
+            !!queueEditor.edit ||
+            !!running ||
+            !config
           }
           modelPending={configuring}
           onConfigureModel={configure}
@@ -1053,6 +1071,7 @@ export function Composer({
             workspaceReferencePending ||
             disabled ||
             (desktopUnsupported && !queueEditor.edit && !creatingGoal) ||
+            (readOnly && creatingGoal) ||
             (taskManagement && !!running) ||
             annotationEditing ||
             invalidAnnotation ||
@@ -1083,7 +1102,7 @@ export function Composer({
           composerCatalog={{
             ...skills.catalog,
             entries: [
-              ...catalogActions,
+              ...catalogActions.filter((entry) => !readOnly || entry.value !== "plan"),
               ...referenceEntries,
               ...appEntries,
               ...skills.catalog.entries,
@@ -1322,24 +1341,30 @@ export function Composer({
                   <CircleAlert size={16} />
                 </Button>
               )}
-              <ComposerPermissionMenu
-                value={executionPermission}
-                configuration={config}
-                permissionsSupported={project.core?.features?.permissionPresets === true}
-                fullAccessAvailable={project.core?.features?.permissionFullAccess === true}
-                disabled={disabled || !!queueEditor.edit || !!running || !config}
-                lockedReadOnly={taskManagement || executionPermission === "readOnly"}
-                onClose={() => api.current?.focus()}
-                onChange={(mode) => {
-                  setApplicationPreferences({ defaultPermissionPreset: mode });
-                  void configure({
-                    options: planModeOptions(planActive, permissionOptions(mode, config?.options)),
-                  });
-                }}
-              />
+              {!readOnly && (
+                <ComposerPermissionMenu
+                  value={executionPermission}
+                  configuration={config}
+                  permissionsSupported={project.core?.features?.permissionPresets === true}
+                  fullAccessAvailable={project.core?.features?.permissionFullAccess === true}
+                  disabled={disabled || !!queueEditor.edit || !!running || !config}
+                  lockedReadOnly={taskManagement || executionPermission === "readOnly"}
+                  onClose={() => api.current?.focus()}
+                  onChange={(mode) => {
+                    setApplicationPreferences({ defaultPermissionPreset: mode });
+                    void configure({
+                      options: planModeOptions(
+                        planActive,
+                        permissionOptions(mode, config?.options),
+                      ),
+                    });
+                  }}
+                />
+              )}
               {planActive && (
                 <ComposerPlanMode
                   disabled={
+                    readOnly ||
                     disabled ||
                     !!queueEditor.edit ||
                     !!running ||
@@ -1439,6 +1464,7 @@ export function Composer({
                     disabled ||
                     desktopUnsupported ||
                     taskManagement ||
+                    (readOnly && creatingGoal) ||
                     (!input.text.trim() &&
                       !input.files.length &&
                       !comments.length &&

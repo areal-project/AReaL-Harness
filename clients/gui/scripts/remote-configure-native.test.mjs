@@ -10,9 +10,9 @@ import { sessionControls } from "./remote-controls-scenario.mjs";
 import { until, pushRelay, phone, runWithIsolatedCA } from "./remote-native-push-fixture.mjs";
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { RemoteControl } = require("../app/src/core/remote.cjs");
-const { nativeControl } = require("../app/src/core/remote-session-controls.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
+const { nativeControl } = require("@areal/workbench-service/desktop/core/remote-session-controls.cjs");
 
 if (!process.env.RC12_TLS_HOME) {
   test("native configure uses the isolated process CA", async () => {

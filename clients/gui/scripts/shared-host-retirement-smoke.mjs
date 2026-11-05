@@ -29,7 +29,7 @@ fs.open = async (...args) => {
   }
   return file;
 };
-const { GuiSourceAdapter, prepareGuiSource } = require("../app/src/core/gui-source.cjs");
+const { GuiSourceAdapter, prepareGuiSource } = require("@areal/workbench-service/desktop/core/gui-source.cjs");
 const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
   "@areal/client/node",
 );
@@ -457,7 +457,7 @@ try {
     checks,
     source: {
       guiSource: sha(
-        await fs.readFile(join(repository, "clients/gui/app/src/core/gui-source.cjs")),
+        await fs.readFile(join(repository, "services/workbench/src/desktop/core/gui-source.cjs")),
       ),
       hostClient: sha(
         await fs.readFile(join(repository, "clients/gui/packages/client/node/host-client.cjs")),

@@ -8,7 +8,7 @@ AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、
 
 [ADR 0017](../adr/0017-one-protocol-one-ui.md) 定义尚未完成的统一协议目标。客户端所需业务经 Host 协议提供，Host 负责认证、授权、路由、跨项目业务、提交 journal 和凭据保管。项目服务只监督进程，不向客户端提供接口或承载业务；单项目业务以及执行和历史权威归 Core。
 
-过渡期的 Node 工作台服务由 Host 监督，承载尚未迁入 Host 或 Core 的跨项目业务。它不依赖 Electron，不开放客户端端口，也不持有明文凭据。目标中的 Electron 外壳只提供浏览器没有的原生能力，并向 Host 登记桌面工具提供者；界面按可用能力显示可选平台入口。这些是迁移目标，不代表当前实现已满足该边界。
+过渡期的 Node 工作台服务由 Host 监督，承载尚未迁入 Host 或 Core 的跨项目业务。按[工作台服务设计](workbench-service.md)先整体接管现有后台，Main 经私有认证通道 attach。它不依赖 Electron，公共客户端只连 Host；解密值仅在运行内存使用，不持久化明文凭据。目标中的 Electron 外壳只提供浏览器没有的原生能力，并向 Host 登记桌面工具提供者；界面按可用能力显示可选平台入口。这些是迁移目标，不代表当前实现已满足该边界。 后台实现与依赖位于 `services/workbench`，Main 和 Host 接管入口共用服务包；Main 保留外壳与连接客户端，不保留后台实现副本。
 
 ![架构](diagrams/architecture.svg)
 
@@ -91,6 +91,8 @@ Codex 兼容包由 `core/plugins` 持有本地安装与范围选择；Engine 登
 有限页面工具沿用普通 Core 工具目录、审批和 ToolCall 历史。注册只声明固定的选区读取与 revision 条件修改。Core 固定原始 ToolHost、App epoch、包摘要和登记版本；Desktop 服务固定打开实例的 Main socket，Main 固定窗口、token 与已初始化的 bridge。通知仅唤醒原执行端，持久 claim 才授予一次执行。单次调用拥有 claim 与结算写入，已确认终态不能被后续 hook 或通用 finalizer 覆盖。断线撤销工具执行，保留未保存页面；UNKNOWN 不自动重放。协议和预算见[桌面 API](../api/desktop.md#有限页面工具)。
 
 生成式交互回答复用同一个 MCP Apps 页面宿主，不创建插件或第二套沙箱。Core 的 `gen_ui_publish` 原生工具发布不可变 HTML 制品，`areal/genUi/source` 按已完成的助手消息读取来源与制品。Main 使用移植的 ZCode 指令解析器核对 `::visualize` 引用与 Core 返回的制品，不能凭 Renderer 提供的文件路径打开任意 HTML。页面与 MCP Apps 共用窗口 token、资源代理和 8 页额度。
+
+启用 `pages` 领域时，上述页面宿主迁入 Host 监督的工作台服务，窗口 owner 改为已鉴权的连接 owner；Main 不再持有该路径的页面 token。资源走认证协议，公开 HTTP 只有固定的 opaque-origin 代理。共享 Renderer 沿同一 AppBridge 转发，断开撤销页面与工具租约；当前本机 manage 与 submit 授权边界见[工作台服务设计](workbench-service.md)，不代表远程页面已开放。
 
 Core 持有执行、历史与 HTML 来源，Desktop 持有当前用户配置目录下的视图状态。移植的 `packages/gen-ui` 状态存储按项目、Thread 和制品路径隔离，原子保存 `{modelContent,privateContent}`。每项最多 16 KiB，每个会话最多保留 100 项。普通主会话和 Side 提交只将有界 `modelContent` 作为不可信上下文附加到下一次输入，`privateContent` 不进入模型请求。该状态可在同一 Desktop 配置下恢复，不提供跨设备同步。生成页没有 Node、文件、工具或网络访问权，生成页不会改变宿主会话权限；旧版只读 Side 保留只读权限。
 

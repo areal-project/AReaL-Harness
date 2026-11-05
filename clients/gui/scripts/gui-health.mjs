@@ -125,7 +125,19 @@ export async function collectHealth({ root = gui, nativeSources } = {}) {
   });
   const accessibility = accessibilitySource === null ? null : JSON.parse(accessibilitySource);
   const lintSources = [...files.map((file) => file.source), ...scriptSources];
-  const checkedMainFiles = main.filter(
+  // Main 业务搬到服务后仍在同一类型检查中，不能因搬迁丢掉覆盖率约束。
+  const servicePaths = await filesAt(root, "../../services/workbench/src").catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const serviceSources = await Promise.all(
+    servicePaths.filter((path) => /\/src\/(?:desktop\/core\/|domains\/|desktop\/workspace-files\.js$|host-library-store\.ts$)/.test(path)).map(async (path) => ({
+      path,
+      source: await readFile(resolve(root, path), "utf8"),
+    })),
+  );
+  const checkedSources = [...main, ...serviceSources];
+  const checkedMainFiles = checkedSources.filter(
     (file) => /@ts-check\b/.test(file.source) || /\.tsx?$/.test(file.path),
   ).length;
   const metrics = {
@@ -145,13 +157,13 @@ export async function collectHealth({ root = gui, nativeSources } = {}) {
       checkedMainFiles,
       "up",
       "app/src",
-      "Files with @ts-check or TypeScript extension",
+      "Main and migrated workbench desktop/core, domains, workspace-files and host-library-store files with @ts-check or TypeScript extension; retains the historical metric name",
     ),
     mainTypeCoverage: row(
-      main.length ? checkedMainFiles / main.length : null,
+      checkedSources.length ? checkedMainFiles / checkedSources.length : null,
       "up",
       "app/src",
-      "Checked Main source files / all owned Main source files; native typecheck separately validates the program",
+      "Checked Main and migrated workbench source files / all owned source files in that scope; native typecheck separately validates the program",
     ),
     appLines: row(
       app ? app.lines : null,

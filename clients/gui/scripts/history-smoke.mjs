@@ -12,7 +12,7 @@ import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs"
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { chromium } = require("playwright-core");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 for (const key of ["NO_PROXY", "no_proxy"]) {
   process.env[key] = [process.env[key], "127.0.0.1", "localhost"].filter(Boolean).join(",");
 }

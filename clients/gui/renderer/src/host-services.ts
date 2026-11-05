@@ -10,6 +10,7 @@ import {
   type ShellProject,
   type NavigationSummary,
   type WorktreeDisplay,
+  type JsonObject,
 } from "@areal/client";
 import {
   readObservationResult,
@@ -21,6 +22,7 @@ import {
 import { mergeHistory, historyGaps, pageTopology } from "@areal/workbench/history-projection";
 import type { ReadingAnchor } from "./readingViews.js";
 import { createWorkbenchRoutes } from "./host-workbench.js";
+import { createHostPages } from "./host-pages.js";
 import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
 
 type Observation = ReturnType<typeof readObservationResult>;
@@ -71,6 +73,7 @@ type ReadProject = Record<string, unknown> & {
   projectless: boolean;
   models: readonly unknown[];
   profiles: readonly unknown[];
+  configurations: Record<string, unknown>;
   core: ExecutionView["executionCore"] & Record<string, unknown>;
   state: {
     connected: boolean;
@@ -94,9 +97,11 @@ export function createHostReadServices(
   const domains = options.domains ?? new Set<string>();
   // 领域切换也要用 gui-write-v1 连接；停止、审批等写仍只看 writes 开关。
   const client = new HostClient({ ...options, writes: options.writes || domains.size > 0 });
+  const pages = domains.has("pages") ? createHostPages(client) : undefined;
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let revision = 0;
   let legacy: Snapshot | undefined;
+  let librarySourceId: string | undefined;
   let snapshot: Snapshot = { projects: [], connection: { state: "connecting" } };
   let session: SessionRead | undefined;
   let observation: Observation | undefined;
@@ -119,6 +124,8 @@ export function createHostReadServices(
   const logicalViews = new Map<string, { owners: ReadProject[]; value: ReadProject }>();
   const ids = new Map<string, string>();
   const threadTargets = new Map<string, string>();
+  const creationTargets = new Map<string, string>();
+  const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
   function pruneWindows() {
     clearTimeout(cacheTimer);
     for (const [key, value] of windows)
@@ -253,6 +260,33 @@ export function createHostReadServices(
     }
     snapshot = projectSnapshot(shell, shellState.state === "fresh", currentSession, observation);
     for (const listener of listeners) listener(snapshot);
+    if (!desktop && options.writes && client.writable("project.models")) {
+      const connection = client.snapshot();
+      if (connection.connection !== "ready") return;
+      for (const project of shell?.snapshot.projects ?? []) {
+        if (project.state !== "ready") continue;
+        const identity = JSON.stringify([
+          connection.identity.connectionId,
+          project.serviceGeneration,
+        ]);
+        if (catalogs.get(project.projectId)?.identity === identity) continue;
+        const entry = { identity, value: undefined as Record<string, unknown> | undefined };
+        catalogs.set(project.projectId, entry);
+        void client
+          .query("project.models", project.projectId, {})
+          .then((value) => {
+            if (
+              catalogs.get(project.projectId) !== entry ||
+              !object(value) ||
+              !Array.isArray(value.models)
+            )
+              return;
+            entry.value = value;
+            publish();
+          })
+          .catch(() => {});
+      }
+    }
   }
   function projectSnapshot(
     shell: ShellRead | undefined,
@@ -262,6 +296,7 @@ export function createHostReadServices(
   ): Snapshot {
     ids.clear();
     threadTargets.clear();
+    for (const [target, execution] of creationTargets) threadTargets.set(target, execution);
     const connection = client.snapshot();
     const preferredSourceId =
       options.preferredSourceId ??
@@ -272,6 +307,7 @@ export function createHostReadServices(
       : sources.length === 1
         ? sources[0]
         : undefined;
+    librarySourceId = navigation?.sourceId;
     for (const project of shell?.snapshot.projects ?? [])
       ids.set(
         project.projectId,
@@ -282,7 +318,8 @@ export function createHostReadServices(
     const canonical = (id: string) => ids.get(id) ?? id;
     const rows = (shell?.snapshot.projects ?? []).map((project) => {
       const id = canonical(project.projectId);
-      const auxiliary = legacy?.projects.find((value) => value.id === id);
+      const auxiliary =
+        legacy?.projects.find((value) => value.id === id) ?? catalogs.get(project.projectId)?.value;
       const selectedSession =
         currentSession?.projectId === project.projectId &&
         currentSession.serviceGeneration === project.serviceGeneration
@@ -381,8 +418,8 @@ export function createHostReadServices(
       const desktop = thread?.desktop;
       const value: ReadProject = {
         ...auxiliary,
-        models: auxiliary?.models ?? [],
-        profiles: auxiliary?.profiles ?? [],
+        models: Array.isArray(auxiliary?.models) ? auxiliary.models : [],
+        profiles: Array.isArray(auxiliary?.profiles) ? auxiliary.profiles : [],
         id,
         hostProjectId: project.projectId,
         root: project.workspace,
@@ -410,11 +447,13 @@ export function createHostReadServices(
                 }
               : {},
         },
+        configurations:
+          thread && desktop?.configuration ? { [thread.id]: desktop.configuration } : {},
         summaries,
         summariesLoaded: project.summaries.state === "fresh",
         summariesFreshness: project.summaries.state,
         pending: auxiliary?.pending ?? [],
-        outcomes: auxiliary?.outcomes ?? [],
+        outcomes: auxiliary?.outcomes ?? {},
         error: null,
         observationErrors: {},
         attention: project.attention,
@@ -449,6 +488,9 @@ export function createHostReadServices(
           return cached.value;
         const value: ReadProject = {
           ...logical,
+          configurations: Object.fromEntries(
+            owners.flatMap((owner) => Object.entries(owner.configurations)),
+          ),
           summaries: owners.flatMap((owner) => owner.summaries),
           summariesLoaded: owners.every((owner) => owner.summariesLoaded),
           state: {
@@ -772,6 +814,7 @@ export function createHostReadServices(
       if (event.persisted) return;
       clearTimeout(cacheTimer);
       windows.clear();
+      pages?.dispose();
       client.close();
     });
   // A2：停止与审批/回答在写开关下走 Host 回执；Host 明确不接管的会话退回桌面原路径。
@@ -791,8 +834,27 @@ export function createHostReadServices(
     const outcome = result.admissionState === "rejected" ? { kind: "rejected" } : undefined;
     throw Object.assign(
       new Error(outcome ? "Host 拒绝了该操作" : "操作结果尚未确认。正在核对原请求，不会自动重发。"),
-      { commandId: result.commandId, submissionUnknown: !outcome, outcome },
+      {
+        commandId: result.commandId,
+        requestId: result.commandId,
+        submissionUnknown: !outcome,
+        outcome,
+      },
     );
+  }
+  function admitted(result: import("@areal/client").HostCommandResult): JsonObject {
+    if (result.admissionState === "accepted") return result;
+    settled(
+      result.admissionState === "pending" ? { ...result, admissionState: "unknown" } : result,
+    );
+    throw new Error("Invalid Host admission result");
+  }
+  function object(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+  }
+  function jsonObject(value: Record<string, unknown>): JsonObject {
+    // 桌面契约已经验证请求；JSON 往返仅移除 UI 可选字段中的 undefined。
+    return JSON.parse(JSON.stringify(value));
   }
   async function reviewToken(hostProjectId: string, target: Record<string, string>) {
     let cursor: string | undefined;
@@ -810,9 +872,153 @@ export function createHostReadServices(
   const writes: NonNullable<PlatformServices["writes"]> = {
     async route(name, params) {
       if (!options.writes || client.snapshot().connection !== "ready") return undefined;
+      const project = snapshot.projects.find((value) => value.id === params.projectId) as
+        | ReadProject
+        | undefined;
+      if (project && name === "create" && client.writable("session.create")) {
+        const { projectId: _projectId, ...input } = params;
+        const commandId =
+          typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
+        const result = admitted(
+          await client.command(
+            "session.create",
+            project.hostProjectId,
+            jsonObject(input),
+            commandId,
+          ),
+        );
+        if (typeof result.threadId !== "string")
+          throw Object.assign(new Error("创建结果尚未确认，草稿已保留。"), {
+            requestId: commandId,
+            submissionUnknown: true,
+          });
+        const receipt =
+          object(result.receipt) && object(result.receipt.result)
+            ? result.receipt.result
+            : undefined;
+        const execution =
+          typeof receipt?.executionProjectId === "string"
+            ? receipt.executionProjectId
+            : project.hostProjectId;
+        creationTargets.set(`${project.id}:${result.threadId}`, execution);
+        threadTargets.set(`${project.id}:${result.threadId}`, execution);
+        try {
+          await client.refreshShell();
+        } catch (error) {
+          throw Object.assign(new Error("创建已受理，目录尚未同步，请核对原请求。"), {
+            cause: error,
+            requestId: commandId,
+            submissionUnknown: true,
+          });
+        }
+        return {
+          routed: true,
+          value: { threadId: result.threadId, requestId: result.nativeRequestId ?? commandId },
+        };
+      }
+      if (
+        project &&
+        name === "reconcile" &&
+        typeof params.requestId === "string" &&
+        client.writable("command.read")
+      ) {
+        const result = await client.commandStatus(project.hostProjectId, params.requestId);
+        if (!object(result)) throw new Error("Invalid Host command result");
+        const accepted = result.admissionState === "accepted";
+        const rejected = result.admissionState === "rejected";
+        return {
+          routed: true,
+          value: {
+            outcomes: {
+              [params.requestId]: {
+                admissionState: result.admissionState,
+                ...(accepted || rejected
+                  ? { accepted, status: accepted ? "completed" : "failed" }
+                  : {}),
+                ...(typeof result.threadId === "string" ? { threadId: result.threadId } : {}),
+                ...(typeof result.turnId === "string" ? { turnId: result.turnId } : {}),
+              },
+            },
+          },
+        };
+      }
       const target = hostTarget(params);
       if (!target) return undefined;
       try {
+        if (
+          name === "media" &&
+          params.operation === "upload" &&
+          client.writable("attachment.upload") &&
+          params.bytes instanceof Uint8Array &&
+          typeof params.mime === "string"
+        ) {
+          return {
+            routed: true,
+            value: await client.upload(
+              target.hostProjectId,
+              target.threadId,
+              params.bytes,
+              params.mime,
+            ),
+          };
+        }
+        if (
+          (name === "send" && client.writable("session.send")) ||
+          (name === "steer" && client.writable("session.control"))
+        ) {
+          let thread: ReadProject["state"]["threads"][string] | undefined =
+            target.project.state.threads[target.threadId];
+          if (!thread) {
+            await reads.selectSession({ projectId: target.project.id, threadId: target.threadId });
+            thread = (
+              snapshot.projects.find((value) => value.id === target.project.id) as
+                | ReadProject
+                | undefined
+            )?.state.threads[target.threadId];
+          }
+          const config = thread?.desktop?.configuration;
+          if (!object(config) || !Number.isSafeInteger(config.revision))
+            throw new Error("会话配置尚未加载，请刷新后再提交。");
+          const input = jsonObject({
+            text: params.text ?? "",
+            ...(params.attachments !== undefined ? { attachments: params.attachments } : {}),
+            ...(params.conversationQuotes !== undefined
+              ? { conversationQuotes: params.conversationQuotes }
+              : {}),
+            ...(params.mcpContent !== undefined ? { mcpContent: params.mcpContent } : {}),
+            ...(params.expectedTurnId ? { expectedTurnId: params.expectedTurnId } : {}),
+          });
+          const commandId =
+            typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
+          const result = admitted(
+            await client.command(
+              name === "send" ? "session.send" : "session.control",
+              target.hostProjectId,
+              name === "send"
+                ? {
+                    threadId: target.threadId,
+                    expectedConfigRevision: Number(config.revision),
+                    ...input,
+                    enqueue: params.enqueue === true,
+                  }
+                : {
+                    threadId: target.threadId,
+                    operation: "steer",
+                    expectedRevision: Number(config.revision),
+                    values: input,
+                  },
+              commandId,
+            ),
+          );
+          if (name === "steer") return { routed: true };
+          return {
+            routed: true,
+            value: {
+              threadId: target.threadId,
+              ...(typeof result.turnId === "string" ? { turnId: result.turnId } : {}),
+            },
+          };
+        }
         if (name === "stop" && client.writable("turn.stop") && typeof params.turnId === "string") {
           settled(
             await client.command("turn.stop", target.hostProjectId, {
@@ -872,8 +1078,14 @@ export function createHostReadServices(
       return undefined;
     },
   };
-  const workbench =
-    desktop && createWorkbenchRoutes(client, desktop, domains, options.events, globalThis.document);
+  const workbench = createWorkbenchRoutes(
+    client,
+    desktop,
+    domains,
+    options.events,
+    globalThis.document,
+    () => librarySourceId,
+  );
   const unavailable = async () => {
     throw new Error("This capability requires the desktop application");
   };
@@ -888,10 +1100,41 @@ export function createHostReadServices(
       onTheme: () => () => {},
       preview: unavailable,
     }),
-    capabilities: { mutations: desktop !== undefined, native: desktop !== undefined },
+    get capabilities() {
+      const available = (domain: string, method: string) =>
+        domains.has(domain) && !!librarySourceId && client.writable(method);
+      return {
+        mutations: desktop !== undefined,
+        conversationSubmit:
+          desktop !== undefined ||
+          (!!options.writes &&
+            client.writable("session.send") &&
+            client.writable("session.control")),
+        conversationCreate:
+          desktop !== undefined || (!!options.writes && client.writable("session.create")),
+        native: desktop !== undefined,
+        pages:
+          desktop !== undefined ||
+          (domains.has("pages") &&
+            client.writable("pages.command") &&
+            client.writable("pages.resource")),
+        library: desktop !== undefined || available("library", "library.command"),
+        ...(desktop === undefined && {
+          taskCatalog: available("tasks", "tasks.read"),
+          taskManage: available("manage", "manage.command"),
+          settings: [
+            ...(available("providers", "providers.read") ? ["模型服务"] : []),
+            ...(available("worktree", "worktree.read") ? ["Worktrees"] : []),
+            ...(available("trajectory", "trajectory.read") ? ["数据飞轮"] : []),
+            ...(domains.has("analytics") && client.writable("analytics.read") ? ["用量"] : []),
+          ],
+        }),
+      };
+    },
     reads,
     ...(options.writes && { writes }),
     ...(workbench && { workbench }),
+    ...(pages && { mcpApp: pages.mcpApp, onMcpAppEvent: pages.onMcpAppEvent }),
     snapshot: async () => snapshot,
     onState(listener) {
       listeners.add(listener);

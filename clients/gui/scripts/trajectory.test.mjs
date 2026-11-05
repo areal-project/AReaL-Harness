@@ -6,8 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { TrajectoryExport, publicStatus } = require("../app/src/core/trajectory.cjs");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { TrajectoryExport, publicStatus } = require("@areal/workbench-service/trajectory");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
 const status = {
   enabled: true,
@@ -74,6 +74,7 @@ process.stdout.write(value);
       }),
     },
     providers: {
+      config: { refreshCredentials: async () => {} },
       environment: () => ({ AREAL_CREDENTIAL_fixture: "fixture-secret" }),
       redact: (text) => text.replaceAll("fixture-secret", "[redacted]"),
     },
@@ -236,7 +237,20 @@ test(
       },
     };
     backend.projects.set(project.id, project);
-    // 只替换 Core I/O，配置读取、准入、应用回执校验和结果投影仍走真实实现。
+    backend.host.sourceId = "fixture-source";
+    backend.host.client.sourceState = async () => ({
+      sourceId: backend.host.sourceId,
+      credentials: { references: [] },
+    });
+    backend.host.bindings.set(project.id, {
+      projectId: project.id,
+      sourceId: backend.host.sourceId,
+      workspace: project.root,
+      dataDir: join(backend.home, "project"),
+      scratchDir: join(backend.home, "scratch"),
+      alias: { profile: backend.home, legacyProjectId: project.id },
+    });
+    // Host/Core I/O 用无凭据夹具；配置准入、应用回执校验和结果投影仍走真实实现。
     backend.providers.config.execute = async (operation) => {
       assert.equal(operation, "read");
       return {
@@ -488,6 +502,35 @@ test("invalid CLI responses fail explicitly and stderr uses credential redaction
     exporter.command({ operation: "retry" }),
     (error) => error.message.includes("[redacted]") && !error.message.includes("fixture-secret"),
   );
+});
+
+test("retry refreshes Host credentials before constructing the upload environment", async (t) => {
+  const { exporter, calls } = await fixture(t);
+  let credential = "stale-fixture";
+  exporter.backend.providers.config.refreshCredentials = async () => {
+    credential = "rotated-fixture";
+  };
+  exporter.backend.providers.environment = () => ({ AREAL_CREDENTIAL_fixture: credential });
+  await exporter.command({ operation: "retry" });
+  assert.equal(JSON.parse(await readFile(calls, "utf8")).credential, "rotated-fixture");
+});
+
+test("credential refresh gates retry but never blocks read-only status", async (t) => {
+  const { exporter, calls } = await fixture(t);
+  let refreshes = 0;
+  exporter.backend.providers.config.refreshCredentials = async () => {
+    refreshes++;
+    throw new Error("Host 凭据来源已变化");
+  };
+  // 只读状态不解密凭据，刷新失败不能让用户看不到队列。
+  assert.deepEqual(await exporter.command({ operation: "status" }), status);
+  assert.equal(refreshes, 0);
+  const afterStatus = JSON.parse(await readFile(calls, "utf8"));
+  assert.deepEqual(afterStatus.args.slice(0, 2), ["trajectory", "status"]);
+  // 重试必须先用新凭据构造环境；刷新失败时不能启动上传 CLI。
+  await assert.rejects(exporter.command({ operation: "retry" }), /Host 凭据来源已变化/);
+  assert.equal(refreshes, 1);
+  assert.deepEqual(JSON.parse(await readFile(calls, "utf8")), afterStatus);
 });
 
 test("status remains readable when the GUI credential vault cannot be unlocked", async (t) => {

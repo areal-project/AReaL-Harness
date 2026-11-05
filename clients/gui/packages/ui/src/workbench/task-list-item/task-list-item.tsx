@@ -66,7 +66,7 @@ export const MemoTaskItem = memo(function TaskListItem({
   onSelect: () => void;
   onRename: () => void;
   onPin: () => void;
-  onArchive: () => void;
+  onArchive?: () => void;
 }) {
   const surface = (
     <li
@@ -150,15 +150,17 @@ export const MemoTaskItem = memo(function TaskListItem({
             <Pin className="size-4" />
           </Button>
           {/* 运行中仍交给 Core 拒绝并显示原因，不在本地提前禁用或移走。 */}
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={`归档 ${title}`}
-            disabled={disabled || archived}
-            onClick={onArchive}
-          >
-            <Archive className="size-4" />
-          </Button>
+          {onArchive && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`归档 ${title}`}
+              disabled={disabled || archived}
+              onClick={onArchive}
+            >
+              <Archive className="size-4" />
+            </Button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -177,10 +179,12 @@ export const MemoTaskItem = memo(function TaskListItem({
                 {pinned ? "取消置顶" : "置顶"}
               </DropdownMenuItem>
               {organizationActions}
-              <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
-                <Archive />
-                归档
-              </DropdownMenuItem>
+              {onArchive && (
+                <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
+                  <Archive />
+                  归档
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </HoverActions>

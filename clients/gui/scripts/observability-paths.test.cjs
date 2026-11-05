@@ -5,10 +5,10 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
-const diagnostics = require("../app/src/core/diagnostics.cjs");
-const { AppProviders } = require("../app/src/core/providers.cjs");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { ProjectConnections } = require("../app/src/core/project-connections.cjs");
+const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
+const { AppProviders } = require("@areal/workbench-service/desktop/core/providers.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { ProjectConnections } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
 
 test("business boundaries preserve results and classify observable outcomes", async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "observability-paths-"));

@@ -1,8 +1,8 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { DesktopService } = require("../app/src/core/service-protocol.cjs");
-const { McpAppsHost } = require("../app/src/core/mcp-apps.cjs");
+const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const { McpAppsHost } = require("@areal/workbench-service/desktop/core/mcp-apps.cjs");
 const declaration = { version: 1, documentId: "document", tools: ["getSelection", "applyPatch"] };
 const registration = {
   registrationId: "registration",

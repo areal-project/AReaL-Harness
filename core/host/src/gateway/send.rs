@@ -1,7 +1,7 @@
 use super::*;
 use serde::Deserialize;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Message {
     thread_id: String,
@@ -148,7 +148,28 @@ impl Session {
                         .all(|required| methods.iter().any(|method| method == required))),
             "CORE_INCOMPATIBLE"
         );
-        let (native, _, _observation) = self
+        let mut effective = params.clone();
+        if self.uses_workbench_execution() {
+            effective.text = self.host.gateway.workbench
+                .prepare_input(&self.host, &id, &params.thread_id, &params.text).await?;
+        }
+        let operation = uuid::Uuid::new_v4().to_string();
+        let mut guard =
+            json!({"ordinarySession":true,"configRevision":params.expected_config_revision});
+        if enqueue {
+            guard["expectedTurnId"] = json!(params.expected_turn_id);
+        }
+        let native: areal_protocol::desktop::TurnStart = serde_json::from_value(
+            json!({"requestId":operation,"threadId":params.thread_id,"input":message_input(&effective)?,"expectedConfigRevision":params.expected_config_revision,"admissionGuard":guard}),
+        )?;
+        let native = serde_json::to_value(native)?;
+        let mut execution = if self.uses_workbench_execution() {
+            self.host.gateway.workbench.prepare_execution(&self.host, &self.connection, &id, method, native.clone()).await?
+        } else { None };
+        if let Some(prepared) = &execution {
+            ensure!(prepared.params == native, "INVALID_RESPONSE");
+        }
+        let (observed, _, _observation) = self
             .host
             .schedules
             .connections
@@ -171,8 +192,8 @@ impl Session {
             "RESYNC_REQUIRED"
         );
         let state = projection::snapshot(
-            &native["thread"],
-            &native["ownership"],
+            &observed["thread"],
+            &observed["ownership"],
             &[
                 project.to_owned(),
                 scope.0.clone(),
@@ -203,15 +224,7 @@ impl Session {
             state["configRevision"] == params.expected_config_revision,
             "TARGET_CHANGED"
         );
-        let operation = uuid::Uuid::new_v4().to_string();
-        let mut guard =
-            json!({"ordinarySession":true,"configRevision":params.expected_config_revision});
-        if enqueue {
-            guard["expectedTurnId"] = json!(params.expected_turn_id);
-        }
-        let native: areal_protocol::desktop::TurnStart = serde_json::from_value(
-            json!({"requestId":operation,"threadId":params.thread_id,"input":message_input(params)?,"expectedConfigRevision":params.expected_config_revision,"admissionGuard":guard}),
-        )?;
+        let native: areal_protocol::desktop::TurnStart = serde_json::from_value(native.clone())?;
         let native_digest = areal_local_service::storage::digest(&serde_json::to_vec(&native)?);
         let native = serde_json::to_value(native)?;
         let record = json!({"method":method,"operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2,"storeBinding":caps["features"]["threadCreationJournal"]["binding"]},"threadId":params.thread_id,"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.send","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":{"threadId":params.thread_id,"expectedConfigRevision":params.expected_config_revision}}});
@@ -247,14 +260,13 @@ impl Session {
             .push(record.clone());
         self.host.journal.native_replace(&id, revision, snapshot)?;
         let _sending = gateway_owner::push::sending(&self.host, &record);
-        let response = self
-            .host
-            .schedules
-            .connections
-            .remote_request(
+        let response = if let Some(prepared) = &mut execution {
+            prepared.dispatch().await
+        } else {
+            self.host.schedules.connections.remote_request(
                 &self.host, &id, &scope.0, generation, &scope.2, method, native,
-            )
-            .await;
+            ).await
+        };
         let mut settled = record.clone();
         match response {
             Ok(result) => {
@@ -494,6 +506,12 @@ fn blob_url(value: &Value) -> Option<&str> {
 
 /// 桌面 `media.cjs` messageInput 的移植：正文、引用、附件与 MCP 内容按同一顺序与上限组装。
 /// 已发布客户端只会带正文，结果与原来的单个文本项相同。
+pub(super) fn rich_message_input(text: &str, values: &Value) -> Result<Vec<areal_protocol::Input>> {
+    message_input(&Message {thread_id:String::new(), expected_config_revision:0,
+        text:text.to_owned(), enqueue:None, expected_turn_id:None,
+        attachments:values.get("attachments").cloned(), conversation_quotes:values.get("conversationQuotes").cloned(),
+        mcp_content:values.get("mcpContent").cloned()})
+}
 fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
     use areal_protocol::Input;
     let mut input = Vec::new();

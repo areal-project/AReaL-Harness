@@ -11,8 +11,8 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const catalogBackend = process.env.AREAL_CATALOG_TEST_BACKEND ?? "memory";
 assert.ok(["memory", "sqlite", "memory-lazy", "sqlite-lazy"].includes(catalogBackend));
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { DesktopService, PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { ServiceConnection } = require("../app/src/core/service-client.cjs");
 const scratch = await makeTempDir("areal-large-history-");
 // Focused paging acceptance excludes the independent >64MiB fragment workload.

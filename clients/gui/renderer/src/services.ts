@@ -182,11 +182,24 @@ export interface PlatformReadServices {
   loadItem(itemId: string): Promise<void>;
 }
 export interface PlatformServices {
-  capabilities?: { mutations: boolean; native: boolean };
+  capabilities?: {
+    mutations: boolean;
+    conversationSubmit?: boolean;
+    conversationCreate?: boolean;
+    native: boolean;
+    library?: boolean;
+    taskCatalog?: boolean;
+    taskManage?: boolean;
+    pages?: boolean;
+    settings?: readonly string[];
+  };
   reads?: PlatformReadServices;
   /** 写开关打开时由 Host 接管的命令；返回 undefined 表示仍走桌面原路径。 */
   writes?: {
-    route(name: string, params: Record<string, unknown>): Promise<{ routed: true } | undefined>;
+    route(
+      name: string,
+      params: Record<string, unknown>,
+    ): Promise<{ routed: true; value?: unknown } | undefined>;
   };
   /** 按领域切到 Host 工作台服务的命令；返回 undefined 表示仍走桌面原路径。 */
   workbench?: {
@@ -249,11 +262,17 @@ export async function call<N extends CommandName, P extends CommandParams<N>>(
     contract.validateCommandResponse(name, params, routed.value);
     return routed.value as CommandResponse<N, P>;
   }
-  if (services.writes && (await services.writes.route(name, params as Record<string, unknown>)))
-    return (name === "respond" ? await services.snapshot() : { stopped: true }) as CommandResponse<
-      N,
-      P
-    >;
+  const written = await services.writes?.route(name, params as Record<string, unknown>);
+  if (written) {
+    const value =
+      "value" in written
+        ? written.value
+        : name === "respond" || name === "steer"
+          ? await services.snapshot()
+          : { stopped: true };
+    if ("value" in written) contract.validateCommandResponse(name, params, value);
+    return value as CommandResponse<N, P>;
+  }
   const result = await services.command(name, params);
   if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
   try {

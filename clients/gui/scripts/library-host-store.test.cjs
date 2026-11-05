@@ -5,7 +5,7 @@ const { mkdtemp, readFile, writeFile } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { createHash } = require("node:crypto");
-const { CoreLibrary } = require("../app/src/core/library.cjs");
+const { CoreLibrary } = require("@areal/workbench-service/desktop/core/library.cjs");
 
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
@@ -67,4 +67,18 @@ test("without a Host navigation source the desktop keeps writing itself", async 
   await library.command({ operation: "renameProject", projectId: "p", title: "One" });
   assert.equal(saves.length, 1);
   assert.equal(library.store, null);
+});
+
+test("Host-owned backend never becomes a second writer when its source disappears", async () => {
+  const { library, saves } = await fixture();
+  const before = structuredClone(library.value);
+  const store = {
+    required: true,
+    write: async () => { throw Object.assign(new Error("no source"), { code: "notFound" }); },
+  };
+  await library.useStore(store);
+  await assert.rejects(library.command({ operation: "renameProject", projectId: "p", title: "One" }), { code: "SIDEBAR_SAVE_FAILED" });
+  assert.equal(saves.length, 0);
+  assert.equal(library.store, store);
+  assert.deepEqual(library.value, before);
 });

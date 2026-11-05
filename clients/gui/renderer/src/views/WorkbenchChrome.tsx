@@ -104,9 +104,10 @@ export function WorkbenchRail({
               surfaces.openMarketplace();
             }),
         },
-      ].filter((item) => !readOnly || item.id === "home")}
+      ].filter((item) => !readOnly || item.id === "home" ||
+        (item.id === "tasks" && services.capabilities?.taskCatalog))}
       footer={
-        readOnly ? null : (
+        readOnly && !services.capabilities?.settings?.length ? null : (
           <>
             <UpdateIndicator services={services} />
             <Button

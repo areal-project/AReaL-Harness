@@ -870,15 +870,12 @@ pub(crate) fn load_mode(
         }
     }
     let provider = values["model.provider"].value.clone();
-    let selected_model = catalog
-        .iter()
-        .find(|entry| entry.id == provider)
-        .and_then(|entry| {
-            entry
-                .models
-                .iter()
-                .find(|model| model.id == values["model.name"].value)
-        });
+    let selected_model = values.get("model.name").and_then(|name| {
+        catalog
+            .iter()
+            .find(|entry| entry.id == provider)
+            .and_then(|entry| entry.models.iter().find(|model| model.id == name.value))
+    });
     let selected_capabilities = selected_model.and_then(|model| model.capabilities.clone());
     let reported_context_window_tokens =
         selected_model.and_then(|model| model.reported_context_window_tokens);

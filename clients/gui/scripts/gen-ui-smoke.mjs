@@ -202,7 +202,7 @@ for (const file of execFileSync(
   source.files[file] = sha(await readFile(join(root, file)));
 }
 let app, page, failure, owner, cleanup;
-const { builtinSkill, BUILTIN_SKILL_ID } = require("../app/src/core/builtin-skills.cjs");
+const { builtinSkill, BUILTIN_SKILL_ID } = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
 await builtinSkill(env.AREAL_CORE_HOME, BUILTIN_SKILL_ID);
 async function launch() {
   app = await electron.launch({

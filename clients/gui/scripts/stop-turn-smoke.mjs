@@ -62,7 +62,7 @@ const server = createServer(async (request, response) => {
 const commandLog = join(scratch, "commands.jsonl");
 const receiptGate = join(scratch, "receipt.gate");
 const bootstrap = `
-const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
 const { appendFileSync, existsSync } = require('node:fs');
 const connect = CoreBackend.prototype.connect;

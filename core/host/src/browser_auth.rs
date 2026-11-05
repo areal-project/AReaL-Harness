@@ -30,6 +30,9 @@ struct Device {
 #[serde(rename_all = "camelCase")]
 enum Scope {
     Observe,
+    Submit,
+    Approve,
+    Manage,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,7 +89,7 @@ impl BrowserAuth {
             public_key(&device.public_key)?;
             uuid::Uuid::parse_str(&device.device_id).context("invalid browser device identity")?;
             ensure!(
-                device.scopes == [Scope::Observe]
+                valid_scopes(&device.scopes)
                     && keys.insert(&device.public_key)
                     && ids.insert(&device.device_id),
                 "invalid browser grant"
@@ -161,7 +164,19 @@ impl BrowserAuth {
         )
     }
 
-    pub(crate) fn approve(&mut self, request_id: &str) -> Result<Value> {
+    pub(crate) fn approve(&mut self, request_id: &str, scopes: &Value) -> Result<Value> {
+        let scopes: Vec<Scope> = if scopes.is_null() {
+            vec![Scope::Observe]
+        } else {
+            serde_json::from_value(scopes.clone())?
+        };
+        ensure!(
+            valid_scopes(&scopes),
+            crate::wire::error(
+                "invalidParams",
+                "browser scopes require observe and unique supported permissions"
+            )
+        );
         self.expire();
         let pending = self.pending.get(request_id).ok_or_else(|| {
             crate::wire::error("notFound", "browser pairing request expired or missing")
@@ -172,7 +187,7 @@ impl BrowserAuth {
             .iter()
             .find(|device| device.public_key == pending.public_key)
         {
-            return Ok(json!({"deviceId":device.device_id,"scopes":["observe"]}));
+            return Ok(json!({"deviceId":device.device_id,"scopes":device.scopes}));
         }
         ensure!(
             self.grants.devices.len() < MAX_DEVICES,
@@ -181,7 +196,7 @@ impl BrowserAuth {
         let device = Device {
             device_id: uuid::Uuid::new_v4().to_string(),
             public_key: pending.public_key.clone(),
-            scopes: vec![Scope::Observe],
+            scopes,
         };
         let mut devices = self.grants.devices.clone();
         devices.push(device.clone());
@@ -196,15 +211,37 @@ impl BrowserAuth {
         self.grants = grants;
         self.pending
             .retain(|_, pending| pending.public_key != device.public_key);
-        Ok(json!({"deviceId":device.device_id,"scopes":["observe"]}))
+        Ok(json!({"deviceId":device.device_id,"scopes":device.scopes}))
     }
 
     pub(crate) fn devices(&self) -> Value {
         json!({"devices": self.grants.devices.iter().map(|device| json!({
             "deviceId": device.device_id,
-            "scopes": ["observe"],
+            "scopes": device.scopes,
             "fingerprint": storage::digest(&public_key(&device.public_key).expect("validated browser key")),
         })).collect::<Vec<_>>()})
+    }
+
+    pub(crate) fn scopes(&self, device_id: &str) -> Option<Value> {
+        self.grants
+            .devices
+            .iter()
+            .find(|device| device.device_id == device_id)
+            .map(|device| json!(device.scopes))
+    }
+
+    pub(crate) fn permits(&self, device_id: &str, capability: &str) -> bool {
+        let scope = match capability {
+            "observe" => Scope::Observe,
+            "submit" | "interrupt" => Scope::Submit,
+            "review" | "answer" => Scope::Approve,
+            "manage" | "pauseTask" => Scope::Manage,
+            _ => return false,
+        };
+        self.grants
+            .devices
+            .iter()
+            .any(|device| device.device_id == device_id && device.scopes.contains(&scope))
     }
 
     pub(crate) fn current(&self, device_id: &str) -> bool {
@@ -287,6 +324,15 @@ impl BrowserAuth {
             .retain(|_, challenge| challenge.deadline > now);
     }
 }
+fn valid_scopes(scopes: &[Scope]) -> bool {
+    scopes.contains(&Scope::Observe)
+        && scopes.len() <= 4
+        && scopes
+            .iter()
+            .enumerate()
+            .all(|(index, scope)| !scopes[..index].contains(scope))
+}
+
 fn decode<const N: usize>(encoded: &str) -> Result<[u8; N]> {
     ensure!(
         encoded.len() == (N * 8).div_ceil(6),
@@ -344,11 +390,46 @@ mod tests {
         let pending = auth.challenge(ORIGIN, &params(key)).unwrap();
         assert_eq!(pending["state"], "pending");
         let receipt = auth
-            .approve(pending["requestId"].as_str().unwrap())
+            .approve(pending["requestId"].as_str().unwrap(), &Value::Null)
             .unwrap();
         assert_eq!(receipt["scopes"], json!(["observe"]));
         auth
     }
+    #[test]
+    fn explicit_scopes_persist_without_promoting_existing_or_other_devices() {
+        let home = tempfile::tempdir().unwrap();
+        let read_key = key();
+        let mut auth = approved(home.path(), &read_key);
+        let reader = auth.devices()["devices"][0]["deviceId"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let write_key = key();
+        let pending = auth.challenge(ORIGIN, &params(&write_key)).unwrap();
+        let request = pending["requestId"].as_str().unwrap();
+        for scopes in [
+            json!([]),
+            json!(["manage"]),
+            json!(["observe", "observe"]),
+            json!(["observe", "admin"]),
+        ] {
+            assert!(auth.approve(request, &scopes).is_err());
+        }
+        let writer = auth
+            .approve(request, &json!(["observe", "manage"]))
+            .unwrap();
+        let writer = writer["deviceId"].as_str().unwrap();
+        let mut auth = BrowserAuth::new(home.path(), "host-one").unwrap();
+        assert!(!auth.permits(&reader, "manage"));
+        assert!(auth.permits(writer, "manage"));
+        assert!(auth.permits(writer, "pauseTask"));
+        assert!(!auth.permits(writer, "submit"));
+        assert!(!auth.permits(writer, "answer"));
+        auth.revoke(writer).unwrap();
+        assert!(!auth.permits(writer, "manage"));
+        assert!(auth.permits(&reader, "observe"));
+    }
+
     #[test]
     fn approval_persists_but_challenges_do_not_and_proof_is_one_use() {
         let home = tempfile::tempdir().unwrap();
@@ -378,7 +459,7 @@ mod tests {
             .to_owned();
         let pending = auth.challenge(ORIGIN, &params(&other)).unwrap();
         let other_id = auth
-            .approve(pending["requestId"].as_str().unwrap())
+            .approve(pending["requestId"].as_str().unwrap(), &Value::Null)
             .unwrap()["deviceId"]
             .as_str()
             .unwrap()
@@ -458,11 +539,11 @@ mod tests {
             .unwrap()
             .deadline = Instant::now();
         assert!(
-            auth.approve(pending["requestId"].as_str().unwrap())
+            auth.approve(pending["requestId"].as_str().unwrap(), &Value::Null)
                 .is_err()
         );
         let pending = auth.challenge(ORIGIN, &params(&key)).unwrap();
-        auth.approve(pending["requestId"].as_str().unwrap())
+        auth.approve(pending["requestId"].as_str().unwrap(), &Value::Null)
             .unwrap();
         let challenge = auth.challenge(ORIGIN, &params(&key)).unwrap();
         for _ in 1..MAX_CHALLENGES {

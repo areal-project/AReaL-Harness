@@ -5,6 +5,7 @@ export type McpAppDescriptor = {
   kind: "mcp";
   token: string;
   frameUrl: string;
+  frameHtml?: string;
   instanceId: string;
   serverId: string;
   generation: string | number;
@@ -34,6 +35,7 @@ export type GenUiDescriptor = {
   kind: "genUi";
   token: string;
   frameUrl: string;
+  frameHtml?: string;
   projectId: string;
   threadId: string;
   source: GenUiSource;

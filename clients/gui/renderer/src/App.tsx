@@ -572,7 +572,10 @@ function AppContent({ services }: { services: PlatformServices }) {
                 groups={settingsNavigationGroups.map((group) => ({
                   ...group,
                   label: t(group.label),
-                  items: group.items.map((item) => ({
+                  items: group.items.filter((item) =>
+                    services.capabilities?.settings === undefined ||
+                    services.capabilities.settings.includes(item.id),
+                  ).map((item) => ({
                     ...item,
                     label: t(
                       item.id === "数据飞轮" && trajectoryAttention
@@ -580,7 +583,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                         : item.label,
                     ),
                   })),
-                }))}
+                })).filter((group) => group.items.length > 0)}
               />
             )}
             <ConversationNavigation

@@ -17,6 +17,22 @@ use tokio_tungstenite::tungstenite::Message;
 
 const ORIGINAL_DIGEST: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
+#[test]
+fn unavailable_tool_host_retains_determinate_rejection() {
+    let mut record = json!({"method":"areal/turn/start","operationId":"native-request",
+        "admissionState":"rejected","remote":{"method":"session.send","target":{"threadId":"thread"}},
+        "error":{"code":-32602,"message":"private diagnostic must not be forwarded",
+            "data":{"reason":"TOOL_HOST_UNAVAILABLE","outcome":{"kind":"rejected"}}}});
+    let unavailable = Session::command_view(Some(&record), "original-command");
+    assert_eq!(unavailable["admissionState"], "rejected");
+    assert_eq!(unavailable["submissionUnknown"], false);
+    assert_eq!(unavailable["error"]["code"], "CAPABILITY_UNAVAILABLE");
+    assert_eq!(unavailable["nativeRequestId"], "native-request");
+    assert!(!unavailable.to_string().contains("private diagnostic"));
+    record["error"]["data"]["reason"] = json!("REQUEST_REJECTED");
+    assert_eq!(Session::command_view(Some(&record), "original-command")["error"]["code"], "INVALID_PARAMS");
+}
+
 enum CoreResponse {
     Message(Value),
     Disconnect,
@@ -268,6 +284,7 @@ impl Fixture {
             gui_read: false,
             gui_write: false,
             local: false,
+            browser_device: None,
             uploads: Default::default(),
             token_key: [7; 32],
         }
@@ -1293,6 +1310,212 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
             assert_eq!(recovered.unwrap()["turnId"], "desktop-turn");
         })
         .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn local_send_and_steer_freeze_authoritative_gen_ui_context_without_private_state() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let runner = f.root.path().join("prepare.cjs");
+        let source = r#"
+const {createRequire} = require('node:module');
+const {join} = require('node:path');
+const fs = require('node:fs');
+const {once} = require('node:events');
+const appRequire = createRequire(join(REPO,'clients/gui/app/package.json'));
+const {CoreBackend} = appRequire('@areal/workbench-service/desktop/core/backend.cjs');
+const {DesktopService} = appRequire('@areal/workbench-service/desktop/core/service-protocol.cjs');
+const {prepareInput} = require(join(REPO,'services/workbench/src/pages.cjs'));
+const out = value => console.log(JSON.stringify({version:1,...value}));
+(async () => {
+  const home = process.env.AREAL_WORKBENCH_DATA;
+  const backend = new CoreBackend({home,binary:'/bin/true'});
+  const project = {id:PROJECT_ALIAS,root:PROJECT_ROOT,state:{threads:{thread:{id:'thread'}}}};
+  project.model = {state:project.state};
+  const socket = new (appRequire('ws'))(CORE_ENDPOINT,{headers:{Authorization:'Bearer original-owner-token'}});
+  await once(socket,'open');
+  let next = 0;
+  const calls = new Map();
+  socket.on('message', bytes => { const message = JSON.parse(bytes); const pending = calls.get(message.id);
+    if (!pending) return; calls.delete(message.id);
+    if (message.error) pending.reject(Object.assign(new Error(message.error.message),message.error));
+    else pending.resolve(message.result);
+  });
+  project.client = {closed:false, request:(method,params) => new Promise((resolve,reject) => {
+    const id = ++next; calls.set(id,{resolve,reject}); socket.send(JSON.stringify({id,method,params}));
+  })};
+  project.service = {serviceId:'original-service',generation:'core-generation'};
+  backend.projects.set(project.id,project);
+  backend.saved = [project];
+  const adapter = new DesktopService(backend,'fixture');
+  adapter.schedule = () => {};
+  const scope = {...backend.genUiScope(project,'thread'),path:'/artifacts/widget.html'};
+  const save = selection => backend.genUiState.set(scope,{modelContent:{selection},privateContent:{secret:'fixture-private'}});
+  await save(7);
+  let nextHost = 0;
+  const hostCalls = new Map();
+  const hostCall = (call, params) => new Promise((resolve,reject) => {
+    const id = `journal-${++nextHost}`; hostCalls.set(id,{resolve,reject}); out({id,call,params});
+  });
+  backend.host.journal = id => ({
+    read:async()=>hostCall('fixture.journal.read',{}),
+    change:async change=>{ const {revision,snapshot}=await hostCall('fixture.journal.read',{});
+      await hostCall('fixture.journal.replace',{revision,snapshot:change(snapshot)}); },
+  });
+  backend.start = async id => { if(id!==project.id)throw Error('wrong project');return project; };
+  backend.resources.beforeCreate = async () => {};
+  backend.providers.manages = () => false;
+  backend.refreshAfterAdmission = async () => {};
+  project.client.capabilities = {features:{permissionPresets:true}};
+  out({event:'ready',methods:['input.prepare','execution.prepare','execution.dispatch','creation.read']});
+  require('node:readline').createInterface({input:process.stdin}).on('line', async line => {
+    const frame = JSON.parse(line);
+    try {
+      if (hostCalls.has(frame.id)) { const pending=hostCalls.get(frame.id);hostCalls.delete(frame.id);
+        if(frame.error)pending.reject(Error(frame.error.code));else pending.resolve(frame.result);return; }
+      if (frame.event === 'execution.cancel') { adapter.cancelHostExecution(frame.handle,frame.connection); return; }
+      if (frame.event === 'pages.disconnect') { adapter.disconnectHostExecution(frame.connection); await hostCall('fixture.disconnected',{connection:frame.connection}); return; }
+      if (frame.method === 'creation.read') { out({id:frame.id,result:backend.worktrees.readThreadCreation(frame.params.projectId,frame.params.request)}); return; }
+      if (frame.method === 'execution.prepare') {
+        out({id:frame.id,result:await adapter.prepareHostExecution(frame.params,frame.context.connection)}); return;
+      }
+      if (frame.method === 'execution.dispatch') {
+        out({id:frame.id,result:await adapter.dispatchHostExecution(frame.params.handle,frame.context.connection)}); return;
+      }
+      if (frame.method !== 'input.prepare') throw Error('unexpected method');
+      fs.appendFileSync(join(home,'preparations'),'once\n');
+      const result = await prepareInput({desktop:{backend,adapter},request:frame.params});
+      await save(8);
+      out({id:frame.id,result});
+    } catch(error) { out({id:frame.id,error:{code:'INVALID_PARAMS',message:error.message}}); }
+  });
+})().catch(error => { console.error(error); process.exit(1); });
+"#.replace("REPO", &serde_json::to_string(&repo).unwrap())
+          .replace("PROJECT_ALIAS", &serde_json::to_string(&f.alias).unwrap())
+          .replace("PROJECT_ROOT", &serde_json::to_string(&f.host.slots.borrow()["project"].registration.workspace).unwrap())
+          .replace("CORE_ENDPOINT", &serde_json::to_string(&f.host.slots.borrow()["project"].service.as_ref().unwrap().endpoint).unwrap());
+        std::fs::write(&runner, source).unwrap();
+        let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+            .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required");
+        let journal_host = f.host.clone();
+        let (disconnected, mut disconnects) = mpsc::unbounded_channel();
+        let reverse: crate::workbench::Reverse = Rc::new(move |method, params| {
+            let host = journal_host.clone();
+            let disconnected = disconnected.clone();
+            Box::pin(async move {
+                match method.as_str() {
+                    "fixture.disconnected" => { disconnected.send(params["connection"].clone()).unwrap(); Ok(json!({})) }
+                    "fixture.journal.read" => { let (revision, snapshot) = host.journal.native_snapshot("project")?; Ok(json!({"revision":revision,"snapshot":snapshot})) }
+                    "fixture.journal.replace" => { host.journal.native_replace("project", params["revision"].as_u64().unwrap(), params["snapshot"].clone())?; Ok(json!({})) }
+                    _ => anyhow::bail!("FORBIDDEN"),
+                }
+            })
+        });
+        let backend = crate::workbench::Workbench::start(&runtime, &runner, f.root.path(), reverse).await.unwrap();
+        f.host.gateway.workbench.bind_test_backend(backend, &f.source);
+        let session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+        let context = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+        let mut send = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"Continue"}), Some(&uuid::Uuid::new_v4().to_string()));
+        send["context"] = context.clone();
+        let sending = Fixture::dispatch(session, send.clone());
+        f.call("areal/capabilities").await.reply(Fixture::capabilities());
+        f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+        let turn = f.call("areal/turn/start").await;
+        let input = turn.request["params"]["input"][0]["text"].as_str().unwrap().to_owned();
+        assert!(input.starts_with("Continue"));
+        assert!(input.contains("\"selection\":7"), "{input}");
+        assert!(!input.contains("private"));
+        let (_, journal) = f.host.journal.native_snapshot("project").unwrap();
+        assert!(journal.to_string().contains("selection"));
+        assert!(!journal.to_string().contains("fixture-private"));
+        turn.reply(json!({"turn":{"id":"desktop-turn"}}));
+        let (session, accepted) = sending.await.unwrap();
+        let accepted = accepted.unwrap();
+        let (session, duplicate) = Fixture::dispatch(session, send).await.unwrap();
+        assert_eq!(duplicate.unwrap(), accepted);
+        assert_eq!(std::fs::read_to_string(f.root.path().join("preparations")).unwrap(), "once\n");
+        let mut steer = f.request("session.control", json!({"threadId":"thread","operation":"steer","expectedRevision":1,"values":{"text":"Adjust","expectedTurnId":"turn","conversationQuotes":[{"text":"quoted-message"}],"attachments":[{"type":"image","url":"areal://blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}],"mcpContent":[{"type":"text","text":"mcp-message"}]}}), Some(&uuid::Uuid::new_v4().to_string()));
+        steer["context"] = context;
+        let steering = Fixture::dispatch(session, steer.clone());
+        let mut caps = Fixture::capabilities();
+        caps["methods"].as_array_mut().unwrap().push(json!("turn/steer"));
+        f.call("areal/capabilities").await.reply(caps.clone());
+        f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[]}]},"ownership":{"kind":"ordinary"}}));
+        let turn = f.call("turn/steer").await;
+        let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
+        assert_eq!(turn.request["params"]["input"].as_array().unwrap().len(), 4);
+        assert!(turn.request["params"]["input"].to_string().contains("quoted-message"));
+        assert!(turn.request["params"]["input"].to_string().contains("mcp-message"));
+        assert!(text.starts_with("Adjust"));
+        assert!(text.contains("\"selection\":8"), "{text}");
+        assert!(!text.contains("private"));
+        turn.reply(json!({"turnId":"turn"}));
+        let (session, result) = steering.await.unwrap();
+        assert_eq!(result.unwrap()["admissionState"], "accepted");
+        let (session, repeated) = Fixture::dispatch(session, steer.clone()).await.unwrap();
+        assert_eq!(repeated.unwrap()["admissionState"], "accepted");
+        assert_eq!(std::fs::read_to_string(f.root.path().join("preparations")).unwrap(), "once\nonce\n");
+        let creation_id = uuid::Uuid::new_v4().to_string();
+        let mut create = f.request("session.create", json!({"requestId":creation_id,"parameters":{"reasoningEffort":"high","serviceTier":"fast"},"options":{"permissionPreset":"ask"},"model":{"providerId":"provider","modelId":"model"},"worktree":{"mode":"source"}}), Some(&creation_id));
+        create["context"] = steer["context"].clone();
+        let mut creating = Fixture::dispatch(session, create.clone());
+        let native_create = tokio::select! { call = f.call("areal/thread/start") => call, result = &mut creating => panic!("local create returned before dispatch: {:?}", result.unwrap().1) };
+        assert_eq!(native_create.request["params"]["requestId"], creation_id);
+        assert_eq!(native_create.request["params"]["parameters"]["serviceTier"], "fast");
+        let (_, native_pending) = f.host.journal.native_snapshot("project").unwrap();
+        assert!(native_pending["pending"].as_array().unwrap().iter().any(|entry| entry["method"] == "areal/thread/start" && entry["params"]["requestId"] == creation_id));
+        assert!(!native_pending["pending"].as_array().unwrap().iter().any(|entry| entry["method"] == "workbench/thread/create"));
+        native_create.reply(json!({"thread":{"id":"original-created"}}));
+        let (session, created) = creating.await.unwrap();
+        let created = created.unwrap();
+        assert_eq!(created["admissionState"], "accepted");
+        assert_eq!(created["threadId"], "original-created");
+        assert_eq!(created["nativeRequestId"], creation_id);
+        assert_eq!(created["receipt"]["result"]["executionProjectId"], "project");
+        let (_, native_complete) = f.host.journal.native_snapshot("project").unwrap();
+        assert_eq!(native_complete["outcomes"][&creation_id]["method"], "areal/thread/start");
+        let (_, command_complete) = f.host.journal.native_snapshot(&session.creation_command_scope("project")).unwrap();
+        assert_eq!(command_complete["outcomes"][&creation_id]["method"], "workbench/thread/create");
+        let (session, duplicate) = Fixture::dispatch(session, create).await.unwrap();
+        assert_eq!(duplicate.unwrap(), created);
+        // 旧远程客户端仍用原请求形状，执行与模型上下文来自同源后台。
+        let mut remote = f.session("a");
+        assert!(remote.uses_workbench_execution());
+        remote.source_id = "another-source".into();
+        assert!(!remote.uses_workbench_execution());
+        remote.source_id = f.source.clone();
+        let remote_send = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":1,"text":"Remote continue"}), Some(&uuid::Uuid::new_v4().to_string()));
+        let sending = Fixture::dispatch(remote, remote_send.clone());
+        f.call("areal/capabilities").await.reply(Fixture::capabilities());
+        f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+        let turn = f.call("areal/turn/start").await;
+        let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
+        assert!(text.starts_with("Remote continue") && text.contains("\"selection\":8"));
+        assert!(!text.contains("fixture-private"));
+        turn.reply(json!({"turn":{"id":"remote-turn"}}));
+        let (remote, accepted) = sending.await.unwrap();
+        let accepted = accepted.unwrap();
+        let (remote, repeated) = Fixture::dispatch(remote, remote_send).await.unwrap();
+        assert_eq!(repeated.unwrap(), accepted);
+        let remote_connection = remote.connection.clone();
+        let mut creating = Fixture::dispatch(remote, f.request("session.create", json!({}), Some(&uuid::Uuid::new_v4().to_string())));
+        f.call("areal/capabilities").await.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}},"methods":["areal/thread/start","areal/request/read"]}));
+        let created = tokio::select! { call = f.call("areal/thread/start") => call, result = &mut creating => panic!("remote create returned before dispatch: {:?}", result.unwrap().1) };
+        assert_eq!(created.request["params"]["options"]["permissionPreset"], "ask");
+        created.reply(json!({"thread":{"id":"remote-created"}}));
+        let (_, created) = creating.await.unwrap();
+        assert_eq!(created.unwrap()["admissionState"], "accepted");
+        drop(SessionSlot {host:f.host.clone(),peer:None,pending:false,connection:Some(remote_connection.clone())});
+        assert_eq!(tokio::time::timeout(Duration::from_secs(5), disconnects.recv()).await.unwrap().unwrap(), remote_connection);
+        f.host.gateway.workbench.stop_backend().await;
+        steer["commandId"] = json!(uuid::Uuid::new_v4().to_string());
+        let failing = Fixture::dispatch(session, steer);
+        f.call("areal/capabilities").await.reply(caps);
+        let (_, result) = failing.await.unwrap();
+        assert_eq!(result.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
+        assert!(f.calls.try_recv().is_err());
+    }).await;
 }
 
 #[tokio::test(flavor = "current_thread")]

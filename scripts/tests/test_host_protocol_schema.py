@@ -31,6 +31,8 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 "subscription/host.rs",
                 "gateway/session.rs",
                 "gateway/shared_reads.rs",
+                "gateway/uploads.rs",
+                "workbench_route.rs",
                 "loopback.rs",
             ):
                 target = root / "core/host/src" / name
@@ -78,6 +80,8 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 Path("core/host/src/subscription/host.rs"),
                 Path("core/host/src/gateway/session.rs"),
                 Path("core/host/src/gateway/shared_reads.rs"),
+                Path("core/host/src/gateway/uploads.rs"),
+                Path("core/host/src/workbench_route.rs"),
             ):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)

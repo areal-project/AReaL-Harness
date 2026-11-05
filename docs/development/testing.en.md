@@ -2,6 +2,10 @@
 
 # Testing
 
+Validate shared business primarily through Web and real Host services with isolated data, without making GUI packaging a routine prerequisite. Start Electron for desktop-only capabilities such as windows, system encryption, browser views and computer control. Validate release resources, signing and upgrades separately in the corresponding release tasks. Record protocol, page interaction, native and release-package evidence separately.
+
+The workbench backend smoke can run selected domains, for example `pnpm --dir clients/gui test:workbench-backend --domain=providers`. Supported domains are library, trajectory, feedback, tasks, manage, worktree, providers, and lifecycle; combine arguments or omit them for the full chain. Each invocation uses isolated data, and stopped task catalogs and running task management initialize separate projects. Select affected domains during development and run the full chain at closeout. Protocol smoke does not replace real Web page interaction.
+
 Dual-product comparisons reuse the contract's [six baseline journeys](conversation-reading-acceptance.en.md#dual-product-baseline) and shared material generator. Reports distinguish fresh runs, reused evidence, source inference, and unverified cases; a listening dev server does not pass a user journey.
 
 Desktop conversation and Composer follow the [experience acceptance contract](conversation-reading-acceptance.en.md). Define input intent, context recovery, submission facts, completeness, readable time, and position standards first, design transition and final-state cases, then compare designs, implement, and validate together. Complete final content in one conversation does not replace loading-transition and interaction checks.

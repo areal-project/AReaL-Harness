@@ -207,6 +207,8 @@ pub enum Error {
     NotFound,
     #[error("{0}")]
     Invalid(String),
+    #[error("dynamic tools require a connected owner; resume this thread to attach its tool host")]
+    ToolHostUnavailable,
     #[error("thread is busy or the target turn is stale")]
     Conflict,
     #[error("{0}")]

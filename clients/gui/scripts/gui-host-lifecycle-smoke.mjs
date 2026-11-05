@@ -10,7 +10,7 @@ import { connect } from "../../../examples/desktop-api/client.mjs";
 import { respondToSessionName } from "../../../scripts/model-fixture.mjs";
 
 const require = createRequire(import.meta.url);
-const { GuiHostProjects, requestIdFor } = require("../app/src/core/gui-host-projects.cjs");
+const { GuiHostProjects, requestIdFor } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
   "@areal/client/node",
 );

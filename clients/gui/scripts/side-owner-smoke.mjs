@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { SideDraftWorkspace } from '../renderer/src/side-draft-owner.js';
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require('../app/src/core/backend.cjs');
+const { CoreBackend } = require('@areal/workbench-service/desktop/core/backend.cjs');
 const backend = Object.create(CoreBackend.prototype);
 backend.binary = '/fixture/areal';
 backend.library = { value: { projects: {} } };

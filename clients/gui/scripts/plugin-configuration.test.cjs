@@ -4,8 +4,8 @@ const { test } = require("node:test");
 const {
   configurePluginValues,
   reloadPluginCredentials,
-} = require("../app/src/core/plugin-configuration.cjs");
-const { snapshotProject } = require("../app/src/core/project-snapshot.cjs");
+} = require("@areal/workbench-service/desktop/core/plugin-configuration.cjs");
+const { snapshotProject } = require("@areal/workbench-service/desktop/core/project-snapshot.cjs");
 const { validateCommand } = require("../packages/workbench/client/desktop-contract.cjs");
 const requestId = "00000000-0000-4000-a000-000000000111";
 const baseRequest = {
@@ -196,7 +196,7 @@ test("a project can explicitly reload shared credentials through the existing id
   );
 });
 
-const { manage } = require("../app/src/core/management.cjs");
+const { manage } = require("@areal/workbench-service/desktop/core/management.cjs");
 const { pluginMutations } = require("../packages/workbench/client/desktop-contract/management.cjs");
 const recoverableOperations = {
   pluginUserConfigSave: "areal/plugin/userConfig/set",
@@ -291,7 +291,7 @@ test("plugin recovery rejects unrelated mutations before reaching the receipt ow
 });
 
 test("confirmed plugin setup recovery refreshes its thread without replaying setup", async () => {
-  const { readPluginSubmission } = require("../app/src/core/plugin-submission.cjs");
+  const { readPluginSubmission } = require("@areal/workbench-service/desktop/core/plugin-submission.cjs");
   const receipt = { confirmed: true, result: { thread: { id: "setup-thread" } } };
   const fixture = receiptFixture("pluginSetup", receipt);
   const events = [];

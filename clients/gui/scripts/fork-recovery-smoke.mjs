@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { CoreRpcError } from "../packages/runtime-client/core.js";
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const {
   desktopError,
   validateCommand,

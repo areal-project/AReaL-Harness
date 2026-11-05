@@ -6,11 +6,11 @@ import { makeTempDir } from "./support/temp.mjs";
 import { join } from "node:path";
 import { taskContractHost, taskContractProject as PROJECT } from "./remote-task-contract-host.mjs";
 const require = createRequire(import.meta.url);
-const { InteractionReviews } = require("../app/src/core/remote-interactions.cjs");
-const { SessionObservers } = require("../app/src/core/remote-session-observer.cjs");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { sessionCommand } = require("../app/src/core/remote-session-commands.cjs");
-const { RemotePush } = require("../app/src/core/remote-push.cjs");
+const { InteractionReviews } = require("@areal/workbench-service/desktop/core/remote-interactions.cjs");
+const { SessionObservers } = require("@areal/workbench-service/desktop/core/remote-session-observer.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { sessionCommand } = require("@areal/workbench-service/desktop/core/remote-session-commands.cjs");
+const { RemotePush } = require("@areal/workbench-service/desktop/core/remote-push.cjs");
 const rustOwner = process.env.AREAL_REMOTE_OWNER === "rust";
 const home = rustOwner ? undefined : await makeTempDir("rc07-contract-");
 const checks = [];
@@ -565,7 +565,7 @@ await check("actual-noise-direct-reviewed-route-and-schema", async (f) => {
   const crypto = await import("../packages/remote/src/channel.mjs");
   const { once } = await import("node:events");
   const WebSocket = require("../app/node_modules/ws");
-  const { startDirect } = require("../app/src/core/remote-direct.cjs");
+  const { startDirect } = require("@areal/workbench-service/desktop/core/remote-direct.cjs");
   const device = await crypto.createIdentity();
   f.remote.crypto = crypto;
   f.remote.config.identity = await crypto.createIdentity();
@@ -573,7 +573,7 @@ await check("actual-noise-direct-reviewed-route-and-schema", async (f) => {
   f.remote.config.deviceGrants[0].devicePeerId = crypto.identityId(device);
   const connect = SessionObservers.prototype.connect;
   SessionObservers.prototype.connect = f.observers.connect;
-  f.remote.sessions = new (require("../app/src/core/remote-session-acceptor.cjs").SessionAcceptor)(
+  f.remote.sessions = new (require("@areal/workbench-service/desktop/core/remote-session-acceptor.cjs").SessionAcceptor)(
     f.remote,
   );
   const direct = await startDirect(f.remote);

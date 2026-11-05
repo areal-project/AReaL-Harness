@@ -78,7 +78,7 @@ function GenUiHost({ owner, entry }: { owner: Owner; entry: Entry }) {
             if (params.escape && entry.pending) { entry.pending.reject(Error("Cancelled")); entry.pending = undefined; owner.changed(); }
             return {};
         });
-        bridge.onsandboxready = () => { void bridge.sendSandboxResourceReady({ html: "" }); };
+        bridge.onsandboxready = () => { void bridge.sendSandboxResourceReady({ html: app.frameHtml ?? "" }); };
         bridge.onsizechange = ({ height }) => {
             if (active && Number.isFinite(height)) { entry.height = Math.max(120, Math.min(10000, Math.ceil(height!))); owner.changed(); }
         };
@@ -99,7 +99,7 @@ function GenUiHost({ owner, entry }: { owner: Owner; entry: Entry }) {
     useEffect(() => { bridgeRef.current?.setHostContext({ ...app.hostContext, theme: entry.binding?.dark ? "dark" : "light" }); }, [entry.binding?.dark, app.hostContext]);
     return <div aria-hidden={!entry.placement} inert={!entry.placement} data-gen-ui-token={app.token} data-gen-ui-thread={app.threadId}
         style={{ position: "fixed", ...entry.placement, display: entry.placement ? "block" : "none", zIndex: 10, clipPath: entry.clip }}>
-        <iframe ref={frame} title={entry.title} sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" style={{ border: 0, width: "100%", height: "100%", display: "block" }} />
+        <iframe ref={frame} title={entry.title} sandbox={app.frameHtml === undefined ? "allow-scripts allow-same-origin" : "allow-scripts"} referrerPolicy="no-referrer" style={{ border: 0, width: "100%", height: "100%", display: "block" }} />
     </div>;
 }
 export function GenUiCard({ source, title, send, dark }: { source: GenUiSource; title: string; send?: (prompt: string) => Promise<void>; dark: boolean }) {

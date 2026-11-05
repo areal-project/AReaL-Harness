@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 const script = fileURLToPath(import.meta.url);
 const require = createRequire(import.meta.url);
-const { executeCore } = require('../app/src/core/core-process.cjs');
+const { executeCore } = require('@areal/workbench-service/desktop/core/core-process.cjs');
 
 if (process.argv.includes('--guard')) {
   let orphaned = false, cleaning, started, configuration, descriptor;

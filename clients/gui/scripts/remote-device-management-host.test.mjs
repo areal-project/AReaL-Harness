@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 import { createRemoteWire } from "../packages/remote/src/wire.mjs";
-import { parseRemoteConfig } from "../app/src/core/remote-config.cjs";
+import { parseRemoteConfig } from "@areal/workbench-service/desktop/core/remote-config.cjs";
 import { browserDeviceName } from "../renderer/remote-web/device-name.mjs";
 import { nativeRelayHostFixture as hostFixture, waitFor } from "./remote-relay-fixture.mjs";
 

@@ -369,7 +369,7 @@ class HostClient {
     this.requireCapability("guiImport");
     return this.request("gui.attachSource", { source });
   }
-  /** @param {import('../../../app/src/core/gui-source.cjs').GuiSource} source */
+  /** @param {import('../src/protocol.js').Source} source */
   sourceState(source) {
     this.requireCapability("guiImport");
     return this.request("gui.source", { source });

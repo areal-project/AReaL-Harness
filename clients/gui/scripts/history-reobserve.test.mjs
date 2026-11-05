@@ -4,8 +4,8 @@ import { createRequire } from "node:module";
 import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { CoreLibrary } = require("../app/src/core/library.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { CoreLibrary } = require("@areal/workbench-service/desktop/core/library.cjs");
 
 // 最新一轮超过一页：补全时最后一页带上一轮的尾部条目，与真实 Core 的分页边界一致。
 const latest = () => ({
@@ -202,7 +202,7 @@ test(
   async (t) => {
     const { once } = await import("node:events");
     const { WebSocketServer } = require("ws");
-    const { ProjectConnections } = require("../app/src/core/project-connections.cjs");
+    const { ProjectConnections } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(server, "listening");
     t.after(async () => {
@@ -366,7 +366,7 @@ test(
   async (t) => {
     const { once } = await import("node:events");
     const { WebSocketServer } = require("ws");
-    const { ProjectConnections } = require("../app/src/core/project-connections.cjs");
+    const { ProjectConnections } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(server, "listening");
     t.after(async () => {

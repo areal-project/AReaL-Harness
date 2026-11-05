@@ -4,7 +4,7 @@ const { test } = require("node:test");
 const { mkdtemp, writeFile, readFile, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const {
   validateCommand,
   commandSemantics,

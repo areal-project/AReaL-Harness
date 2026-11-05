@@ -1,8 +1,8 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { DesktopService } = require("../app/src/core/service-protocol.cjs");
-const { GuiTerminalConnections } = require("../app/src/core/gui-terminal-connections.cjs");
+const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const { GuiTerminalConnections } = require("@areal/workbench-service/desktop/core/gui-terminal-connections.cjs");
 const tick = () => new Promise((done) => setImmediate(done));
 function socket() {
   return {
@@ -34,7 +34,7 @@ function service() {
 }
 test("same Main dispatch preserves terminal ownership without a Desktop socket", async () => {
   const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
-  const { PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+  const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   const f = service();
   f.backend.connections = { revokeDesktopToolHost() {} };
   const library = {};
@@ -281,7 +281,7 @@ test("Main rejects a stale Core generation and malformed terminal endpoint", asy
 });
 
 test("Desktop terminal dispatch retains the journal request and forces connection lifetime", async () => {
-  const { manage } = require("../app/src/core/management.cjs");
+  const { manage } = require("@areal/workbench-service/desktop/core/management.cjs");
   const calls = [];
   const terminalRequest = async (method, params) => {
     calls.push({ method, params });
@@ -323,7 +323,7 @@ test("Desktop terminal dispatch retains the journal request and forces connectio
   assert.equal(calls[0].params.lifetime, "connection");
 });
 test("lost terminal start response queries the original receipt through Main without replay", async () => {
-  const { SubmissionRecovery } = require("../app/src/core/submission-recovery.cjs");
+  const { SubmissionRecovery } = require("@areal/workbench-service/desktop/core/submission-recovery.cjs");
   const calls = [];
   const project = {
     client: {
@@ -364,7 +364,7 @@ test("lost terminal start response queries the original receipt through Main wit
 test("Main service connection forwards terminal results on the original privileged channel", async (t) => {
   const { WebSocketServer } = require("ws");
   const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
-  const { PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+  const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   const { once } = require("node:events");
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await once(server, "listening");

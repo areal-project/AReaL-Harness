@@ -49,14 +49,33 @@ impl Workbench {
         data: &Path,
         reverse: Reverse,
     ) -> Result<Self> {
+        Ok(Self::start_with(runtime, runner, data, reverse, None)
+            .await?
+            .0)
+    }
+
+    /// 启动后先写一帧引导参数（桌面后台的启动选项），再等 `ready` 帧。
+    /// 引导帧带方法名，返回的 `ready` 帧交给调用方读取服务身份。
+    pub(crate) async fn start_with(
+        runtime: &Path,
+        runner: &Path,
+        data: &Path,
+        reverse: Reverse,
+        bootstrap: Option<(&str, Value)>,
+    ) -> Result<(Self, Value)> {
         let (reader, writer) = std::os::unix::net::UnixStream::pair()?;
         reader.set_nonblocking(true)?;
+        let user_home = bootstrap
+            .as_ref()
+            .and_then(|(_, params)| params["options"]["userHome"].as_str())
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| data.to_path_buf());
         let mut command = TrustedCommand::supervised(runtime, &[])?;
         command
             .arg(runner)
             .env_clear()
             .env("PATH", "/usr/bin:/bin")
-            .env("HOME", data)
+            .env("HOME", user_home)
             .env("AREAL_WORKBENCH_DATA", data)
             .env("TMPDIR", std::env::temp_dir())
             .env("ELECTRON_RUN_AS_NODE", "1")
@@ -65,6 +84,15 @@ impl Workbench {
             .stderr(Stdio::inherit())
             .kill_on_drop(true);
         let mut child = command.spawn().await?;
+        if let Some((method, params)) = bootstrap {
+            let mut stdin = child.stdin.take().context("workbench stdin missing")?;
+            write_frame(
+                &mut stdin,
+                &json!({"version":1,"method":method,"params":params}),
+            )
+            .await?;
+            child.stdin = Some(stdin);
+        }
         let mut lines = BufReader::new(tokio::net::UnixStream::from_std(reader)?);
         let ready = tokio::time::timeout(READY, read_frame(&mut lines))
             .await
@@ -100,6 +128,10 @@ impl Workbench {
                     Ok(Some(frame)) => frame,
                     _ => break,
                 };
+                if frame["event"] == "pages.event" {
+                    let _ = reverse("pages.event".into(), frame["params"].clone()).await;
+                    continue;
+                }
                 if let Some(call) = frame["call"].as_str() {
                     let id = frame["id"].clone();
                     let reply = reverse(call.to_owned(), frame["params"].clone());
@@ -138,7 +170,7 @@ impl Workbench {
                 let _ = sender.send(Err(anyhow::anyhow!("CAPABILITY_UNAVAILABLE")));
             }
         });
-        Ok(workbench)
+        Ok((workbench, ready))
     }
 
     #[cfg(test)]
@@ -358,6 +390,43 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
                 )
                 .unwrap();
                 assert_eq!(saved["turns"]["[\"p\",\"a\",\"t1\"]"]["usage"]["inputTokens"], 4);
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn bootstrap_frame_arrives_before_ready_and_is_reported() {
+        let Some(node) = node() else { return };
+        const BOOTSTRAP: &str = r#"
+const readline = require("node:readline");
+const lines = readline.createInterface({ input: process.stdin });
+lines.on("line", (line) => {
+  const frame = JSON.parse(line);
+  if (frame.method !== "backend.start") process.exit(4);
+  process.stdout.write(
+    JSON.stringify({ version: 1, event: "ready", methods: [], service: { pid: 7, identity: frame.params.appRoot } }) + "\n",
+  );
+});
+lines.on("close", () => process.exit(0));
+"#;
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let runner = root.path().join("backend-runner.cjs");
+                std::fs::write(&runner, BOOTSTRAP).unwrap();
+                let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
+                let (workbench, ready) = Workbench::start_with(
+                    &node,
+                    &runner,
+                    root.path(),
+                    reverse,
+                    Some(("backend.start", json!({"appRoot":"approot"}))),
+                )
+                .await
+                .unwrap();
+                assert!(workbench.methods().is_empty());
+                assert_eq!(ready["service"]["identity"], "approot");
+                workbench.stop().await.unwrap();
             })
             .await;
     }

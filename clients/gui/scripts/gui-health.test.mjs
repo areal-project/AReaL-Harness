@@ -461,6 +461,25 @@ test("Main coverage detects a new unchecked file even when checked file count is
   assert.notEqual(f.run("--check").status, 0);
 });
 
+test("moving checked backend source keeps coverage enforced outside Main", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/main.cjs", "// @ts-check\nmodule.exports = {};\n");
+  await f.put("app/src/backend.cjs", "// @ts-check\nmodule.exports = {};\n");
+  assert.equal(f.run("--write").status, 0);
+  await f.put("../../services/workbench/src/desktop/core/backend.cjs", "");
+  await rename(
+    join(f.root, "app/src/backend.cjs"),
+    join(f.root, "../../services/workbench/src/desktop/core/backend.cjs"),
+  );
+  const moved = JSON.parse(f.run().stdout);
+  assert.equal(moved.metrics.mainCheckedFiles.value, 2);
+  assert.equal(moved.metrics.mainTypeCoverage.value, 1);
+  assert.equal(moved.counts.mainSourceLines, 2);
+  assert.equal(f.run("--check").status, 0);
+  await f.put("../../services/workbench/src/desktop/core/backend.cjs", "module.exports = {};\n");
+  assert.notEqual(f.run("--check").status, 0);
+});
+
 test("active design document growth is tracked while the user entry has a separate ceiling", async (t) => {
   const f = await fixture(t);
   assert.equal(f.run("--write").status, 0);

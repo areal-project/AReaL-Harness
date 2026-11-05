@@ -117,12 +117,12 @@ if (${JSON.stringify(baselineSource || null)}) {
  const Module = require('node:module');
  const compile = Module._extensions['.cjs'] ?? Module._extensions['.js'];
  Module._extensions['.cjs'] = function(module, file) {
-  if (file === ${JSON.stringify(join(gui, "app/src/core/task-catalog.cjs"))}) return module._compile(fs.readFileSync(${JSON.stringify(baselineSource || "")}, 'utf8'), file);
+  if (file === ${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/task-catalog.cjs"))}) return module._compile(fs.readFileSync(${JSON.stringify(baselineSource || "")}, 'utf8'), file);
   return compile(module, file);
  };
 }
-const {CoreBackend} = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
-const {AppProviders} = require(${JSON.stringify(join(gui, "app/src/core/providers.cjs"))});
+const {CoreBackend} = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
+const {AppProviders} = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/providers.cjs"))});
 const record = (kind, fields = {}) => fs.appendFileSync(${JSON.stringify(traceFile)}, JSON.stringify({kind, at:Date.now(), pid:process.pid, ...fields})+'\\n');
 process.on('uncaughtExceptionMonitor', (error, origin) => record('uncaught', {origin, message:error.message}));
 const connectProject = CoreBackend.prototype.connect;

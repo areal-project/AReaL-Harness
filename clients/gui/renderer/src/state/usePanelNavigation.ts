@@ -82,7 +82,22 @@ export function usePanelNavigation(
       });
   };
   const showPanel = (name: string) => {
-    if (!initialReleased || session.readOnly) return;
+    if (!initialReleased) return;
+    if (
+      ["设置", "Skills", "MCP", "高级诊断", "后台服务", "会话配置"].includes(name) &&
+      !(name === "Skills" && thread)
+    ) {
+      const supported = session.services.capabilities?.settings;
+      const target = name === "设置"
+        ? (supported?.[0] ?? "模型服务")
+        : name === "后台服务" ? "高级诊断" : name;
+      if (session.readOnly && !supported?.includes(target)) return;
+      if (!session.readOnly) workspacePanels.exposePanel();
+      setSettingsTab(target);
+      setSettingsOpen(true);
+      return;
+    }
+    if (session.readOnly) return;
     if (name === "预览") {
       void openBrowser();
       return;
@@ -110,11 +125,6 @@ export function usePanelNavigation(
     }
     if (name === "Skills" && thread) {
       workspacePanels.selectPanel("Skills");
-      return;
-    }
-    if (["设置", "Skills", "MCP", "高级诊断", "后台服务", "会话配置"].includes(name)) {
-      setSettingsTab(name === "设置" ? "模型服务" : name === "后台服务" ? "高级诊断" : name);
-      setSettingsOpen(true);
       return;
     }
     if (name === "终端") {
@@ -145,7 +155,10 @@ export function usePanelNavigation(
       if (!initialReleased || event.isComposing) return;
       if (
         session.readOnly &&
-        !((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")
+        !((event.metaKey || event.ctrlKey) && (
+          event.key.toLowerCase() === "k" ||
+          (event.key === "," && session.services.capabilities?.settings?.length)
+        ))
       )
         return;
       if (

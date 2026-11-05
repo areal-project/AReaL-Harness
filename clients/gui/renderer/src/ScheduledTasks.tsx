@@ -1,4 +1,4 @@
-import { useReadOnly } from "./PlatformReadContext.js";
+import { useTaskReadOnly } from "./PlatformReadContext.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScheduledWorkspace } from "@areal/ui/experimental";
 import { DelayedVisible } from "@areal/ui";
@@ -491,7 +491,7 @@ export function ScheduledTaskCards({
   latest?: Set<string>;
   onOpen?: (task: Data) => void;
 }) {
-  const readOnly = useReadOnly();
+  const readOnly = useTaskReadOnly();
   return (
     <>
       {items.flatMap((item) => {

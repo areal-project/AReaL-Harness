@@ -6,12 +6,12 @@ const { once } = require("node:events");
 const { realpath, mkdtemp, mkdir, writeFile, readFile, chmod, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
-const directModule = require("../app/src/core/remote-direct.cjs");
+const directModule = require("@areal/workbench-service/desktop/core/remote-direct.cjs");
 const originalStartDirect = directModule.startDirect;
 let directStartup;
 directModule.startDirect = (...args) =>
   directStartup ? directStartup(...args) : originalStartDirect(...args);
-const { RemoteControl } = require("../app/src/core/remote.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
 after(() => {
   directModule.startDirect = originalStartDirect;
 });
@@ -311,7 +311,7 @@ test("Host disconnect during Direct startup closes the late listener and release
 });
 
 test("retained Desktop hostReconnect restores its closed Remote without replacing the Desktop", async (t) => {
-  const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+  const { DesktopService, PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   const f = await fixture(t);
   const desktop = new DesktopService(f.service.backend, "fixture");
   desktop.schedule = () => {};
@@ -354,7 +354,7 @@ test("retained Desktop hostReconnect restores its closed Remote without replacin
 });
 
 function retainedDesktop(f) {
-  const { DesktopService } = require("../app/src/core/service-protocol.cjs");
+  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   const desktop = new DesktopService(f.service.backend, "fixture");
   desktop.schedule = () => {};
   desktop.backend.reconnectHost = async () => ({

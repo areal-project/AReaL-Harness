@@ -372,7 +372,7 @@ test("ordinary-control policy denies evaluation inside single and nested batch c
 });
 
 test("external deterministic driver preserves cold describe and strict production schemas", async () => {
-  const { validToolInput } = createRequire(import.meta.url)("../app/src/core/browser-tool.cjs");
+  const { validToolInput } = createRequire(import.meta.url)("../../../services/workbench/src/desktop/core/browser-tool.cjs");
   const { validateBrowserCommand } = createRequire(new URL("../app/package.json", import.meta.url))(
     "@areal/browser-automation",
   );
@@ -1064,7 +1064,7 @@ test("generated HTML is standalone, initially absent, and exposes only its publi
   const { validateCommand } = createRequire(import.meta.url)(
     "../packages/workbench/client/desktop-contract.cjs",
   );
-  const { validToolInput } = createRequire(import.meta.url)("../app/src/core/browser-tool.cjs");
+  const { validToolInput } = createRequire(import.meta.url)("../../../services/workbench/src/desktop/core/browser-tool.cjs");
   const ask = async (messages) => {
     let wire = "";
     await driver.fixtureModel(Readable.from([JSON.stringify({ messages })]), {

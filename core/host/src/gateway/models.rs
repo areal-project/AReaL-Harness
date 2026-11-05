@@ -83,6 +83,17 @@ impl Session {
                 && request.get("commandId").is_none(),
             "INVALID_PARAMS"
         );
+        if self.local && self.gui_write {
+            let id = self.project_id(project)?;
+            if let Some(catalog) = self.host.gateway.workbench.creation_catalog(&self.host, &id).await? {
+                self.authorize(Some(project), "observe")?;
+                ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
+                let mut result = json!({"projectId":project,"gatewayGeneration":self.generation,"grantRevision":self.grant["revision"],"serviceGeneration":generation});
+                for key in ["models", "profiles", "defaultProfile", "lastAcceptedModel"] { result[key] = catalog[key].clone(); }
+                ensure!(serde_json::to_vec(&result)?.len() <= 128 * 1024, "LIMIT_EXCEEDED");
+                return Ok(result);
+            }
+        }
         self.model_catalog(project, generation, || self.observed_model(project))
             .await
     }

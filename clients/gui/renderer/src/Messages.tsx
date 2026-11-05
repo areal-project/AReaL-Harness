@@ -116,6 +116,7 @@ export function Messages({
   embedded = false,
   showTurnNavigation = true,
   readOnly = false,
+  interactivePages = !readOnly,
   decisionShown = false,
   afterTurns,
   reserveResponseSpace = !embedded,
@@ -129,6 +130,7 @@ export function Messages({
   embedded?: boolean;
   showTurnNavigation?: boolean;
   readOnly?: boolean;
+  interactivePages?: boolean;
   /** The host renders this thread's pending decision cards (Composer); the transcript tail then does not repeat the wait. */
   decisionShown?: boolean;
   afterTurns?: ReactNode;
@@ -612,7 +614,7 @@ export function Messages({
             </MessageResponse>
           )}
           interactive={(part) =>
-            !readOnly && !inheritedIds.has(turn.id) ? (
+            interactivePages && !inheritedIds.has(turn.id) ? (
               <GenUiCard
                 key={`${entry.id}:${part.offset}`}
                 source={{
@@ -889,7 +891,7 @@ export function Messages({
   const turnStamp = turnContextStamp(
     project,
     localThread,
-    [owner, dark, readOnly, decisionShown, embedded, canFork, forking, ordinary, editable],
+    [owner, dark, readOnly, interactivePages, decisionShown, embedded, canFork, forking, ordinary, editable],
     live,
   ).concat(
     JSON.stringify([
@@ -1434,7 +1436,7 @@ export function Messages({
                                           (ordinary ||
                                             localThread.conversation?.policy?.kind ===
                                               "sideExecutableV2") &&
-                                          !readOnly &&
+                                          interactivePages &&
                                           !isInherited &&
                                           !localThread.desktop?.archived
                                             ? live.onOpenResult

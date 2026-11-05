@@ -18,8 +18,8 @@ import {
 } from "./remote-native-push-fixture.mjs";
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { RemoteControl } = require("../app/src/core/remote.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
 
 function oldRecord(snapshot, commandId) {
   const records = [...snapshot.pending, ...Object.values(snapshot.outcomes)].filter(

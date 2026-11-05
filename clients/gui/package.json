@@ -11,6 +11,7 @@
     "verify:tests": "node scripts/test-manifest.mjs",
     "verify:bundle": "node scripts/bundle-budget.mjs --check",
     "test:health": "node --test scripts/gui-health.test.mjs scripts/design-system-maturity.test.mjs",
+    "test:workbench-backend": "node scripts/workbench-backend-smoke.mjs",
     "test:shared-host-consumers": "node scripts/shared-host-consumers-smoke.mjs",
     "test:manifest": "node --test scripts/test-manifest.test.mjs scripts/test-selection.test.mjs scripts/test-repeat.test.mjs",
     "test:unit": "vp test run",
@@ -34,7 +35,7 @@
     "test:state-projection": "node scripts/state-projection-smoke.mjs",
     "test:recovery": "node --test scripts/desktop-reconciliation.test.cjs && node scripts/recovery-contract-smoke.mjs",
     "test:creation-recovery": "node scripts/pending-project-smoke.mjs --recovery-notices",
-    "test:service-connection": "node --test scripts/service-connection-recovery.test.mjs scripts/gui-terminal-connections.test.cjs scripts/host-lifecycle.test.cjs scripts/host-quit.test.cjs scripts/host-home-permissions.test.cjs scripts/gui-source-blockers.test.cjs",
+    "test:service-connection": "node --test scripts/backend-encryption.test.cjs scripts/service-connection-recovery.test.mjs scripts/gui-terminal-connections.test.cjs scripts/host-lifecycle.test.cjs scripts/host-quit.test.cjs scripts/host-home-permissions.test.cjs scripts/gui-source-blockers.test.cjs",
     "test:service-feedback": "node scripts/service-feedback-smoke.mjs",
     "test:backend-toast-ui": "node scripts/backend-toast-ui-smoke.mjs",
     "test:task-conversation": "node scripts/task-conversation-smoke.mjs",
@@ -213,6 +214,7 @@
   },
   "devDependencies": {
     "@areal/remote-client": "workspace:*",
+    "@areal/workbench-service": "workspace:*",
     "@axe-core/playwright": "4.14.0",
     "fake-indexeddb": "6.2.4",
     "vite-plus": "1.4.0"

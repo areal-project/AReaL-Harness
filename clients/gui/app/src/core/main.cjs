@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { startupTrace } = require("./startup-timing.cjs");
+const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
 const startupTraceMain = startupTrace("gui.startup");
 startupTraceMain.advance("imports");
 
@@ -24,14 +24,14 @@ const { readFile, realpath, stat, writeFile } = require("node:fs/promises");
 const { join, resolve, extname, sep } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
-const { createOwner } = require("./application-owner.cjs");
+const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
 const { setupUpdater } = require("../update/electron.cjs");
-const { showCoreNotification, readNotificationTarget } = require("./notifications.cjs");
+const { showCoreNotification, readNotificationTarget } = require("@areal/workbench-service/desktop/core/notifications.cjs");
 const { MenuBar } = require("./menu-bar.cjs");
 const { fileOpen, fileWorkspace } = require("./file-open.cjs");
 const { PluginArchives } = require("./plugin-archives.cjs");
 const { McpFormResources } = require("./mcp-form-resources.cjs");
-const { McpAppsHost, parseDeepLink } = require("./mcp-apps.cjs");
+const { McpAppsHost, parseDeepLink } = require("@areal/workbench-service/desktop/core/mcp-apps.cjs");
 const { McpMetadataImages } = require("./mcp-apps-images.cjs");
 const { readCommandInvocation, desktopError } = require("@areal/workbench/desktop-contract");
 /** @type {typeof import("@areal/workbench/desktop-contract").validatePreview} */
@@ -41,14 +41,14 @@ const { readBrowserHostRequest, browserHostFailure } = require("./browser-host-r
 const { CorePreview } = require("./preview.cjs");
 const { ComputerControl } = require("./computer-control.cjs");
 const { ExternalCua, upstream: cuaUpstream } = require("./external-cua.cjs");
-const diagnostics = require("./diagnostics.cjs");
+const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 const { startSnapShots } = require("./snapshots/host.cjs");
 const { configureUserData, serviceOptions, serviceHome } = require("./service-config.cjs");
-const { readLibraryStartupSettings } = require("./library.cjs");
-const { applyDesktopSessionNetworkPolicy } = require("./desktop-network.cjs");
+const { readLibraryStartupSettings } = require("@areal/workbench-service/desktop/core/library.cjs");
+const { applyDesktopSessionNetworkPolicy } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
 const { SharedCoreBackend } = require("./service-client.cjs");
 const { recoverConnectedService } = require("./startup-recovery.cjs");
-const { setNativeLocale, nativeText } = require("./native-i18n.cjs");
+const { setNativeLocale, nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
 const { confirmHostQuit, confirmHostStop, hostActivityLabel } = require("./host-quit.cjs");
 const { loadThemes, desktopTheme } = require("../themes");
 
@@ -81,7 +81,7 @@ function startDesktop() {
   }
   if (process.argv.some((value) => value.startsWith("--areal-host-import-source="))) {
     const options = serviceOptions(app);
-    void require("./gui-source.cjs")
+    void require("@areal/workbench-service/desktop/core/gui-source.cjs")
       .prepareGuiSource({
         app,
         guiUserData: applicationOwner.profile,
@@ -307,7 +307,7 @@ function startDesktop() {
         phase ? { state: "quitting", phase } : { state: "idle" },
       );
   }
-  /** @param {QuitAttempt} attempt @param {Extract<import("./diagnostics.cjs").Incident,{type:"quit-stage"}>["stage"]} stage */
+  /** @param {QuitAttempt} attempt @param {Extract<import("@areal/workbench-service/desktop/core/diagnostics.cjs").Incident,{type:"quit-stage"}>["stage"]} stage */
   function recordQuitStage(attempt, stage) {
     if (quitAttempt !== attempt) return;
     diagnostics.record({
@@ -921,12 +921,12 @@ function startDesktop() {
             );
             if (!path.startsWith(guiRoot + sep)) return new Response("Not found", { status: 404 });
             try {
-              const connectSource =
-                extname(path) === ".html" ? await hostConnectSource().catch(() => "") : "";
+              const { connectSource, frameSource } =
+                extname(path) === ".html" ? await hostConnectSource().catch(() => ({ connectSource: "", frameSource: "" })) : { connectSource: "", frameSource: "" };
               return new Response(await readFile(path), {
                 headers: {
                   "Content-Type": mime[extname(path)] ?? "application/octet-stream",
-                  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ${connectSource}; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp:`,
+                  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ${connectSource}; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp: ${frameSource}`,
                 },
               });
             } catch {
@@ -1987,6 +1987,8 @@ function startDesktop() {
             const trace = startupTrace("gui.backend_init");
             trace.advance("initialize");
             try {
+              await windowLoaded;
+              await require("../ipc/generated/host-library.cjs").enableHostLibrary(window, serviceBackend);
               await serviceBackend.init({ automatic: true });
               trace.advance("initial_project");
               if (serviceBackend.status.connected && process.env.AREAL_CORE_WORKSPACE)
@@ -1998,10 +2000,6 @@ function startDesktop() {
             publish();
           })();
           await windowLoaded;
-          void require("../ipc/generated/host-library.cjs").enableHostLibrary(
-            window,
-            serviceBackend,
-          );
           const activityPauses = new Set();
           const sampleActivity = () => {
             refreshHostMenu();

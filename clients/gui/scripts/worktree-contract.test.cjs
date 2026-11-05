@@ -188,7 +188,7 @@ test("browser workspace identity includes the selected thread execution host", (
 });
 
 test("desktop browser callbacks select physical owner without changing logical identity", () => {
-  const { DesktopService } = require("../app/src/core/service-protocol.cjs");
+  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   const physical = { id: "physical", service: { serviceId: "core-isolated" } };
   const backend = {
     projects: new Map([
@@ -210,7 +210,7 @@ test("desktop browser callbacks select physical owner without changing logical i
 });
 
 test("MCP app opening retains logical page identity and physical Core connection", async () => {
-  const { DesktopService } = require("../app/src/core/service-protocol.cjs");
+  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   const calls = [];
   const client = {
     ready: true,

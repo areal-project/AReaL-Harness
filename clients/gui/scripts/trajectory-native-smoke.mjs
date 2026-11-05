@@ -11,8 +11,8 @@ import { fileURLToPath } from "node:url";
 // 验证真实桌面控制、Core 安全重启及后台续传；不访问用户目录或外部模型。
 const gui = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { executeCore } = require("../app/src/core/core-process.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
 const root = await makeTempDir("areal-trajectory-native-");
 const evidence = process.env.AREAL_TRAJECTORY_NATIVE_OUTPUT || root;
 await mkdir(evidence, { recursive: true });

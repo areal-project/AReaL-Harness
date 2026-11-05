@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const scratch = await mkdtemp("/tmp/aw-schedule-");
 const userHome = join(scratch, "user"),
   workspaceBase = join(scratch, "workspaces");

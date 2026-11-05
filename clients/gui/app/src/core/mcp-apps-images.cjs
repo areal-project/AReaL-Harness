@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { record } = require("./service-transport-contract.cjs");
+const { record } = require("@areal/workbench-service/desktop/core/service-transport-contract.cjs");
 const https = require("node:https");
 const dns = require("node:dns/promises");
 const net = require("node:net");

@@ -2,8 +2,8 @@
 "use strict";
 const WebSocket = require("ws");
 const { ProjectionReader } = require("@areal/workbench/state-projection");
-const { PROTOCOL } = require("./service-protocol.cjs");
-const diagnostics = require("./diagnostics.cjs");
+const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 let diagnosticsConnectionGeneration = 0;
 /** @typedef {Record<string,unknown> & {protocol:string,endpoint:string,token:string,identity:string,pid:number}} ServiceMetadata */
 /** @typedef {{resolve:(value:unknown)=>void,reject:(error:unknown)=>void,timer:NodeJS.Timeout,mutation:boolean,requestId:unknown}} PendingRequest */
@@ -65,11 +65,11 @@ class ServiceConnection {
     this.pending = new Map();
     /** @type {import("ws")|undefined} */
     this.socket = undefined;
-    /** @type {ReturnType<InstanceType<typeof import('./service-protocol.cjs').DesktopService>['connectMain']>|undefined} */
+    /** @type {ReturnType<InstanceType<typeof import('@areal/workbench-service/desktop/core/service-protocol.cjs').DesktopService>['connectMain']>|undefined} */
     this.direct = undefined;
     this.nextId = 0;
   }
-  /** @param {InstanceType<typeof import('./service-protocol.cjs').DesktopService>} adapter */
+  /** @param {InstanceType<typeof import('@areal/workbench-service/desktop/core/service-protocol.cjs').DesktopService>} adapter */
   connectMain(adapter) {
     if (this.socket || this.direct) throw new Error("GUI 连接已建立");
     const direct = adapter.connectMain(
@@ -156,7 +156,7 @@ class ServiceConnection {
       maxPayload: 256 * 1024 * 1024,
     }));
     const projection = new ProjectionReader();
-    /** @satisfies {import("./diagnostics.cjs").SocketTarget} */
+    /** @satisfies {import("@areal/workbench-service/desktop/core/diagnostics.cjs").SocketTarget} */
     const target = Object.freeze({
       boundary: "main-desktop",
       hostPid: metadata.pid,
@@ -222,6 +222,27 @@ class ServiceConnection {
       }
       if (message.method === "browserCancel") {
         this.onBrowserCancel?.(message.params);
+        return;
+      }
+      if (message.method === "encryptionRequest") {
+        const request = message.params;
+        if (!browserRequest(request) || typeof request.value !== "string" ||
+            request.value.length > 131072 || !["encrypt", "decrypt"].includes(String(request.operation))) {
+          socket.terminate();
+          return;
+        }
+        // 只在拥有本次后台连接的 Main 内调用原生安全存储，明文不写日志或投影。
+        try {
+          const storage = require("electron").safeStorage;
+          if (!storage.isEncryptionAvailable() || storage.getSelectedStorageBackend?.() === "basic_text")
+            throw new Error("系统安全存储不可用");
+          const result = request.operation === "encrypt"
+            ? storage.encryptString(request.value).toString("base64")
+            : storage.decryptString(Buffer.from(request.value, "base64"));
+          void this.request("encryptionResult", { requestId: request.requestId, result }).catch(() => {});
+        } catch {
+          void this.request("encryptionResult", { requestId: request.requestId, error: true }).catch(() => {});
+        }
         return;
       }
       if (message.method === "terminalRequest") {

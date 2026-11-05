@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { McpAppsHost, appCsp, parseDeepLink } = require("../app/src/core/mcp-apps.cjs");
+const { McpAppsHost, appCsp, parseDeepLink } = require("@areal/workbench-service/desktop/core/mcp-apps.cjs");
 assert.throws(() => appCsp({ connectDomains: ["https://ok.test; script-src *"] }));
 assert.match(appCsp({}), /connect-src 'none'/);
 assert.match(appCsp({ resourceDomains: ["https://*.example.com"] }), /https:\/\/\*.example.com/);
@@ -272,7 +272,7 @@ console.log("Saved-result Main boundary retains exact owner/token, coalesces con
 const { mkdtemp, writeFile, readFile, rm, symlink } = await import("node:fs/promises");
 const { tmpdir } = await import("node:os");
 const { join } = await import("node:path");
-const { authorizeFile, fileRequest } = require("../app/src/core/mcp-apps-files.cjs");
+const { authorizeFile, fileRequest } = require("@areal/workbench-service/desktop/core/mcp-apps-files.cjs");
 const directory = await mkdtemp(join(tmpdir(), "areal-mcp-apps-"));
 try {
   await writeFile(join(directory, "document.txt"), "one");

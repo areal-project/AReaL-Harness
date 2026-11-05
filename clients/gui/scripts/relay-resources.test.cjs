@@ -5,7 +5,7 @@ const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createServer } = require("node:net");
-const { buildRelayResources } = require("../app/src/core/relay-resources.cjs");
+const { buildRelayResources } = require("@areal/workbench-service/desktop/core/relay-resources.cjs");
 
 test("portable Relay bundle runs with its own dependency and only exports Remote assets", async (t) => {
   const home = await mkdtemp(join(tmpdir(), "areal-relay-bundle-"));

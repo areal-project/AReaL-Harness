@@ -33,7 +33,7 @@ await checkDmgSize(join(input, `AReaLHarness-${version}-macos-arm64.dmg`));
 const resources = join(input, state.appName, "Contents/Resources");
 const config = JSON.parse(await readFile(join(resources, "areal-update.json"), "utf8"));
 assert.deepEqual(config, { engine: "electron", feedUrl: githubFeedUrl });
-const core = require("../app/src/core/bundle.cjs").verifyCoreBundle(resources, {
+const core = require("../../../services/workbench/src/desktop/core/bundle.cjs").verifyCoreBundle(resources, {
   hashes: true,
 }).manifest;
 assert.equal(core.profile, "release");

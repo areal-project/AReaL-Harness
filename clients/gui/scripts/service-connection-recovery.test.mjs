@@ -19,11 +19,11 @@ import { tmpdir } from "node:os";
 import { once } from "node:events";
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
-const { createOwner } = require("../app/src/core/application-owner.cjs");
-const { PROTOCOL, COMMAND_CONTRACT } = require("../app/src/core/service-protocol.cjs");
+const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
+const { PROTOCOL, COMMAND_CONTRACT } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { serviceIdentity } = require("../app/src/core/service-config.cjs");
 const { WebSocketServer } = require("../app/node_modules/ws");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -93,7 +93,7 @@ test("disposal during control read prevents initialization", async (t) => {
 });
 
 test("historical project aliases authenticate Host ownership and explicit stop receipts", async (t) => {
-  const local = require("../app/src/core/local-service.cjs");
+  const local = require("@areal/workbench-service/desktop/core/local-service.cjs");
   const home = await realpath(await mkdtemp(join(tmpdir(), "areal-host-ownership-")));
   t.after(() => rm(home, { recursive: true, force: true }));
   const id = "111111111111111111111111";
@@ -1622,15 +1622,15 @@ test("deployment identity tracks actual executable content and ignores mtime alo
   }
 });
 
-test("deployment identity includes split desktop contract content", async (t) => {
+test("deployment identity includes split contracts and relocated workbench domains", async (t) => {
   const f = await startupFixture(t);
   const deployment = join(f.home, "deployment");
   const core = join(deployment, "src/core");
   await mkdir(core, { recursive: true });
-  for (const name of ["bundle.cjs", "service-config.cjs"])
+  for (const name of ["service-config.cjs"])
     await cp(require.resolve("../app/src/core/" + name), join(core, name));
   await cp(
-    require.resolve("../app/src/workspace-files"),
+    require.resolve("@areal/workbench-service/desktop/workspace-files.js"),
     join(deployment, "src/workspace-files.js"),
   );
   const modules = join(deployment, "node_modules/@areal");
@@ -1645,6 +1645,10 @@ test("deployment identity includes split desktop contract content", async (t) =>
         recursive: true,
       });
       await cp(join(originalModules, name, "package.json"), join(modules, name, "package.json"));
+    } else if (name === "workbench-service") {
+      await mkdir(join(modules, name));
+      await cp(join(originalModules, name, "src"), join(modules, name, "src"), { recursive: true });
+      await cp(join(originalModules, name, "package.json"), join(modules, name, "package.json"));
     } else await symlink(join(originalModules, name), join(modules, name), "dir");
   }
   const { serviceIdentity: identity } = require(join(core, "service-config.cjs"));
@@ -1658,6 +1662,12 @@ test("deployment identity includes split desktop contract content", async (t) =>
     "split protocol edits must mark the retained backend for update",
   );
   await writeFile(catalog, content);
+  assert.equal(await identity(f.backend.options), before);
+  const domain = join(modules, "workbench-service/src/domains/feedback.cjs");
+  const original = await readFile(domain, "utf8");
+  await writeFile(domain, original + "\n// 兼容性回归：迁出领域仍参与后台身份。\n");
+  assert.notEqual(await identity(f.backend.options), before);
+  await writeFile(domain, original);
   assert.equal(await identity(f.backend.options), before);
 });
 

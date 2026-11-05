@@ -36,7 +36,11 @@ pub enum UpdateCommand {
 }
 #[derive(Subcommand)]
 pub enum WebCommand {
-    Approve { request_id: String },
+    Approve {
+        request_id: String,
+        #[arg(long = "scope", value_delimiter = ',', default_value = "observe", value_parser = ["observe", "submit", "approve", "manage"])]
+        scopes: Vec<String>,
+    },
     Devices,
     Revoke { device_id: String },
 }
@@ -104,11 +108,11 @@ pub enum HostCommand {
 pub async fn execute(command: HostCommand) -> Result<()> {
     let value = match command {
         HostCommand::Web {
-            action: WebCommand::Approve { request_id },
+            action: WebCommand::Approve { request_id, scopes },
         } => serde_json::to_value(
             Client::connect()
                 .await?
-                .approve_browser(&request_id)
+                .approve_browser_with_scopes(&request_id, &scopes.iter().map(String::as_str).collect::<Vec<_>>())
                 .await?,
         )?,
         HostCommand::Web {

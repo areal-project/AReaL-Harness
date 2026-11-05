@@ -344,9 +344,7 @@ impl Engine {
             !bindings.can_start_without_tool_host()
                 && bindings.host.as_ref().is_none_or(|host| host.is_closed())
         } {
-            return Err(invalid(
-                "tool host unavailable; resume with its owner before dispatch",
-            ));
+            return Err(Error::ToolHostUnavailable);
         }
         if state.thread.turns.iter().flat_map(|t|&t.items).any(|i|matches!(i,Item::DynamicToolCall{execution,..} if execution.inspection.is_none() && (execution.outcome==areal_protocol::ToolOutcome::Unknown || execution.hooks.iter().any(|h|h.outcome==areal_protocol::ToolOutcome::Unknown)))){return Err(invalid("UNKNOWN requires operator inspection"));}
         if state.thread.turns.iter().flat_map(|turn| &turn.items).any(|item| matches!(item,

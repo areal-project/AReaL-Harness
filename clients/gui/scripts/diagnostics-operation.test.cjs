@@ -3,7 +3,7 @@ const { test } = require("node:test");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const diagnostics = require("../app/src/core/diagnostics.cjs");
+const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 
 test("operations isolate concurrent events and export only projected fields", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "diagnostics-operation-"));

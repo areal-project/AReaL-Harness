@@ -308,9 +308,9 @@ const entryAssets = [...builtEntry.matchAll(/(?:src|href)="\.\/(assets\/[^"]+\.(
 );
 const sourcePaths = [
   "app/src/core/main.cjs",
-  "app/src/core/service-main.cjs",
+  "../../services/workbench/src/desktop/core/service-main.cjs",
   "app/src/core/service-client.cjs",
-  "app/src/core/backend.cjs",
+  "../../services/workbench/src/desktop/core/backend.cjs",
   "renderer/src/Messages.tsx",
   "scripts/service-reopen-smoke.mjs",
   "scripts/model-fixture.mjs",

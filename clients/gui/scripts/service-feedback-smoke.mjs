@@ -49,7 +49,7 @@ const fixture = await applicationFixture(
   gui,
   join(scratch, "app"),
   `
-const coreProcess = require(${JSON.stringify(join(gui, "app/src/core/core-process.cjs"))});
+const coreProcess = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/core-process.cjs"))});
 const execute = coreProcess.executeCore;
 coreProcess.executeCore = (binary, args, options) => {
   if (args[0] === 'service' && args[1] === 'ensure' && args.includes(${JSON.stringify(rejectedWorkspace)})
@@ -61,7 +61,7 @@ coreProcess.executeCore = (binary, args, options) => {
   }
   return execute(binary, args, options);
 };
-const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const startProject = CoreBackend.prototype.startProject;
 CoreBackend.prototype.startProject = async function (...args) {
   while (require('node:fs').existsSync(${JSON.stringify(preparationGate)})) await new Promise(resolve => setTimeout(resolve, 25));

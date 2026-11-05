@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { record, threadRead, part } = require("./remote-core-decoder.cjs");
+const { record, threadRead, part } = require("@areal/workbench-service/desktop/core/remote-core-decoder.cjs");
 const { basename } = require("node:path");
 /** @param {Record<string,unknown>|null|undefined} value @param {string[]} fields */
 const pick = (value, fields) =>
@@ -10,7 +10,7 @@ const pick = (value, fields) =>
 
 // Explicit projection: neither backend.snapshot() nor arbitrary Core RPC results
 // may cross this boundary. User-authored task contents remain intentionally visible.
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {{projects:string[]}} device */
+/** @param {InstanceType<typeof import("@areal/workbench-service/desktop/core/backend.cjs").CoreBackend>} backend @param {{projects:string[]}} device */
 function projectSnapshot(backend, device) {
   /** @type {unknown} */
   const snapshot = backend.snapshot();
@@ -116,7 +116,7 @@ function projectSnapshot(backend, device) {
       }),
   };
 }
-/** @param {InstanceType<typeof import("./service-protocol.cjs").DesktopService>} service @param {{projects:string[]}} device @param {unknown} message */
+/** @param {InstanceType<typeof import("@areal/workbench-service/desktop/core/service-protocol.cjs").DesktopService>} service @param {{projects:string[]}} device @param {unknown} message */
 async function remoteCommand(service, device, message) {
   if (!record(message) || typeof message.method !== "string") throw new Error("手机端不支持此操作");
   if (message.method === "snapshot") return projectSnapshot(service.backend, device);
@@ -126,7 +126,7 @@ async function remoteCommand(service, device, message) {
     typeof params.projectId !== "string" ||
     !device.projects.includes(params.projectId) ||
     !service.backend.saved.some(
-      (/** @type {import("./project-index.cjs").SavedProject} */ project) =>
+      (/** @type {import("@areal/workbench-service/desktop/core/project-index.cjs").SavedProject} */ project) =>
         project.id === params.projectId,
     )
   )

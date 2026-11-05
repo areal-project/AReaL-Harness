@@ -33,11 +33,11 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), ".."),
   root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron, chromium } = require("playwright-core");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { DesktopService } = require("../app/src/core/service-protocol.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { serviceIdentity } = require("../app/src/core/service-config.cjs");
-const { RemoteControl } = require("../app/src/core/remote.cjs");
-const { createOwner } = require("../app/src/core/application-owner.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
+const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
 const WebSocket = require("ws");
 const scratch = await makeTempDir("areal-remote-rc04-");
 // Share one fixture app identity with the externally hosted DesktopService.
@@ -46,7 +46,7 @@ const application = await applicationFixture(
   gui,
   join(scratch, "application"),
   `
-require(${JSON.stringify(join(gui, "app/src/core/application-owner.cjs"))}).createOwner = profile => {
+require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/application-owner.cjs"))}).createOwner = profile => {
   require('node:assert/strict').equal(require('node:fs').realpathSync(profile), ${JSON.stringify(applicationOwner.profile)});
   return ${JSON.stringify(applicationOwner)};
 };`,

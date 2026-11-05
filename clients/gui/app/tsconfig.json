@@ -11,5 +11,6 @@
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "typeRoots": ["node_modules/@types", "node_modules"]
   },
-  "include": ["src/**/*.cjs", "src/**/*.js", "src/**/*.ts"]
+  "include": ["src/**/*.cjs", "src/**/*.js", "src/**/*.ts", "../../../services/workbench/src/**/*.cjs", "../../../services/workbench/src/**/*.js", "../../../services/workbench/src/**/*.ts"],
+  "exclude": ["../../../services/workbench/src/assets", "../../../services/workbench/src/generated"]
 }

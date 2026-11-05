@@ -11,8 +11,8 @@ const require = createRequire(import.meta.url);
 const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
   "@areal/client/node",
 );
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { isAwaitingResponse } = require("../app/src/core/project-state.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { isAwaitingResponse } = require("@areal/workbench-service/desktop/core/project-state.cjs");
 const root = await realpath(await mkdtemp("/tmp/ah-gui-journal-"));
 const binary = resolve(process.env.AREAL_CORE_BIN ?? ".local/shared-host-bin/areal");
 const home = join(root, "host-home");

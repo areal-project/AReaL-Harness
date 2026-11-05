@@ -2,6 +2,10 @@
 
 # 测试
 
+共享业务优先在 Web 与真实 Host 服务上用隔离数据验收，不以 GUI 打包为常规前置。窗口、系统加密、浏览器视图和电脑控制等 Electron 专属能力才启动桌面；发行资源、签名与升级仍在对应发行任务单独验证。协议测试、页面交互、原生与发行包证据分别记录，不互相替代。
+
+工作台后台冒烟可按领域运行，例如 `pnpm --dir clients/gui test:workbench-backend --domain=providers`。支持 library、trajectory、feedback、tasks、manage、worktree、providers、lifecycle，可组合；省略参数运行完整链路。每次运行使用独立数据目录；停机任务目录和运行中任务管理分别初始化不同项目。开发时选择目标领域及受影响回归，收尾运行完整链路。协议冒烟不替代真实 Web 页面操作。
+
 双产品对照复用同一合同的[六条基线旅程](conversation-reading-acceptance.md#双产品基线)与共享素材生成器。运行报告区分本轮实测、历史复用、源码推断和未验证，不以开发服务器启动代表用户路径通过。
 
 桌面对话与 Composer 按[体验验收合同](conversation-reading-acceptance.md)先定义输入意图、上下文恢复、提交事实、完整性、可读时机和阅读位置标准，再设计过程与终态用例，随后进行设计、实现和统一验收。单条会话最终加载完整不能替代加载过程与交互检查。

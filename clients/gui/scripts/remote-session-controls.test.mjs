@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const {validateControl,nativeControl}=require('../app/src/core/remote-session-controls.cjs');
+const {validateControl,nativeControl}=require('@areal/workbench-service/desktop/core/remote-session-controls.cjs');
 test('Remote controls reject arbitrary Core fields and targets',()=>{
   for(const params of [
     {threadId:'t',operation:'shell',expectedRevision:1},

@@ -3,7 +3,7 @@ import test from "node:test";
 import { createRequire } from "node:module";
 import { MobileWorkspace } from "../renderer/src/mobile/mobile-workspace.mjs";
 const require = createRequire(import.meta.url);
-const { historyPage } = require("../app/src/core/remote-session-projection.cjs");
+const { historyPage } = require("@areal/workbench-service/desktop/core/remote-session-projection.cjs");
 const scope = ["project", "service", "subscription", "thread"];
 const turn = (index) => ({
   id: `t${index}`,

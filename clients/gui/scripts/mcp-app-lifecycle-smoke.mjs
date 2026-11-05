@@ -380,7 +380,7 @@ async function selected() {
     .getByTestId("areal-workbench")
     .evaluate((el) => ({ projectId: el.dataset.projectId, threadId: el.dataset.threadId }));
 }
-const { builtinSkill, BUILTIN_SKILL_ID } = require("../app/src/core/builtin-skills.cjs");
+const { builtinSkill, BUILTIN_SKILL_ID } = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
 await builtinSkill(join(scratch, "core"), BUILTIN_SKILL_ID);
 try {
   app = await electron.launch({

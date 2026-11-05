@@ -8,7 +8,7 @@ import { createRequire } from 'node:module';
 // missing/old CLI; malformed/unknown JSON; login/HTTPS unknown; collision/drift;
 // unsafe origin/target; failed pending persistence; timeout/output bounds; own cleanup.
 const require = createRequire(import.meta.url);
-const { createRemoteNetworkAdapter, validateHttpsOrigin } = require('../app/src/core/remote-network.cjs');
+const { createRemoteNetworkAdapter, validateHttpsOrigin } = require('@areal/workbench-service/desktop/core/remote-network.cjs');
 const root = await mkdtemp(path.join(tmpdir(), 'remote-network-smoke-'));
 const binary = path.join(root, 'tailscale fixture; no-shell');
 const statePath = path.join(root, 'state.json');

@@ -448,8 +448,8 @@ async function benchmarkSourceSnapshot() {
     ...Object.fromEntries(
       [
         "app/src/main.cjs",
-        "app/src/core/browser-tool.cjs",
-        "app/src/core/service-protocol.cjs",
+        "../../services/workbench/src/desktop/core/browser-tool.cjs",
+        "../../services/workbench/src/desktop/core/service-protocol.cjs",
         "app/src/core/preview-native/native-targets.cjs",
         "packages/browser-automation/src/upstream/browser/browserPlaywrightLocatorExecutor.ts",
         "app/src/core/preview.cjs",
@@ -2039,7 +2039,7 @@ try {
   if (!passed) process.exitCode ||= 1;
   const files = [
     "scripts/automation-core-smoke.mjs",
-    "app/src/core/browser-tool.cjs",
+    "../../services/workbench/src/desktop/core/browser-tool.cjs",
     "app/src/core/computer-control.cjs",
     "app/src/core/preview.cjs",
     "app/src/core/agent-dialog-presentation.cjs",

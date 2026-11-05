@@ -37,7 +37,7 @@ assert.ok(
 const executable = packaged ? resolve(process.env.AREAL_GUI_EXECUTABLE) : require("electron");
 const resources = packaged ? join(dirname(dirname(executable)), "Resources") : null;
 const bundled = packaged
-  ? require("../app/src/core/bundle.cjs").verifyCoreBundle(resources, { hashes: true })
+  ? require("../../../services/workbench/src/desktop/core/bundle.cjs").verifyCoreBundle(resources, { hashes: true })
   : null;
 const coreBinary =
   bundled?.paths.areal ?? process.env.AREAL_CORE_BIN ?? resolve(root, "target/debug/areal");
@@ -1871,7 +1871,7 @@ try {
   const files = [
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",
-    "app/src/core/service-protocol.cjs",
+    "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "app/src/core/browser-navigation.cjs",
     "app/src/core/preview-native/navigation.cjs",
     "app/src/core/preview-native/read-session.cjs",

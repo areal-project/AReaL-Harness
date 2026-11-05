@@ -1,14 +1,14 @@
 // @ts-check
 "use strict";
 const { requiresCurrentCommands } = require("./service-command-compatibility.cjs");
-const { operationCore, observedOperation } = require("./receipt-contract.cjs");
+const { operationCore, observedOperation } = require("@areal/workbench-service/desktop/core/receipt-contract.cjs");
 const { commandSemantics, desktopError } = require("@areal/workbench/desktop-contract");
-const { startupTrace } = require("./startup-timing.cjs");
+const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
 const { randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, open, writeFile, rename, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { HostClient } = require("@areal/client/node");
-const { executeCore } = require("./core-process.cjs");
+const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
 const {
   hostReference,
@@ -16,9 +16,9 @@ const {
   projectHostReceipt,
   readOfflineHostReceipt,
 } = require("./host-lifecycle.cjs");
-const { GuiTerminalConnections } = require("./gui-terminal-connections.cjs");
+const { GuiTerminalConnections } = require("@areal/workbench-service/desktop/core/gui-terminal-connections.cjs");
 const { ServiceConnection } = require("./service-connection.cjs");
-const { readServicePacket } = require("./service-state.cjs");
+const { readServicePacket, ownsThread, retainsThreadResources } = require("@areal/workbench-service/desktop/core/service-state.cjs");
 const {
   readGuiProcesses,
   readGuiThreadIdentity,
@@ -26,9 +26,9 @@ const {
   readGuiProcessResponse,
 } = require("./gui-resource-contract.cjs");
 const { readReferences, readLifecycleResponse } = require("./service-control.cjs");
-const { PROTOCOL, COMMAND_CONTRACT, encodeMedia, decodeMedia } = require("./service-protocol.cjs");
-const { genUiScope, createGenUiState } = require("./gen-ui-state.cjs");
-const { inspectCoreCapabilities } = require("./core-capabilities.cjs");
+const { PROTOCOL, COMMAND_CONTRACT, encodeMedia, decodeMedia } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const { genUiScope, createGenUiState } = require("@areal/workbench-service/desktop/core/gen-ui-state.cjs");
+const { inspectCoreCapabilities } = require("@areal/workbench-service/desktop/core/core-capabilities.cjs");
 const { checkHostPrerequisites } = require("./host-prerequisites.cjs");
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -107,20 +107,20 @@ async function waitForProcessExit(pid) {
   }
 }
 
-/** @typedef {import('./service-connection.cjs').ServiceMetadata|ReturnType<InstanceType<typeof import('./service-protocol.cjs').DesktopService>['connectMain']>['metadata']} Metadata */
+/** @typedef {import('./service-connection.cjs').ServiceMetadata|ReturnType<InstanceType<typeof import('@areal/workbench-service/desktop/core/service-protocol.cjs').DesktopService>['connectMain']>['metadata']} Metadata */
 /** @typedef {import('./service-control.cjs').LifecycleReference} Reference */
 /** @typedef {import('./service-control.cjs').LifecycleResponse} Receipt */
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
-/** @typedef {import('./resource-recovery.cjs').Notify} Notify */
+/** @typedef {import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify} Notify */
 /** @typedef {{projectId:string,threadId:string,id:string}} GuiTerminal */
 /** @typedef {{projectId:string,sourceThreadId:string,requestId:string,threadId?:string,closeRequestId?:string}} GuiSideChat */
 /** @typedef {{focused:boolean,idleSeconds:number,suspended?:boolean}} Activity */
-/** @typedef {{kind:import('./lifecycle-operations.cjs').LifecycleKind,mode?:import('./lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string,migration?:unknown}} LifecycleOptions */
+/** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string,migration?:unknown}} LifecycleOptions */
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
 /** @typedef {{stopped:boolean,operation:import('@areal/workbench/desktop-contract/shared').LifecycleViewOperation,receipt?:import('./host-lifecycle.cjs').HostReceipt}} HostLifecycleResult */
 // GUI-local connection/projection only. Control intent lives in GUI userData;
 // shared Core history and execution state remain owned by the service.
-/** @typedef {Omit<Partial<import('./backend.cjs').CoreBackendOptions>,'home'|'onChange'> & {home:string,configHome?:string,app:Pick<Electron.App,'getPath'> & Partial<Pick<Electron.App,'isPackaged'|'getAppPath'>>,onChange?:()=>void,onNotification?:(value:unknown)=>void,onNotificationOpen?:(value:unknown)=>void,onRecoveryAttention?:(value:unknown)=>void,prerequisiteCheck?:typeof checkHostPrerequisites}} SharedBackendOptions */
+/** @typedef {Omit<Partial<import('@areal/workbench-service/desktop/core/backend.cjs').CoreBackendOptions>,'home'|'onChange'> & {home:string,configHome?:string,app:Pick<Electron.App,'getPath'> & Partial<Pick<Electron.App,'isPackaged'|'getAppPath'>>,onChange?:()=>void,onNotification?:(value:unknown)=>void,onNotificationOpen?:(value:unknown)=>void,onRecoveryAttention?:(value:unknown)=>void,prerequisiteCheck?:typeof checkHostPrerequisites}} SharedBackendOptions */
 class SharedCoreBackend {
   /** @param {SharedBackendOptions} options */
   constructor({
@@ -134,7 +134,7 @@ class SharedCoreBackend {
   }) {
     /** @type {InstanceType<typeof ServiceConnection>|null|undefined} */
     this.connection = undefined;
-    /** @type {Awaited<ReturnType<typeof import('./service-main.cjs').createMainDesktop>>|undefined} */
+    /** @type {Awaited<ReturnType<typeof import('@areal/workbench-service/desktop/core/service-main.cjs').createMainDesktop>>|undefined} */
     this.mainDesktop = undefined;
     /** @type {Metadata|undefined} */
     this.metadata = undefined;
@@ -200,7 +200,7 @@ class SharedCoreBackend {
     this.home = options.home;
     this.onChange = onChange;
     this.genUiState = createGenUiState(this.home);
-    /** @type {import("./service-state.cjs").ServiceSnapshot} */
+    /** @type {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceSnapshot} */
     this.value = {
       library: {
         projects: {},
@@ -213,7 +213,7 @@ class SharedCoreBackend {
       },
       projects: [],
     };
-    /** @type {Partial<import('./resource-observation.cjs').RecoveryService>} */
+    /** @type {Partial<import('@areal/workbench-service/desktop/core/resource-observation.cjs').RecoveryService>} */
     this.status = { connected: false };
     this.sequence = -1;
     /** @type {{state:string,message?:string,recovery?:string,prerequisite?:unknown}} */
@@ -254,15 +254,15 @@ class SharedCoreBackend {
       },
       flush: async () => {},
     };
-    /** 一套协议过渡开关；后台重连后重发。 @type {{library:boolean}|null} */
+    /** 一套协议过渡开关；后台重连后重发。 @type {{library:boolean,backend?:boolean}|null} */
     this.oneProtocol = null;
   }
-  /** @param {{library:boolean}} flags */
+  /** @param {{library:boolean,backend?:boolean}} flags */
   setOneProtocol(flags) {
     this.oneProtocol = flags;
     if (this.status.connected) void this.connection?.request("oneProtocol", flags).catch(() => {});
   }
-  /** @param {import("./gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
+  /** @param {import("@areal/workbench-service/desktop/core/gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
   genUiScope(project, threadId) {
     return genUiScope(this.home, project, threadId);
   }
@@ -288,32 +288,11 @@ class SharedCoreBackend {
   }
   /** @param {string} projectId @param {string} threadId */
   ownsThread(projectId, threadId) {
-    const project = this.value.library.projects[projectId];
-    if (record(project) && project.hidden) return false;
-    const thread = this.saved.find((p) => p.id === projectId)?.state?.threads?.[threadId];
-    return record(thread) && !(record(thread.desktop) && thread.desktop.archived);
+    return ownsThread(this.value, projectId, threadId);
   }
   /** @param {string} projectId @param {string} threadId */
   retainsThreadResources(projectId, threadId) {
-    const project = this.saved.find((project) => project.id === projectId);
-    const thread = project?.state?.threads?.[threadId];
-    if (
-      !record(thread) ||
-      !record(thread.conversation) ||
-      !record(thread.conversation.policy) ||
-      thread.conversation.policy.kind !== "sideExecutableV2" ||
-      !record(thread.desktop) ||
-      thread.desktop.archived !== true
-    )
-      return false;
-    return !Object.values(record(project?.outcomes) ? project.outcomes : {}).some(
-      (outcome) =>
-        record(outcome) &&
-        outcome.method === "areal/side/close" &&
-        outcome.threadId === threadId &&
-        outcome.accepted === true &&
-        outcome.cleanupConfirmed === true,
-    );
+    return retainsThreadResources(this.value, projectId, threadId);
   }
   snapshot() {
     const desktopCapabilities = {
@@ -347,7 +326,7 @@ class SharedCoreBackend {
     this.sequence = checked.sequence;
     this.value = checked.snapshot;
     this.status = {
-      ...require("./resource-observation.cjs").readRecoveryService(checked.service),
+      ...require("@areal/workbench-service/desktop/core/resource-observation.cjs").readRecoveryService(checked.service),
       ...checked.service,
     };
     this.connectionState = this.foreignOwner
@@ -427,7 +406,8 @@ class SharedCoreBackend {
           return;
         }
         this.loadReferences(control);
-        if (await this.attach({ passive: true })) {
+        if (this.oneProtocol?.backend) await this.initializeHostBackend({ recover: true });
+        if (this.oneProtocol?.backend || await this.attach({ passive: true })) {
           for (const reference of this.lifecycleReferences.values())
             await this.readLifecycle(reference);
         }
@@ -437,6 +417,7 @@ class SharedCoreBackend {
             if (
               desktopError(error).submissionUnknown !== true &&
               (desktopError(error).code === "DISCONNECTED" ||
+                (this.oneProtocol?.backend && desktopError(error).code === "CAPABILITY_UNAVAILABLE") ||
                 (desktopError(error).code === "TIMEOUT" &&
                   desktopError(error).recovery?.kind === "retryRead"))
             )
@@ -525,7 +506,24 @@ class SharedCoreBackend {
       if (desktopError(e).code === "DISCONNECTED") return false;
       throw e;
     }
-    this.foreignOwner = metadata;
+    let hostOwned = false;
+    if (this.oneProtocol?.backend) {
+      const host = new HostClient();
+      try {
+        if (!this.options.hostHome) throw new Error("Host 目录不可用");
+        await host.connect(this.options.hostHome);
+        const status = await host.request("backend.status", {});
+        hostOwned = status.owned === true && status.hostId === host.hostId &&
+          status.generation === host.generation && status.service?.pid === metadata.pid &&
+          status.service?.identity === metadata.identity &&
+          status.service?.desktopGeneration === metadata.desktopGeneration;
+        if (!hostOwned) throw new Error("Host 未确认此后台的所有权，请检查原后台");
+      } catch (error) {
+        connection.close();
+        throw error;
+      } finally { host.close(); }
+    }
+    this.foreignOwner = hostOwned ? null : metadata;
     const identity =
       expectedIdentity ??
       (passive ? (this.metadata?.identity ?? this.identity) : metadata.identity);
@@ -550,8 +548,8 @@ class SharedCoreBackend {
           const packet = await connection.request("hello", {
             protocol: PROTOCOL,
             identity,
-            notifications: false,
-            capabilities: {},
+            notifications: hostOwned && !!this.onNotification,
+            capabilities: hostOwned ? { computerHost: 1, projection: 1 } : {},
           });
           if (this.connection !== connection)
             throw Object.assign(new Error("后台服务连接已变化，请重新连接"), {
@@ -593,6 +591,7 @@ class SharedCoreBackend {
     if (this.lastActivity) void connection.request("activity", this.lastActivity).catch(() => {});
     if (this.oneProtocol) void connection.request("oneProtocol", this.oneProtocol).catch(() => {});
     this.metadata = metadata;
+    if (hostOwned) this.identity = metadata.identity;
     this.exitConfirmation = null;
     if (this.foreignOwner) {
       this.backendUpdate = {
@@ -755,6 +754,11 @@ class SharedCoreBackend {
       await mkdir(this.home, { recursive: true, mode: 0o700 });
       this.home = await realpath(this.home);
       if (this.disposed) throw new Error("GUI 连接已关闭");
+      if (this.oneProtocol?.backend) {
+        await this.initializeHostBackend();
+        trace.finish("ok");
+        return;
+      }
       if (!this.mainDesktop || this.mainDesktop.closed) {
         const legacy = await readFile(join(this.home, "service.json"), "utf8").catch((error) => {
           if (desktopError(error).code === "ENOENT") return null;
@@ -770,10 +774,11 @@ class SharedCoreBackend {
         await this.prerequisiteCheck({ app: { isPackaged: this.app.isPackaged === true } });
         const binary = this.options.binary;
         if (!binary) throw new Error("Core 程序路径不可用");
-        const desktop = await require("./service-main.cjs").createMainDesktop({
+        const desktop = await require("@areal/workbench-service/desktop/core/service-main.cjs").createMainDesktop({
           ...this.options,
           binary,
           home: this.home,
+          encryption: require("electron").safeStorage,
         });
         if (this.disposed) {
           await desktop.close();
@@ -813,6 +818,32 @@ class SharedCoreBackend {
       trace.finish("error", error);
       throw error;
     }
+  }
+  async initializeHostBackend({ recover = false } = {}) {
+    if (this.mainDesktop && !this.mainDesktop.closed)
+      throw new Error("后台切换需要重新打开应用，不能同时运行两个写入者");
+    if (!recover) await this.prerequisiteCheck({ app: { isPackaged: this.app.isPackaged === true } });
+    const options = { ...this.options, home: this.home, userHome: this.options.userHome ?? this.app.getPath("home") };
+    if (!options.binary || !options.hostHome || !options.guiProfile || !options.harnessHome)
+      throw new Error("Host 后台启动配置不完整");
+    // 初次旧凭据导入仍由持有原单实例和 safeStorage 的 Main 完成。
+    const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+    const source = new GuiHostProjects({
+      binary: options.binary, home: options.hostHome,
+      source: { profile: options.guiProfile, coreHome: this.home, legacyServiceHome: options.harnessHome },
+      encryption: require("electron").safeStorage, singletonHeld: true,
+    });
+    try {
+      if (recover) await source.client.connect(options.hostHome);
+      else await source.init();
+      const owner = await source.client.request("backend.ensure", {
+        profile: options.guiProfile, options: { ...options, applicationOwner: undefined },
+      });
+      if (this.disposed) throw new Error("GUI 连接已关闭");
+      if (!(await this.attach({ expectedIdentity: owner.identity })))
+        throw new Error("Host 后台尚未就绪");
+      this.backendUpdate = undefined;
+    } finally { source.close(); }
   }
   /** @param {string} path @returns {Promise<unknown>} */
   async addProject(path) {
@@ -1133,7 +1164,7 @@ class SharedCoreBackend {
   async serviceStatus() {
     if (!this.status.connected) throw new Error("后台尚未连接");
     const connection = this.requireConnection();
-    const projects = require("./resource-observation.cjs").readResourceInspections(
+    const projects = require("@areal/workbench-service/desktop/core/resource-observation.cjs").readResourceInspections(
       await this.resources({ operation: "inspect", includeTasks: true }),
     );
     const { service, snapshot } = readServicePacket(
@@ -1151,7 +1182,7 @@ class SharedCoreBackend {
     );
     return {
       canStop: recoveryView(
-        require("./resource-observation.cjs").readRecoveryService(service),
+        require("@areal/workbench-service/desktop/core/resource-observation.cjs").readRecoveryService(service),
         projects,
       ).ifIdle,
       connected: service.connected,
@@ -1678,7 +1709,7 @@ class SharedCoreBackend {
       const {
         readLifecycleReceipt,
         reconcileLifecycleReceipt,
-      } = require("./lifecycle-operations.cjs");
+      } = require("@areal/workbench-service/desktop/core/lifecycle-operations.cjs");
       const identity = {
         requestId: reference.requestId,
         desktopGeneration: reference.desktopGeneration,
@@ -2052,7 +2083,7 @@ class SharedCoreBackend {
       ...(desktopKind(kind) && operation.phase === "completed" ? { kind: "exited" } : {}),
     };
   }
-  /** @param {boolean} [forUpdate] @param {{kind?:import("./lifecycle-operations.cjs").LifecycleKind,cancel?:boolean,observed?:Observation,migration?:unknown}} [options] */
+  /** @param {boolean} [forUpdate] @param {{kind?:import("@areal/workbench-service/desktop/core/lifecycle-operations.cjs").LifecycleKind,cancel?:boolean,observed?:Observation,migration?:unknown}} [options] */
   async stopService(forUpdate = false, options = {}) {
     return this.requestLifecycle({
       kind: options.kind ?? (forUpdate ? "updateDesktop" : "stopDesktop"),

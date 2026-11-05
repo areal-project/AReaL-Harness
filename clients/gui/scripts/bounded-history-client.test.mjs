@@ -5,18 +5,18 @@ import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
 import { createHash } from "node:crypto";
 import { CoreClient } from "../packages/runtime-client/core.js";
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { WorktreeAdmission } = require("../app/src/core/worktree-admission.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { WorktreeAdmission } = require("@areal/workbench-service/desktop/core/worktree-admission.cjs");
 const {
   validateCommand,
   commandSemantics,
 } = require("../packages/workbench/client/desktop-contract.cjs");
-const { workspaceCommand } = require("../app/src/core/workspace.cjs");
+const { workspaceCommand } = require("@areal/workbench-service/desktop/core/workspace.cjs");
 const {
   readObservationResult,
   readThreadMetadata,
 } = require("../packages/workbench/client/desktop-contract/conversation-history.cjs");
-const { readThreadList } = require("../app/src/core/history-contract.cjs");
+const { readThreadList } = require("@areal/workbench-service/desktop/core/history-contract.cjs");
 
 test("CLI naming configuration is readable without widening desktop create input", () => {
   for (const automaticSessionName of [false, true, null]) {

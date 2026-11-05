@@ -157,9 +157,7 @@ impl Engine {
             && !bindings.can_start_without_tool_host()
             && bindings.host.as_ref().is_none_or(|host| host.is_closed())
         {
-            return Err(Error::Invalid(
-                "dynamic tools require a connected owner".into(),
-            ));
+            return Err(Error::ToolHostUnavailable);
         }
         let thread_id = id();
         let mut thread = Thread {

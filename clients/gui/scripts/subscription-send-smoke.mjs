@@ -157,8 +157,8 @@ const controlPath = join(scratch, "catalog-control.json");
 const catalogGate = join(scratch, "catalog.gate");
 const worktreeGate = join(scratch, "worktree-subscription.gate");
 const bootstrap = (endpoint) => `
-const { AppProviders } = require(${JSON.stringify(join(gui, "app/src/core/providers.cjs"))});
-const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const { AppProviders } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/providers.cjs"))});
+const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const { appendFileSync, existsSync, readFileSync, unlinkSync } = require('node:fs');
 const stamp = value => appendFileSync(${JSON.stringify(auditPath)}, JSON.stringify({ at: Date.now(), ...value }) + String.fromCharCode(10));
 if (!process.argv.includes('--areal-core-service')) {

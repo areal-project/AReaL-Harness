@@ -5,7 +5,7 @@ import { once } from "node:events";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 
 const require = createRequire(import.meta.url);
-const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+const { DesktopService, PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
 const {
   ProjectionEncoder,

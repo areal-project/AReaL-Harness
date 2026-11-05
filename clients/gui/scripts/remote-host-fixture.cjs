@@ -1,7 +1,7 @@
 "use strict";
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
-const { parseRemoteConfig } = require("../app/src/core/remote-config.cjs");
+const { parseRemoteConfig } = require("@areal/workbench-service/desktop/core/remote-config.cjs");
 
 function attachRemoteHostFixture(remote, encryption) {
   let connected = true;

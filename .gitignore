@@ -28,3 +28,7 @@ __pycache__/
 /.local/
 out
 .claude
+
+/services/workbench/node_modules/
+
+/services/workbench/src/generated/

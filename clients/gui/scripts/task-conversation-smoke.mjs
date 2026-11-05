@@ -943,7 +943,7 @@ if (loadingRegression || creationRegression) {
   await writeFile(
     join(launchApp, "bootstrap.cjs"),
     `
-const {CoreBackend}=require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const {CoreBackend}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const {existsSync,appendFileSync,unlinkSync}=require('node:fs');
 const {join}=require('node:path');
 const start=CoreBackend.prototype.start, readConnection=CoreBackend.prototype.readConnection, execute=CoreBackend.prototype.executeCommand;
@@ -1036,7 +1036,7 @@ if (manualRegression || calendarRegression) {
     join(launchApp, "bootstrap.cjs"),
     `
 process.on('uncaughtExceptionMonitor',(error,origin)=>require('node:fs').appendFileSync(${JSON.stringify(manualMainErrors)},JSON.stringify({pid:process.pid,origin,name:error.name,message:error.message,stack:error.stack})+'\\n'));
-const {CoreBackend}=require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const {CoreBackend}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const fs=require('node:fs');
 const connect=CoreBackend.prototype.connect;
 CoreBackend.prototype.connect=async function(...args){
@@ -1091,7 +1091,7 @@ if (dailyStartRegression) {
     join(launchApp, "bootstrap.cjs"),
     `
 const Module=require('node:module'),fs=require('node:fs');
-const target=${JSON.stringify(join(gui, "app/src/core/task-draft.cjs"))};
+const target=${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/task-draft.cjs"))};
 const compile=Module._extensions['.cjs']??Module._extensions['.js'];
 Module._extensions['.cjs']=function(module,file){
  if(file!==target)return compile(module,file);
@@ -1099,7 +1099,7 @@ Module._extensions['.cjs']=function(module,file){
  const clock=${JSON.stringify(dailyClock)};
  module._compile('const Date=class extends globalThis.Date { constructor(...args){super(...(args.length?args:[Number(require("node:fs").readFileSync('+JSON.stringify(clock)+',"utf8"))]));} static now(){return Number(require("node:fs").readFileSync('+JSON.stringify(clock)+',"utf8"));} };\\n'+source,file);
 };
-const {CoreBackend}=require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const {CoreBackend}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const execute=CoreBackend.prototype.executeCommand;
 CoreBackend.prototype.executeCommand=async function(name,request,context){
  const measured=name==='projectless'&&request.operation==='prepare'||name==='manage'&&['taskDraftStart','taskDraftConfirm'].includes(request.operation);

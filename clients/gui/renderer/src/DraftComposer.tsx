@@ -1,3 +1,8 @@
+import {
+  useReadOnly,
+  useConversationSubmitReadOnly,
+  useConversationCreateReadOnly,
+} from "./PlatformReadContext.js";
 import { snapShotCommandEntries } from "./snapshots/shortcut.js";
 import { useSnapShotCapture } from "./snapshots/captureContext.js";
 import { useSnapShotDraft } from "./snapshots/activeDraft.js";
@@ -103,6 +108,9 @@ export function DraftComposer({
   worktree,
   onWorktreeCreated,
 }: DraftComposerProps) {
+  const readOnly = useReadOnly();
+  const conversationSubmitReadOnly = useConversationSubmitReadOnly();
+  const conversationCreateReadOnly = useConversationCreateReadOnly();
   const workspaceFiles = useComposerWorkspaceFiles(readAction, project, draftKey ?? "new");
   const { t } = useI18n();
   const referenceEntries = conversationReferenceEntries(
@@ -216,7 +224,10 @@ export function DraftComposer({
     (entry: Data) => !isIndependentCreation(entry, [unknown, activeCreation?.requestId]),
   );
   const submitDisabled = modelSelectionDisabled || !!blockingPending.length || !effectiveModel;
-  const desktopUnsupported = project.desktopCapabilities?.currentCommands === false;
+  const desktopUnsupported =
+    conversationSubmitReadOnly ||
+    conversationCreateReadOnly ||
+    (!readOnly && project.desktopCapabilities?.currentCommands === false);
   const skills = useComposerSkills({
     project: executionReady
       ? project
@@ -405,7 +416,8 @@ export function DraftComposer({
     }
     const submittedInput = composerInput(value, files);
     if (
-      (desktopUnsupported && !goalMode) ||
+      desktopUnsupported ||
+      (readOnly && goalMode) ||
       submitDisabled ||
       annotationBlocked ||
       sending.has(key) ||
@@ -432,7 +444,7 @@ export function DraftComposer({
     const creationRequestId = crypto.randomUUID();
     try {
       const owner = prepareProject ? await prepareProject() : project;
-      if (owner.desktopCapabilities?.currentCommands === false && !goalMode)
+      if (!readOnly && owner.desktopCapabilities?.currentCommands === false && !goalMode)
         throw new Error("更新后台后可发送消息，草稿已保留。");
       const profile = resolveDraftProfile(owner, profileSelection);
       if ((profileSelection || owner.defaultProfile) && !profile)
@@ -818,7 +830,8 @@ export function DraftComposer({
             workspaceReferencePending ||
             submitDisabled ||
             annotationBlocked ||
-            (desktopUnsupported && !goalMode) ||
+            desktopUnsupported ||
+            (readOnly && goalMode) ||
             (goalMode
               ? !input.text.trim()
               : !input.text.trim() &&
@@ -902,17 +915,21 @@ export function DraftComposer({
                   if (!editLocked) setPlanMode(!plan);
                 },
               },
-              {
-                value: "goal",
-                label: "设置目标",
-                description: goalMode ? "关闭目标模式" : "设置持续目标与停止条件",
-                group: "功能",
-                icon: <GoalIcon />,
-                disabled: editLocked,
-                run: () => {
-                  if (!editLocked) changeGoalMode(!goalMode);
-                },
-              },
+              ...(!readOnly
+                ? [
+                    {
+                      value: "goal",
+                      label: "设置目标",
+                      description: goalMode ? "关闭目标模式" : "设置持续目标与停止条件",
+                      group: "功能" as const,
+                      icon: <GoalIcon />,
+                      disabled: editLocked,
+                      run: () => {
+                        if (!editLocked) changeGoalMode(!goalMode);
+                      },
+                    },
+                  ]
+                : []),
               ...referenceEntries,
               ...appEntries.map((entry) => ({
                 ...entry,

@@ -1,9 +1,9 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { CloudConversations } = require("../app/src/core/cloud-conversations.cjs");
-const { CoreLibrary } = require("../app/src/core/library.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { CloudConversations } = require("@areal/workbench-service/desktop/core/cloud-conversations.cjs");
+const { CoreLibrary } = require("@areal/workbench-service/desktop/core/library.cjs");
 test("Cloud read marks stay local and unknown threads remain rejected", async () => {
   const backend = {
     saved: [{ id: "project" }],
@@ -55,7 +55,7 @@ test("Cloud read marks stay local and unknown threads remain rejected", async ()
 });
 
 test("Cloud bridge bypasses local worktree routing while retaining conversation ownership", async () => {
-  const { CoreWorktrees } = require("../app/src/core/worktrees.cjs");
+  const { CoreWorktrees } = require("@areal/workbench-service/desktop/core/worktrees.cjs");
   const calls = [];
   const backend = {
     saved: [

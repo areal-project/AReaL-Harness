@@ -10,7 +10,7 @@ import { stageCoreApp } from "./stage-app.mjs";
 import { stageMacOSService } from "./stage-macos-service.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
-import relayResources from "../app/src/core/relay-resources.cjs";
+import relayResources from "@areal/workbench-service/desktop/core/relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
 import { buildWorkbenchResources } from "./workbench-resources.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
@@ -105,9 +105,9 @@ const appStage = join(staged, "app");
 const dependencies = await stageCoreApp({ root: gui, destination: appStage });
 if (process.env.AREAL_GUI_RELAY_CA_CERT) {
   const caPath = resolve(process.env.AREAL_GUI_RELAY_CA_CERT);
-  const { normalizeNetworkSetting } = require(join(gui, "app/src/core/desktop-network.cjs"));
+  const { normalizeNetworkSetting } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
   normalizeNetworkSetting("httpProxyCaCertPath", caPath);
-  await cp(caPath, join(appStage, "assets/relay-ca.pem"));
+  await cp(caPath, join(appStage, "node_modules/@areal/workbench-service/src/assets/relay-ca.pem"));
 }
 const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
 const updateConfig = join(staged, "areal-update.json");
@@ -152,7 +152,7 @@ if (process.env.AREAL_GUI_CORE_BUNDLE) {
     { cwd: root, stdio: "inherit" },
   );
 }
-const { verifyCoreBundle } = require(join(gui, "app/src/core/bundle.cjs"));
+const { verifyCoreBundle } = require(join(gui, "../../services/workbench/src/desktop/core/bundle.cjs"));
 const coreBundle = verifyCoreBundle(output, { hashes: true });
 if (release)
   assert.equal(

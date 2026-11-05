@@ -2830,8 +2830,8 @@ try {
   const files = [
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",
-    "app/src/core/backend.cjs",
-    "app/src/core/service-protocol.cjs",
+    "../../services/workbench/src/desktop/core/backend.cjs",
+    "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "renderer/src/Preview.tsx",
     "renderer/src/UnknownToolInspection.tsx",
     "scripts/browser-remaining-smoke.mjs",

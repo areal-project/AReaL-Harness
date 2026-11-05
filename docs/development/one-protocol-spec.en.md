@@ -23,7 +23,7 @@ Baselines: AReaL-Harness `codex/shared-host` `7611582f`; T3 Code `8760d063` (`do
 
 ## Handing work to Codex
 
-Implement A0 → A4 as one task, in order and continuously, without waiting for H4 acceptance to finish: branch from `codex/shared-host` and merge H4 in once it lands. Packages do not wait for maintainer review; each package is its own local commit and the next package starts only after every completion condition of the current one is met (including the installed-package journey with a copy of real data, except for A0). After all packages, run OP-01 to OP-08 in full, then open one PR. Steps that delete an old path run only after their package's acceptance passes. Prompts cite the matching section and the "Execution rules" below.
+Implement A0 → A4 as one task, in order and continuously, without waiting for H4 acceptance to finish: branch from `codex/shared-host` and merge H4 in once it lands. Packages do not wait for maintainer review; each package is its own local commit and the next package starts only after every completion condition of the current one is met (including the journey in the appropriate environment with a copy of real data, except for A0). After all packages, run OP-01 to OP-08 in full, then open one PR. Steps that delete an old path run only after their package's acceptance passes. Prompts cite the matching section and the "Execution rules" below.
 
 - Use high reasoning effort throughout. The A3 workbench service design note goes into the commit and may be implemented directly; stop only for "Stop and ask" items.
 - General repository rules (layering, paired Chinese/English docs, test layers, PR template) follow AGENTS.md and are not repeated here.
@@ -33,8 +33,8 @@ Implement A0 → A4 as one task, in order and continuously, without waiting for 
 
 These turn problems from the previous shared Host migration into hard requirements.
 
-1. **Report progress by real journeys.** The first line of every report answers: can the maintainer's real old environment (installed package plus a copy of real data) complete this package's acceptance journey? Unit tests and static checks come after. Partial passes never replace that answer.
-2. **Connect end to end first, then fill in.** The first step of every package is to run the shortest end-to-end journey (even one method) on the packaged build with a copy of real data, proving every wire reaches the Host. Only then write the full implementation and unit tests. Installed-package verification is never left to the end. A0 is static only and is accepted by conformance tests and freeze checks; installed-package journeys with real data start at A1.
+1. **Report progress by real journeys.** State whether the appropriate environment and data copy can complete the package journey before listing unit tests and static checks. Shared business uses Web and real Host services as its main acceptance environment; start the desktop only for Electron-specific capabilities. GUI packaging is not a routine functional-test prerequisite. Protocol tests do not replace page interaction, and Web evidence does not replace native or release-package evidence.
+2. **Connect end to end first, then fill in.** Run the shortest end-to-end journey (even one method) in the appropriate environment with isolated data to prove the wiring reaches Host, then fill in the implementation and failure paths. Verify existing-data compatibility with real-data copies. A0 needs only conformance and freeze checks. Release resources, signing and upgrades are accepted separately in their corresponding release tasks.
 3. **Close one package at a time.** Do not start the next package until every completion condition of the current one is met. Problems that belong to another package or to the shared Host go into "Known issues" and are reported, not fixed on the side.
 4. **Keep historical facts separate from the current switch.** This spec migrates no storage and rewrites no history. Every data-path switch sits behind a flag and can fall back to the old IPC path, which stays intact during the switch. An UNKNOWN on a historical command affects only that command's display and lookup; it must not block a project from working, a flag from being turned on, or a package from completing.
 5. **Stop when stuck and come back with options.** If the same blocker survives two rounds of investigation without new evidence, stop searching. Write a table of what can and cannot be proven, and give two or three options in which the software carries the complexity, for the maintainer to choose. Never work around it by disabling a project, skipping tests, loosening assertions or deleting data.
@@ -64,7 +64,7 @@ TUI / CLI ───── Unix socket ───────┤
 | Component | Owns | Does not own |
 | --- | --- | --- |
 | Host | Only protocol entry, grants, routing, cross-project list, journal, credentials, schedules, tool relay, UI publishing | Session history authority, windows and native UI |
-| Workbench service | Cross-project business not yet rewritten (worktrees, library, plugin/MCP management, providers, etc.), reachable only through the Host | Client ports, plaintext credentials, lifecycle |
+| Workbench service | Cross-project business not yet rewritten (worktrees, library, plugin/MCP management, providers, etc.), reachable only through the Host | Public client entry points, credential persistence authority, process supervision |
 | Core | Thread, Turn, Task, approvals, receipts, single-project files and Git | Devices, grants, facing clients |
 | `@areal/client` | One connection owner per Host, list and session subscriptions, command state, offline cache | Business decisions, automatic resend of unknown commands |
 | `@areal/app` | Every page, showing entries by capability | Direct access to Electron, Capacitor or the filesystem |
@@ -205,13 +205,13 @@ Move the rest of Main's business code into the Host-supervised Node workbench se
 ### Work
 
 1. Write and commit a design note first: workbench service supervision, its private channel to the Host, method namespace routing, how it gets Core connections, and capability fallback when Node is absent.
-2. Migrate by domain, one PR each: session actions (fork, side, edit, continue, prediction) → workspace and worktrees → `manage` (plugins, MCP, schedule editing, workgroups, configuration) → providers and subscriptions, library, export, feedback and diagnostics. Decide per domain whether it belongs in Core (single project) or the workbench service (cross-project).
+2. First put the existing `CoreBackend` and `DesktopService` under Host supervision, using the existing Main attach path and retaining native capabilities in the shell, to avoid rebuilding shared backend dependencies per domain. Then wire domain protocols in order: library and Worktrees → scheduled-task catalog → trajectory and feedback (with credentials) → manage and providers → MCP apps. Switch send, steer and create only after Gen-UI context and browser tools reach Host. Later move project-local logic into Core and rewrite cross-project logic in Host as needed.
 3. Add `tool.provide`: once connected to the Host, the Electron shell registers desktop tools and the Host relays them to the Cores that need them; on disconnect they are revoked and reported unavailable.
 4. After each domain moves, delete the matching Main files and IPC commands.
 
 ### Constraints
 
-- The workbench service opens no client port, holds no plaintext credentials (it fetches from the Host vault on demand) and does not depend on Electron.
+- Public clients connect only to Host; the backend's private authenticated attach channel is reserved for the shell. The workbench service does not depend on Electron. System encryption is provided by the shell or Host vault; decrypted values are used only in runtime memory and never persisted in plaintext.
 - Migrations mostly move code; do not rewrite logic in the same PR.
 
 ### Stop and ask
@@ -221,7 +221,7 @@ Move the rest of Main's business code into the Host-supervised Node workbench se
 
 ### Done when
 
-- For each domain: on the installed package, the GUI and a browser (and the phone where relevant) complete the domain's main journeys, and the matching Main files are deleted.
+- For each domain: shared business completes its main journeys through Web and real Host services, including data-copy compatibility; native capabilities are verified separately in Electron and phones where relevant. Remove the old implementation after acceptance and pass the Main line-count gate.
 - A session started from the phone uses browser preview while the GUI is open, and reports it unavailable once the GUI closes.
 
 ## Package A4: one UI and retirement

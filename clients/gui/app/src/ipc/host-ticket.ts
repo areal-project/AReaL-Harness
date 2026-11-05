@@ -75,7 +75,10 @@ export function registerHostTicket(options: {
         )
           throw new Error("Invalid Host endpoint");
         // Host 换代时端口会变，文档只授权同一回环主机；连接仍须新代一次性票据。
-        return `${url.protocol}//${url.hostname}:*`;
+        return {
+          connectSource: `${url.protocol}//${url.hostname}:*`,
+          frameSource: `http://${url.host}/host/pages/proxy`,
+        };
       } finally {
         await file.close();
       }

@@ -15,8 +15,8 @@ const { sideStartConfiguration } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
 );
 const appRequire = createRequire(new URL("../app/package.json", import.meta.url));
-const { CoreBackend } = appRequire("../app/src/core/backend.cjs");
-const { WorktreeAdmission } = appRequire("../app/src/core/worktree-admission.cjs");
+const { CoreBackend } = appRequire("../../../services/workbench/src/desktop/core/backend.cjs");
+const { WorktreeAdmission } = appRequire("../../../services/workbench/src/desktop/core/worktree-admission.cjs");
 test("historical anchor A with current source C: renderer default intent reaches adapter as inherit, default B and explicit C remain distinct", async () => {
   const project = {
     configurations: { source: { model: { providerId: "p", modelId: "C" } } },

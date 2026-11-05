@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { mkdtemp, writeFile, readFile, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { tmpdir } = require("node:os");
-const { CloudSettings } = require("../app/src/core/cloud-settings.cjs");
+const { CloudSettings } = require("@areal/workbench-service/desktop/core/cloud-settings.cjs");
 const { validateCommand } = require("../packages/workbench/client/desktop-contract.cjs");
 
 test("Cloud 凭据状态不回显token，地址变更不能沿用旧凭据", async (t) => {
@@ -66,6 +66,23 @@ test("系统安全存储不可用时拒绝明文降级", async () => {
     /安全存储/,
   );
   assert.equal(saved, false);
+});
+
+test("异步外壳加解密保留旧密文格式，断开失败不覆盖原凭据", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "areal-cloud-shell-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const path = join(home, "cloud.json");
+  const original = JSON.stringify({ baseURL: "https://one.test", secret: Buffer.from("sealed:old").toString("base64") });
+  await writeFile(path, original);
+  const storage = {
+    isEncryptionAvailable: () => true,
+    decryptString: async (value) => value.toString().slice(7),
+    encryptString: async () => { throw new Error("shell disconnected"); },
+  };
+  const settings = new CloudSettings({ home, save: (name, value) => writeFile(join(home, name), JSON.stringify(value)) }, storage);
+  assert.equal((await settings.client()).token, "old");
+  await assert.rejects(settings.command({ operation: "save", baseURL: "https://one.test", token: "new" }), /disconnected/);
+  assert.equal(await readFile(path, "utf8"), original);
 });
 
 test("桌面窄契约接受 Cloud 配置，拒绝无效操作及未声明字段", () => {

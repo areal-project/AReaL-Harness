@@ -3,9 +3,9 @@
 const { hostReference } = require("./host-lifecycle.cjs");
 const { isDeepStrictEqual } = require("node:util");
 const { KINDS, isLifecycleReceipt } = require("@areal/workbench/desktop-contract/shared");
-/** @typedef {import('./lifecycle-operations.cjs').LifecycleKind} Kind */
-/** @typedef {import('./lifecycle-operations.cjs').LifecycleMode} Mode */
-/** @typedef {import('./lifecycle-operations.cjs').TargetPhase} TargetPhase */
+/** @typedef {import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind} Kind */
+/** @typedef {import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode} Mode */
+/** @typedef {import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').TargetPhase} TargetPhase */
 /** @typedef {{projectId:string,serviceId:string|null,generation:string|null,phase?:import('@areal/workbench/desktop-contract/shared').TargetPhase,error?:unknown}} ReferenceTarget */
 /** @typedef {{pid:number,identity:string}} DesktopIdentity */
 /** @typedef {{requestId:string,desktopGeneration:string,kind:Kind,mode:Mode,targets:ReferenceTarget[],desktop:DesktopIdentity,threadId?:string,turnId?:string,logicalProjectId?:string}} LifecycleReference */
