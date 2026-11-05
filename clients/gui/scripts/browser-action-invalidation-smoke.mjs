@@ -632,9 +632,9 @@ try {
     ...(otherSite ? [new Promise((resolve) => otherSite.close(resolve))] : []),
   ]);
   const files = [
-    "app/src/core/browser-tool.cjs",
+    "../../services/workbench/src/desktop/core/browser-tool.cjs",
     "app/src/core/preview.cjs",
-    "app/src/core/service-protocol.cjs",
+    "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "renderer/src/ApprovalRequest.tsx",
     "scripts/browser-action-invalidation-smoke.mjs",
   ];

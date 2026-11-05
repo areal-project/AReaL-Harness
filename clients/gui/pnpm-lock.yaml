@@ -48,6 +48,9 @@ importers:
       '@areal/remote-client':
         specifier: workspace:*
         version: link:packages/remote-client
+      '@areal/workbench-service':
+        specifier: workspace:*
+        version: link:../../services/workbench
       '@axe-core/playwright':
         specifier: 4.14.0
         version: 4.14.0(playwright-core@1.59.1)
@@ -57,6 +60,58 @@ importers:
       vite-plus:
         specifier: 1.4.0
         version: 1.4.0(@types/node@26.6.4)(@vitest/ui@5.0.5)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)
+
+  ../../services/workbench:
+    dependencies:
+      '@areal/browser-automation':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/browser-automation
+      '@areal/chatgpt-provider':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/chatgpt-provider
+      '@areal/client':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/client
+      '@areal/gen-ui':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/gen-ui
+      '@areal/provider-config':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/provider-config
+      '@areal/remote':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/remote
+      '@areal/runtime-client':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/runtime-client
+      '@areal/workbench':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/workbench
+      '@areal/workspace-git':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/workspace-git
+      'pkijs':
+        specifier: 3.4.1
+        version: 3.4.1
+      'qrcode':
+        specifier: 1.5.4
+        version: 1.5.4
+      'ws':
+        specifier: 8.21.3
+        version: 8.21.3
+      'yaml':
+        specifier: 2.9.0
+        version: 2.9.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+      '@types/qrcode':
+        specifier: 1.5.6
+        version: 1.5.6
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
 
   ../mobile:
     dependencies:
@@ -109,6 +164,9 @@ importers:
       '@areal/workbench':
         specifier: workspace:*
         version: link:../packages/workbench
+      '@areal/workbench-service':
+        specifier: workspace:*
+        version: link:../../../services/workbench
       '@areal/workspace-git':
         specifier: workspace:*
         version: link:../packages/workspace-git

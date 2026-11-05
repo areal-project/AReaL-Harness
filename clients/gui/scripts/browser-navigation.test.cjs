@@ -108,7 +108,10 @@ test("complete loading remains a valid receipt and cancellation before commit re
   assert.deepEqual(cancelled.contents.eventNames(), []);
 });
 
-const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+const {
+  DesktopService,
+  PROTOCOL,
+} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 
 test("UNKNOWN browser receipts retain request identity and only disclose bounded reasons", () => {
   const { browserHostFailure } = require("../app/src/core/browser-host-request.cjs");

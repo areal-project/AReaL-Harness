@@ -4,8 +4,8 @@ import { test } from "node:test";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { RemoteControl } from "../app/src/core/remote.cjs";
-import { createRemoteNetworkAdapter } from "../app/src/core/remote-network.cjs";
+import { RemoteControl } from "@areal/workbench-service/desktop/core/remote.cjs";
+import { createRemoteNetworkAdapter } from "@areal/workbench-service/desktop/core/remote-network.cjs";
 
 async function fixture() {
   const home = await mkdtemp(join(tmpdir(), "rc11-host-"));

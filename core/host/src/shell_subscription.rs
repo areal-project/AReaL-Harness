@@ -44,7 +44,16 @@ fn source_stamp(path: &std::path::Path, directory: bool) -> Result<Value> {
 
 impl ReadModels {
     pub(super) async fn shell(&self, host: &Host) -> Result<ShellView> {
+        self.read(host, false).await
+    }
+
+    async fn read(&self, host: &Host, fresh: bool) -> Result<ShellView> {
         let _guard = self.gate.lock().await;
+        // Core 的创建事件可能只发给创建者；新订阅不能沿用其他连接的目录缓存。
+        if fresh {
+            *self.cached.borrow_mut() = None;
+            self.online.borrow_mut().clear();
+        }
         let status = host.status().await;
         let registrations: Vec<_> = status
             .projects
@@ -228,7 +237,7 @@ pub(super) struct Subscription {
 }
 impl Subscription {
     pub(super) async fn open(host: &Host, connection: &str) -> Result<(Self, Value)> {
-        let view = host.read_models.shell(host).await?;
+        let view = host.read_models.read(host, true).await?;
         let sub = Self {
             id: uuid::Uuid::new_v4().to_string(),
             connection: connection.into(),
@@ -364,6 +373,76 @@ fn restrict(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn new_subscription_reads_threads_created_on_another_core_connection() {
+        use futures_util::{SinkExt, StreamExt};
+        use std::{cell::Cell, rc::Rc};
+        use tokio_tungstenite::tungstenite::Message;
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let registration = host.slots.borrow()["project"].registration.clone();
+            let service = areal_protocol::service::Service {
+                identity: areal_protocol::service::Identity {
+                    protocol_version: 1, service_id: "fixture".into(), generation: "first".into(),
+                    workspace: registration.workspace, data_dir: registration.data_dir,
+                    config_fingerprint: "fixture".into(),
+                },
+                owner: Some(host.owner()), endpoint: format!("ws://{}/", listener.local_addr().unwrap()),
+                web_url: String::new(), auth_file: host.home.join("core-auth.json"), log_file: host.home.join("core.log"),
+                host_pid: 1, core_pid: 2, state: areal_protocol::service::State::Ready,
+            };
+            areal_local_service::storage::write(&service.auth_file, &json!({"principals":[{"id":"desktop-owner","token":"fixture"}]})).unwrap();
+            let gate = host.slots.borrow()["project"].gate.clone();
+            // 本测试只控制目录回复，保留已就绪项目状态，不启动项目监督进程。
+            let _guard = gate.lock().await;
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                slot.state = "ready".into();
+                slot.service = Some(service.clone());
+                let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+            }
+            let added = Rc::new(Cell::new(false));
+            let reads = Rc::new(Cell::new(0));
+            let (server_added, server_reads) = (added.clone(), reads.clone());
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                    let request: Value = serde_json::from_str(&text).unwrap();
+                    if request.get("id").is_none() { continue; }
+                    let result = match request["method"].as_str().unwrap() {
+                        "initialize" => json!({}),
+                        "areal/conversation/list" => {
+                            server_reads.set(server_reads.get() + 1);
+                            let mut items = vec![json!({"id":"first","createdAt":1,"updatedAt":1,"desktop":{"archived":false}})];
+                            if server_added.get() { items.push(json!({"id":"second","createdAt":2,"updatedAt":2,"desktop":{"archived":false}})); }
+                            json!({"data":items,"nextCursor":null})
+                        },
+                        "areal/work/overview" => json!({"data":[],"nextCursor":null}),
+                        method => panic!("unexpected method {method}"),
+                    };
+                    socket.send(Message::Text(json!({"id":request["id"],"result":result}).to_string().into())).await.unwrap();
+                }
+            });
+            let close = host.schedules.connections.connect_test_core(host.clone(), "project", service).await.unwrap();
+            let (mut original, first) = Subscription::open(&host, "first-browser").await.unwrap();
+            assert_eq!(first["snapshot"]["projects"][0]["summaries"]["items"].as_array().unwrap().len(), 1);
+            assert!(original.refresh(&host).await.unwrap().is_none());
+            assert_eq!(reads.get(), 1, "unchanged subscriptions reuse their observation");
+            added.set(true);
+            let (_, reopened) = Subscription::open(&host, "second-browser").await.unwrap();
+            assert_eq!(reopened["snapshot"]["projects"][0]["summaries"]["items"].as_array().unwrap().len(), 2);
+            assert_eq!(reads.get(), 2);
+            close();
+            server.abort();
+        }).await;
+    }
 
     #[tokio::test]
     async fn stopped_project_shell_reads_do_not_launch_core_and_deltas_only_include_changes() {

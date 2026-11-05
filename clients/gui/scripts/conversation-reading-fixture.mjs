@@ -8,8 +8,8 @@ import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { DesktopService } = require("../app/src/core/service-protocol.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const {
   validateCommand,
   validateCommandResponse,

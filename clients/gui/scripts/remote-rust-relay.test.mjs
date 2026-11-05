@@ -16,7 +16,7 @@ import {
 } from "./remote-rust-relay-fixture.mjs";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
-const { enrollRelay } = require("../app/src/core/remote-enrollment.cjs");
+const { enrollRelay } = require("@areal/workbench-service/desktop/core/remote-enrollment.cjs");
 
 const relayResources = [];
 async function enrolled(t, relayOptions = {}, monitorCertificate = "server.pem") {

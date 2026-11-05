@@ -4,7 +4,7 @@
 
 macOS 上，GUI 和共享服务都把系统 `/usr/bin/python3` 作为 Core、Runtime、service-host 和 launcher 的实际父进程：
 
-- GUI：[core-process.cjs](../app/src/core/core-process.cjs) 的 `spawnCore` 在 darwin 分支执行 `spawn('/usr/bin/python3', ['-I', '-S', '-c', bridge, binary, ...args])`。
+- GUI：[core-process.cjs](../../../services/workbench/src/desktop/core/core-process.cjs) 的 `spawnCore` 在 darwin 分支执行 `spawn('/usr/bin/python3', ['-I', '-S', '-c', bridge, binary, ...args])`。
 - 共享服务：`core/local-service/src/native_process.rs` 在 `cfg(target_os = "macos")` 下 `Command::new("/usr/bin/python3")`，并通过内联 `BRIDGE` 脚本转交描述符、PID 握手和退出回执。
 - 文档已经写明这项要求：[GUI 指南](../README.md) 和 [安装指南](../../../docs/guides/installation.md) 都要求先装 Xcode Command Line Tools。
 

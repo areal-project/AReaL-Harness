@@ -65,7 +65,7 @@ const fixture = await applicationFixture(
   gui,
   join(scratch, "app"),
   `
-const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const originalStart = CoreBackend.prototype.startProject;
 CoreBackend.prototype.startProject = function(id) {
   require("node:fs").appendFileSync(${JSON.stringify(startTrace)}, JSON.stringify({projectId:id,at:Date.now()})+"\\n");

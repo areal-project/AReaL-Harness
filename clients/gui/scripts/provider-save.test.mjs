@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AppProviders } from "../app/src/core/providers.cjs";
-import { CoreBackend } from "../app/src/core/backend.cjs";
+import { AppProviders } from "@areal/workbench-service/desktop/core/providers.cjs";
+import { CoreBackend } from "@areal/workbench-service/desktop/core/backend.cjs";
 import { CoreClient } from "../packages/runtime-client/core.js";
-import diagnostics from "../app/src/core/diagnostics.cjs";
+import diagnostics from "@areal/workbench-service/desktop/core/diagnostics.cjs";
 
 const readMethod = "areal/server/modelConfiguration/read";
 const applyMethod = "areal/server/modelConfiguration/apply";

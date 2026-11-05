@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { manage } = require("../app/src/core/management.cjs");
+const { manage } = require("@areal/workbench-service/desktop/core/management.cjs");
 const {
   validateCommand,
   commandSemantics,

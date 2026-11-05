@@ -1,4 +1,8 @@
-import { useReadOnly } from "../PlatformReadContext.js";
+import {
+  useReadOnly,
+  useConversationSubmitReadOnly,
+  useConversationCreateReadOnly,
+} from "../PlatformReadContext.js";
 import React from "react";
 import { ComposerSurface } from "../prompt-editor/ComposerSurface.js";
 import { Button } from "../components/ui/button.js";
@@ -98,7 +102,8 @@ function ConversationContent() {
     setError,
   } = useConversationContext();
   const { project, thread, threadId, retryRestoration } = session;
-  const readOnly = useReadOnly();
+  const conversationSubmitReadOnly = useConversationSubmitReadOnly();
+  const conversationCreateReadOnly = useConversationCreateReadOnly();
 
   const { onLink } = preview;
 
@@ -148,7 +153,7 @@ function ConversationContent() {
                 />
               </div>
             </div>
-          ) : readOnly ? null : (
+          ) : conversationCreateReadOnly || conversationSubmitReadOnly ? null : (
             <DraftConversation />
           )}
         </section>
@@ -192,6 +197,7 @@ function ConversationContent() {
 function ActiveConversation() {
   const {
     session,
+    services,
     action,
     dark,
     empty,
@@ -214,6 +220,8 @@ function ActiveConversation() {
   } = useConversationContext();
   const { project, thread, threadId, library, snapshot, resourceAction } = session;
   const readOnly = useReadOnly();
+  const conversationSubmitReadOnly = useConversationSubmitReadOnly();
+  const conversationCreateReadOnly = useConversationCreateReadOnly();
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
   const { workspaceView } = workspacePanels.view;
   const {
@@ -267,6 +275,7 @@ function ActiveConversation() {
           thread={thread}
           action={action}
           readOnly={readOnly}
+          interactivePages={!thread.cloud && (!readOnly || services.capabilities?.pages === true)}
           decisionShown
           onOpenResult={mcpWorkspace.openResult}
           resultStates={mcpWorkspace.resultStates}
@@ -293,7 +302,7 @@ function ActiveConversation() {
           onAgent={(id) => showPanel(`agent:${id}`)}
         />
       )}
-      {!readOnly && (
+      {!conversationSubmitReadOnly && (!thread.cloud || !readOnly) && (
         <div className={empty ? "draft-composer" : "active-composer"}>
           {empty && (
             <div className="composer-project-bar">
@@ -307,13 +316,15 @@ function ActiveConversation() {
                         : project.root.split("/").pop())}
                   </span>
                 </div>
-                <ComposerWorkspaceContext
-                  project={project}
-                  threadId={thread?.id}
-                  cloud={!!thread.cloud}
-                  action={resourceAction}
-                  backendReady={snapshot.connection?.state === "ready"}
-                />
+                {!readOnly && (
+                  <ComposerWorkspaceContext
+                    project={project}
+                    threadId={thread?.id}
+                    cloud={!!thread.cloud}
+                    action={resourceAction}
+                    backendReady={snapshot.connection?.state === "ready"}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -366,13 +377,15 @@ function ActiveConversation() {
               readAction={resourceAction}
               onPanel={showPanel}
               onSide={
-                canCreateSide
+                !readOnly && canCreateSide
                   ? async (text) => {
                       await createSide(text);
                     }
                   : undefined
               }
-              onNew={() => void newTask()}
+              onNew={() => {
+                if (!conversationCreateReadOnly) void newTask();
+              }}
               onOpenTask={(target) => {
                 surfaces.leaveSettings();
                 tasks.openTarget({ ...target, eventId: crypto.randomUUID() });
@@ -385,6 +398,7 @@ function ActiveConversation() {
   );
 }
 function DraftConversation() {
+  const readOnly = useReadOnly();
   const {
     session,
     services,
@@ -464,17 +478,21 @@ function DraftConversation() {
                       {library.projects?.[p.id]?.title || p.root.split("/").pop()}
                     </DropdownMenuItem>
                   ))}
-                <DropdownMenuItem onClick={() => void choose()}>
-                  <NewProjectIcon />
-                  {t("chat.newProject")}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => leaveProject()}>
-                  <LeaveProjectIcon />
-                  {t("common.conversation.projectless")}
-                </DropdownMenuItem>
+                {!readOnly && (
+                  <DropdownMenuItem onClick={() => void choose()}>
+                    <NewProjectIcon />
+                    {t("chat.newProject")}
+                  </DropdownMenuItem>
+                )}
+                {!readOnly && (
+                  <DropdownMenuItem onClick={() => leaveProject()}>
+                    <LeaveProjectIcon />
+                    {t("common.conversation.projectless")}
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
-            {project && (
+            {project && !readOnly && (
               <ComposerWorkspaceContext
                 project={project}
                 showBranch={false}
@@ -490,14 +508,18 @@ function DraftConversation() {
               action={resourceAction}
               value={worktreeSelection}
               onChange={(value) => changeWorktreeSelection(project.id, value)}
-              onConfigureEnvironments={() => {
-                setWorktreeSettingsTarget({
-                  projectId: project.id,
-                  tab: "environments",
-                });
-                setSettingsTab("Worktrees");
-                setSettingsOpen(true);
-              }}
+              onConfigureEnvironments={
+                readOnly
+                  ? undefined
+                  : () => {
+                      setWorktreeSettingsTarget({
+                        projectId: project.id,
+                        tab: "environments",
+                      });
+                      setSettingsTab("Worktrees");
+                      setSettingsOpen(true);
+                    }
+              }
               disabled={
                 admitting ||
                 project.pending?.some((entry: Data) => !isIndependentCreation(entry, []))
@@ -521,7 +543,7 @@ function DraftConversation() {
             onOpen={(pid, id) => open(pid, id, "replace")}
             onPanel={showPanel}
           />
-        ) : (
+        ) : !readOnly ? (
           <ProjectlessDraft
             onAnnotate={openImageAnnotation}
             snapshot={snapshot}
@@ -531,7 +553,7 @@ function DraftConversation() {
             onPanel={showPanel}
             onOpen={(pid, id) => open(pid, id, "replace")}
           />
-        )}
+        ) : null}
       </div>
     </>
   );

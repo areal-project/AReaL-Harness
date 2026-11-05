@@ -7,8 +7,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 const require = createRequire(import.meta.url);
 const { reviewTurnFiles } = require("../packages/workspace-git");
-const { ResultReviews } = require("../app/src/core/remote-result-review.cjs");
-const { SessionObservers } = require("../app/src/core/remote-session-observer.cjs");
+const { ResultReviews } = require("@areal/workbench-service/desktop/core/remote-result-review.cjs");
+const {
+  SessionObservers,
+} = require("@areal/workbench-service/desktop/core/remote-session-observer.cjs");
 const project = {
   root: "/not-readable",
   endpoint: "ws://native-fixture",

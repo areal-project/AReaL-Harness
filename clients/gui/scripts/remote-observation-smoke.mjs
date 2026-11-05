@@ -7,7 +7,7 @@ import { once } from "node:events";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { RemoteControl } = require("../app/src/core/remote.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
 const WebSocket = require("ws");
 const { byteChannel, createIdentity, identityId, secureChannel } =
   await import("../packages/remote/src/channel.mjs");

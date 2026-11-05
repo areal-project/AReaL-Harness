@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { OpenAIAccount } from "../packages/chatgpt-provider/openai.js";
-import { AppProviders } from "../app/src/core/providers.cjs";
+import { AppProviders } from "@areal/workbench-service/desktop/core/providers.cjs";
 import { legacyOpenAI } from "./fixtures/legacy-subscription-owner.cjs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";

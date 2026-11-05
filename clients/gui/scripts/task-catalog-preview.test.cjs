@@ -5,11 +5,14 @@ const { test, after } = require("node:test");
 const { mkdir, realpath, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { createHash } = require("node:crypto");
-const coreProcess = require("../app/src/core/core-process.cjs");
+const coreProcess = require("@areal/workbench-service/desktop/core/core-process.cjs");
 const originalExecute = coreProcess.executeCore;
 let execute;
 coreProcess.executeCore = (...args) => execute(...args);
-const { taskCatalog, OwnerTasks } = require("../app/src/core/task-catalog.cjs");
+const {
+  taskCatalog,
+  OwnerTasks,
+} = require("@areal/workbench-service/desktop/core/task-catalog.cjs");
 const {
   validateCommand,
   validateCommandResponse,

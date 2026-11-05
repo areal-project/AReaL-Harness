@@ -8,7 +8,10 @@ const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { performance } = require("node:perf_hooks");
 
-const filename = resolve(__dirname, "../app/src/core/history-observation.cjs");
+const filename = resolve(
+  __dirname,
+  "../../../services/workbench/src/desktop/core/history-observation.cjs",
+);
 let { HistoryObservation } = require(filename);
 // 可选旧源码在原模块路径解析依赖，比较时无需覆盖工作区或连接真实 Core。
 if (process.argv[2]) {
@@ -72,8 +75,8 @@ async function sample(operation) {
     recordThreadActivity: async () => activityUpdates++,
   };
   if (productionCache) {
-    const { CoreLibrary } = require("../app/src/core/library.cjs");
-    const { CoreBackend } = require("../app/src/core/backend.cjs");
+    const { CoreLibrary } = require("@areal/workbench-service/desktop/core/library.cjs");
+    const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
     cacheHome = await mkdtemp(join(tmpdir(), "areal-catalog-cache-"));
     const backend = {
       home: cacheHome,

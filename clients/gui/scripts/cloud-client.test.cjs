@@ -1,6 +1,10 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { backendURL, cloudServiceURL, CloudClient } = require("../app/src/core/cloud-client.cjs");
+const {
+  backendURL,
+  cloudServiceURL,
+  CloudClient,
+} = require("@areal/workbench-service/desktop/core/cloud-client.cjs");
 test("统一 endpoint 不含平台路由推断，HTTP(S) 可规范化为 WS(S)", () => {
   assert.equal(
     backendURL("https://example.test/app-server/work").href,

@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import resources from "../app/src/core/relay-resources.cjs";
+import resources from "@areal/workbench-service/desktop/core/relay-resources.cjs";
 
 export const { exportRemoteAssets } = resources;
 

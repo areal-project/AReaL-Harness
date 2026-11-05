@@ -64,7 +64,7 @@ const listGate = join(scratch, "conversation-list.gate");
 const submissionGate = join(scratch, "submission.gate");
 const submissionEntered = join(scratch, "submission-entered.json");
 const bootstrap = `
-const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const { appendFileSync, existsSync, readFileSync, writeFileSync } = require('node:fs');
 let sequence = 0;
 const record = value => appendFileSync(${JSON.stringify(tracePath)}, JSON.stringify({ sequence: ++sequence, at: Date.now(), ...value }) + '\\n');

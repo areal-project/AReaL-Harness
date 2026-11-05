@@ -30,9 +30,9 @@ const editors = [
   { id: "cursor", label: "Cursor", bundle: "Cursor.app" },
 ];
 
-/** @param {Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot">} backend @param {Record<string,unknown>} request @returns {import("./service-state.cjs").ServiceProject} */
+/** @param {Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot">} backend @param {Record<string,unknown>} request @returns {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceProject} */
 function fileWorkspace(backend, request) {
-  /** @type {import("./service-state.cjs").ServiceProject|undefined} */
+  /** @type {import("@areal/workbench-service/desktop/core/service-state.cjs").ServiceProject|undefined} */
   const project = backend.snapshot().projects.find((value) => value.id === request.projectId);
   if (!project) throw new Error("未知工作区");
   if (request.threadId === undefined) return project;

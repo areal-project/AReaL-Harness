@@ -2,6 +2,10 @@
 
 # 测试
 
+共享业务优先在 Web 与真实 Host 服务上用隔离数据验收，不以 GUI 打包为常规前置。窗口、系统加密、浏览器视图和电脑控制等 Electron 专属能力才启动桌面；发行资源、签名与升级仍在对应发行任务单独验证。协议测试、页面交互、原生与发行包证据分别记录，不互相替代。
+
+工作台后台冒烟可按领域运行，例如 `pnpm --dir clients/gui test:workbench-backend --domain=providers`。支持 library、trajectory、feedback、tasks、manage、worktree、providers、lifecycle，可组合；省略参数运行完整链路。每次运行使用独立数据目录；停机任务目录和运行中任务管理分别初始化不同项目。开发时选择目标领域及受影响回归，收尾运行完整链路。协议冒烟不替代真实 Web 页面操作。
+
 双产品对照复用同一合同的[六条基线旅程](conversation-reading-acceptance.md#双产品基线)与共享素材生成器。运行报告区分本轮实测、历史复用、源码推断和未验证，不以开发服务器启动代表用户路径通过。
 
 桌面对话与 Composer 按[体验验收合同](conversation-reading-acceptance.md)先定义输入意图、上下文恢复、提交事实、完整性、可读时机和阅读位置标准，再设计过程与终态用例，随后进行设计、实现和统一验收。单条会话最终加载完整不能替代加载过程与交互检查。
@@ -435,7 +439,7 @@ Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric
 
 隔离启动 GUI 时设置 `AREAL_HOST_WEBSOCKET=1`，并在该隔离界面的 localStorage 中设置 `areal.oneProtocol.reads=1`，可启用状态探测。Host 必须以该环境开关启动；已有关闭此能力的 Host 不会被自动重启。清除此 localStorage 项恢复原读路径。打开后项目清单与会话详情由共享 Host 订阅读取，写入仍用原桌面路径；协议检查不能替代 A1 的安装包真实历史对照与恢复验收。GUI CSP 从运行时私有描述授权回环主机的动态端口；票据只由原生能力提供并放进 WS 首帧。
 
-开发验收可运行 `node clients/gui/scripts/seed-host-copy.mjs --from <旧 Core home> --home <隔离 Host home> --binary <待验收包内 areal>`，一致性快照后通过现有 CLI 登记路径创建测试项目，不调用导入器。工具只读源，副本不携带待提交、调度、凭据或远程身份，来源摘要和测试标记保存在隔离 home；历史 UNKNOWN 不阻塞项目。登记仍指向原代码目录，验收发消息须使用确定性模型或另行复制代码目录，不能在真实仓库执行真实 Agent。
+开发验收可运行 `node clients/gui/scripts/seed-host-copy.mjs --from <旧 Core home> --home <隔离 Host home> --binary <待验收包内 areal>`，一致性快照后通过现有 CLI 登记路径创建测试项目，不调用导入器。工具只读源，运行副本不载入待提交、调度、凭据或远程身份，任务历史原字节另存 Core 不载入的 `seed-copy/archive/`，来源摘要和测试标记保存在隔离 home；历史 UNKNOWN 不阻塞项目，macOS Host 仅为访问系统钥匙串保留系统用户 HOME，AReaL 数据目录仍显式隔离。登记仍指向原代码目录，验收发消息须使用确定性模型或另行复制代码目录，不能在真实仓库执行真实 Agent。
 
 `node scripts/runtime-rotation-smoke.mjs` 使用隔离目录、真实 Core/Runtime 和本地模型，分别降低 Scope、operation 与累计输出容量，验证达到预警但未耗尽时的自动轮换、活动轮次推迟、旧 Core/Runtime 退出、部署漂移保护、新 epoch、历史与 Queue 意图保留、跨轮换请求去重及后续续轮。该检查进入 `make local-service-smoke` 和 `make harness-smoke`。宿主测试覆盖维护 RPC 超时与退出取消；Engine 生命周期测试同时验证并发新轮与轮换的原子准入，以及历史 UNKNOWN 保留和未确认资源清理的阻塞；这些是确定性契约回归，不代表整体 Agent 能力提升。
 

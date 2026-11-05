@@ -7,9 +7,11 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { taskContractHost, taskContractProject as P } from "./remote-task-contract-host.mjs";
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { sessionCommand } = require("../app/src/core/remote-session-commands.cjs");
-const { RemotePush } = require("../app/src/core/remote-push.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const {
+  sessionCommand,
+} = require("@areal/workbench-service/desktop/core/remote-session-commands.cjs");
+const { RemotePush } = require("@areal/workbench-service/desktop/core/remote-push.cjs");
 const home = await makeTempDir("rc05-fixture-");
 const checks = [];
 const owner = await taskContractHost();
@@ -489,7 +491,9 @@ try {
     await assert.rejects(f.backend.loadProjectJournal(P), /未知项目/);
   });
   await check("admission-observer-preserves-current-detail", async (f) => {
-    const { SessionObservers } = require("../app/src/core/remote-session-observer.cjs");
+    const {
+      SessionObservers,
+    } = require("@areal/workbench-service/desktop/core/remote-session-observer.cjs");
     Object.assign(f.client.capabilities.features, {
       atomicObserve: true,
       atomicObserveOwnership: true,
@@ -580,7 +584,7 @@ try {
     const crypto = await import("../packages/remote/src/channel.mjs");
     const { once } = await import("node:events");
     const WebSocket = require("../app/node_modules/ws");
-    const { startDirect } = require("../app/src/core/remote-direct.cjs");
+    const { startDirect } = require("@areal/workbench-service/desktop/core/remote-direct.cjs");
     const device = await crypto.createIdentity();
     f.remote.crypto = crypto;
     f.remote.config.identity = await crypto.createIdentity();
@@ -588,7 +592,9 @@ try {
     enableStop(f);
     f.remote.config.deviceGrants[0].devicePeerId = crypto.identityId(device);
     f.remote.sessions =
-      new (require("../app/src/core/remote-session-acceptor.cjs").SessionAcceptor)(f.remote);
+      new (require("@areal/workbench-service/desktop/core/remote-session-acceptor.cjs").SessionAcceptor)(
+        f.remote,
+      );
     const direct = await startDirect(f.remote);
     let secure;
     try {

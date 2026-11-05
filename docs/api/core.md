@@ -140,7 +140,7 @@ Responses 摘要通过可选 `reasoning_summary` / `reasoningSummary` 显式开�
 统一委派的结算回执若已通过工具结果完整提供给当前模型请求，Core 不因自动汇总再次出现相同回执而额外请求一次最终答复。比较只忽略等待标记与剩余工具额度；执行身份、状态、资源清退、正文、验证、制品和交付事实仍须一致。新结果、失败、未知状态或未完成交付继续走原有收尾检查，不重放工具。
 
 
-`features.operationOutcomes` 声明结构化受理事实。错误的 `data.outcome.kind` 为 `noMutation`、`rejected`、`unconfirmed` 或 `admitted`。后两者携带 `operation:{method,requestId,target}`，其中 target 指向项目、Thread 或 Task。`admitted` 证明已受理，但不保证执行成功或没有部分副作用。`data.recovery.kind` 为 `retryRead`、`queryOriginal`、`needsUser` 或 `none`。管理操作最终回执落盘失败保留原始身份并返回已受理；初次保存若不能确认发布结果则保持未确认。完成的错误回执记录执行失败，不能作为零副作用证明。缺失回执、超时和普通 mutation RPC 错误均不能证明未受理。客户端仅从后两种 outcome 派生 `submissionUnknown`，不自动重放。已确认未受理的拒绝包装保留原始 `data.reason` 和诊断字段，同时补充结构化 rejected 事实；例如 `SIDE_POLICY_VIOLATION` 仍可与普通请求拒绝区分。 回执重放还须在 JSON 持久化往返后精确保留有限浮点用量值。
+`features.operationOutcomes` 声明结构化受理事实。错误的 `data.outcome.kind` 为 `noMutation`、`rejected`、`unconfirmed` 或 `admitted`。后两者携带 `operation:{method,requestId,target}`，其中 target 指向项目、Thread 或 Task。`admitted` 证明已受理，但不保证执行成功或没有部分副作用。`data.recovery.kind` 为 `retryRead`、`queryOriginal`、`needsUser` 或 `none`。管理操作最终回执落盘失败保留原始身份并返回已受理；初次保存若不能确认发布结果则保持未确认。完成的错误回执记录执行失败，不能作为零副作用证明。缺失回执、超时和普通 mutation RPC 错误均不能证明未受理。客户端仅从后两种 outcome 派生 `submissionUnknown`，不自动重放。已确认未受理的拒绝包装保留原始 `data.reason` 和诊断字段，同时补充结构化 rejected 事实；例如 `SIDE_POLICY_VIOLATION` 仍可与普通请求拒绝区分。工具宿主断开导致的新请求拒绝保留 `-32602`，并以 `data.reason: TOOL_HOST_UNAVAILABLE` 区分，客户端不能把它解释为参数错误。 回执重放还须在 JSON 持久化往返后精确保留有限浮点用量值。
 
 `areal/capabilities.methodSemantics` 为每个已声明方法提供 `effect:read|subscription|mutation`，可恢复写入还声明 `receipt:thread|task|management`。Core 的方法定义同时生成这些语义。协商成功后客户端以此分类，未知方法保持保守；只有初始化和明确的旧版兼容路径使用本地分类。读取失败仅在传输故障或明确可重试时自动重试；权限、参数及 `RESPONSE_TOO_LARGE` 等确定性错误不触发重试。`delivery:resultUnavailable` 仍只描述响应无法取得。
 

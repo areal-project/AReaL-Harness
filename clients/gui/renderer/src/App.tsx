@@ -569,18 +569,26 @@ function AppContent({ services }: { services: PlatformServices }) {
                 activeId={["Skills", "MCP"].includes(settingsTab) ? "插件" : settingsTab}
                 onSelect={setSettingsTab}
                 onBack={() => setSettingsOpen(false)}
-                groups={settingsNavigationGroups.map((group) => ({
-                  ...group,
-                  label: t(group.label),
-                  items: group.items.map((item) => ({
-                    ...item,
-                    label: t(
-                      item.id === "数据飞轮" && trajectoryAttention
-                        ? "settings.trajectory.attentionTitle"
-                        : item.label,
-                    ),
-                  })),
-                }))}
+                groups={settingsNavigationGroups
+                  .map((group) => ({
+                    ...group,
+                    label: t(group.label),
+                    items: group.items
+                      .filter(
+                        (item) =>
+                          services.capabilities?.settings === undefined ||
+                          services.capabilities.settings.includes(item.id),
+                      )
+                      .map((item) => ({
+                        ...item,
+                        label: t(
+                          item.id === "数据飞轮" && trajectoryAttention
+                            ? "settings.trajectory.attentionTitle"
+                            : item.label,
+                        ),
+                      })),
+                  }))
+                  .filter((group) => group.items.length > 0)}
               />
             )}
             <ConversationNavigation

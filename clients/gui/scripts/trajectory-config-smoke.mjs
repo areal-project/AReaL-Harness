@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 // 真实 CLI 只读管理链路；不初始化适配器、Core、模型或上传进程。
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { serviceOptions, serviceIdentity } = require("../app/src/core/service-config.cjs");
 const execute = promisify(execFile);
 const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal");

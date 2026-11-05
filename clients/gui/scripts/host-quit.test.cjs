@@ -6,7 +6,7 @@ const {
   confirmHostStop,
   hostActivityLabel,
 } = require("../app/src/core/host-quit.cjs");
-const { setNativeLocale } = require("../app/src/core/native-i18n.cjs");
+const { setNativeLocale } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
 const { validateCommandResponse } = require("../packages/workbench/client/desktop-contract.cjs");
 
 const operation = { requestId: "stop-request", kind: "stopHost", phase: "completed", targets: [] };

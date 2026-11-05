@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { HistoryObservation } = require("../app/src/core/history-observation.cjs");
+const {
+  HistoryObservation,
+} = require("@areal/workbench-service/desktop/core/history-observation.cjs");
 
 const row = (id, extra = {}) => ({
   id,

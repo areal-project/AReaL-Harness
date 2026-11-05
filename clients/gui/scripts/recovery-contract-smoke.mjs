@@ -16,7 +16,7 @@ const gui = process.env.AREAL_RECOVERY_GUI_ROOT
   ? resolve(process.env.AREAL_RECOVERY_GUI_ROOT, "clients/gui")
   : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require(join(gui, "app/src/core/backend.cjs"));
+const { CoreBackend } = require(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"));
 const scratch = await makeTempDir("areal-recovery-contract-");
 const workspace = join(scratch, "workspace");
 await mkdir(workspace);

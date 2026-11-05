@@ -4,11 +4,13 @@ const assert = require("node:assert/strict");
 const { mkdtemp, writeFile, readFile, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
-const { HostVault } = require("../app/src/core/host-vault.cjs");
-const { ModelConfiguration } = require("../app/src/core/model-config.cjs");
-const { SubscriptionStore } = require("../app/src/core/subscription.cjs");
-const { AppProviders } = require("../app/src/core/providers.cjs");
-const { NativeSubscription } = require("../app/src/core/native-subscription.cjs");
+const { HostVault } = require("@areal/workbench-service/desktop/core/host-vault.cjs");
+const { ModelConfiguration } = require("@areal/workbench-service/desktop/core/model-config.cjs");
+const { SubscriptionStore } = require("@areal/workbench-service/desktop/core/subscription.cjs");
+const { AppProviders } = require("@areal/workbench-service/desktop/core/providers.cjs");
+const {
+  NativeSubscription,
+} = require("@areal/workbench-service/desktop/core/native-subscription.cjs");
 const { HostClient } = require("node:module").createRequire(
   require("node:path").resolve(__dirname, "../app/package.json"),
 )("@areal/client/node");
@@ -479,7 +481,7 @@ test("foreign Host projects retain their own model and subscription authorities"
   assert.throws(() => app.target(project), /其他来源/);
 });
 
-const diagnostics = require("../app/src/core/diagnostics.cjs");
+const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 test("credential failures isolate a provider and a later refresh restores it", async (t) => {
   const names = ["AREAL_CREDENTIAL_locked", "AREAL_CREDENTIAL_missing", "AREAL_CREDENTIAL_ok"];
   const state = { sourceId: "source", credentials: { references: names } };

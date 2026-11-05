@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { once } from "node:events";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
-const { executeCore } = createRequire(import.meta.url)("../app/src/core/core-process.cjs");
+const { executeCore } = createRequire(import.meta.url)(
+  "../../../services/workbench/src/desktop/core/core-process.cjs",
+);
 
 export async function assertApplicationStopped(binary, env, metadata) {
   const alive = (pid) => {

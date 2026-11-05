@@ -18,7 +18,7 @@ import {
 } from "./remote-native-push-fixture.mjs";
 
 const { sessionCommand } = createRequire(import.meta.url)(
-  "../app/src/core/remote-session-commands.cjs",
+  "../../../services/workbench/src/desktop/core/remote-session-commands.cjs",
 );
 
 function accepted(response, commandId, threadId) {

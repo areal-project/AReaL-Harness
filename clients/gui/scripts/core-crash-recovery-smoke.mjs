@@ -9,9 +9,11 @@ import { createServer } from "node:http";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require(join(gui, "app/src/core/backend.cjs"));
-const local = require(join(gui, "app/src/core/local-service.cjs"));
-const { createOwner } = require(join(gui, "app/src/core/application-owner.cjs"));
+const { CoreBackend } = require(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"));
+const local = require(join(gui, "../../services/workbench/src/desktop/core/local-service.cjs"));
+const { createOwner } = require(
+  join(gui, "../../services/workbench/src/desktop/core/application-owner.cjs"),
+);
 const scratch = await makeTempDir("areal-desktop-crash-");
 const workspace = join(scratch, "workspace");
 await mkdir(workspace);

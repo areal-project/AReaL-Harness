@@ -19,12 +19,14 @@ import { createIdentity, identityId } from "../packages/remote/src/channel.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { DesktopService } = require("../app/src/core/service-protocol.cjs");
-const { RemoteControl } = require("../app/src/core/remote.cjs");
-const { createRemoteNetworkAdapter } = require("../app/src/core/remote-network.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
+const {
+  createRemoteNetworkAdapter,
+} = require("@areal/workbench-service/desktop/core/remote-network.cjs");
 const { serviceIdentity } = require("../app/src/core/service-config.cjs");
-const { createOwner } = require("../app/src/core/application-owner.cjs");
+const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
 const scratch = await makeTempDir("areal-remote-rc02-");
 // The in-process Host and real Main belong to one explicit fixture application.
 // Ownership checks remain active; application exit is covered by its own suite.
@@ -33,7 +35,7 @@ const application = await applicationFixture(
   gui,
   join(scratch, "application"),
   `
-require(${JSON.stringify(join(gui, "app/src/core/application-owner.cjs"))}).createOwner = profile => {
+require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/application-owner.cjs"))}).createOwner = profile => {
   require('node:assert/strict').equal(require('node:fs').realpathSync(profile), ${JSON.stringify(applicationOwner.profile)});
   return ${JSON.stringify(applicationOwner)};
 };`,

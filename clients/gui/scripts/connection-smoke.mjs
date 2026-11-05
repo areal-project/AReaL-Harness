@@ -9,9 +9,9 @@ import { createServer } from "node:http";
 // 真实 Core/Runtime 和桌面连接；只在外部模型边界使用确定性 fixture。
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 // 与产品共用 macOS 原生启动桥，独立 CLI 仍读取自己的真实配置和服务状态。
-const { executeCore: execute } = require("../app/src/core/core-process.cjs");
+const { executeCore: execute } = require("@areal/workbench-service/desktop/core/core-process.cjs");
 const scratch = await makeTempDir("areal-connection-");
 const workspace = join(scratch, "workspace");
 const home = join(scratch, "desktop");

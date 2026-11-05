@@ -1,4 +1,4 @@
-import { useReadOnly } from "./PlatformReadContext.js";
+import { useLibraryReadOnly } from "./PlatformReadContext.js";
 import { useRef, useState, type HTMLAttributes } from "react";
 import {
   PointerSensor,
@@ -131,7 +131,7 @@ export function SidebarDragSurface({
   style,
   ...props
 }: SidebarSurfaceDragProps & HTMLAttributes<HTMLElement> & { as?: "li" | "div" }) {
-  const readOnly = useReadOnly();
+  const readOnly = useLibraryReadOnly();
   const id =
     dragId ??
     (dragSource

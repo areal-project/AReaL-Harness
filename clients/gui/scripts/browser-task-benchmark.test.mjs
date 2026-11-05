@@ -379,7 +379,9 @@ test("auxiliary naming and prediction do not consume scripted browser task steps
 });
 
 test("fixture obtains its first navigation page ID from the real description protocol", async () => {
-  const { validToolInput } = createRequire(import.meta.url)("../app/src/core/browser-tool.cjs");
+  const { validToolInput } = createRequire(import.meta.url)(
+    "../../../services/workbench/src/desktop/core/browser-tool.cjs",
+  );
   const directory = await mkdtemp(join(tmpdir(), "browser-task-cold-fixture-"));
   const configPath = join(directory, "config.json");
   await writeFile(configPath, JSON.stringify({ mode: "fixture", taskId: "form-submit" }));
@@ -605,7 +607,9 @@ test("persisted tool and context golden match the recorded Core request blocks",
 });
 
 test("every scripted task operation passes actual browser and strict command validators", async () => {
-  const { validToolInput } = createRequire(import.meta.url)("../app/src/core/browser-tool.cjs");
+  const { validToolInput } = createRequire(import.meta.url)(
+    "../../../services/workbench/src/desktop/core/browser-tool.cjs",
+  );
   const { validateBrowserCommand } = createRequire(new URL("../app/package.json", import.meta.url))(
     "@areal/browser-automation",
   );
@@ -839,7 +843,9 @@ test("stop request metadata survives an unconfirmed stop acknowledgement", async
 });
 
 test("fixture Ref link clicks use only the fresh observe receipt and preserve other controls", async () => {
-  const { validToolInput } = createRequire(import.meta.url)("../app/src/core/browser-tool.cjs");
+  const { validToolInput } = createRequire(import.meta.url)(
+    "../../../services/workbench/src/desktop/core/browser-tool.cjs",
+  );
   const golden = JSON.parse(
     await readFile(
       new URL("./fixtures/browser-task-describe-receipt.json", import.meta.url),

@@ -361,7 +361,10 @@ await writeFile(
   join(fixtureApp, "bootstrap.cjs"),
   `global.pageToolServiceModule=require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});process.on('uncaughtExceptionMonitor',(error,origin)=>require('node:fs').appendFileSync(${JSON.stringify(mainErrorsPath)},JSON.stringify({pid:process.pid,origin,message:error.message,stack:error.stack})+'\\n'));require(${JSON.stringify(join(gui, "app/src/main.cjs"))});`,
 );
-const { builtinSkill, BUILTIN_SKILL_ID } = require("../app/src/core/builtin-skills.cjs");
+const {
+  builtinSkill,
+  BUILTIN_SKILL_ID,
+} = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
 await builtinSkill(join(isolated, "core"), BUILTIN_SKILL_ID);
 let app,
   page,

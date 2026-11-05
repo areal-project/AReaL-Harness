@@ -5,8 +5,13 @@ const { once } = require("node:events");
 const { setImmediate } = require("node:timers/promises");
 const { createRequire } = require("node:module");
 const { WebSocket, WebSocketServer } = createRequire(require.resolve("../app/package.json"))("ws");
-const { OwnerTasks, taskCatalog } = require("../app/src/core/task-catalog.cjs");
-const { TaskNotificationMonitor } = require("../app/src/core/notifications.cjs");
+const {
+  OwnerTasks,
+  taskCatalog,
+} = require("@areal/workbench-service/desktop/core/task-catalog.cjs");
+const {
+  TaskNotificationMonitor,
+} = require("@areal/workbench-service/desktop/core/notifications.cjs");
 const deferred = () => {
   let resolve;
   const promise = new Promise((yes) => {
@@ -531,7 +536,9 @@ test("invalid requests and unknown owners are rejected without starting or readi
 });
 
 test("baseline completion metadata recovers older hot Runs after host-ready without blocking directory reads", async (t) => {
-  const { HistoryObservation } = require("../app/src/core/history-observation.cjs");
+  const {
+    HistoryObservation,
+  } = require("@areal/workbench-service/desktop/core/history-observation.cjs");
   const { backend, owners } = await fixture(t);
   const owner = owners.owner,
     entered = deferred(),
@@ -690,7 +697,9 @@ test("stopping the completion monitor cancels its pending retry", async (t) => {
 
 for (const mode of ["scheduled", "foreground"])
   test(`a completion fact resolves tombstone ${mode} mode after its directory row is removed`, async (t) => {
-    const { HistoryObservation } = require("../app/src/core/history-observation.cjs");
+    const {
+      HistoryObservation,
+    } = require("@areal/workbench-service/desktop/core/history-observation.cjs");
     const { backend, owners } = await fixture(t);
     const owner = owners.owner;
     const recorded = [];

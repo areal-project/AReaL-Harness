@@ -4,8 +4,8 @@ const { test } = require("node:test");
 const { mkdtemp, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
-const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
-const { GuiSourceAdapter } = require("../app/src/core/gui-source.cjs");
+const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+const { GuiSourceAdapter } = require("@areal/workbench-service/desktop/core/gui-source.cjs");
 
 test("source migration reports safe actionable blockers without exposing source data", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "areal-source-blockers-"));

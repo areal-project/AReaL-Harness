@@ -8,7 +8,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const scratch = await makeTempDir("areal-worktree-env-");
 const source = join(scratch, "source"),
   home = join(scratch, "desktop"),

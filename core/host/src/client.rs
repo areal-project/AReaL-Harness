@@ -162,6 +162,13 @@ impl Client {
         )
         .await
     }
+    pub async fn approve_browser_with_scopes(
+        &self,
+        request_id: &str,
+        scopes: &[&str],
+    ) -> Result<areal_protocol::host::LocalWebApproveResult> {
+        self.call("web.approve", json!({"requestId":request_id,"expectedGeneration":self.identity.generation,"scopes":scopes})).await
+    }
     pub async fn browser_devices(&self) -> Result<areal_protocol::host::LocalWebDevicesResult> {
         self.call("web.devices", json!({})).await
     }

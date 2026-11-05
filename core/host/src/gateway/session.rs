@@ -125,6 +125,8 @@ impl RequestBudget {
                     | "task.question.reply"
                     | "device.push.register"
                     | "device.push.unregister"
+                    | "library.command"
+                    | "worktree.command"
             )
         ) {
             self.writes =
@@ -182,6 +184,7 @@ pub(crate) fn error_code(message: &str) -> &str {
         | "REVIEW_INCOMPLETE"
         | "TARGET_CHANGED"
         | "COMMAND_CONFLICT"
+        | "CAPABILITY_UNAVAILABLE"
         | "RESOURCE_UNAVAILABLE"
         | "CORE_INCOMPATIBLE"
         | "LIMIT_EXCEEDED"
@@ -215,6 +218,7 @@ pub(crate) struct Session {
     gui_read: bool,
     gui_write: bool,
     local: bool,
+    browser_device: Option<String>,
     uploads: uploads::Uploads,
     token_key: [u8; 32],
 }
@@ -233,6 +237,7 @@ impl Drop for SessionSlot {
                 .set(self.host.gateway.pending.get() - 1);
         }
         if let Some(connection) = &self.connection {
+            self.host.gateway.workbench.disconnect_pages(connection);
             if let Some(active) = self.host.gateway.active.borrow_mut().remove(connection) {
                 self.host
                     .gateway
@@ -492,6 +497,7 @@ impl Session {
                         .any(|capability| capability == "gui-write-v1")
                 }),
             local: false,
+            browser_device: None,
             uploads: Default::default(),
             transport: admission.transport,
             kind: admission.kind,
@@ -615,6 +621,8 @@ impl Session {
                                 | "device.push.register"
                                 | "device.push.unregister"
                                 | "command.read"
+                                | "library.command"
+                                | "worktree.command"
                         )
                     ) {
                         response["error"]["submissionUnknown"] =
@@ -766,12 +774,33 @@ impl Session {
             gui_read: true,
             gui_write: true,
             local: true,
+            browser_device: None,
             uploads: Default::default(),
             transport: String::new(),
             kind: gateway_owner::TransportKind::Direct,
             source_id: String::new(),
             host,
         })
+    }
+    /// 浏览器沿用本机项目 ID，但每次副作用前检查独立设备授权，回执不与 Main 共用。
+    pub(crate) fn browser(host: Rc<Host>, connection: String, device: String) -> Result<Self> {
+        let mut session = Self::local(host, connection)?;
+        let capabilities: Vec<_> = [
+            "observe",
+            "review",
+            "submit",
+            "interrupt",
+            "answer",
+            "pauseTask",
+            "manage",
+        ]
+        .into_iter()
+        .filter(|capability| session.host.loopback.browser_permits(&device, capability))
+        .collect();
+        session.grant["capabilities"] = json!(capabilities);
+        session.peer = format!("browser-{device}");
+        session.browser_device = Some(device);
+        Ok(session)
     }
     /// 本机写请求沿用远程封装；上下文里的网关代次与授权版本由本连接补齐。
     pub(crate) async fn local_request(&mut self, request: &Value) -> Result<Value> {
@@ -790,6 +819,12 @@ impl Session {
         }
     }
     fn authorize(&self, project: Option<&str>, capability: &str) -> Result<()> {
+        if let Some(device) = &self.browser_device {
+            ensure!(
+                self.host.loopback.browser_permits(device, capability),
+                "FORBIDDEN"
+            );
+        }
         if self.local {
             if let Some(project) = project {
                 ensure!(self.host.slots.borrow().contains_key(project), "FORBIDDEN");
@@ -838,6 +873,17 @@ impl Session {
                 .collect());
         }
         gateway_owner::push::bindings(&self.host, &self.source_id)
+    }
+    fn uses_workbench_execution(&self) -> bool {
+        // 远程会话沿配对来源使用同一个后台；不能把别的来源绑定到桌面工具宿主。
+        if self.local {
+            self.gui_write
+        } else {
+            self.host
+                .gateway
+                .workbench
+                .backend_has_source(&self.source_id)
+        }
     }
     fn project_id(&self, alias: &str) -> Result<String> {
         self.bindings()?
@@ -1008,6 +1054,112 @@ impl Session {
         let params = &request["params"];
         ensure!(params.is_object(), "INVALID_PARAMS");
         self.authorize(None, "observe")?;
+        if matches!(method, "pages.command" | "pages.resource") {
+            ensure!(self.local && self.gui_write, "FORBIDDEN");
+            self.authorize(None, "manage")?;
+            ensure!(
+                request.get("context").is_none() && request.get("commandId").is_none(),
+                "INVALID_PARAMS"
+            );
+            // 手动打开会执行入口工具；不能用 manage 绕过 submit。
+            if method == "pages.command"
+                && matches!(params["operation"].as_str(), Some("open" | "request"))
+            {
+                self.authorize(None, "submit")?;
+            }
+            let params = if method == "pages.command" {
+                serde_json::to_value(
+                    serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(
+                        params.clone(),
+                    )
+                    .context("INVALID_PARAMS")?,
+                )?
+            } else {
+                serde_json::to_value(
+                    serde_json::from_value::<areal_protocol::host::WorkbenchPageResourceParams>(
+                        params.clone(),
+                    )
+                    .context("INVALID_PARAMS")?,
+                )?
+            };
+            let mut value = self
+                .host
+                .gateway
+                .workbench
+                .request(
+                    &self.host,
+                    method,
+                    params,
+                    json!({"principal":self.peer,"connection":self.connection}),
+                )
+                .await?;
+            if method == "pages.command" {
+                let descriptor = if value["status"] == "open" {
+                    &mut value["app"]
+                } else {
+                    &mut value
+                };
+                if descriptor.get("frameUrl").is_some() {
+                    descriptor["frameUrl"] = json!(self.host.loopback.page_proxy_url()?);
+                }
+            }
+            return Ok(value);
+        }
+        if matches!(
+            method,
+            "library.command"
+                | "worktree.command"
+                | "worktree.read"
+                | "tasks.read"
+                | "trajectory.read"
+                | "trajectory.command"
+                | "feedback.read"
+                | "feedback.command"
+                | "manage.read"
+                | "manage.command"
+                | "providers.read"
+                | "providers.command"
+        ) {
+            ensure!(self.local && self.gui_write, "FORBIDDEN");
+            self.authorize(None, "manage")?;
+            // 提交、中断类管理操作按语义另需各自能力；本机桌面连接不受影响。
+            if let Some(capability) =
+                crate::server::workbench_route::manage_capability(method, params)
+            {
+                self.authorize(None, capability)?;
+            }
+            ensure!(request.get("context").is_none(), "INVALID_PARAMS");
+            if matches!(
+                method,
+                "worktree.read"
+                    | "tasks.read"
+                    | "trajectory.read"
+                    | "feedback.read"
+                    | "manage.read"
+                    | "providers.read"
+            ) {
+                ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
+                return crate::server::workbench_route::backend_read(
+                    &self.host, &self.peer, request,
+                )
+                .await;
+            }
+            return crate::server::workbench_route::backend_command(
+                &self.host, &self.peer, request,
+            )
+            .await;
+        }
+        if method == "command.read" && self.local && request.get("context").is_none() {
+            ensure!(exact(params, &["commandId"]), "INVALID_PARAMS");
+            if let Some(mut receipt) = crate::server::workbench_route::backend_receipt(
+                &self.host,
+                &self.peer,
+                text(params, "commandId")?,
+            )? {
+                receipt.as_object_mut().unwrap().remove("semanticDigest");
+                return Ok(receipt);
+            }
+        }
         if crate::server::workbench_route::METHODS.contains(&method) {
             ensure!(self.local, "FORBIDDEN");
             ensure!(
@@ -1083,6 +1235,14 @@ impl Session {
                 || (method == "subscription.close" && self.conversation_active()));
         let project = if native {
             self.native_alias(text(&request["context"], "projectId")?)?
+        } else if self.gui_write {
+            // 共享清单给出 Host ID；旧远程调用仍可用别名，授权和 journal 统一回到来源别名。
+            let supplied = text(&request["context"], "projectId")?;
+            self.bindings()?
+                .into_iter()
+                .find(|(id, alias)| id == supplied || alias == supplied)
+                .map(|(_, alias)| alias)
+                .context("FORBIDDEN")?
         } else {
             text(&request["context"], "projectId")?.to_owned()
         };
@@ -1183,29 +1343,36 @@ impl Session {
     }
     fn command_record(&self, project: &str, command: &str) -> Result<Option<Value>> {
         let id = self.project_id(project)?;
-        let (_, snapshot) = self.host.journal.native_snapshot(&id)?;
-        let entries = snapshot["outcomes"]
-            .as_object()
-            .context("RESOURCE_UNAVAILABLE")?
-            .values()
-            .chain(
-                snapshot["pending"]
-                    .as_array()
-                    .context("RESOURCE_UNAVAILABLE")?
-                    .iter(),
-            );
-        Ok(entries
-            .filter(|entry| {
-                entry["remote"]["hostId"] == self.host_peer
-                    && entry["remote"]["devicePeerId"] == self.peer
-                    && entry["remote"]["projectId"] == project
-                    && entry["remote"]["commandId"]
-                        .as_str()
-                        .is_some_and(|id| id.eq_ignore_ascii_case(command))
-            })
-            .next()
-            .cloned())
+        // 新工作台创建命令与原生受理日志分离；旧记录仍按原 scope 只读恢复。
+        for scope in [self.creation_command_scope(&id), id] {
+            let (_, snapshot) = self.host.journal.native_snapshot(&scope)?;
+            let entries = snapshot["outcomes"]
+                .as_object()
+                .context("RESOURCE_UNAVAILABLE")?
+                .values()
+                .chain(
+                    snapshot["pending"]
+                        .as_array()
+                        .context("RESOURCE_UNAVAILABLE")?
+                        .iter(),
+                );
+            if let Some(entry) = entries
+                .filter(|entry| {
+                    entry["remote"]["hostId"] == self.host_peer
+                        && entry["remote"]["devicePeerId"] == self.peer
+                        && entry["remote"]["projectId"] == project
+                        && entry["remote"]["commandId"]
+                            .as_str()
+                            .is_some_and(|id| id.eq_ignore_ascii_case(command))
+                })
+                .next()
+            {
+                return Ok(Some(entry.clone()));
+            }
+        }
+        Ok(None)
     }
+
     fn command_view(record: Option<&Value>, command: &str) -> Value {
         let Some(record) = record else {
             return json!({"commandId":command,"admissionState":"notFound","submissionUnknown":true});
@@ -1233,7 +1400,9 @@ impl Session {
             let core = error["coreCode"]
                 .as_i64()
                 .or_else(|| error["code"].as_i64());
-            let code = if matches!(
+            let code = if error["data"]["reason"] == "TOOL_HOST_UNAVAILABLE" {
+                "CAPABILITY_UNAVAILABLE"
+            } else if matches!(
                 record["remote"]["method"].as_str(),
                 Some("session.send" | "session.create")
             ) && error["code"] == "UNSUPPORTED_PROFILE"
@@ -1247,7 +1416,12 @@ impl Session {
                     _ => "CORE_UNAVAILABLE",
                 }
             };
-            result["error"] = json!({"code":code,"message":"命令未受理，请刷新状态后检查草稿"});
+            let message = if code == "CAPABILITY_UNAVAILABLE" {
+                "桌面工具宿主不可用，请重新打开提供工具的桌面端"
+            } else {
+                "命令未受理，请刷新状态后检查草稿"
+            };
+            result["error"] = json!({"code":code,"message":message});
             if let Some(core) = core {
                 result["error"]["coreCode"] = json!(core);
             }

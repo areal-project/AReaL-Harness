@@ -18,6 +18,18 @@ pub(super) async fn request(
     request: Request<Incoming>,
 ) -> Response<Full<Bytes>> {
     let path = request.uri().path().to_owned();
+    // 公开端点仅含固定代理代码；用户页面与资源始终经已鉴权 WebSocket 读取。
+    if path == "/host/pages/proxy" && request.method() == Method::GET {
+        let mut result = response(
+            StatusCode::OK,
+            include_str!("page_proxy.html"),
+            "text/html; charset=utf-8",
+        );
+        result.headers_mut().insert("content-security-policy", hyper::header::HeaderValue::from_static(
+            "default-src 'none'; script-src 'unsafe-inline' http: https: data: blob:; style-src 'unsafe-inline' http: https:; img-src http: https: data: blob:; font-src http: https: data:; media-src http: https: data: blob:; connect-src http: https: wss:; frame-src http: https: data: blob:; base-uri http: https:; object-src 'none'; form-action 'none'; worker-src 'none'; sandbox allow-scripts"
+        ));
+        return result;
+    }
     if path.starts_with("/host/auth/") {
         if request.method() != Method::POST
             || request.headers().get_all("origin").iter().count() != 1

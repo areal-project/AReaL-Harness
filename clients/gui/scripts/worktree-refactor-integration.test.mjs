@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import { CoreClient } from "../packages/runtime-client/core.js";
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const physical = "a".repeat(24),
   logical = "b".repeat(24);
 

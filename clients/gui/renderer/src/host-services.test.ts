@@ -6,6 +6,8 @@ import { createHostReadServices } from "./host-services.js";
 import type { Action, PlatformServices, Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
+import { draftModelOptions, draftModelSelection } from "./lib/draftModelSelection.js";
+import { resolveDraftProfile } from "./ProfileDetails.js";
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 const connection = {
   hostId: "host",
@@ -158,6 +160,85 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
   };
 }
 describe("Host renderer read authority", () => {
+  it.each([false, true])(
+    "advertises domain grants independently of native and session mutations: %s",
+    async (permitted) => {
+      const page = new EventTarget();
+      vi.stubGlobal("window", page);
+      const wire = transport();
+      const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+        const connected = await wire.factory(lifecycle);
+        return {
+          ...connected,
+          transport: {
+            ...connected.transport,
+            write: async () => {
+              throw new Error("Unexpected mutation");
+            },
+          },
+          identity: {
+            ...connected.identity,
+            writeMethods: permitted
+              ? [
+                  "library.command",
+                  "tasks.read",
+                  "manage.command",
+                  "providers.read",
+                  "pages.command",
+                  "pages.resource",
+                ]
+              : [],
+            writeLimits: {},
+          },
+        };
+      };
+      const services = createHostReadServices(undefined, {
+        ...options(factory),
+        domains: new Set(["library", "tasks", "manage", "providers", "pages"]),
+        events: page as Window,
+      });
+      try {
+        await until(services);
+        expect(services.capabilities).toEqual({
+          library: permitted,
+          taskCatalog: permitted,
+          taskManage: permitted,
+          pages: permitted,
+          settings: permitted ? ["模型服务"] : [],
+          mutations: false,
+          conversationSubmit: false,
+          conversationCreate: false,
+          native: false,
+        });
+      } finally {
+        page.dispatchEvent(new Event("pagehide"));
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it("keeps model and profile consumers usable before desktop catalogs arrive", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    const wire = transport();
+    const services = createHostReadServices(undefined, options(wire.factory));
+    try {
+      await until(services);
+      const snapshot = await services.snapshot();
+      const projected = snapshot.projects.find((item) => item.id === "alias");
+      if (!projected) throw new Error("Host shell did not publish its project");
+      const selection = draftModelSelection(projected, undefined, null, {});
+      expect(selection.effectiveModel).toBe("");
+      expect(
+        draftModelOptions(projected, selection.effectiveModel, selection.currentModel),
+      ).toEqual([]);
+      expect(resolveDraftProfile(projected, '{"id":"historical","revision":"1"}')).toBeUndefined();
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reconnects after a persisted page returns without permanently closing its read owner", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);
@@ -579,7 +660,17 @@ describe("Host renderer read authority", () => {
     expect(
       wire.requests.find((request) => request.method === "session.history")?.params,
     ).toMatchObject({ view: "own", cursor: "native-older" });
-    expect(services.capabilities).toEqual({ mutations: false, native: false });
+    expect(services.capabilities).toEqual({
+      mutations: false,
+      conversationSubmit: false,
+      conversationCreate: false,
+      native: false,
+      library: false,
+      taskCatalog: false,
+      taskManage: false,
+      pages: false,
+      settings: [],
+    });
     expect(wire.requests.map((request) => request.method)).toEqual([
       "shell.subscribe",
       "session.open",
@@ -741,6 +832,115 @@ describe("Host renderer read authority", () => {
     expect(next.projects[1]).toBe(previous);
     expect(next.projects[0].state.threads.thread.turns[0].items[0].text).toBe("changed");
   });
+  it("routes complete conversation inputs and preserves unknown drafts without replay", async () => {
+    const wire = transport({
+      ...observation,
+      thread: { ...observation.thread, desktop: { configuration: { revision: 7 } } },
+    });
+    const writes: Array<{
+      method: string;
+      params: Record<string, unknown>;
+      projectId?: string;
+      commandId?: string;
+    }> = [];
+    let admissionState = "accepted";
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const opened = await wire.factory(lifecycle);
+      return {
+        ...opened,
+        identity: {
+          ...opened.identity,
+          writeMethods: ["session.create", "session.send", "session.control", "command.read"],
+        },
+        transport: {
+          ...opened.transport,
+          async write(method, params, context, commandId) {
+            writes.push({ method, params, projectId: context?.projectId, commandId });
+            return {
+              admissionState,
+              threadId: "thread",
+              turnId: "turn",
+              nativeRequestId: commandId,
+            };
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, { ...options(factory), writes: true });
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const { call } = await import("./services.js");
+    const requestId = "11111111-1111-4111-8111-111111111111";
+    const creation = {
+      projectId: "alias",
+      requestId,
+      model: { providerId: "provider", modelId: "model" },
+      parameters: { reasoningEffort: "high" },
+      options: { permissionPreset: "ask" as const },
+      worktree: { mode: "source" as const },
+    };
+    expect(await call(services, "create", creation)).toEqual({ threadId: "thread", requestId });
+    expect(writes.at(-1)).toMatchObject({
+      method: "session.create",
+      projectId: "canonical",
+      commandId: requestId,
+      params: {
+        model: creation.model,
+        parameters: creation.parameters,
+        options: creation.options,
+        worktree: creation.worktree,
+      },
+    });
+    expect(writes.at(-1)?.params).not.toHaveProperty("projectId");
+    const message = {
+      projectId: "alias",
+      threadId: "thread",
+      text: "continue",
+      attachments: [{ type: "file" as const, url: "areal://blob/test", mimeType: "text/plain" }],
+      conversationQuotes: [{ text: "quoted" }],
+      mcpContent: [{ type: "text" as const, text: "app content" }],
+      expectedTurnId: "turn",
+      enqueue: true,
+    };
+    expect(await call(services, "send", message)).toEqual({ threadId: "thread", turnId: "turn" });
+    expect(writes.at(-1)).toMatchObject({
+      method: "session.send",
+      projectId: "canonical",
+      params: {
+        expectedConfigRevision: 7,
+        enqueue: true,
+        attachments: message.attachments,
+        conversationQuotes: message.conversationQuotes,
+        mcpContent: message.mcpContent,
+      },
+    });
+    await call(services, "steer", message);
+    expect(writes.at(-1)).toMatchObject({
+      method: "session.control",
+      params: {
+        operation: "steer",
+        values: {
+          expectedTurnId: "turn",
+          attachments: message.attachments,
+          conversationQuotes: message.conversationQuotes,
+          mcpContent: message.mcpContent,
+        },
+      },
+    });
+    admissionState = "pending";
+    const before = writes.length;
+    await expect(call(services, "send", message)).rejects.toMatchObject({
+      submissionUnknown: true,
+      requestId: expect.any(String),
+    });
+    expect(writes).toHaveLength(before + 1);
+    expect(services.capabilities).toMatchObject({
+      mutations: false,
+      conversationSubmit: true,
+      conversationCreate: true,
+    });
+  });
+
   it("routes stop and approvals through Host receipts and falls back only when Host declines", async () => {
     const pending = {
       threadId: "thread",

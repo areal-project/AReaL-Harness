@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { AppProviders } = require("../app/src/core/providers.cjs");
+const { AppProviders } = require("@areal/workbench-service/desktop/core/providers.cjs");
 const { legacyOpenAI } = require("./fixtures/legacy-subscription-owner.cjs");
 const { mkdtemp, readFile, rm, stat } = require("node:fs/promises");
 const { tmpdir } = require("node:os");

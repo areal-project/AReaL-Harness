@@ -66,6 +66,20 @@ const WRITE_METHODS: &[&str] = &[
     "analytics.import",
     "analytics.read",
     "analytics.sync",
+    "library.command",
+    "worktree.read",
+    "tasks.read",
+    "trajectory.read",
+    "trajectory.command",
+    "feedback.read",
+    "feedback.command",
+    "manage.read",
+    "manage.command",
+    "providers.read",
+    "providers.command",
+    "worktree.command",
+    "pages.command",
+    "pages.resource",
 ];
 const TTL: Duration = Duration::from_secs(30);
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -99,6 +113,18 @@ struct Ticket {
     generation: String,
     deadline: Instant,
 }
+struct PageConnection {
+    host: Rc<Host>,
+    connection: String,
+}
+impl Drop for PageConnection {
+    fn drop(&mut self) {
+        self.host
+            .gateway
+            .workbench
+            .disconnect_pages(&self.connection);
+    }
+}
 #[derive(Default)]
 pub(super) struct Loopback {
     endpoint: RefCell<Option<LoopbackEndpoint>>,
@@ -107,6 +133,16 @@ pub(super) struct Loopback {
     ui_root: RefCell<Option<PathBuf>>,
 }
 impl Loopback {
+    pub(super) fn page_proxy_url(&self) -> Result<String> {
+        Ok(format!(
+            "{}/host/pages/proxy",
+            self.endpoint
+                .borrow()
+                .as_ref()
+                .context("CAPABILITY_UNAVAILABLE")?
+                .origin
+        ))
+    }
     pub(super) fn ticket(&self, input: LocalWebTicketParams) -> Result<LocalWebTicketResult> {
         self.mint_ticket(input, None)
     }
@@ -166,7 +202,7 @@ impl Loopback {
             .context("loopback unavailable")
     }
     pub(super) fn approve(&self, host: &Host, params: Value) -> Result<Value> {
-        let input: protocol::LocalWebApproveParams = serde_json::from_value(params)?;
+        let input: protocol::LocalWebApproveParams = serde_json::from_value(params.clone())?;
         ensure!(
             input.expected_generation == host.identity.generation,
             wire::error("generationMismatch", "Host generation changed")
@@ -175,7 +211,7 @@ impl Loopback {
             .borrow_mut()
             .as_mut()
             .context("loopback unavailable")?
-            .approve(&input.request_id)
+            .approve(&input.request_id, &params["scopes"])
     }
     pub(super) fn devices(&self) -> Result<Value> {
         Ok(self
@@ -202,6 +238,34 @@ impl Loopback {
             .retain(|_, ticket| ticket.device_id.as_deref() != Some(input.device_id.as_str()));
         host.changed();
         Ok(result)
+    }
+    pub(crate) fn browser_permits(&self, device_id: &str, capability: &str) -> bool {
+        self.browser
+            .borrow()
+            .as_ref()
+            .is_some_and(|auth| auth.permits(device_id, capability))
+    }
+    fn browser_method_permitted(&self, device_id: &str, method: &str) -> bool {
+        let capability = match method {
+            "session.create" | "session.send" | "session.control" | "attachment.upload" => "submit",
+            "turn.stop" => "interrupt",
+            "interaction.respond" | "task.question.reply" => "answer",
+            "task.pause" => "pauseTask",
+            "library.command" | "analytics.import" | "worktree.read" | "worktree.command"
+            | "tasks.read" | "trajectory.read" | "trajectory.command" | "feedback.read"
+            | "feedback.command" | "manage.read" | "manage.command" | "providers.read"
+            | "providers.command" | "pages.command" | "pages.resource" => "manage",
+            _ if WRITE_METHODS.contains(&method) => "observe",
+            _ => return false,
+        };
+        self.browser_permits(device_id, capability)
+    }
+    fn browser_scopes(&self, device_id: &str) -> Result<Value> {
+        self.browser
+            .borrow()
+            .as_ref()
+            .and_then(|auth| auth.scopes(device_id))
+            .context("FORBIDDEN")
     }
     fn current(&self, device_id: Option<&str>) -> bool {
         device_id.is_none_or(|id| {
@@ -442,14 +506,30 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         .iter()
         .any(|capability| capability == "gui-read-v1");
     let connection_id = uuid::Uuid::new_v4().to_string();
-    // 浏览器设备只有查看授权；只有经本机 socket 签发的桌面票据才能写。
+    let _pages = PageConnection {
+        host: host.clone(),
+        connection: connection_id.clone(),
+    };
+    let mut page_events = host.gateway.workbench.page_events();
+    // 写能力同时要求协议协商和本机用户明确授予的范围；旧浏览器仍只有 observe。
     let mut writer = (negotiated
-        && device_id.is_none()
+        && device_id.as_ref().is_none_or(|id| {
+            ["submit", "review", "manage"]
+                .iter()
+                .any(|capability| host.loopback.browser_permits(id, capability))
+        })
         && hello
             .capabilities
             .iter()
             .any(|capability| capability == "gui-write-v1"))
-    .then(|| super::gateway_owner::LocalSession::new(host.clone(), connection_id.clone()))
+    .then(|| match &device_id {
+        Some(id) => super::gateway_owner::LocalSession::browser(
+            host.clone(),
+            connection_id.clone(),
+            id.clone(),
+        ),
+        None => super::gateway_owner::LocalSession::new(host.clone(), connection_id.clone()),
+    })
     .transpose()?;
     let result = protocol::LoopbackHelloResult {
         version: VERSION.into(),
@@ -482,8 +562,18 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         write_limits: None,
     };
     let mut result = serde_json::to_value(result)?;
+    if let Some(device) = &device_id {
+        result["scopes"] = host.loopback.browser_scopes(device)?;
+    }
     if writer.is_some() {
-        result["writeMethods"] = json!(WRITE_METHODS);
+        result["writeMethods"] = json!(
+            WRITE_METHODS
+                .iter()
+                .filter(|method| device_id
+                    .as_ref()
+                    .is_none_or(|device| host.loopback.browser_method_permitted(device, method)))
+                .collect::<Vec<_>>()
+        );
         result["writeLimits"] = super::gateway_owner::write_limits();
     }
     send(
@@ -497,6 +587,19 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
         tokio::select! {
+            event = page_events.recv() => {
+                let event = event.context("page event stream interrupted")?;
+                if event["connection"] != connection_id { continue; }
+                ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                if let Some(device) = &device_id {
+                    ensure!(host.loopback.browser_permits(device, "manage"), "FORBIDDEN");
+                }
+                send(&mut socket, &json!({"version":VERSION,"method":"pages.event","params":{
+                    "event":"pages.event","connectionId":connection_id,
+                    "gatewayGeneration":host.identity.generation,
+                    "token":event["token"],"notification":event["notification"]
+                }})).await?;
+            }
             message = socket.next() => {
                 let Some(message) = message else { break; };
                 match message? {
@@ -509,6 +612,9 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                 ensure!(raw["version"] == VERSION, wire::error("unsupportedVersion","Host requires version 1"));
                                 let object = raw.as_object().context("INVALID_PARAMS")?;
                                 ensure!(object.keys().all(|key| matches!(key.as_str(), "version"|"id"|"method"|"params"|"context"|"commandId")), "INVALID_PARAMS");
+                                if let Some(device) = &device_id {
+                                    ensure!(host.loopback.browser_method_permitted(device, raw["method"].as_str().unwrap_or_default()), "FORBIDDEN");
+                                }
                                 let mut envelope = raw.clone();
                                 envelope.as_object_mut().unwrap().remove("version");
                                 local.request(&envelope).await
@@ -519,7 +625,15 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                 Err(error)=>{
                                     let message=error.to_string();
                                     let code=error.downcast_ref::<wire::Error>().map(|error|error.code).unwrap_or_else(||super::gateway_owner::error_code(&message));
-                                    json!({"version":VERSION,"id":id,"error":{"code":code,"message":"Host command failed"}})
+                                    let mut response = json!({"version":VERSION,"id":id,"error":{"code":code,"message":"Host command failed"}});
+                                    if matches!(raw["method"].as_str(), Some("library.command" | "worktree.command" | "trajectory.command" | "feedback.command" | "manage.command"
+                | "providers.read"
+                | "providers.command")) {
+                                        response["error"]["commandId"] = raw["commandId"].clone();
+                                        response["error"]["submissionUnknown"] = json!(!matches!(code,
+                                            "FORBIDDEN" | "INVALID_PARAMS" | "COMMAND_CONFLICT" | "CAPABILITY_UNAVAILABLE" | "LIMIT_EXCEEDED"));
+                                    }
+                                    response
                                 },
                             };
                             send(&mut socket,&response).await?;
@@ -1116,6 +1230,35 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn page_events_are_delivered_only_to_the_authenticated_connection() {
+        tokio::task::LocalSet::new().run_until(async {
+            let fixture = Fixture::start().await;
+            let client = fixture.client().await;
+            let mut sockets = Vec::new();
+            for _ in 0..2 {
+                let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+                let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+                write(&mut socket, json!({"version":1,"id":"hello","method":"hello","params":{
+                    "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
+                    "ticket":ticket.ticket,"expectedGeneration":ticket.generation
+                }})).await;
+                let hello = read(&mut socket).await["result"].clone();
+                sockets.push((socket, hello["connectionId"].clone()));
+            }
+            let (mut second, _) = sockets.pop().unwrap();
+            let (mut first, owner) = sockets.pop().unwrap();
+            super::super::workbench_route::reverse(&fixture.host)("pages.event".into(), json!({
+                "connection":owner,"token":"page-token","notification":{"jsonrpc":"2.0","method":"ui/notifications/closed"}
+            })).await.unwrap();
+            let event = read(&mut first).await;
+            assert_eq!(event["method"], "pages.event");
+            assert_eq!(event["params"]["connectionId"], owner);
+            write(&mut second, json!({"version":1,"id":"barrier","method":"host.status","params":{}})).await;
+            assert_eq!(read(&mut second).await["id"], "barrier");
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn only_desktop_tickets_negotiate_local_writes() {
         tokio::task::LocalSet::new().run_until(async {
             let fixture = Fixture::start().await;
@@ -1143,6 +1286,70 @@ mod tests {
             assert!(hello.get("writeMethods").is_none() && hello.get("writeLimits").is_none());
             write(&mut socket, json!({"version":1,"id":"send","method":"session.send","params":{},"context":{"projectId":"p"},"commandId":uuid::Uuid::new_v4().to_string()})).await;
             assert_eq!(read(&mut socket).await["error"]["code"], "methodNotFound");
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn browser_write_scopes_are_explicit_enforced_and_revocable() {
+        tokio::task::LocalSet::new().run_until(async {
+            let fixture = Fixture::start().await;
+            let endpoint = fixture.host.loopback.endpoint().unwrap();
+            for scope in ["submit", "approve", "manage"] {
+                let key = browser_key();
+                let (_, pending) = browser_post(&endpoint, &endpoint.origin, "challenge", browser_params(&key)).await;
+                // 授权仍通过本机认证控制通道；网页不能给自己增加范围。
+                let grant = fixture.client().await.approve_browser_with_scopes(pending["requestId"].as_str().unwrap(), &["observe", scope]).await.unwrap();
+                let ticket = browser_ticket(&fixture, &key).await;
+                let mut socket = connect(&ticket, &endpoint.origin).await;
+                write(&mut socket, json!({"version":1,"id":"hello","method":"hello","params":{"protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],"ticket":ticket.ticket,"expectedGeneration":ticket.generation}})).await;
+                let hello = read(&mut socket).await["result"].clone();
+                assert_eq!(hello["scopes"], json!(["observe", scope]));
+                let methods = hello["writeMethods"].as_array().unwrap();
+                assert_eq!(methods.contains(&json!("library.command")), scope == "manage");
+                for method in ["worktree.read", "tasks.read", "trajectory.read", "trajectory.command", "feedback.read", "feedback.command", "manage.read", "manage.command", "providers.read", "providers.command"] {
+                    assert_eq!(methods.contains(&json!(method)), scope == "manage");
+                }
+                assert_eq!(methods.contains(&json!("session.send")), scope == "submit");
+                assert_eq!(methods.contains(&json!("interaction.respond")), scope == "approve");
+                write(&mut socket, json!({"version":1,"id":"write","method":"library.command","params":{"sourceId":"fixture","operation":"createSection","title":"fixture"},"commandId":uuid::Uuid::new_v4().to_string()})).await;
+                let error = read(&mut socket).await["error"].clone();
+                assert_eq!(error["code"], if scope == "manage" { "CAPABILITY_UNAVAILABLE" } else { "FORBIDDEN" });
+                assert_eq!(error["submissionUnknown"], false);
+                for operation in ["open", "request"] {
+                    write(&mut socket, json!({"version":1,"id":"page","method":"pages.command","params":{"operation":operation}})).await;
+                    assert_eq!(read(&mut socket).await["error"]["code"], "FORBIDDEN");
+                }
+                fixture.client().await.revoke_browser(&grant.device_id).await.unwrap();
+                write(&mut socket, json!({"version":1,"id":"revoked","method":"host.status","params":{}})).await;
+                closed(&mut socket).await;
+            }
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn public_page_proxy_is_static_and_sandboxed_without_exposing_resources() {
+        tokio::task::LocalSet::new().run_until(async {
+            let fixture = Fixture::start().await;
+            let endpoint = fixture.host.loopback.endpoint().unwrap();
+            let authority = endpoint.origin.strip_prefix("http://").unwrap();
+            for path in ["/host/pages/proxy", "/host/pages/private-page/view", "/host/pages/proxy?token=private"] {
+                let mut stream = TcpStream::connect(authority).await.unwrap();
+                stream.write_all(format!("GET {path} HTTP/1.1\r\nHost: {authority}\r\nConnection: close\r\n\r\n").as_bytes()).await.unwrap();
+                let mut bytes = Vec::new();
+                tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut bytes)).await.unwrap().unwrap();
+                let text = std::str::from_utf8(&bytes).unwrap();
+                let (headers, body) = text.split_once("\r\n\r\n").unwrap();
+                if path == "/host/pages/proxy" {
+                    assert!(headers.starts_with("HTTP/1.1 200"));
+                    assert!(headers.contains("sandbox allow-scripts"));
+                    assert!(!headers.contains("allow-same-origin"));
+                    assert_eq!(body, include_str!("page_proxy.html"));
+                    assert!(!body.contains("areal-ui://"));
+                } else {
+                    assert!(!headers.starts_with("HTTP/1.1 200"));
+                    assert!(!body.contains("private"));
+                }
+            }
         }).await;
     }
 

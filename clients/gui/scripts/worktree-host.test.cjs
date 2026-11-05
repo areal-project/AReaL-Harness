@@ -8,7 +8,7 @@ const { randomUUID, createHash } = require("node:crypto");
 const { execFileSync } = require("node:child_process");
 const { createRequire } = require("node:module");
 const requireApp = createRequire(join(__dirname, "../app/package.json"));
-const { CoreBackend } = requireApp("./src/core/backend.cjs");
+const { CoreBackend } = requireApp("@areal/workbench-service/desktop/core/backend.cjs");
 
 function git(root, ...args) {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();

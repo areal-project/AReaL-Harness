@@ -11,11 +11,13 @@ import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const { WebSocket, WebSocketServer } = require("ws");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { CoreLibrary } = require("../app/src/core/library.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { CoreLibrary } = require("@areal/workbench-service/desktop/core/library.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
-const { LifecycleOperations } = require("../app/src/core/lifecycle-operations.cjs");
-const { readOriginalTurn } = require("../app/src/core/local-service.cjs");
+const {
+  LifecycleOperations,
+} = require("@areal/workbench-service/desktop/core/lifecycle-operations.cjs");
+const { readOriginalTurn } = require("@areal/workbench-service/desktop/core/local-service.cjs");
 const serviceId = "a".repeat(24),
   generation = "original-generation";
 const turn = (id, status) => ({ id, status, items: [] });

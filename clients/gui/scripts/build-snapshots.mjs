@@ -37,6 +37,20 @@ results.push(
     external: ["electron", "@areal/client/node"],
   }),
 );
+results.push(
+  await build({
+    metafile: true,
+    absWorkingDir: gui,
+    entryPoints: ["../../services/workbench/src/host-library-store.ts"],
+    outdir: "../../services/workbench/src/generated",
+    outExtension: { ".js": ".cjs" },
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    target: "node22",
+    external: ["@areal/client/node"],
+  }),
+);
 const built = new Set(results.flatMap((result) => Object.keys(result.metafile.inputs)));
 const { readdirSync, readFileSync } = await import("node:fs");
 const orphans = readdirSync(`${gui}/app/src`, { recursive: true })

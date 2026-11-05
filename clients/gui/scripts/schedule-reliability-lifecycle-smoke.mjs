@@ -143,7 +143,7 @@ require("electron").dialog.showMessageBox=async (...args)=>{
 const {SharedCoreBackend}=require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
 const stop=SharedCoreBackend.prototype.requestHostStop;
 SharedCoreBackend.prototype.requestHostStop=async function(...args){const result=await stop.apply(this,args);record({kind:"stop-receipt",result});return result;};
-const {CoreBackend}=require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const {CoreBackend}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const start=CoreBackend.prototype.startProject;
 CoreBackend.prototype.startProject=function(projectId,...args){fs.appendFileSync(${JSON.stringify(traceFile)},JSON.stringify({kind:"owner_start",projectId,at:Date.now(),pid:process.pid})+"\\n");return start.call(this,projectId,...args);};
 `,

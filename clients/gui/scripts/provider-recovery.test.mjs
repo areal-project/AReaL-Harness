@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ChatGPTAccount } from "../packages/chatgpt-provider/account.js";
-import { AppProviders } from "../app/src/core/providers.cjs";
+import { AppProviders } from "@areal/workbench-service/desktop/core/providers.cjs";
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

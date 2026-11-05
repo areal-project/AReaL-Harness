@@ -1,5 +1,13 @@
 [
   {
+    "script": "test:workbench-backend",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["service", "lifecycle", "library"],
+    "requires": ["core-binary", "gui-build"],
+    "notes": "Isolated source Host and Node backend; WebSocket receipts, Main attach, crash recovery and Host shutdown. No Electron window or package; native secure storage remains a separate check."
+  },
+  {
     "script": "test:conversation-baseline-provider",
     "layer": "contract",
     "platforms": ["darwin", "linux"],

@@ -173,3 +173,5 @@ export function readFileOpenResult(
     ])
     .parse(value);
 }
+
+export { isLibraryState } from "@areal/workbench/desktop-contract/library-media";

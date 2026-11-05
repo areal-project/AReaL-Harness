@@ -11,7 +11,7 @@ import { assertApplicationStopped } from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { manageTask, taskOperations } = require("../app/src/core/tasks.cjs");
+const { manageTask, taskOperations } = require("@areal/workbench-service/desktop/core/tasks.cjs");
 async function boundaryContract() {
   for (const operation of ["taskHistoryCapabilities", "taskRuns", "taskRun"])
     assert.ok(taskOperations.has(operation), `${operation} is a narrow desktop capability`);

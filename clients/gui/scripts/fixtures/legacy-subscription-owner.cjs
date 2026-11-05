@@ -1,9 +1,12 @@
 // 既有 JS owner 仅作为冻结行为语料，由明确的测试入口调用。
 "use strict";
 const originalRequire = require("node:module").createRequire(
-  require.resolve("../../app/src/core/providers.cjs"),
+  require.resolve("@areal/workbench-service/desktop/core/providers.cjs"),
 );
-const { SubscriptionStore, requestAudit } = require("../../app/src/core/subscription.cjs");
+const {
+  SubscriptionStore,
+  requestAudit,
+} = require("@areal/workbench-service/desktop/core/subscription.cjs");
 async function legacyOpenAI() {
   if (!this.openaiPromise)
     this.openaiPromise = import(originalRequire.resolve("@areal/chatgpt-provider/core"))

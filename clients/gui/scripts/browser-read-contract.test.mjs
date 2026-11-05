@@ -3,8 +3,11 @@ import { test } from "node:test";
 import { CoreClient } from "../packages/runtime-client/core.js";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
-const { validToolInput } = require("../app/src/core/browser-tool.cjs");
+const {
+  DesktopService,
+  PROTOCOL,
+} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const { validToolInput } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
 
 test("browser observation and capture accept only bounded declared parameters", () => {
   const pageId = "00000000-0000-4000-8000-000000000001";
@@ -259,8 +262,10 @@ test("bound client may answer a browser tool request while ordinary clients reje
 test("only the Main owner disconnect revokes its Core tool connection and successor drops ownerless hosts", async (t) => {
   const { once } = await import("node:events");
   const WebSocket = require("ws");
-  const { CoreBackend } = require("../app/src/core/backend.cjs");
-  const { ProjectConnections } = require("../app/src/core/project-connections.cjs");
+  const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+  const {
+    ProjectConnections,
+  } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
   const project = { id: "project", model: { state: { threads: {} } } };
   const backend = Object.assign(Object.create(CoreBackend.prototype), {
     projects: new Map([[project.id, project]]),

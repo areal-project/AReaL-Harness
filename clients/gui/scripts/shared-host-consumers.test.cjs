@@ -5,10 +5,12 @@ const { mkdir, readFile, writeFile, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { makeTempDir } = require("./support/temp.mjs");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { snapshotProject } = require("../app/src/core/project-snapshot.cjs");
-const { catalog } = require("../app/src/core/provider-model-catalog.cjs");
-const { LifecycleOperations } = require("../app/src/core/lifecycle-operations.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { snapshotProject } = require("@areal/workbench-service/desktop/core/project-snapshot.cjs");
+const { catalog } = require("@areal/workbench-service/desktop/core/provider-model-catalog.cjs");
+const {
+  LifecycleOperations,
+} = require("@areal/workbench-service/desktop/core/lifecycle-operations.cjs");
 
 test("launch keeps named environment credentials outside persistent launch inputs", async (t) => {
   const home = await makeTempDir("areal-host-credentials-");
@@ -66,6 +68,7 @@ test("foreign CLI launch and thread creation retain Core configuration ownership
     },
     resources: { beforeCreate: async () => {} },
     assertThreadCreationAvailable() {},
+    prepareThreadInProject: CoreBackend.prototype.prepareThreadInProject,
     desktopTools: () => [],
     library: { value: { settings: {} } },
     defaultProfile: { id: "gui-only-profile", revision: "gui-revision" },

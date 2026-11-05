@@ -173,8 +173,8 @@ const application = await applicationFixture(
   join(scratch, "app"),
   `
 if (process.argv.includes('--areal-core-service')) {
-  const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
-  const { SubmissionRecovery } = require(${JSON.stringify(join(gui, "app/src/core/submission-recovery.cjs"))});
+  const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
+  const { SubmissionRecovery } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/submission-recovery.cjs"))});
   const fs = require('node:fs');
   const trace = value => require('node:fs').appendFileSync(${JSON.stringify(tracePath)}, JSON.stringify(value) + '\\n');
   const loss = () => fs.existsSync(${JSON.stringify(responseLossPath)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(responseLossPath)}, 'utf8')) : undefined;

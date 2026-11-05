@@ -11,8 +11,11 @@ import { legacySendModel, directLegacyPhone } from "./shared-host-legacy-send-fi
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { HostClient } = require("@areal/client/node");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { GuiSourceAdapter, assertLegacySourceWritable } = require("../app/src/core/gui-source.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const {
+  GuiSourceAdapter,
+  assertLegacySourceWritable,
+} = require("@areal/workbench-service/desktop/core/gui-source.cjs");
 const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const WebSocket = require("ws");
 const { CoreClient } = await import(join(gui, "packages/runtime-client/core.js"));
@@ -1732,8 +1735,10 @@ check("after-load");
         }),
     });
     await recoverySendCore.connect();
-    const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
-    const { NativeRemote } = require("../app/src/core/native-remote.cjs");
+    const {
+      GuiHostProjects,
+    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+    const { NativeRemote } = require("@areal/workbench-service/desktop/core/native-remote.cjs");
     nativeSource = new GuiHostProjects({ binary, home: hostHome, source, singletonHeld: true });
     await nativeSource.init();
     nativeRemote = new NativeRemote({
@@ -1875,8 +1880,12 @@ check("after-load");
       executionSources: {
         hostBinary: { path: binary, sha256: sha(await readFile(binary)) },
         hostClient: sha(await readFile(join(gui, "packages/client/node/host-client.cjs"))),
-        guiSource: sha(await readFile(join(gui, "app/src/core/gui-source.cjs"))),
-        backend: sha(await readFile(join(gui, "app/src/core/backend.cjs"))),
+        guiSource: sha(
+          await readFile(join(gui, "../../services/workbench/src/desktop/core/gui-source.cjs")),
+        ),
+        backend: sha(
+          await readFile(join(gui, "../../services/workbench/src/desktop/core/backend.cjs")),
+        ),
         coreClient: sha(await readFile(join(gui, "packages/runtime-client/core.js"))),
         handoffScript: sha(await readFile(fileURLToPath(import.meta.url))),
         legacySendHelper: sha(

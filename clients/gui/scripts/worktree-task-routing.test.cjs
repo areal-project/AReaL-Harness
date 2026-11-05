@@ -4,11 +4,18 @@ const { test } = require("node:test");
 const { mkdtemp, mkdir, writeFile, readFile, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join, dirname } = require("node:path");
-const { TaskWorkspaceOwners } = require("../app/src/core/task-workspace-owners.cjs");
-const { CoreWorktrees } = require("../app/src/core/worktrees.cjs");
-const { manageTask } = require("../app/src/core/tasks.cjs");
-const { taskCatalog, OwnerTasks } = require("../app/src/core/task-catalog.cjs");
-const { ScheduleAdmission } = require("../app/src/core/schedule-admission.cjs");
+const {
+  TaskWorkspaceOwners,
+} = require("@areal/workbench-service/desktop/core/task-workspace-owners.cjs");
+const { CoreWorktrees } = require("@areal/workbench-service/desktop/core/worktrees.cjs");
+const { manageTask } = require("@areal/workbench-service/desktop/core/tasks.cjs");
+const {
+  taskCatalog,
+  OwnerTasks,
+} = require("@areal/workbench-service/desktop/core/task-catalog.cjs");
+const {
+  ScheduleAdmission,
+} = require("@areal/workbench-service/desktop/core/schedule-admission.cjs");
 const source = "a".repeat(24),
   isolated = "b".repeat(24),
   foreign = "c".repeat(24);

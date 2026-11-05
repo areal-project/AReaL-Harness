@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { PlatformServices, QuitProgress, SnapShotServices } from "../services.js";
 import { PlatformReadProvider } from "../PlatformReadContext.js";
 import { GenUiWorkspace } from "../GenUiWorkspace.js";
@@ -48,10 +48,39 @@ export function AppProviders({
 }) {
   const [quitProgress, setQuitProgress] = useState<QuitProgress>({ state: "idle" });
   useEffect(() => services.onQuitProgress?.(setQuitProgress), [services]);
+  // Host 的授权和资料库来源在连接后才到达，父级 Provider 也必须观察能力变化。
+  const flags = useSyncExternalStore(
+    (notify) => services.onState(() => notify()),
+    () => {
+      const capabilities = services.capabilities;
+      const readOnly = capabilities?.mutations === false;
+      const libraryReadOnly =
+        capabilities?.library === false || (capabilities?.library === undefined && readOnly);
+      const taskReadOnly =
+        capabilities?.taskManage === false || (capabilities?.taskManage === undefined && readOnly);
+      const conversationSubmitReadOnly =
+        capabilities?.conversationSubmit === false ||
+        (capabilities?.conversationSubmit === undefined && readOnly);
+      const conversationCreateReadOnly =
+        capabilities?.conversationCreate === false ||
+        (capabilities?.conversationCreate === undefined && readOnly);
+      return (
+        Number(readOnly) |
+        (Number(libraryReadOnly) << 1) |
+        (Number(taskReadOnly) << 2) |
+        (Number(conversationSubmitReadOnly) << 3) |
+        (Number(conversationCreateReadOnly) << 4)
+      );
+    },
+  );
   return (
     <PlatformReadProvider
       reads={services.reads}
-      readOnly={services.capabilities?.mutations === false}
+      readOnly={(flags & 1) !== 0}
+      libraryReadOnly={(flags & 2) !== 0}
+      taskReadOnly={(flags & 4) !== 0}
+      conversationSubmitReadOnly={(flags & 8) !== 0}
+      conversationCreateReadOnly={(flags & 16) !== 0}
     >
       <UnsavedChangesProvider>
         <GenUiWorkspace services={services}>{children}</GenUiWorkspace>

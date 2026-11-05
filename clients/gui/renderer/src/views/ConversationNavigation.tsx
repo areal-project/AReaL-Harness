@@ -1,4 +1,8 @@
-import { useReadOnly } from "../PlatformReadContext.js";
+import {
+  useReadOnly,
+  useLibraryReadOnly,
+  useConversationCreateReadOnly,
+} from "../PlatformReadContext.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { Input } from "../components/ui/input.js";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
@@ -192,7 +196,8 @@ function SidebarTaskRow({ row }: { row: Data }) {
   );
 }
 function SidebarProjectGroup({ owner }: { owner: Data }) {
-  const readOnly = useReadOnly();
+  const conversationCreateReadOnly = useConversationCreateReadOnly();
+  const libraryReadOnly = useLibraryReadOnly();
   const { t } = useI18n();
   const {
     services,
@@ -261,7 +266,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
           {collapsed ? <ProjectFolderIcon /> : <ProjectOpenFolderIcon />}
           <span>{library.projects?.[owner.id]?.title || owner.root.split("/").pop()}</span>
         </Button>
-        {!readOnly && (
+        {!libraryReadOnly && (
           <HoverActions className="project-actions">
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -366,20 +371,22 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
                 })}
               </DropdownMenuContent>
             </DropdownMenu>
-            <Button
-              unstyled
-              type="button"
-              className="icon-button"
-              aria-label={t("common.navigation.newProjectChat", {
-                project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
-              })}
-              title={t("common.navigation.newProjectChat", {
-                project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
-              })}
-              onClick={() => newTask(owner.id)}
-            >
-              <ProjectNewChatIcon />
-            </Button>
+            {!conversationCreateReadOnly && (
+              <Button
+                unstyled
+                type="button"
+                className="icon-button"
+                aria-label={t("common.navigation.newProjectChat", {
+                  project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
+                })}
+                title={t("common.navigation.newProjectChat", {
+                  project: library.projects?.[owner.id]?.title || owner.root.split("/").pop(),
+                })}
+                onClick={() => newTask(owner.id)}
+              >
+                <ProjectNewChatIcon />
+              </Button>
+            )}
           </HoverActions>
         )}
       </SidebarDragSurface>
@@ -410,6 +417,8 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
 }
 function SidebarContent() {
   const readOnly = useReadOnly();
+  const conversationCreateReadOnly = useConversationCreateReadOnly();
+  const libraryReadOnly = useLibraryReadOnly();
   const {
     library,
     projects,
@@ -453,7 +462,7 @@ function SidebarContent() {
     >
       <>
         <SidebarWorkspaceHeader title="AReaL Harness" onSearch={() => setSearchOpen(true)} />
-        {!readOnly && (
+        {!conversationCreateReadOnly && (
           <div className="sidebar-tools">
             <NewTaskButtonGroup onCreateTask={() => void newTask()} />
           </div>
@@ -510,19 +519,21 @@ function SidebarContent() {
                     expanded={!collapsedProjects["sidebar:projects"]}
                     onToggle={() => toggleSidebarGroup("sidebar:projects")}
                   />
-                  {!readOnly && (
+                  {!libraryReadOnly && (
                     <>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="section-action-btn"
-                        aria-label={t("settings.openProject")}
-                        title={t("settings.openProject")}
-                        onClick={() => void requestNavigation(() => void choose())}
-                      >
-                        <ComposerPlusIcon width={16} height={16} />
-                      </Button>
+                      {!readOnly && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="section-action-btn"
+                          aria-label={t("settings.openProject")}
+                          title={t("settings.openProject")}
+                          onClick={() => void requestNavigation(() => void choose())}
+                        >
+                          <ComposerPlusIcon width={16} height={16} />
+                        </Button>
+                      )}
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
@@ -536,12 +547,16 @@ function SidebarContent() {
                           }
                         />
                         <DropdownMenuContent>
-                          <DropdownMenuItem
-                            onClick={() => void requestNavigation(() => void choose())}
-                          >
-                            {t("chat.newProject")}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
+                          {!readOnly && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => void requestNavigation(() => void choose())}
+                              >
+                                {t("chat.newProject")}
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
                           {(
                             [
                               ["Chats", "独立任务排序"],

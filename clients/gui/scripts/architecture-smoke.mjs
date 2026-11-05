@@ -56,9 +56,9 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 const sourcePaths = [
   "app/src/core/preview.cjs",
   "app/src/core/main.cjs",
-  "app/src/core/service-main.cjs",
+  "../../services/workbench/src/desktop/core/service-main.cjs",
   "app/src/core/service-client.cjs",
-  "app/src/core/backend.cjs",
+  "../../services/workbench/src/desktop/core/backend.cjs",
   "scripts/architecture-smoke.mjs",
   "scripts/application-fixture.mjs",
   "renderer/dist/index.html",

@@ -6,8 +6,12 @@ const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { request } = require("node:http");
 const { createRequire } = require("node:module");
-const { RemoteControl } = require("../app/src/core/remote.cjs");
-const { RelayService, localAddress, privateAddress } = require("../app/src/core/relay-service.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
+const {
+  RelayService,
+  localAddress,
+  privateAddress,
+} = require("@areal/workbench-service/desktop/core/relay-service.cjs");
 const {
   isRemoteRequest,
   isRemoteStatus,

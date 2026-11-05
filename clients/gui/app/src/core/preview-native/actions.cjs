@@ -7,7 +7,7 @@ const { pageKey } = require("./identity.cjs");
 const { randomUUID, createHash } = require("node:crypto");
 const { performance } = require("node:perf_hooks");
 const { isDeepStrictEqual } = require("node:util");
-const { waitAction } = require("../browser-tool.cjs");
+const { waitAction } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
 const { batchWithin, viewportFacts, readViewport } = require("./read-session.cjs");
 const { publicNativeControl } = require("./native-targets.cjs");
 const {

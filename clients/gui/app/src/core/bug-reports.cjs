@@ -8,7 +8,7 @@ const contract = require("@areal/workbench/desktop-contract/bug-report");
 /** @typedef {import('@areal/workbench/desktop-contract/bug-report').Report} Report */
 
 class BugReports {
-  /** @param {{root:string,collect:()=>Promise<Awaited<ReturnType<typeof import('./diagnostics.cjs').collect>>>,normalizeImage:(data:string)=>string,endpoint?:string}} options */
+  /** @param {{root:string,collect:()=>Promise<Awaited<ReturnType<typeof import('@areal/workbench-service/desktop/core/diagnostics.cjs').collect>>>,normalizeImage:(data:string)=>string,endpoint?:string}} options */
   constructor({
     root,
     collect,

@@ -5,12 +5,18 @@ const { mkdtemp, mkdir, readFile, writeFile, rename, rm, realpath } = require("n
 const { join, dirname } = require("node:path");
 const { tmpdir } = require("node:os");
 const { randomUUID, createHash } = require("node:crypto");
-const { ScheduleAdmission } = require("../app/src/core/schedule-admission.cjs");
-const { WorktreeAdmission } = require("../app/src/core/worktree-admission.cjs");
-const { manageTaskDraft } = require("../app/src/core/task-draft.cjs");
-const { manageTask } = require("../app/src/core/tasks.cjs");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { ProjectConnections } = require("../app/src/core/project-connections.cjs");
+const {
+  ScheduleAdmission,
+} = require("@areal/workbench-service/desktop/core/schedule-admission.cjs");
+const {
+  WorktreeAdmission,
+} = require("@areal/workbench-service/desktop/core/worktree-admission.cjs");
+const { manageTaskDraft } = require("@areal/workbench-service/desktop/core/task-draft.cjs");
+const { manageTask } = require("@areal/workbench-service/desktop/core/tasks.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const {
+  ProjectConnections,
+} = require("@areal/workbench-service/desktop/core/project-connections.cjs");
 
 const taskSnapshot = (value) => ({
   revision: 1,
@@ -1158,7 +1164,7 @@ test("shared schedule approval replies retain exact pending interaction and work
 
 test("legacy TaskDraft retains its remembered subscription model while discovery is pending", async (t) => {
   const f = await fixture(t);
-  const { AppProviders } = require("../app/src/core/providers.cjs");
+  const { AppProviders } = require("@areal/workbench-service/desktop/core/providers.cjs");
   f.backend.host = { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) };
   const providers = new AppProviders(f.backend, {});
   providers.config.value = { data: [], revision: "fixture" };

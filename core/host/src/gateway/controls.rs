@@ -15,7 +15,7 @@ struct Semantic<'a> {
     #[serde(flatten)]
     params: &'a Message,
 }
-fn validate(params: &Message, text_bytes: usize) -> Result<()> {
+fn validate(params: &Message, text_bytes: usize, gui_write: bool) -> Result<()> {
     ensure!(
         !params.thread_id.is_empty()
             && params.thread_id.len() <= 128
@@ -32,6 +32,13 @@ fn validate(params: &Message, text_bytes: usize) -> Result<()> {
         "queueReorder" => &["queueItemIds"],
         "queuePause" | "queueResume" => &[],
         "queueSteer" => &["queueItemId", "expectedTurnId"],
+        "steer" if gui_write => &[
+            "text",
+            "expectedTurnId",
+            "attachments",
+            "conversationQuotes",
+            "mcpContent",
+        ],
         "steer" => &["text", "expectedTurnId"],
         _ => unreachable!(),
     };
@@ -60,7 +67,15 @@ fn validate(params: &Message, text_bytes: usize) -> Result<()> {
                 text(values, key)?;
             }
         }
-        if matches!(params.operation.as_str(), "queueUpdate" | "steer") {
+        if params.operation == "steer" && gui_write {
+            let text = values
+                .get("text")
+                .map(|v| v.as_str().context("INVALID_PARAMS"))
+                .transpose()?
+                .unwrap_or_default();
+            ensure!(text.len() <= text_bytes, "INVALID_PARAMS");
+            super::send::rich_message_input(text, values).context("INVALID_PARAMS")?;
+        } else if matches!(params.operation.as_str(), "queueUpdate" | "steer") {
             ensure!(
                 values["text"]
                     .as_str()
@@ -168,7 +183,7 @@ impl Session {
         );
         let params: Message =
             serde_json::from_value(request["params"].clone()).context("INVALID_PARAMS")?;
-        validate(&params, self.command_text_bytes())?;
+        validate(&params, self.command_text_bytes(), self.gui_write)?;
         let command = text(request, "commandId")?.to_ascii_lowercase();
         uuid::Uuid::parse_str(&command).map_err(|_| fail("INVALID_PARAMS"))?;
         let digest = areal_local_service::storage::digest(&serde_json::to_vec(&Semantic {
@@ -239,6 +254,22 @@ impl Session {
                 "CORE_INCOMPATIBLE"
             );
         }
+        let prepared = if params.operation == "steer" && self.uses_workbench_execution() {
+            Some(
+                self.host
+                    .gateway
+                    .workbench
+                    .prepare_input(
+                        &self.host,
+                        &id,
+                        &params.thread_id,
+                        params.values["text"].as_str().unwrap_or_default(),
+                    )
+                    .await?,
+            )
+        } else {
+            None
+        };
         let (native, _, _observation) = self
             .host
             .schedules
@@ -340,12 +371,23 @@ impl Session {
         }
         let operation = uuid::Uuid::new_v4().to_string();
         let mut native = params.values.clone();
+        if let Some(text) = prepared {
+            native["text"] = json!(text);
+        }
         native["threadId"] = json!(params.thread_id);
         if params.operation != "steer" {
             native["requestId"] = json!(operation);
             native["expectedRevision"] = json!(params.expected_revision);
         }
-        if let Some(text) = native.get("text").and_then(Value::as_str) {
+        if params.operation == "steer" {
+            native["input"] = serde_json::to_value(super::send::rich_message_input(
+                native["text"].as_str().unwrap_or_default(),
+                &params.values,
+            )?)?;
+            for key in ["text", "attachments", "conversationQuotes", "mcpContent"] {
+                native.as_object_mut().unwrap().remove(key);
+            }
+        } else if let Some(text) = native.get("text").and_then(Value::as_str) {
             native["input"] = serde_json::to_value(vec![areal_protocol::Input::text(text)])?;
             native.as_object_mut().unwrap().remove("text");
         }
@@ -383,6 +425,34 @@ impl Session {
                     .context("INVALID_PARAMS")?,
             )?;
         }
+        let mut execution = if params.operation == "steer" && self.uses_workbench_execution() {
+            self.host
+                .gateway
+                .workbench
+                .prepare_execution(&self.host, &self.connection, &id, method, native.clone())
+                .await?
+        } else {
+            None
+        };
+        if let Some(prepared) = &execution {
+            ensure!(prepared.params == native, "INVALID_RESPONSE");
+            self.authorize(Some(project), "submit")?;
+            if let Some(record) = self.command_record(project, command)? {
+                ensure!(
+                    record["remote"]["semanticDigest"] == digest,
+                    "COMMAND_CONFLICT"
+                );
+                return self.command_result(project, Some(&record), command).await;
+            }
+            ensure!(
+                self.host
+                    .schedules
+                    .connections
+                    .shared_identity(&self.host, &id)?
+                    == scope,
+                "RESYNC_REQUIRED"
+            );
+        }
         let native_digest = native_digest(method, &native)?;
         let record = json!({"method":method,"operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2,"storeBinding":caps["features"]["threadCreationJournal"]["binding"]},"threadId":params.thread_id,"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.control","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":{"threadId":params.thread_id,"operation":params.operation,"expectedRevision":params.expected_revision}}});
         let mut record = record;
@@ -417,14 +487,17 @@ impl Session {
             .unwrap()
             .push(record.clone());
         self.host.journal.native_replace(&id, revision, snapshot)?;
-        let response = self
-            .host
-            .schedules
-            .connections
-            .remote_request(
-                &self.host, &id, &scope.0, generation, &scope.2, method, native,
-            )
-            .await;
+        let response = if let Some(prepared) = &mut execution {
+            prepared.dispatch().await
+        } else {
+            self.host
+                .schedules
+                .connections
+                .remote_request(
+                    &self.host, &id, &scope.0, generation, &scope.2, method, native,
+                )
+                .await
+        };
         let mut settled = record.clone();
         match response {
             Ok(result) => {

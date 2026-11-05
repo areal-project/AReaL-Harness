@@ -27,9 +27,9 @@ const filename = fileURLToPath(import.meta.url),
   gui = resolve(dirname(filename), ".."),
   root = resolve(gui, "../..");
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { DesktopService } = require("../app/src/core/service-protocol.cjs");
-const { RemoteControl } = require("../app/src/core/remote.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
 const WebSocket = require("../app/node_modules/ws");
 const encryptionFixture = {
   isEncryptionAvailable: () => true,
@@ -169,7 +169,7 @@ async function rejectRememberedDecision({ native, rpc, threadId, params, decisio
 
 if (process.argv[2] === "--host-worker" && rustOwner) {
   const { nativeHostFixture } = await import("./remote-native-host-fixture.mjs");
-  const { startupTrace } = require("../app/src/core/startup-timing.cjs");
+  const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-timing.cjs");
   const options = JSON.parse(process.env.RC05_HOST_OPTIONS);
   const cleanup = [];
   let backend;

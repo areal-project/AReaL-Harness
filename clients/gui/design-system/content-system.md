@@ -19,7 +19,7 @@
 | 正文、列表、表格、代码 | [MessageResponse](../renderer/src/components/ai-elements/message.tsx)使用Streamdown，UI包提供MarkdownSurface和阅读组合；CodeViewer/DiffViewer保留宿主偏好 | 缩减重复表格实现；复制、导出、长内容与流式结束后的布局合同 |
 | 公式 | 同一正文接入`@streamdown/math`，生产[样式入口](../renderer/src/styles.css)加载KaTeX CSS | 长公式、矩阵/对齐、未闭合公式、原式复制与辅助阅读；不承诺支持任意LaTeX文档或全部宏包 |
 | 图与交互 | 正文接入Mermaid；Gen UI有固定的本地D3等资源 | 静态图与可调参数仿真分开选择；统一文字摘要、数据表/原数据入口和降级 |
-| HTML交互回答 | [GenUiWorkspace](../renderer/src/GenUiWorkspace.tsx)展示iframe；[Main发布适配](../app/src/core/gen-ui.cjs)核对原消息、制品摘要与owner；Core持有不可变制品 | 通用内容外壳、尺寸/展开、状态与操作入口；当前Gen UI描述符只公布inline能力 |
+| HTML交互回答 | [GenUiWorkspace](../renderer/src/GenUiWorkspace.tsx)展示；[发布适配](../../../services/workbench/src/desktop/core/gen-ui.cjs)核对原消息、制品摘要与owner；Core持有不可变制品 | 内容外壳、尺寸/展开、状态和操作；Gen UI描述符只公布inline能力 |
 | 工具应用UI | [McpAppHost](../renderer/src/McpAppHost.tsx)、[McpAppsWorkspace](../renderer/src/McpAppsWorkspace.tsx)通过ext-apps桥提供工具结果应用，按宿主能力提供inline/fullscreen | 与Gen UI共享呈现规则，但不合并工具权限或擅自赋予Gen UI工具调用能力 |
 | 混合消息 | [Messages](../renderer/src/Messages.tsx)已经将文字与visualize引用交错渲染；[引用解析](../packages/gen-ui/references.ts)区分text/ui/pending/invalid，并排除代码区指令 | 分散渲染入口的共同状态、稳定身份与退化规则；不必重写Core历史格式 |
 | 交互状态 | [现有契约](../packages/gen-ui/contract.ts)区分modelContent/privateContent；Desktop按作用域原子保存；追问经过宿主确认 | 明确哪些状态只是阅读，哪些进入下一轮模型上下文，哪些属于权威业务；跨设备持久化尚不是当前能力 |

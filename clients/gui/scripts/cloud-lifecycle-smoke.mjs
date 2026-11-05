@@ -12,8 +12,10 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { chromium } = require("playwright-core");
 const { WebSocketServer } = require("ws");
-const { CloudSettings } = require("../app/src/core/cloud-settings.cjs");
-const { CloudConversations } = require("../app/src/core/cloud-conversations.cjs");
+const { CloudSettings } = require("@areal/workbench-service/desktop/core/cloud-settings.cjs");
+const {
+  CloudConversations,
+} = require("@areal/workbench-service/desktop/core/cloud-conversations.cjs");
 const scratch = await mkdtemp(join(tmpdir(), "cloud-lifecycle-"));
 const projectId = "cloud-fixture-project";
 const errors = [],

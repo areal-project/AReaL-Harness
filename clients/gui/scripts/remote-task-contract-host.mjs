@@ -5,7 +5,9 @@ import { chmod, lstat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { nativeHostFixture } from "./remote-native-host-fixture.mjs";
 
-const { GuiHostProjects } = createRequire(import.meta.url)("../app/src/core/gui-host-projects.cjs");
+const { GuiHostProjects } = createRequire(import.meta.url)(
+  "../../../services/workbench/src/desktop/core/gui-host-projects.cjs",
+);
 export const taskContractProject = "a".repeat(24);
 export async function taskContractHost() {
   const cleanup = [],

@@ -376,6 +376,37 @@ async function readServer(t, handler = () => false) {
   };
 }
 
+test("page events are bound to the ready connection and stop after unsubscribe", async (t) => {
+  const { client, send } = await readServer(t);
+  const events = [];
+  const page = {
+    event: "pages.event",
+    connectionId: "read-connection",
+    gatewayGeneration: generation,
+    token: "page",
+    notification: { jsonrpc: "2.0", method: "ui/notifications/test" },
+  };
+  let accepted;
+  const arrived = new Promise((resolve) => {
+    accepted = resolve;
+  });
+  const off = client.subscribePageEvents((event) => {
+    events.push(event);
+    accepted();
+  });
+  send({ ...page, connectionId: "old-connection" });
+  send({ ...page, gatewayGeneration: "old-generation" });
+  send({ ...page, notification: [] });
+  send(page);
+  await arrived;
+  assert.deepEqual(events, [page]);
+  off();
+  const barrier = new Promise((resolve) => client.subscribePageEvents(resolve));
+  send({ ...page, token: "next" });
+  await barrier;
+  assert.equal(events.length, 1);
+});
+
 test("one WS multiplexes shell and native session; deltas retain native fields and untouched references", async (t) => {
   const { client, frames, listener, nativePage, send } = await readServer(t);
   await client.selectSession({ projectId: project.projectId, threadId: "thread" });

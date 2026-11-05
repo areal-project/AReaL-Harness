@@ -5,9 +5,9 @@ const { mkdtemp, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { snapshotProject } = require("../app/src/core/project-snapshot.cjs");
-const { manageTask } = require("../app/src/core/tasks.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { snapshotProject } = require("@areal/workbench-service/desktop/core/project-snapshot.cjs");
+const { manageTask } = require("@areal/workbench-service/desktop/core/tasks.cjs");
 const contract = require("../packages/workbench/client/desktop-contract.cjs");
 
 async function fixture(t, entries, read) {

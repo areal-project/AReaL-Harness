@@ -81,7 +81,11 @@ function terminalOwner(descriptor) {
   `;
   const child = spawn(
     process.execPath,
-    ["-e", source, join(repository, "clients/gui/app/src/core/gui-terminal-connections.cjs")],
+    [
+      "-e",
+      source,
+      join(repository, "services/workbench/src/desktop/core/gui-terminal-connections.cjs"),
+    ],
     {
       env: { PATH: process.env.PATH, HOME: user },
       stdio: ["ignore", "pipe", "pipe", "ipc"],

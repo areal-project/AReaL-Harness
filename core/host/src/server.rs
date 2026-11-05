@@ -379,6 +379,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         }
     }
     drop(loopback);
+    host.gateway.workbench.stop_backend().await;
     host.gateway.workbench.stop().await;
     host.close_subscriptions().await;
     host.power.close().await;
@@ -977,11 +978,25 @@ impl Host {
         ProjectStatus {schedule_activation_suppressed:self.schedules.suppressed(id),schedule_activation_error:self.schedules.error(id),registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
     }
     async fn dispatch_connection(
-        &self,
+        self: &Rc<Self>,
         method: &str,
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method == "backend.ensure" {
+            serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
+                params.clone(),
+            )?;
+            return self
+                .gateway
+                .workbench
+                .ensure_backend(self, serde_json::from_value(params)?)
+                .await;
+        }
+        if method == "backend.status" {
+            serde_json::from_value::<Empty>(params)?;
+            return self.gateway.workbench.backend_status(self).await;
+        }
         if method == "web.ticket" {
             let input: areal_protocol::host::LocalWebTicketParams = serde_json::from_value(params)?;
             let preferred = input
@@ -1885,7 +1900,11 @@ impl Host {
         }
         let projects: Vec<_> = self.slots.borrow().keys().cloned().collect();
         for id in &projects {
-            self.check_pending(id, &input.request_id).await?;
+            if self.check_pending(id, &input.request_id).await.is_err() {
+                // 活跃的激活操作也先记 pending；等原操作释放锁后再区分完成与遗留 UNKNOWN。
+                let _guard = self.gate(id)?.lock_owned().await;
+                self.check_pending(id, &input.request_id).await?;
+            }
         }
         let (digest, _) = self.accepted(&input.request_id, "host.stop", &input, "")?;
         let mut receipt = json!({"version":VERSION,"requestId":input.request_id,"hostId":self.identity.host_id,"generation":self.identity.generation,"strategy":input.strategy,"state":"acceptedPending","projects":[],"localRelay":{"state":"acceptedPending"}});
@@ -3021,6 +3040,30 @@ mod tests {
                 );
             })
             .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn host_stop_waits_for_live_activation_before_classifying_pending_admission() {
+        tokio::task::LocalSet::new().run_until(async {
+            let root=tempfile::tempdir().unwrap();let home=root.path().canonicalize().unwrap().join("home");
+            for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
+            let mut slots=BTreeMap::new();
+            slots.insert("project".into(),Slot {registration:ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});
+            let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
+            let activation=uuid::Uuid::new_v4().to_string();
+            let mut record=Operation {digest:"fixture".into(),receipt:json!({"requestId":activation,"method":"project.ensure","projectId":"project","state":"acceptedPending"}),evidence:Value::Null};
+            storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
+            let held=host.gate("project").unwrap().lock_owned().await;
+            let request=uuid::Uuid::new_v4().to_string();
+            let stopping=host.stop_host(Stop {suppress_scheduling:true,request_id:request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::IfIdle,project_id:None,service_generation:None});
+            tokio::pin!(stopping);
+            assert!(futures_util::poll!(&mut stopping).is_pending(), "live activation must settle before stop admission is classified");
+            assert!(host.receipt(&request).unwrap().is_none());
+            record.receipt["state"]=json!("blocked");
+            storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
+            drop(held);
+            assert_eq!(stopping.await.unwrap()["state"],"completed");
+        }).await;
     }
 
     #[tokio::test(flavor = "current_thread")]

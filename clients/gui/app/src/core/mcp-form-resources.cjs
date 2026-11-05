@@ -1,7 +1,7 @@
 // @ts-check
 "use strict";
 const { randomUUID } = require("node:crypto");
-const { record } = require("./service-transport-contract.cjs");
+const { record } = require("@areal/workbench-service/desktop/core/service-transport-contract.cjs");
 const path = require("node:path");
 /** @typedef {{projectId:string,threadId:string,requestId:string,fieldName:string,uri?:string}} FormOwner */
 /** @typedef {{uri:string,name:string,mimeType?:unknown,size?:unknown}} StagedResource */

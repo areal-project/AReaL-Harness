@@ -283,6 +283,13 @@ class VerificationTests(unittest.TestCase):
         self.assertIn(
             "Renderer build inputs differ", " ".join(self.doctor("source.json", False)["errors"])
         )
+        (self.root / "clients/gui/renderer/input.ts").write_text("source")
+        service = self.root / "services/workbench/src/host-library-store.ts"
+        service.parent.mkdir(parents=True)
+        service.write_text("export const revision = 1;\n")
+        self.assertIn(
+            "Renderer build inputs differ", " ".join(self.doctor("workbench.json", False)["errors"])
+        )
 
     def test_renderer_snapshot_survives_rebuild_and_refuses_overwrite(self):
         destination = self.root / "private renderer"

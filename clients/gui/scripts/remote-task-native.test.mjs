@@ -9,8 +9,8 @@ import { taskQuestion, taskScenario } from "./remote-task-scenario.mjs";
 import { until, pushRelay, phone, runWithIsolatedCA } from "./remote-native-push-fixture.mjs";
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { RemoteControl } = require("../app/src/core/remote.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
 
 if (!process.env.RC12_TLS_HOME) {
   test("native Task controls use the isolated process CA", async () => {

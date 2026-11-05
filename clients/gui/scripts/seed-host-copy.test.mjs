@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   mkdtemp,
   mkdir,
@@ -70,6 +71,16 @@ async function fixture(t, items = [{ id: "finished", status: "completed" }]) {
     await mkdir(join(state, path), { recursive: true });
     await writeFile(join(state, path, "secret.json"), "do-not-copy");
   }
+  await mkdir(join(state, "desktop/task-legacy/history"), { recursive: true });
+  const archivedAssets = new Map([
+    [
+      "task-mode.json",
+      Buffer.from('{"tasks":[{"status":"scheduled","history":"immutable-run"}]}\n'),
+    ],
+    ["task-ledger/secret.json", Buffer.from("do-not-copy")],
+    ["task-legacy/history/run.json", Buffer.from('{"messages":["historical"]}\n')],
+  ]);
+  for (const [path, bytes] of archivedAssets) await writeFile(join(state, "desktop", path), bytes);
   for (const path of [
     "credentials.json",
     "providers.json",
@@ -77,6 +88,11 @@ async function fixture(t, items = [{ id: "finished", status: "completed" }]) {
     "mobile-pairing.json",
     "remote.json",
     "owner.lock",
+    "desktop/credentials.json",
+    "desktop/providers.json",
+    "desktop/mcp.json",
+    "desktop/currentSubmissions.json",
+    "desktop/remote.json",
   ])
     await writeFile(join(state, path), "do-not-copy");
   await writeFile(join(from, "config.toml"), "do-not-copy");
@@ -89,6 +105,7 @@ async function fixture(t, items = [{ id: "finished", status: "completed" }]) {
     threadBytes,
     workspace,
     assets,
+    archivedAssets,
     options: { from, home, binary: join(root, "explicit-packaged-areal") },
   };
 }
@@ -107,6 +124,11 @@ test("copies supported history bytes before registration and leaves original wor
         (await readJson(join(f.home, "seed-copy/core/.areal-test-copy.json"))).testCopy,
         true,
       );
+      assert.deepEqual(await readJson(join(f.home, "seed-copy/archive/.areal-test-copy.json")), {
+        testCopy: true,
+        status: "copied",
+        sourceDigest: current.sourceDigest,
+      });
       assert.deepEqual(
         await readFile(join(f.home, "seed-copy/core", sourceId, "state", threadId + ".json")),
         f.threadBytes,
@@ -116,6 +138,11 @@ test("copies supported history bytes before registration and leaves original wor
       assert.equal(registration.defaultBinding, false);
       assert.match(registration.projectId, /^test-copy-[a-f0-9-]{36}$/);
       assert.match(requestId, /^[a-f0-9-]{36}$/);
+      for (const [path, bytes] of f.archivedAssets)
+        assert.deepEqual(
+          await readFile(join(f.home, "seed-copy/archive", sourceId, "desktop", path)),
+          bytes,
+        );
       seen.push(registration);
       return { registration, created: true };
     },
@@ -134,6 +161,24 @@ test("copies supported history bytes before registration and leaves original wor
   );
   for (const [path, bytes] of f.assets)
     assert.deepEqual(await readFile(join(copiedState, path)), bytes);
+  assert.equal(evidence.archiveRoot, join(f.home, "seed-copy/archive"));
+  assert.deepEqual((await readdir(join(evidence.archiveRoot, sourceId, "desktop"))).sort(), [
+    "task-ledger",
+    "task-legacy",
+    "task-mode.json",
+  ]);
+  assert.deepEqual(
+    evidence.archivedFiles,
+    [...f.archivedAssets]
+      .map(([path, bytes]) => ({
+        sourcePath: join(sourceId, "state/desktop", path),
+        path: join(sourceId, "desktop", path),
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      }))
+      .sort((a, b) => a.path.localeCompare(b.path)),
+  );
+  for (const [path, bytes] of f.archivedAssets)
+    assert.deepEqual(await readFile(join(f.state, "desktop", path)), bytes);
   assert.deepEqual(await readFile(f.threadPath), f.threadBytes);
   assert.deepEqual(await readFile(join(f.from, "projects.json")), sourceIndex);
   assert.deepEqual(await readFile(join(f.home, "seed-copy/core/projects.json")), sourceIndex);
@@ -208,19 +253,21 @@ test("rejects target overlaps, existing directories, and the OS user's live home
 });
 
 test("rejects source resource symlinks and preserves marked incomplete evidence", async (t) => {
-  const f = await fixture(t);
-  await symlink(f.workspace, join(f.state, "blobs", "escape"));
-  let calls = 0;
-  await assert.rejects(
-    seedHostCopy(f.options, { registerProject: async () => calls++ }),
-    /symlink/,
-  );
-  assert.equal(calls, 0);
-  assert.equal((await readJson(join(f.home, "seed-copy/manifest.json"))).status, "incomplete");
-  assert.equal(
-    (await readJson(join(f.home, "seed-copy/core/.areal-test-copy.json"))).testCopy,
-    true,
-  );
+  for (const path of ["blobs/escape", "desktop/task-ledger/escape"]) {
+    const f = await fixture(t);
+    await symlink(f.workspace, join(f.state, path));
+    let calls = 0;
+    await assert.rejects(
+      seedHostCopy(f.options, { registerProject: async () => calls++ }),
+      /symlink/,
+    );
+    assert.equal(calls, 0);
+    assert.equal((await readJson(join(f.home, "seed-copy/manifest.json"))).status, "incomplete");
+    assert.equal(
+      (await readJson(join(f.home, "seed-copy/core/.areal-test-copy.json"))).testCopy,
+      true,
+    );
+  }
 });
 
 test("rejects a symlink target into live user data", async (t) => {
@@ -282,6 +329,26 @@ test("detects selected-file drift without starting Host or retrying", async (t) 
   assert.equal(registrations, 0);
   assert.equal((await readJson(join(f.home, "seed-copy/manifest.json"))).status, "incomplete");
   await assert.rejects(seedHostCopy(f.options), /fresh/);
+});
+
+test("rejects archived task history drift before any registration", async (t) => {
+  const f = await fixture(t);
+  let registrations = 0;
+  await assert.rejects(
+    seedHostCopy(f.options, {
+      beforeCopy: () => writeFile(join(f.state, "desktop/task-ledger/secret.json"), "changed"),
+      registerProject: async () => registrations++,
+    }),
+    /Source drift/,
+  );
+  assert.equal(registrations, 0);
+  const evidence = await readJson(join(f.home, "seed-copy/manifest.json"));
+  assert.equal(evidence.status, "incomplete");
+  assert.deepEqual(await readJson(join(f.home, "seed-copy/archive/.areal-test-copy.json")), {
+    testCopy: true,
+    status: "incomplete",
+    sourceDigest: evidence.sourceDigest,
+  });
 });
 
 test("detects added selected assets using the complete after-copy inventory", async (t) => {

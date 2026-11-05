@@ -97,6 +97,7 @@ export class HostClient {
   #reads: ReadSnapshot = { shell: { state: "loading" }, session: { state: "unavailable" } };
   #listeners = new Set<() => void>();
   #readListeners = new Set<() => void>();
+  #pageListeners = new Set<(event: unknown) => void>();
   #epoch = 0;
   #selection = 0;
   #shellEpoch = 0;
@@ -133,6 +134,12 @@ export class HostClient {
     this.#readListeners.add(listener);
     return () => {
       this.#readListeners.delete(listener);
+    };
+  };
+  subscribePageEvents = (listener: (event: unknown) => void) => {
+    this.#pageListeners.add(listener);
+    return () => {
+      this.#pageListeners.delete(listener);
     };
   };
   #publish(state: HostReadState) {
@@ -328,9 +335,13 @@ export class HostClient {
                 ? {
                     context: {
                       projectId: context.projectId,
-                      serviceGeneration: context.serviceGeneration,
-                      gatewayGeneration: generation,
-                      grantRevision: 0,
+                      ...(method === "project.models"
+                        ? {}
+                        : {
+                            serviceGeneration: context.serviceGeneration,
+                            gatewayGeneration: generation,
+                            grantRevision: 0,
+                          }),
                     },
                   }
                 : {}),
@@ -612,14 +623,18 @@ export class HostClient {
       if (offset + part.length >= bytes.length) throw new Error("Invalid Host upload result");
     }
   }
-  /** 跨项目的工作台方法（由 Host 转给工作台服务），不带项目上下文与回执。 */
-  async workbench(method: string, params: JsonObject = {}) {
+  /** 跨项目的工作台方法（由 Host 转给工作台服务），不带项目上下文；写方法使用原 commandId 查询回执。 */
+  async workbench(method: string, params: JsonObject = {}, commandId?: string) {
     const transport = this.#transport;
     if (!transport?.write || !this.writable(method)) throw new Error("Host writes unavailable");
-    return transport.write(method, params, null);
+    return transport.write(method, params, null, commandId);
   }
   commandStatus(projectId: string, commandId: string) {
     return this.query("command.read", projectId, { commandId });
+  }
+  /** 创建回执之后重读目录，使新执行项目与会话立即进入同一投影。 */
+  refreshShell() {
+    return this.#subscribeShell();
   }
   async selectSession(target: { projectId: string; threadId: string } | null) {
     this.#retainSession();
@@ -854,6 +869,28 @@ export class HostClient {
     return { mime, bytes };
   }
   #onEvent(event: unknown) {
+    if (record(event) && event.event === "pages.event") {
+      const state = this.#state;
+      if (
+        this.#closed ||
+        state.connection !== "ready" ||
+        event.connectionId !== state.identity.connectionId ||
+        event.gatewayGeneration !== state.identity.gatewayGeneration ||
+        typeof event.token !== "string" ||
+        !event.token ||
+        !record(event.notification)
+      )
+        return;
+      const pageEvent = {
+        event: "pages.event",
+        connectionId: state.identity.connectionId,
+        gatewayGeneration: state.identity.gatewayGeneration,
+        token: event.token,
+        notification: event.notification,
+      };
+      for (const listener of this.#pageListeners) listener(pageEvent);
+      return;
+    }
     if (!identity(event)) return;
     const shell = this.#reads.shell;
     if (
@@ -940,6 +977,7 @@ export class HostClient {
     this.options.events?.removeEventListener("pageshow", this.#restore);
     this.#listeners.clear();
     this.#readListeners.clear();
+    this.#pageListeners.clear();
   }
 }
 function readStatus(value: JsonObject): HostStatus {
@@ -962,4 +1000,4 @@ function readStatus(value: JsonObject): HostStatus {
       throw new Error("Invalid Host project status");
   return value as unknown as HostStatus;
 }
-export { createNoiseReadTransport } from "./noise.js";
+export { createNoiseReadTransport, remoteCapabilities, remoteReadConnection } from "./noise.js";

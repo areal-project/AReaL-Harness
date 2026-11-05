@@ -22,6 +22,9 @@ impl LocalSession {
     pub(crate) fn new(host: Rc<Host>, connection: String) -> Result<Self> {
         Ok(Self(session::Session::local(host, connection)?))
     }
+    pub(crate) fn browser(host: Rc<Host>, connection: String, device: String) -> Result<Self> {
+        Ok(Self(session::Session::browser(host, connection, device)?))
+    }
     pub(crate) async fn request(&mut self, request: &Value) -> Result<Value> {
         self.0.local_request(request).await
     }

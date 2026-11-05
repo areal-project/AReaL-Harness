@@ -1,4 +1,5 @@
 import { createRemoteWorkbench } from "../src/remote/RemoteWorkbench.tsx";
+import { sharedUiEnabled } from "../src/shared-ui-flag.ts";
 import {
   SessionBodyReader,
   CommandState,
@@ -322,7 +323,47 @@ function scheduleReconnect() {
     void connectHost(true);
   }, delay);
 }
+// A4 共享界面：开关打开时，连上后改由与桌面同一份界面经这条连接读写，旧页面只负责配对与重连。
+const sharedUi = sharedUiEnabled();
+const paired = {
+  state: { kind: "connecting" },
+  /** @type {any} */ connection: null,
+  onSession: (/** @type {unknown} */ _message) => {},
+  listeners: new Set(),
+  mounted: false,
+  snapshot() {
+    return this.state;
+  },
+  subscribe(/** @type {() => void} */ listener) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  },
+  request(/** @type {Record<string, unknown>} */ envelope) {
+    if (!this.connection) return Promise.reject(new Error("OFFLINE"));
+    return this.connection.request(envelope);
+  },
+  set(/** @type {string} */ kind, /** @type {any} */ connection) {
+    this.state = { kind };
+    this.connection = connection;
+    for (const listener of this.listeners) listener();
+  },
+};
+async function showSharedUi(connection) {
+  paired.set("connected", connection);
+  document.querySelector("main").hidden = true;
+  if (paired.mounted) return;
+  paired.mounted = true;
+  const root = document.createElement("div");
+  root.id = "shared-root";
+  document.body.append(root);
+  const { mountSharedPairedWorkbench } = await import("../src/SharedPairedWorkbench.tsx");
+  mountSharedPairedWorkbench(root, paired);
+}
 function stopConnection(message, retry = false) {
+  if (sharedUi && paired.connection) {
+    paired.set("offline", null);
+    document.querySelector("main").hidden = false;
+  }
   connectionAttempt++;
   connecting = false;
   clearTimeout(reconnectTimer);
@@ -487,6 +528,7 @@ async function connectHost(automatic = false) {
       room: target.room,
       hello: {
         displayName: browserDeviceName(navigator.userAgent, navigator.maxTouchPoints),
+        ...(sharedUi ? { capabilities: ["gui-read-v1", "gui-write-v1"] } : {}),
         ...(target.invite ? { inviteSecret: target.invite } : {}),
       },
       isCurrent: () => activeSocket === socket && current(),
@@ -515,7 +557,7 @@ async function connectHost(automatic = false) {
         await browserState.revalidate(token);
         check();
       },
-      onSession: sessionEvent,
+      onSession: (message) => (sharedUi ? paired.onSession(message) : sessionEvent(message)),
     });
     const connected = connectionIdentity;
     host.textContent = connected.hostId;
@@ -526,6 +568,10 @@ async function connectHost(automatic = false) {
     connecting = false;
     reconnectAttempt = 0;
     renderDeviceStorage();
+    if (sharedUi) {
+      await showSharedUi(connection);
+      return;
+    }
     const call = (request = (envelope, onResult) => connection.request(envelope, onResult));
     await loadProjects(call);
     check();

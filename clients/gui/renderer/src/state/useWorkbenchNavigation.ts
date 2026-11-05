@@ -63,7 +63,11 @@ export function useWorkbenchNavigation(
     [initialReleased, snapshot.projects, restoreConversation, recordWorkspaceLocation],
   );
   const newTask = (pid = project?.id, record = true) => {
-    if (!initialReleased || services.capabilities?.mutations === false) return;
+    if (
+      !initialReleased ||
+      (services.capabilities?.conversationCreate ?? services.capabilities?.mutations) === false
+    )
+      return;
     if (!pid || snapshot.projects.find((p) => p.id === pid)?.projectless) {
       leaveProject(record);
       return;

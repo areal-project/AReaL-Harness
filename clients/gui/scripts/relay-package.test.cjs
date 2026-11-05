@@ -7,7 +7,9 @@ const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { runInNewContext } = require("node:vm");
-const { buildRelayResources } = require("../app/src/core/relay-resources.cjs");
+const {
+  buildRelayResources,
+} = require("@areal/workbench-service/desktop/core/relay-resources.cjs");
 const requireFromApp = createRequire(resolve(__dirname, "../app/package.json"));
 const requireFromBuilder = createRequire(requireFromApp.resolve("electron-builder"));
 const { getFileMatchers, copyFiles } = requireFromBuilder("app-builder-lib/out/fileMatcher.js");

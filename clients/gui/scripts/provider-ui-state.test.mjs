@@ -41,7 +41,7 @@ test("API billing and custom-service billing are explicitly distinguished", () =
   );
 });
 
-import { AppProviders } from "../app/src/core/providers.cjs";
+import { AppProviders } from "@areal/workbench-service/desktop/core/providers.cjs";
 test("busy provider application rejects before changing configuration or restarting projects", async () => {
   let restarted = false;
   const backend = {

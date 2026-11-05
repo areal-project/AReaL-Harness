@@ -7,8 +7,10 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { runInNewContext } from "node:vm";
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { sessionCommand } = require("../app/src/core/remote-session-commands.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const {
+  sessionCommand,
+} = require("@areal/workbench-service/desktop/core/remote-session-commands.cjs");
 const source = await readFile(
   new URL("./remote-session-commands-e2e.mjs", import.meta.url),
   "utf8",
@@ -1611,7 +1613,8 @@ const stopLoop = source.slice(
   source.indexOf("        checks.push({", stopLoopStart),
 );
 for (const unknownDevice of ["a", "b"]) {
-  const writeLimits = require("../app/src/core/remote-session-acceptor.cjs").LIMITS;
+  const writeLimits =
+    require("@areal/workbench-service/desktop/core/remote-session-acceptor.cjs").LIMITS;
   let now = 0,
     serial = 0,
     heldStop,
@@ -1749,7 +1752,7 @@ console.log(
 
 // 使用生产公布的写预算执行实际业务块；虚拟时间不借用偶然的 Native 延迟。
 {
-  const { LIMITS } = require("../app/src/core/remote-session-acceptor.cjs");
+  const { LIMITS } = require("@areal/workbench-service/desktop/core/remote-session-acceptor.cjs");
   assert.equal(LIMITS.writeRequestsPerSecond, 5);
   assert.equal(LIMITS.writeBurst, 10);
   function budget(a = LIMITS.writeBurst, b = LIMITS.writeBurst) {
@@ -2155,7 +2158,7 @@ console.log(
 
 // 仅验证源码消费者的就绪边界；这些替身不构成 Chrome/Core/Native 验收。
 {
-  const { RemoteControl } = require("../app/src/core/remote.cjs");
+  const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
   const source = await readFile(new URL("./remote-pairing-e2e.mjs", import.meta.url), "utf8");
   const start = source.indexOf("  await enableLocal.click();");
   const end = source.indexOf('  checks.push("one-use invitation uses URL fragment");', start);
@@ -2710,9 +2713,15 @@ console.log(
 {
   const harness = await readFile(new URL("./remote-pairing-e2e.mjs", import.meta.url), "utf8");
   const html = await readFile(new URL("../renderer/remote.html", import.meta.url), "utf8");
-  const hostSource = await readFile(new URL("../app/src/core/remote.cjs", import.meta.url), "utf8");
+  const hostSource = await readFile(
+    new URL("../../../services/workbench/src/desktop/core/remote.cjs", import.meta.url),
+    "utf8",
+  );
   const acceptor = await readFile(
-    new URL("../app/src/core/remote-session-acceptor.cjs", import.meta.url),
+    new URL(
+      "../../../services/workbench/src/desktop/core/remote-session-acceptor.cjs",
+      import.meta.url,
+    ),
     "utf8",
   );
   const main = await readFile(new URL("../renderer/remote-web/main.js", import.meta.url), "utf8");
@@ -2740,13 +2749,13 @@ console.log(
   assert.ok(main.includes('const status = document.getElementById("status");'));
   assert.ok(harness.includes('getByRole("radio", { name: "可操作", exact: true }).check()'));
 
-  const { PRESETS, strings } = require("../app/src/core/remote-config.cjs");
+  const { PRESETS, strings } = require("@areal/workbench-service/desktop/core/remote-config.cjs");
   const control = slice(hostSource, "  async controlOnce(request) {", "  async enableRelay(");
   const save = slice(hostSource, "  async save(config) {", "  state() {");
   const methods = runInNewContext("({" + control + "," + save + "})", {
     PRESETS,
     strings,
-    distinctName: require("../app/src/core/remote-devices.cjs").distinctName,
+    distinctName: require("@areal/workbench-service/desktop/core/remote-devices.cjs").distinctName,
     clearTimeout() {},
   });
   let accepts = 0,

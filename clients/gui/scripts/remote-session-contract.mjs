@@ -20,7 +20,8 @@ for (const key of ["connectionId", "gatewayGeneration", "serviceGeneration", "su
   );
 
 // 使用 Core 的原生工具输出形状，覆盖初始历史和 item/completed 两条投影路径。
-const { snapshot, update } = await import("../app/src/core/remote-session-projection.cjs");
+const { snapshot, update } =
+  await import("@areal/workbench-service/desktop/core/remote-session-projection.cjs");
 const scope = ["p", "svc", "s", "t"];
 const toolItem = {
   id: "tool",

@@ -1732,9 +1732,11 @@ fn atomic_mutation_error(error: Error) -> Error {
 // storage failure can follow a partial write (or cancellation), so keep it unknown.
 fn control_mutation_error(error: Error) -> Error {
     match error {
-        Error::Conflict | Error::NotFound | Error::Invalid(_) | Error::Closed => {
-            Error::Rejected(Box::new(error))
-        }
+        Error::Conflict
+        | Error::NotFound
+        | Error::Invalid(_)
+        | Error::ToolHostUnavailable
+        | Error::Closed => Error::Rejected(Box::new(error)),
         error => error,
     }
 }
@@ -1794,6 +1796,7 @@ fn map_error(error: Error) -> RpcError {
         };
     }
     let data = match &error {
+        Error::ToolHostUnavailable => Some(json!({"reason":"TOOL_HOST_UNAVAILABLE"})),
         Error::Exhausted(reason)
             if reason.starts_with("task hot-state capacity")
                 || reason.starts_with("task preparation capacity") =>
@@ -1808,7 +1811,7 @@ fn map_error(error: Error) -> RpcError {
         _ => None,
     };
     let code = match &error {
-        Error::Invalid(_) => -32602,
+        Error::Invalid(_) | Error::ToolHostUnavailable => -32602,
         Error::NotFound => -32004,
         Error::Conflict => -32009,
         Error::Exhausted(_) => -32001,

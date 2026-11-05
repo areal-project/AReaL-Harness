@@ -17,7 +17,7 @@ import * as crypto from "../packages/remote/src/channel.mjs";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
 const { WebSocketServer } = WebSocket;
-const { startDirect } = require("../app/src/core/remote-direct.cjs");
+const { startDirect } = require("@areal/workbench-service/desktop/core/remote-direct.cjs");
 const png = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
@@ -149,9 +149,10 @@ const remote = {
     },
   },
 };
-remote.sessions = new (require("../app/src/core/remote-session-acceptor.cjs").SessionAcceptor)(
-  remote,
-);
+remote.sessions =
+  new (require("@areal/workbench-service/desktop/core/remote-session-acceptor.cjs").SessionAcceptor)(
+    remote,
+  );
 const direct = await startDirect(remote);
 const socket = new WebSocket(direct.ws, { origin: direct.origin });
 await once(socket, "open");

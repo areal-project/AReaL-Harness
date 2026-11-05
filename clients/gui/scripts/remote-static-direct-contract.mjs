@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { startDirect } from "../app/src/core/remote-direct.cjs";
+import { startDirect } from "@areal/workbench-service/desktop/core/remote-direct.cjs";
 
 test("built Direct serves only the complete Remote shell with exact MIME and hashes", async () => {
   const root = new URL("../renderer/dist/", import.meta.url);

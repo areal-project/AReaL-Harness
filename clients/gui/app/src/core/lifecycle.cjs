@@ -1,202 +1,13 @@
 // @ts-check
 "use strict";
-
-const { readResourceInspections, readRecoveryService } = require("./resource-observation.cjs");
-/** @typedef {import('./resource-observation.cjs').LifecycleDecision} Decision */
-/** @typedef {import('./resource-observation.cjs').CoreLifecycle} CoreLifecycle */
-/** @typedef {import('./resource-observation.cjs').ResourceInspection} Inspection */
-/** @typedef {import('./resource-observation.cjs').RecoveryService} Service */
-/** @typedef {ReturnType<typeof recoveryView> & {targets:ReturnType<typeof targets>,purpose:string,confirmedImpact?:boolean}} RecoveryObservation */
-/** @type {Record<string,string>} */
-const labels = {
-  activeTurn: "活动轮次",
-  resource: "未清理终端",
-  uninspectedUnknown: "未核查结果",
-  compaction: "上下文压缩",
-  workgroup: "未结算工作组",
-  activeGoal: "活动目标",
-  queuedMessage: "待发消息",
-  activeTask: "活动任务",
-};
-/** @returns {Decision} */
-const unknown = () => ({ allowed: false, reasons: [{ code: "unknown", count: 1 }] });
-const recoveryReads = new Set([
-  "server",
-  "inspect",
-  "context",
-  "plan",
-  "processes",
-  "process",
-  "processOutput",
-  "goal",
-  "task",
-  "tasks",
-  "interactions",
-  "executions",
-  "execution",
-  "inheritedHistory",
-]);
-const recoveryHistoryReads = new Set(["acquire", "loadOlder", "loadItem", "release"]);
-/** @param {string} name @param {Record<string,unknown>|undefined} request */
-const isRecoveryCommand = (name, request) =>
-  (name === "manage" &&
-    ((typeof request?.operation === "string" && recoveryReads.has(request.operation)) ||
-      request?.operation === "toolAcknowledge")) ||
-  (name === "history" &&
-    typeof request?.operation === "string" &&
-    recoveryHistoryReads.has(request.operation));
-/** @param {unknown} value @returns {Decision} */
-function decision(value) {
-  if (
-    !record(value) ||
-    typeof value.allowed !== "boolean" ||
-    !Array.isArray(value.reasons) ||
-    !value.reasons.every(reason) ||
-    value.allowed !== (value.reasons.length === 0)
-  )
-    return unknown();
-  return { allowed: value.allowed, reasons: value.reasons };
-}
-/** @param {unknown} status @returns {CoreLifecycle} */
-function coreLifecycle(status) {
-  if (!record(status)) return { ifIdle: unknown(), settled: unknown(), admission: "unknown" };
-  if (status.lifecycle !== undefined) {
-    if (
-      !record(status.lifecycle) ||
-      status.lifecycle.version !== 1 ||
-      typeof status.lifecycle.admission !== "string" ||
-      !["open", "draining", "closed"].includes(status.lifecycle.admission)
-    )
-      return { ifIdle: unknown(), settled: unknown(), admission: "unknown" };
-    return {
-      ...status.lifecycle,
-      admission: status.lifecycle.admission,
-      ifIdle: decision(status.lifecycle.ifIdle),
-      settled: decision(status.lifecycle.settled),
-    };
-  }
-  // 已知 v1 Core 的旧字段；缺字段不能被当成空闲。
-  const settled = status.restartSafe === true ? { allowed: true, reasons: [] } : unknown();
-  if (
-    typeof status.restartSafe !== "boolean" ||
-    !Array.isArray(status.activeGoals) ||
-    typeof status.pendingQueueItems !== "number" ||
-    !Number.isSafeInteger(status.pendingQueueItems) ||
-    status.pendingQueueItems < 0 ||
-    typeof status.activeTasks !== "number" ||
-    !Number.isSafeInteger(status.activeTasks) ||
-    status.activeTasks < 0
-  )
-    return { ifIdle: unknown(), settled, admission: "unknown" };
-  const reasons = [...settled.reasons];
-  /** @type {Array<[string,number]>} */
-  const counts = [
-    ["activeGoal", status.activeGoals.length],
-    ["queuedMessage", status.pendingQueueItems],
-    ["activeTask", status.activeTasks],
-  ];
-  for (const [code, count] of counts) if (count > 0) reasons.push({ code, count });
-  return {
-    ifIdle: { allowed: reasons.length === 0, reasons },
-    settled,
-    admission: status.draining === true ? "draining" : status.closed === true ? "closed" : "open",
-  };
-}
-/** @param {Pick<Service,'clients'|'activeCommands'|'starting'> & {providerUpdating?:boolean}} service @param {boolean} [forUpdate] */
-function desktopBlockers(service, forUpdate = true) {
-  return [
-    forUpdate && service.clients > 1 && "peerGui",
-    service.activeCommands > 0 && "inflight",
-    service.providerUpdating && "providerUpdating",
-    service.starting > 0 && "starting",
-  ].filter(/** @returns {blocker is string} */ (blocker) => typeof blocker === "string");
-}
-/** @param {string[]} blockers */
-const blockerMessage = (blockers) =>
-  blockers
-    .map(
-      (code) =>
-        /** @type {Record<string,string>} */ ({
-          peerGui: "请先退出其他 GUI",
-          inflight: "请等待已提交操作完成",
-          providerUpdating: "请等待模型配置更新完成",
-          starting: "请等待项目启动完成",
-        })[code] ?? "请等待后台状态核对",
-    )
-    .join("；");
-/** @param {Service} service @param {Inspection[]} projects @param {boolean} [forUpdate] */
-function recoveryView(service, projects, forUpdate = true) {
-  const blockers = desktopBlockers(service, forUpdate);
-  const unsafe =
-    projects.some(
-      (p) =>
-        p.observation === "unavailable" ||
-        (p.lifecycle
-          ? !p.lifecycle.ifIdle.allowed
-          : !p.restartSafe || p.activeTasks || p.goalThreads?.length || p.waitingMessages),
-    ) ||
-    projects.some((p) => p.tasks?.some((task) => !task.paused)) ||
-    service.remote?.enabled === true ||
-    (service.remote?.connections ?? 0) > 0;
-  const legacyBusy = service.lifecycle?.version !== 2 && (service.busy || !!service.stopReport);
-  return {
-    blockers,
-    ifIdle: !blockers.length && !unsafe && !legacyBusy,
-    cancel: !blockers.length && (unsafe || legacyBusy),
-    projects,
-    service,
-  };
-}
-/** @param {Array<{projectId:string,serviceId?:string|null,generation?:string|null}>} projects */
-function targets(projects) {
-  return projects
-    .map((p) => ({
-      projectId: p.projectId,
-      serviceId: p.serviceId ?? null,
-      generation: p.generation ?? null,
-    }))
-    .sort((a, b) => a.projectId.localeCompare(b.projectId));
-}
-/** @param {Array<Pick<Inspection,'lifecycle'|'root'> & {projectId?:string}>} projects */
-function describe(projects) {
-  return projects
-    .flatMap((p) =>
-      (p.lifecycle?.ifIdle.reasons ?? []).map(
-        (r) => `${p.root ?? p.projectId}：${labels[r.code] ?? "状态待核查"} ${r.count}`,
-      ),
-    )
-    .join("\n");
-}
-/** @overload @param {undefined} service @param {unknown} kind @returns {never} */
-/** @overload @param {unknown} service @param {unknown} kind @returns {Record<string,unknown> & {desktopGeneration:string}} */
-/** @param {unknown} service @param {unknown} kind */
-function assertLifecycleSupport(service, kind) {
-  const lifecycle = record(service) ? service.lifecycle : undefined;
-  if (!supportedLifecycle(lifecycle, kind)) {
-    throw Object.assign(
-      new Error("当前后台不支持可核查的生命周期操作。已有任务继续运行，请保留后台并检查原任务。"),
-      { code: "LIFECYCLE_UNSUPPORTED" },
-    );
-  }
-  return lifecycle;
-}
-/** @param {unknown} lifecycle @param {unknown} kind @returns {lifecycle is Record<string,unknown> & {desktopGeneration:string}} */
-function supportedLifecycle(lifecycle, kind) {
-  if (
-    !record(lifecycle) ||
-    lifecycle.version !== 2 ||
-    typeof lifecycle.desktopGeneration !== "string"
-  )
-    return false;
-  const capabilities = lifecycle.capabilities;
-  return (
-    record(capabilities) &&
-    capabilities.request === true &&
-    capabilities.read === true &&
-    capabilities.reconcile === true &&
-    (!Array.isArray(capabilities.kinds) || capabilities.kinds.includes(kind))
-  );
-}
+const shared = require("@areal/workbench-service/desktop/core/lifecycle.cjs");
+const { recoveryView, targets, assertLifecycleSupport, blockerMessage } = shared;
+const {
+  readResourceInspections,
+  readRecoveryService,
+} = require("@areal/workbench-service/desktop/core/resource-observation.cjs");
+const { modelRecord: record } = require("@areal/workbench/core-model-contract");
+/** @typedef {import('@areal/workbench-service/desktop/core/lifecycle.cjs').RecoveryObservation} RecoveryObservation */
 class DesktopLifecycle {
   /** @param {{connection:InstanceType<typeof import('./service-connection.cjs').ServiceConnection>,metadata?:InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>['metadata'],home:string,forUpdate?:boolean,purpose?:string}} options */
   constructor({ connection, metadata, home, forUpdate = true, purpose = "manage" }) {
@@ -234,7 +45,7 @@ class DesktopLifecycle {
     backend.loadReferences(await backend.readControl());
     return backend.stopService(this.forUpdate, { cancel: mode === "cancel", observed });
   }
-  /** @param {{kind?:import('./lifecycle-operations.cjs').LifecycleKind,mode?:string,observed?:RecoveryObservation,projectId?:string,threadId?:string,turnId?:string}} [options] */
+  /** @param {{kind?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:string,observed?:RecoveryObservation,projectId?:string,threadId?:string,turnId?:string}} [options] */
   async prepare({ kind, mode = "ifIdle", observed, projectId, threadId, turnId } = {}) {
     if (!["ifIdle", "cancel"].includes(mode)) throw new Error("无效的停止意图");
     if (kind === "interruptTurn") {
@@ -335,30 +146,4 @@ class DesktopLifecycle {
     return { kind, mode, expectedDesktopGeneration: latest.desktopGeneration, expectedTargets };
   }
 }
-/** @param {unknown} value @returns {value is Record<string,unknown>} */
-function record(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-/** @param {unknown} value @returns {value is {code:string,count:number}} */
-function reason(value) {
-  return (
-    record(value) &&
-    typeof value.code === "string" &&
-    Object.hasOwn(labels, value.code) &&
-    typeof value.count === "number" &&
-    Number.isSafeInteger(value.count) &&
-    value.count > 0
-  );
-}
-
-module.exports = {
-  coreLifecycle,
-  desktopBlockers,
-  blockerMessage,
-  recoveryView,
-  targets,
-  describe,
-  DesktopLifecycle,
-  isRecoveryCommand,
-  assertLifecycleSupport,
-};
+module.exports = { ...shared, DesktopLifecycle };

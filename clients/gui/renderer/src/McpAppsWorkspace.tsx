@@ -59,7 +59,7 @@ export function useMcpAppsWorkspace({
 }: {
   services: Pick<
     PlatformServices,
-    "mcpApp" | "onMcpAppEvent" | "onMcpAppDeepLink" | "mcpFormResource"
+    "mcpApp" | "onMcpAppEvent" | "onMcpAppDeepLink" | "mcpFormResource" | "capabilities"
   >;
   project?: Data;
   deepLinksEnabled: boolean;
@@ -74,7 +74,7 @@ export function useMcpAppsWorkspace({
 }) {
   const { t } = useI18n();
   const { mcpApp, onMcpAppEvent, onMcpAppDeepLink, mcpFormResource } = services;
-  const hostSupported = !!mcpApp && !!onMcpAppEvent;
+  const hostSupported = !!mcpApp && !!onMcpAppEvent && services.capabilities?.pages !== false;
   const desktopSupported = hostSupported && project?.desktopCapabilities?.currentCommands !== false;
   const loadMetadataImage = useMemo<McpMetadataImageLoader | undefined>(
     () => (mcpApp ? (source) => mcpApp({ operation: "metadataImage", source }) : undefined),
@@ -133,14 +133,10 @@ export function useMcpAppsWorkspace({
   const refresh = useCallback(async () => {
     const { project, threadId, action } = current.current;
     const epoch = ++readEpoch.current;
-    if (
-      !hostSupported ||
-      !project?.state?.connected ||
-      project.desktopCapabilities?.currentCommands === false
-    ) {
+    if (!hostSupported || !project?.state?.connected) {
       setServers([]);
       setLoading(false);
-      setError(project?.desktopCapabilities?.currentCommands === false ? compatibilityHint : "");
+      setError(!hostSupported ? compatibilityHint : "");
       return;
     }
     setLoading(true);
@@ -175,7 +171,7 @@ export function useMcpAppsWorkspace({
     return () => {
       readEpoch.current++;
     };
-  }, [project?.id, project?.state?.connected, desktopSupported, threadId, refresh]);
+  }, [project?.id, project?.state?.connected, hostSupported, threadId, refresh]);
   const removeApps = useCallback((tokens: Set<string>) => {
     const removed = appsRef.current.filter((app) => tokens.has(app.token));
     if (!removed.length) return;
@@ -220,7 +216,7 @@ export function useMcpAppsWorkspace({
         stale.add(app.token);
         continue;
       }
-      if (!owner.state?.connected || owner.desktopCapabilities?.currentCommands === false) continue;
+      if (!owner.state?.connected || !hostSupported) continue;
       const key = `${app.projectId}:${app.threadId}`;
       owners.set(key, [...(owners.get(key) ?? []), app]);
     }
@@ -257,7 +253,7 @@ export function useMcpAppsWorkspace({
         });
     }
     removeApps(stale);
-  }, [removeApps, close]);
+  }, [removeApps, close, hostSupported]);
   const ownerVersion = JSON.stringify(
     apps.map((app) => {
       const owner = projects.find((project) => project.id === app.projectId);
@@ -325,8 +321,7 @@ export function useMcpAppsWorkspace({
     const { project, threadId, action, onOpenThread } = current.current;
     if (!project?.state?.connected)
       throw Error(t("settings.mcpAppsWorkspace.connectTheProjectFirst"));
-    if (!hostSupported || project.desktopCapabilities?.currentCommands === false)
-      throw Error(t(compatibilityHint.id));
+    if (!hostSupported) throw Error(t(compatibilityHint.id));
     if (intent !== "new" && threadId) {
       if (!project.state.threads[threadId] || project.state.threads[threadId].desktop?.archived)
         throw Error(t("settings.mcpAppsWorkspace.theAppConversationIsNoLongerAvailable"));
@@ -353,8 +348,7 @@ export function useMcpAppsWorkspace({
   ) {
     const { project } = current.current;
     if (!project) throw Error(t("settings.mcpAppsWorkspace.chooseAProjectFirst"));
-    if (!mcpApp || !onMcpAppEvent || project.desktopCapabilities?.currentCommands === false)
-      throw Error(t(compatibilityHint.id));
+    if (!mcpApp || !onMcpAppEvent || !hostSupported) throw Error(t(compatibilityHint.id));
     const global = options.kind === "global";
     const existing = appsRef.current.find(
       (app) =>
@@ -425,8 +419,7 @@ export function useMcpAppsWorkspace({
         throw Error(t("settings.mcpAppsWorkspace.theAppSProjectHasChangedOpen"));
       if (!selectedProject.state?.connected)
         throw Error(t("settings.mcpAppsWorkspace.connectTheProjectFirst"));
-      if (selectedProject.desktopCapabilities?.currentCommands === false)
-        throw Error(t(compatibilityHint.id));
+      if (!hostSupported) throw Error(t(compatibilityHint.id));
       if (
         current.current.threadId !== owner.threadId ||
         !selectedProject.state.threads[owner.threadId] ||
@@ -457,12 +450,7 @@ export function useMcpAppsWorkspace({
       if (pending) return pending;
       const task = (async () => {
         const owner = current.current.projects.find((project) => project.id === source.projectId);
-        if (
-          !mcpApp ||
-          !onMcpAppEvent ||
-          !owner?.state?.connected ||
-          owner.desktopCapabilities?.currentCommands === false
-        ) {
+        if (!mcpApp || !onMcpAppEvent || !owner?.state?.connected || !hostSupported) {
           resultState(key, { message: "交互结果暂不可用，原始记录仍可查看。" });
           return;
         }
@@ -556,7 +544,7 @@ export function useMcpAppsWorkspace({
       void task.finally(() => resultPending.current.delete(key));
       return task;
     },
-    [close, removeApps, mcpApp, onMcpAppEvent],
+    [close, removeApps, mcpApp, onMcpAppEvent, hostSupported],
   );
   const resultPageFailed = (app: McpAppDescriptor) => {
     if (!app.resultSource) return;
@@ -650,12 +638,7 @@ export function useMcpAppsWorkspace({
     );
   }
   async function clearContext(app: McpAppDescriptor) {
-    if (
-      !mcpApp ||
-      !onMcpAppEvent ||
-      current.current.project?.desktopCapabilities?.currentCommands === false
-    )
-      throw Error(t(compatibilityHint.id));
+    if (!mcpApp || !onMcpAppEvent || !hostSupported) throw Error(t(compatibilityHint.id));
     const reply = await mcpApp({
       operation: "request",
       token: app.token,
@@ -846,9 +829,9 @@ export function useMcpAppsWorkspace({
     return context?.content?.filter(visible) ?? [];
   };
   return {
-    supported: desktopSupported,
+    supported: hostSupported,
     loadMetadataImage,
-    servers: desktopSupported ? servers : [],
+    servers: hostSupported ? servers : [],
     loading,
     error: formatUiMessage(t, error),
     refresh,
@@ -865,7 +848,7 @@ export function useMcpAppsWorkspace({
         : undefined;
     },
     render: (tab: string) => {
-      if (!desktopSupported) return <p role="status">{formatUiMessage(t, compatibilityHint)}</p>;
+      if (!hostSupported) return <p role="status">{formatUiMessage(t, compatibilityHint)}</p>;
       return apps.some((app) => appTab(app) === tab) ? (
         <div data-mcp-app-slot={tab} ref={displaySlot} style={{ height: "100%", minHeight: 0 }} />
       ) : (
@@ -895,7 +878,7 @@ export function useMcpAppsWorkspace({
     )),
     contexts: (
       <div aria-label={t("settings.mcpAppsWorkspace.appContext")}>
-        {(desktopSupported ? apps : [])
+        {(hostSupported ? apps : [])
           .filter(
             (app) =>
               app.projectId === project?.id &&

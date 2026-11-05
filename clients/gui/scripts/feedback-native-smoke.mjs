@@ -11,8 +11,8 @@ import { fileURLToPath } from "node:url";
 // 真实 Core、Side、CLI 和本地接收器；所有配置与服务登记均使用隔离目录。
 const gui = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { executeCore } = require("../app/src/core/core-process.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
 const root = await makeTempDir("auf-");
 const evidence = process.env.AREAL_FEEDBACK_EVIDENCE_DIR || root;
 await mkdir(evidence, { recursive: true });

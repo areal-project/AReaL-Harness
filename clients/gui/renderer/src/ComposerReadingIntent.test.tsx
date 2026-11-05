@@ -8,6 +8,7 @@ import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { setApplicationPreferences } from "./settings/applicationPreferences.js";
 import { planModeOptions } from "./permissions.js";
 import type { Action } from "./services.js";
+import { PlatformReadProvider } from "./PlatformReadContext.js";
 
 const observed = vi.hoisted(() => {
   vi.stubGlobal("window", new EventTarget());
@@ -22,6 +23,7 @@ const observed = vi.hoisted(() => {
     submit: undefined as ((value: string) => unknown) | undefined,
     modifiedSubmit: undefined as ((value: string) => unknown) | undefined,
     approve: undefined as (() => void) | undefined,
+    composer: undefined as ComponentProps<typeof ConversationComposer> | undefined,
   };
 });
 vi.mock("react", async (importOriginal) => ({
@@ -30,6 +32,7 @@ vi.mock("react", async (importOriginal) => ({
 }));
 vi.mock("./ConversationComposer.js", () => ({
   ConversationComposer: (props: ComponentProps<typeof ConversationComposer>) => {
+    observed.composer = props;
     observed.submit = props.onSubmit;
     observed.modifiedSubmit = props.onModifiedSubmit;
     return props.topContent;
@@ -43,7 +46,7 @@ vi.mock("./components/ui/button.js", () => ({
 }));
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 
-function fixture(plan = false, file = false, running = false, empty = false) {
+function fixture(plan = false, file = false, running = false, empty = false, web = false) {
   const projectId = crypto.randomUUID();
   const key = `areal-gui:draft:${projectId}:thread`;
   const owner = JSON.stringify([projectId, "thread", false]);
@@ -68,24 +71,34 @@ function fixture(plan = false, file = false, running = false, empty = false) {
       requestId: "original-request",
     }),
   );
-  const render = () =>
-    renderToStaticMarkup(
-      createElement(Composer, {
-        project: {
-          id: projectId,
-          root: "/preview",
-          models: [],
-          pending: [],
-          configurations: { thread: config },
-          state: { connected: true, threads: { thread }, interactions: {}, queues: {} },
-        },
-        thread,
-        action: action as Action,
-        executionBlocked: false,
-        onPanel: () => {},
-        onNew: () => {},
-      }),
+  const render = () => {
+    observed.approve = undefined;
+    const composer = createElement(Composer, {
+      project: {
+        id: projectId,
+        root: "/preview",
+        ...(web ? { desktopCapabilities: { currentCommands: false } } : {}),
+        models: [],
+        pending: [],
+        configurations: { thread: config },
+        state: { connected: true, threads: { thread }, interactions: {}, queues: {} },
+      },
+      thread,
+      action: action as Action,
+      executionBlocked: false,
+      onPanel: () => {},
+      onNew: () => {},
+    });
+    return renderToStaticMarkup(
+      web
+        ? createElement(PlatformReadProvider, {
+            readOnly: true,
+            conversationSubmitReadOnly: false,
+            children: composer,
+          })
+        : composer,
     );
+  };
   render();
   return { key, owner, action, render };
 }
@@ -227,4 +240,24 @@ describe("Composer receipt before history projection", () => {
       readingViews.delete(f.owner);
     },
   );
+});
+
+describe("Host conversation submit capability", () => {
+  it("submits from a Web Composer while existing configuration and plan approval stay closed", async () => {
+    const f = fixture(true, false, false, false, true);
+    expect(observed.approve).toBeUndefined();
+    expect(observed.composer?.modelDisabled).toBe(true);
+    expect(
+      observed.composer?.composerCatalog?.entries.some((entry) =>
+        ["plan", "goal"].includes(entry.value),
+      ),
+    ).toBe(false);
+    observed.submit!("web message");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    expect(f.action.mock.calls[0][0]).toBe("send");
+    expect(f.action.mock.calls[0][1]).toMatchObject({ text: "web message" });
+    readingViews.delete(f.owner);
+    setPendingMessage(f.key);
+  });
 });

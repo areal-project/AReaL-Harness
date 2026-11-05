@@ -250,7 +250,10 @@ async function settings() {
     .click();
   await page.getByRole("button", { name: "查看插件 hello@gui-p0", exact: true }).click();
 }
-const { builtinSkill, BUILTIN_SKILL_ID } = require("../app/src/core/builtin-skills.cjs");
+const {
+  builtinSkill,
+  BUILTIN_SKILL_ID,
+} = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
 await builtinSkill(join(scratch, "core"), BUILTIN_SKILL_ID);
 try {
   app = await electron.launch({

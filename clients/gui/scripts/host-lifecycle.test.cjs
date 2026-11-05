@@ -483,7 +483,9 @@ test("completed original stop cannot clear successor Main terminal ownership", a
   });
   const first = await f.backend.requestHostStop({ strategy: "cancel" });
   assert.equal(first.stopped, false);
-  const { GuiTerminalConnections } = require("../app/src/core/gui-terminal-connections.cjs");
+  const {
+    GuiTerminalConnections,
+  } = require("@areal/workbench-service/desktop/core/gui-terminal-connections.cjs");
   f.backend.terminalConnections = new GuiTerminalConnections();
   let closed = false;
   f.backend.connection = { close: () => (closed = true) };
@@ -620,8 +622,10 @@ test("unverifiable successor discovery does not report the original completion a
 
 test("in-place project reconnect refreshes source bindings through an existing Host without import or activation", async (t) => {
   const f = await fixture(t);
-  const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
-  const { CoreBackend } = require("../app/src/core/backend.cjs");
+  const {
+    GuiHostProjects,
+  } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+  const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
   const source = {
     profile: f.profile,
     coreHome: join(f.profile, "core"),
@@ -674,7 +678,10 @@ test("in-place project reconnect refreshes source bindings through an existing H
   owner.close();
 });
 test("Desktop Host reconnect is available only to its authenticated Main owner", async () => {
-  const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+  const {
+    DesktopService,
+    PROTOCOL,
+  } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   let reconnects = 0;
   const backend = {
     projects: new Map(),

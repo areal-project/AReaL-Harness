@@ -11,10 +11,10 @@ import * as crypto from "../packages/remote/src/channel.mjs";
 import { CoreClient } from "../packages/runtime-client/core.js";
 const require = createRequire(import.meta.url);
 const { WebSocket, WebSocketServer } = require("../app/node_modules/ws");
-const { RemoteControl } = require("../app/src/core/remote.cjs");
-const { deviceCommand } = require("../app/src/core/remote-push.cjs");
-const { parseRemoteConfig } = require("../app/src/core/remote-config.cjs");
-const { RelayTransport } = require("../app/src/core/remote-relay.cjs");
+const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
+const { deviceCommand } = require("@areal/workbench-service/desktop/core/remote-push.cjs");
+const { parseRemoteConfig } = require("@areal/workbench-service/desktop/core/remote-config.cjs");
+const { RelayTransport } = require("@areal/workbench-service/desktop/core/remote-relay.cjs");
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate) {
   const deadline = Date.now() + 3000;
@@ -533,8 +533,12 @@ test("Relay push frames share the pacing queue and recheck authorization before 
 
 test("enqueue admission journal preserves exact queue identity across durable reload", async (t) => {
   const f = await fixture(t);
-  const { SubmissionRecovery } = require("../app/src/core/submission-recovery.cjs");
-  const { parseSubmissionOutcomes } = require("../app/src/core/project-state.cjs");
+  const {
+    SubmissionRecovery,
+  } = require("@areal/workbench-service/desktop/core/submission-recovery.cjs");
+  const {
+    parseSubmissionOutcomes,
+  } = require("@areal/workbench-service/desktop/core/project-state.cjs");
   const journalPath = join(f.home, "host-journal-fixture.json");
   const journal = {
     async read() {

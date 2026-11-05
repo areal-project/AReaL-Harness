@@ -818,9 +818,9 @@ try {
     new Promise((resolve) => model.close(resolve)),
   ]);
   const files = [
-    "app/src/core/browser-tool.cjs",
-    "app/src/core/backend.cjs",
-    "app/src/core/service-protocol.cjs",
+    "../../services/workbench/src/desktop/core/browser-tool.cjs",
+    "../../services/workbench/src/desktop/core/backend.cjs",
+    "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",
     "renderer/src/Messages.tsx",

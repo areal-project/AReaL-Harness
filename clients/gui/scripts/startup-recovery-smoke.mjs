@@ -9,14 +9,14 @@ import { createServer } from "node:http";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { DesktopService } = require("../app/src/core/service-protocol.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-const { executeCore } = require("../app/src/core/core-process.cjs");
+const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
 const {
   readLifecycleReceipt,
   reconcileLifecycleReceipt,
-} = require("../app/src/core/lifecycle-operations.cjs");
+} = require("@areal/workbench-service/desktop/core/lifecycle-operations.cjs");
 const scratch = await makeTempDir("areal-startup-recovery-");
 const binary = process.env.AREAL_CORE_BIN || resolve(gui, "../../target/debug/areal");
 const binarySha256 = createHash("sha256")

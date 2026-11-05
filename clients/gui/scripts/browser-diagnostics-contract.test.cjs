@@ -1,7 +1,7 @@
 "use strict";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { validToolInput } = require("../app/src/core/browser-tool.cjs");
+const { validToolInput } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
 const { browserHostFailure } = require("../app/src/core/browser-host-request.cjs");
 
 test("browser_v1 exposes a bounded diagnostics read without script or unbounded options", () => {

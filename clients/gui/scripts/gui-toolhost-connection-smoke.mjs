@@ -10,8 +10,11 @@ import { connect } from "../../../examples/desktop-api/client.mjs";
 import { respondToSessionName } from "../../../scripts/model-fixture.mjs";
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
-const { DesktopService, PROTOCOL } = require("../app/src/core/service-protocol.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const {
+  DesktopService,
+  PROTOCOL,
+} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
 const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
   "@areal/client/node",

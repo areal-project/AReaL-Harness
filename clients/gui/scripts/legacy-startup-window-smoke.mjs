@@ -12,7 +12,10 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { WebSocketServer } = require("ws");
-const { PROTOCOL, COMMAND_CONTRACT } = require("../app/src/core/service-protocol.cjs");
+const {
+  PROTOCOL,
+  COMMAND_CONTRACT,
+} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const scratch = await makeTempDir("areal-legacy-startup-window-");
 const source = {
   head: execFileSync("git", ["rev-parse", "HEAD"], { cwd: gui, encoding: "utf8" }).trim(),

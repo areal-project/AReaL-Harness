@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import { CoreClient } from "../packages/runtime-client/core.js";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
-import { RemoteControl } from "../app/src/core/remote.cjs";
+import { RemoteControl } from "@areal/workbench-service/desktop/core/remote.cjs";
 
 export async function certificates(commonName = "RC12 isolated test CA") {
   const home = await mkdtemp(join(tmpdir(), "rc12-tls-"));
@@ -351,7 +351,7 @@ export async function hostFixture(t, { config, commands = false } = {}) {
     },
   };
   if (commands) {
-    const { CoreBackend } = require("../app/src/core/backend.cjs");
+    const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
     const backend = new CoreBackend({ home, binary: "/unused-source-fixture" });
     backend.saved = service.backend.saved;
     const save = backend.save.bind(backend);

@@ -12,8 +12,10 @@ import { once } from "node:events";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { chromium } = require("playwright-core");
-const { CloudClient } = require("../app/src/core/cloud-client.cjs");
-const { CloudConversations } = require("../app/src/core/cloud-conversations.cjs");
+const { CloudClient } = require("@areal/workbench-service/desktop/core/cloud-client.cjs");
+const {
+  CloudConversations,
+} = require("@areal/workbench-service/desktop/core/cloud-conversations.cjs");
 const config = JSON.parse(await readFile(process.env.AREAL_CLOUD_TEST_CONFIG, "utf8"));
 const binding = JSON.parse(await readFile(process.env.AREAL_CLOUD_TEST_BINDING, "utf8"));
 const scratch = await mkdtemp(join(tmpdir(), "areal-cloud-live-"));

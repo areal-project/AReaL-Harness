@@ -1,4 +1,4 @@
-import { useReadOnly } from "./PlatformReadContext.js";
+import { useReadOnly, useLibraryReadOnly } from "./PlatformReadContext.js";
 import { memo, type ComponentProps } from "react";
 import { MemoTaskItem as View } from "@areal/ui/experimental";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -13,6 +13,7 @@ export const MemoTaskItem = memo(function TaskListItem({
 > & { dragProps?: SidebarSurfaceDragProps }) {
   const { t } = useI18n();
   const readOnly = useReadOnly();
+  const libraryReadOnly = useLibraryReadOnly();
   const reducedMotion = useReducedMotion();
   const worktree = props.worktree;
   const name = worktree ? t("worktree.threadWorkspace", { branch: worktree.branch }) : undefined;
@@ -39,7 +40,8 @@ export const MemoTaskItem = memo(function TaskListItem({
   return (
     <View
       {...props}
-      readOnly={readOnly || props.readOnly}
+      readOnly={libraryReadOnly || props.readOnly}
+      onArchive={readOnly ? undefined : props.onArchive}
       reducedMotion={reducedMotion}
       worktreeTitle={worktree ? name + " · " + worktree.directory : undefined}
       worktreeLabel={label}
