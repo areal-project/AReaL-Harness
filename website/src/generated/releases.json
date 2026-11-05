@@ -1,40 +1,40 @@
 {
   "schemaVersion": 1,
   "repository": "areal-project/AReaL-Harness",
-  "generatedAt": "2026-10-19T11:52:46.809Z",
+  "generatedAt": "2026-11-05T09:37:06.925Z",
   "clients": {
     "gui": {
       "stable": {
         "status": "release",
-        "tag": "gui-v0.1.10",
-        "version": "0.1.10",
-        "notesUrl": "https://github.com/areal-project/AReaL-Harness/releases/tag/gui-v0.1.10",
-        "publishedAt": "2026-10-19T03:10:59Z",
-        "checksumUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-v0.1.10/SHA256SUMS",
+        "tag": "gui-v0.1.18",
+        "version": "0.1.18",
+        "notesUrl": "https://github.com/areal-project/AReaL-Harness/releases/tag/gui-v0.1.18",
+        "publishedAt": "2026-11-02T11:16:09Z",
+        "checksumUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-v0.1.18/SHA256SUMS",
         "installerUrl": null,
         "assets": {
           "macos-arm64": {
-            "name": "AReaLHarness-0.1.10-macos-arm64.dmg",
+            "name": "AReaLHarness-0.1.18-macos-arm64.dmg",
             "format": "dmg",
-            "size": 331021254,
-            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-v0.1.10/AReaLHarness-0.1.10-macos-arm64.dmg"
+            "size": 231401430,
+            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-v0.1.18/AReaLHarness-0.1.18-macos-arm64.dmg"
           }
         }
       },
       "preview": {
         "status": "release",
-        "tag": "gui-v0.1.12-beta.1",
-        "version": "0.1.12-beta.1",
-        "notesUrl": "https://github.com/areal-project/AReaL-Harness/releases/tag/gui-v0.1.12-beta.1",
-        "publishedAt": "2026-10-19T11:18:42Z",
-        "checksumUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-v0.1.12-beta.1/SHA256SUMS",
+        "tag": "gui-v0.1.12-beta.3",
+        "version": "0.1.12-beta.3",
+        "notesUrl": "https://github.com/areal-project/AReaL-Harness/releases/tag/gui-v0.1.12-beta.3",
+        "publishedAt": "2026-10-20T07:06:07Z",
+        "checksumUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-v0.1.12-beta.3/SHA256SUMS",
         "installerUrl": null,
         "assets": {
           "macos-arm64": {
-            "name": "AReaLHarness-0.1.12-beta.1-macos-arm64.dmg",
+            "name": "AReaLHarness-0.1.12-beta.3-macos-arm64.dmg",
             "format": "dmg",
-            "size": 192985780,
-            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-v0.1.12-beta.1/AReaLHarness-0.1.12-beta.1-macos-arm64.dmg"
+            "size": 191840280,
+            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/gui-v0.1.12-beta.3/AReaLHarness-0.1.12-beta.3-macos-arm64.dmg"
           }
         }
       }
@@ -42,47 +42,47 @@
     "tui": {
       "stable": {
         "status": "release",
-        "tag": "v0.1.6",
-        "version": "0.1.6",
-        "notesUrl": "https://github.com/areal-project/AReaL-Harness/releases/tag/v0.1.6",
-        "publishedAt": "2026-10-19T07:45:56Z",
-        "checksumUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.6/SHA256SUMS",
-        "installerUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.6/install.py",
+        "tag": "v0.1.8",
+        "version": "0.1.8",
+        "notesUrl": "https://github.com/areal-project/AReaL-Harness/releases/tag/v0.1.8",
+        "publishedAt": "2026-11-02T10:09:23Z",
+        "checksumUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.8/SHA256SUMS",
+        "installerUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.8/install.py",
         "assets": {
           "macos-arm64": {
-            "name": "areal-harness-v0.1.6-aarch64-apple-darwin.tar.gz",
+            "name": "areal-harness-v0.1.8-aarch64-apple-darwin.tar.gz",
             "format": "tar.gz",
-            "size": 29593708,
-            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.6/areal-harness-v0.1.6-aarch64-apple-darwin.tar.gz"
+            "size": 48781794,
+            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.8/areal-harness-v0.1.8-aarch64-apple-darwin.tar.gz"
           },
           "linux-x64": {
-            "name": "areal-harness-v0.1.6-x86_64-unknown-linux-gnu.tar.gz",
+            "name": "areal-harness-v0.1.8-x86_64-unknown-linux-gnu.tar.gz",
             "format": "tar.gz",
-            "size": 32611060,
-            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.6/areal-harness-v0.1.6-x86_64-unknown-linux-gnu.tar.gz"
+            "size": 40456658,
+            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.8/areal-harness-v0.1.8-x86_64-unknown-linux-gnu.tar.gz"
           }
         }
       },
       "preview": {
         "status": "release",
-        "tag": "v0.1.7-beta.1",
-        "version": "0.1.7-beta.1",
-        "notesUrl": "https://github.com/areal-project/AReaL-Harness/releases/tag/v0.1.7-beta.1",
-        "publishedAt": "2026-10-19T11:02:42Z",
-        "checksumUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.7-beta.1/SHA256SUMS",
-        "installerUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.7-beta.1/install.py",
+        "tag": "v0.1.7-beta.3",
+        "version": "0.1.7-beta.3",
+        "notesUrl": "https://github.com/areal-project/AReaL-Harness/releases/tag/v0.1.7-beta.3",
+        "publishedAt": "2026-10-20T07:06:04Z",
+        "checksumUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.7-beta.3/SHA256SUMS",
+        "installerUrl": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.7-beta.3/install.py",
         "assets": {
           "macos-arm64": {
-            "name": "areal-harness-v0.1.7-beta.1-aarch64-apple-darwin.tar.gz",
+            "name": "areal-harness-v0.1.7-beta.3-aarch64-apple-darwin.tar.gz",
             "format": "tar.gz",
-            "size": 29549428,
-            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.7-beta.1/areal-harness-v0.1.7-beta.1-aarch64-apple-darwin.tar.gz"
+            "size": 29953501,
+            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.7-beta.3/areal-harness-v0.1.7-beta.3-aarch64-apple-darwin.tar.gz"
           },
           "linux-x64": {
-            "name": "areal-harness-v0.1.7-beta.1-x86_64-unknown-linux-gnu.tar.gz",
+            "name": "areal-harness-v0.1.7-beta.3-x86_64-unknown-linux-gnu.tar.gz",
             "format": "tar.gz",
-            "size": 32625482,
-            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.7-beta.1/areal-harness-v0.1.7-beta.1-x86_64-unknown-linux-gnu.tar.gz"
+            "size": 33053929,
+            "url": "https://github.com/areal-project/AReaL-Harness/releases/download/v0.1.7-beta.3/areal-harness-v0.1.7-beta.3-x86_64-unknown-linux-gnu.tar.gz"
           }
         }
       }
