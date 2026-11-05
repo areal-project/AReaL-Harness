@@ -150,8 +150,12 @@ impl Session {
         );
         let mut effective = params.clone();
         if self.uses_workbench_execution() {
-            effective.text = self.host.gateway.workbench
-                .prepare_input(&self.host, &id, &params.thread_id, &params.text).await?;
+            effective.text = self
+                .host
+                .gateway
+                .workbench
+                .prepare_input(&self.host, &id, &params.thread_id, &params.text)
+                .await?;
         }
         let operation = uuid::Uuid::new_v4().to_string();
         let mut guard =
@@ -164,8 +168,14 @@ impl Session {
         )?;
         let native = serde_json::to_value(native)?;
         let mut execution = if self.uses_workbench_execution() {
-            self.host.gateway.workbench.prepare_execution(&self.host, &self.connection, &id, method, native.clone()).await?
-        } else { None };
+            self.host
+                .gateway
+                .workbench
+                .prepare_execution(&self.host, &self.connection, &id, method, native.clone())
+                .await?
+        } else {
+            None
+        };
         if let Some(prepared) = &execution {
             ensure!(prepared.params == native, "INVALID_RESPONSE");
         }
@@ -263,9 +273,13 @@ impl Session {
         let response = if let Some(prepared) = &mut execution {
             prepared.dispatch().await
         } else {
-            self.host.schedules.connections.remote_request(
-                &self.host, &id, &scope.0, generation, &scope.2, method, native,
-            ).await
+            self.host
+                .schedules
+                .connections
+                .remote_request(
+                    &self.host, &id, &scope.0, generation, &scope.2, method, native,
+                )
+                .await
         };
         let mut settled = record.clone();
         match response {
@@ -507,10 +521,16 @@ fn blob_url(value: &Value) -> Option<&str> {
 /// 桌面 `media.cjs` messageInput 的移植：正文、引用、附件与 MCP 内容按同一顺序与上限组装。
 /// 已发布客户端只会带正文，结果与原来的单个文本项相同。
 pub(super) fn rich_message_input(text: &str, values: &Value) -> Result<Vec<areal_protocol::Input>> {
-    message_input(&Message {thread_id:String::new(), expected_config_revision:0,
-        text:text.to_owned(), enqueue:None, expected_turn_id:None,
-        attachments:values.get("attachments").cloned(), conversation_quotes:values.get("conversationQuotes").cloned(),
-        mcp_content:values.get("mcpContent").cloned()})
+    message_input(&Message {
+        thread_id: String::new(),
+        expected_config_revision: 0,
+        text: text.to_owned(),
+        enqueue: None,
+        expected_turn_id: None,
+        attachments: values.get("attachments").cloned(),
+        conversation_quotes: values.get("conversationQuotes").cloned(),
+        mcp_content: values.get("mcpContent").cloned(),
+    })
 }
 fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
     use areal_protocol::Input;

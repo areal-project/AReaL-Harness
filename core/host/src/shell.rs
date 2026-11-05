@@ -608,10 +608,26 @@ pub(crate) fn validate_library(bytes: &[u8]) -> Result<()> {
 
 /// 资料库命令只返回与导航读模型相同的公开字段，不透传桌面配置和缓存正文。
 pub(crate) fn library_result(value: Value) -> Result<Value> {
-    ensure!(["projects", "threads", "projectOrder", "sections", "sidebarThreadOrder", "sidebarRevision", "settings"]
-        .iter().all(|key| value.get(key).is_some()), "invalid library command result");
+    ensure!(
+        [
+            "projects",
+            "threads",
+            "projectOrder",
+            "sections",
+            "sidebarThreadOrder",
+            "sidebarRevision",
+            "settings"
+        ]
+        .iter()
+        .all(|key| value.get(key).is_some()),
+        "invalid library command result"
+    );
     let library = check_library(value)?;
-    let projects: BTreeMap<_, _> = library.projects.into_iter().map(|(id, entry)| (id, entry.metadata)).collect();
+    let projects: BTreeMap<_, _> = library
+        .projects
+        .into_iter()
+        .map(|(id, entry)| (id, entry.metadata))
+        .collect();
     Ok(serde_json::json!({
         "projects": projects, "threads": library.threads, "projectOrder": library.project_order,
         "sections": library.sections, "sidebarThreadOrder": library.sidebar_thread_order,
@@ -691,7 +707,9 @@ mod tests {
         assert_eq!(result["settings"], json!({"sidebarSort":"manual"}));
         assert!(!result.to_string().contains("private"));
         assert!(!result.to_string().contains("cached body"));
-        assert!(serde_json::from_value::<areal_protocol::host::WorkbenchLibraryState>(result).is_ok());
+        assert!(
+            serde_json::from_value::<areal_protocol::host::WorkbenchLibraryState>(result).is_ok()
+        );
         assert!(library_result(json!({})).is_err());
     }
 

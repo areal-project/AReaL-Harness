@@ -50,7 +50,16 @@ def artifact_files():
 def gui_inputs(root):
     paths = (
         subprocess.check_output(
-            ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "clients/gui", "services/workbench"],
+            [
+                "git",
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "clients/gui",
+                "services/workbench",
+            ],
             cwd=root,
         )
         .decode()

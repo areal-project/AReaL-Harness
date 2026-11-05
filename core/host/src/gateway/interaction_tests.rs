@@ -30,7 +30,10 @@ fn unavailable_tool_host_retains_determinate_rejection() {
     assert_eq!(unavailable["nativeRequestId"], "native-request");
     assert!(!unavailable.to_string().contains("private diagnostic"));
     record["error"]["data"]["reason"] = json!("REQUEST_REJECTED");
-    assert_eq!(Session::command_view(Some(&record), "original-command")["error"]["code"], "INVALID_PARAMS");
+    assert_eq!(
+        Session::command_view(Some(&record), "original-command")["error"]["code"],
+        "INVALID_PARAMS"
+    );
 }
 
 enum CoreResponse {
@@ -1221,6 +1224,86 @@ async fn conversation_open_discards_reply_after_grant_or_core_generation_changes
                 assert!(result.is_err(), "{failure}");
                 assert!(session.viewer.is_none());
             }
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let mut f = Fixture::new().await;
+            let command = uuid::Uuid::new_v4().to_string();
+            let read = f.native_read_request("command.read", json!({"commandId":command}));
+            let mut session = f.session("a");
+            session.gui_read = true;
+            assert_eq!(
+                session.request(&read).await.unwrap_err().to_string(),
+                "FORBIDDEN"
+            );
+            session.gui_write = true;
+            assert_eq!(
+                session.request(&read).await.unwrap()["admissionState"],
+                "notFound"
+            );
+            for project in ["project".to_owned(), f.alias.clone()] {
+                let mut models = f.request("project.models", json!({}), None);
+                models["context"]["projectId"] = json!(project);
+                let listing = Fixture::dispatch(session, models);
+                f.call("areal/model/list")
+                    .await
+                    .reply(json!({"data":[{"providerId":"fixture","modelId":"model"}]}));
+                let (next, result) = listing.await.unwrap();
+                assert_eq!(result.unwrap()["models"][0]["modelId"], "model");
+                session = next;
+            }
+            let mut send = f.request(
+                "session.send",
+                json!({"threadId":"thread","expectedConfigRevision":1,"text":"shared identity"}),
+                Some(&command),
+            );
+            send["context"]["projectId"] = json!("project");
+            let sending = Fixture::dispatch(session, send);
+            f.call("areal/capabilities")
+                .await
+                .reply(Fixture::capabilities());
+            f.call("areal/thread/observe")
+                .await
+                .reply(Fixture::idle_thread(1));
+            let turn = f.call("areal/turn/start").await;
+            assert_eq!(
+                turn.request["params"]["input"][0]["text"],
+                "shared identity"
+            );
+            turn.reply(json!({"turn":{"id":"shared-turn"}}));
+            let (mut session, sent) = sending.await.unwrap();
+            assert_eq!(sent.unwrap()["admissionState"], "accepted");
+            assert_eq!(
+                session.request(&read).await.unwrap()["admissionState"],
+                "accepted"
+            );
+            let alias_read = f.request("command.read", json!({"commandId":command}), None);
+            assert_eq!(
+                session.request(&alias_read).await.unwrap()["admissionState"],
+                "accepted"
+            );
+            let mut unknown = read.clone();
+            unknown["context"]["projectId"] = json!("unregistered-project");
+            assert_eq!(
+                session.request(&unknown).await.unwrap_err().to_string(),
+                "FORBIDDEN"
+            );
+            f.grant("a", |grant| grant["projectIds"] = json!([]));
+            let mut denied = f.session("a");
+            denied.gui_read = true;
+            denied.gui_write = true;
+            for request in [read, alias_read] {
+                assert_eq!(
+                    denied.request(&request).await.unwrap_err().to_string(),
+                    "FORBIDDEN"
+                );
+            }
+            assert!(f.calls.try_recv().is_err());
         })
         .await;
 }

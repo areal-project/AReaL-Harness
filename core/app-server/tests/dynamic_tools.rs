@@ -222,12 +222,20 @@ async fn callback_roundtrip_is_connection_scoped_and_definitions_survive_restart
     );
     let (url, stop, server) = serve(engine.clone()).await;
     let mut owner = connected(&url).await;
-    let unavailable = call(&mut owner, "areal/turn/start", json!({
-        "requestId": uuid::Uuid::new_v4().to_string(),
-        "threadId": id,
-        "input": [{"type":"text","text":"again"}]
-    })).await;
-    assert_eq!(unavailable["error"]["data"]["reason"], "TOOL_HOST_UNAVAILABLE");
+    let unavailable = call(
+        &mut owner,
+        "areal/turn/start",
+        json!({
+            "requestId": uuid::Uuid::new_v4().to_string(),
+            "threadId": id,
+            "input": [{"type":"text","text":"again"}]
+        }),
+    )
+    .await;
+    assert_eq!(
+        unavailable["error"]["data"]["reason"],
+        "TOOL_HOST_UNAVAILABLE"
+    );
     assert_eq!(unavailable["error"]["data"]["outcome"]["kind"], "rejected");
     assert_eq!(engine.read(&id, true).await.unwrap().turns.len(), 1);
     assert!(

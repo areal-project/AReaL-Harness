@@ -451,6 +451,42 @@ if (!process.env.RC12_TLS_HOME) {
         bodyPages: pages,
         bodyBytes: offset,
       };
+      const writer = await remoteConnection(t, fixture, relay, native.alias, [
+        "gui-read-v1",
+        "gui-write-v1",
+      ]);
+      const models = await writer.rpc({
+        method: "project.models",
+        context: { projectId: native.projectId },
+        params: {},
+      });
+      assert.ok(models.result.models.length > 0);
+      const commandId = randomUUID();
+      const submitted = await writer.rpc({
+        method: "session.send",
+        context: {
+          ...context,
+          projectId: native.projectId,
+          gatewayGeneration: writer.active.gatewayGeneration,
+          grantRevision: writer.active.grantRevision,
+        },
+        params: { ...params, text: "shared canonical identity" },
+        commandId,
+      });
+      assert.equal(submitted.result.admissionState, "accepted");
+      for (const projectId of [native.projectId, native.alias]) {
+        const receipt = await writer.rpc({
+          method: "command.read",
+          context: { projectId },
+          params: { commandId },
+        });
+        assert.equal(receipt.result.admissionState, "accepted");
+        assert.equal(receipt.result.nativeRequestId, submitted.result.nativeRequestId);
+      }
+      await until(async () => {
+        const result = await native.core.call("thread/read", { threadId, includeTurns: true });
+        return result.thread.turns.length === 2 && result.thread.turns[1].status === "completed";
+      }, "shared canonical submission reaches Core and completes");
     },
   );
 }

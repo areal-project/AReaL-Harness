@@ -879,7 +879,10 @@ impl Session {
         if self.local {
             self.gui_write
         } else {
-            self.host.gateway.workbench.backend_has_source(&self.source_id)
+            self.host
+                .gateway
+                .workbench
+                .backend_has_source(&self.source_id)
         }
     }
     fn project_id(&self, alias: &str) -> Result<String> {
@@ -1065,16 +1068,37 @@ impl Session {
                 self.authorize(None, "submit")?;
             }
             let params = if method == "pages.command" {
-                serde_json::to_value(serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(params.clone()).context("INVALID_PARAMS")?)?
+                serde_json::to_value(
+                    serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(
+                        params.clone(),
+                    )
+                    .context("INVALID_PARAMS")?,
+                )?
             } else {
-                serde_json::to_value(serde_json::from_value::<areal_protocol::host::WorkbenchPageResourceParams>(params.clone()).context("INVALID_PARAMS")?)?
+                serde_json::to_value(
+                    serde_json::from_value::<areal_protocol::host::WorkbenchPageResourceParams>(
+                        params.clone(),
+                    )
+                    .context("INVALID_PARAMS")?,
+                )?
             };
-            let mut value = self.host.gateway.workbench.request(
-                &self.host, method, params,
-                json!({"principal":self.peer,"connection":self.connection}),
-            ).await?;
+            let mut value = self
+                .host
+                .gateway
+                .workbench
+                .request(
+                    &self.host,
+                    method,
+                    params,
+                    json!({"principal":self.peer,"connection":self.connection}),
+                )
+                .await?;
             if method == "pages.command" {
-                let descriptor = if value["status"] == "open" { &mut value["app"] } else { &mut value };
+                let descriptor = if value["status"] == "open" {
+                    &mut value["app"]
+                } else {
+                    &mut value
+                };
                 if descriptor.get("frameUrl").is_some() {
                     descriptor["frameUrl"] = json!(self.host.loopback.page_proxy_url()?);
                 }
@@ -1211,6 +1235,14 @@ impl Session {
                 || (method == "subscription.close" && self.conversation_active()));
         let project = if native {
             self.native_alias(text(&request["context"], "projectId")?)?
+        } else if self.gui_write {
+            // 共享清单给出 Host ID；旧远程调用仍可用别名，授权和 journal 统一回到来源别名。
+            let supplied = text(&request["context"], "projectId")?;
+            self.bindings()?
+                .into_iter()
+                .find(|(id, alias)| id == supplied || alias == supplied)
+                .map(|(_, alias)| alias)
+                .context("FORBIDDEN")?
         } else {
             text(&request["context"], "projectId")?.to_owned()
         };
@@ -1314,14 +1346,29 @@ impl Session {
         // 新工作台创建命令与原生受理日志分离；旧记录仍按原 scope 只读恢复。
         for scope in [self.creation_command_scope(&id), id] {
             let (_, snapshot) = self.host.journal.native_snapshot(&scope)?;
-            let entries = snapshot["outcomes"].as_object().context("RESOURCE_UNAVAILABLE")?.values()
-                .chain(snapshot["pending"].as_array().context("RESOURCE_UNAVAILABLE")?.iter());
-            if let Some(entry) = entries.filter(|entry| {
-                entry["remote"]["hostId"] == self.host_peer
-                    && entry["remote"]["devicePeerId"] == self.peer
-                    && entry["remote"]["projectId"] == project
-                    && entry["remote"]["commandId"].as_str().is_some_and(|id| id.eq_ignore_ascii_case(command))
-            }).next() { return Ok(Some(entry.clone())); }
+            let entries = snapshot["outcomes"]
+                .as_object()
+                .context("RESOURCE_UNAVAILABLE")?
+                .values()
+                .chain(
+                    snapshot["pending"]
+                        .as_array()
+                        .context("RESOURCE_UNAVAILABLE")?
+                        .iter(),
+                );
+            if let Some(entry) = entries
+                .filter(|entry| {
+                    entry["remote"]["hostId"] == self.host_peer
+                        && entry["remote"]["devicePeerId"] == self.peer
+                        && entry["remote"]["projectId"] == project
+                        && entry["remote"]["commandId"]
+                            .as_str()
+                            .is_some_and(|id| id.eq_ignore_ascii_case(command))
+                })
+                .next()
+            {
+                return Ok(Some(entry.clone()));
+            }
         }
         Ok(None)
     }

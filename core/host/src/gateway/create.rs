@@ -12,8 +12,14 @@ impl std::error::Error for OutcomeWrite {}
 impl Session {
     pub(super) fn creation_command_scope(&self, project: &str) -> String {
         // 外层工作台命令不占项目原生请求的槽；同一 requestId 仍由后台提交到 Core。
-        format!("workbench-{}", areal_local_service::storage::digest(
-            json!([self.peer, project, "session.create"]).to_string().as_bytes()))
+        format!(
+            "workbench-{}",
+            areal_local_service::storage::digest(
+                json!([self.peer, project, "session.create"])
+                    .to_string()
+                    .as_bytes()
+            )
+        )
     }
     pub(super) async fn create_session(
         &self,
@@ -26,7 +32,20 @@ impl Session {
         ensure!(
             (exact(params, &[])
                 || (self.gui_write
-                    && exact(params, &["permissionPreset", "agentProfile", "requestId", "parameters", "options", "profile", "model", "worktree", "browserEnabled"])
+                    && exact(
+                        params,
+                        &[
+                            "permissionPreset",
+                            "agentProfile",
+                            "requestId",
+                            "parameters",
+                            "options",
+                            "profile",
+                            "model",
+                            "worktree",
+                            "browserEnabled"
+                        ]
+                    )
                     && params.get("permissionPreset").is_none_or(|preset| matches!(
                         preset.as_str(),
                         Some("ask" | "autoReview" | "fullAccess")
@@ -54,7 +73,9 @@ impl Session {
         let command = text(request, "commandId")?.to_ascii_lowercase();
         uuid::Uuid::parse_str(&command).map_err(|_| fail("INVALID_PARAMS"))?;
         self.authorize(Some(project), "submit")?;
-        if params["permissionPreset"] == "fullAccess" || params["options"]["permissionPreset"] == "fullAccess" {
+        if params["permissionPreset"] == "fullAccess"
+            || params["options"]["permissionPreset"] == "fullAccess"
+        {
             self.authorize(Some(project), "manage")?;
         }
         let digest =
@@ -82,39 +103,119 @@ impl Session {
             .schedules
             .connections
             .shared_identity(&self.host, &id)?;
-        if ["requestId", "parameters", "options", "profile", "model", "worktree", "browserEnabled"].iter().any(|key| params.get(key).is_some()) {
-            ensure!(self.local && self.gui_write && params.get("permissionPreset").is_none() && params.get("agentProfile").is_none(), "INVALID_PARAMS");
-            let operation = params.get("requestId").map(|value| value.as_str().context("INVALID_PARAMS")).transpose()?.unwrap_or(&command).to_owned();
+        if [
+            "requestId",
+            "parameters",
+            "options",
+            "profile",
+            "model",
+            "worktree",
+            "browserEnabled",
+        ]
+        .iter()
+        .any(|key| params.get(key).is_some())
+        {
+            ensure!(
+                self.local
+                    && self.gui_write
+                    && params.get("permissionPreset").is_none()
+                    && params.get("agentProfile").is_none(),
+                "INVALID_PARAMS"
+            );
+            let operation = params
+                .get("requestId")
+                .map(|value| value.as_str().context("INVALID_PARAMS"))
+                .transpose()?
+                .unwrap_or(&command)
+                .to_owned();
             uuid::Uuid::parse_str(&operation).map_err(|_| fail("INVALID_PARAMS"))?;
             let mut original = params.clone();
             original["requestId"] = json!(operation);
-            let mut execution = self.host.gateway.workbench.prepare_execution(&self.host, &self.connection, &id, "workbench/thread/create", original.clone()).await?.context("CAPABILITY_UNAVAILABLE")?;
-            for (key, value) in original.as_object().unwrap() { ensure!(execution.params[key] == *value, "INVALID_RESPONSE"); }
+            let mut execution = self
+                .host
+                .gateway
+                .workbench
+                .prepare_execution(
+                    &self.host,
+                    &self.connection,
+                    &id,
+                    "workbench/thread/create",
+                    original.clone(),
+                )
+                .await?
+                .context("CAPABILITY_UNAVAILABLE")?;
+            for (key, value) in original.as_object().unwrap() {
+                ensure!(execution.params[key] == *value, "INVALID_RESPONSE");
+            }
             self.authorize(Some(project), "submit")?;
-            if params["options"]["permissionPreset"] == "fullAccess" { self.authorize(Some(project), "manage")?; }
+            if params["options"]["permissionPreset"] == "fullAccess" {
+                self.authorize(Some(project), "manage")?;
+            }
             if let Some(record) = self.command_record(project, &command)? {
-                ensure!(record["remote"]["semanticDigest"] == digest, "COMMAND_CONFLICT");
+                ensure!(
+                    record["remote"]["semanticDigest"] == digest,
+                    "COMMAND_CONFLICT"
+                );
                 return self.command_result(project, Some(&record), &command).await;
             }
-            ensure!(self.host.schedules.connections.shared_identity(&self.host, &id)? == scope, "RESYNC_REQUIRED");
+            ensure!(
+                self.host
+                    .schedules
+                    .connections
+                    .shared_identity(&self.host, &id)?
+                    == scope,
+                "RESYNC_REQUIRED"
+            );
             let record = json!({"method":"workbench/thread/create","workbenchJournal":true,"operationId":operation,"params":execution.params,"backendSource":execution.source,
                 "coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2},
                 "remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.create","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":params}});
-            ensure!(serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(), "LIMIT_EXCEEDED");
+            ensure!(
+                serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
+                "LIMIT_EXCEEDED"
+            );
             let command_scope = self.creation_command_scope(&id);
             let (revision, mut snapshot) = self.host.journal.native_snapshot(&command_scope)?;
-            ensure!(snapshot["pending"].as_array().unwrap().len() + snapshot["outcomes"].as_object().unwrap().len() < 4096, "RESOURCE_UNAVAILABLE");
-            ensure!(!snapshot["outcomes"].as_object().unwrap().contains_key(&operation)
-                && !snapshot["pending"].as_array().unwrap().iter().any(|pending| pending["operationId"] == operation), "COMMAND_CONFLICT");
-            snapshot["pending"].as_array_mut().unwrap().push(record.clone());
-            self.host.journal.native_replace(&command_scope, revision, snapshot)?;
+            ensure!(
+                snapshot["pending"].as_array().unwrap().len()
+                    + snapshot["outcomes"].as_object().unwrap().len()
+                    < 4096,
+                "RESOURCE_UNAVAILABLE"
+            );
+            ensure!(
+                !snapshot["outcomes"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key(&operation)
+                    && !snapshot["pending"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|pending| pending["operationId"] == operation),
+                "COMMAND_CONFLICT"
+            );
+            snapshot["pending"]
+                .as_array_mut()
+                .unwrap()
+                .push(record.clone());
+            self.host
+                .journal
+                .native_replace(&command_scope, revision, snapshot)?;
             let dispatched = execution.dispatch().await;
-            let settled = if let Some(failure) = dispatched.as_ref().err().and_then(|error| error.downcast_ref::<crate::server::schedule_connection::RpcFailure>()).filter(|failure| failure.0["data"]["outcome"]["kind"] == "noMutation") {
+            let settled = if let Some(failure) = dispatched
+                .as_ref()
+                .err()
+                .and_then(|error| {
+                    error.downcast_ref::<crate::server::schedule_connection::RpcFailure>()
+                })
+                .filter(|failure| failure.0["data"]["outcome"]["kind"] == "noMutation")
+            {
                 let mut rejected = record.clone();
                 rejected["admissionState"] = json!("rejected");
                 rejected["error"] = failure.0.clone();
                 self.settle_command(&id, rejected)?
-            } else { self.reconcile_creation(project, &record).await? };
+            } else {
+                self.reconcile_creation(project, &record).await?
+            };
             self.authorize(Some(project), "submit")?;
             return Ok(Self::command_view(Some(&settled), &command));
         }
@@ -195,24 +296,52 @@ impl Session {
         )?;
         let original = serde_json::to_value(native)?;
         let mut execution = if self.uses_workbench_execution() {
-            self.host.gateway.workbench.prepare_execution(&self.host, &self.connection, &id, "areal/thread/start", original.clone()).await?
-        } else { None };
-        let native = execution.as_ref().map(|prepared| prepared.params.clone()).unwrap_or_else(|| original.clone());
+            self.host
+                .gateway
+                .workbench
+                .prepare_execution(
+                    &self.host,
+                    &self.connection,
+                    &id,
+                    "areal/thread/start",
+                    original.clone(),
+                )
+                .await?
+        } else {
+            None
+        };
+        let native = execution
+            .as_ref()
+            .map(|prepared| prepared.params.clone())
+            .unwrap_or_else(|| original.clone());
         for field in ["requestId", "cwd", "admissionGuard", "creationAdmission"] {
             ensure!(native[field] == original[field], "INVALID_RESPONSE");
         }
-        ensure!(native["options"]["permissionPreset"] == original["options"]["permissionPreset"]
-            && native["agentProfile"] == original["agentProfile"], "INVALID_RESPONSE");
+        ensure!(
+            native["options"]["permissionPreset"] == original["options"]["permissionPreset"]
+                && native["agentProfile"] == original["agentProfile"],
+            "INVALID_RESPONSE"
+        );
         let typed: areal_protocol::desktop::ThreadStart = serde_json::from_value(native.clone())?;
         let native_digest = areal_local_service::storage::digest(&serde_json::to_vec(&typed)?);
         self.authorize(Some(project), "submit")?;
-        if params["permissionPreset"] == "fullAccess" || params["options"]["permissionPreset"] == "fullAccess" { self.authorize(Some(project), "manage")?; }
+        if params["permissionPreset"] == "fullAccess"
+            || params["options"]["permissionPreset"] == "fullAccess"
+        {
+            self.authorize(Some(project), "manage")?;
+        }
         if let Some(record) = self.command_record(project, &command)? {
-            ensure!(record["remote"]["semanticDigest"] == digest, "COMMAND_CONFLICT");
+            ensure!(
+                record["remote"]["semanticDigest"] == digest,
+                "COMMAND_CONFLICT"
+            );
             return self.command_result(project, Some(&record), &command).await;
         }
         let record = json!({"method":"areal/thread/start","operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2},"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.create","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":if exact(params, &[]) {json!({})} else {params.clone()}}});
-        ensure!(serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(), "LIMIT_EXCEEDED");
+        ensure!(
+            serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
+            "LIMIT_EXCEEDED"
+        );
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
         ensure!(
             snapshot["pending"].as_array().unwrap().len()
@@ -237,9 +366,19 @@ impl Session {
         let result = if let Some(prepared) = &mut execution {
             prepared.dispatch().await
         } else {
-            self.host.schedules.connections.remote_request(
-                &self.host, &id, &scope.0, generation, &scope.2, "areal/thread/start", native,
-            ).await
+            self.host
+                .schedules
+                .connections
+                .remote_request(
+                    &self.host,
+                    &id,
+                    &scope.0,
+                    generation,
+                    &scope.2,
+                    "areal/thread/start",
+                    native,
+                )
+                .await
         };
         let mut settled = record.clone();
         match result {
@@ -305,9 +444,14 @@ impl Session {
             .context("RESOURCE_UNAVAILABLE")?
             .to_owned();
         let scope = if record["workbenchJournal"] == true {
-            ensure!(record["method"] == "workbench/thread/create", "INVALID_RESPONSE");
+            ensure!(
+                record["method"] == "workbench/thread/create",
+                "INVALID_RESPONSE"
+            );
             self.creation_command_scope(id)
-        } else { id.to_owned() };
+        } else {
+            id.to_owned()
+        };
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&scope)?;
         if let Some(previous) = snapshot["outcomes"].get(&operation) {
             return Ok(previous.clone());
@@ -332,20 +476,38 @@ impl Session {
         self.authorize(Some(project), "submit")?;
         let id = self.project_id(project)?;
         if record["method"] == "workbench/thread/create" {
-            let Some(source) = record["backendSource"].as_str() else { return Ok(record.clone()); };
-            let Ok(result) = self.host.gateway.workbench.read_creation(&self.host, &id, source, &record["params"]).await else { return Ok(record.clone()); };
+            let Some(source) = record["backendSource"].as_str() else {
+                return Ok(record.clone());
+            };
+            let Ok(result) = self
+                .host
+                .gateway
+                .workbench
+                .read_creation(&self.host, &id, source, &record["params"])
+                .await
+            else {
+                return Ok(record.clone());
+            };
             let mut settled = record.clone();
             if result["state"] == "ready" {
-                let Some(thread) = result["threadId"].as_str().filter(|value| !value.is_empty()) else { return Ok(record.clone()); };
+                let Some(thread) = result["threadId"]
+                    .as_str()
+                    .filter(|value| !value.is_empty())
+                else {
+                    return Ok(record.clone());
+                };
                 let operation = record["operationId"].as_str().context("INVALID_RESPONSE")?;
                 settled["threadId"] = json!(thread);
                 settled["receipt"] = Self::creation_receipt(operation, thread);
-                settled["receipt"]["result"]["executionProjectId"] = result["executionProjectId"].clone();
+                settled["receipt"]["result"]["executionProjectId"] =
+                    result["executionProjectId"].clone();
                 settled["admissionState"] = json!("accepted");
             } else if result["state"] == "rejected" {
                 settled["admissionState"] = json!("rejected");
                 settled["error"] = json!({"code":"CREATION_REJECTED","message":result["message"]});
-            } else { return Ok(record.clone()); }
+            } else {
+                return Ok(record.clone());
+            }
             self.authorize(Some(project), "submit")?;
             return self.settle_command(&id, settled);
         }

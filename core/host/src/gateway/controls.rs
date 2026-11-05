@@ -32,7 +32,13 @@ fn validate(params: &Message, text_bytes: usize, gui_write: bool) -> Result<()> 
         "queueReorder" => &["queueItemIds"],
         "queuePause" | "queueResume" => &[],
         "queueSteer" => &["queueItemId", "expectedTurnId"],
-        "steer" if gui_write => &["text", "expectedTurnId", "attachments", "conversationQuotes", "mcpContent"],
+        "steer" if gui_write => &[
+            "text",
+            "expectedTurnId",
+            "attachments",
+            "conversationQuotes",
+            "mcpContent",
+        ],
         "steer" => &["text", "expectedTurnId"],
         _ => unreachable!(),
     };
@@ -62,7 +68,11 @@ fn validate(params: &Message, text_bytes: usize, gui_write: bool) -> Result<()> 
             }
         }
         if params.operation == "steer" && gui_write {
-            let text = values.get("text").map(|v| v.as_str().context("INVALID_PARAMS")).transpose()?.unwrap_or_default();
+            let text = values
+                .get("text")
+                .map(|v| v.as_str().context("INVALID_PARAMS"))
+                .transpose()?
+                .unwrap_or_default();
             ensure!(text.len() <= text_bytes, "INVALID_PARAMS");
             super::send::rich_message_input(text, values).context("INVALID_PARAMS")?;
         } else if matches!(params.operation.as_str(), "queueUpdate" | "steer") {
@@ -245,8 +255,18 @@ impl Session {
             );
         }
         let prepared = if params.operation == "steer" && self.uses_workbench_execution() {
-            Some(self.host.gateway.workbench
-                .prepare_input(&self.host, &id, &params.thread_id, params.values["text"].as_str().unwrap_or_default()).await?)
+            Some(
+                self.host
+                    .gateway
+                    .workbench
+                    .prepare_input(
+                        &self.host,
+                        &id,
+                        &params.thread_id,
+                        params.values["text"].as_str().unwrap_or_default(),
+                    )
+                    .await?,
+            )
         } else {
             None
         };
@@ -360,8 +380,13 @@ impl Session {
             native["expectedRevision"] = json!(params.expected_revision);
         }
         if params.operation == "steer" {
-            native["input"] = serde_json::to_value(super::send::rich_message_input(native["text"].as_str().unwrap_or_default(), &params.values)?)?;
-            for key in ["text", "attachments", "conversationQuotes", "mcpContent"] { native.as_object_mut().unwrap().remove(key); }
+            native["input"] = serde_json::to_value(super::send::rich_message_input(
+                native["text"].as_str().unwrap_or_default(),
+                &params.values,
+            )?)?;
+            for key in ["text", "attachments", "conversationQuotes", "mcpContent"] {
+                native.as_object_mut().unwrap().remove(key);
+            }
         } else if let Some(text) = native.get("text").and_then(Value::as_str) {
             native["input"] = serde_json::to_value(vec![areal_protocol::Input::text(text)])?;
             native.as_object_mut().unwrap().remove("text");
@@ -401,16 +426,32 @@ impl Session {
             )?;
         }
         let mut execution = if params.operation == "steer" && self.uses_workbench_execution() {
-            self.host.gateway.workbench.prepare_execution(&self.host, &self.connection, &id, method, native.clone()).await?
-        } else { None };
+            self.host
+                .gateway
+                .workbench
+                .prepare_execution(&self.host, &self.connection, &id, method, native.clone())
+                .await?
+        } else {
+            None
+        };
         if let Some(prepared) = &execution {
             ensure!(prepared.params == native, "INVALID_RESPONSE");
             self.authorize(Some(project), "submit")?;
             if let Some(record) = self.command_record(project, command)? {
-                ensure!(record["remote"]["semanticDigest"] == digest, "COMMAND_CONFLICT");
+                ensure!(
+                    record["remote"]["semanticDigest"] == digest,
+                    "COMMAND_CONFLICT"
+                );
                 return self.command_result(project, Some(&record), command).await;
             }
-            ensure!(self.host.schedules.connections.shared_identity(&self.host, &id)? == scope, "RESYNC_REQUIRED");
+            ensure!(
+                self.host
+                    .schedules
+                    .connections
+                    .shared_identity(&self.host, &id)?
+                    == scope,
+                "RESYNC_REQUIRED"
+            );
         }
         let native_digest = native_digest(method, &native)?;
         let record = json!({"method":method,"operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2,"storeBinding":caps["features"]["threadCreationJournal"]["binding"]},"threadId":params.thread_id,"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.control","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":{"threadId":params.thread_id,"operation":params.operation,"expectedRevision":params.expected_revision}}});
@@ -449,9 +490,13 @@ impl Session {
         let response = if let Some(prepared) = &mut execution {
             prepared.dispatch().await
         } else {
-            self.host.schedules.connections.remote_request(
-                &self.host, &id, &scope.0, generation, &scope.2, method, native,
-            ).await
+            self.host
+                .schedules
+                .connections
+                .remote_request(
+                    &self.host, &id, &scope.0, generation, &scope.2, method, native,
+                )
+                .await
         };
         let mut settled = record.clone();
         match response {

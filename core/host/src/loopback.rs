@@ -119,7 +119,10 @@ struct PageConnection {
 }
 impl Drop for PageConnection {
     fn drop(&mut self) {
-        self.host.gateway.workbench.disconnect_pages(&self.connection);
+        self.host
+            .gateway
+            .workbench
+            .disconnect_pages(&self.connection);
     }
 }
 #[derive(Default)]
@@ -131,8 +134,14 @@ pub(super) struct Loopback {
 }
 impl Loopback {
     pub(super) fn page_proxy_url(&self) -> Result<String> {
-        Ok(format!("{}/host/pages/proxy",
-            self.endpoint.borrow().as_ref().context("CAPABILITY_UNAVAILABLE")?.origin))
+        Ok(format!(
+            "{}/host/pages/proxy",
+            self.endpoint
+                .borrow()
+                .as_ref()
+                .context("CAPABILITY_UNAVAILABLE")?
+                .origin
+        ))
     }
     pub(super) fn ticket(&self, input: LocalWebTicketParams) -> Result<LocalWebTicketResult> {
         self.mint_ticket(input, None)
@@ -497,7 +506,10 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         .iter()
         .any(|capability| capability == "gui-read-v1");
     let connection_id = uuid::Uuid::new_v4().to_string();
-    let _pages = PageConnection { host: host.clone(), connection: connection_id.clone() };
+    let _pages = PageConnection {
+        host: host.clone(),
+        connection: connection_id.clone(),
+    };
     let mut page_events = host.gateway.workbench.page_events();
     // 写能力同时要求协议协商和本机用户明确授予的范围；旧浏览器仍只有 observe。
     let mut writer = (negotiated

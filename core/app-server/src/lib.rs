@@ -1732,9 +1732,11 @@ fn atomic_mutation_error(error: Error) -> Error {
 // storage failure can follow a partial write (or cancellation), so keep it unknown.
 fn control_mutation_error(error: Error) -> Error {
     match error {
-        Error::Conflict | Error::NotFound | Error::Invalid(_) | Error::ToolHostUnavailable | Error::Closed => {
-            Error::Rejected(Box::new(error))
-        }
+        Error::Conflict
+        | Error::NotFound
+        | Error::Invalid(_)
+        | Error::ToolHostUnavailable
+        | Error::Closed => Error::Rejected(Box::new(error)),
         error => error,
     }
 }

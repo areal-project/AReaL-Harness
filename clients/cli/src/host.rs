@@ -42,7 +42,9 @@ pub enum WebCommand {
         scopes: Vec<String>,
     },
     Devices,
-    Revoke { device_id: String },
+    Revoke {
+        device_id: String,
+    },
 }
 #[derive(Subcommand)]
 pub enum HostCommand {
@@ -112,7 +114,10 @@ pub async fn execute(command: HostCommand) -> Result<()> {
         } => serde_json::to_value(
             Client::connect()
                 .await?
-                .approve_browser_with_scopes(&request_id, &scopes.iter().map(String::as_str).collect::<Vec<_>>())
+                .approve_browser_with_scopes(
+                    &request_id,
+                    &scopes.iter().map(String::as_str).collect::<Vec<_>>(),
+                )
                 .await?,
         )?,
         HostCommand::Web {
