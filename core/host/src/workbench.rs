@@ -32,7 +32,7 @@ pub(crate) struct Workbench {
     pending: Pending,
     next: Cell<u64>,
     closed: Rc<Cell<bool>>,
-    writer: RefCell<Option<Rc<tokio::sync::Mutex<tokio::process::ChildStdin>>>>,
+    writer: Rc<tokio::sync::Mutex<Option<tokio::process::ChildStdin>>>,
 }
 
 /// 异常退出后的重启间隔；返回 None 表示停止重启并报告不可用。
@@ -80,16 +80,16 @@ impl Workbench {
             .context("invalid workbench ready frame")?;
         let pending: Pending = Rc::default();
         let closed = Rc::new(Cell::new(false));
-        let stdin = Rc::new(tokio::sync::Mutex::new(
+        let stdin = Rc::new(tokio::sync::Mutex::new(Some(
             child.stdin.take().context("workbench stdin missing")?,
-        ));
+        )));
         let workbench = Self {
             child,
             methods,
             pending: pending.clone(),
             next: Cell::new(0),
             closed: closed.clone(),
-            writer: RefCell::new(Some(stdin.clone())),
+            writer: stdin.clone(),
         };
         tokio::task::spawn_local(async move {
             loop {
@@ -108,7 +108,9 @@ impl Workbench {
                                 json!({"version":1,"id":id,"error":{"code":crate::server::error_code(&error.to_string()),"message":"Host call failed"}})
                             }
                         };
-                        let _ = write_frame(&mut *stdin.lock().await, &body).await;
+                        if let Some(stdin) = stdin.lock().await.as_mut() {
+                            let _ = write_frame(stdin, &body).await;
+                        }
                     });
                     continue;
                 }
@@ -156,15 +158,11 @@ impl Workbench {
         let (sender, receiver) = oneshot::channel();
         self.pending.borrow_mut().insert(id, sender);
         let frame = json!({"version":1,"id":id,"method":method,"params":params,"context":context});
-        let writer = self
-            .writer
-            .borrow()
-            .clone()
-            .context("CAPABILITY_UNAVAILABLE")?;
-        if write_frame(&mut *writer.lock().await, &frame)
-            .await
-            .is_err()
-        {
+        let written = match self.writer.lock().await.as_mut() {
+            Some(stdin) => write_frame(stdin, &frame).await.is_ok(),
+            None => false,
+        };
+        if !written {
             self.pending.borrow_mut().remove(&id);
             bail!("CAPABILITY_UNAVAILABLE");
         }
@@ -179,7 +177,7 @@ impl Workbench {
 
     /// 关闭标准输入让服务自行退出，超时后强制结束。
     pub(crate) async fn stop(mut self) -> Result<()> {
-        self.writer.replace(None);
+        self.writer.lock().await.take();
         if tokio::time::timeout(Duration::from_secs(5), self.child.wait())
             .await
             .is_err()
@@ -298,6 +296,26 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
                         .to_string(),
                     "CAPABILITY_UNAVAILABLE"
                 );
+                workbench.stop().await.unwrap();
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn starts_the_shipped_service_entry() {
+        let Some(node) = node() else { return };
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let runner = Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../services/workbench/src/main.cjs")
+                    .canonicalize()
+                    .unwrap();
+                let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
+                let workbench = Workbench::start(&node, &runner, root.path(), reverse)
+                    .await
+                    .unwrap();
+                assert!(workbench.methods().is_empty());
                 workbench.stop().await.unwrap();
             })
             .await;
