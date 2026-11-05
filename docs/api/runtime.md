@@ -58,6 +58,8 @@ Rust 默认版本依次采用显式启动版本、用户 rustup 默认值和 Hom
 
 受限命令不会继承宿主 HOME。Runtime 在既有读取权限内选择 HOME：优先采用有效的 TMPDIR（Core 的每线程 scratch），未提供时尝试 Scope 可读的部署 scratch 或其已授权子目录，均不可用时退回当前工作目录；缺失的 TMPDIR 同步使用该目录。目录必须是已存在的绝对目录，解析符号链接后仍在 Scope 读取范围内；不增加读写根或网络权限。没有可写 scratch 的只读调用仍不能写缓存，应由可信调用方提供 scratch。完整授权且继承网络的宿主模式保留原有 HOME/TMPDIR 继承规则。
 
+完整宿主授权且继承网络、不需要 OS 路径沙箱时，超过 48 个 UTF-8 字节的有效 TMPDIR 会映射为 `/tmp` 下私有目录内的短符号链接，以减少应用追加 Unix socket 路径后超出系统上限的失败。链接仍指向同一实际目录；HOME、原目录、已有文件与权限不变。同一实际目录在 Runtime 生命周期内复用别名，跨命令的临时文件引用可继续使用；确认所有进程关闭后只删除别名，不删除原 scratch。别名被删除或改指向时明确拒绝启动。受限 Scope、只读输入保护和断网执行不使用这条宿主路径映射，既有沙箱与目录规则保持不变。短别名不保证任意长度的应用后缀都能满足 socket 上限。
+
 Rust Client 的 `launch_with_limits` 投影可信 PATH 并向 Runtime 传递上述发现提示，不继承其他环境；`launch_with_command_path` 供可信部署显式接入已物化工具链，要求有界的绝对目录列表。NativeExecutor 为显式工具链把私有 .toolchain/bin 加在系统路径前。它不扩大源文件写集合。`launch_with_environment` 另接受可信调用方已授权的网络上限；已有 launch 入口仍默认禁网，子 Scope 可继续收窄为 deny。
 
 私有 Bash 是单独执行的 GPL-3.0-or-later 组件，完整包同时携带许可证、锁定对应源码和构建信息；不静态链接进 Rust。构建和升级须使用完整 bundle，见[开发指南](../development/README.md)和[发行流程](../development/releasing.md)。
