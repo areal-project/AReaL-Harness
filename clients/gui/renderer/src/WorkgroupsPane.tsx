@@ -1,5 +1,5 @@
 import { useI18n } from "./i18n/IntlProvider.js";
-import type { ManagementRequestMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementRequestMap } from "./services.js";
 import { Input } from "@areal/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";

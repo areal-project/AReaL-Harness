@@ -194,11 +194,13 @@ test("Main cannot regrow against base using unused baseline headroom", async (t)
     ).status,
     0,
   );
-  assert.equal(f.run("--check", "--base=HEAD").status, 0);
+  const stale = f.run("--check", "--base=HEAD");
+  assert.notEqual(stale.status, 0);
+  assert.match(stale.stderr, /mainSourceLines.*baseline exceeds actual Main lines at base/);
   await f.put("app/src/business.cjs", "business();\n".repeat(2));
   const grown = f.run("--check", "--base=HEAD");
   assert.notEqual(grown.status, 0);
-  assert.match(grown.stderr, /mainSourceLines.*Main source increased against base/);
+  assert.match(grown.stderr, /mainSourceLines.*Main source grew against base/);
   assert.notEqual(f.run("--write", "--base=HEAD").status, 0);
   assert.equal((await f.baseline()).mainSourceLines.value, 4);
 });
@@ -284,6 +286,141 @@ test("an explicit base detects baseline relaxation in the same change", async (t
   assert.match(result.stderr, /appLines/);
   assert.match(result.stderr, /baseline/i);
 });
+
+async function commitFixture(f) {
+  const git = (...args) =>
+    spawnSync("git", args, {
+      cwd: join(f.root, "../.."),
+      encoding: "utf8",
+    });
+  assert.equal(git("init", "-q").status, 0);
+  assert.equal(git("add", ".").status, 0);
+  const result = git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.test",
+    "commit",
+    "-qm",
+    "baseline",
+  );
+  assert.equal(result.status, 0, result.stderr);
+}
+
+test("Main business budget counts new and renamed modules and rejects restored debt", async (t) => {
+  const f = await fixture(t);
+  assert.equal(f.run("--write").status, 0);
+  const check = () => f.run("--check", "--metric=mainBusinessLines");
+  await f.put("app/src/business.cjs", "module.exports = {};\n");
+  assert.match(check().stderr, /mainBusinessLines/);
+  await rm(join(f.root, "app/src/business.cjs"));
+  await rename(join(f.root, "app/src/main.cjs"), join(f.root, "app/src/renamed.cjs"));
+  assert.equal(check().status, 0);
+  await f.put("app/src/renamed.cjs", "module.exports = {};\n\n");
+  assert.notEqual(check().status, 0);
+  assert.notEqual(f.run("--write", "--allow-regression=mainBusinessLines").status, 0);
+  await rm(join(f.root, "app/src/renamed.cjs"));
+  await f.put("app/src/main.cjs", "");
+  assert.equal(f.run("--write").status, 0);
+  assert.equal((await f.baseline()).mainBusinessLines.value, 0);
+  await f.put("app/src/main.cjs", "module.exports = {};\n");
+  assert.notEqual(check().status, 0);
+  await rm(join(f.root, "app/src/main.cjs"));
+  assert.equal(check().status, 0);
+});
+
+test("native shell exemptions are exact paths and cannot reclassify business against base", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/preload.cjs", "module.exports = {};\n");
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  baseline.$mainNativeSources = { "app/src/preload.cjs": "Electron contextBridge adapter" };
+  baseline.mainBusinessLines.value = 1;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await commitFixture(f);
+  const check = () => f.run("--check", "--metric=mainBusinessLines", "--base=HEAD");
+  await f.put("app/src/preload.cjs", "module.exports = {};\n\n");
+  const green = check();
+  assert.equal(green.status, 0, green.stderr);
+  const total = f.run("--check", "--metric=mainSourceLines", "--base=HEAD");
+  assert.notEqual(total.status, 0);
+  assert.match(total.stderr, /mainSourceLines/);
+  assert.match(total.stderr, /Main source grew against base/);
+  assert.deepEqual(JSON.parse(green.stdout).mainBusinessSources, { "app/src/main.cjs": 1 });
+  baseline.$mainNativeSources["app/src/main.cjs"] = "Reclassified as native";
+  baseline.mainBusinessLines.value = 0;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.match(check().stderr, /native exemption added against base/);
+  delete baseline.$mainNativeSources["app/src/main.cjs"];
+  baseline.mainBusinessLines.value = 1;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await rename(join(f.root, "app/src/preload.cjs"), join(f.root, "app/src/new-preload.cjs"));
+  assert.match(check().stderr, /mainBusinessLines/);
+});
+
+for (const metric of ["mainSourceLines", "mainBusinessLines"]) {
+  test(`${metric} first baseline is measured against actual current and base sources`, async (t) => {
+    const f = await fixture(t);
+    assert.equal(f.run("--write").status, 0);
+    const baseline = await f.baseline();
+    const legacy = { ...baseline };
+    delete legacy.mainBusinessLines;
+    delete legacy.mainSourceLines;
+    delete legacy.$mainNativeSources;
+    await f.put("health-baseline.json", JSON.stringify(legacy));
+    await commitFixture(f);
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    const check = () => f.run("--check", `--metric=${metric}`, "--base=HEAD");
+    assert.equal(check().status, 0);
+    baseline[metric].value = 2;
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    assert.match(check().stderr, /initial baseline must equal actual Main lines/);
+    await f.put("app/src/main.cjs", "module.exports = {};\n\n");
+    const grown = check();
+    assert.notEqual(grown.status, 0);
+    assert.match(grown.stderr, /Main source grew against base/);
+    await f.put("app/src/main.cjs", "module.exports = {};\n");
+    baseline[metric].value = 1;
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    assert.equal(check().status, 0);
+  });
+
+  test(`${metric} baseline cannot increase or reuse old headroom against actual base`, async (t) => {
+    const f = await fixture(t);
+    assert.equal(f.run("--write").status, 0);
+    await commitFixture(f);
+    const baseline = await f.baseline();
+    baseline[metric].value++;
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    const relaxed = f.run("--check", `--metric=${metric}`, "--base=HEAD");
+    assert.notEqual(relaxed.status, 0);
+    assert.match(relaxed.stderr, /baseline relaxed against base/);
+    assert.match(relaxed.stderr, /baseline exceeds actual Main lines at base/);
+    baseline[metric].value--;
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    await f.put("app/src/main.cjs", "");
+    const git = (...args) =>
+      spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
+    assert.equal(git("add", ".").status, 0);
+    assert.equal(
+      git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "commit",
+        "-qm",
+        "remove business source without refreshing cap",
+      ).status,
+      0,
+    );
+    await f.put("app/src/main.cjs", "module.exports = {};\n");
+    const restored = f.run("--check", `--metric=${metric}`, "--base=HEAD");
+    assert.notEqual(restored.status, 0);
+    assert.match(restored.stderr, /Main source grew against base/);
+    assert.notEqual(f.run("--write", `--metric=${metric}`).status, 0);
+  });
+}
 
 test("an explicit base classifies inherited regressions without waiving the reviewed baseline", async (t) => {
   const f = await fixture(t);

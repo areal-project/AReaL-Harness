@@ -6,7 +6,7 @@
 /** @typedef {import('./history-contract.cjs').HistoryPage} Page */
 /** @typedef {import('@areal/workbench/desktop-contract/conversation').HistoryAnchor} Anchor */
 /** @typedef {{revision:number,anchor:Anchor|null}} ReadingTarget */
-/** @typedef {{id:string,cursor:string,items:ReturnType<typeof import('./history-projection.cjs').pageTopology>}} PageRecord */
+/** @typedef {{id:string,cursor:string,items:ReturnType<typeof import('@areal/workbench/history-projection').pageTopology>}} PageRecord */
 /** @typedef {{project:Project,threadId:string,snapshotId:string,nextCursor:string|null,complete:boolean,views:Set<string>,targets:Map<string,ReadingTarget>,stalePages:(Page & {pageId:string})[],viewGeneration:string,client:Client,generation?:number,latestTurn:{id?:string,complete:boolean,read:Promise<void>|null},preservedLatestItems:Map<string,Item>,latestSeen:Set<string>,pages:(Page & {pageId:string})[],pageRecords:PageRecord[],loaded:Map<string,{placeholder:import('./history-contract.cjs').DeferredItem,bytes:number}>,loading:Map<string,{bytes:number,totalBytes:number}>,omitted:boolean,epoch:number,baselineCursor:string|null,baselineComplete:boolean,baselineFirstItemId?:string,invalidated?:boolean,olderRead?:Promise<Page>|null,displayed?:{complete:boolean,omitted:boolean}}} HistoryWindow */
 /** @typedef {{client?:Client|null,current?:()=>boolean,timeoutMs?:number,install?:boolean,resume?:boolean}} ReadOptions */
 /** @typedef {{client:Client,current:()=>boolean,deadline:number}} ObserveOptions */

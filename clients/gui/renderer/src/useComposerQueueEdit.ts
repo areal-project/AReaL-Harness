@@ -1,5 +1,5 @@
 import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadState.js";
-import type { Attachment } from "@areal/workbench/desktop-contract/conversation";
+import type { Attachment } from "./services.js";
 import type { QueueEditInput } from "./Queue.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "../services.js";
 import { UiMessageError, type UiMessage } from "../i18n/IntlProvider.js";
 import type { PluginCommand, PluginDetail, PluginList, PluginReadiness } from "./pluginTypes.js";
 import type { Data } from "../services.js";

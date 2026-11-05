@@ -216,7 +216,7 @@ impl Host {
             "relayUse" => &["operation", "origin"],
             "revoke" | "reject" => &["operation", "id"],
             "renameDevice" => &["operation", "id", "name"],
-            "updateGrant" | "approve" => &["operation", "id", "projects", "preset"],
+            "updateGrant" | "approve" => &["operation", "id", "projects", "preset", "manage"],
             _ => {
                 return Err(error(
                     "unsupportedCapability",
@@ -352,7 +352,7 @@ impl Host {
                     .cloned()
                     .ok_or_else(|| error("invalidRequest", "Pairing request has expired"))?;
                 let projects = grant_projects(&input.request)?;
-                let capabilities = match input.request["preset"].as_str() {
+                let mut capabilities = match input.request["preset"].as_str() {
                     Some("Observer") => json!(["observe", "review"]),
                     Some("Operator") => json!([
                         "observe",
@@ -364,6 +364,13 @@ impl Host {
                     ]),
                     _ => return Err(error("invalidRequest", "invalid Remote grant preset")),
                 };
+                match input.request.get("manage") {
+                    None | Some(Value::Bool(false)) => {}
+                    Some(Value::Bool(true)) if input.request["preset"] == "Operator" => {
+                        capabilities.as_array_mut().unwrap().push(json!("manage"));
+                    }
+                    _ => return Err(error("invalidRequest", "invalid Remote grant preset")),
+                }
                 let grants = config["deviceGrants"]
                     .as_array()
                     .cloned()
@@ -528,7 +535,7 @@ impl Host {
                         grant["displayName"] = json!(name);
                     } else {
                         let projects = grant_projects(&input.request)?;
-                        let caps = match input.request["preset"].as_str() {
+                        let mut caps = match input.request["preset"].as_str() {
                             Some("Observer") => json!(["observe", "review"]),
                             Some("Operator") => json!([
                                 "observe",
@@ -542,6 +549,15 @@ impl Host {
                                 return Err(error("invalidRequest", "invalid Remote grant preset"));
                             }
                         };
+                        match input.request.get("manage") {
+                            None | Some(Value::Bool(false)) => {}
+                            Some(Value::Bool(true)) if input.request["preset"] == "Operator" => {
+                                caps.as_array_mut().unwrap().push(json!("manage"));
+                            }
+                            _ => {
+                                return Err(error("invalidRequest", "invalid Remote grant preset"));
+                            }
+                        }
                         grant["projectIds"] = json!(projects);
                         grant["capabilities"] = caps;
                         grant["revision"] = json!(

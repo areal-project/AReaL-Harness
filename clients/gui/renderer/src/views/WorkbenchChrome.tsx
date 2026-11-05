@@ -1,3 +1,4 @@
+import { useReadOnly } from "../PlatformReadContext.js";
 import React, { useState } from "react";
 import { BugReportDialog } from "../BugReportDialog.js";
 import { Bug, Route } from "lucide-react";
@@ -58,6 +59,7 @@ export function WorkbenchRail({
   const { t } = useI18n();
   const { project, threadId, recordWorkspaceLocation } = session;
   const { settingsOpen, pluginsOpen, trajectoryAttention, rememberPluginTask } = surfaces;
+  const readOnly = useReadOnly();
   const taskCenterOpen = taskSurface !== null;
   return (
     <ApplicationRail
@@ -102,28 +104,30 @@ export function WorkbenchRail({
               surfaces.openMarketplace();
             }),
         },
-      ]}
+      ].filter((item) => !readOnly || item.id === "home")}
       footer={
-        <>
-          <UpdateIndicator services={services} />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="application-rail-button relative"
-            aria-label={t("settings.title")}
-            title={t(trajectoryAttention ? "settings.attention" : "settings.title")}
-            aria-current={settingsOpen ? "page" : undefined}
-            onClick={() => showPanel("设置")}
-          >
-            <Settings />
-            {trajectoryAttention && (
-              <span
-                aria-label={t("settings.trajectory.attention")}
-                className="absolute top-1 right-1 size-2 rounded-full bg-[var(--color-settings-attention-indicator)]"
-              />
-            )}
-          </Button>
-        </>
+        readOnly ? null : (
+          <>
+            <UpdateIndicator services={services} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="application-rail-button relative"
+              aria-label={t("settings.title")}
+              title={t(trajectoryAttention ? "settings.attention" : "settings.title")}
+              aria-current={settingsOpen ? "page" : undefined}
+              onClick={() => showPanel("设置")}
+            >
+              <Settings />
+              {trajectoryAttention && (
+                <span
+                  aria-label={t("settings.trajectory.attention")}
+                  className="absolute top-1 right-1 size-2 rounded-full bg-[var(--color-settings-attention-indicator)]"
+                />
+              )}
+            </Button>
+          </>
+        )
       }
     />
   );
@@ -191,6 +195,8 @@ export function WorkspaceTaskActions({
   const { t } = useI18n();
   const { project, thread } = session;
   const [bugReportOpen, setBugReportOpen] = useState(false);
+  const readOnly = useReadOnly();
+  if (readOnly) return null;
   return (
     <>
       <BugReportDialog
@@ -270,6 +276,7 @@ export function ConversationHeader({
   const { project, thread, threadId, resourceAction } = session;
   const { pluginsOpen, settingsOpen } = surfaces;
   const taskCenterOpen = false;
+  const readOnly = useReadOnly();
   const { panel } = workspacePanels.view;
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
   const { requestReview: setReviewRequest, openFile } = documents;
@@ -283,7 +290,7 @@ export function ConversationHeader({
         </div>
       )}
       <div className="header-tools">
-        {!pluginsOpen && !settingsOpen && !taskCenterOpen && (
+        {!readOnly && !pluginsOpen && !settingsOpen && !taskCenterOpen && (
           <>
             {thread && project && !empty && (
               <TaskResourcesPopover

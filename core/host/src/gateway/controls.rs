@@ -15,7 +15,7 @@ struct Semantic<'a> {
     #[serde(flatten)]
     params: &'a Message,
 }
-fn validate(params: &Message) -> Result<()> {
+fn validate(params: &Message, text_bytes: usize) -> Result<()> {
     ensure!(
         !params.thread_id.is_empty()
             && params.thread_id.len() <= 128
@@ -42,7 +42,7 @@ fn validate(params: &Message) -> Result<()> {
             let objective = values["objective"].as_str().context("INVALID_PARAMS")?;
             ensure!(
                 !objective.trim().is_empty()
-                    && objective.len() <= 64 * 1024
+                    && objective.len() <= text_bytes
                     && objective.chars().count() <= 4000
                     && values.get("inferLimits").is_none_or(Value::is_boolean),
                 "INVALID_PARAMS"
@@ -64,7 +64,7 @@ fn validate(params: &Message) -> Result<()> {
             ensure!(
                 values["text"]
                     .as_str()
-                    .is_some_and(|text| !text.trim().is_empty() && text.len() <= 64 * 1024),
+                    .is_some_and(|text| !text.trim().is_empty() && text.len() <= text_bytes),
                 "INVALID_PARAMS"
             );
         }
@@ -168,7 +168,7 @@ impl Session {
         );
         let params: Message =
             serde_json::from_value(request["params"].clone()).context("INVALID_PARAMS")?;
-        validate(&params)?;
+        validate(&params, self.command_text_bytes())?;
         let command = text(request, "commandId")?.to_ascii_lowercase();
         uuid::Uuid::parse_str(&command).map_err(|_| fail("INVALID_PARAMS"))?;
         let digest = areal_local_service::storage::digest(&serde_json::to_vec(&Semantic {
@@ -390,7 +390,7 @@ impl Session {
             record.as_object_mut().unwrap().remove("nativeDigest");
         }
         ensure!(
-            serde_json::to_vec(&record)?.len() <= 72 * 1024,
+            serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
             "LIMIT_EXCEEDED"
         );
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;

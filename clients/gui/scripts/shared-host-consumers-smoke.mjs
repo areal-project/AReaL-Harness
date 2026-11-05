@@ -11,7 +11,9 @@ import { CoreClient } from "../packages/runtime-client/core.js";
 const require = createRequire(import.meta.url);
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
+  "@areal/client/node",
+);
 const { AppProviders } = require("../app/src/core/providers.cjs");
 const WebSocket = require("ws");
 const run = promisify(execFile);

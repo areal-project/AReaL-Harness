@@ -9,7 +9,9 @@ import { connect } from "../examples/desktop-api/client.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 
 const require = createRequire(import.meta.url);
-const { HostClient } = require("../clients/gui/app/src/core/host-client.cjs");
+const { HostClient } = createRequire(new URL("../clients/gui/app/package.json", import.meta.url))(
+  "@areal/client/node",
+);
 const repository = await realpath(new URL("..", import.meta.url).pathname);
 const root = await realpath(await mkdtemp("/tmp/ah-host-schedules-"));
 const home = join(root, "host");

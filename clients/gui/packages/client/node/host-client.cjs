@@ -158,7 +158,7 @@ class HostClient {
     const child = spawn(binary, ["host", "run"], {
       env: {
         ...Object.fromEntries(
-          ["HOME", "PATH", "TMPDIR", "LANG"].flatMap((key) =>
+          ["HOME", "PATH", "TMPDIR", "LANG", "AREAL_HOST_WEBSOCKET"].flatMap((key) =>
             process.env[key] ? [[key, process.env[key]]] : [],
           ),
         ),
@@ -369,7 +369,7 @@ class HostClient {
     this.requireCapability("guiImport");
     return this.request("gui.attachSource", { source });
   }
-  /** @param {import('./gui-source.cjs').GuiSource} source */
+  /** @param {import('../../../app/src/core/gui-source.cjs').GuiSource} source */
   sourceState(source) {
     this.requireCapability("guiImport");
     return this.request("gui.source", { source });

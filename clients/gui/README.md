@@ -27,6 +27,10 @@ GUI 工程化与设计系统的 P0/P1 整改任务拆分为可交接的 [整改 
 
 现有对话目录入口为 `design-system.html?conversation`，复用生产消息、输入区与可返回的资源面板；`pnpm --dir clients/gui test:design --conversation-demo` 专项检查该样板。迁移与旧新版同状态对照边界见[对话目录迁移](design-system/exercises/conversation-flow.md#现有对话目录迁移样板)。
 
+## 实验性 Host 读路径
+
+GUI 默认继续使用原有读路径。验收时可在开发者工具中设置 `localStorage.setItem("areal.oneProtocol.reads", "1")` 并重新加载，项目导航与会话详情改从 Host 订阅；删除此键并重新加载即可回退。写操作仍由原有适配器提供。`areal web` 打开 Host 发布的同一 Renderer，浏览器首次使用需在本机批准，当前只读。授权与撤销命令见[Host 契约](../../docs/api/host.md#回环-websocket-与共享读路径)。验收必须使用安装包与隔离的真实数据副本，不对原数据启动服务。
+
 ## 开发
 
 从仓库根执行，需 Node.js 22.19+（22 LTS）、24.11+（24 LTS）或 26+、pnpm 11.7.0 及仓库 Rust 工具链；建议构建和验收均使用与 CI 一致的 Node.js 24.22.1 LTS：

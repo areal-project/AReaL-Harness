@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Attachment } from "@areal/workbench/desktop-contract/conversation";
+import type { Attachment } from "./services.js";
 import type { Data } from "./services.js";
 
 export type ComposerUploadState =

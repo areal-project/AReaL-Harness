@@ -43,6 +43,44 @@ jobs:
         run: python3 scripts/check-workflows.py
       - id: plan
         run: python3 scripts/ci-scope.py
+  host-protocol:
+    name: Host protocol and desktop boundaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.22.1'
+          cache: npm
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+      - name: Check generated contracts and rejection cases
+        run: |
+          npm ci --ignore-scripts
+          npm install --global pnpm@11.7.0
+          pnpm --dir clients/gui install --frozen-lockfile
+          make host-protocol-check
+      - name: Reject desktop command and operation growth
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          base="$PR_BASE"
+          if [ -z "$base" ]; then base="$PUSH_BASE"; fi
+          if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then base="$(git rev-parse HEAD^)"; fi
+          node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base "$base"
+          node clients/gui/scripts/gui-health.mjs --check --metric=mainBusinessLines --base="$base"
+          node clients/gui/scripts/gui-health.mjs --check --metric=mainSourceLines --base="$base"
+      - name: Check renderer platform boundaries
+        run: |
+          pnpm --dir clients/gui exec vp test run oxlint-plugin-areal/rules.test.ts
+          pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui
+
   host:
     name: ${{ matrix.name }}
     needs: plan

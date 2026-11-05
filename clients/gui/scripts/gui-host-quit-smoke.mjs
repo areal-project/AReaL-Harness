@@ -14,7 +14,7 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const remoteEnabled = process.env.AREAL_TEST_REMOTE_KEYCHAIN === "1";
 const binary = process.env.AREAL_CORE_BIN;
 assert.ok(binary && isAbsolute(binary), "AREAL_CORE_BIN must be an absolute fixed-bundle path");

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TrajectoryStatus } from "@areal/workbench/desktop-contract";
+import type { TrajectoryStatus } from "../services.js";
 import type { Action } from "../services.js";
 import { createTrajectoryPoller, type TrajectoryOperation } from "../lib/trajectory-polling.js";
 

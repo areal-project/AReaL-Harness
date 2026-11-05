@@ -99,7 +99,7 @@ async function run() {
   const desktop = join(gui, "app");
   const require = createRequire(join(desktop, "package.json"));
   const { _electron: electron, chromium } = require("playwright-core");
-  const { HostClient } = require("../app/src/core/host-client.cjs");
+  const { HostClient } = require("@areal/client/node");
   const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
   const isMac = process.platform === "darwin";
   assert.ok(

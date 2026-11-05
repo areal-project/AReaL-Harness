@@ -47,11 +47,12 @@ struct Running {
     _lease: File,
 }
 #[derive(Clone)]
-struct Bundle {
-    runtime: PathBuf,
-    runner: PathBuf,
+pub(crate) struct Bundle {
+    pub(crate) runtime: PathBuf,
+    pub(crate) runner: PathBuf,
     root: PathBuf,
     version: String,
+    files: BTreeSet<PathBuf>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -67,60 +68,82 @@ struct BundleFile {
 }
 impl Bundle {
     async fn discover(bin: &Path) -> Result<Self> {
-        ensure!(cfg!(target_os = "macos"), "localRelayUnavailable");
-        let contents = bin
-            .parent()
-            .and_then(Path::parent)
-            .and_then(Path::parent)
-            .context("localRelayUnavailable")?;
-        ensure!(
-            contents.file_name().is_some_and(|name| name == "Contents"),
-            "localRelayUnavailable"
-        );
-        ensure!(
-            bin == contents.join("Resources/areal-core/bin"),
-            "localRelayUnavailable"
-        );
-        let app = contents.parent().context("localRelayUnavailable")?;
-        let verified = tokio::time::timeout(
-            Duration::from_secs(30),
-            tokio::process::Command::new("/usr/bin/codesign")
-                .args(["--verify", "--deep", "--strict"])
-                .arg(app)
-                .kill_on_drop(true)
-                .output(),
+        discover_bundle(
+            bin,
+            "areal-relay",
+            "src/host-runner.mjs",
+            &["src/host-runner.mjs", "node_modules/ws/package.json"],
+            "localRelayUnavailable",
         )
-        .await??;
-        ensure!(
-            verified.status.success(),
-            "localRelayUnavailable: bundle signature"
-        );
-        let root = contents.join("Resources/areal-relay");
-        let manifest_file = File::open(root.join("bundle.json"))?;
-        ensure!(
-            manifest_file.metadata()?.len() <= 256 * 1024,
-            "Relay manifest too large"
-        );
-        let mut manifest_bytes = Vec::new();
-        std::io::Read::read_to_end(
-            &mut std::io::Read::take(manifest_file, 256 * 1024 + 1),
-            &mut manifest_bytes,
-        )?;
-        ensure!(
-            manifest_bytes.len() <= 256 * 1024,
-            "Relay manifest too large"
-        );
-        let manifest: Manifest = serde_json::from_slice(&manifest_bytes)?;
-        verify_files(&root, &manifest)?;
-        Ok(Self {
-            runtime: contents.join("MacOS/AReaL Harness GUI"),
-            runner: root.join("src/host-runner.mjs"),
-            root,
-            version: manifest.version,
+        .await
+        .and_then(|bundle| {
+            ensure!(
+                bundle.files.iter().any(|path| path.starts_with("assets")),
+                "Relay bundle is incomplete"
+            );
+            Ok(bundle)
         })
     }
 }
-fn verify_files(root: &Path, manifest: &Manifest) -> Result<()> {
+/// 已签名 macOS 应用内的 Node 资源目录：校验签名与 bundle.json 清单后，用应用自带的 Electron 运行。
+pub(crate) async fn discover_bundle(
+    bin: &Path,
+    name: &str,
+    runner: &str,
+    required: &[&str],
+    unavailable: &'static str,
+) -> Result<Bundle> {
+    ensure!(cfg!(target_os = "macos"), unavailable);
+    let contents = bin
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .context(unavailable)?;
+    ensure!(
+        contents.file_name().is_some_and(|name| name == "Contents"),
+        unavailable
+    );
+    ensure!(
+        bin == contents.join("Resources/areal-core/bin"),
+        unavailable
+    );
+    let app = contents.parent().context(unavailable)?;
+    let verified = tokio::time::timeout(
+        Duration::from_secs(30),
+        tokio::process::Command::new("/usr/bin/codesign")
+            .args(["--verify", "--deep", "--strict"])
+            .arg(app)
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await??;
+    ensure!(verified.status.success(), "{unavailable}: bundle signature");
+    let root = contents.join("Resources").join(name);
+    let manifest_file = File::open(root.join("bundle.json"))?;
+    ensure!(
+        manifest_file.metadata()?.len() <= 256 * 1024,
+        "bundle manifest too large"
+    );
+    let mut manifest_bytes = Vec::new();
+    std::io::Read::read_to_end(
+        &mut std::io::Read::take(manifest_file, 256 * 1024 + 1),
+        &mut manifest_bytes,
+    )?;
+    ensure!(
+        manifest_bytes.len() <= 256 * 1024,
+        "bundle manifest too large"
+    );
+    let manifest: Manifest = serde_json::from_slice(&manifest_bytes)?;
+    let files = verify_files(&root, &manifest, required)?;
+    Ok(Bundle {
+        runtime: contents.join("MacOS/AReaL Harness GUI"),
+        runner: root.join(runner),
+        root,
+        version: manifest.version,
+        files,
+    })
+}
+fn verify_files(root: &Path, manifest: &Manifest, required: &[&str]) -> Result<BTreeSet<PathBuf>> {
     let mut expected = BTreeSet::from([PathBuf::from("bundle.json")]);
     for entry in &manifest.files {
         let path = Path::new(&entry.path);
@@ -129,13 +152,13 @@ fn verify_files(root: &Path, manifest: &Manifest) -> Result<()> {
                 && path
                     .components()
                     .all(|part| matches!(part, Component::Normal(_))),
-            "invalid Relay bundle path"
+            "invalid bundle path"
         );
-        ensure!(expected.insert(path.into()), "duplicate Relay bundle path");
+        ensure!(expected.insert(path.into()), "duplicate bundle path");
         let file = root.join(path);
         ensure!(
             std::fs::symlink_metadata(&file)?.is_file(),
-            "invalid Relay bundle file"
+            "invalid bundle file"
         );
         ensure!(
             storage::digest(&std::fs::read(file)?) == entry.sha256,
@@ -143,10 +166,10 @@ fn verify_files(root: &Path, manifest: &Manifest) -> Result<()> {
         );
     }
     ensure!(
-        expected.contains(Path::new("src/host-runner.mjs"))
-            && expected.contains(Path::new("node_modules/ws/package.json"))
-            && expected.iter().any(|path| path.starts_with("assets")),
-        "Relay bundle is incomplete"
+        required
+            .iter()
+            .all(|path| expected.contains(Path::new(path))),
+        "bundle is incomplete"
     );
     fn walk(root: &Path, current: &Path, found: &mut BTreeSet<PathBuf>) -> Result<()> {
         for entry in std::fs::read_dir(current)? {
@@ -155,7 +178,7 @@ fn verify_files(root: &Path, manifest: &Manifest) -> Result<()> {
             if kind.is_dir() {
                 walk(root, &entry.path(), found)?;
             } else {
-                ensure!(kind.is_file(), "invalid Relay bundle entry");
+                ensure!(kind.is_file(), "invalid bundle entry");
                 found.insert(entry.path().strip_prefix(root)?.into());
             }
         }
@@ -163,8 +186,8 @@ fn verify_files(root: &Path, manifest: &Manifest) -> Result<()> {
     }
     let mut found = BTreeSet::new();
     walk(root, root, &mut found)?;
-    ensure!(found == expected, "Relay bundle inventory mismatch");
-    Ok(())
+    ensure!(found == expected, "bundle inventory mismatch");
+    Ok(expected)
 }
 pub(crate) fn private_address(address: IpAddr) -> bool {
     match address {
@@ -677,14 +700,14 @@ mod tests {
                 sha256: storage::digest(b"original"),
             });
         }
-        verify_files(directory.path(), &manifest).unwrap();
+        verify_files(directory.path(), &manifest, &["src/host-runner.mjs"]).unwrap();
         std::fs::write(directory.path().join("assets/index.html"), b"changed").unwrap();
-        assert!(verify_files(directory.path(), &manifest).is_err());
+        assert!(verify_files(directory.path(), &manifest, &["src/host-runner.mjs"]).is_err());
         std::fs::write(directory.path().join("assets/index.html"), b"original").unwrap();
         std::fs::write(directory.path().join("unlisted.mjs"), b"extra").unwrap();
-        assert!(verify_files(directory.path(), &manifest).is_err());
+        assert!(verify_files(directory.path(), &manifest, &["src/host-runner.mjs"]).is_err());
         manifest.files[0].path = "../outside.mjs".into();
-        assert!(verify_files(directory.path(), &manifest).is_err());
+        assert!(verify_files(directory.path(), &manifest, &["src/host-runner.mjs"]).is_err());
     }
 
     async fn running(script: &str) -> (LocalRelay, tempfile::TempDir) {

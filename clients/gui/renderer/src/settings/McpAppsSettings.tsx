@@ -13,7 +13,7 @@ import type {
   ManagementRequestMap,
   ManagementResponse,
   ManagementResponseMap,
-} from "@areal/workbench/desktop-contract/management";
+} from "../services.js";
 export type McpAppServer = ManagementResponseMap["mcpApps"]["data"][number];
 export type McpAppTool = McpAppServer["tools"][number];
 export type McpAppsCommand = <P extends ManagementRequest>(

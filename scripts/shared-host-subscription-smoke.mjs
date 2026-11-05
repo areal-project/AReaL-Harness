@@ -26,7 +26,7 @@ assert.equal(
 );
 const repository = await realpath(new URL("..", import.meta.url).pathname);
 const require = createRequire(join(repository, "clients/gui/app/package.json"));
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
 const { HostVault } = require("../app/src/core/host-vault.cjs");
 const { SubscriptionStore } = require("../app/src/core/subscription.cjs");

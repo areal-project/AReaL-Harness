@@ -1,4 +1,4 @@
-import { readLibraryRequest } from "@areal/workbench/desktop-contract/library-media";
+import { readLibraryRequest } from "../services.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { useI18n, UiMessageError, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsSelect } from "./SettingsPageParts.js";

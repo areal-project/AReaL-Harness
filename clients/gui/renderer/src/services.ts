@@ -1,4 +1,4 @@
-// The renderer consumes only the narrow preload contract. Execution facts remain in Core.
+// 界面通过平台服务契约消费领域类型，桌面传输依赖留在适配器。
 import type {
   CommandName,
   CommandParams,
@@ -7,14 +7,65 @@ import type {
   PreviewRequest,
   NotificationTarget,
   QuitProgress,
-} from "@areal/workbench/desktop-contract";
+  ChatGPTStatus,
+  SnapShotServices,
+} from "./desktop-services.js";
 import type {
   McpAppCommand,
   McpAppDeepLink,
   McpAppEvent,
   McpFormResourceCommand,
 } from "./mcp-app-services.js";
-export type { CommandName, CommandParams, CommandResponse };
+export type { CommandName, CommandParams, CommandResponse, PreviewRequest };
+export type {
+  Attachment,
+  ChatGPTStatus,
+  DesktopError,
+  DesktopSnapShot,
+  DesktopSnapShotState,
+  DiscoveryConnection,
+  Hook,
+  ManagementRequest,
+  ManagementRequestMap,
+  ManagementResponse,
+  ManagementResponseMap,
+  McpAppDeepLink,
+  ModelParameters,
+  ObservedCatalogOwner,
+  OwnedPreviewRequest,
+  PluginCommandRef,
+  PluginMutation,
+  PreviewViewport,
+  ResourceRequest,
+  Scope,
+  SideAnchor,
+  SideSelection,
+  SidebarItem,
+  SnapShotModifier,
+  SnapShotServices,
+  SnapShotSettings,
+  SnapShotShortcut,
+  SnapShotSource,
+  TrajectoryStatus,
+  WorktreeOptions,
+} from "./desktop-services.js";
+export {
+  generationStats,
+  isModifierPairShortcut,
+  isRequest,
+  isSnapShotSource,
+  modelRecord,
+  modelUsage,
+  normalizeMcp,
+  readLibraryRequest,
+  readSnapShotSettings,
+  sideAnchor,
+  sideSelection,
+  snapShotShortcutModifierPair,
+  validateMcpPageCall,
+  validateMcpPageDeclaration,
+  validateMcpPageReply,
+} from "./desktop-services.js";
 export type Data = Record<string, any>;
 export type FileOpenTargets = {
   targets: { id: string; label: string }[];
@@ -48,7 +99,7 @@ export type HostPrerequisite = {
 };
 export interface Snapshot {
   projects: Data[];
-  subscription?: import("@areal/workbench/desktop-contract/provider").ChatGPTStatus;
+  subscription?: ChatGPTStatus;
   desktopCapabilities?: { currentCommands: boolean };
   power?: { enabled: boolean; active: boolean; error: string | null } | null;
   menuBar?: { supported: boolean; active: boolean; error: string | null } | null;
@@ -99,9 +150,50 @@ export interface UpdateState {
   percent?: number | null;
   detail?: string;
 }
-export type { NotificationTarget, QuitProgress } from "@areal/workbench/desktop-contract";
+export type { NotificationTarget, QuitProgress } from "./desktop-services.js";
+export interface PlatformReadServices {
+  status(): import("@areal/client").HostReadState;
+  subscribe(listener: () => void): () => void;
+  selectSession(target: { projectId: string; threadId: string } | null): Promise<void>;
+  history(options: {
+    view: "own" | "inherited" | "reference";
+    cursor?: string;
+    maxBytes?: number;
+  }): Promise<import("./host-services.js").HostHistoryPage>;
+  media(
+    source: import("@areal/client").MediaSource,
+    signal?: AbortSignal,
+  ): Promise<import("@areal/client").MediaBytes>;
+  acquire(viewId: string, generation: string): Promise<void>;
+  release(viewId: string, generation: string): Promise<void>;
+  retain(
+    viewId: string,
+    revision: number,
+    anchor: Pick<import("./readingViews.js").ReadingAnchor, "turnId" | "itemId"> | null,
+    generation: string,
+  ): Promise<void>;
+  ensureAnchor(
+    viewId: string,
+    revision: number,
+    anchor: Pick<import("./readingViews.js").ReadingAnchor, "turnId" | "itemId">,
+    generation: string,
+  ): Promise<"ready" | import("./conversationReading.js").ReadingBlock>;
+  loadOlder(pageId?: string): Promise<void>;
+  loadItem(itemId: string): Promise<void>;
+}
 export interface PlatformServices {
-  snapShots?: import("@areal/workbench/desktop-contract/snapshots").SnapShotServices;
+  capabilities?: { mutations: boolean; native: boolean };
+  reads?: PlatformReadServices;
+  /** 写开关打开时由 Host 接管的命令；返回 undefined 表示仍走桌面原路径。 */
+  writes?: {
+    route(name: string, params: Record<string, unknown>): Promise<{ routed: true } | undefined>;
+  };
+  /** 按领域切到 Host 工作台服务的命令；返回 undefined 表示仍走桌面原路径。 */
+  workbench?: {
+    call(name: string, params: Record<string, unknown>): Promise<{ value: unknown } | undefined>;
+  };
+  getHostTicket?(): Promise<unknown>;
+  snapShots?: SnapShotServices;
   mcpApp?: McpAppCommand;
   onMcpAppEvent?(listener: (event: McpAppEvent) => void): () => void;
   onMcpAppDeepLink?(listener: (link: McpAppDeepLink) => Promise<void> | void): () => void;
@@ -150,9 +242,18 @@ export async function call<N extends CommandName, P extends CommandParams<N>>(
   name: N,
   params: P,
 ): Promise<CommandResponse<N, P>> {
-  const contract: typeof import("@areal/workbench/desktop-contract") =
-    await import("@areal/workbench/desktop-contract");
+  const contract: typeof import("./desktop-services.js") = await import("./desktop-services.js");
   contract.validateCommand(name, params);
+  const routed = await services.workbench?.call(name, params as Record<string, unknown>);
+  if (routed) {
+    contract.validateCommandResponse(name, params, routed.value);
+    return routed.value as CommandResponse<N, P>;
+  }
+  if (services.writes && (await services.writes.route(name, params as Record<string, unknown>)))
+    return (name === "respond" ? await services.snapshot() : { stopped: true }) as CommandResponse<
+      N,
+      P
+    >;
   const result = await services.command(name, params);
   if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
   try {

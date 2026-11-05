@@ -36,6 +36,7 @@ const base = git("rev-parse", "HEAD");
 const checks = [],
   requests = [],
   errors = [];
+const namingGate = Promise.withResolvers();
 const model = createServer(async (request, response) => {
   try {
     let raw = "";
@@ -47,6 +48,8 @@ const model = createServer(async (request, response) => {
         `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason }] })}\n\n`,
       );
     if (body.messages?.[0]?.content?.startsWith("Generate a concise semantic session title")) {
+      // 强制覆盖 Turn 已完成而自动命名尚未结算的时序，不依赖宿主快慢碰运气。
+      await namingGate.promise;
       send({ content: "Worktree fixture" });
       send({}, "stop");
       response.end("data: [DONE]\n\n");
@@ -291,7 +294,26 @@ try {
       await Promise.all(
         threads.map(({ threadId }, index) => complete(threadId, `${kind} ${index}`)),
       );
+      if (kind === "file") {
+        assert.ok(
+          threads.every(
+            ({ threadId }) => projection().state.threads[threadId].name !== "Worktree fixture",
+          ),
+          "naming stays pending until the real file tools complete",
+        );
+        namingGate.resolve(undefined);
+        await Promise.all(
+          threads.map(({ threadId }) =>
+            until(
+              () => projection().state.threads[threadId].name === "Worktree fixture",
+              "automatic name observation",
+            ),
+          ),
+        );
+        checks.push("delayed automatic naming settles before acquiring the tool history view");
+      }
       for (let index = 0; index < threads.length; index++) {
+        await backend.command("open", { projectId, threadId: threads[index].threadId });
         const turn = await readTurnToolDetails({
           command: (name, params) => backend.command(name, params),
           readThread: async () => projection().state.threads[threads[index].threadId],
@@ -420,6 +442,7 @@ try {
   await backend.shutdown();
   passed = true;
 } finally {
+  namingGate.resolve(undefined);
   if (!passed) {
     for (const project of backend.projects.values())
       await project.client?.request("areal/server/drain", { strategy: "cancel" }).catch(() => {});

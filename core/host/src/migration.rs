@@ -40,6 +40,12 @@ impl Source {
             }
             *path = storage::canonical_pending(path)?;
         }
+        if std::fs::symlink_metadata(self.core_home.join(".areal-test-copy.json")).is_ok() {
+            return Err(error(
+                "testCopySource",
+                "development test copies cannot enter GUI source migration",
+            ));
+        }
         Ok(self)
     }
 }
@@ -1755,6 +1761,87 @@ impl Migration {
         }
         Ok(None)
     }
+    pub(crate) fn navigation_sources(
+        &self,
+        current: &[ProjectRegistration],
+    ) -> Result<Vec<crate::shell::NavigationSource>> {
+        use crate::shell::{NavigationBinding, NavigationSource};
+        let mut sources = Vec::new();
+        let mut profiles = BTreeSet::new();
+        let mut homes = BTreeSet::new();
+        let mut source_ids = BTreeSet::new();
+        for record in self.records()? {
+            if self.committed(&record)?.is_none() {
+                continue;
+            }
+            ensure!(
+                profiles.insert(record.source.profile.clone())
+                    && homes.insert(record.source.core_home.clone())
+                    && source_ids.insert(record.source_id.clone()),
+                "sourceConflict: navigation source is ambiguous"
+            );
+            let mut bindings = Vec::new();
+            let mut aliases = BTreeSet::new();
+            for registration in current {
+                let binding = record
+                    .bindings
+                    .iter()
+                    .find(|binding| binding.project_id == registration.project_id);
+                let own_alias = match &registration.source {
+                    ProjectSource::Gui {
+                        profile,
+                        legacy_project_id,
+                    } if profile == &record.source.profile => Some(legacy_project_id.clone()),
+                    _ => None,
+                };
+                if let (Some(binding), Some(alias)) = (binding, own_alias.as_ref()) {
+                    ensure!(
+                        binding.alias.legacy_project_id == *alias,
+                        "sourceConflict: navigation alias changed"
+                    );
+                }
+                let alias = binding
+                    .map(|binding| binding.alias.legacy_project_id.clone())
+                    .or_else(|| own_alias.clone())
+                    .unwrap_or_else(|| {
+                        storage::digest(format!("host:{}", registration.project_id).as_bytes())
+                            [..24]
+                            .to_owned()
+                    });
+                ensure!(
+                    aliases.insert(alias.clone()),
+                    "sourceConflict: navigation alias collision"
+                );
+                let logical_project_id = binding.and_then(|binding| binding.logical_alias.as_ref())
+                    .map(|logical| {
+                        current.iter().find(|candidate| {
+                            record.bindings.iter().any(|binding| {
+                                binding.project_id == candidate.project_id
+                                    && binding.alias.profile == logical.profile
+                                    && binding.alias.legacy_project_id == logical.legacy_project_id
+                            }) || matches!(&candidate.source, ProjectSource::Gui { profile, legacy_project_id }
+                                if profile == &logical.profile && legacy_project_id == &logical.legacy_project_id)
+                        }).map(|candidate| candidate.project_id.clone())
+                            .context("sourceConflict: logical navigation project is not registered")
+                    }).transpose()?;
+                bindings.push(NavigationBinding {
+                    project_id: registration.project_id.clone(),
+                    alias,
+                    owned: binding.is_some() || own_alias.is_some(),
+                    logical_project_id,
+                    projectless: binding
+                        .is_some_and(|binding| binding.projectless_request_id.is_some()),
+                });
+            }
+            sources.push(NavigationSource {
+                source_id: record.source_id,
+                core_home: record.source.core_home,
+                bindings,
+            });
+        }
+        sources.sort_by(|a, b| a.source_id.cmp(&b.source_id));
+        Ok(sources)
+    }
     pub fn power_sources(&self) -> Result<BTreeMap<String, PathBuf>> {
         let mut sources = BTreeMap::new();
         for record in self.records()? {
@@ -1763,6 +1850,19 @@ impl Migration {
             }
         }
         Ok(sources)
+    }
+    pub(crate) fn navigation_source_id(&self, profile: &Path) -> Result<Option<String>> {
+        let mut selected = None;
+        for record in self.records()? {
+            if record.source.profile == profile && self.committed(&record)?.is_some() {
+                ensure!(
+                    selected.is_none(),
+                    "sourceConflict: GUI profile has multiple navigation sources"
+                );
+                selected = Some(record.source_id);
+            }
+        }
+        Ok(selected)
     }
     pub(crate) fn local_relay_home(&self, source: &str) -> Result<Option<PathBuf>> {
         for record in self.records()? {
@@ -2146,6 +2246,62 @@ mod tests {
         );
     }
 
+    #[test]
+    fn navigation_sources_require_committed_sources_and_current_registrations() {
+        let f = Fixture::new();
+        assert!(f.migration.navigation_sources(&[]).unwrap().is_empty());
+        f.attach();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        let mut current = f.migration.published().unwrap();
+        current.push(ProjectRegistration {
+            project_id: "cli-project".into(),
+            workspace: f.source.core_home.join("cli"),
+            data_dir: f.source.core_home.join("cli-state"),
+            source: ProjectSource::Cli,
+            default_binding: true,
+        });
+        let sources = f.migration.navigation_sources(&current).unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].core_home, f.source.core_home);
+        assert_eq!(sources[0].bindings[0].alias, f.ids[0]);
+        assert!(sources[0].bindings[0].owned);
+        assert_eq!(
+            sources[0].bindings[1].logical_project_id.as_deref(),
+            Some(current[0].project_id.as_str())
+        );
+        assert!(!sources[0].bindings[2].owned);
+        assert_eq!(
+            sources[0].bindings[2].alias,
+            storage::digest(b"host:cli-project")[..24]
+        );
+        assert!(
+            f.migration.navigation_sources(&[]).unwrap()[0]
+                .bindings
+                .is_empty()
+        );
+        let mut collision = current[0].clone();
+        collision.project_id = "another-canonical-project".into();
+        current.push(collision);
+        assert!(f.migration.navigation_sources(&current).is_err());
+        current.pop();
+        let mut duplicate = f.migration.read(&f.request).unwrap();
+        duplicate.request_id = uuid::Uuid::new_v4().to_string();
+        duplicate.source_id = "conflicting-source".into();
+        storage::private_dir(&f.migration.directory(&duplicate.request_id).unwrap()).unwrap();
+        f.migration.save(&duplicate).unwrap();
+        storage::write(
+            &f.migration
+                .directory(&duplicate.request_id)
+                .unwrap()
+                .join("committed.json"),
+            &Commit {
+                bundle_digest: f.migration.bundle_digest(&duplicate).unwrap(),
+                receipt: json!({}),
+            },
+        )
+        .unwrap();
+        assert!(f.migration.navigation_sources(&current).is_err());
+    }
     #[test]
     fn source_lookup_is_exact_read_only_and_registration_requires_unique_profile() {
         let f = Fixture::new();
@@ -2556,6 +2712,40 @@ mod tests {
         .unwrap();
         assert_eq!(f.import().unwrap()["kind"], "legacyPending");
         assert!(f.migration.published().unwrap().is_empty());
+    }
+    #[test]
+    fn development_test_copy_cannot_attach_or_enter_migration() {
+        let f = Fixture::new();
+        storage::write(
+            &f.source.core_home.join(".areal-test-copy.json"),
+            &json!({"testCopy":true,"sourceDigest":"source-snapshot"}),
+        )
+        .unwrap();
+        assert!(
+            f.migration
+                .attach(f.source.clone(), "connection", None)
+                .unwrap_err()
+                .to_string()
+                .contains("development test copies")
+        );
+        assert!(f.import().is_err());
+        assert!(f.migration.records().unwrap().is_empty());
+        assert!(f.migration.published().unwrap().is_empty());
+        assert!(
+            !f.source
+                .core_home
+                .join("provider-credentials.json")
+                .exists()
+        );
+        assert_eq!(
+            std::fs::read(
+                f.source
+                    .core_home
+                    .join(format!("{}-pending.json", f.ids[0]))
+            )
+            .unwrap(),
+            f.original
+        );
     }
     #[test]
     fn manifest_rejects_path_traversal_and_symlink_source_files() {

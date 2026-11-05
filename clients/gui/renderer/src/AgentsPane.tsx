@@ -1,4 +1,4 @@
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "./services.js";
 import { Input } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { SubagentPanel, TaskContext } from "@areal/ui/experimental";

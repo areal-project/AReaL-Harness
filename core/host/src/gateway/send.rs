@@ -11,6 +11,12 @@ struct Message {
     enqueue: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     expected_turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    attachments: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    conversation_quotes: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mcp_content: Option<Value>,
 }
 #[derive(Serialize)]
 struct Semantic<'a> {
@@ -52,7 +58,11 @@ impl Session {
             !params.thread_id.is_empty()
                 && params.thread_id.len() <= 128
                 && params.expected_config_revision <= 9_007_199_254_740_991
-                && !params.text.trim().is_empty()
+                && (self.gui_write
+                    || (params.attachments.is_none()
+                        && params.conversation_quotes.is_none()
+                        && params.mcp_content.is_none()
+                        && !params.text.trim().is_empty()))
                 && params.text.len() <= 64 * 1024
                 && params
                     .expected_turn_id
@@ -61,6 +71,8 @@ impl Session {
             "INVALID_PARAMS"
         );
         params.expected_turn_id = params.expected_turn_id.filter(|id| !id.is_empty());
+        // 与桌面 Main 的 messageInput 同一套组装与上限；提前算出，非法输入不进 journal。
+        message_input(&params).context("INVALID_PARAMS")?;
         let command = text(request, "commandId")?.to_ascii_lowercase();
         ensure!(command.len() == 36, "INVALID_PARAMS");
         uuid::Uuid::parse_str(&command).map_err(|_| fail("INVALID_PARAMS"))?;
@@ -198,11 +210,15 @@ impl Session {
             guard["expectedTurnId"] = json!(params.expected_turn_id);
         }
         let native: areal_protocol::desktop::TurnStart = serde_json::from_value(
-            json!({"requestId":operation,"threadId":params.thread_id,"input":[{"type":"text","text":params.text}],"expectedConfigRevision":params.expected_config_revision,"admissionGuard":guard}),
+            json!({"requestId":operation,"threadId":params.thread_id,"input":message_input(params)?,"expectedConfigRevision":params.expected_config_revision,"admissionGuard":guard}),
         )?;
         let native_digest = areal_local_service::storage::digest(&serde_json::to_vec(&native)?);
         let native = serde_json::to_value(native)?;
         let record = json!({"method":method,"operationId":operation,"params":native,"nativeDigest":native_digest,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2,"storeBinding":caps["features"]["threadCreationJournal"]["binding"]},"threadId":params.thread_id,"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"session.send","capability":"submit","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":{"threadId":params.thread_id,"expectedConfigRevision":params.expected_config_revision}}});
+        ensure!(
+            serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
+            "LIMIT_EXCEEDED"
+        );
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
         ensure!(
             snapshot["pending"].as_array().unwrap().len()
@@ -464,3 +480,113 @@ pub(crate) fn remote_control(entry: &Value) -> bool {
         _ => false,
     }
 }
+
+fn blob_url(value: &Value) -> Option<&str> {
+    value.as_str().filter(|url| {
+        url.strip_prefix("areal://blob/").is_some_and(|id| {
+            !id.is_empty()
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        })
+    })
+}
+
+/// 桌面 `media.cjs` messageInput 的移植：正文、引用、附件与 MCP 内容按同一顺序与上限组装。
+/// 已发布客户端只会带正文，结果与原来的单个文本项相同。
+fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
+    use areal_protocol::Input;
+    let mut input = Vec::new();
+    if !params.text.trim().is_empty() {
+        input.push(Input::text(params.text.clone()));
+    }
+    let quotes = match &params.conversation_quotes {
+        None => Vec::new(),
+        Some(value) => value.as_array().context("quotes")?.clone(),
+    };
+    let units = |text: &str| text.encode_utf16().count();
+    ensure!(
+        quotes.len() <= 8
+            && quotes.iter().all(|quote| {
+                exact(quote, &["text"])
+                    && quote["text"]
+                        .as_str()
+                        .is_some_and(|text| !text.trim().is_empty() && units(text) <= 8000)
+            })
+            && quotes
+                .iter()
+                .map(|quote| units(quote["text"].as_str().unwrap_or_default()))
+                .sum::<usize>()
+                <= 16000,
+        "quotes"
+    );
+    if !quotes.is_empty() {
+        let values: Vec<Value> = quotes
+            .iter()
+            .map(|quote| json!({"text":quote["text"]}))
+            .collect();
+        input.push(Input::text(format!(
+            "# userselect:\n```userselect\n{}\n```",
+            serde_json::to_string(&values)?
+        )));
+    }
+    let media = match &params.attachments {
+        None => Vec::new(),
+        Some(value) => value.as_array().context("attachments")?.clone(),
+    };
+    ensure!(media.len() <= 16, "attachments");
+    for item in &media {
+        let kind = item["type"].as_str().unwrap_or_default();
+        let url = blob_url(&item["url"]).context("attachment")?;
+        ensure!(
+            item.as_object().is_some_and(|object| object
+                .keys()
+                .all(|key| matches!(key.as_str(), "type" | "url" | "name" | "mimeType" | "_meta"))),
+            "attachment"
+        );
+        input.push(match kind {
+            "image" => Input::Image {
+                url: url.into(),
+                detail: None,
+            },
+            "audio" => Input::Audio { url: url.into() },
+            "file" => Input::File {
+                url: url.into(),
+                name: Some(
+                    item["name"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .chars()
+                        .take(255)
+                        .collect(),
+                ),
+                mime_type: item["mimeType"].as_str().map(str::to_owned),
+            },
+            _ => anyhow::bail!("attachment"),
+        });
+    }
+    let mut blocks = match &params.mcp_content {
+        None => Vec::new(),
+        Some(value) => value.as_array().context("mcpContent")?.clone(),
+    };
+    for item in &media {
+        if let Some(meta) = item.get("_meta") {
+            let mut link = json!({"type":"resource_link","uri":item["url"],"name":item["name"].as_str().or(item["type"].as_str()).unwrap_or_default().chars().take(255).collect::<String>(),"_meta":meta});
+            if let Some(mime) = item["mimeType"].as_str() {
+                link["mimeType"] = json!(mime);
+            }
+            blocks.push(link);
+        }
+    }
+    ensure!(blocks.len() <= 32, "mcpContent");
+    let mut total = 0;
+    for block in blocks {
+        total += serde_json::to_vec(&block)?.len();
+        input.push(Input::mcp_text(block).map_err(|error| anyhow::anyhow!(error))?);
+    }
+    ensure!(total <= MCP_CONTENT_BYTES, "mcpContent");
+    ensure!(!input.is_empty(), "empty");
+    Ok(input)
+}
+/// 桌面每块 64 KiB、最多 32 块；经 Host 时整条命令要放进 1 MiB 帧，所以总量另设上限。
+pub(crate) const MCP_CONTENT_BYTES: usize = 512 * 1024;

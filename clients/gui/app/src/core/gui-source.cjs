@@ -4,7 +4,7 @@ const { createHash, randomUUID } = require("node:crypto");
 const { constants } = require("node:fs");
 const { open, readFile, writeFile, realpath, lstat, rename, unlink } = require("node:fs/promises");
 const { isAbsolute, join, relative, sep, dirname } = require("node:path");
-const { HostClient } = require("./host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 
 /** @typedef {{profile:string,coreHome:string,legacyServiceHome:string}} GuiSource */
 /** @typedef {{slot:{kind:string,reference?:string,providerId?:string},sourceDigest:string,relativeName:string,readPath:string}} PendingSecret */

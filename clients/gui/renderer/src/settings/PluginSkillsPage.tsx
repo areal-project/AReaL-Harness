@@ -42,9 +42,7 @@ export type CenterSkill = {
   error?: string;
 };
 
-function skillOwner(
-  skill: CenterSkill,
-): import("@areal/workbench/desktop-contract/resource").Scope {
+function skillOwner(skill: CenterSkill): import("../services.js").Scope {
   if (skill.scope === "user") return { scope: "user" };
   if (skill.scope === "project" && skill.projectId)
     return { scope: "project", projectId: skill.projectId };

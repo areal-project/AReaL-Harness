@@ -2,7 +2,7 @@
 "use strict";
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
-const { randomUUID } = require("node:crypto");
+const { randomUUID, createHash } = require("node:crypto");
 const { openSync, fstatSync, readSync, closeSync, constants } = require("node:fs");
 const { normalizeNetworkSetting } = require("./desktop-network.cjs");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
@@ -122,33 +122,84 @@ class CoreLibrary {
     };
     /** @type {Promise<unknown>} */
     this.writes = Promise.resolve();
+    /** 切到 Host 单写时的写入口；未设置时 Main 自己写文件。 @type {{write:(value:unknown,expectedDigest:string|null)=>Promise<string>}|null} */
+    this.store = null;
+    /** 最近一次读到或写入的文件内容摘要，交给 Host 做比较后替换。 @type {string|null} */
+    this.digest = null;
   }
   async init() {
+    await this.reload();
+  }
+  async reload() {
+    const empty = {
+      projects: {},
+      threads: {},
+      projectOrder: [],
+      sections: [],
+      sidebarThreadOrder: [],
+      sidebarRevision: 0,
+      settings: {},
+    };
+    let bytes;
     try {
-      this.value = {
-        ...this.value,
-        ...readLibraryState(
-          JSON.parse(await readFile(join(this.backend.home, "library.json"), "utf8")),
-          this.value,
-        ),
-      };
+      bytes = await readFile(join(this.backend.home, "library.json"));
     } catch (error) {
       if (!modelRecord(error) || error.code !== "ENOENT") throw error;
+      this.digest = null;
+      return;
     }
+    this.value = { ...empty, ...readLibraryState(JSON.parse(bytes.toString("utf8")), empty) };
+    this.digest = createHash("sha256").update(bytes).digest("hex");
+  }
+  /**
+   * 资料库改由 Host 单写（areal.oneProtocol.domains 含 library）。在写队列里切换，切换前先重读磁盘。
+   * @param {{write:(value:unknown,expectedDigest:string|null)=>Promise<string>}|null} store
+   */
+  useStore(store) {
+    const task = this.writes
+      .catch(() => {})
+      .then(async () => {
+        if (store) await this.reload();
+        this.store = store;
+      });
+    this.writes = task.catch(() => {});
+    return task;
   }
   /** @param {(state:LibraryState)=>void} change */
   async change(change) {
     const task = this.writes
       .catch(() => {})
       .then(async () => {
-        const next = structuredClone(this.value);
-        change(next);
-        // Only layout/membership changes invalidate a held drag. Names, unread
-        // state and activity timestamps continue to merge across GUI clients.
-        if (sidebarLayout(next) !== sidebarLayout(this.value))
-          next.sidebarRevision = (this.value.sidebarRevision ?? 0) + 1;
+        const prepare = () => {
+          const next = structuredClone(this.value);
+          change(next);
+          // Only layout/membership changes invalidate a held drag. Names, unread
+          // state and activity timestamps continue to merge across GUI clients.
+          if (sidebarLayout(next) !== sidebarLayout(this.value))
+            next.sidebarRevision = (this.value.sidebarRevision ?? 0) + 1;
+          return next;
+        };
+        let next = prepare();
         try {
-          await this.backend.save("library.json", next);
+          if (this.store) {
+            // 别的客户端经 Host 改过时摘要对不上：重读磁盘，在新内容上重算一次。
+            for (let attempt = 0; ; attempt++) {
+              try {
+                this.digest = await this.store.write(next, this.digest);
+                break;
+              } catch (error) {
+                // Host 没有这个 GUI 的导航来源时它不读也不写这份文件，退回 Main 自己写。
+                if (modelRecord(error) && error.code === "notFound") {
+                  this.store = null;
+                  await this.backend.save("library.json", next);
+                  break;
+                }
+                if (attempt >= 2 || !modelRecord(error) || error.code !== "conflict") throw error;
+                await this.reload();
+                next = prepare();
+              }
+            }
+          } else await this.backend.save("library.json", next);
         } catch (error) {
           console.error("侧栏整理保存失败", error);
           throw Object.assign(

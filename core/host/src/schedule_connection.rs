@@ -29,8 +29,12 @@ pub(super) struct CoreObservation {
     pub events: broadcast::Receiver<CoreEvent>,
     session: Rc<CoreSession>,
     thread_id: String,
+    options: areal_protocol::desktop::ObserveThread,
 }
 impl CoreObservation {
+    pub(super) fn service(&self) -> &Service {
+        &self.session.service
+    }
     pub fn current(&self, host: &Host) -> bool {
         self.session.shared_current(host)
     }
@@ -41,10 +45,25 @@ impl CoreObservation {
         ensure!(self.session.shared_current(host), unavailable());
         let reply = self
             .session
-            .request_with_barrier("areal/thread/observe", json!({"threadId":self.thread_id}))
-            .await?;
+            .request_with_barrier("areal/thread/observe", serde_json::to_value(&self.options)?)
+            .await;
         ensure!(self.session.shared_current(host), unavailable());
+        let reply = reply?;
         Ok((reply.value, reply.sequence))
+    }
+    pub async fn history(
+        &self,
+        host: &Host,
+        view: &str,
+        cursor: Option<&str>,
+        max_bytes: usize,
+    ) -> Result<Value> {
+        ensure!(self.session.shared_current(host), unavailable());
+        let result = self.session.request("areal/conversation/history", json!({
+            "threadId": self.thread_id, "view": view, "cursor": cursor, "maxBytes": max_bytes
+        })).await;
+        ensure!(self.session.shared_current(host), unavailable());
+        result
     }
 }
 impl Drop for CoreObservation {
@@ -118,6 +137,16 @@ impl Connections {
             session.connection_id.clone(),
         ))
     }
+    pub(super) fn shell_revision(&self, host: &Host, id: &str) -> Result<(String, String, u64)> {
+        let sessions = self.sessions.borrow();
+        let session = sessions.get(id).ok_or_else(unavailable)?;
+        ensure!(session.shared_current(host), unavailable());
+        Ok((
+            session.connection_id.clone(),
+            session.service.identity.generation.clone(),
+            session.shell_revision.get(),
+        ))
+    }
     pub(super) async fn remote_request(
         &self,
         host: &Host,
@@ -156,6 +185,45 @@ impl Connections {
         generation: &str,
         thread_id: &str,
     ) -> Result<(Value, u64, CoreObservation)> {
+        self.observe(
+            host,
+            id,
+            generation,
+            areal_protocol::desktop::ObserveThread {
+                thread_id: thread_id.into(),
+                mode: None,
+                max_bytes: None,
+            },
+        )
+        .await
+    }
+    pub(super) async fn conversation_observe(
+        &self,
+        host: &Host,
+        id: &str,
+        generation: &str,
+        thread_id: &str,
+        max_bytes: usize,
+    ) -> Result<(Value, u64, CoreObservation)> {
+        self.observe(
+            host,
+            id,
+            generation,
+            areal_protocol::desktop::ObserveThread {
+                thread_id: thread_id.into(),
+                mode: Some(areal_protocol::desktop::ObservationMode::Conversation),
+                max_bytes: Some(max_bytes),
+            },
+        )
+        .await
+    }
+    async fn observe(
+        &self,
+        host: &Host,
+        id: &str,
+        generation: &str,
+        options: areal_protocol::desktop::ObserveThread,
+    ) -> Result<(Value, u64, CoreObservation)> {
         let session = self
             .sessions
             .borrow()
@@ -166,22 +234,33 @@ impl Connections {
             session.shared_current(host) && session.service.identity.generation == generation,
             unavailable()
         );
+        if options.mode.is_some() {
+            let capabilities = session
+                .conversation_capabilities
+                .get_or_try_init(|| async {
+                    session.request("areal/capabilities", json!({})).await
+                })
+                .await?;
+            ensure!(session.shared_current(host), unavailable());
+            ensure!(
+                capabilities["features"]["conversationObservation"] == true,
+                "CORE_INCOMPATIBLE"
+            );
+        }
         let events = session.events.subscribe();
         *session
             .observed
             .borrow_mut()
-            .entry(thread_id.into())
+            .entry(options.thread_id.clone())
             .or_default() += 1;
         let observation = CoreObservation {
             events,
             session: session.clone(),
-            thread_id: thread_id.into(),
+            thread_id: options.thread_id.clone(),
+            options,
         };
-        let reply = session
-            .request_with_barrier("areal/thread/observe", json!({"threadId":thread_id}))
-            .await?;
-        ensure!(session.shared_current(host), unavailable());
-        Ok((reply.value, reply.sequence, observation))
+        let (value, sequence) = observation.snapshot(host).await?;
+        Ok((value, sequence, observation))
     }
     pub async fn ready(&self, host: &Host, id: &str, generation: &str) -> Result<()> {
         tokio::time::timeout(Duration::from_secs(15), async {
@@ -220,6 +299,27 @@ fn unavailable() -> anyhow::Error {
     )
 }
 
+fn changes_shell(event: &Value) -> bool {
+    matches!(
+        event["method"].as_str(),
+        Some(
+            "thread/started"
+                | "turn/started"
+                | "turn/completed"
+                | "areal/thread/configured"
+                | "areal/thread/edited"
+                | "areal/thread/archived"
+                | "areal/thread/unarchived"
+                | "areal/task/updated"
+                | "areal/queue/updated"
+                | "areal/interaction/requested"
+                | "areal/interaction/resolved"
+                | "areal/goal/updated"
+                | "areal/goal/cleared"
+        )
+    )
+}
+
 struct CoreSession {
     project_id: String,
     connection_id: String,
@@ -231,8 +331,10 @@ struct CoreSession {
     ready: Cell<bool>,
     events: broadcast::Sender<CoreEvent>,
     event_sequence: Cell<u64>,
+    shell_revision: Cell<u64>,
     observed: RefCell<BTreeMap<String, usize>>,
     capabilities: RefCell<Value>,
+    conversation_capabilities: tokio::sync::OnceCell<Value>,
     refresh: Notify,
     refresh_requested: Cell<bool>,
     driver: RefCell<Option<AbortHandle>>,
@@ -368,8 +470,10 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
         ready: Cell::new(false),
         events: broadcast::channel(16).0,
         event_sequence: Cell::new(0),
+        shell_revision: Cell::new(0),
         observed: RefCell::new(BTreeMap::new()),
         capabilities: RefCell::new(Value::Null),
+        conversation_capabilities: tokio::sync::OnceCell::new(),
         refresh: Notify::new(),
         refresh_requested: Cell::new(false),
         driver: RefCell::new(None),
@@ -391,7 +495,7 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
                         Message::Text(text) => {
                             let Ok(value) = serde_json::from_str::<Value>(&text) else { break; };
                             if let Some(method) = value["method"].as_str() {
-                                if value.get("id").is_none() { let sequence = connection.event_sequence.get() + 1; connection.event_sequence.set(sequence); let _ = connection.events.send(CoreEvent { sequence, value }); continue; }
+                                if value.get("id").is_none() { if changes_shell(&value) { connection.shell_revision.set(connection.shell_revision.get() + 1); } host.gateway.workbench.core_event(&connection.project_id, &value); let sequence = connection.event_sequence.get() + 1; connection.event_sequence.set(sequence); let _ = connection.events.send(CoreEvent { sequence, value }); continue; }
                                 if callbacks.len() >= MAX_PENDING { break; }
                                 let host = host.clone();
                                 let connection = connection.clone();

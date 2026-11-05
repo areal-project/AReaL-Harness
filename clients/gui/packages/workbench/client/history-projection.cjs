@@ -1,9 +1,9 @@
 // @ts-check
 "use strict";
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-/** @param {import('@areal/workbench/core-model-contract').CoreThread} thread @param {Array<Pick<import('./history-contract.cjs').HistoryEntry,'sourceTurnId'|'sourceItemId'|'turn'|'item'> & {sourceTurnStatus?:string}>} entries */
+/** @param {import('@areal/workbench/core-model-contract').CoreThread} thread @param {Array<Pick<import('./desktop-contract/conversation-history.cjs').HistoryEntry,'sourceTurnId'|'sourceItemId'|'turn'|'item'> & {sourceTurnStatus?:string}>} entries */
 function mergeHistory(thread, entries) {
-  /** @type {Map<string,import('./history-contract.cjs').HistoryTurn>} */
+  /** @type {Map<string,import('./desktop-contract/conversation-history.cjs').HistoryTurn>} */
   const turns = new Map();
   for (const entry of entries) {
     const turn = turns.get(entry.sourceTurnId) ?? {
@@ -43,7 +43,7 @@ function mergeHistory(thread, entries) {
     turns: [...[...turns.values()].filter((turn) => !shown.has(turn.id)), ...merged],
   };
 }
-/** @param {import('./history-state.cjs').HistoryWindow} window */
+/** @param {{pages:Array<{pageId:string,data:import('./desktop-contract/conversation-history.cjs').HistoryEntry[]}>,pageRecords:Array<{id:string,items:unknown[]}>,baselineFirstItemId?:string}} window */
 function historyGaps(window) {
   const cached = new Map(window.pages.map((page) => [page.pageId, page]));
   const gaps = [];
@@ -70,7 +70,7 @@ function historyGaps(window) {
   return gaps;
 }
 
-/** @param {import('./history-contract.cjs').HistoryEntry[]} entries */
+/** @param {import('./desktop-contract/conversation-history.cjs').HistoryEntry[]} entries */
 function pageTopology(entries) {
   return entries.map(({ sourceTurnId: turnId, sourceItemId: itemId, item }) => ({
     turnId,

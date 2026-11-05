@@ -14,7 +14,7 @@ import {
   type SnapShotServices,
   type DesktopSnapShotState,
   type SnapShotShortcut,
-} from "@areal/workbench/desktop-contract/snapshots";
+} from "../services.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { SettingsSwitch } from "../settings/SettingsPageParts.js";
 import { Button } from "../components/ui/button.js";

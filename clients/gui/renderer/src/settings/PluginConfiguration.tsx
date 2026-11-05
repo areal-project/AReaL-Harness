@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ManagementRequestMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementRequestMap } from "../services.js";
 import type { PluginDetail, PluginMutate, PluginCommand } from "./pluginTypes.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { Button } from "../components/ui/button.js";

@@ -4,7 +4,7 @@ const { enrollRelay, pairingError } = require("./remote-enrollment.cjs");
 const { randomBytes, randomUUID, timingSafeEqual } = require("node:crypto");
 const { HostRemote } = require("./host-remote.cjs");
 const {
-  PRESETS,
+  presetCapabilities,
   selectRelayProfile,
   withCurrentProfile,
   migrateLegacyDevices,
@@ -408,7 +408,7 @@ class RemoteControl {
           displayName,
           ...(clientKind ? { clientKind } : {}),
           projectIds: [...new Set(request.projects)],
-          capabilities: [...PRESETS[request.preset]],
+          capabilities: presetCapabilities(request.preset, request.manage === true),
           revision: (previous?.revision ?? 0) + 1,
           status: "active",
           ...(request.operation === "approve"

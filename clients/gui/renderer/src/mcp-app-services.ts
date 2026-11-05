@@ -66,7 +66,7 @@ export type McpResultReply =
 
 export type McpResultState = { opening?: boolean; message?: string };
 export type McpAppEvent = { token: string; notification: JSONRPCMessage };
-export type { McpAppDeepLink } from "@areal/workbench/desktop-contract";
+export type { McpAppDeepLink } from "./services.js";
 export type McpMetadataImageLoader = (source: string) => Promise<string>;
 export type McpAppOperations = {
   openGenUi: { request: GenUiSource; response: GenUiDescriptor };

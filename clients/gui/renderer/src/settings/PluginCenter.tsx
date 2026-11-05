@@ -52,7 +52,7 @@ import { usePluginSubmission, failure, failureText } from "./usePluginSubmission
 import { usePluginCenter } from "./usePluginCenter.js";
 import { pluginMcpStateLabel } from "./pluginResources.js";
 
-import type { ManagementRequest } from "@areal/workbench/desktop-contract/management";
+import type { ManagementRequest } from "../services.js";
 import type {
   PluginDetail,
   PluginReadiness,
@@ -178,9 +178,7 @@ export type PluginCenterProps = ScopedProps & {
   onChooseProject: () => void;
   onSelectProject: (id: string) => void;
   onStartDraft: (seed: ResourceDraftSeed) => Promise<void>;
-  onRunCommand?: (
-    command: import("@areal/workbench/desktop-contract/conversation").PluginCommandRef,
-  ) => Promise<void>;
+  onRunCommand?: (command: import("../services.js").PluginCommandRef) => Promise<void>;
   onReturnToTask?: () => void;
 };
 const officialMarket = (url?: string | null) =>
@@ -473,8 +471,8 @@ export function PluginCenter({
     },
     onAccepted: (
       result:
-        | import("@areal/workbench/desktop-contract/management").ManagementResponseMap[
-            | import("@areal/workbench/desktop-contract/management").PluginMutation
+        | import("../services.js").ManagementResponseMap[
+            | import("../services.js").PluginMutation
             | "pluginAuth"]
         | undefined,
       original: PluginOperation,

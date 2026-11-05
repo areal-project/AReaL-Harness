@@ -91,6 +91,9 @@ importers:
       '@areal/chatgpt-provider':
         specifier: workspace:*
         version: link:../packages/chatgpt-provider
+      '@areal/client':
+        specifier: workspace:*
+        version: link:../packages/client
       '@areal/gen-ui':
         specifier: workspace:*
         version: link:../packages/gen-ui
@@ -218,6 +221,12 @@ importers:
         specifier: 6.5.0
         version: 6.5.0
 
+  packages/client:
+    dependencies:
+      '@areal/remote-client':
+        specifier: workspace:*
+        version: link:../remote-client
+
   packages/gen-ui:
     dependencies:
       '@modelcontextprotocol/ext-apps':
@@ -334,6 +343,9 @@ importers:
 
   renderer:
     dependencies:
+      '@areal/client':
+        specifier: workspace:*
+        version: link:../packages/client
       '@areal/gen-ui':
         specifier: workspace:*
         version: link:../packages/gen-ui

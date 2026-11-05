@@ -56,7 +56,7 @@ async function filesAt(root, dir) {
     .map((file) => `${dir}/${file}`);
 }
 
-export async function collectHealth({ root = gui } = {}) {
+export async function collectHealth({ root = gui, nativeSources } = {}) {
   const paths = (
     await Promise.all(["app/src", "renderer/src", "packages"].map((dir) => filesAt(root, dir)))
   ).flat();
@@ -68,6 +68,17 @@ export async function collectHealth({ root = gui } = {}) {
   );
   const main = files.filter(
     (file) => file.path.startsWith("app/src/") && !file.path.endsWith(".css"),
+  );
+  const storedBaseline = JSON.parse(
+    await readFile(resolve(root, "health-baseline.json"), "utf8").catch((error) => {
+      if (error.code === "ENOENT") return "{}";
+      throw error;
+    }),
+  );
+  const mainNativeSources = nativeSources ?? storedBaseline.$mainNativeSources ?? {};
+  validateNativeSources(mainNativeSources);
+  const mainBusinessSources = Object.fromEntries(
+    main.filter((file) => !(file.path in mainNativeSources)).map((file) => [file.path, file.lines]),
   );
   const renderer = files.filter((file) => file.path.startsWith("renderer/src/"));
   const app = renderer.find((file) => file.path === "renderer/src/App.tsx");
@@ -123,7 +134,13 @@ export async function collectHealth({ root = gui } = {}) {
       mainSourceLines,
       "down",
       "app/src",
-      "Owned Main physical lines; aggregate ceiling for migrating business out of Electron",
+      "Physical lines of all owned Main source, including native shell; same scope as counts.mainSourceLines",
+    ),
+    mainBusinessLines: row(
+      Object.values(mainBusinessSources).reduce((total, count) => total + count, 0),
+      "down",
+      "app/src",
+      "Physical lines of Host/workbench/Core business and mixed Main modules; exact native-shell exemptions in $mainNativeSources; new paths count by default",
     ),
     mainCheckedFiles: row(
       checkedMainFiles,
@@ -296,6 +313,8 @@ export async function collectHealth({ root = gui } = {}) {
     scope:
       "GUI production app/src, renderer/src, packages/*/{src,client}, and package-root implementations; excludes package build/config/declaration tooling, vendor/generated/design previews/i18n messages/tests; manifest covers GUI root package only",
     metrics,
+    mainBusinessSources,
+    mainNativeSources,
     counts: {
       mainSourceLines,
       uiCssLines: sum(
@@ -325,7 +344,7 @@ function execFileSyncResult(args, root) {
 }
 
 // 继承问题单独归因，但仍按已审核基准判定失败，不能借比较基点自动豁免。
-async function baseHealth(base, root) {
+async function baseHealth(base, root, nativeSources) {
   const gitRoot = execFileSyncResult(["rev-parse", "--show-toplevel"], root);
   if (!gitRoot) throw new Error(`Unavailable baseline base ${base}`);
   const gui = relative(gitRoot, root).replaceAll("\\", "/");
@@ -337,7 +356,7 @@ async function baseHealth(base, root) {
       maxBuffer: 1 << 30,
     });
     execFileSync("tar", ["-x", "-C", directory], { input: archive });
-    return await collectHealth({ root: join(directory, gui) });
+    return await collectHealth({ root: join(directory, gui), nativeSources });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -349,6 +368,24 @@ function inheritedFrom(failure, before) {
     : before.metrics[failure.metric]?.value;
   if (!Number.isFinite(old)) return false;
   return failure.direction === "up" ? failure.current >= old : failure.current <= old;
+}
+
+function validateNativeSources(sources) {
+  if (
+    !sources ||
+    typeof sources !== "object" ||
+    Array.isArray(sources) ||
+    !Object.entries(sources).every(
+      ([path, reason]) =>
+        path.startsWith("app/src/") &&
+        sourceExtension.test(path) &&
+        !path.endsWith(".css") &&
+        !path.split("/").some((part) => part === ".." || part === ".") &&
+        typeof reason === "string" &&
+        reason.trim().length > 0,
+    )
+  )
+    throw new Error("Invalid Main native source classification");
 }
 
 function validateBaseline(baseline) {
@@ -369,6 +406,7 @@ function validateBaseline(baseline) {
   }
   if (!Object.values(baseline.$sourceCaps).every((value) => Number.isFinite(value) && value >= 0))
     throw new Error("Invalid source path caps");
+  if (baseline.mainBusinessLines) validateNativeSources(baseline.$mainNativeSources);
   return baseline;
 }
 
@@ -421,6 +459,7 @@ function baselineFrom(report, previous) {
   return {
     $schemaVersion: 1,
     $revision: report.revision,
+    $mainNativeSources: report.mainNativeSources,
     ...Object.fromEntries(
       Object.entries(report.metrics).map(([name, metric]) => [
         name,
@@ -449,6 +488,9 @@ async function main() {
   );
   const report = await collectHealth({ root });
   const write = args.includes("--write");
+  const metric = value("--metric");
+  if (metric && (!(metric in report.metrics) || write))
+    throw new Error("--metric requires a known metric and cannot write a partial baseline");
   if (!write && !args.includes("--check")) {
     console.log(JSON.stringify(report, null, 2));
     return;
@@ -470,9 +512,12 @@ async function main() {
   ]);
   for (const name of allowed)
     if (!names.has(name)) throw new Error(`Unknown regression exception ${name}`);
+  if (allowed.has("mainBusinessLines") || allowed.has("mainSourceLines"))
+    throw new Error("Main source growth cannot be waived with --allow-regression");
   const failures = baseline ? compare(report, baseline) : [];
   const base = value("--base") ?? process.env.AREAL_DESIGN_BASE;
   const reviewedTransitions = [];
+  let measuredBase;
   if (base && baseline) {
     const gitRoot = execFileSyncResult(["rev-parse", "--show-toplevel"], root);
     if (!gitRoot) throw new Error(`Unavailable baseline base ${base}`);
@@ -483,6 +528,41 @@ async function main() {
       }),
     );
     validateBaseline(before);
+    // 首次引入也从基点源码实测，不能靠新指标缺席或当前文件改名获得余量。
+    measuredBase = await baseHealth(
+      base,
+      root,
+      before.$mainNativeSources ?? report.mainNativeSources,
+    );
+    for (const name of ["mainSourceLines", "mainBusinessLines"]) {
+      const measured = measuredBase.metrics[name].value;
+      if (!before[name] && baseline[name]?.value !== report.metrics[name].value)
+        failures.push({ metric: name, reason: "initial baseline must equal actual Main lines" });
+      if (baseline[name]?.value > measured)
+        failures.push({
+          metric: name,
+          baseline: measured,
+          current: baseline[name].value,
+          direction: "down",
+          reason: "baseline exceeds actual Main lines at base",
+        });
+      if (report.metrics[name].value > measured)
+        failures.push({
+          metric: name,
+          baseline: measured,
+          current: report.metrics[name].value,
+          direction: "down",
+          reason: "Main source grew against base",
+        });
+    }
+    if (before.mainBusinessLines)
+      for (const path of Object.keys(report.mainNativeSources))
+        if (!(path in before.$mainNativeSources))
+          failures.push({
+            metric: "mainBusinessLines",
+            path,
+            reason: "native exemption added against base",
+          });
     for (const [name, current] of Object.entries(baseline).filter(
       ([name]) => !name.startsWith("$"),
     )) {
@@ -523,17 +603,12 @@ async function main() {
         });
   }
   const regressions = failures.filter(
-    (failure) => !failure.reason?.includes("relaxed") && Number.isFinite(failure.current),
+    (failure) =>
+      (!metric || failure.metric === metric) &&
+      !failure.reason?.includes("relaxed") &&
+      Number.isFinite(failure.current),
   );
-  const before = base && baseline ? await baseHealth(base, root) : null;
-  if (before && report.metrics.mainSourceLines.value > before.metrics.mainSourceLines.value)
-    failures.push({
-      metric: "mainSourceLines",
-      baseline: before.metrics.mainSourceLines.value,
-      current: report.metrics.mainSourceLines.value,
-      direction: "down",
-      reason: "Main source increased against base",
-    });
+  const before = !write && base && baseline && regressions.length ? measuredBase : null;
   const inherited = before ? regressions.filter((failure) => inheritedFrom(failure, before)) : [];
   inherited.forEach((failure) =>
     console.warn(
@@ -543,7 +618,9 @@ async function main() {
       }),
     ),
   );
-  const rejected = failures.filter((failure) => !allowed.has(failure.metric));
+  const rejected = failures.filter(
+    (failure) => (!metric || failure.metric === metric) && !allowed.has(failure.metric),
+  );
   if (rejected.length) {
     rejected.forEach((failure) => console.error(JSON.stringify(failure)));
     process.exitCode = 1;
@@ -560,7 +637,9 @@ async function main() {
       reviewedTransitions,
       allowedRegressions: failures.filter((failure) => allowed.has(failure.metric)),
       inheritedRegressions: inherited,
-      metrics: report.metrics,
+      metrics: metric ? { [metric]: report.metrics[metric] } : report.metrics,
+      mainBusinessSources: report.mainBusinessSources,
+      mainNativeSources: report.mainNativeSources,
     }),
   );
 }

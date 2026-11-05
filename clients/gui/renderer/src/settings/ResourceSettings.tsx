@@ -1,6 +1,6 @@
 import { TitleTooltip } from "@areal/ui";
-import type { ResourceRequest, Scope } from "@areal/workbench/desktop-contract/resource";
-import { normalizeMcp } from "@areal/workbench/desktop-contract/resource";
+import type { ResourceRequest, Scope } from "../services.js";
+import { normalizeMcp } from "../services.js";
 import {
   useI18n,
   UiMessageError,

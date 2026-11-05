@@ -29,6 +29,10 @@ The existing conversation catalog is available at `design-system.html?conversati
 
 The production UI package adoption scenario is `node clients/gui/scripts/migration-smoke.mjs --conversation-production`. It covers the top task card, three-source/all-source navigation, subagent list and real history return, manual activity/tool-image expansion, a narrow desktop window, pause, conditional UNKNOWN inspection, and renderer history reload without replay. It uses the same isolated Electron/Core/Runtime and deterministic local model. It does not replace the full journey's separate active-quit/background-completion contract or establish installed-package or real-provider acceptance.
 
+## Experimental Host reads
+
+GUI retains its existing read path by default. For acceptance, set `localStorage.setItem("areal.oneProtocol.reads", "1")` in developer tools and reload. Project navigation and session details then subscribe through Host. Remove the key and reload to revert. Writes still use the existing adapter. `areal web` opens the same Renderer served by Host. First browser access requires local approval and is currently read-only. See the [Host contract](../../docs/api/host.en.md#loopback-websocket-and-shared-reads) for approval and revocation. Acceptance requires a packaged app and an isolated copy of real data; never start services against the original data.
+
 ## Development
 
 Run from the repository root with Node.js 22.19+ on 22 LTS, 24.11+ on 24 LTS, or 26+, pnpm 11.7.0 and the repository Rust toolchain. Use the same Node.js 24.22.1 LTS version as CI for both packaging and validation:

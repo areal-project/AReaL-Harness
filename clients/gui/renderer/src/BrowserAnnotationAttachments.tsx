@@ -1,3 +1,4 @@
+import type { MediaOwner } from "./PlatformReadContext.js";
 import { TitleTooltip } from "@areal/ui";
 import { Textarea } from "@areal/ui";
 import { MessageSquare, Trash2 } from "lucide-react";
@@ -91,12 +92,14 @@ export function BrowserAnnotationAttachments({
 export function SentBrowserAnnotations({
   notes,
   attachments,
+  mediaSource,
   projectId,
   threadId,
   action,
 }: {
   notes: SentBrowserAnnotation[];
   attachments: Data[];
+  mediaSource?: MediaOwner;
   projectId: string;
   threadId: string;
   action: Action;
@@ -116,6 +119,7 @@ export function SentBrowserAnnotations({
           {notes.map((note, index) => (
             <section key={`${note.id}:${index}`} className="browser-annotation-attachment-card">
               <SentAttachment
+                mediaSource={mediaSource}
                 part={{
                   ...attachments.find((part) => (part.url ?? part.uri) === note.imageUri),
                   name: `标注 ${index + 1} 截图`,

@@ -384,7 +384,7 @@ try {
     passed = false;
   }
   try {
-    const { HostClient } = require("../app/src/core/host-client.cjs");
+    const { HostClient } = require("@areal/client/node");
     const { randomUUID } = require("node:crypto");
     const h = new HostClient();
     await h.connect(join(state, "registry"));

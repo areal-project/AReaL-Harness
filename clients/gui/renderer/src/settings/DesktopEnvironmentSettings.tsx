@@ -1,4 +1,4 @@
-import { readLibraryRequest } from "@areal/workbench/desktop-contract/library-media";
+import { readLibraryRequest } from "../services.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { useEffect, useRef, useState } from "react";
 import {

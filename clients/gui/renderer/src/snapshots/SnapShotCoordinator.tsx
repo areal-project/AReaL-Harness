@@ -1,5 +1,5 @@
 import { SnapShotCaptureContext } from "./captureContext.js";
-import { readSnapShotSettings } from "@areal/workbench/desktop-contract/snapshots";
+import { readSnapShotSettings } from "../services.js";
 import { sending } from "../composerDraftAttachments.js";
 import { composerDraftStorage } from "../composerDraftStorage.js";
 import {
@@ -9,10 +9,7 @@ import {
   waitForSnapShotAnimation,
 } from "./animation.js";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type {
-  SnapShotServices,
-  SnapShotSettings,
-} from "@areal/workbench/desktop-contract/snapshots";
+import type { SnapShotServices, SnapShotSettings } from "../services.js";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { currentSnapShotDraft } from "./activeDraft.js";

@@ -18,12 +18,12 @@ target/debug/areal service restart --json
 target/debug/areal service stop --json
 # 显式取消当前工作并等待结算
 target/debug/areal service stop --instance INSTANCE_ID --cancel --json
-target/debug/areal web --workspace /absolute/workspace
+target/debug/areal web
 # Desktop Main 获取同一描述，不打开浏览器
-target/debug/areal web --workspace /absolute/workspace --json
+target/debug/areal web --json
 ```
 
-`ensure`、`restart` 和 `web` 接受同一组本地参数：`--config`、`--workspace`、`--data-dir`、`--allow-write`、`--allow-network`、`--allow-concurrent-writes`、`--workgroup-policy`、`--workgroup-toolchain`、`--command-timeout-ms`、`--desktop-process-timeout-ms`、`--command-output-bytes`、`--runtime-max-processes`、`--model-endpoint`、`--model-protocol`、`--model`、`--model-provider`、`--api-key-env`、`--desktop-config`。`--agent id@revision` 是 TUI/headless/exec 创建 Thread 时的客户端选择项，也可与远程 `--endpoint` 同用，不改变本地服务身份。默认工作区是当前目录；服务监听随机 loopback 端口。未配置模型时可启动管理服务，运行模型任务仍需有效配置。
+`ensure` 和 `restart` 接受同一组本地参数：`--config`、`--workspace`、`--data-dir`、`--allow-write`、`--allow-network`、`--allow-concurrent-writes`、`--workgroup-policy`、`--workgroup-toolchain`、`--command-timeout-ms`、`--desktop-process-timeout-ms`、`--command-output-bytes`、`--runtime-max-processes`、`--runtime-max-scopes`、`--runtime-max-operations`、`--model-endpoint`、`--model-protocol`、`--model`、`--model-provider`、`--api-key-env`、`--desktop-config`。`--agent id@revision` 是 TUI/headless/exec 创建 Thread 时的客户端选择项，也可与远程 `--endpoint` 同用，不改变本地服务身份。默认工作区是当前目录；服务监听随机 loopback 端口。未配置模型时可启动管理服务，运行模型任务仍需有效配置。
 
 启动 GUI 前可显式设置 `AREAL_CORE_SANDBOX_PROFILE=native`，或在 `areal service ensure/restart` 使用 `--sandbox-profile native`，请求原生 Runtime 沙箱。默认仍为 `full-access`。此选择纳入部署兼容性；切换时需先停止活动任务并显式重启服务。只有 Core 验证原生隔离能力后，Side 对话才提供只读访问当前工作区文件的选项。原生隔离不可用时启动失败，不降级为 full-access。
 
@@ -73,6 +73,8 @@ areal service task-catalog --workspace /absolute/workspace \
 实时有界目录和 owner watch 的参数、分页、断流恢复及通知基线见 [Task API](tasks.md#轻量目录与-owner-更新)。摘要包与 Task、收据和归属引用由同一个根提交，发布失败不能转成空目录或推翻已经确认的原操作。
 
 ## 可核查的停止操作
+
+共享 Host 在 Runtime Scope、operation 或累计输出容量达到 80% 时执行[空闲容量轮换](../guides/runtime.md#生命周期)。轮换沿用原 Host generation、owner 和实例锁，仅在旧 Core/Runtime 正常清理后发布新的 Core PID、endpoint 与 Runtime epoch；服务描述格式不变。控制查询与轮换串行，客户端通过原发现入口重连，不重放已受理请求。二进制、权限、部署或非模型配置漂移阻止自动轮换；模型文件版本须已由原 Core 热应用确认。该维护不属于 `ensure --no-auto-restart` 的配置替换，也不生成或覆盖用户的停止回执。
 
 `status` 在原实例仍持锁但控制端点已关闭或断开时报告 `unavailable`，不将 socket 消失或响应丢失当作停止；协议、权限和超时错误仍显式失败。`ensure` 不接管这类仍有 owner 的实例。Store 启动仅为派生进程继承描述符的短暂交接等待约 100 ms，未取得独占锁前不清理临时写入，仍拒绝持续持锁的 owner。
 
@@ -180,7 +182,7 @@ Desktop 还必须在派发前及发布替代结果前检查自身生命周期意
 
 `areal service stop --expected-generation <generation>` 在启动锁内核对目标换代身份，失配时拒绝停止替代实例。GUI 的取消确认绑定原 Desktop、项目范围和 Core generation；最终公共宿主停止保持同一 cancel 意图。部分停止或未知回执保持恢复状态，不报告全局回滚、不自动重发；客户端须确认原实例登记撤回和进程退出。
 
-- `areal web` 在可信本地客户端读取 authFile，校验服务身份后申请一次性登录码，打开 `/ui` 自动换取独立 HttpOnly Cookie；长期 token 不交给网页。浏览器不启动进程、不读 authFile，也不访问控制 socket。链接过期、会话过期、重启或端口变化后重新运行 `areal web`；手工 token 登录保留为兜底。`--json` 只发现、不签发登录码。Rust 调用方可用 `browser_login_url(&Service)` 获取一次性 URL，不得记录或转发到不可信页面。接口与有效期见[浏览器登录](desktop.md#browser-auth)。
+- `areal web` 打开 Host 发布的共享界面，不启动项目 Core；`--json` 返回公开 endpoint，不签发登录 URL。旧本地参数继续接受，但不选择项目或启动服务。浏览器首次授权、重新连接与撤销见[Host 回环入口](host.md#回环-websocket-与共享读路径)。Core 的旧 `/ui` 登录 API 仍由[浏览器登录](desktop.md#browser-auth)定义。
 - Desktop Main 用参数数组执行 `areal service ensure --json`，校验 `protocolVersion`，在 Main 读取 authFile 建立认证连接；只向 Renderer 暴露经过筛选的应用操作和状态。不要把完整服务描述或 token 交给 Renderer。
 - 重连重新发现并比较 generation，然后 initialize/initialized 和 thread/resume。先查 request/read 或权威状态再决定重试，不自动重放已提交操作。
 - 需要跨窗口的动态 ToolHost 应放在稳定 Main/独立宿主连接中。窗口上的动态工具不会自动转移；连接丢失仍按现有 Host generation 与 UNKNOWN 语义处理。

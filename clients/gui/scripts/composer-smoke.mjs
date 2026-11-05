@@ -2108,7 +2108,7 @@ try {
       throw error;
     });
   if (descriptor) {
-    const { HostClient } = require("./src/core/host-client.cjs");
+    const { HostClient } = require("@areal/client/node");
     const { randomUUID } = require("node:crypto");
     const host = new HostClient();
     try {

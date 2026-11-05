@@ -450,6 +450,8 @@ pub(super) mod tests {
             gateway: super::gateway_owner::Gateway::default(),
             subscriptions: super::subscriptions::Subscriptions::default(),
             power: super::power::Power::default(),
+            read_models: Default::default(),
+            loopback: super::loopback::Loopback::default(),
             journal: crate::journal::Journal::new(&home).unwrap(),
             remote: crate::remote_state::RemoteState::new(&home),
             schedules: Schedules::load(&home).unwrap(),

@@ -582,7 +582,7 @@ try {
       throw error;
     });
   if (descriptor) {
-    const { HostClient } = require("./src/core/host-client.cjs");
+    const { HostClient } = require("@areal/client/node");
     const host = new HostClient();
     try {
       await host.connect(env.AREAL_HARNESS_SERVICE_HOME);

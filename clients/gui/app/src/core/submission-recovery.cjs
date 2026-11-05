@@ -31,7 +31,7 @@ const { taskMutationMethods } = require("./tasks.cjs");
 /** @typedef {(method:string,params:Params,options?:{timeoutMs?:number})=>Promise<unknown>} CoreRequest */
 /** @typedef {{client?:Client|null,generation?:number,deadline?:number,observeOnly?:boolean}} ReconcileOptions */
 /** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'worktrees'|'lifecycleOperations'|'providers'> & {
- * host:Pick<InstanceType<typeof import("./host-client.cjs").HostClient>,"journal">,closing:boolean,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,Project>,awaitingResponses:Set<string>,onChange:()=>void,
+ * host:Pick<InstanceType<typeof import("@areal/client/node").HostClient>,"journal">,closing:boolean,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,Project>,awaitingResponses:Set<string>,onChange:()=>void,
  * currentConnection:(project:Project,client:Client|null|undefined)=>client is Client,
  * requireConnection:(project:Project,client:Client|null|undefined)=>void,openThread:(project:Project,threadId:string)=>Promise<unknown>,
  * supportsBoundedHistory:(client:Client|null|undefined)=>boolean,readObservation:(project:Project,threadId:string,options:import('./history-state.cjs').ReadOptions)=>Promise<import('./history-contract.cjs').ObservationResult>,
@@ -108,7 +108,7 @@ class SubmissionRecovery {
     return task;
   }
 
-  /** @param {Project} project @param {import('./host-client.cjs').JournalSnapshot} snapshot */
+  /** @param {Project} project @param {import('@areal/client/node').JournalSnapshot} snapshot */
   projectJournal(project, snapshot) {
     const pending = parsePendingSubmissions(snapshot.pending);
     const outcomes = parseSubmissionOutcomes(snapshot.outcomes);
@@ -135,7 +135,7 @@ class SubmissionRecovery {
     const task = (project.journalWrite ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        /** @type {import('./host-client.cjs').JournalSnapshot|undefined} */
+        /** @type {import('@areal/client/node').JournalSnapshot|undefined} */
         let committed;
         await this.host.host.journal(project.id).change((snapshot) => {
           committed = change({

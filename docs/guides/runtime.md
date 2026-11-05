@@ -51,7 +51,9 @@ native macOS profile 的默认 Xcode、`/Applications/Xcode_<数字版本>.app`�
 
 EOF、SIGINT/SIGTERM 或显式 close 关闭准入并等待资源。丢弃 RPC 等待者不取消操作；用 revoke/terminate 后继续 wait。后端事实丢失或清理失败保留 UNKNOWN 与预算占用，封闭新操作，返回 CLEANUP_FAILED。
 
-每 epoch 最多 256 Scope、4096 operation，保留去重记录至实例关闭；耗尽后需正常 drain/重启，不能删除记录复用 epoch。默认 helper 按目标文件、命令按写根协调冲突；其他 Runtime/宿主编辑器不参与，不能承诺外部 CAS。
+每 epoch 默认最多 256 Scope、4096 operation，已关闭的 Scope 和操作去重记录保留至实例关闭，不能删除记录复用 epoch。共享本地服务在 Scope、operation 或累计输出使用量达到 80% 后，由可信宿主确认 Core 空闲、原子关闭工作准入，并等待旧 Core/Runtime 正常清理后启动新 epoch。轮换保留宿主身份、服务锁、历史与提交回执；客户端重新发现 endpoint 并恢复观察，不重放执行。活动 Turn、Goal、排队输入、后台任务、终端、压缩或未确认资源清理会推迟轮换；历史 UNKNOWN 记录仍保留检查要求。单个持续执行的任务仍可能耗尽本 epoch，独占 launcher/daemon 仍需显式 drain/重启。共享入口可用 `--runtime-max-scopes`（至少 4，默认 256）和 `--runtime-max-operations` 配置保留容量。
+
+容量观察与轮换准入请求均有 3 秒期限，轮换准入可由宿主退出取消；结果不明时不启动替代实例。容量维护不应用二进制、权限或其它待重启配置变化；发现配置漂移或观察失败时保留原实例。旧进程清理未确认时不启动替代实例。默认 helper 按目标文件、命令按写根协调冲突；其他 Runtime/宿主编辑器不参与，不能承诺外部 CAS。
 
 验证使用 `make verify-runtime`；组件关闭见 [Cordis](../development/cordis.md)。
 

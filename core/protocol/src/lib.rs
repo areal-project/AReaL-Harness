@@ -1,6 +1,8 @@
 pub mod context;
 pub mod delegation;
 pub mod goals;
+#[path = "../generated/host_protocol.rs"]
+pub mod host;
 pub mod plugin_runtime;
 pub mod service;
 pub mod tasks;

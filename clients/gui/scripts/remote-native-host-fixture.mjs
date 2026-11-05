@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
 const { HostRemote } = require("../app/src/core/host-remote.cjs");
 const { NativeRemote } = require("../app/src/core/native-remote.cjs");

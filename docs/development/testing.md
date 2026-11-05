@@ -24,6 +24,11 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 新的 history view 在 acquire 时若发现既有窗口已失效，只重建一次基线后按原预算补全；已有 view 的重复注册不触发恢复循环。恢复等待前固定原连接身份与代际；同一连接可生成新窗口，等待期间的新连接不能接管旧请求。读取期间窗口再次换代、失效或本次 view 被释放仍返回真实失败，即使其他 view 存活。并发读取者共享补全，关闭一个读取者只拒绝其自身 acquire，不取消其他仍存活的 view。
 
 调度候选通过 GUI 的 `workflow_dispatch` 输入 `smoke_parallel` 显式比较 4/5；默认值和普通 PR/main 固定为 4，不自动提高共享资源占用。该开关只改变 smoke 矩阵上限，不改变测试、门禁、超时或真实产物依赖。完成同一成功 ref/SHA 的缓存预热后，以同一个 `comparison_base` 和 `qualification=none` 串行运行两个值，记录真实缓存命中、同期工作流、首次失败反馈、总反馈和累计 runner 时间；若有 main 等待或重叠运行，应先结束本次对照再比较。矩阵与共享池空档不能据 created→started 自动解释为容量不足；排序或五并发仅是待证伪候选，不宣称能消除长等待。
+Worktree 集成夹具将自动命名响应保持到真实文件工具完成后，确认命名已进入观察状态，再重新打开会话并租用历史视图，避免把合法的命名编辑误判为工具失败。文件、Shell、受管进程、目录隔离与重启断言保持不变。
+
+Side Chat parity 的 P4 使用真实 Shift/方向键与 Enter，读取选区矩形并确认选中文字仍在对话视口内，再执行引用操作；旧阅读锚点不能抢回原生键盘移动后的视口。数量、字数限制、冻结的引用正文及不自动提交断言继续由原场景检查。
+
+模型选择专项在模型回合断言之后，先观察公开的 serviceStatus.canStop，确认后台命令、启动、模型配置更新和资源均已结算，再通过原生菜单发起一次退出；真实退出仍受原有 15 秒断言约束。退出失败时复用已有清理器，只回收本次启动的 Electron 子进程，保留失败与现场，避免存活进程把一次清理失败拖到整个 CI job 超时。
 
 | 入口 | 范围 |
 |---|---|
@@ -413,6 +418,26 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 `node examples/desktop-api/run.mjs goal-mode` 使用真实 Core/Runtime 与 HTTP/SSE fixture，通过生成 schema 验证 Goal API、两次 Turn 的文件创建/验证、隔离 Workgroup 共享计量、观察权限、重复请求、多客户端恢复和 headless 跨 Turn 等待；已纳入 `make examples-desktop-api`。它不替代真实模型的任务成功率评估。
 
 ## 共享本地服务
+
+### A0 协议契约
+
+`python3 scripts/generate-host-protocol.py --check` 比较 schema 生成的 Rust 与 TypeScript 类型，并核对本机、Gateway 和回环方法清单。A0 不接入生产代码；A1 的握手与票据边界开始使用生成类型。现有消息封装与提案分开；结构类型不替代字节预算、授权及可变归属检查。
+
+`make host-protocol-check` 检查生成物、生成器回归和桌面 IPC 冻结反例。CI 还以 PR 基线的完整提交 SHA 运行 `node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base <SHA>`，拒绝新增顶层命令或已有命令下的业务 operation，原生 bridge 通道不在冻结范围内。
+
+Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric=mainBusinessLines --base=<SHA>` 和 `--metric=mainSourceLines` 检查。业务统计默认包含所有 Main 文件，仅排除基线逐路径注明职责的原生文件；混合文件整计为业务的保守上界。两项同时比较基线值和 PR 基点实测，不允许提高基线或通过重新分类隐藏增长。Renderer 的平台边界通过 `pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui` 检查，规则单测与其他 oxlint 规则放在同一测试文件中。
+
+`cargo test --locked -p areal-host --test host_protocol_conformance` 编译生成类型并调用真实本机 wire。准备匹配的固定路径 Core/Runtime 后，运行 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal pnpm --dir clients/gui test:host-protocol-conformance`，通过隔离 Host、Core、Relay 和 Noise 对照实际收发及资源边界。macOS 的钥匙串仅使用夹具合成项；该检查不代表安装包、真实数据或手机真机验收。
+
+### A1 回环状态链路
+
+`cargo test -p areal-host --lib server::loopback::tests` 通过真实 Unix 和 WebSocket 连接核对票据、Origin、代际、过期、重放及资源边界。`pnpm --dir clients/gui test:host-client` 检查共享客户端的连接身份、断线新鲜度与取消；它的 WS 服务是确定性测试服务，不代表真实 Host 或安装包通过。
+
+隔离启动 GUI 时设置 `AREAL_HOST_WEBSOCKET=1`，并在该隔离界面的 localStorage 中设置 `areal.oneProtocol.reads=1`，可启用状态探测。Host 必须以该环境开关启动；已有关闭此能力的 Host 不会被自动重启。清除此 localStorage 项恢复原读路径。打开后项目清单与会话详情由共享 Host 订阅读取，写入仍用原桌面路径；协议检查不能替代 A1 的安装包真实历史对照与恢复验收。GUI CSP 从运行时私有描述授权回环主机的动态端口；票据只由原生能力提供并放进 WS 首帧。
+
+开发验收可运行 `node clients/gui/scripts/seed-host-copy.mjs --from <旧 Core home> --home <隔离 Host home> --binary <待验收包内 areal>`，一致性快照后通过现有 CLI 登记路径创建测试项目，不调用导入器。工具只读源，副本不携带待提交、调度、凭据或远程身份，来源摘要和测试标记保存在隔离 home；历史 UNKNOWN 不阻塞项目。登记仍指向原代码目录，验收发消息须使用确定性模型或另行复制代码目录，不能在真实仓库执行真实 Agent。
+
+`node scripts/runtime-rotation-smoke.mjs` 使用隔离目录、真实 Core/Runtime 和本地模型，分别降低 Scope、operation 与累计输出容量，验证达到预警但未耗尽时的自动轮换、活动轮次推迟、旧 Core/Runtime 退出、部署漂移保护、新 epoch、历史与 Queue 意图保留、跨轮换请求去重及后续续轮。该检查进入 `make local-service-smoke` 和 `make harness-smoke`。宿主测试覆盖维护 RPC 超时与退出取消；Engine 生命周期测试同时验证并发新轮与轮换的原子准入，以及历史 UNKNOWN 保留和未确认资源清理的阻塞；这些是确定性契约回归，不代表整体 Agent 能力提升。
 
 `make local-service-smoke` 使用临时目录、真实 Core/Runtime、两个 PTY 和 HTTP 模型 fixture，验证并发 ensure、工作区/符号链接身份、配置冲突、认证、Web 发现、窗口退出、忙碌拒绝停止/显式取消、历史保留、launcher/host 强杀清理与重新连接。已纳入 `make harness-smoke`。`make desktop-schemas` 同时导出 `schemas/local-service-v1.json`。
 

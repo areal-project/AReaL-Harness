@@ -1,5 +1,5 @@
 import { useI18n, type Translate } from "../i18n/IntlProvider.js";
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "../services.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
 export type PackageComponentSupport = NonNullable<
   ManagementResponseMap["plugin"]["componentSupport"]

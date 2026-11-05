@@ -7,7 +7,7 @@ const { startupTrace } = require("./startup-timing.cjs");
 const { randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, open, writeFile, rename, rm } = require("node:fs/promises");
 const { join } = require("node:path");
-const { HostClient } = require("./host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const { executeCore } = require("./core-process.cjs");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
 const {
@@ -254,6 +254,13 @@ class SharedCoreBackend {
       },
       flush: async () => {},
     };
+    /** 一套协议过渡开关；后台重连后重发。 @type {{library:boolean}|null} */
+    this.oneProtocol = null;
+  }
+  /** @param {{library:boolean}} flags */
+  setOneProtocol(flags) {
+    this.oneProtocol = flags;
+    if (this.status.connected) void this.connection?.request("oneProtocol", flags).catch(() => {});
   }
   /** @param {import("./gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
   genUiScope(project, threadId) {
@@ -584,6 +591,7 @@ class SharedCoreBackend {
     }
     helloTrace.finish("ok");
     if (this.lastActivity) void connection.request("activity", this.lastActivity).catch(() => {});
+    if (this.oneProtocol) void connection.request("oneProtocol", this.oneProtocol).catch(() => {});
     this.metadata = metadata;
     this.exitConfirmation = null;
     if (this.foreignOwner) {
@@ -793,6 +801,7 @@ class SharedCoreBackend {
         this.computerHostOwned = record(packet) && packet.computerHostOwned === true;
         this.accept(packet, metadata);
         if (this.lastActivity) await connection.request("activity", this.lastActivity);
+        if (this.oneProtocol) await connection.request("oneProtocol", this.oneProtocol);
         this.backendUpdate = undefined;
       } catch (error) {
         this.connection = null;
@@ -1429,7 +1438,7 @@ class SharedCoreBackend {
         : "原 Host 停止操作尚未结算，请检查原请求；不会自动启动或重发。",
     };
   }
-  /** @returns {Promise<import('./host-client.cjs').HostActivity>} */
+  /** @returns {Promise<import('@areal/client/node').HostActivity>} */
   async readHostActivity() {
     const client = new HostClient();
     try {

@@ -22,7 +22,7 @@ import { respondToSessionName } from "./model-fixture.mjs";
 const execute = promisify(execFile);
 const repository = await realpath(new URL("..", import.meta.url).pathname);
 const require = createRequire(join(repository, "clients/gui/app/package.json"));
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("@areal/client/node");
 const prefix = resolve(process.env.AREAL_UPDATE_PREFIX);
 const mode = process.env.AREAL_UPDATE_CASE ?? "main";
 assert(

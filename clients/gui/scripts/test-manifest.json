@@ -996,6 +996,13 @@
     "requires": []
   },
   {
+    "script": "test:library-store",
+    "layer": "unit",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["desktop"],
+    "requires": []
+  },
+  {
     "script": "test:mobile-handshake",
     "layer": "e2e",
     "platforms": ["darwin"],
@@ -1184,5 +1191,37 @@
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["composer"],
     "requires": []
+  },
+  {
+    "script": "test:host-protocol-conformance",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "protocol", "service"],
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "A0 schema parity against actual Host/Core over local socket and Relay Noise; uses isolated homes and synthetic vault authorization."
+  },
+  {
+    "script": "test:desktop-ipc-freeze",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["desktop", "protocol"],
+    "requires": [],
+    "notes": "A0 base-registry subset checks and isolated added-command/operation rejection evidence. Native bridge channels remain outside this freeze."
+  },
+  {
+    "script": "test:host-client",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "protocol"],
+    "requires": [],
+    "notes": "A1 shared client over an actual WebSocket server: ticket refresh, stale state, identity rejection, close cancellation and URL boundaries."
+  },
+  {
+    "script": "test:host-seed-copy",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["service", "development"],
+    "requires": [],
+    "notes": "Development-only read-only snapshot, native test registration, and operational-state exclusion. Packaged real-data acceptance is separate."
   }
 ]

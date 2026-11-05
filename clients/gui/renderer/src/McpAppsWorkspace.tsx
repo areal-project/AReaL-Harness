@@ -31,7 +31,7 @@ import {
   type McpAppsCommand,
 } from "./settings/McpAppsSettings.js";
 import type { Action, Data, PlatformServices } from "./services.js";
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "./services.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 export type McpWorkspaceServer = McpAppServer;
 type AppThreadIntent = "reuse-or-create" | "require-current" | "new";

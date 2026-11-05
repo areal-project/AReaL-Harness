@@ -4534,7 +4534,7 @@
       "title": "权威历史尚未补齐时，未解析的锚点保持待恢复",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "must",
-      "textSha256": "0bd4f8a1af577641b2ee61a64257dd157e4b58e21d5c673a79992faae2a61f55"
+      "textSha256": "c0d6c9752b99482f69570f69411e68eefd744f1bc50e16c83565c41f0ffdaa73"
     },
     {
       "id": "R-MESSAGES-006",

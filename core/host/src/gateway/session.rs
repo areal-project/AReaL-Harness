@@ -19,10 +19,14 @@ mod projection;
 mod review;
 #[path = "send.rs"]
 pub(super) mod send;
+#[path = "shared_reads.rs"]
+mod shared_reads;
 #[path = "stop.rs"]
 mod stop;
 #[path = "tasks.rs"]
 pub(super) mod tasks;
+#[path = "uploads.rs"]
+mod uploads;
 use super::wire;
 use crate::server::{Host, gateway_owner};
 use anyhow::{Context, Result, ensure};
@@ -167,6 +171,35 @@ impl RequestBudget {
     }
 }
 
+// 留出封装与 JSON 转义的余量，整条消息仍在 applicationMessageBytes（256 KiB）以内。
+/// 远程与本机写入口共用的错误码；其余一律归为 CORE_UNAVAILABLE。
+pub(crate) fn error_code(message: &str) -> &str {
+    match message {
+        "INVALID_PARAMS"
+        | "FORBIDDEN"
+        | "GRANT_CHANGED"
+        | "RESYNC_REQUIRED"
+        | "REVIEW_INCOMPLETE"
+        | "TARGET_CHANGED"
+        | "COMMAND_CONFLICT"
+        | "RESOURCE_UNAVAILABLE"
+        | "CORE_INCOMPATIBLE"
+        | "LIMIT_EXCEEDED"
+        | "CAPACITY_EXCEEDED"
+        | "TURN_BUSY"
+        | "TASK_CONTROL_REQUIRED"
+        | "SUBMISSION_UNKNOWN" => message,
+        _ => "CORE_UNAVAILABLE",
+    }
+}
+pub(crate) const LOCAL_PEER: &str = "local-desktop";
+/// gui-write-v1 的输入上限与桌面 Main 一致（正文 64 KiB、16 个附件、8 段引用、32 块 MCP），
+/// 另加 MCP 总量上限，保证整条命令放得进 1 MiB 帧。
+pub(crate) const GUI_WRITE_PENDING_BYTES: usize = 704 * 1024;
+pub(crate) fn write_limits() -> Value {
+    json!({"commandTextBytes":64 * 1024,"commandPendingBytes":GUI_WRITE_PENDING_BYTES,"attachments":16,"quotes":8,"quoteUnits":16000,"mcpBlocks":32,"mcpBlockBytes":64 * 1024,"mcpContentBytes":send::MCP_CONTENT_BYTES,"uploadChunkBytes":uploads::CHUNK_BYTES,"uploadBytes":crate::server::conversation_media::MAX_BYTES})
+}
+
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
     pub(crate) peer: String,
@@ -178,6 +211,11 @@ pub(crate) struct Session {
     kind: gateway_owner::TransportKind,
     source_id: String,
     viewer: Option<observer::Viewer>,
+    shell: Option<crate::server::shell_subscription::Subscription>,
+    gui_read: bool,
+    gui_write: bool,
+    local: bool,
+    uploads: uploads::Uploads,
     token_key: [u8; 32],
 }
 struct SessionSlot {
@@ -344,8 +382,18 @@ impl Session {
                 "displayName",
                 "clientKind",
                 "inviteSecret",
+                "capabilities",
             ],
-        ) && hello["method"] == "hello"
+        ) && hello.get("capabilities").is_none_or(|capabilities| {
+            capabilities.as_array().is_some_and(|capabilities| {
+                capabilities.len() <= 32
+                    && capabilities.iter().all(|capability| {
+                        capability
+                            .as_str()
+                            .is_some_and(|value| !value.is_empty() && value.len() <= 80)
+                    })
+            })
+        }) && hello["method"] == "hello"
             && hello["displayName"]
                 .as_str()
                 .is_some_and(|name| !name.trim().is_empty() && name.chars().count() <= 80)
@@ -428,6 +476,23 @@ impl Session {
             host_peer: identity.peer().to_string(),
             token_key,
             viewer: None,
+            shell: None,
+            gui_read: hello["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities
+                        .iter()
+                        .any(|capability| capability == "gui-read-v1")
+                }),
+            gui_write: hello["capabilities"]
+                .as_array()
+                .is_some_and(|capabilities| {
+                    capabilities
+                        .iter()
+                        .any(|capability| capability == "gui-write-v1")
+                }),
+            local: false,
+            uploads: Default::default(),
             transport: admission.transport,
             kind: admission.kind,
             source_id: config["sourceId"]
@@ -456,16 +521,26 @@ impl Session {
         let ready = session.describe(true);
         wire::write_json(&mut writer, &serde_json::to_vec(&ready)?, limits).await?;
         let mut budget = RequestBudget::new(Instant::now());
+        let mut shell_tick = tokio::time::interval(Duration::from_millis(500));
+        shell_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             enum Incoming {
                 Request(Option<RequestMessage>),
                 Event(Result<crate::server::schedule_connection::CoreEvent>),
+                Shell,
             }
             let incoming = tokio::select! {
                 request = requests.recv() => Incoming::Request(request),
                 event = session.next_event() => Incoming::Event(event),
+                _ = shell_tick.tick(), if session.shell.is_some() => Incoming::Shell,
             };
             let bytes = match incoming {
+                Incoming::Shell => {
+                    if let Some(event) = session.shell_event().await? {
+                        wire::write_json(&mut writer, &serde_json::to_vec(&event)?, limits).await?;
+                    }
+                    continue;
+                }
                 Incoming::Request(bytes) => bytes,
                 Incoming::Event(event) => {
                     let update = match event {
@@ -510,23 +585,7 @@ impl Session {
                 Ok(result) => json!({"id":request["id"],"result":result}),
                 Err(error) => {
                     let message = error.to_string();
-                    let code = match message.as_str() {
-                        "INVALID_PARAMS"
-                        | "FORBIDDEN"
-                        | "GRANT_CHANGED"
-                        | "RESYNC_REQUIRED"
-                        | "REVIEW_INCOMPLETE"
-                        | "TARGET_CHANGED"
-                        | "COMMAND_CONFLICT"
-                        | "RESOURCE_UNAVAILABLE"
-                        | "CORE_INCOMPATIBLE"
-                        | "LIMIT_EXCEEDED"
-                        | "CAPACITY_EXCEEDED"
-                        | "TURN_BUSY"
-                        | "TASK_CONTROL_REQUIRED"
-                        | "SUBMISSION_UNKNOWN" => message.as_str(),
-                        _ => "CORE_UNAVAILABLE",
-                    };
+                    let code = error_code(&message);
                     let description = match error.downcast_ref::<BudgetExceeded>() {
                         Some(BudgetExceeded::Requests) => "请求过于频繁",
                         Some(BudgetExceeded::Writes) => "命令超过允许的预算",
@@ -534,6 +593,15 @@ impl Session {
                     };
                     let mut response =
                         json!({"id":request["id"],"error":{"code":code,"message":description}});
+                    if session.gui_read
+                        && matches!(method, Some("session.history" | "artifact.read"))
+                    {
+                        if let Some(native) =
+                            error.downcast_ref::<crate::server::schedule_connection::RpcFailure>()
+                        {
+                            response["error"]["coreError"] = native.0.clone();
+                        }
+                    }
                     if matches!(
                         request["method"].as_str(),
                         Some(
@@ -649,6 +717,27 @@ impl Session {
                 .collect(),
         );
         let mut value = json!({"apiVersion":"areal.remote.v2","hostId":self.host_peer,"gatewayGeneration":self.generation,"connectionId":self.connection,"grantRevision":self.grant["revision"],"capabilities":self.grant["capabilities"],"methods":METHODS,"limits":limits});
+        if self.gui_write {
+            value["writeLimits"] = write_limits();
+        }
+        if self.gui_read {
+            value["negotiatedCapabilities"] = json!(if self.gui_write {
+                json!(["gui-read-v1", "gui-write-v1"])
+            } else {
+                json!(["gui-read-v1"])
+            });
+            value["authorityHostId"] = json!(self.host.identity.host_id);
+            value["hostGeneration"] = json!(self.host.identity.generation);
+            value["readMethods"] = json!([
+                "shell.subscribe",
+                "shell.unsubscribe",
+                "session.open",
+                "session.history",
+                "subscription.close",
+                "artifact.read"
+            ]);
+            value["readLimits"] = json!({"historyPageBytes":131072,"mediaChunkBytes":65536});
+        }
         if self.host.gateway.push_supported.get() {
             value["capabilities"]
                 .as_array_mut()
@@ -660,7 +749,53 @@ impl Session {
         }
         value
     }
+    /// 本机桌面票据连接：本机用户即主人，拥有全部项目的全部能力；
+    /// 回执用固定的本机设备 ID 记账，项目 ID 不经远程别名。
+    pub(crate) fn local(host: Rc<Host>, connection: String) -> Result<Self> {
+        let mut token_key = [0; 32];
+        std::io::Read::read_exact(&mut std::fs::File::open("/dev/urandom")?, &mut token_key)?;
+        Ok(Self {
+            peer: LOCAL_PEER.into(),
+            grant: json!({"revision":0,"capabilities":["observe","review","submit","interrupt","answer","pauseTask","manage"],"projectIds":[]}),
+            generation: host.identity.generation.clone(),
+            connection,
+            host_peer: host.identity.host_id.clone(),
+            token_key,
+            viewer: None,
+            shell: None,
+            gui_read: true,
+            gui_write: true,
+            local: true,
+            uploads: Default::default(),
+            transport: String::new(),
+            kind: gateway_owner::TransportKind::Direct,
+            source_id: String::new(),
+            host,
+        })
+    }
+    /// 本机写请求沿用远程封装；上下文里的网关代次与授权版本由本连接补齐。
+    pub(crate) async fn local_request(&mut self, request: &Value) -> Result<Value> {
+        ensure!(self.local, "FORBIDDEN");
+        self.request(request).await
+    }
+    pub(super) fn command_text_bytes(&self) -> usize {
+        64 * 1024
+    }
+    /// 已发布的 iOS 与 PWA 只发正文，沿用 72 KiB；声明 gui-write-v1 的客户端可带附件、引用与 MCP 内容。
+    pub(super) fn command_pending_bytes(&self) -> usize {
+        if self.gui_write {
+            GUI_WRITE_PENDING_BYTES
+        } else {
+            72 * 1024
+        }
+    }
     fn authorize(&self, project: Option<&str>, capability: &str) -> Result<()> {
+        if self.local {
+            if let Some(project) = project {
+                ensure!(self.host.slots.borrow().contains_key(project), "FORBIDDEN");
+            }
+            return Ok(());
+        }
         let snapshot = self.host.remote.snapshot(&self.host.migration)?;
         ensure!(
             gateway_owner::transport_key(&snapshot["config"], self.kind) == self.transport,
@@ -693,6 +828,15 @@ impl Session {
         Ok(())
     }
     fn bindings(&self) -> Result<Vec<(String, String)>> {
+        if self.local {
+            return Ok(self
+                .host
+                .slots
+                .borrow()
+                .keys()
+                .map(|id| (id.clone(), id.clone()))
+                .collect());
+        }
         gateway_owner::push::bindings(&self.host, &self.source_id)
     }
     fn project_id(&self, alias: &str) -> Result<String> {
@@ -864,6 +1008,24 @@ impl Session {
         let params = &request["params"];
         ensure!(params.is_object(), "INVALID_PARAMS");
         self.authorize(None, "observe")?;
+        if crate::server::workbench_route::METHODS.contains(&method) {
+            ensure!(self.local, "FORBIDDEN");
+            ensure!(
+                request.get("context").is_none() && request.get("commandId").is_none(),
+                "INVALID_PARAMS"
+            );
+            let context = json!({"principal":self.peer,"connection":self.connection});
+            return self
+                .host
+                .gateway
+                .workbench
+                .request(&self.host, method, params.clone(), context)
+                .await;
+        }
+        if shared_reads::METHODS.contains(&method) {
+            ensure!(request.get("context").is_none(), "INVALID_PARAMS");
+            return self.shell_request(method, params).await;
+        }
         if method == "host.describe" {
             ensure!(
                 request.get("context").is_none() && exact(params, &[]),
@@ -915,10 +1077,26 @@ impl Session {
                 json!({"projects":projects[offset..end],"nextCursor":(end<projects.len()).then(||end.to_string())}),
             );
         }
-        let project = text(&request["context"], "projectId")?.to_owned();
+        let native = self.gui_read
+            && (params["view"] == "conversation"
+                || (method == "session.history" && params.get("subscriptionId").is_some())
+                || (method == "subscription.close" && self.conversation_active()));
+        let project = if native {
+            self.native_alias(text(&request["context"], "projectId")?)?
+        } else {
+            text(&request["context"], "projectId")?.to_owned()
+        };
         self.authorize(Some(&project), "observe")?;
+        if method == "artifact.read" && native {
+            let generation = text(&request["context"], "serviceGeneration")?;
+            return self.conversation_media(&project, generation, params).await;
+        }
         if method == "command.read" {
             return self.command_read(&project, params).await;
+        }
+        if uploads::METHODS.contains(&method) {
+            let generation = text(&request["context"], "serviceGeneration")?.to_owned();
+            return self.upload_attachment(&project, &generation, request).await;
         }
         if method == "subscription.close" {
             return self.close_session(&project, params);
@@ -1224,7 +1402,9 @@ impl Session {
         self.authorize(Some(project), capability)?;
         if let Some(decision) = params.get("decision") {
             ensure!(
-                matches!(decision.as_str(), Some("allowOnce" | "deny"))
+                (matches!(decision.as_str(), Some("allowOnce" | "deny"))
+                    || (self.gui_write
+                        && matches!(decision.as_str(), Some("allowSession" | "allowProject"))))
                     && params.get("answers").is_none()
                     && params["argumentsDigest"].as_str().is_some_and(|digest| {
                         digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -1300,7 +1480,12 @@ impl Session {
                 "TARGET_CHANGED"
             );
             if item["kind"] == "approval" {
-                ensure!(params["decision"] == "allowOnce", "INVALID_PARAMS");
+                // 记住授权只对声明 gui-write-v1 的客户端开放，且以 Core 给出的 rememberAllowed 为准。
+                ensure!(
+                    params["decision"] == "allowOnce"
+                        || item["effectivePermissions"]["rememberAllowed"] == true,
+                    "INVALID_PARAMS"
+                );
                 ensure!(
                     params["argumentsDigest"] == item["argumentsDigest"],
                     "TARGET_CHANGED"

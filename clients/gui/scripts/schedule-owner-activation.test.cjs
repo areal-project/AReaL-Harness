@@ -3,7 +3,9 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { randomUUID } = require("node:crypto");
 const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
-const { HostClient } = require("../app/src/core/host-client.cjs");
+const { HostClient } = require("node:module").createRequire(
+  require("node:path").resolve(__dirname, "../app/package.json"),
+)("@areal/client/node");
 const { LifecycleOperations } = require("../app/src/core/lifecycle-operations.cjs");
 const { CoreBackend } = require("../app/src/core/backend.cjs");
 const { ProjectConnections } = require("../app/src/core/project-connections.cjs");

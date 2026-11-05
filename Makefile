@@ -194,6 +194,7 @@ harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
 	node scripts/git-auth-smoke.mjs
 	python3 scripts/tui-local-smoke.py
 	node scripts/local-service-smoke.mjs
+	node scripts/runtime-rotation-smoke.mjs
 
 unified-execution-smoke: build ## 真实 Runtime 的统一委派、组合交付、取消和恢复回归
 	node scripts/unified-execution-smoke.mjs
@@ -203,6 +204,7 @@ delegation-permissions-smoke: build ## 验证只读强约束、不可用准入�
 
 local-service-smoke: build ## 验证共享服务、多个窗口与宿主故障恢复
 	node scripts/local-service-smoke.mjs
+	node scripts/runtime-rotation-smoke.mjs
 
 git-auth-smoke: build ## 验证共享服务的 Git 身份、SSH agent 与 HTTPS 认证及失败保护
 	node scripts/git-auth-smoke.mjs
@@ -285,6 +287,12 @@ desktop-schemas: ## 从 Rust 类型导出 AReaL 桌面契约
 
 desktop-schema-check: ## 临时生成并规范化比较三份桌面 schema，不修改已提交文件
 	python3 scripts/desktop-schemas.py
+
+.PHONY: host-protocol-check
+host-protocol-check: ## 检查 A0 协议生成物与桌面 IPC 冻结的反例
+	python3 scripts/generate-host-protocol.py --check
+	python3 -m unittest scripts.tests.test_host_protocol_schema
+	node --test clients/gui/scripts/desktop-ipc-freeze.test.cjs
 
 package: release ## 生成 macOS arm64 / Linux x86_64 发行产物及完整性清单；ARGS 指定 --output
 	python3 scripts/package.py $(ARGS)

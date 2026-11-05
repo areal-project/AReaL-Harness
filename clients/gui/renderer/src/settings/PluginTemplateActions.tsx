@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
-import type { PluginCommandRef } from "@areal/workbench/desktop-contract/conversation";
+import type { ManagementResponseMap } from "../services.js";
+import type { PluginCommandRef } from "../services.js";
 import type { PluginDetail } from "./pluginTypes.js";
 import type { ResourceDraftSeed } from "./PluginSkillsPage.js";
 import { UiMessageError, formatUiMessage, useI18n } from "../i18n/IntlProvider.js";

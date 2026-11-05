@@ -82,7 +82,7 @@ export function usePanelNavigation(
       });
   };
   const showPanel = (name: string) => {
-    if (!initialReleased) return;
+    if (!initialReleased || session.readOnly) return;
     if (name === "预览") {
       void openBrowser();
       return;
@@ -143,6 +143,11 @@ export function usePanelNavigation(
   const subscribeShortcuts = () => {
     const listener = (event: KeyboardEvent) => {
       if (!initialReleased || event.isComposing) return;
+      if (
+        session.readOnly &&
+        !((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k")
+      )
+        return;
       if (
         (event.metaKey || event.ctrlKey) &&
         !event.altKey &&

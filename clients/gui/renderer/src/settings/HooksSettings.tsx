@@ -9,7 +9,7 @@ import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
 import { Feedback, SettingsDialog, useResource } from "./common.js";
 
-import type { Hook } from "@areal/workbench/desktop-contract/resource";
+import type { Hook } from "../services.js";
 type Hooks = {
   path: string;
   external: boolean;

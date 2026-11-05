@@ -1,20 +1,18 @@
-import { WorkbenchProviders } from "./app-shell/WorkbenchProviders.js";
-import React, { useEffect, useState, useSyncExternalStore } from "react";
+import { AppProviders, WorkbenchProviders } from "./app-shell/WorkbenchProviders.js";
+import React, { useEffect, useSyncExternalStore } from "react";
 import { WorkSurface, WorkbenchShell } from "./app-shell/WorkbenchShell.js";
 import { BackendStatusNotice } from "./BackendStatusNotice.js";
 import { Button } from "./components/ui/button.js";
 import { sending, subscribeSending } from "./Composer.js";
-import { GenUiWorkspace } from "./GenUiWorkspace.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Inbox } from "./Inbox.js";
 import { useMcpAppsWorkspace } from "./McpAppsWorkspace.js";
-import { QuitProgressDialog } from "./QuitProgressDialog.js";
 import { recoverySettings } from "./recoveryPresentation.js";
-import { type Data, type PlatformServices, type QuitProgress } from "./services.js";
+import { type Data, type PlatformServices } from "./services.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
 import { SettingsNavigation } from "./settings/SettingsWorkspace.js";
-import { UnsavedChangesProvider, useGuardedNavigation } from "./settings/UnsavedChanges.js";
+import { useGuardedNavigation } from "./settings/UnsavedChanges.js";
 import { useTrajectoryPolling } from "./settings/useTrajectoryPolling.js";
 import { useNavigationWorkspace } from "./state/navigationWorkspace.js";
 import { projectExecutionBlocked } from "./state/projectExecution.js";
@@ -57,15 +55,10 @@ import { WorkspacePanelContent } from "./views/WorkspacePanelContent.js";
 import { WorkspacePanels } from "./views/WorkspacePanels.js";
 import { WorkspaceFileTree } from "./workspace-file-tree/WorkspaceFileTree.js";
 export function App({ services }: { services: PlatformServices }) {
-  const [quitProgress, setQuitProgress] = useState<QuitProgress>({ state: "idle" });
-  useEffect(() => services.onQuitProgress?.(setQuitProgress), [services]);
   return (
-    <UnsavedChangesProvider>
-      <GenUiWorkspace services={services}>
-        <AppContent services={services} />
-      </GenUiWorkspace>
-      <QuitProgressDialog progress={quitProgress} />
-    </UnsavedChangesProvider>
+    <AppProviders services={services}>
+      <AppContent services={services} />
+    </AppProviders>
   );
 }
 function AppContent({ services }: { services: PlatformServices }) {
@@ -237,6 +230,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     action,
     onError: setError,
     enabled:
+      !session.readOnly &&
       initialReleased &&
       !settingsOpen &&
       !taskCenterOpen &&
@@ -249,7 +243,7 @@ function AppContent({ services }: { services: PlatformServices }) {
   useEffect(side.reconcileClosedTabs, [snapshot.projects, sideChats.tabs]);
   // 状态只更新设置入口，不阻塞启动、不反复弹窗，也不进入聊天错误栏。
   useTrajectoryPolling(resourceAction, {
-    connected: snapshot.connection?.state === "ready",
+    connected: !session.readOnly && snapshot.connection?.state === "ready",
     intervalMs: 15000,
     onResult: onTrajectoryStatus,
     onError: () => onTrajectoryStatus(null),
@@ -520,19 +514,21 @@ function AppContent({ services }: { services: PlatformServices }) {
             </Button>
           </div>
         )}
-        <BackendStatusNotice
-          summary={snapshot.serviceSummary}
-          connection={snapshot.connection}
-          update={snapshot.backendUpdate}
-          lifecycle={snapshot.lifecycle}
-          currentCommands={
-            snapshot.desktopCapabilities?.currentCommands ??
-            project?.desktopCapabilities?.currentCommands
-          }
-          pending={backendActionPending}
-          error={backendActionError}
-          onAction={(kind) => void runBackendAction(kind)}
-        />
+        {!session.readOnly && (
+          <BackendStatusNotice
+            summary={snapshot.serviceSummary}
+            connection={snapshot.connection}
+            update={snapshot.backendUpdate}
+            lifecycle={snapshot.lifecycle}
+            currentCommands={
+              snapshot.desktopCapabilities?.currentCommands ??
+              project?.desktopCapabilities?.currentCommands
+            }
+            pending={backendActionPending}
+            error={backendActionError}
+            onAction={(kind) => void runBackendAction(kind)}
+          />
+        )}
         {!initialReleased ? (
           <StartupScreen
             services={services}
