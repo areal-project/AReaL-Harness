@@ -61,3 +61,4 @@ Electron Main 里还有约 2.7 万行跨项目业务（Worktree、定时任务�
 
 - 使用统计（`analytics.read`、`analytics.sync`、`analytics.activity`、`analytics.import`）。代码在 `services/workbench/src/domains/analytics.cjs`。与 Main 的不同有三处：同步经 `core.request` 读，不拿 Core 地址与令牌；Core 记录了轮次开始时刻时按那天计，旧历史仍为未注明日期；活跃时间由各客户端每 5 秒上报，服务取并集。
 - 界面开关 `areal.oneProtocol.domains=analytics`（需同时开 reads）。首次连上时把 Main 的每日活跃时间合并过去（按天取较大值，可重复执行）。切换期间 Main 照常写自己的文件，关掉开关就回到 Main 的数据。
+- 资料库（`library.json`）先只把写入收归 Host：开关 `areal.oneProtocol.domains` 含 `library` 时，桌面后台把下一份内容写到同目录暂存文件，经本机控制通道 `library.write` 交给 Host，Host 按文件内容摘要比较后替换（`core/host/src/library_store.rs`），冲突时桌面重读再重算。文件不搬家，Host 没有该 GUI 的导航来源时退回桌面自己写。整理逻辑依赖 Worktree 分组与各项目实时摘要，随 Worktree 一起搬进服务，之后再改写进 Host。

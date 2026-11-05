@@ -16091,6 +16091,94 @@
           }
         }
       ]
+    },
+    "LocalLibraryWriteParams": {
+      "type": "object",
+      "description": "Desktop library single writer: Main writes the whole next library.json to a staged file beside it (the library can exceed a 1 MiB frame); Host validates it and replaces library.json only if the file still has expectedDigest (sha256 hex, null when absent).",
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expectedDigest": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "staged": {
+          "type": "string",
+          "pattern": "^\\.library-next-[0-9a-f-]{36}\\.json$"
+        }
+      },
+      "required": [
+        "profile",
+        "expectedDigest",
+        "staged"
+      ],
+      "additionalProperties": false
+    },
+    "LocalLibraryWriteRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "library.write"
+        },
+        "params": {
+          "$ref": "#/$defs/LocalLibraryWriteParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "library.write",
+          "params": {
+            "profile": "/example",
+            "expectedDigest": null,
+            "staged": ".library-next-11111111-1111-4111-8111-111111111111.json"
+          }
+        }
+      ]
+    },
+    "LocalLibraryWriteResult": {
+      "type": "object",
+      "properties": {
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "required": [
+        "digest"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "digest": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ]
     }
   },
   "x-current": {
@@ -16310,6 +16398,11 @@
           "request": "#/$defs/LocalWebRevokeRequest",
           "result": "#/$defs/LocalWebRevokeResult",
           "source": "core/host/src/server.rs"
+        },
+        "library.write": {
+          "request": "#/$defs/LocalLibraryWriteRequest",
+          "result": "#/$defs/LocalLibraryWriteResult",
+          "source": "core/host/src/library_store.rs"
         }
       },
       "framing": {

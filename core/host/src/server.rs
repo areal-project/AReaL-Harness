@@ -5,6 +5,8 @@ mod conversation_read;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
 pub(crate) use gateway_owner::error_code;
+#[path = "library_store.rs"]
+mod library_store;
 #[path = "loopback.rs"]
 mod loopback;
 #[path = "power.rs"]
@@ -1075,6 +1077,7 @@ impl Host {
                 self.update_status()
             }
             "host.update" => self.update(serde_json::from_value(params)?).await,
+            "library.write" => library_store::write(self, serde_json::from_value(params)?),
             _ => Err(error("methodNotFound", "unknown Host method")),
         }
     }
