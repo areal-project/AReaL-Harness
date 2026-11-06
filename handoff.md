@@ -1,5 +1,7 @@
 # one-protocol 本机验收交接
 
+当前结论见末尾“剩余问题修复与验收结果”。下方此前的未完成项和失败记录保留为历史证据，不代表最新状态。
+
 本轮集成 `origin/claude/one-protocol@0aba3e33`，包含 `7f942081` 的 A4 共享界面，基线为 `4c4c529b` 的 A3 后台迁移。远端以 fast-forward 合入 `codex/one-protocol-a0`，未 push。
 
 ## 本轮范围
@@ -104,3 +106,37 @@ Remote 最终构建在真实配对后先显示暂态加载失败，随后同一�
 最终 ZIP 解压到独立副本后，经显式隔离环境启动，已用 System Events 按本次 GUI PID 前置并发送系统合成 ⌘Q。backend 关闭时 GUI 正常退出，同代 Host 保留；backend 开启时已确认后台 owned=true，⌘Q 打开“后台状态暂时无法核查”的原生确认，选择“保持后台运行并退出”后 GUI 退出，同代 Host 和相同后台 PID 保留。后者证明该确认分支的键盘退出路径，不证明后台状态核查正常；两轮均非物理按键操作。完整状态与清理回执见 UI 记录。
 
 旧 safeStorage 密文兼容仍待补证。iOS 前后台恢复、停止与审批、Remote 重连、远程不可用入口及 flag off 的页面证据不能由上述回归替代，仍按 UI 记录逐项保留。恢复排查的后续软件方案：优先在共享客户端加入按连接与项目代次关联的脱敏请求诊断导出，以取得同次失败原始错误；另一方案是在既有真实 Host 夹具中补齐 App 前后台和断网的可控驱动。两者均应保留原始 UNKNOWN，不以自动重放写操作恢复。
+
+## 剩余问题修复与验收结果
+
+本节覆盖上文历史记录中的未完成项；原始失败、UNKNOWN 和隔离事故保留。最终业务源码为 `cf005d45`（含 `36e51975`），已包含合并的 `origin/claude/project-thread-821xno@246e2124` 和前轮 UUID/共享订阅修复。仅本地提交，未 push、发布或替换日常安装。
+
+### 后台状态与会话恢复
+
+后台状态失败已取得可重复因果证据：Host 的项目 Mutex 让只读活动/状态检查相互排斥，活动探测又独占生命周期文件锁，并发菜单/Main/外部客户端可将空闲 ready 项目误报 unavailable。已将 Host 项目门闩、活动锁、项目服务 status 启动锁及可用性探测改为共享读取，生命周期、凭据及停止变更仍独占；真实写锁和不确定活动仍保留 UNKNOWN。确定性红绿回归、完整 Host 测试及最终真实 Host/工作台并发读取通过。没有把 unavailable 默认改为空闲。
+
+iOS 排查发现旧 App JS 未含前轮同目标订阅复用；按 mobile assets 身份刷新后，已在同次前后台切换中记录连接、session.open、项目代次和 Core 完成回合。另一个真实故障是原 UNKNOWN 请求已 accepted，但核查按钮没传 requestId，适配器也没发布查询结果，导致 Composer 持续只读。修复后查询并发布原权威回执，校验连接和执行项目；旧 pending-operation 缺失时只依据匹配原 ID/方法/线程的回执恢复，不重放写入。原请求仍只有一条受理结果。旧未抓包事故的唯一根因不能追认。UNKNOWN 的真实按钮红绿证据来自 `744d7a08` Core 与当时修复中 JS，最终恢复映射回归通过；最终设备轮没有人为制造或迁移旧 UNKNOWN。
+
+### 门禁
+
+`gui-health`、`verify:design`、`test:design`、相关类型/lint/格式、文档与 Host/Relay 协议验收均通过。Main 总行数 24714、业务行数 8055，未放宽预算。更新代码消除重复；设计清单仅刷新既有非规范条目的指纹；连续回复占位断言按原 Messages R-MESSAGES-012 契约修正，产品滚动实现未改。日志与红灯在 `.scratch/one-protocol-resume2/root/`。
+
+### 用户路径验收
+
+| 路径 | 结果与证据 |
+| --- | --- |
+| 停止项目默认选中 | 首页明确显示项目已停止并结束连接忙碌；前轮真实 Remote 页面证据与投影回归保留 |
+| iOS 恢复、停止、审批 | 最终共享 JS 在隔离 iOS 模拟器后台返回后保留历史并能发送，`cf005d45` Core 上单独复验两回合 completed；此前相同 JS 在 `36e51975` Core 上停止 accepted/Core interrupted，允许一次 accepted/Core completed，隔离文件实际写出 approved。见 `ui/report.md`、`ui/remote-run/final-core-result.json` 与 `ui/final-core-repeat/` |
+| Remote 断线重连 | 离线提示可见，恢复后可打开会话并发送，Core completed；见 `ui/remote-run/` |
+| 远程不可用领域 | 未授权跨项目领域按能力隐藏导航入口；不是点击后拒绝的证据 |
+| flag off | 旧 Remote 页面显示项目，实际打开已有线程并读到共享页发送的消息 |
+| 原生 ⌘Q | 最终 ZIP 原样解压，以包内 Core 运行；真实系统合成按键退出，跨 Main readiness 的并发活动读取完整，全程采样无 unavailable；退出后 Host/后台保持同代同 PID。见 `quit-ui/package-stable5-*.json` |
+| 旧格式凭据 | 历史 writer + 原生 safeStorage 的合成旧密文由当前 reader 经 Main 解密后发送，loopback 验证匹配且创建会话；专用 Keychain 删除并确认不存在 |
+
+最终原生夹具早期在工作台启动期间观察到 unavailable；后续稳定运行仍捕获一次退出准备后的 8ms unavailable，由此继续定位到项目服务的独占只读锁，扩展原回归确认红灯后修复，并用最终包全采样通过。未把首轮退出成功冒充并发全部通过。其他夹具错误及原始失败保留在 `quit-ui/report.md`。
+
+### 最终产物
+
+最终候选 `.scratch/one-protocol-resume2/package-final3/AReaL-Harness-GUI-mac-arm64.zip`，SHA-256 `d607610cd2d86cf93cb606e7082f584d77b56714a2a93895c3ff6e5c3446e20b`。包内 Core revision `cf005d45`、workingTree=false、inputHash `db2ee761b45fff5ca9b173f5f94196c058e2fa93f3d8c0c1ae4af117e044fe93`，严格 ad-hoc 签名有效。最终源码 Core 与 GUI 均重新构建，候选包含 UUID、订阅和本次修复。身份见 `root/candidate-identity-final3.json` 与 `package-final3/package-evidence.json`。
+
+这是 macOS arm64 debug/ad-hoc 本地验收候选，未做 Developer ID/公证。测试使用隔离数据、合成凭据、本地模型及 Relay；iOS 模拟器与系统合成 ⌘Q 不替代物理真机/按键。旧格式兼容证明历史 writer 生成的合成密文可被最终源码 reader 解密并发送，不使用或证明用户真实历史密文字节。Node 24.2.0 存在 workspace engine 版本警告。
