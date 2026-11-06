@@ -126,9 +126,18 @@ export async function runConversationSystem(page, scratch, checks) {
   await activity.click();
   assert.equal(await command.getAttribute("aria-expanded"), "true");
   await preview.getByLabel("图片状态", { exact: true }).selectOption("unavailable");
+  const unavailableImage = preview.getByRole("status").filter({ hasText: "图片引用暂不可用" });
+  // 等待实际资源状态提交后再操作，避免选择框变更与 Disclosure 开合交错。
+  await unavailableImage.waitFor();
   await image.click();
-  await preview.getByRole("status").filter({ hasText: "图片引用暂不可用" }).waitFor();
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('button[aria-label="已查看图片 · 界面参考.png"]')
+        ?.getAttribute("aria-expanded") === "false",
+  );
   await preview.getByLabel("图片状态", { exact: true }).selectOption("available");
+  await unavailableImage.waitFor({ state: "hidden" });
   assert.equal(await image.getAttribute("aria-expanded"), "false");
   await image.click();
   checks.push(
