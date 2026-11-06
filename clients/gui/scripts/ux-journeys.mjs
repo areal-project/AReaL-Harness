@@ -159,7 +159,11 @@ try {
     const configure = page.getByRole("button", { name: "配置模型", exact: true });
     await configure.waitFor();
     record(await inspectPage(page, "旅程1 没模型的首页"));
-    record(await expectFeedback(page, "旅程1 点配置模型", () => configure.click()));
+    record(
+      await expectFeedback(page, "旅程1 点配置模型", () => configure.click(), {
+        until: page.locator('.settings-navigation-item[aria-current="page"]'),
+      }),
+    );
     await page.getByRole("button", { name: "模型设置", exact: true }).waitFor();
     assert.equal(
       await page.locator('.settings-navigation-item[aria-current="page"]').innerText(),
@@ -186,14 +190,22 @@ try {
       .click({ force: true, timeout: 60_000 });
     const input = page.getByTestId("chat-input").first();
     await input.fill("给 src/math.ts 加一个 clamp 函数");
-    record(await expectFeedback(page, "旅程3 回车发送", () => input.press("Enter")));
+    record(
+      await expectFeedback(page, "旅程3 回车发送", () => input.press("Enter"), {
+        until: page.locator(".messages").getByText("给 src/math.ts 加一个 clamp 函数"),
+      }),
+    );
     const approval = page.locator('.decision-card[data-interaction="approval"]');
     await approval.waitFor({ timeout: 60_000 });
     await shot("approval");
     assert.equal(await input.isVisible(), true, "审批时输入框仍在");
     record(await inspectPage(page, "旅程3 等审批"));
     await input.fill("顺便把 README 也更新");
-    record(await expectFeedback(page, "旅程3 审批中排队", () => input.press("Enter")));
+    record(
+      await expectFeedback(page, "旅程3 审批中排队", () => input.press("Enter"), {
+        until: page.locator(".composer-queue"),
+      }),
+    );
     await page.locator(".composer-queue").waitFor();
     await shot("queued");
     record(await inspectPage(page, "旅程3 审批卡与排队消息"));

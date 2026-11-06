@@ -107,8 +107,11 @@ export async function inspectPage(page, step, { locale = "zh-CN" } = {}) {
   return { step, problems };
 }
 
-/** 1. 有反馈：执行 act 后 400ms 内页面必须有可见变化，否则记为“卡住”。 */
-export async function expectFeedback(page, step, act, timeout = 400) {
+/**
+ * 1. 有反馈：执行 act 后 400ms 内页面必须有可见变化，否则记为“卡住”。
+ * 给了 until 时还要在 10 秒内真的出现预期结果；只弹一条提示不算完成。
+ */
+export async function expectFeedback(page, step, act, { timeout = 400, until } = {}) {
   await page.evaluate(() => {
     window.__uxChanged = false;
     window.__uxObserver?.disconnect();
@@ -126,5 +129,17 @@ export async function expectFeedback(page, step, act, timeout = 400) {
     .then(() => true)
     .catch(() => false);
   await page.evaluate(() => window.__uxObserver?.disconnect());
-  return { step, problems: changed ? [] : [`卡住：${timeout}ms 内界面没有变化`] };
+  const problems = changed ? [] : [`卡住：${timeout}ms 内界面没有变化`];
+  if (
+    until &&
+    !(await until
+      .first()
+      .waitFor({ timeout: 10_000 })
+      .then(
+        () => true,
+        () => false,
+      ))
+  )
+    problems.push("没有出现预期结果");
+  return { step, problems };
 }
