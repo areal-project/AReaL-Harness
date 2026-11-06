@@ -589,7 +589,7 @@ try {
     globalThis.queueFixtureConnection.prototype.fixtureDrop = "areal/queue/steer";
   });
   await row("2 对账更新")
-    .getByRole("button", { name: /引导/ })
+    .getByRole("button", { name: /立即发送/ })
     .click();
   await button("核对队列操作").waitFor();
   await button("核对队列操作").click();

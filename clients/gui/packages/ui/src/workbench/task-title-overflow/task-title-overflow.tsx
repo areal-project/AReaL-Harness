@@ -46,12 +46,13 @@ export function TaskTitleOverflowText({
     return observeResize([textElement, originalTextElement], updateOverflow);
   }, [children]);
 
+  // clip 而不是 hidden：hidden 仍是滚动容器，点击或聚焦会把标题开头横向滚出视野。
   return (
     <TitleTooltip title={isOverflowing ? title : undefined}>
       <Component
         ref={textRef}
         className={cn(
-          "min-w-0 flex-1 overflow-hidden whitespace-nowrap",
+          "min-w-0 flex-1 overflow-clip whitespace-nowrap",
           isOverflowing && overflowFadeClassName,
           className,
         )}

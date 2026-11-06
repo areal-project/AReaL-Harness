@@ -884,13 +884,12 @@ export function MarkdownTable({
       : viewportMaxWidth;
 
   return (
-    <div ref={rootRef} className="my-0 flex min-w-0 flex-col gap-2">
-      <div className="flex items-center justify-end gap-1" data-markdown-table-toolbar="">
-        {edgeShadowState !== "none" && labels.scrollHint && (
-          <span className="mr-auto text-ui-caption text-foreground-subtle">
-            {labels.scrollHint}
-          </span>
-        )}
+    <div ref={rootRef} className="group/markdown-table relative my-0 flex min-w-0 flex-col gap-1">
+      {/* 操作浮在表格右上角，悬停或键盘聚焦时出现，不再单独占一行；触屏常显。 */}
+      <div
+        className="absolute top-1 right-1 z-10 flex items-center gap-1 rounded-md bg-popover p-0.5 shadow-sm opacity-0 transition-opacity group-focus-within/markdown-table:opacity-100 group-hover/markdown-table:opacity-100 [@media(hover:none)]:opacity-100"
+        data-markdown-table-toolbar=""
+      >
         <MarkdownTableActionButton
           label={copyLabel}
           onClick={() => {
@@ -1021,6 +1020,9 @@ export function MarkdownTable({
           </div>
         </div>
       </div>
+      {edgeShadowState !== "none" && labels.scrollHint && (
+        <span className="text-ui-caption text-foreground-subtle">{labels.scrollHint}</span>
+      )}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent
           finalFocus={previewButtonRef}
