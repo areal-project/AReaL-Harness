@@ -221,11 +221,14 @@ export function createHostReadServices(
     snapshot = projection.snapshot;
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
-    if (!desktop && options.writes && client.writable("project.models")) {
+    if ((!desktop || legacy) && options.writes && client.writable("project.models")) {
       const connection = client.snapshot();
       if (connection.connection !== "ready") return;
       for (const project of shell?.snapshot.projects ?? []) {
         if (project.state !== "ready") continue;
+        // 桌面后台只认识资料库里的项目；其余项目（如命令行登记的）由 Host 读模型目录。
+        const id = ids.get(project.projectId) ?? project.projectId;
+        if (legacy?.projects.some((value) => value.id === id)) continue;
         const identity = JSON.stringify([
           connection.identity.connectionId,
           project.serviceGeneration,
@@ -798,11 +801,26 @@ export function createHostReadServices(
     () => librarySourceId,
   );
   const unavailable = async () => {
-    throw new Error("This capability requires the desktop application");
+    throw new Error("此功能需要桌面应用");
+  };
+  // 浏览器拿不到本机文件夹选择框；本机网页让用户填路径，登记仍由桌面后台完成。
+  const chooseProject = async () => {
+    const sourceId = librarySourceId;
+    if (!sourceId || !client.writable("desktop.command")) return unavailable();
+    const path = globalThis.prompt("输入项目文件夹的完整路径")?.trim();
+    if (!path) return null;
+    const id = await client.workbench("desktop.command", {
+      sourceId,
+      command: "addProject",
+      request: { path },
+    });
+    if (typeof id !== "string") throw new Error("项目登记结果无效");
+    client.refreshShell();
+    return id;
   };
   return {
     ...(desktop ?? {
-      chooseProject: unavailable,
+      chooseProject,
       command: hostDesktopCommand(client, () => librarySourceId),
       theme: async () => ({
         dark: matchMedia("(prefers-color-scheme: dark)").matches,

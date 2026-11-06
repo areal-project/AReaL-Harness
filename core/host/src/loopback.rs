@@ -629,7 +629,8 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                     let message=error.to_string();
                                     let code=error.downcast_ref::<wire::Error>().map(|error|error.code).unwrap_or_else(||super::gateway_owner::error_code(&message));
                                     let mut response = json!({"version":VERSION,"id":id,"error":{"code":code,"message":"Host command failed"}});
-                                    if code == "COMMAND_FAILED" && let Some(error) = error.downcast_ref::<wire::Error>() {
+                                    // Host 自己写的错误说明可以给界面看；其余原因可能带内部细节，只给代码。
+                                    if let Some(error) = error.downcast_ref::<wire::Error>() {
                                         response["error"]["message"] = json!(error.message);
                                     }
                                     if matches!(raw["method"].as_str(), Some("library.command" | "worktree.command" | "trajectory.command" | "feedback.command" | "manage.command"

@@ -2,7 +2,7 @@
 use super::Host;
 use crate::workbench::{Reverse, Workbench, restart_delay};
 use anyhow::{Context, Result, bail, ensure};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     cell::{Cell, RefCell},
@@ -91,7 +91,7 @@ pub(super) struct Backend {
 
 /// Main 传来的桌面后台启动参数。`options` 是界面 Main 的启动选项，Host 只读取并校验路径字段：
 /// 数据目录仍是原 GUI home，不搬家。`appRoot` 由 Host 从已签名安装包推导，不接受客户端指定。
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Ensure {
     profile: PathBuf,
@@ -293,7 +293,11 @@ impl Supervisor {
         let Some(source) = self.backend.source.borrow().clone() else {
             return Ok(None);
         };
-        let alias = backend_project_alias(host, &source, project)?;
+        // 不在桌面资料库里的项目（如 `areal host ensure` 登记的）由 Core 自己的模型目录回答。
+        let alias = match backend_project_alias(host, &source, project) {
+            Err(error) if error.to_string() == "RESOURCE_UNAVAILABLE" => return Ok(None),
+            alias => alias?,
+        };
         let backend = self
             .backend
             .running
@@ -507,6 +511,26 @@ impl Supervisor {
         })
     }
 
+    /// 本机网页需要后台而它没在运行时（Host 重启、桌面窗口已关），按桌面上次接受的参数重新拉起。
+    /// 参数只含路径，重新走与 `backend.ensure` 相同的校验；从没开过桌面时保持不可用。
+    pub(super) async fn resume_backend(&self, host: &Rc<Host>) -> Result<()> {
+        if self
+            .backend
+            .running
+            .borrow()
+            .as_ref()
+            .is_some_and(|backend| !backend.closed())
+        {
+            return Ok(());
+        }
+        let Some(input) =
+            areal_local_service::storage::read_optional::<Ensure>(&launch_record(host))?
+        else {
+            return Ok(());
+        };
+        self.ensure_backend(host, input).await.map(|_| ())
+    }
+
     /// 当前桌面后台的所有权：Main 用它区分“Host 监督的本机后台”和旧应用会话遗留的后台。
     pub(super) async fn backend_status(&self, host: &Rc<Host>) -> Result<Value> {
         self.backend.status(host)
@@ -660,6 +684,7 @@ pub(super) async fn backend_command(
         return Ok(original);
     }
     host.admission()?;
+    host.gateway.workbench.resume_backend(host).await?;
     let backend = host
         .gateway
         .workbench
@@ -732,10 +757,16 @@ pub(super) async fn desktop_command(
     )
     .context("INVALID_PARAMS")?;
     host.admission()?;
+    host.gateway.workbench.resume_backend(host).await?;
+    let source = host.gateway.workbench.backend.source.borrow().clone();
     ensure!(
-        host.gateway.workbench.backend.source.borrow().as_deref() == Some(&*params.source_id),
-        "FORBIDDEN"
+        source.is_some(),
+        crate::wire::error(
+            "CAPABILITY_UNAVAILABLE",
+            "桌面后台未运行，请先打开一次桌面应用"
+        )
     );
+    ensure!(source.as_deref() == Some(&*params.source_id), "FORBIDDEN");
     let mut params = serde_json::to_value(params)?;
     params.as_object_mut().unwrap().remove("sourceId");
     host.gateway
@@ -846,7 +877,7 @@ fn validate_backend_result(method: &str, value: &Value) -> Result<()> {
 
 impl Backend {
     async fn ensure(&self, host: &Rc<Host>, input: Ensure) -> Result<Value> {
-        let (key, launch) = launch(host, input)?;
+        let (key, launch) = launch(host, input.clone())?;
         let _guard = self.starting.lock().await;
         ensure!(!self.stopped.get(), "CAPABILITY_UNAVAILABLE");
         let current = self.running.borrow().clone();
@@ -864,8 +895,11 @@ impl Backend {
         }
         self.admit()?;
         let source = launch.source_id.clone();
+        let record = input.clone();
         match self.start(host, launch).await {
             Ok((workbench, ownership)) => {
+                // 记不下来只影响下次网页自动拉起，不影响这次启动。
+                let _ = areal_local_service::storage::write(&launch_record(host), &record);
                 *self.source.borrow_mut() = source;
                 *self.running.borrow_mut() = Some(Rc::new(workbench));
                 *self.ownership.borrow_mut() = Some((key, ownership.clone()));
@@ -955,6 +989,10 @@ impl Backend {
             }),
         ))
     }
+}
+
+fn launch_record(host: &Host) -> PathBuf {
+    host.home.join("workbench/backend-launch.json")
 }
 
 struct Launch {

@@ -133,7 +133,7 @@ export function hostDesktopCommand(
 ): PlatformServices["command"] {
   return async (name, params) => {
     if (!DESKTOP_COMMANDS.has(name) || !client.writable("desktop.command"))
-      throw new Error("This capability requires the desktop application");
+      throw new Error("此功能需要桌面应用");
     const sourceId = source();
     if (!sourceId) throw new Error("请先选择资料库来源");
     try {

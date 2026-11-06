@@ -638,7 +638,7 @@ describe("local web desktop commands", () => {
       ok: false,
       error: { code: "COMMAND_FAILED", message: "Core refused" },
     });
-    await expect(command("computerControl", {} as never)).rejects.toThrow("desktop application");
+    await expect(command("computerControl", {} as never)).rejects.toThrow("需要桌面应用");
     expect(calls[0]).toEqual([
       "desktop.command",
       { sourceId: "source", command: "list", request: { projectId: "p" } },

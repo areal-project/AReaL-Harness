@@ -35338,6 +35338,7 @@
         "command": {
           "type": "string",
           "enum": [
+            "addProject",
             "analytics",
             "chatgpt",
             "cloud",

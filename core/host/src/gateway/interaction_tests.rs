@@ -1303,6 +1303,13 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
             let mut local = f.session("a");
             local.local = true;
             assert_eq!(local.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
+            // 从没开过桌面、没有可恢复的后台时，说明原因而不是笼统拒绝。
+            local.gui_write = true;
+            let error = local.request(&desktop).await.unwrap_err();
+            assert_eq!(
+                error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
+                Some("CAPABILITY_UNAVAILABLE")
+            );
             f.grant("a", |grant| grant["projectIds"] = json!([]));
             let mut denied = f.session("a");
             denied.gui_read = true;

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
 const { once } = require("node:events");
 const { createInterface } = require("node:readline");
-const { mkdtemp, mkdir, readFile, writeFile, rm } = require("node:fs/promises");
+const { mkdtemp, mkdir, readFile, realpath, writeFile, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { tmpdir } = require("node:os");
 
@@ -21,7 +21,7 @@ async function fixture(t, retired) {
     exports.createMainDesktop = async (options, lifetime) => {
       if (lifetime.hostManaged !== true) throw Error("Host ownership must precede backend initialization");
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
-      return { backend: { cloud: {}, useHostLibrary: async () => {} }, adapter: { listen: async () => ({
+      return { backend: { cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path }, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
       }), executeRemote: async (name, params) => {
         if (params.fail) throw Error('Core refused: ' + name);
@@ -95,12 +95,16 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
   };
   assert.deepEqual((await call("ok", { command: "list", request: { projectId: "p" } })).result,
     { executed: "list", params: { projectId: "p" } });
+  assert.equal((await call("add", { command: "addProject", request: { path: f.home } })).result,
+    "project:" + (await realpath(f.home)));
   for (const [id, params, message] of [
     ["unknown", { command: "quit", request: {} }, "Invalid desktop command"],
     ["array", { command: "list", request: [] }, "Invalid desktop command"],
     ["picker", { command: "manage", request: { operation: "pluginArchivePick" } }, "Desktop only"],
     ["contract", { command: "list", request: { invalid: true } }, "Invalid list request"],
     ["core", { command: "list", request: { fail: true } }, "Core refused: list"],
+    ["relative", { command: "addProject", request: { path: "demo" } }, "请填写项目文件夹的完整路径"],
+    ["missing", { command: "addProject", request: { path: "/nonexistent-areal-project" } }, "找不到这个文件夹"],
   ]) assert.deepEqual((await call(id, params)).error, { code: "COMMAND_FAILED", message }, id);
   f.child.stdin.end();
   assert.deepEqual(await f.exited, [0, null]);
