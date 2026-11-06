@@ -2,6 +2,8 @@
 
 # Tools and hooks
 
+The [repeated-observation candidate configuration](../../examples/qwen38-candidates/repeat-observations.json) enables only `policy.resultViews.repeatedObservations`; all other policies use product defaults. It measures whether folding identical source content reduces cumulative input while retaining the requests and usage needed to retrieve originals. Short results, first observations, changed content and execution state remain visible. Permissions, native operations and budgets are unchanged; task benefits require comparable evaluation.
+
 Model requests include actual workspacePath, workspaceUri, commandCwd, scratchPath and probed restrictedScopes facts. `workspace://repo` maps to the actual workspace root, not a repo subdirectory under private state; scratch is temporary work, not the delivery directory. Reopen generated artifacts at the user's final location and check calculated results against independent expectations or small examples. Schemas, exit codes and internally matching totals each establish only their own constraints. Explicit UNSUPPORTED/permission rejection before Scope creation returns as a tool failure without dispatch; UNKNOWN still stops execution.
 
 Core's registry binds names and JSON Schemas to built-in, command, client, MCP or plugin backends. Core validates inputs and outputs; Runtime handles local execution. Full built-in argument contracts are in [tools.rs](../../core/engine/src/tools.rs); model projections are in the [registry](../../core/engine/src/tools/registry.rs).

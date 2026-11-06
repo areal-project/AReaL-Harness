@@ -1,0 +1,7 @@
+{
+  "policy": {
+    "resultViews": {
+      "repeatedObservations": true
+    }
+  }
+}

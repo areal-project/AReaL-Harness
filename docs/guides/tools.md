@@ -2,6 +2,8 @@
 
 # 工具与 hooks
 
+[重复观察候选配置](../../examples/qwen38-candidates/repeat-observations.json)仅启用 `policy.resultViews.repeatedObservations`，其余策略使用产品默认值。它用于测量相同原文的折叠是否减少累计输入，同时保留原文回取产生的请求及消费；短结果、首次观察、变化内容和执行状态不能据此省略。权限、原生操作和预算不变，任务收益尚须同条件验证。
+
 Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后端绑定。输入与输出由 Core 校验；本地执行交给 Runtime。完整内置工具参数契约位于 [tools.rs](../../core/engine/src/tools.rs)，模型投影位于[注册表](../../core/engine/src/tools/registry.rs)。
 
 本地默认 YOLO；文件工具与命令 cwd 接受工作区外绝对路径，Core 规范化为 `workspace://host`，Runtime full-access 才允许。相对路径仍从工作区解析，argv 中使用普通文件路径。ASK_PERMISSIONS 在执行前审批实际参数，见[权限配置](configuration.md#permissions)。launcher 自动提供每 Thread scratch；隔离 Workgroup 使用其工作区内的私有 `.scratch/agent-<threadId>`，其 Scope 边界继续有效。
