@@ -950,7 +950,7 @@ try {
     assert.equal(await tags().count(), 2);
     assert.equal(project(await state()).summaries?.length ?? 0, 0);
     const slashRefreshStart = skillCatalogEvents.length;
-    await input().fill("正文保留 /fixture");
+    await input().fill("正文保留 $fixture");
     const slashCatalog = page.getByRole("listbox", { name: "功能与 Skills" });
     // 打开 slash 会刷新目录；旧行可见不代表本轮 Core 读取已经结束。
     await until(() => {
@@ -977,14 +977,22 @@ try {
           ?.getAttribute("aria-activedescendant") === id,
       await slashCatalog.getByRole("option").first().getAttribute("id"),
     );
-    await input().press("ArrowDown");
+    const nextSlashId = await nextSlashOption.getAttribute("id");
+    const slashIds = await slashCatalog
+      .getByRole("option")
+      .evaluateAll((options) => options.map((option) => option.id));
+    // 键盘逐行移到目标；目标在首行时先下后上，仍走一遍方向键。
+    const steps = slashIds.indexOf(nextSlashId);
+    if (steps === 0) await input().press("ArrowDown");
+    for (let index = 0; index < Math.max(steps, 1); index += 1)
+      await input().press(steps === 0 ? "ArrowUp" : "ArrowDown");
     await page.waitForFunction(
       (id) =>
         document.getElementById(id)?.getAttribute("aria-selected") === "true" &&
         document
           .querySelector('[data-testid="chat-input"]')
           ?.getAttribute("aria-activedescendant") === id,
-      await nextSlashOption.getAttribute("id"),
+      nextSlashId,
     );
     await input().press("Enter");
     await page.waitForFunction(
