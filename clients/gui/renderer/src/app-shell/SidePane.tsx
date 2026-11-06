@@ -401,7 +401,9 @@ export function SidePane({
                 <DropdownMenuItem key={item.id} onClick={item.onOpen}>
                   <item.icon />
                   {item.label}
-                  <kbd className="side-pane-launcher-shortcut">{item.shortcut}</kbd>
+                  {item.shortcut && (
+                    <kbd className="side-pane-launcher-shortcut">{item.shortcut}</kbd>
+                  )}
                 </DropdownMenuItem>
               ))}
               <DropdownMenuSeparator />

@@ -206,7 +206,7 @@ export const commonMessages = {
     "zh-CN": "在项目 {project} 中新建对话",
     en: "New conversation in project {project}",
   },
-  "common.navigation.showMore": { "zh-CN": "Show more", en: "Show more" },
+  "common.navigation.showMore": { "zh-CN": "显示更多", en: "Show more" },
   "common.navigation.pinned": { "zh-CN": "置顶", en: "Pinned" },
   "common.navigation.pinnedSection": { "zh-CN": "置顶分类", en: "Pinned section" },
   "common.navigation.archived": { "zh-CN": "已归档任务", en: "Archived tasks" },
@@ -813,7 +813,7 @@ export const commonMessages = {
   "settings.usage.title": { "zh-CN": "使用情况", en: "Usage" },
   "settings.plugins.title": { "zh-CN": "插件", en: "Plugins" },
   "settings.models.title": { "zh-CN": "模型设置", en: "Models" },
-  "settings.cloud.title": { "zh-CN": "Cloud", en: "Cloud" },
+  "settings.cloud.title": { "zh-CN": "云端", en: "Cloud" },
   "settings.permissions.title": { "zh-CN": "会话权限", en: "Permissions" },
   "settings.browser.title": { "zh-CN": "浏览器", en: "Browser" },
   "settings.browser.subtitle": {
@@ -1014,7 +1014,7 @@ export const commonMessages = {
     en: "{measured, number} / {total, plural, one {# request} other {# requests}}",
   },
   "workspace.environment": { "zh-CN": "会话运行环境", en: "Session environment" },
-  "workspace.cloud": { "zh-CN": "Cloud", en: "Cloud" },
+  "workspace.cloud": { "zh-CN": "云端", en: "Cloud" },
   "cloud.attachmentsLimit": {
     "zh-CN": "每条消息最多 16 个附件",
     en: "Each message supports up to 16 attachments.",

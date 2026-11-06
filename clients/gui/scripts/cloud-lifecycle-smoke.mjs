@@ -238,7 +238,7 @@ try {
   );
   await page.goto(`http://127.0.0.1:${assets.address().port}`);
   await page.getByRole("button", { name: "设置", exact: true }).click();
-  await page.getByRole("button", { name: "Cloud", exact: true }).click();
+  await page.getByRole("button", { name: "云端", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Cloud 后端地址" })
     .fill(`http://127.0.0.1:${native.address().port}/openapi/v1/app-server/`);
@@ -264,7 +264,7 @@ try {
   });
   const first = manager.records[0];
   assert.equal(first.binding.workspace, first.id);
-  await page.getByText("Cloud", { exact: true }).last().click();
+  await page.getByText("云端", { exact: true }).last().click();
   await page.getByTestId("cloud-chat-input").waitFor();
   await page.getByTestId("cloud-chat-input").fill("first query");
   await page.getByTestId("cloud-chat-send").click();

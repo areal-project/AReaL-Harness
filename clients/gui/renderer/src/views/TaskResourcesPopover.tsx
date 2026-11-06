@@ -2,6 +2,7 @@ import { Activity, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { ConversationStatusCard } from "../ConversationStatusCard.js";
 import { Button } from "../components/ui/button.js";
+import { TitleTooltip } from "@areal/ui";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover.js";
 import { TaskSummaryIcon } from "../homeChromeIcons.js";
 import type { Action, Data, PlatformServices } from "../services.js";
@@ -72,30 +73,33 @@ export function TaskResourcesPopover({
         setOpen(next);
       }}
     >
-      <PopoverTrigger
-        render={
-          <Button
-            unstyled
-            type="button"
-            ref={trigger}
-            className={`icon-button task-resources-trigger ${changed ? "with-count" : ""} ${open ? "active" : ""}`}
-            aria-label={t("chat.resources.trigger")}
-            title={
-              changed
-                ? `${t("chat.context.changeScope", { count: changes.files.length })} · +${intl.formatNumber(changes.additions)} −${intl.formatNumber(changes.deletions)}`
-                : undefined
-            }
-          />
+      <TitleTooltip
+        title={
+          changed
+            ? `${t("chat.context.changeScope", { count: changes.files.length })} · +${intl.formatNumber(changes.additions)} −${intl.formatNumber(changes.deletions)}`
+            : undefined
         }
       >
-        <TaskSummaryIcon />
-        {changed && (
-          <span className="diff-count" aria-hidden="true">
-            <b>+{intl.formatNumber(changes.additions)}</b>
-            <em>−{intl.formatNumber(changes.deletions)}</em>
-          </span>
-        )}
-      </PopoverTrigger>
+        <PopoverTrigger
+          render={
+            <Button
+              unstyled
+              type="button"
+              ref={trigger}
+              className={`icon-button task-resources-trigger ${changed ? "with-count" : ""} ${open ? "active" : ""}`}
+              aria-label={t("chat.resources.trigger")}
+            />
+          }
+        >
+          <TaskSummaryIcon />
+          {changed && (
+            <span className="diff-count" aria-hidden="true">
+              <b>+{intl.formatNumber(changes.additions)}</b>
+              <em>−{intl.formatNumber(changes.deletions)}</em>
+            </span>
+          )}
+        </PopoverTrigger>
+      </TitleTooltip>
       <PopoverContent
         keepMounted
         finalFocus={() => {

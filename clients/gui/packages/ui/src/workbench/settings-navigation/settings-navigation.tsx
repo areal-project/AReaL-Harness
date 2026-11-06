@@ -7,7 +7,8 @@ import { NavigationSidebar } from "../workbench-shell/workbench-shell.js";
 export type SettingsNavigationGroup = {
   id: string;
   label: string;
-  items: readonly { id: string; label: string; icon?: ReactNode }[];
+  /** keywords 是该页里的条目名，用“、”或逗号分隔，供搜索命中具体设置项。 */
+  items: readonly { id: string; label: string; icon?: ReactNode; keywords?: string }[];
 };
 
 /** Presentation only. The host guards navigation and owns the active page. */
@@ -48,12 +49,20 @@ export function SettingsNavigation({
   forwardIcon: ReactNode;
 }) {
   const [query, setQuery] = useState("");
+  const needle = query.trim().toLocaleLowerCase(locale);
   const visibleGroups = groups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) =>
-        item.label.toLocaleLowerCase(locale).includes(query.trim().toLocaleLowerCase(locale)),
-      ),
+      items: group.items.flatMap((item) => {
+        if (item.label.toLocaleLowerCase(locale).includes(needle)) return [{ ...item, match: "" }];
+        // 标题没命中时看页内条目，命中后在标题下写出是哪一项。
+        const match = needle
+          ? item.keywords
+              ?.split(/[、,，]\s*/)
+              .find((word) => word.toLocaleLowerCase(locale).includes(needle))
+          : undefined;
+        return match ? [{ ...item, match }] : [];
+      }),
     }))
     .filter((group) => group.items.length);
 
@@ -110,6 +119,7 @@ export function SettingsNavigation({
                 >
                   {item.icon}
                   <span>{item.label}</span>
+                  {item.match && <small className="settings-navigation-match">{item.match}</small>}
                 </button>
               </TitleTooltip>
             ))}

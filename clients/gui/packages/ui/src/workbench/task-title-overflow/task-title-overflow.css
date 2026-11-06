@@ -1,5 +1,1 @@
-@media (hover: hover) {
-  :root[data-reduced-motion="false"] .task-title-marquee:hover .task-title-marquee-track {
-    will-change: transform;
-  }
-}
+/* 截断与渐隐用组件内的工具类；此文件保留给 workbench.css 聚合与宿主覆盖。 */

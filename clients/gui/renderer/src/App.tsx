@@ -574,6 +574,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                       )
                       .map((item) => ({
                         ...item,
+                        keywords: "keywords" in item ? t(item.keywords) : undefined,
                         label: t(
                           item.id === "数据飞轮" && trajectoryAttention
                             ? "settings.trajectory.attentionTitle"

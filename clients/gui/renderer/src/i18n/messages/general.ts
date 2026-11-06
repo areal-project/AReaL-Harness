@@ -972,8 +972,8 @@ export const generalMessages = {
     en: "Select a provider on the left or add a new one.",
   },
   "settings.modelSettings.fallbackDefaultModel": {
-    "zh-CN": "备用默认模型",
-    en: "Fallback default model",
+    "zh-CN": "新会话默认模型",
+    en: "Default model for new sessions",
   },
   "settings.modelSettings.openSessionSettings": {
     "zh-CN": "前往会话配置",
@@ -1016,16 +1016,16 @@ export const generalMessages = {
     en: "New sessions",
   },
   "settings.newSessionModelSetting.newSessionsUseTheModelAndReasoning": {
-    "zh-CN": "新会话沿用上次使用的模型和思考强度；没有记录时用备用默认模型。",
-    en: "New sessions use the last model and reasoning effort you used, or the fallback default if there is none.",
+    "zh-CN": "新会话沿用上次使用的模型和思考强度；没有记录时用默认模型。",
+    en: "New sessions use the last model and reasoning effort you used, or the default model if there is none.",
   },
   "settings.newSessionModelSetting.commandLineOrEnvironmentSettingsOverrideFile": {
     "zh-CN": "命令行或环境配置覆盖了文件值；保存不会修改这些覆盖。",
     en: "Command-line or environment settings override file values. Saving does not change those overrides.",
   },
   "settings.newSessionModelSetting.fallbackDefaultModel": {
-    "zh-CN": "备用默认模型",
-    en: "Fallback default model",
+    "zh-CN": "新会话默认模型",
+    en: "Default model for new sessions",
   },
   "settings.newSessionModelSetting.notSet": {
     "zh-CN": "尚未设置",
