@@ -1,0 +1,32 @@
+docs/api/runtime.md
+  s_65512586972bc8::t_ba51423a33f4fa 102-103
+docs/api/runtime.en.md
+  s_65512586972bc8::t_ba51423a33f4fa 102-103
+docs/development/testing.md
+  s_65512586972bc8::t_ba51423a33f4fa 383-384
+docs/development/testing.en.md
+  s_65512586972bc8::t_ba51423a33f4fa 383-384
+scripts/harness-smoke.mjs
+  s_65512586972bc8::t_3614010bb86a02 173-174,206,1090-1091
+  s_65512586972bc8::t_6fe238cd4a41f3 1101-1104,1106-1109,1111-1114,1122-1124
+  s_65512586972bc8::t_ee5e552bad48aa 182-205,207,529,554,1092-1100,1105,1110,1115-1121
+core/engine/src/permissions/scopes.rs
+  s_65512586972bc8::t_d3e384bfe8d7b9 160,209-210
+  s_65512586972bc8::t_ba51423a33f4fa 163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6ed59b312bd13450f2a25334e73bed7ea47493e9",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
