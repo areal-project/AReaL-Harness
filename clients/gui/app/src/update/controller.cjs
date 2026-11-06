@@ -232,7 +232,15 @@ function createUpdater({
     checking = true;
     publish();
     try {
-      const result = await updater.checkForUpdates();
+      const result = await updater.checkForUpdates().catch((error) => {
+        if (wanted === channel) throw error;
+        return null;
+      });
+      // 检查期间设置可能已改变，旧频道的结果不能成为新频道的下载目标。
+      if (wanted !== channel) {
+        checking = false;
+        return await check(manual);
+      }
       const info = result?.updateInfo;
       if (
         !info ||

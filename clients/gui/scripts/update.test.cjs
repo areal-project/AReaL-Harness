@@ -59,6 +59,34 @@ test("adjacent formal version passes safety checks before native staging and han
   assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
 });
 
+for (const failed of [false, true])
+  test(`disabling beta discards the pending check (${failed ? "failed" : "offer"})`, async () => {
+    const { updater, controller, calls } = fixture();
+    let finish;
+    let checks = 0;
+    updater.checkForUpdates = () => {
+      checks++;
+      return checks === 1
+        ? new Promise((resolve, reject) => {
+            finish = () =>
+              failed
+                ? reject(new Error("Old beta feed unavailable"))
+                : resolve({ updateInfo: offer("0.2.0-beta.1") });
+          })
+        : Promise.resolve({ updateInfo: offer("0.1.12") });
+    };
+    const pending = controller.setChannel(true);
+    await controller.setChannel(false);
+    finish();
+    await pending;
+    assert.equal(controller.state().channel, "stable");
+    assert.equal(controller.state().version, "0.1.12");
+    assert.equal(checks, 2);
+    await controller.download();
+    assert.equal(controller.state().downloaded, "0.1.12");
+    assert.equal(calls.filter((call) => call === "download").length, 1);
+  });
+
 test("busy work defers install and idle retry uses the same verified download", async () => {
   let busy = true;
   const { controller, calls } = fixture({ hasWork: async () => busy });

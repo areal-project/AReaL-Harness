@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { HostClientOptions } from "@areal/client";
+import type { HostClientOptions, ShellProject, SourceNavigation } from "@areal/client";
 import { createHostReadServices } from "./host-services.js";
 import type { Action, PlatformServices, Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
@@ -27,7 +27,7 @@ const project = {
     items: [{ id: "thread", name: "Host title", desktop: { archived: false } }],
   },
   attention: { state: "unknown" },
-};
+} satisfies ShellProject;
 const navigation = {
   sourceId: "source",
   preferences: { sidebarSort: "manual" },
@@ -39,7 +39,7 @@ const navigation = {
   sections: [],
   sidebarThreadOrder: [],
   sidebarRevision: 1,
-};
+} satisfies SourceNavigation;
 const identity = {
   connectionId: connection.connectionId,
   gatewayGeneration: connection.gatewayGeneration,
@@ -101,7 +101,7 @@ function transport(
     nextCursor: null,
     data: [entry],
   }),
-  shell = { projects: [project], navigation: [navigation] },
+  shell: unknown = { projects: [project], navigation: [navigation] },
 ) {
   const requests: {
     method: string;
@@ -160,6 +160,65 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
   };
 }
 describe("Host renderer read authority", () => {
+  it("preserves a stopped project's terminal state without opening or waking it", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    const wire = transport(observation, undefined, {
+      projects: [{ ...project, state: "stopped", serviceGeneration: "" }],
+      navigation: [navigation],
+    });
+    const services = createHostReadServices(undefined, options(wire.factory));
+    try {
+      await until(services);
+      await services.reads!.selectSession(null);
+      const snapshot = await services.snapshot();
+      expect(snapshot.projects[0].state.hostState).toBe("stopped");
+      expect(snapshot.projects[0].state.connected).toBe(false);
+      expect(wire.requests.map((request) => request.method)).toEqual(["shell.subscribe"]);
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("retains the execution project's stopped state under a ready logical project", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    const wire = transport(observation, undefined, {
+      projects: [
+        project,
+        {
+          ...project,
+          projectId: "worktree",
+          alias: { sourceId: "source", projectId: "worktree-alias" },
+          logicalProjectId: "canonical",
+          state: "stopped",
+          serviceGeneration: "",
+          summaries: {
+            state: "fresh",
+            items: [{ id: "worktree-thread", name: "Worktree", desktop: { archived: false } }],
+          },
+        },
+      ],
+      navigation: [navigation],
+    });
+    const services = createHostReadServices(undefined, options(wire.factory));
+    try {
+      await until(services);
+      const snapshot = await services.snapshot();
+      const logical = snapshot.projects[0];
+      expect(logical.state.hostState).toBe("ready");
+      expect(
+        logical.summaries.find((row: { id: string }) => row.id === "worktree-thread"),
+      ).toMatchObject({
+        executionConnected: false,
+        executionHostState: "stopped",
+      });
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
   it.each([false, true])(
     "advertises domain grants independently of native and session mutations: %s",
     async (permitted) => {

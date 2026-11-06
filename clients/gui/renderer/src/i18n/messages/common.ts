@@ -490,6 +490,10 @@ export const commonMessages = {
   "startup.quit": { "zh-CN": "退出界面", en: "Quit interface" },
   "startup.back": { "zh-CN": "返回加载界面", en: "Back to loading" },
   "startup.connectingProject": { "zh-CN": "正在连接项目…", en: "Connecting to project…" },
+  "startup.projectStopped": {
+    "zh-CN": "项目已停止，可选择其他项目继续。",
+    en: "Project stopped. Select another project to continue.",
+  },
   "startup.readingConversation": { "zh-CN": "正在读取对话…", en: "Reading conversation…" },
   "common.conversation.newInProject": {
     "zh-CN": "在 {project} 中开始新聊天",

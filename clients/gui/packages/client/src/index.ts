@@ -102,6 +102,7 @@ export class HostClient {
   #timer?: ReturnType<typeof setTimeout>;
   #attempt = 0;
   #target?: { projectId: string; threadId: string };
+  #opening?: { key: string; selection: number; promise: Promise<void> };
   #sessionCache = new Map<string, { value: SessionRead; expires: number }>();
   #cacheTimer?: ReturnType<typeof setTimeout>;
   #connectedHost?: string;
@@ -414,6 +415,20 @@ export class HostClient {
     return this.#subscribeShell();
   }
   async selectSession(target: { projectId: string; threadId: string } | null) {
+    if (
+      target &&
+      target.projectId === this.#target?.projectId &&
+      target.threadId === this.#target.threadId
+    ) {
+      const session = this.#reads.session;
+      if (
+        session.state === "fresh" &&
+        this.#state.connection === "ready" &&
+        session.value.connectionId === this.#state.identity.connectionId
+      )
+        return;
+      return this.#openSession();
+    }
     this.#retainSession();
     this.#target = target ?? undefined;
     ++this.#selection;
@@ -442,6 +457,23 @@ export class HostClient {
     if (target && this.#transport) await this.#openSession();
   }
   async #openSession() {
+    const project = previous(this.#reads.shell)?.snapshot.projects.find(
+      (value) => value.projectId === this.#target?.projectId,
+    );
+    const key = JSON.stringify([this.#epoch, this.#target, project?.serviceGeneration]);
+    if (this.#opening?.key === key && this.#opening.selection === this.#selection)
+      return this.#opening.promise;
+    // UI 选中与连接恢复可能同时到达；同一连接、项目代次和会话只有一个订阅负责人。
+    const promise = this.#readSession();
+    const opening = { key, selection: this.#selection, promise };
+    this.#opening = opening;
+    try {
+      await opening.promise;
+    } finally {
+      if (this.#opening === opening) this.#opening = undefined;
+    }
+  }
+  async #readSession() {
     const transport = this.#transport,
       target = this.#target,
       selection = ++this.#selection;

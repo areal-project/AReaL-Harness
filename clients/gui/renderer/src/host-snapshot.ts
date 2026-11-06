@@ -44,6 +44,7 @@ type ExecutionView = {
   executionRoot: string;
   executionCore: { connectionGeneration: string; instanceId: string };
   executionConnected: boolean;
+  executionHostState?: ShellProject["state"];
   executionError: null;
   worktree?: WorktreeDisplay;
 };
@@ -59,6 +60,7 @@ export type ReadProject = Record<string, unknown> & {
   core: ExecutionView["executionCore"] & Record<string, unknown>;
   state: {
     connected: boolean;
+    hostState?: ShellProject["state"];
     error: null;
     threads: Record<string, Observation["thread"] & ExecutionView>;
     queues: Record<string, unknown>;
@@ -224,6 +226,7 @@ export function createHostSnapshotProjector(
         executionRoot: project.workspace,
         executionCore,
         executionConnected: fresh && project.state === "ready",
+        executionHostState: fresh ? project.state : undefined,
         executionError: null,
         ...(project.worktree ? { worktree: project.worktree } : {}),
       };
@@ -251,6 +254,7 @@ export function createHostSnapshotProjector(
         },
         state: {
           connected: fresh && project.state === "ready",
+          hostState: fresh ? project.state : undefined,
           error: null,
           threads: thread ? { [thread.id]: { ...thread, ...execution } } : {},
           queues: thread && desktop?.queue ? { [thread.id]: desktop.queue } : {},

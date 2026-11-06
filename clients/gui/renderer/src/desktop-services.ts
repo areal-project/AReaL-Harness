@@ -42,13 +42,15 @@ export type {
 export async function validateCommand(
   ...args: Parameters<typeof import("@areal/workbench/desktop-contract").validateCommand>
 ) {
-  const contract = await import("@areal/workbench/desktop-contract");
+  const contract: typeof import("@areal/workbench/desktop-contract") =
+    await import("@areal/workbench/desktop-contract");
   contract.validateCommand(...args);
 }
 export async function validateCommandResponse(
   ...args: Parameters<typeof import("@areal/workbench/desktop-contract").validateCommandResponse>
 ) {
-  const contract = await import("@areal/workbench/desktop-contract");
+  const contract: typeof import("@areal/workbench/desktop-contract") =
+    await import("@areal/workbench/desktop-contract");
   contract.validateCommandResponse(...args);
 }
 export type { ObservedCatalogOwner } from "@areal/workbench/desktop-contract/catalog";

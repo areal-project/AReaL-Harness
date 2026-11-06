@@ -376,6 +376,33 @@ async function readServer(t, handler = () => false) {
   };
 }
 
+test("concurrent selection of the same conversation shares one subscription", async (t) => {
+  const { client, frames } = await readServer(t);
+  const target = { projectId: project.projectId, threadId: "thread" };
+  await Promise.all([client.selectSession(target), client.selectSession(target)]);
+  assert.equal(client.readsSnapshot().session.state, "fresh");
+  await client.selectSession(target);
+  assert.equal(frames.filter((frame) => frame.method === "session.open").length, 1);
+  assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
+});
+
+test("UI restoration joins the selected conversation's automatic reconnect", async (t) => {
+  const { client, frames, listener } = await readServer(t);
+  const target = { projectId: project.projectId, threadId: "thread" };
+  await client.selectSession(target);
+  const oldShell = client.readsSnapshot().shell.value.subscriptionId;
+  const restored = waitReads(
+    client,
+    (state) => state.shell.state === "fresh" && state.shell.value.subscriptionId !== oldShell,
+  );
+  for (const socket of listener.clients) socket.terminate();
+  await restored;
+  await client.selectSession(target);
+  assert.equal(client.readsSnapshot().session.state, "fresh");
+  assert.equal(frames.filter((frame) => frame.method === "session.open").length, 2);
+  assert.equal(frames.filter((frame) => frame.method === "subscription.close").length, 0);
+});
+
 test("page events are bound to the ready connection and stop after unsubscribe", async (t) => {
   const { client, send } = await readServer(t);
   const events = [];

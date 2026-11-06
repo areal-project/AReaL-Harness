@@ -105,6 +105,7 @@ export function useSessionNavigation(
           state: {
             ...logicalProject.state,
             connected: executionThread.executionConnected ?? logicalProject.state?.connected,
+            hostState: executionThread.executionHostState ?? logicalProject.state?.hostState,
           },
           error: executionThread.executionError ?? logicalProject.error,
         }

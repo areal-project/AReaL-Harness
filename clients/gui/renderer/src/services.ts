@@ -281,7 +281,7 @@ export async function call<N extends CommandName, P extends CommandParams<N>>(
   } catch (error) {
     throw contract.commandResponseError(name, params, error);
   }
-  return result.value;
+  return result.value as CommandResponse<N, P>;
 }
 
 export { isLibraryState } from "./desktop-response.js";
