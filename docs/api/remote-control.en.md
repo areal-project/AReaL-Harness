@@ -238,7 +238,7 @@ Allow only signature-checked PNG/JPEG/GIF/WebP, maximum 16 MiB per artifact with
 | Pairing | 120 seconds, one active invite/Host, eight pending handshakes |
 | Noise/hello | 15 seconds; local approval bounded by invite expiry |
 | Connections | 16/Host, 2/device |
-| Application JSON | 256 KiB; page/chunk larger data |
+| Application JSON | 256 KiB pre-authorization (hello/pairing), 8 MiB after authorization; page/chunk larger data |
 | Raw transport frame | 512 KiB; account for base64 expansion |
 | Send/receive backlog | 2 MiB each/connection; resync or disconnect without blocking Core |
 | Artifact chunk | 48 KiB raw bytes, base64 in JSON, pull-based |
@@ -249,7 +249,7 @@ Allow only signature-checked PNG/JPEG/GIF/WebP, maximum 16 MiB per artifact with
 
 `ready` and `host.describe` retain `limits.readRequestsPerSecond:20` for existing clients; it actually caps reads and writes combined. Additive `writeRequestsPerSecond:5` and `writeBurst:10` describe the connection-local write token bucket. `session.create`, `session.send`, `turn.stop`, `interaction.respond`, `task.question.reply` and `task.pause` share write credits; `command.read` counts only against the aggregate request window. Host time continuously refills credits up to 10. Direct and Relay share this enforcement path, connections have independent buckets, and reconnect creates a new bucket. Current device-grant checks precede rate checks. Exhausted write credit returns sanitized `LIMIT_EXCEEDED` before journal persistence, observation admission or Core dispatch, without saving pending commands, replaying work or closing a healthy connection.
 
-Deployments may tighten limits. Increasing them requires backpressure tests. Protect pre-business HTTP/WS/Noise processing as well as final messages. Apply the 256 KiB limit in length-prefixed decoding before JSON parsing, not after retaining the old 24 MiB decoder limit. Bound outer/base64 frames before decoding as well. Report effective limits in ready. Slow consumers must not slow the desktop or other devices.
+Deployments may tighten limits. Increasing them requires backpressure tests. Protect pre-business HTTP/WS/Noise processing as well as final messages. Apply the current message limit (256 KiB before authorization, 8 MiB after authorization) in length-prefixed decoding before body allocation and JSON parsing, not after retaining the old 24 MiB decoder limit. Bound outer/base64 frames before decoding as well. Report effective limits in ready. Slow consumers must not slow the desktop or other devices.
 
 Errors have id and error containing code, redacted message, optional coreCode/commandId/observedState and submissionUnknown. Clients act on code, never message text. Codes include PROTOCOL_UNSUPPORTED, FORBIDDEN, GRANT_CHANGED, AUTH_REVOKED, PAIRING_EXPIRED, PAIRING_USED, CORE_UNAVAILABLE, CORE_INCOMPATIBLE, TURN_BUSY, TASK_CONTROL_REQUIRED, TARGET_CHANGED, INTERACTION_EXPIRED, COMMAND_CONFLICT, SUBMISSION_UNKNOWN, INVALID_PARAMS, LIMIT_EXCEEDED, CAPACITY_EXCEEDED, RESOURCE_UNAVAILABLE and RESYNC_REQUIRED.
 

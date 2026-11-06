@@ -21,7 +21,7 @@ Host reuses `workbench_route.rs` and `workbench.rs` to supervise analytics and t
 - Authenticated local control methods `backend.ensure` and `backend.status` start/reuse the backend and return Host generation, PID and backend identity, without private connection tokens. Browsers cannot call them.
 - Startup options travel over the private pipe. The child receives a cleared environment with only required variables. The backend retains the user's home and takes data paths from explicit options.
 - Release layouts discover `Resources/areal-workbench` in the signed app, verify its signature and manifest, and use bundled Electron in Node mode. Source debug layouts can discover adjacent repository sources and Node on PATH without building a GUI package; release builds do not accept this source discovery path.
-- A `ready` frame reports methods and identity within 20 seconds. Crashes use 1, 2, 4… second backoff; five failures within 10 minutes stop automatic restart.
+- A `ready` frame reports methods and identity within 20 seconds. The first observed exit recovers immediately; subsequent failures within the 10-minute window use 1, 2, 4… second backoff, and five failures within 10 minutes stop automatic restart.
 - Main detach leaves the Host backend alive. Host stop closes its pipe; the backend drains in-flight operations and exits, with a five-second termination deadline for that child.
 - Restart waits for the old child to end. Cleanup is limited to the retired identity recorded by Host and must not overwrite another backend's `service.json`. Recovery rebuilds observations and snapshots without replaying writes.
 
