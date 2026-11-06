@@ -23,7 +23,12 @@ case "$1" in
   post)
     case "$payload" in
       *'"path":"post-fail"'*) exit 2 ;;
-      *'"path":"post-crash"'*) printf '%s' "$$" > hook-leader; printf marker >> hook-count; exec /bin/sleep 60 ;;
+      *'"path":"post-crash"'*)
+        # 就绪文件必须最后发布；读到 PID 时副作用已落盘，崩溃断言不再竞争这两次写入。
+        printf marker >> hook-count
+        printf '%s' "$$" > hook-leader
+        exec /bin/sleep 60
+        ;;
     esac
     printf '%s\n' "$payload" >> hook-events
     printf '{}\n'
