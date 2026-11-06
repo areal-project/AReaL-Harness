@@ -21,6 +21,14 @@
 | 未改写的 Main 业务 | 迁入 Host 监督的 Node 工作台服务，之后按领域改写 | 不让 2.7 万行 Rust 改写阻塞协议与界面 |
 | 手机外壳 | 继续 Capacitor，套同一份界面 | 已复用 GUI 代码，不另写原生界面 |
 
+## 单向升级与独立安装边界
+
+`0.1.19+` 统一 CLI、TUI、Host 与 GUI 的版本号，并采用 `stateVersion = 17` 的 Host 架构；这是单向升级（One-Way Upgrade），不支持降级回 `gui-v0.1.18` 或 `stateVersion = 16`。尚未接入 Host 协议的旧 CLI（`<= 0.1.8`）不能与 `0.1.19+` Host 共用同一活动数据目录，必须一并升级 CLI。
+
+支持 Host 协议的客户端按 `X.Y.Z` / `X.Y.Z-beta.N` 版本序遵循“高版本赢、不降级”：服务安装拒绝覆盖已记录的更高版本，更新切换只接受更高目标。安装记录保存可选的 `executableVersion`；旧记录缺该字段时，校验原服务描述文件后查询已安装二进制的 `--version`，无法确定版本则拒绝覆盖。新客户端连接旧 Host 时提示待重启升级，保留正在运行的任务；空闲时显式执行 `areal host stop`，再由新 CLI 或桌面应用启动。旧客户端继续连接更高版本 Host 并提示升级客户端，不停止 Host 来降级。
+
+独立 CLI 不携带共享网页界面。Host 从自身可执行文件附近的资源目录发现界面；macOS 桌面包在 `AReaL Harness GUI.app/Contents/Resources/areal-gui` 提供构建。`areal web` 缺资源时返回安装与启动指引；安装或升级桌面应用，空闲时停止原 Host，再打开桌面应用或运行包内 `Contents/Resources/areal-core/bin/areal host run`。独立 CLI 不自动搜索其他应用包，也不借网页命令停止任务或切换运行中的 Host。
+
 ## 交给 Codex 的方式
 
 按 A0 → A4 顺序连续实施，不等待 H4 验收结束：从 `codex/shared-host` 开分支，H4 合入后并入。包与包之间不等待维护者审查；每个包形成独立的本地提交，在该包的完成条件全部满足后进入下一个包。提示词引用本文对应小节，以及下文"执行纪律"。

@@ -210,10 +210,17 @@ async fn prepare_host(target: &str) -> Result<()> {
     let Ok(client) = areal_host::Client::connect().await else {
         return Ok(());
     };
+    let running = &client.identity().executable_version;
+    if !newer_release(target, running)? {
+        if running != target {
+            eprintln!(
+                "Host {running} is newer than target {target}; retaining the newer Host without downgrade."
+            );
+        }
+        return Ok(());
+    }
     let status = client.status().await?;
-    if client.identity().executable_version == target
-        || !status.capabilities.iter().any(|c| c == "updates")
-    {
+    if !status.capabilities.iter().any(|c| c == "updates") {
         return Ok(());
     }
     let request_id = uuid::Uuid::new_v4().to_string();
@@ -405,6 +412,12 @@ mod tests {
 
     #[test]
     fn release_order_accepts_preview_to_same_release_but_never_downgrades() {
+        let versions = ["0.1.8", "0.1.18", "0.1.19-beta.1", "0.1.19"];
+        for (i, running) in versions.iter().enumerate() {
+            for (j, target) in versions.iter().enumerate() {
+                assert_eq!(newer_release(target, running).unwrap(), j > i);
+            }
+        }
         assert!(newer_release("0.1.7", "0.1.7-beta.10").unwrap());
         assert!(!newer_release("0.1.6", "0.1.7-beta.1").unwrap());
         assert!(newer_release("0.1.7", "0.1.7-test.1").unwrap());

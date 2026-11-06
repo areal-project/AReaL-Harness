@@ -24,6 +24,9 @@ impl Client {
     pub fn identity(&self) -> &HostIdentity {
         &self.identity
     }
+    pub fn version_notice(&self) -> Option<String> {
+        version_notice(&self.identity.executable_version, env!("CARGO_PKG_VERSION"))
+    }
     pub async fn connect() -> Result<Self> {
         Self::connect_at(areal_local_service::raw_home()?).await
     }
@@ -56,6 +59,9 @@ impl Client {
     }
     pub async fn connect_or_start_at(home: PathBuf) -> Result<Self> {
         if let Ok(client) = Self::connect_at(home.clone()).await {
+            if let Some(notice) = client.version_notice() {
+                eprintln!("{notice}");
+            }
             return Ok(client);
         }
         let home = storage::prepare_host_home(&home)?;
@@ -84,6 +90,9 @@ impl Client {
                 tokio::spawn(async move {
                     let _ = child.wait().await;
                 });
+                if let Some(notice) = client.version_notice() {
+                    eprintln!("{notice}");
+                }
                 return Ok(client);
             }
             if let Some(status) = child.try_wait()? {
@@ -419,6 +428,18 @@ impl Client {
         &self.home
     }
 }
+
+fn version_notice(host: &str, client: &str) -> Option<String> {
+    match crate::server::updates::compare_versions(host, client).ok()? {
+        std::cmp::Ordering::Less => Some(format!(
+            "Host {host} is older than CLI/TUI {client}; upgrade restart pending. Active tasks are preserved. When idle, run areal host stop, then reopen with the newer CLI or desktop application."
+        )),
+        std::cmp::Ordering::Greater => Some(format!(
+            "Connected to newer Host {host} with CLI/TUI {client}; the newer Host is retained without downgrade. Upgrade your CLI/TUI."
+        )),
+        std::cmp::Ordering::Equal => None,
+    }
+}
 pub struct Subscription {
     connection: BufReader<UnixStream>,
     pub initial: Value,
@@ -507,6 +528,73 @@ fn select_project<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn client_version_notices_preserve_the_newer_host_and_active_work() {
+        let versions = ["0.1.8", "0.1.18", "0.1.19-beta.1", "0.1.19"];
+        for (i, host) in versions.iter().enumerate() {
+            for (j, client) in versions.iter().enumerate() {
+                match i.cmp(&j) {
+                    std::cmp::Ordering::Less => {
+                        let notice = version_notice(host, client).unwrap();
+                        assert!(notice.contains("restart pending"));
+                        assert!(notice.contains("Active tasks are preserved"));
+                        assert!(notice.contains("When idle"));
+                    }
+                    std::cmp::Ordering::Greater => {
+                        let notice = version_notice(host, client).unwrap();
+                        assert!(notice.contains("without downgrade"));
+                        assert!(notice.contains("Upgrade your CLI/TUI"));
+                    }
+                    std::cmp::Ordering::Equal => assert!(version_notice(host, client).is_none()),
+                }
+            }
+        }
+        assert!(version_notice("fixture", "0.1.19").is_none());
+    }
+
+    #[tokio::test]
+    async fn client_connect_or_start_reuses_both_older_and_newer_hosts_without_stop() {
+        use std::os::unix::fs::PermissionsExt;
+        for version in ["0.1.18", "0.1.19-beta.1", "9.0.0"] {
+            let root = tempfile::tempdir().unwrap();
+            let home = storage::prepare_host_home(root.path()).unwrap();
+            let host_dir = home.join("host");
+            storage::private_dir(&host_dir).unwrap();
+            let socket = storage::control_socket(&host_dir).unwrap();
+            let listener = tokio::net::UnixListener::bind(&socket).unwrap();
+            std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600)).unwrap();
+            let identity = HostIdentity {
+                version: VERSION,
+                host_id: "fixture-host".into(),
+                generation: "fixture-generation".into(),
+                socket_path: socket,
+                auth_file: host_dir.join("auth.json"),
+                pid: std::process::id(),
+                executable_version: version.into(),
+            };
+            storage::write(&host_dir.join("host.json"), &identity).unwrap();
+            storage::write(&identity.auth_file, &"fixture-token").unwrap();
+            let server = tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(stream);
+                let request = wire::read(&mut stream).await.unwrap().unwrap();
+                assert_eq!(request["method"], "hello");
+                wire::write(stream.get_mut(), &json!({"version":VERSION,"id":"hello","result":{"hostId":"fixture-host","generation":"fixture-generation"}})).await.unwrap();
+            });
+            let client = Client::connect_or_start_at(home.clone()).await.unwrap();
+            assert_eq!(client.identity().executable_version, version);
+            assert_eq!(client.identity().generation, identity.generation);
+            assert_eq!(
+                storage::read::<HostIdentity>(&host_dir.join("host.json"))
+                    .unwrap()
+                    .executable_version,
+                version
+            );
+            assert!(!home.join("host.log").exists());
+            server.await.unwrap();
+        }
+    }
     fn input() -> ResolveProject {
         let registration = ProjectRegistration {
             project_id: "new".into(),

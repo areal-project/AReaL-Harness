@@ -21,6 +21,14 @@ Baselines: AReaL-Harness `codex/shared-host` `7611582f`; T3 Code `8760d063` (`do
 | Main business code not yet rewritten | Move into a Host-supervised Node workbench service, then rewrite by domain | A 27k-line Rust rewrite must not block the protocol and the UI |
 | Phone shell | Stay on Capacitor with the same UI | It already reuses GUI code; no separate native UI |
 
+## One-way upgrade and standalone installation boundary
+
+`0.1.19+` unifies the CLI, TUI, Host and GUI versions and uses the Host architecture with `stateVersion = 17`. This is a One-Way Upgrade: downgrading to `gui-v0.1.18` or `stateVersion = 16` is unsupported. Legacy CLIs (`<= 0.1.8`) that do not implement the Host protocol cannot share the same active data directory with a `0.1.19+` Host; upgrade the CLI together with the desktop application.
+
+Host-protocol clients follow “the higher version wins; never downgrade” using `X.Y.Z` / `X.Y.Z-beta.N` ordering. Service installation refuses to replace a recorded newer version, and update switching accepts only newer targets. Installation records store an optional `executableVersion`; for older records without it, the installer verifies the original service descriptor and queries the installed binary with `--version`, refusing replacement if its version cannot be determined. A newer client connecting to an older Host reports a pending upgrade restart and preserves active tasks. When idle, explicitly run `areal host stop`, then start with the newer CLI or desktop application. An older client keeps connecting to a newer Host and recommends upgrading the client; it never stops the Host to downgrade it.
+
+The standalone CLI does not ship the shared web UI. The Host discovers UI resources relative to its executable; on macOS the desktop bundle supplies them at `AReaL Harness GUI.app/Contents/Resources/areal-gui`. When resources are missing, `areal web` returns installation and startup guidance: install or upgrade the desktop application, stop the original Host when idle, then open the desktop application or run its bundled `Contents/Resources/areal-core/bin/areal host run`. The standalone CLI does not automatically search other application bundles, and the web command never stops tasks or switches a running Host.
+
 ## Handing work to Codex
 
 Implement A0 → A4 in order and continuously, without waiting for H4 acceptance to finish: branch from `codex/shared-host` and merge H4 in once it lands. Packages do not wait for maintainer review; each package is its own local commit and the next package starts only after every completion condition of the current one is met. Prompts cite the matching section and the "Execution rules" below.

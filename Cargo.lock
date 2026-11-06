@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "areal-app-server"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-engine",
@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "areal-cli"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "areal-config"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "fs2",
@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "areal-engine"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -267,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "areal-host"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -309,7 +309,7 @@ dependencies = [
 
 [[package]]
 name = "areal-local-service"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -330,7 +330,7 @@ dependencies = [
 
 [[package]]
 name = "areal-mcp"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -361,7 +361,7 @@ dependencies = [
 
 [[package]]
 name = "areal-plugins"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-mcp",
@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "areal-protocol"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "schemars",
  "serde",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-runtime-client",
@@ -417,7 +417,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-client"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "areal-runtime-host-tools",
  "areal-runtime-protocol",
@@ -431,7 +431,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-exec-native"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "areal-runtime-host-tools",
  "areal-runtime-protocol",
@@ -445,7 +445,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-fs"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "areal-runtime-protocol",
  "base64 0.22.1",
@@ -465,7 +465,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-host-tools"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "libc",
  "serde_json",
@@ -475,7 +475,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-protocol"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "schemars",
  "serde",
@@ -485,7 +485,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-supervisor"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "areal-runtime-host-tools",
  "areal-runtime-protocol",
@@ -503,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "areal-server"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-app-server",
@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "areal-service-host"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-local-service",
@@ -559,7 +559,7 @@ dependencies = [
 
 [[package]]
 name = "areal-tui"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-host",
