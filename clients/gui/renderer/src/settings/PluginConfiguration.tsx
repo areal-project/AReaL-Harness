@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ManagementRequestMap } from "../services.js";
-import type { PluginDetail, PluginMutate, PluginCommand } from "./pluginTypes.js";
+import type { PluginDetail, PluginMutate } from "./pluginTypes.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
@@ -15,11 +15,7 @@ export function PluginConfiguration({
   mutate,
   disabled,
   active,
-  command,
-  projectId,
 }: {
-  command: PluginCommand;
-  projectId?: string;
   detail: PluginDetail;
   mutate: PluginMutate;
   disabled: boolean;
@@ -28,7 +24,6 @@ export function PluginConfiguration({
   const { t } = useI18n();
   const fields = detail.userConfiguration?.fields ?? {};
   const [reloadMessage, setReloadMessage] = useState("");
-  const [reloadBusy, setReloadBusy] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string | boolean | number>>({});
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [changed, setChanged] = useState<Set<string>>(() => new Set());
@@ -68,7 +63,8 @@ export function PluginConfiguration({
       Object.entries(secrets).filter(([key, value]) => value && !clearKeys.has(key)),
     );
     setSecrets({});
-    await mutate({
+    setReloadMessage("");
+    const result = await mutate({
       operation: "pluginUserConfigSave",
       id: detail.id,
       expectedRevision: detail.revision,
@@ -77,6 +73,8 @@ export function PluginConfiguration({
       secrets: transientSecrets,
       clearKeys: [...clearKeys],
     });
+    if (result && "reloadDeferred" in result && result.reloadDeferred === true)
+      setReloadMessage(t("settings.pluginCenter.credentialsReloadDeferred"));
   };
   return (
     <section className="plugin-detail-resources" data-plugin-configuration>
@@ -84,39 +82,7 @@ export function PluginConfiguration({
         <>
           <h3>{t("settings.pluginCenter.userConfiguration")}</h3>
           <p>{t("settings.pluginCenter.secretConfigurationBoundary")}</p>
-          {Object.values(fields).some(
-            (field) => field.definition.sensitive && field.configured,
-          ) && (
-            <>
-              <p>{t("settings.pluginCenter.sharedCredentialReloadRequired")}</p>
-              <Button
-                variant="outline"
-                type="button"
-                disabled={disabled || reloadBusy || !projectId}
-                onClick={async () => {
-                  if (!projectId) return;
-                  setReloadBusy(true);
-                  setReloadMessage("");
-                  try {
-                    await command({ operation: "pluginCredentialsReload", projectId });
-                    setReloadMessage(t("settings.pluginCenter.credentialsReloaded"));
-                    window.dispatchEvent(new Event("areal-plugins-changed"));
-                  } catch (cause) {
-                    setReloadMessage(
-                      cause instanceof Error
-                        ? cause.message
-                        : t("settings.pluginCenter.pluginOperationFailed"),
-                    );
-                  } finally {
-                    setReloadBusy(false);
-                  }
-                }}
-              >
-                {t("settings.pluginCenter.reloadProjectCredentials")}
-              </Button>
-              <Feedback message={reloadMessage} />
-            </>
-          )}
+          <Feedback message={reloadMessage} />
 
           {!!detail.userConfiguration?.missingRequired.length && (
             <p role="status">

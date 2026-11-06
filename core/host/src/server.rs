@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
     rc::Rc,
@@ -88,6 +88,7 @@ struct Slot {
     service: Option<Service>,
     migration: Option<Value>,
     credentials: BTreeMap<String, String>,
+    imported_credentials: BTreeSet<String>,
 }
 struct Host {
     home: PathBuf,
@@ -121,6 +122,7 @@ impl Slot {
             service: None,
             migration: None,
             credentials: BTreeMap::new(),
+            imported_credentials: BTreeSet::new(),
         }
     }
 }
@@ -282,6 +284,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
                     service: None,
                     migration: None,
                     credentials: BTreeMap::new(),
+                    imported_credentials: BTreeSet::new(),
                 },
             );
         }
@@ -929,6 +932,29 @@ impl Host {
         }
         result
     }
+    fn uses_shared_host_config(&self, inputs: &LaunchInputs) -> bool {
+        let shared = self.home.join("config.toml");
+        inputs.config_home == self.home
+            && inputs.config_path.as_deref().is_none_or(|p| p == shared)
+            && inputs.options.config.as_deref().is_none_or(|p| p == shared)
+    }
+    fn project_uses_shared_config(&self, registration: &ProjectRegistration) -> bool {
+        let path = self
+            .home
+            .join("host/launch")
+            .join(storage::digest(registration.project_id.as_bytes()))
+            .join("inputs.json");
+        match storage::read_optional::<LaunchInputs>(&path) {
+            Ok(Some(inputs)) if matches!(registration.source, crate::ProjectSource::Gui { .. }) => {
+                let shared = self.home.join("config.toml");
+                inputs.config_path.as_deref().is_none_or(|p| p == shared)
+                    && inputs.options.config.as_deref().is_none_or(|p| p == shared)
+            }
+            Ok(Some(inputs)) => self.uses_shared_host_config(&inputs),
+            Ok(None) => matches!(registration.source, crate::ProjectSource::Gui { .. }),
+            Err(_) => false,
+        }
+    }
     async fn project_status(&self, id: &str) -> ProjectStatus {
         let (registration, gate) = {
             let slots = self.slots.borrow();
@@ -970,7 +996,7 @@ impl Host {
         }
         let slots = self.slots.borrow();
         let slot = &slots[id];
-        ProjectStatus {schedule_activation_suppressed:self.schedules.suppressed(id),schedule_activation_error:self.schedules.error(id),registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
+        ProjectStatus {uses_shared_model_config:self.project_uses_shared_config(&registration),schedule_activation_suppressed:self.schedules.suppressed(id),schedule_activation_error:self.schedules.error(id),registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
     }
     async fn dispatch_connection(
         self: &Rc<Self>,
@@ -1243,6 +1269,7 @@ impl Host {
                     service: None,
                     migration: None,
                     credentials: BTreeMap::new(),
+                    imported_credentials: BTreeSet::new(),
                 },
             );
             Ok(json!({"registration":r,"created":created}))
@@ -1393,8 +1420,31 @@ impl Host {
                 )
             })?,
         };
-        if let Some(source) = self.migration.credential_source(&registration)?
-            && self.migration.vault.subscription_owner(&source)?.is_some()
+        let uses_shared_host_config = self.uses_shared_host_config(&inputs);
+        if uses_shared_host_config && self.home.join("config.toml").exists() {
+            let config = areal_config::load_management_config(&areal_config::ConfigInputs {
+                cwd: inputs.cwd.clone(),
+                homedir: inputs.homedir.clone(),
+                config_file: Some(self.home.join("config.toml")),
+                ..Default::default()
+            })?;
+            for name in config.model.api_key_env.iter().chain(
+                config
+                    .model_catalog
+                    .iter()
+                    .filter_map(|provider| provider.api_key_env.as_ref()),
+            ) {
+                if name.starts_with("AREAL_CREDENTIAL_") && !inputs.credential_names.contains(name)
+                {
+                    inputs.credential_names.push(name.clone());
+                }
+            }
+        }
+        let credential_source = self
+            .migration
+            .shared_credential_source(&registration, uses_shared_host_config)?;
+        if let Some(source) = &credential_source
+            && self.migration.vault.subscription_owner(source)?.is_some()
             && !inputs
                 .credential_names
                 .iter()
@@ -1412,11 +1462,13 @@ impl Host {
                 .all(|k| inputs.credential_names.contains(k)),
             "invalidRequest: credentials must be named by launch inputs"
         );
-        let imported_source = self.migration.credential_source(&registration)?.is_some();
+
         let mut imported_credentials = BTreeMap::new();
         for name in &inputs.credential_names {
-            if imported_source && name.starts_with("AREAL_CREDENTIAL_") {
-                let credential = match self.migration.credential(&registration, name) {
+            if let Some(source) = &credential_source
+                && name.starts_with("AREAL_CREDENTIAL_")
+            {
+                let credential = match self.migration.credential_for_source(source, name) {
                     Ok(value) => value,
                     Err(cause)
                         if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
@@ -1434,9 +1486,13 @@ impl Host {
         let credentials = {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();
+            for name in std::mem::take(&mut slot.imported_credentials) {
+                slot.credentials.remove(&name);
+            }
             slot.credentials.extend(input.credentials.clone());
             for (name, value) in imported_credentials {
                 if let Some(value) = value {
+                    slot.imported_credentials.insert(name.clone());
                     slot.credentials.insert(name, value);
                 } else {
                     slot.credentials.remove(&name);
@@ -1533,6 +1589,7 @@ impl Host {
                     let slot = &slots[&input.project_id];
                     return Ok(serde_json::to_value(OpenResult {
                         project: ProjectStatus {
+                            uses_shared_model_config: uses_shared_host_config,
                             schedule_activation_suppressed: self
                                 .schedules
                                 .suppressed(&input.project_id),
@@ -1600,6 +1657,7 @@ impl Host {
             "invalid Host owner after launch"
         );
         let project = ProjectStatus {
+            uses_shared_model_config: uses_shared_host_config,
             schedule_activation_suppressed: self.schedules.suppressed(&input.project_id),
             schedule_activation_error: self.schedules.error(&input.project_id),
             registration,
@@ -2110,6 +2168,8 @@ impl Host {
                         record.receipt["state"] = json!("completed");
                         record.receipt["result"] = serde_json::to_value(OpenResult {
                             project: ProjectStatus {
+                                uses_shared_model_config: self
+                                    .project_uses_shared_config(&registration),
                                 schedule_activation_suppressed: self
                                     .schedules
                                     .suppressed(&registration.project_id),
@@ -2764,6 +2824,57 @@ mod tests {
                 ("OPENAI_API_KEY".into(), "run-scoped-secret".into()),
             ]),
         };
+        let cli_id = "independent-cli".to_owned();
+        let cli_registration = ProjectRegistration {
+            project_id: cli_id.clone(),
+            workspace: input.launch_inputs.as_ref().unwrap().workspace.clone(),
+            data_dir: base.join("independent-state"),
+            source: ProjectSource::Cli,
+            default_binding: false,
+        };
+        storage::private_dir(&cli_registration.data_dir).unwrap();
+        host.slots
+            .borrow_mut()
+            .insert(cli_id.clone(), Slot::imported(cli_registration.clone()));
+        std::fs::write(home.join("config.toml"), "schema_version=2\n[model]\nname='fixture'\n[model.providers.default]\nendpoint='http://127.0.0.1:1/v1/chat/completions'\napi_key_env='AREAL_CREDENTIAL_key'\n").unwrap();
+        let mut saved = input.launch_inputs.clone().unwrap();
+        saved.config_home = home.clone();
+        saved.credential_names.clear();
+        let saved_path = home
+            .join("host/launch")
+            .join(storage::digest(cli_id.as_bytes()))
+            .join("inputs.json");
+        storage::private_dir(saved_path.parent().unwrap()).unwrap();
+        storage::write(&saved_path, &saved).unwrap();
+        let cli_input = Ensure {
+            project_id: cli_id.clone(),
+            launch_inputs: None,
+            credentials: BTreeMap::new(),
+            ..input.clone()
+        };
+        let failure = host.ensure_inner(&cli_input).await.unwrap_err();
+        assert!(
+            failure.to_string().contains("missing activation receipt"),
+            "{failure:#}"
+        );
+        assert!(host.project_uses_shared_config(&cli_registration));
+        assert_eq!(
+            host.slots.borrow()[&cli_id].credentials[reference],
+            "vault-secret"
+        );
+        let custom = base.join("custom.toml");
+        std::fs::copy(home.join("config.toml"), &custom).unwrap();
+        saved.config_path = Some(custom.clone());
+        saved.options.config = Some(custom);
+        storage::write(&saved_path, &saved).unwrap();
+        assert!(!host.project_uses_shared_config(&cli_registration));
+        let _ = host.ensure_inner(&cli_input).await.unwrap_err();
+        assert!(!host.project_uses_shared_config(&cli_registration));
+        assert!(
+            !host.slots.borrow()[&cli_id]
+                .credentials
+                .contains_key(reference)
+        );
         let first = host.ensure_inner(&input).await.unwrap_err();
         assert!(
             first.to_string().contains("missing activation receipt"),
@@ -3169,7 +3280,7 @@ mod tests {
             let root=tempfile::tempdir().unwrap();let home=root.path().canonicalize().unwrap().join("home");
             for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
             let mut slots=BTreeMap::new();
-            slots.insert("project".into(),Slot {registration:ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});
+            slots.insert("project".into(),Slot {registration:ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new(),imported_credentials:BTreeSet::new()});
             let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let activation=uuid::Uuid::new_v4().to_string();
             let mut record=Operation {digest:"fixture".into(),receipt:json!({"requestId":activation,"method":"project.ensure","projectId":"project","state":"acceptedPending"}),evidence:Value::Null};
@@ -3194,7 +3305,7 @@ mod tests {
             for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
-            for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
+            for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new(),imported_credentials:BTreeSet::new()});}
             let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();

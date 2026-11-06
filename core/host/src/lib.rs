@@ -116,6 +116,8 @@ pub struct ProjectRegistration {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectStatus {
     pub registration: ProjectRegistration,
+    #[serde(default)]
+    pub uses_shared_model_config: bool,
     pub state: String,
     #[serde(default)]
     pub schedule_activation_suppressed: bool,

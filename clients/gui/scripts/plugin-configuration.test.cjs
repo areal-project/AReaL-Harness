@@ -124,6 +124,78 @@ test("Main creates credential references with the existing owner and restarts be
   assert.equal(JSON.stringify(result).includes("SECRET_CANARY"), false);
   assert.equal(JSON.stringify(result).includes("private_ref"), false);
 });
+test("sensitive changes restart idle managed projects after saving and defer busy projects", async () => {
+  const { backend, project, calls } = fixture();
+  const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+  project.model = { state: { threads: {}, queues: {} } };
+  backend.hasWork = CoreBackend.prototype.hasWork;
+  const idle = {
+    pending: [],
+    client: {
+      async request(method, params) {
+        calls.push({ other: "drain", method, params });
+        return { restartSafe: true };
+      },
+    },
+  };
+  const busy = {
+    pending: [{}],
+    client: {
+      async request() {
+        assert.fail("busy project drained");
+      },
+    },
+  };
+  const unmanaged = {
+    client: {
+      async request() {
+        assert.fail("unmanaged project drained");
+      },
+    },
+  };
+  backend.projects = new Map([
+    ["p", project],
+    ["idle", idle],
+    ["busy", busy],
+    ["unmanaged", unmanaged],
+  ]);
+  backend.providers.manages = (other) => other !== unmanaged;
+  backend.restartProject = async (other) => calls.push({ other: "restart", project: other });
+  const result = await configurePluginValues(backend, project, {
+    ...baseRequest,
+    clearKeys: ["TOKEN"],
+  });
+  assert.equal(result.reloadDeferred, true);
+  assert.ok(
+    calls.findIndex((call) => call.method === "areal/plugin/userConfig/set") <
+      calls.findIndex((call) => call.other === "drain"),
+  );
+  assert.deepEqual(calls.find((call) => call.other === "drain").params, {
+    strategy: "ifIdle",
+    timeoutMs: 2000,
+  });
+  assert.equal(calls.find((call) => call.other === "restart").project, idle);
+});
+test("unsafe or failed drains defer reload without failing the save", async () => {
+  for (const request of [
+    async () => ({ restartSafe: false }),
+    async () => {
+      throw new Error("offline");
+    },
+  ]) {
+    const { backend, project } = fixture();
+    backend.projects = new Map([["other", { pending: [], client: { request } }]]);
+    assert.equal(
+      (
+        await configurePluginValues(backend, project, {
+          ...baseRequest,
+          clearKeys: ["TOKEN"],
+        })
+      ).reloadDeferred,
+      true,
+    );
+  }
+});
 test("browser writes reject private references and Main verifies exact schema before saving", async () => {
   assert.throws(() =>
     validateCommand("manage", {
@@ -164,12 +236,12 @@ test("unresolved public snapshots keep original request identity and omit privat
     projects: new Map([["p", live]]),
     binary: "/trusted/areal",
     ownerTasks: { revision: () => 0 },
-    lifecycleOperations: { schedulingSuppressed: () => false },
+    host: { scheduling: () => ({ suppressed: false, activationError: null }) },
     cloudConversations: {
       mergeSnapshot: (_id, value) => value,
       projection: () => ({ summaries: [] }),
     },
-    providers: { catalog: () => [] },
+    providers: { catalog: () => [], manages: () => true },
     awaitingResponses: new Set(),
   };
   const published = snapshotProject(backend, { id: "p", root: "/workspace" }, new Set());

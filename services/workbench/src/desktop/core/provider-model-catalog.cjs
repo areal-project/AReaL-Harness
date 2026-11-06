@@ -16,6 +16,7 @@ function catalog(providers, models, project) {
     previous.configuration === configuration &&
     previous.subscription === providers.subscription &&
     previous.accepted === providers.lastAcceptedModel &&
+    previous.locked === providers.config.vault.locked &&
     previous.configured === configured
   )
     return previous.result;
@@ -63,6 +64,15 @@ function catalog(providers, models, project) {
   const result = [...models, ...cached].map(
     /** @returns {import('./provider-contract.cjs').ModelCatalogEntry} */ (m) => ({
       ...m,
+      ...(m.available === false &&
+      configuration?.data.some(
+        (provider) =>
+          provider.id === m.providerId &&
+          provider.apiKeyEnv &&
+          providers.config.vault.locked.has(provider.apiKeyEnv),
+      )
+        ? { unavailableReason: "storageLocked" }
+        : {}),
       providerName:
         m.providerId === "areal_openai"
           ? "ChatGPT"
@@ -97,6 +107,7 @@ function catalog(providers, models, project) {
     subscription: providers.subscription,
     accepted: providers.lastAcceptedModel,
     configured,
+    locked: providers.config.vault.locked,
     result,
   });
   return result;

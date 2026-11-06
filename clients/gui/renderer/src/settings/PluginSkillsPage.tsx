@@ -373,8 +373,6 @@ export function PluginSkillsPage({
           <dd>{sourceLabel(selected)}</dd>
           <dt>{t("settings.pluginSkillsPage.skillID")}</dt>
           <dd>{selected.id}</dd>
-          <dt>{t("settings.pluginSkillsPage.version")}</dt>
-          <dd>{selected.revision}</dd>
           <dt>{t("settings.pluginSkillsPage.status")}</dt>
           <dd>
             {selected.enabled

@@ -13,6 +13,10 @@ export const pluginMessages = {
     "zh-CN": "插件 Agent 配置已不可用，请刷新后选择。原草稿已保留。",
     en: "The plugin Agent profile is unavailable. Refresh and select it again. Your draft is preserved.",
   },
+  "settings.pluginCenter.credentialsReloadDeferred": {
+    "zh-CN": "配置已保存，正在运行的项目将在当前任务完成后自动应用新凭据。",
+    en: "Configuration saved. Running projects will apply the new credentials after their current tasks finish.",
+  },
   "settings.pluginCenter.sharedCredentialReloadRequired": {
     "zh-CN": "新凭据需要各项目重新载入，当前项目可在空闲时载入。",
     en: "Each project must reload the new credentials. Reload this project while it is idle.",
@@ -121,12 +125,12 @@ export const pluginMessages = {
     en: "Read scope {scope} \u00b7 revision {revision} \u00b7 {time}",
   },
   "settings.pluginCenter.runtimeNotObserved": {
-    "zh-CN": "尚未观察当前项目的运行状态。目录与支持信息来自本地 Store 快照。",
-    en: "Runtime state for this project has not been observed. Catalog and support information come from the local Store snapshot.",
+    "zh-CN": "连接项目以查看插件状态并继续操作。",
+    en: "Connect a project to view plugin status and continue.",
   },
   "settings.pluginCenter.runtimeNotObservedTitle": {
-    "zh-CN": "已读取安装快照，运行状态未观察",
-    en: "Installation snapshot read. Runtime not observed",
+    "zh-CN": "连接项目以查看状态",
+    en: "Connect a project to view status",
   },
   "settings.pluginCenter.partiallyAvailable": {
     "zh-CN": "部分组件可用，其他组件需要处理",
@@ -147,8 +151,8 @@ export const pluginMessages = {
     en: "Plugin status and next step",
   },
   "settings.pluginCenter.componentFactsRemainIndependent": {
-    "zh-CN": "各组件的配置、认证与信任状态见下方详情。执行受当前任务权限约束。",
-    en: "See configuration, authentication, and trust for each component below. Execution remains subject to current task permissions.",
+    "zh-CN": "在下方查看组件配置和连接状态。",
+    en: "See component configuration and connection status below.",
   },
   "settings.pluginCenter.skillsInstalledAndEnabled": {
     "zh-CN": "Skills 已安装并在当前范围启用。",

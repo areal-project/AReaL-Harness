@@ -44,7 +44,7 @@ class ProjectlessWorkspaces {
       const providers = this.backend.providers;
       const config = await providers.config.current();
       const selected = readEffectiveModel(config.effective);
-      /** @type {Array<{providerId:string|null,providerName?:string,modelId:string,displayName:string,available:boolean,credentialState?:string,isDefault:boolean,parameters:import("./provider-contract.cjs").ModelParameters,capabilities?:import("./provider-contract.cjs").ModelCapabilities,reasoningEffortOptions:string[]}>} */
+      /** @type {Array<{providerId:string|null,providerName?:string,modelId:string,displayName:string,available:boolean,credentialState?:string,unavailableReason?:string,isDefault:boolean,parameters:import("./provider-contract.cjs").ModelParameters,capabilities?:import("./provider-contract.cjs").ModelCapabilities,reasoningEffortOptions:string[]}>} */
       const data = config.data
         .filter((provider) => provider.enabled)
         .flatMap((provider) => {
@@ -64,6 +64,11 @@ class ProjectlessWorkspaces {
               displayName: model.displayName ?? model.id,
               available: config.credentialStates[provider.id] !== "unavailable",
               credentialState: config.credentialStates[provider.id],
+              ...(config.credentialStates[provider.id] === "unavailable" &&
+              provider.apiKeyEnv &&
+              providers.config.vault.locked.has(provider.apiKeyEnv)
+                ? { unavailableReason: "storageLocked" }
+                : {}),
               isDefault: provider.id === selected.provider && model.id === selected.name,
               parameters: {
                 ...provider.parameters,
@@ -100,6 +105,9 @@ class ProjectlessWorkspaces {
             (!!selected.endpoint &&
               (!selected.api_key_env ||
                 !!providers.config.key({ apiKeyEnv: selected.api_key_env }))),
+          ...(configured?.unavailableReason
+            ? { unavailableReason: configured.unavailableReason }
+            : {}),
           isDefault: !data.some((model) => model.isDefault),
           parameters: {
             temperature: selected.temperature,

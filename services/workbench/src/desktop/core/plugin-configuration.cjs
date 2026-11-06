@@ -11,7 +11,7 @@ async function configurePluginValues(backend, project, request) {
     backend.providerUpdating ||
     backend.resourcesUpdating ||
     backend.starting.size ||
-    backend.hasWork()
+    backend.hasWork({ project })
   )
     throw new Error("请等待任务和操作完成后保存插件配置");
   const client = project.client;
@@ -53,10 +53,13 @@ async function configurePluginValues(backend, project, request) {
         value: { kind: "secretRef", value: reference.replace(/^AREAL_CREDENTIAL_/, "") },
       });
     }
-    if (Object.keys(request.secrets).length) {
+    const sensitiveChanged =
+      Object.keys(request.secrets).length > 0 ||
+      clearKeys.some((key) => fields[key]?.definition.sensitive);
+    if (Object.keys(request.secrets).length > 0) {
       await restartForPluginCredentials(backend, project);
     }
-    return await backend.submit(
+    const result = await backend.submit(
       project,
       "areal/plugin/userConfig/set",
       {
@@ -68,6 +71,35 @@ async function configurePluginValues(backend, project, request) {
       },
       { requestId: request.requestId },
     );
+    let reloadDeferred = false;
+    if (sensitiveChanged) {
+      for (const other of backend.projects?.values?.() ?? []) {
+        if (
+          other === project ||
+          !other.client ||
+          (backend.providers.manages && !backend.providers.manages(other))
+        )
+          continue;
+        if (other.pending?.length) {
+          reloadDeferred = true;
+          continue;
+        }
+        try {
+          const drained = await other.client.request(
+            "areal/server/drain",
+            { strategy: "ifIdle", timeoutMs: 2000 },
+            { timeoutMs: 2000, decode: serverStatus },
+          );
+          if (drained.restartSafe) await backend.restartProject(other);
+          else reloadDeferred = true;
+        } catch {
+          reloadDeferred = true;
+        }
+      }
+    }
+    return reloadDeferred
+      ? { .../** @type {Record<string, unknown>} */ (result), reloadDeferred: true }
+      : result;
   } finally {
     backend.providerUpdating = false;
     backend.onChange();

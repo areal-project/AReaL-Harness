@@ -188,7 +188,14 @@ impl Vault {
     }
     fn recover(&self, state: &mut SlotState) -> Result<()> {
         if let Some(receipt) = &state.receipt {
-            self.save_operation(receipt)?;
+            let id = receipt["requestId"]
+                .as_str()
+                .ok_or_else(|| error("invalidRequest", "missing vault requestId"))?;
+            wire::request_id(id)?;
+            let path = self.operation_path(id);
+            if !path.exists() || storage::read::<Value>(&path)? != *receipt {
+                self.save_operation(receipt)?;
+            }
         }
         let directory = self.home.join("host/vault-operations");
         if !directory.is_dir() {
@@ -744,6 +751,22 @@ mod tests {
                 &self.migration,
             )
         }
+    }
+
+    #[test]
+    fn completed_slot_read_does_not_rewrite_receipt() {
+        use std::os::unix::fs::MetadataExt;
+        let f = Fixture::new();
+        let id = uuid::Uuid::new_v4().to_string();
+        f.replace(&id, 0, json!({"token":"test"})).unwrap();
+        let path = f.migration.vault.operation_path(&id);
+        let before = std::fs::metadata(&path).unwrap();
+        f.read().unwrap();
+        let after = std::fs::metadata(&path).unwrap();
+        assert_eq!(
+            (before.ino(), before.mtime(), before.mtime_nsec()),
+            (after.ino(), after.mtime(), after.mtime_nsec())
+        );
     }
 
     #[test]
