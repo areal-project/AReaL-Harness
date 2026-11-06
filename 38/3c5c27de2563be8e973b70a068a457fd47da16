@@ -1,0 +1,18 @@
+docs/guides/tools.en.md
+  h_247f0d3940ae9c 5-6
+docs/guides/tools.md
+  h_247f0d3940ae9c 5-6
+examples/qwen38-candidates/repeat-observations.json
+  h_247f0d3940ae9c 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "383c5c27de2563be8e973b70a068a457fd47da16",
+  "prompts": {},
+  "humans": {
+    "h_247f0d3940ae9c": {
+      "author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
