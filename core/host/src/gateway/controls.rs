@@ -163,6 +163,30 @@ fn validate(params: &Message, text_bytes: usize, gui_write: bool) -> Result<()> 
     Ok(())
 }
 impl Session {
+    pub(super) fn authorize_permission_options(
+        &self,
+        project: &str,
+        options: &Value,
+    ) -> Result<()> {
+        if options["permissionPreset"] == "fullAccess" {
+            self.authorize(Some(project), "manage")?;
+        }
+        if options["permissionPreset"] == "autoReview"
+            || options["preapprovedTools"]
+                .as_array()
+                .is_some_and(|tools| !tools.is_empty())
+        {
+            self.authorize(Some(project), "answer")?;
+        }
+        Ok(())
+    }
+    fn authorize_control(&self, project: &str, params: &Message) -> Result<()> {
+        self.authorize(Some(project), "submit")?;
+        if params.operation == "configure" {
+            self.authorize_permission_options(project, &params.values["options"])?;
+        }
+        Ok(())
+    }
     pub(super) async fn control_session(
         &self,
         project: &str,
@@ -190,7 +214,7 @@ impl Session {
             method: "session.control",
             params: &params,
         })?);
-        self.authorize(Some(project), "submit")?;
+        self.authorize_control(project, &params)?;
         if let Some(record) = self.command_record(project, &command)? {
             ensure!(
                 record["remote"]["semanticDigest"] == digest,
@@ -202,7 +226,7 @@ impl Session {
             .admit_control(project, generation, request, &params, &command, &digest)
             .await;
         if result.is_err() {
-            self.authorize(Some(project), "submit")?;
+            self.authorize_control(project, &params)?;
             if let Some(record) = self.command_record(project, &command)? {
                 ensure!(
                     record["remote"]["semanticDigest"] == digest,
@@ -248,6 +272,11 @@ impl Session {
                         .all(|required| methods.iter().any(|method| method == required))),
             "CORE_INCOMPATIBLE"
         );
+        ensure!(
+            params.values["options"]["permissionPreset"] != "fullAccess"
+                || caps["features"]["permissionFullAccess"] == true,
+            "CORE_INCOMPATIBLE"
+        );
         if params.values["options"].get("permissionPreset").is_some() {
             ensure!(
                 caps["features"]["permissionPresets"] == true,
@@ -287,7 +316,7 @@ impl Session {
         } else {
             Value::Null
         };
-        self.authorize(Some(project), "submit")?;
+        self.authorize_control(project, params)?;
         if let Some(record) = self.command_record(project, command)? {
             ensure!(
                 record["remote"]["semanticDigest"] == digest,
@@ -436,7 +465,7 @@ impl Session {
         };
         if let Some(prepared) = &execution {
             ensure!(prepared.params == native, "INVALID_RESPONSE");
-            self.authorize(Some(project), "submit")?;
+            self.authorize_control(project, params)?;
             if let Some(record) = self.command_record(project, command)? {
                 ensure!(
                     record["remote"]["semanticDigest"] == digest,
@@ -526,7 +555,7 @@ impl Session {
             }
         }
         let settled = self.settle_command(&id, settled)?;
-        self.authorize(Some(project), "submit")?;
+        self.authorize_control(project, params)?;
         Ok(Self::command_view(Some(&settled), command))
     }
 }

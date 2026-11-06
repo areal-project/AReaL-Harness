@@ -591,7 +591,11 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
     loop {
         tokio::select! {
             event = page_events.recv() => {
-                let event = event.context("page event stream interrupted")?;
+                let event = match event {
+                    Ok(event) => event,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(error) => return Err(error).context("page event stream interrupted"),
+                };
                 if event["connection"] != connection_id { continue; }
                 ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
                 if let Some(device) = &device_id {
@@ -626,21 +630,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                             let response=match result {
                                 Ok(value)=>json!({"version":VERSION,"id":id,"result":value}),
                                 Err(error)=>{
-                                    let message=error.to_string();
-                                    let code=error.downcast_ref::<wire::Error>().map(|error|error.code).unwrap_or_else(||super::gateway_owner::error_code(&message));
-                                    let mut response = json!({"version":VERSION,"id":id,"error":{"code":code,"message":"Host command failed"}});
-                                    // Host 自己写的错误说明可以给界面看；其余原因可能带内部细节，只给代码。
-                                    if let Some(error) = error.downcast_ref::<wire::Error>() {
-                                        response["error"]["message"] = json!(error.message);
-                                    }
-                                    if matches!(raw["method"].as_str(), Some("library.command" | "worktree.command" | "trajectory.command" | "feedback.command" | "manage.command"
-                | "providers.read"
-                | "providers.command")) {
-                                        response["error"]["commandId"] = raw["commandId"].clone();
-                                        response["error"]["submissionUnknown"] = json!(!matches!(code,
-                                            "FORBIDDEN" | "INVALID_PARAMS" | "COMMAND_CONFLICT" | "CAPABILITY_UNAVAILABLE" | "LIMIT_EXCEEDED"));
-                                    }
-                                    response
+                                    json!({"version":VERSION,"id":id,"error":loopback_error(&raw, &error)})
                                 },
                             };
                             send(&mut socket,&response).await?;
@@ -772,6 +762,44 @@ fn keys(host: &Host, connection: &str, mut value: Value) -> Value {
     value["gatewayGeneration"] = json!(host.identity.generation);
     value
 }
+fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
+    let message = error.to_string();
+    let code = error
+        .downcast_ref::<wire::Error>()
+        .map(|error| error.code)
+        .unwrap_or_else(|| super::gateway_owner::error_code(&message));
+    let mut value = json!({"code":code,"message":"Host command failed"});
+    // Host 自己写的错误说明可以给界面看；其余原因可能带内部细节，只给代码。
+    if let Some(error) = error.downcast_ref::<wire::Error>() {
+        value["message"] = json!(error.message);
+    }
+    if matches!(
+        request["method"].as_str(),
+        Some(
+            "library.command"
+                | "worktree.command"
+                | "trajectory.command"
+                | "feedback.command"
+                | "manage.command"
+                | "providers.command"
+                | "analytics.import"
+        )
+    ) {
+        value["commandId"] = request["commandId"].clone();
+        value["submissionUnknown"] = json!(!matches!(
+            code,
+            "FORBIDDEN"
+                | "INVALID_PARAMS"
+                | "COMMAND_CONFLICT"
+                | "CAPABILITY_UNAVAILABLE"
+                | "LIMIT_EXCEEDED"
+        ));
+    } else if request["method"] == "providers.read" {
+        value["submissionUnknown"] = json!(false);
+    }
+    value
+}
+
 fn read_error(error: &anyhow::Error) -> Value {
     let code = error
         .downcast_ref::<wire::Error>()
@@ -1262,6 +1290,102 @@ mod tests {
             write(&mut second, json!({"version":1,"id":"barrier","method":"host.status","params":{}})).await;
             assert_eq!(read(&mut second).await["id"], "barrier");
         }).await;
+    }
+
+    #[test]
+    fn loopback_errors_distinguish_reads_and_unknown_writes() {
+        for method in [
+            "providers.read",
+            "analytics.import",
+            "providers.command",
+            "library.command",
+        ] {
+            let request = json!({"method":method,"commandId":"command"});
+            let unknown =
+                loopback_error(&request, &anyhow::anyhow!("connection lost after dispatch"));
+            assert_eq!(
+                unknown["submissionUnknown"],
+                method != "providers.read",
+                "{method}"
+            );
+            assert_eq!(unknown["commandId"].is_string(), method != "providers.read");
+            for code in [
+                "FORBIDDEN",
+                "INVALID_PARAMS",
+                "COMMAND_CONFLICT",
+                "CAPABILITY_UNAVAILABLE",
+                "LIMIT_EXCEEDED",
+            ] {
+                let rejected = loopback_error(&request, &anyhow::anyhow!("{code}"));
+                assert_eq!(rejected["submissionUnknown"], false, "{method}: {code}");
+                assert_eq!(rejected["code"], code);
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn lagged_page_events_keep_the_loopback_connection_alive() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let fixture = Fixture::start().await;
+                let ticket = fixture
+                    .client()
+                    .await
+                    .web_ticket(ELECTRON_ORIGIN)
+                    .await
+                    .unwrap();
+                let mut socket = connect(&ticket, ELECTRON_ORIGIN).await;
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"hello","method":"hello","params":{
+                        "protocolVersions":[1],"capabilities":["gui-read-v1","gui-write-v1"],
+                        "ticket":ticket.ticket,"expectedGeneration":ticket.generation
+                    }}),
+                )
+                .await;
+                let owner = read(&mut socket).await["result"]["connectionId"].clone();
+                let reverse = super::super::workbench_route::reverse(&fixture.host);
+                let mut witness = fixture.host.gateway.workbench.page_events();
+                // 单线程内连续填满广播缓冲，不让 WebSocket 消费者运行，确定性触发 Lagged。
+                for index in 0..96 {
+                    reverse(
+                        "pages.event".into(),
+                        json!({"connection":owner,"token":"burst","notification":{"index":index}}),
+                    )
+                    .await
+                    .unwrap();
+                }
+                assert!(matches!(
+                    witness.try_recv(),
+                    Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_))
+                ));
+                write(
+                    &mut socket,
+                    json!({"version":1,"id":"after-lag","method":"host.status","params":{}}),
+                )
+                .await;
+                let mut events = 0;
+                let mut replied = false;
+                while events < 32 || !replied {
+                    let packet = read(&mut socket).await;
+                    if packet["id"] == "after-lag" {
+                        assert!(packet["result"].is_object());
+                        replied = true;
+                    } else {
+                        assert_eq!(packet["method"], "pages.event");
+                        assert_eq!(packet["params"]["connectionId"], owner);
+                        events += 1;
+                    }
+                }
+                reverse(
+                    "pages.event".into(),
+                    json!({"connection":owner,"token":"after-lag","notification":{}}),
+                )
+                .await
+                .unwrap();
+                assert_eq!(read(&mut socket).await["params"]["token"], "after-lag");
+            })
+            .await;
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -334,12 +334,14 @@ impl Session {
             .insert(peer.clone(), count + 1);
         slot.peer = Some(peer.clone());
         let counters = host.gateway.counters.clone();
-        let limits = channel.limits;
+        let limits = Rc::new(std::cell::Cell::new(channel.limits));
+        let read_limits = limits.clone();
         let (mut reader, writer) = futures_util::io::AsyncReadExt::split(channel.stream);
         let (incoming, requests) = tokio::sync::mpsc::channel(1);
         // 读取所有者贯穿 hello、等待配对与通知派发，任何控制事件都不能截断正在读取的消息。
         let reading = async move {
-            while let Some(bytes) = wire::read_json(&mut reader, limits).await? {
+            let mut next = wire::read_json(&mut reader, read_limits.get()).await?;
+            while let Some(bytes) = next {
                 ensure!(counters.reserve_receive(bytes.len()), "LIMIT_EXCEEDED");
                 let message = RequestMessage {
                     bytes,
@@ -348,6 +350,7 @@ impl Session {
                 if incoming.send(message).await.is_err() {
                     return Ok::<(), anyhow::Error>(());
                 }
+                next = wire::read_json_with_limits(&mut reader, || read_limits.get()).await?;
             }
             Ok(())
         };
@@ -370,7 +373,7 @@ impl Session {
         host: Rc<Host>,
         identity: Rc<wire::Identity>,
         peer: String,
-        limits: wire::WireLimits,
+        read_limits: Rc<std::cell::Cell<wire::WireLimits>>,
         (mut requests, mut writer): (tokio::sync::mpsc::Receiver<RequestMessage>, W),
         slot: &mut SessionSlot,
         admission: gateway_owner::Admission,
@@ -378,6 +381,7 @@ impl Session {
     where
         W: AsyncWrite + Unpin,
     {
+        let limits = read_limits.get();
         let first = tokio::time::timeout(Duration::from_secs(15), requests.recv())
             .await?
             .context("hello missing")?;
@@ -473,6 +477,9 @@ impl Session {
         let Some(grant) = gateway_owner::grant(&config["config"], &peer) else {
             return Self::reject_hello(&mut writer, limits, "FORBIDDEN").await;
         };
+        // hello 与等待配对期间仍用小上限；只有已授权设备才能发送 GUI 大消息。
+        let limits = wire::WireLimits::authenticated();
+        read_limits.set(limits);
         host.gateway.pending.set(host.gateway.pending.get() - 1);
         slot.pending = false;
         let mut token_key = [0; 32];
@@ -676,7 +683,10 @@ impl Session {
     }
     fn describe(&self, ready: bool) -> Value {
         let limits: [(&str, u64); 44] = [
-            ("applicationMessageBytes", 256 * 1024),
+            (
+                "applicationMessageBytes",
+                wire::WireLimits::authenticated().max_message_bytes as u64,
+            ),
             ("transportFrameBytes", 512 * 1024),
             ("receiveBufferedBytes", 2 * 1024 * 1024),
             ("sendBufferedBytes", 2 * 1024 * 1024),
@@ -1234,7 +1244,7 @@ impl Session {
                 .collect::<std::collections::BTreeMap<_, _>>();
             let projects: Vec<_> = self.host.slots.borrow().values().filter_map(|slot| {
                 let alias = aliases.get(&slot.registration.project_id)?;
-                self.grant["projectIds"].as_array()?.iter().any(|id| id == alias).then(|| json!({"projectId":alias,"name":slot.registration.workspace.file_name().unwrap_or_default().to_string_lossy(),"connectionState":if slot.state=="ready" {"online"} else {"offline"},"serviceGeneration":slot.service.as_ref().map(|s|s.identity.generation.clone())}))
+                (self.local || self.grant["projectIds"].as_array().is_some_and(|ids| ids.iter().any(|id| id == alias))).then(|| json!({"projectId":alias,"name":slot.registration.workspace.file_name().unwrap_or_default().to_string_lossy(),"connectionState":if slot.state=="ready" {"online"} else {"offline"},"serviceGeneration":slot.service.as_ref().map(|s|s.identity.generation.clone())}))
             }).collect();
             ensure!(offset <= projects.len(), "INVALID_PARAMS");
             let end = projects.len().min(offset + limit as usize);
