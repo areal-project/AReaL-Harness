@@ -881,42 +881,36 @@ impl Host {
             total_active_tasks: 0,
         };
         for id in ids {
-            let (registration, gate, supervised, known_service) = {
-                let slots = self.slots.borrow();
-                let slot = &slots[&id];
-                (
-                    slot.registration.clone(),
-                    slot.gate.clone(),
-                    slot.writer.is_some(),
-                    slot.service.clone(),
+            let gate = self.slots.borrow()[&id].gate.clone();
+            // 后台调谐也会短暂持写锁；在同一观察超时内等它结束，不能把竞争投影成未知。
+            let observed = tokio::time::timeout(Duration::from_secs(3), async {
+                let _guard = gate.read().await;
+                // 等待期间可能发生代际切换，身份和监督状态必须在取得锁后一起读取。
+                let (registration, supervised, known_service) = {
+                    let slots = self.slots.borrow();
+                    let slot = &slots[&id];
+                    ensure!(
+                        !slot.uncertain_start && slot.migration.is_none(),
+                        "project lifecycle is unavailable"
+                    );
+                    (
+                        slot.registration.clone(),
+                        slot.writer.is_some(),
+                        slot.service.clone(),
+                    )
+                };
+                crate::activity::observe(
+                    &self.home,
+                    &registration,
+                    &self.owner(),
+                    supervised,
+                    known_service.as_ref(),
                 )
-            };
-            let observed = match gate.try_read() {
-                Ok(_guard) => {
-                    let stable = {
-                        let slots = self.slots.borrow();
-                        !slots[&id].uncertain_start && slots[&id].migration.is_none()
-                    };
-                    if stable {
-                        tokio::time::timeout(
-                            Duration::from_secs(3),
-                            crate::activity::observe(
-                                &self.home,
-                                &registration,
-                                &self.owner(),
-                                supervised,
-                                known_service.as_ref(),
-                            ),
-                        )
-                        .await
-                        .ok()
-                        .and_then(Result::ok)
-                    } else {
-                        None
-                    }
-                }
-                Err(_) => None,
-            };
+                .await
+            })
+            .await
+            .ok()
+            .and_then(Result::ok);
             let observed = observed.filter(|activity| {
                 let ProjectActivity::Observed { active_tasks, .. } = activity else {
                     return false;
@@ -941,7 +935,7 @@ impl Host {
             let s = &slots[id];
             (s.registration.clone(), s.gate.clone())
         };
-        if let Ok(_guard) = gate.try_read() {
+        if let Ok(_guard) = tokio::time::timeout(Duration::from_millis(500), gate.read()).await {
             let instance = Self::service_id(&registration);
             if let Ok(Ok(service)) = tokio::time::timeout(
                 Duration::from_millis(500),
@@ -2018,11 +2012,21 @@ impl Host {
             .map(str::to_owned)
             .collect();
         let mut guards = Vec::new();
+        let mut observations = Vec::new();
         for project_id in project_ids {
             if let Ok(gate) = self.gate(&project_id) {
-                match gate.try_write_owned() {
-                    Ok(guard) => guards.push(guard),
-                    Err(_) => return Ok(Some(record.receipt)),
+                // 激活回执只核对已发布状态与清理证明，与普通状态读者共享；
+                // 真正的激活或停止仍持写锁，未退出时不能提前结算。
+                if record.receipt["method"] == "project.ensure" {
+                    match gate.try_read_owned() {
+                        Ok(guard) => observations.push(guard),
+                        Err(_) => return Ok(Some(record.receipt)),
+                    }
+                } else {
+                    match gate.try_write_owned() {
+                        Ok(guard) => guards.push(guard),
+                        Err(_) => return Ok(Some(record.receipt)),
+                    }
                 }
             }
         }
@@ -2329,14 +2333,22 @@ mod tests {
                     })
                 }));
             let server = tokio::task::spawn_local(async move { axum::serve(listener, app).await.unwrap() });
-            let (first, second) = tokio::join!(host.activity(), host.activity());
-            server.abort();
-            assert!(first.complete && second.complete, "readers must not invalidate each other: {first:?} {second:?}");
+            let (first, second, third) = tokio::join!(host.activity(), host.activity(), async {
+                host.project_status("project").await;
+                host.activity().await
+            });
+            assert!(first.complete && second.complete && third.complete, "readers must not invalidate each other: {first:?} {second:?} {third:?}");
             assert_eq!(first, second);
             assert!(matches!(first.projects[0], ProjectActivity::Observed { idle_allowed: true, .. }));
             let gate = host.gate("project").unwrap();
+            let changing = gate.write().await;
+            let mut waiting = Box::pin(host.activity());
+            assert!(futures_util::poll!(waiting.as_mut()).is_pending(), "a transient lifecycle writer must be awaited");
+            drop(changing);
+            assert!(waiting.await.complete, "observation must resume when the writer releases its gate");
             let _changing = gate.write().await;
-            assert!(!host.activity().await.complete, "a real lifecycle change must remain unknown");
+            assert!(!host.activity().await.complete, "a lasting lifecycle change must remain unknown");
+            server.abort();
         }).await;
     }
 
@@ -2945,6 +2957,63 @@ mod tests {
             assert_eq!(client.operation(&request).await.unwrap().unwrap()["state"],"blocked");
             let stop=client.stop(&uuid::Uuid::new_v4().to_string(),&client.identity().generation,StopStrategy::IfIdle).await.unwrap();assert_eq!(stop["state"],"completed");assert!(matches!(task.await.unwrap().unwrap(),HostExit::Stopped));
         }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn interrupted_activation_reconciles_alongside_status_readers() {
+        let root = tempfile::tempdir().unwrap();
+        let host = schedules::tests::fixture(root.path());
+        let registration = host.slots.borrow()["project"].registration.clone();
+        storage::private_dir(&registration.data_dir).unwrap();
+        let instance = Host::service_id(&registration);
+        let directory = storage::registry(&host.home, &instance).unwrap();
+        storage::private_dir(&directory).unwrap();
+        let previous: Service = serde_json::from_value(json!({
+            "protocolVersion":1,"serviceId":instance,"generation":"original-generation",
+            "workspace":registration.workspace,"dataDir":registration.data_dir,
+            "configFingerprint":"original-config","owner":host.owner(),
+            "endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1",
+            "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+            "hostPid":1,"corePid":1,"state":"ready"
+        }))
+        .unwrap();
+        let mut stopped = previous.clone();
+        stopped.state = State::Stopped;
+        storage::write(&directory.join("service.json"), &stopped).unwrap();
+        storage::write(
+            &directory.join("crash.json"),
+            &storage::CrashReceipt {
+                version: 1,
+                unexpected_core_exit: true,
+                identity: stopped.identity.clone(),
+                owner: stopped.owner.clone(),
+                components: BTreeMap::new(),
+                cleanup_confirmed: true,
+            },
+        )
+        .unwrap();
+        for fingerprint in ["original-config", "replacement-config"] {
+            let request = uuid::Uuid::new_v4().to_string();
+            let record = Operation {
+                digest: "fixture".into(),
+                receipt: json!({"requestId":request,"method":"project.ensure","projectId":"project","state":"acceptedPending"}),
+                evidence: json!({"serviceId":instance,"fingerprint":fingerprint,"owner":host.owner(),"registration":registration,"previousService":previous}),
+            };
+            storage::write(&wire::operation_path(&host.home, &request), &record).unwrap();
+            let gate = host.gate("project").unwrap();
+            // 状态读者不改变生命周期，也不能阻止已有精确清理证明的回执结算。
+            let reading = gate.read().await;
+            let receipt = host.reconcile(&request).await.unwrap().unwrap();
+            assert_eq!(receipt["state"], "blocked", "{fingerprint}");
+            assert_eq!(receipt["error"]["code"], "activationInterrupted");
+            drop(reading);
+            storage::write(&wire::operation_path(&host.home, &request), &record).unwrap();
+            let _changing = gate.write().await;
+            assert_eq!(
+                host.reconcile(&request).await.unwrap().unwrap()["state"],
+                "acceptedPending"
+            );
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]
