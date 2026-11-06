@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover.js";
 import { TaskSummaryIcon } from "../homeChromeIcons.js";
 import type { Action, Data, PlatformServices } from "../services.js";
+import { useWorkspaceChanges } from "../useWorkspaceChanges.js";
 
 export function TaskResourcesPopover({
   project,
@@ -39,7 +40,9 @@ export function TaskResourcesPopover({
   onAddSchedule?: () => void;
   onOpenSchedule?: (task: Data) => void;
 }) {
-  const { t } = useI18n();
+  const { t, intl } = useI18n();
+  const changes = useWorkspaceChanges(project, thread, action);
+  const changed = changes.files.length > 0;
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const composerHandoff = useRef(false);
@@ -59,7 +62,13 @@ export function TaskResourcesPopover({
     <Popover
       open={open}
       onOpenChange={(next, details) => {
-        if (!next && ["outside-press", "focus-out"].includes(details.reason)) return;
+        // 点卡片外时焦点先离开，库只报 focus-out；窗口整体失焦（系统文件选择框、切到别的应用）不算关闭。
+        if (!next && details.reason === "focus-out") {
+          setTimeout(() => {
+            if (document.hasFocus()) setOpen(false);
+          });
+          return;
+        }
         setOpen(next);
       }}
     >
@@ -69,12 +78,23 @@ export function TaskResourcesPopover({
             unstyled
             type="button"
             ref={trigger}
-            className={`icon-button ${open ? "active" : ""}`}
+            className={`icon-button task-resources-trigger ${changed ? "with-count" : ""} ${open ? "active" : ""}`}
             aria-label={t("chat.resources.trigger")}
+            title={
+              changed
+                ? `${t("chat.context.changeScope", { count: changes.files.length })} · +${intl.formatNumber(changes.additions)} −${intl.formatNumber(changes.deletions)}`
+                : undefined
+            }
           />
         }
       >
         <TaskSummaryIcon />
+        {changed && (
+          <span className="diff-count" aria-hidden="true">
+            <b>+{intl.formatNumber(changes.additions)}</b>
+            <em>−{intl.formatNumber(changes.deletions)}</em>
+          </span>
+        )}
       </PopoverTrigger>
       <PopoverContent
         keepMounted
@@ -92,6 +112,7 @@ export function TaskResourcesPopover({
       >
         <Activity mode={open ? "visible" : "hidden"}>
           <ConversationStatusCard
+            changes={changes}
             fileOpen={fileOpen}
             onLink={onLink}
             onAddSource={

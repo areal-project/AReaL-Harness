@@ -628,7 +628,7 @@ try {
     await button("任务资源").click();
     const resources = page.getByRole("complementary", { name: "任务上下文", exact: true });
     await resources.getByRole("button", { name: /^查看全部子代理（3） / }).waitFor();
-    await resources.getByRole("button").filter({ hasText: "Changes" }).waitFor();
+    await resources.getByRole("button").filter({ hasText: "改动" }).waitFor();
     await resources.getByRole("heading", { name: "后台进程", exact: false }).waitFor();
     const agentSummary = resources.getByRole("region", { name: "子智能体", exact: true });
     await agentSummary.locator(`[data-agent-avatar="${liveChild.id}"]`).waitFor();
@@ -669,8 +669,8 @@ try {
       .getByRole("button", { name: "关闭图片预览", exact: true })
       .waitFor({ state: "hidden" });
     await resources.waitFor();
-    await resources.getByRole("button").filter({ hasText: "Changes" }).waitFor();
-    const changes = resources.getByRole("button").filter({ hasText: "Changes" });
+    await resources.getByRole("button").filter({ hasText: "改动" }).waitFor();
+    const changes = resources.getByRole("button").filter({ hasText: "改动" });
     assert.match(await changes.getAttribute("aria-label"), /1\s*个文件/);
     assert.match(await changes.innerText(), /\+1/);
     assert.match(await changes.innerText(), /−1/);
@@ -760,7 +760,7 @@ try {
       .locator(`[data-agent-conversation="${liveChild.id}"] [data-turn-status=inProgress]`)
       .waitFor();
     await button("任务资源").click();
-    await resources.getByRole("button").filter({ hasText: "Changes" }).click();
+    await resources.getByRole("button").filter({ hasText: "改动" }).click();
     assert.equal(
       await page.locator("[data-testid=workspace-review]").getAttribute("data-review-source"),
       "git",

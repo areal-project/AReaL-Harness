@@ -40,9 +40,7 @@ export const filterCatalog = (entries: readonly ComposerCatalogEntry[], query: s
       ].some((value) => value.toLowerCase().includes(normalized)),
     )
     .filter(
-      (entry) =>
-        (normalized.length > 0 || entry.group !== "files") &&
-        (normalized.length > 0 || entry.group !== "会话" || recentConversations++ < 20),
+      (entry) => normalized.length > 0 || entry.group !== "会话" || recentConversations++ < 20,
     )
     .sort((a, b) => CATALOG_GROUPS.indexOf(a.group) - CATALOG_GROUPS.indexOf(b.group));
 };
@@ -132,7 +130,7 @@ export function ComposerCatalog({
           (group) =>
             (group !== "commands" && group !== "files") ||
             rows.some((row) => row.group === group) ||
-            (group === "files" && !!query.trim() && !!catalog.files),
+            (group === "files" && !!catalog.files),
         ).map((group) => (
           <div
             key={group}

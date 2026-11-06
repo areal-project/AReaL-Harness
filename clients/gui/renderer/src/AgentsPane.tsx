@@ -429,6 +429,7 @@ export function AgentsPane({
       </section>
     );
   if (summary) {
+    if (!children.length && !readError) return null;
     const running =
       connected && !readError
         ? children.filter((child) => results[child.id]?.status === "inProgress")

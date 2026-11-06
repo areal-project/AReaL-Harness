@@ -1234,7 +1234,8 @@ async function normalComposerAndSideCommands() {
     if (command === "side") {
       await mainComposer().getByTestId("chat-input").fill("/");
       await page.getByRole("option").filter({ hasText: "/side" }).waitFor();
-      await page.getByRole("option").filter({ hasText: "/btw" }).waitFor();
+      // /btw 是 /side 的别名，菜单只列一项。
+      assert.equal(await page.getByRole("option").filter({ hasText: "/btw" }).count(), 0);
       await shot("P5-main-slash-menu");
     }
     await mainComposer().getByTestId("chat-input").fill(`/${command}`);
