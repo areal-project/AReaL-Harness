@@ -366,6 +366,12 @@ def build_plan(paths, source, manifest):
         )
     if affected["gui"]:
         add(
+            "workbench-core-boundary",
+            ["node", "clients/gui/scripts/workbench-boundary.mjs"],
+            "gui-portable",
+            phase="commit",
+        )
+        add(
             "manifest",
             ["node", "--test", "clients/gui/scripts/test-manifest.test.mjs"],
             "gui-portable",

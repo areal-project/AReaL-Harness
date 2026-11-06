@@ -2,526 +2,81 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-const {
-  GuiTerminalConnections,
-} = require("@areal/workbench-service/desktop/core/gui-terminal-connections.cjs");
-const tick = () => new Promise((done) => setImmediate(done));
-function socket() {
-  return {
-    readyState: 1,
-    bufferedAmount: 0,
-    packets: [],
-    send(value, done) {
-      this.packets.push(JSON.parse(value));
-      done?.();
-    },
-  };
-}
-function service() {
-  const project = {
-    service: { serviceId: "core", generation: "generation" },
-    endpoint: "ws://127.0.0.1:1234",
-    token: "private",
-  };
+function fixture(host) {
   const backend = {
-    projects: new Map([["project", project]]),
+    projects: new Map(),
     providers: { redact: (value) => value },
     analytics: { sample() {} },
     starting: new Map(),
     hasWork: () => false,
+    hostCall: host,
+    host: { sourceId: "source", resolve: () => ({ projectId: "canonical" }) },
+    hostCoreClients: new Map(),
+    connections: { revokeDesktopToolHost() {} },
   };
-  const value = new DesktopService(backend, "test");
-  value.schedule = () => {};
-  return value;
+  const service = new DesktopService(backend, "fixture");
+  service.schedule = () => {};
+  const owner = () => {
+    const socket = { readyState: 1, bufferedAmount: 0, send() {}, close() {} };
+    service.clients.add(socket);
+    return socket;
+  };
+  return { service, owner };
 }
-test("same Main dispatch preserves terminal ownership without a Desktop socket", async () => {
-  const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
-  const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-  const f = service();
-  f.backend.connections = { revokeDesktopToolHost() {} };
-  const library = {};
-  f.backend.snapshot = () => ({ library, projects: [] });
-  let closed = 0;
-  const connection = new ServiceConnection(
-    undefined,
-    () => closed++,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    async (request) => {
-      assert.equal(request.method, "areal/process/read");
-      assert.equal(request.params.id, "terminal");
-      return { chunks: [{ dataBase64: "ZGF0YQ==" }] };
-    },
-  );
-  try {
-    const metadata = connection.connectMain(f);
-    assert.equal(metadata.pid, process.pid);
-    assert.equal(Object.hasOwn(metadata, "endpoint"), false);
-    assert.equal(Object.hasOwn(metadata, "token"), false);
-    assert.equal(connection.socket, undefined);
-    const hello = await connection.request("hello", {
-      protocol: PROTOCOL,
-      identity: "test",
-      capabilities: { computerHost: 1 },
-    });
-    assert.equal(hello.computerHostOwned, true);
-    hello.snapshot.library.changed = true;
-    assert.deepEqual(library, {});
-    const owner = f.backend.desktopToolOwner();
-    assert.equal(owner.kind, "main");
-    assert.equal(Object.hasOwn(owner, "readyState"), false);
-    assert.equal(Object.hasOwn(owner, "send"), false);
-    assert.deepEqual(
-      await f.terminalRead(owner, "project", "areal/process/read", { id: "terminal" }),
-      {
-        chunks: [{ dataBase64: "ZGF0YQ==" }],
-      },
-    );
-    f.disconnectClient(owner);
-    assert.equal(closed, 1);
-    await assert.rejects(connection.request("snapshot"), { code: "DISCONNECTED" });
-  } finally {
-    connection.close();
-    f.close();
-  }
+const attached = (lease) => ({
+  lease,
+  coreInstanceId: "core",
+  coreGeneration: "generation",
+  connectionId: lease,
+  capabilities: { methods: ["areal/process/read"], features: { connectionProcesses: true } },
 });
-test("terminal replies are bound to the original authenticated Main socket", async () => {
-  const f = service(),
-    a = socket(),
-    b = socket();
-  f.clients.add(a);
-  f.clients.add(b);
-  const pending = f.terminalRead(a, "project", "areal/process/start", {
-    threadId: "thread",
-    requestId: "original",
-    lifetime: "connection",
-  });
-  await tick();
-  const dispatched = a.packets.find((packet) => packet.method === "terminalRequest").params;
-  assert.equal(dispatched.params.requestId, "original");
-  assert.equal(dispatched.token, "private");
-  await f.receive(
-    b,
-    Buffer.from(
-      JSON.stringify({
-        id: 1,
-        method: "terminalResult",
-        params: { requestId: dispatched.requestId, result: { id: "spoof" } },
-      }),
-    ),
-  );
-  assert.match(
-    b.packets.find((packet) => packet.id === 1).error.message,
-    /Invalid GUI terminal response/,
-  );
-  assert.equal(f.terminalPending.size, 1);
-  await f.receive(
-    a,
-    Buffer.from(
-      JSON.stringify({
-        id: 2,
-        method: "terminalResult",
-        params: { requestId: dispatched.requestId, result: { id: "real" } },
-      }),
-    ),
-  );
-  assert.deepEqual(await pending, { id: "real" });
-  assert.equal(f.terminalPending.size, 0);
-  await assert.rejects(f.terminalRead(a, "project", "areal/server/stop", {}), /unavailable/);
-  f.close();
-});
-test("terminal errors keep their original UNKNOWN result and close rejects pending dispatch", async () => {
-  const f = service(),
-    a = socket();
-  f.clients.add(a);
-  const pending = f.terminalRead(a, "project", "areal/process/write", {
-    requestId: "original",
-    id: "terminal",
-  });
-  const dispatched = a.packets.find((packet) => packet.method === "terminalRequest").params;
-  const error = {
-    message: "lost response",
-    submissionUnknown: true,
-    requestId: "original",
-    recovery: { kind: "queryOriginal" },
-  };
-  await f.receive(
-    a,
-    Buffer.from(
-      JSON.stringify({
-        id: 1,
-        method: "terminalResult",
-        params: { requestId: dispatched.requestId, error },
-      }),
-    ),
-  );
-  await assert.rejects(
-    pending,
-    (value) =>
-      value.submissionUnknown &&
-      value.requestId === "original" &&
-      value.recovery.kind === "queryOriginal",
-  );
-  const unresolved = f.terminalRead(a, "project", "areal/process/start", {});
-  f.close();
-  await assert.rejects(unresolved, /closed; outcome may be unknown/);
-});
-test("Main terminal connection survives concurrent reads and closes a late handshake", async () => {
-  const { CoreClient } = await import("../packages/runtime-client/core.js");
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({
-    ok: true,
-    json: async () => ({ protocolVersion: 1, serviceId: "core", generation: "generation" }),
-  });
-  const original = {
-    connect: CoreClient.prototype.connect,
-    request: CoreClient.prototype.request,
-    close: CoreClient.prototype.close,
-  };
-  const ready = Promise.withResolvers();
-  const connected = [],
-    calls = [],
-    closed = [];
-  CoreClient.prototype.connect = function () {
-    connected.push(this);
-    this.capabilities = { features: { connectionProcesses: true } };
-    return ready.promise;
-  };
-  CoreClient.prototype.request = async function (method, params) {
-    calls.push({ client: this, method, params });
-    return { id: "terminal" };
-  };
-  CoreClient.prototype.close = function () {
-    closed.push(this);
-  };
-  try {
-    const owner = new GuiTerminalConnections();
-    const request = {
-      projectId: "project",
-      serviceId: "core",
-      generation: "generation",
-      endpoint: "ws://127.0.0.1:1234",
-      token: "private",
-      method: "areal/process/start",
-      params: { lifetime: "connection", requestId: "original" },
-    };
-    const pending = owner.request(request);
-    await tick();
-    owner.close();
-    ready.resolve();
-    await assert.rejects(pending, /ended during startup/);
-    assert.equal(calls.length, 0);
-    assert.ok(closed.includes(connected[0]));
-    const second = new GuiTerminalConnections();
-    await Promise.all([
-      second.request(request),
-      second.request({ ...request, method: "areal/process/read", params: { id: "terminal" } }),
-    ]);
-    assert.equal(connected.length, 2);
-    assert.equal(calls[0].client, calls[1].client);
-    assert.equal(calls[0].params.requestId, "original");
-    second.close();
-    await assert.rejects(second.request(request), /unavailable/);
-    assert.equal(connected.length, 2);
-  } finally {
-    Object.assign(CoreClient.prototype, original);
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("Main rejects a stale Core generation and malformed terminal endpoint", async () => {
-  const { CoreClient } = await import("../packages/runtime-client/core.js");
-  const original = {
-    connect: CoreClient.prototype.connect,
-    request: CoreClient.prototype.request,
-    close: CoreClient.prototype.close,
-  };
-  const originalFetch = globalThis.fetch;
-  let dispatches = 0,
-    closes = 0;
-  CoreClient.prototype.connect = async function () {
-    return {};
-  };
-  CoreClient.prototype.request = async function () {
-    dispatches++;
-  };
-  CoreClient.prototype.close = function () {
-    closes++;
-  };
-  globalThis.fetch = async () => ({
-    ok: true,
-    json: async () => ({ protocolVersion: 1, serviceId: "core", generation: "successor" }),
-  });
-  const owner = new GuiTerminalConnections();
-  const request = {
-    projectId: "project",
-    serviceId: "core",
-    generation: "original",
-    endpoint: "ws://127.0.0.1:1234",
-    token: "private",
-    method: "areal/process/start",
-    params: { lifetime: "connection" },
-  };
-  try {
-    await assert.rejects(
-      owner.request({ ...request, endpoint: "invalid endpoint" }),
-      /unavailable/,
-    );
-    await assert.rejects(owner.request(request), /identity or generation changed/);
-    assert.equal(dispatches, 0);
-    assert.equal(closes, 1);
-  } finally {
-    owner.close();
-    Object.assign(CoreClient.prototype, original);
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("Desktop terminal dispatch retains the journal request and forces connection lifetime", async () => {
-  const { manage } = require("@areal/workbench-service/desktop/core/management.cjs");
+test("GUI sockets own separate Host terminal leases and closing one leaves the other readable", async () => {
   const calls = [];
-  const terminalRequest = async (method, params) => {
+  let sequence = 0;
+  const f = fixture(async (method, params) => {
     calls.push({ method, params });
-    return { id: "terminal", runtimeEpoch: "epoch" };
-  };
-  const project = {
-    id: "project",
-    client: {
-      request() {
-        assert.fail("must use Main terminal connection");
-      },
-    },
-  };
-  const backend = {
-    async submit(owner, method, params, options) {
-      assert.equal(owner, project);
-      assert.equal(options.requestId, "original");
-      assert.equal(options.requestCore, terminalRequest);
-      return options.requestCore(method, { ...params, requestId: options.requestId });
-    },
-    onChange() {},
-  };
-  const result = await manage(
-    backend,
-    project,
-    {
-      operation: "processStart",
-      projectId: "project",
-      threadId: "thread",
-      requestId: "original",
-      argv: ["/bin/sh"],
-      lifetime: "thread",
-    },
-    { guiTerminalRequest: terminalRequest },
-  );
-  assert.equal(result.id, "terminal");
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].params.requestId, "original");
-  assert.equal(calls[0].params.lifetime, "connection");
-});
-test("lost terminal start response queries the original receipt through Main without replay", async () => {
-  const {
-    SubmissionRecovery,
-  } = require("@areal/workbench-service/desktop/core/submission-recovery.cjs");
-  const calls = [];
-  const project = {
-    client: {
-      capabilities: {},
-      request() {
-        assert.fail("Desktop socket must not dispatch or recover this request");
-      },
-    },
-  };
-  const requestCore = async (method, params) => {
-    calls.push({ method, params });
-    if (method === "areal/process/start")
-      throw Object.assign(new Error("lost"), { submissionUnknown: true });
-    return { status: "completed", result: { id: "original-terminal" } };
-  };
-  const recovery = {
-    async readReceipt(owner, entry, client, timeout, request) {
-      assert.equal(owner, project);
-      assert.equal(entry.params.requestId, "original");
-      assert.equal(request, requestCore);
-      return request("areal/request/read", { threadId: "thread", requestId: "original" });
-    },
-  };
-  const result = await SubmissionRecovery.prototype.requestSubmission.call(
-    recovery,
-    project,
-    "areal/process/start",
-    { threadId: "thread", requestId: "original", lifetime: "connection" },
-    requestCore,
-  );
-  assert.equal(result.id, "original-terminal");
+    return method === "core.attach"
+      ? attached(`lease-${++sequence}`)
+      : method === "core.request"
+        ? { result: { chunks: [] }, sequence: 0 }
+        : { closed: true };
+  });
+  const first = f.owner(),
+    second = f.owner();
+  const a = await f.service.hostTerminalClient(first, "project"),
+    b = await f.service.hostTerminalClient(second, "project");
+  assert.equal(await f.service.hostTerminalClient(first, "project"), a);
+  assert.notEqual(a, b);
+  f.service.disconnectClient(first);
+  assert.equal(a.closed, true);
+  assert.equal(b.ready, true);
+  assert.deepEqual(await b.request("areal/process/read", { threadId: "thread", id: "pty" }), {
+    chunks: [],
+  });
   assert.deepEqual(
-    calls.map((call) => call.method),
-    ["areal/process/start", "areal/request/read"],
+    calls.filter((call) => call.method === "core.detach").map((call) => call.params.lease),
+    ["lease-1"],
   );
+  f.service.disconnectClient(second);
+  f.service.close();
 });
-
-test("Main service connection forwards terminal results on the original privileged channel", async (t) => {
-  const { WebSocketServer } = require("ws");
-  const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
-  const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
-  const { once } = require("node:events");
-  const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
-  await once(server, "listening");
-  let received;
-  const result = Promise.withResolvers();
-  server.on("connection", (socket) => {
-    socket.on("message", (bytes) => {
-      const message = JSON.parse(bytes);
-      received = message;
-      socket.send(JSON.stringify({ id: message.id, result: null }));
-      result.resolve();
-    });
-    socket.send(
-      JSON.stringify({
-        method: "terminalRequest",
-        params: {
-          requestId: 42,
-          projectId: "project",
-          method: "areal/process/read",
-          params: { id: "terminal" },
-        },
-      }),
-    );
+test("a GUI owner disappearing during attach releases the late original lease", async () => {
+  let settle;
+  const attaching = new Promise((resolve) => {
+    settle = resolve;
   });
-  const connection = new ServiceConnection(
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    async (request) => {
-      assert.equal(request.requestId, 42);
-      return { chunks: [{ dataBase64: "ZGF0YQ==" }] };
-    },
-  );
-  t.after(async () => {
-    connection.close();
-    for (const socket of server.clients) socket.terminate();
-    await new Promise((done) => server.close(done));
+  const detached = [];
+  const f = fixture(async (method, params) => {
+    if (method === "core.attach") return attaching;
+    if (method === "core.detach") detached.push(params.lease);
+    return { closed: true };
   });
-  await connection.connect({
-    protocol: PROTOCOL,
-    endpoint: `ws://127.0.0.1:${server.address().port}`,
-    token: "a".repeat(64),
-    identity: "fixture",
-    pid: 1234,
-  });
-  await result.promise;
-  assert.equal(received.method, "terminalResult");
-  assert.equal(received.params.requestId, 42);
-  assert.deepEqual(received.params.result, { chunks: [{ dataBase64: "ZGF0YQ==" }] });
-});
-
-test("failed and closed terminal connections permit only a later explicit connection", async () => {
-  const { CoreClient } = await import("../packages/runtime-client/core.js");
-  const original = {
-    connect: CoreClient.prototype.connect,
-    request: CoreClient.prototype.request,
-    close: CoreClient.prototype.close,
-    onClose: CoreClient.prototype.onClose,
-  };
-  const originalFetch = globalThis.fetch;
-  const clients = [],
-    listeners = new Map(),
-    calls = [];
-  CoreClient.prototype.connect = async function () {
-    clients.push(this);
-    if (clients.length === 1) throw new Error("handshake failed");
-    this.capabilities = { features: { connectionProcesses: true } };
-    return this.capabilities;
-  };
-  CoreClient.prototype.onClose = function (listener) {
-    listeners.set(this, listener);
-    return () => {};
-  };
-  CoreClient.prototype.close = function () {
-    this.closed = true;
-    listeners.get(this)?.();
-  };
-  CoreClient.prototype.request = async function (method, params) {
-    calls.push({ client: this, method, params });
-    if (method === "areal/process/write") {
-      this.close();
-      throw Object.assign(new Error("write response lost"), { submissionUnknown: true });
-    }
-    return { id: "terminal" };
-  };
-  globalThis.fetch = async () => ({
-    ok: true,
-    json: async () => ({ protocolVersion: 1, serviceId: "core", generation: "generation" }),
-  });
-  const owner = new GuiTerminalConnections();
-  const request = {
-    projectId: "project",
-    serviceId: "core",
-    generation: "generation",
-    endpoint: "ws://127.0.0.1:1234",
-    token: "private",
-    method: "areal/process/start",
-    params: { lifetime: "connection", requestId: "original" },
-  };
-  try {
-    await assert.rejects(owner.request(request), /handshake failed/);
-    assert.equal(
-      owner.connections.size,
-      0,
-      "failed readiness must not poison later explicit requests",
-    );
-    await owner.request({
-      ...request,
-      params: { lifetime: "connection", requestId: "new-explicit-request" },
-    });
-    assert.equal(clients.length, 2);
-    await assert.rejects(
-      owner.request({
-        ...request,
-        method: "areal/process/write",
-        params: { id: "terminal", requestId: "original-write" },
-      }),
-      (error) => error.submissionUnknown === true,
-    );
-    assert.equal(clients.length, 2, "a lost in-flight write must not reconnect or replay itself");
-    assert.equal(owner.connections.size, 0);
-    await owner.request({
-      ...request,
-      method: "areal/request/read",
-      params: { threadId: "thread", requestId: "original-write" },
-    });
-    assert.equal(clients.length, 3);
-    listeners.get(clients[1])();
-    assert.equal(
-      owner.connections.get("project").client,
-      clients[2],
-      "late old close must not remove its replacement",
-    );
-    assert.deepEqual(
-      calls.map((call) => [call.method, call.params.requestId]),
-      [
-        ["areal/process/start", "new-explicit-request"],
-        ["areal/process/write", "original-write"],
-        ["areal/request/read", "original-write"],
-      ],
-    );
-    owner.close();
-    await assert.rejects(owner.request(request), /unavailable/);
-    assert.equal(clients.length, 3);
-  } finally {
-    owner.close();
-    Object.assign(CoreClient.prototype, original);
-    globalThis.fetch = originalFetch;
-  }
+  const owner = f.owner(),
+    pending = f.service.hostTerminalClient(owner, "project");
+  f.service.disconnectClient(owner);
+  settle(attached("original-late-lease"));
+  await assert.rejects(pending, /closed during attachment|disconnected/);
+  assert.deepEqual(detached, ["original-late-lease"]);
+  assert.equal(f.service.hostTerminals.size, 0);
+  f.service.close();
 });

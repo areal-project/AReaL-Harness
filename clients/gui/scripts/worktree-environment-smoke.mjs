@@ -7,7 +7,11 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+} from "./application-cleanup.mjs";
 import { captureSmokeFailure, createProjectConversation } from "./smoke-navigation.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -15,6 +19,9 @@ const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const scratch = await makeTempDir("areal-worktree-environment-");
+const rust = process.argv.includes("--rust");
+const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
+if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const evidenceRoot =
   process.env.AREAL_WORKTREE_ENV_EVIDENCE || join(root, ".scratch/worktrees-20261024/electron");
 await mkdir(evidenceRoot, { recursive: true });
@@ -204,6 +211,7 @@ Object.assign(env, {
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_BIN: binary,
 });
+if (rust) env.AREAL_TEST_HOST_KEYCHAIN = process.env.AREAL_TEST_HOST_KEYCHAIN;
 if (process.env.AREAL_GUI_EXECUTABLE) delete env.AREAL_CORE_BIN;
 env.NO_PROXY = env.no_proxy = [env.NO_PROXY, env.no_proxy, "127.0.0.1", "localhost"]
   .filter(Boolean)
@@ -317,6 +325,58 @@ try {
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+  if (rust) {
+    await page.evaluate((domains) => {
+      localStorage.setItem("areal.oneProtocol.reads", "1");
+      localStorage.setItem(
+        "areal.oneProtocol.domains",
+        ["backend", "library", "tasks", "worktree", ...domains].join(","),
+      );
+    }, rustDomains);
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 });
+    });
+    await closeSmokeApplication(app);
+    await assertApplicationStopped(binary, env, null);
+    const stop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    assert.equal(stop.state, "completed");
+    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+    await writeFile(join(evidence, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    app = await electron.launch({
+      executablePath: process.env.AREAL_GUI_EXECUTABLE || require("electron"),
+      args: process.env.AREAL_GUI_EXECUTABLE ? [] : [join(gui, "app")],
+      env,
+      timeout: 120000,
+    });
+    app.process().stdout?.on("data", (data) => {
+      logWrites.push(writeFile(join(evidence, "electron.stdout.log"), data, { flag: "a" }));
+    });
+    app.process().stderr?.on("data", (data) => {
+      logWrites.push(writeFile(join(evidence, "electron.stderr.log"), data, { flag: "a" }));
+    });
+    page = await app.firstWindow();
+    page.setDefaultTimeout(20000);
+    page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
+    await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+    await until(
+      async () => {
+        const record = await readFile(
+          join(env.AREAL_HARNESS_SERVICE_HOME, "workbench/backend-launch.json"),
+          "utf8",
+        )
+          .then(JSON.parse)
+          .catch(() => null);
+        return rustDomains.every((domain) => record?.options?.rustDomains?.includes(domain));
+      },
+      "Rust backend launch domains",
+      120000,
+    );
+  }
   await app.evaluate(({ dialog, BrowserWindow }, directory) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
     BrowserWindow.getAllWindows()[0].setSize(1440, 960);
@@ -631,6 +691,28 @@ try {
     errors.push(`cleanup: ${error.stack ?? error}`);
     passed = false;
     process.exitCode = 1;
+  }
+  if (rust) {
+    try {
+      const stop = JSON.parse(
+        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+          encoding: "utf8",
+        }),
+      );
+      await writeFile(join(evidence, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
+      assert.equal(stop.state, "completed");
+      assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      await writeFile(
+        join(evidence, "synthetic-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    } catch (error) {
+      errors.push(`synthetic Keychain cleanup: ${error.message}`);
+      passed = false;
+      process.exitCode = 1;
+    }
   }
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));

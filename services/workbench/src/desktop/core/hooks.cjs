@@ -1,12 +1,11 @@
 // @ts-check
 "use strict";
-const { executeCore: execute } = require("./core-process.cjs");
-const { open, writeFile, rename, unlink } = require("node:fs/promises");
+const { open, readFile, writeFile, rename, unlink } = require("node:fs/promises");
 const { constants } = require("node:fs");
 const { join, dirname } = require("node:path");
 const { createHash, randomUUID } = require("node:crypto");
 const resourceContract = require("@areal/workbench/desktop-contract/resource");
-/** @typedef {{binary:string,home:string,harnessHome:string,config?:string,userHome?:string,toolExtensions?:string,proxyEnvironment:NodeJS.ProcessEnv,providers:{redact:(value:string)=>string},saved:import('./project-index.cjs').SavedProject[],projects:Map<string,{client?:{ready:boolean}|null,hookRevision?:string|null}>,starting:Map<string,unknown>,resourcesUpdating?:boolean,providerUpdating?:boolean,onChange:()=>void}} HookHost */
+/** @typedef {{binary:string,home:string,harnessHome:string,config?:string,userHome?:string,toolExtensions?:string,proxyEnvironment:NodeJS.ProcessEnv,providers:{redact:(value:string)=>string},saved:import('./project-index.cjs').SavedProject[],projects:Map<string,{client?:{ready:boolean}|null,hookRevision?:string|null}>,starting:Map<string,unknown>,resourcesUpdating?:boolean,providerUpdating?:boolean,onChange:()=>void,hostCall?:((method:string,params?:Record<string,unknown>)=>Promise<unknown>)}} HookHost */
 /** @typedef {{text:string,mode:number,missing?:boolean,path:string,value:Record<string,unknown>&{hooks:import("@areal/workbench/desktop-contract/resource").Hook[]},external:boolean,revision:string}} HookDocument */
 /** @param {string} value */
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -31,15 +30,12 @@ class AppHooks {
   }
   /** @param {'show'|'validate'} operation @param {string} [path] @returns {Promise<unknown>} */
   async diagnose(operation, path) {
-    const args = ["config", operation, "--management"];
-    if (this.backend.config) args.push("--config", this.backend.config);
     try {
-      const { stdout } = await execute(this.backend.binary, args, {
-        timeout: 15000,
-        maxBuffer: 2 * 1024 * 1024,
-        env: { ...this.environment(), ...(path ? { AREAL_HARNESS_TOOL_EXTENSIONS: path } : {}) },
-      });
-      return operation === "show" ? JSON.parse(stdout) : null;
+      const backend = this.backend;
+      if (!backend.hostCall) throw new Error("Host 配置校验能力不可用");
+      return await backend.hostCall("workbench.utility", operation === "show"
+        ? { operation: "configShow" }
+        : { operation: "configValidate", document: path ? await readFile(path, "utf8") : "{}" });
     } catch (error) {
       const details = error instanceof Error ? error : new Error(String(error));
       const stderr =

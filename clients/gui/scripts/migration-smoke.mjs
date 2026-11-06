@@ -14,7 +14,7 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
-const { executeCore } = require(join(desktop, "src/core/core-process.cjs"));
+const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
 const root = resolve(gui, "../..");
 const binary = process.env.AREAL_GUI_EXECUTABLE
   ? resolve(dirname(process.env.AREAL_GUI_EXECUTABLE), "../Resources/areal-core/bin/areal")

@@ -443,7 +443,7 @@ try {
   connection?.close();
   if (old && alive(old.pid)) {
     try {
-      const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+      const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
       const run = async (args) =>
         JSON.parse(
           (await executeCore(binary, ["service", ...args, "--json"], { env, timeout: 120000 }))

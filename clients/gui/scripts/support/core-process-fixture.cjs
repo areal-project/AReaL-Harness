@@ -1,11 +1,14 @@
 // @ts-check
 "use strict";
+// 仅供隔离验收夹具；产品连接与进程监督统一由 Rust Host 持有。
 
 const { spawn } = require("node:child_process");
 const { isAbsolute } = require("node:path");
-const { scrubOwnerEnvironment } = require("./application-owner.cjs");
+const {
+  scrubOwnerEnvironment,
+} = require("@areal/workbench-service/desktop/core/application-owner.cjs");
 /** @typedef {import('node:child_process').ChildProcessWithoutNullStreams & {killed:boolean,ownerLifetime?:import('node:stream').Duplex|null}} CoreChild */
-/** @typedef {Omit<import('node:child_process').SpawnOptions,'stdio'> & {applicationOwner?:import('./application-owner.cjs').ApplicationOwner}} CoreSpawnOptions */
+/** @typedef {Omit<import('node:child_process').SpawnOptions,'stdio'> & {applicationOwner?:import('@areal/workbench-service/desktop/core/application-owner.cjs').ApplicationOwner}} CoreSpawnOptions */
 /** @typedef {CoreSpawnOptions & {timeout?:number,maxBuffer?:number,input?:string|Uint8Array,signal?:AbortSignal}} CoreExecutionOptions */
 /** @typedef {{stdout:string,stderr:string}} CoreOutput */
 /** @typedef {Error & {code?:string|number|null,timedOut?:boolean}} CoreFailure */

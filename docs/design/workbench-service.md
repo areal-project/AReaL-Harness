@@ -8,7 +8,7 @@ A3 将桌面后台整体交给 Host 监督。Main 以客户端身份连接，窗
 
 Worktree、资料库、任务目录等共用项目连接、会话生命周期、写队列和 journal。逐领域重建这些依赖会复制后台。因此先复用 `CoreBackend` 与 `DesktopService`，由 `services/workbench/src/backend-main.cjs` 启动，再按需把单项目逻辑下沉 Core、跨项目逻辑改写进 Host。搬运与改写分开；对应路径验收后才删 Main 的旧实现。
 
-公共客户端只连接 Host。后台保留已认证的私有 attach 监听供 Main 连接，它不是浏览器或手机的业务入口。后台暂时沿用原项目连接与监督契约；已经拆出的统计领域经 Host 的 `core.request` 读取，不另建项目连接。两种过渡路径不改变 Core 与 Runtime 的权威和清理责任。
+公共客户端只连接 Host。后台保留已认证的私有 attach 监听供 Main 连接，它不是浏览器或手机的业务入口。项目连接与监督统一归 Host，后台经有限的 `core.request` 白名单读写 Core。Main 的领域回退也使用绑定原附件的 Host 连接；观察与终端使用独立租约，断开不会关闭其它客户端的项目连接。Core 与 Runtime 的权威和清理责任保持不变。
 
 `areal.oneProtocol.domains` 含 `backend` 时启用 Host 后台，切换需重开应用。Main 在初始化后台前读取开关；关闭时仍走原进程内路径。数据目录保持原 GUI 目录，Host 核对已登记的导航来源和 Core 路径，不搬数据。一个 Host 当前只接管一个后台配置；配置不一致拒绝复用，不静默切换来源。
 
@@ -47,9 +47,30 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 
 资源经认证 WebSocket 分块读取，每块最多 192 KiB、单资源最多 8 MiB。公开 `/host/pages/proxy` 仅含固定代理代码，外层与内层均为不带同源权限的 sandbox；页面 HTML 和资源不进入公开 HTTP 路由。Gen-UI 固定资源沿原白名单读取后内联，页面继续受原 CSP 限制。当前仅开放本机回环连接，要求 `gui-write-v1` 与 manage；手动打开 MCP App 与页面 JSON-RPC 请求另需 submit。这是保守的阶段授权，尚未覆盖仅有 submit 的普通设备或远程 Noise。原生文件选择和打开仍属外壳能力。
 
+## Rust 领域实现与回退
+
+桌面后台启动参数 `rustDomains` 来自 `areal.oneProtocol.domains`，接受 `library-rust`、`execution-rust`、`tasks-rust`、`worktree-rust`。这些选项用于选择领域实现，改变后需要重启后台；原 `backend` 接管开关与原领域入口保留。关闭某领域的 Rust 选项使用原路径，不重放该路径上已有的 UNKNOWN 请求。新路径仍需完成对应环境验收，不能仅以编译通过视为退役条件。
+
+本表描述启用 Rust 领域时的所有权。旧 JS 领域实现保留供关闭开关时回退；Core 连接与进程监督不随领域开关回退。
+
+| 领域 | Rust 权威 | JS 保留的职责 |
+| --- | --- | --- |
+| 资料库 | Host 同步事务执行导航整理、写入未读与导航摘要；保留未知桌面设置 | 设置校验和页面投影；只读云会话归属及尚未提交状态 |
+| 执行与恢复 | Host 持有 Core 连接与租约，Core 核对原请求回执；Host 汇总生命周期回执 | 阅读窗口、页面工具和输入状态准备 |
+| 定时任务 | Core 管理任务与配置草稿，Host 聚合目录、published 预览、收件箱及观察状态 | 已选供应商输入准备和目录展示 |
+| Worktree | Core 执行 Git 与进程操作，Host 管理跨项目归属、环境配置与生命周期记录 | 页面工具准备与结果投影 |
+
+Host 的资料库事务从原位置读取完整 JSON，在同一同步段中校验、修改并原子写回；导航公开回执仍经同一过滤器。桌面设置仅在有界字段上按原值比较替换，Host 不解释代理、硬件加速等设置。Worktree 设置与环境配置复用同一资料库事务，不能另建文件写者。
+
+`areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。读取停止项目的任务预览使用 published 目录并保留 unobserved，显式 observe 才请求实时状态。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。
+
+CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@revision` 显式选择已部署、允许线程进程的 Profile，执行项目仍受原并发写授权和进程预算约束；不由 Host 自动提权。`worktree --command-id <原 ID>` 可重复原参数核对已受理命令，不能换 ID 重放 UNKNOWN。
+
+收口预算 `workbenchConvergeLines` 只统计待迁移资料库、提交恢复、历史观察、生命周期、服务协议、任务目录、任务草稿和 Worktree 模块。既有其余 JS 按精确路径保留；新文件和改名文件默认计入，基线不得增长，也不得新增排除路径掩盖迁移代码。协议方法仍必须同时登记 schema、Host 白名单和服务 ready；私有反向调用不成为公共 RPC。
+
 ## 资料库与统计
 
-后台由 Host 托管时，强制由 Host 单写原位置的 `library.json`。后台先生成同目录暂存文件，再经 `library.write` 按内容摘要比较替换；冲突后重读重算。Main 不能通过关闭 `library` 开关恢复第二个写者。未启用后台接管时，原 `library` 开关仍控制单写切换。
+后台由 Host 托管时，强制由 Host 单写原位置的 `library.json`。关闭 `library-rust` 时，后台生成同目录暂存文件，再经 `library.write` 按内容摘要比较替换；冲突后重读重算。启用后导航整理直接在 Host 事务中执行，不由后台生成暂存文件。Main 不能通过关闭 `library` 开关恢复第二个写者。未启用后台接管时，原 `library` 开关仍控制单写切换。
 
 统计方法为 `analytics.read`、`analytics.sync`、`analytics.activity`、`analytics.import`。同步通过 Host 的共享 Core 连接白名单读取 `thread/list` 与 `thread/read`；Host 转发轮次事件但不为事件单独启动服务。客户端每 5 秒上报活跃状态，服务取并集；Main 旧活跃时间按天取较大值合并。未启用领域时保留旧统计路径。
 

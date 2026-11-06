@@ -256,7 +256,7 @@ const pick = (value, keys) =>
   Object.fromEntries(
     keys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]),
   );
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @param {{guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] @returns {Promise<unknown>} */
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management").ManagementRequest} rawRequest @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] @returns {Promise<unknown>} */
 async function executeManagement(backend, project, rawRequest, context = {}) {
   if (typeof rawRequest.operation === "string" && taskOperations.has(rawRequest.operation))
     return manageTask(backend, project, rawRequest);
@@ -753,6 +753,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       {
         requestId: request.requestId,
         ...(terminalRequest ? { requestCore: terminalRequest } : {}),
+        ...(context.guiTerminalClient ? { submissionClient: context.guiTerminalClient } : {}),
       },
     );
   } catch (error) {
@@ -830,7 +831,7 @@ function readPlan(value) {
   if (!isCorePlan(value)) throw new Error("Core 计划结构无效");
   return value;
 }
-/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] */
+/** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {Record<string,unknown>} rawRequest @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:Project,client:import("@areal/runtime-client/core").CoreClient,request:Record<string,unknown>,result:unknown)=>void}} [context] */
 async function manage(backend, project, rawRequest, context = {}) {
   const request = readManagementRequest(rawRequest);
   const result = await executeManagement(backend, project, request, context);

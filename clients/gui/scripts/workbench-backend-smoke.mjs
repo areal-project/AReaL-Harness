@@ -6,14 +6,22 @@ import { watch } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID, generateKeyPairSync, sign, createHash } from "node:crypto";
 import { once } from "node:events";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { CoreClient } from "../packages/runtime-client/core.js";
 
 const require = createRequire(import.meta.url);
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const WebSocket = require("../app/node_modules/ws");
-const domains = new Set(process.argv.slice(2).map((arg) => arg.replace(/^--domain=/, "")));
+const rustDomains = process.argv.includes("--rust")
+  ? ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"]
+  : [];
+const domains = new Set(
+  process.argv
+    .slice(2)
+    .filter((arg) => arg !== "--rust")
+    .map((arg) => arg.replace(/^--domain=/, "")),
+);
 const supported = [
   "library",
   "trajectory",
@@ -26,6 +34,10 @@ const supported = [
 ];
 for (const domain of domains) assert.ok(supported.includes(domain), `Unknown domain: ${domain}`);
 const selected = (domain) => domains.size === 0 || domains.has(domain);
+assert.ok(
+  process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
+  "Backend startup writes isolated synthetic Keychain entries; authorize them before setting AREAL_TEST_HOST_KEYCHAIN=1.",
+);
 const root = await realpath(await mkdtemp("/tmp/areal-a3-"));
 const binary = resolve(
   process.env.AREAL_TEST_BIN || join(import.meta.dirname, "../../../target/debug/areal"),
@@ -47,6 +59,7 @@ await writeFile(
 console.log(JSON.stringify({ evidence: root, binary }));
 const projects = new GuiHostProjects({ binary, home, source, singletonHeld: true });
 const options = {
+  rustDomains,
   binary,
   home: source.coreHome,
   guiProfile: source.profile,
@@ -60,7 +73,7 @@ const backend = new SharedCoreBackend({
   ...options,
   app: { getPath: (name) => (name === "userData" ? source.profile : user) },
 });
-backend.setOneProtocol({ library: true, backend: true });
+backend.setOneProtocol({ library: true, backend: true, rustDomains });
 const checks = [];
 let owner, stopping, web, stopRequestId;
 const stopHost = () => {
@@ -944,4 +957,40 @@ try {
   }
   if (!stopping && projects.client.generation) await stopHost().catch(() => {});
   projects.close();
+  const syntheticEntries = [];
+  if (process.platform === "darwin") {
+    const service = `org.areal.host.v1.${createHash("sha256").update(home).digest("hex")}`;
+    for (const directory of ["vault-operations", "remote-operations"]) {
+      for (const name of await readdir(join(home, "host", directory)).catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      })) {
+        const receipt = JSON.parse(await readFile(join(home, "host", directory, name), "utf8"));
+        assert.equal(name, `${receipt.requestId}.json`);
+        if (!["vault.replace", "remote.replace"].includes(receipt.method) || !receipt.entryId)
+          continue;
+        assert.match(receipt.entryId, /^[a-f0-9-]{36}$/);
+        const removal = spawnSync(
+          "/usr/bin/security",
+          ["delete-generic-password", "-s", service, "-a", receipt.entryId],
+          { stdio: "ignore" },
+        );
+        const absent = spawnSync(
+          "/usr/bin/security",
+          ["find-generic-password", "-s", service, "-a", receipt.entryId],
+          { stdio: "ignore" },
+        );
+        syntheticEntries.push({
+          entryId: receipt.entryId,
+          removal: removal.status,
+          absent: absent.status === 44,
+        });
+        assert.equal(absent.status, 44, "original synthetic Keychain entry is absent");
+      }
+    }
+  }
+  await writeFile(
+    join(root, "synthetic-keychain-cleanup.json"),
+    JSON.stringify(syntheticEntries, null, 2),
+  );
 }

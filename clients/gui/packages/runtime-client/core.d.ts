@@ -13,6 +13,16 @@ export type MethodSemantics = {
 };
 export const MAX_RESPONSE_BYTES: number;
 export class CoreRpcError extends Error {
+  constructor(
+    message: string,
+    options?: {
+      code?: string | number;
+      method?: string;
+      data?: CoreRpcError["data"];
+      cause?: unknown;
+      submissionUnknown?: boolean;
+    },
+  );
   code?: string | number;
   method?: string;
   outcome?: FailureOutcome;

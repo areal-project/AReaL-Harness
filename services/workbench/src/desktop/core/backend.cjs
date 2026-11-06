@@ -59,7 +59,7 @@ const { SubmissionRecovery, operationOf, isRemoteControl } = require("./submissi
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
 /** @typedef {import('@areal/runtime-client/core').CoreClient} Client */
 /** @typedef {Record<string,unknown>} Fields */
-/** @typedef {{binary:string,home:string,hostHome?:string,guiProfile?:string,sourceSingletonHeld?:boolean,configHome?:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,harnessHome?:string,config?:string,desktopConfig?:string,userHome?:string,toolExtensions?:string,workgroupPolicy?:string,workgroupToolchain?:string,sandboxProfile?:string,desktopProcesses?:boolean,defaultProfile?:import('@areal/workbench/desktop-contract').ResourceRef,encryption?:import('electron').SafeStorage,proxyEnvironment?:NodeJS.ProcessEnv,onChange?:()=>void}} CoreBackendOptions */
+/** @typedef {{binary:string,home:string,hostHome?:string,guiProfile?:string,sourceSingletonHeld?:boolean,configHome?:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,harnessHome?:string,config?:string,desktopConfig?:string,userHome?:string,toolExtensions?:string,workgroupPolicy?:string,workgroupToolchain?:string,sandboxProfile?:string,desktopProcesses?:boolean,defaultProfile?:import('@areal/workbench/desktop-contract').ResourceRef,encryption?:import('electron').SafeStorage,proxyEnvironment?:NodeJS.ProcessEnv,onChange?:()=>void,rustDomains?:string[]}} CoreBackendOptions */
 /** 每个项目连接公开的共享 Core 服务；这里只保留可重建投影与客户端受理回执。 */
 class CoreBackend {
   /** @param {CoreBackendOptions} options */
@@ -88,6 +88,12 @@ class CoreBackend {
     if (!binary || !isAbsolute(binary))
       throw new Error("请设置 AREAL_CORE_BIN 为 areal 可执行文件的绝对路径");
     this.binary = binary;
+    /** @type {((call:string,params:unknown)=>Promise<unknown>)|undefined} */
+    this.hostCall = undefined;
+    /** @type {string[]} */
+    this.rustDomains = [];
+    /** @type {Map<string,import('../../host-core-client').HostCoreClient>} */
+    this.hostCoreClients = new Map();
     this.applicationOwner = applicationOwner;
     this.host = new GuiHostProjects({
       binary,
@@ -197,6 +203,10 @@ class CoreBackend {
         get analytics() {
           return backend.analytics;
         },
+        get hostCall() { return backend.hostCall; },
+        get hostCoreClients() { return backend.hostCoreClients; },
+        get rustDomains() { return backend.rustDomains; },
+        get host() { return backend.host; },
         get applicationOwner() {
           return backend.applicationOwner;
         },
@@ -309,6 +319,7 @@ class CoreBackend {
     if (!this._submissions) {
       const backend = this;
       this._submissions = new SubmissionRecovery({
+        get rustDomains() { return backend.rustDomains; },
         get awaitingResponses() {
           return backend.awaitingResponses;
         },
@@ -368,7 +379,7 @@ class CoreBackend {
       trace.advance("analytics");
       await this.analytics.init();
       trace.advance("capabilities");
-      await inspectCoreCapabilities(this.binary);
+      await inspectCoreCapabilities(this);
       trace.advance("providers");
       await this.providers.init();
       trace.advance("feedback");
@@ -440,6 +451,17 @@ class CoreBackend {
     const registration = (this.projectWrites ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
+        if (this.rustDomains.includes("worktree-rust") && this.hostCall) {
+          const registered = await this.hostCall("worktree.project.add", {
+            root,
+            ...(worktreeResources ? { worktreeResources } : {}),
+            ...(projectlessRequestId ? { projectlessRequestId } : {}),
+          });
+          if (!modelRecord(registered) || registered.projectId !== id)
+            throw new Error("Host 项目登记回执与目录不匹配");
+          this.saved = await this.host.list();
+          return;
+        }
         if (this.saved.some((project) => project.id === id)) return;
         const saved = [
           ...this.saved,
@@ -1189,6 +1211,7 @@ class CoreBackend {
     if (project.configurationChanges.has(threadId)) throw new Error("会话配置正在更新，请稍后重试");
     project.configurationChanges.set(threadId, token);
     try {
+      if (!this.rustDomains.includes("execution-rust")) {
       await this.changePending(project, (pending) => {
         if (
           pending.some((value) => !isRemoteControl(value) && value.params.threadId === threadId)
@@ -1197,6 +1220,7 @@ class CoreBackend {
         }
         return pending;
       });
+      }
       if (
         request.model === undefined &&
         request.profile === undefined &&
@@ -1411,7 +1435,7 @@ class CoreBackend {
   }
 
   /** @param {string} commandName @param {Record<string,unknown>} rawRequest
-   * @param {{guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:import('./project-state.cjs').CoreProject,client:import('@areal/runtime-client/core').CoreClient,request:Record<string,unknown>,result:unknown)=>void,onBrowserTurnStarted?:(turnId:string)=>void,onBrowserTurnQueued?:(queueItemId:string)=>void}} [context] */
+   * @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:import('./project-state.cjs').CoreProject,client:import('@areal/runtime-client/core').CoreClient,request:Record<string,unknown>,result:unknown)=>void,onBrowserTurnStarted?:(turnId:string)=>void,onBrowserTurnQueued?:(queueItemId:string)=>void}} [context] */
   async command(commandName, rawRequest, context = {}) {
     const semantics = commandSemantics(commandName, rawRequest);
     if (semantics.requestId && !rawRequest[semantics.requestId])
@@ -1759,11 +1783,18 @@ class CoreBackend {
       case "dismissRecovery": {
         const requestId = request.requestId;
         if (typeof requestId !== "string") throw new Error("缺少原请求标识");
+        if (this.rustDomains.includes("execution-rust")) {
+          const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+          if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
+          await project.client.dismiss(requestId);
+          await this.submissions.refreshProjectJournal(project);
+        } else {
         await this.changeOutcomes(project, (previous) => {
           const outcomes = { ...previous };
           if (!outcomes[requestId]?.remote) delete outcomes[requestId];
           return outcomes;
         });
+        }
         break;
       }
       case "media":
@@ -1974,6 +2005,10 @@ class CoreBackend {
           const result = readAdmission(receipt.result);
           const id = result.threadId;
           if (!id) return { confirmed: false };
+          if (this.rustDomains.includes("execution-rust")) {
+            const pending = project.pending.find((entry) => entry.method === method && entry.params.requestId === request.requestId);
+            if (pending) await this.readSubmission(project, method, { ...pending.params, requestId: request.requestId });
+          } else {
           await this.changeOutcomes(project, (outcomes) => ({
             ...outcomes,
             [request.requestId]: {
@@ -1990,6 +2025,7 @@ class CoreBackend {
           await this.changePending(project, (pending) =>
             pending.filter((item) => item.params.requestId !== request.requestId),
           );
+          }
           await this.refreshAfterAdmission(
             project,
             id,

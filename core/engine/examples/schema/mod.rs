@@ -3,6 +3,7 @@ use areal_protocol::{desktop::*, *};
 use serde_json::{Value, json};
 pub mod plugins;
 pub(super) mod standalone;
+pub mod worktrees;
 fn schema<T: schemars::JsonSchema>() -> Value {
     serde_json::to_value(schemars::schema_for!(T)).unwrap()
 }
@@ -100,6 +101,7 @@ pub fn projections() -> (Value, Value) {
         json!({"budget":nullable(context_budget),"threadId":string,"view":{"const":"historyProjectionForNextRequest"},"systemInstructionsIncluded":boolean,"instructionSnapshot":nullable(string.clone()),"checkpoint":nullable(schema::<ContextCheckpoint>()),"offset":number,"nextOffset":nullable(number.clone()),"data":array(object(json!({"role":string,"text":string,"toolCalls":array(any_object.clone()),"toolCallId":nullable(string.clone()),"opaqueProviderContextOmitted":boolean,"media":array(string.clone())})))}),
     );
     let mut responses = serde_json::Map::new();
+    responses.extend(worktrees::responses());
     let mut insert = |names: &[&str], value: Value| {
         for name in names {
             responses.insert(format!("areal/{name}"), value.clone());
@@ -154,6 +156,16 @@ pub fn projections() -> (Value, Value) {
             "task/resumeRun",
         ],
         task_view.clone(),
+    );
+    insert(
+        &["task/draft"],
+        json!({"anyOf":[
+            task_view.clone(),
+            object(json!({"threadId":string,"requestId":string})),
+            object(json!({"threadId":string,"turnId":string})),
+            object(json!({"messages":array(object(json!({"id":string,"role":{"enum":["user","assistant"]},"text":string})))})),
+            object(json!({"threadId":string,"turnId":nullable(string.clone()),"running":boolean,"messages":array(any_object.clone()),"proposal":nullable(any_object.clone()),"digest":nullable(string.clone()),"error":string,"timeZone":string,"thread":thread}))
+        ]}),
     );
     let mut run_now = schema::<areal_protocol::tasks::TaskRunNowAccepted>();
     run_now["properties"]["accepted"] = json!({"const":true});
@@ -504,9 +516,11 @@ pub fn projections() -> (Value, Value) {
             json!({"oneOf":[object(json!({"threadId":string,"turnId":string,"status":schema::<TurnStatus>(),"error":nullable(schema::<TurnError>()),"text":string,"truncated":boolean,"configuration":nullable(any_object.clone())})),object(json!({"agentId":string,"workspaceMode":{"const":"isolatedWrite"},"result":any_object}))]}),
         ),
     );
+    let matched_receipt = nullable(receipt.clone());
     let mut request_receipts = object(
         json!({"data":array(receipt),"retention":{"enum":["threadLifetime","deploymentLifetime","threadAndDeploymentLifetime"]},"capacity":number}),
     );
+    request_receipts["properties"]["matchedReceipt"] = matched_receipt;
     request_receipts["properties"]["creationAdmission"] = json!({"type":"object","additionalProperties":false,
         "required":["status","identity","requestId","method","journalEpoch","coreInstanceId"],
         "properties":{"status":{"enum":["admitted","unconfirmed","notAdmitted"]},"identity":string,"requestId":string,

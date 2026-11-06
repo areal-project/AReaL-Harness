@@ -1847,6 +1847,20 @@ impl Migration {
         }
         Ok(sources)
     }
+    pub(crate) fn source_profile(&self, source: &str) -> Result<PathBuf> {
+        let mut selected = None;
+        for record in self.records()? {
+            if record.source_id != source || self.committed(&record)?.is_none() {
+                continue;
+            }
+            ensure!(
+                selected.is_none(),
+                "sourceConflict: multiple committed source profiles"
+            );
+            selected = Some(record.source.profile);
+        }
+        selected.context("sourceConflict: committed source profile missing")
+    }
     pub(crate) fn navigation_source_id(&self, profile: &Path) -> Result<Option<String>> {
         let mut selected = None;
         for record in self.records()? {

@@ -41,7 +41,11 @@ results.push(
   await build({
     metafile: true,
     absWorkingDir: gui,
-    entryPoints: ["../../services/workbench/src/host-library-store.ts"],
+    entryPoints: [
+      "../../services/workbench/src/host-library-store.ts",
+      "../../services/workbench/src/host-core-client.ts",
+      "../../services/workbench/src/native-host-transport.ts",
+    ],
     outdir: "../../services/workbench/src/generated",
     outExtension: { ".js": ".cjs" },
     bundle: true,

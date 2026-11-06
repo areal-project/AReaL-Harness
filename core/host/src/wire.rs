@@ -47,6 +47,13 @@ pub async fn read_buffered(
     reader: &mut (impl AsyncBufRead + Unpin),
     bytes: &mut Vec<u8>,
 ) -> Result<Option<Value>> {
+    read_buffered_limit(reader, bytes, MAX_FRAME).await
+}
+pub(crate) async fn read_buffered_limit(
+    reader: &mut (impl AsyncBufRead + Unpin),
+    bytes: &mut Vec<u8>,
+    limit: usize,
+) -> Result<Option<Value>> {
     loop {
         let buf = reader.fill_buf().await?;
         if buf.is_empty() {
@@ -55,7 +62,7 @@ pub async fn read_buffered(
         }
         let end = buf.iter().position(|b| *b == b'\n').map(|i| i + 1);
         let n = end.unwrap_or(buf.len());
-        ensure!(bytes.len() + n <= MAX_FRAME, "frame exceeds 1 MiB");
+        ensure!(bytes.len() + n <= limit, "frame exceeds 1 MiB");
         bytes.extend_from_slice(&buf[..n]);
         reader.consume(n);
         if end.is_some() {

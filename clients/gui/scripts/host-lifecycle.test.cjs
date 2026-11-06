@@ -483,10 +483,8 @@ test("completed original stop cannot clear successor Main terminal ownership", a
   });
   const first = await f.backend.requestHostStop({ strategy: "cancel" });
   assert.equal(first.stopped, false);
-  const {
-    GuiTerminalConnections,
-  } = require("@areal/workbench-service/desktop/core/gui-terminal-connections.cjs");
-  f.backend.terminalConnections = new GuiTerminalConnections();
+  const { NativeTerminalOwners } = require("@areal/workbench-service/native-host-transport");
+  f.backend.terminalConnections = new NativeTerminalOwners({ options: () => ({}) });
   let closed = false;
   f.backend.connection = { close: () => (closed = true) };
   f.backend.status.connected = true;

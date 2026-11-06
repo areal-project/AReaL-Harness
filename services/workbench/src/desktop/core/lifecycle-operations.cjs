@@ -289,7 +289,10 @@ class LifecycleOperations {
   constructor(backend) {
     /** @type {Backend} */
     this.backend = backend;
+    /** @type {string} */
     this.generation = randomUUID();
+    /** @type {Set<string>} */
+    this.hostOwnedRequests = new Set();
     this.directory = join(backend.home, "lifecycle-operations");
     /** @type {Map<string,LifecycleReceipt>} */
     this.records = new Map();
@@ -305,7 +308,37 @@ class LifecycleOperations {
     this.ready = undefined;
   }
 
+  rustOwner() { return !!this.backend.hostCall && this.backend.rustDomains.includes("execution-rust"); }
+  /** @param {unknown} value */
+  acceptHostRecord(value) {
+    if (value === null) return null;
+    if (!object(value) || typeof value.requestId !== "string" || !validReceipt(value, value.requestId))
+      throw failure("Host 生命周期回执损坏", "LIFECYCLE_RECEIPT_INVALID");
+    this.records.set(value.requestId, value);
+    if (value.kind !== "interruptTurn") for (const target of value.targets)
+      if (target.phase === "completed") detachStoppedProject(this.backend, target);
+    this.backend.onChange?.();
+    return value;
+  }
+  /** @param {string} operation @param {unknown} [requestId] */
+  async hostRead(operation, requestId) {
+    if (!this.backend.hostCall) throw failure("Host 生命周期不可用", "LIFECYCLE_UNSUPPORTED");
+    return this.backend.hostCall("lifecycle.read", { sourceId: this.backend.host.sourceId, operation,
+      ...(operation === "snapshot" ? { ownerNonce: this.generation } : {}),
+      ...(typeof requestId === "string" ? { requestId } : {}) });
+  }
   init() {
+    if (this.rustOwner()) {
+      this.ready ??= this.hostRead("snapshot").then((value) => {
+        if (!object(value) || typeof value.desktopGeneration !== "string" || !Array.isArray(value.records))
+          throw failure("Host 生命周期快照损坏", "LIFECYCLE_RECEIPT_INVALID");
+        this.generation = value.desktopGeneration;
+        this.hostOwnedRequests = new Set(Array.isArray(value.ownedRequestIds)
+          ? value.ownedRequestIds.filter((id) => typeof id === "string") : []);
+        for (const record of value.records) this.acceptHostRecord(record);
+      });
+      return this.ready;
+    }
     this.ready ??= (async () => {
       await mkdir(this.directory, { recursive: true, mode: 0o700 });
       await syncDirectory(this.backend.home);
@@ -356,7 +389,7 @@ class LifecycleOperations {
       activeRequestId: this.activeRequestId,
       blockedProjectIds: [
         ...new Set(
-          [...this.records.values()].flatMap((record) =>
+          [...this.records.values()].filter((record) => !this.rustOwner() || this.hostOwnedRequests.has(record.requestId)).flatMap((record) =>
             record.targets
               .filter((target) =>
                 ["acceptedPending", "admissionUnconfirmed", "settlementIncomplete"].includes(
@@ -390,6 +423,7 @@ class LifecycleOperations {
   /** @param {string|undefined} projectId @param {string} [_threadId] */
   blocking(projectId, _threadId) {
     for (const record of this.records.values()) {
+      if (this.rustOwner() && !this.hostOwnedRequests.has(record.requestId)) continue;
       if (
         record.targets.some(
           (target) =>
@@ -522,6 +556,7 @@ class LifecycleOperations {
 
   /** @param {unknown} requestId */
   async read(requestId) {
+    if (this.rustOwner()) return this.acceptHostRecord(await this.hostRead("read", requestId));
     if (!uuid(requestId)) throw failure("无效的后台请求身份", "LIFECYCLE_INVALID_REQUEST");
     await this.init();
     return structuredClone(this.records.get(requestId) ?? null);
@@ -529,6 +564,31 @@ class LifecycleOperations {
 
   /** @param {unknown} input */
   request(input) {
+    if (this.rustOwner()) {
+      const request = this.normalize(input);
+      const task = this.tail.catch(() => {}).then(async () => {
+        this.activeRequestId = desktopKind(request.kind) ? request.requestId : null;
+        for (const target of request.targets) this.activeTargets.add(target.projectId);
+        try {
+          if (!this.backend.hostCall) throw failure("Host 生命周期不可用", "LIFECYCLE_UNSUPPORTED");
+          this.hostOwnedRequests.add(request.requestId);
+          const receipt = this.acceptHostRecord(await this.backend.hostCall("lifecycle.command", {
+            sourceId: this.backend.host.sourceId,
+            request: { requestId: request.requestId, kind: request.kind, mode: request.mode,
+              expectedDesktopGeneration: request.desktopGeneration, expectedTargets: request.targets,
+              ...(request.threadId ? { threadId: request.threadId } : {}),
+              ...(request.turnId ? { turnId: request.turnId } : {}) },
+          }));
+          if (!receipt) throw failure("Host 生命周期请求没有回执", "LIFECYCLE_RECEIPT_INVALID");
+          return receipt;
+        } finally {
+          this.activeRequestId = null;
+          for (const target of request.targets) this.activeTargets.delete(target.projectId);
+        }
+      });
+      this.tail = task.catch(() => {});
+      return task;
+    }
     const request = this.normalize(input);
     const task = this.tail.catch(() => {}).then(() => this.execute(request));
     this.tail = task.catch(() => {});
@@ -823,6 +883,7 @@ class LifecycleOperations {
 
   /** @param {unknown} requestId */
   reconcile(requestId) {
+    if (this.rustOwner()) return this.hostRead("reconcile", requestId).then((value) => this.acceptHostRecord(value));
     const task = this.tail
       .catch(() => {})
       .then(async () => {

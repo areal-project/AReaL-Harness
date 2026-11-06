@@ -116,8 +116,6 @@ class ResultReviews {
           entry.projectId,
           entry.serviceId,
           entry.generation,
-          entry.endpoint,
-          entry.token,
           this.identities.get(entry.desktop),
         ]),
       )
@@ -169,7 +167,6 @@ class ResultReviews {
     this.authorize(connection, projectId);
     const ref = this.open(request.artifactRef);
     if (ref.kind !== "artifact" || params.offset >= ref.size) throw failure();
-    const { rasterInfo } = await import("@areal/remote/raster");
     this.authorize(connection, projectId);
     return this.observers.reviewThread(
       connection,
@@ -198,66 +195,14 @@ class ResultReviews {
             throw failure();
         };
         membership(thread);
-        const url = new URL(entry.endpoint);
-        url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-        url.pathname = `/areal/blobs/${ref.uri.split("/").at(-1)}`;
-        url.search = "";
-        url.hash = "";
-        url.searchParams.set("threadId", ref.threadId);
-        const controller = new AbortController();
-        /** @type {ReadableStreamDefaultReader<Uint8Array>|undefined} */
-        let reader;
-        let timedOut = false;
-        const timeout = setTimeout(() => {
-          timedOut = true;
-          controller.abort();
-          void reader?.cancel().catch(() => {});
-        }, 30000);
-        const timer = setInterval(() => {
-          try {
-            guard();
-          } catch {
-            controller.abort();
-            void reader?.cancel().catch(() => {});
-          }
-        }, 100);
-        timeout.unref?.();
-        timer.unref?.();
+        const {HostCoreClient}=require("@areal/workbench-service/host-core-client");
+        if (!(entry.client instanceof HostCoreClient)) throw failure();
+        const page=await entry.client.media({threadId:ref.threadId,turnId:ref.turnId,itemId:ref.itemId,uri:ref.uri,offset:request.offset,length:request.length}).catch(() => { throw failure(); });
+        if (!record(page) || page.totalBytes!==ref.size || page.offset!==request.offset || typeof page.base64!=="string") throw failure();
+        const raster=page.raster;
+        const bytes=Buffer.from(page.base64,"base64");
+        if (bytes.length!==Math.min(request.length,ref.size-request.offset)) throw failure();
         try {
-          const response = await fetch(url, {
-            headers: { Authorization: `Bearer ${entry.token}` },
-            redirect: "error",
-            signal: controller.signal,
-            cache: "no-store",
-          });
-          reader = response.body?.getReader();
-          guard();
-          if (!response.ok || !reader) throw failure();
-          const length = response.headers.get("content-length");
-          if (length !== null && (!/^\d+$/.test(length) || Number(length) !== ref.size))
-            throw failure();
-          const bytes = Buffer.alloc(ref.size);
-          let total = 0;
-          for (;;) {
-            const chunk = await reader.read();
-            guard();
-            if (timedOut || controller.signal.aborted) throw failure();
-            if (chunk.done) break;
-            if (
-              !(chunk.value instanceof Uint8Array) ||
-              total + chunk.value.length > ref.size ||
-              total + chunk.value.length > LIMITS.artifactBytes
-            )
-              throw failure();
-            bytes.set(chunk.value, total);
-            total += chunk.value.length;
-          }
-          if (
-            total !== ref.size ||
-            createHash("sha256").update(bytes).digest("hex") !== ref.uri.split("/").at(-1)
-          )
-            throw failure();
-          const raster = rasterInfo(bytes, ref.mime);
           membership(await read());
           guard();
           const end = Math.min(ref.size, request.offset + request.length);
@@ -273,7 +218,7 @@ class ResultReviews {
             offset: request.offset,
             totalBytes: ref.size,
             nextOffset: end < ref.size ? end : null,
-            base64: bytes.subarray(request.offset, end).toString("base64"),
+            base64: bytes.toString("base64"),
             raster,
           });
         } catch (error) {
@@ -284,11 +229,6 @@ class ResultReviews {
           )
             throw error;
           throw failure();
-        } finally {
-          clearTimeout(timeout);
-          clearInterval(timer);
-          controller.abort();
-          await reader?.cancel().catch(() => {});
         }
       },
     );

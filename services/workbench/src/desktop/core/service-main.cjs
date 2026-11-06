@@ -8,8 +8,8 @@ const { readLibraryStartupSettings } = require("./library.cjs");
 const { SharedPowerMonitor } = require("./power.cjs");
 const { join } = require("node:path");
 
-/** @param {import('./backend.cjs').CoreBackendOptions} options @param {{onClose?:()=>void,hostManaged?:boolean}} [lifetime] */
-async function createMainDesktop(options, { onClose = () => {}, hostManaged = false } = {}) {
+/** @param {import('./backend.cjs').CoreBackendOptions} options @param {{onClose?:()=>void,hostManaged?:boolean,hostCall?:(call:string,params:unknown)=>Promise<unknown>}} [lifetime] */
+async function createMainDesktop(options, { onClose = () => {}, hostManaged = false, hostCall } = {}) {
   const network = await resolveDesktopNetwork(
     readLibraryStartupSettings(options.home),
     process.env,
@@ -23,6 +23,18 @@ async function createMainDesktop(options, { onClose = () => {}, hostManaged = fa
     proxyEnvironment: network,
     encryption: options.encryption,
   });
+  /** @type {ReturnType<typeof import("../../native-host-transport").createNativeHostTransport>|undefined} */
+  let nativeTransport;
+  backend.hostCall = hostCall ?? (async (call, params) => {
+    const previous = nativeTransport;
+    if (previous && (await previous).closed && nativeTransport === previous) nativeTransport = undefined;
+    const pending = (nativeTransport ??= require("@areal/workbench-service/native-host-transport").createNativeHostTransport(backend, options));
+    return pending.then((transport) => transport.call(call, params).catch((error) => {
+      if (transport.closed && nativeTransport === pending) nativeTransport = undefined;
+      throw error;
+    }), (error) => { if (nativeTransport === pending) nativeTransport = undefined; throw error; });
+  });
+  backend.rustDomains = Array.isArray(options.rustDomains) ? options.rustDomains : [];
   /** @type {InstanceType<typeof DesktopService>|undefined} */ let adapter;
   /** @type {Promise<void>|undefined} */ let closing;
   let closed = false;
@@ -32,6 +44,7 @@ async function createMainDesktop(options, { onClose = () => {}, hostManaged = fa
       adapter?.close();
       await remoteClosed;
       await backend.disconnect();
+      if (nativeTransport) (await nativeTransport).close();
       closed = true;
       onClose();
     })());
@@ -50,6 +63,7 @@ async function createMainDesktop(options, { onClose = () => {}, hostManaged = fa
       power,
     );
     adapter.hostManaged = hostManaged;
+    adapter.rustExecution = hostManaged && backend.rustDomains.includes("execution-rust");
     await adapter.startMain();
     power.start();
     return {

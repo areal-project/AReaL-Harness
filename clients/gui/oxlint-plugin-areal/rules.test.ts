@@ -319,3 +319,43 @@ describe("no-renderer-desktop-bridge", () => {
     expect(result.status).toBe(1);
   });
 });
+
+describe("no-workbench-core-owner", () => {
+  const filename = "services/workbench/src/desktop/core/new-module.ts";
+  test.each([
+    'import { CoreClient as Renamed } from "@areal/runtime-client/core";',
+    'const client = import("@areal/runtime-client/core");',
+    'const core = require("./core-process.cjs");',
+    'const core = require("../../../../clients/gui/scripts/support/core-process-fixture.cjs");',
+    'const { spawn } = require("node:child_process"); spawn(binary, ["service", "start"]);',
+    'childProcess.execFile(backend.binary, ["service", "start"]);',
+    'const path = backend.binary; execFile(path, ["service", "start"]);',
+    'spawn("/usr/bin/python3", ["-I", "-c", bridge, binary]);',
+    "new CoreClient({});",
+    "new WebSocket(project.endpoint, {});",
+    "const url = new URL(project.endpoint); fetch(url, {});",
+    "fetch(new URL(entry.endpoint));",
+  ])("rejects Core ownership in a newly named module: %s", (source) => {
+    const result = lint("no-workbench-core-owner", source, filename);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("areal(no-workbench-core-owner)");
+  });
+  test.each([
+    'import type { CoreClient } from "@areal/runtime-client/core";',
+    'import { type CoreClient } from "@areal/runtime-client/core";',
+    'import { parseCoreCapabilities } from "@areal/runtime-client/capabilities";',
+    'host("core.request", { projectId, method: "thread/read", params: {} });',
+    'execFile("/usr/bin/git", ["status"]);',
+    "new WebSocket(relayURL);",
+    "new WebSocketServer({port:0});",
+    "fetch(provider.endpoint, {});",
+  ])("allows retained page/relay/utility behavior: %s", (source) => {
+    expect(lint("no-workbench-core-owner", source, filename).status).toBe(0);
+  });
+  test("leaves the native shell scope to its existing rules", () => {
+    expect(
+      lint("no-workbench-core-owner", "new CoreClient({});", "clients/gui/app/src/native.ts")
+        .status,
+    ).toBe(0);
+  });
+});

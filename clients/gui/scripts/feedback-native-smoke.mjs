@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 const gui = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const require = createRequire(join(gui, "app/package.json"));
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
-const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
 const root = await makeTempDir("auf-");
 const evidence = process.env.AREAL_FEEDBACK_EVIDENCE_DIR || root;
 await mkdir(evidence, { recursive: true });

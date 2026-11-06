@@ -20,6 +20,7 @@ fn native_host_schema() -> Value {
 }
 fn desktop_schema() -> Value {
     let mut methods = serde_json::Map::new();
+    methods.extend(schema::worktrees::requests());
     macro_rules! add {
         ($name:expr,$type:ty) => {
             methods.insert(
@@ -148,6 +149,7 @@ fn desktop_schema() -> Value {
     );
     add!("areal/work/overview", areal_protocol::work::OverviewRequest);
     add!("areal/goal/create", areal_protocol::goals::GoalCreate);
+    add!("areal/task/draft", areal_protocol::tasks::TaskDraftRequest);
     add!("areal/task/create", areal_protocol::tasks::TaskCreate);
     add!("areal/task/update", areal_protocol::tasks::TaskUpdate);
     add!(
@@ -402,7 +404,7 @@ fn desktop_schema() -> Value {
     methods.insert(
         "areal/request/read".into(),
         json!({"oneOf":[
-            object(json!({"threadId":string,"requestId":string,"creationAdmission":schemars::schema_for!(CreationAdmission)}),vec!["requestId"]),
+            object(json!({"threadId":string,"requestId":string,"creationAdmission":schemars::schema_for!(CreationAdmission),"expectedSubmission":schemars::schema_for!(areal_protocol::submissions::ExpectedSubmission)}),vec!["requestId"]),
             schemars::schema_for!(areal_protocol::tasks::TaskRunNow)
         ]}),
     );

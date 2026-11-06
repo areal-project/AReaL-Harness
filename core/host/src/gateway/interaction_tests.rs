@@ -300,6 +300,21 @@ impl Fixture {
         mutate(grant);
         self.host.remote.dispatch("remote.gateway.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":self.host.identity.generation,"expectedRevision":snapshot["revision"],"sourceId":self.source,"config":config}), "fixture", &self.host.identity.generation, &self.host.migration, std::slice::from_ref(&self.alias)).unwrap();
     }
+    async fn workspace_admission(&mut self) {
+        let root = self.host.slots.borrow()["project"]
+            .registration
+            .workspace
+            .clone();
+        let thread = self.call("thread/read").await;
+        assert_eq!(
+            thread.request["params"],
+            json!({"threadId":"thread","includeTurns":false})
+        );
+        thread.reply(json!({"thread":{"id":"thread","sessionId":"thread","cwd":root,"desktop":{"configuration":{"options":{}}}}}));
+        let catalog = self.call("areal/task/list").await;
+        assert_eq!(catalog.request["params"]["limit"], 100);
+        catalog.reply(json!({"data":[],"nextCursor":null,"hasMore":false}));
+    }
     async fn call(&mut self, method: &str) -> CoreCall {
         let call = tokio::time::timeout(Duration::from_secs(5), self.calls.recv())
             .await
@@ -841,6 +856,7 @@ async fn unknown_original_answer_allows_settled_ordinary_operations_but_not_unkn
         let sending = Fixture::dispatch(session, send);
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(2));
+        f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         assert_eq!(turn.request["params"]["threadId"], "thread");
         assert_eq!(turn.request["params"]["input"], json!([{"type":"text","text":"later","text_elements":[]}]));
@@ -859,6 +875,7 @@ async fn unknown_original_answer_allows_settled_ordinary_operations_but_not_unkn
         let sending = Fixture::dispatch(session, ordinary);
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(2));
+        f.workspace_admission().await;
         f.call("areal/turn/start").await.disconnect();
         let (session, unresolved) = sending.await.unwrap();
         assert_eq!(unresolved.unwrap()["admissionState"], "unknown");
@@ -1274,6 +1291,7 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
             f.call("areal/thread/observe")
                 .await
                 .reply(Fixture::idle_thread(1));
+            f.workspace_admission().await;
             let turn = f.call("areal/turn/start").await;
             assert_eq!(
                 turn.request["params"]["input"][0]["text"],
@@ -1359,6 +1377,7 @@ async fn gui_write_negotiation_accepts_desktop_rich_input_only_for_declaring_cli
             let sending = Fixture::dispatch(session, f.request("session.send", rich, Some(&uuid::Uuid::new_v4().to_string())));
             f.call("areal/capabilities").await.reply(Fixture::capabilities());
             f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            f.workspace_admission().await;
             let turn = f.call("areal/turn/start").await;
             let input = turn.request["params"]["input"].as_array().unwrap().clone();
             assert_eq!(input[0], json!({"type":"text","text":"look","text_elements":[]}));
@@ -1392,6 +1411,7 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
             let sending = Fixture::dispatch(session, send);
             f.call("areal/capabilities").await.reply(Fixture::capabilities());
             f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            f.workspace_admission().await;
             let turn = f.call("areal/turn/start").await;
             assert_eq!(turn.request["params"]["input"][0]["text"], "from desktop");
             turn.reply(json!({"turn":{"id":"desktop-turn"}}));
@@ -1521,6 +1541,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let sending = Fixture::dispatch(session, send.clone());
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+        f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let input = turn.request["params"]["input"][0]["text"].as_str().unwrap().to_owned();
         assert!(input.starts_with("Continue"));
@@ -1542,6 +1563,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         caps["methods"].as_array_mut().unwrap().push(json!("turn/steer"));
         f.call("areal/capabilities").await.reply(caps.clone());
         f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[]}]},"ownership":{"kind":"ordinary"}}));
+        f.workspace_admission().await;
         let turn = f.call("turn/steer").await;
         let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
         assert_eq!(turn.request["params"]["input"].as_array().unwrap().len(), 4);
@@ -1589,6 +1611,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let sending = Fixture::dispatch(remote, remote_send.clone());
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+        f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
         assert!(text.starts_with("Remote continue") && text.contains("\"selection\":8"));

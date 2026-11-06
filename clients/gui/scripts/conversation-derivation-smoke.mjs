@@ -464,7 +464,7 @@ async function send(text, threadId) {
 async function stopService(env) {
   const { ServiceConnection } = require(join(desktop, "src/core/service-client.cjs"));
   const { DesktopLifecycle } = require(join(desktop, "src/core/lifecycle.cjs"));
-  const { executeCore } = require(join(desktop, "src/core/core-process.cjs"));
+  const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
   const service = async (args) =>
     JSON.parse(
       (

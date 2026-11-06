@@ -438,6 +438,30 @@ async function committed(project, threadId, turnId) {
 
 /** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management-tasks").TaskRequest} request @returns {Promise<unknown>} */
 async function manageTaskDraft(backend, project, request) {
+  if (backend.rustDomains.includes("tasks-rust") && backend.hostCall) {
+    /** @type {Record<string,unknown>} */
+    const payload = { ...request, projectId: project.logicalProjectId ?? project.id, executionProjectId: project.id };
+    let modelNotice;
+    if (request.operation === "taskDraftStart") {
+      const selection = resolveNewConversationModel(backend.providers.catalog(project.models ?? [], project), backend.providers.lastAcceptedModel, true);
+      const model = selection.candidate;
+      modelNotice = selection.notice;
+      if (model?.providerId === "areal_openai") await backend.providers.ensureSubscription(project);
+      if (model?.providerId) payload.model = { providerId: model.providerId, modelId: model.modelId };
+      payload.parameters = { ...model?.parameters,
+        ...(selection.rememberedEffort != null ? { reasoningEffort: selection.rememberedEffort } : {}) };
+    }
+    if (request.operation === "taskDraftSend") {
+      payload.input = messageInput(backend, request);
+      for (const key of ["text", "attachments", "mcpContent", "conversationQuotes"]) delete payload[key];
+    }
+    const reading = request.operation === "taskDraftRead" || request.operation === "taskDraftHistory";
+    const value = await backend.hostCall(reading ? "tasks.read" : "tasks.command", payload);
+    if (request.operation === "taskDraftConfirm") project.model.setTask(readTask(value));
+    if (modelRecord(value) && typeof value.threadId === "string" && !reading)
+      await backend.refreshAfterAdmission(project, value.threadId);
+    return modelNotice && modelRecord(value) ? { ...value, modelNotice } : value;
+  }
   const client = project.client;
   if (!client) throw new Error("Core 未连接");
   const { operation, threadId } = request;

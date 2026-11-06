@@ -15,7 +15,7 @@ const require = createRequire(import.meta.url);
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
-const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
 const scratch = await makeTempDir("remote-gui-workbench-");
 const home = join(scratch, "desktop");
 await mkdir(home);

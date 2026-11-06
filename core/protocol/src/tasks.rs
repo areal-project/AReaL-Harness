@@ -763,3 +763,34 @@ pub struct OwnerNoticeFact {
     pub objective_preview: String,
     pub expires_at: Option<i64>,
 }
+
+/// 单项目任务配置会话；配置、提案校验和确认都由 Core 维护。
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskDraftRequest {
+    pub operation: TaskDraftOperation,
+    pub draft_id: Option<String>,
+    pub request_id: Option<String>,
+    pub task_id: Option<String>,
+    pub thread_id: Option<String>,
+    pub turn_id: Option<String>,
+    pub digest: Option<String>,
+    pub time_zone: Option<String>,
+    pub cwd: Option<String>,
+    pub model: Option<ModelRef>,
+    pub parameters: Option<ModelParameters>,
+    pub effort: Option<String>,
+    pub text: Option<String>,
+    #[serde(default)]
+    pub input: Vec<crate::Input>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum TaskDraftOperation {
+    TaskDraftStart,
+    TaskDraftRead,
+    TaskDraftSend,
+    TaskDraftConfirm,
+    TaskDraftHistory,
+}

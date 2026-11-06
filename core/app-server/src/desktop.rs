@@ -3,6 +3,8 @@ use super::*;
 use areal_protocol::desktop::*;
 
 areal_protocol::method_catalog! {
+    "areal/worktree/read" => Read;
+    "areal/worktree/command" => Mutation, Management;
     "areal/side/start" => Mutation, Thread;
     "areal/side/create" => Mutation, Thread;
     "areal/side/close" => Mutation, Thread;
@@ -115,6 +117,7 @@ struct Id {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RequestRead {
+    expected_submission: Option<areal_protocol::submissions::ExpectedSubmission>,
     creation_admission: Option<CreationAdmission>,
     thread_id: Option<String>,
     request_id: String,
@@ -208,7 +211,8 @@ pub(crate) async fn dispatch(
     }
     let mutation = matches!(
         method,
-        "areal/plan/update"
+        "areal/worktree/command"
+            | "areal/plan/update"
             | "areal/provider/upsert"
             | "areal/provider/remove"
             | "areal/mcp/configure"
@@ -266,7 +270,10 @@ pub(crate) async fn dispatch(
         let method = method.to_owned();
         let owner = identity.to_owned();
         let snapshot = params.clone();
-        if method == "areal/plugin/setup" || method == "areal/queue/steer" {
+        if method == "areal/plugin/setup"
+            || method == "areal/queue/steer"
+            || method == "areal/worktree/command"
+        {
             params["requestId"] = json!(request);
         }
         let reply = engine
@@ -971,9 +978,28 @@ async fn dispatch_inner(
                 .await
                 .map(|q| json!(q))
         }
+        "areal/worktree/read" => engine
+            .worktree_read(params)
+            .await
+            .map_err(|error| Error::Invalid(error.to_string())),
+        "areal/worktree/command" => engine
+            .worktree_command(params)
+            .await
+            .map_err(|error| Error::Storage(error.to_string())),
         "areal/request/read" => {
             let p: RequestRead = parse(params)?;
-            if let Some(original) = p.creation_admission {
+            if p.expected_submission.as_ref().is_some_and(|expected| {
+                expected.params["requestId"] != p.request_id
+                    || !expected.params.is_object()
+                    || expected.method.is_empty()
+            }) {
+                return Err(RpcError::invalid(
+                    "expected submission does not match original request",
+                ));
+            }
+            let expected = p.expected_submission;
+            let scoped = p.thread_id.clone();
+            let result = if let Some(original) = p.creation_admission {
                 if p.thread_id.is_some() {
                     return Err(RpcError::invalid(
                         "creationAdmission requires unscoped request lookup",
@@ -988,6 +1014,21 @@ async fn dispatch_inner(
                     .await
             } else {
                 engine.find_request(identity, &p.request_id).await
+            };
+            match (result, expected) {
+                (Ok(mut result), Some(expected)) => {
+                    let coverage = serde_json::to_value(engine.creation_admission(identity).await)
+                        .unwrap_or(Value::Null);
+                    result["matchedReceipt"] = areal_protocol::submissions::reconcile(
+                        &expected,
+                        &result,
+                        &coverage,
+                        scoped.as_deref(),
+                    )
+                    .unwrap_or(Value::Null);
+                    Ok(result)
+                }
+                (result, _) => result,
             }
         }
         _ => return Err(RpcError::method()),

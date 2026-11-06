@@ -12,7 +12,7 @@ const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.c
 const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
-const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
 const binary = process.env.AREAL_CORE_BIN;
 assert.ok(binary?.startsWith(resolve(gui, "../../.local/dev-bin") + "/"));
 const scratch = await makeTempDir("ao-");

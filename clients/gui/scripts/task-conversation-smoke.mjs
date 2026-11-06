@@ -9,7 +9,11 @@ import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { CoreClient } from "../packages/runtime-client/core.js";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+} from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 for (const name of [
@@ -31,6 +35,9 @@ const binarySha256 = createHash("sha256")
   .update(await readFile(binary))
   .digest("hex");
 const scratch = await makeTempDir("areal-schedule-desktop-");
+const rust = process.argv.includes("--rust");
+const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
+if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const legacyTargetOnly = process.argv.includes("--legacy-target-only");
 const calendarRegression = process.env.AREAL_TASK_CALENDAR_REGRESSION === "1";
 const calendarDropGate = join(scratch, "calendar-drop-response"),
@@ -2872,6 +2879,35 @@ async function checkManualRegression() {
 }
 try {
   await launch();
+  if (rust) {
+    await page.evaluate((domains) => {
+      localStorage.setItem("areal.oneProtocol.reads", "1");
+      localStorage.setItem(
+        "areal.oneProtocol.domains",
+        ["backend", "library", "tasks", "worktree", ...domains].join(","),
+      );
+    }, rustDomains);
+    await closeOwnedApp();
+    const stop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    assert.equal(stop.state, "completed");
+    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+    await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    await launch();
+    await until(async () => {
+      const record = await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "workbench/backend-launch.json"),
+        "utf8",
+      )
+        .then(JSON.parse)
+        .catch(() => null);
+      return rustDomains.every((domain) => record?.options?.rustDomains?.includes(domain));
+    }, "Rust backend launch domains");
+  }
   await app.evaluate(({ dialog, BrowserWindow }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
     BrowserWindow.getAllWindows()[0].setSize(1488, 1056);
@@ -3610,6 +3646,28 @@ try {
       errors.push("uncaught Main " + error.origin + ": " + error.message);
     await writeFile(join(scratch, "manual-cleanup.json"), JSON.stringify(manualCleanup, null, 2));
     if (errors.length) {
+      passed = false;
+      process.exitCode = 1;
+    }
+  }
+  if (rust) {
+    try {
+      const stop = JSON.parse(
+        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+          encoding: "utf8",
+        }),
+      );
+      await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
+      assert.equal(stop.state, "completed");
+      assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      await writeFile(
+        join(scratch, "synthetic-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    } catch (error) {
+      errors.push(`synthetic Keychain cleanup: ${error.message}`);
       passed = false;
       process.exitCode = 1;
     }

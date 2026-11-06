@@ -1,6 +1,7 @@
 //! 任务身份与通信独立持久化；执行继续复用 Goal、Thread 和 Runtime 的准入边界。
 mod catalog;
 mod channel;
+mod draft;
 pub use catalog::{
     PublishedTaskCatalog, PublishedTaskCatalogFallback, read_published_task_catalog,
 };

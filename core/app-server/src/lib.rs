@@ -1402,6 +1402,7 @@ impl Connection {
                         "ordinaryTurnSubmit":true,"editLastMessage":true,"turnStartAdmissionGuard":true,"turnEnqueueAdmissionGuard":true,"turnInterruptAdmissionGuard":true,"threadStartAdmissionGuard":true,"taskPauseRunGuard":true,"taskModes":true,"taskChannels":true,"asyncQuestions":true,"headlessInteractions":true,"goals":true,"dynamicTools":true,"mediaOutput":true,"durableSubmissionDeduplication":true,"profiles":true,"skills":true,"plans":true,"interactions":true,"queue":true,"providerConfiguration":true,"modelReset":true,"toolMedia":true,"blobUpload":true}),
                     "limits":{"frameBytes":MAX_FRAME_BYTES,"responseBytes":MAX_RESPONSE_BYTES,"subscriptions":128,"sendQueue":256,"threadEventWindow":128},
                     "runtime":engine.runtime_capabilities()});
+                capabilities["features"]["submissionReceiptReconciliation"] = json!(true);
                 capabilities["features"]["threadCreationJournal"] = json!({"version":1,"binding":engine.creation_admission(&self.principal.id).await});
                 capabilities["features"]["sideExecutableV2"] = json!(true);
                 capabilities["features"]["hostUpdateStatus"] = json!(true);

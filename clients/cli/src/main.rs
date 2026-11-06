@@ -6,8 +6,10 @@ mod plugins;
 mod rpc;
 mod run;
 mod service;
+mod tasks;
 mod trajectory;
 mod upgrade;
+mod worktree;
 use anyhow::{Result, ensure};
 use clap::{CommandFactory, Parser, Subcommand};
 use std::path::PathBuf;
@@ -30,6 +32,10 @@ struct MultitoolCli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 经 Host 管理定时任务与收件箱，无需 GUI。
+    Tasks(tasks::Options),
+    /// 经 Host 管理 Git 工作树，无需 GUI。
+    Worktree(worktree::WorktreeArgs),
     /// 在通用 Cloud 后端提交和读取无状态任务。
     Cloud(cloud::Options),
     /// 显示当前版本；等价于 --version。
@@ -248,6 +254,8 @@ async fn main() {
             execute(*cli).await;
             return;
         }
+        Some(Command::Tasks(options)) => tasks::execute(options).await,
+        Some(Command::Worktree(options)) => worktree::run(options).await,
         Some(Command::Host { command }) => host::execute(command).await,
         Some(Command::Service { command }) => {
             service_result(service::execute(command).await);

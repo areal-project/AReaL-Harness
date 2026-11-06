@@ -13,7 +13,10 @@ export default defineConfig({
   },
   lint: {
     jsPlugins: ["./oxlint-plugin-areal/index.ts"],
-    rules: { "areal/require-suppression-reason": "error" },
+    rules: {
+      "areal/require-suppression-reason": "error",
+      "areal/no-workbench-core-owner": "error",
+    },
     overrides: [
       {
         files: [

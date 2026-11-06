@@ -1,6 +1,5 @@
 // @ts-check
 "use strict";
-const { executeCore } = require("./core-process.cjs");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
@@ -109,26 +108,13 @@ class ModelConfiguration {
   /** @param {'read'|'write'} operation @param {import('./provider-contract.cjs').ModelUpdate} [request] */
   async execute(operation, request) {
     await this.refreshCredentials();
-    const args = ["config", "models", operation];
-    if (this.backend.config) args.push("--config", this.backend.config);
-    for (const reference of Object.keys(this.vault.keys))
-      args.push("--stored-credential-env", reference);
-    let stdout;
+    let value;
     try {
-      // 与项目启动使用相同的凭据环境，由 Core 判断就绪状态，输出不含密钥。
-      ({ stdout } = await executeCore(this.backend.binary, args, {
-        env: {
-          ...Object.fromEntries(
-            Object.entries(this.backend.hooks.environment()).filter(
-              ([name]) => !this.references.has(name),
-            ),
-          ),
-          ...this.environment(),
-        },
-        timeout: 15000,
-        maxBuffer: 2 * 1024 * 1024,
-        input: request ? JSON.stringify(request) : undefined,
-      }));
+      if (!this.backend.hostCall) throw new Error("Host 模型配置能力不可用");
+      value = await this.backend.hostCall("workbench.utility", {
+        operation: operation === "read" ? "modelsRead" : "modelsWrite",
+        ...(request ? { document: JSON.stringify(request) } : {}),
+      });
     } catch (error) {
       const failure = record(error) ? error : {};
       const timedOut = failure.timedOut === true;
@@ -151,7 +137,7 @@ class ModelConfiguration {
       throw new Error(`${detail}配置若已变化，请刷新核对后再操作。`);
     }
     try {
-      return modelSnapshot(JSON.parse(stdout));
+      return modelSnapshot(value);
     } catch {
       throw new Error("Core 返回了无效的模型配置");
     }

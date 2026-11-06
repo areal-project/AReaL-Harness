@@ -66,6 +66,20 @@ class CoreWorktrees {
     this.active = new Map();
     this.environment = new WorktreeEnvironment(this);
   }
+  get native() { return this.backend.rustDomains.includes("worktree-rust") && !!this.backend.hostCall; }
+  async reloadNative() {
+    const directory = join(this.backend.home, "worktree-requests");
+    const names = await readdir(directory).catch((error) => {
+      if (!modelRecord(error) || error.code !== "ENOENT") throw error;
+      return [];
+    });
+    for (const name of names) {
+      if (!uuid.test(name.replace(/\.json$/, "")) || !name.endsWith(".json")) continue;
+      const value = readOperation(JSON.parse(await readFile(join(directory, name), "utf8")));
+      if (value.requestId !== name.slice(0, -5)) throw new Error("工作树创建日志无效");
+      this.records.set(value.requestId, value);
+    }
+  }
   /** @param {unknown} id */
   key(id) {
     if (typeof id !== "string" || !uuid.test(id)) throw new Error("无效工作树请求标识");
@@ -89,7 +103,8 @@ class CoreWorktrees {
         throw new Error("工作树创建日志无效");
       this.records.set(value.requestId, value);
     }
-    for (const value of this.records.values()) await this.reconcileDeletion(value).catch(() => {});
+    if (!this.native)
+      for (const value of this.records.values()) await this.reconcileDeletion(value).catch(() => {});
     const directory = join(this.backend.home, "thread-owners");
     await mkdir(directory, { recursive: true, mode: 0o700 });
     for (const name of await readdir(directory)) {
@@ -121,7 +136,7 @@ class CoreWorktrees {
         changed = true;
       }
     }
-    if (!changed) return;
+    if (!changed || this.native) return;
     await this.backend.save(
       join("thread-owners", project.id + ".json"),
       [...this.threadOwners].filter(([, owner]) => owner === project.id).map(([id]) => id),
@@ -507,6 +522,14 @@ class CoreWorktrees {
    * @param {string} projectId @param {WorktreeRequest} request */
   readThreadCreation(projectId, request) {
     const requestId = requireId(request.requestId);
+    if (this.native) {
+      try {
+        const value = readOperation(JSON.parse(require("node:fs").readFileSync(join(this.backend.home, this.key(requestId)), "utf8")));
+        this.records.set(value.requestId, value);
+      } catch (error) {
+        if (!modelRecord(error) || error.code !== "ENOENT") throw error;
+      }
+    }
     const value = this.records.get(requestId);
     if (!value || value.kind !== "thread" || value.projectId !== projectId ||
         !isDeepStrictEqual(value.parameters, signature(request))) return {state:"unknown"};
@@ -518,6 +541,29 @@ class CoreWorktrees {
   }
   /** @param {SavedProject} project @param {WorktreeRequest} request */
   async createThread(project, request) {
+    if (this.native && this.backend.hostCall) {
+      const target = await this.backend.hostCall("worktree.thread.prepare", { projectId: project.id, request });
+      if (!modelRecord(target) || typeof target.alias !== "string" || typeof target.projectId !== "string")
+        throw unavailable("Host 工作树执行归属尚未确认");
+      if (typeof target.threadId === "string") return { threadId: target.threadId, requestId: request.requestId };
+      this.backend.saved = await this.backend.host.list();
+      await this.reloadNative();
+      const execution = await this.backend.start(target.alias);
+      const prepared = await this.backend.prepareThreadInProject(execution, request);
+      if (!prepared.current()) throw unavailable("原 Core 执行归属已变化");
+      const result = await this.backend.hostCall("worktree.thread.bind", {
+        projectId: project.id, requestId: request.requestId,
+        executionProjectId: target.projectId,
+        coreInstanceId: execution.service?.serviceId,
+        coreGeneration: execution.service?.generation,
+        params: { ...prepared.params, requestId: request.requestId },
+      });
+      if (!modelRecord(result) || typeof result.threadId !== "string")
+        throw unavailable("Host 工作树会话回执尚未确认");
+      await this.reloadNative();
+      await this.backend.openThread(execution, result.threadId);
+      return { threadId: result.threadId, requestId: request.requestId };
+    }
     if (project.logicalProjectId) throw new Error("请从逻辑项目创建会话");
     const queueId = await realpath(project.root);
     const requestId = requireId(request.requestId);
@@ -1109,6 +1155,7 @@ class CoreWorktrees {
           },
         ],
       });
+      if (!receipt) throw Object.assign(new Error("原 Core 停止回执尚未确认"), { code: "WORKTREE_REMOVE_UNKNOWN" });
       value = await this.update(value.requestId, (latest) => ({
         ...latest,
         deletion: { ...requireDeletion(latest), stopReceipt: receipt },
@@ -1164,6 +1211,8 @@ class CoreWorktrees {
     );
   }
   async autoCleanup() {
+    // Host 在后台 ready 后和会话绑定完成后调度；启动期间不能反向调用尚未就绪的 Host 管道。
+    if (this.native) return;
     if (this.cleaning || !this.settings().autoCleanup) return;
     this.cleaning = true;
     try {

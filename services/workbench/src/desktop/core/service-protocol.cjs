@@ -6,7 +6,6 @@ const { appendFileSync } = require("node:fs");
 const { WebSocketServer } = require("ws");
 const { RemoteControl } = require("./remote.cjs");
 const { NativeRemote } = require("./native-remote.cjs");
-const { METHODS: terminalMethods } = require("./gui-terminal-connections.cjs");
 const {
   desktopError,
   validateMcpPageDeclaration,
@@ -110,6 +109,7 @@ class DesktopService {
   encryptionPending = new Map();
   encryptionSequence = 0;
   hostManaged = false;
+  rustExecution = false;
   /** 只向当前原生外壳取安全存储能力；断开后不重放。 @param {'encrypt'|'decrypt'} operation @param {string} value */
   encryptionRequest(operation, value) {
     const socket = this.computerSocket;
@@ -139,6 +139,8 @@ class DesktopService {
     this.pendingNotificationTarget = null;
     this.token = randomBytes(32).toString("hex");
     /** @type {Set<ServiceSocket>} */ this.clients = new Set();
+    /** @type {Map<ServiceSocket,Map<string,{client:import('@areal/workbench-service/host-core-client').HostCoreClient,ready:Promise<unknown>,key:string}>>} */
+    this.hostTerminals = new Map();
     /** @type {Map<string,PageOwner>} */
     this.mcpPageOwners = new Map();
     backend.onMcpPageToolNotice = (event) => this.mcpPageToolNotice(event);
@@ -774,6 +776,12 @@ class DesktopService {
       if (socket.closed) return;
       socket.closed = true;
     }
+    const terminals = this.hostTerminals.get(socket);
+    this.hostTerminals.delete(socket);
+    for (const entry of terminals?.values() ?? []) {
+      entry.client.close();
+      this.backend.hostCoreClients.delete(entry.key);
+    }
     for (const [requestId, pending] of this.encryptionPending ?? [])
       if (pending.socket === socket) {
         clearTimeout(pending.timer);
@@ -1322,6 +1330,8 @@ class DesktopService {
         return response;
       }
       if (method === "oneProtocol") {
+        this.backend.rustDomains = this.hostManaged && Array.isArray(params?.rustDomains) ? params.rustDomains : [];
+        this.rustExecution = this.hostManaged && this.backend.rustDomains.includes("execution-rust");
         await this.backend.useHostLibrary(this.hostManaged || params?.library === true, this.hostManaged);
         response = null;
         return response;
@@ -1388,6 +1398,8 @@ class DesktopService {
         const entry = entryKey ? this.beginBrowserEntrypoint(socket, request) : null;
         let result;
         try {
+          const terminalClient = guiTerminalCommand
+            ? await this.hostTerminalClient(socket, request.projectId) : undefined;
           result =
             method === "command" && name === "history"
               ? await this.historyCommand(socket, request)
@@ -1395,8 +1407,11 @@ class DesktopService {
                 ? await this.backend.command(name, request, {
                     ...(guiTerminalCommand
                       ? {
-                          guiTerminalRequest: (method, params) =>
-                            this.terminalRead(socket, request.projectId, method, params),
+                          ...(terminalClient ? { guiTerminalClient: terminalClient } : {}),
+                          guiTerminalRequest: (method, params) => {
+                            if (!terminalClient) throw new Error("Host terminal unavailable");
+                            return terminalClient.request(method,params);
+                          },
                         }
                       : {}),
                     onMcpAppOpened: (project, client, request, result) =>
@@ -1463,43 +1478,31 @@ class DesktopService {
     }
     return response;
   }
-  /** @param {ServiceSocket} socket @param {unknown} projectId @param {string} method @param {Fields} params */
-  terminalRead(socket, projectId, method, params) {
-    if (
-      this.closed ||
-      !connected(socket) ||
-      !this.clients.has(socket) ||
-      !terminalMethods.has(method) ||
-      typeof projectId !== "string"
-    )
-      return Promise.reject(new Error("GUI terminal owner is unavailable"));
-    const project = this.backend.projects.get(projectId);
-    if (!project?.service || !project.endpoint || !project.token || this.terminalPending.size >= 64)
-      return Promise.reject(new Error("GUI terminal Core is unavailable"));
-    const { serviceId, generation } = project.service;
-    const { endpoint, token } = project;
-    const requestId = ++this.nextTerminalId;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.terminalPending.delete(requestId);
-        reject(new Error("GUI terminal dispatch timed out; outcome may be unknown"));
-      }, 30000);
-      this.terminalPending.set(requestId, { socket, resolve, reject, timer });
-      this.send(socket, {
-        method: "terminalRequest",
-        params: {
-          requestId,
-          projectId,
-          serviceId,
-          generation,
-          endpoint,
-          token,
-          method,
-          params,
-        },
-      });
-    });
+  /** @param {ServiceSocket} socket @param {unknown} projectId */
+  async hostTerminalClient(socket, projectId) {
+    if (!connected(socket) || !this.clients.has(socket) || this.closed || typeof projectId !== "string" || !this.backend.hostCall)
+      throw new Error("GUI terminal owner is unavailable");
+    const canonical = this.backend.host.resolve(projectId).projectId;
+    let terminals = this.hostTerminals.get(socket);
+    if (!terminals) { terminals = new Map(); this.hostTerminals.set(socket, terminals); }
+    let entry = terminals.get(canonical);
+    if (entry?.client.closed) { terminals.delete(canonical); this.backend.hostCoreClients.delete(entry.key); entry = undefined; }
+    if (!entry) {
+      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+      const client = new HostCoreClient({ host: this.backend.hostCall, sourceId: this.backend.host.sourceId, projectId: canonical, scope: "terminal" });
+      const key = `terminal:${randomUUID()}`;
+      entry = { client, ready: client.connect(), key };
+      terminals.set(canonical, entry);
+      this.backend.hostCoreClients.set(key, client);
+    }
+    try { await entry.ready; }
+    catch (error) { entry.client.close(); terminals.delete(canonical); this.backend.hostCoreClients.delete(entry.key); throw error; }
+    if (!connected(socket) || this.hostTerminals.get(socket) !== terminals || terminals.get(canonical) !== entry) {
+      entry.client.close(); throw new Error("GUI terminal owner disconnected during attachment");
+    }
+    return entry.client;
   }
+
   async initRemote() {
     if (this.remote instanceof NativeRemote)
       this.backend.host.client.requireCapability("remoteGatewayV1");
@@ -1658,7 +1661,7 @@ class DesktopService {
     const handle = randomUUID();
     const timer = setTimeout(() => this.cancelHostExecution(handle, connection), 30000);
     this.hostExecutions.set(handle, {connection, method, params, project, client, current:ready, key, entry, timer});
-    return {handle, call:{method, params}};
+    return {handle, call:{method, params}, ...(this.rustExecution && method !== "workbench/thread/create" ? {hostDispatch:true} : {})};
   }
 
   /** @param {string} handle @param {string} connection */
@@ -1684,6 +1687,27 @@ class DesktopService {
       if (claim.hostConnection === connection) this.browserClaims.delete(key);
     for (const pending of this.browserPending.values())
       if (pending.hostConnection === connection) pending.reject(new Error("Host execution owner disconnected; outcome unknown"));
+  }
+
+  /** Rust 已完成 Core 调用；这里只结算原页面宿主租约，不再发送 Core 请求。
+   * @param {{handle:string,result?:unknown,error?:unknown}} outcome @param {string} connection
+   */
+  completeHostExecution(outcome, connection) {
+    const pending = this.hostExecutions.get(outcome.handle);
+    if (!pending || pending.connection !== connection) return { completed: false };
+    this.hostExecutions.delete(outcome.handle);
+    clearTimeout(pending.timer);
+    if (pending.entry) {
+      const result = outcome.result;
+      if (!pending.current() || outcome.error !== undefined)
+        this.forgetBrowserEntrypoint(pending.key, pending.entry);
+      else if (record(result) && typeof result.queueItemId === "string")
+        pending.entry.resolve({queueItemId:result.queueItemId});
+      else if (record(result) && record(result.turn) && typeof result.turn.id === "string")
+        pending.entry.resolve({turnId:result.turn.id});
+      else this.forgetBrowserEntrypoint(pending.key, pending.entry);
+    }
+    return { completed: true };
   }
 
   /** @param {string} handle @param {string} connection */
@@ -1989,33 +2013,12 @@ class DesktopService {
       request.signal?.aborted ||
       project?.service?.serviceId !== request.coreInstanceId ||
       project.service.generation !== request.coreGeneration ||
-      !project.endpoint ||
       typeof request.toolHostGeneration !== "string"
     )
       throw new Error("Desktop image owner changed");
-    const url = new URL(project.endpoint);
-    url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-    url.pathname = "/areal/blobs";
-    url.search = "";
-    for (const [key, value] of Object.entries({
-      threadId: request.threadId,
-      callId: request.callId,
-      hostGeneration: request.toolHostGeneration,
-    }))
-      url.searchParams.set(key, value);
-    const signal = request.signal
-      ? AbortSignal.any([request.signal, AbortSignal.timeout(10000)])
-      : AbortSignal.timeout(10000);
-    const uploaded = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${project.token}`, "Content-Type": image.mimeType },
-      body: bytes,
-      redirect: "error",
-      signal,
-    });
-    if (!uploaded.ok) throw new Error(`Desktop image upload failed (${uploaded.status})`);
-    /** @type {unknown} */
-    const media = await uploaded.json();
+    const {HostCoreClient}=require("@areal/workbench-service/host-core-client");
+    if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core transport unavailable");
+    const media=await project.client.blob({operation:"upload",threadId:request.threadId,mime:image.mimeType,base64:bytes.toString("base64"),callId:request.callId,hostGeneration:request.toolHostGeneration});
     if (
       !current() ||
       request.signal?.aborted ||
@@ -2734,24 +2737,9 @@ class DesktopService {
       )
         throw new Error("Invalid browser image");
       const project = this.projectForThread(projectId, threadId);
-      if (!project?.endpoint) throw new Error("Desktop image owner unavailable");
-      const url = new URL(project.endpoint);
-      url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-      url.pathname = "/areal/blobs";
-      url.search = "";
-      url.searchParams.set("threadId", threadId);
-      url.searchParams.set("callId", callId);
-      url.searchParams.set("hostGeneration", toolHostGeneration);
-      const uploaded = await fetch(url, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${project.token}`, "Content-Type": "image/png" },
-        body: bytes,
-        redirect: "error",
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!uploaded.ok) throw new Error(`Browser evidence upload failed (${uploaded.status})`);
-      /** @type {unknown} */
-      const media = await uploaded.json();
+      const {HostCoreClient}=require("@areal/workbench-service/host-core-client");
+      if (!(project?.client instanceof HostCoreClient)) throw new Error("Host Core transport unavailable");
+      const media=await project.client.blob({operation:"upload",threadId,mime:"image/png",base64:bytes.toString("base64"),callId,hostGeneration:toolHostGeneration});
       if (
         signal?.aborted ||
         this.browserClaims.get(key) !== claim ||

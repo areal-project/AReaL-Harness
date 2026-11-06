@@ -10,17 +10,14 @@ const { startupTrace } = require("@areal/workbench-service/desktop/core/startup-
 const { randomUUID } = require("node:crypto");
 const { mkdir, readFile, realpath, writeFile, rename, rm } = require("node:fs/promises");
 const { join } = require("node:path");
-const { HostClient } = require("@areal/client/node");
-const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { HostClient, executeHost } = require("@areal/client/node");
 const { hostUpdateReceipt } = require("@areal/workbench/desktop-contract/desktop-control");
 const {
   readHostReceipt,
   projectHostReceipt,
   readOfflineHostReceipt,
 } = require("./host-lifecycle.cjs");
-const {
-  GuiTerminalConnections,
-} = require("@areal/workbench-service/desktop/core/gui-terminal-connections.cjs");
+const { NativeTerminalOwners } = require("@areal/workbench-service/native-host-transport");
 const { ServiceConnection } = require("./service-connection.cjs");
 const {
   readServicePacket,
@@ -45,9 +42,7 @@ const {
   genUiScope,
   createGenUiState,
 } = require("@areal/workbench-service/desktop/core/gen-ui-state.cjs");
-const {
-  inspectCoreCapabilities,
-} = require("@areal/workbench-service/desktop/core/core-capabilities.cjs");
+const capabilities = require("@areal/workbench-service/desktop/core/core-capabilities.cjs");
 const { checkHostPrerequisites } = require("./host-prerequisites.cjs");
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -212,7 +207,7 @@ class SharedCoreBackend {
     this.initializing = false;
     /** @type {Map<string,GuiTerminal>} */
     this.guiTerminals = new Map();
-    this.terminalConnections = new GuiTerminalConnections();
+    this.terminalConnections = NativeTerminalOwners.forOwner(this);
     /** @type {Set<Promise<unknown>>} */
     this.guiTerminalStarts = new Set();
     /** @type {Map<string,GuiSideChat>} */
@@ -229,7 +224,7 @@ class SharedCoreBackend {
     this.hostUpdateInFlight = false;
     /** @type {Map<string,import('./host-lifecycle.cjs').HostReceipt>} */
     this.hostReceipts = new Map();
-    /** @type {Map<string,InstanceType<typeof GuiTerminalConnections>>} */
+    /** @type {Map<string,InstanceType<typeof NativeTerminalOwners>>} */
     this.hostStopResources = new Map();
     /** @type {Promise<HostLifecycleResult>|undefined} */
     this.hostStopInFlight = undefined;
@@ -244,10 +239,10 @@ class SharedCoreBackend {
       },
       flush: async () => {},
     };
-    /** 一套协议过渡开关；后台重连后重发。 @type {{library:boolean,backend?:boolean}|null} */
+    /** 一套协议过渡开关；后台重连后重发。 @type {{library:boolean,backend?:boolean,rustDomains?:string[]}|null} */
     this.oneProtocol = null;
   }
-  /** @param {{library:boolean,backend?:boolean}} flags */
+  /** @param {{library:boolean,backend?:boolean,rustDomains?:string[]}} flags */
   setOneProtocol(flags) {
     this.oneProtocol = flags;
     if (this.status.connected) void this.connection?.request("oneProtocol", flags).catch(() => {});
@@ -430,7 +425,7 @@ class SharedCoreBackend {
   /** @param {unknown} [candidate] */
   createConnection(candidate) {
     this.terminalConnections.close();
-    this.terminalConnections = new GuiTerminalConnections();
+    this.terminalConnections = NativeTerminalOwners.forOwner(this);
     const connection = new ServiceConnection(
       (packet) => {
         if (this.connection !== connection) return;
@@ -470,11 +465,6 @@ class SharedCoreBackend {
       (event) => {
         if (this.connection === connection && !this.disposed)
           this.onMcpPageToolsDisconnected?.(event);
-      },
-      (request) => {
-        if (this.connection !== connection || this.disposed)
-          throw new Error("GUI terminal owner disconnected");
-        return this.terminalConnections.request(request);
       },
     );
     return connection;
@@ -852,7 +842,11 @@ class SharedCoreBackend {
       else await source.init();
       const owner = await source.client.request("backend.ensure", {
         profile: options.guiProfile,
-        options: { ...options, applicationOwner: undefined },
+        options: {
+          ...options,
+          applicationOwner: undefined,
+          rustDomains: this.oneProtocol?.rustDomains ?? [],
+        },
       });
       if (this.disposed) throw new Error("GUI 连接已关闭");
       if (!(await this.attach({ expectedIdentity: owner.identity })))
@@ -1242,7 +1236,7 @@ class SharedCoreBackend {
           throw new Error("请先完成后台停止，再关闭登录自启");
       }
     }
-    const { stdout } = await executeCore(
+    const { stdout } = await executeHost(
       this.options.binary,
       operation === "status"
         ? ["host", "service-status", "--json"]
@@ -1651,7 +1645,7 @@ class SharedCoreBackend {
       if (!result) {
         require("./lifecycle.cjs").assertLifecycleSupport(this.status, "updateDesktop");
         if (!this.options.binary) throw new Error("Core 程序路径不可用");
-        await inspectCoreCapabilities(this.options.binary);
+        if (this.mainDesktop) await capabilities.inspectCoreCapabilities(this.mainDesktop.backend);
         this.backendUpdate = { state: "applying" };
         this.onChange();
         result = await require("./startup-recovery.cjs").recoverConnectedService({

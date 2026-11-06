@@ -38,6 +38,9 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 target = root / "core/host/src" / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / "core/host/src" / name, target)
+            backend = root / "services/workbench/src/backend-main.cjs"
+            backend.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
             source = root / "core/host/src/gateway/session.rs"
             source.write_text(
                 source.read_text().replace(
@@ -69,6 +72,22 @@ class HostProtocolSchemaTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "loopback.added"):
                 GEN.check_inventory(self.schema, root)
+            shutil.copyfile(ROOT / "core/host/src/loopback.rs", source)
+            backend.write_text(
+                backend.read_text().replace(
+                    '"core.callback"', '"private.added", "core.callback"', 1
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "private.added"):
+                GEN.check_inventory(self.schema, root)
+            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
+            backend.write_text(
+                backend.read_text().replace(
+                    'request.event === "core.event"', 'request.event === "future.event"', 1
+                )
+            )
+            with self.assertRaisesRegex(ValueError, "future.event"):
+                GEN.check_inventory(self.schema, root)
 
     def test_generator_is_deterministic_and_check_never_repairs_stale_files(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -86,6 +105,12 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(ROOT / name, target)
+            backend = root / "services/workbench/src/backend-main.cjs"
+            backend.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / "services/workbench/src/backend-main.cjs", backend)
+            shutil.copyfile(
+                ROOT / "schemas/areal-core-v1.json", root / "schemas/areal-core-v1.json"
+            )
             GEN.generate(root)
             original = [(root / name).read_bytes() for name in GEN.OUTPUTS]
             GEN.generate(root)
@@ -99,6 +124,23 @@ class HostProtocolSchemaTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "stale generated file"):
                 GEN.generate(root, check=True)
             self.assertEqual(original, [(root / name).read_bytes() for name in GEN.OUTPUTS])
+
+    def test_private_owner_direction_and_closed_tuple_contracts_are_checked(self):
+        changed = copy.deepcopy(self.schema)
+        changed["x-current"]["workbench"]["methods"]["core.attach"]["x-owner"] = "workbench"
+        with self.assertRaisesRegex(ValueError, "invalid private owner"):
+            GEN.validate_schema(changed)
+        changed = copy.deepcopy(self.schema)
+        changed["x-current"]["workbench"]["events"]["pages.event"]["x-owner"] = "host"
+        with self.assertRaisesRegex(ValueError, "invalid event owner"):
+            GEN.validate_schema(changed)
+        changed = copy.deepcopy(self.schema)
+        path = changed["$defs"]["WorkbenchPrivateLibraryPatchParams"]["properties"]["patches"][
+            "items"
+        ]["properties"]["path"]["oneOf"][0]
+        path["items"] = True
+        with self.assertRaisesRegex(ValueError, "exact closed length"):
+            GEN.validate_schema(changed)
 
     def test_unsupported_shapes_fail_instead_of_generating_wide_types(self):
         for shape in (
@@ -129,7 +171,7 @@ const hyphenatedUuid = '[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}';
 const uuid = new RegExp(`^(?:[0-9a-fA-F]{32}|${hyphenatedUuid}|urn:uuid:${hyphenatedUuid}|\\{${hyphenatedUuid}\\})$`);
 ajv.addFormat('uuid', {type:'string',validate:(value)=>uuid.exec(value)?.[0]===value});
 ajv.addKeyword({keyword:'x-maxUtf8Bytes',type:'string',schemaType:'number',validate:(limit,value)=>Buffer.byteLength(value)<=limit});
-ajv.addSchema(schema);
+require('./clients/gui/scripts/host-protocol-schema-registry.cjs').addHostProtocolSchemas(ajv, schema, JSON.parse(fs.readFileSync('schemas/areal-core-v1.json','utf8')));
 const validate = (ref, value, expected = true) => {
   const validator = ajv.getSchema(schema.$id + ref);
   assert(validator, ref);
@@ -151,6 +193,49 @@ for (const transport of ['local','remote','loopback']) {
   }
 }
 const canonicalUuid = '01234567-89ab-cdef-0123-456789abcdef';
+validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','httpProxy'],before:null,after:'opaque'}]});
+validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','sidebarSort'],before:null,after:'manual'}]}, false);
+validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['httpProxy','settings'],before:null,after:'opaque'}]}, false);
+validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['projects','project','worktreeEnvironments'],before:[],after:[]}]});
+validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['projects','project','navigationSummaries'],before:[],after:[]}]}, false);
+const privateRead = {sourceId:'fixture',projectId:'project',lease:canonicalUuid,method:'thread/read',params:{threadId:'thread',includeTurns:true}};
+validate('#/$defs/WorkbenchPrivateCoreRequestParams', privateRead);
+validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateRead,method:'arbitrary/execute'}, false);
+validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateRead,params:{...privateRead.params,unregistered:true}}, false);
+const privateUpdate = {...privateRead,method:'areal/task/update',params:{taskId:'task',requestId:canonicalUuid,expectedRevision:1,scheduleV2:null}};
+validate('#/$defs/WorkbenchPrivateCoreRequestParams', privateUpdate);
+validate('#/$defs/WorkbenchPrivateCoreRequestParams', {...privateUpdate,params:{...privateUpdate.params,scheduleV2:{version:2}}}, false);
+const originalQuery = {...privateRead,method:'areal/task/create',params:{requestId:canonicalUuid}};
+validate('#/$defs/WorkbenchPrivateExecutionReconcileParams', originalQuery);
+validate('#/$defs/WorkbenchPrivateExecutionReconcileParams', {...originalQuery,params:{...originalQuery.params,arbitrary:true}}, false);
+validate('#/$defs/WorkbenchPrivateExecutionSubmitParams', originalQuery, false);
+const explicitWorktreeProfile = {commandId:canonicalUuid,request:{sourceId:'host',operation:'worktreeOpen',projectId:'project',requestId:canonicalUuid,agentProfile:{id:'fixture',revision:'revision'}}};
+validate('#/$defs/LocalWorktreeCommandParams', explicitWorktreeProfile);
+validate('#/$defs/LocalWorktreeCommandParams', {...explicitWorktreeProfile,request:{...explicitWorktreeProfile.request,operation:'worktreeDelete'}}, false);
+validate('#/$defs/LocalWorktreeCommandParams', {...explicitWorktreeProfile,request:{...explicitWorktreeProfile.request,agentProfile:{id:'',revision:'revision'}}}, false);
+const nativeDetach = {attachmentId:canonicalUuid,call:'core.detach',params:{sourceId:'fixture',projectId:'project',lease:canonicalUuid}};
+validate('#/$defs/LocalDesktopCoreCallParams', nativeDetach);
+validate('#/$defs/LocalDesktopCoreCallParams', {...nativeDetach,call:'unregistered.execute'}, false);
+validate('#/$defs/LocalDesktopCoreCallParams', {...nativeDetach,call:'core.attach'}, false);
+validate('#/$defs/LocalDesktopCoreCallParams', {...nativeDetach,params:{...nativeDetach.params,extra:true}}, false);
+const coreMedia = {sourceId:'fixture',projectId:'project',lease:canonicalUuid,threadId:'thread',turnId:'turn',itemId:'item',uri:'areal://blob/'+'a'.repeat(64),offset:0,length:65536};
+validate('#/$defs/WorkbenchPrivateCoreMediaParams', coreMedia);
+validate('#/$defs/WorkbenchPrivateCoreMediaParams', {...coreMedia,uri:'file:///private/arbitrary'}, false);
+validate('#/$defs/WorkbenchPrivateCoreMediaParams', {...coreMedia,length:65537}, false);
+const blobUpload = {sourceId:'fixture',projectId:'project',lease:canonicalUuid,threadId:'thread',operation:'upload',mime:'image/png',base64:'AA=='};
+validate('#/$defs/WorkbenchPrivateCoreBlobParams', blobUpload);
+validate('#/$defs/WorkbenchPrivateCoreBlobParams', {...blobUpload,callId:'call'}, false);
+validate('#/$defs/WorkbenchPrivateCoreBlobParams', {...blobUpload,callId:'call',hostGeneration:'generation'});
+validate('#/$defs/WorkbenchPrivateWorkbenchUtilityParams', {operation:'feedbackSubmit',document:'a'.repeat(1048577)});
+validate('#/$defs/WorkbenchPrivateWorkbenchUtilityParams', {operation:'modelsWrite',document:'a'.repeat(1048577)}, false);
+
+validate('#/$defs/WorkbenchPrivatePagesEvent', {version:1,event:'pages.event',params:{connection:'connection',token:'page',notification:{jsonrpc:'2.0',method:'ui/notifications/closed'}}});
+validate('#/$defs/WorkbenchPrivatePagesEvent', {version:1,event:'pages.event',params:{connection:'connection',token:'page',notification:{},extra:true}}, false);
+
+
+
+
+
 for (const commandId of [canonicalUuid, canonicalUuid.toUpperCase(), canonicalUuid.replaceAll('-', ''), `urn:uuid:${canonicalUuid}`, `{${canonicalUuid}}`]) {
   validate('#/$defs/RemoteCommandReadParams', {commandId});
 }

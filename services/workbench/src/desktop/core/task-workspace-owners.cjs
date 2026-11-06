@@ -39,7 +39,9 @@ class TaskWorkspaceOwners {
     if (!owner) throw unavailable("任务执行工作区已移除，请检查原任务");
     return owner;
   }
+  native() { return !!this.backend.hostCall && this.backend.rustDomains.some((domain) => domain === "tasks-rust" || domain === "execution-rust"); }
   async init() {
+    if (this.native()) return;
     const directory = join(this.backend.home, "task-owners");
     await mkdir(directory, { recursive: true, mode: 0o700 });
     for (const name of await readdir(directory)) {
@@ -94,6 +96,7 @@ class TaskWorkspaceOwners {
   }
   /** @param {import('./project-state.cjs').CoreProject} project @param {Array<{id:string,threadId?:string|null}|import("@areal/workbench/desktop-contract/management-tasks").InboxEntry>} tasks */
   async observeTasks(project, tasks) {
+    if (this.native()) return;
     this.registered(project.id);
     let changed = false;
     for (const task of tasks)
@@ -151,6 +154,16 @@ class TaskWorkspaceOwners {
   }
   /** @param {string} logicalId @param {string} taskId @param {{execution?:boolean}} [options] */
   async target(logicalId, taskId, options = {}) {
+    if (this.native()) {
+      if (!this.backend.hostCall) throw unavailable("Host 任务归属不可用");
+      const value = await this.backend.hostCall("tasks.owner.read", { projectId: logicalId, taskId, execution: options.execution === true });
+      if (!modelRecord(value) || !identifier(value.projectId) ||
+          (value.threadId !== undefined && !identifier(value.threadId)) ||
+          (value.mode !== undefined && !["foreground","background","scheduled"].includes(String(value.mode))))
+        throw unavailable("Host 任务执行归属无效");
+      return { projectId: value.projectId, ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
+        ...(typeof value.mode === "string" ? { mode: value.mode } : {}) };
+    }
     if (!identifier(taskId)) throw unavailable("任务身份无效");
     const logical = this.logical(this.registered(logicalId));
     const indexed = this.owners.get(taskId);

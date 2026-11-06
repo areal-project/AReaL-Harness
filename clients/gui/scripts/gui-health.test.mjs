@@ -524,9 +524,9 @@ test("moving checked backend source keeps coverage enforced outside Main", async
   assert.equal(moved.metrics.mainCheckedFiles.value, 2);
   assert.equal(moved.metrics.mainTypeCoverage.value, 1);
   assert.equal(moved.counts.mainSourceLines, 2);
-  assert.equal(f.run("--check").status, 0);
+  assert.equal(f.run("--check", "--metric=mainTypeCoverage").status, 0);
   await f.put("../../services/workbench/src/desktop/core/backend.cjs", "module.exports = {};\n");
-  assert.notEqual(f.run("--check").status, 0);
+  assert.notEqual(f.run("--check", "--metric=mainTypeCoverage").status, 0);
 });
 
 test("active design document growth is tracked while the user entry has a separate ceiling", async (t) => {
@@ -540,4 +540,67 @@ test("active design document growth is tracked while the user entry has a separa
   assert.ok(after.metrics.activeDesignDocBytes.value > before.metrics.activeDesignDocBytes.value);
   assert.equal(after.counts.userEntryDocBytes, before.counts.userEntryDocBytes);
   assert.notEqual(f.run("--check").status, 0);
+});
+
+test("workbench convergence counts new and renamed files and retains unrelated JS", async (t) => {
+  const f = await fixture(t);
+  const library = "../../services/workbench/src/desktop/core/library.cjs";
+  const retained = "../../services/workbench/src/pages.cjs";
+  await f.put(library, "library();\n".repeat(3));
+  await f.put(retained, "pages();\n");
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  baseline.$workbenchRetainedSources = [retained];
+  baseline.workbenchConvergeLines.value = 3;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await commitFixture(f);
+  const check = () => f.run("--check", "--metric=workbenchConvergeLines", "--base=HEAD");
+  await f.put(retained, "pages();\n".repeat(20));
+  assert.equal(check().status, 0);
+  const added = "../../services/workbench/src/renamed-library.ts";
+  await f.put(added, "export {};\n");
+  assert.match(check().stderr, /workbenchConvergeLines/);
+  assert.notEqual(f.run("--write", "--allow-regression=workbenchConvergeLines").status, 0);
+  await rm(join(f.root, added));
+  await rename(join(f.root, library), join(f.root, added));
+  assert.equal(check().status, 0);
+  await f.put(added, "library();\n".repeat(4));
+  assert.match(check().stderr, /workbenchConvergeLines/);
+  baseline.$workbenchRetainedSources.push(added);
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.match(check().stderr, /retained exemption added against base/);
+});
+
+test("workbench first baseline measures service sources at base and prevents restored debt", async (t) => {
+  const f = await fixture(t);
+  const library = "../../services/workbench/src/desktop/core/library.cjs";
+  await f.put(library, "library();\n");
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  const legacy = { ...baseline };
+  delete legacy.workbenchConvergeLines;
+  delete legacy.$workbenchRetainedSources;
+  await f.put("health-baseline.json", JSON.stringify(legacy));
+  await commitFixture(f);
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  const check = () => f.run("--check", "--metric=workbenchConvergeLines", "--base=HEAD");
+  assert.equal(check().status, 0);
+  await f.put(library, "");
+  assert.equal(
+    check().status,
+    0,
+    "initial migration may shrink below the measured pre-migration budget",
+  );
+  await f.put(library, "library();\n");
+  baseline.workbenchConvergeLines.value++;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.match(check().stderr, /initial baseline must equal actual workbench lines/);
+  await f.put(library, "library();\n\n");
+  assert.match(check().stderr, /grew against actual base/);
+  await f.put(library, "");
+  baseline.workbenchConvergeLines.value = 0;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await commitFixture(f);
+  await f.put(library, "library();\n");
+  assert.match(check().stderr, /workbenchConvergeLines/);
 });

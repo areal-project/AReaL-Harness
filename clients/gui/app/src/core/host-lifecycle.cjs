@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { executeHost } = require("@areal/client/node");
 /** @typedef {{kind:'stopHost',requestId:string,home:string,hostId:string,generation:string,strategy:'ifIdle'|'cancel'}} HostReference */
 /** @typedef {{projectId:string,serviceId:string,serviceGeneration:string,requestId:string,dispatch:'notStarted'|'started',receipt?:{version:1,requestId:string,projectId:string,serviceId:string,serviceGeneration:string,strategy:'ifIdle'|'cancel',state:string,message?:string}}} HostTarget */
 /** @typedef {{version:1,requestId:string,hostId:string,generation:string,strategy:'ifIdle'|'cancel',state:string,projects:HostTarget[]}} HostReceipt */
@@ -91,7 +91,7 @@ function projectHostReceipt(reference, receipt) {
 }
 /** @param {string} binary @param {HostReference} reference */
 async function readOfflineHostReceipt(binary, reference) {
-  const { stdout } = await executeCore(
+  const { stdout } = await executeHost(
     binary,
     ["host", "operation", reference.requestId, "--json"],
     {

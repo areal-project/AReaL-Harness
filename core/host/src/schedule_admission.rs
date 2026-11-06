@@ -30,7 +30,7 @@ pub(crate) trait AdmissionRpc {
     ) -> impl Future<Output = Result<Value>> + 'a;
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Task {
     id: String,
@@ -109,7 +109,7 @@ struct Author {
     project_id: String,
     session_id: String,
 }
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Thread {
     id: String,
@@ -349,6 +349,42 @@ async fn source_workspace<R: AdmissionRpc>(
 ) -> Result<(Workspace, String)> {
     let source_id = task.source_thread_id.as_deref().filter(|id| identifier(id));
     let anchor_id = task.thread_id.as_deref().filter(|id| identifier(id));
+    if matches!(project.registration.source, crate::ProjectSource::Cli)
+        && task.source_thread_id.is_none()
+    {
+        ensure!(
+            task.mode == TaskMode::Scheduled
+                && task.owner == "desktop-owner"
+                && !task.cancelled
+                && identifier(&task.id)
+                && anchor_id.is_some(),
+            reject("CLI 定时任务执行锚点身份尚未确认")
+        );
+        let anchor_id = anchor_id.unwrap();
+        let anchor = read_thread(rpc, project, anchor_id).await?;
+        ensure!(
+            ordinary(&anchor)
+                && anchor.source.as_deref() != Some("nativeTaskAgent")
+                && anchor
+                    .desktop
+                    .as_ref()
+                    .is_none_or(|value| value["configuration"]["readOnly"] != true),
+            reject("CLI 定时任务执行锚点不可写或不是普通会话")
+        );
+        let root = project.registration.workspace.canonicalize()?;
+        let cwd = anchor.cwd.canonicalize()?;
+        ensure!(
+            cwd.starts_with(&root),
+            reject("CLI 定时任务执行目录不属于登记项目")
+        );
+        return Ok((
+            Workspace::Source {
+                cwd,
+                anchor: anchor_id.into(),
+            },
+            anchor.session_id,
+        ));
+    }
     ensure!(
         task.mode == TaskMode::Scheduled
             && task.owner == "desktop-owner"
@@ -391,7 +427,7 @@ async fn catalog<R: AdmissionRpc>(
     rpc: &R,
     project: &AdmissionProject,
     session: &str,
-) -> Result<()> {
+) -> Result<Vec<Task>> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct Page {
@@ -404,6 +440,7 @@ async fn catalog<R: AdmissionRpc>(
     } else {
         None
     };
+    let mut rows = Vec::new();
     let mut after: Option<String> = None;
     let mut seen = BTreeSet::new();
     for _ in 0..1000 {
@@ -438,6 +475,20 @@ async fn catalog<R: AdmissionRpc>(
             if task.mode != TaskMode::Scheduled || task.cancelled {
                 continue;
             }
+            if matches!(project.registration.source, crate::ProjectSource::Cli)
+                && task.source_thread_id.is_none()
+                && !session.starts_with("schedule:")
+            {
+                let current: Task =
+                    request(rpc, project, "areal/task/read", json!({"taskId":task.id})).await?;
+                ensure!(current.id == task.id, reject("CLI 定时任务身份已变化"));
+                let (_, family) = source_workspace(rpc, project, &current).await?;
+                ensure!(
+                    family == session,
+                    reject("目录仍有另一个 CLI 执行锚点的定时任务")
+                );
+                continue;
+            }
             if task
                 .source_thread_id
                 .as_ref()
@@ -462,8 +513,9 @@ async fn catalog<R: AdmissionRpc>(
                 reject("目录仍有不属于已核对调度家庭的定时任务，休眠或暂停不释放执行资格")
             );
         }
+        rows.extend(page.data.iter().cloned());
         if page.next_cursor.is_none() {
-            return Ok(());
+            return Ok(rows);
         }
         ensure!(
             !page.data.is_empty() && page.next_cursor == previous,
@@ -817,30 +869,12 @@ async fn directory_admission<R: AdmissionRpc>(
     Ok(())
 }
 
-pub(crate) async fn prepare<R: AdmissionRpc>(
+async fn task_workspace<R: AdmissionRpc>(
+    rpc: &R,
     project: &AdmissionProject,
     peers: &[AdmissionProject],
-    params: &Value,
-    rpc: &R,
-) -> Result<()> {
-    let task_id = params["taskId"].as_str().filter(|value| identifier(value));
-    let run_id = params["runId"].as_str().filter(|value| identifier(value));
-    let thread_id = params["threadId"]
-        .as_str()
-        .filter(|value| identifier(value));
-    let intent = params["intent"].as_str();
-    ensure!(
-        task_id.is_some()
-            && run_id.is_some()
-            && thread_id.is_some()
-            && matches!(intent, Some("start" | "resume")),
-        reject("定时执行准备身份无效")
-    );
-    let task: Task = request(rpc, project, "areal/task/read", json!({"taskId":task_id})).await?;
-    ensure!(
-        Some(task.id.as_str()) == task_id && task.mode == TaskMode::Scheduled,
-        reject("无法确认原定时任务")
-    );
+    task: &Task,
+) -> Result<Workspace> {
     let workspace = match reservation(project)? {
         None => {
             let (workspace, session) = source_workspace(rpc, project, &task).await?;
@@ -905,6 +939,316 @@ pub(crate) async fn prepare<R: AdmissionRpc>(
             Workspace::Exclusive(Box::new(value))
         }
     };
+    Ok(workspace)
+}
+
+/// 桌面命令与调度回调共用同一目录作者、任务家庭与运行身份检查。
+pub(crate) async fn command<R: AdmissionRpc>(
+    project: &AdmissionProject,
+    peers: &[AdmissionProject],
+    name: &str,
+    params: &Value,
+    rpc: &R,
+) -> Result<()> {
+    let operation = params["operation"].as_str().unwrap_or("");
+    if name == "manage" && matches!(operation, "taskDraftStart" | "taskDraftConfirm") {
+        return Ok(());
+    }
+    if name == "manage" && operation == "taskCreate" && params["mode"] == "scheduled" {
+        return Ok(());
+    }
+    if name == "manage"
+        && matches!(
+            operation,
+            "taskRunNow" | "taskResume" | "taskResumeRun" | "taskReply" | "taskUpdate"
+        )
+    {
+        if let Some(id) = params["taskId"].as_str().filter(|id| identifier(id)) {
+            let task: Task = request(rpc, project, "areal/task/read", json!({"taskId":id})).await?;
+            ensure!(task.id == id, reject("任务执行身份尚未确认"));
+            if task.mode == TaskMode::Scheduled {
+                task_workspace(rpc, project, peers, &task).await?;
+                return Ok(());
+            }
+        }
+    }
+    let targets = ["threadId", "parentThreadId", "sourceThreadId"]
+        .into_iter()
+        .filter_map(|field| params[field].as_str().filter(|id| identifier(id)))
+        .collect::<BTreeSet<_>>();
+    ensure!(!targets.is_empty(), reject("写入需要绑定到具体会话"));
+    let mut threads = Vec::new();
+    let mut authors = BTreeSet::new();
+    for id in targets {
+        let thread = read_thread(rpc, project, id).await?;
+        authors.insert(author_session(rpc, project, thread.clone()).await?);
+        threads.push(thread);
+    }
+    ensure!(authors.len() == 1, reject("一次执行不能包含不同会话作者"));
+    let session = authors.into_iter().next().unwrap();
+    if (name == "send" || name == "manage" && operation == "taskDraftSend")
+        && threads.iter().all(|thread| {
+            thread.desktop.as_ref().is_some_and(|desktop| {
+                let options = &desktop["configuration"]["options"];
+                options["readOnly"] == true
+                    && options["appendInstructions"]
+                        .as_str()
+                        .is_some_and(|text| text.starts_with("AREAL_TASK_DRAFT_V1\n"))
+                    && options["toolAllowlist"]
+                        .as_array()
+                        .is_some_and(Vec::is_empty)
+            })
+        })
+    {
+        return Ok(());
+    }
+    if name == "manage"
+        && matches!(operation, "archive" | "unarchive")
+        && threads.iter().any(|thread| {
+            thread.id == params["threadId"]
+                && thread.conversation.as_ref().is_some_and(|conversation| {
+                    conversation["kind"] == "side"
+                        && conversation["policy"]["kind"] == "sideReadOnlyV1"
+                })
+        })
+    {
+        return Ok(());
+    }
+    ensure!(
+        threads.iter().all(|thread| thread
+            .conversation
+            .as_ref()
+            .is_none_or(|conversation| conversation["kind"] != "side"
+                || conversation["policy"]["kind"] == "sideExecutableV2")),
+        reject("旁路讨论不能作为工作区作者执行写入")
+    );
+    if matches!(name, "respond" | "continue")
+        && scheduled_command(rpc, project, peers, name, params, &threads, &session).await?
+    {
+        return Ok(());
+    }
+    directory_admission(rpc, project, peers, &session, false).await
+}
+
+async fn scheduled_command<R: AdmissionRpc>(
+    rpc: &R,
+    project: &AdmissionProject,
+    peers: &[AdmissionProject],
+    name: &str,
+    params: &Value,
+    threads: &[Thread],
+    session: &str,
+) -> Result<bool> {
+    let exclusive = reservation(project)?;
+    let task_id = if let Some(value) = &exclusive {
+        value
+            .task_id
+            .clone()
+            .ok_or_else(|| reject("原定时任务尚未完成绑定"))?
+    } else {
+        let coordinators = threads
+            .iter()
+            .filter_map(|thread| {
+                thread
+                    .goal_owner
+                    .as_ref()
+                    .and_then(|owner| owner["threadId"].as_str())
+                    .or_else(|| {
+                        thread
+                            .goals
+                            .as_ref()
+                            .filter(|goals| goals["goal"].is_object())
+                            .map(|_| thread.id.as_str())
+                    })
+            })
+            .collect::<BTreeSet<_>>();
+        if coordinators.is_empty() {
+            return Ok(false);
+        }
+        let candidates = catalog(rpc, project, session)
+            .await?
+            .into_iter()
+            .filter(|task| {
+                task.mode == TaskMode::Scheduled
+                    && task.source_thread_id.is_some()
+                    && task.runs.iter().any(|run| {
+                        run.thread_id
+                            .as_ref()
+                            .is_some_and(|id| coordinators.contains(id.as_str()))
+                    })
+            })
+            .collect::<Vec<_>>();
+        if candidates.is_empty() {
+            return Ok(false);
+        }
+        ensure!(candidates.len() == 1, reject("定时执行的任务归属不唯一"));
+        candidates[0].id.clone()
+    };
+    let task: Task = request(rpc, project, "areal/task/read", json!({"taskId":task_id})).await?;
+    ensure!(
+        task.id == task_id && task.mode == TaskMode::Scheduled && !task.cancelled,
+        reject("原定时任务或目录预约已失效")
+    );
+    let workspace = task_workspace(rpc, project, peers, &task).await?;
+    let current = task
+        .runs
+        .last()
+        .ok_or_else(|| reject("原定时执行身份已变化"))?;
+    ensure!(
+        task.runs
+            .iter()
+            .filter(|run| !run.status.terminal())
+            .count()
+            == 1,
+        reject("只有当前未结束的定时执行可继续交互")
+    );
+    let run: TaskRun = request(
+        rpc,
+        project,
+        "areal/task/run/read",
+        json!({"taskId":task.id,"runId":current.id}),
+    )
+    .await?;
+    let active =
+        |status: &str| matches!(status, "running" | "waitingForInput" | "waitingForAgents");
+    let raw = serde_json::to_value(&run)?;
+    ensure!(
+        run.id == current.id
+            && run.status == current.status
+            && run.thread_id == current.thread_id
+            && run.goal_id == current.goal_id
+            && active(raw["status"].as_str().unwrap_or(""))
+            && run.reason.as_deref() != Some("stopRequested"),
+        reject("当前定时执行身份已变化")
+    );
+    let coordinator_id = run
+        .thread_id
+        .as_deref()
+        .filter(|id| identifier(id))
+        .ok_or_else(|| reject("当前定时执行身份已变化"))?;
+    let coordinator = read_thread(rpc, project, coordinator_id).await?;
+    let goal = coordinator
+        .goals
+        .as_ref()
+        .and_then(|goals| goals.get("goal"))
+        .ok_or_else(|| reject("当前定时执行目标已结束"))?;
+    ensure!(
+        coordinator.id != workspace.anchor()
+            && coordinator.goal_owner.is_none()
+            && goal["id"] == json!(run.goal_id)
+            && goal["threadId"] == coordinator.id
+            && goal["status"] == "active"
+            && coordinator.cwd.canonicalize()? == workspace.cwd(),
+        reject("当前定时执行目标已结束或不属于原运行")
+    );
+    for thread in threads {
+        ensure!(
+            thread.session_id == session && thread.cwd.canonicalize()? == workspace.cwd(),
+            reject("定时执行会话作者或目录已变化")
+        );
+        let turn = if thread.id == coordinator.id {
+            goal["activeTurnId"].as_str()
+        } else {
+            let worker = raw["workers"]
+                .as_array()
+                .and_then(|workers| {
+                    workers
+                        .iter()
+                        .find(|worker| worker["threadId"] == thread.id)
+                })
+                .ok_or_else(|| reject("目标会话不是当前定时执行的未结算 worker"))?;
+            ensure!(
+                worker["settled"] == false
+                    && active(worker["status"].as_str().unwrap_or(""))
+                    && worker["turnId"].as_str().is_some_and(identifier)
+                    && worker
+                        .get("execution")
+                        .is_none_or(|execution| execution.is_null()
+                            || execution["kind"] == "thread"
+                                && execution["threadId"] == thread.id
+                                && execution["turnId"] == worker["turnId"])
+                    && thread
+                        .goal_owner
+                        .as_ref()
+                        .is_some_and(|owner| owner["threadId"] == coordinator.id
+                            && owner["goalId"] == json!(run.goal_id)),
+                reject("目标会话不是当前定时执行的未结算 worker")
+            );
+            if let Some(mut parent) = thread.parent_thread_id.clone() {
+                let mut visited = BTreeSet::from([thread.id.clone()]);
+                while parent != coordinator.id {
+                    ensure!(
+                        visited.len() < 32 && visited.insert(parent.clone()),
+                        reject("定时 worker 父会话链无法确认")
+                    );
+                    let value = read_thread(rpc, project, &parent).await?;
+                    ensure!(
+                        value.cwd.canonicalize()? == workspace.cwd()
+                            && value.session_id == thread.session_id
+                            && value
+                                .goal_owner
+                                .as_ref()
+                                .is_some_and(|owner| owner["threadId"] == coordinator.id
+                                    && owner["goalId"] == json!(run.goal_id)),
+                        reject("定时 worker 父会话不属于原运行")
+                    );
+                    parent = value
+                        .parent_thread_id
+                        .filter(|id| identifier(id))
+                        .ok_or_else(|| reject("定时 worker 父会话链无法确认"))?;
+                }
+                ensure!(
+                    thread.session_id == coordinator.session_id,
+                    reject("定时 worker 未继承原运行会话")
+                );
+            } else {
+                ensure!(
+                    thread.source.as_deref() == Some("nativeTaskAgent")
+                        && thread.session_id == thread.id,
+                    reject("独立 worker 运行身份无法确认")
+                );
+            }
+            worker["turnId"].as_str()
+        };
+        ensure!(
+            turn.is_some_and(identifier),
+            reject("定时执行当前轮次尚未确认")
+        );
+        if name == "continue" && params["threadId"] == thread.id {
+            ensure!(
+                params["expectedTurnId"].as_str() == turn,
+                reject("原定时执行轮次已变化")
+            );
+        }
+    }
+    Ok(true)
+}
+
+pub(crate) async fn prepare<R: AdmissionRpc>(
+    project: &AdmissionProject,
+    peers: &[AdmissionProject],
+    params: &Value,
+    rpc: &R,
+) -> Result<()> {
+    let task_id = params["taskId"].as_str().filter(|value| identifier(value));
+    let run_id = params["runId"].as_str().filter(|value| identifier(value));
+    let thread_id = params["threadId"]
+        .as_str()
+        .filter(|value| identifier(value));
+    let intent = params["intent"].as_str();
+    ensure!(
+        task_id.is_some()
+            && run_id.is_some()
+            && thread_id.is_some()
+            && matches!(intent, Some("start" | "resume")),
+        reject("定时执行准备身份无效")
+    );
+    let task: Task = request(rpc, project, "areal/task/read", json!({"taskId":task_id})).await?;
+    ensure!(
+        Some(task.id.as_str()) == task_id && task.mode == TaskMode::Scheduled,
+        reject("无法确认原定时任务")
+    );
+    let workspace = task_workspace(rpc, project, peers, &task).await?;
     let current = task
         .runs
         .last()
@@ -1006,6 +1350,56 @@ mod tests {
         }))).collect();
         (project, Rpc { task, run, threads })
     }
+    #[tokio::test]
+    async fn cli_anchor_only_schedule_checks_real_workspace_and_thread_identity() {
+        let base = tempfile::tempdir().unwrap();
+        let (mut project, mut rpc) = fixture(base.path());
+        project.registration.source = ProjectSource::Cli;
+        project.legacy_project_id = "host-project".into();
+        rpc.task.as_object_mut().unwrap().remove("sourceThreadId");
+        rpc.threads
+            .get_mut("anchor")
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("desktop");
+        let task: Task = serde_json::from_value(rpc.task.clone()).unwrap();
+        let (_, session) = source_workspace(&rpc, &project, &task).await.unwrap();
+        assert_eq!(session, "session-anchor");
+        prepare(&project, &[], &params(), &rpc).await.unwrap();
+        rpc.task["threadId"] = json!("coordinator");
+        assert!(catalog(&rpc, &project, "session-anchor").await.is_err());
+        catalog(&rpc, &project, "session-coordinator")
+            .await
+            .unwrap();
+        rpc.task["threadId"] = json!("anchor");
+        let anchor = rpc.threads["anchor"].clone();
+        for invalid in [
+            json!({"desktop":{"configuration":{"readOnly":true}}}),
+            json!({"source":"nativeTaskAgent"}),
+            json!({"conversation":{"kind":"side"}}),
+            json!({"parentThreadId":"parent"}),
+            json!({"cwd":base.path()}),
+        ] {
+            let mut changed = anchor.clone();
+            changed
+                .as_object_mut()
+                .unwrap()
+                .extend(invalid.as_object().unwrap().clone());
+            rpc.threads.insert("anchor".into(), changed);
+            assert!(
+                source_workspace(&rpc, &project, &task).await.is_err(),
+                "{invalid}"
+            );
+        }
+        rpc.threads.insert("anchor".into(), anchor);
+        project.registration.source = ProjectSource::Gui {
+            profile: base.path().join("profile"),
+            legacy_project_id: "a".repeat(24),
+        };
+        assert!(source_workspace(&rpc, &project, &task).await.is_err());
+    }
+
     fn params() -> Value {
         json!({"taskId":"task","runId":"run","threadId":"anchor","intent":"start"})
     }
@@ -1058,6 +1452,36 @@ mod tests {
             &json!({"version":1,"root":root,"projectId":project.legacy_project_id,"sessionId":session})).unwrap();
     }
 
+    #[tokio::test]
+    async fn scheduled_continue_keeps_the_current_coordinator_turn() {
+        let base = tempfile::tempdir().unwrap();
+        let (project, mut rpc) = fixture(base.path());
+        rpc.run["threadId"] = json!("coordinator");
+        rpc.run["goalId"] = json!("goal");
+        rpc.run["status"] = json!("running");
+        rpc.task["runs"][0] = rpc.run.clone();
+        rpc.threads.get_mut("coordinator").unwrap()["goals"] = json!({"goal":{"id":"goal","threadId":"coordinator","status":"active","activeTurnId":"original-turn"}});
+        command(
+            &project,
+            &[],
+            "continue",
+            &json!({"threadId":"coordinator","expectedTurnId":"original-turn"}),
+            &rpc,
+        )
+        .await
+        .unwrap();
+        assert!(
+            command(
+                &project,
+                &[],
+                "continue",
+                &json!({"threadId":"coordinator","expectedTurnId":"stale-turn"}),
+                &rpc
+            )
+            .await
+            .is_err()
+        );
+    }
     #[tokio::test]
     async fn source_preparation_checks_current_run_owner_and_physical_directory() {
         let base = tempfile::tempdir().unwrap();

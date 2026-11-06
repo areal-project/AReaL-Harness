@@ -505,6 +505,18 @@ class WorktreeAdmission {
         ["taskDraftStart", "taskDraftConfirm", "taskCreate"].includes(input.operation));
     if (!special && !this.needsAdmission(name, input)) return;
     const request = readWorktreeRequest(input);
+    if (this.backend.rustDomains.includes("execution-rust") && this.backend.hostCall) {
+      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+      if (!(project.client instanceof HostCoreClient)) throw reject("Host Core 投影尚未就绪");
+      try {
+        await project.client.admit(name, request);
+        if (name === "respond" && typeof request.threadId === "string") {
+          const interactions = await project.client.request("areal/interaction/list", { threadId: request.threadId });
+          project.model.setInteractions(request.threadId, require("./history-contract.cjs").readHistoryInteractions(interactions));
+        }
+        return;
+      } catch (cause) { throw Object.assign(reject("Host 无法确认目录作者或后台状态"), { cause }); }
+    }
     if (name === "manage" && request.operation === "taskDraftStart") return;
     // 专用调度门禁在创建任何执行会话前保留 Task 家族作者；不误认只读管理会话。
     if (

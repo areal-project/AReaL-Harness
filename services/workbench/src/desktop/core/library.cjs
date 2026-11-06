@@ -15,7 +15,7 @@ const {
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").NavigationSummary} NavigationSummary */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryMetadata} LibraryMetadata */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryState} LibraryState */
-/** @typedef {{home:string,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,import('./project-state.cjs').CoreProject>,cloudConversations?:{owns:(projectId:string,threadId:string)=>boolean},worktrees?:{owners:(id:string)=>import('./project-index.cjs').SavedProject[]},start:(id:string)=>Promise<import('./project-state.cjs').CoreProject>,save:(name:string,value:unknown)=>Promise<unknown>,onChange:()=>void}} LibraryHost */
+/** @typedef {{home:string,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,import('./project-state.cjs').CoreProject>,cloudConversations?:{owns:(projectId:string,threadId:string)=>boolean},worktrees?:{owners:(id:string)=>import('./project-index.cjs').SavedProject[]},start:(id:string)=>Promise<import('./project-state.cjs').CoreProject>,save:(name:string,value:unknown)=>Promise<unknown>,onChange:()=>void,hostCall?:(call:string,params:unknown)=>Promise<unknown>,rustDomains?:string[]}} LibraryHost */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").SidebarItem} SidebarItem */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryRequest} LibraryRequest */
 const DESKTOP_SETTING_DEFAULTS = Object.freeze({
@@ -181,7 +181,29 @@ class CoreLibrary {
         };
         let next = prepare();
         try {
-          if (this.store) {
+          if (this.backend.hostCall && this.backend.rustDomains?.includes("library-rust")) {
+            for (let attempt = 0; ; attempt++) {
+              const patches = [];
+              for (const key of new Set([...Object.keys(this.value.settings), ...Object.keys(next.settings)])) {
+                if (JSON.stringify(this.value.settings[key]) !== JSON.stringify(next.settings[key]))
+                  patches.push({ path: ["settings", key], before: this.value.settings[key] ?? null, after: next.settings[key] ?? null });
+              }
+              for (const [id, value] of Object.entries(next.projects)) {
+                for (const key of /** @type {const} */ (["worktreeEnvironments", "worktreeEnvironmentRevision"])) {
+                  if (JSON.stringify(this.value.projects[id]?.[key]) !== JSON.stringify(value[key]))
+                    patches.push({ path: ["projects", id, key], before: this.value.projects[id]?.[key] ?? null, after: value[key] ?? null });
+                }
+              }
+              try {
+                next = readLibraryState(await this.backend.hostCall("library.patch", { patches }), this.value);
+                break;
+              } catch (error) {
+                if (attempt >= 2 || !modelRecord(error) || error.code !== "conflict") throw error;
+                await this.reload();
+                next = prepare();
+              }
+            }
+          } else if (this.store) {
             // 别的客户端经 Host 改过时摘要对不上：重读磁盘，在新内容上重算一次。
             for (let attempt = 0; ; attempt++) {
               try {
@@ -220,6 +242,7 @@ class CoreLibrary {
   }
   /** @param {string} projectId @param {string|undefined} threadId @param {string} [completionId] */
   async recordThreadActivity(projectId, threadId, completionId) {
+    if (this.backend.rustDomains?.includes("library-rust")) return;
     projectId =
       this.backend.saved.find((project) => project.id === projectId)?.logicalProjectId ?? projectId;
     if (!threadId) return;
@@ -241,6 +264,7 @@ class CoreLibrary {
   }
   /** @param {string} projectId @param {{id:string,status:string,threadId?:string|null}} run @param {string} [completionId] */
   async recordScheduledCompletion(projectId, run, completionId) {
+    if (this.backend.rustDomains?.includes("library-rust")) return;
     projectId =
       this.backend.saved.find((project) => project.id === projectId)?.logicalProjectId ?? projectId;
     if (
@@ -286,6 +310,7 @@ class CoreLibrary {
 
   /** @param {string} projectId @param {import('@areal/workbench/core-model-contract').CoreThread[]} summaries */
   async recordThreadSummaries(projectId, summaries) {
+    if (this.backend.rustDomains?.includes("library-rust")) return;
     // Deliberate whitelist: thread/list also carries configuration, permissions,
     // receipts and other execution state, none of which belongs in this cache.
     const navigationSummaries = summaries.map((summary) => ({
@@ -313,6 +338,15 @@ class CoreLibrary {
   /** @param {unknown} input */
   async command(input) {
     const request = readLibraryRequest(input);
+    if (this.backend.hostCall && this.backend.rustDomains?.includes("library-rust")) {
+      const navigation = request.operation !== "settings" || ["sidebarSort", "sidebarSortChats", "sidebarSortProjects", "sidebarSortPinned", "showPinned", "showCompleted"].includes(request.key ?? "");
+      if (navigation) {
+        const result = await this.backend.hostCall("library.command", request);
+        this.value = readLibraryState(result, this.value);
+        this.backend.onChange();
+        return this.value;
+      }
+    }
     const { operation, projectId, threadId, title, before } = request;
     const global = [
       "settings",

@@ -8,7 +8,7 @@ A3 puts the existing desktop backend under Host supervision. Main connects as a 
 
 Worktrees, the library and task catalog share project connections, session lifecycle, write queues and journals. Rebuilding these dependencies per domain would duplicate the backend. Instead, `services/workbench/src/backend-main.cjs` reuses `CoreBackend` and `DesktopService`. Project-local logic can move into Core and cross-project logic into Host later. Moving and rewriting remain separate; remove the old Main path only after its replacement passes acceptance.
 
-Public clients connect only to Host. The backend retains an authenticated private attach listener for Main; browsers and phones do not use it as a business entry point. The backend temporarily retains its existing project connection and supervision contracts. The extracted analytics service reads through Host's `core.request` instead. Neither path changes Core/Runtime authority or cleanup responsibilities.
+Public clients connect only to Host. The backend retains an authenticated private attach listener for Main; browsers and phones do not use it as a business entry point. Host owns project connections and supervision. The backend accesses Core through the finite `core.request` allowlist. Main domain fallbacks also use Host connections bound to their original attachment. Observers and terminals have separate leases, so detaching them does not close another client's project connection. Core/Runtime authority and cleanup responsibilities remain unchanged.
 
 Including `backend` in `areal.oneProtocol.domains` enables Host ownership after restarting the app. Main reads the switch before backend initialization; disabling it retains the in-process path. Data remains in the original GUI directory. Host checks the registered navigation source and Core executable paths. One Host currently owns one backend configuration; a different configuration is rejected rather than silently switching sources.
 
@@ -47,9 +47,30 @@ Private `execution.prepare/dispatch` uses the backend Core connection for creati
 
 Resources travel over the authenticated WebSocket in chunks of at most 192 KiB, with an 8 MiB limit per resource. Public `/host/pages/proxy` contains only fixed proxy code. Outer and inner frames are sandboxed without same-origin permission; page HTML and resources have no public HTTP route. Gen-UI bundled resources are read through the original allowlist and inlined, while the page retains its original CSP. This phase supports only local loopback connections with `gui-write-v1` and manage; manual MCP App opening and page JSON-RPC requests additionally require submit. This conservative authorization does not yet support ordinary submit-only devices or remote Noise. Native file selection and opening remain shell capabilities.
 
+## Rust domain implementations and rollback
+
+The desktop backend receives `rustDomains` from `areal.oneProtocol.domains`: `library-rust`, `execution-rust`, `tasks-rust`, and `worktree-rust`. Restart the backend after changing these implementation selectors. The existing `backend` takeover flag and domain entry points remain available. Disabling a Rust domain selects the previous path without replaying unresolved commands. Environment acceptance is still required before retiring a previous implementation; compilation alone does not establish acceptance.
+
+This table describes ownership with a Rust domain enabled. Previous JavaScript domain implementations remain available when their selector is disabled. Core connection and process ownership always stays with Host.
+
+| Domain | Rust authority | Remaining JavaScript responsibility |
+| --- | --- | --- |
+| Library | Host transactions apply navigation commands, unread markers, and navigation summaries while preserving desktop settings | Settings validation and page projections; read-only cloud ownership and pending-submission facts |
+| Execution and recovery | Host owns leased Core connections; Core reconciles original request receipts; Host aggregates lifecycle receipts | Reading windows, page tools, and input-state preparation |
+| Scheduled tasks | Core owns tasks and configuration drafts; Host aggregates directories, published previews, inboxes, and observation state | Selected provider input preparation and directory display |
+| Worktrees | Core executes Git and process operations; Host owns cross-project ownership, environment configuration, and lifecycle records | Page-tool preparation and result projections |
+
+Host library transactions read the complete JSON from its original location, validate and modify it synchronously, and atomically replace it. Public navigation receipts still use the same field filter. Desktop settings use bounded compare-and-swap field updates; Host does not interpret proxy or hardware-acceleration settings. Worktree settings and environments use the same library transaction rather than another writer.
+
+`areal tasks` and `areal worktree` expose native directories over the local Host protocol without GUI or Node dependencies. The default CLI source is `host`; register projects through `areal host` first. Task previews for stopped projects retain published/unobserved semantics; explicit observe requests obtain live state. Writes preserve domain requestId. Host commandId is separate from a Worktree creation requestId, so opening or cancelling that worktree does not conflict with its creation receipt.
+
+Opening a worktree with environment scripts from the CLI requires `worktree open --agent id@revision` to select a deployed profile that permits thread processes. Existing concurrent-write authorization and process budgets still apply; Host does not elevate permissions. Repeating the original arguments with `worktree --command-id <original ID>` reconciles the admitted command; a new ID must not replay UNKNOWN.
+
+The decreasing `workbenchConvergeLines` budget covers the library, submission recovery, history observation, lifecycle operations, service protocol, task catalog, task draft, and worktree modules. Other existing JavaScript uses exact retained paths. New and renamed files count by default; neither the budget nor retained-path classification may grow to hide migration code. Methods must still appear in the schema, Host allowlist, and service ready inventory. Private reverse calls are not public RPC entry points.
+
 ## Library and analytics
 
-A Host-managed backend always uses Host as the sole writer of `library.json` at its original location. The backend stages a document beside it, then calls `library.write` for digest-checked replacement; conflicts trigger reread and recomputation. Main cannot restore a second writer by disabling the `library` switch. Without backend takeover, the original `library` switch still controls this transition.
+A Host-managed backend always uses Host as the sole writer of `library.json` at its original location. With `library-rust` disabled, the backend stages a document beside it, then calls `library.write` for digest-checked replacement; conflicts trigger reread and recomputation. When enabled, navigation changes execute directly in a Host transaction without backend staging. Main cannot restore a second writer by disabling the `library` switch. Without backend takeover, the original `library` switch still controls this transition.
 
 Analytics exposes `analytics.read`, `analytics.sync`, `analytics.activity` and `analytics.import`. Sync reads allowlisted `thread/list` and `thread/read` through Host's shared Core connections. Host forwards turn events without starting the service solely for an event. Clients report activity every five seconds and the service takes the union; legacy Main activity merges by daily maximum. Disabled domains retain their old analytics path.
 

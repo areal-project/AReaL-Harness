@@ -180,32 +180,14 @@ impl Session {
                 "LIMIT_EXCEEDED"
             );
             let command_scope = self.creation_command_scope(&id);
-            let (revision, mut snapshot) = self.host.journal.native_snapshot(&command_scope)?;
-            ensure!(
-                snapshot["pending"].as_array().unwrap().len()
-                    + snapshot["outcomes"].as_object().unwrap().len()
-                    < 4096,
-                "RESOURCE_UNAVAILABLE"
-            );
-            ensure!(
-                !snapshot["outcomes"]
-                    .as_object()
-                    .unwrap()
-                    .contains_key(&operation)
-                    && !snapshot["pending"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|pending| pending["operationId"] == operation),
-                "COMMAND_CONFLICT"
-            );
-            snapshot["pending"]
-                .as_array_mut()
-                .unwrap()
-                .push(record.clone());
-            self.host
-                .journal
-                .native_replace(&command_scope, revision, snapshot)?;
+            let (revision, snapshot) = self.host.journal.native_snapshot(&command_scope)?;
+            self.host.journal.native_admit(
+                &command_scope,
+                revision,
+                snapshot,
+                record.clone(),
+                false,
+            )?;
             let dispatched = execution.dispatch().await;
             let settled = if let Some(failure) = dispatched
                 .as_ref()
@@ -348,7 +330,7 @@ impl Session {
             serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
             "LIMIT_EXCEEDED"
         );
-        let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
+        let (revision, snapshot) = self.host.journal.native_snapshot(&id)?;
         ensure!(
             snapshot["pending"].as_array().unwrap().len()
                 + snapshot["outcomes"].as_object().unwrap().len()
@@ -364,11 +346,9 @@ impl Session {
                 == scope,
             "RESYNC_REQUIRED"
         );
-        snapshot["pending"]
-            .as_array_mut()
-            .unwrap()
-            .push(record.clone());
-        self.host.journal.native_replace(&id, revision, snapshot)?;
+        self.host
+            .journal
+            .native_admit(&id, revision, snapshot, record.clone(), false)?;
         let result = if let Some(prepared) = &mut execution {
             prepared.dispatch().await
         } else {
@@ -443,10 +423,9 @@ impl Session {
         json!({"requestId":operation,"method":"areal/thread/start","status":"completed","accepted":true,"threadId":thread,"result":{"threadId":thread},"operation":{"requestId":operation,"method":"areal/thread/start","target":{"kind":"thread","threadId":thread}}})
     }
     pub(super) fn settle_command(&self, id: &str, mut record: Value) -> Result<Value> {
-        let operation = record["operationId"]
+        record["operationId"]
             .as_str()
-            .context("RESOURCE_UNAVAILABLE")?
-            .to_owned();
+            .context("RESOURCE_UNAVAILABLE")?;
         let scope = if record["workbenchJournal"] == true {
             ensure!(
                 record["method"] == "workbench/thread/create",
@@ -456,22 +435,13 @@ impl Session {
         } else {
             id.to_owned()
         };
-        let (revision, mut snapshot) = self.host.journal.native_snapshot(&scope)?;
-        if let Some(previous) = snapshot["outcomes"].get(&operation) {
-            return Ok(previous.clone());
-        }
+        let original = record.clone();
         record["accepted"] = json!(record["admissionState"] == "accepted");
         record.as_object_mut().unwrap().remove("params");
-        snapshot["pending"]
-            .as_array_mut()
-            .unwrap()
-            .retain(|entry| entry["operationId"] != operation);
-        snapshot["outcomes"][&operation] = record.clone();
         self.host
             .journal
-            .native_replace(&scope, revision, snapshot)
-            .context(OutcomeWrite)?;
-        Ok(record)
+            .native_finish(&scope, &original, Some(record))
+            .context(OutcomeWrite)
     }
     pub(super) async fn reconcile_creation(&self, project: &str, record: &Value) -> Result<Value> {
         if record.get("admissionState").is_some() {
@@ -597,15 +567,16 @@ impl Session {
         let Some(receipts) = value["data"].as_array() else {
             return Ok(record.clone());
         };
-        let candidates = receipts
-            .iter()
-            .filter(|receipt| {
-                receipt["requestId"] == operation
-                    && receipt["method"] == "areal/thread/start"
-                    && receipt["digest"] == digest
-                    && receipt["identity"] == record["params"]["creationAdmission"]["identity"]
-            })
-            .collect::<Vec<_>>();
+        let expected = areal_protocol::submissions::ExpectedSubmission {
+            method: "areal/thread/start".into(),
+            params: record["params"].clone(),
+            operation: None,
+            digest: Some(digest.to_owned()),
+            identity: original.identity.clone().into(),
+            strict: true,
+        };
+        let candidate =
+            areal_protocol::submissions::reconcile(&expected, &value, &Value::Null, None);
         if receipts.is_empty()
             && value["creationAdmission"]["status"] == "notAdmitted"
             && value["creationAdmission"]["requestId"] == operation
@@ -619,10 +590,9 @@ impl Session {
             settled["admissionState"] = json!("rejected");
             return self.settle_command(&id, settled);
         }
-        if candidates.len() != 1 {
+        let Some(receipt) = candidate else {
             return Ok(record.clone());
-        }
-        let receipt = candidates[0];
+        };
         let thread = receipt["threadId"]
             .as_str()
             .or_else(|| receipt["result"]["threadId"].as_str())

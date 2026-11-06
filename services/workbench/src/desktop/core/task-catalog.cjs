@@ -1,9 +1,5 @@
 // @ts-check
 "use strict";
-const { createHash } = require("node:crypto");
-const { realpath, lstat } = require("node:fs/promises");
-const { dirname, basename, join } = require("node:path");
-const { executeCore } = require("./core-process.cjs");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 const {
   readTaskDirectoryRow,
@@ -29,24 +25,6 @@ const catalogContract = require("@areal/workbench/desktop-contract/catalog");
 /** @typedef {{flights:Map<string,{root:string,limit:number,sourceThreadId?:string,work:Promise<Preview>}>,active:number,queue:Array<()=>void>}} PreviewReads */
 /** @type {WeakMap<Backend,PreviewReads>} */
 const previews = new WeakMap();
-const deadlineMs = 5000;
-
-/** @param {string} path @returns {Promise<string>} */
-async function canonicalPending(path) {
-  try {
-    return await realpath(path);
-  } catch (error) {
-    if (!modelRecord(error) || error.code !== "ENOENT") throw error;
-    try {
-      await lstat(path);
-      throw new Error("任务数据目录不可用");
-    } catch (missing) {
-      if (!modelRecord(missing) || missing.code !== "ENOENT") throw missing;
-    }
-    return join(await canonicalPending(dirname(path)), basename(path));
-  }
-}
-
 /** @param {Backend} backend @param {SavedProject} saved @param {number} limit @param {string|undefined} sourceThreadId @returns {Promise<Preview>} */
 async function previewRead(backend, saved, limit, sourceThreadId) {
   let pending = previews.get(backend);
@@ -84,89 +62,20 @@ async function previewRead(backend, saved, limit, sourceThreadId) {
     else pending.active++;
     try {
       guard();
-      const dataPath = backend.host.resolve(saved.id).dataDir;
-      const [workspace, dataDir] = await Promise.all([
-        realpath(saved.root),
-        canonicalPending(dataPath),
-      ]);
+      if (!backend.hostCall) throw new Error("Host 冷任务目录不可用");
+      const value = await backend.hostCall("tasks.preview", {
+        projectId: saved.id, limit,
+        ...(sourceThreadId === undefined ? {} : { sourceThreadId }),
+      });
       guard();
-      const { stdout } = await executeCore(
-        backend.binary,
-        [
-          "service",
-          "task-catalog",
-          "--workspace",
-          saved.root,
-          "--data-dir",
-          dataPath,
-          "--limit",
-          String(limit),
-          ...(sourceThreadId === undefined ? [] : ["--source-thread-id", sourceThreadId]),
-          "--json",
-        ],
-        {
-          env: backend.hooks.environment(),
-          timeout: deadlineMs,
-          maxBuffer: 32 * 1024 * 1024,
-          windowsHide: true,
-        },
-      );
-      guard();
-      /** @type {unknown} */
-      const value = JSON.parse(stdout);
-      /** @returns {never} */
-      function invalid() {
-        throw new Error("任务预览身份或数据格式不匹配");
-      }
-      if (
-        !modelRecord(value) ||
-        !modelRecord(value.target) ||
-        value.version !== 2 ||
-        value.source !== "published" ||
-        value.executionState !== "unobserved" ||
-        value.target?.workspace !== workspace ||
-        value.target?.dataDir !== dataDir ||
-        value.target?.instanceId !== createHash("sha256").update(dataDir).digest("hex").slice(0, 24)
-      )
-        invalid();
-      const catalog = value.catalog;
-      if (!modelRecord(catalog)) invalid();
-      if (
-        catalog.kind === "empty" ||
-        (catalog?.kind === "requiresCore" &&
-          typeof catalog.reason === "string" &&
-          ["unbound", "legacyFormat", "readBudgetExceeded"].includes(catalog.reason))
-      )
-        return {
-          data: [],
-          hasMore: false,
-          coverage: {
-            kind: catalog.kind,
-            ...(typeof catalog.reason === "string" ? { reason: catalog.reason } : {}),
-          },
-          readAt: Date.now(),
-        };
-      if (
-        catalog?.kind !== "snapshot" ||
-        typeof catalog.rootDigest !== "string" ||
-        !/^[a-f0-9]{64}$/.test(catalog.rootDigest) ||
-        typeof catalog.hasMore !== "boolean" ||
-        !Array.isArray(catalog.data) ||
-        catalog.data.length > limit ||
-        catalog.data.some(
-          /** @param {unknown} task */ (task) =>
-            !modelRecord(task) ||
-            task.mode !== "scheduled" ||
-            (sourceThreadId !== undefined && task.sourceThreadId !== sourceThreadId),
-        )
-      )
-        invalid();
-      return {
-        data: catalog.data.map(readTaskDirectoryRow),
-        hasMore: catalog.hasMore,
-        coverage: { kind: "snapshot" },
-        readAt: Date.now(),
-      };
+      if (!modelRecord(value) || !Array.isArray(value.data) ||
+          typeof value.hasMore !== "boolean" || !modelRecord(value.coverage) ||
+          typeof value.coverage.kind !== "string" || typeof value.readAt !== "number")
+        throw new Error("Host 任务预览格式无效");
+      return { data: value.data.map(readTaskDirectoryRow), hasMore: value.hasMore,
+        coverage: { kind: value.coverage.kind,
+          ...(typeof value.coverage.reason === "string" ? { reason: value.coverage.reason } : {}) },
+        readAt: value.readAt };
     } finally {
       const next = pending.queue.shift();
       if (next) next();
@@ -186,12 +95,27 @@ class OwnerTasks {
   /** @param {Backend} backend */
   constructor(backend) {
     this.backend = backend;
-    /** @type {Map<string,OwnerObservation>} */
+    /** @type {Map<string,OwnerObservation|HostOwnerObservation>} */
     this.observations = new Map();
     /** @type {Map<string,Preview & {root:string,logicalProjectId?:string}>} */
     this.published = new Map();
     /** @type {Map<string,number>} */
     this.revisions = new Map();
+    /** @type {Set<(frame:{projectId:string,connectionId:string,connectionGeneration:number,method:string,params:unknown})=>void>} */
+    this.hostEvents = new Set();
+  }
+  /** @param {unknown} frame */
+  hostEvent(frame) {
+    if (!modelRecord(frame) || typeof frame.projectId !== "string" || typeof frame.connectionId !== "string" ||
+        !Number.isSafeInteger(frame.connectionGeneration) || typeof frame.connectionGeneration !== "number" ||
+        typeof frame.method !== "string") return;
+    const event = { projectId: frame.projectId, connectionId: frame.connectionId,
+      connectionGeneration: frame.connectionGeneration, method: frame.method, params: frame.params };
+    if (event.method === "areal/task/updated") {
+      this.backend.projects.get(event.projectId)?.model.event(event.method, event.params);
+      return;
+    }
+    for (const listener of this.hostEvents) listener(event);
   }
   /** 目录版本按项目分开，只在该项目的任务行变化时前进。 @param {string} projectId */
   revision(projectId) {
@@ -230,7 +154,9 @@ class OwnerTasks {
   /** @param {Project} project @param {Client} client @param {(facts:Fact[])=>void} facts @param {(rows:Task[],baseline:boolean)=>Promise<void>} rows @param {(error:unknown)=>void} report */
   attach(project, client, facts, rows, report) {
     this.observations.get(project.id)?.stop();
-    const observation = new OwnerObservation(this, project, client, facts, rows, report);
+    const observation = this.backend.rustDomains.includes("tasks-rust") && this.backend.hostCall
+      ? new HostOwnerObservation(this, project, client, facts, rows, report)
+      : new OwnerObservation(this, project, client, facts, rows, report);
     this.observations.set(project.id, observation);
     return observation;
   }
@@ -242,6 +168,88 @@ class OwnerTasks {
   stop() {
     for (const observation of this.observations.values()) observation.stop();
   }
+}
+
+// 页面宿主只消费 Host 的目录投影和 Core 通知事实；分页与权威读取归 Rust。
+class HostOwnerObservation {
+  /** @param {OwnerTasks} owner @param {Project} project @param {Client} client @param {(facts:Fact[])=>void} facts @param {(rows:Task[],baseline:boolean)=>Promise<void>} rows @param {(error:unknown)=>void} report */
+  constructor(owner, project, client, facts, rows, report) {
+    this.owner = owner; this.project = project; this.client = client;
+    this.onFacts = facts; this.onRows = rows; this.report = report;
+    this.stopped = false; this.ready = false; this.baseline = true; this.readAt = 0;
+    this.generation = ""; this.sequence = 0; this.connectionId = ""; this.connectionGeneration = 0;
+    this.dirty = false;
+    /** @type {unknown} */ this.error = null;
+    /** @type {Map<string,Task>} */ this.rows = new Map();
+    /** @type {Promise<void>|null} */ this.pending = null;
+    /** @type {Array<{projectId:string,connectionId:string,connectionGeneration:number,method:string,params:unknown}>} */ this.buffer = [];
+    /** @param {{projectId:string,connectionId:string,connectionGeneration:number,method:string,params:unknown}} frame */
+    const listener = (frame) => {
+      if (!this.current() || frame.projectId !== project.id || frame.connectionGeneration < this.connectionGeneration) return;
+      this.dirty = true;
+      if (frame.method === "host/connectionReady") {
+        this.generation = ""; this.ready = false; this.buffer = [];
+        void this.start();
+        return;
+      }
+      if (frame.connectionId !== this.connectionId || !this.generation) {
+        if (this.buffer.length >= 256) {
+          this.ready = false;
+          this.report(new Error("OWNER_WATCH_OVERFLOW"));
+          this.buffer = [];
+        }
+        this.buffer.push(frame);
+      } else this.accept(frame);
+      void this.start();
+    };
+    owner.hostEvents.add(listener);
+    this.unsubscribe = () => { owner.hostEvents.delete(listener); };
+  }
+  current() { return !this.stopped && this.owner.backend.currentConnection(this.project, this.client); }
+  /** @param {{connectionId:string,connectionGeneration:number,method:string,params:unknown}} frame */
+  accept(frame) {
+    if (frame.connectionId !== this.connectionId || frame.connectionGeneration !== this.connectionGeneration) return;
+    if (frame.method === "areal/owner/resetRequired") { this.generation = ""; this.ready = false; return; }
+    try {
+      const invalidation = readOwnerInvalidation(frame.params);
+      if (invalidation.generation !== this.generation || invalidation.sequence > this.sequence + 1) {
+        this.generation = ""; this.ready = false; return;
+      }
+      if (invalidation.sequence <= this.sequence) return;
+      this.sequence = invalidation.sequence;
+      this.onFacts(invalidation.facts);
+    } catch (error) { this.error = error; this.ready = false; this.report(error); }
+  }
+  start() {
+    if (this.pending) return this.pending;
+    this.pending = Promise.resolve().then(async () => {
+      const host = this.owner.backend.hostCall;
+      if (!host || !this.current()) return;
+      this.dirty = false;
+      const value = await host("tasks.observe", { projectId: this.project.id });
+      if (!this.current()) return;
+      if (!modelRecord(value) || !Array.isArray(value.data) || value.data.length > 1024 ||
+          typeof value.generation !== "string" || typeof value.connectionId !== "string" ||
+          typeof value.sequence !== "number" || !Number.isSafeInteger(value.sequence) ||
+          typeof value.connectionGeneration !== "number" || !Number.isSafeInteger(value.connectionGeneration))
+        throw new Error("Host 任务目录投影无效");
+      const data = value.data.map(readTaskDirectoryRow);
+      const same = this.connectionId === value.connectionId && this.generation === value.generation;
+      this.generation = value.generation;
+      this.sequence = same ? Math.max(this.sequence, value.sequence) : value.sequence;
+      this.connectionId = value.connectionId; this.connectionGeneration = value.connectionGeneration;
+      this.rows = new Map(data.map((row) => [row.id, row]));
+      this.ready = true; this.readAt = Date.now(); this.error = null;
+      const buffered = this.buffer; this.buffer = [];
+      for (const frame of buffered) this.accept(frame);
+      await this.onRows(data, this.baseline);
+      this.owner.changed(this.project.id);
+      this.baseline = false;
+    }).catch((error) => { this.error = error; this.ready = false; this.report(error); })
+      .finally(() => { this.pending = null; if (this.current() && this.dirty) void this.start(); });
+    return this.pending;
+  }
+  stop() { this.stopped = true; this.ready = false; this.unsubscribe(); }
 }
 
 class OwnerObservation {
@@ -604,6 +612,8 @@ async function inboxRows(observation, limit) {
 
 /** @param {Backend} backend @param {Record<string,unknown>} rawRequest */
 async function taskCatalog(backend, rawRequest) {
+  if (backend.rustDomains.includes("tasks-rust") && backend.hostCall)
+    return backend.hostCall("tasks.read", rawRequest);
   if (!catalogContract.isRequest("tasks", rawRequest)) throw new Error("无效任务列表请求");
   const request = rawRequest;
   const limit = request.limit ?? 30;
@@ -629,7 +639,8 @@ async function taskCatalog(backend, rawRequest) {
             (logical?.root ?? saved.root).split(/[\\/]/).pop(),
         scope: logical?.projectless ? "independent" : "project",
       };
-      const observation = backend.ownerTasks.observations.get(saved.id);
+      const candidate = backend.ownerTasks.observations.get(saved.id);
+      const observation = candidate instanceof OwnerObservation ? candidate : undefined;
       try {
         if (request.operation !== "preview" && observation?.current()) {
           await observation.start();

@@ -45,7 +45,7 @@ assert.equal(
 );
 const require = createRequire(join(sourceApp, "package.json"));
 const { _electron: electron } = require("playwright-core");
-const { executeCore } = require(join(sourceApp, "src/core/core-process.cjs"));
+const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

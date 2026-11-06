@@ -1,4 +1,8 @@
 use super::*;
+#[path = "workbench_core.rs"]
+mod workbench_core;
+#[path = "workbench_frontend.rs"]
+mod workbench_frontend;
 use crate::schedule_admission::{self, AdmissionProject, AdmissionRpc};
 use crate::schedule_resources::{self, PreparedResources};
 use futures_util::{SinkExt, StreamExt};
@@ -89,12 +93,20 @@ const MAX_PENDING: usize = 64;
 
 pub(super) struct Connections {
     sessions: RefCell<BTreeMap<String, Rc<CoreSession>>>,
+    terminals: RefCell<BTreeMap<String, Rc<CoreSession>>>,
+    terminal_connecting: Cell<usize>,
+    terminal_epoch: Cell<u64>,
+    frontends: RefCell<BTreeMap<String, workbench_frontend::Frontend>>,
     pub changed: Notify,
 }
 impl Default for Connections {
     fn default() -> Self {
         Self {
             sessions: RefCell::new(BTreeMap::new()),
+            terminals: RefCell::new(BTreeMap::new()),
+            terminal_connecting: Cell::new(0),
+            terminal_epoch: Cell::new(0),
+            frontends: RefCell::new(BTreeMap::new()),
             changed: Notify::new(),
         }
     }
@@ -297,6 +309,90 @@ fn unavailable() -> anyhow::Error {
     )
 }
 
+fn task_connection_ready(host: &Rc<Host>, session: &Rc<CoreSession>) {
+    if host.gateway.workbench.rust_source("library-rust").is_some() {
+        let host = host.clone();
+        let project = session.project_id.clone();
+        let connection = session.connection_id.clone();
+        // ready 在共享连接安装后调用；异步读取不能占住安装/通知的同步路径。
+        tokio::task::spawn_local(async move {
+            if super::task_catalog::library_baseline(&host, &project, &connection)
+                .await
+                .is_err()
+            {
+                eprintln!("Host library scheduled baseline failed");
+            }
+        });
+    }
+    if let Some(body) = super::task_catalog::accept_event(
+        host,
+        &session.project_id,
+        &session.connection_id,
+        &json!({"method":"host/connectionReady","params":{}}),
+    ) {
+        host.gateway
+            .workbench
+            .tasks_event(host, &session.project_id, body);
+    }
+}
+
+fn emit_workbench_event(host: &Host, project: &str, lease: &str, event: &Value) {
+    if !host
+        .schedules
+        .connections
+        .frontend_event(project, lease, event)
+    {
+        host.gateway
+            .workbench
+            .backend_core_event(project, lease, event);
+    }
+}
+
+fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
+    if changes_shell(&value) {
+        connection
+            .shell_revision
+            .set(connection.shell_revision.get() + 1);
+    }
+    let sequence = connection.event_sequence.get() + 1;
+    connection.event_sequence.set(sequence);
+    if connection.terminal {
+        if connection.observer.get()
+            || connection.desktop.get()
+            || connection.remote_source.is_some()
+        {
+            if let Some(lease) = connection.workbench_lease.borrow().as_deref() {
+                let mut event = value;
+                event["sequence"] = json!(sequence);
+                emit_workbench_event(&host, &connection.project_id, lease, &event);
+            }
+        }
+        return;
+    }
+    if super::library_service::core_event(host, &connection.project_id, &value).is_err() {
+        eprintln!("Host library Core event update failed");
+    }
+    if let Some(body) = super::task_catalog::accept_event(
+        host,
+        &connection.project_id,
+        &connection.connection_id,
+        &value,
+    ) {
+        host.gateway
+            .workbench
+            .tasks_event(host, &connection.project_id, body);
+    }
+    host.gateway
+        .workbench
+        .core_event(&connection.project_id, &value);
+    if let Some(lease) = connection.workbench_lease.borrow().as_deref() {
+        let mut event = value.clone();
+        event["sequence"] = json!(sequence);
+        emit_workbench_event(host, &connection.project_id, lease, &event);
+    }
+    let _ = connection.events.send(CoreEvent { sequence, value });
+}
+
 fn changes_shell(event: &Value) -> bool {
     matches!(
         event["method"].as_str(),
@@ -332,6 +428,12 @@ struct CoreSession {
     shell_revision: Cell<u64>,
     observed: RefCell<BTreeMap<String, usize>>,
     capabilities: RefCell<Value>,
+    workbench_lease: RefCell<Option<String>>,
+    terminal: bool,
+    observer: Cell<bool>,
+    desktop: Cell<bool>,
+    remote_source: Option<String>,
+    remote_token: Option<String>,
     conversation_capabilities: tokio::sync::OnceCell<Value>,
     refresh: Notify,
     refresh_requested: Cell<bool>,
@@ -346,17 +448,18 @@ impl CoreSession {
     fn shared_current(&self, host: &Host) -> bool {
         !self.closed.get()
             && host.admission().is_ok()
-            && host
-                .slots
-                .borrow()
-                .get(&self.project_id)
-                .is_some_and(|slot| {
-                    slot.state == "ready"
-                        && slot
-                            .service
-                            .as_ref()
-                            .is_some_and(|service| service.identity == self.service.identity)
-                })
+            && (self.remote_source.is_some()
+                || host
+                    .slots
+                    .borrow()
+                    .get(&self.project_id)
+                    .is_some_and(|slot| {
+                        slot.state == "ready"
+                            && slot
+                                .service
+                                .as_ref()
+                                .is_some_and(|service| service.identity == self.service.identity)
+                    }))
     }
     fn require_current(&self, host: &Host) -> Result<()> {
         ensure!(self.current(host), unavailable());
@@ -426,14 +529,33 @@ impl Drop for SessionGuard {
         self.0.close();
     }
 }
-struct DriverGuard(Rc<CoreSession>);
+struct DriverGuard(Rc<CoreSession>, std::rc::Weak<Host>);
 impl Drop for DriverGuard {
     fn drop(&mut self) {
         self.0.invalidate();
+        if let Some(host) = self.1.upgrade() {
+            if let Some(lease) = self.0.workbench_lease.borrow().as_deref() {
+                emit_workbench_event(
+                    &host,
+                    &self.0.project_id,
+                    lease,
+                    &json!({"method":"host/connectionClosed","params":{}}),
+                );
+            }
+        }
     }
 }
 
 async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSession>> {
+    connect_owned(host, id, service, false).await
+}
+
+async fn connect_owned(
+    host: Rc<Host>,
+    id: &str,
+    service: Service,
+    terminal: bool,
+) -> Result<Rc<CoreSession>> {
     let auth: Value = storage::read(&service.auth_file)?;
     let principal = auth["principals"]
         .as_array()
@@ -447,6 +569,16 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
         .as_str()
         .filter(|token| !token.is_empty())
         .context("schedule host principal has no token")?;
+    connect_authorized(host, id, service, terminal, token.to_owned(), None).await
+}
+async fn connect_authorized(
+    host: Rc<Host>,
+    id: &str,
+    service: Service,
+    terminal: bool,
+    token: String,
+    remote_source: Option<String>,
+) -> Result<Rc<CoreSession>> {
     let mut request = service.endpoint.as_str().into_client_request()?;
     request
         .headers_mut()
@@ -471,6 +603,12 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
         shell_revision: Cell::new(0),
         observed: RefCell::new(BTreeMap::new()),
         capabilities: RefCell::new(Value::Null),
+        workbench_lease: RefCell::new(None),
+        terminal,
+        observer: Cell::new(false),
+        desktop: Cell::new(false),
+        remote_token: remote_source.as_ref().map(|_| token.clone()),
+        remote_source,
         conversation_capabilities: tokio::sync::OnceCell::new(),
         refresh: Notify::new(),
         refresh_requested: Cell::new(false),
@@ -478,7 +616,7 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
     });
     let connection = session.clone();
     let driver = tokio::task::spawn_local(async move {
-        let _guard = DriverGuard(connection.clone());
+        let _guard = DriverGuard(connection.clone(), Rc::downgrade(&host));
         let (mut writer, mut reader) = socket.split();
         let mut callbacks = JoinSet::new();
         loop {
@@ -493,13 +631,13 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
                         Message::Text(text) => {
                             let Ok(value) = serde_json::from_str::<Value>(&text) else { break; };
                             if let Some(method) = value["method"].as_str() {
-                                if value.get("id").is_none() { if changes_shell(&value) { connection.shell_revision.set(connection.shell_revision.get() + 1); } host.gateway.workbench.core_event(&connection.project_id, &value); let sequence = connection.event_sequence.get() + 1; connection.event_sequence.set(sequence); let _ = connection.events.send(CoreEvent { sequence, value }); continue; }
+                                if value.get("id").is_none() { publish_event(&host, &connection, value); continue; }
                                 if callbacks.len() >= MAX_PENDING { break; }
                                 let host = host.clone();
                                 let connection = connection.clone();
                                 let method = method.to_owned();
                                 callbacks.spawn_local(async move {
-                                    let result = callback(&host, &connection, &method, &value["params"]).await.and_then(|result| { if method == "areal/host/status" { ensure!(connection.shared_current(&host), unavailable()); } else { connection.require_current(&host)?; } Ok(result) });
+                                    let result = callback(&host, &connection, &method, &value["params"], &value["id"]).await.and_then(|result| { if method == "areal/host/status" { ensure!(connection.shared_current(&host), unavailable()); } else { connection.require_current(&host)?; } Ok(result) });
                                     let response = match result {
                                         Ok(result) => json!({"id":value["id"],"result":result}),
                                         Err(_) => json!({"id":value["id"],"error":{"code":-32001,"message":"Host scheduled preparation or desktop tool unavailable"}}),
@@ -583,7 +721,9 @@ async fn callback(
     connection: &CoreSession,
     method: &str,
     params: &Value,
+    request_id: &Value,
 ) -> Result<Value> {
+    ensure!(connection.remote_source.is_none(), unavailable());
     if method == "areal/host/status" {
         ensure!(connection.shared_current(host), unavailable());
         ensure!(
@@ -603,6 +743,32 @@ async fn callback(
         )?);
     }
     connection.require_current(host)?;
+    if matches!(
+        method,
+        "item/tool/call"
+            | "areal/browser/prepare"
+            | "areal/computer/prepare"
+            | "areal/cua/turnEnded"
+    ) {
+        let lease = connection
+            .workbench_lease
+            .borrow()
+            .clone()
+            .context("desktop tool host unavailable")?;
+        if let Some(result) = host
+            .schedules
+            .connections
+            .frontend_callback(&connection.project_id, &lease, method, params, request_id)
+            .await
+        {
+            return result;
+        }
+        return host
+            .gateway
+            .workbench
+            .backend_core_callback(&connection.project_id, &lease, method, params, request_id)
+            .await;
+    }
     ensure!(method == "areal/task/prepare", unavailable());
     let registrations = host
         .slots
@@ -982,6 +1148,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
                 .borrow_mut()
                 .insert(id.clone(), session.clone());
             host.schedules.connections.changed.notify_waiters();
+            task_connection_ready(&host, &session);
             let mut changes = host.changes.subscribe();
             loop {
                 ensure!(
@@ -1013,6 +1180,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
             .borrow_mut()
             .insert(id.clone(), session.clone());
         host.schedules.connections.changed.notify_waiters();
+        task_connection_ready(&host, &session);
         let mut changes = host.changes.subscribe();
         loop {
             if !session.current(&host) {
@@ -1151,6 +1319,82 @@ mod tests {
         slot.service = Some(service.clone());
         slot.state = "ready".into();
         service
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn terminal_detach_closes_only_its_original_core_socket() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+                let server = tokio::task::spawn_local(async move {
+                    let mut sockets = Vec::new();
+                    for _ in 0..2 {
+                        let (stream, _) = listener.accept().await.unwrap();
+                        let mut socket =
+                            tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                                .await
+                                .unwrap();
+                        let initialize = receive(&mut socket).await;
+                        send(&mut socket, json!({"id":initialize["id"],"result":{}})).await;
+                        sockets.push(socket);
+                    }
+                    let mut terminal = sockets.pop().unwrap();
+                    // 原Core连接关闭是connectionProcesses既有清理的触发点。
+                    while let Some(message) = terminal.next().await {
+                        if message.is_err() || matches!(message, Ok(Message::Close(_))) {
+                            break;
+                        }
+                    }
+                    let mut primary = sockets.pop().unwrap();
+                    let request = receive(&mut primary).await;
+                    assert_eq!(request["method"], "areal/server/status");
+                    send(
+                        &mut primary,
+                        json!({"id":request["id"],"result":{"alive":true}}),
+                    )
+                    .await;
+                });
+                let primary = connect(host.clone(), "project", service.clone())
+                    .await
+                    .unwrap();
+                let terminal = connect_owned(host.clone(), "project", service, true)
+                    .await
+                    .unwrap();
+                *primary.workbench_lease.borrow_mut() = Some("primary".into());
+                *terminal.workbench_lease.borrow_mut() = Some("terminal".into());
+                host.schedules
+                    .connections
+                    .sessions
+                    .borrow_mut()
+                    .insert("project".into(), primary.clone());
+                host.schedules
+                    .connections
+                    .terminals
+                    .borrow_mut()
+                    .insert("terminal".into(), terminal.clone());
+                assert_eq!(
+                    host.schedules
+                        .connections
+                        .workbench_detach(&host, "project", "terminal")
+                        .unwrap()["closed"],
+                    true
+                );
+                assert!(terminal.closed.get());
+                assert!(!primary.closed.get());
+                assert_eq!(
+                    primary
+                        .request("areal/server/status", json!({}))
+                        .await
+                        .unwrap()["alive"],
+                    true
+                );
+                server.await.unwrap();
+                primary.close();
+            })
+            .await;
     }
 
     #[tokio::test(flavor = "current_thread")]

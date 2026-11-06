@@ -5,6 +5,10 @@ mod conversation_read;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
 pub(crate) use gateway_owner::error_code;
+#[path = "library_commands.rs"]
+mod library_commands;
+#[path = "library_service.rs"]
+mod library_service;
 #[path = "library_store.rs"]
 mod library_store;
 #[path = "loopback.rs"]
@@ -19,10 +23,20 @@ mod schedules;
 mod shell_subscription;
 #[path = "subscription/host.rs"]
 mod subscriptions;
+#[path = "task_catalog.rs"]
+mod task_catalog;
 #[path = "updates.rs"]
 pub(crate) mod updates;
+#[path = "workbench_lifecycle.rs"]
+mod workbench_lifecycle;
 #[path = "workbench_route.rs"]
 mod workbench_route;
+#[path = "workbench_submissions.rs"]
+mod workbench_submissions;
+#[path = "workbench_utility.rs"]
+mod workbench_utility;
+#[path = "worktree_catalog.rs"]
+mod worktree_catalog;
 use crate::{
     Activity, CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectActivity,
     ProjectRegistration, ProjectStatus, StopStrategy, VERSION, launch,
@@ -131,6 +145,10 @@ struct ConnectionGuard {
 }
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
+        self.host
+            .schedules
+            .connections
+            .frontend_disconnect(&self.id);
         self.host.migration.disconnect(&self.id);
         let _ = self.host.journal.disconnect(&self.id);
         self.host.remote.disconnect(&self.id);
@@ -391,6 +409,19 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     drop(lock);
     Ok(HostExit::Stopped)
 }
+async fn write_local_frame(
+    writer: &mut (impl tokio::io::AsyncWrite + Unpin),
+    value: &Value,
+    limit: usize,
+) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let mut bytes = serde_json::to_vec(value)?;
+    bytes.push(b'\n');
+    ensure!(bytes.len() <= limit, "frame exceeds negotiated limit");
+    writer.write_all(&bytes).await?;
+    Ok(())
+}
+
 async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     ensure!(
         stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
@@ -418,7 +449,15 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     if !hello.protocol_versions.contains(&VERSION) {
         return Ok(());
     }
-    let _ = hello.capabilities;
+    let desktop_core = hello
+        .capabilities
+        .iter()
+        .any(|capability| capability == "desktopCore");
+    let frame_limit = if desktop_core {
+        crate::workbench::MAX_FRAME
+    } else {
+        wire::MAX_FRAME
+    };
     let connection = ConnectionGuard {
         host: host.clone(),
         id: uuid::Uuid::new_v4().to_string(),
@@ -429,10 +468,11 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut previous = Value::Null;
     let mut gateway_subscription: Option<(String, String, u64, Value)> = None;
+    let mut frontend_events: Option<tokio::sync::mpsc::Receiver<Value>> = None;
     let mut frame_bytes = Vec::new();
     loop {
         tokio::select! {
-            value=wire::read_buffered(&mut reader,&mut frame_bytes)=> {
+            value=wire::read_buffered_limit(&mut reader,&mut frame_bytes,frame_limit)=> {
                 let Some(value)=value? else {return Ok(());};
                 let request:wire::Request=serde_json::from_value(value)?;
                 let result=if request.version!=VERSION {Err(error("unsupportedVersion","Host requires version 1"))} else if request.id.is_empty() {Err(error("invalidRequest","id must be nonempty"))} else if request.method=="host.subscribe" {serde_json::from_value::<Empty>(request.params).map_err(anyhow::Error::from)?;let id=uuid::Uuid::new_v4().to_string();subscription=Some((id.clone(),0));let status=host.status().await;previous=serde_json::to_value(&status)?;Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"status":status}))} else if request.method=="remote.gateway.subscribe" {
@@ -448,11 +488,20 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                         gateway_subscription=Some((input.source_id,id.clone(),0,state.clone()));
                         Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"state":state}))
                     })()
+                } else if request.method=="desktop.core.subscribe" {
+                    ensure!(frontend_events.is_none(),error("invalidRequest","desktop attachment already exists"));
+                    let source=request.params["sourceId"].as_str().context("INVALID_PARAMS")?;
+                    let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,source,request.params["options"].clone())?;
+                    frontend_events=Some(events);Ok(result)
                 } else {host.dispatch_connection(&request.method,request.params,&connection).await};
                 let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>{let code=e.downcast_ref::<wire::Error>().map(|e|e.code).unwrap_or(if e.downcast_ref::<serde_json::Error>().is_some(){"invalidRequest"}else{"internalError"});json!({"version":VERSION,"id":request.id,"error":{"code":code,"message":e.to_string()}})}};
-                let sent=wire::write(&mut writer,&response).await;
+                let sent=write_local_frame(&mut writer,&response,frame_limit).await;
                 if host.stop.borrow().as_ref().is_some_and(|v|v["state"]=="completed") {host.exit.notify_one();}
                 sent?;
+            },
+            event=async {frontend_events.as_mut().unwrap().recv().await}, if frontend_events.is_some()=> {
+                let event=event.context("desktop attachment closed")?;
+                write_local_frame(&mut writer,&json!({"version":VERSION,"method":"desktop.core.event","params":event}),frame_limit).await?;
             },
             _=changes.changed(),if subscription.is_some() || gateway_subscription.is_some()=>{},
             _=tick.tick(),if subscription.is_some() || gateway_subscription.is_some()=>{}
@@ -984,6 +1033,49 @@ impl Host {
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method == "desktop.core.terminals.close" {
+            ensure!(
+                params.as_object().is_some_and(|params| params.len() == 1),
+                "INVALID_PARAMS"
+            );
+            return self.schedules.connections.frontend_close_terminals(
+                self,
+                params["sourceId"].as_str().context("INVALID_PARAMS")?,
+            );
+        }
+        if method == "desktop.core.call" {
+            return self
+                .schedules
+                .connections
+                .frontend_call(self, &params)
+                .await;
+        }
+        if method == "desktop.core.callback" {
+            return self.schedules.connections.frontend_reply(&params);
+        }
+        if method == "tasks.read" {
+            serde_json::from_value::<areal_protocol::host::LocalTasksReadParams>(params.clone())?;
+            return task_catalog::read(self, &params).await;
+        }
+        if method == "tasks.command" {
+            serde_json::from_value::<areal_protocol::host::LocalTasksCommandParams>(
+                params.clone(),
+            )?;
+            return task_catalog::native_command(self, "local", &params).await;
+        }
+        if method == "worktree.read" {
+            serde_json::from_value::<areal_protocol::host::LocalWorktreeReadParams>(
+                params.clone(),
+            )?;
+            let source = params["sourceId"].as_str().unwrap_or("host").to_owned();
+            return worktree_catalog::read(self, &source, params).await;
+        }
+        if method == "worktree.command" {
+            serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandParams>(
+                params.clone(),
+            )?;
+            return workbench_route::backend_command(self,"local",&json!({"method":method,"commandId":params["commandId"],"params":params["request"]})).await;
+        }
         if method == "backend.ensure" {
             serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
                 params.clone(),

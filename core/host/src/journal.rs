@@ -98,6 +98,12 @@ struct ReadRequest {
     project_id: String,
 }
 
+fn submission_id(entry: &Value) -> Option<&str> {
+    entry["operationId"]
+        .as_str()
+        .or_else(|| entry["params"]["requestId"].as_str())
+}
+
 impl Journal {
     pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
         request_id(id)?;
@@ -220,6 +226,74 @@ impl Journal {
             .checked_add(1)
             .context("journal revision exhausted")?;
         storage::write(&self.record_path(project_id)?, &record)
+    }
+
+    /// 准入与结算共用同一快照事务；调用方只负责授权与方法特有的权威前置条件。
+    pub(crate) fn native_preflight(
+        &self,
+        project: &str,
+        entry: &Value,
+        block_target: bool,
+    ) -> Result<()> {
+        let (_, snapshot) = self.native_snapshot(project)?;
+        check_admission(&snapshot, entry, block_target)
+    }
+
+    pub(crate) fn native_admit(
+        &self,
+        project: &str,
+        revision: u64,
+        mut snapshot: Value,
+        entry: Value,
+        block_target: bool,
+    ) -> Result<()> {
+        check_admission(&snapshot, &entry, block_target)?;
+        snapshot["pending"].as_array_mut().unwrap().push(entry);
+        self.native_replace(project, revision, snapshot)
+    }
+
+    pub(crate) fn native_finish(
+        &self,
+        project: &str,
+        entry: &Value,
+        outcome: Option<Value>,
+    ) -> Result<Value> {
+        let id = submission_id(entry).context("INVALID_PARAMS")?;
+        let (revision, mut snapshot) = self.native_snapshot(project)?;
+        if let Some(previous) = snapshot["outcomes"].get(id) {
+            return Ok(previous.clone());
+        }
+        let original = snapshot["pending"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| submission_id(row) == Some(id))
+            .context("SUBMISSION_UNKNOWN")?;
+        ensure!(
+            original["method"] == entry["method"] && original["params"] == entry["params"],
+            "COMMAND_CONFLICT"
+        );
+        snapshot["pending"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|row| submission_id(row) != Some(id));
+        if let Some(outcome) = &outcome {
+            snapshot["outcomes"][id] = outcome.clone();
+        }
+        self.native_replace(project, revision, snapshot)?;
+        Ok(outcome.unwrap_or(Value::Null))
+    }
+
+    pub(crate) fn native_dismiss(&self, project: &str, id: &str) -> Result<()> {
+        let (revision, mut snapshot) = self.native_snapshot(project)?;
+        if snapshot["outcomes"]
+            .get(id)
+            .is_some_and(|outcome| outcome["remote"].is_object())
+        {
+            return Ok(());
+        }
+        snapshot["outcomes"].as_object_mut().unwrap().remove(id);
+        self.native_replace(project, revision, snapshot)
     }
 
     pub(crate) fn dispatch(
@@ -462,7 +536,8 @@ impl Journal {
                 && storage::digest(&bytes) == operation.sha256,
             "journal slot digest changed"
         );
-        let snapshot = Snapshot::parse(serde_json::from_slice(&bytes)?)?;
+        let mut snapshot = Snapshot::parse(serde_json::from_slice(&bytes)?)?;
+        preserve_native_entries(&record.snapshot, &mut snapshot)?;
         preserve_pending_identity(&record.snapshot, &snapshot)?;
         let revision = record
             .revision
@@ -485,6 +560,94 @@ impl Journal {
         storage::write(&self.operation_path(&operation.request_id), &operation)?;
         remove_transfer(&operation.write_path)
     }
+}
+
+fn check_admission(snapshot: &Value, entry: &Value, block_target: bool) -> Result<()> {
+    let key = submission_id(entry).context("INVALID_PARAMS")?;
+    let pending = snapshot["pending"].as_array().context("INVALID_PARAMS")?;
+    let outcomes = snapshot["outcomes"].as_object().context("INVALID_PARAMS")?;
+    ensure!(pending.len() + outcomes.len() < 4096, "CAPACITY_EXCEEDED");
+    ensure!(
+        !outcomes.contains_key(key) && !pending.iter().any(|row| submission_id(row) == Some(key)),
+        "COMMAND_CONFLICT"
+    );
+    if block_target {
+        let params = &entry["params"];
+        let target = params
+            .get("taskId")
+            .filter(|id| id.as_str().is_some_and(|id| !id.is_empty()))
+            .map(|id| ("taskId", id))
+            .or_else(|| {
+                params
+                    .get("threadId")
+                    .filter(|id| id.as_str().is_some_and(|id| !id.is_empty()))
+                    .map(|id| ("threadId", id))
+            });
+        ensure!(
+            !pending.iter().any(|row| {
+                let settled = row["remote"].is_object()
+                    && submission_id(row).is_some_and(|id| {
+                        outcomes
+                            .get(id)
+                            .is_some_and(|outcome| outcome["remote"].is_object())
+                    });
+                if settled || areal_protocol::submissions::remote_control(row) {
+                    return false;
+                }
+                if matches!(
+                    entry["method"].as_str(),
+                    Some("areal/thread/fork" | "areal/side/start" | "areal/side/create")
+                ) {
+                    return row["method"] == entry["method"]
+                        && row["params"]["sourceThreadId"] == params["sourceThreadId"];
+                }
+                target.is_some_and(|(field, id)| !id.is_null() && row["params"][field] == *id)
+            }),
+            "SUBMISSION_UNKNOWN"
+        );
+    }
+    Ok(())
+}
+
+fn preserve_native_entries(before: &Snapshot, after: &mut Snapshot) -> Result<()> {
+    for original in before
+        .pending
+        .iter()
+        .filter(|entry| entry["rustOwner"] == true)
+    {
+        ensure!(
+            after.pending.iter().any(|entry| entry == original),
+            "Host-owned pending submission cannot be changed by a client snapshot"
+        );
+    }
+    for (id, original) in before
+        .outcomes
+        .iter()
+        .filter(|(_, entry)| entry["rustOwner"] == true)
+    {
+        let next = after
+            .outcomes
+            .get_mut(id)
+            .context("Host-owned outcome requires execution.dismiss")?;
+        let fields = next.as_object_mut().context("invalid outcome projection")?;
+        let original = original.as_object().context("invalid Host outcome")?;
+        // 旧任务草稿仅追加自己的投影注记，不能接管提交的受理事实与原身份。
+        for (key, value) in original {
+            if let Some(next) = fields.get(key) {
+                ensure!(next == value, "Host-owned outcome identity cannot change");
+            }
+            fields.insert(key.clone(), value.clone());
+        }
+        ensure!(
+            fields.iter().all(|(key, value)| original.contains_key(key)
+                || (matches!(
+                    key.as_str(),
+                    "draftThreadId" | "taskDraftMessage" | "taskDraftError"
+                ) && value.is_string())),
+            "unsupported Host outcome annotation"
+        );
+    }
+    Ok(())
 }
 
 fn preserve_pending_identity(before: &Snapshot, after: &Snapshot) -> Result<()> {
@@ -575,6 +738,66 @@ mod tests {
 
     fn snapshot(text: &str) -> Value {
         json!({"version":1,"pending":[{"method":"areal/thread/start","params":{"requestId":"original-core-id","input":[{"type":"text","text":text}]},"createdAt":"original-time","remote":{"opaque":"preserved"}}],"outcomes":{"old":{"accepted":true,"threadId":"old-thread"}}})
+    }
+    #[test]
+    fn native_admission_is_cas_bound_and_settlement_keeps_original_outcome() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        let (revision, snapshot) = journal.native_snapshot("project").unwrap();
+        let entry = json!({"method":"areal/turn/submit","params":{"requestId":"one","threadId":"thread"},"rustOwner":true});
+        journal
+            .native_admit("project", revision, snapshot.clone(), entry.clone(), true)
+            .unwrap();
+        assert!(journal.native_admit("project", revision, snapshot, json!({"method":"areal/turn/submit","params":{"requestId":"two","threadId":"other"}}), true).is_err());
+        let (revision, snapshot) = journal.native_snapshot("project").unwrap();
+        let conflict =
+            json!({"method":"areal/turn/submit","params":{"requestId":"two","threadId":"thread"}});
+        assert!(
+            journal
+                .native_admit("project", revision, snapshot, conflict, true)
+                .unwrap_err()
+                .to_string()
+                .contains("SUBMISSION_UNKNOWN")
+        );
+        let mut altered = entry.clone();
+        altered["params"]["threadId"] = json!("other");
+        assert!(journal.native_finish("project", &altered, None).is_err());
+        let outcome = json!({"rustOwner":true,"method":"areal/turn/submit","accepted":true,"status":"completed","threadId":"thread"});
+        assert_eq!(
+            journal
+                .native_finish("project", &entry, Some(outcome.clone()))
+                .unwrap(),
+            outcome
+        );
+        assert_eq!(
+            journal
+                .native_finish("project", &entry, Some(json!({"status":"failed"})))
+                .unwrap(),
+            outcome
+        );
+        assert!(
+            journal.native_snapshot("project").unwrap().1["pending"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn client_snapshot_cannot_remove_or_rebind_rust_owned_facts() {
+        let pending = json!({"method":"areal/turn/submit","params":{"requestId":"one","threadId":"thread"},"rustOwner":true});
+        let original = Snapshot::parse(json!({"version":1,"pending":[pending],"outcomes":{"done":{"rustOwner":true,"accepted":true,"threadId":"thread"}}})).unwrap();
+        let mut removed = original.clone();
+        removed.pending.clear();
+        assert!(preserve_native_entries(&original, &mut removed).is_err());
+        let mut altered = original.clone();
+        altered.outcomes.get_mut("done").unwrap()["threadId"] = json!("other");
+        assert!(preserve_native_entries(&original, &mut altered).is_err());
+        let mut annotated = original.clone();
+        annotated.outcomes.get_mut("done").unwrap()["taskDraftMessage"] = json!("projection");
+        assert!(preserve_native_entries(&original, &mut annotated).is_ok());
+        annotated.outcomes.remove("done");
+        assert!(preserve_native_entries(&original, &mut annotated).is_err());
     }
     fn prepare(journal: &Journal, connection: &str, revision: u64, value: Value) -> Value {
         let bytes = serde_json::to_vec(&value).unwrap();

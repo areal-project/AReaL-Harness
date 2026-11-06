@@ -9,12 +9,11 @@ const { failure } = decoder;
 /** @typedef {ReturnType<typeof snapshot> & {models?:Record<string,unknown>[]}} SessionState */
 /** @typedef {{authorized:()=>boolean,receive:(method:string,params:unknown)=>void,release:()=>void}} PushWatch */
 /** @typedef {{id:string,pushWatches?:Set<PushWatch>,viewers:Set<Viewer>,state:SessionState|null,refreshQueued?:boolean}} ThreadObserver */
-/** @typedef {{projectId:string,project:ReadyProject,desktop:Client,endpoint:string,token:string,serviceId:string,generation:string,gatewayGeneration:string,threads:Map<string,ThreadObserver>,pending:number,readers:number,tail:Promise<unknown>,closed:boolean,client?:Client,socket?:import('ws'),ready?:Promise<void>,offDesktop?:()=>void,offModel?:()=>void,offClose?:()=>void,offEvents?:()=>void,failureCode?:string}} ObserverEntry */
+/** @typedef {{projectId:string,project:ReadyProject,desktop:Client,serviceId:string,generation:string,gatewayGeneration:string,threads:Map<string,ThreadObserver>,pending:number,readers:number,tail:Promise<unknown>,closed:boolean,client?:Client,ready?:Promise<void>,offDesktop?:()=>void,offModel?:()=>void,offClose?:()=>void,offEvents?:()=>void,failureCode?:string}} ObserverEntry */
 /** @typedef {{id:string,connection:RemoteConnection,entry:ObserverEntry,thread:ThreadObserver,publish:(value:SessionPublished)=>void,sequence:number,published:boolean,body?:{id:string,encoded:Buffer,turnId:string,itemId:string,expiresAt:number}|null}} Viewer */
 /** @typedef {{snapshot:SessionState,[key:string]:unknown}} SessionPublished */
 /** @typedef {{task:import('./remote-core-decoder.cjs').Task,item?:import('./remote-core-decoder.cjs').ChannelItem,complete:boolean}} TaskQuestionRead */
 const { randomUUID } = require("node:crypto");
-const WebSocket = require("ws");
 const {
   modelCatalog,
   snapshot,
@@ -103,8 +102,6 @@ class SessionObservers {
       !project.client.closed &&
       project.model?.state?.connected &&
       !project.resourceInitializing &&
-      project.endpoint === entry.endpoint &&
-      project.token === entry.token &&
       project.service?.serviceId === entry.serviceId &&
       project.service?.generation === entry.generation
     );
@@ -220,7 +217,6 @@ class SessionObservers {
       }
     entry.threads.clear();
     entry.client?.close();
-    entry.socket?.terminate();
   }
   sweep() {
     for (const entry of this.projects.values()) {
@@ -256,18 +252,13 @@ class SessionObservers {
     if (entry) return entry;
     if (this.projects.size >= LIMITS.observerConnections)
       throw failure("LIMIT_EXCEEDED", "观察连接已达到上限");
-    const endpoint = project.endpoint,
-      token = project.token,
-      serviceId = project.service?.serviceId,
-      generation = project.service?.generation;
-    if (typeof serviceId !== "string" || !generation || !endpoint || !token)
+    const serviceId = project.service?.serviceId, generation = project.service?.generation;
+    if (typeof serviceId !== "string" || !generation)
       throw failure("CORE_UNAVAILABLE", "项目服务身份不可用");
     entry = {
       projectId,
       project,
       desktop: project.client,
-      endpoint,
-      token,
       serviceId,
       generation,
       gatewayGeneration: this.remote.gatewayGeneration,
@@ -291,23 +282,15 @@ class SessionObservers {
   /** @param {ObserverEntry} entry */
   async connect(entry) {
     try {
-      const { CoreClient } = await import("@areal/runtime-client/core");
+      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
       this.check(entry);
-      // 复用已验证的项目服务身份，但绝不覆盖 Desktop client 或注册工具回调。
-      const client = (entry.client = new CoreClient({
-        createSocket: () => {
-          const socket = (entry.socket = new WebSocket(entry.endpoint, {
-            headers: { Authorization: `Bearer ${entry.token}` },
-            followRedirects: false,
-            maxPayload: LIMITS.nativeHistoryBytes,
-          }));
-          socket.on("error", (error) => {
-            if ("code" in error && error.code === "WS_ERR_UNSUPPORTED_MESSAGE_LENGTH")
-              entry.failureCode = "RESOURCE_UNAVAILABLE";
-          });
-          return socket;
-        },
-      }));
+      const backend = this.remote.backend;
+      if (!backend.hostCall) throw failure("CORE_UNAVAILABLE","Host Core transport unavailable");
+      const canonical = backend.host.resolve(entry.projectId).projectId;
+      const client = (entry.client = new HostCoreClient({host:backend.hostCall,sourceId:backend.host.sourceId,projectId:canonical,scope:"observer"}));
+      const clientKey = `observer:${randomUUID()}`;
+      backend.hostCoreClients.set(clientKey,client);
+      client.onClose(() => { if (backend.hostCoreClients.get(clientKey) === client) backend.hostCoreClients.delete(clientKey); });
       entry.offEvents = client.onNotification((method, params) =>
         this.event(entry, method, params),
       );

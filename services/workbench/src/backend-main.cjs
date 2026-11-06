@@ -14,7 +14,7 @@ const desktopCommands = new Set([
   "prepareCreator", "projectless", "providers", "queue", "queueEdit", "reconcile", "remoteControl", "resources",
   "side", "tasks", "trajectory", "workspace",
 ]);
-const privateMethods = ["desktop.command", "input.prepare", "execution.prepare", "execution.dispatch", "creation.read", "creation.catalog"];
+const privateMethods = ["lifecycle.dependencies", "lifecycle.flush", "core.callback", "library.dependencies", "desktop.command", "input.prepare", "execution.prepare", "execution.dispatch", "execution.complete", "creation.read", "creation.catalog"];
 const domains = {
   "library.command": "library",
   "worktree.read": "workspace",
@@ -38,6 +38,37 @@ async function start({ input, output }) {
   const frame = JSON.parse(first.value);
   if (frame.version !== 1 || frame.method !== "backend.start") throw new Error("INVALID_PARAMS");
   const { appRoot, options, retired } = frame.params;
+  const calls = new Map();
+  let callSequence = 0;
+  const hostCall = (call, params) => new Promise((resolve, reject) => {
+    const id = `backend-${++callSequence}`;
+    calls.set(id, { resolve, reject });
+    const line = JSON.stringify({ version: 1, id, call, params });
+    if (Buffer.byteLength(line) >= MAX_FRAME) {
+      calls.delete(id);
+      reject(Object.assign(new Error("LIMIT_EXCEEDED"), { code: "LIMIT_EXCEEDED" }));
+      return;
+    }
+    output.write(line + "\n");
+  });
+  // 初始化也可能反向读 Host；不能等 createMainDesktop 完成后才消费回复。
+  const reply = (line) => {
+    if (Buffer.byteLength(line) >= MAX_FRAME) return;
+    let frame;
+    try { frame = JSON.parse(line); } catch { return; }
+    if (frame.version !== 1 || frame.method !== undefined || frame.event !== undefined) return;
+    const pending = calls.get(frame.id);
+    if (!pending) return;
+    calls.delete(frame.id);
+    if (frame.error) pending.reject(Object.assign(new Error(frame.error.message ?? frame.error.code), frame.error));
+    else pending.resolve(frame.result);
+  };
+  lines.on("line", reply);
+  lines.once("close", () => {
+    for (const pending of calls.values())
+      pending.reject(Object.assign(new Error("Host channel closed; outcome unknown"), { code: "DISCONNECTED" }));
+    calls.clear();
+  });
   const appRequire = createRequire(join(appRoot, "package.json"));
   const { createMainDesktop } = appRequire("@areal/workbench-service/desktop/core/service-main.cjs");
   let desktop, metadata, claimed = false;
@@ -68,7 +99,7 @@ async function start({ input, output }) {
       encryptString: async (value) => Buffer.from(await desktop.adapter.encryptionRequest("encrypt", value), "base64"),
       decryptString: (value) => desktop.adapter.encryptionRequest("decrypt", value.toString("base64")),
     };
-    desktop = await createMainDesktop({ ...options, applicationOwner: undefined, sourceSingletonHeld: false }, { onClose: () => lines.close(), hostManaged: true });
+    desktop = await createMainDesktop({ ...options, applicationOwner: undefined, sourceSingletonHeld: false }, { onClose: () => lines.close(), hostManaged: true, hostCall });
     desktop.backend.cloud.encryption = encryption;
     metadata = await desktop.adapter.listen({ initialized: true });
     await writeFile(path, JSON.stringify(metadata), { mode: 0o600 });
@@ -81,6 +112,24 @@ async function start({ input, output }) {
       if (Buffer.byteLength(line) >= MAX_FRAME) throw new Error("LIMIT_EXCEEDED");
       const request = JSON.parse(line);
       if (request.version !== 1) throw new Error("INVALID_PARAMS");
+      if (request.method === undefined && request.event === undefined) continue;
+      if (request.event === "core.event") {
+        for (const client of desktop.backend.hostCoreClients.values()) client.event(request);
+        continue;
+      }
+      if (request.event === "library.changed") {
+        await desktop.backend.library.reload();
+        desktop.backend.onChange();
+        continue;
+      }
+      if (request.event === "execution.complete" && typeof request.connection === "string" && typeof request.handle === "string") {
+        desktop.adapter.completeHostExecution(request, request.connection);
+        continue;
+      }
+      if (request.event === "tasks.event") {
+        desktop.backend.ownerTasks.hostEvent(request);
+        continue;
+      }
       if (request.event === "execution.cancel" && typeof request.connection === "string" && typeof request.handle === "string") {
         desktop.adapter.cancelHostExecution(request.handle, request.connection);
         continue;
@@ -97,6 +146,35 @@ async function start({ input, output }) {
         throw new Error("INVALID_PARAMS");
       const domain = domains[request.method];
       const execute = async () => {
+        if (request.method === "lifecycle.dependencies") return {
+          clients: desktop.adapter.clients.size,
+          inflight: Math.max(desktop.adapter.inflight, desktop.backend.activeCommands ?? 0),
+          providerUpdating: desktop.backend.providerUpdating === true || desktop.backend.resourcesUpdating === true,
+          starting: desktop.backend.starting.size,
+        };
+        if (request.method === "lifecycle.flush") {
+          await desktop.backend.library.writes;
+          await Promise.all(desktop.backend.saves.values());
+          return { flushed: true };
+        }
+        if (request.method === "core.callback") {
+          const client = [...desktop.backend.hostCoreClients.values()]
+            .find((client) => client.owns(request.params.lease));
+          if (!client) throw Error("Desktop Core projection unavailable");
+          return client.callback(request.params);
+        }
+        if (request.method === "library.dependencies") {
+          const cloudThreads = desktop.backend.cloudConversations.records
+            .filter((row) => typeof row.projectId === "string" && typeof row.binding?.threadId === "string")
+            .map((row) => ({ projectId: row.projectId, threadId: row.binding.threadId }));
+          const pendingProjects = [...desktop.backend.projects.values()]
+            .filter((project) => project.pending.length > 0).map((project) => project.id);
+          if (cloudThreads.length > 65536 || pendingProjects.length > 65536 ||
+              [...pendingProjects, ...cloudThreads.flatMap((row) => [row.projectId, row.threadId])]
+                .some((id) => typeof id !== "string" || !id || id.length > 512))
+            throw Error("Library dependency limit reached");
+          return { cloudThreads, pendingProjects };
+        }
         if (request.method === "creation.catalog") {
           const project = desktop.backend.projects.get(request.params.projectId);
           if (!project?.client) throw Error("Creation catalog unavailable");
@@ -142,12 +220,14 @@ async function start({ input, output }) {
         }
         if (request.method === "creation.read") return desktop.backend.worktrees.readThreadCreation(request.params.projectId, request.params.request);
         if (request.method === "input.prepare") return prepareInput({ desktop, request: request.params });
-        if (request.method === "execution.prepare" || request.method === "execution.dispatch") {
+        if (request.method === "execution.prepare" || request.method === "execution.dispatch" || request.method === "execution.complete") {
           const connection = request.context?.connection;
           if (typeof connection !== "string" || !connection || connection.length > 256) throw Error("Invalid execution owner");
           return request.method === "execution.prepare"
             ? desktop.adapter.prepareHostExecution(request.params, connection)
-            : desktop.adapter.dispatchHostExecution(request.params.handle, connection);
+            : request.method === "execution.complete"
+              ? desktop.adapter.completeHostExecution(request.params, connection)
+              : desktop.adapter.dispatchHostExecution(request.params.handle, connection);
         }
         if (pageMethods.includes(request.method)) {
           const connection = request.context?.connection;
@@ -198,6 +278,7 @@ async function start({ input, output }) {
     const current = JSON.parse(await readFile(path, "utf8").catch(() => "null"));
     if (claimed && current?.pid === process.pid && (!metadata || current.identity === metadata.identity))
       await unlink(path);
+    lines.off("line", reply);
     lines.close();
   }
 }

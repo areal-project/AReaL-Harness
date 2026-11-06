@@ -1,14 +1,9 @@
 "use strict";
 const { makeTempDir } = require("./support/temp.mjs");
 const assert = require("node:assert/strict");
-const { test, after } = require("node:test");
-const { mkdir, realpath, rm } = require("node:fs/promises");
+const { test } = require("node:test");
+const { mkdir, rm } = require("node:fs/promises");
 const { join } = require("node:path");
-const { createHash } = require("node:crypto");
-const coreProcess = require("@areal/workbench-service/desktop/core/core-process.cjs");
-const originalExecute = coreProcess.executeCore;
-let execute;
-coreProcess.executeCore = (...args) => execute(...args);
 const {
   taskCatalog,
   OwnerTasks,
@@ -18,9 +13,6 @@ const {
   validateCommandResponse,
   commandSemantics,
 } = require("../packages/workbench/client/desktop-contract.cjs");
-after(() => {
-  coreProcess.executeCore = originalExecute;
-});
 const deferred = () => {
   let resolve;
   const promise = new Promise((yes) => {
@@ -41,8 +33,6 @@ async function fixture(t) {
   const root = join(home, "workspace"),
     dataDir = join(home, "owner", "state");
   await Promise.all([mkdir(root), mkdir(dataDir, { recursive: true })]);
-  const target = { workspace: await realpath(root), dataDir: await realpath(dataDir) };
-  target.instanceId = createHash("sha256").update(target.dataDir).digest("hex").slice(0, 24);
   const task = {
     id: "scheduled",
     mode: "scheduled",
@@ -69,20 +59,16 @@ async function fixture(t) {
     pendingQuestions: 0,
     pendingQuestionExpiresAt: null,
   };
-  const response = {
-    version: 2,
-    target,
-    source: "published",
-    executionState: "unobserved",
-    catalog: { kind: "snapshot", rootDigest: "a".repeat(64), data: [task], hasMore: false },
-  };
+  const response = { data: [task], hasMore: false, coverage: { kind: "snapshot" }, readAt: 1 };
   const calls = [];
-  execute = async (binary, args, options) => {
-    calls.push({ binary, args, options });
-    return { stdout: JSON.stringify(response) };
-  };
   const backend = {
     home,
+    rustDomains: [],
+    async hostCall(name, params) {
+      assert.equal(name, "tasks.preview");
+      calls.push(params);
+      return response;
+    },
     binary: "/trusted/areal",
     host: { resolve: (id) => ({ dataDir: join(home, id, "state") }) },
     saved: [{ id: "owner", root }],
@@ -112,7 +98,7 @@ async function fixture(t) {
     },
   };
   backend.ownerTasks = new OwnerTasks(backend);
-  return { backend, response, calls, task };
+  return { backend, response, calls, task, root };
 }
 
 test("preview is a bounded read capability with an unobserved response", () => {
@@ -145,7 +131,7 @@ test("preview is a bounded read capability with an unobserved response", () => {
   assert.throws(() => validateCommand("tasks", { ...request, path: "/private/state" }));
 });
 
-test("published preview uses only trusted CLI and keeps model and execution ownership unchanged", async (t) => {
+test("Host published preview keeps model and execution ownership unchanged", async (t) => {
   const f = await fixture(t);
   const result = await taskCatalog(f.backend, { ...request, limit: 12, sourceThreadId: "source" });
   assert.equal(result.source, "published");
@@ -159,82 +145,54 @@ test("published preview uses only trusted CLI and keeps model and execution owne
   assert.ok(Number.isSafeInteger(result.owners[0].readAt));
   assert.equal(result.requestId, request.requestId);
   assert.equal(result.viewEpoch, request.viewEpoch);
-  assert.deepEqual(f.calls[0].args, [
-    "service",
-    "task-catalog",
-    "--workspace",
-    f.backend.saved[0].root,
-    "--data-dir",
-    join(f.backend.home, "owner", "state"),
-    "--limit",
-    "1024",
-    "--json",
-  ]);
-  assert.equal(f.calls[0].binary, "/trusted/areal");
-  assert.ok(f.calls[0].options.timeout > 0 && f.calls[0].options.timeout <= 10000);
-  assert.equal(f.calls[0].options.maxBuffer, 32 * 1024 * 1024);
   const again = await taskCatalog(f.backend, { ...request, sourceThreadId: "source" });
   assert.equal(again.data[0].id, f.task.id);
   assert.equal(f.calls.length, 1, "same owner scopes share one bounded published cache");
 });
 
-test("preview rejects wrong target and observation metadata", async (t) => {
-  const f = await fixture(t),
-    valid = structuredClone(f.response);
+test("unavailable or malformed Host previews never become live observations", async (t) => {
+  const f = await fixture(t);
   for (const value of [
-    { ...valid, target: { ...valid.target, workspace: "/other" } },
-    { ...valid, target: { ...valid.target, dataDir: "/other" } },
-    { ...valid, target: { ...valid.target, instanceId: "0".repeat(24) } },
-    { ...valid, executionState: "ready" },
-    { ...valid, source: "live" },
-    { ...valid, version: 1 },
-    { ...valid, catalog: { ...valid.catalog, rootDigest: "invalid" } },
-    { ...valid, catalog: { ...valid.catalog, data: [{ id: "interactive", mode: "interactive" }] } },
+    { ...f.response, data: [{ id: "invalid", mode: "interactive" }] },
+    { ...f.response, hasMore: "false" },
+    { ...f.response, coverage: null },
+    { ...f.response, readAt: "now" },
   ]) {
-    execute = async () => ({ stdout: JSON.stringify(value) });
+    f.backend.hostCall = async () => value;
     const result = await taskCatalog(f.backend, request);
     assert.deepEqual(result.data, []);
     assert.equal(result.errors.length, 1);
     assert.equal(result.owners[0].status, "error");
   }
+  f.backend.hostCall = async () => {
+    throw new Error("original Store binding unavailable");
+  };
+  assert.equal((await taskCatalog(f.backend, request)).errors.length, 1);
 });
 
-test("foreign alias preview reads the original Host Store binding", async (t) => {
+test("foreign alias preview leaves original Store resolution inside Host", async (t) => {
   const f = await fixture(t);
-  const dataDir = join(f.backend.home, "original-cli-store");
-  await mkdir(dataDir);
-  f.backend.host.resolve = (id) => {
-    assert.equal(id, "owner");
-    return { dataDir };
-  };
-  f.response.target.dataDir = await realpath(dataDir);
-  f.response.target.instanceId = createHash("sha256")
-    .update(f.response.target.dataDir)
-    .digest("hex")
-    .slice(0, 24);
+  f.backend.host.resolve = () => assert.fail("backend must not resolve an original Host Store");
   const result = await taskCatalog(f.backend, request);
   assert.deepEqual(result.errors, []);
   assert.equal(result.data[0].id, f.task.id);
-  const args = f.calls[0].args;
-  assert.equal(args[args.indexOf("--data-dir") + 1], dataDir);
 });
 
 test("missing catalog stays empty while migration failures preserve the previous snapshot", async (t) => {
   const f = await fixture(t);
-  f.response.catalog = { kind: "empty" };
+  Object.assign(f.response, { data: [], hasMore: false, coverage: { kind: "empty" } });
   const empty = await taskCatalog(f.backend, request);
   assert.deepEqual(empty.data, []);
   assert.equal(empty.owners[0].status, "unobserved");
   assert.deepEqual(empty.owners[0].coverage, { kind: "empty" });
-  f.response.catalog = {
-    kind: "snapshot",
-    rootDigest: "a".repeat(64),
-    data: [f.task],
-    hasMore: false,
-  };
+  Object.assign(f.response, { data: [f.task], hasMore: false, coverage: { kind: "snapshot" } });
   await taskCatalog(f.backend, { ...request, operation: "list" });
   for (const reason of ["unbound", "legacyFormat", "readBudgetExceeded"]) {
-    f.response.catalog = { kind: "requiresCore", reason };
+    Object.assign(f.response, {
+      data: [],
+      hasMore: false,
+      coverage: { kind: "requiresCore", reason },
+    });
     const query = { ...request, operation: "list" };
     const result = await taskCatalog(f.backend, query);
     assert.equal(result.data[0].id, f.task.id);
@@ -248,7 +206,7 @@ test("missing catalog stays empty while migration failures preserve the previous
 
 test("preview filters the shared bounded cache to the requested source Thread", async (t) => {
   const f = await fixture(t);
-  f.response.catalog.data[0].sourceThreadId = "other-source";
+  f.response.data[0].sourceThreadId = "other-source";
   const result = await taskCatalog(f.backend, { ...request, sourceThreadId: "source" });
   assert.deepEqual(result.data, []);
   assert.deepEqual(result.errors, []);
@@ -257,9 +215,9 @@ test("preview filters the shared bounded cache to the requested source Thread", 
 test("removed or lifecycle-blocked execution owner cannot publish late preview", async (t) => {
   const f = await fixture(t),
     gate = deferred();
-  execute = async () => {
+  f.backend.hostCall = async () => {
     await gate.promise;
-    return { stdout: JSON.stringify(f.response) };
+    return f.response;
   };
   const pending = taskCatalog(f.backend, request);
   await new Promise((resolve) => setImmediate(resolve));
@@ -268,7 +226,7 @@ test("removed or lifecycle-blocked execution owner cannot publish late preview",
   const result = await pending;
   assert.deepEqual(result.data, []);
   assert.equal(result.errors.length, 1);
-  f.backend.saved = [{ id: "owner", root: f.response.target.workspace }];
+  f.backend.saved = [{ id: "owner", root: f.root }];
   f.backend.lifecycleOperations.assertProject = () => {
     throw new Error("owner stopping");
   };
@@ -292,23 +250,12 @@ test("logical preview keeps each execution owner mapping", async (t) => {
   const gate = deferred();
   let active = 0,
     maximumActive = 0;
-  execute = async (_binary, args) => {
+  f.backend.hostCall = async () => {
     active++;
     maximumActive = Math.max(maximumActive, active);
     await gate.promise;
-    const dataDir = await realpath(args[args.indexOf("--data-dir") + 1]);
-    const workspace = await realpath(args[args.indexOf("--workspace") + 1]);
     active--;
-    return {
-      stdout: JSON.stringify({
-        ...f.response,
-        target: {
-          workspace,
-          dataDir,
-          instanceId: createHash("sha256").update(dataDir).digest("hex").slice(0, 24),
-        },
-      }),
-    };
+    return structuredClone(f.response);
   };
   const first = taskCatalog(f.backend, request),
     second = taskCatalog(f.backend, { ...request, projectId: "other" });
@@ -317,7 +264,10 @@ test("logical preview keeps each execution owner mapping", async (t) => {
   const [result, other] = await Promise.all([first, second]);
   assert.equal(result.data.length, 2);
   assert.equal(other.data.length, 1, "concurrent logical owners must retain every execution owner");
-  assert.ok(maximumActive <= 2, "published CLI concurrency stays bounded across logical requests");
+  assert.ok(
+    maximumActive <= 2,
+    "published preview concurrency stays bounded across logical requests",
+  );
   assert.deepEqual(other.errors, []);
   assert.deepEqual(
     result.data.map((row) => [row.projectId, row.executionProjectId]),

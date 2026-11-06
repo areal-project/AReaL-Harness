@@ -5,6 +5,7 @@ pub mod goals;
 pub mod host;
 pub mod plugin_runtime;
 pub mod service;
+pub mod submissions;
 pub mod tasks;
 pub mod work;
 use serde::{Deserialize, Serialize};

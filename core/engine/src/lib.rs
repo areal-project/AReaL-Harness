@@ -39,6 +39,7 @@ mod turns;
 mod watchdog;
 pub mod workgroup;
 mod workspace;
+mod worktrees;
 
 use areal_protocol::{Input, Item, Modality, Thread, ThreadStatus, Turn, TurnStatus, notification};
 use futures_util::{FutureExt, StreamExt};

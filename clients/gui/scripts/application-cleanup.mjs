@@ -1,10 +1,54 @@
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
 import { once } from "node:events";
+import { createHash } from "node:crypto";
+import { execFile, spawnSync } from "node:child_process";
+import { readFile, readdir, realpath } from "node:fs/promises";
+import { join, relative, isAbsolute } from "node:path";
+import { promisify } from "node:util";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
-const { executeCore } = createRequire(import.meta.url)(
-  "../../../services/workbench/src/desktop/core/core-process.cjs",
-);
+const executeFile = promisify(execFile);
+
+export async function cleanupSyntheticHostKeychain(hostHome, isolatedRoot) {
+  if (process.platform !== "darwin") return [];
+  const root = await realpath(isolatedRoot);
+  const home = await realpath(hostHome);
+  const child = relative(root, home);
+  assert.ok(
+    child && !child.startsWith("..") && !isAbsolute(child),
+    "Host home must be inside this fixture",
+  );
+  const service = `org.areal.host.v1.${createHash("sha256").update(home).digest("hex")}`;
+  const entries = [];
+  for (const directory of ["vault-operations", "remote-operations"]) {
+    for (const name of await readdir(join(home, "host", directory)).catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    })) {
+      const receipt = JSON.parse(await readFile(join(home, "host", directory, name), "utf8"));
+      assert.equal(name, `${receipt.requestId}.json`);
+      if (!["vault.replace", "remote.replace"].includes(receipt.method) || !receipt.entryId)
+        continue;
+      assert.match(receipt.entryId, /^[a-f0-9-]{36}$/);
+      const removal = spawnSync(
+        "/usr/bin/security",
+        ["delete-generic-password", "-s", service, "-a", receipt.entryId],
+        { stdio: "ignore" },
+      );
+      const absent = spawnSync(
+        "/usr/bin/security",
+        ["find-generic-password", "-s", service, "-a", receipt.entryId],
+        { stdio: "ignore" },
+      );
+      entries.push({
+        entryId: receipt.entryId,
+        removal: removal.status,
+        absent: absent.status === 44,
+      });
+      assert.equal(absent.status, 44, "original synthetic Keychain entry is absent");
+    }
+  }
+  return entries;
+}
 
 export async function assertApplicationStopped(binary, env, metadata) {
   const alive = (pid) => {
@@ -21,7 +65,7 @@ export async function assertApplicationStopped(binary, env, metadata) {
   let records;
   do {
     // 使用产品的原生启动适配，同时让同进程中的模型 HTTP 夹具继续响应。
-    const { stdout } = await executeCore(binary, ["service", "list", "--json"], {
+    const { stdout } = await executeFile(binary, ["service", "list", "--json"], {
       env,
       timeout: 20000,
     });

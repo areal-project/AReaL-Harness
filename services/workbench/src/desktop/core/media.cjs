@@ -74,97 +74,24 @@ async function executeMediaCommand(project, request, backend) {
       throw error;
     }
   }
-  if (!project.endpoint) throw new Error("Core 连接不可用");
-  const url = new URL(project.endpoint);
-  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/areal/blobs`;
-  url.search = "";
-  url.searchParams.set("threadId", request.threadId);
+  const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+  if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core transport unavailable");
   if (request.operation === "read") {
-    if (typeof request.uri !== "string" || !/^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(request.uri))
-      throw new Error("无效附件引用");
-    url.pathname += `/${request.uri.split("/").at(-1)}`;
-    let response;
-    try {
-      response = await fetch(url, {
-        headers: { Authorization: `Bearer ${project.token}` },
-        redirect: "error",
-        signal: AbortSignal.timeout(30000),
-      });
-    } catch (error) {
-      throw new Error(`读取附件失败：${error instanceof Error ? error.message : String(error)}`);
-    }
-    if (!response.ok) {
-      const detail = coreDetail(await response.text());
-      throw new Error(
-        detail
-          ? `读取附件失败 (${response.status})：${detail}`
-          : `读取附件失败 (${response.status})`,
-      );
-    }
-    return {
-      bytes: new Uint8Array(await response.arrayBuffer()),
-      mime: response.headers.get("content-type"),
-    };
+    if (typeof request.uri !== "string" || !/^areal:\/\/blob\/[a-f0-9]{64}$/.test(request.uri)) throw new Error("无效附件引用");
+    const result=await project.client.blob({operation:"read",threadId:request.threadId,uri:request.uri});
+    if(typeof result.base64!=="string" || typeof result.mime!=="string") throw new Error("附件读取回执无效");
+    return {bytes:new Uint8Array(Buffer.from(result.base64,"base64")),mime:result.mime};
   }
-  if (request.operation !== "upload" || thread.desktop?.archived)
-    throw new Error("会话不可上传附件");
-  if (
-    !(request.bytes instanceof Uint8Array) ||
-    !request.bytes.length ||
-    request.bytes.length > MAX_BYTES
-  )
-    throw new Error("附件必须为 1 B–16 MiB");
-  if (typeof request.mime !== "string" || !/^[\w.+-]+\/[\w.+-]+$/.test(request.mime))
-    throw new Error("无效附件类型");
-  let response;
+  if (request.operation !== "upload" || thread.desktop?.archived) throw new Error("会话不可上传附件");
+  if (!(request.bytes instanceof Uint8Array) || !request.bytes.length || request.bytes.length>MAX_BYTES) throw new Error("附件必须为 1 B–16 MiB");
+  if (typeof request.mime!=="string" || !/^[\w.+-]+\/[\w.+-]+$/.test(request.mime)) throw new Error("无效附件类型");
   try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${project.token}`, "Content-Type": request.mime },
-      body: new Uint8Array(request.bytes),
-      redirect: "error",
-      signal: AbortSignal.timeout(30000),
-    });
-  } catch (error) {
-    // 响应没回到客户端时不能判断 Core 是否已写入，也不能再发一次。
-    const failure = Object.assign(
-      new Error(
-        `附件上传结果待核对：${error instanceof Error ? error.message : String(error)}。草稿已保留，不会自动重发。`,
-      ),
-      { submissionUnknown: true },
-    );
-    throw failure;
-  }
-  if (!response.ok) {
-    let detail;
-    try {
-      detail = await response.text();
-    } catch {
-      detail = "无法读取上传响应";
-    }
-    const failure = Object.assign(uploadError(response.status, detail), {
-      submissionUnknown: response.status >= 500,
-    });
-    throw failure;
-  }
-  try {
-    const receipt = await response.json();
-    if (
-      !/^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(receipt?.uri) ||
-      typeof receipt.mimeType !== "string" ||
-      receipt.sizeBytes !== request.bytes.length
-    )
-      throw new Error("上传回执不完整");
+    const receipt=await project.client.blob({operation:"upload",threadId:request.threadId,mime:request.mime,base64:Buffer.from(request.bytes).toString("base64")});
+    if(typeof receipt.uri!=="string" || typeof receipt.mimeType!=="string" || receipt.sizeBytes!==request.bytes.length) throw new Error("上传回执不完整");
     return receipt;
-  } catch (cause) {
-    const failure = Object.assign(
-      new Error(
-        `附件上传结果待核对：${cause instanceof Error ? cause.message : String(cause)}。不会自动重发。`,
-      ),
-      { submissionUnknown: true },
-    );
-    throw failure;
+  } catch(cause) {
+    const definite=modelRecord(cause) && ["INVALID_PARAMS","LIMIT_EXCEEDED","RESOURCE_UNAVAILABLE","FORBIDDEN"].includes(String(cause.code));
+    throw Object.assign(new Error(`附件上传结果待核对：${cause instanceof Error?cause.message:String(cause)}。不会自动重发。`),{submissionUnknown:!definite});
   }
 }
 /** @param {InputHost} backend @param {Record<string,unknown>} request @returns {MessageInput[]} */

@@ -152,9 +152,13 @@ async function taskCreate(backend, project, request) {
         if (receipt) {
           if (pending) {
             if (isAwaitingResponse(backend.awaitingResponses, project.id, pending)) throw unknown();
-            await backend.changePending(project, (entries) =>
-              entries.filter((entry) => !sameSubmission(project.id, entry, pending)),
-            );
+            if (backend.rustDomains.includes("execution-rust")) {
+              await backend.readSubmission(project, pending.method, { ...pending.params, requestId: preludeId });
+            } else {
+              await backend.changePending(project, (entries) =>
+                entries.filter((entry) => !sameSubmission(project.id, entry, pending)),
+              );
+            }
           }
           params.threadId = receipt.threadId ?? undefined;
         } else {
@@ -196,6 +200,21 @@ async function taskCreate(backend, project, request) {
 /** @param {Backend} backend @param {Project} project @param {Record<string,unknown>} rawRequest */
 async function manageTask(backend, project, rawRequest) {
   const request = readTaskRequest(rawRequest);
+  if (backend.rustDomains.includes("tasks-rust") && backend.hostCall) {
+    if (taskDraftOperations.has(request.operation)) return manageTaskDraft(backend, project, request);
+    /** @type {Record<string,unknown>} */
+    const payload = { ...request, executionProjectId: project.id };
+    if (request.operation === "taskDraftSend") {
+      payload.input = require("./media.cjs").messageInput(backend, request);
+      for (const key of ["text", "attachments", "mcpContent", "conversationQuotes"])
+        delete payload[key];
+    }
+    const reading = reads[request.operation] || ["taskDraftRead", "taskDraftHistory", "taskHistoryCapabilities", "taskWatch", "taskUnwatch"].includes(request.operation);
+    const value = await backend.hostCall(reading ? "tasks.read" : "tasks.command", payload);
+    if (["task", "taskWatch", "taskCreate", "taskUpdate", "taskPause", "taskResume", "taskCancel", "taskDelete", "taskStopRun", "taskResumeRun", "taskDraftConfirm"].includes(request.operation))
+      project.model.setTask(readTask(value));
+    return value;
+  }
   const current = project.client;
   if (!current) throw new Error("Core 未连接");
   const operation = request.operation;

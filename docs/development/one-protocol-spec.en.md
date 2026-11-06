@@ -325,3 +325,9 @@ Existing methods are partial coverage, never aliases. Proposals name operation f
 | `connectService` | existing `host.subscribe`, `host.status` (partial); proposal discovery | Host service discovery and connection |
 | `export` | existing `session.history`, `session.body` (partial); proposal export | Core history and export data; shell chooses destination and saves |
 | `remoteControl` | existing `remote.read`, `remote.replace`, `remote.gateway.state`, `remote.gateway.status`, `remote.gateway.control` (partial); proposal pairing/configuration | Host remote configuration and pairing |
+
+## Rust convergence acceptance boundary
+
+The library, execution/connections, scheduled tasks, and worktree implementations may proceed in parallel, with acceptance performed after integration. Register protocols and a decreasing source budget before moving authoritative behavior. Execution migration requires a function-by-function equivalence and behavior-difference table before implementation. Report implementation, compilation, live-service, page-journey, and CLI-only evidence separately. Retiring previous paths requires explicit confirmation; rollback never replays UNKNOWN commands. See [workbench ownership and selectors](../design/workbench-service.en.md#rust-domain-implementations-and-rollback).
+
+Combined acceptance includes field-by-field library receipt comparisons, backend smoke tests, journeys against a real-data copy created by `node clients/gui/scripts/seed-host-copy.mjs`, and CLI scheduled-task and worktree lifecycles without a GUI installation. Unexecuted platforms remain pending; unit tests do not replace them.
