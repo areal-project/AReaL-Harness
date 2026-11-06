@@ -10,6 +10,8 @@
 
 生产构建生成 `renderer/dist/bundle-analysis.json`，记录实际 chunk 的模块、静态依赖与哈希。`verify:bundle` 检查 HTML 入口的完整静态闭包、总 JS 及延迟 chunk 预算。`bundle-budget.json` 初始保留 5% 字节余量；`node clients/gui/scripts/bundle-budget.mjs --write` 只允许收紧预算。健康基线更新也只允许改善，CI 会检查相对基准提交的放宽。检查器和基线的限制见 [spec 源码核查](specs/implementation-decisions.md)。
 
+功能确实需要更大预算时，只手改超限的那一项，改到实测值加 5%，并在 PR 说明里写原因；不整体重写。基线分支也受同一组检查约束，红着不合并，否则后续每个 PR 都无法区分是谁造成的超限。
+
 使用情况设置在打开时按需加载，加载期间使用现有设置页的等待文案；它不属于桌面首屏静态依赖。
 
 Web/PWA Remote v2 的实施边界见[架构](../../docs/design/remote-control.md)、[API](../../docs/api/remote-control.md)、[连接与部署](../../docs/guides/remote-control.md)及[验收计划](../../docs/development/remote-control-testing.md)。源码已实现默认关闭的入口、浏览器申请与桌面确认、显式项目授权及设备撤销，以及工作概览、会话详情、创建与发送、精确轮次停止、审批和问题回复、任务暂停及结果审查。Direct 与独立 Relay 共用 Host 授权和加密协议；容器部署脚手架见 [Relay 部署](../../services/remote-relay/deploy/README.md)。源码实现不代表真实手机、生产浏览器 TLS、公网网络、系统钥匙串或安装包验收通过，各层仍需独立证据。
