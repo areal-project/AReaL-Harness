@@ -395,10 +395,10 @@ function startDesktop() {
       recordQuitStage(attempt, "terminal");
       await backend.prepareQuit();
       if (intent === "install")
-        await require("../update/package-users.cjs").assertPackageUsersReleased({
+        await require("../update/package-users.cjs").releasePackageForInstall({
+          backend,
           packaged: app.isPackaged,
           profile: app.getPath("userData"),
-          home: backend.home,
         });
       recordQuitStage(attempt, "finalizing");
       if (!backend.foreignOwner)
