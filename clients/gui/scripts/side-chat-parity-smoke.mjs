@@ -654,8 +654,24 @@ async function selectText(body, text, keyboard = false) {
         block: "center",
         behavior: "instant",
       });
+      // 脚本滚动不代表用户开始选择；补齐 pointerdown，让原有阅读所有者先确认当前位置。
+      // 否则下一个 Core/尺寸重绘仍可按旧锚点把正文移回屏外。
+      buildRange().startContainer.parentElement?.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }),
+      );
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const range = buildRange();
+      const viewport = (element.closest(".messages") ?? element).getBoundingClientRect();
+      if (
+        ![...range.getClientRects()].some(
+          (rect) =>
+            rect.bottom > Math.max(0, viewport.top) &&
+            rect.top < Math.min(innerHeight, viewport.bottom) &&
+            rect.right > Math.max(0, viewport.left) &&
+            rect.left < Math.min(innerWidth, viewport.right),
+        )
+      )
+        throw Error("Selection fixture must start inside the visible transcript");
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -712,6 +728,12 @@ async function addReference(body, text, target = "main", keyboard = false) {
     exact: true,
   });
   if (keyboard) await shot("P4-keyboard-selection");
+  record.viewport = await action.evaluate((element) => ({
+    width: innerWidth,
+    height: innerHeight,
+    rect: element.getBoundingClientRect().toJSON(),
+    scrollTop: document.querySelector(".messages")?.scrollTop,
+  }));
   record.stage = "activate";
   if (keyboard) {
     await action.focus();
