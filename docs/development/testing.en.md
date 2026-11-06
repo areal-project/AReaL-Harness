@@ -380,6 +380,8 @@ macOS and Linux host checks share one matrix definition. `fail-fast: false` ensu
 
 `harness-smoke.mjs` checks root/nested `AGENTS.md` and `AGENTS.override.md` replacement, empty-file fallback and ordering, unrelated-directory isolation, missing files, per-Turn refresh, the 32 KiB boundary, UTF-8 and symlink rejection through real Core/Runtime model requests.
 
+Conversation preview image checks wait for the unavailable notice before toggling its disclosure, then wait for the notice to disappear after restoring availability and verify the collapsed state. Dispatching a select event does not establish that the component state has committed.
+
 The same script uses a workspace without an `AGENTS.md` preread, delays the first model reply beyond a two-second per-process allowance, then creates and reads back a file through the real Runtime. A control executes a command after the same model wait and verifies that its explicit 200 ms deadline still terminates the process and settles cleanup. This verifies that model waiting does not consume tool-process allowance; it does not raise product defaults or establish overall long-task gains.
 
 [CI](../../.github/workflows/ci.yml) runs native Harness checks on macOS, portable regression and Docker sandbox/file-ownership checks on Linux, and separate Rust/npm advisory checks. Actions are pinned by commit, repository permissions are read-only, and failures retain logs. Consult the run for the relevant commit for actual results.
