@@ -181,6 +181,19 @@ impl Engine {
             .map(crate::history::summary_message);
         let mut parts = vec![part(Kind::Other, "请求封套", 512)];
         for message in messages {
+            if let Some(output) = message.responses_output() {
+                // 与实际 Responses 投影同一计量边界，不再重复统计 Chat 兼容正文和调用。
+                parts.push(part(Kind::Other, "消息封套", 16));
+                for item in output {
+                    let (kind, name) = match item["type"].as_str() {
+                        Some("message") => (Kind::Conversation, "原始助手消息"),
+                        Some("function_call") => (Kind::Conversation, "工具调用参数"),
+                        _ => (Kind::Other, "供应商上下文"),
+                    };
+                    parts.push(part(kind, name, context::text_tokens(&item.to_string())));
+                }
+                continue;
+            }
             let text = message.text_content();
             let cost = context::text_tokens(&text);
             let preserved = original.iter().any(|source| source == message);

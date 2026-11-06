@@ -241,6 +241,9 @@ impl Model for SharedModel {
     fn replay_protocol(&self) -> Option<crate::model::ModelProtocol> {
         self.inner.replay_protocol()
     }
+    fn supports_prefix_summary(&self) -> bool {
+        self.inner.supports_prefix_summary()
+    }
     fn capabilities(&self) -> crate::model::ModelCapabilities {
         self.inner.capabilities()
     }
@@ -535,6 +538,9 @@ fn repeated_failure(messages: &[Message]) -> bool {
 
 #[async_trait]
 impl Model for ProgressModel {
+    fn supports_prefix_summary(&self) -> bool {
+        self.inner.supports_prefix_summary()
+    }
     fn goal_id(&self) -> Option<&str> {
         self.inner.goal_id()
     }

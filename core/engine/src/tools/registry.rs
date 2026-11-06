@@ -7,6 +7,14 @@ pub const MAX_ARGUMENT_BYTES: usize = crate::model::MAX_TOOL_ARGUMENT_BYTES;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields, default)]
 pub struct ToolPolicy {
+    /// 在无宿主 I/O 的 JavaScript 上下文中编排原生工具；原生单工具入口保持兼容。
+    pub programmatic_tools: bool,
+    /// 仅收窄模型展示；所有叶子调用仍走原始执行与权限入口。
+    pub programmatic_tools_only: bool,
+    /// 仅保留已可见原生工具的指定直达入口；不扩大权限或发现范围。
+    pub programmatic_direct_tools: Vec<String>,
+    /// 显式候选：常用入口直接展示，其他已授权原生 schema 按需发现。
+    pub compact_tools: bool,
     /// 显式实验，只延迟模型 schema 投影，保留宿主发现与执行预算。
     pub lazy_mcp_schemas: bool,
     /// 已知内置只读调用的并发上限；1 保留串行执行。
@@ -30,6 +38,10 @@ pub struct ToolPolicy {
 impl Default for ToolPolicy {
     fn default() -> Self {
         Self {
+            programmatic_tools: true,
+            programmatic_tools_only: false,
+            programmatic_direct_tools: Vec::new(),
+            compact_tools: false,
             lazy_mcp_schemas: false,
             parallel_read_calls: 1,
             completion_focus: false,
@@ -61,6 +73,8 @@ pub struct ResultViewPolicy {
     pub repeat_lines: bool,
     /// 无损文件行包装独立于搜索/命令视图实验开关。
     pub file_lines: bool,
+    /// 显式候选：只折叠已重新观察且逐字相同的文件片段与环境事实。
+    pub repeated_observations: bool,
 }
 
 impl Default for ResultViewPolicy {
@@ -70,6 +84,7 @@ impl Default for ResultViewPolicy {
             search_groups: true,
             repeat_lines: true,
             file_lines: true,
+            repeated_observations: false,
         }
     }
 }
@@ -312,6 +327,23 @@ impl Registry {
 
     pub fn new(runtime: bool, extensions: &ToolExtensions) -> anyhow::Result<Self> {
         anyhow::ensure!(
+            !extensions.policy.programmatic_tools_only || extensions.policy.programmatic_tools,
+            "programmaticToolsOnly requires programmaticTools"
+        );
+        let direct = &extensions.policy.programmatic_direct_tools;
+        anyhow::ensure!(
+            direct.is_empty() || extensions.policy.programmatic_tools_only,
+            "programmaticDirectTools requires programmaticToolsOnly"
+        );
+        anyhow::ensure!(
+            direct.len() <= 16
+                && direct.iter().collect::<HashSet<_>>().len() == direct.len()
+                && direct.iter().all(|name| !name.is_empty()
+                    && name.len() <= 64
+                    && name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')),
+            "programmaticDirectTools requires up to 16 distinct native tool names"
+        );
+        anyhow::ensure!(
             (1..=4).contains(&extensions.policy.parallel_read_calls),
             "parallelReadCalls must be 1..4"
         );
@@ -357,6 +389,10 @@ impl Registry {
             output_schema: None,
         }, Backend::Core)?;
         if runtime {
+            registry.insert(super::edit_files::definition(), Backend::Core)?;
+            if extensions.policy.programmatic_tools {
+                registry.insert(super::program::definition(), Backend::Core)?;
+            }
             for definition in super::definitions_with_policy(&extensions.policy) {
                 let f = &definition["function"];
                 registry.insert(
@@ -548,6 +584,31 @@ impl ToolExtensions {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn direct_program_entries_require_explicit_bounded_configuration() {
+        for (policy, valid) in [
+            (
+                json!({"programmaticToolsOnly":true,"programmaticDirectTools":["edit_files"]}),
+                true,
+            ),
+            (json!({"programmaticDirectTools":["edit_files"]}), false),
+            (
+                json!({"programmaticToolsOnly":true,"programmaticDirectTools":["edit_files","edit_files"]}),
+                false,
+            ),
+            (
+                json!({"programmaticToolsOnly":true,"programmaticDirectTools":["../edit_files"]}),
+                false,
+            ),
+        ] {
+            let extensions = ToolExtensions {
+                policy: serde_json::from_value(policy).unwrap(),
+                ..Default::default()
+            };
+            assert_eq!(Registry::new(true, &extensions).is_ok(), valid);
+        }
+        assert!(ToolPolicy::default().programmatic_direct_tools.is_empty());
+    }
     #[test]
     fn legacy_coordination_arguments_are_bounded_and_never_relax_external_schemas() {
         let registry = Registry::new(true, &ToolExtensions::default())

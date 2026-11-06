@@ -418,7 +418,7 @@ impl Engine {
                 }
                 Item::ModelContext { value, .. } => match value["type"].as_str() {
                     Some("areal_request_context" | "chat_reasoning") => {}
-                    Some("reasoning" | "function_call")
+                    Some("reasoning" | "function_call" | "areal_response_output")
                         if model.replay_protocol() == Some(ModelProtocol::Responses) => {}
                     _ => return Err(invalid("MODEL_CONTEXT_INCOMPATIBLE")),
                 },

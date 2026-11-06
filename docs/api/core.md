@@ -49,6 +49,8 @@ Core 拥有 Thread/Turn/Item 的稳定 ID 与历史。read 不订阅，resume �
 
 `areal/thread/fork` 的 `anchor:{turnId,boundary}` 必须明确选择 `before` 或 `after`，并使用 `workspaceMode:"sharedCurrent"`。`before` 排除所选轮次及之后的全部历史，包括活动轮次；`after` 只接受已终结轮次。纳入前缀中的失败、中断状态按原样保留；未结算工具或 hook、未经来源核查的工具、hook 或插件 UNKNOWN 返回 `HISTORY_UNRESOLVED`。核查只记录事实，历史 UNKNOWN 不改写为成功。锚点不存在返回 `ANCHOR_NOT_FOUND`，委派 Worker 或 Side 来源返回 `SOURCE_KIND_UNSUPPORTED`，活动轮次的 `after` 返回 `TURN_NOT_TERMINAL`；错误的 `data.reason` 可用于呈现恢复路径。分支只继承对话历史，项目文件仍是当前共享工作区。完整请求与来源元数据见[桌面 API](desktop.md)。
 
+Fork 的模型兼容检查同时接受旧版 Responses 单项上下文与 `areal_response_output` 完整输出封装，按原顺序保留供应商字段。它们只允许 Responses 适配器回放；切换到无法保留该上下文的协议仍返回 `MODEL_CONTEXT_INCOMPATIBLE`，不通过丢弃不透明历史放行。
+
 input 为有序 text/image/audio/file 等内容，UTF-8 文本合计最多 1 MiB，仍受历史预算约束；认证客户端上传媒体 Blob，不传宿主 localImage/localAudio 路径。模态由 adapter/模型能力校验。原有 thread/start 的 model 需匹配服务默认；产品模型选择使用 areal/thread/start/configure。
 
 事件包括 thread/started、turn/started/completed、item/started/completed、item/agentMessage/delta；AReaL 媒体通知为 areal/item/agentMedia/available。终态 completed/interrupted/failed 在保存后发布。steer 保留已输出文本，取消当前模型请求后在同一 Turn 继续。
@@ -182,6 +184,8 @@ Chat 工具 index 缺失、null、非整数类型、负数、超出 u64 范围�
 Rust `Model::chat_with_limits(messages, tools, purpose, ToolCallLimits, cap)` 显式传递请求预算，内置 HTTP、共享池和 Worker 包装器均转发。可选的输出 token 上限与工具预算一起经过 Goal 计量传递。默认实现委托 `chat_limited`，保持已有自定义 Model 实现可编译，并拒绝不受支持的非空 token 上限；自定义模型自行约束内部缓冲，Engine 仍在工具执行前检查其输出。摘要使用零调用预算。`Limits` 新增 `max_tool_buffer_bytes`，`NativeFactory`/`NativeExecutor` 新增 `tool_call_limits`，显式结构体初始化需补充字段；构造器提供默认值。Rust Limits 同时区分可选累计预算与单响应资源保护。
 
 `Limits::default()` 的上下文窗口兜底为 131072 token。内置 HTTP 模型每次请求的输出上限默认 16384 token，`ModelOptions.max_output_tokens=None`（包括旧模型快照中的省略值）同样采用该默认；显式正数可调大或调小，Goal 与摘要专用限制仍取更小值。自定义 `Model` 不因此获得 HTTP 输出限制，需正确声明自身 capabilities 并落实请求额度。配置覆盖与输入空间计算见[配置指南](../guides/configuration.md)。
+
+内置 HTTP 的可选 `ModelOptions.summary_preserve_prefix` 控制 `Model::supports_prefix_summary()`：省略保持 Responses 前缀复用，显式 false 走现有引用式历史；Chat 始终不启用。该值随选中模型配置、重载和 Workgroup 保留，旧模型快照省略此字段时保持原指纹。它不改普通请求缓存、工具权限、摘要重试上限或检查点提交不变量。
 
 Checkpoint 的 `retainedInputs: [{itemId, content}]` 与 `evidence: string[]` 是完整请求预算内的原文和历史回执投影，不另设固定额度。最新真实用户请求在前缀内时完整保留，其他输入优先较近修订；首问不享有永久优先。输出仍按权威原文顺序排列，旧附件超额时保留可容纳的文字并明确标记附件省略，完整原文通过 `read_history` 回取。自动 Goal 续轮不是新用户要求。旧 checkpoint 未含 retainedInputs 时保留原重放语义，直到下一次成功压缩；不批量改写用户历史。摘要是可出错的历史证据，不能覆盖后续用户指令。
 
@@ -468,7 +472,7 @@ Harness 使用 `service.name=areal-core` 标明自身，并通过 `service.insta
 
 采集内容受共享预算约束，丢失时标记 `areal.capture.truncated`；完整 JSON 未展开只标记 `areal.capture.json_fallback`。接收端可保留不完整轨迹用于排障；文本 SFT 转换还需校验完整性、成功且被接受的请求、工具链、不可变来源摘要与独立质量验收。多模态外部 URI/本地文件不保证可重取，协议不包含 token logits，不能宣称支持精确多模态重放、soft-logit 蒸馏或 RL rollout。具体配置见[持久轨迹导出](../guides/configuration.md#持久轨迹导出)。
 
-工具执行记录新增可选 `originalArguments`，旧记录可继续读取。参数语义未被 hook 改写时，历史保留原始 JSON 字节。Responses `function_call` 原始 item 作为 `modelContext` 保存，匹配未改写调用时保留其 item ID 与原始字段；Chat 投影不发送 Responses 元数据。上下文压缩将请求快照和关联输出作为同一保留单元，压缩后重新建立缓存前缀。
+工具执行记录包含可选 `originalArguments`，旧记录可继续读取。参数语义未被 hook 改写时，历史保留原始 JSON 字节。Responses 完成响应按终态 `output` 顺序保存为内部 `modelContext`，保留 reasoning、助手消息的原始 `phase`、消息 ID 和工具调用字段；不根据展示阶段推测或补写供应商未提供的 `phase`。流式展示文字与该完成输出关联，后续请求不重复正文。匹配未改写调用时保留原始 item；hook 改写仍回放实际模型参数，未派发的调用不制造工具结果。Chat 投影保留可见文字及执行调用，不发送 Responses 元数据。旧历史保持原有兼容投影。终态校验失败不释放工具；完成输出的正文和兼容包装不重复计入上下文估算。上下文压缩将请求快照和关联输出作为同一保留单元，压缩后重新建立缓存前缀。
 
 Chat Completions 的 HTTP 适配会把所有纯文本 system 消息按原有相对顺序合并到请求开头，以兼容只接受首条 system 的聊天模板。非 system 消息的先后顺序保持不变；这不会修改持久历史，也不会改变 Responses 的消息及 encrypted reasoning 回放。动态状态变化因此可能降低 Chat 协议的缓存前缀复用率。
 
@@ -512,6 +516,9 @@ CLI 保持 `--input-file` 的 2 MiB 上限，以有界读取在 JSON 解析前�
 
 项目指令由 Engine 在每个 Turn 首次模型请求前加载，并保存为 `instructionSnapshot`。按工作区根到 Thread `cwd` 的目录链读取 `AGENTS.md`，来源路径随正文写入快照；不新增 API 字段，已有仅根文件项目保持兼容。正文合计超过 32 KiB、无效 UTF-8、符号链接或超过 64 层的目录链使 Turn 在请求模型前失败，不截断规则。作用域、优先级与 cwd 路径别名见[客户端指南](../guides/clients.md#历史恢复与观测)。
 
+指令快照包含 root/cwd 链的 `checkedFiles` 观察，缺失、空文件与已加载文件分别表达；不会为未知子树推断规则已检查。动态工具 `edit_files` 将有界多文件创建/替换组合到现有原生执行链，不增加 Runtime 协议；逐文件状态、兼容入口及 allowlist 约束见[工具合同](../guides/tools.md#关联文件编辑与环境事实)。
+
+
 Shared Browser 的旧 Thread 固定工具包追加已实现，方法为 `areal/thread/tools/attach`；请求、回执、存储版本与回退限制见[Browser 契约](browser.md#10-旧-thread-与多客户端新增-core-接口)。工具准备仍是设计契约；只读观察使用 `areal/thread/observe`。`thread/resume` 保留 Host 绑定语义，并可协商上述有界显示响应。
 
 Core 可通过默认关闭的实验配置，在请求投影与检查点证据中有界保留完整文件参考；执行等待仍由 Runtime 管理。参考回取、非交互 stdin 和连续失败上限见[配置指南](../guides/configuration.md#参考保留与有界工具恢复)。
@@ -553,3 +560,15 @@ Rust `ToolPolicy` 的穷举结构体字面量调用方需要补上 `parallel_rea
 Turn 的 `trace` 增加 `startedAtMs`、`queuedAtMs`、`queueDurationMs` 和 `activities`。活动记录用 `afterItemId` 保留稳定显示锚点，并包含种类、逻辑调用、实际尝试、可选工具 `callId`、起止时间、实测 `durationMs`、`firstContentMs`、可选用量、状态和错误。流建立前的 HTTP 内部重试分别保留尝试及等待。原有 `generation.durationMs` 保留用于生成速率的较窄含义。工具执行增加 `startedAtMs`，队列条目增加 `queuedAtMs`。执行投影提供可用的 `durationMs`、`startedAtMs` 或实时 `elapsedMs`；交付回执版本排除会变化的经过时间。
 
 读取旧历史时新增字段缺省。恢复时将未完成活动标记未知，不补造结束时间。隔离 worker 的旧活动快照不证明其仍在运行；`stateConfirmed: false` 保留最后已知记录并停止延长计时。本地记录属于权威会话历史，独立于 OTLP 导出设置。使用方式见[轨迹排查](../guides/execution-trace.md)。
+
+`ToolExecution.parentCallId` 是可选子调用关联字段，旧记录缺省为无父调用。程序化工具共享原生执行链及预算；子调用保留事实，模型历史只投影父调用，见[程序工具契约](../guides/programmatic-tools.md)。
+
+完整请求预检与自动压缩共享有效 usage 校准；Responses 摘要可保留原前缀及工具 schema，但工具执行预算始终为零。新增默认返回 false 的 `Model::supports_prefix_summary()`；自定义适配器仅在支持尾部维护指令与禁用工具协议时声明 true。审计和回退条件见[上下文管理](../design/context-management.md)。
+
+`model.summary_quoted_retry`（`AREAL_HARNESS_SUMMARY_QUOTED_RETRY`）默认省略/false，仅显式开启时在既有第二次摘要额度内把格式失败的保留前缀切为引用证据，不增加重试或预算。格式验收不证明语义准确；已观察到的公式失真仍是负面证据，该策略及 `summary_preserve_prefix=false` 都不能直接视为语义恢复通过。普通请求截断、空回复仍按独立失败与 usage 契约处理。
+
+`ToolPolicy.compact_tools`（JSON `compactTools`，默认 false）投影常用原生入口及 `tool_search({query,limit?})`；发现的 schema 在下一次请求生效，每 Turn 重置，仍受现有 registry 和 allowlist 限制。`ResultViewPolicy.repeated_observations`（`repeatedObservations`，默认 false）对重新观察后相同的内容附持久原文引用。`environment_info({cwd?,executables?:[{name,kind}]})` 返回有来源与指纹的事实；`task_state.environmentFacts` 是有界历史观察，不自动证明当前状态。具体范围和失效条件见[工具](../guides/tools.md)。
+
+原生导航的 `read_file` 支持 `column` 与 `expectedSha256`，对超长行提供版本绑定的 `nextRead` 续读，不伪造完整行；详见[工具合同](../guides/tools.md)。程序调用 `tool_program` 增加可选 JSON 对象 `input`，与代码合计受原 64 KiB 限制，作为隔离解释器实参而非源码执行；无 input 的旧调用保持兼容。`verify_command` 对 Blender Python 验证要求显式非零异常退出码，收据包含 `exitContract`；详见[程序化工具](../guides/programmatic-tools.md)。
+
+`tool_program` 的执行前语法错误可附加 `phase:"parse"` 与有界 `guidance`；仅在 `executed=0` 且无子收据时声明未执行原生工具，原 `error` 不变。运行期错误保留已发生效果，不自动修补或重试。搜索正则语法错误也可附带有界用法提示。仅程序化模式的目录按工具分段展示说明与原参数 schema；工具可达性、授权与预算不变。

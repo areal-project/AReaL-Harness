@@ -414,6 +414,7 @@ async fn repeated_network_failures_preserve_request_usage_and_confirmed_tools() 
                 .is_some_and(|x| x == "json")
         })
         .map(|f| serde_json::from_slice(&std::fs::read(f.unwrap().path()).unwrap()).unwrap())
+        .filter(|audit: &Value| audit["kind"] == "discardedCompletion")
         .collect();
     assert_eq!(audits.len(), 5);
     assert!(audits.iter().all(

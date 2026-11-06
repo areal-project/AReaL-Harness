@@ -561,6 +561,9 @@ impl Model for MeteredModel {
     fn replay_protocol(&self) -> Option<crate::model::ModelProtocol> {
         self.inner.replay_protocol()
     }
+    fn supports_prefix_summary(&self) -> bool {
+        self.inner.supports_prefix_summary()
+    }
     fn capabilities(&self) -> ModelCapabilities {
         self.inner.capabilities()
     }

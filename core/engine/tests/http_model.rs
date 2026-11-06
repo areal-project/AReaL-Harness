@@ -922,6 +922,147 @@ async fn summary_overrides_are_isolated_and_never_raise_the_goal_output_cap() {
     server.abort();
 }
 
+#[tokio::test]
+async fn prefix_summary_preserves_http_input_and_schema_but_rejects_tool_emissions() {
+    use areal_engine::model::{Message, Model, ModelEvent, RequestPurpose};
+    use futures_util::StreamExt;
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let app = Router::new().route("/", post(move |Json(request): Json<Value>| {
+        let tx = tx.clone();
+        async move {
+            tx.send(request.clone()).unwrap();
+            let output = if request["model"] == "bad" {
+                json!({"type":"function_call","id":"fc_one","call_id":"forbidden","name":"inspect","arguments":"{}"})
+            } else {
+                json!({"type":"message","id":"msg_one","role":"assistant","status":"completed","content":[{"type":"output_text","text":"checkpoint"}]})
+            };
+            let event = json!({"type":"response.completed","response":{"status":"completed","output":[output]}});
+            ([("content-type", "text/event-stream")], format!("data: {event}\n\n"))
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let tools = vec![
+        json!({"type":"function","function":{"name":"inspect","parameters":{"type":"object","properties":{}}}}),
+    ];
+    let history = vec![
+        Message::text("system", "stable instructions"),
+        Message::text("user", "binding original contract"),
+        Message::text("assistant", "completed observation"),
+    ];
+    let mut summary = history.clone();
+    summary.push(Message::text(
+        "developer",
+        "Summarize preceding history only. Do not call tools.",
+    ));
+    let model = HttpModel::with_protocol(
+        format!("http://{address}/"),
+        "fixture".into(),
+        None,
+        ModelProtocol::Responses,
+    )
+    .unwrap();
+    assert!(model.supports_prefix_summary());
+    assert!(!model.supports_quoted_summary_retry());
+    let solve = model
+        .chat(history.clone(), tools.clone())
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert!(solve.iter().all(Result::is_ok));
+    let original = rx.recv().await.unwrap();
+    let result = model
+        .chat_for(summary.clone(), tools.clone(), RequestPurpose::Summary)
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert!(result.iter().all(Result::is_ok));
+    let compact = rx.recv().await.unwrap();
+    assert_eq!(compact["tools"], original["tools"]);
+    let before = original["input"].as_array().unwrap();
+    let after = compact["input"].as_array().unwrap();
+    assert_eq!(&after[..before.len()], before);
+    assert_eq!(after.last().unwrap()["role"], "developer");
+    assert_eq!(compact["tool_choice"], "none");
+    // 协议桥可能重写 system 顺序；关闭前缀复用只影响摘要，不改变求解工具。
+    let quoted = HttpModel::with_protocol(
+        format!("http://{address}/"),
+        "fixture".into(),
+        None,
+        ModelProtocol::Responses,
+    )
+    .unwrap()
+    .with_options(areal_engine::model::ModelOptions {
+        summary_preserve_prefix: Some(false),
+        summary_quoted_retry: Some(true),
+        ..Default::default()
+    })
+    .unwrap();
+    assert!(!quoted.supports_prefix_summary());
+    assert!(quoted.supports_quoted_summary_retry());
+    let _ = quoted
+        .chat(history, tools.clone())
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert_eq!(rx.recv().await.unwrap()["tools"], original["tools"]);
+    let evidence = vec![
+        Message::text("system", "Write a checkpoint"),
+        Message::text("user", "Quoted historical evidence"),
+    ];
+    let events = quoted
+        .chat_for(evidence, tools.clone(), RequestPurpose::Summary)
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert!(events.iter().all(Result::is_ok));
+    let request = rx.recv().await.unwrap();
+    assert!(request.get("tools").is_none());
+    assert_eq!(request["input"].as_array().unwrap().len(), 2);
+    let bad = HttpModel::with_protocol(
+        format!("http://{address}/"),
+        "bad".into(),
+        None,
+        ModelProtocol::Responses,
+    )
+    .unwrap();
+    let events = bad
+        .chat_for(summary.clone(), tools.clone(), RequestPurpose::Summary)
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert!(events.iter().any(Result::is_err));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, Ok(ModelEvent::ToolCall(_))))
+    );
+    rx.recv().await.unwrap();
+    let _ = model
+        .chat_for(summary, tools, RequestPurpose::PermissionReview)
+        .await
+        .unwrap()
+        .collect::<Vec<_>>()
+        .await;
+    assert!(rx.recv().await.unwrap().get("tools").is_none());
+    let chat = HttpModel::new(format!("http://{address}/"), "fixture".into(), None).unwrap();
+    assert!(!chat.supports_prefix_summary());
+    let chat = chat
+        .with_options(areal_engine::model::ModelOptions {
+            summary_preserve_prefix: Some(true),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(!chat.supports_prefix_summary());
+    server.abort();
+}
+
 #[test]
 fn known_context_capacities_preserve_explicit_overrides_and_unknown_models() {
     use areal_engine::model::{Model, ModelOptions};

@@ -49,6 +49,101 @@ impl ToolExposure {
 }
 
 impl Engine {
+    pub(crate) async fn project_native_tools(
+        &self,
+        cell: &Cell,
+        mut definitions: Vec<Value>,
+    ) -> Vec<Value> {
+        if !self.extensions.policy.compact_tools
+            || !definitions
+                .iter()
+                .any(|d| d["function"]["name"] == "tool_search")
+        {
+            return definitions;
+        }
+        let bindings = cell.bindings.read().await;
+        let catalog: Vec<_> = definitions
+            .iter()
+            .filter_map(|d| {
+                let name = d["function"]["name"].as_str()?;
+                let entry = bindings.registry.get(name).ok()?;
+                if !matches!(
+                    entry.backend,
+                    crate::tools::Backend::Builtin
+                        | crate::tools::Backend::Core
+                        | crate::tools::Backend::Agent
+                        | crate::tools::Backend::Coordination
+                ) || common_native(name)
+                {
+                    return None;
+                }
+                Some(ToolSummary {
+                    name: name.into(),
+                    server_id: "native".into(),
+                    description: d["function"]["description"]
+                        .as_str()
+                        .unwrap_or("")
+                        .chars()
+                        .take(256)
+                        .collect(),
+                })
+            })
+            .collect();
+        drop(bindings);
+        let mut state = cell.state.lock().await;
+        let Some(active) = state.active.as_mut() else {
+            return definitions;
+        };
+        let exposure = &mut active.native_tool_exposure;
+        exposure.catalog = catalog;
+        let names: BTreeSet<_> = exposure.catalog.iter().map(|t| t.name.as_str()).collect();
+        definitions.retain(|d| {
+            let name = d["function"]["name"].as_str().unwrap_or("");
+            !names.contains(name) || exposure.loaded.contains(name)
+        });
+        // 目录只列名字，详情在发现之后进入下一次请求；不复制完整 schema。
+        if let Some(search) = definitions
+            .iter_mut()
+            .find(|d| d["function"]["name"] == "tool_search")
+        {
+            let directory = exposure
+                .catalog
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let description = search["function"]["description"].as_str().unwrap_or("");
+            search["function"]["description"] =
+                json!(format!("{description} Available names: {directory}"));
+        }
+        definitions
+    }
+
+    pub(super) async fn native_tool_search(
+        &self,
+        cell: &Cell,
+        turn_id: &str,
+        args: &Value,
+    ) -> Result<Value> {
+        if !self.extensions.policy.compact_tools {
+            return Err(invalid("compact tools are disabled"));
+        }
+        let query = args["query"]
+            .as_str()
+            .ok_or_else(|| invalid("query is required"))?;
+        let limit = args["limit"].as_u64().unwrap_or(4) as usize;
+        if query.len() > 512 || !(1..=8).contains(&limit) {
+            return Err(invalid("invalid native search budget"));
+        }
+        let mut state = cell.state.lock().await;
+        let active = state
+            .active
+            .as_mut()
+            .filter(|a| a.id == turn_id)
+            .ok_or(Error::Conflict)?;
+        Ok(active.native_tool_exposure.search(query, limit))
+    }
+
     pub(crate) async fn project_mcp_tools(
         &self,
         cell: &Cell,
@@ -147,4 +242,23 @@ impl Engine {
             .ok_or(Error::Conflict)?;
         Ok(active.tool_exposure.search(query, limit))
     }
+}
+
+fn common_native(name: &str) -> bool {
+    matches!(
+        name,
+        "tool_search"
+            | "tool_program"
+            | "read_file"
+            | "search_files"
+            | "edit_files"
+            | "run_command"
+            | "verify_command"
+            | "read_process"
+            | "write_process"
+            | "terminate_process"
+            | "image_read"
+            | "read_tool_result"
+            | "environment_info"
+    )
 }

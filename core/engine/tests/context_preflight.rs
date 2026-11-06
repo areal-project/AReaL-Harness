@@ -72,8 +72,8 @@ impl Model for PreflightModel {
             "must never send the overflowing request"
         );
         if first {
-            // 使追加调用后的原始估算超限，但按上一请求真实用量校准的预检仍能通过。
-            // 不触发字节保护，必须走完整请求的强制恢复入口。
+            // 上一轮完整输入加新增调用确实越界；校准不能让真实窗口压力绕过预检。
+            // 不触发字节保护，继续覆盖完整请求的强制恢复入口。
             assert!(estimate + 2048 < self.input_limit);
             let payload_bytes = (self.input_limit - estimate + 128) * 3;
             assert!(
@@ -107,7 +107,7 @@ impl Model for PreflightModel {
         Ok(Box::pin(stream::iter([
             Ok(event),
             Ok(ModelEvent::Usage(ModelUsage {
-                input_tokens: 1,
+                input_tokens: estimate as u64,
                 output_tokens: 1,
                 cached_input_tokens: 0,
             })),

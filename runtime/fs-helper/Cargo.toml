@@ -19,5 +19,8 @@ serde_json.workspace = true
 sha2.workspace = true
 uuid.workspace = true
 
+image = { version = "=0.25.8", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+gif = "=0.13.3"
+
 [dev-dependencies]
 tempfile.workspace = true

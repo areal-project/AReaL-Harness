@@ -356,6 +356,7 @@ pub(super) struct ResponsesDecoder {
     finished: bool,
     done: bool,
     contexts: Vec<Value>,
+    visible_text: String,
     calls: Vec<ToolCall>,
     item_ids: std::collections::HashSet<String>,
     budget: ToolCallBudget,
@@ -374,6 +375,39 @@ impl ResponsesDecoder {
 
     fn record_item(&mut self, item: &Value, output: &mut Vec<ModelEvent>) -> Result<()> {
         match item["type"].as_str() {
+            Some("message") => {
+                let id = item["id"].as_str().context("message item missing ID")?;
+                anyhow::ensure!(item["role"] == "assistant", "invalid output message role");
+                anyhow::ensure!(item["content"].is_array(), "invalid output message content");
+                anyhow::ensure!(
+                    !id.is_empty() && id.len() <= 256 && item.to_string().len() <= MAX_SSE_BYTES,
+                    "output message exceeds limit"
+                );
+                if let Some(existing) = self
+                    .contexts
+                    .iter_mut()
+                    .find(|v| v["type"] == "message" && v["id"] == id)
+                {
+                    anyhow::ensure!(
+                        existing["content"] == item["content"],
+                        "conflicting message snapshot"
+                    );
+                    anyhow::ensure!(
+                        existing.get("phase").is_none()
+                            || item.get("phase").is_none()
+                            || existing["phase"] == item["phase"],
+                        "conflicting message phase"
+                    );
+                    // 完整快照补充元数据；缺省字段不擦除已收到的阶段。
+                    existing
+                        .as_object_mut()
+                        .unwrap()
+                        .extend(item.as_object().unwrap().clone());
+                } else {
+                    anyhow::ensure!(self.contexts.len() < 128, "too many output items");
+                    self.contexts.push(item.clone());
+                }
+            }
             Some("reasoning") => {
                 let id = item["id"].as_str().context("reasoning item missing ID")?;
                 for (field, kind, part_type) in [
@@ -392,13 +426,22 @@ impl ResponsesDecoder {
                         }
                     }
                 }
+                anyhow::ensure!(
+                    item.to_string().len() <= 256 * 1024,
+                    "reasoning context exceeds 256 KiB"
+                );
                 if self.item_ids.insert(id.to_owned()) {
                     anyhow::ensure!(self.contexts.len() < 64, "too many reasoning items");
-                    anyhow::ensure!(
-                        item.to_string().len() <= 256 * 1024,
-                        "reasoning context exceeds 256 KiB"
-                    );
                     self.contexts.push(item.clone());
+                } else if let Some(existing) = self
+                    .contexts
+                    .iter_mut()
+                    .find(|v| v["type"] == "reasoning" && v["id"] == id)
+                {
+                    existing
+                        .as_object_mut()
+                        .unwrap()
+                        .extend(item.as_object().unwrap().clone());
                 }
             }
             Some("function_call") => {
@@ -470,17 +513,57 @@ impl ResponsesDecoder {
                     .context("completed response contains an unfinished function call"));
             }
         }
-        // 全部终态输出完成校验后才一次性发布工具；错误路径只保留已观察内容和真实计量。
-        output.extend(
+        // 以终态 output 数组为权威顺序。done 事件的到达顺序不是消息语义顺序。
+        // 缺省 output 的旧兼容端点仍使用已完成 item，不能推测缺失的 phase。
+        let contexts = if let Some(items) = response["output"].as_array() {
+            let mut ordered = Vec::new();
+            for item in items {
+                if let Some(index) = self.contexts.iter().position(|v| {
+                    v["type"] == item["type"]
+                        && if v["type"] == "function_call" {
+                            v["call_id"] == item["call_id"]
+                        } else {
+                            v["id"] == item["id"]
+                        }
+                }) {
+                    ordered.push(self.contexts.remove(index));
+                }
+            }
+            // 兼容仅在 done 事件提供 item 的端点；已完成调用不丢失、不重放。
+            ordered.append(&mut self.contexts);
+            ordered
+        } else {
             std::mem::take(&mut self.contexts)
-                .into_iter()
-                .map(ModelEvent::ProviderContext),
-        );
-        output.extend(
-            std::mem::take(&mut self.calls)
-                .into_iter()
-                .map(ModelEvent::ToolCall),
-        );
+        };
+        let has_messages = contexts.iter().any(|v| v["type"] == "message");
+        if has_messages {
+            let text = super::response_message_text(&contexts);
+            let suffix = text
+                .strip_prefix(&self.visible_text)
+                .context("conflicting completed message text")?;
+            if !suffix.is_empty() {
+                output.push(ModelEvent::text(suffix));
+            }
+        }
+        let mut calls = Vec::new();
+        for item in &contexts {
+            if item["type"] == "function_call"
+                && let Some(index) = self
+                    .calls
+                    .iter()
+                    .position(|call| call.id == item["call_id"])
+            {
+                calls.push(self.calls.remove(index));
+            }
+        }
+        anyhow::ensure!(self.calls.is_empty(), "missing completed call context");
+        // 全部终态输出完成校验后才一次性发布工具；错误路径只保留已观察内容和真实计量。
+        if !contexts.is_empty() {
+            output.push(ModelEvent::ProviderContext(
+                json!({"type":"areal_response_output","items":contexts}),
+            ));
+        }
+        output.extend(calls.into_iter().map(ModelEvent::ToolCall));
         Ok(())
     }
 
@@ -622,6 +705,11 @@ impl ResponsesDecoder {
             }
             "response.output_text.delta" | "response.refusal.delta" => {
                 if let Some(delta) = event["delta"].as_str().filter(|v| !v.is_empty()) {
+                    anyhow::ensure!(
+                        self.visible_text.len() + delta.len() <= MAX_SSE_BYTES,
+                        "output text exceeds SSE size limit"
+                    );
+                    self.visible_text.push_str(delta);
                     output.push(ModelEvent::text(delta));
                 }
             }
@@ -1317,8 +1405,9 @@ mod tests {
         assert_eq!(parts[&("rs1".into(), ReasoningKind::Summary, 1)], "再验证");
         assert_eq!(parts[&("rs1".into(), ReasoningKind::Text, 0)], "raw text");
         assert_eq!(parts[&("rs2".into(), ReasoningKind::Summary, 0)], "第二项");
-        assert_eq!(contexts.len(), 2);
-        assert_eq!(contexts[0], item);
+        assert_eq!(contexts.len(), 1);
+        assert_eq!(contexts[0]["items"].as_array().unwrap().len(), 2);
+        assert_eq!(contexts[0]["items"][0], item);
         assert!(decoder.done());
     }
 
@@ -1337,7 +1426,9 @@ mod tests {
                 .is_empty()
         );
         let events = decoder.feed(response_frame(json!({"type":"response.completed","response":{"status":"completed","output":[opaque]}})).as_bytes()).unwrap();
-        assert!(matches!(events.as_slice(), [ModelEvent::ProviderContext(v)] if v == &opaque));
+        assert!(
+            matches!(events.as_slice(), [ModelEvent::ProviderContext(v)] if v["items"] == json!([opaque]))
+        );
 
         let mut decoder = Decoder::Responses(ResponsesDecoder::default());
         let frames = response_frame(

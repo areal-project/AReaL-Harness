@@ -6,8 +6,11 @@
 
 | 能力 | 实现与入口 |
 |---|---|
+| 程序化工具调用 | 默认与原生工具共存；有界 JavaScript 数据依赖、串行叶子、选择观察与父子审计，无跨轮状态恢复；真实质量与效率须独立评测。[执行边界](guides/programmatic-tools.md) |
+| 关联文件编辑 | `edit_files` 直接表达有界多文件创建/修改，保留逐文件版本检查、收据和部分失败；可在既有程序里顺接验证。[工具合同](guides/tools.md#关联文件编辑与环境事实) |
 | 会话目录 | 默认内存索引、正确的授权后分页与 GUI 刷新合并；显式 SQLite 索引可回退内存，两者均可显式启用轻量元数据目录与按需历史加载。文件保持事实，复杂恢复仍全量；无自动历史淘汰或全文检索。[配置](guides/configuration.md#会话目录后端) |
 | 项目规则 | 按工作区根到会话 cwd 加载规则，同层 `AGENTS.override.md` 优先于 `AGENTS.md`，空白回退、子目录优先、每 Turn 刷新、有界且经 Runtime 读取。[客户端](guides/clients.md) |
+| 摘要输入策略 | 可按端点显式关闭 Responses 摘要前缀复用，首次使用引用式历史；默认兼容既有配置，任务收益需独立验证。[配置](guides/configuration.md) |
 | 会话与模型 | 持久 Thread/Turn、流式正文、Chat Completions 思考与 Responses 思考摘要/文本事件、追加输入、取消、恢复；Chat Completions / Responses，模态取决于 adapter 和模型。桌面可独立切换 Fast 服务档位，配置与供应商请求沿现有模型参数链路保存；请求不保证实际加速。[客户端](guides/clients.md) |
 | 会话名称 | 普通根会话首个成功 Turn 后异步总结名称，手动名称优先；失败保留预览，重启不重复请求。可通过 `options.automaticSessionName=false` 或 CLI `--no-session-name` 显式关闭，保留持久历史与恢复。[Core 契约](api/core.md#会话名称) |
 | 文件与进程 | 条件文件写入、命令、stdin、PTY、有界输出、Scope 权限收窄及清理；共享服务在容量预警后空闲轮换执行 epoch。原生只读工具可经逐操作审批读取具体外部目录，图片沿媒体链路进入支持视觉输入的模型。[Runtime](api/runtime.md) |
@@ -66,3 +69,5 @@ Remote 的 Direct 与 Relay 已接入共同 Host 授权和 PWA 协议，Direct �
 隔离 worker 继承父纯工具策略，不继承外部工具、hooks、插件和凭据。协作回执区分制品支持与当前就绪，版本化等待跳过未变化的已结算状态，批量回执保留结构化状态、有界正文预览、分页与原文回取。App 引用变化追加为任务数据，不回写系统指令快照；Responses HTTP 路由按会话与 Turn 隔离。`completionFocus` 与独立的 `executionFocus` 均为默认关闭的显式实验策略，分别引导交付收尾与独立读取、等待和委派契约组织；不保证消除长尾或降低消费；协议与兼容边界见[Core](api/core.md)。
 
 桌面手机连接支持启动本机 Relay、自动生成私有网络配对二维码、系统 SSH 部署 Linux Relay，以及手工配置外部 HTTPS Relay。内网可达的公司 VPN 可复用本机入口；不内置公网连接服务。SSH 路径包含 ACME 证书续期、升级和移除，公网、真机及安装包验收独立报告。
+
+显式精简工具及重复观察候选、环境来源与验证绑定见[工具](guides/tools.md)和[组合执行](guides/programmatic-tools.md)。上下文审计分开记录原始/校准估计、provider usage、输出预留及压缩触发原因；校准不等于减少输入。

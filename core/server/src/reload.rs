@@ -59,6 +59,8 @@ pub fn model(
             service_tier: config.service_tier.clone(),
             summary_reasoning_effort: config.summary_reasoning_effort.clone(),
             summary_max_output_tokens: config.summary_max_output_tokens,
+            summary_preserve_prefix: config.summary_preserve_prefix,
+            summary_quoted_retry: config.summary_quoted_retry,
             reasoning_summary: config.reasoning_summary.clone(),
             max_output_tokens: config.max_output_tokens,
             max_request_bytes: config.max_request_bytes,
@@ -260,7 +262,7 @@ mod tests {
     }
     #[test]
     fn model_archive_keeps_original_revision_bytes_across_optional_field_additions() {
-        for variant in 0..4 {
+        for variant in 0..5 {
             let temp = tempfile::tempdir().unwrap();
             let mut inputs = ConfigInputs {
                 cwd: temp.path().into(),
@@ -273,6 +275,7 @@ mod tests {
             let config = areal_config::load_config(&inputs).unwrap();
             let mut encoded = serde_json::to_string(&config.model).unwrap();
             assert!(!encoded.contains("summary_reasoning_effort"));
+            assert!(!encoded.contains("summary_preserve_prefix"));
             assert!(!encoded.contains("responses_websocket"));
             assert!(!encoded.contains("responses_prompt_cache"));
             if variant == 1 || variant == 2 {
@@ -286,6 +289,12 @@ mod tests {
             }
             if variant == 3 {
                 encoded = encoded.replace(",\"temperature\":", ",\"summary_reasoning_effort\":\"low\",\"summary_max_output_tokens\":4096,\"temperature\":");
+            }
+            if variant == 4 {
+                encoded = encoded.replace(
+                    ",\"temperature\":",
+                    ",\"summary_preserve_prefix\":false,\"temperature\":",
+                );
             }
             let revision = format!("{:x}", Sha256::digest(encoded.as_bytes()));
             let path = config.data_dir.join("desktop/default-models.json");

@@ -357,8 +357,23 @@ def run(binary, root):
 
         process_id = runtime.start(writable, "/usr/bin/head -c 100000 /dev/zero")
         assert runtime.call("process.wait", {"processId": process_id})["exitCode"] == 0
-        page = runtime.output(process_id)
-        assert page["gap"] and page["closed"] and len(text(page)) == 65536, page
+        # 超出热窗口的原文仍须能分页回取，closed 仅表示本页已读到末尾。
+        retained = bytearray()
+        after = None
+        while True:
+            page = runtime.output(process_id, after=after)
+            output = text(page)
+            assert not page["gap"] and not page["truncated"]
+            assert 0 < len(output) <= 65536
+            assert page["nextCursor"] != after
+            if after is None:
+                assert not page["closed"]
+            retained.extend(output)
+            assert len(retained) <= 100000
+            after = page["nextCursor"]
+            if page["closed"]:
+                break
+        assert retained == b"\0" * 100000
 
         process_id = runtime.start(
             writable, "/usr/bin/head -c 9000 /dev/zero", {"outputBytes": 4096}

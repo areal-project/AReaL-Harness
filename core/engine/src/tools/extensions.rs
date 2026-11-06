@@ -16,6 +16,8 @@ pub(super) struct Invocation<'a> {
     pub turn_id: &'a str,
     pub host: Option<Arc<dyn DynamicToolHost>>,
     pub entry: Arc<RegisteredTool>,
+    pub remaining_output: usize,
+    pub nested_output_bytes: &'a std::sync::atomic::AtomicUsize,
 }
 
 #[derive(Deserialize)]
@@ -161,6 +163,7 @@ impl Invocation<'_> {
                     "cancelled before dispatch",
                 ));
             }
+            // Core 编排负责收齐已准入叶子；取消不能在外层丢弃解释器与结算 future。
             let (success, value) = self.invoke(&arguments, None).await?;
             return self.codex_post(&arguments, success, value).await;
         }
@@ -679,6 +682,12 @@ impl Invocation<'_> {
                     .map_err(invalid);
             }
             Backend::Core => {
+                if self.call.name == "edit_files" {
+                    return self.engine.edit_files(self, args).await;
+                }
+                if self.call.name == "tool_program" {
+                    return self.engine.tool_program(self, args).await;
+                }
                 return self
                     .engine
                     .core_tool(
@@ -766,7 +775,7 @@ impl Invocation<'_> {
                     name: self.call.name.clone(),
                     arguments: effective.to_string(),
                 };
-                if call.name == "read_file"
+                if matches!(call.name.as_str(), "read_file" | "environment_info")
                     || call.name == "search_files" && !state.thread.is_read_only_side()
                 {
                     drop(state);
@@ -786,8 +795,14 @@ impl Invocation<'_> {
                 }
                 if call.name == "image_read" {
                     drop(state);
-                    return images::read(self.engine, runtime, self.execution_scope(), &effective)
-                        .await;
+                    return images::read(
+                        self.engine,
+                        runtime,
+                        self.execution_scope(),
+                        self.operation,
+                        &effective,
+                    )
+                    .await;
                 }
                 let mut request = request_with_policy(
                     &call,

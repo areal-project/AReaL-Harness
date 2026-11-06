@@ -1,6 +1,7 @@
 mod import;
 pub use import::{ImportKind, ImportedEntry, ImportedSelection, import_selection};
 mod delivery;
+mod images;
 pub mod search;
 
 use areal_runtime_protocol::*;
@@ -134,6 +135,10 @@ pub fn execute(request: FileHelperRequest) -> Result<Value> {
     }
     let name = parts.last().copied().unwrap_or(".");
     match request.command {
+        FileCommand::ReadImage { options, .. } => {
+            let (bytes, _) = read(&parent, name)?;
+            images::read(bytes, options)
+        }
         FileCommand::Read {
             offset, max_bytes, ..
         }

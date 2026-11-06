@@ -403,6 +403,23 @@ impl Store {
                 }
                 repaired = true;
             }
+            let interrupted_programs: Vec<String> = turn
+                .items
+                .iter()
+                .filter_map(|item| match item {
+                    Item::DynamicToolCall {
+                        tool,
+                        call_id,
+                        execution,
+                        ..
+                    } if matches!(tool.as_str(), "tool_program" | "edit_files")
+                        && execution.outcome == ToolOutcome::Running =>
+                    {
+                        Some(call_id.clone())
+                    }
+                    _ => None,
+                })
+                .collect();
             for item in &mut turn.items {
                 if let Item::DynamicToolCall {
                     execution,
@@ -451,6 +468,13 @@ impl Store {
                         "core_recovery",
                         "unknown_tool_outcome",
                     ));
+                    repaired = true;
+                }
+            }
+            for parent in interrupted_programs {
+                if let Some(content) = crate::tools::recovered_program_content(&turn.items, &parent)
+                    && let Some(Item::DynamicToolCall {content_items,..}) = turn.items.iter_mut().find(|item| matches!(item,Item::DynamicToolCall{call_id,..} if call_id == &parent)) {
+                    *content_items = Some(content);
                     repaired = true;
                 }
             }
@@ -1038,6 +1062,74 @@ mod tests {
             std::fs::read_dir(directory.path().join("blobs"))
                 .unwrap()
                 .all(|entry| !entry.unwrap().path().to_string_lossy().ends_with(".tmp"))
+        );
+    }
+    #[test]
+    fn recovered_program_preserves_completed_and_unknown_children_without_forged_calls() {
+        let directory = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let execution = |operation: &str, outcome: &str, parent: Option<&str>| {
+            serde_json::json!({
+                "runtimeEpoch":"epoch","scopeId":"scope","operationId":operation,
+                "outcome":outcome,"parentCallId":parent
+            })
+        };
+        let parent = serde_json::json!({"type":"dynamicToolCall","id":"parent-item","callId":"parent-call",
+            "tool":"tool_program","arguments":{"code":"await tools.fs_create({path:\"first\",text:\"x\"});await tools.fs_create({path:\"second\",text:\"x\"});"},"status":"inProgress","success":null,"contentItems":null,
+            "execution":execution("parent-op","running",None::<&str>)});
+        let child = |number: usize, outcome: &str| {
+            serde_json::json!({
+                "type":"dynamicToolCall","id":format!("child-item-{number}"),"callId":format!("child-call-{number}"),
+                "tool":"fs_create","arguments":{"path":format!("file-{number}")},
+                "status":if outcome=="running" {"inProgress"} else {"completed"},
+                "success":if outcome=="running" {serde_json::Value::Null} else {serde_json::json!(true)},
+                "contentItems":[{"type":"inputText","text":format!("confirmed-effect-{number}")}],
+                "execution":execution("child-op",outcome,Some("parent-call"))
+            })
+        };
+        let turn = serde_json::json!({"id":"turn","status":"inProgress","items":[parent,child(0,"succeeded"),child(1,"running")]});
+        let thread = serde_json::json!({"id":id,"sessionId":id,"parentThreadId":null,"preview":"program",
+            "modelProvider":"test","createdAt":0,"updatedAt":0,"status":{"type":"idle"},"cwd":"/tmp",
+            "cliVersion":"test","source":"appServer","ephemeral":false,"turns":[turn]});
+        let record = serde_json::json!({"version":5,"thread":thread});
+        std::fs::write(
+            directory.path().join(format!("{id}.json")),
+            serde_json::to_vec(&record).unwrap(),
+        )
+        .unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let threads = store.load(10, 1024 * 1024).unwrap();
+        assert_eq!(threads[0].turns[0].status, TurnStatus::Failed);
+        let messages = crate::history::history(&threads[0], &store).unwrap();
+        let results: Vec<_> = messages
+            .iter()
+            .filter(|message| message.role == "tool")
+            .collect();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            messages
+                .iter()
+                .flat_map(|message| &message.tool_calls)
+                .count(),
+            1
+        );
+        let text = results[0].text_content();
+        assert!(
+            text.contains("child-item-0") && text.contains("succeeded"),
+            "completed child receipt disappeared from recovered model context"
+        );
+        assert!(text.contains("child-call-1") && text.contains("UNKNOWN"));
+        assert!(!text.contains("confirmed-effect-1"));
+        assert!(!text.contains("never-started"));
+        let again = store.load(10, 1024 * 1024).unwrap();
+        let again = crate::history::history(&again[0], &store).unwrap();
+        assert_eq!(
+            again
+                .iter()
+                .find(|message| message.role == "tool")
+                .unwrap()
+                .text_content(),
+            text
         );
     }
     #[test]

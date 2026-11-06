@@ -1171,7 +1171,8 @@ impl Engine {
             {
                 return false;
             }
-            (name != "mcp_tool_search" || self.extensions.policy.lazy_mcp_schemas)
+            (name != "tool_search" || self.extensions.policy.compact_tools)
+                && (name != "mcp_tool_search" || self.extensions.policy.lazy_mcp_schemas)
                 && (!name.starts_with("scheduled_task_") || schedules_available)
                 && (!matches!(name, "task_spawn" | "task_wait" | "task_channel_read") || goal_enabled)
                 && (!matches!(name, "task_spawn" | "task_wait")
@@ -1193,7 +1194,7 @@ impl Engine {
                     || !matches!(name, "agent_spawn_configured" | "agent_wait_all"))
                 && (name != "agent_report" || cell.depth > 0 || cell.handoff_worker.load(Ordering::Acquire))
                 // 原文回取属于所有 Core 会话，不依赖桌面扩展状态。
-                && (desktop_enabled || matches!(name, "read_tool_result" | "read_history" | "read_conversation_context") || !core_names.iter().any(|n| n == name))
+                && (desktop_enabled || matches!(name, "read_tool_result" | "read_history" | "read_conversation_context" | "tool_search") || !core_names.iter().any(|n| n == name))
                 && config
                     .tool_allowlist
                     .as_ref()

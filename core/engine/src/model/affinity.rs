@@ -56,7 +56,13 @@ pub(super) fn prompt_cache_key(
     if !valid_identity(&thread) || !valid_identity(&turn) {
         return None;
     }
-    // 同线程跨 Turn/进程重建保持稳定；模型、凭据与辅助用途隔离。
+    // 摘要与求解可复用相同前缀的缓存路由；权限审核等辅助用途仍隔离。
+    // 这里只是缓存提示，HTTP/WebSocket 的 Turn 状态仍按真实用途隔离。
+    let cache_purpose = if purpose == RequestPurpose::Summary {
+        RequestPurpose::Solve
+    } else {
+        purpose
+    };
     // 不将凭据原文、工作区或业务内容作为传输键，也不改变历史前缀。
     let mut digest = Sha256::new();
     for part in [
@@ -64,7 +70,7 @@ pub(super) fn prompt_cache_key(
         model,
         credential.unwrap_or_default(),
         &thread,
-        &format!("{purpose:?}"),
+        &format!("{cache_purpose:?}"),
     ] {
         digest.update((part.len() as u64).to_le_bytes());
         digest.update(part.as_bytes());
@@ -164,6 +170,53 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert("x-codex-turn-state", HeaderValue::from_str(value).unwrap());
         lease.capture(StatusCode::OK, &headers);
+    }
+
+    #[test]
+    fn summary_shares_only_cache_routing_with_solve() {
+        let key = prompt_cache_key(
+            "fixture",
+            Some("credential"),
+            owner("a"),
+            RequestPurpose::Solve,
+        );
+        assert_eq!(
+            key,
+            prompt_cache_key(
+                "fixture",
+                Some("credential"),
+                owner("b"),
+                RequestPurpose::Summary
+            )
+        );
+        for (model, credential, owner, purpose) in [
+            (
+                "other",
+                Some("credential"),
+                owner("a"),
+                RequestPurpose::Summary,
+            ),
+            (
+                "fixture",
+                Some("other"),
+                owner("a"),
+                RequestPurpose::Summary,
+            ),
+            (
+                "fixture",
+                Some("credential"),
+                Some(("child".into(), "a".into())),
+                RequestPurpose::Summary,
+            ),
+            (
+                "fixture",
+                Some("credential"),
+                owner("a"),
+                RequestPurpose::PermissionReview,
+            ),
+        ] {
+            assert_ne!(key, prompt_cache_key(model, credential, owner, purpose));
+        }
     }
 
     #[test]

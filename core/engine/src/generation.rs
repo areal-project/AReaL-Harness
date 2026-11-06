@@ -416,7 +416,9 @@ impl Engine {
             let tool_definitions = self
                 .visible_tools(cell, &configuration, thread.desktop.is_some(), &thread)
                 .await;
-            let mut tool_definitions = self.project_mcp_tools(cell, tool_definitions).await;
+            let tool_definitions = self.project_mcp_tools(cell, tool_definitions).await;
+            let tool_definitions = self.project_native_tools(cell, tool_definitions).await;
+            let mut tool_definitions = self.project_program_tools(cell, tool_definitions).await;
             if goal_report_only {
                 let name = if thread.goals.goal.as_ref().is_some_and(|g| g.limits_pending) {
                     "goal_set_limits"
@@ -622,10 +624,24 @@ impl Engine {
                 )
             };
             let context_budget = context::ContextBudget::resolve(&self.limits, model.as_ref())?;
+            // model 在本次 generation 内固定。校准只沿原请求前缀传递，压缩/重建时失效。
+            let context_request = context::ContextRequest::new(
+                &messages,
+                &tool_definitions,
+                request_estimate,
+                previous_usage.as_ref(),
+            );
+            let calibrated_estimate = context_request.estimated_tokens;
+            self.store.save_audit(json!({"kind":"contextRequestBudget","threadId":thread_id,"turnId":turn_id,
+                "rawEstimatedInputTokens":request_estimate,"calibratedEstimatedInputTokens":calibrated_estimate,
+                "previousUsageCalibration":context_request.previous_usage,"outputReserveTokens":context_budget.reserve,
+                "inputLimit":context_budget.input_limit,"window":context_budget.window,
+                "toolSchemaBytes":serde_json::to_vec(&tool_definitions)?.len(),
+                "overheadEstimatedTokens":overhead,"calibrationIsSaving":false})).await?;
             let mut compaction_failure = None;
             if side_thread_id.is_none() && preflight_compactions < 2 {
                 let result = self
-                    .compact_context(cell, cancel, overhead, previous_usage, false)
+                    .compact_context(cell, cancel, overhead, Some(&context_request), false)
                     .await;
                 if let Err(error) = result {
                     if error.downcast_ref::<context::CompactionFailure>().is_none() {
@@ -651,24 +667,27 @@ impl Engine {
                 if checkpoint_after != checkpoint_before
                     || history_tail_after != history_tail_before
                 {
+                    if let Some(active) = state.active.as_mut() {
+                        active.observation_results.clear();
+                    }
                     preflight_compactions += 1;
                     previous_usage = None;
                     model_rounds -= 1;
                     continue 'restart;
                 }
                 // 在同一提交锁下核对组装所基于的历史并完成硬预检；steer 不能插到旧提示之前。
-                if context_budget.window > 0 && request_estimate > context_budget.input_limit {
+                if context_budget.window > 0 && calibrated_estimate > context_budget.input_limit {
                     if let Some(error) = compaction_failure {
                         return Err(context::context_overflow(
                             "summary failed and the original full request cannot fit",
-                            request_estimate,
+                            calibrated_estimate,
                             context_budget.input_limit,
                         )
                         .context(error));
                     }
                     return Err(context::context_overflow(
                         "full request does not fit after compaction; inspect fixed instructions, tools and retained inputs",
-                        request_estimate,
+                        calibrated_estimate,
                         context_budget.input_limit,
                     ));
                 }
@@ -822,6 +841,7 @@ impl Engine {
                 let model_span = operation.span.clone();
                 let output_before = (text_output_bytes, media_output_bytes);
                 let mut response_bytes = 0usize;
+                let mut visible_response_bytes = 0usize;
                 let mut request_trace = self
                     .trace_begin(cell, "model", model.name(), None, Some(&logical_request_id))
                     .await?;
@@ -1354,6 +1374,9 @@ impl Engine {
                                 "turn tool-call limit exceeded"
                             );
                             text_output_bytes += self.tool(cell, cancel, call, remaining).await?;
+                            // 编排叶子占用同一个 Turn 工具预算，不能在下次模型响应覆盖回旧计数。
+                            tool_count =
+                                cell.state.lock().await.active.as_ref().unwrap().tool_calls;
                         }
                         continue 'restart;
                     };
@@ -1546,7 +1569,9 @@ impl Engine {
                     let added = match &delta {
                         ModelEvent::TextDelta(text)
                         | ModelEvent::ReasoningDelta { delta: text, .. } => text.len(),
-                        ModelEvent::ProviderContext(value) => serde_json::to_vec(value)?.len(),
+                        ModelEvent::ProviderContext(value) => {
+                            model::provider_context_added_bytes(value, visible_response_bytes)?
+                        }
                         ModelEvent::Binary { data, .. } => data.len(),
                         _ => 0,
                     };
@@ -1559,9 +1584,8 @@ impl Engine {
                     operation.observe(&delta);
                     match delta {
                         ModelEvent::Activity => continue,
-                        ModelEvent::ProviderContext(value) => {
-                            let bytes = serde_json::to_vec(&value)?.len();
-                            text_output_bytes += bytes;
+                        ModelEvent::ProviderContext(mut value) => {
+                            text_output_bytes += added;
                             anyhow::ensure!(
                                 self.limits.max_output_bytes == 0
                                     || text_output_bytes <= self.limits.max_output_bytes,
@@ -1569,6 +1593,14 @@ impl Engine {
                             );
                             let mut state = cell.state.lock().await;
                             let turn = state.thread.turns.last_mut().unwrap();
+                            if value["type"] == "areal_response_output"
+                                && value["items"].as_array().is_some_and(|items| {
+                                    items.iter().any(|item| item["type"] == "message")
+                                })
+                            {
+                                // 仅将本次完成的展示项与其原始输出关联，避免历史重复回放文字。
+                                value["visibleMessageId"] = json!(item_id);
+                            }
                             let context_id = id();
                             completion_items.insert(context_id.clone());
                             turn.items.push(Item::ModelContext {
@@ -1661,6 +1693,7 @@ impl Engine {
                         }
                         ModelEvent::TextDelta(delta) => {
                             visible_output |= !delta.trim().is_empty();
+                            visible_response_bytes += delta.len();
                             text_output_bytes += delta.len();
                             anyhow::ensure!(
                                 self.limits.max_output_bytes == 0
@@ -1710,7 +1743,12 @@ impl Engine {
                         }
                         ModelEvent::Usage(usage) => {
                             if usage.input_tokens > 0 {
-                                previous_usage = Some((request_estimate, usage.input_tokens));
+                                previous_usage = context::UsageCalibration::observe(
+                                    &messages,
+                                    &tool_definitions,
+                                    request_estimate,
+                                    usage.input_tokens,
+                                );
                             }
                             let mut state = cell.state.lock().await;
                             let turn = state.thread.turns.last_mut().unwrap();

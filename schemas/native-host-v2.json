@@ -188,6 +188,27 @@
             "additionalProperties": false,
             "properties": {
               "kind": {
+                "const": "readImage",
+                "type": "string"
+              },
+              "options": {
+                "$ref": "#/$defs/ImageViewOptions",
+                "default": {}
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "path"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
                 "const": "read",
                 "type": "string"
               },
@@ -506,6 +527,86 @@
             "type": "object"
           }
         ]
+      },
+      "ImageCrop": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "width": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "x": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "y": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "type": "object"
+      },
+      "ImageViewOptions": {
+        "additionalProperties": false,
+        "description": "有界派生视图的显式请求；不授予额外文件或进程权限。",
+        "properties": {
+          "crop": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ImageCrop"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "frameIndex": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "maxDimension": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "maxViewBytes": {
+            "format": "uint",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "timeMs": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
       },
       "MediaRef": {
         "additionalProperties": false,
