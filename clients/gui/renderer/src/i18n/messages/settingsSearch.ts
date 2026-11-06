@@ -2,7 +2,7 @@
 export const settingsSearchMessages = {
   "settings.search.general": {
     "zh-CN":
-      "语言、文件与打开、窗口、终端、网络、代理、图形、电源、编辑器、通知、软件更新、Beta、高级诊断",
+      "语言、文件与打开、窗口、终端、网络、代理、图形、电源、编辑器、通知、软件更新、Beta、诊断",
     en: "Language, Files and opening, Windows, Terminal, Network, Proxy, Graphics, Power, Editor, Notifications, Software updates, Beta, Advanced diagnostics",
   },
   "settings.search.appearance": {
