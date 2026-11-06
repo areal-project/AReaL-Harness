@@ -1,0 +1,38 @@
+docs/development/testing.en.md
+  s_65512586972bc8::t_0a615e1ddbd328 264-265
+scripts/harness-smoke.mjs
+  s_65512586972bc8::t_a577b25ba4cbb4 304-314,318-327,331-333,337-339
+  s_65512586972bc8::t_01697feaff4ff3 315-317
+docs/api/core.md
+  s_65512586972bc8::t_0a615e1ddbd328 52-53
+docs/api/core.en.md
+  s_65512586972bc8::t_0a615e1ddbd328 52-53
+core/engine/tests/watchdog.rs
+  s_65512586972bc8::t_a577b25ba4cbb4 417
+docs/development/testing.md
+  s_65512586972bc8::t_0a615e1ddbd328 262-263
+core/engine/src/desktop/media.rs
+  s_65512586972bc8::t_a577b25ba4cbb4 421
+core/engine/tests/fixtures/model-input-budget.json
+  s_65512586972bc8::t_a577b25ba4cbb4 5
+core/engine/tests/recovery.rs
+  s_65512586972bc8::t_0a615e1ddbd328 157,160-163,165-166
+  s_65512586972bc8::t_a577b25ba4cbb4 155,168-171
+  s_65512586972bc8::t_dcbe7680ff0817 167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f418d5cc0a0dca1a7068f835d7b71d2dd3550ba7",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
