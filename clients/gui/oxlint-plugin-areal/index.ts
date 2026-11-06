@@ -5,6 +5,7 @@ import noRawDisclosure from "./rules/no-raw-disclosure.ts";
 import noNativeTitle from "./rules/no-native-title.ts";
 import noRendererDesktopBridge from "./rules/no-renderer-desktop-bridge.ts";
 import noTransitionAll from "./rules/no-transition-all.ts";
+import noRestyle from "./rules/no-restyle.ts";
 
 export default definePlugin({
   meta: { name: "areal" },
@@ -15,5 +16,6 @@ export default definePlugin({
     "no-native-title": noNativeTitle,
     "no-transition-all": noTransitionAll,
     "no-renderer-desktop-bridge": noRendererDesktopBridge,
+    "no-restyle": noRestyle,
   },
 });

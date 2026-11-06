@@ -69,7 +69,7 @@ pnpm --dir clients/gui verify:design
 
 `pnpm --dir clients/gui test:design -- --popup-anchors` 按 `popup-anchors.json` 的入口登记，在 UI 包预览中挂载生产项目侧栏与任务行。打开菜单后移出触发行并逐项悬停，检查菜单与触发按钮的 x/y 位移各不超过 1px、HoverActions opacity 为 1。报告逐项保存测量与截图，失败截图文件名包含入口 ID。此检查只覆盖浏览器预览。
 
-`popup-anchor-lint.mjs` 使用 TypeScript AST 扫描 `renderer/src` 和 `packages/ui/src` 中 HoverActions 内的 DropdownMenuTrigger、PopoverTrigger，按源码文件、Trigger 名称及同类序号与登记表逐一比对；新增入口的预览与登记共同维护。序号从 0 开始，单入口可省略。静态检查继续使用原有只减不增的存量 CSS baseline。
+`popup-anchor-lint.mjs` 使用 TypeScript AST 扫描 `renderer/src` 和 `packages/ui/src` 中 HoverActions 内的 DropdownMenuTrigger、PopoverTrigger，按源码文件、Trigger 名称及同类序号与登记表逐一比对；新增入口的预览与登记共同维护。
 
 ## 仓库内 lint 规则
 
@@ -77,8 +77,10 @@ pnpm --dir clients/gui verify:design
 
 `R-CHECK-018` lint 与类型检查豁免的原因要求由 `areal/require-suppression-reason` 规则拥有；新增规则及正反例的维护流程见[测试指南](../../../docs/development/testing.md#仓库内-lint-规则)。**检查：** `clients/gui/oxlint-plugin-areal/rules/require-suppression-reason.ts`
 
-`R-CHECK-019` 折叠只由共享组件拥有（依据 P6）：高级与详情分组用 SettingsDisclosure，默认收起；长正文用 CollapsibleText；对话过程行用 Disclosure 的右侧箭头；同类记录直接列出。renderer 与 UI 包不写原生 details/summary，不直接引入 Base UI Collapsible；例外路径由 `vite.config.mts` 列出。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-raw-disclosure.ts`
+`R-CHECK-019` 折叠只用共享组件（P6）：高级分组 SettingsDisclosure 默认收起，长正文 CollapsibleText，对话过程行 Disclosure；不写原生 details/summary。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-raw-disclosure.ts`
 
 `R-CHECK-020` 界面文案每条至多 30 个汉字，确认类（键名含 confirm）至多 50 个；i18n 中文与 renderer 里的中文字面量都计入，交给模型的多行证据文本除外。超出时先删实现机制，确有必要再链接帮助文档。**检查：** `clients/gui/scripts/copy-budget.mjs`
 
 `R-CHECK-021` 提示用 TitleTooltip，不写原生 title；不用 transition-all；时长用 `--motion-*`，循环用 `var(--motion-loop)`。**检查：** `clients/gui/scripts/motion-lint.mjs` 与 areal lint
+
+`R-CHECK-022` @areal/ui 组件自己拥有外观：页面只给布局类，不传 style，CSS 不选 data-slot；外观差异做成 variant 或 slot；存量只减不增。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-restyle.ts` 与 `clients/gui/scripts/restyle-lint.mjs`

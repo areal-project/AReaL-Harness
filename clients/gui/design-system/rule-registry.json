@@ -6612,10 +6612,10 @@
     },
     {
       "id": "R-CHECK-019",
-      "title": "折叠只由共享组件拥有（依据 P6）：高级与详情分组用 SettingsDisclosure，默认收起",
+      "title": "折叠只用共享组件（P6）：高级分组 SettingsDisclosure 默认收起，长正文 CollapsibleTex",
       "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
       "strength": "must",
-      "textSha256": "6bfb3a376ae33f21be7d5195e31277281dd98cb9b4cfad93ccfc39a470360c4e",
+      "textSha256": "a5e66a565f7b255d7ddfe7f2dac5b904d2e4da5aa050acb0e56ae3cdb10b147f",
       "check": "clients/gui/oxlint-plugin-areal/rules/no-raw-disclosure.ts"
     },
     {
@@ -6718,6 +6718,14 @@
       "strength": "default",
       "textSha256": "d82273b63fed2a527029a9292a9ac1abb9225363cf73a7d67d56f9d23d58d6b8",
       "check": "clients/gui/scripts/motion-lint.mjs"
+    },
+    {
+      "id": "R-CHECK-022",
+      "title": "@areal/ui 组件自己拥有外观：页面只给布局类，不传 style，CSS 不选 data-slot",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "must",
+      "textSha256": "9fa7d8389c9734018deda5098ffc9c58ff8a272613c1bf3a59f9b9ab279d4922",
+      "check": "clients/gui/oxlint-plugin-areal/rules/no-restyle.ts"
     }
   ]
 }

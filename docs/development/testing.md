@@ -653,6 +653,8 @@ GUI 的仓库规则位于 `clients/gui/oxlint-plugin-areal`，由 `vite.config.m
 
 新增规则：在 rules/ 使用 @oxlint/plugins 的 defineRule，提供原因与替代写法，在 index.ts 注册，并在 vite.config.mts 指定严重度和适用路径。每条规则在 rules.test.ts 增加合法与违规源码，通过真实 oxlint 子进程验证规则名和退出码；运行 `pnpm --dir clients/gui test:unit oxlint-plugin-areal/rules.test.ts`。不引入 ESLint 运行时。豁免写同行 `-- 原因` 或紧邻上方的独立说明注释。
 
+存量较多的规则不写豁免注释，改用基线脚本：`areal/no-restyle`（R-CHECK-022，页面不改 @areal/ui 组件外观）由 `node clients/gui/scripts/restyle-lint.mjs` 对照 `design-system/restyle-baseline.json`，基线外的新违规失败；修好后运行 `--write` 删除对应条目，`--write` 不能加入新条目。
+
 尺寸观察使用 `@areal/ui/observe-resize`，并将清理函数用于 effect 卸载。该工具拥有原生构造；增量门禁约束新增和修改的调用点，存量调用尚未批量迁移。运行 `pnpm --dir clients/gui test:resize-observer` 在隔离 Chrome 中对照原生回调与共享工具的提交时序，并验证 disconnect。该测试不证明所有布局抖动已修复。
 
 无障碍专项只收集四条 JSX-a11y 规则，仓库插件诊断交由常规增量检查；两类检查分别执行，避免存量仓库规则混入无障碍基线。规则正反例和增量检查仍必须通过。

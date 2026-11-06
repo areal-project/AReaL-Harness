@@ -653,6 +653,8 @@ GUI repository rules live in `clients/gui/oxlint-plugin-areal` and load through 
 
 To add a rule, use @oxlint/plugins defineRule under rules/, explain the problem and alternative in its diagnostic, register it in index.ts, and set severity/path scope in vite.config.mts. Add valid and invalid source cases to rules.test.ts, asserting the real oxlint subprocess exit status and rule name. Run `pnpm --dir clients/gui test:unit oxlint-plugin-areal/rules.test.ts`. Do not add an ESLint runtime. Suppressions require an inline `-- reason` or an immediately preceding standalone explanatory comment.
 
+Rules with many legacy violations use a baseline script instead of suppressions: `areal/no-restyle` (R-CHECK-022, pages do not restyle @areal/ui components) is checked by `node clients/gui/scripts/restyle-lint.mjs` against `design-system/restyle-baseline.json`. New violations outside the baseline fail; after fixing one, run `--write` to drop its entry. `--write` cannot add entries.
+
 Use `@areal/ui/observe-resize` for size notifications and its cleanup function on effect unmount. That helper owns native construction; the incremental gate constrains added or changed call sites, while legacy callers have not been migrated in bulk. `pnpm --dir clients/gui test:resize-observer` compares native/shared React commit timing in isolated Chrome and checks disconnect. It does not establish that every layout jump is fixed.
 
 The accessibility-specific scan collects only its four JSX-a11y rules and leaves repository-plugin diagnostics to the regular changed-file check. Run both checks separately so legacy repository-rule findings do not enter the accessibility baseline. Rule examples and changed-file enforcement must still pass.
