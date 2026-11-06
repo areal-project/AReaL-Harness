@@ -259,6 +259,8 @@ Slash 键盘验收等待本次打开触发的 Core 目录刷新完成，再核�
 
 原生工具 smoke 在断言前等待 HTTP fixture 的请求线程全部结束。主求解请求与完成审计严格等量；单次辅助命名允许在 HTTP 抵达前取消，此时只接受无 HTTP 状态的中断审计。已观测请求缺审计、重复命名、未观测却完成以及命名携带工具均失败。
 
+Runtime 输出验收分页收齐超出热窗口的全部原文，并独立检查显式输出额度超限。Harness 的转义密集输出验收通过 `read_tool_result` 续读预览省略的快照，逐字核对 stdout/stderr、终态与页大小；验证命令同时核对有界尾部和保存的完整日志。恢复与重试测试按 `kind=discardedCompletion` 选择审计，不能把上下文预算等诊断记录计作丢弃响应。
+
 `node --test clients/gui/scripts/browser-diagnostics-contract.test.cjs` 覆盖原生关闭的资源所有权和错误边界：先释放后 dispose/profile quiesce、输入与录制收敛、旧 Page 重建、隔离动作超时及迟到销毁。它用受控事件检验等待条件，不证明真实 DOM、窗口焦点或 SELECT popup。后者须用隔离 Electron 核对活动 open SELECT 的关闭、无窗口聚焦、真实 `destroyed` 与自然退出；保留原 10 秒原生关闭和 20 秒 runner 清理期限，强杀仍计失败。
 
 插件连接回归通过一次性屏障冻结旧目录扫描，验证其不能撤销扫描后发布的新代；另在握手暂停时禁用插件，要求禁用完成且连接不得发布。原生工作组用例失败时保留临时目录，并输出具体场景、模型用量和权威工具回执，区分预算错误与其前序失败。

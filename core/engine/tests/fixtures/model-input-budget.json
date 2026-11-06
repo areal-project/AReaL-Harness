@@ -2,7 +2,7 @@
   "fixedEnvironmentUtf8Bytes": 592,
   "profile": "desktop-default-no-runtime-or-plugins",
   "protocol": "chatCompletions",
-  "systemInstructionsUtf8Bytes": 13259,
+  "systemInstructionsUtf8Bytes": 15707,
   "tools": {
     "agent_artifact": {
       "descriptionUtf8Bytes": 391,
