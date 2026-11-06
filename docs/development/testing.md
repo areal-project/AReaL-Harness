@@ -6,7 +6,7 @@
 
 工作台后台冒烟可按领域运行，例如 `pnpm --dir clients/gui test:workbench-backend --domain=providers`。支持 library、trajectory、feedback、tasks、manage、worktree、providers、lifecycle，可组合；省略参数运行完整链路。每次运行使用独立数据目录；停机任务目录和运行中任务管理分别初始化不同项目。开发时选择目标领域及受影响回归，收尾运行完整链路。协议冒烟不替代真实 Web 页面操作。
 
-高频操作基线 `pnpm --dir clients/gui test:ux-journeys` 在真实 Electron、后台和 Core 上走三条旅程：没配模型时去配置、打开项目发消息并在审批中继续排队、右上角摘要。外部模型是脚本内的假模型。每步截图并做 5 项确定性检查（400ms 内有反馈、无原始错误、中文界面不混英文、浮层不互相遮挡、等审批时不显示“运行中”）；检查逻辑在 `scripts/ux-checks.mjs`，由 `test:ux-checks` 单测。修一个体验问题时，往这里加一条检查防止回退。
+高频操作基线 `pnpm --dir clients/gui test:ux-journeys` 在真实 Electron、后台和 Core 上走三条旅程：没配模型时去配置、打开项目发消息并在审批中继续排队、右上角摘要。外部模型是脚本内的假模型。每步截图并做 6 项确定性检查（400ms 内有反馈、无原始错误、中文界面不混英文、浮层不互相遮挡、等审批时不显示“运行中”、用户没操作时不弹提示）；检查逻辑在 `scripts/ux-checks.mjs`，由 `test:ux-checks` 单测。修一个体验问题时，往这里加一条检查防止回退。
 
 双产品对照复用同一合同的[六条基线旅程](conversation-reading-acceptance.md#双产品基线)与共享素材生成器。运行报告区分本轮实测、历史复用、源码推断和未验证，不以开发服务器启动代表用户路径通过。
 

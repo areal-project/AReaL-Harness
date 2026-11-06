@@ -80,7 +80,8 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
           }
         />
       ))}
-      {restorationFailed && !dismissedNotices.has(restorationNoticeId) && (
+      {/* 对话区读不出来时原位已有说明和重试；只有对话仍显示旧内容时才提醒。 */}
+      {restorationFailed && session.thread && !dismissedNotices.has(restorationNoticeId) && (
         <FeedbackNotice
           tone="error"
           message={restorationError}

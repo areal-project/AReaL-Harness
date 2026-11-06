@@ -14,7 +14,7 @@ export function WorkspacePreparationStatus({
   onRetry,
 }: {
   state: WorkspacePreparationState;
-  scope?: "connection" | "workspace" | "info";
+  scope?: "connection" | "workspace";
   onRetry?: () => Promise<unknown>;
 }) {
   const { t } = useI18n();
@@ -22,19 +22,11 @@ export function WorkspacePreparationStatus({
   if (state.kind === "ready") return null;
   const label =
     state.kind === "preparing"
-      ? t(
-          scope === "connection"
-            ? "workspace.connecting"
-            : scope === "info"
-              ? "workspace.readingInfo"
-              : "workspace.preparing",
-        )
+      ? t(scope === "connection" ? "workspace.connecting" : "workspace.preparing")
       : t(
           scope === "connection"
             ? "workspace.connectionUnavailable"
-            : scope === "info"
-              ? "workspace.infoUnavailable"
-              : "workspace.preparationUnavailable",
+            : "workspace.preparationUnavailable",
         );
   if (state.kind === "preparing")
     return (
@@ -46,7 +38,7 @@ export function WorkspacePreparationStatus({
     <FeedbackNotice
       tone="error"
       message={label}
-      detail={`${t(scope === "info" ? "workspace.infoSupplemental" : "workspace.draftEditable")}\n\n${state.detail}`}
+      detail={`${t("workspace.draftEditable")}\n\n${state.detail}`}
       actions={
         onRetry && (
           <Button

@@ -24,7 +24,7 @@ import { DismissIcon } from "../interfaceIcons.js";
 import { McpMentionsPicker, useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
-import { isIndependentCreation } from "../recoveryPresentation.js";
+import { isIndependentCreation, recoverySettings } from "../recoveryPresentation.js";
 import { type Action, type Data, type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
 import { useTaskWorkspace } from "../state/taskWorkspace.js";
@@ -98,6 +98,7 @@ function ConversationContent() {
     preview,
     panelNavigation,
     startup,
+    surfaces,
     pending,
     setError,
   } = useConversationContext();
@@ -109,7 +110,8 @@ function ConversationContent() {
 
   const { terminalOpen, setTerminalOpen } = panelNavigation;
 
-  const { restorationFailed, viewRefreshing } = startup;
+  const { restorationFailed, restorationError, viewFailure, viewRefreshing } = startup;
+  const settings = viewFailure && recoverySettings(viewFailure);
   const projectStopped = project?.state?.hostState === "stopped" && !project.state.connected;
 
   const { t } = useI18n();
@@ -135,7 +137,7 @@ function ConversationContent() {
                   {projectStopped
                     ? t("startup.projectStopped")
                     : restorationFailed
-                      ? t("common.conversation.unavailable")
+                      ? restorationError || t("common.conversation.unavailable")
                       : t(
                           project?.state?.connected
                             ? "startup.readingConversation"
@@ -150,6 +152,19 @@ function ConversationContent() {
                     onClick={() => void retryRestoration()}
                   >
                     {t("recovery.retryView")}
+                  </Button>
+                )}
+                {restorationFailed && settings && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      surfaces.setSettingsTab(settings);
+                      surfaces.setSettingsOpen(true);
+                    }}
+                  >
+                    {t("recovery.checkSettings")}
                   </Button>
                 )}
               </div>

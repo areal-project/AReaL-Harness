@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeTempDir } from "./support/temp.mjs";
-import { expectFeedback, inspectPage } from "./ux-checks.mjs";
+import { expectFeedback, inspectPage, recordToasts } from "./ux-checks.mjs";
 
 const gui = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const require = createRequire(join(gui, "app/package.json"));
@@ -125,6 +125,10 @@ async function launch(name, withModel) {
   const page = await app.firstWindow();
   page.setDefaultTimeout(20_000);
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 900));
+  await page.getByTestId("chat-input").first().waitFor({ timeout: 90_000 });
+  // 重载一次让提示记录先于界面装上，启动时冒出的提示也算在内。
+  await app.context().addInitScript(recordToasts);
+  await page.reload();
   await page.getByTestId("chat-input").first().waitFor({ timeout: 90_000 });
   // 后台退出可能等待保存或确认；限时关闭后强制结束这一个 Electron 进程。
   const close = async () => {
