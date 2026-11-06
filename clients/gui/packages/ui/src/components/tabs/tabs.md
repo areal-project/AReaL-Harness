@@ -25,10 +25,6 @@ exports: ["Tabs", "TabsList", "TabsTrigger", "TabsContent", "tabsListVariants"]
 
 横向/纵向、选中、焦点、禁用。
 
-## 行为
-
-`R-TABS-001` 保留手动/自动激活能力；需要未保存导航守卫时由宿主选择手动激活，焦点移动不等于保存。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

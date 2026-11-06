@@ -25,10 +25,6 @@ exports: ["CodeViewer", "CodeCommentAnnotation", "resolveCodeViewerColorScheme",
 
 引用 [R-UI-COMMON-005](../../../README.md#共同合同)。
 
-## 行为
-
-`R-CODEVIEWER-002` 从原CodeViewer提取纯展示；主题、字号、注释标签由宿主传入。原路径仍读取已保存的代码偏好，注释提交/删除为宿主回调，worker池生命周期保留原所有者。
-
 ## 内容
 
 引用 [R-UI-COMMON-006](../../../README.md#共同合同)。

@@ -32,10 +32,6 @@ related: ["disclosure", "activity-group", "task-context"]
 
 `R-IMAGEDISCLOSURE-005` 名称可识别、图片保留比例、不撑宽阅读列。不可用时说明当前问题并保留原引用。
 
-## 可访问性
-
-`R-IMAGEDISCLOSURE-006` 宿主图片提供可理解替代文本，原查看器拥有打开/关闭焦点；折叠沿 Disclosure 语义。
-
 ## 规则
 
 `R-IMAGEDISCLOSURE-007` 原资源 ID 作 key，不从文件名推断可用性。生产ToolEvent已消费同一组件，工具图片默认收起；用户输入附件和最终交付图片沿原规则。宿主将读取错误保留在折叠外。

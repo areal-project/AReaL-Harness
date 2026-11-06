@@ -25,10 +25,6 @@ exports: ["DropdownMenu", "DropdownMenuPortal", "DropdownMenuTrigger", "Dropdown
 
 打开、禁用项、checkbox/radio、sub菜单。
 
-## 行为
-
-`R-DROPDOWNMENU-001` 维持原Base UI菜单焦点、方向键、Escape与返回；动作权限由宿主判断。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

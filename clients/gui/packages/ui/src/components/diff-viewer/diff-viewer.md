@@ -25,10 +25,6 @@ exports: ["DiffViewer"]
 
 引用 [R-UI-COMMON-005](../../../README.md#共同合同)。
 
-## 行为
-
-`R-DIFFVIEWER-002` 从原DiffViewer提取纯展示；偏好与diffMarkers通过props传入，默认值沿原中立定义。选中行和批注保留，真实文件保存与Git执行归宿主。
-
 ## 内容
 
 引用 [R-UI-COMMON-006](../../../README.md#共同合同)。

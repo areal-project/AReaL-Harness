@@ -2,14 +2,6 @@
 
 按本页流程修改 AReaL Harness 的设计知识。先找负责该判断的现有文档，再决定是否新增文件。
 
-1. `R-CONTRIBUTING-001` 说明用户在 GUI 中要完成的操作与可观察结果。查[设计地图](README.md)，选择一个正文所有者。Web 复用任务引用 GUI 基线并说明浏览器差异。
-2. `R-CONTRIBUTING-004` 核对当前源码、服务契约和已有设计规则。将当前事实、规范建议与待验证候选分开表达，不把建议写成实现承诺。
-3. `R-CONTRIBUTING-005` 在所有者处修改正文。跨主题关系用链接，参数和数值链接生产源，组件合同放在实际实现附近。迁移正文后把旧位置改为引用。
-4. `R-CONTRIBUTING-006` 补上正常与必要异常状态、平台限制和验证位置。产品行为变更按真实用户路径验证，预览与安装包分别报告。
-5. `R-CONTRIBUTING-007` 检查链接、重复定义及本次差异。从仓库根运行 `python3 scripts/check-docs.py`。涉及 GUI 预览时运行 `pnpm --dir clients/gui design:build`，文档阅读路径使用 `pnpm --dir clients/gui test:design --documents` 验证，需要操作核对时使用 `pnpm --dir clients/gui design:dev`。
-
 ## 状态写在相关产物中
-
-`R-CONTRIBUTING-002` 现有行为给出源码或契约依据。规范建议说明适用范围。候选写明尚待验证的内容，通过后在原位置更新状态。重要取舍归[设计决策](decisions/README.md)，跨主题建设进度归[建设计划](roadmap.md)，不另建一份总状态表。
 
 `R-CONTRIBUTING-003` `design/` 只维护中文设计知识，以 GUI 为准并支持后续 Web 复用。GUI 组件、数值和准入归原所有者，Web 接入方维护实际适配与验证，执行与权限归 Core、Runtime 及公共契约。文档、预览、真实路径和安装包证据不能相互替代，具体界限见[架构](architecture.md#验证边界)。

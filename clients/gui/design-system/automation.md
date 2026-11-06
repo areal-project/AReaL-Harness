@@ -1,11 +1,5 @@
 # 自动化设计系统：来源核对与 v1 取舍
 
-## 工程检查入口
-
-`R-CHECK-001` `node scripts/gui-health.mjs` 输出范围、源码摘要和指标口径。`--check` 对照 `health-baseline.json` 限制大文件增长及新增 >800 行源码；`--write` 只收紧，`--allow-regression=<metric>` 输出豁免，CI 仍核对基准上限。Main/UI CSS 总行数只报告。
-
-`R-CHECK-002` 测试元数据归 `scripts/test-manifest.json`，命令归根 `package.json`。`node scripts/test-manifest.mjs --list --platform=linux --layer=contract --available=git,gui-build` 仅选择满足前提的测试，不执行或证明其他平台；跨进程、原生与安装包证据由原 runner 保留。
-
 ## 核对结论
 
 `R-CHECK-003` 闭环：唯一来源、有限组件/组合、可执行约束、独立验证。颜色与截图不能替代组合约束；数据驱动派生物，产品与视觉仍由人判断。
@@ -18,7 +12,6 @@
 | --- | --- | --- |
 | 现有生产 CSS、主题与外观设置 | 校验登记 Token 名有生产定义；数值不搬家 | 所有现有生产组件 |
 | [registry.json](registry.json) 的 Token 名与角色 | 生成 `renderer/src/design-system/catalog.ts` | 现有组件预览读取生产 computed style |
-| `R-CHECK-004` 同一 registry 的组件、模式与 Base 候选范围 | 生成 inventory / patterns / base 中标记的表格区块，导出预览所用候选版本 | Agent 先选模式与生产参考；候选集不等于已冻结版本 |
 | [surfaces](surfaces) 中的页面合同 | 核对版本、目标/参考路径、模式/组件/槽位、必需状态及证据元数据 | 当前设置控件预览的实现说明；后续页面采用同样输入 |
 | 现有 `verify:design` | 先验证目录与派生物，再执行原 CSS 审计 | 本地和已有 verify 调用链 |
 
@@ -29,17 +22,10 @@ pnpm --dir clients/gui design:sync
 pnpm --dir clients/gui verify:design
 ```
 
-`R-CHECK-005` 生成器只改 catalog 和标记的文档表格。CSS、组件、页面、设置、基线与截图不受改写。`verify:design` 只读并提示过期修复；源变更后显式同步、审阅，单改生成物会失败。
-
 ## 增量设计检查
 
-`R-CHECK-006` `design-system-audit.mjs` 在目录检查和已迁移文件审计之外，检查 Git 中生产 renderer 的 `.css/.tsx/.jsx` 变更，含分支、暂存、工作区和未忽略的新文件；开发预览 `design-system/` 除外。新增生产文件自动纳入。
-
-- `R-CHECK-007` 本地默认与 `HEAD` 比较；提交后检查整条分支时设置 `AREAL_DESIGN_BASE=<base-sha>`。
 - `R-CHECK-008` GUI 和 provider 配置 CI 获取完整历史：PR 使用 base 与当前检出的合并提交的 merge-base，push 使用事件的 before，手动运行使用 `HEAD^`；显式传入 `AREAL_DESIGN_BASE`。GitHub Actions 缺少基线或指定提交不可读取时失败，不静默退回 `HEAD`。
-- `R-CHECK-009` 逐文件比较违规类型、值和次数；存量不因文案编辑阻断，新增或增长失败。Git 识别的重命名继承基线，复制按新增检查。
 - 新增硬编码字号、颜色及静态 JSX 中的 `button/input/select/textarea` 会失败。公共基础控件目录可实现原生控件，仍检查字号和颜色。基础 CSS 可定义设计值，组件局部 CSS 变量的裸色仍受检查。
-- `R-CHECK-010` 例外沿原变更准入提供理由与证据；检查器没有整文件免检或自动更新基线入口。确需公共能力时修改原所有者，调整审计策略须显式评审。
 
 `R-CHECK-011` `verify`、`verify:design` 均执行门禁，后者同时检查目录与临时 Git 仓库回归。GUI workflow 保留设计日志，脚本失败使 job 失败；required check 取决于远端保护规则，本地无法证明。
 
@@ -58,8 +44,6 @@ pnpm --dir clients/gui verify:design
 `R-CHECK-014` 页面执行[结构化 B 路线](structured-flow.md#执行顺序与每步完成条件)，准入归 [governance](governance.md#差异筛选准入)。复用[提示词](templates/video-analysis.prompt.md)、[schema](templates/video-analysis.schema.json)、[核查模板](templates/evidence-review.template.json)；尚未接入 `verify:design` 视觉判断或强制模型调用，目录检查不核实帧、误判与执行。
 
 `Q-CONVERSATION-VIDEO-AB-07` 的三段录像、误判裁决与图片缩放修复见[复合题](exercises/conversation-flow.md#视频分析辅助的双路线实验)。样本仅支持工作流程选择。
-
-`R-CHECK-016` 观察器提名差异，实现者结合合同、原件及日志裁决。使用已授权视频接口前核对能力/素材，保留模型、强度、读取/采样限制；不新增外发、登录、执行或发布权限。
 
 ## 无障碍与主题证据
 
@@ -84,3 +68,5 @@ pnpm --dir clients/gui verify:design
 `R-CHECK-021` 提示用 TitleTooltip，不写原生 title；不用 transition-all；时长用 `--motion-*`，循环用 `var(--motion-loop)`。**检查：** `clients/gui/scripts/motion-lint.mjs` 与 areal lint
 
 `R-CHECK-022` @areal/ui 组件自己拥有外观：页面只给布局类，不传 style，CSS 不选 data-slot；外观差异做成 variant 或 slot；存量只减不增。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-restyle.ts` 与 `clients/gui/scripts/restyle-lint.mjs`
+
+`R-CHECK-023` 组件合同只写需要判断的强制规则，每个包内组件合同不超过 10 条；能机器判断的写成检查，默认做法靠组件默认值表达。**检查：** `clients/gui/scripts/design-rules.mjs`

@@ -8,9 +8,7 @@
 
 ## 开工顺序
 
-1. `R-ENTRY-002` 修改普通页面时，使用[使用者入口](../packages/ui/README.md)、[Token 入口](../packages/ui/token-reference.md)及对应组件合同。
 2. `R-ENTRY-047` 修改公共规则或准入时，查[规则登记](rule-registry.json)找到唯一正文所有者。新增规则登记 ID、owner 和必须、默认或可探索强度。其他文档引用 ID。组件参数和数值继续由真实源码拥有。
-3. `R-ENTRY-048` 页面合同与差异裁决按[结构化流程](structured-flow.md#执行顺序与每步完成条件)执行。完成后按[完成条件](governance.md#完成条件)报告实际证据与限制。
 
 规则定义、引用、文档盘点和入口字节预算由 `node scripts/design-rules.mjs` 检查。`rule-registry.json`记录规则身份，`document-inventory.json`记录四类文档和迁移去向。字段与校验边界见[规则维护](rule-maintenance.md)。
 
@@ -32,8 +30,6 @@
 
 `R-ENTRY-003` 从仓库根运行 `pnpm --dir clients/gui design:dev`，打开 `/design-system.html`。预览挂载生产组件与本地 fixture，不连接 Core 或供应商。常规设置会读写当前 origin 的 localStorage，验收使用隔离浏览器上下文。服务操作不可用。展示 fixture 不表示真实业务支持未知提交。
 
-`R-ENTRY-004` `design:build` 输出 `clients/gui/dist/design-system/`。普通 renderer 构建不含预览入口，安装包使用 `renderer/dist/`。`test:design` 使用隔离 Chrome，保留截图、计算样式与 manifest，可用 `AREAL_GUI_TEST_BROWSER` 指定浏览器。字体、平台和缩放条件分别评估。
-
 ```sh
 pnpm --dir clients/gui typecheck
 pnpm --dir clients/gui verify:design
@@ -48,7 +44,3 @@ pnpm --dir clients/gui test:design
 `R-ENTRY-005` 当前用户决定优先。规范与代码不符时，明确指出差异并修正拥有该事实的来源；不能选一个相近数值、复制局部样式后声称已统一。
 
 `R-ENTRY-006` Codex 是桌面视觉与交互的第一参考；截图只证明所采状态，不授权复制它的产品能力、品牌或平台尺寸。参考观察不能覆盖本仓执行、权限与历史合同。
-
-## 目录与完成边界
-
-`R-ENTRY-007` 实现职责由[架构](architecture.md#分层与所有权)维护。Base 冻结、API 稳定性、预览结果、真实路径、原生输入和安装包分别报告。界面文案同时维护简体中文和英文词条，具体调用与校验合同见[界面语言与文案开发](../README.md#界面语言与文案开发)。
