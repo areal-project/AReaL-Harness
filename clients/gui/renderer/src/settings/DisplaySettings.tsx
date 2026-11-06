@@ -25,6 +25,7 @@ import { getResolvedOrResolveTheme } from "@pierre/diffs";
 import "../lib/diffsHighlighterEngine.js";
 import { NotificationSettings } from "./NotificationSettings.js";
 import { MenuBarSetting } from "./MenuBarSetting.js";
+import { BetaUpdateSetting } from "./BetaUpdateSetting.js";
 import { ProjectlessDirectorySetting } from "./ProjectlessDirectorySetting.js";
 import { FileOpenSetting } from "./FileOpenSetting.js";
 import type { Action, Data, Snapshot, PlatformServices } from "../services.js";
@@ -159,6 +160,7 @@ export function GeneralSettings({
   fileOpen,
   action,
   connected = false,
+  updates = false,
   onDiagnostics,
 }: {
   settings?: Data;
@@ -169,6 +171,7 @@ export function GeneralSettings({
   fileOpen?: PlatformServices["fileOpen"];
   action?: Action;
   connected?: boolean;
+  updates?: boolean;
   onDiagnostics?: () => void;
 }) {
   const { t } = useI18n();
@@ -349,6 +352,13 @@ export function GeneralSettings({
         </SettingsGroupCard>
       </SettingsSection>
       <NotificationSettings settings={settings} action={action} connected={connected} />
+      {updates && (
+        <BetaUpdateSetting
+          enabled={settings.betaUpdates === true}
+          action={action}
+          connected={connected}
+        />
+      )}
       {onDiagnostics && (
         <SettingsSection title={t("settings.service.title")}>
           <SettingsGroupCard>

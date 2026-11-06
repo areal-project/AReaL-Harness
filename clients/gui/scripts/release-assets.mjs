@@ -9,8 +9,10 @@ const require = createRequire(new URL("../app/package.json", import.meta.url));
 const { stringify } = require("yaml");
 const {
   githubFeedUrl,
+  githubBetaFeedUrl,
+  githubRepository,
   githubReleaseUrl,
-  stableVersion,
+  releaseVersion,
   validateUpdate,
 } = require("../app/src/update/config.cjs");
 const [inputArg, outputArg] = process.argv.slice(2);
@@ -27,8 +29,9 @@ assert.equal(
   "passed",
   "Model configuration and Composer acceptance must pass on the signed package; build a new candidate with the current signing script",
 );
-assert.ok(stableVersion(state.version));
+assert.ok(releaseVersion(state.version), "GUI version must be X.Y.Z or X.Y.Z-beta.N");
 const version = state.version;
+const beta = version.includes("-beta.");
 await checkDmgSize(join(input, `AReaLHarness-${version}-macos-arm64.dmg`));
 const resources = join(input, state.appName, "Contents/Resources");
 const config = JSON.parse(await readFile(join(resources, "areal-update.json"), "utf8"));
@@ -41,6 +44,8 @@ const core = require("../../../services/workbench/src/desktop/core/bundle.cjs").
 ).manifest;
 assert.equal(core.profile, "release");
 assert.equal(core.workingTree, false);
+// GUI 与 CLI 共用版本号，包内后台必须是同一版本，客户端才能按版本号判断谁更新。
+assert.equal(core.productVersion, `areal ${version}`, "GUI and bundled Core versions must match");
 const source = JSON.parse(
   execFileSync(
     "python3",
@@ -78,7 +83,7 @@ const update = {
   sha512: zip.sha512,
   releaseDate: state.completedAt,
 };
-validateUpdate(update, githubFeedUrl, { engine: "electron" });
+validateUpdate(update, beta ? githubBetaFeedUrl : githubFeedUrl, { engine: "electron" });
 await writeFile(join(output, "latest-mac.yml"), stringify(update));
 // 发布信息只包含来源和验证摘要，签名日志及本机路径留在本地。
 await writeFile(
@@ -90,6 +95,7 @@ await writeFile(
       tag: `gui-v${version}`,
       repository: "areal-project/AReaL-Harness",
       feedUrl: githubFeedUrl,
+      channels: beta ? ["beta"] : ["stable", "beta"],
       sourceRevision: core.sourceRevision,
       mergedMainRevision: source.mergedMainRevision,
       coreVersion: core.productVersion,
@@ -108,7 +114,44 @@ await writeFile(
     2,
   ) + "\n",
 );
-const names = [...artifacts.map((item) => item.name), "latest-mac.yml", "release.json"];
+const dmg = artifacts[1];
+const cask = beta ? "areal-harness@beta" : "areal-harness";
+// Homebrew 只负责首次安装；应用自更新，所以声明 auto_updates，brew upgrade 默认不覆盖。
+await writeFile(
+  join(output, `${cask}.rb`),
+  `cask "${cask}" do
+  version "${version}"
+  sha256 "${dmg.sha256}"
+
+  url "${githubReleaseUrl}/gui-v#{version}/AReaLHarness-#{version}-macos-arm64.dmg"
+  name "AReaL Harness"
+  desc "Desktop client for the AReaL Harness agent runtime${beta ? " (beta channel)" : ""}"
+  homepage "https://github.com/${githubRepository}"
+
+  auto_updates true
+  conflicts_with cask: "${beta ? "areal-harness" : "areal-harness@beta"}"
+  depends_on arch: :arm64
+  depends_on macos: ">= :sequoia"
+
+  app "${state.appName}"
+${
+  beta
+    ? `
+  caveats <<~EOS
+    To keep receiving beta updates, open Settings > General > Software updates > Advanced
+    and turn on "Get beta versions".
+  EOS
+`
+    : ""
+}end
+`,
+);
+const names = [
+  ...artifacts.map((item) => item.name),
+  "latest-mac.yml",
+  "release.json",
+  `${cask}.rb`,
+];
 const sums = await Promise.all(
   names.map(async (name) => `${checksum(await readFile(join(output, name)))}  ${name}\n`),
 );

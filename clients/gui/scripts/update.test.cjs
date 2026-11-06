@@ -4,7 +4,12 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { createUpdater } = require("../app/src/update/controller.cjs");
 const { prepareNativeInstall } = require("../app/src/update/native-ready.cjs");
-const { githubFeedUrl, validateUpdate } = require("../app/src/update/config.cjs");
+const {
+  githubFeedUrl,
+  githubBetaFeedUrl,
+  newer,
+  validateUpdate,
+} = require("../app/src/update/config.cjs");
 
 const offer = (version) => ({
   version,
@@ -237,6 +242,74 @@ test("preview has no automatic channel and invalid offers never become installab
     assert.deepEqual(calls.slice(1), []);
   }
   assert.equal(validateUpdate(offer("0.1.12"), githubFeedUrl).version, "0.1.12");
+});
+
+test("versions follow semver with only X.Y.Z and X.Y.Z-beta.N accepted", () => {
+  const ascending = [
+    "0.1.18",
+    "0.2.0-beta.1",
+    "0.2.0-beta.2",
+    "0.2.0-beta.10",
+    "0.2.0",
+    "0.2.1-beta.1",
+  ];
+  for (let i = 1; i < ascending.length; i++) {
+    assert.equal(newer(ascending[i], ascending[i - 1]), true, ascending[i]);
+    assert.equal(newer(ascending[i - 1], ascending[i]), false, ascending[i - 1]);
+  }
+  for (const version of ["0.2.0-rc.1", "0.2.0-beta.0", "0.2.0-beta", "v0.2.0", "0.2"])
+    assert.equal(newer(version, "0.1.0"), false, version);
+  assert.throws(() => validateUpdate(offer("0.2.0-beta.1"), githubFeedUrl), /正式更新频道/);
+  assert.equal(validateUpdate(offer("0.2.0-beta.1"), githubBetaFeedUrl).version, "0.2.0-beta.1");
+});
+
+test("beta switch moves to the beta feed, and turning it off never downgrades", async () => {
+  const feeds = { [githubFeedUrl]: "0.2.0", [githubBetaFeedUrl]: "0.2.1-beta.1" };
+  const { updater, controller, calls } = fixture({ version: "0.2.0" });
+  const feed = () => calls.filter((call) => call[0] === "feed").at(-1)[1].url;
+  updater.checkForUpdates = async () => ({ updateInfo: offer(feeds[feed()]) });
+  assert.equal(feed(), githubFeedUrl);
+  assert.equal((await controller.check()).status, "idle");
+  const found = await controller.setChannel(true);
+  assert.equal(found.channel, "beta");
+  assert.equal(feed(), githubBetaFeedUrl);
+  assert.equal(found.status, "available");
+  assert.equal(found.version, "0.2.1-beta.1");
+  const back = await controller.setChannel(false);
+  assert.equal(feed(), githubFeedUrl);
+  assert.equal(back.status, "idle");
+  assert.equal(back.version, undefined);
+  assert.deepEqual(
+    calls.filter((call) => call[0] !== "feed"),
+    [],
+  );
+});
+
+test("a beta install on the stable channel waits until stable passes it", async () => {
+  const { updater, controller } = fixture({ version: "0.2.1-beta.1" });
+  for (const [version, status] of [
+    ["0.2.0", "idle"],
+    ["0.2.1", "available"],
+  ]) {
+    updater.checkForUpdates = async () => ({ updateInfo: offer(version) });
+    assert.equal((await controller.check()).status, status, version);
+  }
+});
+
+test("release channels: stable feeds both channels, beta only beta, never downward", async () => {
+  const { channelsFor, channelStep } = await import("./release-channels.mjs");
+  assert.deepEqual(
+    channelsFor("0.2.0").map((channel) => channel.tag),
+    ["gui-update-channel", "gui-beta-channel"],
+  );
+  assert.deepEqual(
+    channelsFor("0.2.1-beta.1").map((channel) => channel.tag),
+    ["gui-beta-channel"],
+  );
+  assert.equal(channelStep("0.2.0", undefined), "advance");
+  assert.equal(channelStep("0.2.0", "0.2.0-beta.3"), "advance");
+  assert.equal(channelStep("0.2.0", "0.2.0"), "unchanged");
+  assert.throws(() => channelStep("0.2.0", "0.2.1-beta.1"), /refusing/);
 });
 
 test("native staging readiness, rejection, and timeout release every owned listener", async () => {

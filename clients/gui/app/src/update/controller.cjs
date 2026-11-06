@@ -1,10 +1,10 @@
 // @ts-check
 "use strict";
-const { newer, validateUpdate } = require("./config.cjs");
+const { newer, validateUpdate, channelFeedUrl } = require("./config.cjs");
 
 // 下载和摘要校验可保持后台运行；Squirrel 原生准备只在安全停止和占用检查后触发。
 /** @typedef {'idle'|'available'|'downloading'|'validating'|'deferred'|'installing'|'error'} UpdateStatus */
-/** @typedef {{enabled:boolean,checking:boolean,downloading:boolean,installing:boolean,downloaded?:string,status:UpdateStatus,version?:string,percent:number|null,detail:string}} UpdateState */
+/** @typedef {{enabled:boolean,channel:'stable'|'beta',checking:boolean,downloading:boolean,installing:boolean,downloaded?:string,status:UpdateStatus,version?:string,percent:number|null,detail:string}} UpdateState */
 /** @typedef {{hasWork:()=>boolean|Promise<boolean>,prepareInstall:()=>Promise<unknown>,recoverInstall?:()=>Promise<unknown>,onState?:(state:UpdateState)=>void}} UpdateLifecycle */
 /** @param {UpdateLifecycle & {updater:import('electron-updater').AppUpdater,config?:import('./config.cjs').UpdateConfig|null,version:string,platform?:NodeJS.Platform,arch?:string,notify?:(options:import('electron').MessageBoxOptions)=>Promise<import('electron').MessageBoxReturnValue>,prepareNativeInstall?:()=>Promise<void>,log?:Pick<Console,'warn'>}} options */
 function createUpdater({
@@ -37,14 +37,20 @@ function createUpdater({
   updater.autoInstallOnAppQuit = false;
   updater.allowDowngrade = false;
   updater.allowPrerelease = false;
-  if (enabled)
+  /** @type {'stable'|'beta'} */ let channel = "stable";
+  /** @type {'stable'|'beta'} */ let wanted = "stable";
+  const useFeed = () =>
+    enabled &&
+    config &&
     updater.setFeedURL({
       provider: "generic",
-      url: config.feedUrl,
+      url: channelFeedUrl(config, channel),
       useMultipleRangeRequest: false,
     });
+  useFeed();
   const state = () => ({
     enabled,
+    channel: wanted,
     checking,
     downloading,
     installing,
@@ -196,6 +202,14 @@ function createUpdater({
         await message("更新不可用", "首版仅支持配置了产品更新源的 macOS Apple Silicon 安装包。");
       return state();
     }
+    // 只在没有下载或安装时换频道；已下载的更新仍按原频道校验结果安装。
+    if (wanted !== channel && !downloaded) {
+      channel = wanted;
+      available = null;
+      highWater = version;
+      useFeed();
+      set("idle");
+    }
     if (downloaded) {
       if (manual) await install();
       return state();
@@ -231,7 +245,7 @@ function createUpdater({
           await message("暂未发现新版本", `当前版本 ${version}，当前更新频道尚无可用的更高版本。`);
         return state();
       }
-      validateUpdate(info, config.feedUrl, config);
+      validateUpdate(info, channelFeedUrl(config, channel), config);
       highWater = info.version;
       available = info;
       checking = false;
@@ -261,6 +275,14 @@ function createUpdater({
     }
     return state();
   }
-  return { check, download, install, state };
+  /** @param {boolean} beta 来自用户设置；切换后立即检查，不降级。 */
+  function setChannel(beta) {
+    const next = beta ? "beta" : "stable";
+    if (next === wanted) return Promise.resolve(state());
+    wanted = next;
+    publish();
+    return enabled ? check() : Promise.resolve(state());
+  }
+  return { check, download, install, state, setChannel };
 }
 module.exports = { createUpdater };

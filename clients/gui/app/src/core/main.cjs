@@ -648,12 +648,13 @@ function startDesktop() {
     }
     // Wait for the authoritative saved Library before applying the default.
     // A temporary disconnect must not reset the native preference.
-    if (state.connection?.state === "ready" && state.library && !quitting)
+    if (state.connection?.state === "ready" && state.library && !quitting) {
       menuBar?.sync(state.library.settings?.showInMenuBar !== false);
-    if (state.connection?.state === "ready" && state.library && !quitting)
+      void updates?.setChannel(state.library.settings?.betaUpdates === true);
       void snapShots
         ?.configure(state.library.settings?.snapShot)
         .catch((error) => console.error("SnapShots settings failed", error));
+    }
     const enabled = state.library?.settings?.computerControlEnabled === true;
     const wasEnabled = computerWasEnabled;
     computerWasEnabled = enabled;
