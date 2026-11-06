@@ -374,7 +374,7 @@ CI 失败先按“证据 → 操作身份与状态所有者 → 可控反例 →
 
 Side Chat 引用烟测等待选区弹层完成入场过渡后再操作；键盘选区使用真实 Shift 扩展和 Enter，其他引用使用鼠标点击，保留内容、去重和容量边界断言。manifest 记录引用长度、目标和操作阶段。浏览器导航烟测被动保存原生快捷键及最近 128 个 Main 页面回执；这些记录不改变页面返回顺序，不将未复现的 CI 失败声明为已修复。
 
-选区夹具在脚本定位后发出 pointerdown，先由既有阅读所有者确认当前位置，再建立可见的原生 Range；激活前保存按钮与视口几何。队列烟测对 snapshot/command 和退出使用既有期限，Main 的 `uncaughtExceptionMonitor` 只落盘错误栈，不吞异常；任何异常或清理失败仍使验收失败。
+选区夹具在脚本定位后发出 pointerdown，先由既有阅读所有者确认当前位置，再建立可见的原生 Range；激活前保存按钮与视口几何。队列烟测对 snapshot/command 和退出使用既有期限，Main 的 `uncaughtExceptionMonitor` 只落盘错误栈，不吞异常；任何异常或清理失败仍使验收失败。 Hook 崩溃夹具先完成副作用计数，再发布进程就绪 PID；测试读到就绪信号后仍核对恰好一次副作用，并在重启后确认 UNKNOWN 与禁止重放。
 
 macOS 与 Linux 宿主检查使用同一矩阵定义，`fail-fast: false` 保证任一平台失败不取消另一平台的覆盖。macOS 使用 `make setup-node`，仅安装原生 smoke 和 SDK 所需的 Node 依赖；Linux `make setup` 继续安装全部锁定格式工具。原生验收在同一次子 Make 调用中运行 Runtime、Harness、桌面 API 和 Workgroup smoke，共用一次 workspace build。Docker 只复制所需 CLI/TUI/Web 客户端，GUI 不进入构建上下文。原生 Runtime 和 Harness 覆盖保持不变。
 
