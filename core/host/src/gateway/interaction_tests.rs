@@ -1249,8 +1249,16 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 f.call("areal/model/list")
                     .await
                     .reply(json!({"data":[{"providerId":"fixture","modelId":"model"}]}));
+                f.call("areal/capabilities")
+                    .await
+                    .reply(json!({"features":{"permissionPresets":true}}));
                 let (next, result) = listing.await.unwrap();
-                assert_eq!(result.unwrap()["models"][0]["modelId"], "model");
+                let result = result.unwrap();
+                assert_eq!(result["models"][0]["modelId"], "model");
+                assert_eq!(
+                    result["features"],
+                    json!({"permissionPresets":true,"permissionFullAccess":false})
+                );
                 session = next;
             }
             let mut send = f.request(
@@ -1289,6 +1297,12 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 session.request(&unknown).await.unwrap_err().to_string(),
                 "FORBIDDEN"
             );
+            // 桌面命令通道只给本机已批准写入的网页；手机和远程即使有 gui-write 也拒绝。
+            let desktop = json!({"id":"desktop","method":"desktop.command","params":{"sourceId":"source","command":"list","request":{}}});
+            assert_eq!(session.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
+            let mut local = f.session("a");
+            local.local = true;
+            assert_eq!(local.request(&desktop).await.unwrap_err().to_string(), "FORBIDDEN");
             f.grant("a", |grant| grant["projectIds"] = json!([]));
             let mut denied = f.session("a");
             denied.gui_read = true;

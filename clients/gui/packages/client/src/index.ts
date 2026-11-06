@@ -259,12 +259,13 @@ export class HostClient {
       () => this.retry(),
     );
   }
-  async #subscribeShell() {
+  async #subscribeShell(refresh = false) {
     const transport = this.#transport;
     if (!transport) return;
     const epoch = ++this.#shellEpoch;
     const old = previous(this.#reads.shell);
-    this.#publishReads({ ...this.#reads, shell: stale(this.#reads.shell) });
+    // 同一连接上的主动重读保留原目录直到新基线到达；标成过期会让界面把项目当成断开并卸下正在提交的输入框。
+    if (!refresh || !old) this.#publishReads({ ...this.#reads, shell: stale(this.#reads.shell) });
     if (old)
       void transport
         .request("shell.unsubscribe", { subscriptionId: old.subscriptionId })
@@ -412,7 +413,7 @@ export class HostClient {
   }
   /** 创建回执之后重读目录，使新执行项目与会话立即进入同一投影。 */
   refreshShell() {
-    return this.#subscribeShell();
+    return this.#subscribeShell(true);
   }
   async selectSession(target: { projectId: string; threadId: string } | null) {
     if (

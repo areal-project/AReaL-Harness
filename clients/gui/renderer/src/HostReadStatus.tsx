@@ -21,7 +21,9 @@ export function hostWritesEnabled() {
 export function HostReadStatus({ reads }: { reads: NonNullable<PlatformServices["reads"]> }) {
   const state = useSyncExternalStore(reads.subscribe, reads.status);
   return (
+    // 只给辅助技术与验收读；可见的话会排在 #root 之外把页面撑高。
     <output
+      className="sr-only"
       aria-live="polite"
       data-testid="host-read-status"
       data-freshness={state.freshness}

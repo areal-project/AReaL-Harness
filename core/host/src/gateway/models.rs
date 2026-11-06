@@ -83,6 +83,21 @@ impl Session {
                 && request.get("commandId").is_none(),
             "INVALID_PARAMS"
         );
+        let mut result = self.project_catalog(project, generation).await?;
+        // 输入框的权限菜单按这两项决定是否可选；桌面窗口原来从 Core 能力里直接读。
+        let caps = self
+            .rpc(project, generation, "areal/capabilities", json!({}))
+            .await?;
+        self.authorize(Some(project), "observe")?;
+        ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
+        result["features"] = json!({
+            "permissionPresets": caps["features"]["permissionPresets"] == true,
+            "permissionFullAccess": caps["features"]["permissionFullAccess"] == true,
+        });
+        Ok(result)
+    }
+
+    async fn project_catalog(&self, project: &str, generation: &str) -> Result<Value> {
         if self.local && self.gui_write {
             let id = self.project_id(project)?;
             if let Some(catalog) = self

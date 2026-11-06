@@ -158,6 +158,16 @@ impl Workbench {
                     continue;
                 };
                 let _ = sender.send(match frame.get("error") {
+                    // 桌面命令的失败原因是给本机用户看的提示，原样带回；其它领域只回错误码。
+                    Some(error) if error["code"] == "COMMAND_FAILED" => Err(crate::wire::error(
+                        "COMMAND_FAILED",
+                        error["message"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .chars()
+                            .take(512)
+                            .collect::<String>(),
+                    )),
                     Some(error) => Err(anyhow::anyhow!(
                         "{}",
                         crate::server::error_code(

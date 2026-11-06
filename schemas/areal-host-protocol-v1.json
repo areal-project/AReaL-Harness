@@ -7965,6 +7965,22 @@
               "type": "null"
             }
           ]
+        },
+        "features": {
+          "type": "object",
+          "properties": {
+            "permissionPresets": {
+              "type": "boolean"
+            },
+            "permissionFullAccess": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "permissionPresets",
+            "permissionFullAccess"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -13110,7 +13126,8 @@
               "providers.read",
               "providers.command",
               "pages.command",
-              "pages.resource"
+              "pages.resource",
+              "desktop.command"
             ]
           }
         },
@@ -35310,6 +35327,102 @@
         "runId",
         "taskId"
       ]
+    },
+    "DesktopCommandParams": {
+      "type": "object",
+      "properties": {
+        "sourceId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "enum": [
+            "analytics",
+            "chatgpt",
+            "cloud",
+            "cloudSession",
+            "configure",
+            "connect",
+            "continue",
+            "dismissRecovery",
+            "editMessage",
+            "feedback",
+            "fork",
+            "history",
+            "library",
+            "list",
+            "manage",
+            "media",
+            "open",
+            "prediction",
+            "prepareCreator",
+            "projectless",
+            "providers",
+            "queue",
+            "queueEdit",
+            "reconcile",
+            "remoteControl",
+            "resources",
+            "side",
+            "tasks",
+            "trajectory",
+            "workspace"
+          ],
+          "description": "桌面命令里由后台执行的部分。会话创建、发送、引导、停止与回答走 Host 自己的写方法；窗口、系统与应用生命周期命令只在桌面窗口里有。"
+        },
+        "request": {
+          "x-opaque": true,
+          "x-source": "clients/gui/packages/workbench/client/desktop-contract/transport.cjs",
+          "description": "桌面命令原参数；后台用桌面命令合同逐项校验，Host 只核对命令名与来源。"
+        }
+      },
+      "required": [
+        "sourceId",
+        "command",
+        "request"
+      ],
+      "additionalProperties": false
+    },
+    "DesktopCommandRequest": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "desktop.command"
+        },
+        "params": {
+          "$ref": "#/$defs/DesktopCommandParams"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "fixture",
+          "method": "desktop.command",
+          "params": {
+            "sourceId": "fixture",
+            "command": "resources",
+            "request": {
+              "operation": "hooks"
+            }
+          }
+        }
+      ]
+    },
+    "DesktopCommandResult": {
+      "x-opaque": true,
+      "x-source": "clients/gui/packages/workbench/client/desktop-contract/transport.cjs",
+      "description": "桌面命令原结果；后台按桌面命令合同校验后返回。"
     }
   },
   "x-current": {
@@ -35818,6 +35931,13 @@
         "pages.resource": {
           "request": "#/$defs/WorkbenchPageResourceRequest",
           "result": "#/$defs/WorkbenchPageResourceResult",
+          "source": "core/host/src/workbench_route.rs",
+          "capability": "gui-write-v1",
+          "x-owner": "workbench"
+        },
+        "desktop.command": {
+          "request": "#/$defs/DesktopCommandRequest",
+          "result": "#/$defs/DesktopCommandResult",
           "source": "core/host/src/workbench_route.rs",
           "capability": "gui-write-v1",
           "x-owner": "workbench"

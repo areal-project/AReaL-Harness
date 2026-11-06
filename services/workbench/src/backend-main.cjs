@@ -7,7 +7,14 @@ const { createInterface } = require("node:readline");
 const { MAX_FRAME } = require("./channel.cjs");
 const { createPageSession, prepareInput } = require("./pages.cjs");
 const pageMethods = ["pages.command", "pages.resource"];
-const privateMethods = ["input.prepare", "execution.prepare", "execution.dispatch", "creation.read", "creation.catalog"];
+// 本机网页的桌面命令；与 Host 协议的 DesktopCommandParams.command 一致。
+const desktopCommands = new Set([
+  "analytics", "chatgpt", "cloud", "cloudSession", "configure", "connect", "continue", "dismissRecovery",
+  "editMessage", "feedback", "fork", "history", "library", "list", "manage", "media", "open", "prediction",
+  "prepareCreator", "projectless", "providers", "queue", "queueEdit", "reconcile", "remoteControl", "resources",
+  "side", "tasks", "trajectory", "workspace",
+]);
+const privateMethods = ["desktop.command", "input.prepare", "execution.prepare", "execution.dispatch", "creation.read", "creation.catalog"];
 const domains = {
   "library.command": "library",
   "worktree.read": "workspace",
@@ -108,6 +115,23 @@ async function start({ input, output }) {
           return {models,profiles,defaultProfile:defaultProfile ? pick(defaultProfile,["id","revision"]) : null,
             lastAcceptedModel:accepted ? {...pick(accepted,["modelId","reasoningEffort","acceptedAt"]),model:accepted.model ? pick(accepted.model,["providerId","modelId"]) : null} : null};
         }
+        if (request.method === "desktop.command") {
+          const { command, request: params } = request.params ?? {};
+          if (!desktopCommands.has(command) || !params || typeof params !== "object" || Array.isArray(params))
+            throw Error("Invalid desktop command");
+          // 文件选择框只在桌面窗口里有。
+          if (command === "manage" && ["pluginArchivePick", "pluginArchiveImport"].includes(params.operation))
+            throw Error("Desktop only");
+          const contract = appRequire("@areal/workbench/desktop-contract");
+          contract.validateCommand(command, params);
+          // 手机连接在桌面窗口里也不经后台命令表，而是直接交给连接管理。
+          if (command === "remoteControl" && !desktop.adapter.remote) throw Error("手机连接未初始化");
+          const result = command === "remoteControl"
+            ? await desktop.adapter.remote.control(params)
+            : await desktop.adapter.executeRemote(command, params);
+          contract.validateCommandResponse(command, params, result);
+          return result ?? null;
+        }
         if (request.method === "creation.read") return desktop.backend.worktrees.readThreadCreation(request.params.projectId, request.params.request);
         if (request.method === "input.prepare") return prepareInput({ desktop, request: request.params });
         if (request.method === "execution.prepare" || request.method === "execution.dispatch") {
@@ -150,7 +174,9 @@ async function start({ input, output }) {
       };
       const task = execute().then(
         (result) => output.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n"),
-        () => output.write(JSON.stringify({ version: 1, id: request.id, error: { code: "CORE_UNAVAILABLE" } }) + "\n"),
+        (error) => output.write(JSON.stringify({ version: 1, id: request.id, error: request.method === "desktop.command"
+          ? { code: "COMMAND_FAILED", message: String(error?.message ?? "").slice(0, 512) }
+          : { code: "CORE_UNAVAILABLE" } }) + "\n"),
       );
       pending.add(task);
       void task.then(() => pending.delete(task), () => pending.delete(task));

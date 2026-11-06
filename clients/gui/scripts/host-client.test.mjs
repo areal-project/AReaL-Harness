@@ -541,6 +541,22 @@ test("current sequence gaps resubscribe and ignore old subscription events", asy
   stop();
 });
 
+test("an explicit shell refresh keeps the current catalog fresh until the new baseline arrives", async (t) => {
+  const { client, frames } = await readServer(t);
+  const shell = client.readsSnapshot().shell.value;
+  const states = [];
+  const stop = client.subscribeReads(() => states.push(client.readsSnapshot().shell.state));
+  client.refreshShell();
+  await waitReads(
+    client,
+    (state) =>
+      state.shell.state === "fresh" && state.shell.value.subscriptionId !== shell.subscriptionId,
+  );
+  assert.ok(states.every((state) => state === "fresh"));
+  assert.equal(frames.filter((frame) => frame.method === "shell.subscribe").length, 2);
+  stop();
+});
+
 test("shell baseline recovery reopens the selected conversation for the new Core generation", async (t) => {
   for (const cause of ["gap", "invalidated"])
     await t.test(cause, async (t) => {

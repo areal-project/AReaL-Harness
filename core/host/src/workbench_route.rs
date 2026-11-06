@@ -31,6 +31,7 @@ pub(super) const METHODS: &[&str] = &[
     "worktree.command",
     "pages.command",
     "pages.resource",
+    "desktop.command",
 ];
 /// 服务经 `core.request` 可调用的 Core 方法：只读。
 const CORE_METHODS: &[&str] = &["thread/list", "thread/read"];
@@ -455,6 +456,7 @@ impl Supervisor {
                 | "providers.command"
                 | "pages.command"
                 | "pages.resource"
+                | "desktop.command"
         ) {
             let backend = self
                 .backend
@@ -716,6 +718,35 @@ pub(super) async fn backend_command(
     }
     receipt.as_object_mut().unwrap().remove("semanticDigest");
     Ok(receipt)
+}
+
+/// 本机网页的桌面命令：与桌面窗口同一用户，由后台按桌面命令合同校验后执行。
+/// 不进 Host journal，丢回复与桌面窗口原路径一样只能重新读取。
+pub(super) async fn desktop_command(
+    host: &Rc<Host>,
+    principal: &str,
+    request: &Value,
+) -> Result<Value> {
+    let params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
+        request["params"].clone(),
+    )
+    .context("INVALID_PARAMS")?;
+    host.admission()?;
+    ensure!(
+        host.gateway.workbench.backend.source.borrow().as_deref() == Some(&*params.source_id),
+        "FORBIDDEN"
+    );
+    let mut params = serde_json::to_value(params)?;
+    params.as_object_mut().unwrap().remove("sourceId");
+    host.gateway
+        .workbench
+        .request(
+            host,
+            "desktop.command",
+            params,
+            json!({"principal":principal}),
+        )
+        .await
 }
 
 pub(super) async fn backend_read(

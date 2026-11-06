@@ -23,8 +23,17 @@ async function fixture(t, retired) {
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
       return { backend: { cloud: {}, useHostLibrary: async () => {} }, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
-      }) }, close: () => fs.writeFile(options.home + '/closed', 'closed') };
+      }), executeRemote: async (name, params) => {
+        if (params.fail) throw Error('Core refused: ' + name);
+        return { executed: name, params };
+      } }, close: () => fs.writeFile(options.home + '/closed', 'closed') };
     };
+  `);
+  await mkdir(join(appRoot, "node_modules/@areal/workbench"), { recursive: true });
+  await writeFile(join(appRoot, "node_modules/@areal/workbench/package.json"), JSON.stringify({exports:{"./desktop-contract":"./contract.cjs"}}));
+  await writeFile(join(appRoot, "node_modules/@areal/workbench/contract.cjs"), `
+    exports.validateCommand = (name, params) => { if (params.invalid) throw Error('Invalid ' + name + ' request'); };
+    exports.validateCommandResponse = () => {};
   `);
   const child = spawn(process.execPath, [join(__dirname, "../src/backend-main.cjs")], {
     env: { PATH: process.env.PATH, HOME: root }, stdio: ["pipe", "pipe", "pipe"],
@@ -70,6 +79,29 @@ test("只清理 Host 确认已退出的同一后台代际", async (t) => {
   const ready = once(f.lines, "line");
   f.start();
   await ready;
+  f.child.stdin.end();
+  assert.deepEqual(await f.exited, [0, null]);
+});
+
+test("本机网页的桌面命令只放行命令表内、合同通过的请求，并带回失败原因", async (t) => {
+  const f = await fixture(t);
+  const ready = once(f.lines, "line");
+  f.start();
+  await ready;
+  const call = async (id, params) => {
+    const answer = once(f.lines, "line");
+    f.child.stdin.write(JSON.stringify({ version: 1, id, method: "desktop.command", params }) + "\n");
+    return JSON.parse((await answer)[0]);
+  };
+  assert.deepEqual((await call("ok", { command: "list", request: { projectId: "p" } })).result,
+    { executed: "list", params: { projectId: "p" } });
+  for (const [id, params, message] of [
+    ["unknown", { command: "quit", request: {} }, "Invalid desktop command"],
+    ["array", { command: "list", request: [] }, "Invalid desktop command"],
+    ["picker", { command: "manage", request: { operation: "pluginArchivePick" } }, "Desktop only"],
+    ["contract", { command: "list", request: { invalid: true } }, "Invalid list request"],
+    ["core", { command: "list", request: { fail: true } }, "Core refused: list"],
+  ]) assert.deepEqual((await call(id, params)).error, { code: "COMMAND_FAILED", message }, id);
   f.child.stdin.end();
   assert.deepEqual(await f.exited, [0, null]);
 });

@@ -1,5 +1,6 @@
 import {
   createHostSnapshotProjector,
+  configurationIdentity,
   windowIdentity,
   hostCommandOutcome,
   settleHostCommand as settled,
@@ -26,7 +27,11 @@ import {
   readInheritedHistoryPage,
 } from "@areal/workbench/desktop-contract/conversation-history";
 import { pageTopology } from "@areal/workbench/history-projection";
-import { createWorkbenchRoutes, hostPlatformCapabilities } from "./host-workbench.js";
+import {
+  createWorkbenchRoutes,
+  hostDesktopCommand,
+  hostPlatformCapabilities,
+} from "./host-workbench.js";
 import { createHostPages } from "./host-pages.js";
 import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
 
@@ -61,6 +66,7 @@ export function createHostReadServices(
   const threadTargets = new Map<string, string>();
   const creationTargets = new Map<string, string>();
   const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
+  const inspections = new Map<string, { identity: string; value?: Record<string, unknown> }>();
   const commandOutcomes = new Map<string, Record<string, JsonObject>>();
   const commandOwners = new Map<string, string>();
   const projectSnapshot = createHostSnapshotProjector(
@@ -71,6 +77,7 @@ export function createHostReadServices(
     threadTargets,
     creationTargets,
     catalogs,
+    inspections,
   );
   function pruneWindows() {
     clearTimeout(cacheTimer);
@@ -239,6 +246,37 @@ export function createHostReadServices(
             publish();
           })
           .catch(() => {});
+      }
+    }
+    if (!desktop && librarySourceId && client.writable("desktop.command")) {
+      const sourceId = librarySourceId;
+      for (const project of snapshot.projects as ReadProject[]) {
+        for (const threadId of Object.keys(project.state.threads)) {
+          const configuration = project.state.threads[threadId]?.desktop?.configuration;
+          if (!object(configuration)) continue;
+          const key = `${project.id}:${threadId}`;
+          const identity = configurationIdentity(configuration);
+          if (inspections.get(key)?.identity === identity) continue;
+          const entry = { identity, value: undefined as Record<string, unknown> | undefined };
+          inspections.set(key, entry);
+          void client
+            .workbench("desktop.command", {
+              sourceId,
+              command: "manage",
+              request: { projectId: project.id, threadId, operation: "inspect" },
+            })
+            .then((value) => {
+              if (inspections.get(key) !== entry || !object(value)) return;
+              entry.value = {
+                ...(typeof value.modelName === "string" ? { modelName: value.modelName } : {}),
+                ...(object(value.resolvedParameters)
+                  ? { resolvedParameters: value.resolvedParameters }
+                  : {}),
+              };
+              publish();
+            })
+            .catch(() => {});
+        }
       }
     }
   }
@@ -765,7 +803,7 @@ export function createHostReadServices(
   return {
     ...(desktop ?? {
       chooseProject: unavailable,
-      command: unavailable,
+      command: hostDesktopCommand(client, () => librarySourceId),
       theme: async () => ({
         dark: matchMedia("(prefers-color-scheme: dark)").matches,
         id: "system",
