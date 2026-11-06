@@ -12,11 +12,12 @@
 !/.agents/**/*.svg
 !/.agents/**/*.bmp
 !/.agents/**/*.ico
+/AGENTS.override.md
 /CLAUDE.md
 /CLAUDE.local.md
+/.ignore
 /.cursorrules
 /.cursor/rules/
-/.impeccable/**/*.md
 /docs/**/*.md
 /docs/**/*.rst
 /docs/**/*.txt

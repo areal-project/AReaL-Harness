@@ -156,6 +156,7 @@ def main(argv=None):
 
 if __name__ == "__main__":
     try:
+        preflight.bootstrap_local_runtime(ROOT)
         raise SystemExit(main())
     except (OSError, subprocess.CalledProcessError, ValueError) as error:
         print(str(error), file=sys.stderr)

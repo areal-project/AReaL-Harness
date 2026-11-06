@@ -403,10 +403,24 @@ class CiContracts(unittest.TestCase):
             "clients/gui/app/assets/builtin-skills/sample/SKILL.md",
             "core/config/prompt.md",
             "examples/plugin-marketplace/sample/skills/sample/SKILL.md",
+            "services/workbench/src/host-library-store.ts",
         ):
             with self.subTest(path=path):
-                self.assertTrue(scope.impact([path])["shared"] or scope.impact([path])["gui"])
-        for path in ("README.md", "docs/guides/configuration.md"):
+                impact = scope.impact([path])
+                self.assertTrue(impact["shared"] or impact["gui"])
+        self.assertEqual(
+            scope.impact(["services/workbench/src/host-library-store.ts"])["unknown"], []
+        )
+        for path in (
+            "README.md",
+            "AGENTS.md",
+            "REVIEW.md",
+            ".gitignore",
+            ".worktreeinclude",
+            "tests/guides/gui.md",
+            "docs/guides/configuration.md",
+            "website/src/App.tsx",
+        ):
             with self.subTest(path=path):
                 plan, _ = self.gate_fixture([path], workflow="verify")
                 self.assertEqual({item["group"] for item in plan["items"]}, {"early"})
