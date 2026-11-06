@@ -327,6 +327,31 @@ try {
   assert.equal(events.runtime.packaged, packaged);
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await until(async () => (await snapshot()).connection?.state === "ready", "desktop ready");
+  await app.evaluate(({ app, BrowserWindow }) => {
+    const { createRequire } = process.getBuiltinModule("module");
+    const { CorePreview } = createRequire(app.getAppPath() + "/package.json")(
+      "./src/core/preview.cjs",
+    );
+    const original = CorePreview.prototype.command;
+    const receipts = (globalThis.__browserHumanReceipts = []);
+    CorePreview.prototype.command = function (request) {
+      return original.call(this, request).then((value) => {
+        receipts.push({
+          operation: request.operation,
+          threadId: request.threadId,
+          pageId: value.browser?.pageId,
+          workspace: value.workspace,
+        });
+        if (receipts.length > 128) receipts.shift();
+        return value;
+      });
+    };
+    const keys = (globalThis.__browserHumanKeys = []);
+    BrowserWindow.getAllWindows()[0].webContents.on("before-input-event", (_event, input) => {
+      if (input.key.toLowerCase() !== "t") return;
+      keys.push({ type: input.type, key: input.key, meta: input.meta, control: input.control });
+    });
+  });
   await app.evaluate(
     ({ dialog, BrowserWindow }, { path, origin }) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
@@ -1864,6 +1889,13 @@ try {
     }
   }
   if (app) {
+    // 被动保存原生按键和 Main 回执，失败时也能区分快捷键、执行与投影阶段。
+    events.browserOpening = await app
+      .evaluate(() => ({
+        keys: globalThis.__browserHumanKeys,
+        receipts: globalThis.__browserHumanReceipts,
+      }))
+      .catch((error) => ({ error: error.message }));
     await app
       .evaluate(({ dialog }) => {
         dialog.showMessageBox = async () => ({ response: 1 });
