@@ -232,6 +232,8 @@ impl Supervisor {
         method: &str,
         mut params: Value,
     ) -> Result<Option<PreparedExecution>> {
+        // 拉不起后台时按没有桌面后台处理，不挡住不需要桌面工具的提交。
+        let _ = self.resume_backend(host).await;
         let Some(source) = self.backend.source.borrow().clone() else {
             return Ok(None);
         };
@@ -290,6 +292,8 @@ impl Supervisor {
         host: &Rc<Host>,
         project: &str,
     ) -> Result<Option<Value>> {
+        // 拉不起后台时按没有桌面后台处理，不挡住不需要桌面工具的提交。
+        let _ = self.resume_backend(host).await;
         let Some(source) = self.backend.source.borrow().clone() else {
             return Ok(None);
         };
@@ -886,6 +890,8 @@ impl Backend {
                 let owner = self.ownership.borrow().clone();
                 if let Some((current, ownership)) = owner {
                     ensure!(current == key, "CONFLICT");
+                    // 旧版本启动的后台没有留下记录；桌面再次接上时补记，网页之后才能自行拉起。
+                    let _ = areal_local_service::storage::write(&launch_record(host), &input);
                     return Ok(ownership);
                 }
             }
