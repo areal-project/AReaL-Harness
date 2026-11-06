@@ -1,0 +1,24 @@
+docs/development/testing.md
+  s_65512586972bc8::t_a9566688bd9770 383-384
+docs/development/testing.en.md
+  s_65512586972bc8::t_a9566688bd9770 383-384
+clients/gui/scripts/design-system-conversation-system.mjs
+  s_65512586972bc8::t_4cc5b27457a179 133-137
+  s_65512586972bc8::t_a9566688bd9770 129-131,138,140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f6afd3df4f090982d60d3ea58529be6ed18262bc",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
