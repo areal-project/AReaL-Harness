@@ -112,7 +112,7 @@ Interrupted downloads, bad checksums, mismatched program versions, and failed en
 
 Configure the model in `~/.areal/config.toml` using the [configuration guide](configuration.en.md), then launch `areal` in a workspace. Remove retired `limits.turn_timeout_seconds` and `AREAL_HARNESS_TURN_TIMEOUT_SECONDS` settings. Run `areal config validate`. Old `~/.areal-harness` state is not migrated automatically.
 
-`areal version` is equivalent to `areal --version`. `areal upgrade --check` queries the original channel without installing (latest stable CLI for standalone, original formula for Homebrew). `areal upgrade` uses the original installation channel. Source builds and unmanaged copies refuse self-upgrade.
+`areal version` is equivalent to `areal --version`. `areal upgrade --check` queries the original channel without installing (for standalone installs, the latest stable CLI, or for a beta the higher of the newest beta and stable; the original formula for Homebrew). The interactive TUI runs the same check in the background at startup, at most once every 24 hours, and shows "run areal upgrade" on the second header line when a newer version exists; it never installs anything. Set `AREAL_NO_UPDATE_CHECK=1` to turn it off; source builds do not check. When the TUI connects to a background older than itself it also says so: once tasks are idle, run `areal host stop` and reopen so the newer version starts the background. `areal upgrade` uses the original installation channel. Source builds and unmanaged copies refuse self-upgrade.
 
 - **Standalone installations** verify a complete new bundle before atomically switching the command entry symlink. Shared services do not need to stop. The upgrade command neither stops nor restarts backends and does not migrate running sessions. Old version directories remain unchanged for existing processes and their Runtime helpers; new commands use the new entry point. Do not manually delete version directories that running processes still use.
 - **Homebrew installations** upgrade the formula and verify its installed version, reporting an error if the tap is not yet updated. This channel still requires all shared services to stop before `areal upgrade`, because the command does not control Homebrew cleanup of old version directories. Inspect `areal service list`, then run `areal service stop --workspace /absolute/workspace` for each workspace. Busy tasks prevent stopping by default. Complete or explicitly pause them first; do not force-cancel tasks just to upgrade.
@@ -124,6 +124,18 @@ The new CLI manages backend shutdown through durable stop receipts, supported by
 Stop services before uninstalling. Use `brew uninstall areal` or remove the installer-managed standalone entry symlink and selected version directories. Neither installation method automatically deletes configuration or history in `~/.areal`.
 
 Symlink entry points are resolved to the real version directory before locating `libexec/areal`, covering Homebrew Cellar and versioned Linux installations.
+
+## Desktop GUI (macOS Apple Silicon)
+
+Download the DMG from GitHub Releases, or use Homebrew:
+
+```sh
+brew install --cask areal-project/tap/areal-harness
+# Optional beta (cannot be installed alongside the stable cask)
+brew install --cask areal-project/tap/areal-harness@beta
+```
+
+The GUI bundles a background program of the same version and updates itself, so `brew upgrade` skips it by default. It receives formal releases only; turn on "Get beta versions" under Settings > General > Software updates > Advanced to receive betas, and the background updates with it. Turning it off never downgrades: the app stays on its version until a formal release catches up. Installs from `areal-harness@beta` also need this switch turned on to keep receiving betas.
 
 ## Installing from source
 

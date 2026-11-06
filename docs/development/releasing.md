@@ -8,7 +8,7 @@
 
 ## 渠道与来源门禁
 
-CLI 正式与预览均交付完整 bundle；macOS 保留并严格验证输入 ad-hoc 签名，不做 Developer ID 分发签名或 Apple 公证。GUI 正式版继续使用 Developer ID + 公证、DMG 与更新 ZIP；GUI 预览保留默认 ad-hoc，仅手动安装，不带正式更新配置、不推进正式 feed，也不承诺自动转正式。预览标记 prerelease、非 Latest；仅 CLI 正式版可成为 Latest。
+CLI 正式与预览均交付完整 bundle；macOS 保留并严格验证输入 ad-hoc 签名，不做 Developer ID 分发签名或 Apple 公证。GUI 正式版继续使用 Developer ID + 公证、DMG 与更新 ZIP；GUI Beta（`X.Y.Z-beta.N`）与正式版同样做 Developer ID 签名与公证，只推进 Beta 更新频道；本机 ad-hoc 包仍只能手动安装，不带更新配置。预览标记 prerelease、非 Latest；仅 CLI 正式版可成为 Latest。
 
 正式导出前先 `git fetch origin main`，再运行 `python3 scripts/release-source.py --revision "$(git rev-parse HEAD)"`。它要求干净 checkout 的完整 HEAD SHA 已属于获取的 main；离线旧 ref 不能代替发布前重新获取。CLI tag 构建和 GUI 正式附件导出执行此门禁，PR 候选仍允许验证未合并源码。GUI 导出必须与候选 Core 的源码提交一致，清单同时记录已核对的 main 提交。版本、commit、平台和校验和随产物保存；公开版本附件不得覆盖。尚未公开的候选与预览不自动改变正式频道。
 
@@ -74,9 +74,9 @@ node clients/gui/scripts/macos-dmg.mjs --app "/absolute/AReaL Harness GUI.app" \
 
 预览与正式 DMG 共用导出器。导出器保留源 app，在私有副本中证明两份 Electron framework 的全部文件 payload、布局和签名策略等价，再把对应普通文件改为硬链接。签名不同的代码只在一次性文件副本中移除签名以比较完整字节；不支持的差异直接失败。主应用与后台仍保留独立 helper、元数据和本地框架目录。导出器不签名；它在最后一次 app 签名之后创建 HFS+ UDZO DMG，并只在只读挂载的签名、布局及共享 inode 核验通过后发布。正式流程随后继续 DMG 签名、公证和 stapling。ZIP 格式及更新路径不变，不承诺 ZIP 体积下降。ad-hoc 预览不建立 Apple 分发信任。
 
-GUI 版本由 `clients/gui/package.json` 和 `clients/gui/app/package.json` 共同声明，与 Cargo/CLI 版本独立。发布地址统一为 `areal-project/AReaL-Harness`；版本 Release 使用 `gui-v<版本>` 标签，CLI 继续使用 `v<版本>`。GUI Release 不设为 GitHub Latest，避免改变 CLI 安装器的 Latest 语义。
+CLI/TUI/Host 与 GUI 共用一个版本号，只有 `X.Y.Z` 与 `X.Y.Z-beta.N` 两种形状，同号 Beta 低于正式版。用 `python3 scripts/set-version.py X.Y.Z[-beta.N]` 同时改 `Cargo.toml`、`Cargo.lock` 中的工作区成员、`clients/gui/package.json` 与 `clients/gui/app/package.json`，脚本拒绝回退；`--check` 核对两边一致。GUI 包内自带同号的 `areal`，`release-assets.mjs` 核对二者版本相同，客户端才能按版本号判断后台新旧。发布地址统一为 `areal-project/AReaL-Harness`；版本 Release 使用 `gui-v<版本>` 标签，CLI 继续使用 `v<版本>`。GUI Release 不设为 GitHub Latest，避免改变 CLI 安装器的 Latest 语义。
 
-正式 GUI 包内写入 `areal-update.json`，更新源固定为 `https://github.com/areal-project/AReaL-Harness/releases/download/gui-update-channel/`。`gui-update-channel` 是仅承载当前 `latest-mac.yml` 的预发布频道；清单指向不可变 `gui-v<版本>` Release 中的 ZIP，并包含大小及 SHA-512。仅接受同仓库、同版本的附件地址。本地 ad-hoc 包没有更新配置。
+正式 GUI 包内写入 `areal-update.json`，更新源固定为 `https://github.com/areal-project/AReaL-Harness/releases/download/gui-update-channel/`。`gui-update-channel` 是仅承载当前 `latest-mac.yml` 的预发布频道；清单指向不可变 `gui-v<版本>` Release 中的 ZIP，并包含大小及 SHA-512。仅接受同仓库、同版本的附件地址。本地 ad-hoc 包没有更新配置。`gui-beta-channel` 是第二个只承载 `latest-mac.yml` 的频道，指向最新 Beta 与最新正式版中较高者；正式频道拒绝 Beta 版本号。包内配置仍写正式频道，用户在 设置 → 通用 → 软件更新 → 高级 打开“接收 Beta 版本”（资料库设置 `betaUpdates`，默认关）后，Electron 改用 Beta 频道并立即检查。切换不降级：关闭后停在当前版本，直到正式版号超过它；已下载待安装的更新按原频道校验结果安装。
 
 macOS `dir` 目标不会自动生成原生更新配置。正式打包在签名前写入 `app-update.yml`，沿用同一产品更新源和固定下载缓存名，并校验包内配置；仍禁止 builder 自动上传。仅能发现新版本不证明能下载。侧栏保留紧凑更新入口，点击展开状态卡片；入口显示实际下载百分比与进度环，未知进度和安装准备使用不定进度动画，并遵从减少动态效果设置。卡片区分下载、准备安装、等待后台及重启安装，显示失败原因与对应操作。下载失败可重试；安装准备结果未确认时提示退出重开核对版本，不重复发起安装。已下载更新因后台活动暂缓时，同一入口可检查后台资源并继续安装；取消任务仍需原生确认，自动重试只在空闲后安装。更新重开时先核对原操作回执和旧后台进程退出；已完成的更新继续初始化新后台，未确认或未完成操作仍保留恢复引用。明确停止后台的操作仍需用户主动重连。
 
@@ -101,7 +101,7 @@ node clients/gui/scripts/release-assets.mjs /absolute/new-signed-directory /abso
 
 CI 在现有 GUI 检查中运行 `pnpm --dir clients/gui run test:history-compat`，默认使用 `clients/gui/scripts/fixtures/history-compat/` 的人工合成脱敏样本，包含空项目、`hookRuns`、`allowPluginSkills`、`pluginSkills`；这些文件不来自用户历史，也不包含真实路径或凭据。本机可单独执行 `node clients/gui/scripts/history-copy-smoke.mjs --source /absolute/areal-core --executable "/absolute/candidate.app/Contents/MacOS/AReaL Harness GUI"`；省略 `--executable` 时使用开发 Electron 和已构建 Core。没有日常历史的构建机可显式将 `--history-source` 指向受控样本目录；这仅证明样本兼容，不代表本机历史兼容。私有副本和失败证据保留在脚本输出的 `/private/tmp/ahc-*`，不得作为公开发布附件。
 
-在固定提交创建 `gui-v<版本>` 标签，以 draft 上传已完成本地验收的 ZIP、DMG、`latest-mac.yml`、脱敏 `release.json` 与 `SHA256SUMS`；核对远端附件名称、大小与可用的 SHA256 摘要后公开，保持 `--latest=false`。确认版本 Release 和附件清单已公开后，更新 `gui-update-channel` 的清单；首次创建该频道时使用 prerelease。发布后只核对 Release 状态、附件元数据、频道目标版本、清单大小及 SHA-512，不再额外下载完整包回读或把 HTTP Range 探测作为常规发布前置。版本附件不可覆盖；频道清单按已验收版本推进。此流程不发布 CLI 包，也不更新 Homebrew tap。
+在固定提交创建 `gui-v<版本>` 标签，以 draft 上传已完成本地验收的 ZIP、DMG、`latest-mac.yml`、脱敏 `release.json` 与 `SHA256SUMS`；核对远端附件名称、大小与可用的 SHA256 摘要后公开，保持 `--latest=false`。确认版本 Release 和附件清单已公开后，用 `node clients/gui/scripts/release-channels.mjs --tag gui-v<版本>` 预览、加 `--publish` 推进频道：正式版同时推进 `gui-update-channel` 与 `gui-beta-channel`，Beta 只推进 `gui-beta-channel`；脚本核对版本 Release 的公开状态、prerelease 标记与 `latest-mac.yml` 摘要，拒绝把频道推到更低版本，首次创建频道时使用 prerelease。发布后只核对 Release 状态、附件元数据、频道目标版本、清单大小及 SHA-512，不再额外下载完整包回读或把 HTTP Range 探测作为常规发布前置。版本附件不可覆盖；频道清单按已验收版本推进。此流程不发布 CLI 包；Homebrew cask 按下方公共 tap 流程单独同步。
 
 GUI 只支持 macOS arm64 更新，检查和下载由 Electron 持有，后台任务空闲并完成原生校验后才关闭 Core 并安装。公开附件与包内 smoke 不证明既有安装已经完成自动替换；旧安装到新版本的实际升级需要单独验收。其他仓库或旧测试频道的客户端不会自动迁移到本频道，需要手动安装首个正式 GUI 包。
 
@@ -115,7 +115,7 @@ GUI 只支持 macOS arm64 更新，检查和下载由 Electron 持有，后台�
 
 ## 公共 tap 与渠道同步
 
-`release-artifacts.py formula` 接受同版本两个 `--archive`，生成 macOS arm64/Linux x86_64 条件 formula，使用各自真实 SHA256。正式版输出 `areal.rb`；beta 输出 `areal-beta.rb`，keg-only，不覆盖稳定入口。Linux 需要宿主 glibc ≥ 2.35 与系统 `/usr/bin/bwrap`；不要把 macOS 限制放到 Linux 分支。
+`release-artifacts.py formula` 接受同版本两个 `--archive`，生成 macOS arm64/Linux x86_64 条件 formula，使用各自真实 SHA256。正式版输出 `areal.rb`；beta 输出 `areal-beta.rb`，keg-only，不覆盖稳定入口。GUI 的 `release-assets.mjs` 同时生成 cask：正式版 `areal-harness.rb`，Beta `areal-harness@beta.rb`，二者互相 `conflicts_with`，声明 `auto_updates true`（应用自更新，`brew upgrade` 默认不覆盖）；`sync-homebrew.py --tag gui-v<版本>` 下载已公开的 cask 与 DMG，核对 SHA256SUMS 与 cask 内摘要后写入 tap 的 `Casks/`，同样拒绝降级。Linux 需要宿主 glibc ≥ 2.35 与系统 `/usr/bin/bwrap`；不要把 macOS 限制放到 Linux 分支。
 
 CLI Release 公开后不自动同步 tap；按下方命令在本机同步对应渠道，既有 `Sync public Homebrew tap` 手动 workflow 仅保留显式 workflow_dispatch 入口。它保持 `contents: read`，只使用预先批准的 `HOMEBREW_TAP_TOKEN` 跨仓库授权；缺失时明确失败，不创建凭据或把发行成功当作 tap 同步成功。组织仓库不存在、写权限不足或 checksum 失败均阻断同步，但不覆盖/撤销已公开附件。由维护者按授权补齐仓库/权限后重试同一 tag；不能为了恢复扩大 token 或 workflow 权限。
 

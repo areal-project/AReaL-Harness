@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""从已公开且校验过的双平台 Release 同步对应 tap formula；不创建凭据或仓库。"""
+"""从已公开且校验过的 Release 同步 tap：CLI 写 formula，GUI 写 cask；不创建凭据或仓库。"""
 
 import argparse
 import hashlib
@@ -25,10 +25,11 @@ def main():
     parser.add_argument("--tap-checkout", type=Path, required=True)
     parser.add_argument("--push", action="store_true")
     args = parser.parse_args()
-    match = re.fullmatch(r"v(\d+\.\d+\.\d+(?:-beta\.[1-9]\d*)?)", args.tag)
+    match = re.fullmatch(r"(gui-)?v(\d+\.\d+\.\d+(?:-beta\.[1-9]\d*)?)", args.tag)
     if not match:
-        raise ValueError("expected stable or beta CLI tag")
-    version = match[1]
+        raise ValueError("expected stable or beta CLI tag (vX.Y.Z) or GUI tag (gui-vX.Y.Z)")
+    gui = bool(match[1])
+    version = match[2]
     beta = "-beta." in version
     release = json.loads(
         run(
@@ -53,7 +54,11 @@ def main():
     remote = run("git", "-C", str(checkout), "remote", "get-url", "origin")
     if remote not in (f"https://github.com/{TAP}.git", f"git@github.com:{TAP}.git"):
         raise ValueError("tap remote does not match authorized repository")
-    formula = checkout / "Formula" / ("areal-beta.rb" if beta else "areal.rb")
+    if gui:
+        name = "areal-harness@beta.rb" if beta else "areal-harness.rb"
+        formula = checkout / "Casks" / name
+    else:
+        formula = checkout / "Formula" / ("areal-beta.rb" if beta else "areal.rb")
     if formula.exists():
         previous = re.search(r'  version "([^"]+)"', formula.read_text())
 
@@ -83,9 +88,8 @@ def main():
             return destination
 
         sums = download("SHA256SUMS").read_text().splitlines()
-        archives = []
-        for target in ("aarch64-apple-darwin", "x86_64-unknown-linux-gnu"):
-            name = f"areal-harness-{args.tag}-{target}.tar.gz"
+
+        def verified(name):
             path = download(name)
             expected = [
                 line.split()[0]
@@ -93,9 +97,25 @@ def main():
                 if len(line.split()) == 2 and line.split()[1] == name
             ]
             if len(expected) != 1 or hashlib.sha256(path.read_bytes()).hexdigest() != expected[0]:
-                raise ValueError(f"public archive checksum mismatch: {name}")
-            archives.append(path)
-        module.formula(archives[0], formula, extra_archives=archives[1:])
+                raise ValueError(f"public asset checksum mismatch: {name}")
+            return path
+
+        if gui:
+            # cask 由 release-assets.mjs 生成并计入 SHA256SUMS；这里再核对它引用的 DMG。
+            cask = verified(formula.name).read_text()
+            dmg = verified(f"AReaLHarness-{version}-macos-arm64.dmg")
+            if f'version "{version}"' not in cask or (
+                f'sha256 "{hashlib.sha256(dmg.read_bytes()).hexdigest()}"' not in cask
+            ):
+                raise ValueError("published cask does not match its DMG")
+            formula.parent.mkdir(exist_ok=True)
+            formula.write_text(cask)
+        if not gui:
+            archives = [
+                verified(f"areal-harness-{args.tag}-{target}.tar.gz")
+                for target in ("aarch64-apple-darwin", "x86_64-unknown-linux-gnu")
+            ]
+            module.formula(archives[0], formula, extra_archives=archives[1:])
     if args.push and run("git", "-C", str(checkout), "status", "--porcelain"):
         subprocess.run(["git", "-C", str(checkout), "add", str(formula)], check=True)
         subprocess.run(
@@ -105,7 +125,7 @@ def main():
                 str(checkout),
                 "commit",
                 "-m",
-                f"Update {'beta' if beta else 'stable'} CLI to {version}",
+                f"Update {'beta' if beta else 'stable'} {'GUI' if gui else 'CLI'} to {version}",
             ],
             check=True,
         )

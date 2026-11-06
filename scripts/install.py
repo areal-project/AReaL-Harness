@@ -210,21 +210,46 @@ def latest_version():
     return tag[1:]
 
 
+def latest_beta_version():
+    """最新 Beta 与最新正式版中较高者；只认 vX.Y.Z 与 vX.Y.Z-beta.N。"""
+    request = urllib.request.Request(
+        LATEST.removesuffix("/latest") + "?per_page=50",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "areal-installer"},
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        releases = json.load(response)
+    versions = []
+    for release in releases:
+        match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)(?:-beta\.([1-9]\d*))?", release["tag_name"])
+        if match and not release.get("draft"):
+            major, minor, patch, beta = match.groups()
+            order = (int(major), int(minor), int(patch), beta is None, int(beta or 0))
+            versions.append((order, release["tag_name"][1:]))
+    if not versions:
+        raise ValueError("no published release")
+    return max(versions)[1]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     if sys.version_info < (3, 9):
         parser.error("Python 3.9+ required for the installer")
-    parser.add_argument("--version", required=True, help="release version or latest")
+    parser.add_argument("--version", required=True, help="release version, latest, or latest-beta")
     parser.add_argument("--prefix", type=Path, default=Path.home() / ".local")
     parser.add_argument("--archive", type=Path, help="offline release archive")
     parser.add_argument("--checksums", type=Path, help="matching release SHA256SUMS")
     parser.add_argument("--check", action="store_true", help="print the latest published version")
     args = parser.parse_args()
-    if args.check and args.version != "latest":
-        parser.error("--check requires --version latest")
-    if args.version == "latest" and args.archive:
+    if args.check and args.version not in ("latest", "latest-beta"):
+        parser.error("--check requires --version latest or latest-beta")
+    if args.version in ("latest", "latest-beta") and args.archive:
         parser.error("offline installation requires an exact version")
-    version = latest_version() if args.version == "latest" else args.version.removeprefix("v")
+    if args.version == "latest":
+        version = latest_version()
+    elif args.version == "latest-beta":
+        version = latest_beta_version()
+    else:
+        version = args.version.removeprefix("v")
     if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?", version):
         parser.error("invalid version")
     if args.check:

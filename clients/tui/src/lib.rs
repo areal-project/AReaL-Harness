@@ -124,8 +124,17 @@ pub async fn run(args: Args) -> Result<()> {
 }
 
 pub async fn run_with_trajectory_notice(
+    args: Args,
+    trajectory_notice: Option<tokio::sync::oneshot::Receiver<String>>,
+) -> Result<()> {
+    run_with_notices(args, trajectory_notice, None).await
+}
+
+/// `release_notice` 来自后台的版本检查；只显示提示，升级仍由用户运行 `areal upgrade`。
+pub async fn run_with_notices(
     mut args: Args,
     mut trajectory_notice: Option<tokio::sync::oneshot::Receiver<String>>,
+    mut release_notice: Option<tokio::sync::oneshot::Receiver<String>>,
 ) -> Result<()> {
     anyhow::ensure!(
         !args.no_session_name || args.prompt.is_some() || args.input_file.is_some(),
@@ -228,6 +237,7 @@ pub async fn run_with_trajectory_notice(
         &mut terminal,
         &args,
         &mut trajectory_notice,
+        &mut release_notice,
     )
     .await
 }
@@ -238,6 +248,7 @@ async fn interactive(
     terminal: &mut ratatui::DefaultTerminal,
     args: &Args,
     trajectory_notice: &mut Option<tokio::sync::oneshot::Receiver<String>>,
+    release_notice: &mut Option<tokio::sync::oneshot::Receiver<String>>,
 ) -> Result<()> {
     let mut initial_prompt = args.initial_prompt.clone();
     let mut events = EventStream::new();
@@ -308,6 +319,10 @@ async fn interactive(
             notice = async { trajectory_notice.as_mut().unwrap().await }, if trajectory_notice.is_some() => {
                 *trajectory_notice = None;
                 if let Ok(notice) = notice { app.set_trajectory_notice(notice); }
+            }
+            notice = async { release_notice.as_mut().unwrap().await }, if release_notice.is_some() => {
+                *release_notice = None;
+                if let Ok(notice) = notice { app.release_notice = Some(safe_text(&notice)); app.dirty = true; }
             }
             result = async { updating.as_mut().unwrap().await }, if updating.is_some() => {
                 updating = None;

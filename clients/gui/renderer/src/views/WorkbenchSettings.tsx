@@ -106,6 +106,7 @@ export function WorkbenchSettings({
           fileOpen={contextualFileOpen}
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
+          updates={Boolean(services.updateState)}
           onDiagnostics={() => setSettingsTab("高级诊断")}
         />
       ) : settingsTab === "SnapShots" ? (
