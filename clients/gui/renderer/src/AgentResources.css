@@ -113,28 +113,6 @@
   padding: 8px 12px;
   font-size: var(--text-ui-caption);
 }
-.task-resources-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 8px 10px;
-}
-.task-resources-header .icon-button {
-  width: 18px;
-  height: 18px;
-  padding: 0;
-}
-.task-resources-header h2 {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-ui-base);
-  font-weight: 400;
-  color: var(--color-foreground-subtle);
-}
 .task-resources-section {
   padding: 11px 0;
 }
@@ -175,26 +153,13 @@
 .task-resource-row > svg {
   flex-shrink: 0;
 }
-.task-resource-label {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .task-resource-row small,
 .task-resource-note {
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-xs);
 }
-.task-resource-row small.task-resource-status,
 .task-resources-heading > span:last-child {
   font-size: var(--text-fixed-metadata);
-}
-.task-resource-identity {
-  display: flex;
-  gap: 6px;
-  align-items: center;
 }
 .task-resource-agent-body {
   flex: 1;
@@ -207,9 +172,6 @@
   white-space: nowrap;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-xs);
-}
-.task-resources-agents {
-  height: auto;
 }
 
 .task-resource-description {
@@ -231,26 +193,6 @@
   flex: none;
   object-fit: cover;
   border-radius: var(--radius-micro);
-}
-.task-resource-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
-}
-.task-resource-status[data-running]::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border: 1px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: task-resource-spin 1s linear var(--motion-loop);
-}
-@keyframes task-resource-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .agent-spawn-link:focus-visible {
