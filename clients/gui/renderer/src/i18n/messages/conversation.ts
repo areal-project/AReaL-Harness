@@ -64,4 +64,48 @@ export const conversationMessages = {
   "chat.activity.rawRecord": { "zh-CN": "查看工具原始记录", en: "View raw tool record" },
   "chat.activity.openFile": { "zh-CN": "打开 {path}", en: "Open {path}" },
   "chat.command.exitCode": { "zh-CN": "退出码 {code}", en: "exit code {code}" },
+  "chat.composer.uploadFiles": { "zh-CN": "上传文件", en: "Upload files" },
+  "chat.composer.uploadFilesDescription": {
+    "zh-CN": "添加图片、文档或其他文件",
+    en: "Add images, documents, or other files",
+  },
+  "chat.composer.mcpDescription": {
+    "zh-CN": "查看服务器与连接状态",
+    en: "View servers and connection status",
+  },
+  "chat.composer.planMode": { "zh-CN": "计划模式", en: "Plan mode" },
+  "chat.composer.exitPlanMode": { "zh-CN": "退出计划模式", en: "Exit plan mode" },
+  "chat.composer.planModeEnableDescription": {
+    "zh-CN": "先规划，再开始执行",
+    en: "Plan first before executing",
+  },
+  "chat.composer.planModeDisableDescription": {
+    "zh-CN": "关闭计划模式",
+    en: "Turn off plan mode",
+  },
+  "chat.composer.goalMode": { "zh-CN": "目标", en: "Goal" },
+  "chat.composer.exitGoalMode": { "zh-CN": "退出目标模式", en: "Exit goal mode" },
+  "chat.composer.setGoal": { "zh-CN": "设置目标", en: "Set goal" },
+  "chat.composer.goalModeEnableDescription": {
+    "zh-CN": "设置持续目标与停止条件",
+    en: "Set an ongoing goal and stopping condition",
+  },
+  "chat.composer.goalModeDisableDescription": {
+    "zh-CN": "关闭目标模式",
+    en: "Turn off goal mode",
+  },
+  "chat.queue.sendNow": { "zh-CN": "立即发送", en: "Send now" },
+  "chat.queue.sendNowItem": { "zh-CN": "立即发送 {item}", en: "Send now {item}" },
+  "chat.queue.sendNowHint": {
+    "zh-CN": "不等这一轮结束，现在就发给正在进行的任务",
+    en: "Send to the running task without waiting for this turn to finish",
+  },
+  "chat.queue.pausedServerDraining": {
+    "zh-CN": "队列已暂停；点击继续后才会执行待发消息。",
+    en: "Queue paused; click Resume to run queued messages.",
+  },
+  "chat.queue.pausedByUser": {
+    "zh-CN": "你已暂停队列。",
+    en: "You paused the queue.",
+  },
 } as const;

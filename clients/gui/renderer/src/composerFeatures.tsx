@@ -20,8 +20,8 @@ export function composerFeatureEntries(
   return [
     {
       value: "upload",
-      label: "上传文件",
-      description: "添加图片、文档或其他文件",
+      label: t("chat.composer.uploadFiles"),
+      description: t("chat.composer.uploadFilesDescription"),
       icon: <AttachmentIcon />,
       group: "功能",
       ...upload,
@@ -31,7 +31,7 @@ export function composerFeatureEntries(
           {
             value: "mcp",
             label: "MCP",
-            description: "查看服务器与连接状态",
+            description: t("chat.composer.mcpDescription"),
             icon: <ComposerMcpIcon />,
             group: "功能" as const,
             ...mcp,
@@ -52,8 +52,12 @@ export function composerFeatureEntries(
       : []),
     {
       value: "plan",
-      label: "计划模式",
-      description: plan.active ? "关闭计划模式" : "先规划，再开始执行",
+      label: t("chat.composer.planMode"),
+      description: t(
+        plan.active
+          ? "chat.composer.planModeDisableDescription"
+          : "chat.composer.planModeEnableDescription",
+      ),
       icon: <PlanModeIcon />,
       group: "功能",
       disabled: plan.disabled,
@@ -63,8 +67,12 @@ export function composerFeatureEntries(
       ? [
           {
             value: "goal",
-            label: "设置目标",
-            description: goal.active ? "关闭目标模式" : "设置持续目标与停止条件",
+            label: t("chat.composer.setGoal"),
+            description: t(
+              goal.active
+                ? "chat.composer.goalModeDisableDescription"
+                : "chat.composer.goalModeEnableDescription",
+            ),
             icon: <GoalIcon />,
             group: "功能" as const,
             disabled: goal.disabled,

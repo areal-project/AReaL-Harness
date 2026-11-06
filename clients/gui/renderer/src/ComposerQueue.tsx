@@ -24,6 +24,7 @@ import {
 import { queueText, type QueueEditInput } from "./Queue.js";
 import { imageAnnotationTitle } from "./imageAnnotations.js";
 import type { Action, Data } from "./services.js";
+import { useI18n } from "./i18n/IntlProvider.js";
 import { recoveredOutcome } from "./recoveryPresentation.js";
 
 const queueLabel = (item: Data) => imageAnnotationTitle(queueText(item));
@@ -44,6 +45,7 @@ export function ComposerQueue({
   editingId?: string;
   onEdit: (item: Data) => void;
 }) {
+  const { t } = useI18n();
   const queue = project.state?.queues?.[thread.id];
   const items: Data[] = (queue?.items ?? []).filter((item: Data) => item.status === "pending");
   const [busy, setBusy] = useState(false);
@@ -277,8 +279,8 @@ export function ComposerQueue({
                 type="submit"
                 className="composer-queue-steer"
                 disabled={locked || !running}
-                aria-label={`立即发送 ${queueLabel(item)}`}
-                title="不等这一轮结束，现在就发给正在进行的任务"
+                aria-label={t("chat.queue.sendNowItem", { item: queueLabel(item) })}
+                title={t("chat.queue.sendNowHint")}
                 onClick={() =>
                   void edit({
                     operation: "steer",
@@ -288,7 +290,7 @@ export function ComposerQueue({
                 }
               >
                 <CornerDownRight size={15} />
-                <span>立即发送</span>
+                <span>{t("chat.queue.sendNow")}</span>
               </Button>
               <Button
                 unstyled

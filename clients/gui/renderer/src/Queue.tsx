@@ -1,5 +1,6 @@
 import { Button, Textarea } from "@areal/ui";
 import { useState } from "react";
+import { useI18n } from "./i18n/IntlProvider.js";
 import type { Data, Action, CommandParams } from "./services.js";
 
 export type QueueEditInput = {
@@ -62,6 +63,7 @@ export function Queue({
   disabled: boolean;
   action: Action;
 }) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<QueueDraft | null>(null);
   const [error, setError] = useState("");
@@ -123,9 +125,9 @@ export function Queue({
       {queue.pauseReason && (
         <p>
           {queue.pauseReason === "serverDraining"
-            ? "队列已暂停；点击继续后才会执行待发消息。"
+            ? t("chat.queue.pausedServerDraining")
             : queue.pauseReason === "user"
-              ? "你已暂停队列。"
+              ? t("chat.queue.pausedByUser")
               : queue.pauseReason}
         </p>
       )}

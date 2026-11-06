@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { GoalIcon, PlanModeIcon } from "./interfaceIcons.js";
 import { Button } from "./components/ui/button.js";
 import { ControlHintTooltip } from "./ControlHintTooltip.js";
+import { useI18n } from "./i18n/IntlProvider.js";
 
 // 计划模式与目标模式在新对话和已有对话里是同一个标记，外观只在这里定义。
 function ComposerModeChip({
@@ -18,7 +19,7 @@ function ComposerModeChip({
   onExit: () => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-1" role="status">
+    <div className="flex shrink-0 items-center gap-1" role="status" data-composer-mode="">
       <span className="h-4 border-l border-border" aria-hidden="true" />
       <ControlHintTooltip title={exitLabel}>
         <Button
@@ -39,11 +40,25 @@ function ComposerModeChip({
 }
 
 export function ComposerPlanMode(props: { disabled?: boolean; onExit: () => void }) {
+  const { t } = useI18n();
   return (
-    <ComposerModeChip icon={PlanModeIcon} label="计划模式" exitLabel="退出计划模式" {...props} />
+    <ComposerModeChip
+      icon={PlanModeIcon}
+      label={t("chat.composer.planMode")}
+      exitLabel={t("chat.composer.exitPlanMode")}
+      {...props}
+    />
   );
 }
 
 export function ComposerGoalMode(props: { disabled?: boolean; onExit: () => void }) {
-  return <ComposerModeChip icon={GoalIcon} label="目标" exitLabel="退出目标模式" {...props} />;
+  const { t } = useI18n();
+  return (
+    <ComposerModeChip
+      icon={GoalIcon}
+      label={t("chat.composer.goalMode")}
+      exitLabel={t("chat.composer.exitGoalMode")}
+      {...props}
+    />
+  );
 }
