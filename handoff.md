@@ -83,3 +83,24 @@
 - OP-07 远程会话使用桌面浏览器和退出后明确不可用已通过；不是手机实机证据。候选包是本地 ad-hoc 调试包，不是正式分发验收，且未重新打入本轮身份修复。
 
 本轮已执行的检查、已修复缺陷及剩余限制均已记录，不标记 A3/A4 全部完成。未迁移 TUI/CLI，未删除旧入口，未 push。最终检查包括相关 Rust 回归、真实 Relay 一致性、改动脚本 lint、文档配对与 diff 检查。提交钩子的全量格式检查另外暴露 CLI、app-server 和 verification.py 的既有格式差异，已仅按 rustfmt/ruff 修正；这些最后的格式变更不改变业务，未重复构建测试二进制。
+
+## 当前分支续接结果
+
+`origin/claude/project-thread-821xno@246e2124` 已合入 `codex/one-protocol-integration`，合并提交为 `f350e9ca`；本地修复为 `744d7a08`。未 push，未发布，未删除旧入口。
+
+- 停止项目的状态不再被投影丢弃：首页显示项目已停止，并结束忙碌状态，不通过读订阅唤醒 Core。工作树会话使用执行项目的状态，避免被逻辑父项目覆盖。投影回归已通过；页面证据另见下述 UI 记录。
+- 真实 WebSocket 回归复现了同一会话并发选中时重复打开订阅。共享客户端现在复用同一连接、项目代次和选中目标的在途请求，已新鲜的同目标选中不再重开。重连与 UI 恢复同时到达的回归通过，切换目标、迟到响应、Core 代次变化及 UNKNOWN 不重发的原回归仍通过。该缺陷不能直接认定为旧 iOS 故障的唯一根因。
+- 合入的 Beta 更新通道有异步竞态：检查期间关闭 Beta，旧检查的结果仍可能成为下载目标。现已丢弃旧频道的成功或失败结果，再检查当前频道；两种回归均通过。已下载包仍沿用既有安装规则。
+- 原集成代码的三处动态校验类型错误已修正；类型检查、受影响文件 lint/格式、仓库格式、文档配对、Host schema 生成检查、IPC freeze、CLI/TUI 更新专项均通过。真实 Host/Relay 协议一致性使用本轮构建和隔离 CA 通过，不能替代页面或手机验收。
+
+源码构建回执位于 `.scratch/one-protocol-resume/root/verification-build.json`：Core inputHash 为 `2dc4cd343b4dd542f0c588a5bb84b6ce21ec4f5a43819f6c3c6c8b185dd52b7d`。原始红灯、通过结果、构建与门禁日志位于同目录；UI 夹具、截图及失败日志位于 `.scratch/one-protocol-resume/ui/`。
+
+尚未通过的门禁不作豁免：`gui-health` 的 Main 总行数为 24760，基线为 24714；业务行数为 8058，基线为 8057。增量来自合入的更新通道及本轮频道竞态修复。`verify:design` 在既有 `content-system.md:17` 未登记规范段落处失败；`design:build` 通过，`test:design` 在 `a mounted accepted follow-up reserves response space` 断言失败。未发现这两项设计失败与本轮状态修改的同因证据，未修改基线或放宽断言。
+
+Remote 最终构建在真实配对后先显示暂态加载失败，随后同一连接自动恢复，共享工作台显示“项目已停止，可选择其他项目继续。”，截图与同期 Host 状态见 `.scratch/one-protocol-resume/ui/report.md`。已证明停止项目的最终可见状态；没有点击已有会话，不能据此关闭 Remote 断线重连等其他用例。两轮诊断仍未取得原始 shell/session 请求错误，不再为夹具追加重试。
+
+包含 UUID 与本轮恢复修复的本地候选 ZIP 已生成：`.scratch/one-protocol-resume/package-final/AReaL-Harness-GUI-mac-arm64.zip`，SHA-256 为 `fc7b56c1fbb3222020ea8add5aead5e7c222c64478962480d8d720357c01e412`。包内 Core 绑定 `744d7a08`，debug profile，ad-hoc 严格签名校验通过；`candidate-identity.json` 与 `package-evidence.json` 保存身份。这不是正式分发或公证验收。首次打包因 Core revision 不匹配而拒绝；待测试槽释放后重建，再补齐缺失的锁定 Electron 运行时，最终打包成功，原失败日志保留。
+
+最终 ZIP 解压到独立副本后，经显式隔离环境启动，已用 System Events 按本次 GUI PID 前置并发送系统合成 ⌘Q。backend 关闭时 GUI 正常退出，同代 Host 保留；backend 开启时已确认后台 owned=true，⌘Q 打开“后台状态暂时无法核查”的原生确认，选择“保持后台运行并退出”后 GUI 退出，同代 Host 和相同后台 PID 保留。后者证明该确认分支的键盘退出路径，不证明后台状态核查正常；两轮均非物理按键操作。完整状态与清理回执见 UI 记录。
+
+旧 safeStorage 密文兼容仍待补证。iOS 前后台恢复、停止与审批、Remote 重连、远程不可用入口及 flag off 的页面证据不能由上述回归替代，仍按 UI 记录逐项保留。恢复排查的后续软件方案：优先在共享客户端加入按连接与项目代次关联的脱敏请求诊断导出，以取得同次失败原始错误；另一方案是在既有真实 Host 夹具中补齐 App 前后台和断网的可控驱动。两者均应保留原始 UNKNOWN，不以自动重放写操作恢复。
