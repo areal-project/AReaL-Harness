@@ -133,7 +133,24 @@ export interface TextPatch {
   oldText: string;
   newText: string;
 }
+export interface ImageViewOptions {
+  maxDimension?: number;
+  maxViewBytes?: number;
+  crop?: { x: number; y: number; width: number; height: number };
+  frameIndex?: number;
+  timeMs?: number;
+}
+export interface ImageOutputReference {
+  imageOutput: {
+    processId: string;
+    bytes: number;
+    encoding: "file-helper-json";
+    scopeId: string;
+    exitCode: number;
+  };
+}
 export type FileCommand =
+  | { kind: "readImage"; path: string; options?: ImageViewOptions }
   | { kind: "read"; path: string; offset?: number; maxBytes: number }
   | { kind: "stat"; path: string }
   | { kind: "list"; path: string; after?: string | null; limit: number }
@@ -187,22 +204,24 @@ export interface FileList {
   entries: { name: string; kind: FileKind }[];
   nextCursor: string | null;
 }
-export type FileResult<C extends FileCommand> = C extends { kind: "read" }
-  ? FileRead
-  : C extends { kind: "list" }
-    ? FileList
-    : C extends { kind: "search" }
-      ? {
-          matches: { path: string; line: number | null; text: string | null; kind: string }[];
-          limited: boolean;
-          guidance: string;
-        }
-      : C extends { kind: "stat" }
-        ? { kind: FileKind; size: number }
-        : C extends { kind: "stageFileChunk" }
-          ? { uploadId: string; nextOffset: number }
-          : C extends { kind: "removeFile" }
-            ? { removed: true }
-            : C extends { kind: "commitFile" }
-              ? FileWrite & { executable: boolean }
-              : FileWrite;
+export type FileResult<C extends FileCommand> = C extends { kind: "readImage" }
+  ? ImageOutputReference
+  : C extends { kind: "read" }
+    ? FileRead
+    : C extends { kind: "list" }
+      ? FileList
+      : C extends { kind: "search" }
+        ? {
+            matches: { path: string; line: number | null; text: string | null; kind: string }[];
+            limited: boolean;
+            guidance: string;
+          }
+        : C extends { kind: "stat" }
+          ? { kind: FileKind; size: number }
+          : C extends { kind: "stageFileChunk" }
+            ? { uploadId: string; nextOffset: number }
+            : C extends { kind: "removeFile" }
+              ? { removed: true }
+              : C extends { kind: "commitFile" }
+                ? FileWrite & { executable: boolean }
+                : FileWrite;

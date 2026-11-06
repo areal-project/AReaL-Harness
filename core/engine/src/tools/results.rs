@@ -11,6 +11,13 @@ pub(super) struct Prepared {
     pub metrics: Value,
 }
 
+#[derive(Clone, Copy)]
+enum ProjectionKind {
+    Ordinary,
+    Coordination,
+    Program,
+}
+
 impl Engine {
     pub(crate) async fn read_history(&self, cell: &Cell, args: &Value) -> anyhow::Result<Value> {
         let thread = cell.state.lock().await.thread.clone();
@@ -50,7 +57,7 @@ impl Engine {
         raw: &Value,
         argv: Option<&[String]>,
     ) -> anyhow::Result<Prepared> {
-        self.prepare_tool_result_inner(cell, item_id, name, raw, argv, false)
+        self.prepare_tool_result_inner(cell, item_id, name, raw, argv, ProjectionKind::Ordinary)
             .await
     }
 
@@ -61,8 +68,25 @@ impl Engine {
         name: &str,
         raw: &Value,
     ) -> anyhow::Result<Prepared> {
-        self.prepare_tool_result_inner(cell, item_id, name, raw, None, true)
+        self.prepare_tool_result_inner(cell, item_id, name, raw, None, ProjectionKind::Coordination)
             .await
+    }
+
+    pub(super) async fn prepare_program_result(
+        &self,
+        cell: &Cell,
+        item_id: &str,
+        raw: &Value,
+    ) -> anyhow::Result<Prepared> {
+        self.prepare_tool_result_inner(
+            cell,
+            item_id,
+            "tool_program",
+            raw,
+            None,
+            ProjectionKind::Program,
+        )
+        .await
     }
 
     async fn prepare_tool_result_inner(
@@ -72,8 +96,10 @@ impl Engine {
         name: &str,
         raw: &Value,
         argv: Option<&[String]>,
-        coordination: bool,
+        projection: ProjectionKind,
     ) -> anyhow::Result<Prepared> {
+        let coordination = matches!(projection, ProjectionKind::Coordination);
+        let program = matches!(projection, ProjectionKind::Program);
         let started = std::time::Instant::now();
         let bytes = serde_json::to_vec(raw)?;
         let policy = &self.extensions.policy.result_views;
@@ -90,11 +116,27 @@ impl Engine {
         if raw.get("mcpResult").is_some() {
             crate::desktop::mcp_apps::strip_meta(&mut baseline);
         }
+        let mut selected_observations = Vec::new();
+        if program && let Some(parts) = baseline["contentItems"].as_array_mut() {
+            for (index, part) in parts.iter_mut().enumerate() {
+                if let Some(key) = part
+                    .as_object_mut()
+                    .and_then(|p| p.remove("nativeObservationKey"))
+                    .and_then(|v| v.as_str().map(str::to_owned))
+                    && policy.repeated_observations
+                {
+                    selected_observations.push((index, key));
+                }
+            }
+        }
         let file_compacted = name == "read_file" && baseline != *raw;
         let identity_compacted = coordination && baseline != *raw;
         if let Some(argv) = argv {
             apply_output_view(&mut baseline, argv);
         }
+        let before_verification = baseline.clone();
+        verification_view(&mut baseline);
+        let verification_only = before_verification == *raw && baseline != before_verification;
         let candidate = if policy.mode == ResultViewMode::Off {
             None
         } else if name == "search_files" && policy.search_groups {
@@ -104,7 +146,22 @@ impl Engine {
         } else {
             None
         };
-        let projection_snapshot = raw.get("mcpResult").is_some()
+        // 程序子调用的数据由 JavaScript 消费，未必展示给模型，不能登记为已见观察。
+        let program_child = {
+            let state = cell.state.lock().await;
+            state.thread.turns.last().is_some_and(|turn| {
+                turn.items.iter().any(|item| {
+                    matches!(item,
+                    Item::DynamicToolCall { id, execution, .. }
+                    if id == item_id && execution.parent_call_id.is_some())
+                })
+            })
+        };
+        let observation_key = (policy.repeated_observations && !program_child)
+            .then(|| observation_key(name, raw))
+            .flatten();
+        let projection_snapshot = observation_key.is_some()
+            || raw.get("mcpResult").is_some()
             || bytes.len() > MAX_RESULT
             || baseline != *raw
             || candidate.is_some();
@@ -159,9 +216,18 @@ impl Engine {
         if snapshot.is_none() && value != *raw && raw.get("mcpResult").is_none() {
             value = raw.clone();
         }
+        if program && let Some(parts) = value["contentItems"].as_array_mut() {
+            for part in parts {
+                if let Some(object) = part.as_object_mut() {
+                    object.remove("nativeObservationKey");
+                }
+            }
+        }
         // 观察候选需要留存原文，但未变且未超限的结果无需增加模型侧回取包装。
         // 候选随后与实际发送的基线比较，不能靠先扩大基线满足净节省门槛。
         if (value != *raw || bytes.len() > MAX_RESULT || raw.get("mcpResult").is_some())
+            && !program
+            && !verification_only
             && let Some(reference) = &reference
         {
             if !value.is_object() {
@@ -177,6 +243,9 @@ impl Engine {
         let mut candidate_bytes = None;
         let mut kind = if identity_compacted {
             "coordination-v2"
+        } else if verification_only && snapshot.is_some() {
+            reason = "losslessDuplicateFacts";
+            "verification-receipt-v1"
         } else if file_compacted && snapshot.is_some() {
             "file-lines-v1"
         } else {
@@ -209,6 +278,54 @@ impl Engine {
                 reason = "noNetSaving";
             }
         }
+        if let Some(key) = observation_key
+            && snapshot.is_some()
+        {
+            let mut state = cell.state.lock().await;
+            if let Some(active) = state.active.as_mut() {
+                if let Some(previous) = active.observation_results.get(&key)
+                    && previous != item_id
+                {
+                    let proposed = repeated_observation(raw, previous, reference.as_ref().unwrap());
+                    if worthwhile(&value.to_string(), &proposed.to_string()) {
+                        value = proposed;
+                        kind = "repeated-observation-v1";
+                        reason = "applied";
+                    }
+                } else if !active.observation_results.contains_key(&key) {
+                    if active.observation_results.len() >= 128 {
+                        active.observation_results.clear();
+                    }
+                    active.observation_results.insert(key, item_id.into());
+                }
+            }
+        }
+        let mut observed_selections = Vec::new();
+        if let Some(reference) = &reference
+            && !selected_observations.is_empty()
+        {
+            let state = cell.state.lock().await;
+            if let Some(active) = &state.active {
+                for (index, key) in selected_observations {
+                    let part = &mut value["contentItems"][index];
+                    if let Some(previous) = active
+                        .observation_results
+                        .get(&key)
+                        .filter(|p| *p != item_id)
+                        && let Some(mut selected) = part["text"]
+                            .as_str()
+                            .and_then(|s| serde_json::from_str::<Value>(s).ok())
+                    {
+                        let proposed = repeated_observation(&selected["data"], previous, reference);
+                        if worthwhile(&selected["data"].to_string(), &proposed.to_string()) {
+                            selected["data"] = proposed;
+                            part["text"] = json!(selected.to_string());
+                        }
+                    }
+                    observed_selections.push((key, part["text"].clone()));
+                }
+            }
+        }
         if coordination
             && snapshot.is_some()
             && value.to_string().len() > MAX_RESULT
@@ -219,10 +336,61 @@ impl Engine {
             kind = "coordination-v2-preview-v1";
             reason = "pagedHandoffPreview";
         }
-        if value.to_string().len() > MAX_RESULT {
+        if raw.get("processId").is_some()
+            && (value.to_string().len() > MAX_RESULT
+                || value["stdout"].as_str().map_or(0, str::len)
+                    + value["stderr"].as_str().map_or(0, str::len)
+                    > raw["outputPageBytes"].as_u64().unwrap_or(8192) as usize)
+        {
+            // 已收集区间先保存，再缩短显示。保存失败仍可从 Runtime 原游标回取，不重放进程。
+            if snapshot.is_none() {
+                value["rawResult"] = json!({"processId":raw["processId"],"after":raw["collectedFromCursor"],"view":"raw",
+                    "readback":"read_process with this processId, after and view=raw; follow nextCursor",
+                    "scope":"Runtime process lifetime; durable snapshot unavailable"});
+            }
+            if let Some(preview) = output::bounded_preview(
+                &value,
+                raw["outputPageBytes"].as_u64().unwrap_or(8192) as usize,
+            ) {
+                value = preview;
+                kind = "process-collected-preview-v1";
+                reason = "boundedDisplayWithRawEvidence";
+            }
+        }
+        if value.to_string().len() > MAX_RESULT && !program {
             // 先装入可信回取引用，再分配头尾预算；不能让通用截断删掉回取入口。
             let full = value.to_string();
-            value = bounded_snapshot(&full, reference);
+            value = bounded_snapshot(&full, reference.clone());
+        }
+        if program {
+            // 解释器选择输出与强制回执各有独立上限，父子文本都计入同一总预算。
+            // 不能用普通头尾截断删除中间子调用的 UNKNOWN 或未完成进程事实。
+            if let Some(reference) = &reference
+                && let Some(preview) = program_preview(&value, reference)
+            {
+                value = preview;
+                kind = "native-program-preview-v2";
+                reason = "archivedSelectedOutput";
+            } else {
+                kind = "native-program-selected-v1";
+                reason = "boundedSelectedOutputAndReceipts";
+            }
+            // 只有最终模型投影完整保留的选定观察才能登记；被预览截掉的正文不算已见。
+            if let Some(parts) = value["contentItems"].as_array() {
+                let mut state = cell.state.lock().await;
+                if let Some(active) = state.active.as_mut() {
+                    for (key, text) in observed_selections {
+                        if parts.iter().any(|p| p["text"] == text)
+                            && !active.observation_results.contains_key(&key)
+                        {
+                            if active.observation_results.len() >= 128 {
+                                active.observation_results.clear();
+                            }
+                            active.observation_results.insert(key, item_id.into());
+                        }
+                    }
+                }
+            }
         }
         let displayed_bytes = value.to_string().len();
         let displayed_tokens = context::text_tokens(&value.to_string());
@@ -286,6 +454,76 @@ impl Engine {
         anyhow::ensure!((4..=8192).contains(&max_bytes), "maxBytes must be 4..8192");
         result_page(result_id, &text, offset, max_bytes)
     }
+}
+
+fn verification_view(value: &mut Value) {
+    let receipt = &value["verification"];
+    if value["state"] != "exited"
+        || receipt["status"] != "complete"
+        || receipt["schema"] != "areal.verification.v1"
+        || !receipt["receiptPath"].is_string()
+        || !receipt["logPath"].is_string()
+    {
+        return;
+    }
+    // 只去除 helper 的完全重复定位通知，未知 stdout、stderr、失败尾部和绑定事实均保留。
+    let notice = value["stdout"]
+        .as_str()
+        .and_then(|s| serde_json::from_str::<Value>(s).ok());
+    let expected = json!({"receiptPath":receipt["receiptPath"],"logPath":receipt["logPath"],
+        "exitCode":receipt["exitCode"],"sourceUnchanged":receipt["sourceUnchanged"]});
+    if notice.as_ref() == Some(&expected) {
+        value["stdout"] = json!("");
+    }
+    let receipt = &mut value["verification"];
+    if receipt["sourceUnchanged"] == true
+        && receipt.get("sourceBefore").is_some()
+        && receipt["sourceBefore"] == receipt["sourceAfter"]
+    {
+        receipt.as_object_mut().unwrap().remove("sourceAfter");
+    }
+}
+
+fn program_preview(raw: &Value, reference: &Value) -> Option<Value> {
+    let parts = raw["contentItems"].as_array()?;
+    let selected_bytes: usize = parts
+        .iter()
+        .skip(1)
+        .filter_map(|part| part["text"].as_str())
+        .map(str::len)
+        .sum();
+    if selected_bytes <= MAX_RESULT {
+        return None;
+    }
+    let mut remaining = MAX_RESULT;
+    let mut preview = Vec::new();
+    for (index, part) in parts.iter().enumerate() {
+        // 第一项是 Core 的完整子操作回执；真实图片和状态不能随文本展示一起截断。
+        let Some(text) = part["text"].as_str().filter(|_| index > 0) else {
+            preview.push(part.clone());
+            continue;
+        };
+        if remaining == 0 {
+            continue;
+        }
+        let mut selected = part.clone();
+        if text.len() > remaining {
+            let head = super::prefix(text, remaining * 3 / 4);
+            let tail = super::suffix(text, remaining / 4);
+            selected["text"] = json!(format!("{head}\n[preview shortened]\n{tail}"));
+            remaining = 0;
+        } else {
+            remaining -= text.len();
+        }
+        preview.push(selected);
+    }
+    preview.push(json!({"type":"inputText","text":json!({
+        "selectedOutputTruncated":true,"selectedOutputBytes":selected_bytes,"rawResult":reference,
+        "note":"Execution completed as recorded above. Full selected output is saved; use read_tool_result with this resultId if needed. Do not repeat completed effects to recover output."
+    }).to_string()}));
+    let mut value = raw.clone();
+    value["contentItems"] = json!(preview);
+    Some(value)
 }
 
 fn coordination_handoff_preview(value: &Value) -> Option<Value> {
@@ -606,6 +844,74 @@ mod tests {
             );
         }
         std::fs::write(output, serde_json::to_vec_pretty(&measurements).unwrap()).unwrap();
+        engine.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn program_preview_retains_all_child_facts_images_and_exact_original_readback() {
+        let directory = tempfile::tempdir().unwrap();
+        let engine = Engine::open(directory.path(), Arc::new(NoModel), Limits::default()).unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        let cell = engine.cell(&thread.id).await.unwrap();
+        let receipts = json!({"children":[
+            {"itemId":"one","outcome":"succeeded"},
+            {"itemId":"middle","outcome":"unknown","processId":"process","commandStatus":"running","outputReadComplete":false},
+            {"itemId":"last","outcome":"failed"}
+        ]});
+        let raw = json!({"contentItems":[
+            {"type":"inputText","text":receipts.to_string()},
+            {"type":"inputText","text":"原始观察😀".repeat(6000)},
+            {"type":"inputImage","imageUrl":"data:image/png;base64,evidence"},
+            {"type":"inputText","text":"last selected evidence"}
+        ]});
+        let prepared = engine
+            .prepare_program_result(&cell, "program-item", &raw)
+            .await
+            .unwrap();
+        assert_eq!(prepared.value["contentItems"][0], raw["contentItems"][0]);
+        assert_eq!(prepared.value["contentItems"][2], raw["contentItems"][2]);
+        assert!(prepared.value.to_string().len() < 20000);
+        assert!(
+            prepared
+                .value
+                .to_string()
+                .contains("selectedOutputTruncated")
+        );
+        assert_eq!(prepared.metrics["transform"], "native-program-preview-v2");
+        let turn: Turn = serde_json::from_value(json!({"id":"turn","status":"completed","items":[{
+            "type":"dynamicToolCall","id":"program-item","tool":"tool_program","callId":"parent","arguments":{},"status":"completed","success":false,
+            "contentItems":prepared.value["contentItems"],
+            "execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"op","outcome":"failed","resultSnapshot":prepared.snapshot}
+        }]})).unwrap();
+        cell.state.lock().await.thread.turns.push(turn);
+        let mut args = json!({"resultId":"program-item","maxBytes":997});
+        let mut full = String::new();
+        loop {
+            let page = engine.read_tool_result(&cell, &args).await.unwrap();
+            full.push_str(page["text"].as_str().unwrap());
+            if page["eof"] == true {
+                break;
+            }
+            args["after"] = page["nextCursor"].clone();
+        }
+        assert_eq!(serde_json::from_str::<Value>(&full).unwrap(), raw);
+        // 禁止回取时不创建一个无法兑现的缩略引用，也不伪造重新执行。
+        cell.state
+            .lock()
+            .await
+            .thread
+            .turns
+            .last_mut()
+            .unwrap()
+            .configuration
+            .get_or_insert_with(Default::default)
+            .tool_allowlist = Some(vec!["tool_program".into(), "fs_stat".into()]);
+        let unshortened = engine
+            .prepare_program_result(&cell, "unretrievable", &raw)
+            .await
+            .unwrap();
+        assert_eq!(unshortened.value, raw);
+        assert!(unshortened.snapshot.is_none());
         engine.shutdown().await;
     }
 
@@ -982,6 +1288,311 @@ mod tests {
                 .read_tool_result(&cell, &json!({"resultId":"saved-call"}))
                 .await
                 .is_err()
+        );
+        engine.shutdown().await;
+    }
+}
+
+// 必须先执行只读操作再比较；不省略 I/O、不复用旧版本、不折叠错误或进程输出。
+fn repeated_observation(raw: &Value, previous: &str, reference: &Value) -> Value {
+    let mut proposed = raw.clone();
+    if let Some(object) = proposed.as_object_mut() {
+        for field in [
+            "lines",
+            "source",
+            "text",
+            "declarations",
+            "absentDeclarations",
+            "executables",
+            "discovery",
+        ] {
+            object.remove(field);
+        }
+    }
+    proposed["unchangedObservation"] = json!({"previousResultId":previous,"basis":"fresh observation matched exactly; current versions and pagination retained"});
+    proposed["rawResult"] = reference.clone();
+    proposed
+}
+
+pub(super) fn observation_key(name: &str, raw: &Value) -> Option<String> {
+    if raw.get("error").is_some() || raw.to_string().len() < 1024 {
+        return None;
+    }
+    let canonical = crate::history::compact_file_text(&raw.to_string())
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .unwrap_or_else(|| raw.clone());
+    let raw = &canonical;
+    let body = match name {
+        "read_file"
+            if raw["sha256"].is_string()
+                && (raw["lines"].is_array() || raw["source"].is_string()) =>
+        {
+            json!({"path":raw["path"],"sha256":raw["sha256"],"offset":raw["offset"],"lines":raw["lines"],"source":raw["source"],"firstLine":raw["firstLine"],"lineCount":raw["lineCount"],"nextLine":raw["nextLine"],"nextColumn":raw["nextColumn"],"nextRead":raw["nextRead"],"eof":raw["eof"],"truncated":raw["truncated"]})
+        }
+        "environment_info" if raw["fingerprint"].is_string() => {
+            json!({"fingerprint":raw["fingerprint"]})
+        }
+        _ => return None,
+    };
+    Some(format!("{name}:{:x}", Sha256::digest(body.to_string())))
+}
+
+#[cfg(test)]
+mod observation_tests {
+    use super::*;
+    #[test]
+    fn verification_projection_only_removes_exact_duplicate_facts() {
+        let receipt = json!({"status":"complete","schema":"areal.verification.v1",
+            "receiptPath":"receipt.json","logPath":"log","exitCode":7,"sourceUnchanged":true,
+            "sourceBefore":"hash","sourceAfter":"hash","outputTail":"AssertionError: failed",
+            "environment":{"commandDigest":"command"}});
+        let notice = json!({"receiptPath":"receipt.json","logPath":"log","exitCode":7,"sourceUnchanged":true}).to_string();
+        let original = json!({"state":"exited","stdout":notice,"stderr":"diagnostic","exitCode":7,"verification":receipt});
+        let mut value = original.clone();
+        verification_view(&mut value);
+        assert_eq!(value["stdout"], "");
+        assert_eq!(value["stderr"], "diagnostic");
+        assert_eq!(value["exitCode"], 7);
+        assert_eq!(
+            value["verification"]["outputTail"],
+            "AssertionError: failed"
+        );
+        assert_eq!(
+            value["verification"]["environment"],
+            original["verification"]["environment"]
+        );
+        assert!(value["verification"].get("sourceAfter").is_none());
+        for status in ["pending", "unavailable"] {
+            let mut value = original.clone();
+            value["verification"]["status"] = json!(status);
+            let before = value.clone();
+            verification_view(&mut value);
+            assert_eq!(value, before);
+        }
+        let mut value = original.clone();
+        value["stdout"] = json!("unexpected output\n");
+        value["verification"]["sourceAfter"] = json!("changed");
+        verification_view(&mut value);
+        assert_eq!(value["stdout"], "unexpected output\n");
+        assert_eq!(value["verification"]["sourceAfter"], "changed");
+    }
+
+    #[test]
+    fn repeated_observation_key_is_content_and_range_bound_but_preserves_new_versions() {
+        let mut value = json!({"path":"workspace://repo/a", "sha256":"a", "fileVersion":"v1", "offset":1,"nextLine":2,"eof":true,"lines":[{"number":1,"text":"x".repeat(1600)}]});
+        let key = observation_key("read_file", &value).unwrap();
+        value["fileVersion"] = json!("v2");
+        assert_eq!(observation_key("read_file", &value).unwrap(), key);
+        for (field, next) in [
+            ("sha256", json!("b")),
+            ("offset", json!(2)),
+            ("path", json!("workspace://repo/b")),
+        ] {
+            let mut changed = value.clone();
+            changed[field] = next;
+            assert_ne!(observation_key("read_file", &changed).unwrap(), key);
+        }
+        value["error"] = json!("permission denied");
+        assert!(observation_key("read_file", &value).is_none());
+        assert!(observation_key("run_command", &value).is_none());
+    }
+}
+
+#[cfg(test)]
+mod repeated_projection_tests {
+    use super::*;
+    struct PendingModel(Arc<tokio::sync::Notify>);
+    #[async_trait::async_trait]
+    impl Model for PendingModel {
+        fn name(&self) -> &str {
+            "pending-fixture"
+        }
+        async fn stream(&self, _: Vec<Message>) -> anyhow::Result<model::ModelStream> {
+            self.0.notify_one();
+            Ok(Box::pin(futures_util::stream::pending()))
+        }
+    }
+    #[tokio::test]
+    async fn selected_program_observations_fold_only_after_complete_model_display() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut extensions = ToolExtensions::default();
+        extensions.policy.result_views.repeated_observations = true;
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let engine = Engine::open_with_extensions(
+            directory.path(),
+            Arc::new(PendingModel(entered.clone())),
+            Limits::default(),
+            None,
+            extensions,
+        )
+        .unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("observe")])
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(10), entered.notified())
+            .await
+            .unwrap();
+        let cell = engine.cell(&thread.id).await.unwrap();
+        let data = json!({"fingerprint":"env","declarations":[{"text":"source".repeat(600)}]});
+        let key = observation_key("environment_info", &data).unwrap();
+        let selected = json!({"type":"inputText","nativeObservationKey":key,"text":json!({"itemId":"child","data":data}).to_string()});
+        let receipt =
+            json!({"type":"inputText","text":"{\"children\":[],\"programCompleted\":true}"});
+        let raw = json!({"contentItems":[receipt, selected]});
+        let first = engine
+            .prepare_program_result(&cell, "parent-1", &raw)
+            .await
+            .unwrap();
+        assert!(!first.value.to_string().contains("nativeObservationKey"));
+        assert!(!first.value.to_string().contains("unchangedObservation"));
+        let second = engine
+            .prepare_program_result(&cell, "parent-2", &raw)
+            .await
+            .unwrap();
+        let view: Value =
+            serde_json::from_str(second.value["contentItems"][1]["text"].as_str().unwrap())
+                .unwrap();
+        assert_eq!(
+            view["data"]["unchangedObservation"]["previousResultId"],
+            "parent-1"
+        );
+        assert_eq!(view["data"]["rawResult"]["resultId"], "parent-2");
+        assert!(second.snapshot.is_some());
+        assert_eq!(
+            first.value["contentItems"][1]["text"],
+            raw["contentItems"][1]["text"]
+        );
+        // 完整保存但未展示的选定观察不能让下轮正文被错误折叠。
+        cell.state
+            .lock()
+            .await
+            .active
+            .as_mut()
+            .unwrap()
+            .observation_results
+            .clear();
+        let large = json!({"contentItems":[raw["contentItems"][0],{"type":"inputText","text":"x".repeat(MAX_RESULT + 1)},raw["contentItems"][1]]});
+        let preview = engine
+            .prepare_program_result(&cell, "truncated", &large)
+            .await
+            .unwrap();
+        assert!(
+            preview
+                .value
+                .to_string()
+                .contains("selectedOutputTruncated")
+        );
+        assert!(
+            cell.state
+                .lock()
+                .await
+                .active
+                .as_ref()
+                .unwrap()
+                .observation_results
+                .is_empty()
+        );
+        let after = engine
+            .prepare_program_result(&cell, "after-truncation", &raw)
+            .await
+            .unwrap();
+        assert!(!after.value.to_string().contains("unchangedObservation"));
+        engine.shutdown().await;
+    }
+    #[tokio::test]
+    async fn repeated_read_retains_new_version_and_retrievable_full_observation() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut extensions = ToolExtensions::default();
+        extensions.policy.result_views.repeated_observations = true;
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let engine = Engine::open_with_extensions(
+            directory.path(),
+            Arc::new(PendingModel(entered.clone())),
+            Limits::default(),
+            None,
+            extensions,
+        )
+        .unwrap();
+        let thread = engine.create("/fixture".into()).await.unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("observe")])
+            .await
+            .unwrap();
+        // 先让模型进入等待，避免 fixture 改写历史触发并发请求组装的重启清空。
+        tokio::time::timeout(Duration::from_secs(10), entered.notified())
+            .await
+            .unwrap();
+        let cell = engine.cell(&thread.id).await.unwrap();
+        let mut raw = json!({"path":"workspace://repo/a","sha256":"same","fileVersion":"first", "offset":1,"nextLine":51,"eof":true,"lines":(1..=50).map(|n|json!({"number":n,"text":"a sufficiently long line of unchanged source text\n"})).collect::<Vec<_>>()});
+        let child: Item = serde_json::from_value(json!({"type":"dynamicToolCall","id":"program-only","tool":"read_file","callId":"program-only","arguments":{},"status":"completed","success":true,"execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"operation","outcome":"succeeded","parentCallId":"parent"}})).unwrap();
+        cell.state
+            .lock()
+            .await
+            .thread
+            .turns
+            .last_mut()
+            .unwrap()
+            .items
+            .push(child);
+        for _ in 0..2 {
+            let child = engine
+                .prepare_tool_result(&cell, "program-only", "read_file", &raw, None)
+                .await
+                .unwrap();
+            assert!(child.value.get("unchangedObservation").is_none());
+        }
+        let first = engine
+            .prepare_tool_result(&cell, "first", "read_file", &raw, None)
+            .await
+            .unwrap();
+        assert!(first.value.get("unchangedObservation").is_none());
+        // 同一调用会先提交事实再处理后置 hook；投影重入不能把首个结果折叠成自己。
+        let first_again = engine
+            .prepare_tool_result(&cell, "first", "read_file", &raw, None)
+            .await
+            .unwrap();
+        assert_eq!(first_again.value, first.value);
+        raw["fileVersion"] = json!("fresh-version");
+        let second = engine
+            .prepare_tool_result(&cell, "second", "read_file", &raw, None)
+            .await
+            .unwrap();
+        assert_eq!(second.value["fileVersion"], "fresh-version");
+        assert_eq!(second.value["nextLine"], 51);
+        assert_eq!(
+            second.value["unchangedObservation"]["previousResultId"],
+            "first"
+        );
+        assert!(second.value.to_string().len() < first.value.to_string().len());
+        let item: Item = serde_json::from_value(json!({"type":"dynamicToolCall","id":"second","tool":"read_file","callId":"second","arguments":{},"status":"completed","success":true,"contentItems":[{"type":"inputText","text":second.value.to_string()}],"execution":{"runtimeEpoch":"epoch","scopeId":"scope","operationId":"operation","outcome":"succeeded","resultSnapshot":second.snapshot}})).unwrap();
+        cell.state
+            .lock()
+            .await
+            .thread
+            .turns
+            .last_mut()
+            .unwrap()
+            .items
+            .push(item);
+        let page = engine
+            .read_tool_result(&cell, &json!({"resultId":"second"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(page["text"].as_str().unwrap()).unwrap(),
+            raw
+        );
+        raw["sha256"] = json!("changed");
+        assert!(
+            engine
+                .prepare_tool_result(&cell, "third", "read_file", &raw, None)
+                .await
+                .unwrap()
+                .value
+                .get("unchangedObservation")
+                .is_none()
         );
         engine.shutdown().await;
     }

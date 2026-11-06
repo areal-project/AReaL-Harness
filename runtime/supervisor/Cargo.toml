@@ -19,5 +19,4 @@ tokio.workspace = true
 tokio-util.workspace = true
 uuid.workspace = true
 
-[dev-dependencies]
 tempfile.workspace = true

@@ -29,3 +29,5 @@ Remote v2 设计与实施边界：[架构](design/remote-control.md) · [API](ap
 客户端 UI 实现与设计约束：[设计规则 v1](../clients/gui/design-system/README.md) · [@areal/ui 组件与 Token](../clients/gui/packages/ui/README.md)。
 
 - [回答评价](guides/user-feedback.md)
+
+- [程序化工具调用](guides/programmatic-tools.md)：默认组合入口、数据依赖、观察选择与恢复边界。

@@ -227,6 +227,8 @@ struct TrustedPlugin {
 
 struct Active {
     tool_exposure: desktop::mcp_tools::ToolExposure,
+    native_tool_exposure: desktop::mcp_tools::ToolExposure,
+    observation_results: BTreeMap<String, String>,
     context_usage: Option<areal_protocol::context::ContextUsage>,
     context_sequence: u64,
     generation: request_meter::Generation,

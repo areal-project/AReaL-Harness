@@ -58,6 +58,8 @@ Rust 默认版本依次采用显式启动版本、用户 rustup 默认值和 Hom
 
 受限命令不会继承宿主 HOME。Runtime 在既有读取权限内选择 HOME：优先采用有效的 TMPDIR（Core 的每线程 scratch），未提供时尝试 Scope 可读的部署 scratch 或其已授权子目录，均不可用时退回当前工作目录；缺失的 TMPDIR 同步使用该目录。目录必须是已存在的绝对目录，解析符号链接后仍在 Scope 读取范围内；不增加读写根或网络权限。没有可写 scratch 的只读调用仍不能写缓存，应由可信调用方提供 scratch。完整授权且继承网络的宿主模式保留原有 HOME/TMPDIR 继承规则。
 
+完整宿主授权且继承网络、不需要 OS 路径沙箱时，超过 48 个 UTF-8 字节的有效 TMPDIR 会映射为 `/tmp` 下私有目录内的短符号链接，以减少应用追加 Unix socket 路径后超出系统上限的失败。链接仍指向同一实际目录；HOME、原目录、已有文件与权限不变。同一实际目录在 Runtime 生命周期内复用别名，跨命令的临时文件引用可继续使用；确认所有进程关闭后只删除别名，不删除原 scratch。别名被删除或改指向时明确拒绝启动。受限 Scope、只读输入保护和断网执行不使用这条宿主路径映射，既有沙箱与目录规则保持不变。短别名不保证任意长度的应用后缀都能满足 socket 上限。
+
 Rust Client 的 `launch_with_limits` 投影可信 PATH 并向 Runtime 传递上述发现提示，不继承其他环境；`launch_with_command_path` 供可信部署显式接入已物化工具链，要求有界的绝对目录列表。NativeExecutor 为显式工具链把私有 .toolchain/bin 加在系统路径前。它不扩大源文件写集合。`launch_with_environment` 另接受可信调用方已授权的网络上限；已有 launch 入口仍默认禁网，子 Scope 可继续收窄为 deny。
 
 私有 Bash 是单独执行的 GPL-3.0-or-later 组件，完整包同时携带许可证、锁定对应源码和构建信息；不静态链接进 Rust。构建和升级须使用完整 bundle，见[开发指南](../development/README.md)和[发行流程](../development/releasing.md)。
@@ -102,6 +104,10 @@ Rust Client 的 `launch_with_limits` 投影可信 PATH 并向 Runtime 传递上�
 `fs.execute` 的内部文件进程和显式 `process.startQueued` 在祖先并发名额耗尽时等待释放；排队计入原进程期限，预留名额与检查在同一临界区完成，不提高并发上限。等待前登记并保留本 epoch 的操作回执；重复 ID 复用同一等待与结果，撤销 Scope 会终止等待。累计输出、权限或操作记录容量耗尽仍立即拒绝，不重试已有副作用。`process.start` 保持立即准入或拒绝的行为。Core 的短文件读取与搜索协商使用排队入口；旧 Runtime 未公布该方法时仍使用原入口，不在失败后重放。
 
 Runtime daemon 可用 `--cumulative-output-bytes` 独立设置部署及 Scope 后代累计输出上限；省略时等于 `--output-bytes`，且不得小于单进程上限。进程仍受 `--output-bytes` 限制，输出窗口另由 `--output-window-bytes` 约束。stdout/stderr 的真实接受字节对每个祖先累计一次；重复读取保留输出不再收费。文件助手的 JSON/base64 响应也是进程输出。
+
+`--output-window-bytes` 现在限制热内存窗口。Runtime 将已经接受的原始输出在热窗口不足时保存到私有临时文件，支持窗口外的原游标回取；该文件随保留的进程记录清理，不构成跨 Runtime 重启的持久历史。磁盘上每字节带一个流标记，最多为已接受输出的两倍，不扩大进程或祖先输出额度；读取不重复计费。保留失败会停止进程并报告截断/失败，不能静默丢失证据。
+
+`FileCommand.readImage {path,options?}` 是受同一文件读取授权约束的派生视图入口。options 包含 maxDimension、maxViewBytes、crop、frameIndex/timeMs，默认值与边界见[工具](../guides/tools.md)。文件助手在 Runtime 内完成解码；成功返回 `imageOutput:{processId,bytes,encoding:"file-helper-json",scopeId,exitCode}`，用既有 `output.read` 从 null 游标分块回取完整 `{result:{sourceSha256,sourceBytes,views,...}}` JSON；每个 view 包含 coverage、sourceDimensions、outputDimensions、outputBytes、dataBase64。单帧仍为 128 KiB，最多三幅 1 MiB PNG 的完整封装上限为 4 MiB + 32 KiB。原图限制 8 MiB，禁止符号链接/硬链接与越权路径，不写用户文件。文件操作收据可回读而不重执行，输出只计费一次。`runtimeImageViewsV1` 表示该能力，旧部署不自动降级。
 
 Core 使用 `readForHistory` 捕获条件编辑的历史前像。仅这一经过校验的文件助手使用独立的 `MAX_FRAME_BYTES - 4096` 响应上限，不消耗命令或祖先输出额度。读取权限、文件大小、进程容量、时限和操作保留上限继续适用。普通 `read` 与 `process.start` 保留原有输出计量。
 

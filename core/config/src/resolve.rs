@@ -9,6 +9,11 @@ use std::{
 
 const ENV: &[(&str, &str, &str)] = &[
     (
+        "AREAL_HARNESS_SUMMARY_QUOTED_RETRY",
+        "",
+        "model.summary_quoted_retry",
+    ),
+    (
         "AREAL_HARNESS_RESPONSES_PROMPT_CACHE",
         "",
         "model.responses_prompt_cache",
@@ -27,6 +32,11 @@ const ENV: &[(&str, &str, &str)] = &[
         "AREAL_HARNESS_SUMMARY_MAX_OUTPUT_TOKENS",
         "",
         "model.summary_max_output_tokens",
+    ),
+    (
+        "AREAL_HARNESS_SUMMARY_PRESERVE_PREFIX",
+        "",
+        "model.summary_preserve_prefix",
     ),
     (
         "AREAL_HARNESS_CONTEXT_TARGET_TOKENS",
@@ -461,6 +471,8 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
         | "context_compaction_enabled"
         | "responses_websocket"
         | "responses_prompt_cache"
+        | "summary_preserve_prefix"
+        | "summary_quoted_retry"
         | "command_stdin_closed"
         | "goal_recover_unknown_model_usage" => {
             if !matches!(value.as_str(), "0" | "1" | "false" | "true") {
@@ -1038,6 +1050,12 @@ pub(crate) fn load_mode(
             summary_max_output_tokens: values
                 .get("model.summary_max_output_tokens")
                 .map(|e| e.value.parse().unwrap()),
+            summary_quoted_retry: values
+                .get("model.summary_quoted_retry")
+                .map(|e| matches!(e.value.as_str(), "true" | "1")),
+            summary_preserve_prefix: values
+                .get("model.summary_preserve_prefix")
+                .map(|e| matches!(e.value.as_str(), "true" | "1")),
             responses_websocket: matches!(
                 values["model.responses_websocket"].value.as_str(),
                 "true" | "1"

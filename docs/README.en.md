@@ -29,3 +29,5 @@ Shared Host (not implemented): [implementation spec](development/shared-host-spe
 Client UI implementation and design constraints: internal [design rules v1](../clients/gui/design-system/README.md) and [@areal/ui components and tokens](../clients/gui/packages/ui/README.en.md).
 
 - [Answer feedback](guides/user-feedback.en.md)
+
+- [Programmatic tool calling](guides/programmatic-tools.en.md): default composition entry, data dependencies, selected observations and recovery boundaries.
