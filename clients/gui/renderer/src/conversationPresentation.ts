@@ -738,3 +738,17 @@ export function commandResourceLabel(tool: Data) {
   if (outcome === "succeeded" || outcome === "success") return "命令资源已结束";
   return null;
 }
+
+/** 正等用户审批的工具调用：对应工具行显示“等你审批”，本轮计时暂停。 */
+export function approvalProgress(project: Data, threadId: string) {
+  const calls = new Set<string>(
+    (project.state?.interactions?.[threadId]?.data ?? [])
+      .filter((item: Data) => item.status === "pending" && item.kind === "approval")
+      .map((item: Data) => item.callId),
+  );
+  return {
+    mark: (item: Data): Data =>
+      calls.has(item.callId) ? { ...item, awaitingApproval: true } : item,
+    elapsed: { connected: !!project.state?.connected, awaiting: calls.size > 0 },
+  };
+}

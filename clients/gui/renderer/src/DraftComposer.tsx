@@ -18,7 +18,7 @@ import { Input } from "@areal/ui";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { imageAnnotationBlocked, useImageAnnotationRevision } from "./imageAnnotations.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
-import { draftModelSelection, draftModelOptions, modelValue } from "./lib/draftModelSelection.js";
+import { draftModelSelection, draftModelChoices, modelValue } from "./lib/draftModelSelection.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
@@ -193,9 +193,7 @@ export function DraftComposer({
     (entry: Data) => !isIndependentCreation(entry, [unknown, activeCreation?.requestId]),
   );
   const submitDisabled = modelSelectionDisabled || !!blockingPending.length || !effectiveModel;
-  const noModels = !draftModelOptions(project, effectiveModel, currentModel).some(
-    (option) => !option.unavailableReason && !option.historical,
-  );
+  const models = draftModelChoices(project, effectiveModel, currentModel);
   const desktopUnsupported =
     conversationSubmitReadOnly ||
     conversationCreateReadOnly ||
@@ -814,9 +812,7 @@ export function DraftComposer({
           submitDisabledReason={
             desktopUnsupported && !goalMode
               ? t("backend.updateRequired")
-              : !effectiveModel && !modelSelectionDisabled
-                ? t(noModels ? "chat.composer.noModelsReason" : "chat.composer.chooseModelReason")
-                : undefined
+              : (!modelSelectionDisabled && models.missing && t(models.missing)) || undefined
           }
           submitting={busy}
           submitLabel={goalMode ? "开始目标" : "发送"}
@@ -1074,7 +1070,7 @@ export function DraftComposer({
                   setEfforts(next);
                   localStorage.setItem(`${key}:efforts`, JSON.stringify(next));
                 }}
-                options={draftModelOptions(project, effectiveModel, currentModel)}
+                options={models.options}
                 onChange={(value) => {
                   setModel(value);
                   localStorage.setItem(`${key}:model`, value);

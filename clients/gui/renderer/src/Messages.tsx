@@ -1,6 +1,5 @@
 import { ConversationDiagramDialog } from "./ConversationDiagramDialog.js";
 import type { MediaOwner } from "./PlatformReadContext.js";
-import { commandResourceLabel } from "./conversationPresentation.js";
 import { scheduledRunTask, scheduledTaskName } from "./scheduleText.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
 import * as readingDom from "./conversationReadingDom.js";
@@ -48,6 +47,8 @@ import {
   progressGroups,
   goalContinuationLabel,
   turnFailureMessage,
+  approvalProgress,
+  commandResourceLabel,
 } from "./conversationPresentation.js";
 import { progressAutoCollapse, TurnProgress } from "./TurnProgress.js";
 import { TurnElapsed } from "./TurnElapsed.js";
@@ -1169,11 +1170,7 @@ export function Messages({
                   const pendingInput = project.state?.interactions?.[thread.id]?.data?.some(
                     (item: Data) => item.status === "pending" && item.turnId === turn.id,
                   );
-                  const awaitingCalls = new Set(
-                    (project.state?.interactions?.[thread.id]?.data ?? [])
-                      .filter((item: Data) => item.status === "pending" && item.kind === "approval")
-                      .map((item: Data) => item.callId),
-                  );
+                  const approval = approvalProgress(project, thread.id);
                   const legacyReply =
                     turn.status === "completed" &&
                     tail?.type === "agentMessage" &&
@@ -1402,11 +1399,7 @@ export function Messages({
                                   return (
                                     <div data-side-item-id={entry.id} key={entry.id}>
                                       <ToolEvent
-                                        item={
-                                          awaitingCalls.has(entry.callId)
-                                            ? { ...entry, awaitingApproval: true }
-                                            : entry
-                                        }
+                                        item={approval.mark(entry)}
                                         mediaGeneration={localThread.displayHistory?.viewGeneration}
                                         onLoadDetails={
                                           (entry.processRecords ?? [entry]).some(
@@ -1502,8 +1495,7 @@ export function Messages({
                                 turn={
                                   !thread.cloud && groupIndex === firstProgress ? turn : undefined
                                 }
-                                connected={!!project.state?.connected}
-                                awaiting={awaitingCalls.size > 0}
+                                {...approval.elapsed}
                                 label={legacyReply ? "早前消息与活动" : "本轮过程"}
                                 settled={
                                   turn.status === "completed" &&
@@ -1522,11 +1514,7 @@ export function Messages({
                               ({ item }) => !thread.cloud && item === initialUser,
                             ) &&
                               firstProgress < 0 && (
-                                <TurnElapsed
-                                  turn={turn}
-                                  connected={!!project.state?.connected}
-                                  awaiting={awaitingCalls.size > 0}
-                                />
+                                <TurnElapsed turn={turn} {...approval.elapsed} />
                               )}
                           </Fragment>
                         );
