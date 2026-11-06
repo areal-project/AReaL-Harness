@@ -1,0 +1,23 @@
+docs/development/testing.en.md
+  s_65512586972bc8::t_4b78eb9e5bec23 20
+clients/gui/scripts/model-selection-smoke.mjs
+  s_65512586972bc8::t_6ae80e4dbba428 2516
+docs/development/testing.md
+  s_65512586972bc8::t_6ae80e4dbba428 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3fc3fd281ea58410b1f814e89340002090d815f9",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
