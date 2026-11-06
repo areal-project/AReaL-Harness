@@ -1,0 +1,21 @@
+scripts/runtime-smoke.py
+  s_65512586972bc8::t_bcaf3adb80f171 360-376
+scripts/native-tools-smoke.py
+  s_65512586972bc8::t_bcaf3adb80f171 38,152-157,393-396
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8abdf4b34ba92b222c0e6cf350d03eb607fe5773",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
