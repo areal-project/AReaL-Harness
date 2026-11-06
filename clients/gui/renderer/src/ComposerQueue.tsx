@@ -5,7 +5,6 @@ import { Button } from "@areal/ui";
 import { useState } from "react";
 import {
   GripVertical,
-  ListEnd,
   CornerDownRight,
   Trash2,
   Ellipsis,
@@ -215,54 +214,58 @@ export function ComposerQueue({
             data-queue-id={item.id}
             className={`composer-queue-row${editingId === item.id ? " editing" : ""}${over === item.id ? " drop-target" : ""}`}
           >
-            <Button
-              unstyled
-              data-slot={undefined}
-              type="submit"
-              className="composer-queue-grip"
-              disabled={locked}
-              aria-label={`调整顺序 ${queueLabel(item)}`}
-              title="拖动调整顺序，或按上下方向键"
-              onKeyDown={(event) => {
-                if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+            <span className="composer-queue-handle">
+              <span className="composer-queue-index" aria-hidden="true">
+                {index + 1}
+              </span>
+              <Button
+                unstyled
+                data-slot={undefined}
+                type="submit"
+                className="composer-queue-grip"
+                disabled={locked}
+                aria-label={`调整顺序 ${queueLabel(item)}`}
+                title="拖动调整顺序，或按上下方向键"
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                    event.preventDefault();
+                    move(item.id, event.key === "ArrowUp" ? -1 : 1);
+                  }
+                }}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
                   event.preventDefault();
-                  move(item.id, event.key === "ArrowUp" ? -1 : 1);
-                }
-              }}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                event.preventDefault();
-                event.currentTarget.focus();
-                event.currentTarget.setPointerCapture(event.pointerId);
-                setDrag({
-                  id: item.id,
-                  ids: items.map((row) => row.id),
-                  revision: queue.revision,
-                });
-              }}
-              onPointerMove={(event) => {
-                if (!drag) return;
-                const row = document
-                  .elementFromPoint(event.clientX, event.clientY)
-                  ?.closest<HTMLElement>("[data-queue-id]");
-                setOver(row?.dataset.queueId ?? null);
-              }}
-              onPointerUp={(event) => {
-                const row = document
-                  .elementFromPoint(event.clientX, event.clientY)
-                  ?.closest<HTMLElement>("[data-queue-id]");
-                drop(row?.dataset.queueId);
-                if (event.currentTarget.hasPointerCapture(event.pointerId))
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-              }}
-              onPointerCancel={() => {
-                setDrag(null);
-                setOver(null);
-              }}
-            >
-              <GripVertical size={13} />
-            </Button>
-            <ListEnd size={17} className="composer-queue-glyph" />
+                  event.currentTarget.focus();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setDrag({
+                    id: item.id,
+                    ids: items.map((row) => row.id),
+                    revision: queue.revision,
+                  });
+                }}
+                onPointerMove={(event) => {
+                  if (!drag) return;
+                  const row = document
+                    .elementFromPoint(event.clientX, event.clientY)
+                    ?.closest<HTMLElement>("[data-queue-id]");
+                  setOver(row?.dataset.queueId ?? null);
+                }}
+                onPointerUp={(event) => {
+                  const row = document
+                    .elementFromPoint(event.clientX, event.clientY)
+                    ?.closest<HTMLElement>("[data-queue-id]");
+                  drop(row?.dataset.queueId);
+                  if (event.currentTarget.hasPointerCapture(event.pointerId))
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                }}
+                onPointerCancel={() => {
+                  setDrag(null);
+                  setOver(null);
+                }}
+              >
+                <GripVertical size={13} />
+              </Button>
+            </span>
             <TitleTooltip title={queueLabel(item)}>
               <span className="composer-queue-copy">{queueLabel(item)}</span>
             </TitleTooltip>
@@ -274,8 +277,8 @@ export function ComposerQueue({
                 type="submit"
                 className="composer-queue-steer"
                 disabled={locked || !running}
-                aria-label={`引导 ${queueLabel(item)}`}
-                title="现在发送到正在进行的任务"
+                aria-label={`立即发送 ${queueLabel(item)}`}
+                title="不等这一轮结束，现在就发给正在进行的任务"
                 onClick={() =>
                   void edit({
                     operation: "steer",
@@ -284,8 +287,8 @@ export function ComposerQueue({
                   })
                 }
               >
-                <CornerDownRight size={16} />
-                <span>引导</span>
+                <CornerDownRight size={15} />
+                <span>立即发送</span>
               </Button>
               <Button
                 unstyled
