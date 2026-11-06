@@ -531,7 +531,7 @@ pub(super) mod tests {
                 let directory = tempfile::tempdir().unwrap();
                 let host = Rc::new(fixture(directory.path()));
                 let gate = host.gate("project").unwrap();
-                let guard = gate.lock().await;
+                let guard = gate.write().await;
                 let request = input(&host, false);
                 let id = request.request_id.clone();
                 let worker = host.clone();
@@ -764,7 +764,7 @@ finally:
         let directory = tempfile::tempdir().unwrap();
         let host = fixture(directory.path());
         let gate = host.gate("project").unwrap();
-        let _guard = gate.lock().await;
+        let _guard = gate.write().await;
         let registration = host.slots.borrow()["project"].registration.clone();
         let (writer, lifetime) = OwnerLifetime::pair().unwrap();
         {

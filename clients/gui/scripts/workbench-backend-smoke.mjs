@@ -814,6 +814,19 @@ try {
     );
   }
   if (selected("lifecycle")) {
+    await backend.command("connect", { projectId });
+    const observations = await Promise.all([
+      projects.client.activity(),
+      backend.readHostActivity(),
+      projects.client.status().then(() => backend.readHostActivity()),
+    ]);
+    for (const activity of observations)
+      assert.equal(
+        activity.complete,
+        true,
+        "concurrent readers must not make background status unknown",
+      );
+    checks.push("Concurrent Main, menu and Host activity reads preserve authoritative status");
     await backend.command("library", { operation: "createSection", title: "A3 source acceptance" });
     const library = JSON.parse(await readFile(join(source.coreHome, "library.json"), "utf8"));
     assert.ok(JSON.stringify(library).includes("A3 source acceptance"));

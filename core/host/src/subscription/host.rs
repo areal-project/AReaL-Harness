@@ -319,7 +319,7 @@ impl Host {
                                         .collect::<Vec<_>>();
                                     let mut locks = Vec::new();
                                     for gate in gates {
-                                        locks.push(gate.lock_owned().await);
+                                        locks.push(gate.write_owned().await);
                                     }
                                     let idle = host
                                         .subscription_idle(&input.source_id)
@@ -401,7 +401,7 @@ impl Host {
                     .collect::<Vec<_>>();
                 let mut locks = Vec::new();
                 for gate in gates {
-                    locks.push(gate.lock_owned().await);
+                    locks.push(gate.write_owned().await);
                 }
                 for project in &ids {
                     let live = self
@@ -852,7 +852,7 @@ impl Host {
         else {
             return Ok(());
         };
-        let _lock = gate.lock().await;
+        let _lock = gate.write().await;
         let (service, generation, connection) =
             self.schedules.connections.shared_identity(self, project)?;
         let epoch = source.account_epoch();

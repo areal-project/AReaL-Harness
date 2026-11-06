@@ -450,6 +450,7 @@ export function Composer({
       operation =
         JSON.parse(composerDraftStorage.getItem(`${key}:pending-operation`) ?? "null") ?? undefined;
     } catch {}
+    operation ??= project.outcomes?.[unknown]?.operation;
     const outcome = recoveredOutcome(project, unknown, thread.id, operation);
     if (!outcome) return;
     const turnStart = readingViews.get(
@@ -1335,6 +1336,7 @@ export function Composer({
                   onClick={() =>
                     void readAction("reconcile", {
                       projectId: project.id,
+                      requestId: unknown,
                     }).catch(() => {})
                   }
                 >

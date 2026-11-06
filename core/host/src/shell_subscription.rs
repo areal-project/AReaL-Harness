@@ -401,7 +401,7 @@ mod tests {
             areal_local_service::storage::write(&service.auth_file, &json!({"principals":[{"id":"desktop-owner","token":"fixture"}]})).unwrap();
             let gate = host.slots.borrow()["project"].gate.clone();
             // 本测试只控制目录回复，保留已就绪项目状态，不启动项目监督进程。
-            let _guard = gate.lock().await;
+            let _guard = gate.write().await;
             {
                 let mut slots = host.slots.borrow_mut();
                 let slot = slots.get_mut("project").unwrap();

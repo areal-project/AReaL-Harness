@@ -86,8 +86,7 @@ fn existing_lock(path: &Path) -> Result<Option<File>> {
         metadata.is_file() && metadata.uid() == unsafe { libc::geteuid() },
         "invalid lifecycle lock"
     );
-    file.try_lock_exclusive()
-        .context("project lifecycle is busy")?;
+    FileExt::try_lock_shared(&file).context("project lifecycle is busy")?;
     Ok(Some(file))
 }
 

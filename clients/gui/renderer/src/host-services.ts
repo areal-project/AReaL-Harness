@@ -1,6 +1,9 @@
 import {
   createHostSnapshotProjector,
   windowIdentity,
+  hostCommandOutcome,
+  settleHostCommand as settled,
+  admitHostCommand as admitted,
   type ReadProject,
   type ReadingWindow,
 } from "./host-snapshot.js";
@@ -58,6 +61,8 @@ export function createHostReadServices(
   const threadTargets = new Map<string, string>();
   const creationTargets = new Map<string, string>();
   const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
+  const commandOutcomes = new Map<string, Record<string, JsonObject>>();
+  const commandOwners = new Map<string, string>();
   const projectSnapshot = createHostSnapshotProjector(
     client,
     desktop,
@@ -204,7 +209,7 @@ export function createHostReadServices(
       shellState.state === "fresh",
       currentSession,
       observation,
-      { legacy, readingWindow, observation, session, historyVersion },
+      { legacy, readingWindow, observation, session, historyVersion, commandOutcomes },
     );
     snapshot = projection.snapshot;
     librarySourceId = projection.sourceId;
@@ -506,26 +511,6 @@ export function createHostReadServices(
     const hostProjectId = threadTargets.get(`${projectId}:${threadId}`) ?? project?.hostProjectId;
     return project && hostProjectId ? { project, hostProjectId, threadId } : undefined;
   }
-  function settled(result: import("@areal/client").HostCommandResult) {
-    if (result.admissionState === "accepted" || result.admissionState === "pending") return;
-    const outcome = result.admissionState === "rejected" ? { kind: "rejected" } : undefined;
-    throw Object.assign(
-      new Error(outcome ? "Host 拒绝了该操作" : "操作结果尚未确认。正在核对原请求，不会自动重发。"),
-      {
-        commandId: result.commandId,
-        requestId: result.commandId,
-        submissionUnknown: !outcome,
-        outcome,
-      },
-    );
-  }
-  function admitted(result: import("@areal/client").HostCommandResult): JsonObject {
-    if (result.admissionState === "accepted") return result;
-    settled(
-      result.admissionState === "pending" ? { ...result, admissionState: "unknown" } : result,
-    );
-    throw new Error("Invalid Host admission result");
-  }
   function object(value: unknown): value is Record<string, unknown> {
     return value !== null && typeof value === "object" && !Array.isArray(value);
   }
@@ -599,23 +584,23 @@ export function createHostReadServices(
         typeof params.requestId === "string" &&
         client.writable("command.read")
       ) {
-        const result = await client.commandStatus(project.hostProjectId, params.requestId);
-        if (!object(result)) throw new Error("Invalid Host command result");
-        const accepted = result.admissionState === "accepted";
-        const rejected = result.admissionState === "rejected";
+        const connection = client.snapshot();
+        if (connection.connection !== "ready") throw new Error("Host unavailable");
+        const owner =
+          commandOwners.get(JSON.stringify([connection.identity.hostId, params.requestId])) ??
+          (session && threadTargets.get(`${project.id}:${session.threadId}`) === session.projectId
+            ? session.projectId
+            : project.hostProjectId);
+        const result = await client.commandStatus(owner, params.requestId);
+        if (client.snapshot() !== connection) throw new Error("Host command read cancelled");
+        const outcome = hostCommandOutcome(result, params.requestId);
+        const key = JSON.stringify([connection.identity.hostId, owner]);
+        commandOutcomes.set(key, { ...commandOutcomes.get(key), [params.requestId]: outcome });
+        publish();
         return {
           routed: true,
           value: {
-            outcomes: {
-              [params.requestId]: {
-                admissionState: result.admissionState,
-                ...(accepted || rejected
-                  ? { accepted, status: accepted ? "completed" : "failed" }
-                  : {}),
-                ...(typeof result.threadId === "string" ? { threadId: result.threadId } : {}),
-                ...(typeof result.turnId === "string" ? { turnId: result.turnId } : {}),
-              },
-            },
+            outcomes: { [params.requestId]: outcome },
           },
         };
       }
@@ -667,26 +652,37 @@ export function createHostReadServices(
           });
           const commandId =
             typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
-          const result = admitted(
-            await client.command(
-              name === "send" ? "session.send" : "session.control",
-              target.hostProjectId,
-              name === "send"
-                ? {
-                    threadId: target.threadId,
-                    expectedConfigRevision: Number(config.revision),
-                    ...input,
-                    enqueue: params.enqueue === true,
-                  }
-                : {
-                    threadId: target.threadId,
-                    operation: "steer",
-                    expectedRevision: Number(config.revision),
-                    values: input,
-                  },
-              commandId,
-            ),
+          const owner = client.snapshot();
+          if (owner.connection !== "ready") throw new Error("Host unavailable");
+          const command = await client.command(
+            name === "send" ? "session.send" : "session.control",
+            target.hostProjectId,
+            name === "send"
+              ? {
+                  threadId: target.threadId,
+                  expectedConfigRevision: Number(config.revision),
+                  ...input,
+                  enqueue: params.enqueue === true,
+                }
+              : {
+                  threadId: target.threadId,
+                  operation: "steer",
+                  expectedRevision: Number(config.revision),
+                  values: input,
+                },
+            commandId,
           );
+          if (command.admissionState === "unknown" || command.admissionState === "pending") {
+            commandOwners.set(
+              JSON.stringify([owner.identity.hostId, commandId]),
+              target.hostProjectId,
+            );
+          }
+          const result = admitted(command, {
+            method: name === "send" ? "turn/start" : "turn/steer",
+            requestId: commandId,
+            target: { kind: "thread", threadId: target.threadId },
+          });
           if (name === "steer") return { routed: true };
           return {
             routed: true,

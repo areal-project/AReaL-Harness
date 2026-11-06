@@ -8,6 +8,7 @@ import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
 import { draftModelOptions, draftModelSelection } from "./lib/draftModelSelection.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
+import { recoveredOutcome } from "./recoveryPresentation.js";
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 const connection = {
   hostId: "host",
@@ -917,6 +918,9 @@ describe("Host renderer read authority", () => {
             writes.push({ method, params, projectId: context?.projectId, commandId });
             return {
               admissionState,
+              commandId: method === "command.read" ? params.commandId : commandId,
+              method: method === "command.read" ? "session.send" : method,
+              target: { threadId: "thread" },
               threadId: "thread",
               turnId: "turn",
               nativeRequestId: commandId,
@@ -988,11 +992,40 @@ describe("Host renderer read authority", () => {
     });
     admissionState = "pending";
     const before = writes.length;
-    await expect(call(services, "send", message)).rejects.toMatchObject({
+    const unknown = await call(services, "send", message).catch((error: unknown) => error);
+    expect(unknown).toMatchObject({
       submissionUnknown: true,
       requestId: expect.any(String),
+      outcome: {
+        kind: "unconfirmed",
+        operation: { method: "turn/start", target: { kind: "thread", threadId: "thread" } },
+      },
     });
     expect(writes).toHaveLength(before + 1);
+    const original = unknown as Error & {
+      requestId: string;
+      outcome: { operation: import("./recoveryPresentation.js").RecoveryOperation };
+    };
+    await call(services, "reconcile", { projectId: "alias", requestId: original.requestId });
+    expect(
+      recoveredOutcome(
+        (await services.snapshot()).projects[0],
+        original.requestId,
+        "thread",
+        original.outcome.operation,
+      ),
+    ).toBeUndefined();
+    admissionState = "accepted";
+    await call(services, "reconcile", { projectId: "alias", requestId: original.requestId });
+    const reconciled = (await services.snapshot()).projects[0];
+    expect(
+      recoveredOutcome(reconciled, original.requestId, "thread", original.outcome.operation),
+    ).toMatchObject({ accepted: true, status: "completed" });
+    expect(writes.at(-1)).toMatchObject({
+      method: "command.read",
+      params: { commandId: original.requestId },
+    });
+    expect(writes.filter((write) => write.method === "session.send")).toHaveLength(2);
     expect(services.capabilities).toMatchObject({
       mutations: false,
       conversationSubmit: true,

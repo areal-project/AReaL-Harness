@@ -688,14 +688,16 @@ try {
       await settleLayout();
       await reading.getByRole("button", { name: "接受新轮次", exact: true }).click();
       await settleLayout();
-      assert.ok(
+      // R-MESSAGES-012：续发沿自然尾部衔接，不能重新垫出整屏响应占位。
+      assert.equal(
         await reading
           .locator(".message-response-space")
-          .evaluate((el) => el.getBoundingClientRect().height > 0),
-        "a mounted accepted follow-up reserves response space",
+          .evaluate((el) => el.getBoundingClientRect().height),
+        0,
+        "an accepted follow-up adds no response-space reservation",
       );
       await page.evaluate(() => {
-        window.readingResize.phase = "reserved response";
+        window.readingResize.phase = "follow-up response";
       });
       await reading.getByRole("button", { name: "延迟追加输出", exact: true }).click();
       await liveTurn
@@ -703,17 +705,17 @@ try {
         .getByText("后续回复 1", { exact: false })
         .waitFor();
       await settleLayout();
-      const reservedResize = await page.evaluate(() => {
+      const responseResize = await page.evaluate(() => {
         window.readingResize.phase = null;
         return window.readingResize;
       });
-      samples.push({ reservedResize });
+      samples.push({ responseResize });
       assert.ok(
-        reservedResize.samples.some((sample) => sample.output?.includes("后续回复 1")),
-        "reserved response growth reaches the production ResizeObserver",
+        responseResize.samples.some((sample) => sample.output?.includes("后续回复 1")),
+        "follow-up response growth reaches the production ResizeObserver",
       );
       assert.deepEqual(
-        reservedResize.errors,
+        responseResize.errors,
         [],
         "response-space reconciliation does not defer undelivered ResizeObserver notifications",
       );

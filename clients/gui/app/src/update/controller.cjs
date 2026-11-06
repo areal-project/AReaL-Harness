@@ -29,8 +29,7 @@ function createUpdater({
     installUnconfirmed = false,
     downloaded = /** @type {import('electron-updater').UpdateInfo|null} */ (null),
     available = /** @type {import('electron-updater').UpdateInfo|null} */ (null);
-  let highWater = version,
-    status = /** @type {UpdateStatus} */ ("idle"),
+  let status = /** @type {UpdateStatus} */ ("idle"),
     percent = /** @type {number|null} */ (null),
     detail = "";
   updater.autoDownload = false;
@@ -70,6 +69,20 @@ function createUpdater({
   /** @param {string} message */
   const message = (message, detail = "") =>
     notify?.({ type: "info", message, detail, buttons: ["确定"] });
+  /** @param {'question'|'warning'} type @param {string} message @param {string} detail @param {string[]} buttons */
+  const question = (type, message, detail, buttons) =>
+    notify?.({ type, message, detail, buttons, defaultId: 0, cancelId: 0 });
+  async function offerDownload() {
+    if (onState || !available) return state();
+    const answer = await question(
+      "question",
+      `发现新版本 ${available.version}`,
+      "是否下载更新？下载不会中断当前任务。",
+      ["稍后", "下载更新"],
+    );
+    if (answer?.response === 1) await download();
+    return state();
+  }
   updater.on("download-progress", (progress) => {
     if (!downloading) return;
     percent = Number.isFinite(progress?.percent)
@@ -93,14 +106,12 @@ function createUpdater({
         return state();
       }
       if (!onState) {
-        const answer = await notify?.({
-          type: "question",
-          message: `版本 ${downloaded.version} 已下载`,
-          detail: "现在重启并安装更新？",
-          buttons: ["稍后", "重启安装"],
-          defaultId: 0,
-          cancelId: 0,
-        });
+        const answer = await question(
+          "question",
+          `版本 ${downloaded.version} 已下载`,
+          "现在重启并安装更新？",
+          ["稍后", "重启安装"],
+        );
         if (answer?.response !== 1) {
           set("deferred", "更新已下载，可在“检查更新…”中重试安装。");
           return state();
@@ -148,14 +159,10 @@ function createUpdater({
       ) {
         set("deferred", `后台尚未就绪：${error.message}。处理后将自动重试。`);
         if (!onState) {
-          const answer = await notify?.({
-            type: "warning",
-            message: "需要先处理后台状态",
-            detail: error.message,
-            buttons: ["稍后", "检查后台资源"],
-            defaultId: 0,
-            cancelId: 0,
-          });
+          const answer = await question("warning", "需要先处理后台状态", error.message, [
+            "稍后",
+            "检查后台资源",
+          ]);
           if (answer?.response === 1) await recoverInstall?.();
         }
       } else if (/活动任务|其他操作|完成任务|仍有任务/.test(error.message)) {
@@ -179,7 +186,6 @@ function createUpdater({
     set("downloading");
     try {
       await updater.downloadUpdate();
-      percent = 100;
       downloaded = available;
       downloading = false;
       percent = 100;
@@ -206,7 +212,6 @@ function createUpdater({
     if (wanted !== channel && !downloaded) {
       channel = wanted;
       available = null;
-      highWater = version;
       useFeed();
       set("idle");
     }
@@ -215,20 +220,7 @@ function createUpdater({
       return state();
     }
     // electron-updater remembers the latest check target; keep it aligned with the displayed offer.
-    if (available) {
-      if (manual && !onState) {
-        const answer = await notify?.({
-          type: "question",
-          message: `发现新版本 ${available.version}`,
-          detail: "是否下载更新？下载不会中断当前任务。",
-          buttons: ["稍后", "下载更新"],
-          defaultId: 0,
-          cancelId: 0,
-        });
-        if (answer?.response === 1) await download();
-      }
-      return state();
-    }
+    if (available) return manual ? offerDownload() : state();
     checking = true;
     publish();
     try {
@@ -242,11 +234,7 @@ function createUpdater({
         return await check(manual);
       }
       const info = result?.updateInfo;
-      if (
-        !info ||
-        !newer(info.version, version) ||
-        (info.version !== highWater && !newer(info.version, highWater))
-      ) {
+      if (!info || !newer(info.version, version)) {
         checking = false;
         set("idle");
         if (manual && !available)
@@ -254,24 +242,10 @@ function createUpdater({
         return state();
       }
       validateUpdate(info, channelFeedUrl(config, channel), config);
-      highWater = info.version;
       available = info;
       checking = false;
       set("available");
-      if (!onState) {
-        const answer = await notify?.({
-          type: "question",
-          message: `发现新版本 ${info.version}`,
-          detail: "是否下载更新？下载不会中断当前任务。",
-          buttons: ["稍后", "下载更新"],
-          defaultId: 0,
-          cancelId: 0,
-        });
-        if (answer?.response === 1) {
-          checking = false;
-          await download();
-        }
-      }
+      await offerDownload();
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
       log.warn("[areal-update]", error.message);

@@ -6,6 +6,7 @@ import type {
   ShellProject,
   NavigationSummary,
   WorktreeDisplay,
+  JsonObject,
 } from "@areal/client";
 import { mergeHistory, historyGaps } from "@areal/workbench/history-projection";
 import type { ReadingAnchor } from "./readingViews.js";
@@ -33,6 +34,80 @@ export type ReadingWindow = {
   expires?: number;
   baselineFirstItemId?: string;
 };
+export function settleHostCommand(
+  result: import("@areal/client").HostCommandResult,
+  operation?: import("./recoveryPresentation.js").RecoveryOperation,
+) {
+  if (result.admissionState === "accepted" || result.admissionState === "pending") return;
+  const rejected = result.admissionState === "rejected";
+  const outcome = rejected
+    ? { kind: "rejected" }
+    : operation
+      ? { kind: "unconfirmed", operation }
+      : undefined;
+  throw Object.assign(
+    new Error(rejected ? "Host 拒绝了该操作" : "操作结果尚未确认。正在核对原请求，不会自动重发。"),
+    {
+      commandId: result.commandId,
+      requestId: result.commandId,
+      submissionUnknown: !rejected,
+      outcome,
+    },
+  );
+}
+export function admitHostCommand(
+  result: import("@areal/client").HostCommandResult,
+  operation?: import("./recoveryPresentation.js").RecoveryOperation,
+): JsonObject {
+  if (result.admissionState === "accepted") return result;
+  settleHostCommand(
+    result.admissionState === "pending" ? { ...result, admissionState: "unknown" } : result,
+    operation,
+  );
+  throw new Error("Invalid Host admission result");
+}
+export function hostCommandOutcome(result: unknown, requestId: string): JsonObject {
+  const object = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === "object" && !Array.isArray(value);
+  if (!object(result)) throw new Error("Invalid Host command result");
+  if (result.commandId !== requestId) throw new Error("Host command identity changed");
+  if (
+    typeof result.admissionState !== "string" ||
+    !["accepted", "rejected", "pending", "unknown", "notFound"].includes(result.admissionState)
+  )
+    throw new Error("Invalid Host admission state");
+  const accepted = result.admissionState === "accepted";
+  const rejected = result.admissionState === "rejected";
+  const threadId =
+    typeof result.threadId === "string"
+      ? result.threadId
+      : object(result.target) && typeof result.target.threadId === "string"
+        ? result.target.threadId
+        : undefined;
+  const method =
+    result.method === "session.send"
+      ? "turn/start"
+      : result.method === "session.control" &&
+          object(result.target) &&
+          result.target.operation === "steer"
+        ? "turn/steer"
+        : undefined;
+  return {
+    admissionState: result.admissionState,
+    ...(accepted || rejected ? { accepted, status: accepted ? "completed" : "failed" } : {}),
+    ...(threadId ? { threadId } : {}),
+    ...(typeof result.turnId === "string" ? { turnId: result.turnId } : {}),
+    ...(method && threadId
+      ? {
+          operation: {
+            method,
+            requestId,
+            target: { kind: "thread", threadId },
+          },
+        }
+      : {}),
+  };
+}
 export function windowIdentity(observation: Observation) {
   return JSON.stringify([
     observation.history,
@@ -90,6 +165,7 @@ export function createHostSnapshotProjector(
       historyVersion: number;
       fresh: boolean;
       sessionFreshness?: string;
+      outcomes?: Record<string, JsonObject>;
       value: ReadProject;
     }
   >();
@@ -105,12 +181,14 @@ export function createHostSnapshotProjector(
       observation,
       session,
       historyVersion,
+      commandOutcomes,
     }: {
       legacy?: Snapshot;
       readingWindow?: ReadingWindow;
       observation?: Observation;
       session?: SessionRead;
       historyVersion: number;
+      commandOutcomes: ReadonlyMap<string, Record<string, JsonObject>>;
     },
   ): { snapshot: Snapshot; sourceId?: string } {
     ids.clear();
@@ -145,6 +223,10 @@ export function createHostSnapshotProjector(
           ? currentSession
           : undefined;
       const cached = projectViews.get(project.projectId);
+      const outcomes =
+        connection.connection === "ready"
+          ? commandOutcomes.get(JSON.stringify([connection.identity.hostId, project.projectId]))
+          : undefined;
       const displayVersion = selectedSession ? historyVersion : 0;
       const sessionFreshness = selectedSession ? client.readsSnapshot().session.state : undefined;
       if (
@@ -155,6 +237,7 @@ export function createHostSnapshotProjector(
         cached.historyVersion === displayVersion &&
         cached.fresh === fresh &&
         cached.sessionFreshness === sessionFreshness &&
+        cached.outcomes === outcomes &&
         cached.value.id === id
       ) {
         for (const summary of cached.value.summaries)
@@ -274,7 +357,7 @@ export function createHostSnapshotProjector(
         summariesLoaded: project.summaries.state === "fresh",
         summariesFreshness: project.summaries.state,
         pending: auxiliary?.pending ?? [],
-        outcomes: auxiliary?.outcomes ?? {},
+        outcomes: outcomes ? { ...auxiliary?.outcomes, ...outcomes } : (auxiliary?.outcomes ?? {}),
         error: null,
         observationErrors: {},
         attention: project.attention,
@@ -286,6 +369,7 @@ export function createHostSnapshotProjector(
         historyVersion: displayVersion,
         fresh,
         sessionFreshness,
+        outcomes,
         value,
       });
       return value;
@@ -312,6 +396,7 @@ export function createHostSnapshotProjector(
           configurations: Object.fromEntries(
             owners.flatMap((owner) => Object.entries(owner.configurations)),
           ),
+          outcomes: Object.assign({}, ...owners.map((owner) => owner.outcomes)),
           summaries: owners.flatMap((owner) => owner.summaries),
           summariesLoaded: owners.every((owner) => owner.summariesLoaded),
           state: {

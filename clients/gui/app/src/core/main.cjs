@@ -1732,8 +1732,7 @@ function startDesktop() {
             await recoverInstall();
             return updater.state();
           });
-          const requestStopService = () =>
-            confirmHostStop(serviceBackend, (options) => showMessageBox(options));
+          const requestStopService = () => confirmHostStop(serviceBackend, showMessageBox);
 
           Menu.setApplicationMenu(
             Menu.buildFromTemplate([
@@ -1743,9 +1742,7 @@ function startDesktop() {
                   { role: "about" },
                   {
                     label: "检查更新…",
-                    click: () => {
-                      void updater.check(true);
-                    },
+                    click: () => void updater.check(true),
                   },
                   {
                     label: "导出诊断包…",
@@ -1777,7 +1774,7 @@ function startDesktop() {
                     label: nativeText("host.stopMenu"),
                     click: async () => {
                       try {
-                        await requestStopService();
+                        await confirmHostStop(serviceBackend, showMessageBox);
                         hostActivityRefreshedAt = 0;
                         refreshHostMenu();
                       } catch (error) {

@@ -274,6 +274,7 @@ dependencies = [
  "areal-config",
  "areal-local-service",
  "areal-protocol",
+ "axum",
  "base64 0.22.1",
  "bytes",
  "fs2",

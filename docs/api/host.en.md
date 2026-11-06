@@ -119,6 +119,8 @@ Start preparation validates the current Task, Run, source thread, legacy exclusi
 
 A project that has never started reports idle with zero counts only when it has no service record, uncertain lifetime, or held lock. A stopped project also requires cleanup evidence for its original generation and released service and Store locks. Queries create no lock files, Stores, or service records and do not clear stop intent.
 
+Concurrent activity and status queries share the project's read lock; another read-only query does not make a project unavailable. Startup, stopping, and credential changes retain exclusive access, and observations that cannot complete during those changes remain unavailable.
+
 `complete` is true only when every project is observed. `totalActiveTasks` sums only observed `activeTasks`, without adding turns, goals, or queued items. An incomplete result reports only the known task count. Projects are observed individually rather than in an atomic cross-project snapshot. This result cannot authorize a later stop. `host.stop` still checks its conditions when executed.
 
 ## Stop receipts and partial settlement

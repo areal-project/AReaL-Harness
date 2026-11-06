@@ -46,7 +46,7 @@ use std::{
 use tokio::{
     io::BufReader,
     net::{UnixListener, UnixStream},
-    sync::{Mutex, Notify, watch},
+    sync::{Mutex, Notify, RwLock, watch},
 };
 
 pub struct RunOptions {
@@ -79,7 +79,8 @@ impl HostExit {
 }
 struct Slot {
     registration: ProjectRegistration,
-    gate: Arc<Mutex<()>>,
+    // 状态与活动观察可以并行；激活、停止和凭据切换仍需独占项目。
+    gate: Arc<RwLock<()>>,
     writer: Option<LifetimeWriter>,
     uncertain_start: bool,
     lifetime: Option<Rc<OwnerLifetime>>,
@@ -112,7 +113,7 @@ impl Slot {
     fn imported(registration: ProjectRegistration) -> Self {
         Self {
             registration,
-            gate: Arc::new(Mutex::new(())),
+            gate: Arc::new(RwLock::new(())),
             writer: None,
             uncertain_start: false,
             lifetime: None,
@@ -273,7 +274,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
                 registration.project_id.clone(),
                 Slot {
                     registration,
-                    gate: Arc::new(Mutex::new(())),
+                    gate: Arc::new(RwLock::new(())),
                     writer: None,
                     uncertain_start: false,
                     lifetime: None,
@@ -753,7 +754,7 @@ impl Host {
             generation: self.identity.generation.clone(),
         }
     }
-    fn gate(&self, id: &str) -> Result<Arc<Mutex<()>>> {
+    fn gate(&self, id: &str) -> Result<Arc<RwLock<()>>> {
         self.slots
             .borrow()
             .get(id)
@@ -890,7 +891,7 @@ impl Host {
                     slot.service.clone(),
                 )
             };
-            let observed = match gate.try_lock() {
+            let observed = match gate.try_read() {
                 Ok(_guard) => {
                     let stable = {
                         let slots = self.slots.borrow();
@@ -940,7 +941,7 @@ impl Host {
             let s = &slots[id];
             (s.registration.clone(), s.gate.clone())
         };
-        if let Ok(_guard) = gate.try_lock() {
+        if let Ok(_guard) = gate.try_read() {
             let instance = Self::service_id(&registration);
             if let Ok(Ok(service)) = tokio::time::timeout(
                 Duration::from_millis(500),
@@ -1240,7 +1241,7 @@ impl Host {
                 r.project_id.clone(),
                 Slot {
                     registration: r.clone(),
-                    gate: Arc::new(Mutex::new(())),
+                    gate: Arc::new(RwLock::new(())),
                     writer: None,
                     uncertain_start: false,
                     lifetime: None,
@@ -1319,7 +1320,7 @@ impl Host {
         self.generation(&input.expected_generation)?;
         self.admission()?;
         let gate = self.gate(&input.project_id)?;
-        let _guard = gate.lock().await;
+        let _guard = gate.write().await;
         self.admission()?;
         if let Some(generation) = service_generation {
             let instance = Self::service_id(&self.slots.borrow()[&input.project_id].registration);
@@ -1792,7 +1793,7 @@ impl Host {
             .as_deref()
             .ok_or_else(|| error("invalidRequest", "projectId required"))?;
         let gate = self.gate(id)?;
-        let _guard = gate.lock().await;
+        let _guard = gate.write().await;
         if self.receipt(&input.request_id)?.is_some() {
             self.accepted(&input.request_id, "project.stop", &input, id)?;
             self.apply_scheduling_intent(&input.request_id)?;
@@ -1898,7 +1899,7 @@ impl Host {
         for id in &projects {
             if self.check_pending(id, &input.request_id).await.is_err() {
                 // 活跃的激活操作也先记 pending；等原操作释放锁后再区分完成与遗留 UNKNOWN。
-                let _guard = self.gate(id)?.lock_owned().await;
+                let _guard = self.gate(id)?.write_owned().await;
                 self.check_pending(id, &input.request_id).await?;
             }
         }
@@ -1911,7 +1912,7 @@ impl Host {
         let ids: Vec<_> = self.slots.borrow().keys().cloned().collect();
         let mut guards = Vec::new();
         for id in &ids {
-            guards.push(self.gate(id)?.lock_owned().await);
+            guards.push(self.gate(id)?.write_owned().await);
         }
         for id in &ids {
             self.check_pending(id, &input.request_id).await?;
@@ -2019,7 +2020,7 @@ impl Host {
         let mut guards = Vec::new();
         for project_id in project_ids {
             if let Ok(gate) = self.gate(&project_id) {
-                match gate.try_lock_owned() {
+                match gate.try_write_owned() {
                     Ok(guard) => guards.push(guard),
                     Err(_) => return Ok(Some(record.receipt)),
                 }
@@ -2277,6 +2278,67 @@ fn aggregate(receipt: &Value) -> &'static str {
 mod tests {
     use super::*;
     use crate::{Client, ProjectSource};
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn concurrent_activity_observations_do_not_make_an_idle_project_unknown() {
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = schedules::tests::fixture(root.path());
+            let registration = host.slots.borrow()["project"].registration.clone();
+            let directory = storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+            storage::private_dir(&directory).unwrap();
+            drop(storage::open_private(&directory.join("start.lock"), true).unwrap());
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service: Service = serde_json::from_value(json!({
+                "protocolVersion":1,"serviceId":Host::service_id(&registration),
+                "generation":"activity-core","workspace":registration.workspace,
+                "dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),
+                "endpoint":format!("ws://{}/",listener.local_addr().unwrap()),"webUrl":"",
+                "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+                "hostPid":1,"corePid":1,"state":"ready"
+            })).unwrap();
+            storage::write(&service.auth_file, &json!({"principals":[{"id":"owner","token":"fixture"}]})).unwrap();
+            storage::write(&directory.join("service.json"), &service).unwrap();
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                let (writer, lifetime) = OwnerLifetime::pair().unwrap();
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+                slot.state = "ready".into();
+                slot.service = Some(service.clone());
+            }
+            let identity = service.identity;
+            let app = axum::Router::new()
+                .route("/areal/service", axum::routing::get(move || {
+                    let identity = identity.clone();
+                    async move { axum::Json(identity) }
+                }))
+                .route("/", axum::routing::get(|ws: axum::extract::WebSocketUpgrade| async {
+                    ws.on_upgrade(|mut socket| async move {
+                        while let Some(Ok(axum::extract::ws::Message::Text(text))) = socket.recv().await {
+                            let request: Value = serde_json::from_str(&text).unwrap();
+                            if request.get("id").is_none() { continue; }
+                            let result = match request["method"].as_str().unwrap() {
+                                "initialize" => json!({}),
+                                "areal/server/status" => json!({"activeTasks":0,"activeTurns":[],"activeGoals":[],"pendingQueueItems":0,"lifecycle":{"version":1,"ifIdle":{"allowed":true}}}),
+                                method => panic!("unexpected Core request {method}"),
+                            };
+                            socket.send(axum::extract::ws::Message::Text(json!({"id":request["id"],"result":result}).to_string().into())).await.unwrap();
+                        }
+                    })
+                }));
+            let server = tokio::task::spawn_local(async move { axum::serve(listener, app).await.unwrap() });
+            let (first, second) = tokio::join!(host.activity(), host.activity());
+            server.abort();
+            assert!(first.complete && second.complete, "readers must not invalidate each other: {first:?} {second:?}");
+            assert_eq!(first, second);
+            assert!(matches!(first.projects[0], ProjectActivity::Observed { idle_allowed: true, .. }));
+            let gate = host.gate("project").unwrap();
+            let _changing = gate.write().await;
+            assert!(!host.activity().await.complete, "a real lifecycle change must remain unknown");
+        }).await;
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn authenticated_activity_is_read_only_and_keeps_unknown_projects_incomplete() {
@@ -3038,12 +3100,12 @@ mod tests {
             let root=tempfile::tempdir().unwrap();let home=root.path().canonicalize().unwrap().join("home");
             for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
             let mut slots=BTreeMap::new();
-            slots.insert("project".into(),Slot {registration:ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});
+            slots.insert("project".into(),Slot {registration:ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});
             let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let activation=uuid::Uuid::new_v4().to_string();
             let mut record=Operation {digest:"fixture".into(),receipt:json!({"requestId":activation,"method":"project.ensure","projectId":"project","state":"acceptedPending"}),evidence:Value::Null};
             storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
-            let held=host.gate("project").unwrap().lock_owned().await;
+            let held=host.gate("project").unwrap().write_owned().await;
             let request=uuid::Uuid::new_v4().to_string();
             let stopping=host.stop_host(Stop {suppress_scheduling:true,request_id:request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::IfIdle,project_id:None,service_generation:None});
             tokio::pin!(stopping);
@@ -3063,18 +3125,18 @@ mod tests {
             for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
-            for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate:Arc::new(Mutex::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
+            for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
             let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();
             let activation=uuid::Uuid::new_v4().to_string();let record=Operation {digest:"fixture".into(),receipt:json!({"version":1,"requestId":activation,"method":"project.ensure","projectId":"b","state":"acceptedPending"}),evidence:json!({"serviceId":instance,"fingerprint":"fixture","owner":host.owner(),"registration":registration,"previousService":null})};storage::write(&wire::operation_path(&home,&activation),&record).unwrap();
-            let held_b=host.gate("b").unwrap().lock_owned().await;
+            let held_b=host.gate("b").unwrap().write_owned().await;
             assert_eq!(host.reconcile(&activation).await.unwrap().unwrap()["state"],"acceptedPending");assert_eq!(host.receipt(&activation).unwrap().unwrap().receipt["state"],"acceptedPending");drop(held_b);
             assert_eq!(host.reconcile(&activation).await.unwrap().unwrap()["state"],"blocked");
-            let held_a=host.gate("a").unwrap().lock_owned().await;let startup=storage::open_private(&directory.join("start.lock"),true).unwrap();startup.try_lock_exclusive().unwrap();
+            let held_a=host.gate("a").unwrap().write_owned().await;let startup=storage::open_private(&directory.join("start.lock"),true).unwrap();startup.try_lock_exclusive().unwrap();
             let project_request=uuid::Uuid::new_v4().to_string();let project_host=host.clone();let project_input=Stop {suppress_scheduling:true,request_id:project_request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::Cancel,project_id:Some("b".into()),service_generation:Some(service.identity.generation.clone())};
             let stopping_project=tokio::task::spawn_local(async move {project_host.stop_project(project_input).await});
-            loop {if host.gate("b").unwrap().try_lock().is_err(){break;}tokio::task::yield_now().await;}
+            loop {if host.gate("b").unwrap().try_write().is_err(){break;}tokio::task::yield_now().await;}
             let host_request=uuid::Uuid::new_v4().to_string();let stopping_host=host.clone();let host_input=Stop {suppress_scheduling:true,request_id:host_request.clone(),expected_generation:host.identity.generation.clone(),strategy:StopStrategy::Cancel,project_id:None,service_generation:None};
             let stopping=tokio::task::spawn_local(async move {stopping_host.stop_host(host_input).await});
             loop {if host.stop.borrow().is_some(){break;}tokio::task::yield_now().await;}
