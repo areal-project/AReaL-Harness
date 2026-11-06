@@ -1,0 +1,27 @@
+docs/development/testing.en.md
+  s_65512586972bc8::t_1e175b73302dff 375-376
+clients/gui/scripts/side-chat-parity-smoke.mjs
+  s_65512586972bc8::t_3b82b624280aed 703-707
+  s_65512586972bc8::t_1e175b73302dff 696-697,701-702,708-709,715-722
+clients/gui/scripts/browser-human-smoke.mjs
+  s_65512586972bc8::t_1e175b73302dff 330-331,335-336,338,345-354,1892
+  s_65512586972bc8::t_3b82b624280aed 332-334,337,339-344,1893-1898
+docs/development/testing.md
+  s_65512586972bc8::t_1e175b73302dff 375-376
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3c57d1d35574d93c077a1eda46c321fff9f224d1",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
