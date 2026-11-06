@@ -1,0 +1,35 @@
+docs/development/testing.md
+  s_65512586972bc8::t_90bcae61cf7db8 488
+  s_65512586972bc8::t_b4de13e4a65479 377-378
+clients/gui/scripts/side-chat-parity-smoke.mjs
+  s_65512586972bc8::t_dc4545e15e09fe 665-674,731-733
+  s_65512586972bc8::t_b4b4dc6b0cc269 657-661,664,734-736
+.github/workflows/gui.yml
+  s_65512586972bc8::t_71ffe2a55eb550 426-427,524,530-531
+clients/gui/scripts/queue-smoke.mjs
+  s_65512586972bc8::t_dc4545e15e09fe 113-116,119-130,186-194,203-206,665-677
+  s_65512586972bc8::t_74142f748fd632 2-3,678-682
+docs/development/testing.en.md
+  s_65512586972bc8::t_90bcae61cf7db8 488
+  s_65512586972bc8::t_61edaee015837c 377-378
+docs/development/README.en.md
+  s_65512586972bc8::t_c6c3990fd4d8bb 132
+docs/development/README.md
+  s_65512586972bc8::t_f2d7ce794db94d 130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1bde49b458594d9d3b0d12c632a3afbddfc84413",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
