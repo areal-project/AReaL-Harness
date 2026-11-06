@@ -132,6 +132,8 @@ This native test compiles under `native-tests` (which includes `test-support`) a
 
 Before installing dependencies, the Linux mobile browser job points the hosted runner's Ubuntu mirror list to the official HTTPS archive. Distribution, components, APT signature verification, the locked Playwright dependency set, and both browsers remain unchanged. A download timeout is still a CI installation failure and never counts as a browser test pass.
 
+The conversation design acceptance waits for the activity panel's opening transition and verifies that the list center is the actual pointer hit target before sending one real wheel input. `conversation-wheel.json` retains trusted-input, hit-target, and before/after scroll evidence. The assertion still requires that list to scroll; script-driven scrolling does not replace it.
+
 ## Local verification artifacts and startup diagnostics
 
 After Cargo succeeds, `make build` / `make release` writes `target/<profile>/verification-build.json`, binding the existing Core `inputHash`, build revision and SHA-256 of the complete Core/Runtime set. GUI builds extend the existing bundle analysis plugin with `renderer/dist/verification-build.json`, recording GUI inputs and output hashes; source changes during a build fail it.
