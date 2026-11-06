@@ -583,7 +583,8 @@ mod isolation_tests {
         let engine = Engine::open(root.path(), Arc::new(Pending), Limits::default()).unwrap();
         let fixture =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/mcp-server.py");
-        let config = serde_json::from_value(json!({"transport":{"type":"stdio","command":"/usr/bin/python3","args":[fixture,log,"hang-startup"],"cwd":null,"envVars":[]},"startupTimeoutMs":1500})).unwrap();
+        let release = root.path().join("release-startup");
+        let config = serde_json::from_value(json!({"transport":{"type":"stdio","command":"/usr/bin/python3","args":[fixture,log,"gated-startup",release],"cwd":null,"envVars":[]},"startupTimeoutMs":30000})).unwrap();
         engine.mcp_configure("a".into(), 0, config).await.unwrap();
         let other: areal_mcp::ServerConfig = serde_json::from_value(json!({"transport":{"type":"stdio","command":"/fixture/never-start","args":[],"cwd":null,"envVars":[]}})).unwrap();
         engine
@@ -592,7 +593,7 @@ mod isolation_tests {
             .unwrap();
         let a_engine = engine.clone();
         let a = tokio::spawn(async move { a_engine.mcp_connection("a".into(), 1, true).await });
-        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
                 if std::fs::read_to_string(&log)
                     .unwrap_or_default()
@@ -605,16 +606,15 @@ mod isolation_tests {
         })
         .await
         .unwrap();
-        let b = tokio::time::timeout(
-            std::time::Duration::from_millis(300),
-            engine.mcp_connection("b".into(), 1, false),
-        )
+        // 握手由夹具显式放行；隔离依据是 B 在 A 仍未完成时可操作，而非磁盘延迟小于 300ms。
+        let controls = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            let b = engine.mcp_connection("b".into(), 1, false).await;
+            let updated = engine.mcp_configure("b".into(), 1, other).await;
+            (b, updated)
+        })
         .await;
-        let updated = tokio::time::timeout(
-            std::time::Duration::from_millis(300),
-            engine.mcp_configure("b".into(), 1, other),
-        )
-        .await;
+        let a_pending = !a.is_finished();
+        std::fs::write(release, b"release").unwrap();
         a.await.unwrap().unwrap();
         let list = engine.mcp_list();
         let b_record = list["data"]
@@ -627,15 +627,11 @@ mod isolation_tests {
             b_record["revision"], 2,
             "late A result overwrote B revision"
         );
-        assert!(
-            updated.is_ok_and(|result| result.is_ok()),
-            "A blocked B configuration"
-        );
         engine.shutdown().await;
-        assert!(
-            b.is_ok_and(|result| result.is_ok()),
-            "A's handshake blocked unrelated B disconnect"
-        );
+        let (b, updated) = controls.expect("A blocked unrelated B control");
+        assert!(a_pending, "A completed before B control was verified");
+        b.expect("A's handshake blocked unrelated B disconnect");
+        updated.expect("A blocked B configuration");
     }
     #[tokio::test]
     async fn concurrent_new_id_configuration_has_one_revision_winner() {
