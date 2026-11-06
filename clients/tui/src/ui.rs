@@ -90,9 +90,17 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         header,
     );
     // 复用页眉第二行，避免长期提醒覆盖请求错误或挤占会话区域。
-    if let Some(notice) = &app.trajectory_notice {
+    let notice = (app
+        .trajectory_notice
+        .as_ref()
+        .map(|notice| (notice, Role::Warning)))
+    .or(app
+        .release_notice
+        .as_ref()
+        .map(|notice| (notice, Role::Muted)));
+    if let Some((notice, role)) = notice {
         frame.render_widget(
-            Paragraph::new(safe_text(notice)).style(palette.style(Role::Warning)),
+            Paragraph::new(safe_text(notice)).style(palette.style(role)),
             Rect::new(header.x, header.y + 1, header.width, 1),
         );
     }

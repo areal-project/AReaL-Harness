@@ -235,7 +235,13 @@ async fn main() {
             if args.interactive.is_headless() {
                 trajectory::with_stderr_notice(notice, areal_tui::run(args.interactive)).await
             } else {
-                areal_tui::run_with_trajectory_notice(args.interactive, notice).await
+                let (sender, release) = tokio::sync::oneshot::channel();
+                tokio::spawn(async move {
+                    if let Some(notice) = upgrade::release_notice().await {
+                        let _ = sender.send(notice);
+                    }
+                });
+                areal_tui::run_with_notices(args.interactive, notice, Some(release)).await
             }
         }
         Some(Command::Exec(cli)) => {
