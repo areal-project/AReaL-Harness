@@ -130,6 +130,8 @@ This native test compiles under `native-tests` (which includes `test-support`) a
 
 `node clients/gui/scripts/bounded-history-ui-smoke.mjs` uses the production Renderer and Desktop history owner with controlled Core responses. Upward pagination loads silently: the scenario holds a request pending, checks that no pagination loading text appears, and then confirms that older messages arrive. It also checks message/composer positions, failure retry, one queued read for upward input while loading, and cancellation on downward input. The scenario delays the animation frame after scrolling, merges a history page before that frame, and checks that the same visible paragraph moves by at most 2 pixels. Separate checks cover wheel navigation through a complete 30-turn snapshot and eviction/reloading beyond sixteen pages. Set `AREAL_HISTORY_UI_LOCALE=en` to check English. This does not qualify actual Core or packaged-app behavior.
 
+Before installing dependencies, the Linux mobile browser job points the hosted runner's Ubuntu mirror list to the official HTTPS archive. Distribution, components, APT signature verification, the locked Playwright dependency set, and both browsers remain unchanged. A download timeout is still a CI installation failure and never counts as a browser test pass.
+
 ## Local verification artifacts and startup diagnostics
 
 After Cargo succeeds, `make build` / `make release` writes `target/<profile>/verification-build.json`, binding the existing Core `inputHash`, build revision and SHA-256 of the complete Core/Runtime set. GUI builds extend the existing bundle analysis plugin with `renderer/dist/verification-build.json`, recording GUI inputs and output hashes; source changes during a build fail it.

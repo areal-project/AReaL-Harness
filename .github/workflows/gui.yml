@@ -160,6 +160,11 @@ jobs:
           node-version: '24.22.1'
           cache: pnpm
           cache-dependency-path: clients/gui/pnpm-lock.yaml
+      - name: Select the official Ubuntu HTTPS mirror
+        run: |
+          # 托管镜像的 Azure HTTP 源下载可能长期停滞；保留原发行版与签名验证。
+          test -s /etc/apt/apt-mirrors.txt
+          printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
       - name: Install locked dependencies and browsers
         run: |
           pnpm --dir clients/gui install --frozen-lockfile
