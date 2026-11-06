@@ -1,0 +1,36 @@
+docs/guides/runtime.en.md
+  s_3c0bde1ee78b7e::t_aba49a9c107327 25-27
+core/engine/tests/tools.rs
+  s_3c0bde1ee78b7e::t_16f64874a844e4 67,199-208,217-218,223,229,234,302,307-332,335-345,356-361,366-373
+  s_3c0bde1ee78b7e::t_aba49a9c107327 230-233,333-334,346-355,362-365
+  s_65512586972bc8::t_53282c0ad2896a 374
+core/engine/src/permissions/scopes.rs
+  s_3c0bde1ee78b7e::t_16f64874a844e4 160,200-202
+  s_3c0bde1ee78b7e::t_aba49a9c107327 163
+docs/guides/runtime.md
+  s_3c0bde1ee78b7e::t_aba49a9c107327 25-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2c95b08db1dcba895dbd6e99c3b30e24e3a53413",
+  "prompts": {},
+  "sessions": {
+    "s_3c0bde1ee78b7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b160-5434-7080-8ff1-1f4237be48e6",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    },
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
