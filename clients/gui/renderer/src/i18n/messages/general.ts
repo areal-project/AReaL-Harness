@@ -556,7 +556,7 @@ export const generalMessages = {
   "settings.betaUpdates.advanced": { "zh-CN": "高级", en: "Advanced" },
   "settings.betaUpdates.label": { "zh-CN": "接收 Beta 版本", en: "Get beta versions" },
   "settings.betaUpdates.description": {
-    "zh-CN": "更早体验新功能，可能不稳定；后台也会随之更新。关闭后停在当前版本，直到正式版追上。",
+    "zh-CN": "更早体验新功能，可能不稳定。关闭后停在当前版本，直到正式版追上。",
     en: "Try new features earlier; they may be unstable, and the background service updates too. Turning this off keeps the current version until a stable release catches up.",
   },
   "settings.betaUpdates.saveFailed": {
