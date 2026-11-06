@@ -64,7 +64,6 @@ import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
 import type { Data } from "./services.js";
 import { conversationReferenceEntries } from "./ConversationReferences.js";
 import {
-  isIndependentCreation,
   isTechnicalErrorMessage,
   recoveredOutcome,
   recoveryMessage,
@@ -187,10 +186,7 @@ export function DraftComposer({
   const executionReady = backendReady && !!project.state?.connected;
   const modelReady = executionReady || (backendReady && !!prepareProject && modelCatalogReady);
   const modelSelectionDisabled = editLocked || !modelReady || unavailableProfile;
-  const blockingPending = project.pending.filter(
-    (entry: Data) => !isIndependentCreation(entry, [unknown, activeCreation?.requestId]),
-  );
-  const submitDisabled = modelSelectionDisabled || !!blockingPending.length || !effectiveModel;
+  const submitDisabled = modelSelectionDisabled || !effectiveModel;
   const models = draftModelChoices(project, effectiveModel, currentModel);
   const desktopUnsupported =
     conversationSubmitReadOnly ||
@@ -253,7 +249,11 @@ export function DraftComposer({
         throw new Error(t("worktree.recoveryMismatch"));
       const result = await readAction("reconcile", { projectId: project.id, requestId });
       if (!mounted.current || localStorage.getItem(`${key}:pending-create`) !== requestId) return;
-      const outcome = recoveredOutcome({ ...project, outcomes: result.outcomes }, requestId, "");
+      const outcome = recoveredOutcome({ ...project, outcomes: result.outcomes }, requestId, "", {
+        requestId,
+        method: "areal/thread/start",
+        target: { kind: "project" },
+      });
       const creationOutcome =
         outcome && (!outcome.operation || outcome.operation.method === "areal/thread/start")
           ? outcome
@@ -350,7 +350,11 @@ export function DraftComposer({
   };
   useEffect(() => {
     if (!unknown || stoppedCreation.current.has(unknown)) return;
-    const outcome = recoveredOutcome(project, unknown, "");
+    const outcome = recoveredOutcome(project, unknown, "", {
+      requestId: unknown,
+      method: "areal/thread/start",
+      target: { kind: "project" },
+    });
     if (!outcome || (outcome.operation && outcome.operation.method !== "areal/thread/start"))
       return;
     if (outcome.status === "failed" || outcome.accepted === false) {

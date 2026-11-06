@@ -110,7 +110,7 @@ export function useWorkspacePanels() {
         setPanel("");
       },
       retainSelectedTab(name: string) {
-        if (name && name !== "功能" && name !== "预览")
+        if (name && name !== "功能")
           setPanelTabs((tabs) => (tabs.includes(name) ? tabs : [...tabs, name]));
       },
       showFiles() {

@@ -384,6 +384,8 @@ GUI 的 `tasks` 只读命令支持 `operation: list | inbox`、可选 `projectId
 
 新 GUI 使用 `areal/side/create {requestId,sourceThreadId,firstInput?}` 创建辅助对话。`firstInput` 是可选的普通输入数组；省略时创建空会话，不创建用户 Turn，也不请求模型。提供首条输入时，Core 将子会话、冻结历史、首轮和原始请求收据一起持久化，再启动执行。相同身份、请求键和参数返回同一子会话及可选首轮；结果未知时查询原收据，不重建会话或重发首问。Desktop 的 `side` 命令使用 `operation:"create"`，文字命令参数通过 `firstInput:{text}` 传入。
 
+侧边聊天在原请求去重后、准入持久化前的前置条件失败返回 `outcome.kind="rejected"` 和 `recovery.kind="none"`；持久化结果不确定仍核对原回执。Desktop 的 `side/recover` 共用提交恢复器：仅在原请求的权威回执确认后结算 pending；已受理但执行失败返回 `confirmed:true,status:"failed",accepted:true,message`，不能再显示为结果未知。
+
 新会话保存 `conversation.kind=side`、`version=2` 和 `policy.kind=sideExecutableV2`。Core 继承来源当前已生效的模型、模式与权限配置，创建独立队列、交互、执行状态和收据。模型使用完整的稳定来源历史，界面只显示子会话自己的消息。来源正在生成时，只保留当前轮已提交的用户输入，排除其后尚未完成的助手与工具增量。来源继续推进不改变该快照，也不自动推进子会话。继承历史不复制 Goal、活动工具、审批或后台任务。后续输入、附件、工具、权限交互和压缩复用普通会话路径与限额。Goal、编辑重试和 fork 仍被拒绝。旧的只读 Side 不自动升级。
 
 每个辅助对话有独立临时标签。划词只追加到同一来源当前激活的辅助标签；其他资源标签激活时创建新的辅助对话。主、辅 Composer 共享结构化引用，按来源与原文去重，单条最多 8,000 个 JavaScript 字符、每份草稿最多 8 条、总计最多 16,000 个字符。超限原子拒绝，已有正文与附件保留。发送只包含 `# userselect:` 和 `userselect` 代码块中的 `{text}` 数组，来源标识留在发送前 UI。裸 `/side` 与 `/btw` 创建空标签，带纯文字参数时创建并发送首问；含附件或结构化上下文时按主会话原路径提交。辅助对话不提供再次创建辅助对话的命令。

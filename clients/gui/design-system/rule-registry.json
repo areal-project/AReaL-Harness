@@ -1117,10 +1117,10 @@
     },
     {
       "id": "R-FEEDBACKNOTICE-002",
-      "title": "这是底层纯展示表面，不用于新的操作通知",
+      "title": "这是底层纯展示表面",
       "owner": "clients/gui/packages/ui/src/components/feedback-notice/feedback-notice.md#规则",
       "strength": "default",
-      "textSha256": "822a655427b8e165f5abb20c0692369cf5d1e25f009a061e2184534f9aa34552"
+      "textSha256": "164e8ebdca0e0c81437263970aaf6b6d1b9dd5430d80585eb2554b65ba16f843"
     },
     {
       "id": "R-INPUT-002",

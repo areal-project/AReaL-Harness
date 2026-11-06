@@ -40,7 +40,7 @@ import { SettingsSearchInput } from "./SettingsSearchInput.js";
 import { SettingsSegmentedTabs } from "./SettingsSegmentedTabs.js";
 import { ResourceScope, type ScopedProps } from "./ScopedSkillsSettings.js";
 import type { Data } from "../services.js";
-import { isIndependentCreation, recoveredOutcome } from "../recoveryPresentation.js";
+import { recoveredOutcome } from "../recoveryPresentation.js";
 import { buildPluginMentionMarkdown } from "../mentions/mentionMarkdown.js";
 import { presentPlugin, type PluginConnectionFacts } from "./pluginPresentation.js";
 import { PluginConfiguration } from "./PluginConfiguration.js";
@@ -250,7 +250,7 @@ export function PluginCenter({
   >({});
   const pendingEntries: Data[] = project?.pending ?? [];
   const blockingPending = pendingEntries.filter(
-    (entry) => !isIndependentCreation(entry, [submission?.requestId, error?.requestId]),
+    (entry) => pluginMethods[entry.method] || entry.method === "areal/mcp/configure",
   );
   const [connectingProject, setConnectingProject] = useState(false);
   const pending = !!blockingPending.length;

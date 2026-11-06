@@ -24,8 +24,8 @@ import { DismissIcon } from "../interfaceIcons.js";
 import { McpMentionsPicker, useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
-import { isIndependentCreation, recoverySettings } from "../recoveryPresentation.js";
-import { type Action, type Data, type PlatformServices } from "../services.js";
+import { recoverySettings } from "../recoveryPresentation.js";
+import { type Action, type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
 import { useTaskWorkspace } from "../state/taskWorkspace.js";
 import type { useComposerWorkspace } from "../state/useComposerWorkspace.js";
@@ -267,6 +267,7 @@ function ActiveConversation() {
   const { t } = useI18n();
   const pendingSide =
     project && thread ? sideChats.pendingCreation(project.id, thread.id) : undefined;
+  const sideError = project && thread ? sideChats.creationError(project.id, thread.id) : undefined;
   if (!project || !thread) return null;
   return (
     <>
@@ -350,15 +351,17 @@ function ActiveConversation() {
               </div>
             </div>
           )}
-          {pendingSide && (
+          {(pendingSide || sideError) && (
             <FeedbackNotice
-              tone="warning"
-              requestId={pendingSide.requestId}
-              message={t("chat.side.createUnconfirmed")}
+              tone={pendingSide ? "warning" : "error"}
+              requestId={pendingSide?.requestId}
+              message={sideError || t("chat.side.createUnconfirmed")}
               actions={
-                <Button variant="ghost" size="sm" onClick={newSide}>
-                  {t("chat.side.inspectCreation")}
-                </Button>
+                pendingSide && (
+                  <Button variant="ghost" size="sm" onClick={newSide}>
+                    {t("chat.side.inspectCreation")}
+                  </Button>
+                )
               }
             />
           )}
@@ -542,10 +545,7 @@ function DraftConversation() {
                       setSettingsOpen(true);
                     }
               }
-              disabled={
-                admitting ||
-                project.pending?.some((entry: Data) => !isIndependentCreation(entry, []))
-              }
+              disabled={admitting}
             />
           )}
         </div>

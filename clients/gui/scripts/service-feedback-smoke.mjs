@@ -11,6 +11,7 @@ const gui = resolve(import.meta.dirname, "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { applicationFixture } = await import("./application-fixture.mjs");
+const { closeSmokeApplication } = await import("./application-cleanup.mjs");
 const { createProjectConversation } = await import("./smoke-navigation.mjs");
 const { ServiceConnection } = require("../app/src/core/service-client.cjs");
 const { DesktopLifecycle } = require("../app/src/core/lifecycle.cjs");
@@ -147,6 +148,29 @@ try {
     project?.error || project?.state?.error || "Project must connect with a long service home",
   );
   checks.push("Long service home opens a connected project through the directory picker");
+  await createProjectConversation(page, "workspace");
+  const browserExplanation = page.getByText("发送第一条消息或打开已有聊天后，即可使用浏览器。", {
+    exact: true,
+  });
+  await page.keyboard.press("Meta+t");
+  await browserExplanation.waitFor();
+  assert.equal(await page.getByTestId("toast").count(), 0);
+  await page.screenshot({ path: join(scratch, "new-chat-browser-shortcut.png"), scale: "css" });
+  const addTab = page.getByRole("button", { name: "打开侧边面板标签页", exact: true });
+  await addTab.click();
+  await page.getByRole("menuitem", { name: /浏览器/ }).click();
+  await browserExplanation.waitFor();
+  assert.equal(await page.getByTestId("toast").count(), 0);
+  checks.push("New chat browser shortcut and menu show the local explanation without a top notice");
+  await addTab.click();
+  await page.getByRole("menuitem", { name: /审查/ }).click();
+  await page.getByRole("button", { name: "改动范围" }).click();
+  const lastTurn = page.getByRole("menuitem", { name: "上一轮", exact: true });
+  await lastTurn.waitFor();
+  assert.equal(await lastTurn.getAttribute("aria-disabled"), "true");
+  await page.screenshot({ path: join(scratch, "new-chat-review-scope.png"), scale: "css" });
+  await page.keyboard.press("Escape");
+  checks.push("Review scope disables last turn when the conversation has no turn");
   await writeFile(fault, "reject");
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
@@ -226,8 +250,8 @@ try {
     join(scratch, "missing-directory"),
   );
   await page.getByRole("button", { name: "打开项目", exact: true }).first().click();
-  const operationNotice = page.getByTestId("toast");
-  await operationNotice.filter({ hasText: "暂时无法完成操作" }).waitFor();
+  const operationNotice = page.getByTestId("toast").filter({ hasText: "暂时无法完成操作" });
+  await operationNotice.waitFor();
   assert.equal(await operationNotice.count(), 1);
   assert.ok(!(await page.locator("body").innerText()).includes("Error invoking remote method"));
   assert.equal(await input.textContent(), "Draft retained after a failed action");
@@ -291,8 +315,11 @@ try {
       if (error.code !== "ENOENT") throw error;
     });
   if (app) {
-    await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
-    await app.close().catch(() => {});
+    await closeSmokeApplication(app).catch((error) => {
+      errors.push("Electron cleanup: " + error.message);
+      passed = false;
+      process.exitCode = 1;
+    });
   }
   const connection = new ServiceConnection();
   try {

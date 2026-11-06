@@ -5,7 +5,7 @@ import { Button, Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@
 import { dismissToast, toast } from "./components/ui/toast.js";
 
 export function FeedbackNotice({
-  transient = true,
+  transient = false,
   ...props
 }: ComponentProps<typeof View> & { transient?: boolean }) {
   const { t } = useI18n();

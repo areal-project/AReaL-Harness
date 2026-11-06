@@ -690,7 +690,18 @@ class SubmissionRecovery {
                 ? "当前操作正在等待响应，请稍后再试"
                 : "上一次提交结果未知，请先查询受理结果",
             ),
-            awaiting ? {} : { submissionUnknown: true, requestId: conflicting.params.requestId },
+            awaiting
+              ? {}
+              : {
+                  submissionUnknown: true,
+                  requestId: conflicting.params.requestId,
+                  outcome: {
+                    kind: "unconfirmed",
+                    operation:
+                      conflicting.operation ?? operationOf(conflicting.method, conflicting.params),
+                  },
+                  recovery: { kind: "queryOriginal" },
+                },
           );
         }
         return [...pending, entry];
@@ -945,6 +956,13 @@ class SubmissionRecovery {
     const pending = project.pending.find(
       (entry) => entry.method === method && entry.params.requestId === params.requestId,
     );
+    if (
+      pending &&
+      ["threadId", "sourceThreadId", "taskId"].some(
+        (key) => params[key] !== undefined && params[key] !== pending.params[key],
+      )
+    )
+      throw new Error("恢复请求与原操作身份不匹配");
     if (pending && isAwaitingResponse(this.host.awaitingResponses, project.id, pending))
       return { confirmed: false, state: "admitted" };
     const known = project.outcomes?.[params.requestId];

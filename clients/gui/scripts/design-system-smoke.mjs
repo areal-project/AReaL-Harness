@@ -986,7 +986,7 @@ try {
       );
       const earlier = timeline.locator('[data-side-item-id="timeline-progress"]');
       const durationToggle = timeline.getByRole("button", {
-        name: "执行过程：Worked for 19s",
+        name: "执行过程：工作了 19 秒 · 1 个失败",
         exact: true,
       });
       assert.equal(await durationToggle.getAttribute("aria-expanded"), "false");

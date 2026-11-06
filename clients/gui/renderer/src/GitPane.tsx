@@ -209,7 +209,9 @@ export function GitPane({
   const [treeQuery, setTreeQuery] = useState(remembered?.treeQuery ?? "");
   const [treeCollapsed, setTreeCollapsed] = useState(remembered?.treeCollapsed ?? []);
   const [scope, setScope] = useState<ReviewScope>(
-    remembered?.scope ?? (turnId ? "last-turn" : "unstaged"),
+    remembered?.scope === "last-turn" && !turnId
+      ? "unstaged"
+      : (remembered?.scope ?? (turnId ? "last-turn" : "unstaged")),
   );
   const [ref, setRef] = useState(remembered?.ref ?? "HEAD");
   const [applied, setApplied] = useState(ref);
@@ -873,6 +875,7 @@ export function GitPane({
                       </DropdownMenuSub>
                     ) : (
                       <DropdownMenuItem
+                        disabled={value === "last-turn" && !turnId}
                         onClick={() => {
                           setManualRef(false);
                           setScope(value);
