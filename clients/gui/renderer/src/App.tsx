@@ -470,10 +470,7 @@ function AppContent({ services }: { services: PlatformServices }) {
       bridge={services.snapShots}
       settings={library.settings}
       ready={startupReady && snapshot.connection?.state === "ready"}
-      openSettings={(tab) => {
-        setSettingsTab(tab);
-        showPanel("设置");
-      }}
+      openSettings={panelNavigation.openSettings}
     >
       <WorkbenchShell
         data-view={
@@ -577,6 +574,7 @@ function AppContent({ services }: { services: PlatformServices }) {
                       )
                       .map((item) => ({
                         ...item,
+                        keywords: "keywords" in item ? t(item.keywords) : undefined,
                         label: t(
                           item.id === "数据飞轮" && trajectoryAttention
                             ? "settings.trajectory.attentionTitle"

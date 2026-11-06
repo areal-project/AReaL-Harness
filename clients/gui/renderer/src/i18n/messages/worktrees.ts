@@ -26,7 +26,7 @@ export const worktreeMessages = {
   "worktree.environment": { "zh-CN": "项目环境", en: "Project environment" },
   "worktree.noEnvironment": { "zh-CN": "无环境", en: "No environment" },
   "worktree.configureEnvironments": { "zh-CN": "配置环境", en: "Configure environments" },
-  "settings.worktrees.title": { "zh-CN": "Worktrees", en: "Worktrees" },
+  "settings.worktrees.title": { "zh-CN": "工作树", en: "Worktrees" },
   "worktree.settings.description": {
     "zh-CN": "管理 Worktree 的创建、清理和项目环境。",
     en: "Manage worktree creation, cleanup, and project environments.",

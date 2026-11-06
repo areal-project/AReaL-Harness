@@ -1169,6 +1169,11 @@ export function Messages({
                   const pendingInput = project.state?.interactions?.[thread.id]?.data?.some(
                     (item: Data) => item.status === "pending" && item.turnId === turn.id,
                   );
+                  const awaitingCalls = new Set(
+                    (project.state?.interactions?.[thread.id]?.data ?? [])
+                      .filter((item: Data) => item.status === "pending" && item.kind === "approval")
+                      .map((item: Data) => item.callId),
+                  );
                   const legacyReply =
                     turn.status === "completed" &&
                     tail?.type === "agentMessage" &&
@@ -1397,7 +1402,11 @@ export function Messages({
                                   return (
                                     <div data-side-item-id={entry.id} key={entry.id}>
                                       <ToolEvent
-                                        item={entry}
+                                        item={
+                                          awaitingCalls.has(entry.callId)
+                                            ? { ...entry, awaitingApproval: true }
+                                            : entry
+                                        }
                                         mediaGeneration={localThread.displayHistory?.viewGeneration}
                                         onLoadDetails={
                                           (entry.processRecords ?? [entry]).some(
@@ -1494,6 +1503,7 @@ export function Messages({
                                   !thread.cloud && groupIndex === firstProgress ? turn : undefined
                                 }
                                 connected={!!project.state?.connected}
+                                awaiting={awaitingCalls.size > 0}
                                 label={legacyReply ? "早前消息与活动" : "本轮过程"}
                                 settled={
                                   turn.status === "completed" &&
@@ -1512,7 +1522,11 @@ export function Messages({
                               ({ item }) => !thread.cloud && item === initialUser,
                             ) &&
                               firstProgress < 0 && (
-                                <TurnElapsed turn={turn} connected={!!project.state?.connected} />
+                                <TurnElapsed
+                                  turn={turn}
+                                  connected={!!project.state?.connected}
+                                  awaiting={awaitingCalls.size > 0}
+                                />
                               )}
                           </Fragment>
                         );

@@ -1721,7 +1721,10 @@ try {
     await page.waitForFunction(() => innerWidth <= 1024);
     await openSideChat(page);
     const sidePane = page.getByTestId("side-chat-pane").filter({ visible: true });
-    const sideInput = sidePane.getByRole("textbox", { name: "随心输入", exact: true });
+    const sideInput = sidePane.getByRole("textbox", {
+      name: "描述要做的事，@ 引用文件，/ 查看命令",
+      exact: true,
+    });
     await sideInput.fill("side plugin @composer");
     const beforeSidePlugin = received.length;
     await page.getByRole("option", { name: /composer-plugin.*Composer plugin fixture/ }).waitFor();

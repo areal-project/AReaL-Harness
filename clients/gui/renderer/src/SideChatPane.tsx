@@ -1041,7 +1041,7 @@ function SideChatEditor({
             }
             pluginMentionCatalog={plugins.catalog}
             composerCatalog={{ entries: [], refresh: () => {} }}
-            placeholder="随心输入"
+            placeholder={t("chat.composer.placeholder")}
             disabled={editorDisabled}
             submitDisabled={disabled || !!active || (!text.trim() && !selection)}
             allowSubmitWhenEmpty={!!selection && !sideId}

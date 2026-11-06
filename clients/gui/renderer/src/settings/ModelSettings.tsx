@@ -6,6 +6,7 @@ import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { useSettingsOperation } from "./useSettingsOperation.js";
 import { useDraftBlocker, useGuardedNavigation } from "./UnsavedChanges.js";
 import { ModelEditor } from "./ModelEditor.js";
+import { NewSessionModelSetting } from "./NewSessionModelSetting.js";
 import { ChatGPTSubscription, subscriptionStatusLabel } from "./ChatGPTSubscription.js";
 import { useEffect, useState } from "react";
 import {
@@ -1020,7 +1021,7 @@ export function ModelSettings({
             </EmptySettings>
           )}
           <footer className="provider-default-link">
-            <span>{t("settings.modelSettings.fallbackDefaultModel")}</span>
+            <NewSessionModelSetting action={action} disabled={busy || dirty} compact />
             <Button variant="link" disabled={busy} onClick={onOpenSessionSettings}>
               {t("settings.modelSettings.openSessionSettings")}
             </Button>

@@ -522,7 +522,7 @@ export async function runUiLibrary(page, scratch, checks) {
   await frame.getByRole("heading", { name: "全部来源", exact: true }).waitFor();
   assert.equal(await frame.getByRole("button", { name: /^查看来源：/ }).count(), 5);
   await frame.getByRole("button", { name: "返回任务上下文", exact: true }).click();
-  await sources.getByRole("button", { name: "折叠来源 Sources 收起", exact: true }).click();
+  await sources.getByRole("button", { name: "来源 收起", exact: true }).click();
   assert.equal(await sources.getByRole("button", { name: /^查看来源：/ }).count(), 0);
   await sources.getByRole("button", { name: "添加来源", exact: true }).click();
   await frame.getByRole("status").filter({ hasText: "已加入草稿" }).waitFor();

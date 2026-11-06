@@ -17,6 +17,7 @@ import { generalMessages } from "./messages/general.js";
 import { pluginMessages } from "./messages/plugins.js";
 import { remoteMessages } from "./messages/remote.js";
 import { worktreeMessages } from "./messages/worktrees.js";
+import { settingsSearchMessages } from "./messages/settingsSearch.js";
 
 export type AppLocale = "zh-CN" | "en";
 export type MessagePair = Record<AppLocale, string>;
@@ -40,6 +41,7 @@ export const messages = {
   ...pluginMessages,
   ...remoteMessages,
   ...worktreeMessages,
+  ...settingsSearchMessages,
 } as const satisfies Record<string, MessagePair>;
 export type MessageId = keyof typeof messages;
 export const catalogs = Object.fromEntries(

@@ -349,3 +349,21 @@
   font-size: var(--text-ui-base);
   font-variant-numeric: tabular-nums;
 }
+/* 有改动时按钮常驻显示 +x −y，不必点开才知道。 */
+.icon-button.task-resources-trigger.with-count {
+  width: auto;
+  gap: 6px;
+  padding: 0 8px 0 6px;
+}
+.task-resources-trigger .diff-count {
+  margin-left: 0;
+  font-size: var(--text-ui-xs);
+  font-variant-numeric: tabular-nums;
+}
+.task-resources-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px 8px;
+  border-top: 1px solid var(--color-border);
+}

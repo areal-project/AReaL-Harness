@@ -268,7 +268,7 @@ try {
     1,
   );
   checks.push("running follow-up uses ordinary guarded durable Core enqueue and GUI ComposerQueue");
-  await page.getByRole("button", { name: "引导 after this turn", exact: true }).click();
+  await page.getByRole("button", { name: "立即发送 after this turn", exact: true }).click();
   await waitFor(
     async () =>
       !(

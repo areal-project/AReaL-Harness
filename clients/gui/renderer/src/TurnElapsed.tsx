@@ -3,30 +3,41 @@ import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Data } from "./services.js";
 import { ActivityIcon } from "./ActivityIcon.js";
-
-function durationText(milliseconds: number): string {
-  const seconds = Math.floor(milliseconds / 1000);
-  return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-}
+import { processItems, toolPresentation } from "./conversationPresentation.js";
 
 /** Terminal duration is a Core receipt, never a sum of tool execution times. */
-export function completedTimeLabel(turn: Data): string | undefined {
-  return turn.status !== "inProgress" &&
-    Number.isSafeInteger(turn.durationMs) &&
-    turn.durationMs >= 0
-    ? `Worked for ${durationText(turn.durationMs)}`
-    : undefined;
+export function completedTimeLabel(
+  turn: Data,
+  t: ReturnType<typeof useI18n>["t"],
+): string | undefined {
+  if (turn.status === "inProgress" || !Number.isSafeInteger(turn.durationMs) || turn.durationMs < 0)
+    return undefined;
+  const failures = processItems(turn.items ?? [], turn.status).filter(
+    (item) => item.type === "dynamicToolCall" && toolPresentation(item).failed,
+  ).length;
+  const label = t("chat.progress.worked", { duration: durationText(turn.durationMs, t) });
+  return failures ? `${label} · ${t("chat.activity.part.failures", { count: failures })}` : label;
+}
+
+function durationText(milliseconds: number, t: ReturnType<typeof useI18n>["t"]): string {
+  const seconds = Math.floor(milliseconds / 1000);
+  return t("chat.progress.duration", {
+    minutes: Math.floor(seconds / 60),
+    seconds: seconds % 60,
+  });
 }
 
 /** Refresh only the display. History and reconnect retain Core's original start. */
 export function TurnElapsed({
   turn,
   connected,
+  awaiting = false,
   disclosure,
   indicator,
 }: {
   turn: Data;
   connected: boolean;
+  awaiting?: boolean;
   indicator?: ReactNode;
   disclosure?: {
     expanded: boolean;
@@ -39,18 +50,23 @@ export function TurnElapsed({
   const running = turn.status === "inProgress";
   const hasStart = Number.isSafeInteger(turn.startedAt) && turn.startedAt > 0;
   useEffect(() => {
-    if (!running || !connected || !hasStart) return;
+    // 等待用户批准的时间不算 agent 在工作，计时停在这里。
+    if (!running || !connected || !hasStart || awaiting) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, [turn.id, turn.startedAt, running, connected, hasStart]);
+  }, [turn.id, turn.startedAt, running, connected, hasStart, awaiting]);
   const label = running
     ? !connected
       ? "连接已中断，耗时待同步"
-      : hasStart && now >= turn.startedAt * 1000
-        ? `Working for ${durationText(now - turn.startedAt * 1000)}`
-        : undefined
-    : completedTimeLabel(turn);
+      : awaiting
+        ? t("chat.progress.awaiting")
+        : hasStart && now >= turn.startedAt * 1000
+          ? t("chat.progress.working", {
+              duration: durationText(now - turn.startedAt * 1000, t),
+            })
+          : undefined
+    : completedTimeLabel(turn, t);
   if (!label && !disclosure) return null;
   return (
     <div className="turn-elapsed turn-progress-heading" data-testid="turn-elapsed">

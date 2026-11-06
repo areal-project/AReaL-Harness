@@ -1516,9 +1516,19 @@ button.composer-project:hover > svg,
 .composer-queue-row:hover {
   background: var(--color-hover);
 }
-.composer-queue-glyph {
-  color: var(--color-foreground-subtlest);
+/* 序号说明发送顺序；悬停时换成拖动把手。 */
+.composer-queue-handle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
   flex-shrink: 0;
+}
+.composer-queue-index {
+  font-size: var(--text-ui-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-foreground-subtlest);
 }
 .composer-queue-copy {
   font-size: var(--text-fixed-control);
@@ -1530,11 +1540,12 @@ button.composer-project:hover > svg,
   text-overflow: ellipsis;
 }
 .composer-queue-grip {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  width: 10px;
   color: var(--color-foreground-subtle);
   opacity: 0;
   cursor: grab;
@@ -1545,11 +1556,26 @@ button.composer-project:hover > svg,
 .composer-queue-row:focus-within .composer-queue-grip {
   opacity: 1;
 }
+.composer-queue-row:hover .composer-queue-index,
+.composer-queue-row:focus-within .composer-queue-index {
+  opacity: 0;
+}
+/* 操作只在悬停或聚焦这一行时出现，平时只读消息本身；触屏常显。 */
 .composer-queue-actions {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   color: var(--color-foreground-subtle);
+  opacity: 0;
+}
+.composer-queue-row:hover .composer-queue-actions,
+.composer-queue-row:focus-within .composer-queue-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .composer-queue-actions {
+    opacity: 1;
+  }
 }
 .composer-queue-actions > button {
   display: flex;
@@ -1560,9 +1586,9 @@ button.composer-project:hover > svg,
   height: 29px;
 }
 .composer-queue-actions .composer-queue-steer {
-  gap: 5px;
+  gap: 4px;
   padding-inline: 7px;
-  font-size: var(--text-ui-base);
+  font-size: var(--text-ui-sm);
 }
 .composer-queue-actions button:hover {
   background: var(--color-hover);

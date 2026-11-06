@@ -35423,7 +35423,8 @@
     "DesktopCommandResult": {
       "x-opaque": true,
       "x-source": "clients/gui/packages/workbench/client/desktop-contract/transport.cjs",
-      "description": "桌面命令原结果；后台按桌面命令合同校验后返回。"
+      "description": "桌面命令原结果；后台按桌面命令合同校验后返回。",
+      "examples": [null]
     }
   },
   "x-current": {

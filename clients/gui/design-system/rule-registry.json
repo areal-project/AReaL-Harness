@@ -3253,7 +3253,7 @@
       "title": "保留原虚拟滚动、列测量和预览",
       "owner": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.md#行为",
       "strength": "default",
-      "textSha256": "93f9cd2438e2f629fd912721dbf26416ada3efa30f77cb903a5576d6b84bed16"
+      "textSha256": "94ed5dd35aafb87255b4e4c0baf11b87978641f6ad6f28ee41ea3dbbc0147d14"
     },
     {
       "id": "R-MESSAGEATTACHMENTS-001",
@@ -3400,28 +3400,28 @@
       "title": "产品顶部卡片默认收起，组件不自行决定开关",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#状态",
       "strength": "default",
-      "textSha256": "4b6b4742537223a1fab5096838933a368abedbc1ae62df3ea36ec109b965ef58"
+      "textSha256": "77c3745a018811d1110c9ea72f80ff9ff8e21fcb4ef24b81586afebb20b66b19"
     },
     {
       "id": "R-TASKCONTEXT-003",
-      "title": "顶部按钮切换，Escape 关闭并回到入口",
+      "title": "顶部按钮切换，Escape 或点卡片外关闭并回到入口",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#行为",
       "strength": "default",
-      "textSha256": "7a692a19a0bc03d9830ac2ad3b6889c285d18493aabbccdeb4ce25308444e2e8"
+      "textSha256": "54b4b5f0552b3cd12aebec02d4b171ba538b9769cc5a6df570f8498dd05e4fc5"
     },
     {
       "id": "R-TASKCONTEXT-004",
       "title": "卡片使用菜单表面和紧凑行式布局，项目标题为次级色",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#内容",
       "strength": "default",
-      "textSha256": "e27912f7a9c9702c8d6d5052c871d51815c00ee2047b572a9d7dc212a4361833"
+      "textSha256": "1d271aba7b316262ef555b766944113bf0fca36d25afeb6f79ea6c882f62fb13"
     },
     {
       "id": "R-TASKCONTEXT-005",
       "title": "宿主通过 headingRef 聚焦详情，返回原入口",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#可访问性",
       "strength": "default",
-      "textSha256": "dd4bbbf1e4d1f469284fb581210a4c06916ed342e0c0bdb2c9fcf6722f23488c"
+      "textSha256": "11cd32bbdc8ae27796488042bb3f643a87e33bce70882aef831970db6f0a8c9c"
     },
     {
       "id": "R-TASKCONTEXT-006",
@@ -4496,10 +4496,10 @@
     },
     {
       "id": "R-DECISIONCARD-015",
-      "title": "TurnElapsed使用Core起始时间和终态durationMs，所有语言运行中均为Working for …、完成",
+      "title": "TurnElapsed使用Core起始时间和终态durationMs，按界面语言显示耗时（见 R-CONTENT-033",
       "owner": "clients/gui/renderer/src/DecisionCard.md#ask-user与过程展示",
       "strength": "default",
-      "textSha256": "6ca21b7ec3ba4eff85638b9544ea23c047ad4477388d07203e273a7ee81a140d"
+      "textSha256": "bac6f2963a07c7f96515ad1576c02c2c9794455bb32157a5540002fcdee2f5f6"
     },
     {
       "id": "R-MESSAGES-001",
@@ -4714,10 +4714,10 @@
     },
     {
       "id": "R-CONTENT-033",
-      "title": "过程耗时跨语言统一显示英文：运行中为Working for 15m 29s，完成后为Worked for 15m 29s",
+      "title": "过程耗时按界面语言显示：中文运行中为已工作 15 分 29 秒，完成后为工作了 15 分 29 秒",
       "owner": "clients/gui/renderer/src/Messages.md#混合内容与过程标题",
       "strength": "default",
-      "textSha256": "15032f8548102d5e2bf957586b0570ea1567569f2a0efaee47df115576aaa006"
+      "textSha256": "c2096bae32e5509486a6150322c0d4f4bad2f6180dc25415a7f5c9e8b9df4d0b"
     },
     {
       "id": "R-ACTIONBUTTON-005",
@@ -6628,10 +6628,10 @@
     },
     {
       "id": "R-COMPOSERSURFACE-007",
-      "title": "裸 @ 或清空关键词时隐藏文件候选及搜索状态",
+      "title": "符号分工：@ 引用文件、插件与 MCP 资源，裸 @ 也列出项目根目录，输入关键词后搜索",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#工作区文件引用",
       "strength": "must",
-      "textSha256": "0cc8eaf8ec4b366ea9e712788f44b00dc3b1ab84c9c39b31654ac789d826e806",
+      "textSha256": "aa84a71a911b1cc00867bb54a7f4a1ec55c7d56d9012282598485210bba2bc0f",
       "check": "clients/gui/scripts/composer-files-acceptance.mjs"
     },
     {
