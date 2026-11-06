@@ -142,13 +142,22 @@ async function launch(name, withModel) {
 // 杀掉 Electron 后，它拉起的后台进程可能还在；只按本次临时目录认领，不按名字匹配。
 async function stopLeftovers() {
   if (process.platform !== "linux") return;
-  for (const pid of await readdir("/proc").catch(() => [])) {
-    if (!/^\d+$/.test(pid) || Number(pid) === process.pid) continue;
-    const environ = await readFile(`/proc/${pid}/environ`, "utf8").catch(() => "");
-    if (environ.split("\0").some((entry) => entry.startsWith(`AREAL_CORE_HOME=${scratch}/`)))
-      try {
-        process.kill(Number(pid), "SIGKILL");
-      } catch {}
+  // Host 只带 AREAL_HARNESS_SERVICE_HOME，Core 带 AREAL_CORE_HOME；任一指向本次临时目录就是自己的。
+  const owned = (entry) => entry.startsWith("AREAL_") && entry.includes(`=${scratch}/`);
+  // Host 与服务进程会互相拉起：先全部暂停再杀，直到一个不剩。
+  for (let pass = 0; pass < 5; pass += 1) {
+    const pids = [];
+    for (const pid of await readdir("/proc").catch(() => [])) {
+      if (!/^\d+$/.test(pid) || Number(pid) === process.pid) continue;
+      const environ = await readFile(`/proc/${pid}/environ`, "utf8").catch(() => "");
+      if (environ.split("\0").some(owned)) pids.push(Number(pid));
+    }
+    if (!pids.length) return;
+    for (const signal of ["SIGSTOP", "SIGKILL"])
+      for (const pid of pids)
+        try {
+          process.kill(pid, signal);
+        } catch {}
   }
 }
 
@@ -230,7 +239,7 @@ try {
   await stopLeftovers();
   model.closeAllConnections();
   model.close();
-  await rm(scratch, { recursive: true, force: true });
+  await rm(scratch, { recursive: true, force: true, maxRetries: 5 });
 }
 const failed = results.filter((result) => result.problems.length);
 console.log(`${results.length - failed.length}/${results.length} 步通过；截图在 ${shots}`);
