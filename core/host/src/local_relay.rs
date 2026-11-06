@@ -418,23 +418,23 @@ impl LocalRelay {
     }
     pub(crate) async fn poll(&self) -> Result<()> {
         let mut inner = self.inner.lock().await;
-        if let Some(guard) = inner.guard.as_mut() {
-            if guard.try_wait()?.is_some() {
-                inner.guard = None;
-                inner.guard_lost = true;
-                let _ = close(&mut inner).await;
-                inner.phase = "failed".into();
-                inner.diagnostic = "旧本机 Relay 独占保护已退出；已停止本机入口".into();
-            }
+        if let Some(guard) = inner.guard.as_mut()
+            && guard.try_wait()?.is_some()
+        {
+            inner.guard = None;
+            inner.guard_lost = true;
+            let _ = close(&mut inner).await;
+            inner.phase = "failed".into();
+            inner.diagnostic = "旧本机 Relay 独占保护已退出；已停止本机入口".into();
         }
-        if let Some(running) = inner.running.as_mut() {
-            if let Some(status) = running.child.try_wait()? {
-                inner.running = None;
-                inner.unresolved = !status.success();
-                inner.phase = "failed".into();
-                inner.diagnostic = "本机 Relay 已退出；原 writer 清理结果需核查".into();
-                let _ = close(&mut inner).await;
-            }
+        if let Some(running) = inner.running.as_mut()
+            && let Some(status) = running.child.try_wait()?
+        {
+            inner.running = None;
+            inner.unresolved = !status.success();
+            inner.phase = "failed".into();
+            inner.diagnostic = "本机 Relay 已退出；原 writer 清理结果需核查".into();
+            let _ = close(&mut inner).await;
         }
         self.publish(&inner);
         Ok(())

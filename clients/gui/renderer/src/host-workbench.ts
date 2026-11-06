@@ -355,3 +355,38 @@ export function createWorkbenchRoutes(
     },
   };
 }
+
+export function hostPlatformCapabilities(
+  client: HostClient,
+  desktop: PlatformServices | undefined,
+  domains: Set<string>,
+  librarySourceId: string | undefined,
+  writes?: boolean,
+): PlatformServices["capabilities"] {
+  const available = (domain: string, method: string) =>
+    domains.has(domain) && !!librarySourceId && client.writable(method);
+  return {
+    mutations: desktop !== undefined,
+    conversationSubmit:
+      desktop !== undefined ||
+      (!!writes && client.writable("session.send") && client.writable("session.control")),
+    conversationCreate: desktop !== undefined || (!!writes && client.writable("session.create")),
+    native: desktop !== undefined,
+    pages:
+      desktop !== undefined ||
+      (domains.has("pages") &&
+        client.writable("pages.command") &&
+        client.writable("pages.resource")),
+    library: desktop !== undefined || available("library", "library.command"),
+    ...(desktop === undefined && {
+      taskCatalog: available("tasks", "tasks.read"),
+      taskManage: available("manage", "manage.command"),
+      settings: [
+        ...(available("providers", "providers.read") ? ["模型服务"] : []),
+        ...(available("worktree", "worktree.read") ? ["Worktrees"] : []),
+        ...(available("trajectory", "trajectory.read") ? ["数据飞轮"] : []),
+        ...(domains.has("analytics") && client.writable("analytics.read") ? ["用量"] : []),
+      ],
+    }),
+  };
+}

@@ -168,15 +168,15 @@ pub struct ConversationHistoryParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ConversationHistoryParamsFieldCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ConversationHistoryParamsFieldMaxBytes {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -307,15 +307,15 @@ pub struct ConversationMediaParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ConversationMediaParamsFieldLength {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ConversationMediaParamsFieldOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -373,8 +373,8 @@ pub struct ConversationMediaResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ConversationMediaResultFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1049,8 +1049,8 @@ pub struct GatewayDevice {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum GatewayDeviceFieldLastSeen {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1150,15 +1150,15 @@ pub struct GatewayStateFieldNetwork {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum GatewayStateFieldNetworkFieldKind {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum GatewayStateFieldNetworkFieldScope {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1262,8 +1262,8 @@ pub struct GatewayStatus {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum GatewayStatusFieldRelayDiagnostic {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1418,21 +1418,21 @@ pub struct ImportBinding {
 #[serde(untagged)]
 pub enum ImportBindingFieldLogicalAlias {
     Variant1(Box<Alias>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ImportBindingFieldProjectlessRequestId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ImportBindingFieldWorktreeRequestId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -1616,29 +1616,29 @@ pub struct LaunchInputs {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LaunchInputsFieldConfigPath {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LaunchInputsFieldDeploymentPath {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LaunchInputsFieldHomedir {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LaunchInputsFieldSchedulePreparation {
     Variant1(Box<SchedulePreparation>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 pub type LegacyLoginTarget = serde_json::Value;
@@ -1827,148 +1827,148 @@ pub struct LocalArgs {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldApiKeyEnv {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldCommandOutputBytes {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldCommandTimeoutMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldConfig {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldDataDir {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldDesktopConfig {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldDesktopProcessTimeoutMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldModel {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldModelEndpoint {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldModelProtocol {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldModelProvider {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldPermissions {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldRuntimeMaxOperations {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldRuntimeMaxProcesses {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldRuntimeMaxScopes {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldRuntimeOutputBytes {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldSandboxProfile {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldScratch {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldWorkgroupPolicy {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldWorkgroupToolchain {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalArgsFieldWorkspace {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2017,8 +2017,8 @@ pub struct LocalBackendOwnership {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalBackendOwnershipFieldDesktopGeneration {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2057,7 +2057,7 @@ pub struct LocalBackendStatusResult {
 #[serde(untagged)]
 pub enum LocalBackendStatusResultFieldService {
     Variant1(Box<LocalBackendOwnership>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2328,7 +2328,7 @@ pub enum LocalGuiRetirementStatusRequestFieldMethod {
 #[serde(untagged)]
 pub enum LocalGuiRetirementStatusResult {
     Variant1(Box<RetirementProgress>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2504,7 +2504,7 @@ pub struct LocalHostOperationResult {
 #[serde(untagged)]
 pub enum LocalHostOperationResultFieldOperation {
     Variant1(Box<LocalHostOperationResultFieldOperationVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2555,8 +2555,8 @@ pub struct LocalHostPowerResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalHostPowerResultFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2713,7 +2713,7 @@ pub enum LocalHostUpdateParamsFieldAction {
 #[serde(untagged)]
 pub enum LocalHostUpdateParamsFieldStrategy {
     Variant1(Box<LocalHostUpdateParamsFieldStrategyVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2785,21 +2785,21 @@ pub struct LocalHostUpdateStatusResult {
 #[serde(untagged)]
 pub enum LocalHostUpdateStatusResultFieldOperation {
     Variant1(Box<MutationReceipt>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalHostUpdateStatusResultFieldPrepareRequestId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalHostUpdateStatusResultFieldTargetVersion {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -2927,8 +2927,8 @@ pub struct LocalLibraryWriteParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalLibraryWriteParamsFieldExpectedDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3007,7 +3007,7 @@ pub struct LocalProjectEnsureParams {
 #[serde(untagged)]
 pub enum LocalProjectEnsureParamsFieldLaunchInputs {
     Variant1(Box<LaunchInputs>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3047,7 +3047,7 @@ pub struct LocalProjectEnsureResult {
 #[serde(untagged)]
 pub enum LocalProjectEnsureResultFieldService {
     Variant1(Box<Service>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3235,8 +3235,8 @@ pub struct LocalRemoteGatewayControlParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalRemoteGatewayControlParamsFieldAssetRoot {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3297,8 +3297,8 @@ pub struct LocalRemoteGatewayHandoffParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalRemoteGatewayHandoffParamsFieldAssetRoot {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3347,8 +3347,8 @@ pub struct LocalRemoteGatewayReplaceParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalRemoteGatewayReplaceParamsFieldControlDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3510,7 +3510,7 @@ pub struct LocalRemoteReadResult {
 #[serde(untagged)]
 pub enum LocalRemoteReadResultFieldConfig {
     Variant1(Box<RemoteConfig>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3524,8 +3524,8 @@ pub enum LocalRemoteReadResultFieldOwner {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalRemoteReadResultFieldSourceId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3553,8 +3553,8 @@ pub struct LocalRemoteReplaceParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalRemoteReplaceParamsFieldControlDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -3854,8 +3854,8 @@ pub struct LocalVaultReadParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum LocalVaultReadParamsFieldInteractionAllowed {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -4720,7 +4720,7 @@ pub struct MigrationStatus {
 #[serde(untagged)]
 pub enum MigrationStatusFieldOwner {
     Variant1(Box<ServiceOwner>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -5318,21 +5318,21 @@ pub struct ProjectStatus {
 #[serde(untagged)]
 pub enum ProjectStatusFieldMigration {
     Variant1(Box<MigrationStatus>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ProjectStatusFieldScheduleActivationError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum ProjectStatusFieldService {
     Variant1(Box<Service>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -5696,50 +5696,50 @@ pub struct RemoteAttention {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionFieldExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionFieldInteractionId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionFieldQuestionId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionFieldRunId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionFieldTaskId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionFieldTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -5824,8 +5824,8 @@ pub struct RemoteAttentionListResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionListResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -5941,22 +5941,22 @@ pub struct RemoteAttentionReadResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionReadResultFieldArgumentsDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionReadResultFieldExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionReadResultFieldGeneration {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -5970,22 +5970,22 @@ pub enum RemoteAttentionReadResultFieldKind {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionReadResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionReadResultFieldReviewToken {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteAttentionReadResultFieldTool {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -6181,8 +6181,8 @@ pub enum RemoteCommandResultFieldAdmissionState {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteCommandResultFieldMethod {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -6303,36 +6303,36 @@ pub struct RemoteCommandResultFieldObservedState {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteCommandResultFieldObservedStateFieldCurrentRunId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteCommandResultFieldObservedStateFieldExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteCommandResultFieldObservedStateFieldReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteCommandResultFieldObservedStateFieldRunId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteCommandResultFieldOperationId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -6353,7 +6353,7 @@ pub struct RemoteCommandResultFieldReceiptVariant2 {
 #[serde(untagged)]
 pub enum RemoteCommandResultFieldTarget {
     Variant1(Box<RemoteCommandTarget>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -6524,21 +6524,21 @@ pub struct RemoteConfiguration {
 #[serde(untagged)]
 pub enum RemoteConfigurationFieldModel {
     Variant1(Box<RemoteModelSelection>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteConfigurationFieldOptions {
     Variant1(Box<RemoteOptions>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteConfigurationFieldParameters {
     Variant1(Box<RemoteConfigurationFieldParametersVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -6556,15 +6556,15 @@ pub struct RemoteConfigurationFieldParametersVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteConfigurationFieldParametersVariant1FieldReasoningEffort {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteConfigurationFieldPermissions {
     Variant1(Box<RemoteConfigurationFieldPermissionsVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -6615,7 +6615,7 @@ pub enum RemoteConfigurationFieldPermissionsVariant1FieldReviewer {
 #[serde(untagged)]
 pub enum RemoteConfigurationFieldProfile {
     Variant1(Box<RemoteConfigurationFieldProfileVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -7035,29 +7035,29 @@ pub struct RemoteGoalFieldLimits {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteGoalFieldLimitsFieldMaxElapsedSeconds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteGoalFieldLimitsFieldMaxTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteGoalFieldLimitsFieldMaxTurns {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteGoalFieldReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -7159,8 +7159,8 @@ pub struct RemoteHistory {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteHistoryFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -7364,7 +7364,7 @@ pub struct RemoteItemBody {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteItemBodyFieldContentItem {
-    Variant1(Box<String>),
+    Variant1(String),
     Variant2(Box<RemoteItemBodyFieldContentItemVariant2>),
 }
 
@@ -7429,36 +7429,36 @@ pub struct RemoteItemBodyFieldExecution {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteItemBodyFieldExecutionFieldCompletedAt {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteItemBodyFieldExecutionFieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteItemBodyFieldExecutionFieldExitCode {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteItemBodyFieldExecutionFieldStartedAt {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteItemBodyFieldSuccess {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -7506,8 +7506,8 @@ pub struct RemoteLegacyArtifactReadResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteLegacyArtifactReadResultFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -7574,8 +7574,8 @@ pub struct RemoteLegacySessionHistoryResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteLegacySessionHistoryResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -7893,29 +7893,29 @@ pub enum RemoteModelFieldAvailability {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteModelFieldContextWindowTokens {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteModelFieldMaxOutputTokens {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteModelFieldProviderId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteModelFieldProviderRevision {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -8120,8 +8120,8 @@ pub struct RemoteProjectListResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteProjectListResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -8148,8 +8148,8 @@ pub enum RemoteProjectListResultFieldProjectsItemFieldConnectionState {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteProjectListResultFieldProjectsItemFieldServiceGeneration {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -8215,7 +8215,7 @@ pub struct RemoteProjectModelsResult {
 #[serde(untagged)]
 pub enum RemoteProjectModelsResultFieldDefaultProfile {
     Variant1(Box<RemoteProjectModelsResultFieldDefaultProfileVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -8231,7 +8231,7 @@ pub struct RemoteProjectModelsResultFieldDefaultProfileVariant1 {
 #[serde(untagged)]
 pub enum RemoteProjectModelsResultFieldLastAcceptedModel {
     Variant1(Box<WorkbenchCreationAcceptedModel>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -8634,8 +8634,8 @@ pub struct RemoteReviewReadResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteReviewReadResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -8723,8 +8723,8 @@ pub struct RemoteSessionBodyResultFieldBody {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteSessionBodyResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -8947,7 +8947,7 @@ pub struct RemoteSessionControlParamsVariant1FieldValues {
 #[serde(untagged)]
 pub enum RemoteSessionControlParamsVariant1FieldValuesFieldModel {
     Variant1(Box<RemoteModelSelection>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -9291,7 +9291,7 @@ pub struct RemoteSessionCreateParamsFieldAgentProfile {
 #[serde(untagged)]
 pub enum RemoteSessionCreateParamsFieldModel {
     Variant1(Box<WorkbenchExecutionCoreModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -9504,15 +9504,15 @@ pub enum RemoteSessionItemFieldBodyDetailFieldState {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteSessionItemFieldExecutionOutcome {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteSessionItemFieldSuccess {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -9716,22 +9716,22 @@ pub struct RemoteSessionSnapshot {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteSessionSnapshotFieldActiveTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteSessionSnapshotFieldConfigRevision {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteSessionSnapshotFieldConfiguration {
     Variant1(Box<RemoteConfiguration>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -9749,7 +9749,7 @@ pub struct RemoteSessionSnapshotFieldGoals {
 #[serde(untagged)]
 pub enum RemoteSessionSnapshotFieldGoalsFieldGoal {
     Variant1(Box<RemoteGoal>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -9770,8 +9770,8 @@ pub struct RemoteSessionSnapshotFieldHistory {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteSessionSnapshotFieldHistoryFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10072,8 +10072,8 @@ pub struct RemoteTaskQuestionReadResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteTaskQuestionReadResultFieldExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10223,22 +10223,22 @@ pub struct RemoteTaskReadResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteTaskReadResultFieldCurrentRunId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteTaskReadResultFieldReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteTaskReadResultFieldRunId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10288,15 +10288,15 @@ pub struct RemoteTurn {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteTurnFieldCompletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteTurnFieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10321,8 +10321,8 @@ pub struct RemoteTurnFieldGoal {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteTurnFieldStartedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10522,29 +10522,29 @@ pub struct RemoteWorkFieldExecution {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkFieldExecutionFieldRunStatus {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkFieldExecutionFieldTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkFieldExecutionFieldTurnStatus {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkFieldParentThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10569,29 +10569,29 @@ pub struct RemoteWorkFieldQueue {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkFieldRunId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkFieldSourceUpdatedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkFieldTaskId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10707,8 +10707,8 @@ pub struct RemoteWorkListResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum RemoteWorkListResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10730,7 +10730,7 @@ pub struct RetirementProgress {
 #[serde(untagged)]
 pub enum RetirementProgressFieldNext {
     Variant1(Box<RetirementTarget>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10823,7 +10823,7 @@ pub struct SchedulePreparationVariant2 {
 #[serde(untagged)]
 pub enum SchedulePreparationVariant2FieldDefaultProfile {
     Variant1(Box<SchedulePreparationVariant2FieldDefaultProfileVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -10883,7 +10883,7 @@ pub struct Service {
 #[serde(untagged)]
 pub enum ServiceFieldOwner {
     Variant1(Box<ServiceOwner>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11286,11 +11286,11 @@ pub enum StopReceiptFieldStrategy {
 #[serde(untagged)]
 pub enum StoredDeviceGrantsEntry {
     Variant1(Box<StoredDeviceGrantsEntryVariant1>),
-    Variant2(Box<()>),
-    Variant3(Box<bool>),
-    Variant4(Box<f64>),
-    Variant5(Box<String>),
-    Variant6(Box<Vec<OpaquePayload>>),
+    Variant2(()),
+    Variant3(bool),
+    Variant4(f64),
+    Variant5(String),
+    Variant6(Vec<OpaquePayload>),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11310,11 +11310,11 @@ pub struct StoredDeviceGrantsEntryVariant1 {
 #[serde(untagged)]
 pub enum StoredDevicesEntry {
     Variant1(Box<StoredDevicesEntryVariant1>),
-    Variant2(Box<()>),
-    Variant3(Box<bool>),
-    Variant4(Box<f64>),
-    Variant5(Box<String>),
-    Variant6(Box<Vec<OpaquePayload>>),
+    Variant2(()),
+    Variant3(bool),
+    Variant4(f64),
+    Variant5(String),
+    Variant6(Vec<OpaquePayload>),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11701,15 +11701,15 @@ pub struct SubscriptionSnapshotFieldAccountsItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldAccountsItemFieldEmail {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldActiveAccountId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11738,7 +11738,7 @@ pub struct SubscriptionSnapshotFieldAppliedExtra {
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldCatalog {
     Variant1(Box<SubscriptionSnapshotFieldCatalogVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11759,8 +11759,8 @@ pub struct SubscriptionSnapshotFieldCatalogVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldCatalogVariant1FieldFetchedAt {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11773,7 +11773,7 @@ pub enum SubscriptionSnapshotFieldCatalogVariant1FieldSource {
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldDiagnostic {
     Variant1(Box<SubscriptionSnapshotFieldDiagnosticVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11794,43 +11794,43 @@ pub struct SubscriptionSnapshotFieldDiagnosticVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldDiagnosticVariant1FieldHttpStatus {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldDiagnosticVariant1FieldRequestId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldEmail {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldEndpoint {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldLogin {
     Variant1(Box<SubscriptionSnapshotFieldLoginVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11845,8 +11845,8 @@ pub struct SubscriptionSnapshotFieldLoginVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldModelError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -11880,8 +11880,8 @@ pub enum SubscriptionSnapshotFieldOwner {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum SubscriptionSnapshotFieldPlanType {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12114,8 +12114,8 @@ pub struct WorkbenchAnalyticsSummaryFieldDaysExtra {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchAnalyticsSummaryFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12231,7 +12231,7 @@ pub struct WorkbenchCatalogInboxFieldMessage {
 #[serde(untagged)]
 pub enum WorkbenchCatalogInboxFieldMessageFieldAnswers {
     Variant1(Box<WorkbenchCatalogInboxFieldMessageFieldAnswersVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12243,15 +12243,15 @@ pub struct WorkbenchCatalogInboxFieldMessageFieldAnswersVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogInboxFieldMessageFieldExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogInboxFieldMessageFieldInReplyTo {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12422,63 +12422,63 @@ pub struct WorkbenchCatalogTask {
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldActiveRun {
     Variant1(Box<WorkbenchDirectoryRunDirectoryRow>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldDeletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldLastSkippedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldLastTriggerDecision {
     Variant1(Box<WorkbenchDirectoryTriggerDecision>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldLatestRun {
     Variant1(Box<WorkbenchDirectoryRunDirectoryRow>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldNextRunAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldPendingQuestionExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldSchedule {
     Variant1(Box<WorkbenchDirectorySchedule>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldScheduleV2 {
     Variant1(Box<WorkbenchDirectoryScheduleDefinition>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12492,15 +12492,15 @@ pub enum WorkbenchCatalogTaskFieldScope {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldSourceThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCatalogTaskFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12520,14 +12520,14 @@ pub struct WorkbenchCreationAcceptedModel {
 #[serde(untagged)]
 pub enum WorkbenchCreationAcceptedModelFieldModel {
     Variant1(Box<WorkbenchExecutionCoreModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCreationAcceptedModelFieldReasoningEffort {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12554,7 +12554,7 @@ pub struct WorkbenchCreationCatalogResult {
 #[serde(untagged)]
 pub enum WorkbenchCreationCatalogResultFieldDefaultProfile {
     Variant1(Box<WorkbenchCreationCatalogResultFieldDefaultProfileVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12570,7 +12570,7 @@ pub struct WorkbenchCreationCatalogResultFieldDefaultProfileVariant1 {
 #[serde(untagged)]
 pub enum WorkbenchCreationCatalogResultFieldLastAcceptedModel {
     Variant1(Box<WorkbenchCreationAcceptedModel>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12670,21 +12670,21 @@ pub struct WorkbenchCreationProfile {
 #[serde(untagged)]
 pub enum WorkbenchCreationProfileFieldModel {
     Variant1(Box<WorkbenchManagedModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCreationProfileFieldToolAllowlist {
-    Variant1(Box<Vec<String>>),
-    Variant2(Box<()>),
+    Variant1(Vec<String>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchCreationProfileFieldWorkflow {
     Variant1(Box<WorkbenchManagedVersionRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12796,7 +12796,7 @@ pub struct WorkbenchDesktopCreateParams {
 #[serde(untagged)]
 pub enum WorkbenchDesktopCreateParamsFieldModel {
     Variant1(Box<WorkbenchExecutionCoreModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -12862,7 +12862,7 @@ pub enum WorkbenchDirectoryMisfireVariant2FieldKind {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryMonthDay {
-    Variant1(Box<u64>),
+    Variant1(u64),
     Variant2(Box<WorkbenchDirectoryLastDay>),
 }
 
@@ -12916,29 +12916,29 @@ pub struct WorkbenchDirectoryRunDirectoryRow {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryRunDirectoryRowFieldCompletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryRunDirectoryRowFieldReasonPreview {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryRunDirectoryRowFieldStartedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryRunDirectoryRowFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -13000,15 +13000,15 @@ pub struct WorkbenchDirectoryScheduleDefinition {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryScheduleFieldIntervalSeconds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryScheduleFieldTimeZone {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -13216,77 +13216,77 @@ pub struct WorkbenchDirectoryTaskDirectoryRow {
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldActiveRun {
     Variant1(Box<WorkbenchDirectoryRunDirectoryRow>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldDeletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldLastSkippedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldLastTriggerDecision {
     Variant1(Box<WorkbenchDirectoryTriggerDecision>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldLatestRun {
     Variant1(Box<WorkbenchDirectoryRunDirectoryRow>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldNextRunAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldPendingQuestionExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldSchedule {
     Variant1(Box<WorkbenchDirectorySchedule>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldScheduleV2 {
     Variant1(Box<WorkbenchDirectoryScheduleDefinition>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldSourceThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTaskDirectoryRowFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -13329,8 +13329,8 @@ pub struct WorkbenchDirectoryTriggerDecision {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchDirectoryTriggerDecisionFieldNextRunAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -13603,36 +13603,36 @@ pub struct WorkbenchExecutionCoreClientOptions {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreClientOptionsFieldAutomaticSessionName {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreClientOptionsFieldMaxModelRounds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreClientOptionsFieldPermissionPreset {
     Variant1(Box<WorkbenchExecutionCorePermissionPreset>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreClientOptionsFieldSystemPrompt {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreClientOptionsFieldToolAllowlist {
-    Variant1(Box<Vec<String>>),
-    Variant2(Box<()>),
+    Variant1(Vec<String>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -13718,7 +13718,7 @@ pub struct WorkbenchExecutionCoreInputVariant2 {
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreInputVariant2FieldDetail {
     Variant1(Box<WorkbenchExecutionCoreImageDetail>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -13747,7 +13747,7 @@ pub struct WorkbenchExecutionCoreInputVariant3 {
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreInputVariant3FieldDetail {
     Variant1(Box<WorkbenchExecutionCoreImageDetail>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -13812,15 +13812,15 @@ pub struct WorkbenchExecutionCoreInputVariant6 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreInputVariant6FieldMimeType {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreInputVariant6FieldName {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -13890,43 +13890,43 @@ pub struct WorkbenchExecutionCoreModelParameters {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreModelParametersFieldContextWindowTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreModelParametersFieldMaxOutputTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreModelParametersFieldReasoningEffort {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreModelParametersFieldReasoningSummary {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreModelParametersFieldServiceTier {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreModelParametersFieldTemperature {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -14042,42 +14042,42 @@ pub struct WorkbenchExecutionCoreThreadStartAdmissionGuard {
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreThreadStartFieldAdmissionGuard {
     Variant1(Box<WorkbenchExecutionCoreThreadStartAdmissionGuard>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreThreadStartFieldAgentProfile {
     Variant1(Box<WorkbenchExecutionCoreVersionRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreThreadStartFieldCreationAdmission {
     Variant1(Box<WorkbenchExecutionCoreCreationAdmission>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreThreadStartFieldCwd {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreThreadStartFieldModel {
     Variant1(Box<WorkbenchExecutionCoreModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreThreadStartFieldOptions {
     Variant1(Box<WorkbenchExecutionCoreClientOptions>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -14150,29 +14150,29 @@ pub struct WorkbenchExecutionCoreTurnStartAdmissionGuard {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreTurnStartAdmissionGuardFieldExpectedTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreTurnStartFieldAdmissionGuard {
     Variant1(Box<WorkbenchExecutionCoreTurnStartAdmissionGuard>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreTurnStartFieldExpectedConfigRevision {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchExecutionCoreTurnStartFieldInteractionMode {
     Variant1(Box<WorkbenchExecutionCoreInteractionMode>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -14692,22 +14692,22 @@ pub struct WorkbenchFeedbackStatus {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchFeedbackStatusFieldAccount {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchFeedbackStatusFieldDestination {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchFeedbackStatusFieldInstallation {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -14866,15 +14866,15 @@ pub struct WorkbenchLibraryParams {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchLibraryParamsFieldAnchor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchLibraryParamsFieldBefore {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -14946,14 +14946,14 @@ pub enum WorkbenchLibraryParamsFieldOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchLibraryParamsFieldSectionId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchLibraryParamsFieldValue {
-    Variant1(Box<bool>),
+    Variant1(bool),
     Variant2(Box<WorkbenchLibraryParamsFieldValueVariant2>),
 }
 
@@ -15482,8 +15482,8 @@ pub enum WorkbenchManageCommandParamsVariant19FieldOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant1FieldExpectedRunId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -15833,8 +15833,8 @@ pub struct WorkbenchManageCommandParamsVariant28 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant28FieldCols {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -15852,15 +15852,15 @@ pub enum WorkbenchManageCommandParamsVariant28FieldOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant28FieldRows {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant28FieldTimeoutMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -16169,21 +16169,21 @@ pub enum WorkbenchManageCommandParamsVariant36FieldOperation {
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant3FieldDelivery {
     Variant1(Box<WorkbenchManageInputTaskDelivery>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant3FieldModel {
     Variant1(Box<WorkbenchManageInputModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant3FieldObjective {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -16196,21 +16196,21 @@ pub enum WorkbenchManageCommandParamsVariant3FieldOperation {
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant3FieldParameters {
     Variant1(Box<WorkbenchManageInputModelParameters>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant3FieldSchedule {
     Variant1(Box<WorkbenchManageInputSchedule>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageCommandParamsVariant3FieldScheduleV2 {
     Variant1(Box<WorkbenchManageInputScheduleDefinition>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -16617,43 +16617,43 @@ pub struct WorkbenchManageInputModelParameters {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputModelParametersFieldContextWindowTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputModelParametersFieldMaxOutputTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputModelParametersFieldReasoningEffort {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputModelParametersFieldReasoningSummary {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputModelParametersFieldServiceTier {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputModelParametersFieldTemperature {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -16668,7 +16668,7 @@ pub struct WorkbenchManageInputModelRef {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputMonthDay {
-    Variant1(Box<u64>),
+    Variant1(u64),
     Variant2(Box<WorkbenchManageInputLastDay>),
 }
 
@@ -16715,15 +16715,15 @@ pub struct WorkbenchManageInputScheduleDefinition {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputScheduleFieldIntervalSeconds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputScheduleFieldTimeZone {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -16809,8 +16809,8 @@ pub struct WorkbenchManageInputScheduleIntentRuleVariant3 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageInputScheduleIntentRuleVariant3FieldAnchorDate {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17102,8 +17102,8 @@ pub struct WorkbenchManageReadParamsVariant16 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageReadParamsVariant16FieldAfter {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17402,15 +17402,15 @@ pub struct WorkbenchManageReadParamsVariant27 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageReadParamsVariant27FieldAfter {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageReadParamsVariant27FieldLimit {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17447,15 +17447,15 @@ pub struct WorkbenchManageReadParamsVariant28 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageReadParamsVariant28FieldAfter {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageReadParamsVariant28FieldLimit {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17494,15 +17494,15 @@ pub struct WorkbenchManageReadParamsVariant29 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageReadParamsVariant29FieldCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageReadParamsVariant29FieldLimit {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17563,8 +17563,8 @@ pub enum WorkbenchManageReadParamsVariant30FieldOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManageReadParamsVariant3FieldFrom {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17802,21 +17802,21 @@ pub struct WorkbenchManagedAcceptedSchedule {
 #[serde(untagged)]
 pub enum WorkbenchManagedAcceptedScheduleFieldDecision {
     Variant1(Box<WorkbenchManagedTriggerDecision>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedAcceptedScheduleFieldSchedule {
     Variant1(Box<WorkbenchManagedSchedule>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedAcceptedScheduleFieldScheduleV2 {
     Variant1(Box<WorkbenchManagedScheduleDefinition>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17852,21 +17852,21 @@ pub struct WorkbenchManagedAcceptedScheduleTasks {
 #[serde(untagged)]
 pub enum WorkbenchManagedAcceptedScheduleTasksFieldDecision {
     Variant1(Box<WorkbenchDirectoryTriggerDecision>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedAcceptedScheduleTasksFieldSchedule {
     Variant1(Box<WorkbenchDirectorySchedule>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedAcceptedScheduleTasksFieldScheduleV2 {
     Variant1(Box<WorkbenchDirectoryScheduleDefinition>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -17962,8 +17962,8 @@ pub struct WorkbenchManagedAdmissionStats {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedAdmissionStatsFieldMaxInflight {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18061,7 +18061,7 @@ pub struct WorkbenchManagedChannelMessage {
 #[serde(untagged)]
 pub enum WorkbenchManagedChannelMessageFieldAnswers {
     Variant1(Box<WorkbenchManagedChannelMessageFieldAnswersVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18073,15 +18073,15 @@ pub struct WorkbenchManagedChannelMessageFieldAnswersVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedChannelMessageFieldExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedChannelMessageFieldInReplyTo {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18192,36 +18192,36 @@ pub struct WorkbenchManagedClientOptions {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedClientOptionsFieldAutomaticSessionName {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedClientOptionsFieldMaxModelRounds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedClientOptionsFieldPermissionPreset {
     Variant1(Box<WorkbenchManagedPermissionPreset>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedClientOptionsFieldSystemPrompt {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedClientOptionsFieldToolAllowlist {
-    Variant1(Box<Vec<String>>),
-    Variant2(Box<()>),
+    Variant1(Vec<String>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18322,8 +18322,8 @@ pub struct WorkbenchManagedComponentSupport {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedComponentSupportFieldSupportedSchema {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18354,7 +18354,7 @@ pub struct WorkbenchManagedContextCompactReceipt {
 #[serde(untagged)]
 pub enum WorkbenchManagedContextCompactReceiptFieldBudget {
     Variant1(Box<WorkbenchManagedContextCompactReceiptFieldBudgetVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18394,8 +18394,8 @@ pub enum WorkbenchManagedContextCompactReceiptFieldBudgetVariant1FieldEstimateSc
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedContextCompactReceiptFieldBudgetVariant1FieldOutputLimitTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18418,7 +18418,7 @@ pub enum WorkbenchManagedContextCompactReceiptFieldBudgetVariant1FieldWindowSour
 #[serde(untagged)]
 pub enum WorkbenchManagedContextCompactReceiptFieldCheckpoint {
     Variant1(Box<WorkbenchManagedContextCompactReceiptFieldCheckpointVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18473,15 +18473,15 @@ pub struct WorkbenchManagedContextCompactReceiptFieldCheckpointVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedContextCompactReceiptFieldCheckpointVariant1FieldAppReferenceSeen {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedContextCompactReceiptFieldCheckpointVariant1FieldRetainedInputs {
-    Variant1(Box<Vec<WorkbenchManagedContextInput>>),
-    Variant2(Box<()>),
+    Variant1(Vec<WorkbenchManagedContextInput>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18505,8 +18505,8 @@ pub struct WorkbenchManagedContextCompactReceiptFieldDataItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedContextCompactReceiptFieldDataItemFieldToolCallId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18518,15 +18518,15 @@ pub struct WorkbenchManagedContextCompactReceiptFieldDataItemFieldToolCallsItem 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedContextCompactReceiptFieldInstructionSnapshot {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedContextCompactReceiptFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18620,21 +18620,21 @@ pub struct WorkbenchManagedContextWindow {
 #[serde(untagged)]
 pub enum WorkbenchManagedContextWindowFieldReportedWindowSource {
     Variant1(Box<WorkbenchManagedContextWindowSource>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedContextWindowFieldReportedWindowTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedContextWindowFieldUserBudgetTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -18768,63 +18768,63 @@ pub struct WorkbenchManagedEffectiveConfig {
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldContextWindow {
     Variant1(Box<WorkbenchManagedContextWindow>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldDefaultModelRevision {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldModel {
     Variant1(Box<WorkbenchManagedModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldPermissions {
     Variant1(Box<WorkbenchManagedEffectivePermissions>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldPluginSkills {
-    Variant1(Box<Vec<WorkbenchManagedVersionRef>>),
-    Variant2(Box<()>),
+    Variant1(Vec<WorkbenchManagedVersionRef>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldProfile {
     Variant1(Box<WorkbenchManagedProfileResult>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldProvider {
     Variant1(Box<WorkbenchManagedProvider>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldSelectedSkills {
-    Variant1(Box<Vec<WorkbenchManagedVersionRef>>),
-    Variant2(Box<()>),
+    Variant1(Vec<WorkbenchManagedVersionRef>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedEffectiveConfigFieldToolAllowlist {
-    Variant1(Box<Vec<String>>),
-    Variant2(Box<()>),
+    Variant1(Vec<String>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19071,29 +19071,29 @@ pub enum WorkbenchManagedExecutionResultFieldDeliveryFieldStatus {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionResultFieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionResultFieldElapsedMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionResultFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionResultFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19144,8 +19144,8 @@ pub enum WorkbenchManagedExecutionResultFieldOwnerVariant2FieldKind {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionResultFieldStartedAtMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19217,7 +19217,7 @@ pub struct WorkbenchManagedExecutionTraceResult {
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurn {
     Variant1(Box<WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19336,85 +19336,85 @@ pub struct WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldCompletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldConfiguration {
     Variant1(Box<WorkbenchManagedEffectiveConfig>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldContinuedFromTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldError {
     Variant1(Box<WorkbenchManagedTurnError>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldGeneration {
     Variant1(Box<WorkbenchManagedGenerationStats>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldGoal {
     Variant1(Box<WorkbenchManagedGoalTurn>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldInstructionAttribution {
     Variant1(Box<WorkbenchManagedInstructionAttribution>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldInstructionSnapshot {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldInterruption {
     Variant1(Box<WorkbenchManagedTurnInterruption>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldStartedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldActiveTurnVariant1FieldUsage {
     Variant1(Box<WorkbenchManagedModelUsage>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19621,29 +19621,29 @@ pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldDataItemFieldDe
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldDataItemFieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldDataItemFieldElapsedMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldDataItemFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldDataItemFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19702,8 +19702,8 @@ pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldDataItemFieldOw
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldDataItemFieldStartedAtMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19743,8 +19743,8 @@ pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldDataItemFieldVe
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldExecutionsFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19780,29 +19780,29 @@ pub struct WorkbenchManagedExecutionTraceResultFieldPageFieldDataItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldPageFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldPageFieldSnapshotId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldParentThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldQueue {
     Variant1(Box<WorkbenchManagedExecutionTraceResultFieldQueueVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -19827,8 +19827,8 @@ pub struct WorkbenchManagedExecutionTraceResultFieldQueueVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionTraceResultFieldQueueVariant1FieldPauseReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20030,29 +20030,29 @@ pub enum WorkbenchManagedExecutionWaitResultFieldDeliveryFieldStatus {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionWaitResultFieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionWaitResultFieldElapsedMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionWaitResultFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionWaitResultFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20103,8 +20103,8 @@ pub enum WorkbenchManagedExecutionWaitResultFieldOwnerVariant2FieldKind {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionWaitResultFieldStartedAtMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20341,29 +20341,29 @@ pub enum WorkbenchManagedExecutionsResultFieldDataItemFieldDeliveryFieldStatus {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionsResultFieldDataItemFieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionsResultFieldDataItemFieldElapsedMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionsResultFieldDataItemFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionsResultFieldDataItemFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20414,8 +20414,8 @@ pub enum WorkbenchManagedExecutionsResultFieldDataItemFieldOwnerVariant2FieldKin
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionsResultFieldDataItemFieldStartedAtMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20458,8 +20458,8 @@ pub enum WorkbenchManagedExecutionsResultFieldDataItemFieldVerificationFieldStat
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedExecutionsResultFieldNextOffset {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20511,8 +20511,8 @@ pub struct WorkbenchManagedGoalTurn {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedGoalTurnFieldPredecessorTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20614,8 +20614,8 @@ pub struct WorkbenchManagedHookHandlerVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedHookHandlerVariant1FieldCommandWindows {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20716,7 +20716,7 @@ pub struct WorkbenchManagedInputVariant2 {
 #[serde(untagged)]
 pub enum WorkbenchManagedInputVariant2FieldDetail {
     Variant1(Box<WorkbenchManagedImageDetail>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20745,7 +20745,7 @@ pub struct WorkbenchManagedInputVariant3 {
 #[serde(untagged)]
 pub enum WorkbenchManagedInputVariant3FieldDetail {
     Variant1(Box<WorkbenchManagedImageDetail>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20810,15 +20810,15 @@ pub struct WorkbenchManagedInputVariant6 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedInputVariant6FieldMimeType {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedInputVariant6FieldName {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20858,8 +20858,8 @@ pub struct WorkbenchManagedInstalledMetadata {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedInstalledMetadataFieldVersion {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20946,8 +20946,8 @@ pub struct WorkbenchManagedItemVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedItemVariant1FieldCreatedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -20985,15 +20985,15 @@ pub struct WorkbenchManagedItemVariant2 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedItemVariant2FieldCreatedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedItemVariant2FieldPhase {
     Variant1(Box<WorkbenchManagedAgentMessagePhase>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21069,15 +21069,15 @@ pub struct WorkbenchManagedItemVariant4 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedItemVariant4FieldContentItems {
-    Variant1(Box<Vec<serde_json::Value>>),
-    Variant2(Box<()>),
+    Variant1(Vec<serde_json::Value>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedItemVariant4FieldSuccess {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21171,15 +21171,15 @@ pub struct WorkbenchManagedMarketplace {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedMarketplaceFieldResolvedCommit {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedMarketplaceFieldSourceUrl {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21262,8 +21262,8 @@ pub struct WorkbenchManagedModelCapabilityConfig {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedModelCapabilityConfigFieldReasoningEffortOptions {
-    Variant1(Box<Vec<String>>),
-    Variant2(Box<()>),
+    Variant1(Vec<String>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21316,43 +21316,43 @@ pub struct WorkbenchManagedModelParameters {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedModelParametersFieldContextWindowTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedModelParametersFieldMaxOutputTokens {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedModelParametersFieldReasoningEffort {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedModelParametersFieldReasoningSummary {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedModelParametersFieldServiceTier {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedModelParametersFieldTemperature {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21383,7 +21383,7 @@ pub struct WorkbenchManagedModelUsage {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedMonthDay {
-    Variant1(Box<u64>),
+    Variant1(u64),
     Variant2(Box<WorkbenchManagedLastDay>),
 }
 
@@ -21487,8 +21487,8 @@ pub struct WorkbenchManagedPageDispatchVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPageDispatchVariant1FieldArgumentsDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21540,15 +21540,15 @@ pub struct WorkbenchManagedPageDispatchVariant3 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPageDispatchVariant3FieldArgumentsDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPageDispatchVariant3FieldClaimId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21699,15 +21699,15 @@ pub struct WorkbenchManagedPluginComponentsResultFieldCommandsItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginComponentsResultFieldCommandsItemFieldArgumentHint {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginComponentsResultFieldDevelopmentError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21731,7 +21731,7 @@ pub struct WorkbenchManagedPluginConfigPublicField {
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginConfigPublicFieldFieldValue {
     Variant1(Box<WorkbenchManagedPublicConfigValue>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -21942,106 +21942,106 @@ pub struct WorkbenchManagedPluginDetail {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldAdmissionDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldComponentSupport {
     Variant1(Box<WorkbenchManagedPackageComponentSupport>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldDevelopmentLink {
     Variant1(Box<WorkbenchManagedDevelopmentLink>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldInstalledComponentSupport {
     Variant1(Box<WorkbenchManagedPackageComponentSupport>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldInstalledDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldInstalledMetadata {
     Variant1(Box<WorkbenchManagedInstalledMetadata>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldInstalledOnboardingSkill {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldInstalledSourceDigest {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldInstalledVersion {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldIntegrity {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldOnboardingSkill {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldPackageVersion {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldResolvedCommit {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldSourceKind {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginDetailFieldVersion {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22143,24 +22143,24 @@ pub struct WorkbenchManagedPluginHooksResultFieldDataItemFieldDefinitionsItemFie
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginHooksResultFieldDataItemFieldDefinitionsItemFieldDefinitionFieldAdditionalContextLimit
 {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginHooksResultFieldDataItemFieldDefinitionsItemFieldDefinitionFieldMatcher
 {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginHooksResultFieldDataItemFieldDefinitionsItemFieldDefinitionFieldStatusMessage
 {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22199,7 +22199,7 @@ pub struct WorkbenchManagedPluginMcpResultFieldDataItem {
 pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldAuthenticationTiming {
     Variant1(Box<WorkbenchManagedPluginMcpResultFieldDataItemFieldAuthenticationTimingVariant1>),
     Variant2(Box<WorkbenchManagedPluginMcpResultFieldDataItemFieldAuthenticationTimingVariant2>),
-    Variant3(Box<()>),
+    Variant3(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22227,7 +22227,7 @@ pub struct WorkbenchManagedPluginMcpResultFieldDataItemFieldConnectorsItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldDiagnosticsItem {
-    Variant1(Box<String>),
+    Variant1(String),
     Variant2(Box<WorkbenchManagedPluginMcpResultFieldDataItemFieldDiagnosticsItemVariant2>),
 }
 
@@ -22274,7 +22274,7 @@ pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldAuthen
 pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldAuthenticationTiming {
     Variant1(Box<WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldAuthenticationTimingVariant1>),
     Variant2(Box<WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldAuthenticationTimingVariant2>),
-    Variant3(Box<()>),
+    Variant3(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22320,7 +22320,7 @@ pub struct WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldConf
 pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldConfigFieldAuthenticationRequirements
 {
     Variant1(Box<WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldConfigFieldAuthenticationRequirementsVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22354,22 +22354,22 @@ pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldConfig
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldConfigFieldAuthenticationRequirementsVariant1FieldHeaderScheme
 {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldConfigFieldCallTimeoutMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldConfigFieldEnabledTools {
-    Variant1(Box<Vec<String>>),
-    Variant2(Box<()>),
+    Variant1(Vec<String>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22401,7 +22401,7 @@ pub struct WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldPoli
 pub enum WorkbenchManagedPluginMcpResultFieldDataItemFieldServersItemFieldPolicyFieldDefaultToolsApprovalMode
 {
     Variant1(Box<WorkbenchManagedApprovalMode>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22591,49 +22591,49 @@ pub struct WorkbenchManagedProcessResultFieldProcess {
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldProcessFieldCleanupAttestation {
     Variant1(Box<WorkbenchManagedCleanupAttestation>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldProcessFieldConnectionId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldProcessFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldProcessFieldProcessId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldProcessFieldScopeId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldProcessFieldTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldRuntime {
     Variant1(Box<WorkbenchManagedProcessResultFieldRuntimeVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22695,36 +22695,36 @@ pub struct WorkbenchManagedProcessResultFieldRuntimeVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldRuntimeVariant1FieldCleanupError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldRuntimeVariant1FieldExitCode {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldRuntimeVariant1FieldFailureReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldRuntimeVariant1FieldSignal {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessResultFieldRuntimeVariant1FieldStopReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22835,36 +22835,36 @@ pub struct WorkbenchManagedProcessWaitResultVariant2FieldRuntime {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessWaitResultVariant2FieldRuntimeFieldCleanupError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessWaitResultVariant2FieldRuntimeFieldExitCode {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessWaitResultVariant2FieldRuntimeFieldFailureReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessWaitResultVariant2FieldRuntimeFieldSignal {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessWaitResultVariant2FieldRuntimeFieldStopReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -22957,42 +22957,42 @@ pub struct WorkbenchManagedProcessesResultFieldDataItem {
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessesResultFieldDataItemFieldCleanupAttestation {
     Variant1(Box<WorkbenchManagedCleanupAttestation>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessesResultFieldDataItemFieldConnectionId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessesResultFieldDataItemFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessesResultFieldDataItemFieldProcessId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessesResultFieldDataItemFieldScopeId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProcessesResultFieldDataItemFieldTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23082,21 +23082,21 @@ pub struct WorkbenchManagedProfileResult {
 #[serde(untagged)]
 pub enum WorkbenchManagedProfileResultFieldModel {
     Variant1(Box<WorkbenchManagedModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProfileResultFieldToolAllowlist {
-    Variant1(Box<Vec<String>>),
-    Variant2(Box<()>),
+    Variant1(Vec<String>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProfileResultFieldWorkflow {
     Variant1(Box<WorkbenchManagedVersionRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23153,14 +23153,14 @@ pub struct WorkbenchManagedProvider {
 #[serde(untagged)]
 pub enum WorkbenchManagedProviderFieldContextSource {
     Variant1(Box<WorkbenchManagedContextWindowSource>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedProviderFieldCredentialRef {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23179,9 +23179,9 @@ pub struct WorkbenchManagedProviderFieldModelParameters {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedPublicConfigValue {
-    Variant1(Box<String>),
-    Variant2(Box<bool>),
-    Variant3(Box<f64>),
+    Variant1(String),
+    Variant2(bool),
+    Variant3(f64),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23239,15 +23239,15 @@ pub struct WorkbenchManagedQueueItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedQueueItemFieldQueuedAtMs {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedQueueItemFieldTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23335,15 +23335,15 @@ pub struct WorkbenchManagedScheduleDefinition {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedScheduleFieldIntervalSeconds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedScheduleFieldTimeZone {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23528,7 +23528,7 @@ pub struct WorkbenchManagedServerResultFieldCapacity {
 #[serde(untagged)]
 pub enum WorkbenchManagedServerResultFieldConfiguration {
     Variant1(Box<WorkbenchManagedServerResultFieldConfigurationVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23546,8 +23546,8 @@ pub struct WorkbenchManagedServerResultFieldConfigurationVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedServerResultFieldConfigurationVariant1FieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23725,15 +23725,15 @@ pub enum WorkbenchManagedServerResultFieldResourcesItemVariant3FieldKind {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedServerResultFieldResourcesItemVariant3FieldOperationId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedServerResultFieldResourcesItemVariant3FieldScopeId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23746,7 +23746,7 @@ pub enum WorkbenchManagedServerResultFieldResourcesItemVariant3FieldState {
 #[serde(untagged)]
 pub enum WorkbenchManagedServerResultFieldRuntime {
     Variant1(Box<WorkbenchManagedServerResultFieldRuntimeVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23792,15 +23792,15 @@ pub struct WorkbenchManagedServerResultFieldWorkgroupsItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedServerResultFieldWorkgroupsItemFieldCleanupConfirmed {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedServerResultFieldWorkgroupsItemFieldCleanupError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23828,8 +23828,8 @@ pub struct WorkbenchManagedSkillResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedSkillResultFieldText {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23865,15 +23865,15 @@ pub struct WorkbenchManagedSkillsResultFieldDataItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedSkillsResultFieldDataItemFieldResourceRoot {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedSkillsResultFieldLoaded {
     Variant1(Box<WorkbenchManagedSkillsResultFieldLoadedVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24143,56 +24143,56 @@ pub struct WorkbenchManagedTaskConfiguration {
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskConfigurationFieldAgentProfile {
     Variant1(Box<WorkbenchManagedVersionRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskConfigurationFieldDefaultModelRevision {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskConfigurationFieldMaxModelRounds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskConfigurationFieldModel {
     Variant1(Box<WorkbenchManagedModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskConfigurationFieldPermissionPreset {
     Variant1(Box<WorkbenchManagedPermissionPreset>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskConfigurationFieldSkills {
-    Variant1(Box<Vec<WorkbenchManagedVersionRef>>),
-    Variant2(Box<()>),
+    Variant1(Vec<WorkbenchManagedVersionRef>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskConfigurationFieldSystemPrompt {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskConfigurationFieldToolAllowlist {
-    Variant1(Box<Vec<String>>),
-    Variant2(Box<()>),
+    Variant1(Vec<String>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24206,92 +24206,92 @@ pub enum WorkbenchManagedTaskDelivery {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldDeletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldLastSkippedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldLastTriggerDecision {
     Variant1(Box<WorkbenchManagedTriggerDecision>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldMaxActiveSeconds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldMaxTurns {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldModel {
     Variant1(Box<WorkbenchManagedModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldNextRunAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldParameters {
     Variant1(Box<WorkbenchManagedModelParameters>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldSchedule {
     Variant1(Box<WorkbenchManagedSchedule>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldScheduleV2 {
     Variant1(Box<WorkbenchManagedScheduleDefinition>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldSourceThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskFieldTokenBudget {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24367,7 +24367,7 @@ pub struct WorkbenchManagedTaskInboxResultFieldDataItemFieldMessage {
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskInboxResultFieldDataItemFieldMessageFieldAnswers {
     Variant1(Box<WorkbenchManagedTaskInboxResultFieldDataItemFieldMessageFieldAnswersVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24379,22 +24379,22 @@ pub struct WorkbenchManagedTaskInboxResultFieldDataItemFieldMessageFieldAnswersV
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskInboxResultFieldDataItemFieldMessageFieldExpiresAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskInboxResultFieldDataItemFieldMessageFieldInReplyTo {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskInboxResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24490,49 +24490,49 @@ pub struct WorkbenchManagedTaskRun {
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunFieldAcceptedSchedule {
     Variant1(Box<WorkbenchManagedAcceptedSchedule>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunFieldCompletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunFieldGoalId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunFieldObjective {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunFieldReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunFieldStartedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24631,49 +24631,49 @@ pub struct WorkbenchManagedTaskRunTasks {
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunTasksFieldAcceptedSchedule {
     Variant1(Box<WorkbenchManagedAcceptedScheduleTasks>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunTasksFieldCompletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunTasksFieldGoalId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunTasksFieldObjective {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunTasksFieldReason {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunTasksFieldStartedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunTasksFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24692,8 +24692,8 @@ pub struct WorkbenchManagedTaskRunsResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskRunsResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24757,15 +24757,15 @@ pub struct WorkbenchManagedTaskState {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskStateFieldArtifact {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskStateFieldBase {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24832,14 +24832,14 @@ pub struct WorkbenchManagedTaskWorker {
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskWorkerFieldExecution {
     Variant1(Box<WorkbenchManagedExecutionRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskWorkerFieldExecutionId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -24885,7 +24885,7 @@ pub struct WorkbenchManagedTaskWorkgroup {
 #[serde(untagged)]
 pub enum WorkbenchManagedTaskWorkgroupFieldConfiguration {
     Variant1(Box<WorkbenchManagedTaskConfiguration>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25041,99 +25041,99 @@ pub struct WorkbenchManagedTasksResultFieldDataItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldDeletedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldLastSkippedAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldLastTriggerDecision {
     Variant1(Box<WorkbenchDirectoryTriggerDecision>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldMaxActiveSeconds {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldMaxTurns {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldModel {
     Variant1(Box<WorkbenchManagedModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldNextRunAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldParameters {
     Variant1(Box<WorkbenchManagedModelParameters>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldSchedule {
     Variant1(Box<WorkbenchDirectorySchedule>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldScheduleV2 {
     Variant1(Box<WorkbenchDirectoryScheduleDefinition>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldSourceThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldThreadId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldDataItemFieldTokenBudget {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTasksResultFieldNextCursor {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25265,71 +25265,71 @@ pub struct WorkbenchManagedToolExecution {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldBackend {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldFileBefore {
     Variant1(Box<WorkbenchManagedMediaRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldInspection {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldInteractiveResult {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldOriginalArguments {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldPage {
     Variant1(Box<WorkbenchManagedPageExecution>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldPlugin {
     Variant1(Box<WorkbenchManagedPluginExecution>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldResultSnapshot {
     Variant1(Box<WorkbenchManagedMediaRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolExecutionFieldStartedAtMs {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25376,21 +25376,21 @@ pub struct WorkbenchManagedToolPolicy {
 #[serde(untagged)]
 pub enum WorkbenchManagedToolPolicyFieldApprovalMode {
     Variant1(Box<WorkbenchManagedApprovalMode>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolPolicyFieldEnabled {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedToolPolicyFieldOutputTokenLimit {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25492,71 +25492,71 @@ pub struct WorkbenchManagedTraceActivity {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldAfterItemId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldCallId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldCompletedAtMs {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldFirstContentMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldLogicalId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldRetryDelayMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldRetryDisposition {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTraceActivityFieldUsage {
     Variant1(Box<WorkbenchManagedModelUsage>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25589,8 +25589,8 @@ pub struct WorkbenchManagedTriggerDecision {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTriggerDecisionFieldNextRunAt {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25664,7 +25664,7 @@ pub struct WorkbenchManagedTurnError {
 #[serde(untagged)]
 pub enum WorkbenchManagedTurnErrorFieldOutcome {
     Variant1(Box<WorkbenchManagedTurnOutcome>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25743,22 +25743,22 @@ pub struct WorkbenchManagedTurnTrace {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTurnTraceFieldQueueDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTurnTraceFieldQueuedAtMs {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedTurnTraceFieldStartedAtMs {
-    Variant1(Box<i64>),
-    Variant2(Box<()>),
+    Variant1(i64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25808,21 +25808,21 @@ pub struct WorkbenchManagedUserConfigField {
 #[serde(untagged)]
 pub enum WorkbenchManagedUserConfigFieldFieldDefault {
     Variant1(Box<WorkbenchManagedPublicConfigValue>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedUserConfigFieldFieldDescription {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedUserConfigFieldFieldTitle {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -25969,8 +25969,8 @@ pub struct WorkbenchManagedWorkgroupResult {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedWorkgroupResultFieldElapsedMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26088,29 +26088,29 @@ pub struct WorkbenchManagedWorkgroupResultFieldRecord {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedWorkgroupResultFieldRecordFieldCleanupConfirmed {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedWorkgroupResultFieldRecordFieldCleanupError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedWorkgroupResultFieldRecordFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedWorkgroupResultFieldRecordFieldFinalCheck {
     Variant1(Box<WorkbenchManagedCheck>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26154,15 +26154,15 @@ pub struct WorkbenchManagedWorkgroupsResultFieldDataItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedWorkgroupsResultFieldDataItemFieldCleanupConfirmed {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchManagedWorkgroupsResultFieldDataItemFieldCleanupError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26243,8 +26243,8 @@ pub enum WorkbenchPageCommandParamsVariant10FieldOperation {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchPageCommandParamsVariant1FieldExpectedGeneration {
-    Variant1(Box<String>),
-    Variant2(Box<i64>),
+    Variant1(String),
+    Variant2(i64),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26354,8 +26354,8 @@ pub struct WorkbenchPageCommandParamsVariant5FieldRequest {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchPageCommandParamsVariant5FieldRequestFieldId {
-    Variant1(Box<String>),
-    Variant2(Box<i64>),
+    Variant1(String),
+    Variant2(i64),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26643,15 +26643,15 @@ pub struct WorkbenchProviderCapabilityDefaults {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderCapabilityDefaultsFieldTools {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderCapabilityDefaultsFieldUsage {
-    Variant1(Box<bool>),
-    Variant2(Box<()>),
+    Variant1(bool),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26726,7 +26726,7 @@ pub struct WorkbenchProviderCommandParamsVariant3 {
 #[serde(untagged)]
 pub enum WorkbenchProviderCommandParamsVariant3FieldModel {
     Variant1(Box<WorkbenchProviderModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26945,8 +26945,8 @@ pub struct WorkbenchProviderConnection {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderConnectionFieldRegion {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26991,8 +26991,8 @@ pub struct WorkbenchProviderDefinitionFieldConfigurationSchema {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderDefinitionFieldIcon {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -27266,36 +27266,36 @@ pub struct WorkbenchProviderParameters {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderParametersFieldContextWindowTokens {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderParametersFieldMaxOutputTokens {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderParametersFieldReasoningEffort {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderParametersFieldReasoningSummary {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderParametersFieldServiceTier {
     Variant1(Box<WorkbenchProviderParametersFieldServiceTierVariant1>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -27309,8 +27309,8 @@ pub enum WorkbenchProviderParametersFieldServiceTierVariant1 {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderParametersFieldTemperature {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -27390,7 +27390,7 @@ pub struct WorkbenchProviderStatusFieldCredentialStates {
 #[serde(untagged)]
 pub enum WorkbenchProviderStatusFieldDefaultModel {
     Variant1(Box<WorkbenchProviderModelRef>),
-    Variant2(Box<()>),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -27419,8 +27419,8 @@ pub struct WorkbenchProviderStatusFieldProjectsItem {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchProviderStatusFieldProjectsItemFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -27986,57 +27986,57 @@ pub struct WorkbenchTrajectoryRecord {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldEventName {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldExecutionDurationMs {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldHarnessVersion {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldModelCallDurationMs {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldModelName {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldNextAttemptAt {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldOccurredAt {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -28056,15 +28056,15 @@ pub enum WorkbenchTrajectoryRecordFieldStatus {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldTurnId {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryRecordFieldUploadedAt {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -28125,29 +28125,29 @@ pub struct WorkbenchTrajectoryStatus {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryStatusFieldCaptureApplyError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryStatusFieldConfigPath {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryStatusFieldLastError {
-    Variant1(Box<String>),
-    Variant2(Box<()>),
+    Variant1(String),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryStatusFieldLastSuccessAt {
-    Variant1(Box<u64>),
-    Variant2(Box<()>),
+    Variant1(u64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -28183,15 +28183,15 @@ pub struct WorkbenchTrajectoryStatusFieldModelCallSummary {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryStatusFieldModelCallSummaryFieldMaxDurationMs {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryStatusFieldModelCallSummaryFieldMeanDurationMs {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -28203,8 +28203,8 @@ pub enum WorkbenchTrajectoryStatusFieldModelCallSummaryFieldScope {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
 pub enum WorkbenchTrajectoryStatusFieldModelCallSummaryFieldTotalDurationMs {
-    Variant1(Box<f64>),
-    Variant2(Box<()>),
+    Variant1(f64),
+    Variant2(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -28576,7 +28576,7 @@ pub enum WorkbenchWorktreeValue {
     Variant5(Box<WorkbenchWorktreeValueVariant5>),
     Variant6(Box<WorkbenchWorktreeValueVariant6>),
     Variant7(Box<WorkbenchWorktreeValueVariant7>),
-    Variant8(Box<()>),
+    Variant8(()),
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

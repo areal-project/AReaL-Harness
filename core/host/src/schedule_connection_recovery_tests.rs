@@ -220,9 +220,7 @@ async fn observe_recovery(fixture: Boundary, delay: Duration, after: AfterTimeou
                 .remote_request(
                     &fixture.host,
                     "project",
-                    id,
-                    generation,
-                    connection,
+                    (id, generation, connection),
                     "areal/model/list",
                     json!({}),
                 )

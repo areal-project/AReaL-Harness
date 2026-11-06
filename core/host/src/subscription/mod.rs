@@ -330,10 +330,10 @@ impl SourceSubscription {
         if let Some(pending) = self.state.borrow_mut().pending.as_mut() {
             pending.epoch = epoch;
         }
-        if let Err(failure) = self.commit_pending() {
-            if self.state.borrow().pending.is_some() {
-                return Err(failure);
-            }
+        if let Err(failure) = self.commit_pending()
+            && self.state.borrow().pending.is_some()
+        {
+            return Err(failure);
         }
         let accounts = self.accounts()?;
         let Some(mut directory) = accounts.directory else {

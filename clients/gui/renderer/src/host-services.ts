@@ -1,3 +1,10 @@
+import {
+  createHostSnapshotProjector,
+  windowIdentity,
+  type ReadProject,
+  type ReadingWindow,
+} from "./host-snapshot.js";
+export type { ReadingTarget, ReadingWindow } from "./host-snapshot.js";
 import { cacheHistoryPages, pinnedPage, retainTarget, encodedBytes } from "./host-history-cache.js";
 import {
   HostClient,
@@ -6,10 +13,6 @@ import {
   SESSION_READ_CACHE_LIMIT,
   type HostClientOptions,
   type SessionRead,
-  type ShellRead,
-  type ShellProject,
-  type NavigationSummary,
-  type WorktreeDisplay,
   type JsonObject,
 } from "@areal/client";
 import {
@@ -19,73 +22,16 @@ import {
   readHistoryEntry,
   readInheritedHistoryPage,
 } from "@areal/workbench/desktop-contract/conversation-history";
-import { mergeHistory, historyGaps, pageTopology } from "@areal/workbench/history-projection";
-import type { ReadingAnchor } from "./readingViews.js";
-import { createWorkbenchRoutes } from "./host-workbench.js";
+import { pageTopology } from "@areal/workbench/history-projection";
+import { createWorkbenchRoutes, hostPlatformCapabilities } from "./host-workbench.js";
 import { createHostPages } from "./host-pages.js";
 import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
 
-type Observation = ReturnType<typeof readObservationResult>;
+export type Observation = ReturnType<typeof readObservationResult>;
 export type HostHistoryPage = ReturnType<typeof readInheritedHistoryPage>;
-type HistoryEntry = ReturnType<typeof readHistoryEntry>;
+export type HistoryEntry = ReturnType<typeof readHistoryEntry>;
 export type HistoryPage = ReturnType<typeof readHistoryPage> & { pageId: string; cursor: string };
-type PageRecord = { id: string; cursor: string; items: ReturnType<typeof pageTopology> };
-export type ReadingTarget = {
-  revision: number;
-  anchor: Pick<ReadingAnchor, "turnId" | "itemId"> | null;
-};
-export type ReadingWindow = {
-  session: SessionRead;
-  observation: Observation;
-  identity: string;
-  viewGeneration: string;
-  pages: HistoryPage[];
-  stalePages: HistoryPage[];
-  pageRecords: PageRecord[];
-  targets: Map<string, ReadingTarget>;
-  items: Map<string, { entry: HistoryEntry; version: string; bytes: number }>;
-  loading: Map<string, number>;
-  olderRead?: Promise<void>;
-  nextCursor?: string;
-  complete: boolean;
-  expires?: number;
-  baselineFirstItemId?: string;
-};
-function windowIdentity(observation: Observation) {
-  return JSON.stringify([
-    observation.history,
-    observation.thread.turns.flatMap((turn) => turn.items)[0]?.id,
-  ]);
-}
-type ExecutionView = {
-  executionProjectId: string;
-  executionRoot: string;
-  executionCore: { connectionGeneration: string; instanceId: string };
-  executionConnected: boolean;
-  executionError: null;
-  worktree?: WorktreeDisplay;
-};
-type ReadProject = Record<string, unknown> & {
-  id: string;
-  hostProjectId: string;
-  logicalProjectId?: string;
-  root: string;
-  projectless: boolean;
-  models: readonly unknown[];
-  profiles: readonly unknown[];
-  configurations: Record<string, unknown>;
-  core: ExecutionView["executionCore"] & Record<string, unknown>;
-  state: {
-    connected: boolean;
-    error: null;
-    threads: Record<string, Observation["thread"] & ExecutionView>;
-    queues: Record<string, unknown>;
-    interactions: Record<string, unknown>;
-  };
-  summaries: (NavigationSummary & ExecutionView)[];
-  summariesLoaded: boolean;
-  summariesFreshness: "fresh" | "cached" | "unknown";
-};
+export type PageRecord = { id: string; cursor: string; items: ReturnType<typeof pageTopology> };
 
 export function createHostReadServices(
   desktop: PlatformServices | undefined,
@@ -99,7 +45,6 @@ export function createHostReadServices(
   const client = new HostClient({ ...options, writes: options.writes || domains.size > 0 });
   const pages = domains.has("pages") ? createHostPages(client) : undefined;
   const listeners = new Set<(snapshot: Snapshot) => void>();
-  let revision = 0;
   let legacy: Snapshot | undefined;
   let librarySourceId: string | undefined;
   let snapshot: Snapshot = { projects: [], connection: { state: "connecting" } };
@@ -109,23 +54,19 @@ export function createHostReadServices(
   const windows = new Map<string, ReadingWindow>();
   let cacheTimer: ReturnType<typeof setTimeout> | undefined;
   let historyVersion = 0;
-  const projectViews = new Map<
-    string,
-    {
-      source: ShellProject;
-      auxiliary: unknown;
-      session?: SessionRead;
-      historyVersion: number;
-      fresh: boolean;
-      sessionFreshness?: string;
-      value: ReadProject;
-    }
-  >();
-  const logicalViews = new Map<string, { owners: ReadProject[]; value: ReadProject }>();
   const ids = new Map<string, string>();
   const threadTargets = new Map<string, string>();
   const creationTargets = new Map<string, string>();
   const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
+  const projectSnapshot = createHostSnapshotProjector(
+    client,
+    desktop,
+    options,
+    ids,
+    threadTargets,
+    creationTargets,
+    catalogs,
+  );
   function pruneWindows() {
     clearTimeout(cacheTimer);
     for (const [key, value] of windows)
@@ -258,7 +199,15 @@ export function createHostReadServices(
       observation = undefined;
       pruneWindows();
     }
-    snapshot = projectSnapshot(shell, shellState.state === "fresh", currentSession, observation);
+    const projection = projectSnapshot(
+      shell,
+      shellState.state === "fresh",
+      currentSession,
+      observation,
+      { legacy, readingWindow, observation, session, historyVersion },
+    );
+    snapshot = projection.snapshot;
+    librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
     if (!desktop && options.writes && client.writable("project.models")) {
       const connection = client.snapshot();
@@ -287,278 +236,6 @@ export function createHostReadServices(
           .catch(() => {});
       }
     }
-  }
-  function projectSnapshot(
-    shell: ShellRead | undefined,
-    fresh: boolean,
-    currentSession: SessionRead | undefined,
-    native: Observation | undefined,
-  ): Snapshot {
-    ids.clear();
-    threadTargets.clear();
-    for (const [target, execution] of creationTargets) threadTargets.set(target, execution);
-    const connection = client.snapshot();
-    const preferredSourceId =
-      options.preferredSourceId ??
-      (connection.connection === "ready" ? connection.identity.preferredSourceId : undefined);
-    const sources = shell?.snapshot.navigation ?? [];
-    const navigation = preferredSourceId
-      ? sources.find((source) => source.sourceId === preferredSourceId)
-      : sources.length === 1
-        ? sources[0]
-        : undefined;
-    librarySourceId = navigation?.sourceId;
-    for (const project of shell?.snapshot.projects ?? [])
-      ids.set(
-        project.projectId,
-        navigation?.bindings.find((b) => b.projectId === project.projectId)?.alias ??
-          (sources.length === 1 ? project.alias?.projectId : undefined) ??
-          project.projectId,
-      );
-    const canonical = (id: string) => ids.get(id) ?? id;
-    const rows = (shell?.snapshot.projects ?? []).map((project) => {
-      const id = canonical(project.projectId);
-      const auxiliary =
-        legacy?.projects.find((value) => value.id === id) ?? catalogs.get(project.projectId)?.value;
-      const selectedSession =
-        currentSession?.projectId === project.projectId &&
-        currentSession.serviceGeneration === project.serviceGeneration
-          ? currentSession
-          : undefined;
-      const cached = projectViews.get(project.projectId);
-      const displayVersion = selectedSession ? historyVersion : 0;
-      const sessionFreshness = selectedSession ? client.readsSnapshot().session.state : undefined;
-      if (
-        cached &&
-        cached.source === project &&
-        cached.auxiliary === auxiliary &&
-        cached.session === selectedSession &&
-        cached.historyVersion === displayVersion &&
-        cached.fresh === fresh &&
-        cached.sessionFreshness === sessionFreshness &&
-        cached.value.id === id
-      ) {
-        for (const summary of cached.value.summaries)
-          threadTargets.set(
-            `${canonical(project.logicalProjectId ?? project.projectId)}:${summary.id}`,
-            project.projectId,
-          );
-        return cached.value;
-      }
-      let thread = selectedSession ? native?.thread : undefined;
-      if (thread && session && readingWindow) {
-        const pages = [...readingWindow.pages].sort(
-          (a, b) =>
-            readingWindow!.pageRecords.findIndex((record) => record.id === b.pageId) -
-            readingWindow!.pageRecords.findIndex((record) => record.id === a.pageId),
-        );
-        const gaps = historyGaps(readingWindow);
-        const entries = [...readingWindow.stalePages, ...pages].flatMap((page) => page.data);
-        const sources = new Map(entries.map((entry) => [entry.sourceItemId, entry]));
-        const merged = mergeHistory(thread, entries);
-        thread = {
-          ...merged,
-          turns: merged.turns.map((turn) => ({
-            ...turn,
-            items: turn.items.map((item) => {
-              const source = sources.get(item.id);
-              const expanded = readingWindow!.items.get(item.id);
-              const value =
-                item.type === "historyDeferred" && expanded && expanded.version === item.version
-                  ? expanded.entry.item
-                  : item;
-              return source
-                ? {
-                    ...value,
-                    historySource: {
-                      threadId: source.sourceThreadId,
-                      turnId: source.sourceTurnId,
-                      itemId: source.sourceItemId,
-                    },
-                  }
-                : value;
-            }),
-          })),
-          displayHistory: {
-            supported: observation?.history !== undefined,
-            viewGeneration: readingWindow.viewGeneration,
-            revision: session.sequence,
-            complete: readingWindow.complete && !gaps.some((gap) => gap.atTop),
-            gaps,
-            omitted: readingWindow.pageRecords.length > readingWindow.pages.length,
-            pageTopology: readingWindow.pageRecords
-              .filter((record) => record.items.length)
-              .map(({ id, items }) => ({ id, items })),
-            restoringItems: readingWindow.stalePages.flatMap((page) =>
-              page.data.map((entry) => entry.sourceItemId),
-            ),
-            baselineFirstItemId: readingWindow.baselineFirstItemId,
-            freshness: sessionFreshness,
-            loadingOlder: !!readingWindow.olderRead,
-          },
-        };
-      }
-      const executionCore = {
-        connectionGeneration: project.serviceGeneration ?? "",
-        instanceId: project.serviceGeneration ?? "",
-      };
-      const execution = {
-        executionProjectId: id,
-        executionRoot: project.workspace,
-        executionCore,
-        executionConnected: fresh && project.state === "ready",
-        executionError: null,
-        ...(project.worktree ? { worktree: project.worktree } : {}),
-      };
-      const logicalId = canonical(project.logicalProjectId ?? project.projectId);
-      const summaries = project.summaries.items.map((summary) => {
-        threadTargets.set(`${logicalId}:${summary.id}`, project.projectId);
-        return { ...summary, ...execution };
-      });
-      const desktop = thread?.desktop;
-      const value: ReadProject = {
-        ...auxiliary,
-        models: Array.isArray(auxiliary?.models) ? auxiliary.models : [],
-        profiles: Array.isArray(auxiliary?.profiles) ? auxiliary.profiles : [],
-        id,
-        hostProjectId: project.projectId,
-        root: project.workspace,
-        projectless: project.projectless,
-        logicalProjectId: project.logicalProjectId
-          ? canonical(project.logicalProjectId)
-          : undefined,
-        core: {
-          ...auxiliary?.core,
-          connectionGeneration: project.serviceGeneration ?? "",
-          instanceId: project.serviceGeneration ?? "",
-        },
-        state: {
-          connected: fresh && project.state === "ready",
-          error: null,
-          threads: thread ? { [thread.id]: { ...thread, ...execution } } : {},
-          queues: thread && desktop?.queue ? { [thread.id]: desktop.queue } : {},
-          interactions:
-            thread && desktop?.interactions
-              ? {
-                  [thread.id]: {
-                    revision: desktop.interactionRevision ?? 0,
-                    data: desktop.interactions,
-                  },
-                }
-              : {},
-        },
-        configurations:
-          thread && desktop?.configuration ? { [thread.id]: desktop.configuration } : {},
-        summaries,
-        summariesLoaded: project.summaries.state === "fresh",
-        summariesFreshness: project.summaries.state,
-        pending: auxiliary?.pending ?? [],
-        outcomes: auxiliary?.outcomes ?? {},
-        error: null,
-        observationErrors: {},
-        attention: project.attention,
-      };
-      projectViews.set(project.projectId, {
-        source: project,
-        auxiliary,
-        session: selectedSession,
-        historyVersion: displayVersion,
-        fresh,
-        sessionFreshness,
-        value,
-      });
-      return value;
-    });
-    const liveProjects = new Set(rows.map((row) => row.hostProjectId));
-    for (const key of projectViews.keys()) if (!liveProjects.has(key)) projectViews.delete(key);
-    const rowIds = new Set(rows.map((row) => row.id));
-    const projects = rows
-      .filter((row) => !row.logicalProjectId || !rowIds.has(row.logicalProjectId))
-      .map((logical) => {
-        const owners = rows.filter(
-          (row) => row.id === logical.id || row.logicalProjectId === logical.id,
-        );
-        if (owners.length === 1) return logical;
-        const cached = logicalViews.get(logical.id);
-        if (
-          cached &&
-          cached.owners.length === owners.length &&
-          owners.every((owner, index) => owner === cached.owners[index])
-        )
-          return cached.value;
-        const value: ReadProject = {
-          ...logical,
-          configurations: Object.fromEntries(
-            owners.flatMap((owner) => Object.entries(owner.configurations)),
-          ),
-          summaries: owners.flatMap((owner) => owner.summaries),
-          summariesLoaded: owners.every((owner) => owner.summariesLoaded),
-          state: {
-            ...logical.state,
-            threads: Object.fromEntries(
-              owners.flatMap((owner) => Object.entries(owner.state.threads)),
-            ),
-            queues: Object.fromEntries(
-              owners.flatMap((owner) => Object.entries(owner.state.queues)),
-            ),
-            interactions: Object.fromEntries(
-              owners.flatMap((owner) => Object.entries(owner.state.interactions)),
-            ),
-          },
-        };
-        logicalViews.set(logical.id, { owners, value });
-        return value;
-      });
-    const logicalIds = new Set(projects.map((project) => project.id));
-    for (const key of logicalViews.keys()) if (!logicalIds.has(key)) logicalViews.delete(key);
-    const navigationProjects = { ...navigation?.projects };
-    const projectedNavigation: Record<
-      string,
-      import("@areal/client").NavigationMetadata & {
-        navigationSummaries?: (typeof rows)[number]["summaries"];
-      }
-    > = navigationProjects;
-    for (const project of projects)
-      if (!project.summariesLoaded)
-        projectedNavigation[project.id] = {
-          ...projectedNavigation[project.id],
-          navigationSummaries: project.summaries,
-        };
-    const navigationSettings: Record<string, unknown> = { ...legacy?.library?.settings };
-    for (const key of [
-      "sidebarSort",
-      "sidebarSortChats",
-      "sidebarSortProjects",
-      "sidebarSortPinned",
-      "showPinned",
-      "showCompleted",
-    ] as const) {
-      delete navigationSettings[key];
-      const value = navigation?.preferences[key];
-      if (value !== undefined) navigationSettings[key] = value;
-    }
-    return {
-      ...legacy,
-      projects,
-      revision: ++revision,
-      connection: {
-        state: fresh
-          ? "ready"
-          : client.snapshot().connection === "connecting"
-            ? "connecting"
-            : "unavailable",
-      },
-      desktopCapabilities: { currentCommands: desktop !== undefined },
-      library: {
-        projects: projectedNavigation,
-        threads: navigation?.threads ?? {},
-        projectOrder: navigation?.projectOrder ?? [],
-        sections: navigation?.sections ?? [],
-        sidebarThreadOrder: navigation?.sidebarThreadOrder ?? [],
-        sidebarRevision: navigation?.sidebarRevision ?? 0,
-        settings: navigationSettings,
-      },
-    };
   }
   async function history(options: Parameters<PlatformReadServices["history"]>[0]) {
     return readInheritedHistoryPage(await client.history(options));
@@ -1101,35 +778,7 @@ export function createHostReadServices(
       preview: unavailable,
     }),
     get capabilities() {
-      const available = (domain: string, method: string) =>
-        domains.has(domain) && !!librarySourceId && client.writable(method);
-      return {
-        mutations: desktop !== undefined,
-        conversationSubmit:
-          desktop !== undefined ||
-          (!!options.writes &&
-            client.writable("session.send") &&
-            client.writable("session.control")),
-        conversationCreate:
-          desktop !== undefined || (!!options.writes && client.writable("session.create")),
-        native: desktop !== undefined,
-        pages:
-          desktop !== undefined ||
-          (domains.has("pages") &&
-            client.writable("pages.command") &&
-            client.writable("pages.resource")),
-        library: desktop !== undefined || available("library", "library.command"),
-        ...(desktop === undefined && {
-          taskCatalog: available("tasks", "tasks.read"),
-          taskManage: available("manage", "manage.command"),
-          settings: [
-            ...(available("providers", "providers.read") ? ["模型服务"] : []),
-            ...(available("worktree", "worktree.read") ? ["Worktrees"] : []),
-            ...(available("trajectory", "trajectory.read") ? ["数据飞轮"] : []),
-            ...(domains.has("analytics") && client.writable("analytics.read") ? ["用量"] : []),
-          ],
-        }),
-      };
+      return hostPlatformCapabilities(client, desktop, domains, librarySourceId, options.writes);
     },
     reads,
     ...(options.writes && { writes }),

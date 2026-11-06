@@ -439,14 +439,14 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                     #[serde(rename_all="camelCase",deny_unknown_fields)]
                     struct Query { source_id:String }
                     let input:Query=serde_json::from_value(request.params)?;
-                    let result=(|| -> Result<Value> {
+
+                    (|| -> Result<Value> {
                         ensure!(gateway_subscription.as_ref().is_none_or(|(source,_,_,_)|source==&input.source_id),error("sourceNotFound","connection already subscribes to another Remote source"));
                         let state=host.gateway_state(&input.source_id)?;
                         let id=uuid::Uuid::new_v4().to_string();
                         gateway_subscription=Some((input.source_id,id.clone(),0,state.clone()));
                         Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"state":state}))
-                    })();
-                    result
+                    })()
                 } else {host.dispatch_connection(&request.method,request.params,&connection).await};
                 let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>{let code=e.downcast_ref::<wire::Error>().map(|e|e.code).unwrap_or(if e.downcast_ref::<serde_json::Error>().is_some(){"invalidRequest"}else{"internalError"});json!({"version":VERSION,"id":request.id,"error":{"code":code,"message":e.to_string()}})}};
                 let sent=wire::write(&mut writer,&response).await;
@@ -1398,17 +1398,16 @@ impl Host {
                 )
             })?,
         };
-        if let Some(source) = self.migration.credential_source(&registration)? {
-            if self.migration.vault.subscription_owner(&source)?.is_some()
-                && !inputs
-                    .credential_names
-                    .iter()
-                    .any(|name| name == "AREAL_CREDENTIAL_areal_openai")
-            {
-                inputs
-                    .credential_names
-                    .push("AREAL_CREDENTIAL_areal_openai".into());
-            }
+        if let Some(source) = self.migration.credential_source(&registration)?
+            && self.migration.vault.subscription_owner(&source)?.is_some()
+            && !inputs
+                .credential_names
+                .iter()
+                .any(|name| name == "AREAL_CREDENTIAL_areal_openai")
+        {
+            inputs
+                .credential_names
+                .push("AREAL_CREDENTIAL_areal_openai".into());
         }
         launch::validate(&inputs, &registration)?;
         ensure!(
@@ -1586,18 +1585,18 @@ impl Host {
         let result =
             areal_local_service::ensure_with_lifetime(&spec, &lifetime, input.no_auto_restart)
                 .await;
-        if result.is_err() {
-            if let Ok(service) = areal_local_service::status(&self.home, &spec.service_id).await {
-                let mut slots = self.slots.borrow_mut();
-                let slot = slots.get_mut(&input.project_id).unwrap();
-                if service.state == State::Ready
-                    && slot
-                        .service
-                        .as_ref()
-                        .is_some_and(|previous| previous.identity == service.identity)
-                {
-                    slot.uncertain_start = false;
-                }
+        if result.is_err()
+            && let Ok(service) = areal_local_service::status(&self.home, &spec.service_id).await
+        {
+            let mut slots = self.slots.borrow_mut();
+            let slot = slots.get_mut(&input.project_id).unwrap();
+            if service.state == State::Ready
+                && slot
+                    .service
+                    .as_ref()
+                    .is_some_and(|previous| previous.identity == service.identity)
+            {
+                slot.uncertain_start = false;
             }
         }
         let service = result?;
@@ -1634,39 +1633,36 @@ impl Host {
         let directory = storage::registry(&self.home, &service.identity.service_id)?;
         if let Some(proof) =
             storage::read_optional::<storage::CleanupReceipt>(&directory.join("cleanup.json"))?
+            && proof.version == VERSION
+            && proof.identity == service.identity
+            && proof.owner == service.owner
+            && proof.cleanup_confirmed
         {
-            if proof.version == VERSION
-                && proof.identity == service.identity
-                && proof.owner == service.owner
-                && proof.cleanup_confirmed
-            {
-                return Ok(());
-            }
+            return Ok(());
         }
         if let Some(proof) =
             storage::read_optional::<storage::CrashReceipt>(&directory.join("crash.json"))?
+            && proof.identity == service.identity
+            && proof.cleanup_confirmed
         {
-            if proof.identity == service.identity && proof.cleanup_confirmed {
-                return Ok(());
-            }
+            return Ok(());
         }
         let operations = directory.join("operations");
         if operations.is_dir() {
             for entry in std::fs::read_dir(operations)? {
                 let receipt: storage::StopReceipt = storage::read(&entry?.path())?;
-                if receipt.service.identity == service.identity && receipt.cleanup_confirmed {
-                    if let Some(operation) = areal_local_service::operation(
+                if receipt.service.identity == service.identity
+                    && receipt.cleanup_confirmed
+                    && let Some(operation) = areal_local_service::operation(
                         &self.home,
                         &service.identity.service_id,
                         &service.identity.generation,
                         &receipt.operation.request_id,
                     )
                     .await?
-                    {
-                        if operation.state == StopOperationState::Completed {
-                            return Ok(());
-                        }
-                    }
+                    && operation.state == StopOperationState::Completed
+                {
+                    return Ok(());
                 }
             }
         }
@@ -1709,13 +1705,13 @@ impl Host {
                     "an earlier project operation must be reconciled before activation",
                 ));
             }
-            if let Some(migration) = record.receipt.get("migration") {
-                if migration["phase"] == "draining" {
-                    return Err(error(
-                        "admissionUnknown",
-                        "legacy drain must be reconciled before activation",
-                    ));
-                }
+            if let Some(migration) = record.receipt.get("migration")
+                && migration["phase"] == "draining"
+            {
+                return Err(error(
+                    "admissionUnknown",
+                    "legacy drain must be reconciled before activation",
+                ));
             }
         }
         Ok(())
@@ -2064,106 +2060,102 @@ impl Host {
                         self.save(id, &record.digest, &record.receipt)?;
                     }
                 }
-            } else if record.receipt["method"] == "project.ensure" {
-                if let Some(instance) = record.evidence["serviceId"].as_str() {
-                    if let Ok(service) = areal_local_service::status(&self.home, instance).await {
-                        let expected_owner: Owner =
-                            serde_json::from_value(record.evidence["owner"].clone())?;
-                        let registration: ProjectRegistration =
-                            serde_json::from_value(record.evidence["registration"].clone())?;
-                        if service.owner.as_ref() == Some(&expected_owner)
-                            && service.identity.workspace == registration.workspace
-                            && service.identity.data_dir == registration.data_dir
-                        {
-                            let previous: Option<Service> = record
-                                .evidence
-                                .get("previousService")
-                                .cloned()
-                                .map(serde_json::from_value)
-                                .transpose()?
-                                .flatten();
-                            let fingerprint_matches = service.identity.config_fingerprint
-                                == record.evidence["fingerprint"].as_str().unwrap_or("");
-                            let new_generation = fingerprint_matches
-                                && record.evidence.get("previousService").is_some()
-                                && previous.as_ref().is_none_or(|old| {
-                                    old.identity.generation != service.identity.generation
-                                });
-                            let previous_ready = previous.as_ref().is_some_and(|old| {
-                                old.state == State::Ready
-                                    && old.identity == service.identity
-                                    && old.owner == service.owner
-                            });
-                            let configuration_matches = record.evidence.get("components").is_some()
-                                && storage::read_optional::<Value>(
-                                    &storage::registry(&self.home, instance)?
-                                        .join("components.json"),
-                                )?
-                                .as_ref()
-                                    == record.evidence.get("components");
-                            if service.state == State::Ready
-                                && fingerprint_matches
-                                && configuration_matches
-                                && (new_generation || previous_ready)
-                            {
-                                record.receipt["state"] = json!("completed");
-                                record.receipt["result"] = serde_json::to_value(OpenResult {
-                                    project: ProjectStatus {
-                                        schedule_activation_suppressed: self
-                                            .schedules
-                                            .suppressed(&registration.project_id),
-                                        schedule_activation_error: self
-                                            .schedules
-                                            .error(&registration.project_id),
-                                        registration,
-                                        state: "ready".into(),
-                                        service: Some(service.clone()),
-                                        migration: None,
-                                    },
-                                    service: Some(service),
-                                })?;
-                                self.save(id, &record.digest, &record.receipt)?;
-                            } else if service.state == State::Stopped
-                                && (new_generation || previous_ready)
-                                && self.cleanup_proof(&service).await.is_ok()
-                            {
-                                record.receipt["state"] = json!("blocked");
-                                record.receipt["error"] = json!({"code":"activationInterrupted","message":"Original generation cleanup is confirmed; explicit activation may start a new request"});
-                                self.save(id, &record.digest, &record.receipt)?;
-                            }
-                        }
+            } else if record.receipt["method"] == "project.ensure"
+                && let Some(instance) = record.evidence["serviceId"].as_str()
+                && let Ok(service) = areal_local_service::status(&self.home, instance).await
+            {
+                let expected_owner: Owner =
+                    serde_json::from_value(record.evidence["owner"].clone())?;
+                let registration: ProjectRegistration =
+                    serde_json::from_value(record.evidence["registration"].clone())?;
+                if service.owner.as_ref() == Some(&expected_owner)
+                    && service.identity.workspace == registration.workspace
+                    && service.identity.data_dir == registration.data_dir
+                {
+                    let previous: Option<Service> = record
+                        .evidence
+                        .get("previousService")
+                        .cloned()
+                        .map(serde_json::from_value)
+                        .transpose()?
+                        .flatten();
+                    let fingerprint_matches = service.identity.config_fingerprint
+                        == record.evidence["fingerprint"].as_str().unwrap_or("");
+                    let new_generation = fingerprint_matches
+                        && record.evidence.get("previousService").is_some()
+                        && previous.as_ref().is_none_or(|old| {
+                            old.identity.generation != service.identity.generation
+                        });
+                    let previous_ready = previous.as_ref().is_some_and(|old| {
+                        old.state == State::Ready
+                            && old.identity == service.identity
+                            && old.owner == service.owner
+                    });
+                    let configuration_matches = record.evidence.get("components").is_some()
+                        && storage::read_optional::<Value>(
+                            &storage::registry(&self.home, instance)?.join("components.json"),
+                        )?
+                        .as_ref()
+                            == record.evidence.get("components");
+                    if service.state == State::Ready
+                        && fingerprint_matches
+                        && configuration_matches
+                        && (new_generation || previous_ready)
+                    {
+                        record.receipt["state"] = json!("completed");
+                        record.receipt["result"] = serde_json::to_value(OpenResult {
+                            project: ProjectStatus {
+                                schedule_activation_suppressed: self
+                                    .schedules
+                                    .suppressed(&registration.project_id),
+                                schedule_activation_error: self
+                                    .schedules
+                                    .error(&registration.project_id),
+                                registration,
+                                state: "ready".into(),
+                                service: Some(service.clone()),
+                                migration: None,
+                            },
+                            service: Some(service),
+                        })?;
+                        self.save(id, &record.digest, &record.receipt)?;
+                    } else if service.state == State::Stopped
+                        && (new_generation || previous_ready)
+                        && self.cleanup_proof(&service).await.is_ok()
+                    {
+                        record.receipt["state"] = json!("blocked");
+                        record.receipt["error"] = json!({"code":"activationInterrupted","message":"Original generation cleanup is confirmed; explicit activation may start a new request"});
+                        self.save(id, &record.digest, &record.receipt)?;
                     }
                 }
             }
         }
-        if let Some(migration) = record.receipt.get("migration").cloned() {
-            if migration["phase"] == "draining" {
-                if let Some(operation) = areal_local_service::operation(
-                    &self.home,
-                    migration["serviceId"]
-                        .as_str()
-                        .context("migration serviceId")?,
-                    migration["generation"]
-                        .as_str()
-                        .context("migration generation")?,
-                    migration["requestId"]
-                        .as_str()
-                        .context("migration requestId")?,
-                )
-                .await?
-                {
-                    record.receipt["migration"]["receipt"] = serde_json::to_value(&operation)?;
-                    if operation.state == StopOperationState::Completed {
-                        record.receipt["migration"]["phase"] = json!("oldStopped");
-                        record.receipt["state"] = json!("blocked");
-                    }
-                    if operation.state == StopOperationState::Blocked {
-                        record.receipt["migration"]["phase"] = json!("legacyPending");
-                        record.receipt["state"] = json!("blocked");
-                    }
-                    self.save(id, &record.digest, &record.receipt)?;
-                }
+        if let Some(migration) = record.receipt.get("migration").cloned()
+            && migration["phase"] == "draining"
+            && let Some(operation) = areal_local_service::operation(
+                &self.home,
+                migration["serviceId"]
+                    .as_str()
+                    .context("migration serviceId")?,
+                migration["generation"]
+                    .as_str()
+                    .context("migration generation")?,
+                migration["requestId"]
+                    .as_str()
+                    .context("migration requestId")?,
+            )
+            .await?
+        {
+            record.receipt["migration"]["receipt"] = serde_json::to_value(&operation)?;
+            if operation.state == StopOperationState::Completed {
+                record.receipt["migration"]["phase"] = json!("oldStopped");
+                record.receipt["state"] = json!("blocked");
             }
+            if operation.state == StopOperationState::Blocked {
+                record.receipt["migration"]["phase"] = json!("legacyPending");
+                record.receipt["state"] = json!("blocked");
+            }
+            self.save(id, &record.digest, &record.receipt)?;
         }
         if record.receipt["projects"].is_array() {
             let strategy: StopStrategy =
@@ -2206,14 +2198,12 @@ impl Host {
             record.receipt["serviceId"].as_str(),
             record.receipt["serviceGeneration"].as_str(),
             record.receipt["projectId"].as_str(),
-        ) {
-            if let Some(operation) =
-                areal_local_service::operation(&self.home, instance, generation, id).await?
-            {
-                let strategy = serde_json::from_value(record.receipt["strategy"].clone())?;
-                record.receipt = stop_receipt(project, strategy, &operation);
-                self.save(id, &record.digest, &record.receipt)?;
-            }
+        ) && let Some(operation) =
+            areal_local_service::operation(&self.home, instance, generation, id).await?
+        {
+            let strategy = serde_json::from_value(record.receipt["strategy"].clone())?;
+            record.receipt = stop_receipt(project, strategy, &operation);
+            self.save(id, &record.digest, &record.receipt)?;
         }
         Ok(Some(record.receipt))
     }
@@ -2255,14 +2245,14 @@ pub(crate) fn settled_refusal(receipt: &Value) -> bool {
 }
 fn aggregate(receipt: &Value) -> &'static str {
     let targets = receipt["projects"].as_array().unwrap();
-    if targets.iter().all(|t| t["receipt"]["state"] == "completed") {
-        if let Some(relay) = receipt.get("localRelay") {
-            return match relay["state"].as_str() {
-                Some("completed") => "completed",
-                Some("settlementIncomplete") => "settlementIncomplete",
-                _ => "acceptedPending",
-            };
-        }
+    if targets.iter().all(|t| t["receipt"]["state"] == "completed")
+        && let Some(relay) = receipt.get("localRelay")
+    {
+        return match relay["state"].as_str() {
+            Some("completed") => "completed",
+            Some("settlementIncomplete") => "settlementIncomplete",
+            _ => "acceptedPending",
+        };
     }
     if targets.iter().all(|t| t["receipt"]["state"] == "completed") {
         return "completed";
@@ -3121,7 +3111,8 @@ mod tests {
                 let registration=ProjectRegistration {project_id:"new-project".into(),workspace:workspace.canonicalize().unwrap(),data_dir:home.join("new-data"),source:ProjectSource::Cli,default_binding:false};
                 let bin=std::env::current_exe().unwrap().parent().unwrap().to_path_buf();
                 let task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin.clone()}));
-                let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.unwrap().err());}tokio::task::yield_now().await;};
+                let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}
+if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.unwrap().err());}tokio::task::yield_now().await;};
                 assert!(client.status().await.unwrap().stop_intent);
                 assert!(client.register(&uuid::Uuid::new_v4().to_string(),registration.clone()).await.is_err());
                 let observed=client.operation(&request).await.unwrap().unwrap();assert_eq!(observed["state"],expected);
@@ -3142,7 +3133,8 @@ mod tests {
                 }
                 drop(lock);
                 let task=tokio::task::spawn_local(run_local(RunOptions {home:home.clone(),bin_dir:bin}));
-                let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.unwrap().err());}tokio::task::yield_now().await;};
+                let client=loop {if let Ok(client)=Client::connect_at(home.clone()).await {break client;}
+if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.unwrap().err());}tokio::task::yield_now().await;};
                 assert_eq!(client.status().await.unwrap().stop_intent,!released);
                 assert_eq!(client.operation(&request).await.unwrap().unwrap()["state"],expected);
                 assert_eq!(client.register(&uuid::Uuid::new_v4().to_string(),registration).await.is_ok(),released);

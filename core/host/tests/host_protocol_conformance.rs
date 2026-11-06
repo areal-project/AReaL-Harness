@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 #[path = "../../protocol/generated/host_protocol.rs"]
 mod generated;
 #[allow(dead_code)]

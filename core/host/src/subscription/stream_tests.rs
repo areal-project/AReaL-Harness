@@ -511,7 +511,7 @@ async fn request_guards_adapters_affinity_and_invalid_stream_are_observed_on_htt
     assert_eq!(rig.request().json(&json!({"model":"missing","stream":true,"input":[]})).send().await.unwrap().status(),400);
     let request=json!({"model":"fixture","stream":true,"input":[{"role":"system","content":"System"},{"type":"function_call","name":"run","call_id":"one","arguments":"{}"}],"tools":[{"type":"function","name":"run","parameters":{}}],"service_tier":"fast","max_output_tokens":100});
     for _ in 0..2 {let response=rig.request().header("x-areal-thread-id","thread").header("x-areal-turn-id","turn").json(&request).send().await.unwrap();assert_eq!(response.headers()["x-areal-provider-adjustments"],"max_output_tokens:core_budget_only");assert_eq!(response.bytes().await.unwrap(),[FIRST,LAST].concat());}
-    let received=rig.server.state.received.borrow();assert_eq!(received[0]["service_tier"],"priority");assert_eq!(received[0]["tools"][0]["type"],"namespace");assert_eq!(received[0]["input"][0]["call_id"],"one");drop(received);
+    { let received=rig.server.state.received.borrow();assert_eq!(received[0]["service_tier"],"priority");assert_eq!(received[0]["tools"][0]["type"],"namespace");assert_eq!(received[0]["input"][0]["call_id"],"one");}
     assert!(!rig.server.state.headers.borrow()[0].contains_key("x-codex-turn-state"));assert_eq!(rig.server.state.headers.borrow()[1]["x-codex-turn-state"],"route-one");
     rig.server.state.invalid_stream.set(true);assert_eq!(rig.request().send().await.unwrap().status(),502);assert_eq!(rig.server.state.posts.get(),3);
     rig.close().await;

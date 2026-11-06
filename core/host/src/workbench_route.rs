@@ -1074,9 +1074,7 @@ async fn core_request(host: &Host, params: &Value) -> Result<Value> {
         .remote_request(
             host,
             project,
-            &service,
-            &generation,
-            &connection,
+            (&service, &generation, &connection),
             method,
             body,
         )

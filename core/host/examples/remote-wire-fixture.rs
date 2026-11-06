@@ -1,11 +1,15 @@
 //! 仅用于跨语言 wire 验收。身份从 stdin 读取，不接入生产 Host 或持久状态。
-#[path = "../src/gateway/mod.rs"]
-mod gateway;
+// 只编译 wire 夹具使用的传输模块，未消费接口保留给生产 Gateway。
+#[allow(dead_code)]
+#[path = "../src/gateway/relay_codec.rs"]
+mod relay_codec;
+#[allow(dead_code)]
+#[path = "../src/gateway/wire.rs"]
+mod wire;
 
 use anyhow::{Context, Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use futures_util::io::{AsyncReadExt, AsyncWriteExt};
-use gateway::{relay_codec, wire};
 use serde_json::{Value, json};
 use std::sync::{
     Arc,

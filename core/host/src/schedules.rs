@@ -251,25 +251,25 @@ async fn activate(host: &Host, id: &str) -> Result<()> {
         .projects
         .get(id)
         .and_then(|p| p.request_id.clone());
-    if let Some(request) = pending {
-        if let Some(receipt) = host.reconcile(&request).await? {
-            match receipt["state"].as_str() {
-                Some("completed") => {
-                    host.schedules.settled(id)?;
-                }
-                Some("blocked") => {
-                    host.schedules.settled(id)?;
-                    return Err(error(
-                        "scheduleActivationBlocked",
-                        "original activation was blocked",
-                    ));
-                }
-                _ => {
-                    return Err(error(
-                        "scheduleAdmissionUnknown",
-                        "reconcile original scheduled activation",
-                    ));
-                }
+    if let Some(request) = pending
+        && let Some(receipt) = host.reconcile(&request).await?
+    {
+        match receipt["state"].as_str() {
+            Some("completed") => {
+                host.schedules.settled(id)?;
+            }
+            Some("blocked") => {
+                host.schedules.settled(id)?;
+                return Err(error(
+                    "scheduleActivationBlocked",
+                    "original activation was blocked",
+                ));
+            }
+            _ => {
+                return Err(error(
+                    "scheduleAdmissionUnknown",
+                    "reconcile original scheduled activation",
+                ));
             }
         }
     }

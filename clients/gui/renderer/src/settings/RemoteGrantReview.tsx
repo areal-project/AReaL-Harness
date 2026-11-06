@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Input, Button } from "@areal/ui";
 import { useI18n } from "../i18n/IntlProvider.js";
 import type { CommandParams, Data } from "../services.js";
@@ -25,6 +25,7 @@ export function GrantReview({
   onCancel?: () => void;
 }) {
   const { t } = useI18n();
+  const fieldId = useId();
   const id = device.devicePeerId ?? device.id;
   // 单项目默认勾选，多项目必须明确选择，不默认放开全部。
   const [selected, setSelected] = useState<string[]>(
@@ -63,8 +64,13 @@ export function GrantReview({
       <div className="remote-project-scope">
         <p className="remote-field-label">{t("settings.mobileConnect.projects")}</p>
         {projects.map((project) => (
-          <label className="remote-project-choice" key={project.id}>
+          <label
+            className="remote-project-choice"
+            key={project.id}
+            htmlFor={`${fieldId}-${project.id}`}
+          >
             <Input
+              id={`${fieldId}-${project.id}`}
               unstyled
               data-slot={undefined}
               type="checkbox"
@@ -122,8 +128,13 @@ export function GrantReview({
             </label>
           ))}
         </div>
-        <label className="remote-project-choice">
+        <label
+          className="remote-project-choice"
+          htmlFor={`${fieldId}-manage`}
+          aria-label={t("settings.mobileConnect.canManage")}
+        >
           <Input
+            id={`${fieldId}-manage`}
             unstyled
             data-slot={undefined}
             type="checkbox"

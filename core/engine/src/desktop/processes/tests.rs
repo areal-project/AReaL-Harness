@@ -82,11 +82,11 @@ impl Fixture {
                 observed.lock().unwrap().push(request.clone());
                 let params = &request["params"];
                 let method = request["method"].as_str().unwrap();
-                if let Some((target, entered, release)) = &rpc_barrier {
-                    if method == *target {
-                        entered.notify_one();
-                        release.notified().await;
-                    }
+                if let Some((target, entered, release)) = &rpc_barrier
+                    && method == *target
+                {
+                    entered.notify_one();
+                    release.notified().await;
                 }
                 let result = match method {
                     "connection.open" => {

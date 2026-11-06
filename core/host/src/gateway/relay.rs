@@ -45,7 +45,7 @@ pub(crate) struct RelayConfig {
 
 pub(crate) enum RelayEvent {
     Ready {
-        generation: u64,
+        _generation: u64,
         push: bool,
     },
     Channel {
@@ -54,7 +54,7 @@ pub(crate) enum RelayEvent {
         stream: RelayStream,
     },
     Disconnected {
-        generation: u64,
+        _generation: u64,
         reason: String,
         retry: bool,
     },
@@ -303,6 +303,8 @@ impl RelayHandle {
         state.clear(&self.counters);
         self.counters.changed.notify_one();
     }
+    // 真实传输夹具用它验证原连接撤销后的重连。
+    #[allow(dead_code, reason = "由独立传输夹具调用")]
     pub(crate) fn reconnect(&self) {
         let mut state = self.local.borrow_mut();
         state.generation += 1;
@@ -408,6 +410,7 @@ pub(crate) struct RelayOwner {
     events: mpsc::Sender<RelayEvent>,
 }
 impl RelayOwner {
+    #[cfg(test)]
     pub(crate) fn new(config: RelayConfig) -> (Self, RelayHandle, mpsc::Receiver<RelayEvent>) {
         Self::with_counters(config, Arc::new(Counters::default()))
     }
@@ -461,7 +464,7 @@ impl RelayOwner {
             let retry = !matches!(outcome, Ok("REPLACED" | "UNSUPPORTED"));
             self.handle.local.borrow_mut().clear(&self.handle.counters);
             let _ = self.events.try_send(RelayEvent::Disconnected {
-                generation,
+                _generation: generation,
                 reason,
                 retry,
             });
@@ -651,7 +654,7 @@ impl RelayOwner {
                             state.push = push;
                             state.max_frame_bytes = (message["limits"]["maxFrameBytes"].as_u64().unwrap() as usize).min((message["limits"]["bytesPerSecond"].as_u64().unwrap() / 4) as usize);
                         }
-                        self.events.try_send(RelayEvent::Ready { generation, push }).context("Relay event 缓冲已满")?;
+                        self.events.try_send(RelayEvent::Ready { _generation: generation, push }).context("Relay event 缓冲已满")?;
                         budget = Some(configured);
                         continue;
                     }
@@ -856,6 +859,23 @@ struct Frame {
 
 #[cfg(test)]
 mod tests {
+    struct RelayHeaders;
+    impl tokio_tungstenite::tungstenite::handshake::server::Callback for RelayHeaders {
+        fn on_request(
+            self,
+            request: &tokio_tungstenite::tungstenite::handshake::server::Request,
+            response: tokio_tungstenite::tungstenite::handshake::server::Response,
+        ) -> Result<
+            tokio_tungstenite::tungstenite::handshake::server::Response,
+            tokio_tungstenite::tungstenite::handshake::server::ErrorResponse,
+        > {
+            assert_eq!(request.headers()["Host"], "192.168.1.2:7890");
+            assert_eq!(request.headers()["X-Areal-Relay-Capabilities"], "push");
+            assert!(!request.headers().contains_key("Origin"));
+            Ok(response)
+        }
+    }
+
     use super::*;
     use futures_util::io::{AsyncReadExt, AsyncWriteExt};
     const ID: &str = "11111111-1111-4111-8111-111111111111";
@@ -1019,12 +1039,7 @@ mod tests {
             let port = listener.local_addr().unwrap().port();
             let peer = tokio::task::spawn_local(async move {
                 let (stream, _) = listener.accept().await.unwrap();
-                let mut socket = tokio_tungstenite::accept_hdr_async(stream, |request: &tokio_tungstenite::tungstenite::handshake::server::Request, response| {
-                    assert_eq!(request.headers()["Host"], "192.168.1.2:7890");
-                    assert_eq!(request.headers()["X-Areal-Relay-Capabilities"], "push");
-                    assert!(!request.headers().contains_key("Origin"));
-                    Ok(response)
-                }).await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, RelayHeaders).await.unwrap();
                 let registration = socket.next().await.unwrap().unwrap();
                 let registration: Value = serde_json::from_str(registration.to_text().unwrap()).unwrap();
                 assert_eq!(registration, json!({"protocol":"areal.relay.v1","role":"host","room":"r","capability":"c"}));
@@ -1054,7 +1069,7 @@ mod tests {
             let (owner, handle, mut events) = RelayOwner::new(RelayConfig { url: format!("ws://127.0.0.1:{port}/remote/socket"), room: "r".into(), capability: "c".into(), local_host: Some("192.168.1.2:7890".into()) });
             let owner = tokio::task::spawn_local(owner.run());
             let generation = match events.recv().await.unwrap() {
-                RelayEvent::Ready { generation, push } => { assert!(push); generation },
+                RelayEvent::Ready { _generation: generation, push } => { assert!(push); generation },
                 _ => panic!("ready"),
             };
             let mut stream = match events.recv().await.unwrap() {
@@ -1073,7 +1088,7 @@ mod tests {
             loop {
                 match events.recv().await.unwrap() {
                     RelayEvent::PushUnregistered(token) => { assert_eq!(token, "a".repeat(64)); unregistered = true; },
-                    RelayEvent::Disconnected { generation: ended, reason, retry } => { assert_eq!(ended, generation); assert_eq!(reason, "REPLACED"); assert!(!retry); break; },
+                    RelayEvent::Disconnected { _generation: ended, reason, retry } => { assert_eq!(ended, generation); assert_eq!(reason, "REPLACED"); assert!(!retry); break; },
                     _ => panic!("unexpected event"),
                 }
             }

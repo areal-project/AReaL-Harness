@@ -1,3 +1,4 @@
+import { ConversationDiagramDialog } from "./ConversationDiagramDialog.js";
 import type { MediaOwner } from "./PlatformReadContext.js";
 import { commandResourceLabel } from "./conversationPresentation.js";
 import { scheduledRunTask, scheduledTaskName } from "./scheduleText.js";
@@ -82,8 +83,8 @@ import { Button } from "./components/ui/button.js";
 import { toast } from "./components/ui/toast.js";
 import { Popover, PopoverContent } from "./components/ui/popover.js";
 import { MessageResponse } from "./components/ai-elements/message.js";
-import { DiagramReader, type DiagramSelection } from "./components/ai-elements/diagram-reader.js";
-import { Dialog } from "./components/ui/dialog.js";
+import type { DiagramSelection } from "./components/ai-elements/diagram-reader.js";
+
 import { mediaOwner, SentAttachment } from "./MessageAttachment.js";
 import {
   WorkspaceFileCard,
@@ -916,28 +917,12 @@ export function Messages({
   );
   return (
     <div className={embedded ? "messages-embedded" : "messages-shell"}>
-      <Dialog
-        open={diagram?.owner === owner}
-        onOpenChange={(open) => {
-          if (!open) setDiagram(null);
-        }}
-      >
-        {diagram?.owner === owner && (
-          <DiagramReader
-            code={diagram.code}
-            theme={dark ? "dark" : "light"}
-            returnFocus={() =>
-              diagram.trigger.isConnected
-                ? diagram.trigger
-                : (container.current?.querySelectorAll<HTMLButtonElement>(
-                    `[data-diagram-reader="${CSS.escape(diagram.scope)}"]`,
-                  )[diagram.index] ??
-                  container.current ??
-                  false)
-            }
-          />
-        )}
-      </Dialog>
+      <ConversationDiagramDialog
+        diagram={diagram?.owner === owner ? diagram : null}
+        dark={dark}
+        container={container}
+        onClose={() => setDiagram(null)}
+      />
       {!embedded && showTurnNavigation && (
         <TurnNavigation
           key={owner}

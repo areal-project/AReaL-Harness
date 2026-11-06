@@ -161,7 +161,7 @@ mod tests {
             br#"{"hello":"world"}"#
         );
         assert!(
-            write_json(&mut client_channel.stream, &vec![b' '; 33], limits)
+            write_json(&mut client_channel.stream, &[b' '; 33], limits)
                 .await
                 .is_err()
         );

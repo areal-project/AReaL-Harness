@@ -256,10 +256,10 @@ export async function call<N extends CommandName, P extends CommandParams<N>>(
   params: P,
 ): Promise<CommandResponse<N, P>> {
   const contract: typeof import("./desktop-services.js") = await import("./desktop-services.js");
-  contract.validateCommand(name, params);
+  await contract.validateCommand(name, params);
   const routed = await services.workbench?.call(name, params as Record<string, unknown>);
   if (routed) {
-    contract.validateCommandResponse(name, params, routed.value);
+    await contract.validateCommandResponse(name, params, routed.value);
     return routed.value as CommandResponse<N, P>;
   }
   const written = await services.writes?.route(name, params as Record<string, unknown>);
@@ -270,13 +270,13 @@ export async function call<N extends CommandName, P extends CommandParams<N>>(
         : name === "respond" || name === "steer"
           ? await services.snapshot()
           : { stopped: true };
-    if ("value" in written) contract.validateCommandResponse(name, params, value);
+    if ("value" in written) await contract.validateCommandResponse(name, params, value);
     return value as CommandResponse<N, P>;
   }
   const result = await services.command(name, params);
   if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
   try {
-    contract.validateCommandResponse(name, params, result.value);
+    await contract.validateCommandResponse(name, params, result.value);
   } catch (error) {
     throw contract.commandResponseError(name, params, error);
   }

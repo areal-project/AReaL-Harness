@@ -318,44 +318,45 @@ async fn run_relay(host: Rc<Host>) {
             running = None;
             host.gateway.push_supported.set(false);
         }
-        if running.is_none() && terminal_transport != transport {
-            if let Some(snapshot) = desired {
-                let config = &snapshot["config"];
-                let startup = (|| -> Result<_> {
-                    let Some(configured) = relay(config, &host.gateway.local_relay.state())? else {
-                        return Ok(None);
-                    };
-                    let identity = Rc::new(wire::Identity::from_base64(
-                        config["identity"]
-                            .as_str()
-                            .context("Remote identity missing")?,
-                    )?);
-                    let (owner, handle, events) =
-                        RelayOwner::with_counters(configured, host.gateway.counters.clone());
-                    let mut tasks = JoinSet::new();
-                    tasks.spawn_local(owner.run());
-                    Ok(Some(Running {
-                        handle,
-                        tasks,
-                        events,
-                        identity,
-                        transport: transport_key(config, TransportKind::Relay),
-                        attention: Rc::new(Mutex::new(push::Attention::default())),
-                        scanning: Rc::new(std::cell::Cell::new(false)),
-                        last_scan: std::time::Instant::now() - Duration::from_secs(5),
-                        commands: std::collections::BTreeSet::new(),
-                    }))
-                })();
-                match startup {
-                    Ok(next) => {
-                        running = next;
+        if running.is_none()
+            && terminal_transport != transport
+            && let Some(snapshot) = desired
+        {
+            let config = &snapshot["config"];
+            let startup = (|| -> Result<_> {
+                let Some(configured) = relay(config, &host.gateway.local_relay.state())? else {
+                    return Ok(None);
+                };
+                let identity = Rc::new(wire::Identity::from_base64(
+                    config["identity"]
+                        .as_str()
+                        .context("Remote identity missing")?,
+                )?);
+                let (owner, handle, events) =
+                    RelayOwner::with_counters(configured, host.gateway.counters.clone());
+                let mut tasks = JoinSet::new();
+                tasks.spawn_local(owner.run());
+                Ok(Some(Running {
+                    handle,
+                    tasks,
+                    events,
+                    identity,
+                    transport: transport_key(config, TransportKind::Relay),
+                    attention: Rc::new(Mutex::new(push::Attention::default())),
+                    scanning: Rc::new(std::cell::Cell::new(false)),
+                    last_scan: std::time::Instant::now() - Duration::from_secs(5),
+                    commands: std::collections::BTreeSet::new(),
+                }))
+            })();
+            match startup {
+                Ok(next) => {
+                    running = next;
 
-                        *host.gateway.status.borrow_mut() = json!({"owner":"native","connected":false,"state":if running.is_some(){"connecting"}else{"disabled"}});
-                    }
-                    Err(_) => {
-                        *host.gateway.status.borrow_mut() =
-                            json!({"owner":"native","connected":false,"state":"unavailable"});
-                    }
+                    *host.gateway.status.borrow_mut() = json!({"owner":"native","connected":false,"state":if running.is_some(){"connecting"}else{"disabled"}});
+                }
+                Err(_) => {
+                    *host.gateway.status.borrow_mut() =
+                        json!({"owner":"native","connected":false,"state":"unavailable"});
                 }
             }
         }
@@ -527,11 +528,11 @@ async fn run_direct(host: Rc<Host>) {
             host.changed();
         }
         let prepared = host.gateway.prepared_direct.borrow_mut().take();
-        if let Some(prepared) = prepared {
-            if Some(&prepared.transport) == transport.as_ref() {
-                running = Some(prepared);
-                attempted = transport.clone();
-            }
+        if let Some(prepared) = prepared
+            && Some(&prepared.transport) == transport.as_ref()
+        {
+            running = Some(prepared);
+            attempted = transport.clone();
         }
         if running.is_none() && attempted != transport {
             attempted = transport.clone();
@@ -552,13 +553,13 @@ async fn run_direct(host: Rc<Host>) {
                 }
             }
         }
-        if let Some(current) = &mut running {
-            if let Some(owner) = current.owner.take() {
-                *host.gateway.direct.borrow_mut() = Some(current.handle.clone());
-                host.gateway.direct_error.borrow_mut().clear();
-                current.tasks.spawn_local(owner.run());
-                host.changed();
-            }
+        if let Some(current) = &mut running
+            && let Some(owner) = current.owner.take()
+        {
+            *host.gateway.direct.borrow_mut() = Some(current.handle.clone());
+            host.gateway.direct_error.borrow_mut().clear();
+            current.tasks.spawn_local(owner.run());
+            host.changed();
         }
         tokio::select! {
             event = async { match &mut running { Some(current) => current.events.recv().await, None => std::future::pending().await } } => {
@@ -586,28 +587,28 @@ async fn run_local_relay(host: Rc<Host>) {
     loop {
         let previous = host.gateway.local_relay.state();
         let _ = host.gateway.local_relay.poll().await;
-        if host.admission().is_ok() && host.remote.native_owner().ok().flatten().is_some() {
-            if let Ok(snapshot) = host.remote.snapshot(&host.migration) {
-                if snapshot["config"]["relayLocal"]["enabled"] == true {
-                    match host.local_relay_source(snapshot["sourceId"].as_str().unwrap_or_default())
-                    {
-                        Ok(legacy_home) => {
-                            let _ = host
-                                .gateway
-                                .local_relay
-                                .start(
-                                    &host.home,
-                                    &host.bin,
-                                    &snapshot["config"],
-                                    legacy_home.as_deref(),
-                                )
-                                .await;
-                        }
-                        Err(_) => host.gateway.local_relay.block_source().await,
+        if host.admission().is_ok()
+            && host.remote.native_owner().ok().flatten().is_some()
+            && let Ok(snapshot) = host.remote.snapshot(&host.migration)
+        {
+            if snapshot["config"]["relayLocal"]["enabled"] == true {
+                match host.local_relay_source(snapshot["sourceId"].as_str().unwrap_or_default()) {
+                    Ok(legacy_home) => {
+                        let _ = host
+                            .gateway
+                            .local_relay
+                            .start(
+                                &host.home,
+                                &host.bin,
+                                &snapshot["config"],
+                                legacy_home.as_deref(),
+                            )
+                            .await;
                     }
-                } else {
-                    let _ = host.gateway.local_relay.stop().await;
+                    Err(_) => host.gateway.local_relay.block_source().await,
                 }
+            } else {
+                let _ = host.gateway.local_relay.stop().await;
             }
         }
         if previous != host.gateway.local_relay.state() {

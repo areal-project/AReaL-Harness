@@ -277,7 +277,11 @@ impl Session {
                 .schedules
                 .connections
                 .remote_request(
-                    &self.host, &id, &scope.0, generation, &scope.2, method, native,
+                    &self.host,
+                    &id,
+                    (&scope.0, generation, &scope.2),
+                    method,
+                    native,
                 )
                 .await
         };

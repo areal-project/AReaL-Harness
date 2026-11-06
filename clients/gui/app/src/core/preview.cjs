@@ -1,5 +1,7 @@
 // @ts-check
 "use strict";
+const { dialog } = require("electron");
+const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
 const { performance } = require("node:perf_hooks");
 const { randomUUID } = require("node:crypto");
 const { loadNavigationDocument } = require("./browser-navigation.cjs");
@@ -363,4 +365,42 @@ class CorePreview {
   }
 }
 
-module.exports = { CorePreview };
+/** @param {import('electron').BrowserWindow} createdWindow @param {()=>boolean} getAvailable @param {()=>CorePreview|undefined} getPreview */
+function developmentApproval(createdWindow, getAvailable, getPreview) {
+  /** @param {Parameters<NonNullable<ConstructorParameters<typeof CorePreview>[6]>>[0]} request */
+  return async ({ origin, page, fence, kind }) => {
+    const current = () =>
+      getAvailable() &&
+      createdWindow &&
+      !createdWindow.isDestroyed() &&
+      createdWindow.isVisible() &&
+      !createdWindow.isMinimized() &&
+      createdWindow.isFocused() &&
+      getPreview()?.currentDevelopmentPrompt(page, fence) === true;
+    if (!current()) return false;
+    const { response } = await dialog.showMessageBox(createdWindow, {
+      type: "question",
+      title:
+        kind === "frame"
+          ? nativeText("browser.frameTitle")
+          : nativeText("browser.developmentTitle"),
+      message:
+        kind === "frame"
+          ? nativeText("browser.frameQuestion", { origin })
+          : nativeText("browser.developmentQuestion", { origin }),
+      detail:
+        kind === "frame"
+          ? nativeText("browser.frameDetail")
+          : nativeText("browser.developmentDetail"),
+      buttons: [
+        nativeText("common.cancel"),
+        kind === "frame" ? nativeText("browser.allowFrame") : nativeText("browser.allowWorkspace"),
+      ],
+      defaultId: 0,
+      cancelId: 0,
+      noLink: true,
+    });
+    return response === 1 && current();
+  };
+}
+module.exports = { CorePreview, developmentApproval };

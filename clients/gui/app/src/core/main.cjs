@@ -19,9 +19,16 @@ const {
   crashReporter,
   session,
 } = require("electron");
-const { handleDesktopIpc, onDesktopIpc, sendDesktopEvent } = require("./desktop-ipc.cjs");
-const { readFile, realpath, stat, writeFile } = require("node:fs/promises");
-const { join, resolve, extname, sep } = require("node:path");
+const {
+  handleDesktopIpc,
+  onDesktopIpc,
+  sendDesktopEvent,
+  registerUiProtocol,
+  desktopDialogs,
+  registerDesktopShell,
+} = require("./desktop-ipc.cjs");
+const { realpath, stat, writeFile } = require("node:fs/promises");
+const { join, resolve } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
 const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
@@ -32,6 +39,7 @@ const {
 } = require("@areal/workbench-service/desktop/core/notifications.cjs");
 const { MenuBar } = require("./menu-bar.cjs");
 const { fileOpen, fileWorkspace } = require("./file-open.cjs");
+const { normalizeNativeImage, exportDiagnostics: saveDiagnostics } = require("./bug-reports.cjs");
 const { PluginArchives } = require("./plugin-archives.cjs");
 const { McpFormResources } = require("./mcp-form-resources.cjs");
 const {
@@ -44,9 +52,9 @@ const { readCommandInvocation, desktopError } = require("@areal/workbench/deskto
 const validatePreview = require("@areal/workbench/desktop-contract").validatePreview;
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 const { readBrowserHostRequest, browserHostFailure } = require("./browser-host-request.cjs");
-const { CorePreview } = require("./preview.cjs");
-const { ComputerControl } = require("./computer-control.cjs");
-const { ExternalCua, upstream: cuaUpstream } = require("./external-cua.cjs");
+const { CorePreview, developmentApproval } = require("./preview.cjs");
+const { ComputerControl, readComputerSelection } = require("./computer-control.cjs");
+const { ExternalCua, nativeAppElicitation } = require("./external-cua.cjs");
 const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 const { startSnapShots } = require("./snapshots/host.cjs");
 const { configureUserData, serviceOptions, serviceHome } = require("./service-config.cjs");
@@ -121,42 +129,10 @@ function startDesktop() {
     packaged: app.isPackaged,
   });
   diagnostics.startCrashReporter({ app, crashReporter });
-  app.on("child-process-gone", (_event, details) =>
-    diagnostics.record({
-      type: "child-process-gone",
-      processType: details.type,
-      reason: details.reason,
-      exitCode: details.exitCode,
-    }),
-  );
-  app.on("render-process-gone", (_event, _contents, details) =>
-    diagnostics.record({
-      type: "renderer-gone",
-      reason: details.reason,
-      exitCode: details.exitCode,
-    }),
-  );
-  app.on("will-quit", () => diagnostics.record({ type: "exit-requested", exitCode: 0 }));
-  protocol.registerSchemesAsPrivileged([
-    { scheme: "areal-mcp", privileges: { standard: true, secure: true, supportFetchAPI: true } },
-    { scheme: "areal-ui", privileges: { standard: true, secure: true, supportFetchAPI: true } },
-  ]);
-
+  registerDesktopShell(app, diagnostics);
   const guiRoot = app.isPackaged
     ? join(process.resourcesPath, "areal-gui")
     : resolve(__dirname, "../../../renderer/dist");
-  /** @type {Record<string,string>} */
-  const mime = {
-    ".wasm": "application/wasm",
-    ".js": "text/javascript",
-    ".css": "text/css",
-    ".html": "text/html",
-    ".json": "application/json",
-    ".woff2": "font/woff2",
-    ".woff": "font/woff",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-  };
   /** @type {InstanceType<typeof ComputerControl>|undefined} */
   let computer;
   /** @type {InstanceType<typeof ExternalCua>|undefined} */
@@ -169,20 +145,7 @@ function startDesktop() {
     computerSystemPaused = false;
   /** @type {Map<number,AbortController>} */
   const computerRequests = new Map();
-  const computerSelection = () => {
-    const settings = backend?.snapshot().library?.settings ?? {};
-    return {
-      enabled: settings.computerControlEnabled === true,
-      provider:
-        typeof settings.computerControlProvider === "string"
-          ? settings.computerControlProvider
-          : "native",
-      executable:
-        typeof settings.computerControlExecutable === "string"
-          ? settings.computerControlExecutable
-          : "",
-    };
-  };
+  const computerSelection = () => readComputerSelection(backend?.snapshot());
   const computerAvailable = () =>
     backend?.computerHostOwned === true &&
     !quitting &&
@@ -465,77 +428,14 @@ function startDesktop() {
       });
     return attempt.promise;
   }
-  /** @param {Electron.MessageBoxOptions} options */
-  function showMessageBox(options) {
-    return window && !window.isDestroyed()
-      ? dialog.showMessageBox(window, options)
-      : dialog.showMessageBox(options);
-  }
-  /** @param {Electron.OpenDialogOptions} options */
-  function showOpenDialog(options) {
-    return window && !window.isDestroyed()
-      ? dialog.showOpenDialog(window, options)
-      : dialog.showOpenDialog(options);
-  }
-  /** @param {Electron.SaveDialogOptions} options */
-  function showSaveDialog(options) {
-    return window && !window.isDestroyed()
-      ? dialog.showSaveDialog(window, options)
-      : dialog.showSaveDialog(options);
-  }
+  const { showMessageBox, showOpenDialog, showSaveDialog } = desktopDialogs(() => window);
   const bugReports = new (require("./bug-reports.cjs").BugReports)({
     endpoint: process.env.AREAL_BUG_REPORT_URL,
     root: join(applicationOwner.profile, "bug-reports"),
     collect: () => diagnostics.collect({ ...diagnosticsRoots, coreRoot: serviceOptions(app).home }),
-    normalizeImage: (data) => {
-      const bytes = Buffer.from(data.slice("data:image/png;base64,".length), "base64");
-      if (
-        bytes.length < 24 ||
-        !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
-        bytes.toString("ascii", 12, 16) !== "IHDR" ||
-        bytes.readUInt32BE(16) > 4096 ||
-        bytes.readUInt32BE(20) > 4096
-      )
-        throw new Error("BUG_REPORT_IMAGE_INVALID");
-      const image = nativeImage.createFromDataURL(data);
-      const { width, height } = image.getSize();
-      if (image.isEmpty() || width > 4096 || height > 4096)
-        throw new Error("BUG_REPORT_IMAGE_INVALID");
-      const png = image.toPNG();
-      if (png.length > 2 * 1024 * 1024) throw new Error("BUG_REPORT_IMAGE_INVALID");
-      return `data:image/png;base64,${png.toString("base64")}`;
-    },
+    normalizeImage: (data) => normalizeNativeImage(data, nativeImage),
   });
-  async function exportDiagnostics() {
-    try {
-      const options = {
-        title: nativeText("diagnostics.exportTitle"),
-        defaultPath: `areal-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      };
-      const result = await (window && !window.isDestroyed()
-        ? showSaveDialog(options)
-        : dialog.showSaveDialog(options));
-      if (result.canceled || !result.filePath) return { canceled: true };
-      const selectedService = serviceOptions(app);
-      await diagnostics.exportTo(result.filePath, {
-        ...diagnosticsRoots,
-        coreRoot: selectedService.home,
-        instance: {
-          packaged: app.isPackaged,
-          coreBinary: selectedService.binary,
-          coreHome: selectedService.home,
-          config: selectedService.config || join(selectedService.configHome, "config.toml"),
-          explicitConfig: !!selectedService.config,
-        },
-      });
-      return { path: result.filePath };
-    } catch {
-      throw Object.assign(new Error(nativeText("diagnostics.saveFailed")), {
-        code: "DIAGNOSTICS_EXPORT_FAILED",
-      });
-    }
-  }
+  const exportDiagnostics = () => saveDiagnostics(app, diagnosticsRoots, showSaveDialog);
   const requestStopAndQuit = () => requestQuit("stop");
   const stopAndQuitFromMenu = () => {
     void requestStopAndQuit().catch((error) => {
@@ -759,44 +659,12 @@ function startDesktop() {
               : undefined,
             ...(backend.status.browserControlEndpoints ?? []),
           ].filter((value) => typeof value === "string"),
-        async ({ origin, page, fence, kind }) => {
-          const current = () =>
-            !quitting &&
-            backend.status.connected === true &&
-            backend.computerHostOwned === true &&
-            createdWindow &&
-            !createdWindow.isDestroyed() &&
-            createdWindow.isVisible() &&
-            !createdWindow.isMinimized() &&
-            createdWindow.isFocused() &&
-            preview?.currentDevelopmentPrompt(page, fence) === true;
-          if (!current()) return false;
-          const { response } = await dialog.showMessageBox(createdWindow, {
-            type: "question",
-            title:
-              kind === "frame"
-                ? nativeText("browser.frameTitle")
-                : nativeText("browser.developmentTitle"),
-            message:
-              kind === "frame"
-                ? nativeText("browser.frameQuestion", { origin })
-                : nativeText("browser.developmentQuestion", { origin }),
-            detail:
-              kind === "frame"
-                ? nativeText("browser.frameDetail")
-                : nativeText("browser.developmentDetail"),
-            buttons: [
-              nativeText("common.cancel"),
-              kind === "frame"
-                ? nativeText("browser.allowFrame")
-                : nativeText("browser.allowWorkspace"),
-            ],
-            defaultId: 0,
-            cancelId: 0,
-            noLink: true,
-          });
-          return response === 1 && current();
-        },
+        developmentApproval(
+          createdWindow,
+          () =>
+            !quitting && backend.status.connected === true && backend.computerHostOwned === true,
+          () => preview,
+        ),
         (projectId, threadId) => backend.retainsThreadResources(projectId, threadId),
         (projectId, threadId) =>
           fileWorkspace(backend, { projectId, threadId, operation: "openDocument" }),
@@ -923,29 +791,7 @@ function startDesktop() {
           });
           if (process.platform === "darwin")
             app.dock?.setIcon(join(__dirname, "../../assets/icon-1024.png"));
-          protocol.handle("areal-ui", async (request) => {
-            const url = new URL(request.url);
-            if (url.host !== "app") return new Response("Not found", { status: 404 });
-            const path = resolve(
-              guiRoot,
-              "." + decodeURIComponent(url.pathname === "/" ? "/index.html" : url.pathname),
-            );
-            if (!path.startsWith(guiRoot + sep)) return new Response("Not found", { status: 404 });
-            try {
-              const { connectSource, frameSource } =
-                extname(path) === ".html"
-                  ? await hostConnectSource().catch(() => ({ connectSource: "", frameSource: "" }))
-                  : { connectSource: "", frameSource: "" };
-              return new Response(await readFile(path), {
-                headers: {
-                  "Content-Type": mime[extname(path)] ?? "application/octet-stream",
-                  "Content-Security-Policy": `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ${connectSource}; worker-src 'self' blob:; object-src 'none'; frame-src areal-mcp: ${frameSource}`,
-                },
-              });
-            } catch {
-              return new Response(nativeText("gui.notBuilt"), { status: 404 });
-            }
-          });
+          registerUiProtocol(guiRoot, hostConnectSource);
           const serviceBackend = new SharedCoreBackend({
             app,
             ...serviceOptions(app),
@@ -992,55 +838,12 @@ function startDesktop() {
                 publish();
               }
             },
-            onElicitation: async (params, { signal, owner }) => {
-              const { nativeAppApprovalOptions, nativeAppApprovalResponse } = await cuaUpstream();
-              const { declineAgentHostApp, detectHostApps, appBundleOf, plistBundleId } =
-                await import("../vendor/lcu/host-guard.mjs");
-              const bundle = appBundleOf(process.execPath),
-                bundleId = bundle && plistBundleId(bundle);
-              const refusal = declineAgentHostApp(params, {
-                env: {},
-                report() {},
-                hosts: [
-                  ...detectHostApps(),
-                  ...(bundleId ? [{ bundleId, name: app.getName() }] : []),
-                ],
-              });
-              const { ElicitResultSchema } = await import("@modelcontextprotocol/sdk/types.js");
-              if (refusal) return ElicitResultSchema.parse(refusal);
-              const approval = nativeAppApprovalOptions(params);
-              if (
-                !approval ||
-                signal.aborted ||
-                !computerAvailable() ||
-                !window ||
-                window.isDestroyed()
-              )
-                return { action: "cancel" };
-              const choices = [...approval.choices, { value: "cancel", label: "Cancel" }];
-              const result = await showMessageBox({
-                type: "question",
-                title: "External computer control",
-                message: approval.message,
-                detail: [
-                  approval.resource,
-                  typeof params._meta?.warning === "string" ? params._meta.warning : "",
-                  `Chat ${owner.threadId}`,
-                ]
-                  .filter(Boolean)
-                  .join("\n\n"),
-                buttons: choices.map((choice) => choice.label),
-                defaultId: choices.length - 1,
-                cancelId: choices.length - 1,
-                noLink: true,
-                signal,
-              });
-              return signal.aborted
-                ? { action: "cancel" }
-                : ElicitResultSchema.parse(
-                    nativeAppApprovalResponse(params, choices[result.response]?.value),
-                  );
-            },
+            onElicitation: nativeAppElicitation(
+              app,
+              computerAvailable,
+              () => window,
+              showMessageBox,
+            ),
           }));
           serviceBackend.onBrowserDisconnected = () => {
             preview?.revokeAll();

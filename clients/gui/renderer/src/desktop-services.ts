@@ -38,7 +38,19 @@ export type {
   QuitProgress,
   TrajectoryStatus,
 } from "@areal/workbench/desktop-contract";
-export { validateCommand, validateCommandResponse } from "@areal/workbench/desktop-contract";
+// 完整命令校验器包含管理协议；首次调用时加载，校验完成前不派发请求。
+export async function validateCommand(
+  ...args: Parameters<typeof import("@areal/workbench/desktop-contract").validateCommand>
+) {
+  const contract = await import("@areal/workbench/desktop-contract");
+  contract.validateCommand(...args);
+}
+export async function validateCommandResponse(
+  ...args: Parameters<typeof import("@areal/workbench/desktop-contract").validateCommandResponse>
+) {
+  const contract = await import("@areal/workbench/desktop-contract");
+  contract.validateCommandResponse(...args);
+}
 export type { ObservedCatalogOwner } from "@areal/workbench/desktop-contract/catalog";
 export type {
   Attachment,

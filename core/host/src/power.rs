@@ -196,9 +196,7 @@ impl Host {
                     .remote_request(
                         self,
                         &project.project_id,
-                        &service,
-                        &generation,
-                        &connection,
+                        (&service, &generation, &connection),
                         "areal/server/status",
                         json!({}),
                     )

@@ -264,7 +264,7 @@ async fn handle(
         .map(|h| h.as_bytes())
         .unwrap_or_default();
     if request.method() != hyper::Method::POST
-        || request.uri().to_string() != "/responses"
+        || *request.uri() != "/responses"
         || request.headers().contains_key("origin")
         || actual.len() != expected.len()
         || !bool::from(actual.ct_eq(expected.as_bytes()))

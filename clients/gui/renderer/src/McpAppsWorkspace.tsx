@@ -10,7 +10,7 @@ import {
   type McpAppMessage,
   type McpAppModelContext,
   type McpAppPlacement,
-} from "./McpAppHost.js";
+} from "./LazyMcpAppHost.js";
 import { McpAppForm, type McpFormResponse } from "./McpAppForm.js";
 import {
   mcpResultKey,

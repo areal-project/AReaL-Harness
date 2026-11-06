@@ -1,12 +1,17 @@
 //! 真实 WSS + Noise 传输夹具。应用层仅提供 echo/read，不模拟授权或 Gateway 业务。
-#[path = "../src/gateway/mod.rs"]
-mod gateway;
+// 夹具只消费这几个传输模块的部分接口，不编译生产 Direct 入口。
+#[allow(dead_code)]
 #[path = "../src/gateway/relay.rs"]
 mod relay;
+#[allow(dead_code)]
+#[path = "../src/gateway/relay_codec.rs"]
+mod relay_codec;
+#[allow(dead_code)]
+#[path = "../src/gateway/wire.rs"]
+mod wire;
 
 use anyhow::{Context, Result, bail};
 use futures_util::io::AsyncWriteExt;
-use gateway::{relay_codec, wire};
 use relay::{RelayConfig, RelayEvent, RelayOwner};
 use serde_json::{Value, json};
 use std::{cell::Cell, rc::Rc, sync::Arc};
@@ -108,7 +113,7 @@ async fn run() -> Result<()> {
             .to_owned(),
         local_host: first["localHost"].as_str().map(str::to_owned),
     };
-    let (owner, handle, mut events) = RelayOwner::new(config);
+    let (owner, handle, mut events) = RelayOwner::with_counters(config, Default::default());
     let owner = tokio::task::spawn_local(owner.run());
     let mut sessions = tokio::task::JoinSet::new();
     let authorized = Rc::new(Cell::new(true));
@@ -117,8 +122,8 @@ async fn run() -> Result<()> {
             event = events.recv() => {
                 let Some(event) = event else { break; };
                 match event {
-                    RelayEvent::Ready { generation, push } => emit(&output, json!({"event":"ready","generation":generation,"push":push})).await?,
-                    RelayEvent::Disconnected { generation, reason, retry } => emit(&output, json!({"event":"disconnected","generation":generation,"reason":reason,"retry":retry})).await?,
+                    RelayEvent::Ready { _generation: generation, push } => emit(&output, json!({"event":"ready","generation":generation,"push":push})).await?,
+                    RelayEvent::Disconnected { _generation: generation, reason, retry } => emit(&output, json!({"event":"disconnected","generation":generation,"reason":reason,"retry":retry})).await?,
                     RelayEvent::PushUnregistered(token) => emit(&output, json!({"event":"pushUnregistered","token":token})).await?,
                     RelayEvent::PushDropped => emit(&output, json!({"event":"pushDropped"})).await?,
                     RelayEvent::Channel { generation, id, stream } => {

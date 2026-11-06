@@ -116,10 +116,9 @@ impl Vault {
                     source_id,
                     reference,
                 } = state.slot
+                    && source_id == source
                 {
-                    if source_id == source {
-                        references.insert(reference);
-                    }
+                    references.insert(reference);
                 }
             }
         }
@@ -346,13 +345,13 @@ impl Vault {
                 Slot::SubscriptionTransport { source_id } => Some(source_id),
                 _ => None,
             };
-            if let Some(source) = source {
-                if self.subscription_owner(source)?.is_some() {
-                    return Err(error(
-                        "subscriptionOwnerRequired",
-                        "subscription credentials are owned by the Host",
-                    ));
-                }
+            if let Some(source) = source
+                && self.subscription_owner(source)?.is_some()
+            {
+                return Err(error(
+                    "subscriptionOwnerRequired",
+                    "subscription credentials are owned by the Host",
+                ));
             }
         }
         if state.revision != input.expected_revision {

@@ -67,7 +67,7 @@ fn swap(path: &Path, expected: Option<&str>, value: &Value) -> Result<String> {
     crate::shell::validate_library(&bytes)
         .map_err(|_| error("invalidRequest", "library does not pass navigation limits"))?;
     if digest(path)?.as_deref() != expected {
-        return Err(error("conflict", "library changed since it was read").into());
+        return Err(error("conflict", "library changed since it was read"));
     }
     crate::migration::atomic_bytes(path, &bytes)?;
     Ok(areal_local_service::storage::digest(&bytes))

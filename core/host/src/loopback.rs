@@ -640,7 +640,7 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                             continue;
                         }
                         if let (None, Some(id)) = (writer.as_ref(), raw["method"].as_str().filter(|method| WRITE_METHODS.contains(method)).and(raw["id"].as_str())) {
-                            send(&mut socket,&json!({"version":VERSION,"id":id,"error":read_error(&anyhow::Error::from(wire::error("methodNotFound","method is not available on this connection")))})).await?;
+                            send(&mut socket,&json!({"version":VERSION,"id":id,"error":read_error(&wire::error("methodNotFound","method is not available on this connection"))})).await?;
                             continue;
                         }
                         let input: ReadRequest = serde_json::from_value(raw)?;
@@ -734,13 +734,12 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             }
             _=changes.changed()=>{
                 if !host.loopback.current(device_id.as_deref()) { break; }
-                if let Some(active)=&reader {
-                    if !active.current(&host) {
+                if let Some(active)=&reader
+                    && !active.current(&host) {
                         let event=keys(&host,&connection_id,active.invalidated(&anyhow::anyhow!("RESYNC_REQUIRED")));
                         reader=None;
                         notify(&mut socket,event).await?;
                     }
-                }
             }
         }
     }

@@ -309,7 +309,7 @@ impl Attention {
                 for _ in 0..8 {
                     let mut params=json!({});
                     if let Some(cursor)=&state.cursor {params["cursor"]=json!(cursor);}
-                    let page=session::overview::read_attention(&params,100,|query|host.schedules.connections.remote_request(&host,&project,&epoch.0,&epoch.1,&epoch.2,"areal/work/overview",query)).await?;
+                    let page=session::overview::read_attention(&params,100,|query|host.schedules.connections.remote_request(&host, &project, (&epoch.0, &epoch.1, &epoch.2), "areal/work/overview", query)).await?;
                     state.summaries_complete &= page["summariesComplete"]==true;
                     for row in page["data"].as_array().context("invalid attention page")? {
                         if !matches!(row["kind"].as_str(),Some("approval"|"syncQuestion"|"asyncQuestion")) {continue;}
@@ -721,9 +721,7 @@ impl Completion {
             .remote_request(
                 &host,
                 &self.project,
-                &route.epoch.0,
-                &route.epoch.1,
-                &route.epoch.2,
+                (&route.epoch.0, &route.epoch.1, &route.epoch.2),
                 "areal/capabilities",
                 json!({}),
             )

@@ -72,22 +72,21 @@ impl ReadModels {
         }
         let mut revisions = BTreeMap::new();
         for project in &status.projects {
-            if project.state == "ready" {
-                if let Ok(revision) = host
+            if project.state == "ready"
+                && let Ok(revision) = host
                     .schedules
                     .connections
                     .shell_revision(host, &project.registration.project_id)
-                {
-                    revisions.insert(project.registration.project_id.clone(), revision);
-                }
+            {
+                revisions.insert(project.registration.project_id.clone(), revision);
             }
         }
         let stamp =
             json!({"projects":status.projects,"sources":source_stamps,"revisions":revisions});
-        if let Some((previous, view)) = &*self.cached.borrow() {
-            if *previous == stamp {
-                return Ok(view.clone());
-            }
+        if let Some((previous, view)) = &*self.cached.borrow()
+            && *previous == stamp
+        {
+            return Ok(view.clone());
         }
         let mut view = shell::snapshot(&status.projects, &sources)?;
         let mut complete = true;
@@ -119,19 +118,18 @@ impl ReadModels {
                     }
                 },
             };
-            if let Some(online) = online {
-                if shell::apply_observation(
+            if let Some(online) = online
+                && shell::apply_observation(
                     project,
                     &revision.1,
                     online.summaries.clone(),
                     online.attention,
                 )
                 .is_ok()
-                {
-                    self.online
-                        .borrow_mut()
-                        .insert(project.project_id.clone(), online);
-                }
+            {
+                self.online
+                    .borrow_mut()
+                    .insert(project.project_id.clone(), online);
             }
         }
         // 读取期间的源变化不被标记成新鲜；下一次观察会重新读取。
@@ -151,7 +149,13 @@ async fn request(
     ensure!(current == generation, "RESYNC_REQUIRED");
     host.schedules
         .connections
-        .remote_request(host, id, &service, generation, &connection, method, params)
+        .remote_request(
+            host,
+            id,
+            (&service, generation, &connection),
+            method,
+            params,
+        )
         .await
 }
 

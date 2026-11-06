@@ -534,4 +534,19 @@ class ComputerControl {
   }
 }
 
-module.exports = { ComputerControl };
+/** @param {{library?: {settings?: Record<string,unknown>}}|undefined} snapshot */
+function readComputerSelection(snapshot) {
+  const settings = snapshot?.library?.settings ?? {};
+  return {
+    enabled: settings.computerControlEnabled === true,
+    provider:
+      typeof settings.computerControlProvider === "string"
+        ? settings.computerControlProvider
+        : "native",
+    executable:
+      typeof settings.computerControlExecutable === "string"
+        ? settings.computerControlExecutable
+        : "",
+  };
+}
+module.exports = { ComputerControl, readComputerSelection };

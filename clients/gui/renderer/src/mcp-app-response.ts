@@ -20,12 +20,11 @@ const fields = z.record(z.string(), z.unknown());
 const resultSource = z
   .object({ projectId: z.string(), threadId: z.string(), turnId: z.string(), itemId: z.string() })
   .passthrough();
+const frameFields = { token: z.string(), frameUrl: z.string(), frameHtml: z.string().optional() };
 const mcpApp = z
   .object({
     kind: z.literal("mcp"),
-    token: z.string(),
-    frameUrl: z.string(),
-    frameHtml: z.string().optional(),
+    ...frameFields,
     instanceId: z.string(),
     serverId: z.string(),
     generation: z.union([z.string(), z.number()]),
@@ -46,9 +45,7 @@ const mcpApp = z
 const genUi = z
   .object({
     kind: z.literal("genUi"),
-    token: z.string(),
-    frameUrl: z.string(),
-    frameHtml: z.string().optional(),
+    ...frameFields,
     projectId: z.string(),
     threadId: z.string(),
     source: resultSource.extend({ referenceOffset: z.number().int().nonnegative() }),
@@ -138,7 +135,7 @@ function unavailableResponse(readOnly: boolean, requestId?: string) {
   const error: DesktopError = {
     message: readOnly
       ? "MCP response data is invalid"
-      : "MCP operation result is unavailable; check the original operation before trying again",
+      : "MCP result unavailable; check the original operation before retrying",
     delivery: "resultUnavailable",
     recovery: { kind: readOnly ? "retryRead" : "needsUser" },
     ...(!readOnly ? { submissionUnknown: true } : {}),

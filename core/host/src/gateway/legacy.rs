@@ -491,9 +491,7 @@ async fn recover_inner(
         .remote_request(
             host,
             project,
-            &scope.0,
-            &scope.1,
-            &scope.2,
+            (&scope.0, &scope.1, &scope.2),
             "areal/capabilities",
             json!({}),
         )
@@ -512,9 +510,7 @@ async fn recover_inner(
         .remote_request(
             host,
             project,
-            &scope.0,
-            &scope.1,
-            &scope.2,
+            (&scope.0, &scope.1, &scope.2),
             "areal/request/read",
             if expected.task.is_some() {
                 json!({"requestId":expected.operation})

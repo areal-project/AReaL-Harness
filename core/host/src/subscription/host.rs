@@ -420,9 +420,7 @@ impl Host {
                         .remote_request(
                             self,
                             project,
-                            &service,
-                            &generation,
-                            &connection,
+                            (&service, &generation, &connection),
                             "areal/server/status",
                             json!({}),
                         )
@@ -498,9 +496,7 @@ impl Host {
                 .remote_request(
                     self,
                     &project,
-                    &service,
-                    &generation,
-                    &connection,
+                    (&service, &generation, &connection),
                     "areal/server/status",
                     json!({}),
                 )
@@ -874,9 +870,7 @@ impl Host {
             .remote_request(
                 self,
                 project,
-                &service,
-                &generation,
-                &connection,
+                (&service, &generation, &connection),
                 "areal/provider/list",
                 json!({}),
             )
@@ -980,9 +974,7 @@ impl Host {
             .remote_request(
                 self,
                 project,
-                &service,
-                &generation,
-                &connection,
+                (&service, &generation, &connection),
                 method,
                 params,
             )
@@ -1020,9 +1012,7 @@ impl Host {
                 .remote_request(
                     self,
                     project,
-                    service,
-                    generation,
-                    connection,
+                    (service, generation, connection),
                     "areal/request/read",
                     json!({"requestId":request}),
                 )

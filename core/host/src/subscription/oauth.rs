@@ -155,7 +155,7 @@ impl OAuth {
                 if let Ok(decoded) = decode::<Value>(token, &key, &validation) {
                     let claims = decoded.claims;
                     if claims["iss"] != ISSUER
-                        || !claims["sub"].as_str().is_some_and(|sub| !sub.is_empty())
+                        || claims["sub"].as_str().is_none_or(|sub| sub.is_empty())
                         || claims.get("nbf").is_some_and(|nbf| {
                             !nbf.as_f64().is_some_and(|nbf| {
                                 nbf.is_finite() && nbf <= now_ms() as f64 / 1000.0 + 5.0
@@ -195,12 +195,10 @@ impl OAuth {
         if !tokens["token_type"]
             .as_str()
             .is_some_and(|s| s.eq_ignore_ascii_case("bearer"))
-            || !tokens["access_token"]
+            || tokens["access_token"].as_str().is_none_or(|s| s.is_empty())
+            || tokens["refresh_token"]
                 .as_str()
-                .is_some_and(|s| !s.is_empty())
-            || !tokens["refresh_token"]
-                .as_str()
-                .is_some_and(|s| !s.is_empty())
+                .is_none_or(|s| s.is_empty())
             || !tokens["expires_in"]
                 .as_f64()
                 .is_some_and(|v| v.is_finite() && v > 0.0)
@@ -337,17 +335,16 @@ impl OAuth {
                             let state=state.clone();let registered=registered.clone();let sender=sender.clone();let claimed=claimed.clone();
                             let service=service_fn(move |request:hyper::Request<Incoming>| {
                                 let mut status=400;let mut outcome=None;
-                                if request.method()==hyper::Method::GET && !claimed.get() {
-                                    if let Ok(url)=Url::parse(&format!("http://127.0.0.1{}",request.uri())) {
+                                if request.method()==hyper::Method::GET && !claimed.get()
+                                    && let Ok(url)=Url::parse(&format!("http://127.0.0.1{}",request.uri())) {
                                         let query=url.query_pairs().into_owned().collect::<std::collections::BTreeMap<_,_>>();
                                         if url.path()=="/auth/callback" && query.get("state")==Some(&state) {
                                             claimed.set(true);
                                             let code=query.get("code").filter(|s|!s.is_empty()).cloned();let client=query.get("client_id").cloned().or_else(||registered.as_ref().map(|(client,_)|client.clone()));
                                             let valid=client.as_ref().is_some_and(|id|!id.is_empty() && id.len()<=256 && id!="dynamic_agent_client" && id.bytes().all(|b|b.is_ascii_alphanumeric() || b"._:-".contains(&b)) && registered.as_ref().is_none_or(|(saved,_)|saved==id));
-                                            outcome=Some(if !query.contains_key("error") && valid && code.is_some() {status=200;Ok((code.unwrap(),client.unwrap()))}else{Err(Failure::new("invalid_response","sign_in"))});
+                                            outcome = Some(match (code, client) { (Some(code), Some(client)) if !query.contains_key("error") && valid => {status = 200; Ok((code, client))}, _ => Err(Failure::new("invalid_response", "sign_in")) });
                                         }
                                     }
-                                }
                                 if let Some(outcome)=outcome {let _=sender.try_send(outcome);}
                                 async move {Ok::<_,std::convert::Infallible>(Response::builder().status(status).header("connection","close").header("content-type","text/plain; charset=utf-8").body(Full::new(bytes::Bytes::from_static(if status==200 {"浏览器授权已返回，请回到 AReaL Harness 查看登录结果。".as_bytes()}else{b"Invalid authorization callback"}))).unwrap())}
                             });
@@ -359,7 +356,7 @@ impl OAuth {
             let (code,client)=tokio::select! {_=cancel.cancelled()=>return Err(Failure::new("cancelled","sign_in")), result=callback=>result?};
             let form=vec![("grant_type".into(),"authorization_code".into()),("client_id".into(),client.clone()),("code".into(),code),("code_verifier".into(),verifier),("redirect_uri".into(),redirect),("resource".into(),RESOURCE.into())];
             let tokens=tokio::select! {_=cancel.cancelled()=>return Err(Failure::new("cancelled","sign_in")), result=oauth.network.json(config["token_endpoint"].as_str().unwrap(),reqwest::Method::POST,Some(&form),"sign_in")=>result?};
-            if !tokens["token_type"].as_str().is_some_and(|s|s.eq_ignore_ascii_case("bearer")) || !tokens["access_token"].as_str().is_some_and(|s|!s.is_empty()) || !tokens["refresh_token"].as_str().is_some_and(|s|!s.is_empty()) || !tokens["expires_in"].as_f64().is_some_and(|n|n.is_finite() && n>0.0) {return Err(Failure::new("invalid_response","sign_in"));}
+            if !tokens["token_type"].as_str().is_some_and(|s|s.eq_ignore_ascii_case("bearer")) || tokens["access_token"].as_str().is_none_or(|s| s.is_empty()) || tokens["refresh_token"].as_str().is_none_or(|s| s.is_empty()) || !tokens["expires_in"].as_f64().is_some_and(|n|n.is_finite() && n>0.0) {return Err(Failure::new("invalid_response","sign_in"));}
             let identity=oauth.identity(tokens["id_token"].as_str().ok_or_else(||Failure::new("invalid_response","sign_in"))?,&client).await?;
             if identity["nonce"]!=nonce || registered.as_ref().is_some_and(|(_,subject)|identity["sub"]!=*subject) {return Err(Failure::new("account_changed","sign_in"));}
             AccountRecord::decode(serde_json::json!({"kind":"grant","payload":{"type":"oauth","hostId":host,"clientId":client,"subject":identity["sub"],"accountId":identity["sub"],"issuer":ISSUER,"email":identity["email"].as_str(),"idToken":tokens["id_token"],"access":tokens["access_token"],"refresh":tokens["refresh_token"],"expires":now_ms() as f64+tokens["expires_in"].as_f64().unwrap()*1000.0,"scopes":tokens["scope"].as_str().unwrap_or("").split_whitespace().collect::<Vec<_>>()}})).map_err(Failure::storage)

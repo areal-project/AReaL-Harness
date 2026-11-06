@@ -173,9 +173,7 @@ impl Session {
             .remote_request(
                 &self.host,
                 &id,
-                &scope.0,
-                generation,
-                &scope.2,
+                (&scope.0, generation, &scope.2),
                 "turn/interrupt",
                 native,
             )

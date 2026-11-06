@@ -668,12 +668,12 @@ mod tests {
             let root = tempfile::tempdir().unwrap();
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let service = service(root.path(), listener.local_addr().unwrap());
-            let mut reference = reference(&bytes);
+            let mut reference = reference(bytes);
             reference.mime = mime.map(str::to_owned);
             let download = fetch(&service, "selected", reference, || Ok(()));
             let respond = async {
                 let mut socket = request(&listener).await;
-                respond(&mut socket, &bytes).await;
+                respond(&mut socket, bytes).await;
             };
             let (cache, _) = tokio::join!(download, respond);
             let part = cache.unwrap().chunk(0, 65536).unwrap();

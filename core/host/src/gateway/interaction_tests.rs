@@ -170,11 +170,7 @@ impl Fixture {
                 let incoming = incoming.clone();
                 connections.spawn_local(async move {
                     let socket = tokio_tungstenite::accept_hdr_async(stream,
-                        |request: &tokio_tungstenite::tungstenite::handshake::server::Request,
-                         response: tokio_tungstenite::tungstenite::handshake::server::Response| {
-                            assert_eq!(request.headers()["authorization"], "Bearer original-owner-token");
-                            Ok(response)
-                        }).await.unwrap();
+                        OwnerHeaders).await.unwrap();
                     let (mut writer, mut reader) = socket.split();
                     let (responses, mut outgoing) = mpsc::unbounded_channel();
                     loop {
@@ -1727,4 +1723,22 @@ async fn gui_write_create_carries_permission_preset_and_profile_only_for_declari
             drop(start);
         })
         .await;
+}
+
+struct OwnerHeaders;
+impl tokio_tungstenite::tungstenite::handshake::server::Callback for OwnerHeaders {
+    fn on_request(
+        self,
+        request: &tokio_tungstenite::tungstenite::handshake::server::Request,
+        response: tokio_tungstenite::tungstenite::handshake::server::Response,
+    ) -> Result<
+        tokio_tungstenite::tungstenite::handshake::server::Response,
+        tokio_tungstenite::tungstenite::handshake::server::ErrorResponse,
+    > {
+        assert_eq!(
+            request.headers()["authorization"],
+            "Bearer original-owner-token"
+        );
+        Ok(response)
+    }
 }

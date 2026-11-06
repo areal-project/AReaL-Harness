@@ -368,9 +368,11 @@ test("Desktop commands map to their own dispatch layer and Core catalog through 
       (owner === "main" ? main : backend).has(name),
       `${owner} command lacks a dispatch branch: ${name}`,
     );
-  const files = readdirSync(resolve("app/src/core"))
-    .filter((name) => name.endsWith(".cjs"))
-    .map((name) => resolve("app/src/core", name));
+  const files = ["app/src/core", "../../services/workbench/src/desktop/core"].flatMap((directory) =>
+    readdirSync(resolve(directory))
+      .filter((name) => name.endsWith(".cjs"))
+      .map((name) => resolve(directory, name)),
+  );
   const program = ts.createProgram(files, {
       allowJs: true,
       noResolve: true,

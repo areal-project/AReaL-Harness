@@ -126,6 +126,18 @@ export default defineConfig(({ mode }): UserConfig => ({
     outDir: mode === "design-system" ? "../dist/design-system" : "dist",
     emptyOutDir: true,
     rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "mermaid-renderer",
+              test: (id) =>
+                id.includes("/@streamdown/mermaid/") || id.endsWith("/mermaid.core.mjs"),
+              includeDependenciesRecursively: false,
+            },
+          ],
+        },
+      },
       input:
         mode === "design-system"
           ? {

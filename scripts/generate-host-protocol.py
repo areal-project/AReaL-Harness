@@ -341,11 +341,13 @@ class Emitter:
         if "oneOf" in value or "anyOf" in value:
             variants = value.get("oneOf", value.get("anyOf"))
             lines = [derive, "#[serde(untagged)]", f"pub enum {name} {{"]
-            # 联合分支大小由 schema 决定，间接存储避免最大对象撑大每个枚举。
+            # 结构体分支间接存储；字符串和容器已在堆上，不再增加一层分配。
             for index, child in enumerate(variants):
-                lines.append(
-                    f"    Variant{index + 1}(Box<{self.rust_type(child, name + 'Variant' + str(index + 1))}>),"
-                )
+                kind = self.rust_type(child, name + "Variant" + str(index + 1))
+                scalar = kind in {"()", "bool", "i64", "u64", "f64", "String", "serde_json::Value"}
+                if not scalar and not kind.startswith(("Vec<", "std::collections::")):
+                    kind = f"Box<{kind}>"
+                lines.append(f"    Variant{index + 1}({kind}),")
             return "\n".join(lines + ["}"])
         if "enum" in value or isinstance(value.get("const"), str):
             values = value.get("enum", [value.get("const")])

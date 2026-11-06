@@ -279,9 +279,9 @@ impl Client {
             {
                 Ok(registration) => input.registration = registration,
                 Err(original) => {
-                    if !original
+                    if original
                         .downcast_ref::<RemoteError>()
-                        .is_some_and(|error| error.code == "dataDirConflict")
+                        .is_none_or(|error| error.code != "dataDirConflict")
                     {
                         return Err(original);
                     }

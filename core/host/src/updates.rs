@@ -411,11 +411,11 @@ impl Host {
                     wire::error("invalidUpdateTarget", "target is already running")
                 );
                 let target = layout(&self.bin.join("areal"), &input.target_version)
-                    .map_err(|e| wire::error("updateUnavailable", &e.to_string()))?;
+                    .map_err(|e| wire::error("updateUnavailable", e.to_string()))?;
                 target
                     .check_program()
                     .await
-                    .map_err(|e| wire::error("invalidUpdateTarget", &e.to_string()))?;
+                    .map_err(|e| wire::error("invalidUpdateTarget", e.to_string()))?;
                 target
             }
             Action::Apply => {
@@ -441,7 +441,7 @@ impl Host {
                 let target: Target = serde_json::from_value(prepared.evidence["target"].clone())?;
                 target
                     .verify()
-                    .map_err(|e| wire::error("invalidUpdateTarget", &e.to_string()))?;
+                    .map_err(|e| wire::error("invalidUpdateTarget", e.to_string()))?;
                 target
             }
         };

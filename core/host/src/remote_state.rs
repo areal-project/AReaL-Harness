@@ -45,15 +45,15 @@ impl RemoteState {
     pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
         wire::request_id(id)?;
         let remote = Self::new(home);
-        if let Some(receipt) = remote.native_owner()? {
-            if receipt["requestId"] == id {
-                return Ok(Some(receipt));
-            }
+        if let Some(receipt) = remote.native_owner()?
+            && receipt["requestId"] == id
+        {
+            return Ok(Some(receipt));
         }
-        if let Some(state) = migration::read_optional::<State>(&remote.path())? {
-            if let Some(receipt) = state.receipt.filter(|value| value["requestId"] == id) {
-                return Ok(Some(receipt));
-            }
+        if let Some(state) = migration::read_optional::<State>(&remote.path())?
+            && let Some(receipt) = state.receipt.filter(|value| value["requestId"] == id)
+        {
+            return Ok(Some(receipt));
         }
         migration::read_optional(
             &home
@@ -214,7 +214,12 @@ impl RemoteState {
         projects: &[String],
     ) -> Result<Value> {
         self.dispatch_inner(
-            method, params, connection, generation, migration, projects, false,
+            method,
+            params,
+            (connection, generation),
+            migration,
+            projects,
+            false,
         )
     }
     pub(crate) fn begin_enrollment(
@@ -255,8 +260,7 @@ impl RemoteState {
         self.dispatch_inner(
             "remote.gateway.replace",
             params,
-            "native-gateway-control",
-            generation,
+            ("native-gateway-control", generation),
             migration,
             projects,
             true,
@@ -266,8 +270,7 @@ impl RemoteState {
         &self,
         method: &str,
         params: Value,
-        connection: &str,
-        generation: &str,
+        (connection, generation): (&str, &str),
         migration: &Migration,
         projects: &[String],
         enrollment: bool,
@@ -562,19 +565,18 @@ impl RemoteState {
     }
     pub fn operation(&self, id: &str, migration: &Migration) -> Result<Option<Value>> {
         wire::request_id(id)?;
-        if let Some(receipt) = self.native_owner()? {
-            if receipt["requestId"] == id {
-                return Ok(Some(receipt));
-            }
+        if let Some(receipt) = self.native_owner()?
+            && receipt["requestId"] == id
+        {
+            return Ok(Some(receipt));
         }
         self.recover(migration)?;
-        if let Some(state) = migration::read_optional::<State>(&self.path())? {
-            if let Some(receipt) = state.receipt {
-                if receipt["requestId"] == id {
-                    self.save_receipt(&receipt)?;
-                    return Ok(Some(receipt));
-                }
-            }
+        if let Some(state) = migration::read_optional::<State>(&self.path())?
+            && let Some(receipt) = state.receipt
+            && receipt["requestId"] == id
+        {
+            self.save_receipt(&receipt)?;
+            return Ok(Some(receipt));
         }
         migration::read_optional(
             &self

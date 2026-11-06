@@ -466,7 +466,7 @@ impl Host {
                             self.remote.reject_enrollment(&input.request_id)?;
                             return Err(error(
                                 "enrollment-failed",
-                                &format!(
+                                format!(
                                     "Relay HTTPS 证书验证失败（{code}）。请检查证书域名、有效期和桌面进程信任的 CA。"
                                 ),
                             ));
@@ -667,12 +667,11 @@ impl Host {
             }
         }
         self.changed();
-        if operation == "approve" {
-            if let Some(id) = input.request["id"].as_str() {
-                if let Some(pair) = self.gateway.pairs.borrow_mut().remove(id) {
-                    pair.signal.notify_one();
-                }
-            }
+        if operation == "approve"
+            && let Some(id) = input.request["id"].as_str()
+            && let Some(pair) = self.gateway.pairs.borrow_mut().remove(id)
+        {
+            pair.signal.notify_one();
         }
         if operation == "disable" || operation == "disableDirect" {
             self.gateway.cancel_pair();

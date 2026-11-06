@@ -4,6 +4,9 @@ const fs = require("node:fs/promises");
 const { constants } = require("node:fs");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
+const { serviceOptions } = require("./service-config.cjs");
+const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
+const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
 const contract = require("@areal/workbench/desktop-contract/bug-report");
 /** @typedef {import('@areal/workbench/desktop-contract/bug-report').Report} Report */
 
@@ -212,4 +215,54 @@ async function exportReport(destination, report) {
     await fs.unlink(temporary).catch(() => {});
   }
 }
-module.exports = { BugReports, exportReport };
+
+/** @param {string} data @param {typeof import('electron').nativeImage} nativeImage */
+function normalizeNativeImage(data, nativeImage) {
+  const bytes = Buffer.from(data.slice("data:image/png;base64,".length), "base64");
+  if (
+    bytes.length < 24 ||
+    !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+    bytes.toString("ascii", 12, 16) !== "IHDR" ||
+    bytes.readUInt32BE(16) > 4096 ||
+    bytes.readUInt32BE(20) > 4096
+  )
+    throw new Error("BUG_REPORT_IMAGE_INVALID");
+  const image = nativeImage.createFromDataURL(data);
+  const { width, height } = image.getSize();
+  if (image.isEmpty() || width > 4096 || height > 4096) throw new Error("BUG_REPORT_IMAGE_INVALID");
+  const png = image.toPNG();
+  if (png.length > 2 * 1024 * 1024) throw new Error("BUG_REPORT_IMAGE_INVALID");
+  return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+/** @param {import('electron').App} app @param {{mainRoot:string,desktopRoot:string}} diagnosticsRoots @param {(options:import('electron').SaveDialogOptions)=>Promise<import('electron').SaveDialogReturnValue>} showSaveDialog */
+async function exportDiagnostics(app, diagnosticsRoots, showSaveDialog) {
+  try {
+    const options = {
+      title: nativeText("diagnostics.exportTitle"),
+      defaultPath: `areal-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+      filters: [{ name: "JSON", extensions: ["json"] }],
+    };
+    const result = await showSaveDialog(options);
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const selectedService = serviceOptions(app);
+    await diagnostics.exportTo(result.filePath, {
+      ...diagnosticsRoots,
+      coreRoot: selectedService.home,
+      instance: {
+        packaged: app.isPackaged,
+        coreBinary: selectedService.binary,
+        coreHome: selectedService.home,
+        config: selectedService.config || join(selectedService.configHome, "config.toml"),
+        explicitConfig: !!selectedService.config,
+      },
+    });
+    return { path: result.filePath };
+  } catch {
+    throw Object.assign(new Error(nativeText("diagnostics.saveFailed")), {
+      code: "DIAGNOSTICS_EXPORT_FAILED",
+    });
+  }
+}
+
+module.exports = { BugReports, exportReport, normalizeNativeImage, exportDiagnostics };

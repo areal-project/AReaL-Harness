@@ -1,4 +1,3 @@
-import { RemoteConnection } from "@areal/remote-client";
 import { record } from "./bootstrap.js";
 import type { HostClientOptions, ReadConnection, ReadTransport } from "./index.js";
 
@@ -107,6 +106,8 @@ export function createNoiseReadTransport(options: {
   onHandshake?(phase: string): void;
 }): NonNullable<HostClientOptions["transport"]> {
   return async (lifecycle) => {
+    const { RemoteConnection } = await import("@areal/remote-client");
+    if (!lifecycle.current()) throw new Error("Connection cancelled");
     const socket = await options.socket();
     if (!lifecycle.current()) {
       socket.close();

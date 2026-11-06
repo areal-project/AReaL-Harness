@@ -94,25 +94,21 @@ fn existing_lock(path: &Path) -> Result<Option<File>> {
 fn confirmed_cleanup(directory: &Path, service: &Service) -> Result<bool> {
     if let Some(proof) =
         storage::read_optional::<storage::CleanupReceipt>(&directory.join("cleanup.json"))?
+        && proof.version == VERSION
+        && proof.identity == service.identity
+        && proof.owner == service.owner
+        && proof.cleanup_confirmed
     {
-        if proof.version == VERSION
-            && proof.identity == service.identity
-            && proof.owner == service.owner
-            && proof.cleanup_confirmed
-        {
-            return Ok(true);
-        }
+        return Ok(true);
     }
     if let Some(proof) =
         storage::read_optional::<storage::CrashReceipt>(&directory.join("crash.json"))?
+        && proof.version == VERSION
+        && proof.identity == service.identity
+        && proof.owner == service.owner
+        && proof.cleanup_confirmed
     {
-        if proof.version == VERSION
-            && proof.identity == service.identity
-            && proof.owner == service.owner
-            && proof.cleanup_confirmed
-        {
-            return Ok(true);
-        }
+        return Ok(true);
     }
     let operations = directory.join("operations");
     if !operations.exists() {

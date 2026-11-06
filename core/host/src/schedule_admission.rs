@@ -70,7 +70,7 @@ struct Reservation {
 }
 enum Workspace {
     Source { cwd: PathBuf, anchor: String },
-    Exclusive(Reservation),
+    Exclusive(Box<Reservation>),
 }
 impl Workspace {
     fn cwd(&self) -> &Path {
@@ -902,7 +902,7 @@ pub(crate) async fn prepare<R: AdmissionRpc>(
                 reject("此目录属于另一个定时任务，不会改绑")
             );
             directory_admission(rpc, project, peers, &value.token, true).await?;
-            Workspace::Exclusive(value)
+            Workspace::Exclusive(Box::new(value))
         }
     };
     let current = task

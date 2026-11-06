@@ -247,10 +247,10 @@ impl Migration {
         let mut records = Vec::new();
         for entry in std::fs::read_dir(self.home.join("host/imports"))? {
             let entry = entry?;
-            if entry.file_type()?.is_dir() {
-                if let Some(r) = read_optional(&entry.path().join("record.json"))? {
-                    records.push(r);
-                }
+            if entry.file_type()?.is_dir()
+                && let Some(r) = read_optional(&entry.path().join("record.json"))?
+            {
+                records.push(r);
             }
         }
         Ok(records)
@@ -1223,13 +1223,13 @@ impl Migration {
             ),
         }
         for receipt in r.vault_receipts.iter().filter(|v| v.slot == input.slot) {
-            if let Some(value) = self.vault.read(&receipt.entry_id)? {
-                if value != input.value {
-                    return Err(error(
-                        "migrationConflict",
-                        "same source credential reference contains different values",
-                    ));
-                }
+            if let Some(value) = self.vault.read(&receipt.entry_id)?
+                && value != input.value
+            {
+                return Err(error(
+                    "migrationConflict",
+                    "same source credential reference contains different values",
+                ));
             }
         }
         let mut receipt = r
@@ -1464,14 +1464,12 @@ impl Migration {
                 profile,
                 legacy_project_id,
             } = &registration.source
+                && profile == &record.source.profile
+                && !bindings
+                    .iter()
+                    .any(|(id, _)| id == &registration.project_id)
             {
-                if profile == &record.source.profile
-                    && !bindings
-                        .iter()
-                        .any(|(id, _)| id == &registration.project_id)
-                {
-                    bindings.push((registration.project_id.clone(), legacy_project_id.clone()));
-                }
+                bindings.push((registration.project_id.clone(), legacy_project_id.clone()));
             }
         }
         let mut aliases: Vec<String> = bindings.iter().map(|(_, alias)| alias.clone()).collect();
@@ -1529,21 +1527,20 @@ impl Migration {
     }
     pub fn remote_seed(&self) -> Result<Option<(String, String, Vec<String>)>> {
         for r in self.records()? {
-            if self.committed(&r)?.is_some() {
-                if let Some(receipt) = r
+            if self.committed(&r)?.is_some()
+                && let Some(receipt) = r
                     .vault_receipts
                     .iter()
                     .find(|v| v.slot == vault::Slot::RemoteIdentity)
-                {
-                    return Ok(Some((
-                        r.source_id,
-                        receipt.entry_id.clone(),
-                        r.bindings
-                            .iter()
-                            .map(|b| b.alias.legacy_project_id.clone())
-                            .collect(),
-                    )));
-                }
+            {
+                return Ok(Some((
+                    r.source_id,
+                    receipt.entry_id.clone(),
+                    r.bindings
+                        .iter()
+                        .map(|b| b.alias.legacy_project_id.clone())
+                        .collect(),
+                )));
             }
         }
         Ok(None)
@@ -1584,10 +1581,9 @@ impl Migration {
                 profile,
                 legacy_project_id,
             } = &project.source
+                && *profile == record.source.profile
             {
-                if *profile == record.source.profile {
-                    owner = Some((record.source.core_home, legacy_project_id.clone()));
-                }
+                owner = Some((record.source.core_home, legacy_project_id.clone()));
             }
         }
         ensure!(

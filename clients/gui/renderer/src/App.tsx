@@ -12,7 +12,7 @@ import { type Data, type PlatformServices } from "./services.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
 import { SettingsNavigation } from "./settings/SettingsWorkspace.js";
-import { useGuardedNavigation } from "./settings/UnsavedChanges.js";
+import { useGuardedQuit } from "./settings/UnsavedChanges.js";
 import { useTrajectoryPolling } from "./settings/useTrajectoryPolling.js";
 import { useNavigationWorkspace } from "./state/navigationWorkspace.js";
 import { projectExecutionBlocked } from "./state/projectExecution.js";
@@ -50,8 +50,8 @@ import {
   WorkspaceTaskActions,
 } from "./views/WorkbenchChrome.js";
 import { WorkbenchPlugins } from "./views/WorkbenchPlugins.js";
-import { WorkbenchSettings } from "./views/WorkbenchSettings.js";
-import { WorkspacePanelContent } from "./views/WorkspacePanelContent.js";
+import { WorkbenchSettings } from "./views/LazyWorkbenchSettings.js";
+import { WorkspacePanelContent } from "./views/LazyWorkspacePanelContent.js";
 import { WorkspacePanels } from "./views/WorkspacePanels.js";
 import { WorkspaceFileTree } from "./workspace-file-tree/WorkspaceFileTree.js";
 export function App({ services }: { services: PlatformServices }) {
@@ -63,11 +63,7 @@ export function App({ services }: { services: PlatformServices }) {
 }
 function AppContent({ services }: { services: PlatformServices }) {
   const { t } = useI18n();
-  const requestNavigation = useGuardedNavigation();
-  useEffect(
-    () => services.onQuitRequested?.(() => requestNavigation(() => {})),
-    [services, requestNavigation],
-  );
+  const requestNavigation = useGuardedQuit(services);
   const { terminalLocation, nextPromptSuggestions } = useApplicationPreferences();
   const session = useSessionNavigation(services, (message) => setError(message));
   const {

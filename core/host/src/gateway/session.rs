@@ -352,7 +352,13 @@ impl Session {
             Ok(())
         };
         let app = Self::app(
-            host, identity, peer, limits, requests, writer, &mut slot, admission,
+            host,
+            identity,
+            peer,
+            limits,
+            (requests, writer),
+            &mut slot,
+            admission,
         );
         tokio::pin!(reading, app);
         tokio::select! {
@@ -365,8 +371,7 @@ impl Session {
         identity: Rc<wire::Identity>,
         peer: String,
         limits: wire::WireLimits,
-        mut requests: tokio::sync::mpsc::Receiver<RequestMessage>,
-        mut writer: W,
+        (mut requests, mut writer): (tokio::sync::mpsc::Receiver<RequestMessage>, W),
         slot: &mut SessionSlot,
         admission: gateway_owner::Admission,
     ) -> Result<()>
@@ -601,12 +606,10 @@ impl Session {
                         json!({"id":request["id"],"error":{"code":code,"message":description}});
                     if session.gui_read
                         && matches!(method, Some("session.history" | "artifact.read"))
-                    {
-                        if let Some(native) =
+                        && let Some(native) =
                             error.downcast_ref::<crate::server::schedule_connection::RpcFailure>()
-                        {
-                            response["error"]["coreError"] = native.0.clone();
-                        }
+                    {
+                        response["error"]["coreError"] = native.0.clone();
                     }
                     if matches!(
                         request["method"].as_str(),
@@ -927,9 +930,7 @@ impl Session {
             .remote_request(
                 &self.host,
                 &id,
-                &service_id,
-                generation,
-                &connection_id,
+                (&service_id, generation, &connection_id),
                 method,
                 params,
             )
@@ -1346,7 +1347,7 @@ impl Session {
         // 新工作台创建命令与原生受理日志分离；旧记录仍按原 scope 只读恢复。
         for scope in [self.creation_command_scope(&id), id] {
             let (_, snapshot) = self.host.journal.native_snapshot(&scope)?;
-            let entries = snapshot["outcomes"]
+            let mut entries = snapshot["outcomes"]
                 .as_object()
                 .context("RESOURCE_UNAVAILABLE")?
                 .values()
@@ -1356,17 +1357,14 @@ impl Session {
                         .context("RESOURCE_UNAVAILABLE")?
                         .iter(),
                 );
-            if let Some(entry) = entries
-                .filter(|entry| {
-                    entry["remote"]["hostId"] == self.host_peer
-                        && entry["remote"]["devicePeerId"] == self.peer
-                        && entry["remote"]["projectId"] == project
-                        && entry["remote"]["commandId"]
-                            .as_str()
-                            .is_some_and(|id| id.eq_ignore_ascii_case(command))
-                })
-                .next()
-            {
+            if let Some(entry) = entries.find(|entry| {
+                entry["remote"]["hostId"] == self.host_peer
+                    && entry["remote"]["devicePeerId"] == self.peer
+                    && entry["remote"]["projectId"] == project
+                    && entry["remote"]["commandId"]
+                        .as_str()
+                        .is_some_and(|id| id.eq_ignore_ascii_case(command))
+            }) {
                 return Ok(Some(entry.clone()));
             }
         }
@@ -1737,9 +1735,7 @@ impl Session {
             .remote_request(
                 &self.host,
                 &id,
-                &service_id,
-                generation,
-                &connection_id,
+                (&service_id, generation, &connection_id),
                 "areal/interaction/respond",
                 native,
             )

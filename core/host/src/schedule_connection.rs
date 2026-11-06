@@ -151,9 +151,7 @@ impl Connections {
         &self,
         host: &Host,
         id: &str,
-        service_id: &str,
-        generation: &str,
-        connection_id: &str,
+        (service_id, generation, connection_id): (&str, &str, &str),
         method: &str,
         params: Value,
     ) -> Result<Value> {
@@ -508,12 +506,11 @@ async fn connect(host: Rc<Host>, id: &str, service: Service) -> Result<Rc<CoreSe
                                     };
                                     if connection.outgoing.try_send(response).is_err() { connection.close(); }
                                 });
-                            } else if let Some(id) = value["id"].as_str() {
-                                if let Some(reply) = connection.pending.borrow_mut().remove(id) {
+                            } else if let Some(id) = value["id"].as_str()
+                                && let Some(reply) = connection.pending.borrow_mut().remove(id) {
                                     let result = if let Some(error) = value.get("error") { Err(RpcFailure(error.clone()).into()) } else { value.get("result").cloned().map(|value| CoreReply { value, sequence: connection.event_sequence.get() }).ok_or_else(unavailable) };
                                     let _ = reply.send(result);
                                 }
-                            }
                         }
                         Message::Ping(bytes) => if writer.send(Message::Pong(bytes)).await.is_err() { break; },
                         Message::Close(_) => break,
@@ -966,10 +963,8 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
     );
     let mut refresh: Option<Refresh> = storage::read_optional(&refresh_path(&host, &id))?;
     loop {
-        if preparation {
-            if let Some(refresh) = &mut refresh {
-                restart(&host, &id, refresh).await?;
-            }
+        if preparation && let Some(refresh) = &mut refresh {
+            restart(&host, &id, refresh).await?;
         }
         host.admission()?;
         ensure!(
@@ -1092,12 +1087,27 @@ pub(super) async fn run(host: Rc<Host>) {
 
 #[cfg(test)]
 mod tests {
+    struct ScheduleHeaders;
+    impl tokio_tungstenite::tungstenite::handshake::server::Callback for ScheduleHeaders {
+        fn on_request(
+            self,
+            request: &tokio_tungstenite::tungstenite::handshake::server::Request,
+            response: tokio_tungstenite::tungstenite::handshake::server::Response,
+        ) -> Result<
+            tokio_tungstenite::tungstenite::handshake::server::Response,
+            tokio_tungstenite::tungstenite::handshake::server::ErrorResponse,
+        > {
+            assert_eq!(
+                request.headers()["authorization"],
+                "Bearer fixture-owner-token"
+            );
+            Ok(response)
+        }
+    }
+
     use super::*;
     use tokio::net::TcpListener;
-    use tokio_tungstenite::{
-        WebSocketStream,
-        tungstenite::handshake::server::{Request, Response},
-    };
+    use tokio_tungstenite::WebSocketStream;
 
     async fn receive(socket: &mut WebSocketStream<tokio::net::TcpStream>) -> Value {
         loop {
@@ -1152,10 +1162,7 @@ mod tests {
             let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
             let server = tokio::task::spawn_local(async move {
                 let (stream, _) = listener.accept().await.unwrap();
-                let mut socket = tokio_tungstenite::accept_hdr_async(stream, |request: &Request, response: Response| {
-                    assert_eq!(request.headers()["authorization"], "Bearer fixture-owner-token");
-                    Ok(response)
-                }).await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders).await.unwrap();
                 let initialize = receive(&mut socket).await;
                 assert_eq!(initialize["method"], "initialize");
                 send(&mut socket, json!({"id":initialize["id"],"result":{}})).await;

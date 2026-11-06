@@ -372,9 +372,7 @@ impl Session {
                 .remote_request(
                     &self.host,
                     &id,
-                    &scope.0,
-                    generation,
-                    &scope.2,
+                    (&scope.0, generation, &scope.2),
                     "areal/thread/start",
                     native,
                 )
@@ -571,9 +569,7 @@ impl Session {
             .remote_request(
                 &self.host,
                 &id,
-                &service,
-                &generation,
-                &connection,
+                (&service, &generation, &connection),
                 "areal/request/read",
                 json!({"requestId":operation,"creationAdmission":original}),
             )
