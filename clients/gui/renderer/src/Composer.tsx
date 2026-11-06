@@ -687,12 +687,15 @@ export function Composer({
     !isSide &&
     !taskManagement &&
     !matchMedia("(max-width: 640px)").matches
-      ? ["side", "btw"]
-          .filter((name) => !appEntries.some((entry) => entry.value.toLowerCase() === name))
+      ? // /btw 是 /side 的别名，菜单只列一项，输入 /btw 仍可搜到并照常解析。
+        ["side"]
+          .filter(
+            () => !appEntries.some((entry) => ["side", "btw"].includes(entry.value.toLowerCase())),
+          )
           .map((name) => ({
             value: name,
             label: `/${name}`,
-            keywords: [t(name === "side" ? "chat.side.title" : "chat.side.btw")],
+            keywords: ["btw", t("chat.side.title"), t("chat.side.btw")],
             description: t("chat.side.newDescription"),
             icon: <SideChatIcon />,
             group: "commands" as const,

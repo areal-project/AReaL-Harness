@@ -331,12 +331,14 @@ export function ThreadScheduledTasks({
   thread,
   action,
   onAdd,
+  hideWhenEmpty = false,
   onOpen,
 }: {
   project: Data;
   thread: Data;
   action: Action;
   onAdd?: () => void;
+  hideWhenEmpty?: boolean;
   onOpen?: (task: Data) => void;
 }) {
   const { t } = useI18n();
@@ -394,6 +396,9 @@ export function ThreadScheduledTasks({
     if (!previous || task.revision >= previous.revision) tasks.set(task.id, task);
   }
   const visible = [...tasks.values()].filter(activeScheduledTask);
+  // 摘要卡只列有内容的行；没有安排时由卡片底部的“添加”入口承担。
+  if (hideWhenEmpty && project.state?.connected && read.status === "ready" && !visible.length)
+    return null;
   return (
     <section className="task-resources-section" aria-label={t("operations.schedules.threadLabel")}>
       <h3 className="task-resources-heading">
