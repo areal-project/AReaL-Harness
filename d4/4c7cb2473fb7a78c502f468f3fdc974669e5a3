@@ -1,0 +1,29 @@
+docs/development/testing.en.md
+  s_65512586972bc8::t_4bb77c2250fb56 18-19
+tests/fixtures/mcp-server.py
+  s_65512586972bc8::t_1ec1fa5d21cea4 8,37-39
+core/engine/src/desktop/mcp.rs
+  s_65512586972bc8::t_1ec1fa5d21cea4 586-587,596,609-614,616-617,631-634
+core/engine/tests/tool_call_stream.rs
+  s_65512586972bc8::t_1ec1fa5d21cea4 1091-1092
+docs/development/testing.md
+  s_65512586972bc8::t_4bb77c2250fb56 16-17
+core/engine/src/tools/tests.rs
+  s_65512586972bc8::t_1ec1fa5d21cea4 1356-1357,1386-1392
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d44c7cb2473fb7a78c502f468f3fdc974669e5a3",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
