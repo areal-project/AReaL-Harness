@@ -25,10 +25,6 @@ exports: ["SettingsDialog", "SettingsToolbar", "EmptySettings"]
 
 引用 [R-UI-COMMON-005](../../../README.md#共同合同)。
 
-## 行为
-
-`R-SETTINGSDIALOG-002` 保留原Base UI模态焦点及busy关闭守卫；宿主useDraftBlocker/useGuardedNavigation仍决定保存和离开。SettingsToolbar只表达刷新/添加意图，EmptySettings保留原空态内容。
-
 ## 内容
 
 引用 [R-UI-COMMON-006](../../../README.md#共同合同)。

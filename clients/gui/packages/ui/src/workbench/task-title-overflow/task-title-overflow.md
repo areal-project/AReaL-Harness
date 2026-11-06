@@ -44,5 +44,3 @@ exports: ["TaskTitleOverflowText"]
 ## 示例
 
 [组件目录与可操作实例](../../../../../renderer/design-system.html?ui-library#component-task-title-overflow)。真实业务路径沿原生产专项验证。
-
-`R-TASKTITLEOVERFLOW-001` 默认样式见同目录 [task-title-overflow.css](task-title-overflow.css)，由 `workbench.css` 聚合。

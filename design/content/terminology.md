@@ -1,16 +1,11 @@
 # 界面术语
 
-`R-TERM-001` 本页约定界面如何称呼 AReaL Harness 的对象。对象定义仍由下表链接的所有者维护。技术详情保留协议名和标识，便于核对；日常界面不要求用户理解所有协议层次。
-
 | 对象 | 界面称呼建议 | 避免歧义 | 详细来源 |
 | --- | --- | --- | --- |
 | `R-TERM-002` Project | 项目 | 不用项目名称暗示授权，也不将项目外聊天称为无效会话 | [工作台](../products/workbench/README.md)、[身份与所有权](../people-and-agents/identity-and-ownership.md) |
 | `R-TERM-003` Thread | 聊天；核对技术身份时用会话 | 一段聊天不等于一次执行。标题、头像不能替代 Thread 身份 | [身份与所有权](../people-and-agents/identity-and-ownership.md#会话身份与执行职责) |
 | `R-TERM-004` Turn | 轮次 | 用户输入、过程与回答按所属轮次组织，不能将每个工具调用称为一次聊天 | [任务推进与过程阅读](../patterns/task-progress.md)、[Core API](../../docs/api/core.md) |
-| `R-TERM-005` Task | 任务；scheduled Task 的入口用定时任务 | 普通请求中的“任务”是日常用语。涉及调度、控制和历史时需明确具体 Task | [身份与所有权](../people-and-agents/identity-and-ownership.md#会话身份与执行职责)、[Task API](../../docs/api/tasks.md#所有权与模式) |
-| `R-TERM-006` TaskRun / Run | 一次执行；历史列表可用执行记录 | 不用执行失败表达 Task 已删除，不用暂停安排表达当前执行已停止 | [控制与审批](../people-and-agents/control-and-approval.md)、[Task API](../../docs/api/tasks.md#客户端-api) |
 | `R-TERM-007` Goal | 目标 | 不把用户一句目标描述当作已经创建 Goal，不把轮次结束当作目标完成 | [身份与所有权](../people-and-agents/identity-and-ownership.md#会话身份与执行职责)、[Task API](../../docs/api/tasks.md#所有权与模式) |
-| `R-TERM-008` Agent | Agent；委派关系中可用子 Agent | 名称、头像和活动提示不证明权限或完成 | [身份与所有权](../people-and-agents/identity-and-ownership.md) |
 | Fork | 分支聊天 | 历史来源不表示父子 Agent 关系或继承正在执行的工作 | [身份与所有权](../people-and-agents/identity-and-ownership.md#三种关系分别表达) |
 | Side Chat | 旁路讨论 | 查看参考内容与执行主任务分开，带回内容只追加主聊天草稿 | [上下文与证据](../people-and-agents/context-and-evidence.md) |
 | `R-TERM-009` Approval | 审批 | 区分允许一次与记住授权范围，不用“确认”覆盖不同承诺 | [控制与审批](../people-and-agents/control-and-approval.md#审批针对明确的操作) |

@@ -7,7 +7,7 @@ import { renderFoundations, writeOrCheck } from "./foundations.mjs";
 import { parseComponentMetadata } from "./documents.mjs";
 
 const tokens = JSON.parse(await readFile(new URL("../tokens.json", import.meta.url), "utf8"));
-test("component contracts require discoverable metadata and a usage/behavior/accessibility structure", async () => {
+test("component contracts require discoverable metadata and a usage and example structure without empty sections", async () => {
   const valid = await readFile(
     new URL("../src/conversation/thinking-status/thinking-status.md", import.meta.url),
     "utf8",
@@ -19,8 +19,12 @@ test("component contracts require discoverable metadata and a usage/behavior/acc
     /missing category/,
   );
   assert.throws(
-    () => parseComponentMetadata(valid.replace("## 可访问性", "## 其他"), "broken.md"),
-    /missing section.*可访问性/,
+    () => parseComponentMetadata(valid.replace("## 示例", "## 其他"), "broken.md"),
+    /missing section.*示例/,
+  );
+  assert.throws(
+    () => parseComponentMetadata(`${valid}\n## 状态\n\n`, "broken.md"),
+    /empty section 状态/,
   );
 });
 test("existing control geometry and default palette remain explicit", () => {

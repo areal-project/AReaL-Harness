@@ -4,8 +4,9 @@ import { snapShotFile } from "./snapshots/source.js";
 import { Button, Input } from "@areal/ui";
 import { AttachmentCard } from "@areal/ui/experimental";
 import { useI18n } from "./i18n/IntlProvider.js";
-import { useEffect, useRef, useState } from "react";
-import type { ChatComposerPasteEvent } from "./LexicalChatInput.js";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import type { ChatComposerPasteEvent, LexicalChatInputHandle } from "./LexicalChatInput.js";
+import { consumeSnapShotFiles } from "./snapshots/drafts.js";
 import { ScanText } from "lucide-react";
 import { ImagePreview } from "./MessageAttachment.js";
 import { imageAnnotation, useImageAnnotationRevision } from "./imageAnnotations.js";
@@ -298,6 +299,64 @@ export function ComposerAttachment({
           {t("chat.composer.retryAttachment")}
         </Button>
       )}
+    </div>
+  );
+}
+
+// 新对话与已有对话共用的附件列表：移除、展开为正文、标注和重试只在这里实现一次。
+export function ComposerFileList({
+  files,
+  onChange,
+  disabled,
+  editor,
+  include = () => true,
+  uploadOwner,
+  onRetry,
+  onAnnotate,
+  onForget,
+}: {
+  files: readonly ComposerDraftAttachment[];
+  onChange: (update: (current: ComposerDraftAttachment[]) => ComposerDraftAttachment[]) => void;
+  disabled?: boolean;
+  editor: RefObject<LexicalChatInputHandle | null>;
+  include?: (file: ComposerDraftAttachment) => boolean;
+  uploadOwner?: string;
+  onRetry?: (file: File) => Promise<unknown>;
+  onAnnotate?: (file: File) => void;
+  onForget?: (file: File) => void;
+}) {
+  const visible = files.filter(include);
+  if (!visible.length) return null;
+  const release = (file: ComposerDraftAttachment) => {
+    onChange((current) => current.filter((item) => item !== file));
+    if (!isComposerFile(file)) return;
+    onForget?.(file);
+    void consumeSnapShotFiles([file]);
+  };
+  return (
+    <div className="composer-attachments" data-testid="composer-attachments">
+      {visible.map((file, i) => (
+        <ComposerAttachment
+          disabled={disabled}
+          key={isComposerFile(file) ? `${file.name}-${file.lastModified}-${i}` : `pasted-text-${i}`}
+          file={file}
+          uploadOwner={uploadOwner}
+          onRetry={onRetry}
+          onReplace={(replacement) =>
+            onChange((current) => current.map((entry) => (entry === file ? replacement : entry)))
+          }
+          onAnnotate={onAnnotate && ((file) => !disabled && onAnnotate(file))}
+          onRemove={() => {
+            if (!disabled) release(file);
+          }}
+          onExpand={(content) => {
+            if (disabled) return;
+            const current = editor.current?.getMarkdown() ?? "";
+            editor.current?.appendText(`${current.length ? "\n\n" : ""}${content}`);
+            release(file);
+          }}
+        />
+      ))}
     </div>
   );
 }

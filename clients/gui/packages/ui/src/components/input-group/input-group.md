@@ -25,10 +25,6 @@ exports: ["InputGroup", "InputGroupAddon", "InputGroupButton", "InputGroupText",
 
 聚焦、禁用、前/后附件、textarea。
 
-## 行为
-
-`R-INPUTGROUP-001` 子控件保留原生名称和事件；实际禁用由宿主作用于控件。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

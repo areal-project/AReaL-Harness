@@ -32,14 +32,6 @@ DecisionCard、聚焦标题、原生radio列表、宿主提供的头部/页脚/�
 
 问题和选项完整换行；一个视图聚焦一题，多题进度与导航由宿主提供。必要操作留在正文滚动区外。
 
-## 可访问性
-
-`R-QUESTIONCARD-004` fieldset引用当前标题，radio保留键盘行为。状态不只依赖颜色，数字为辅助显示。长内容、18px和窄容器保持可达。
-
-## 规则
-
-`R-QUESTIONCARD-005` 实验入口采用conversation.css；不包含Core类型、请求或已保存偏好。与审批共享展示外壳，合法动作和回答状态继续由AskUserQuestion拥有。
-
 ## 示例
 
 [独立实例](../../../../../renderer/design-system.html?ui-library#component-question-card)与[决策预览](../../../../../renderer/design-system.html?content-system)使用同一包内组件。

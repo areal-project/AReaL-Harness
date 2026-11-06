@@ -4,7 +4,18 @@
 
 ## GUI 设计入口
 
-新增或修改 GUI 页面、组件、布局、样式、动效或 UI 文案时，编辑前先读 [设计系统开工顺序](clients/gui/design-system/README.md#开工顺序)，选择交互分类、既有组件和验收状态；交付按 [完成条件](clients/gui/design-system/governance.md#完成条件)说明例外与实际证据。静态审计使用 [增量检查](clients/gui/design-system/automation.md#增量设计检查)；只有目录检查通过不能代替真实交互和视觉审查。
+改 GUI 页面、组件、样式、动效或文案前，先读 [areal-ui-guide](clients/gui/packages/ui/skills/areal-ui-guide/SKILL.md) 和所用组件旁的合同；审查界面用 [areal-ui-critique](clients/gui/packages/ui/skills/areal-ui-critique/SKILL.md)。下面八条是写 GUI 时要做的判断；第 1、2 条的新增违规已由 CI 拦截，其余靠作者和审查者：
+
+1. 用 `@areal/ui` 组件，页面只给布局类；外观差异做成组件的 variant 或 slot。
+2. 颜色、间距、字号、圆角和时长只用 Token。
+3. 一个概念只有一套实现：输入框、审批卡、消息行、列表条目复用业务组件，不复制再改。
+4. 只通知用户需要知道或能处理的事，其余在原处说明。
+5. 面向普通用户，高级功能默认收起。
+6. 文案短，用词以[术语表](design/content/terminology.md)为准。
+7. 未确认的状态不显示成确定：读不到不等于没有，已提交不等于已完成。
+8. 先在网页验证；只有桌面端才有的能力在桌面验收。
+
+能机器判断的交给 CI：交付前运行 `pnpm --dir clients/gui verify:design`，界面改动再跑 `design:build` 与 `test:design`。新增规则先考虑写成检查（见[自动化规则](clients/gui/design-system/automation.md)），写不成检查才进组件合同，每个组件合同的强制规则不超过 10 条。
 
 ## 开发规范
 

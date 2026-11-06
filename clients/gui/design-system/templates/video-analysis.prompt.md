@@ -1,9 +1,5 @@
 # 视频候选分析提示词
 
-`R-VIDEOANALYSISPROMPT-001` 由[默认流程](../structured-flow.md#执行顺序与每步完成条件)步骤3调用，配套[输出schema](video-analysis.schema.json)。先把任务内允许发送的媒体、对应run/角色/时长与问题填入下方；真实运行保留输入文件哈希和所用工具/模型信息。schema只限定候选格式，不自动核实内容。
-
-`R-VIDEOANALYSISPROMPT-002` 使用本机已授权的Antigravity时，先用当前`agy --help`、`agy models`确认入口、模型与认证；无需安装另一套工具。已验证的接入方式是提示词引用限定视频路径，使用`--json-schema`及`--output-format stream-json`返回结构化结果。素材路径引用不等于媒体已经读取；检查实际读取记录及`mediaAccess`。服务封装保留原件，再提取结构化结果。模型/effort按本次任务选择并记录；先前High实验不是之后任务的强制配置。
-
 把以下文本作为独立的观察任务提交；素材参数只来自当前任务的允许范围。可同时分析参考与当前实现，保持每段run身份。先独立观察视频，再用任务合同判断候选差异；测试预期是意图，不是已发生事件。
 
 ```text

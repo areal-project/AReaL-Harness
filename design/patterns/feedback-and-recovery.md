@@ -19,8 +19,6 @@
 
 `R-RECOVERY-007` 反馈绑定受影响的任务、字段或资源。局部问题保留其他可用内容，不用全局失败遮住已经确认的结果。反馈同时使用可理解文字，技术详情按需展开。成功、结果刷新和计量结算分别表达，不因后续刷新失败推翻已知结果。
 
-`R-RECOVERY-008` GUI 的实际组件、错误展示和恢复入口见[交互族](../../clients/gui/design-system/interactions.md#i-recover-异常与恢复)。后续 Web 复用相同状态含义，恢复入口按实际浏览器能力和执行契约提供。
-
 ## 短时通知
 
 `R-RECOVERY-009` 必须打断用户且有明确处理入口的提示采用顶部居中的Toast：info、success、warning、error分别使用语义颜色和图标，默认5秒后消失，支持手动关闭；悬停或键盘聚焦暂停剩余计时。实际实现与无障碍合同见[NotificationToast](../../clients/gui/packages/ui/src/components/notification-toast/notification-toast.md)。通知消失只关闭提示，不删除草稿、原始结果、详情或恢复动作；任务状态与可核对事实由原所有者保留。
@@ -30,7 +28,6 @@
 `R-RECOVERY-010` 恢复任务时保留未发送草稿，并从权威快照重新附着原执行，不重放提交。对正在阅读历史的用户，当前仍可用的正文段落也是恢复对象。新输出保持在原任务中，只有显式返回最新后才恢复跟随。等待历史补齐不能覆盖用户之后的导航。
 
 同一主窗口的 Renderer 重载与崩溃后显式重载已有真实 GUI 证据，见 [E-RECOVERY](../../clients/gui/design-system/base-evidence.md#e-recovery)。阅读检查点的所有者、存储边界与排除范围见 [Messages 阅读合同](../../clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读)。完整应用重启、未加载历史与过程展开状态不在本次范围内。既有进程内外观切片证据不能替代此项验收。
-
 
 ## 统一短时反馈与待确认状态
 

@@ -25,10 +25,6 @@ exports: ["Select", "SelectContent", "SelectGroup", "SelectItem", "SelectLabel",
 
 已选、占位、禁用/禁用项、空列表、长标签。
 
-## 行为
-
-`R-SELECT-001` 由同一Base UI Root/Trigger/Popup/List/Item维持类型与键盘，定位/层级属于组件，宿主负责选值回执。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

@@ -19,7 +19,3 @@
 ## 禁用
 
 `R-ACTIONBUTTON-008` `disabled` 或 `pending` 任一成立时，按钮均不可触发。未知结果由调用方保留核对入口，不能自动重新提交。
-
-## 示例
-
-`R-ACTIONBUTTON-009` [查看真实操作按钮与控件示例](../../../design-system.html#controls)。页面顶部的状态选择可检查等待、明确失败和结果待核对。

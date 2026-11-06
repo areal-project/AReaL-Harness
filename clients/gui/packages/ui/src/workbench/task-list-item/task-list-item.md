@@ -37,10 +37,6 @@ exports: ["MemoTaskItem"]
 
 引用 [R-UI-COMMON-012](../../../README.md#共同合同)。
 
-## 规则
-
-`R-TASKLISTITEM-001` 任务运行/未读/置顶/Worktree事实来自宿主；拖拽由renderSurface沿原SidebarDragSurface拥有。包不排序、不改变任务归属、不归档或重命名，只表达回调意图。
-
 ## 示例
 
 [组件目录与可操作实例](../../../../../renderer/design-system.html?ui-library#component-task-list-item)。真实业务路径沿原生产专项验证。

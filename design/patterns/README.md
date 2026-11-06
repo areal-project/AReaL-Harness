@@ -1,19 +1,12 @@
 # 交互模式
 
-`R-ENTRY-035` [设计意图](intents.md)回答用户要完成什么。模式说明 GUI 中的内容、状态和动作怎样组合成完整任务，为后续 Web 复用提供依据。具体组件名、几何、规则 ID 和准入继续由 GUI 原所有者维护。
-
 | 用户问题 | 共享模式 | 对应平台接线 |
 | --- | --- | --- |
 | 提交后怎样持续观察任务 | [任务推进与过程阅读](task-progress.md) | GUI 对话合同与真实状态投影 |
-| `R-ENTRY-036` 信息较长或需要查看资源时怎样返回 | [深入查看与返回](inspect-and-return.md) | 资源面板、展开、阅读与返回入口 |
 | 怎样查找插件、调整启用范围并返回任务 | [插件资源管理](plugin-resources.md) | GUI 插件中心、原管理提交与回执 |
 | 怎样调整偏好或配置 | [设置与管理](settings.md) | GUI 设置组合与偏好所有者 |
 | 出错、等待或结果未知时怎样继续 | [反馈与恢复](feedback-and-recovery.md) | GUI 状态投影和既有恢复动作 |
 
-`R-ENTRY-037` 人的决定与执行事实由 [人与 Agent](../people-and-agents/README.md)解释，模式引用这些含义，不再定义一套审批、受理或委派状态机。控件选择见[组件目录](../components/README.md)。
-
 ## 变更归属
-
-`R-ENTRY-038` 先明确用户意图、必要事实和可观察结果，再选择已有 GUI 模式和真实组件。设计含义归对应主题，布局组合留在 GUI 合同；Web 复用时引用相同定义，只补浏览器差异与验证。
 
 `R-ENTRY-039` 模式变更应给出初态、操作、所需事实、正常与异常结果、平台条件和验证位置。GUI 的 I-*、P-* 及 CONV-* 继续由[平台模式](../../clients/gui/design-system/patterns.md)和[交互族](../../clients/gui/design-system/interactions.md)定义，不能在共享目录复制同 ID 的另一份正文。

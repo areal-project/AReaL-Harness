@@ -54,8 +54,11 @@ export function parseComponentMetadata(markdown, path) {
       data.exports.every((name) => typeof name === "string"),
     `invalid exports: ${path}`,
   );
-  for (const section of ["何时使用", "组成", "状态", "行为", "内容", "可访问性", "规则", "示例"])
+  // 只强制入口和示例；其余小节有内容才写，空标题不保留。
+  for (const section of ["何时使用", "示例"])
     assert.ok(markdown.includes(`\n## ${section}\n`), `missing section ${section}: ${path}`);
+  const empty = markdown.match(/\n## ([^\n]+)\n\s*(?=\n## |$)/);
+  assert.ok(!empty, `empty section ${empty?.[1]}: ${path}`);
   if (data.experimentalExports) {
     data.experimentalExports = JSON.parse(data.experimentalExports);
     assert.ok(

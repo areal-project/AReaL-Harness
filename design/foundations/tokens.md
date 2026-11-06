@@ -7,10 +7,8 @@
 | 值 | 唯一可编辑位置 | 说明 |
 | --- | --- | --- |
 | 字号、行高、间距、控件高度、圆角、阴影、动效、层级、状态色 | [tokens.json](../../clients/gui/packages/ui/tokens.json) 的 `foundation` | 生成 `foundation.css` 与 Tailwind 映射；明暗不同的值写在 `$extensions.build.areal.ui.dark` |
-| `R-TOKEN-016` 默认明暗调色板（背景、前景、边框、表面等） | tokens.json 的 `themes` 作为输入、`palette` 声明参考值与单向角色关系；生成的 `palette.ts` 通过 [theme.ts](../../clients/gui/packages/ui/src/theme.ts) 的 `paletteVariables` 调用 | 生成 `themes.css` 用于首帧；挂载后 `useAppearance` 用同一函数应用用户偏好 |
 | 浏览器焦点宽度与偏移 | [focus.css](../tokens/focus.css) | GUI 与本地 Web 共用，见 [D-002](../decisions/002-shared-semantics.md) |
 | 产品专用主题别名（工作流图、终端色、轨迹色等） | [styles.css](../../clients/gui/renderer/src/styles.css) 的 `@theme` 与 `.dark` | 只放 @areal/ui 未定义的变量 |
-| `R-TOKEN-017` 用户偏好（界面字号、内容字号、字体、调色板、动效） | [applicationSettings](../../clients/gui/renderer/src/settings/applicationSettings.ts) 与 [applicationPreferences](../../clients/gui/renderer/src/settings/applicationPreferences.ts) | 运行时输入，不是另一个默认值来源 |
 
 修改流程：调色板角色与公式改 tokens.json，WCAG 算法维护在 theme.ts → `pnpm --dir clients/gui --filter @areal/ui generate` → `build` 与 `check` → 运行设计审计。
 
@@ -27,7 +25,6 @@
 - 设置说明：活跃设置标签的说明用 `--color-settings-secondary`，不借用禁用透明度或已完成过程的颜色。
 - `R-TOKEN-019` 过程附注与对话：对话时间线用 `--text-conversation` / `--conversation-line` / `--conversation-gap`（跟随内容字号）；按钮、菜单等控件文字用 `--text-ui-*`（跟随界面字号）。两种字号偏好不能合并。
 - `R-TOKEN-020` 阅读宽度：消息列与输入停靠区共用 `--reading-width`，内侧留白用 `--spacing-field`；嵌入式对话保留宿主宽度。
-- `R-TOKEN-021` 独有宽度、滚动上限或定位属于具体组件，可以保留局部数值；多个组件共用时才进入 tokens.json。
 
 ## 自动守卫
 
@@ -48,8 +45,6 @@
 以下位置不跟随界面字号，留在基线中：`:root` 的 `font-size: 16px`（rem 基准）；远程与移动配对界面（`remote.css`、`MobileSettings.css`，按手机尺寸设计）；以及没有对应角色的 10/15/20/23/28px。新增角色时先在 tokens.json 定义，再替换这些值。
 
 ## 平台映射
-
-`R-TOKEN-023` 本地 Web 由 [style.css](../../clients/web/style.css) 与 [app.js](../../clients/web/app.js) 拥有样式与主题偏好，只共享 focus.css；[Core 静态资源入口](../../core/app-server/src/lib.rs)在编译时把 focus.css 与 Web CSS 拼接为 `/ui/style.css`。Remote Web 的 [RemoteWorkbench](../../clients/gui/renderer/src/remote/RemoteWorkbench.tsx) 复用 GUI 样式和 `useAppearance`。
 
 | 角色 | GUI | 本地 Web |
 | --- | --- | --- |

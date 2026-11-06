@@ -1,0 +1,602 @@
+[
+  {
+    "file": "renderer/src/settings/MobileAdvancedNetwork.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-access-panel\"",
+    "fingerprint": "41d068fe74bc550a122feed1bb974fac4cd98ecd8a546ff6ee1b6f5d473150c0"
+  },
+  {
+    "file": "renderer/src/settings/MobileDevices.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-device-list\"",
+    "fingerprint": "bd27bac0b774beab4b546c6375eac6a802c422b7628449c4acb0a52aa08bbb64"
+  },
+  {
+    "file": "renderer/src/settings/MobileDevices.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-device-list\"",
+    "fingerprint": "218079c113c36807e6cec2128c7d7848b4756080ee0fdcbe34fcd1f7c3d2fd24"
+  },
+  {
+    "file": "renderer/src/components/ai-elements/message-response-renderer.tsx",
+    "kind": "jsx",
+    "snippet": "className={className}",
+    "fingerprint": "eb0516f0fa5e34e9e7983fa36756bfec889b3eb9df468d6b916abecccbf02d4a"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktrees-general-group\"",
+    "fingerprint": "dea26d1b3766e86ca5f130fe8a4d339b8a21c24974b1c2d42ccd9a1a2133e40f"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"worktrees-name-group\"",
+    "fingerprint": "c726596bdbf65f3ec31ddc5cf6d8f3c05713babcad8db6532dde06a7c8e37263"
+  },
+  {
+    "file": "renderer/src/workspace-file-tree/WorkspaceFileTree.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"review-file-filter-input\"",
+    "fingerprint": "42b73e89bf63362abc985d1a81519bbe3ee7886d269a29db755278ab2e5df828"
+  },
+  {
+    "file": "renderer/src/TurnElapsed.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"turn-progress-summary\"",
+    "fingerprint": "3c3d016fcb1e9b28a2ad52e09679c3c69d103abb8719861c268aff7ec74e14e7"
+  },
+  {
+    "file": "renderer/src/MessageActions.tsx",
+    "kind": "jsx",
+    "snippet": "className={`icon-button ${className}`}",
+    "fingerprint": "21f966c0403f57ad481918a26cdd6aa6e3c07b031d8060a1a943e5f9538cde65"
+  },
+  {
+    "file": "renderer/src/settings/RelayServicePanel.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-relay-service\"",
+    "fingerprint": "641ed5ddd2be79cbc19b1451dd3767735618e00072ae95a91d2e12aad04509c7"
+  },
+  {
+    "file": "renderer/src/settings/UsageDashboard.tsx",
+    "kind": "jsx",
+    "snippet": "className={`usage-cell usage-level-${level(day.activeMs)}`}",
+    "fingerprint": "7fbbbfee7f9c8911e5386e1ec418d0a07bda7cd51fffd9e63ffda6b7924d8786"
+  },
+  {
+    "file": "renderer/src/Composer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-primary-action\"",
+    "fingerprint": "61f60bb8b7ce3d066b4a8014a672b94c3272e94fedf45a8e1de63bd59bd889d6"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-primary-action\"",
+    "fingerprint": "a12d0f638ad6a899fd918787a87833cecccbe1f79c2cac98599a743a815195ca"
+  },
+  {
+    "file": "renderer/src/ModelTrajectoryPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"trajectory-entry\"",
+    "fingerprint": "f3c38b25021530bdf90f3859fcefa11c3f7b6f9f85a3766ecc5d252ca637f966"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-catalog-row\"",
+    "fingerprint": "52871716202239c73a536beb26b6305f99e52cb0fbe18ce53a4c8ff6e7a00c1c"
+  },
+  {
+    "file": "renderer/src/Reasoning.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-group-summary\"",
+    "fingerprint": "bbf5e2943905e0083580b4059b7349cb014fc361330ff83248b32e59ee2ec9af"
+  },
+  {
+    "file": "renderer/src/TurnProgress.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"turn-progress-summary\"",
+    "fingerprint": "bdcc4e9e64cc7987e1e69264831c7b156de0549a13ffcd6e9b1de31419bf5b03"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-summary-row tool-image-row\"",
+    "fingerprint": "f1d5cf0d9fe42691da9c7e0a827cc82d61e53f91836ade63a9d6fa833a8c6de0"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-summary-row tool-file-row\"",
+    "fingerprint": "915521aacf35e4a544da53b9bb593e0da10203f330c5fd602a3fded8baad1ce9"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-summary-row\"",
+    "fingerprint": "3e81ed3a6872554ddc7eb9c91acfd8ff3bb1471d327dd4ecff27216f5bec1da7"
+  },
+  {
+    "file": "renderer/src/SlashCommandMenu.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"slash-command-row\"",
+    "fingerprint": "1c98c5060926de154806f1b8c2f09b27f73556bc90c255133f2629e18e6d127b"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePane.tsx",
+    "kind": "jsx",
+    "snippet": "style={{ flexBasis: `${width}%`, display: active ? undefined : \"none\" }}",
+    "fingerprint": "d7211eadea7db0a19e772a7d2afc024fda6100c7cdbb927215840ca89834d019"
+  },
+  {
+    "file": "renderer/src/ConversationTimeline.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"message-time\"",
+    "fingerprint": "6130904ad6fdd8a8308126a5c869973678f0dc424901c81f3d609ab0ab23f3ae"
+  },
+  {
+    "file": "renderer/src/McpComposerAttachments.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-mcp-card\"",
+    "fingerprint": "ea79734f5a66155d57105b3f2141b29d4019f9afb554affe52c4a6b24f0a5661"
+  },
+  {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"task-search\"",
+    "fingerprint": "17cbfc9fee8fe91138edd1d825cc894a04d2815a4c765d8177e159f49b6383a4"
+  },
+  {
+    "file": "renderer/src/ComposerQueue.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-queue-grip\"",
+    "fingerprint": "6bef83741456dd2290fd0ecaf32aee8594e9f6e5d9f97749320c52b5e7a19397"
+  },
+  {
+    "file": "renderer/src/ComposerQueue.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"composer-queue-steer\"",
+    "fingerprint": "a33dd175f4cadfa035cd95b38b339c0754b4965d59e4a7a24b58f743feba5642"
+  },
+  {
+    "file": "renderer/src/settings/ChatGPTSubscription.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"subscription-settings\"",
+    "fingerprint": "30ee1a87f923e506dee79955b767f011cbe6b77ed468aa204f6f18e5f8a3fd2f"
+  },
+  {
+    "file": "renderer/src/WorkgroupsPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"ml-2 w-20 rounded-control border border-border bg-transparent px-2\"",
+    "fingerprint": "53b007854a4c163cfc68fed5e41cda5f32c7450484205ced3f9fc844b7cd38e9"
+  },
+  {
+    "file": "renderer/src/settings/HooksSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"w-full min-h-32 font-mono\"",
+    "fingerprint": "0ce1449050daef8f53b2419a96e09527c06e8345e9fd98e950a88201f95cf091"
+  },
+  {
+    "file": "renderer/src/UpdateIndicator.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"areal-update-trigger relative inline-flex items-center justify-center size-9 shrink-0 border-0 rounded-navigation bg-transparent text-foreground\"",
+    "fingerprint": "c53012980380d90b940575a90c1e667394e612dc395adf0bafcebc8942cea716"
+  },
+  {
+    "file": "renderer/src/UpdateIndicator.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"areal-update-panel\"",
+    "fingerprint": "c5af2832166f84acb9acdec602dc4d7cc64b10ff7ad4962c9d39fe3cbc512463"
+  },
+  {
+    "file": "renderer/src/UpdateIndicator.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"m-0 text-ui-sm leading-normal wrap-anywhere text-foreground\"",
+    "fingerprint": "bfb6dfd055ec37f3e4180b0fecde908cd7b32d3efb023aec32658cadea8d65ee"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-icon-button size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] p-inline\"",
+    "fingerprint": "936342ae87d09129c5722e7efe8706e3a5f9f53eb30d1edb526fd1c5407cea60"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-back-button h-auto min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-0 gap-inline [&_svg]:size-[var(--spacing-field)]! text-fixed-body\"",
+    "fingerprint": "a08c9c94714d9262605b43a18414d14e455f8d4e790ca6e6be3f0295f176a472"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-icon-button size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] p-inline\"",
+    "fingerprint": "00e980bbb8b996f7b4aeb16d77b631e24e328f4d49e7fdecee87b8230b4fadd6"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-project-card w-full gap-inline shadow-none border-0 h-auto whitespace-normal text-start justify-start p-field mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] bg-hover rounded-[var(--radius-card)]! text-foreground\"",
+    "fingerprint": "35f27fd0e98ded3c45616c69c41d92a45973f713e52dc21c59beade7d54e564b"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch h-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] gap-inline [&_svg]:size-field!\"",
+    "fingerprint": "4b7ef4a40cb8f9284640aa9a9f317a1e36ad056b1d8d266692c92ca023673e11"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-work-row w-full gap-inline shadow-none [border-radius:var(--radius-navigation)]! [&:hover]:bg-navigation-selected [&:focus-visible]:bg-navigation-selected h-auto whitespace-normal text-start justify-start p-inline mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "9bc75d32c35785c67c8aedf2130dd85c492a679e3f736418cbf7e326f5c35f9b"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "d5c0f99fb8c447674b7ff289e8171efae48455279a6af41d395ee5c56574bb24"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "3208f6dc0758a9f890feaaf14c0f2d6011d93a0063963afdd38647d9110be656"
+  },
+  {
+    "file": "renderer/src/mobile/MobileWorkspace.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "120b3ef37b0554a3dd9367be1e28d468f7fd863e52a06991eb954edbad028761"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "48698453a56cc4fd75f087e8bd16c85f8c1079e5c39d74d02141ff080a527f90"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-composer-chip h-auto min-h-[var(--size-touch-target)] min-w-0 max-w-full py-[calc(var(--spacing-inline)/2)] px-inline gap-[calc(var(--spacing-inline)/2)] shrink [&_span]:min-w-0 [&_span]:truncate [&_svg]:size-[var(--activity-chevron-size)]! text-fixed-caption text-foreground-subtle\"",
+    "fingerprint": "1ff0e245dd44e0fdc4af8cdb13c78b57ba47efcdfa69d6bad4e78896db68ea20"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-composer-chip h-auto min-h-[var(--size-touch-target)] min-w-0 max-w-full py-[calc(var(--spacing-inline)/2)] px-inline gap-[calc(var(--spacing-inline)/2)] shrink [&_span]:min-w-0 [&_span]:truncate [&_svg]:size-[var(--activity-chevron-size)]! text-fixed-caption text-foreground-subtle\"",
+    "fingerprint": "828bcc0b1751eb4b3e802a305e8c9f36a40c2d7072ec7168cf922f3a75b76a74"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] composer-primary-action [border-radius:var(--radius-pill)] composer-stop-action\"",
+    "fingerprint": "79427394dcf7bcddd9856664a47f158eb43b897cb564813c3a891cbfedff9b14"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] composer-primary-action [border-radius:var(--radius-pill)]\"",
+    "fingerprint": "a9914cfe9baea7ac41e1b23e1622cf5d42b547b0df2d2c13cd0399f37f65fc47"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-model-sheet [&_h2]:[line-height:1.3] [&_h2]:font-semibold [&_h3]:[line-height:1.3] [&_h3]:font-semibold border-0 [border-radius:var(--radius-overlay)_var(--radius-overlay)_0_0] shadow-none [transition:translate_var(--motion-normal)_var(--ease-standard)]\"",
+    "fingerprint": "09759487f42adbd911d898361244de6c5a9170a81ba3d83bf5215f2676b11f48"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-sheet-back min-w-[var(--size-touch-target)] min-h-[var(--size-touch-target)]\"",
+    "fingerprint": "2e5f4d7d598d7d26924904bda80579aca049852a3326c19689d362bec15a3eea"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-sheet-done h-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-0 text-fixed-body font-semibold\"",
+    "fingerprint": "b4eeb823090b1834aa17d8de5b8de4b9aa8db48302fa543cbcdc3b02bd613b85"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-model-summary w-full h-auto min-h-[var(--size-touch-target)] gap-inline [&>span]:min-w-0 text-fixed-section-title! justify-center\"",
+    "fingerprint": "616a56d8cf5fe76cf289bfe5c14aa4fb5215eff9e9ec89138d7a6c967e0becdc"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-setting-row flex w-full h-auto min-h-[var(--size-touch-target)] p-field gap-inline justify-start [&_svg]:size-[var(--spacing-field)]! text-fixed-emphasis! [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border\"",
+    "fingerprint": "00550de1c30e5a0e1d25ae0cb082740effa50d191a0702d644e922e4324e0daf"
+  },
+  {
+    "file": "renderer/src/mobile/MobileComposer.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-setting-row flex w-full h-auto min-h-[var(--size-touch-target)] p-field gap-inline justify-start [&_svg]:size-[var(--spacing-field)]! text-fixed-emphasis! [&:not(:last-child)]:border-b [&:not(:last-child)]:border-border\"",
+    "fingerprint": "073690db9380c954d7af1723a112c63896bf67d7750158f2fabd6928019da1e4"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-inline\"",
+    "fingerprint": "2df277b16ec1b452ea0b2182731fffb50f66a12c4ae8cffe428a59da3c9a3d52"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] text-mobile-input-safe md:text-mobile-input-safe\"",
+    "fingerprint": "370491b8ce0f9c647cef6358f83acdd39d12ec49d6aa8b2e2f69712a59fe719d"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "acce9b60e6a230219d1192687681e14b32297ba82fd00e8bde1f15e0976eaa6b"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "6e29bc89f44c6ec687d2ce6c60e2088324ad59ae06c9b1a4683b181af399bbdc"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] text-mobile-input-safe md:text-mobile-input-safe\"",
+    "fingerprint": "2eca21f5ca5c6c30d1dcced60d534eec252beab95e2568b06bac904e56a2a43b"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "e0e3d57c347c65b346a9595bec6928d7ef70b69721a3de7c333448d04e5fdcc8"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "e220908ecd653ff1741f8d89b1c9b383e93fa80af890d2fea5487b63fbdbbb6a"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "bd4416dc09f6bef635f4b58b6c4bf954cf7152f068dd682229b7f2b0e27caace"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "8ad3021d8a566f2407c8bc0cc5829e934fa3b328fea3bd2c22ebcc84e86fe8b8"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "306a8a1c568fc7b929e5643a5a5ee57d2c9a570ed2d148994b6350230009161b"
+  },
+  {
+    "file": "renderer/src/mobile/MobileApp.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"mobile-touch min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)]\"",
+    "fingerprint": "147ab2933a2c09bfe53f1cb60ecf813848bfaa9cd0404aa848f55574ee63032e"
+  },
+  {
+    "file": "renderer/src/NewTaskButtonGroup.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"navigation-task-row new-task-action\"",
+    "fingerprint": "ffc9bd82f99db387b3485dbaadfe18a3be4eb043f40ac6dcf8bdd2f2664977c8"
+  },
+  {
+    "file": "renderer/src/settings/MobileSettings.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"remote-status-card\"",
+    "fingerprint": "b10ff727fc570444ab132f88630b9d72f16f0a7b700395a2af38bf0693d51932"
+  },
+  {
+    "file": "renderer/src/ReasoningGroup.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"tool-summary-row reasoning-summary\"",
+    "fingerprint": "6cc263c603c3215c7935f49b6e6bfb81ac9c2228d7d5b3197c70b0c1adfdd8ac"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalPane.tsx",
+    "kind": "jsx",
+    "snippet": "className={`text-button shrink-0 ${value === id ? \"bg-selected\" : \"\"}`}",
+    "fingerprint": "45280df73078c4e7be3dc67c5904378e82cbac9f65995afabbf5cf4ff268c339"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "f2becec2745f5abf84c830eba10840ad097ef6c78cf9419ea8f7aad02ebb652c"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"icon-button\"",
+    "fingerprint": "7cb7e259c133faa1e74cd73c798bbb2791ea7802040a9c82ed3af016f0a8d33b"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"text-button justify-self-start\"",
+    "fingerprint": "9247622a5197bea211efafca523cf24570cce3d2df07fbefdc7b208c23caf292"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalPane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"text-button justify-self-start\"",
+    "fingerprint": "1a73638134f9d74b3b7d897bdd113b1e8648b05f9e4d0f568213b361d4c3ce54"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "jsx",
+    "snippet": "className=\"workspace-file-editor\"",
+    "fingerprint": "0c4bf6d323846b67c8679c394fee2c74d8ff35ef89279b2684197ed49598ba64"
+  },
+  {
+    "file": "renderer/src/Goal.css",
+    "kind": "css",
+    "snippet": ".goal-strip [data-slot=\"tooltip-trigger\"] {",
+    "fingerprint": "77aa680030e0298d9f5f4e7fe6dc325d940035f6314c4d106579799652d29281"
+  },
+  {
+    "file": "renderer/src/settings/MobileSettings.css",
+    "kind": "css",
+    "snippet": ".remote-status-card > [data-slot=\"card-content\"] {",
+    "fingerprint": "d9fa99076d35bd8dd83a5e621e860b0f61e7181c317db2c8d5bc82ad534a2c4a"
+  },
+  {
+    "file": "renderer/src/settings/MobileSettings.css",
+    "kind": "css",
+    "snippet": ".remote-access-panel > [data-slot=\"card-content\"] {",
+    "fingerprint": "3be896624193337a83f214ed6f3ba0e0e6b55f1180473edc00b8e8201e19928b"
+  },
+  {
+    "file": "renderer/src/settings/MobileSettings.css",
+    "kind": "css",
+    "snippet": ".remote-relay-service > [data-slot=\"card-content\"] {",
+    "fingerprint": "b47d229992e7361cb1fb692f6ddd089ac5d29f53844fbe1a26e7ceab3c4bf03a"
+  },
+  {
+    "file": "renderer/src/settings/PluginCenter.css",
+    "kind": "css",
+    "snippet": ".plugin-skill-source-tabs [data-slot=\"tabs-list\"] {",
+    "fingerprint": "719492523228e3560cd4decedd0e481ef540f88e0b91d758aede9f9976f298aa"
+  },
+  {
+    "file": "renderer/src/settings/PluginCenter.css",
+    "kind": "css",
+    "snippet": ".plugin-skill-source-tabs [data-slot=\"tabs-trigger\"] {",
+    "fingerprint": "9dde2333221e020b846bf2444b5011a338d7c02c1f475a99489dde9d8c576842"
+  },
+  {
+    "file": "renderer/src/styles.css",
+    "kind": "css",
+    "snippet": ".areal-update-charge-progress [data-slot=\"progress-indicator\"] {",
+    "fingerprint": "88d201d3f7cb6707cface8bd56b5ab11e8b073f11f88836b750204bc4cc73000"
+  },
+  {
+    "file": "renderer/src/styles.css",
+    "kind": "css",
+    "snippet": ".areal-update-charge-progress [data-slot=\"progress-indicator\"]::after {",
+    "fingerprint": "b60068dfa8b66d55e591f7df19c067b205e9c917254c8aaa7c39ad2aab091520"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".interaction button:not([data-slot=\"button\"]) {",
+    "fingerprint": "aaeb893f690c5ec2646ee585e88e970ca4c4f9026441c46a9113e8b853f12081"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".settings-confirm-dialog [data-slot=\"dialog-footer\"] {",
+    "fingerprint": "8b95a20533f239b046ae57c0acbcfdc53a6d579ecffb00bff39f3eb810d06e64"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".settings-confirm-dialog [data-slot=\"dialog-footer\"] [data-slot=\"button\"] {",
+    "fingerprint": "ff8b53827e5254f07412573e103465105030abae70b1f2f586bfe3a03c066684"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-comment-card [data-slot=\"textarea\"] {",
+    "fingerprint": "53f601d4d7cdb5081e6d626d580aae98033f65df685182d709796a2d36e72f16"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-comment-card [data-slot=\"textarea\"]:focus-visible {",
+    "fingerprint": "04a61989e64d6edfbc73f42a58b3a0fce813d735d7d170fdc9a38adb10f1b591"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-comment-actions [data-slot=\"button\"] {",
+    "fingerprint": "d7e196e350e97d700a8eb8d92bd47b9b1d26a95712631e0a5ac39121cc15c538"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-comment-actions [data-slot=\"button\"] {",
+    "fingerprint": "d923dca65934e3e877cfb9386588382d14904944d6960882a8b52b99f2453ca5"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-comment-chip [data-slot=\"button\"] {",
+    "fingerprint": "55882e086db3e748324b2981e6b142fe4ecaa28c179991418adeffaf70662263"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".sent-review-comments [data-slot=\"button\"] > svg {",
+    "fingerprint": "fa927f55097ef4b87156323affda9201c4eda294c3c41c4654dd767732c14014"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".sent-review-comments [data-slot=\"button\"] {",
+    "fingerprint": "dc62d59ee7e2c3a6c329a92e29c27d608037a5bb312c3d4e944968299f883ec0"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".sent-review-comments [data-slot=\"button\"]:hover {",
+    "fingerprint": "8eb3fd2b7ac77a5ebca3bc91b9baa53f89d2450e74e49fa423c2d369a7a0d126"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".sent-review-comments [data-slot=\"button\"] > span {",
+    "fingerprint": "b0333e5a5ec72df8551ef91c21115e0c9b75bd3863780ca305e901143a618f05"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-file-controls .review-file-actions [data-slot=\"button\"] {",
+    "fingerprint": "6601e1fc8b387ce8b165d1fc1e72eefea81666a934d312cf139620f9fa3927dc"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-file-controls [data-slot=\"dropdown-menu-trigger\"] {",
+    "fingerprint": "f059c42ed5fe255965afdfe4b58055add9ae0eae9eab60b011fb808b6bcc6122"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-file-controls [data-slot=\"button\"]:hover {",
+    "fingerprint": "243fc8767af55f838e0cb536a07fcd175cd32b3c454ba9e1e695b3a91fc0e329"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-index-actions [data-slot=\"button\"] {",
+    "fingerprint": "bac1c83704188136cecfae39fd0e7a8c739f2dc20666801b38d03c2933ba31b8"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".review-index-actions [data-slot=\"button\"] svg {",
+    "fingerprint": "8429a0180ebd5b8ea51b27bb110f80e68c075b7ea159ebe0bd4adedbeda5a40b"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".fork-target-dialog [data-slot=\"dialog-title\"] {",
+    "fingerprint": "72cad79361050a90a1e6a0c82fb0b2d54941a6de3e3d8bf7ee59792a68d02555"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "css",
+    "snippet": ".preview-device-controls [data-slot=\"select-trigger\"] {",
+    "fingerprint": "3029052f297013c6ed690f30663b4d970a3f1a0b44ea9677136681a7a8eb1f4d"
+  }
+]
