@@ -198,6 +198,10 @@ export const commonMessages = {
   "common.navigation.reveal": { "zh-CN": "在文件管理器中显示", en: "Show in file manager" },
   "common.navigation.unpinProject": { "zh-CN": "取消置顶项目", en: "Unpin project" },
   "common.navigation.pinProject": { "zh-CN": "置顶项目", en: "Pin project" },
+  "common.navigation.hideProject": {
+    "zh-CN": "从侧栏移除（不删除文件，再次打开即恢复）",
+    en: "Remove from sidebar (files stay; open it again to restore)",
+  },
   "common.navigation.newProjectChat": {
     "zh-CN": "在项目 {project} 中新建对话",
     en: "New conversation in project {project}",
@@ -595,6 +599,23 @@ export const commonMessages = {
   },
   "chat.composer.effortUnspecified": { "zh-CN": "默认", en: "Default" },
   "chat.composer.noModels": { "zh-CN": "暂无可用模型", en: "No models available" },
+  "chat.composer.noModelsReason": {
+    "zh-CN": "还没有可用的模型，先在右下角配置一个模型再发送",
+    en: "No model is available yet. Set one up from the button below to send.",
+  },
+  "chat.composer.chooseModelReason": {
+    "zh-CN": "先在右下角选择一个模型再发送",
+    en: "Choose a model below to send.",
+  },
+  "chat.composer.placeholder": {
+    "zh-CN": "描述要做的事，@ 引用文件，/ 查看命令",
+    en: "Describe the task, @ to reference files, / for commands",
+  },
+  "chat.composer.approvalPlaceholder": {
+    "zh-CN": "可以继续输入，消息会排在这一轮之后发送",
+    en: "Keep typing; messages are sent after this turn",
+  },
+  "chat.composer.configureModels": { "zh-CN": "配置模型", en: "Set up a model" },
   "chat.composer.noModelsGuidance": {
     "zh-CN": "暂无可用模型，请前往设置 > 模型设置",
     en: "No models available. Go to Settings > Model settings.",

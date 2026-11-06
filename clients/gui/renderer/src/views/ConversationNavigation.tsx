@@ -369,6 +369,13 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
                     </DropdownMenuItem>
                   );
                 })}
+                <DropdownMenuItem
+                  onClick={() =>
+                    organize({ operation: "hideProject", projectId: owner.id, hidden: true })
+                  }
+                >
+                  {t("common.navigation.hideProject")}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             {!conversationCreateReadOnly && (

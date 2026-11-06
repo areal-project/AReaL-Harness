@@ -5,6 +5,7 @@ import { GenUiWorkspace } from "../GenUiWorkspace.js";
 import { QuitProgressDialog } from "../QuitProgressDialog.js";
 import { UnsavedChangesProvider } from "../settings/UnsavedChanges.js";
 import { ComputerControlContext } from "../ComputerControlEntry.js";
+import { OpenSettingsContext } from "../settings/openSettingsContext.js";
 import { SnapShotProvider } from "../snapshots/SnapShotCoordinator.js";
 
 export function WorkbenchProviders({
@@ -17,7 +18,7 @@ export function WorkbenchProviders({
   bridge?: SnapShotServices;
   settings?: { snapShot?: unknown; computerControlShowEntry?: boolean };
   ready?: boolean;
-  openSettings: (tab: "SnapShots" | "电脑控制") => void;
+  openSettings: (tab: string) => void;
   children: ReactNode;
 }) {
   return (
@@ -33,7 +34,7 @@ export function WorkbenchProviders({
           open: () => openSettings("电脑控制"),
         }}
       >
-        {children}
+        <OpenSettingsContext.Provider value={openSettings}>{children}</OpenSettingsContext.Provider>
       </ComputerControlContext.Provider>
     </SnapShotProvider>
   );

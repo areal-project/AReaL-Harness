@@ -938,18 +938,7 @@ export function Composer({
       )}
       <div className="composer-input-stack">
         <div ref={setMenuAnchor} className="composer-menu-anchor" />
-        <ComposerQueue
-          key={key}
-          project={project}
-          thread={thread}
-          action={action}
-          disabled={readOnly || baseDisabled || queueEditor.busy || executionBlocked}
-          editingId={queueEditor.edit?.id}
-          onEdit={(item) => {
-            if (!readOnly && !disabled) void queueEditor.begin(item);
-          }}
-        />
-        {/* Pending decisions stay reachable outside the scrolling transcript. */}
+        {/* 待决定事项在队列与输入框之上；队列仍贴着输入框，不会盖住决定卡。 */}
         {approvals.map((item: Data) => (
           <ApprovalRequest
             key={item.requestId}
@@ -966,6 +955,17 @@ export function Composer({
             action={action}
           />
         ))}
+        <ComposerQueue
+          key={key}
+          project={project}
+          thread={thread}
+          action={action}
+          disabled={readOnly || baseDisabled || queueEditor.busy || executionBlocked}
+          editingId={queueEditor.edit?.id}
+          onEdit={(item) => {
+            if (!readOnly && !disabled) void queueEditor.begin(item);
+          }}
+        />
         {goalError && (
           <FeedbackNotice tone="error" message={goalError} onDismiss={() => setGoalError("")} />
         )}
@@ -1035,11 +1035,9 @@ export function Composer({
           triggerPanelContainer={menuAnchor}
           className={
             !queueEditor.edit
-              ? approvals.length
-                ? "hidden"
-                : questions.length
-                  ? "interaction-composer-compact"
-                  : undefined
+              ? approvals.length || questions.length
+                ? "interaction-composer-compact"
+                : undefined
               : undefined
           }
           shellClassName="@container/composer"
@@ -1065,7 +1063,9 @@ export function Composer({
                 ? "描述目标，明确可衡量的结果"
                 : planActive
                   ? "描述任务，生成计划…"
-                  : "随心输入"
+                  : approvals.length
+                    ? t("chat.composer.approvalPlaceholder")
+                    : t("chat.composer.placeholder")
           }
           disabled={editorDisabled}
           submitDisabled={

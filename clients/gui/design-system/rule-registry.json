@@ -4496,10 +4496,10 @@
     },
     {
       "id": "R-DECISIONCARD-015",
-      "title": "TurnElapsed使用Core起始时间和终态durationMs，所有语言运行中均为Working for …、完成",
+      "title": "TurnElapsed使用Core起始时间和终态durationMs，按界面语言显示耗时（见 R-CONTENT-033",
       "owner": "clients/gui/renderer/src/DecisionCard.md#ask-user与过程展示",
       "strength": "default",
-      "textSha256": "6ca21b7ec3ba4eff85638b9544ea23c047ad4477388d07203e273a7ee81a140d"
+      "textSha256": "bac6f2963a07c7f96515ad1576c02c2c9794455bb32157a5540002fcdee2f5f6"
     },
     {
       "id": "R-MESSAGES-001",
@@ -4714,10 +4714,10 @@
     },
     {
       "id": "R-CONTENT-033",
-      "title": "过程耗时跨语言统一显示英文：运行中为Working for 15m 29s，完成后为Worked for 15m 29s",
+      "title": "过程耗时按界面语言显示：中文运行中为已工作 15 分 29 秒，完成后为工作了 15 分 29 秒",
       "owner": "clients/gui/renderer/src/Messages.md#混合内容与过程标题",
       "strength": "default",
-      "textSha256": "15032f8548102d5e2bf957586b0570ea1567569f2a0efaee47df115576aaa006"
+      "textSha256": "c2096bae32e5509486a6150322c0d4f4bad2f6180dc25415a7f5c9e8b9df4d0b"
     },
     {
       "id": "R-ACTIONBUTTON-005",

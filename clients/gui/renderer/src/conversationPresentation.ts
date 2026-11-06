@@ -296,7 +296,10 @@ export function toolPresentation(item: Data) {
   const processRunning =
     ["run_command", "verify_command"].includes(name) &&
     (result.commandStatus === "running" || result.state === "running");
-  const running = !stopped && !unsettled && (item.status === "inProgress" || processRunning);
+  // 等待审批的调用还没开始执行，不能说“正在运行”。
+  const awaiting = item.awaitingApproval === true && !stopped;
+  const running =
+    !awaiting && !stopped && !unsettled && (item.status === "inProgress" || processRunning);
   const search = args.pattern ?? args.query;
   // 对象只取人能认的参数；拿不到时留空，只显示动作，不回退成工具的内部名称。
   const target =
@@ -345,29 +348,33 @@ export function toolPresentation(item: Data) {
           ? ""
           : String(target),
     // 状态的语义值；文字由 chat.activity.status 按界面语言给出。status 保留中文供既有数据属性使用。
-    state: running
-      ? "running"
-      : failed
-        ? "failed"
-        : unsettled
-          ? "unsettled"
-          : stopped
-            ? "stopped"
-            : "completed",
+    state: awaiting
+      ? "awaiting"
+      : running
+        ? "running"
+        : failed
+          ? "failed"
+          : unsettled
+            ? "unsettled"
+            : stopped
+              ? "stopped"
+              : "completed",
     // 文件与目录类行只显示末段名称，完整路径在悬停提示里。
     path:
       ["read", "edit", "list"].includes(kind) && typeof (args.path ?? args.file_path) === "string"
         ? String(args.path ?? args.file_path)
         : undefined,
-    status: running
-      ? "执行中"
-      : failed
-        ? "失败"
-        : unsettled
-          ? "结果待确认"
-          : stopped
-            ? "已停止"
-            : "已完成",
+    status: awaiting
+      ? "等待你批准"
+      : running
+        ? "执行中"
+        : failed
+          ? "失败"
+          : unsettled
+            ? "结果待确认"
+            : stopped
+              ? "已停止"
+              : "已完成",
   };
 }
 

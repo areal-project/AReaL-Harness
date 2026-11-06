@@ -227,6 +227,19 @@ describe("activityRunLabel phrases", () => {
   });
 });
 
+describe("toolPresentation approval", () => {
+  it("does not call a command running while it waits for approval", () => {
+    const pending = tool("c", "run_command", {
+      status: "inProgress",
+      arguments: { argv: ["npm", "view", "vitest", "version"] },
+    });
+    expect(toolPresentation(pending).running).toBe(true);
+    const awaiting = toolPresentation({ ...pending, awaitingApproval: true });
+    expect(awaiting.running).toBe(false);
+    expect(awaiting.state).toBe("awaiting");
+  });
+});
+
 describe("toolPresentation targets", () => {
   it("never falls back to the internal tool name", () => {
     expect(toolPresentation(tool("l", "fs_list")).detail).toBe("");

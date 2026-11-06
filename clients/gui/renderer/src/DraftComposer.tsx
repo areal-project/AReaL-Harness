@@ -193,6 +193,9 @@ export function DraftComposer({
     (entry: Data) => !isIndependentCreation(entry, [unknown, activeCreation?.requestId]),
   );
   const submitDisabled = modelSelectionDisabled || !!blockingPending.length || !effectiveModel;
+  const noModels = !draftModelOptions(project, effectiveModel, currentModel).some(
+    (option) => !option.unavailableReason && !option.historical,
+  );
   const desktopUnsupported =
     conversationSubmitReadOnly ||
     conversationCreateReadOnly ||
@@ -792,7 +795,7 @@ export function DraftComposer({
                 ? "描述目标，明确可衡量的结果"
                 : plan
                   ? "描述任务，生成计划…"
-                  : "随心输入"
+                  : t("chat.composer.placeholder")
           }
           disabled={editLocked}
           submitDisabled={
@@ -809,7 +812,11 @@ export function DraftComposer({
                 !skills.selected.length)
           }
           submitDisabledReason={
-            desktopUnsupported && !goalMode ? t("backend.updateRequired") : undefined
+            desktopUnsupported && !goalMode
+              ? t("backend.updateRequired")
+              : !effectiveModel && !modelSelectionDisabled
+                ? t(noModels ? "chat.composer.noModelsReason" : "chat.composer.chooseModelReason")
+                : undefined
           }
           submitting={busy}
           submitLabel={goalMode ? "开始目标" : "发送"}

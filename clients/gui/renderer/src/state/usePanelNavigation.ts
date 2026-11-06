@@ -81,6 +81,14 @@ export function usePanelNavigation(
             ?.focus({ preventScroll: true });
       });
   };
+  const openSettings = (target: string) => {
+    if (!initialReleased) return;
+    const supported = session.services.capabilities?.settings;
+    if (session.readOnly && !supported?.includes(target)) return;
+    if (!session.readOnly) workspacePanels.exposePanel();
+    setSettingsTab(target);
+    setSettingsOpen(true);
+  };
   const showPanel = (name: string) => {
     if (!initialReleased) return;
     if (
@@ -88,12 +96,9 @@ export function usePanelNavigation(
       !(name === "Skills" && thread)
     ) {
       const supported = session.services.capabilities?.settings;
-      const target =
-        name === "设置" ? (supported?.[0] ?? "模型服务") : name === "后台服务" ? "高级诊断" : name;
-      if (session.readOnly && !supported?.includes(target)) return;
-      if (!session.readOnly) workspacePanels.exposePanel();
-      setSettingsTab(target);
-      setSettingsOpen(true);
+      openSettings(
+        name === "设置" ? (supported?.[0] ?? "模型服务") : name === "后台服务" ? "高级诊断" : name,
+      );
       return;
     }
     if (session.readOnly) return;
@@ -228,6 +233,7 @@ export function usePanelNavigation(
     openTerminal,
     hidePanel,
     showPanel,
+    openSettings,
     subscribeNarrowLayout,
     subscribeShortcuts,
   };

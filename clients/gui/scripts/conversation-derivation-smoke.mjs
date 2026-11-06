@@ -1261,7 +1261,10 @@ try {
     "selection creates an idle child without model execution",
   );
   await sidePane.locator("[data-conversation-selection-reference-count]").waitFor();
-  const sideInput = sidePane.getByRole("textbox", { name: "随心输入", exact: true });
+  const sideInput = sidePane.getByRole("textbox", {
+    name: "描述要做的事，@ 引用文件，/ 查看命令",
+    exact: true,
+  });
   await sideInput.fill(sideQuestion);
   await sidePane.getByRole("button", { name: "发送", exact: true }).click();
   const sideAnswered = await until(

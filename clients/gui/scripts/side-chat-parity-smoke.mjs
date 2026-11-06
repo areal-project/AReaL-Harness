@@ -338,7 +338,8 @@ const sidePane = () =>
   baseline
     ? page.getByRole("region", { name: "旁路讨论", exact: true })
     : page.getByTestId("side-chat-pane").filter({ visible: true });
-const sideInput = () => sidePane().getByRole("textbox", { name: "随心输入", exact: true });
+const sideInput = () =>
+  sidePane().getByRole("textbox", { name: "描述要做的事，@ 引用文件，/ 查看命令", exact: true });
 const sideTabs = () => page.locator('[data-side-pane-tab-id^="side:"]');
 const mainMessages = () => page.getByTestId("chat-view").locator(".messages").first();
 const referenceTrigger = (pane) => pane.locator("[data-conversation-selection-reference-count]");

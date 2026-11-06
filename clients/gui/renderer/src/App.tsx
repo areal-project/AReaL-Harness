@@ -470,10 +470,7 @@ function AppContent({ services }: { services: PlatformServices }) {
       bridge={services.snapShots}
       settings={library.settings}
       ready={startupReady && snapshot.connection?.state === "ready"}
-      openSettings={(tab) => {
-        setSettingsTab(tab);
-        showPanel("设置");
-      }}
+      openSettings={panelNavigation.openSettings}
     >
       <WorkbenchShell
         data-view={

@@ -47,10 +47,17 @@ export const conversationMessages = {
   "chat.activity.failedExit": { "zh-CN": "失败 · exit {code}", en: "Failed · exit {code}" },
   "chat.activity.part.separator": { "zh-CN": "，", en: ", " },
   "chat.activity.reasoning": { "zh-CN": "思考过程", en: "Thinking" },
+  "chat.progress.working": { "zh-CN": "已工作 {duration}", en: "Working for {duration}" },
+  "chat.progress.worked": { "zh-CN": "工作了 {duration}", en: "Worked for {duration}" },
+  "chat.progress.awaiting": { "zh-CN": "等待你批准", en: "Waiting for your approval" },
+  "chat.progress.duration": {
+    "zh-CN": "{minutes, plural, =0 {} other {# 分 }}{seconds} 秒",
+    en: "{minutes, plural, =0 {} other {#m }}{seconds}s",
+  },
   "chat.activity.status": {
     "zh-CN":
-      "{state, select, running {执行中} failed {失败} unsettled {结果待确认} stopped {已停止} other {已完成}}",
-    en: "{state, select, running {Running} failed {Failed} unsettled {Result unconfirmed} stopped {Stopped} other {Completed}}",
+      "{state, select, awaiting {等待你批准} running {执行中} failed {失败} unsettled {结果待确认} stopped {已停止} other {已完成}}",
+    en: "{state, select, awaiting {Waiting for your approval} running {Running} failed {Failed} unsettled {Result unconfirmed} stopped {Stopped} other {Completed}}",
   },
   "chat.activity.stillRunning": { "zh-CN": "仍在运行", en: "Still running" },
   "chat.activity.turnFailed": { "zh-CN": "回合失败", en: "Turn failed" },
