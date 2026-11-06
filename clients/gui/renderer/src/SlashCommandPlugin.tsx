@@ -113,8 +113,9 @@ export function SlashCommandPlugin({
     !!container &&
     (trigger === "@"
       ? !!mentionCatalog || !!workspaceFiles
-      : trigger === "$"
-        ? !!slashCatalog?.entries.some((entry) => entry.group === "Skills")
+      : // 不能看已读到的 Skill：打开会刷新目录，刷新中条目暂空会让菜单反复开合。
+        trigger === "$"
+        ? !!slashCatalog
         : !!slashCatalog || appCommands.length > 0);
   // 空的“@”也列出工作区根目录，让引用文件一眼可见。
   const searchingFiles = open && trigger === "@" && query !== null && !!workspaceFiles;
