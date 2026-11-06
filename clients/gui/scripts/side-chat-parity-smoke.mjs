@@ -693,16 +693,33 @@ async function selectText(body, text, keyboard = false) {
   }
 }
 async function addReference(body, text, target = "main", keyboard = false) {
+  const record = { textLength: text.length, target, keyboard, stage: "select" };
+  (facts.selectionActions ??= []).push(record);
   await selectText(body, text, keyboard);
   const actions = page.getByTestId("transcript-selection-actions");
   await actions.waitFor();
+  // visible 不代表定位和入场过渡已完成；过早聚焦可能滚动弹层并使选区失效。
+  await until(
+    () =>
+      actions.evaluate(
+        (element) =>
+          getComputedStyle(element).opacity === "1" && !element.hasAttribute("data-starting-style"),
+      ),
+    "selection actions finished their open transition",
+  );
   const action = actions.getByRole("button", {
     name: target === "main" ? "添加到聊天" : "在旁路中询问所选内容",
     exact: true,
   });
   if (keyboard) await shot("P4-keyboard-selection");
-  await action.focus();
-  await action.press("Enter");
+  record.stage = "activate";
+  if (keyboard) {
+    await action.focus();
+    assert.equal(await action.evaluate((element) => document.activeElement === element), true);
+    assert.equal(await page.evaluate(() => window.getSelection().toString()), text);
+    await page.keyboard.press("Enter");
+  } else await action.click();
+  record.stage = "activated";
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
 }
 async function toolAndPermission() {
