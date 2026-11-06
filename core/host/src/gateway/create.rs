@@ -143,7 +143,13 @@ impl Session {
                     original.clone(),
                 )
                 .await?
-                .context("CAPABILITY_UNAVAILABLE")?;
+                // 桌面仍在进程内跑后台时 Host 够不到它，模型与工作树选项无处可落，明确拒绝而不是丢掉选项。
+                .ok_or_else(|| {
+                    crate::wire::error(
+                        "CAPABILITY_UNAVAILABLE",
+                        "桌面后台未交给 Host 管理，网页暂不能带选项新建对话；请在桌面应用中新建",
+                    )
+                })?;
             for (key, value) in original.as_object().unwrap() {
                 ensure!(execution.params[key] == *value, "INVALID_RESPONSE");
             }
