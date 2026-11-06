@@ -2,6 +2,8 @@
 
 # 工具与 hooks
 
+[按需 schema 候选配置](../../examples/qwen38-candidates/compact-schema.json)仅启用 `policy.compactTools`，其余策略使用产品默认值。它保留常用工具入口并按需发现其他已授权原生 schema，适合验证较小初始目录能否减少输入；工具查找可能增加模型请求，缺少同条件任务证据时不推广默认值。权限、原生叶子执行和预算不变。
+
 Core 注册表将名称、JSON Schema 与内置/命令/客户端/MCP/插件后端绑定。输入与输出由 Core 校验；本地执行交给 Runtime。完整内置工具参数契约位于 [tools.rs](../../core/engine/src/tools.rs)，模型投影位于[注册表](../../core/engine/src/tools/registry.rs)。
 
 本地默认 YOLO；文件工具与命令 cwd 接受工作区外绝对路径，Core 规范化为 `workspace://host`，Runtime full-access 才允许。相对路径仍从工作区解析，argv 中使用普通文件路径。ASK_PERMISSIONS 在执行前审批实际参数，见[权限配置](configuration.md#permissions)。launcher 自动提供每 Thread scratch；隔离 Workgroup 使用其工作区内的私有 `.scratch/agent-<threadId>`，其 Scope 边界继续有效。
