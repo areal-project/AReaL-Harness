@@ -1,0 +1,37 @@
+docs/api/core.en.md
+  s_3c0bde1ee78b7e::t_245ffc4373649d 175-176
+core/engine/src/model/decoder.rs
+  s_3c0bde1ee78b7e::t_e76534a9ccf402 925-939,948-961,973-994
+  s_3c0bde1ee78b7e::t_f9634e739665f1 940,944-947,962-972
+  s_3c0bde1ee78b7e::t_245ffc4373649d 500,511-542
+  s_3c0bde1ee78b7e::t_cc2ed22e47010e 501-510,941-943
+  s_3c0bde1ee78b7e::t_78c96ee3ef6f30 924
+core/engine/src/generation.rs
+  s_3c0bde1ee78b7e::t_245ffc4373649d 1561
+core/engine/src/model.rs
+  s_3c0bde1ee78b7e::t_f9634e739665f1 91-93
+  s_3c0bde1ee78b7e::t_245ffc4373649d 88-90,94-118,384-388
+docs/api/core.md
+  s_3c0bde1ee78b7e::t_245ffc4373649d 175-176
+core/engine/tests/tool_call_stream.rs
+  s_3c0bde1ee78b7e::t_676cdaba94a04b 179,188-190
+  s_3c0bde1ee78b7e::t_f9634e739665f1 168-176,180,191-193,196-203,206-209,226-233
+  s_3c0bde1ee78b7e::t_e76534a9ccf402 144-167,177-178,194-195,204-205,210-225,234-239
+  s_3c0bde1ee78b7e::t_f312c2d8072705 181-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bc101f9cdaa8f9225e8b1d54d3d7959ded343c73",
+  "prompts": {},
+  "sessions": {
+    "s_3c0bde1ee78b7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b160-5434-7080-8ff1-1f4237be48e6",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
