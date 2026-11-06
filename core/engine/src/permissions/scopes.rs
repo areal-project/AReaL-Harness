@@ -157,14 +157,10 @@ impl Engine {
         call_id: Option<&str>,
     ) -> rt::Result<String> {
         let _guard = cell.resource_gate.lock().await;
-        let (base, authority, elapsed) = {
+        let (base, authority) = {
             let state = cell.state.lock().await;
             let active = state.active.as_ref().unwrap();
-            (
-                active.base_scope.clone(),
-                active.scope.clone(),
-                active.started.elapsed().as_millis().min(u64::MAX as u128) as u64,
-            )
+            (active.base_scope.clone(), active.scope.clone())
         };
         if let Some(base) = base {
             if let Some(call_id) = call_id {
@@ -175,18 +171,10 @@ impl Engine {
             }
             return Ok(base);
         }
-        let runtime = self
-            .runtime
-            .as_ref()
-            .ok_or_else(|| unknown("Runtime unavailable"))?;
         let authority = match authority {
             Some(scope) => scope,
             None => {
                 let parent = self.runtime_task_parent(cell).await?;
-                let info: rt::ScopeInfo = runtime
-                    .client
-                    .call("scope.get", json!({"scopeId":parent}))
-                    .await?;
                 let mut permissions = rt::PermissionRequest::default();
                 let hard_restricted = {
                     let state = cell.state.lock().await;
@@ -209,10 +197,9 @@ impl Engine {
                     "authority",
                     parent,
                     permissions,
-                    rt::LimitRequest {
-                        wall_time_ms: Some(info.limits.wall_time_ms.saturating_sub(elapsed).max(1)),
-                        ..Default::default()
-                    },
+                    // Runtime 的 wall_time_ms 是单次执行上限；模型与审批等待不消耗它。
+                    // 继承父 Scope 的已有收窄，整轮预算继续由 Core 自身的截止时间执行。
+                    Default::default(),
                 )
                 .await?
             }

@@ -22,6 +22,9 @@ Commands do not inherit model credentials. Unrestricted full-access commands wit
 
 The launcher creates `scratch/` beside dataDir and one `agent-<threadId>/` per Thread. `--scratch <directory>` selects an existing directory disjoint from workspace and dataDir. Scratch is writable even with a read-only repository and persists until manually cleaned. Under explicit `--sandbox-profile native`, trusted binaries and Core data must remain outside writable workspace/scratch roots. Full-access permits binaries inside the workspace for development.
 
+
+Runtime `wall_time_ms` / `wallTimeMs` limits each process execution, including its admission and write-queue waits. Core inherits the parent limit when creating a Turn permission Scope, without subtracting preceding model generation or approval waits. A late first tool call retains the per-process allowance granted by its parent Scope. Core independently enforces explicit Goal / worker deadlines; narrower child Scope and individual tool limits still apply.
+
 ## Git identity and remote authentication
 
 - **Commit identity** comes from Git's effective configuration. Before an authorized commit, check `git var GIT_AUTHOR_IDENT` and `git var GIT_COMMITTER_IDENT` in the execution environment rather than only repository-local `user.name`. Never invent a name or email. An isolated HOME or denied configuration access means this environment cannot resolve the identity, not that the host lacks configuration. Obtain user-provided or confirmed values before a temporary override; do not silently change global configuration.

@@ -64,6 +64,7 @@ struct RuntimeFixture {
     seen: mpsc::UnboundedReceiver<Value>,
     release: mpsc::UnboundedSender<()>,
     methods: Arc<Mutex<Vec<String>>>,
+    scope_requests: Arc<Mutex<Vec<Value>>>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -196,6 +197,16 @@ async fn runtime_with_scope_error(
     delay: Duration,
     scope_error: Option<&'static str>,
 ) -> RuntimeFixture {
+    runtime_with_scope_limit(data, hold, delay, scope_error, 30_000).await
+}
+
+async fn runtime_with_scope_limit(
+    data: PathBuf,
+    hold: bool,
+    delay: Duration,
+    scope_error: Option<&'static str>,
+    wall_time_ms: u64,
+) -> RuntimeFixture {
     let (client_pipe, peer) = tokio::io::duplex(128 * 1024);
     let (read, write) = tokio::io::split(client_pipe);
     let (peer_read, mut peer_write) = tokio::io::split(peer);
@@ -203,16 +214,24 @@ async fn runtime_with_scope_error(
     let (release, mut released) = mpsc::unbounded_channel();
     let methods = Arc::new(Mutex::new(Vec::new()));
     let recorded = methods.clone();
+    let scope_requests = Arc::new(Mutex::new(Vec::new()));
+    let recorded_scopes = scope_requests.clone();
     let task = tokio::spawn(async move {
         let mut lines = BufReader::new(peer_read).lines();
         let epoch = uuid::Uuid::new_v4().to_string();
         let root = format!("{epoch}:scope:{}", uuid::Uuid::new_v4());
-        let scope = json!({"scopeId":root,"parentScopeId":null,"state":"active","owner":{"taskId":"fixture"},"readRoots":["workspace://repo"],"writeRoots":["workspace://repo"],"network":"deny","limits":{"wallTimeMs":30000,"outputBytes":8388608,"maxProcesses":4},"activeProcesses":0,"outputBytes":0,"cleanupError":null});
+        let scope = json!({"scopeId":root,"parentScopeId":null,"state":"active","owner":{"taskId":"fixture"},"readRoots":["workspace://repo"],"writeRoots":["workspace://repo"],"network":"deny","limits":{"wallTimeMs":wall_time_ms,"outputBytes":8388608,"maxProcesses":4},"activeProcesses":0,"outputBytes":0,"cleanupError":null});
         let mut pending = None;
         while let Some(line) = lines.next_line().await.unwrap() {
             let request: Value = serde_json::from_str(&line).unwrap();
             let method = request["method"].as_str().unwrap();
             recorded.lock().unwrap().push(method.into());
+            if method == "scope.create" {
+                recorded_scopes
+                    .lock()
+                    .unwrap()
+                    .push(request["params"].clone());
+            }
             if method == "scope.create"
                 && let Some(code) = scope_error
             {
@@ -280,7 +299,76 @@ async fn runtime_with_scope_error(
         seen: received,
         release,
         methods,
+        scope_requests,
         task,
+    }
+}
+
+struct DelayedToolModel;
+
+#[async_trait]
+impl Model for DelayedToolModel {
+    fn name(&self) -> &str {
+        "delayed-tool-fixture"
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        unreachable!()
+    }
+    async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<AgentStream> {
+        if messages.last().unwrap().role != "tool" {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+        }
+        ToolModel.chat(messages, tools).await
+    }
+}
+
+#[tokio::test]
+async fn model_wait_does_not_spend_inherited_process_wall_time() {
+    // 同时覆盖模型等待小于和大于父进程上限；父限制必须继续被继承。
+    for wall_time_ms in [30, 30_000] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let workspace = dir.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        let fixture =
+            runtime_with_scope_limit(data.clone(), false, Duration::ZERO, None, wall_time_ms).await;
+        let engine = Engine::open_with_runtime(
+            &data,
+            Arc::new(DelayedToolModel),
+            Limits::default(),
+            RuntimeConfig {
+                client: fixture.client.clone(),
+                workspace: workspace.clone(),
+                writable: true,
+                command_scope: None,
+                command_scratch: None,
+            },
+        )
+        .unwrap();
+        let thread = engine
+            .create(workspace.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("write after reasoning")])
+            .await
+            .unwrap();
+        let completed = bounded(engine.wait(&thread.id)).await.unwrap();
+        assert_eq!(completed.turns[0].status, TurnStatus::Completed);
+        {
+            let requests = fixture.scope_requests.lock().unwrap();
+            assert!(!requests.is_empty());
+            for scope in requests.iter() {
+                assert!(
+                    scope["limits"]["wallTimeMs"].is_null(),
+                    "must inherit the parent's per-process limit: {scope}"
+                );
+                assert!(!scope["parentScopeId"].as_str().unwrap().is_empty());
+            }
+        }
+        engine.shutdown().await;
+        fixture.client.shutdown().await.unwrap();
+        fixture.task.await.unwrap();
     }
 }
 
@@ -689,7 +777,6 @@ async fn tool_journal_precedes_submission_and_result_drives_the_next_model_round
         *fixture.methods.lock().unwrap(),
         [
             "connection.open",
-            "scope.get",
             "scope.create",
             "scope.create",
             "fs.execute",

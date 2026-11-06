@@ -22,6 +22,9 @@ launcher 的 `--command-timeout-ms` 默认 300000，与独立 daemon 默认不�
 
 launcher 自动创建与 dataDir 同级的 `scratch/`，每个 Thread 使用 `agent-<threadId>/`。`--scratch <directory>` 可选择与工作区/dataDir 不重叠的现有目录。仓库只读时 scratch 仍可写，数据保留至人工清理。显式 `--sandbox-profile native` 下，可信二进制和 Core data 必须位于可写 workspace/scratch 之外；full-access 允许二进制位于工作区，便于开发。
 
+
+Runtime 的 `wall_time_ms` / `wallTimeMs` 是单次进程执行上限，包含该次执行的准入和写入队列等待。Core 创建 Turn 的权限 Scope 时继承父限制，不扣除此前的模型生成或审批等待；即使首次工具调用晚于这个时长，仍获得父 Scope 允许的单次执行时间。显式 Goal / worker 的整轮截止时间由 Core 独立执行，子 Scope 和单次工具指定的更短时限继续生效。
+
 ## Git 身份与远端认证
 
 - **提交身份**由 Git 的有效配置决定。执行已授权的 commit 前，用 `git var GIT_AUTHOR_IDENT` 和 `git var GIT_COMMITTER_IDENT` 核对当前环境中的身份；不要仅检查仓库级 `user.name`，也不要替用户编造姓名或邮箱。受限 HOME 或配置访问被拒绝时，只能说明当前执行环境无法解析身份，不能断言宿主未配置。需要临时指定身份时先取得用户提供或确认的值，不擅改全局配置。
