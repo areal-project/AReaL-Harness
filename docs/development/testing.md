@@ -128,6 +128,10 @@ AREAL_CORE_BIN=/absolute/verified/bin/areal pnpm --dir clients/gui test:history-
 
 `test:navigation-cache` 使用生产 React App、真实 Chrome 和 fixture PlatformServices，记录无关 UI 操作的派生计算次数，检查名称、未读、运行、排序和新快照刷新，并保存源码身份及截图。它不启动 Core/Electron，也不验证安装包或感知延迟。`readingViews` 单测覆盖 32 项内存边界、最近访问淘汰、存储不可用和语义锚点重载；真实主题与布局连续性仍需 Renderer 场景。旧 `conversation-flow` 场景在 `.tool-summary-row .tool-failed` 定位器超时；生产折叠失败状态由 `ActivityRowStatus` 的 `data-tone="failed"` 表达。该 markup 与 `readingViews` 容量裁剪属于不同边界，本专项未修改旧 runner，完整对话流未计为通过。
 
+Linux 移动浏览器 job 安装依赖前，将托管 runner 的 Ubuntu mirror list 指向官方 HTTPS archive。发行版、组件、APT 签名校验、锁定 Playwright 的完整依赖与两种浏览器保持原样；下载超时仍属于 CI 安装失败，不计作浏览器测试通过。
+
+对话流设计验收先等待活动面板的展开过渡结束，并确认列表中心是实际鼠标命中区域，再发送一次真实滚轮输入。`conversation-wheel.json` 保留可信输入、命中和滚动前后位置；仍要求该列表真实滚动，不用脚本改滚动位置替代滚轮断言。
+
 ## 本地验证产物与启动诊断
 
 `make build` / `make release` 在 Cargo 成功后写入 `target/<profile>/verification-build.json`，绑定现有 Core `inputHash`、构建提交和整套 Core/Runtime 的 SHA-256。GUI 构建沿用 bundle 分析插件，在 `renderer/dist/verification-build.json` 中记录 GUI 输入摘要与输出文件哈希；构建期间源码改变则失败。
@@ -379,6 +383,10 @@ Side Chat 引用烟测等待选区弹层完成入场过渡后再操作；键盘�
 macOS 与 Linux 宿主检查使用同一矩阵定义，`fail-fast: false` 保证任一平台失败不取消另一平台的覆盖。macOS 使用 `make setup-node`，仅安装原生 smoke 和 SDK 所需的 Node 依赖；Linux `make setup` 继续安装全部锁定格式工具。原生验收在同一次子 Make 调用中运行 Runtime、Harness、桌面 API 和 Workgroup smoke，共用一次 workspace build。Docker 只复制所需 CLI/TUI/Web 客户端，GUI 不进入构建上下文。原生 Runtime 和 Harness 覆盖保持不变。
 
 `harness-smoke.mjs` 通过真实 Core/Runtime 和模型请求检查根/嵌套 `AGENTS.md` 与 `AGENTS.override.md` 的单层替换、空白回退、顺序、无关目录隔离、缺失文件、跨 Turn 刷新、32 KiB 边界、UTF-8 和符号链接拒绝。
+
+对话流预览的图片可用性验收等待不可用提示实际出现，再操作展开按钮；恢复可用后等待提示消失并核对收起状态，避免把选择框事件派发完成当作组件状态已提交。
+
+同一脚本还在没有 `AGENTS.md` 预读取的工作区，将首次模型回复延迟到超过 2 秒的单进程期限，再通过真实 Runtime 创建并读回文件；反例在相同模型等待后实际执行命令，确认其显式 200 毫秒期限仍终止进程并完成清理。它验证模型等待不侵占工具进程额度，不提高产品默认预算，也不证明长任务整体收益。
 
 [CI](../../.github/workflows/ci.yml) 在 macOS 执行原生 Harness，在 Linux 执行常规回归和 Docker sandbox/文件所有权检查，独立检查 Rust/npm 依赖公告。工作流固定 action commit、使用只读权限并保留失败日志；是否通过以对应提交的运行结果为准。
 

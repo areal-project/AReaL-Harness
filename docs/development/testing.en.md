@@ -130,6 +130,10 @@ This native test compiles under `native-tests` (which includes `test-support`) a
 
 `node clients/gui/scripts/bounded-history-ui-smoke.mjs` uses the production Renderer and Desktop history owner with controlled Core responses. Upward pagination loads silently: the scenario holds a request pending, checks that no pagination loading text appears, and then confirms that older messages arrive. It also checks message/composer positions, failure retry, one queued read for upward input while loading, and cancellation on downward input. The scenario delays the animation frame after scrolling, merges a history page before that frame, and checks that the same visible paragraph moves by at most 2 pixels. Separate checks cover wheel navigation through a complete 30-turn snapshot and eviction/reloading beyond sixteen pages. Set `AREAL_HISTORY_UI_LOCALE=en` to check English. This does not qualify actual Core or packaged-app behavior.
 
+Before installing dependencies, the Linux mobile browser job points the hosted runner's Ubuntu mirror list to the official HTTPS archive. Distribution, components, APT signature verification, the locked Playwright dependency set, and both browsers remain unchanged. A download timeout is still a CI installation failure and never counts as a browser test pass.
+
+The conversation design acceptance waits for the activity panel's opening transition and verifies that the list center is the actual pointer hit target before sending one real wheel input. `conversation-wheel.json` retains trusted-input, hit-target, and before/after scroll evidence. The assertion still requires that list to scroll; script-driven scrolling does not replace it.
+
 ## Local verification artifacts and startup diagnostics
 
 After Cargo succeeds, `make build` / `make release` writes `target/<profile>/verification-build.json`, binding the existing Core `inputHash`, build revision and SHA-256 of the complete Core/Runtime set. GUI builds extend the existing bundle analysis plugin with `renderer/dist/verification-build.json`, recording GUI inputs and output hashes; source changes during a build fail it.
@@ -379,6 +383,10 @@ After scripted positioning, the selection fixture emits pointerdown so the exist
 macOS and Linux host checks share one matrix definition. `fail-fast: false` ensures a failure on one platform does not cancel coverage on the other. macOS uses `make setup-node` for native smoke and SDK Node dependencies; Linux `make setup` continues to install all locked formatting tools. Native validation runs Runtime, Harness, desktop API and Workgroup smoke in one child Make invocation, sharing one workspace build. Docker copies only the required CLI/TUI/Web clients and excludes GUI from its build context. Native Runtime and Harness coverage is retained.
 
 `harness-smoke.mjs` checks root/nested `AGENTS.md` and `AGENTS.override.md` replacement, empty-file fallback and ordering, unrelated-directory isolation, missing files, per-Turn refresh, the 32 KiB boundary, UTF-8 and symlink rejection through real Core/Runtime model requests.
+
+Conversation preview image checks wait for the unavailable notice before toggling its disclosure, then wait for the notice to disappear after restoring availability and verify the collapsed state. Dispatching a select event does not establish that the component state has committed.
+
+The same script uses a workspace without an `AGENTS.md` preread, delays the first model reply beyond a two-second per-process allowance, then creates and reads back a file through the real Runtime. A control executes a command after the same model wait and verifies that its explicit 200 ms deadline still terminates the process and settles cleanup. This verifies that model waiting does not consume tool-process allowance; it does not raise product defaults or establish overall long-task gains.
 
 [CI](../../.github/workflows/ci.yml) runs native Harness checks on macOS, portable regression and Docker sandbox/file-ownership checks on Linux, and separate Rust/npm advisory checks. Actions are pinned by commit, repository permissions are read-only, and failures retain logs. Consult the run for the relevant commit for actual results.
 

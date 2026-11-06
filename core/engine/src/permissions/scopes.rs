@@ -157,14 +157,10 @@ impl Engine {
         call_id: Option<&str>,
     ) -> rt::Result<String> {
         let _guard = cell.resource_gate.lock().await;
-        let (base, authority, elapsed) = {
+        let (base, authority) = {
             let state = cell.state.lock().await;
             let active = state.active.as_ref().unwrap();
-            (
-                active.base_scope.clone(),
-                active.scope.clone(),
-                active.started.elapsed().as_millis().min(u64::MAX as u128) as u64,
-            )
+            (active.base_scope.clone(), active.scope.clone())
         };
         if let Some(base) = base {
             if let Some(call_id) = call_id {
@@ -210,7 +206,8 @@ impl Engine {
                     parent,
                     permissions,
                     rt::LimitRequest {
-                        wall_time_ms: Some(info.limits.wall_time_ms.saturating_sub(elapsed).max(1)),
+                        // 单进程期限从实际启动排队计时，模型等待不能预扣尚未执行的额度。
+                        wall_time_ms: Some(info.limits.wall_time_ms),
                         ..Default::default()
                     },
                 )
