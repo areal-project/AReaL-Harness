@@ -380,6 +380,8 @@ macOS 与 Linux 宿主检查使用同一矩阵定义，`fail-fast: false` 保证
 
 `harness-smoke.mjs` 通过真实 Core/Runtime 和模型请求检查根/嵌套 `AGENTS.md` 与 `AGENTS.override.md` 的单层替换、空白回退、顺序、无关目录隔离、缺失文件、跨 Turn 刷新、32 KiB 边界、UTF-8 和符号链接拒绝。
 
+同一脚本还在没有 `AGENTS.md` 预读取的工作区，将首次模型回复延迟到超过 2 秒的单进程期限，再通过真实 Runtime 创建并读回文件；反例在相同模型等待后实际执行命令，确认其显式 200 毫秒期限仍终止进程并完成清理。它验证模型等待不侵占工具进程额度，不提高产品默认预算，也不证明长任务整体收益。
+
 [CI](../../.github/workflows/ci.yml) 在 macOS 执行原生 Harness，在 Linux 执行常规回归和 Docker sandbox/文件所有权检查，独立检查 Rust/npm 依赖公告。工作流固定 action commit、使用只读权限并保留失败日志；是否通过以对应提交的运行结果为准。
 
 PR、`main` 推送和手动触发运行完整检查，避免同一功能分支的 push 与 PR 重复运行。Linux 常规回归与容器检查并行，常规回归内部的格式、SDK 与脚本检查并行，随后顺序执行静态检查、Rust 测试与 TUI smoke；原 `Linux checks and container Runtime` 检查名保留为汇总门禁，宿主矩阵与容器任务均成功才通过。macOS 运行 `make verify-native`，只补充 Linux 不覆盖的原生后端和 Harness 集成 smoke。
