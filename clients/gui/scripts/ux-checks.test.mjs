@@ -11,6 +11,7 @@ test("raw errors catch protocol codes and Host wording", () => {
 test("mixed language flags English chrome words only as whole words", () => {
   assert.deepEqual(mixedLanguage("改动 +1 −0 · Changes"), ["Changes"]);
   assert.deepEqual(mixedLanguage("已工作 1 分钟 · ChangesetView"), []);
+  assert.deepEqual(mixedLanguage("Host · running"), ["running"]);
 });
 
 test("overlaps ignore nested layers and touching edges", () => {

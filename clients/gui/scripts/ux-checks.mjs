@@ -17,6 +17,7 @@ const ENGLISH_CHROME = [
   "Sources",
   "Show more",
   "Worktrees",
+  "running",
 ];
 
 // 有待审批时不能出现的“在跑”说法。
@@ -85,9 +86,9 @@ export async function inspectPage(page, step, { locale = "zh-CN" } = {}) {
         };
       }),
     );
-    // 对话正文是模型写的，只检查界面本身。
+    // 对话正文是模型写的，只检查看得见的界面本身。
     const clone = document.body.cloneNode(true);
-    clone.querySelectorAll(".messages, [contenteditable]").forEach((node) => node.remove());
+    clone.querySelectorAll(".messages, [contenteditable], .sr-only").forEach((node) => node.remove());
     return {
       chrome: clone.innerText,
       text: document.body.innerText,
