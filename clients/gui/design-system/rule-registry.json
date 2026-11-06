@@ -3253,7 +3253,7 @@
       "title": "保留原虚拟滚动、列测量和预览",
       "owner": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.md#行为",
       "strength": "default",
-      "textSha256": "93f9cd2438e2f629fd912721dbf26416ada3efa30f77cb903a5576d6b84bed16"
+      "textSha256": "94ed5dd35aafb87255b4e4c0baf11b87978641f6ad6f28ee41ea3dbbc0147d14"
     },
     {
       "id": "R-MESSAGEATTACHMENTS-001",

@@ -231,7 +231,7 @@ export function ConversationStatusCard({
                 .finally(() => setOpeningWorkspace(false));
             }}
           />
-          {!git.loading && git.info?.branch && (
+          {git.info?.branch && (
             <TaskContext.Item
               title={`${t("resources.branch")} · ${git.info.branch}`}
               onClick={() => onPanel("改动")}

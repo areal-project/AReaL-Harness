@@ -397,8 +397,8 @@ export function ThreadScheduledTasks({
   }
   const visible = [...tasks.values()].filter(activeScheduledTask);
   // 摘要卡只列有内容的行；没有安排时由卡片底部的“添加”入口承担。
-  if (hideWhenEmpty && project.state?.connected && read.status === "ready" && !visible.length)
-    return null;
+  // 读取中也不占位，避免摘要卡打开后先出现“读取中”再消失。
+  if (hideWhenEmpty && !visible.length && read.status !== "error") return null;
   return (
     <section className="task-resources-section" aria-label={t("operations.schedules.threadLabel")}>
       <h3 className="task-resources-heading">
