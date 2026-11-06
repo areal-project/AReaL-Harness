@@ -221,3 +221,12 @@
   color: var(--color-foreground);
   background: var(--color-selected);
 }
+.settings-sidebar .settings-navigation-item .settings-navigation-match {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-ui-xs);
+  color: var(--color-foreground-subtle);
+}

@@ -27,7 +27,7 @@ exports: ["SettingsNavigation"]
 
 ## 行为
 
-引用 [R-UI-COMMON-010](../../../README.md#共同合同)。
+引用 [R-UI-COMMON-010](../../../README.md#共同合同)。查询先匹配分类名，再匹配宿主传入的页内条目名（`keywords`）；按条目命中时在分类名右侧写出命中的条目，用户不必猜设置藏在哪一页。
 
 ## 内容
 

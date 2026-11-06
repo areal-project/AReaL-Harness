@@ -1004,8 +1004,8 @@ async function verifyModelDefaults(projectId) {
   ) => {
     await button("会话配置").click();
     await page.waitForFunction(() => {
-      const menu = document.querySelector('[role="combobox"][aria-label="备用默认模型"]');
-      const tabs = document.querySelector('[role="tablist"][aria-label="备用默认模型"]');
+      const menu = document.querySelector('[role="combobox"][aria-label="新会话默认模型"]');
+      const tabs = document.querySelector('[role="tablist"][aria-label="新会话默认模型"]');
       return (
         (menu && !menu.disabled) ||
         (tabs && [...tabs.querySelectorAll('[role="tab"]')].some((tab) => !tab.disabled))
@@ -1021,13 +1021,13 @@ async function verifyModelDefaults(projectId) {
         !reply.value.providerUpdating
       );
     });
-    const defaultMenu = page.getByRole("combobox", { name: "备用默认模型", exact: true });
+    const defaultMenu = page.getByRole("combobox", { name: "新会话默认模型", exact: true });
     if (await defaultMenu.count()) {
       await defaultMenu.click();
       await page.getByRole("option", { name, exact: true }).click();
     } else
       await page
-        .getByRole("tablist", { name: "备用默认模型", exact: true })
+        .getByRole("tablist", { name: "新会话默认模型", exact: true })
         .getByRole("tab", { name, exact: true })
         .click();
     await button("返回应用").click({ trial: true, timeout: 180000 });
@@ -1051,7 +1051,7 @@ async function verifyModelDefaults(projectId) {
     else
       assert.equal(
         await page
-          .getByRole("tablist", { name: "备用默认模型", exact: true })
+          .getByRole("tablist", { name: "新会话默认模型", exact: true })
           .getByRole("tab", { name, exact: true })
           .getAttribute("aria-selected"),
         "true",
@@ -1980,7 +1980,7 @@ async function runFullModelSelection() {
     "Connection fields and models share one page",
   );
   assert.equal(
-    await page.getByRole("combobox", { name: "备用默认模型", exact: true }).count(),
+    await page.getByRole("combobox", { name: "新会话默认模型", exact: true }).count(),
     0,
     "global default belongs to session settings",
   );

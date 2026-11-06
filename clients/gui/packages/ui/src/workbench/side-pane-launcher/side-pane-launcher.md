@@ -31,7 +31,7 @@ exports: ["SidePaneLauncher"]
 
 ## 内容
 
-引用 [R-UI-COMMON-011](../../../README.md#共同合同)。
+引用 [R-UI-COMMON-011](../../../README.md#共同合同)。入口从面板顶部往下排列；没有快捷键的入口不留空的按键框。
 
 ## 可访问性
 
