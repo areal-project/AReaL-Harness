@@ -1,0 +1,23 @@
+docs/development/testing.en.md
+  s_65512586972bc8::t_d78b66f12e9587 377
+docs/development/testing.md
+  s_65512586972bc8::t_e1a78f77f0efdd 377
+tests/fixtures/tool-hooks.sh
+  s_65512586972bc8::t_2095bf6084664a 26-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "964e564e9b19fc236c42e8e436b12c0020f32f4e",
+  "prompts": {},
+  "sessions": {
+    "s_65512586972bc8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b041-ad48-70a3-9002-83c0eef1a222",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
