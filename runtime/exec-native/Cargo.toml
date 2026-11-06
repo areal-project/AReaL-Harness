@@ -18,8 +18,6 @@ areal-runtime-protocol.workspace = true
 areal-runtime-supervisor.workspace = true
 async-trait.workspace = true
 libc.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true

@@ -1,0 +1,10 @@
+{
+  "policy": {
+    "compactTools": true,
+    "programmaticTools": true,
+    "programmaticToolsOnly": true,
+    "resultViews": {
+      "repeatedObservations": true
+    }
+  }
+}

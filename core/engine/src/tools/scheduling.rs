@@ -98,7 +98,7 @@ impl Engine {
                     );
                     let (started, ready) = tokio::sync::oneshot::channel();
                     let result = self
-                        .start_tool(cell, cancel, call, reservation, Some(started))
+                        .start_tool(cell, cancel, call, reservation, Some(started), None)
                         .await?;
                     Ok::<_, anyhow::Error>((result, ready))
                 }

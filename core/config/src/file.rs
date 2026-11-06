@@ -432,6 +432,8 @@ fn walk(
         ] | ["trajectory", "enabled"]
             | ["model", "responses_websocket"]
             | ["model", "responses_prompt_cache"]
+            | ["model", "summary_preserve_prefix"]
+            | ["model", "summary_quoted_retry"]
     );
     if !numeric && !string && !decimal && !boolean {
         return Err(error(

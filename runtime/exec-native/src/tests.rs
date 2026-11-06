@@ -29,6 +29,152 @@ fn execution(root: &Path, code: &str) -> Execution {
     }
 }
 
+#[test]
+fn temporary_alias_allows_unix_socket_and_keeps_original_files() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("long-temporary-root-".repeat(5));
+    std::fs::create_dir(&root).unwrap();
+    let root = root.canonicalize().unwrap();
+    let mut exec = execution(&root, "unused");
+    exec.scope_access = ScopeAccess::Unrestricted;
+    exec.network = areal_runtime_protocol::NetworkRequest::Inherit;
+    exec.env.insert("TMPDIR".into(), root.display().to_string());
+    assert!(std::os::unix::net::UnixListener::bind(root.join("client.sock")).is_err());
+    let mut aliases = HashMap::new();
+    prepare_temporary_alias(&mut exec, SandboxProfile::FullAccess, &mut aliases).unwrap();
+    let alias = PathBuf::from(&exec.env["TMPDIR"]);
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(
+        std::fs::metadata(alias.parent().unwrap())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o700
+    );
+    assert!(alias.as_os_str().len() < 48);
+    let listener = std::os::unix::net::UnixListener::bind(alias.join("client.sock")).unwrap();
+    std::fs::write(alias.join("retained.txt"), b"retained").unwrap();
+    exec.env.insert("TMPDIR".into(), root.display().to_string());
+    prepare_temporary_alias(&mut exec, SandboxProfile::FullAccess, &mut aliases).unwrap();
+    assert_eq!(Path::new(&exec.env["TMPDIR"]), alias);
+    assert_eq!(
+        std::fs::read(alias.join("retained.txt")).unwrap(),
+        b"retained"
+    );
+    drop(listener);
+    aliases.clear();
+    assert!(!alias.exists());
+    assert_eq!(
+        std::fs::read(root.join("retained.txt")).unwrap(),
+        b"retained"
+    );
+}
+
+#[test]
+fn temporary_alias_never_changes_restricted_or_network_isolated_execution() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("long-temporary-root-".repeat(5));
+    std::fs::create_dir(&root).unwrap();
+    let original = root.display().to_string();
+    for (access, protected, network) in [
+        (
+            ScopeAccess::Restricted,
+            false,
+            areal_runtime_protocol::NetworkRequest::Inherit,
+        ),
+        (
+            ScopeAccess::Unrestricted,
+            true,
+            areal_runtime_protocol::NetworkRequest::Inherit,
+        ),
+        (
+            ScopeAccess::Unrestricted,
+            false,
+            areal_runtime_protocol::NetworkRequest::Deny,
+        ),
+    ] {
+        let mut exec = execution(&root, "unused");
+        exec.scope_access = access;
+        exec.network = network;
+        exec.env.insert("TMPDIR".into(), original.clone());
+        let mut aliases = HashMap::new();
+        let profile = sandbox::effective_profile(SandboxProfile::FullAccess, access, protected);
+        prepare_temporary_alias(&mut exec, profile, &mut aliases).unwrap();
+        assert_eq!(exec.env["TMPDIR"], original);
+        assert!(aliases.is_empty());
+    }
+}
+
+#[test]
+fn temporary_alias_separates_directories_and_rejects_redirection() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut aliases = HashMap::new();
+    let mut paths = Vec::new();
+    for name in ["a", "b"] {
+        let root = directory.path().join(name.repeat(90));
+        std::fs::create_dir(&root).unwrap();
+        let mut exec = execution(&root, "unused");
+        exec.scope_access = ScopeAccess::Unrestricted;
+        exec.network = areal_runtime_protocol::NetworkRequest::Inherit;
+        exec.env.insert("TMPDIR".into(), root.display().to_string());
+        prepare_temporary_alias(&mut exec, SandboxProfile::FullAccess, &mut aliases).unwrap();
+        paths.push((root, PathBuf::from(&exec.env["TMPDIR"])));
+    }
+    assert_ne!(paths[0].1, paths[1].1);
+    std::fs::write(paths[0].1.join("first"), b"original").unwrap();
+    assert!(!paths[1].1.join("first").exists());
+    std::fs::remove_file(&paths[0].1).unwrap();
+    std::os::unix::fs::symlink(&paths[1].0, &paths[0].1).unwrap();
+    let mut exec = execution(&paths[0].0, "unused");
+    exec.network = areal_runtime_protocol::NetworkRequest::Inherit;
+    exec.env
+        .insert("TMPDIR".into(), paths[0].0.display().to_string());
+    let error =
+        prepare_temporary_alias(&mut exec, SandboxProfile::FullAccess, &mut aliases).unwrap_err();
+    assert_eq!(error.code, ErrorCode::Conflict);
+    aliases.clear();
+    assert_eq!(
+        std::fs::read(paths[0].0.join("first")).unwrap(),
+        b"original"
+    );
+    assert!(paths[1].0.is_dir());
+}
+
+#[tokio::test]
+async fn temporary_alias_survives_commands_and_is_removed_after_backend_shutdown() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("long-temporary-root-".repeat(5));
+    std::fs::create_dir(&root).unwrap();
+    let root = root.canonicalize().unwrap();
+    let backend = NativeBackend::launch_with_profile(SandboxProfile::FullAccess)
+        .await
+        .unwrap();
+    let mut first = execution(
+        &root,
+        "printf retained > \"$TMPDIR/probe\"; printf '%s' \"$TMPDIR\"",
+    );
+    first.scope_access = ScopeAccess::Unrestricted;
+    first.network = areal_runtime_protocol::NetworkRequest::Inherit;
+    first
+        .env
+        .insert("TMPDIR".into(), root.display().to_string());
+    let mut second = first.clone();
+    let mut rx = backend.start(first).await.unwrap();
+    let (output, status) = collect(&mut rx, &backend).await;
+    assert_eq!(status, Some(0));
+    let alias = PathBuf::from(String::from_utf8(output).unwrap());
+    second.process_id = "second".into();
+    second.argv[2] = "cat \"$TMPDIR/probe\"".into();
+    let mut rx = backend.start(second).await.unwrap();
+    let (output, status) = collect(&mut rx, &backend).await;
+    assert_eq!(status, Some(0));
+    assert_eq!(output, b"retained");
+    backend.shutdown().await.unwrap();
+    assert!(!alias.exists());
+    assert_eq!(std::fs::read(root.join("probe")).unwrap(), b"retained");
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn builtin_launcher_requires_the_exact_deployment_executable() {

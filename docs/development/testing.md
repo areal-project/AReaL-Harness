@@ -517,3 +517,5 @@ GUI 的仓库规则位于 `clients/gui/oxlint-plugin-areal`，由 `vite.config.m
 尺寸观察使用 `@areal/ui/observe-resize`，并将清理函数用于 effect 卸载。该工具拥有原生构造；增量门禁约束新增和修改的调用点，存量调用尚未批量迁移。运行 `pnpm --dir clients/gui test:resize-observer` 在隔离 Chrome 中对照原生回调与共享工具的提交时序，并验证 disconnect。该测试不证明所有布局抖动已修复。
 
 无障碍专项只收集四条 JSX-a11y 规则，仓库插件诊断交由常规增量检查；两类检查分别执行，避免存量仓库规则混入无障碍基线。规则正反例和增量检查仍必须通过。
+
+`python3 scripts/runtime-image-smoke.py --bin-dir target/debug --evidence /tmp/runtime-image-evidence.json` 使用真实 Runtime 和文件助手验证大源图在传输前缩小、派生输出计量、只读来源、分页回取与小额度失败，不调用模型。可用 `--image /path/to/existing.png --dimension 1500` 复用既有原图；运行记录必须区分原始文件与 observer 导出的缩略图。

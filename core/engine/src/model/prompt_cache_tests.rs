@@ -148,9 +148,13 @@ async fn prompt_cache_is_opt_in_scoped_and_keeps_the_complete_request() {
         bodies[2]["prompt_cache_key"], key,
         "重建模型和新 Turn 保持同线程键"
     );
-    for body in &bodies[3..7] {
+    for body in &bodies[3..6] {
         assert_ne!(body["prompt_cache_key"], key);
     }
+    assert_eq!(
+        bodies[6]["prompt_cache_key"], key,
+        "摘要复用求解缓存路由；不复用 continuation 状态"
+    );
     for i in [0, 7, 8] {
         assert!(bodies[i].get("prompt_cache_key").is_none());
     }

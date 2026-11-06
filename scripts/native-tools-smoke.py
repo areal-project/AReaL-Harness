@@ -272,7 +272,9 @@ def main():
                     self.end_headers()
                     self.wfile.write(body)
                 except Exception as error:
-                    errors.append(repr(error))
+                    errors.append(
+                        f"{error!r}; last tool result: {locals().get('results', [])[-1:]}"
+                    )
                     self.send_error(400)
 
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Model)

@@ -39,6 +39,8 @@ runtimeRead/runtimeWrite 由宿主创建，示例导入路径相对仓库根。�
 
 `processes.startQueued` 使用与 `processes.start` 相同的请求和结果类型；根据握手选择 `process.startQueued`，旧 Runtime 使用原来的 `process.start`。两者都只提交一次，不在资源拒绝后自动重试。排队、预算和撤销语义见 [Runtime 契约](runtime.md)。
 
+`FileCommand` 新增 `readImage` 分支，接受 path 与可选 `ImageViewOptions`，`FileResult` 推导为 `ImageOutputReference`。通过返回的进程引用使用既有输出分页读取已结束的视图封装；不需要也不应重新执行图像操作。契约与计量见 [Runtime 文件接口](runtime.md)。
+
 `FileCommand` 的 `search` 分支接受 `path`、正则表达式 `pattern`、可选 `glob`、必填 `context`（0–20）与 `limit`（1–1000）。`files.execute` 的 `FileResult` 推导为 `{matches: {path: string; line: number | null; text: string | null; kind: string}[]; limited: boolean; guidance: string}`，行的 `kind` 为 `match` 或 `context`。`limited=true` 时按 `guidance` 缩小搜索范围；详细结果边界见 [Runtime 文件契约](runtime.md#文件)。这是既有命令联合类型的新增分支，旧 Runtime 不认识该分支时拒绝请求，SDK 不自动降级或重试。
 
 `FileCommand` 的 `applyPatches` 分支接受 `patches: TextPatch[]` 和 `expectedSha256`；1–32 个替换在同一 CAS 操作中依次匹配，任一失败不写入，成功返回 `FileWrite`。`applyPatch` 仅作为 Runtime/SDK 兼容入口保留，与单元素 `applyPatches` 共用实现；模型侧统一使用 `fs_apply_patches`。
