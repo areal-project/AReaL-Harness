@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { HostClient } from "@areal/client";
 import { call } from "./services.js";
-import { createWorkbenchRoutes } from "./host-workbench.js";
+import {
+  createWorkbenchRoutes,
+  hostDesktopCommand,
+  hostPlatformCapabilities,
+} from "./host-workbench.js";
 import type { PlatformServices } from "./services.js";
 
 function setup(answer: (method: string, params: unknown) => unknown) {
@@ -614,5 +618,37 @@ describe("MCP Apps catalog without a desktop adapter", () => {
     expect(
       await routes.call("manage", { operation: "mcpForms", projectId: "project" }),
     ).toBeUndefined();
+  });
+});
+
+describe("local web desktop commands", () => {
+  it("forwards only listed commands and opens desktop settings except computer control", async () => {
+    const calls: unknown[] = [];
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: { request: { fail?: boolean } }) => {
+        calls.push([method, params]);
+        if (params.request.fail) throw Object.assign(new Error("Core refused"), { code: "x" });
+        return { done: true };
+      },
+    } as unknown as HostClient;
+    const command = hostDesktopCommand(client, () => "source");
+    expect(await command("list", { projectId: "p" })).toEqual({ ok: true, value: { done: true } });
+    expect(await command("list", { fail: true } as never)).toEqual({
+      ok: false,
+      error: { code: "COMMAND_FAILED", message: "Core refused" },
+    });
+    await expect(command("computerControl", {} as never)).rejects.toThrow("需要桌面应用");
+    expect(calls[0]).toEqual([
+      "desktop.command",
+      { sourceId: "source", command: "list", request: { projectId: "p" } },
+    ]);
+    const capabilities = hostPlatformCapabilities(client, undefined, new Set(), "source");
+    expect(capabilities?.mutations).toBe(true);
+    expect(capabilities?.settings).toContain("模型服务");
+    expect(capabilities?.settings).not.toContain("电脑控制");
+    expect(hostPlatformCapabilities(client, undefined, new Set(), undefined)?.mutations).toBe(
+      false,
+    );
   });
 });

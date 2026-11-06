@@ -146,6 +146,11 @@ export type ReadProject = Record<string, unknown> & {
   summariesFreshness: "fresh" | "cached" | "unknown";
 };
 
+export function configurationIdentity(configuration: unknown) {
+  const value = configuration as { revision?: unknown; defaultModelRevision?: unknown } | null;
+  return JSON.stringify([value?.revision ?? null, value?.defaultModelRevision ?? null]);
+}
+
 export function createHostSnapshotProjector(
   client: HostClient,
   desktop: PlatformServices | undefined,
@@ -154,6 +159,7 @@ export function createHostSnapshotProjector(
   threadTargets: Map<string, string>,
   creationTargets: Map<string, string>,
   catalogs: Map<string, { identity: string; value?: Record<string, unknown> }>,
+  inspections: Map<string, { identity: string; value?: Record<string, unknown> }> = new Map(),
 ) {
   let revision = 0;
   const projectViews = new Map<
@@ -332,6 +338,8 @@ export function createHostSnapshotProjector(
           : undefined,
         core: {
           ...auxiliary?.core,
+          // 网页没有桌面后台的项目快照，权限能力随 project.models 一起从 Host 来。
+          ...(auxiliary?.features ? { features: auxiliary.features } : {}),
           connectionGeneration: project.serviceGeneration ?? "",
           instanceId: project.serviceGeneration ?? "",
         },
@@ -352,7 +360,18 @@ export function createHostSnapshotProjector(
               : {},
         },
         configurations:
-          thread && desktop?.configuration ? { [thread.id]: desktop.configuration } : {},
+          thread && desktop?.configuration
+            ? {
+                [thread.id]: {
+                  ...desktop.configuration,
+                  // 会话配置不带解析后的模型名；网页经后台 inspect 补上，与桌面一致。
+                  ...(inspections.get(`${id}:${thread.id}`)?.identity ===
+                  configurationIdentity(desktop.configuration)
+                    ? inspections.get(`${id}:${thread.id}`)?.value
+                    : {}),
+                },
+              }
+            : {},
         summaries,
         summariesLoaded: project.summaries.state === "fresh",
         summariesFreshness: project.summaries.state,

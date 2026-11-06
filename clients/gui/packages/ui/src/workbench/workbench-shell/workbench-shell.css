@@ -393,13 +393,14 @@
     border: 0;
   }
 }
+/* 入口贴顶排列，像菜单一样从上往下读，不在大片空白中间悬着。 */
 .side-pane-launcher {
   display: flex;
   min-height: 0;
   flex: 1;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 8px;
+  padding: 12px;
 }
 .side-pane-launcher-list {
   display: flex;

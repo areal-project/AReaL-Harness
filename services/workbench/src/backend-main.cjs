@@ -1,13 +1,20 @@
 "use strict";
 // Host 持有进程和私有管道；桌面后台复用原模块，原生能力仍由已认证的 Main 提供。
 const { createRequire } = require("node:module");
-const { join } = require("node:path");
-const { readFile, writeFile, unlink } = require("node:fs/promises");
+const { isAbsolute, join } = require("node:path");
+const { readFile, realpath, stat, writeFile, unlink } = require("node:fs/promises");
 const { createInterface } = require("node:readline");
 const { MAX_FRAME } = require("./channel.cjs");
 const { createPageSession, prepareInput } = require("./pages.cjs");
 const pageMethods = ["pages.command", "pages.resource"];
-const privateMethods = ["input.prepare", "execution.prepare", "execution.dispatch", "creation.read", "creation.catalog"];
+// 本机网页的桌面命令；与 Host 协议的 DesktopCommandParams.command 一致。
+const desktopCommands = new Set([
+  "addProject", "analytics", "chatgpt", "cloud", "cloudSession", "configure", "connect", "continue", "dismissRecovery",
+  "editMessage", "feedback", "fork", "history", "library", "list", "manage", "media", "open", "prediction",
+  "prepareCreator", "projectless", "providers", "queue", "queueEdit", "reconcile", "remoteControl", "resources",
+  "side", "tasks", "trajectory", "workspace",
+]);
+const privateMethods = ["desktop.command", "input.prepare", "execution.prepare", "execution.dispatch", "creation.read", "creation.catalog"];
 const domains = {
   "library.command": "library",
   "worktree.read": "workspace",
@@ -108,6 +115,31 @@ async function start({ input, output }) {
           return {models,profiles,defaultProfile:defaultProfile ? pick(defaultProfile,["id","revision"]) : null,
             lastAcceptedModel:accepted ? {...pick(accepted,["modelId","reasoningEffort","acceptedAt"]),model:accepted.model ? pick(accepted.model,["providerId","modelId"]) : null} : null};
         }
+        if (request.method === "desktop.command") {
+          const { command, request: params } = request.params ?? {};
+          if (!desktopCommands.has(command) || !params || typeof params !== "object" || Array.isArray(params))
+            throw Error("Invalid desktop command");
+          // 网页没有系统文件夹选择框，由用户填写路径；之后与桌面"打开项目"走同一条登记路径。
+          if (command === "addProject") {
+            if (typeof params.path !== "string" || !isAbsolute(params.path) || params.path.length > 4096)
+              throw Error("请填写项目文件夹的完整路径");
+            const path = await realpath(params.path).catch(() => { throw Error("找不到这个文件夹"); });
+            if (!(await stat(path)).isDirectory()) throw Error("请选择文件夹");
+            return await desktop.backend.addProject(path);
+          }
+          // 文件选择框只在桌面窗口里有。
+          if (command === "manage" && ["pluginArchivePick", "pluginArchiveImport"].includes(params.operation))
+            throw Error("Desktop only");
+          const contract = appRequire("@areal/workbench/desktop-contract");
+          contract.validateCommand(command, params);
+          // 手机连接在桌面窗口里也不经后台命令表，而是直接交给连接管理。
+          if (command === "remoteControl" && !desktop.adapter.remote) throw Error("手机连接未初始化");
+          const result = command === "remoteControl"
+            ? await desktop.adapter.remote.control(params)
+            : await desktop.adapter.executeRemote(command, params);
+          contract.validateCommandResponse(command, params, result);
+          return result ?? null;
+        }
         if (request.method === "creation.read") return desktop.backend.worktrees.readThreadCreation(request.params.projectId, request.params.request);
         if (request.method === "input.prepare") return prepareInput({ desktop, request: request.params });
         if (request.method === "execution.prepare" || request.method === "execution.dispatch") {
@@ -150,7 +182,9 @@ async function start({ input, output }) {
       };
       const task = execute().then(
         (result) => output.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n"),
-        () => output.write(JSON.stringify({ version: 1, id: request.id, error: { code: "CORE_UNAVAILABLE" } }) + "\n"),
+        (error) => output.write(JSON.stringify({ version: 1, id: request.id, error: request.method === "desktop.command"
+          ? { code: "COMMAND_FAILED", message: String(error?.message ?? "").slice(0, 512) }
+          : { code: "CORE_UNAVAILABLE" } }) + "\n"),
       );
       pending.add(task);
       void task.then(() => pending.delete(task), () => pending.delete(task));

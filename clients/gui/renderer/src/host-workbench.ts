@@ -1,6 +1,7 @@
 import type { HostClient } from "@areal/client";
 import type { PlatformServices } from "./services.js";
 import { isLibraryState } from "./services.js";
+import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
 
 const WORKTREE_READS = new Set(["worktreeList", "worktreeOptions", "worktreeRead"]);
 const WORKTREE_WRITES = new Set([
@@ -85,6 +86,73 @@ const MANAGE_WRITES = new Set([
   "taskRunNow",
   "taskResumeRun",
 ]);
+
+/**
+ * 本机网页经 Host `desktop.command` 交给后台的桌面命令，与协议枚举一致。会话创建、发送、引导、停止与
+ * 回答走 Host 写方法；窗口、系统与应用生命周期命令只在桌面窗口里有。
+ */
+export const DESKTOP_COMMANDS = new Set([
+  "analytics",
+  "chatgpt",
+  "cloud",
+  "cloudSession",
+  "configure",
+  "connect",
+  "continue",
+  "dismissRecovery",
+  "editMessage",
+  "feedback",
+  "fork",
+  "history",
+  "library",
+  "list",
+  "manage",
+  "media",
+  "open",
+  "prediction",
+  "prepareCreator",
+  "projectless",
+  "providers",
+  "queue",
+  "queueEdit",
+  "reconcile",
+  "remoteControl",
+  "resources",
+  "side",
+  "tasks",
+  "trajectory",
+  "workspace",
+]);
+/** 只有桌面窗口才有的设置页：电脑控制要本机系统权限。 */
+const DESKTOP_ONLY_SETTINGS = new Set(["电脑控制"]);
+
+/** 本机网页的桌面命令通道；返回 undefined 表示该命令只能在桌面窗口里执行。 */
+export function hostDesktopCommand(
+  client: HostClient,
+  source: () => string | undefined,
+): PlatformServices["command"] {
+  return async (name, params) => {
+    if (!DESKTOP_COMMANDS.has(name) || !client.writable("desktop.command"))
+      throw new Error("此功能需要桌面应用");
+    const sourceId = source();
+    if (!sourceId) throw new Error("请先选择资料库来源");
+    try {
+      const value = await client.workbench("desktop.command", {
+        sourceId,
+        command: name,
+        request: params as Parameters<HostClient["workbench"]>[1],
+      });
+      return { ok: true, value };
+    } catch (error) {
+      const message =
+        error && typeof error === "object" && "message" in error ? String(error.message) : "";
+      return {
+        ok: false,
+        error: { code: "COMMAND_FAILED", message: message || "操作失败" },
+      } as Awaited<ReturnType<PlatformServices["command"]>>;
+    }
+  };
+}
 
 const ACTIVITY_MS = 5000;
 const IDLE_CAP_SECONDS = 24 * 60 * 60;
@@ -365,8 +433,9 @@ export function hostPlatformCapabilities(
 ): PlatformServices["capabilities"] {
   const available = (domain: string, method: string) =>
     domains.has(domain) && !!librarySourceId && client.writable(method);
+  const commands = desktop === undefined && !!librarySourceId && client.writable("desktop.command");
   return {
-    mutations: desktop !== undefined,
+    mutations: desktop !== undefined || commands,
     conversationSubmit:
       desktop !== undefined ||
       (!!writes && client.writable("session.send") && client.writable("session.control")),
@@ -381,12 +450,16 @@ export function hostPlatformCapabilities(
     ...(desktop === undefined && {
       taskCatalog: available("tasks", "tasks.read"),
       taskManage: available("manage", "manage.command"),
-      settings: [
-        ...(available("providers", "providers.read") ? ["模型服务"] : []),
-        ...(available("worktree", "worktree.read") ? ["Worktrees"] : []),
-        ...(available("trajectory", "trajectory.read") ? ["数据飞轮"] : []),
-        ...(domains.has("analytics") && client.writable("analytics.read") ? ["用量"] : []),
-      ],
+      settings: commands
+        ? settingsNavigationGroups
+            .flatMap((group) => group.items.map((item) => item.id))
+            .filter((id) => !DESKTOP_ONLY_SETTINGS.has(id))
+        : [
+            ...(available("providers", "providers.read") ? ["模型服务"] : []),
+            ...(available("worktree", "worktree.read") ? ["Worktrees"] : []),
+            ...(available("trajectory", "trajectory.read") ? ["数据飞轮"] : []),
+            ...(domains.has("analytics") && client.writable("analytics.read") ? ["用量"] : []),
+          ],
     }),
   };
 }

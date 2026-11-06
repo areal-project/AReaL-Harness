@@ -221,6 +221,17 @@ export function useSessionNavigation(
       attempt.promise = (async () => {
         try {
           if (services.reads) {
+            // 网页没有桌面窗口替它启动项目，打开已停止的项目时由后台连接，与桌面窗口一致。
+            const target = restorationProjects.current.find((item) => item.id === owner.projectId);
+            if (
+              operation === "connect" &&
+              services.capabilities?.native === false &&
+              !target?.state?.connected
+            )
+              await resourceAction("connect", {
+                projectId: owner.projectId,
+                ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
+              });
             await services.reads.selectSession(
               owner.threadId ? { projectId: owner.projectId, threadId: owner.threadId } : null,
             );

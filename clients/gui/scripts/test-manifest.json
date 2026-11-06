@@ -1231,5 +1231,20 @@
     "areas": ["service", "development"],
     "requires": [],
     "notes": "Development-only read-only snapshot, native test registration, and operational-state exclusion. Packaged real-data acceptance is separate."
+  },
+  {
+    "script": "test:ux-checks",
+    "layer": "unit",
+    "platforms": ["darwin", "linux"],
+    "areas": ["health"],
+    "requires": []
+  },
+  {
+    "script": "test:ux-journeys",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "settings", "conversation"],
+    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "notes": "High-frequency journeys (no model → settings, send and queue during approval, task summary) with five deterministic UX checks: feedback within 400ms, no raw errors, no mixed language, no overlapping layers, no running status while awaiting approval."
   }
 ]

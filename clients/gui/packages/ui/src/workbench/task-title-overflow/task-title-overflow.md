@@ -1,21 +1,21 @@
 ---
 id: task-title-overflow
 title: TaskTitleOverflowText
-summary: 任务长标题的测量、渐隐与滚动。
+summary: 任务长标题的测量、截断渐隐与悬停全名。
 status: experimental
 entry: experimental
 layer: workbench
 category: composition
-aliases: ["任务长标题的测量、渐隐与滚动"]
+aliases: ["任务长标题的测量、渐隐与滚动", "任务长标题截断"]
 related: ["button"]
 exports: ["TaskTitleOverflowText"]
 ---
 
-# TaskTitleOverflowText 任务长标题的测量、渐隐与滚动
+# TaskTitleOverflowText 任务长标题的测量、截断与悬停全名
 
 ## 何时使用
 
-任务长标题的测量、渐隐与滚动，沿现有生产用途。
+任务长标题的测量、截断与悬停全名，沿现有生产用途。
 
 ## 组成
 
@@ -27,7 +27,7 @@ exports: ["TaskTitleOverflowText"]
 
 ## 行为
 
-引用 [R-UI-COMMON-010](../../../README.md#共同合同)。
+引用 [R-UI-COMMON-010](../../../README.md#共同合同)。超出宽度时截断并在右侧渐隐，悬停用应用提示显示全名；不滚动文字，扫视任务列表时画面保持静止。
 
 ## 内容
 

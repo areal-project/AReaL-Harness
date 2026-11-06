@@ -1150,6 +1150,18 @@ impl Session {
             )
             .await;
         }
+        if method == "desktop.command" {
+            ensure!(self.local && self.gui_write, "FORBIDDEN");
+            self.authorize(None, "manage")?;
+            ensure!(
+                request.get("context").is_none() && request.get("commandId").is_none(),
+                "INVALID_PARAMS"
+            );
+            return crate::server::workbench_route::desktop_command(
+                &self.host, &self.peer, request,
+            )
+            .await;
+        }
         if method == "command.read" && self.local && request.get("context").is_none() {
             ensure!(exact(params, &["commandId"]), "INVALID_PARAMS");
             if let Some(mut receipt) = crate::server::workbench_route::backend_receipt(

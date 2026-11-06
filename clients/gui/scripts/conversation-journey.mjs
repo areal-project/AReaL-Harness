@@ -562,8 +562,8 @@ export function conversationJourney(
       const contextCard = page.getByRole("complementary", { name: "任务上下文", exact: true });
       await contextCard.waitFor();
       await contextCard.getByRole("button", { name: /Changes/ }).waitFor();
-      await contextCard.getByRole("button", { name: "折叠来源 Sources 收起", exact: true }).click();
-      await contextCard.getByRole("button", { name: "展开来源 Sources 展开", exact: true }).click();
+      await contextCard.getByRole("button", { name: "来源 收起", exact: true }).click();
+      await contextCard.getByRole("button", { name: "来源 展开", exact: true }).click();
       await contextCard.getByRole("button", { name: "查看全部来源（4）", exact: true }).click();
       await contextCard
         .getByRole("region", { name: "全部输入来源", exact: true })

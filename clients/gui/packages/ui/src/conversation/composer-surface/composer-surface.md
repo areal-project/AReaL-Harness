@@ -34,7 +34,7 @@ editor、toolbar为必要插槽；editor承载正文和行内引用，context承
 
 ## 工作区文件引用
 
-`R-COMPOSERSURFACE-007` 裸 `@` 或清空关键词时隐藏文件候选及搜索状态。关键词在 Composer 输入，菜单不另设搜索框；搜索结果中的文件组排在最后。引用与正文保持同一层级。文件、文件夹、Skill、插件和会话引用使用正文内的紧凑行内标识，与文字共享字号、行高和自然换行；仅实际上传的附件进入正文上方附件区。文件和文件夹复用 Skills 行内标识的图标、名称与展示所有者，覆盖编辑器和已发送正文，不采用独立引用行、大卡片或新展示组件、样式。既有 Tooltip 显示完整路径。工作区树和搜索引用按实际项目或 Worktree 根目录解析相对路径；原生拖入或粘贴的本机目录允许位于工作区外，保留绝对路径。发送、排队、持久化及恢复保留各自路径语义。目录与普通文件混合输入分别进入引用和附件链路；引用本身不修改 Agent 执行权限。上传文件沿用附件链路。生产接线为 `PromptMentionNode`、`promptMentionDecoration`、`UserMessageBody`、`message-response-renderer`；`Messages` 提供根目录。运行 `AREAL_COMPOSER_FILES_REGRESSION=1 pnpm --dir clients/gui test:composer` 复验标识、悬停路径、Worktree 归属和上传附件。**检查：**`clients/gui/scripts/composer-files-acceptance.mjs`
+`R-COMPOSERSURFACE-007` 符号分工：`@` 引用文件、插件与 MCP 资源，裸 `@` 也列出项目根目录，输入关键词后搜索；`$` 只选 Skill；`/` 放命令与功能，不再混入 Skill；“+”菜单仍列出全部。关键词在 Composer 输入，菜单不另设搜索框；搜索结果中的文件组排在最后。引用与正文保持同一层级。文件、文件夹、Skill、插件和会话引用使用正文内的紧凑行内标识，与文字共享字号、行高和自然换行；仅实际上传的附件进入正文上方附件区。文件和文件夹复用 Skills 行内标识的图标、名称与展示所有者，覆盖编辑器和已发送正文，不采用独立引用行、大卡片或新展示组件、样式。既有 Tooltip 显示完整路径。工作区树和搜索引用按实际项目或 Worktree 根目录解析相对路径；原生拖入或粘贴的本机目录允许位于工作区外，保留绝对路径。发送、排队、持久化及恢复保留各自路径语义。目录与普通文件混合输入分别进入引用和附件链路；引用本身不修改 Agent 执行权限。上传文件沿用附件链路。生产接线为 `PromptMentionNode`、`promptMentionDecoration`、`UserMessageBody`、`message-response-renderer`；`Messages` 提供根目录。运行 `AREAL_COMPOSER_FILES_REGRESSION=1 pnpm --dir clients/gui test:composer` 复验标识、悬停路径、Worktree 归属和上传附件。**检查：**`clients/gui/scripts/composer-files-acceptance.mjs`
 
 ## 可访问性
 

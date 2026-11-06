@@ -8,6 +8,19 @@ import type {
   ReadConnectionIdentity,
 } from "./index.js";
 
+/** Host 只给代码时界面显示的原因；Host 自己写的说明原样显示。 */
+const GENERIC_ERRORS = new Set(["Host command failed", "Host read failed"]);
+const ERROR_TEXT: Record<string, string> = {
+  FORBIDDEN: "没有权限执行此操作。请在桌面应用的手机与网页设置里重新批准这个浏览器。",
+  CAPABILITY_UNAVAILABLE: "桌面后台未运行，此功能暂不可用。",
+  CORE_UNAVAILABLE: "项目服务暂不可用，请稍后重试。",
+  RESYNC_REQUIRED: "状态已变化，请刷新后重试。",
+  INVALID_PARAMS: "请求无效，请刷新后重试。",
+  LIMIT_EXCEEDED: "内容超过大小限制。",
+  COMMAND_CONFLICT: "这个操作与正在进行的操作冲突，请稍后重试。",
+  RESOURCE_UNAVAILABLE: "目标已不存在或不可用。",
+};
+
 type Pending = {
   resolve(value: unknown): void;
   reject(error: Error): void;
@@ -220,14 +233,14 @@ export async function connectWebSocket(
         if (!handler) return;
         pending.delete(String(message.id));
         clearTimeout(handler.timer);
-        if (record(message.error))
-          handler.reject(
-            Object.assign(
-              new Error(String(message.error.message ?? "Host read failed")),
-              message.error,
-            ),
-          );
-        else handler.resolve(message.result);
+        if (record(message.error)) {
+          const generic = message.error.message;
+          const text =
+            typeof generic === "string" && generic && !GENERIC_ERRORS.has(generic)
+              ? generic
+              : (ERROR_TEXT[String(message.error.code)] ?? "Host 操作失败");
+          handler.reject(Object.assign(new Error(text), message.error, { message: text }));
+        } else handler.resolve(message.result);
       } catch {
         close();
       }

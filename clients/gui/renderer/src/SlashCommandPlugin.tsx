@@ -20,7 +20,7 @@ import {
   $createPromptMentionNode,
   $isPromptMentionNode,
 } from "./mentions/nodes/PromptMentionNode.js";
-import type { AppSlashCommand } from "./slashCommandHelpers.js";
+import { composerTriggerBeforeCaret, type AppSlashCommand } from "./slashCommandHelpers.js";
 import { HISTORY_NAVIGATION_UPDATE_TAG } from "./lib/editorUpdateTags.js";
 import {
   ComposerCatalog,
@@ -42,15 +42,9 @@ function $commandAtCaret() {
   const node = selection.anchor.getNode();
   if (!$isTextNode(node) || $isPromptMentionNode(node)) return null;
   const end = selection.anchor.offset;
-  const match = /(?:^|\s)(@[^\s@]*|\/[^\s/@]*)$/.exec(node.getTextContent().slice(0, end));
+  const match = composerTriggerBeforeCaret(node.getTextContent().slice(0, end));
   return match
-    ? {
-        node,
-        start: end - match[1].length,
-        end,
-        trigger: match[1][0],
-        query: match[1].slice(1).toLowerCase(),
-      }
+    ? { node, start: end - match.length, end, trigger: match.trigger, query: match.query }
     : null;
 }
 
@@ -119,8 +113,11 @@ export function SlashCommandPlugin({
     !!container &&
     (trigger === "@"
       ? !!mentionCatalog || !!workspaceFiles
-      : !!slashCatalog || appCommands.length > 0);
-  const searchingFiles = open && trigger === "@" && !!query?.trim() && !!workspaceFiles;
+      : trigger === "$"
+        ? !!slashCatalog?.entries.some((entry) => entry.group === "Skills")
+        : !!slashCatalog || appCommands.length > 0);
+  // 空的“@”也列出工作区根目录，让引用文件一眼可见。
+  const searchingFiles = open && trigger === "@" && query !== null && !!workspaceFiles;
   const currentFiles =
     searchingFiles &&
     files.status !== "idle" &&
@@ -213,7 +210,14 @@ export function SlashCommandPlugin({
               }
             : undefined,
         }
-      : slashCatalog;
+      : slashCatalog &&
+          // “$”只选 Skill，“/”放命令与功能；“+”菜单仍列出全部。
+          {
+            ...slashCatalog,
+            entries: slashCatalog.entries.filter(
+              (entry) => (entry.group === "Skills") === (trigger === "$"),
+            ),
+          };
   const rows =
     open && catalog
       ? filterCatalog(catalog.entries, query)

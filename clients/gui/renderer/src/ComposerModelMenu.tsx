@@ -3,6 +3,7 @@ import { Input } from "@areal/ui";
 import { Zap } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { useOpenSettings } from "./settings/openSettingsContext.js";
 import { MenuChevronIcon, MenuSelectedIcon } from "./interfaceIcons.js";
 import { Button } from "./components/ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
@@ -55,6 +56,7 @@ export function ComposerModelMenu({
   onClose: () => void;
 }) {
   const { t } = useI18n();
+  const openSettings = useOpenSettings();
   const unspecified = t("chat.composer.effortUnspecified");
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
@@ -154,7 +156,11 @@ export function ComposerModelMenu({
     </div>
   );
   if (!availableOptions.length && !model)
-    return (
+    return openSettings ? (
+      <Button type="button" variant="secondary" size="sm" onClick={() => openSettings("模型服务")}>
+        {t("chat.composer.configureModels")}
+      </Button>
+    ) : (
       <TitleTooltip title={emptyGuidance}>
         <span
           className="composer-model-trigger composer-model-empty text-foreground-subtle text-ui-sm"

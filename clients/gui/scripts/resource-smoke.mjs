@@ -116,7 +116,7 @@ export async function verifyResourceSlice({
     .locator(".messages")
     .evaluate((element) => element.getBoundingClientRect().width);
   await contextTrigger.click();
-  await context.getByRole("button", { name: /^Changes/ }).waitFor();
+  await context.getByRole("button", { name: /^改动/ }).waitFor();
   const sources = context.getByRole("region", { name: "输入来源", exact: true });
   await sources.getByRole("button", { name: "https://example.com/one", exact: true }).waitFor();
   assert.equal(
@@ -130,10 +130,10 @@ export async function verifyResourceSlice({
     "context popup does not reserve timeline width",
   );
   await fullShot("task-context-desktop-sources");
-  await sources.getByRole("button", { name: "折叠来源 Sources 收起", exact: true }).click();
+  await sources.getByRole("button", { name: "来源 收起", exact: true }).click();
   assert.equal(
     await sources
-      .getByRole("button", { name: "展开来源 Sources 展开", exact: true })
+      .getByRole("button", { name: "来源 展开", exact: true })
       .getAttribute("aria-expanded"),
     "false",
   );
@@ -142,7 +142,7 @@ export async function verifyResourceSlice({
     false,
     "collapsed sources leave the visible interaction path",
   );
-  await sources.getByRole("button", { name: "展开来源 Sources 展开", exact: true }).click();
+  await sources.getByRole("button", { name: "来源 展开", exact: true }).click();
   await sources.getByRole("button", { name: "查看全部来源（4）", exact: true }).click();
   await context.getByRole("button", { name: "https://example.com/four", exact: true }).waitFor();
   await button("返回来源概览").click();

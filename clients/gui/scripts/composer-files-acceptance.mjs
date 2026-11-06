@@ -157,14 +157,8 @@ export async function runComposerFilesAcceptance({
   const mentionCount = received.length;
   await input().fill("@");
   await page.getByTestId("composer-catalog").waitFor();
-  assert.equal(await fileOptions().count(), 0);
-  assert.equal(
-    await page
-      .getByTestId("composer-catalog")
-      .getByRole("group", { name: "文件", exact: true })
-      .count(),
-    0,
-  );
+  // R-COMPOSERSURFACE-007：裸 @ 直接列出项目根目录。
+  await fileGroup().waitFor();
   assert.equal(await page.getByTestId("composer-catalog").getByRole("textbox").count(), 0);
   assert.equal(await input().textContent(), "@");
   await shot("files-at-empty-query-draft");
@@ -177,7 +171,7 @@ export async function runComposerFilesAcceptance({
     "文件",
   );
   await input().fill("@");
-  await fileGroup().waitFor({ state: "hidden" });
+  await fileGroup().waitFor();
   assert.equal(await input().textContent(), "@");
   await input().pressSequentially("mention-root");
   await rootFile().waitFor();

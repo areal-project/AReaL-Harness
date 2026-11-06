@@ -19,6 +19,7 @@ export function TurnProgress({
   label,
   turn,
   connected = false,
+  awaiting = false,
   readingKey,
 }: {
   settled: boolean;
@@ -27,6 +28,7 @@ export function TurnProgress({
   label?: string;
   turn?: Data;
   connected?: boolean;
+  awaiting?: boolean;
   readingKey?: string;
 }) {
   const { t } = useI18n();
@@ -60,6 +62,7 @@ export function TurnProgress({
           <TurnElapsed
             turn={turn}
             connected={connected}
+            awaiting={awaiting}
             disclosure={{
               expanded,
               controls: id,

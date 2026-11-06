@@ -1,5 +1,6 @@
 import {
   createHostSnapshotProjector,
+  configurationIdentity,
   windowIdentity,
   hostCommandOutcome,
   settleHostCommand as settled,
@@ -26,7 +27,11 @@ import {
   readInheritedHistoryPage,
 } from "@areal/workbench/desktop-contract/conversation-history";
 import { pageTopology } from "@areal/workbench/history-projection";
-import { createWorkbenchRoutes, hostPlatformCapabilities } from "./host-workbench.js";
+import {
+  createWorkbenchRoutes,
+  hostDesktopCommand,
+  hostPlatformCapabilities,
+} from "./host-workbench.js";
 import { createHostPages } from "./host-pages.js";
 import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
 
@@ -61,6 +66,7 @@ export function createHostReadServices(
   const threadTargets = new Map<string, string>();
   const creationTargets = new Map<string, string>();
   const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
+  const inspections = new Map<string, { identity: string; value?: Record<string, unknown> }>();
   const commandOutcomes = new Map<string, Record<string, JsonObject>>();
   const commandOwners = new Map<string, string>();
   const projectSnapshot = createHostSnapshotProjector(
@@ -71,6 +77,7 @@ export function createHostReadServices(
     threadTargets,
     creationTargets,
     catalogs,
+    inspections,
   );
   function pruneWindows() {
     clearTimeout(cacheTimer);
@@ -214,11 +221,14 @@ export function createHostReadServices(
     snapshot = projection.snapshot;
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
-    if (!desktop && options.writes && client.writable("project.models")) {
+    if ((!desktop || legacy) && options.writes && client.writable("project.models")) {
       const connection = client.snapshot();
       if (connection.connection !== "ready") return;
       for (const project of shell?.snapshot.projects ?? []) {
         if (project.state !== "ready") continue;
+        // 桌面后台只认识资料库里的项目；其余项目（如命令行登记的）由 Host 读模型目录。
+        const id = ids.get(project.projectId) ?? project.projectId;
+        if (legacy?.projects.some((value) => value.id === id)) continue;
         const identity = JSON.stringify([
           connection.identity.connectionId,
           project.serviceGeneration,
@@ -239,6 +249,37 @@ export function createHostReadServices(
             publish();
           })
           .catch(() => {});
+      }
+    }
+    if (!desktop && librarySourceId && client.writable("desktop.command")) {
+      const sourceId = librarySourceId;
+      for (const project of snapshot.projects as ReadProject[]) {
+        for (const threadId of Object.keys(project.state.threads)) {
+          const configuration = project.state.threads[threadId]?.desktop?.configuration;
+          if (!object(configuration)) continue;
+          const key = `${project.id}:${threadId}`;
+          const identity = configurationIdentity(configuration);
+          if (inspections.get(key)?.identity === identity) continue;
+          const entry = { identity, value: undefined as Record<string, unknown> | undefined };
+          inspections.set(key, entry);
+          void client
+            .workbench("desktop.command", {
+              sourceId,
+              command: "manage",
+              request: { projectId: project.id, threadId, operation: "inspect" },
+            })
+            .then((value) => {
+              if (inspections.get(key) !== entry || !object(value)) return;
+              entry.value = {
+                ...(typeof value.modelName === "string" ? { modelName: value.modelName } : {}),
+                ...(object(value.resolvedParameters)
+                  ? { resolvedParameters: value.resolvedParameters }
+                  : {}),
+              };
+              publish();
+            })
+            .catch(() => {});
+        }
       }
     }
   }
@@ -760,12 +801,27 @@ export function createHostReadServices(
     () => librarySourceId,
   );
   const unavailable = async () => {
-    throw new Error("This capability requires the desktop application");
+    throw new Error("此功能需要桌面应用");
+  };
+  // 浏览器拿不到本机文件夹选择框；本机网页让用户填路径，登记仍由桌面后台完成。
+  const chooseProject = async () => {
+    const sourceId = librarySourceId;
+    if (!sourceId || !client.writable("desktop.command")) return unavailable();
+    const path = globalThis.prompt("输入项目文件夹的完整路径")?.trim();
+    if (!path) return null;
+    const id = await client.workbench("desktop.command", {
+      sourceId,
+      command: "addProject",
+      request: { path },
+    });
+    if (typeof id !== "string") throw new Error("项目登记结果无效");
+    client.refreshShell();
+    return id;
   };
   return {
     ...(desktop ?? {
-      chooseProject: unavailable,
-      command: unavailable,
+      chooseProject,
+      command: hostDesktopCommand(client, () => librarySourceId),
       theme: async () => ({
         dark: matchMedia("(prefers-color-scheme: dark)").matches,
         id: "system",

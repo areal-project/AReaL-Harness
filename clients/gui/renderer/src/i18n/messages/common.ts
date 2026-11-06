@@ -198,11 +198,15 @@ export const commonMessages = {
   "common.navigation.reveal": { "zh-CN": "在文件管理器中显示", en: "Show in file manager" },
   "common.navigation.unpinProject": { "zh-CN": "取消置顶项目", en: "Unpin project" },
   "common.navigation.pinProject": { "zh-CN": "置顶项目", en: "Pin project" },
+  "common.navigation.hideProject": {
+    "zh-CN": "从侧栏移除（不删除文件，再次打开即恢复）",
+    en: "Remove from sidebar (files stay; open it again to restore)",
+  },
   "common.navigation.newProjectChat": {
     "zh-CN": "在项目 {project} 中新建对话",
     en: "New conversation in project {project}",
   },
-  "common.navigation.showMore": { "zh-CN": "Show more", en: "Show more" },
+  "common.navigation.showMore": { "zh-CN": "显示更多", en: "Show more" },
   "common.navigation.pinned": { "zh-CN": "置顶", en: "Pinned" },
   "common.navigation.pinnedSection": { "zh-CN": "置顶分类", en: "Pinned section" },
   "common.navigation.archived": { "zh-CN": "已归档任务", en: "Archived tasks" },
@@ -356,7 +360,11 @@ export const commonMessages = {
     "zh-CN": "正在读取工作区变更…",
     en: "Reading workspace changes…",
   },
-  "chat.context.changes": { "zh-CN": "Changes", en: "Changes" },
+  "chat.context.changes": { "zh-CN": "改动", en: "Changes" },
+  "chat.context.changesRegion": { "zh-CN": "工作区改动", en: "Workspace changes" },
+  "chat.context.sources": { "zh-CN": "来源", en: "Sources" },
+  "chat.context.addSource": { "zh-CN": "添加来源", en: "Add source" },
+  "chat.context.addSchedule": { "zh-CN": "添加定时任务", en: "Add schedule" },
   "chat.context.changeScope": {
     "zh-CN": "工作区未暂存 · {count} 个文件",
     en: "Unstaged workspace changes · {count} files",
@@ -375,7 +383,7 @@ export const commonMessages = {
   "chat.agents.done": { "zh-CN": "{count} 个已完成", en: "{count} done" },
   "chat.agents.attention": { "zh-CN": "{count} 个待确认", en: "{count} need attention" },
   "chat.agents.noneWorking": { "zh-CN": "暂无运行中的子代理", en: "No subagents working" },
-  "chat.agents.title": { "zh-CN": "Subagents", en: "Subagents" },
+  "chat.agents.title": { "zh-CN": "子代理", en: "Subagents" },
   "chat.agents.region": { "zh-CN": "子智能体", en: "Subagents" },
   "chat.agents.more": { "zh-CN": "加载更多子智能体", en: "Load more subagents" },
   "chat.tool.images": { "zh-CN": "已查看 {count} 张图片", en: "Viewed {count} images" },
@@ -595,6 +603,23 @@ export const commonMessages = {
   },
   "chat.composer.effortUnspecified": { "zh-CN": "默认", en: "Default" },
   "chat.composer.noModels": { "zh-CN": "暂无可用模型", en: "No models available" },
+  "chat.composer.noModelsReason": {
+    "zh-CN": "还没有可用的模型，先在右下角配置一个模型再发送",
+    en: "No model is available yet. Set one up from the button below to send.",
+  },
+  "chat.composer.chooseModelReason": {
+    "zh-CN": "先在右下角选择一个模型再发送",
+    en: "Choose a model below to send.",
+  },
+  "chat.composer.placeholder": {
+    "zh-CN": "描述要做的事，@ 引用文件，/ 查看命令",
+    en: "Describe the task, @ to reference files, / for commands",
+  },
+  "chat.composer.approvalPlaceholder": {
+    "zh-CN": "可以继续输入，消息会排在这一轮之后发送",
+    en: "Keep typing; messages are sent after this turn",
+  },
+  "chat.composer.configureModels": { "zh-CN": "配置模型", en: "Set up a model" },
   "chat.composer.noModelsGuidance": {
     "zh-CN": "暂无可用模型，请前往设置 > 模型设置",
     en: "No models available. Go to Settings > Model settings.",
@@ -788,7 +813,7 @@ export const commonMessages = {
   "settings.usage.title": { "zh-CN": "使用情况", en: "Usage" },
   "settings.plugins.title": { "zh-CN": "插件", en: "Plugins" },
   "settings.models.title": { "zh-CN": "模型设置", en: "Models" },
-  "settings.cloud.title": { "zh-CN": "Cloud", en: "Cloud" },
+  "settings.cloud.title": { "zh-CN": "云端", en: "Cloud" },
   "settings.permissions.title": { "zh-CN": "会话权限", en: "Permissions" },
   "settings.browser.title": { "zh-CN": "浏览器", en: "Browser" },
   "settings.browser.subtitle": {
@@ -989,7 +1014,7 @@ export const commonMessages = {
     en: "{measured, number} / {total, plural, one {# request} other {# requests}}",
   },
   "workspace.environment": { "zh-CN": "会话运行环境", en: "Session environment" },
-  "workspace.cloud": { "zh-CN": "Cloud", en: "Cloud" },
+  "workspace.cloud": { "zh-CN": "云端", en: "Cloud" },
   "cloud.attachmentsLimit": {
     "zh-CN": "每条消息最多 16 个附件",
     en: "Each message supports up to 16 attachments.",

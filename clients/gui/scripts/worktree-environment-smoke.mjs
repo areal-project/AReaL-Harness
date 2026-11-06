@@ -228,7 +228,7 @@ async function shot(name) {
 async function openWorktreeSettings(tab = "环境") {
   await page.keyboard.press("Escape");
   await button("设置").click();
-  await button("Worktrees").click();
+  await button("工作树").click();
   await page.getByRole("tab", { name: tab, exact: true }).click();
 }
 async function platform(name, script = "设置脚本") {
@@ -332,13 +332,13 @@ try {
   await button("常规").click();
   const predictions = page.getByRole("switch", { name: "预测下一条提示词", exact: true });
   if ((await predictions.getAttribute("aria-checked")) === "true") await predictions.click();
-  await button("Worktrees").click();
+  await button("工作树").click();
   await page.getByRole("tab", { name: "常规", exact: true }).click();
   await shot("general-light");
   await button("外观").click();
   await page.getByRole("combobox", { name: "界面主题", exact: true }).click();
   await page.getByRole("option", { name: "深色", exact: true }).click();
-  await button("Worktrees").click();
+  await button("工作树").click();
   await page.getByRole("tab", { name: "环境", exact: true }).click();
   await addEnvironment({
     name: "Acceptance",

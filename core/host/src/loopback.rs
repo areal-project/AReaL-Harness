@@ -80,6 +80,7 @@ const WRITE_METHODS: &[&str] = &[
     "worktree.command",
     "pages.command",
     "pages.resource",
+    "desktop.command",
 ];
 const TTL: Duration = Duration::from_secs(30);
 const TIMEOUT: Duration = Duration::from_secs(10);
@@ -254,7 +255,9 @@ impl Loopback {
             "library.command" | "analytics.import" | "worktree.read" | "worktree.command"
             | "tasks.read" | "trajectory.read" | "trajectory.command" | "feedback.read"
             | "feedback.command" | "manage.read" | "manage.command" | "providers.read"
-            | "providers.command" | "pages.command" | "pages.resource" => "manage",
+            | "providers.command" | "pages.command" | "pages.resource" | "desktop.command" => {
+                "manage"
+            }
             _ if WRITE_METHODS.contains(&method) => "observe",
             _ => return false,
         };
@@ -626,6 +629,10 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                     let message=error.to_string();
                                     let code=error.downcast_ref::<wire::Error>().map(|error|error.code).unwrap_or_else(||super::gateway_owner::error_code(&message));
                                     let mut response = json!({"version":VERSION,"id":id,"error":{"code":code,"message":"Host command failed"}});
+                                    // Host 自己写的错误说明可以给界面看；其余原因可能带内部细节，只给代码。
+                                    if let Some(error) = error.downcast_ref::<wire::Error>() {
+                                        response["error"]["message"] = json!(error.message);
+                                    }
                                     if matches!(raw["method"].as_str(), Some("library.command" | "worktree.command" | "trajectory.command" | "feedback.command" | "manage.command"
                 | "providers.read"
                 | "providers.command")) {
