@@ -23,7 +23,12 @@ Baselines: AReaL-Harness `codex/shared-host` `7611582f`; T3 Code `8760d063` (`do
 
 ## Handing work to Codex
 
-Implement A0 → A4 as one task, in order and continuously, without waiting for H4 acceptance to finish: branch from `codex/shared-host` and merge H4 in once it lands. Packages do not wait for maintainer review; each package is its own local commit and the next package starts only after every completion condition of the current one is met (including the journey in the appropriate environment with a copy of real data, except for A0). After all packages, run OP-01 to OP-08 in full, then open one PR. Steps that delete an old path run only after their package's acceptance passes. Prompts cite the matching section and the "Execution rules" below.
+Implement A0 → A4 in order and continuously, without waiting for H4 acceptance to finish: branch from `codex/shared-host` and merge H4 in once it lands. Packages do not wait for maintainer review; each package is its own local commit and the next package starts only after every completion condition of the current one is met. Prompts cite the matching section and the "Execution rules" below.
+
+Merging takes two PRs:
+
+1. **Integration PR**: A0–A3 plus A4 item 1 (the shared UI). Every new path sits behind a flag that defaults to off, so an installed build behaves as the released one does. It merges when CI is green without loosening any gate (line caps, IPC freeze, protocol checks, renderer boundary); it does not require packaged acceptance.
+2. **Retirement PR**: A4 items 2–4, which delete the old pages, old IPC and the flags and move TUI/CLI onto the Host. Open it only after release acceptance passes (real-data upgrade, old pairing upgrade, login autostart and reboot, unchanged identity after upgrade, a signed and notarized package, and OP-01 to OP-08), and ask the maintainer before deleting.
 
 - Use high reasoning effort throughout. The A3 workbench service design note goes into the commit and may be implemented directly; stop only for "Stop and ask" items.
 - General repository rules (layering, paired Chinese/English docs, test layers, PR template) follow AGENTS.md and are not repeated here.
@@ -243,8 +248,8 @@ Only one UI remains, and the Host is the only client entry point.
 
 ### Done when
 
-- The repository has a single UI build and Electron Main has no business commands.
-- The installed package, a browser and the phone each pass acceptance scenarios OP-01 to OP-08.
+- Integration PR: the shared UI works with its flag on and matches the released behaviour with it off; CI is green.
+- Retirement PR: the repository has a single UI build; Electron Main has no business commands; the installed package, a browser and the phone each pass acceptance scenarios OP-01 to OP-08.
 
 ## Acceptance scenarios
 
