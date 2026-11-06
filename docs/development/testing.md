@@ -374,6 +374,8 @@ CI 失败先按“证据 → 操作身份与状态所有者 → 可控反例 →
 
 Side Chat 引用烟测等待选区弹层完成入场过渡后再操作；键盘选区使用真实 Shift 扩展和 Enter，其他引用使用鼠标点击，保留内容、去重和容量边界断言。manifest 记录引用长度、目标和操作阶段。浏览器导航烟测被动保存原生快捷键及最近 128 个 Main 页面回执；这些记录不改变页面返回顺序，不将未复现的 CI 失败声明为已修复。
 
+选区夹具在脚本定位后发出 pointerdown，先由既有阅读所有者确认当前位置，再建立可见的原生 Range；激活前保存按钮与视口几何。队列烟测对 snapshot/command 和退出使用既有期限，Main 的 `uncaughtExceptionMonitor` 只落盘错误栈，不吞异常；任何异常或清理失败仍使验收失败。
+
 macOS 与 Linux 宿主检查使用同一矩阵定义，`fail-fast: false` 保证任一平台失败不取消另一平台的覆盖。macOS 使用 `make setup-node`，仅安装原生 smoke 和 SDK 所需的 Node 依赖；Linux `make setup` 继续安装全部锁定格式工具。原生验收在同一次子 Make 调用中运行 Runtime、Harness、桌面 API 和 Workgroup smoke，共用一次 workspace build。Docker 只复制所需 CLI/TUI/Web 客户端，GUI 不进入构建上下文。原生 Runtime 和 Harness 覆盖保持不变。
 
 `harness-smoke.mjs` 通过真实 Core/Runtime 和模型请求检查根/嵌套 `AGENTS.md` 与 `AGENTS.override.md` 的单层替换、空白回退、顺序、无关目录隔离、缺失文件、跨 Turn 刷新、32 KiB 边界、UTF-8 和符号链接拒绝。
@@ -483,7 +485,7 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 `pnpm --dir clients/gui test:macos-dmg` 在 macOS 上独立通过真实 `codesign` 和 `hdiutil` 验证签名 framework 暂存。它需要允许磁盘映像设备访问的环境；受限 Agent 沙箱可能返回 `Device not configured`。应记录环境失败，并在允许的宿主环境重跑相同测试，不跳过断言，也不据此宣称安装包验收通过。macOS GUI job 显式执行该检查；可移植 `verify` 不创建磁盘映像。
 
-GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 Core 合同与 GUI smoke 并行消费同一份产物，分别校验源码 SHA 和可执行组件；`GUI gate` 同时等待两组结果，失败、取消或意外跳过都不能通过。Core 合同的日志、报告和隔离临时目录单独归档。历史兼容、迁移、Composer、模型选择、队列、对话派生和 Side chat 按清单选择后拆成独立隔离的 matrix job（最多四个并发，`fail-fast: false`；各 workflow 仍共享 macOS 配额）。同轮 artifact 以 tar 保留可执行权限，并记录精确 checkout SHA；smoke 拒绝不匹配的源码。锁定的 pnpm/Electron/FFmpeg 下载使用缓存；构建成功即可保存构建缓存，不再因后续 smoke 失败丢失缓存。报告与跨 job 产物绑定 workflow attempt；需要重跑时执行完整 workflow，旧 attempt 的通过记录或产物不能满足新一轮门禁。缺失产物、失败、取消或意外跳过仍使 gate 失败，不使用 `continue-on-error`。
+GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 Core 合同按两条 lane 依次执行；两条 lane 结算后，GUI smoke 最多两个并发，避免两个矩阵同时争领容量不足的 macOS arm64 runner。两组消费同一份产物，分别校验源码 SHA 和可执行组件；Core 失败仍收集独立 smoke，`GUI gate` 要求两组全部通过，失败、取消或意外跳过都不能通过。Core 合同的日志、报告和隔离临时目录单独归档。历史兼容、迁移、Composer、模型选择、队列、对话派生和 Side chat 按清单选择后拆成独立隔离的 matrix job（`fail-fast: false`；各 workflow 仍共享 macOS 配额）。同轮 artifact 以 tar 保留可执行权限，并记录精确 checkout SHA；smoke 拒绝不匹配的源码。锁定的 pnpm/Electron/FFmpeg 下载使用缓存；构建成功即可保存构建缓存，不再因后续 smoke 失败丢失缓存。报告与跨 job 产物绑定 workflow attempt；需要重跑时执行完整 workflow，旧 attempt 的通过记录或产物不能满足新一轮门禁。缺失产物、失败、取消或意外跳过仍使 gate 失败，不使用 `continue-on-error`。
 
 恢复去重的归属包含项目、聊天和 Core 连接代际；适配器重建后不能复用旧代际的完成/失败尝试。`thread-restoration-ui-smoke.mjs` 使用真实构建的 Renderer 及受控 Desktop 投影复现此边界，同时保持未知提交不重发。
 
