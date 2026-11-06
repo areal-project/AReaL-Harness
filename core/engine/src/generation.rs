@@ -1558,7 +1558,7 @@ impl Engine {
                                 .await?
                             {
                                 completion_retries += 1;
-                                recovery_hint = Some("The previous model completion was discarded because its stream or tool format was incomplete. None of its requested tools executed. Continue from confirmed results; keep reasoning concise and split large writes into smaller, complete tool calls within the output limit. Do not replay earlier confirmed mutations.".to_owned());
+                                recovery_hint = Some(model::invalid_tool_arguments_hint(&error).unwrap_or_else(|| "The previous model completion was discarded because its stream or tool format was incomplete. None of its requested tools executed. Continue from confirmed results; keep reasoning concise and split large writes into smaller, complete tool calls within the output limit. Do not replay earlier confirmed mutations.".to_owned()));
                                 continue 'restart;
                             }
                             return Err(error);

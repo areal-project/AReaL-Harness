@@ -141,6 +141,102 @@ fn broken() -> String {
         ]}}],"usage":usage()}))
 }
 
+fn invalid_responses_arguments() -> String {
+    let items = json!([
+        {"type":"function_call","call_id":"must-not-run","name":"write_once","arguments":"{}"},
+        {"type":"function_call","call_id":"bad-object","name":"write_once","arguments":"[\"private-secret\"]"}
+    ]);
+    frame(json!({"type":"response.completed","response":{
+        "status":"completed","output":items,"usage":{"input_tokens":7,"output_tokens":3}
+    }}))
+}
+
+#[tokio::test]
+async fn argument_recovery_feedback_preserves_turn_limit_confirmed_tools_and_usage() {
+    for (budget, failures) in [(0, 1), (1, 1), (1, 2)] {
+        let mut bodies = vec![calls_body(1, 2, true)];
+        bodies.extend(std::iter::repeat_n(invalid_responses_arguments(), failures));
+        bodies.push(frame(json!({"type":"response.completed","response":{
+            "status":"completed","output":[{"type":"message","id":"final","role":"assistant",
+                "content":[{"type":"output_text","text":"verified"}]}],
+            "usage":{"input_tokens":7,"output_tokens":3}
+        }})));
+        let fixture = Fixture::start(bodies, None).await;
+        let data = tempfile::tempdir().unwrap();
+        let audit = data.path().join("requests");
+        let pool = SharedModel::pool(Arc::new(fixture.model(&audit, true)), 1).unwrap();
+        let engine = Engine::open(
+            &data.path().join("core"),
+            pool.clone(),
+            Limits {
+                max_completion_retries: budget,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        let writes = Arc::new(Writes::default());
+        let thread = thread(&engine, writes.clone()).await;
+        // 本用例核对求解响应的恢复与账本；会话命名由独立用例验收。
+        engine
+            .configure_thread(
+                serde_json::from_value(json!({
+                    "threadId":thread.id,"expectedRevision":1,
+                    "options":{"automaticSessionName":false}
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("fixture")])
+            .await
+            .unwrap();
+        let result = settled(&engine, &thread.id).await;
+        let success = budget >= failures;
+        assert_eq!(
+            result.turns[0].status,
+            if success {
+                TurnStatus::Completed
+            } else {
+                TurnStatus::Failed
+            }
+        );
+        assert_eq!(*writes.ids.lock().unwrap(), ["call0"]);
+        let expected = if success { failures + 2 } else { budget + 2 };
+        assert_eq!(
+            result.turns[0].usage.as_ref().unwrap().input_tokens,
+            (7 * expected) as u64
+        );
+        assert_pool_idle(&pool).await;
+        {
+            let requests = fixture.requests.lock().unwrap();
+            assert_eq!(requests.len(), expected);
+            for request in requests.iter().skip(2) {
+                let body = request.to_string();
+                assert!(body.contains("expected a JSON object, received array"));
+                assert!(body.contains("zero-based index 1"));
+                assert!(!body.contains("private-secret"));
+                assert!(!body.contains("must-not-run"));
+            }
+        }
+        let records = fixture.audits(&audit);
+        assert_eq!(records.len(), expected);
+        for record in records.iter().filter(|r| r["outcome"] == "failed") {
+            assert_eq!(record["finalUsageConfirmed"], true);
+            assert_eq!(
+                record["terminalOutcome"]["details"]["reason"],
+                "invalid_tool_arguments"
+            );
+            assert_eq!(
+                record["terminalOutcome"]["details"]["argumentDiagnostic"]["kind"],
+                "not_object"
+            );
+            assert!(!record.to_string().contains("private-secret"));
+        }
+        engine.shutdown().await;
+    }
+}
+
 struct Fixture {
     endpoint: String,
     requests: Arc<Mutex<Vec<Value>>>,

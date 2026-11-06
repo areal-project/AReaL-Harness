@@ -85,6 +85,37 @@ pub enum ModelFailure {
 #[error("provider terminal response includes final usage")]
 pub(crate) struct FinalUsageError;
 
+// 只保留解析位置和固定类别；参数正文、调用名与上游错误原文都可能携带敏感信息。
+#[derive(Debug, Serialize, thiserror::Error)]
+#[serde(rename_all = "camelCase")]
+#[error(
+    "invalid tool arguments (call index={call_index}, kind={kind}, line={line:?}, column={column:?})"
+)]
+struct ToolArgumentDiagnostic {
+    call_index: usize,
+    argument_bytes: usize,
+    kind: &'static str,
+    line: Option<usize>,
+    column: Option<usize>,
+    top_level_type: Option<&'static str>,
+}
+
+pub(crate) fn invalid_tool_arguments_hint(error: &anyhow::Error) -> Option<String> {
+    let detail = error.downcast_ref::<ToolArgumentDiagnostic>()?;
+    let location = match (detail.line, detail.column) {
+        (Some(line), Some(column)) => format!(" at line {line}, column {column}"),
+        _ => String::new(),
+    };
+    let issue = match detail.top_level_type {
+        Some(kind) => format!("expected a JSON object, received {kind}"),
+        None => format!("JSON {} error{location}", detail.kind),
+    };
+    Some(format!(
+        "The previous completion was discarded: tool call at zero-based index {} had {issue} ({} argument bytes). None of that completion's tools executed. Regenerate complete arguments as one JSON object matching the advertised schema; do not JSON-encode the object as a string. Split large writes into small files or local edits. Continue from confirmed results without replaying earlier confirmed mutations.",
+        detail.call_index, detail.argument_bytes,
+    ))
+}
+
 /// Bounded protocol metadata only. Provider messages and response bodies may
 /// contain prompts or credentials and are never copied into this diagnostic.
 #[derive(Debug, Serialize, thiserror::Error)]
@@ -350,7 +381,11 @@ pub(crate) fn terminal_outcome(error: &anyhow::Error) -> Option<areal_protocol::
         ModelFailure::Unavailable => ("LLM_RESPONSE_FAILED", "infrastructure", "unavailable"),
         ModelFailure::Incomplete => ("LLM_RESPONSE_FAILED", "infrastructure", "incomplete_stream"),
     };
-    Some(outcome(code, class, "core_model", json!({"reason":reason})))
+    let mut details = json!({"reason":reason});
+    if let Some(detail) = error.downcast_ref::<ToolArgumentDiagnostic>() {
+        details["argumentDiagnostic"] = json!(detail);
+    }
+    Some(outcome(code, class, "core_model", details))
 }
 
 pub(crate) fn is_network_error(error: &anyhow::Error) -> bool {

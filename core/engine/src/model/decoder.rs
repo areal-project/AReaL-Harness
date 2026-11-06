@@ -497,11 +497,49 @@ impl ResponsesDecoder {
                 self.record_item(item, output)?;
             }
         }
-        for call in &self.calls {
-            anyhow::ensure!(
-                serde_json::from_str::<Value>(&call.arguments).is_ok_and(|value| value.is_object()),
-                ModelFailure::InvalidToolArguments
-            );
+        for (call_index, call) in self.calls.iter().enumerate() {
+            // done 事件可能乱序；有终态数组时，诊断使用其中函数调用的顺序。
+            let call_index = response["output"]
+                .as_array()
+                .and_then(|items| {
+                    items
+                        .iter()
+                        .filter(|item| item["type"] == "function_call")
+                        .position(|item| item["call_id"] == call.id)
+                })
+                .unwrap_or(call_index);
+            let diagnostic = match serde_json::from_str::<Value>(&call.arguments) {
+                Ok(Value::Object(_)) => continue,
+                Ok(value) => ToolArgumentDiagnostic {
+                    call_index,
+                    argument_bytes: call.arguments.len(),
+                    kind: "not_object",
+                    line: None,
+                    column: None,
+                    top_level_type: Some(match value {
+                        Value::Null => "null",
+                        Value::Bool(_) => "boolean",
+                        Value::Number(_) => "number",
+                        Value::String(_) => "string",
+                        Value::Array(_) => "array",
+                        Value::Object(_) => unreachable!(),
+                    }),
+                },
+                Err(error) => ToolArgumentDiagnostic {
+                    call_index,
+                    argument_bytes: call.arguments.len(),
+                    kind: match error.classify() {
+                        serde_json::error::Category::Io => "io",
+                        serde_json::error::Category::Syntax => "syntax",
+                        serde_json::error::Category::Data => "data",
+                        serde_json::error::Category::Eof => "eof",
+                    },
+                    line: Some(error.line()),
+                    column: Some(error.column()),
+                    top_level_type: None,
+                },
+            };
+            return Err(anyhow::Error::new(ModelFailure::InvalidToolArguments).context(diagnostic));
         }
         for item in &self.contexts {
             if item["type"] == "function_call"
@@ -882,6 +920,77 @@ fn parse_usage(value: Option<&Value>) -> Option<ModelUsage> {
 #[cfg(test)]
 mod truncated_usage_tests {
     use super::*;
+
+    #[test]
+    fn invalid_argument_diagnostics_preserve_usage_without_echoing_arguments() {
+        for (arguments, kind, top_type) in [
+            ("null", "not_object", Some("null")),
+            ("false", "not_object", Some("boolean")),
+            ("17", "not_object", Some("number")),
+            ("\"private-secret\"", "not_object", Some("string")),
+            ("[\"private-secret\"]", "not_object", Some("array")),
+            ("{\n\"secret\":\"private-secret\",}", "syntax", None),
+            ("{\n\"secret\":\"private-secret\"", "eof", None),
+        ] {
+            for chunk_bytes in [1, 17, usize::MAX] {
+                let items = json!([
+                    {"type":"function_call","call_id":"valid-but-not-executed","name":"write_once","arguments":"{}"},
+                    {"type":"function_call","call_id":"private-secret","name":"private-secret","arguments":arguments}
+                ]);
+                let wire = format!(
+                    "data: {}\n\ndata: {}\n\ndata: {}\n\n",
+                    json!({"type":"response.output_item.done","item":items[1]}),
+                    json!({"type":"response.output_item.done","item":items[0]}),
+                    json!({"type":"response.completed","response":{
+                        "status":"completed","output":items,"usage":{"input_tokens":7,"output_tokens":3}
+                    }})
+                );
+                let mut decoder = Decoder::Responses(ResponsesDecoder::default());
+                let mut events = Vec::new();
+                let mut error = None;
+                for chunk in wire.as_bytes().chunks(chunk_bytes.min(wire.len())) {
+                    match decoder.feed(chunk) {
+                        Ok(part) => events.extend(part),
+                        Err(err) => {
+                            error = Some(err);
+                            break;
+                        }
+                    }
+                }
+                let error = error.unwrap_or_else(|| decoder.finish().unwrap_err());
+                assert!(error.is::<FinalUsageError>());
+                assert_eq!(
+                    error.downcast_ref::<ModelFailure>(),
+                    Some(&ModelFailure::InvalidToolArguments)
+                );
+                assert_eq!(
+                    events
+                        .iter()
+                        .filter(|e| matches!(e, ModelEvent::Usage(_)))
+                        .count(),
+                    1
+                );
+                assert!(!events.iter().any(|e| matches!(e, ModelEvent::ToolCall(_))));
+                let outcome = terminal_outcome(&error).unwrap();
+                let details = outcome.details.as_ref().unwrap();
+                assert_eq!(details["reason"], "invalid_tool_arguments");
+                let diagnostic = &details["argumentDiagnostic"];
+                assert_eq!(diagnostic["callIndex"], 1);
+                assert_eq!(diagnostic["argumentBytes"], arguments.len());
+                assert_eq!(diagnostic["kind"], kind);
+                assert_eq!(diagnostic["topLevelType"], json!(top_type));
+                if top_type.is_none() {
+                    assert_eq!(diagnostic["line"], 2);
+                    assert!(diagnostic["column"].as_u64().unwrap() > 0);
+                }
+                let hint = invalid_tool_arguments_hint(&error).unwrap();
+                assert!(hint.contains("None of that completion's tools executed"));
+                assert!(!hint.contains("private-secret"));
+                assert!(!details.to_string().contains("private-secret"));
+                assert!(!format!("{error:?}").contains("private-secret"));
+            }
+        }
+    }
 
     #[test]
     fn partial_responses_call_waits_for_terminal_usage_without_becoming_a_tool() {
