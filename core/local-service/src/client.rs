@@ -450,10 +450,19 @@ fn check_model_restart(state: &Value) -> Result<()> {
 }
 
 async fn startup_lock(directory: &Path) -> Result<std::fs::File> {
+    startup_guard(directory, false).await
+}
+
+async fn startup_guard(directory: &Path, shared: bool) -> Result<std::fs::File> {
     let startup = storage::open_private(&directory.join("start.lock"), true)?;
     let deadline = Instant::now() + Duration::from_secs(65);
     loop {
-        match startup.try_lock_exclusive() {
+        let acquired = if shared {
+            FileExt::try_lock_shared(&startup)
+        } else {
+            startup.try_lock_exclusive()
+        };
+        match acquired {
             Ok(()) => break,
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
                 tokio::time::sleep(Duration::from_millis(50)).await
@@ -723,8 +732,8 @@ async fn stop_operation_unlocked(
 
 pub async fn status(root: &Path, id: &str) -> Result<Service> {
     let directory = storage::registry(root, id)?;
-    // 外部状态探测与启动串行，避免暂持实例锁时被新宿主误认成另一个 owner。
-    let _startup = startup_lock(&directory).await?;
+    // 状态与活动探测共享读取，但仍阻止启动，避免暂持实例锁时被新宿主误认成 owner。
+    let _startup = startup_guard(&directory, true).await?;
     status_unlocked(root, id).await
 }
 
@@ -1105,6 +1114,9 @@ mod tests {
             socket.write_all(&bytes).await.unwrap();
         });
         drop(startup);
+        // 活动核查持有共享启动锁时，另一条只读状态查询仍须完成。
+        let observer = storage::open_private(&directory.join("start.lock"), true).unwrap();
+        FileExt::try_lock_shared(&observer).unwrap();
         let observed = timeout(Duration::from_secs(5), pending)
             .await
             .unwrap()

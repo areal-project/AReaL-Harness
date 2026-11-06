@@ -277,8 +277,9 @@ pub fn has_admitted_stop_receipt(
 }
 
 pub fn available(path: &Path) -> Result<bool> {
+    // 这里只观察独占 owner；真正启动或打开数据仍须取得独占锁。
     let file = open_private(path, true)?;
-    match file.try_lock_exclusive() {
+    match FileExt::try_lock_shared(&file) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
         Err(e) => Err(e.into()),
@@ -287,7 +288,7 @@ pub fn available(path: &Path) -> Result<bool> {
 
 pub fn store_available(data: &Path) -> Result<bool> {
     let file = store_lock(data)?;
-    match file.try_lock_exclusive() {
+    match FileExt::try_lock_shared(&file) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
         Err(e) => Err(e.into()),
@@ -389,6 +390,28 @@ pub fn file_digest(path: &Path) -> Result<String> {
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn availability_observers_share_reads_but_reject_live_owners() {
+        let root = tempfile::tempdir().unwrap();
+        for name in ["service.lock", "owner.lock"] {
+            let path = root.path().join(name);
+            let reader = open_private(&path, true).unwrap();
+            FileExt::try_lock_shared(&reader).unwrap();
+            assert!(available(&path).unwrap());
+            if name == "owner.lock" {
+                assert!(store_available(root.path()).unwrap());
+            }
+            let owner = open_private(&path, true).unwrap();
+            assert!(owner.try_lock_exclusive().is_err());
+            drop(reader);
+            owner.try_lock_exclusive().unwrap();
+            assert!(!available(&path).unwrap());
+            if name == "owner.lock" {
+                assert!(!store_available(root.path()).unwrap());
+            }
+        }
+    }
 
     #[test]
     fn host_home_restricts_legacy_directory_without_changing_children() {
