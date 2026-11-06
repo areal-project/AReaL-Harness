@@ -314,7 +314,7 @@ class Module:
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--check',action='store_true');args=parser.parse_args()
-    source=(GUI/'app/src/core/management.cjs').read_text()
+    source=(ROOT/'services/workbench/src/desktop/core/management.cjs').read_text()
     routes=table(source,'reads')
     fields=source.split('const fields = {',1)[1].split('\n};',1)[0]
     field_map={op:re.findall(r'"([^"]+)"',values) for op,values in re.findall(r'(\w+):\s*\[([^\]]*)\]',fields)}
@@ -323,7 +323,7 @@ def main():
     for match in re.finditer(r'const operations = \{', source):
         part=source[match.end():].split('\n    };',1)[0]
         for op,method,fields in re.findall(r'(\w+):\s*\[\s*"([^"]+)"\s*,\s*\[([^\]]*)\]',part):routes[op]=(method,re.findall(r'"([^"]+)"',fields))
-    tasks=(GUI/'app/src/core/tasks.cjs').read_text()
+    tasks=(ROOT/'services/workbench/src/desktop/core/tasks.cjs').read_text()
     routes.update(table(tasks,'reads'));routes.update(table(tasks,'writes'))
     routes.update({
       'executionCancel':('areal/execution/cancel',['parentThreadId','executionId','mode']),

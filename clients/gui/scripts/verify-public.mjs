@@ -53,7 +53,8 @@ async function scan(dir) {
       const text = await readFile(path, "utf8");
       if (
         rel.startsWith("renderer/src/") &&
-        rel !== "renderer/src/main.tsx" &&
+        // 与 oxlint no-renderer-desktop-bridge 一致：只有 desktop-services.ts 读 preload。
+        rel !== "renderer/src/desktop-services.ts" &&
         /\barealDesktop\b/.test(text)
       )
         rendererBridgeBypasses.push(rel);
@@ -76,7 +77,7 @@ await scan(join(root, "../../design/tokens"));
 assert.deepEqual(
   rendererBridgeBypasses,
   [],
-  `Renderer preload access belongs to main.tsx: ${rendererBridgeBypasses.join(", ")}`,
+  `Renderer preload access belongs to desktop-services.ts: ${rendererBridgeBypasses.join(", ")}`,
 );
 for (const path of [
   "app/LICENSE",

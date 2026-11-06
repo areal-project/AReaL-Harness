@@ -98,9 +98,6 @@
   justify-content: flex-end;
   gap: var(--spacing-inline);
 }
-.remote-relay-settings .remote-relay-form {
-  padding: var(--spacing-field) 0;
-}
 
 /* 待确认请求横幅。 */
 .remote-request {
@@ -486,12 +483,6 @@
 .remote-network-recovery p {
   color: var(--remote-muted);
   font-size: var(--text-ui-sm);
-}
-.remote-relay-settings > summary {
-  font-weight: 550;
-}
-.remote-relay-settings > section {
-  margin-top: var(--spacing-field);
 }
 
 .remote-relay-service > [data-slot="card-content"] {

@@ -217,13 +217,6 @@
 }
 
 .appearance-theme-tools,
-.appearance-font-controls,
-.appearance-segment,
-.appearance-accent {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
 .appearance-theme-tools {
   flex-wrap: nowrap;

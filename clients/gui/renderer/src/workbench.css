@@ -748,21 +748,8 @@ button.composer-project:hover > svg,
 
 /* Core-backed utility content, file revision conflicts and approval forms. */
 .utility-content,
-.areal-core-settings {
-  padding: 18px;
-  font-size: var(--text-ui-caption);
-}
 .utility-content h2,
-.areal-core-settings h3 {
-  font-size: var(--text-ui-lg);
-  font-weight: 600;
-  margin-bottom: 12px;
-}
 .utility-content p,
-.areal-core-settings p {
-  line-height: 1.65;
-  margin: 8px 0;
-}
 .utility-actions {
   display: flex;
   align-items: center;
@@ -779,16 +766,7 @@ button.composer-project:hover > svg,
   background: var(--color-background);
 }
 .utility-content button:hover,
-.areal-core-settings button:hover {
-  background: var(--color-hover);
-}
 .utility-content article,
-.areal-core-settings article {
-  padding: 12px;
-  margin: 12px 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-}
 .areal-core-settings label,
 .interaction label {
   display: flex;
@@ -814,32 +792,6 @@ button.composer-project:hover > svg,
   width: 100%;
   min-height: 100px;
   font: var(--text-fixed-caption)/1.65 var(--font-mono);
-}
-.areal-core-editor {
-  min-height: 350px !important;
-}
-.areal-core-settings input[type="checkbox"] {
-  width: 16px;
-}
-.areal-core-settings button {
-  margin: 3px;
-}
-.areal-core-file-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  max-height: 220px;
-  overflow: auto;
-  margin: 10px 0;
-}
-.areal-core-file-list button {
-  text-align: left;
-  border: none;
-  margin: 0;
-}
-.areal-core-json {
-  margin: 12px 0;
-  font-size: var(--text-ui-sm);
 }
 .usage-grid {
   display: grid;

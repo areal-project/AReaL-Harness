@@ -837,26 +837,7 @@ body {
   }
 }
 
-@keyframes task-search-result-highlight {
-  0% {
-    background-color: color-mix(in oklab, var(--color-brand) 20%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-brand) 28%, transparent);
-  }
 
-  45% {
-    background-color: color-mix(in oklab, var(--color-brand) 14%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-brand) 20%, transparent);
-  }
-
-  100% {
-    background-color: transparent;
-    box-shadow: inset 0 0 0 1px transparent;
-  }
-}
-
-.task-search-result-highlight {
-  animation: task-search-result-highlight 1.2s ease-out both;
-}
 
 @keyframes fork-highlight-pulse {
   0% {

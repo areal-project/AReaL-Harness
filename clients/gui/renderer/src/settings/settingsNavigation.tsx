@@ -10,6 +10,7 @@ import {
   SettingsUsageIcon,
 } from "./settingsNavIcons.js";
 import type { SettingsNavigationGroup } from "./SettingsWorkspace.js";
+import { legacyServiceSettingsIds } from "../lib/legacySettingsIds.js";
 export const settingsNavigationGroups = [
   {
     id: "personal",
@@ -111,7 +112,7 @@ export const settingsNavigationGroups = [
 ] as const satisfies readonly SettingsNavigationGroup[];
 
 export function settingsLabel(name: string, t: ReturnType<typeof useI18n>["t"]) {
-  if (["高级诊断", "后台服务"].includes(name)) return t("settings.service.title");
+  if (legacyServiceSettingsIds.includes(name)) return t("settings.service.title");
   const item = settingsNavigationGroups
     .flatMap((group) => group.items.map((item) => ({ id: item.id, label: item.label })))
     .find((item) =>
