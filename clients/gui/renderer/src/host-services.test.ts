@@ -702,7 +702,15 @@ describe("Host renderer read authority", () => {
     expect(snapshot.projects[0].profiles).toEqual([{ id: "legacy-profile" }]);
     expect(snapshot.projects[0].summaries[0].name).toBe("Host title");
     expect(snapshot.projects[0].state.threads.thread.name).toBe("Host thread");
-    const task = { id: "task", revision: 1 };
+    const task = {
+      id: "task",
+      revision: 1,
+      mode: "scheduled",
+      runs: [
+        { id: "run", threadId: "run-thread" },
+        { id: "summary-run", threadId: "run-summary" },
+      ],
+    };
     const side = {
       id: "side",
       conversation: {
@@ -712,6 +720,16 @@ describe("Host renderer read authority", () => {
       },
       turns: [],
       desktop: { queue: { revision: 1, items: [] }, interactions: [], interactionRevision: 2 },
+    };
+    const fullRun = {
+      id: "run-thread",
+      turns: [],
+      desktop: {
+        queue: { revision: 3, items: [] },
+        interactions: [],
+        interactionRevision: 4,
+        configuration: { model: "run-model" },
+      },
     };
     emitDesktop({
       ...legacy,
@@ -725,6 +743,9 @@ describe("Host renderer read authority", () => {
             threads: {
               ...legacy.projects[0].state.threads,
               side,
+              "run-thread": fullRun,
+              unrelated: { id: "unrelated", turns: [] },
+              "run-summary": { id: "run-summary" },
               summary: { id: "summary", conversation: side.conversation },
             },
           },
@@ -734,10 +755,27 @@ describe("Host renderer read authority", () => {
     expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task });
     const projected = (await services.snapshot()).projects[0];
     expect(projected.state.threads.side).toMatchObject(side);
+    expect(projected.state.threads["run-thread"]).toMatchObject(fullRun);
+    expect(projected.state.threads.unrelated).toBeUndefined();
+    expect(projected.state.threads["run-summary"]).toBeUndefined();
+    expect(projected.configurations["run-thread"]).toEqual(fullRun.desktop.configuration);
+    expect(projected.state.queues["run-thread"]).toEqual(fullRun.desktop.queue);
+    expect(projected.state.interactions["run-thread"]).toEqual({ revision: 4, data: [] });
     expect(projected.state.threads.thread.name).toBe("Host thread");
     expect(projected.state.threads.summary).toBeUndefined();
     expect(projected.state.queues.side).toEqual(side.desktop.queue);
     expect(projected.state.interactions.side).toEqual({ revision: 2, data: [] });
+    emitDesktop({
+      ...legacy,
+      projects: [
+        {
+          ...legacy.projects[0],
+          state: { connected: false, tasks: { task }, threads: { "run-thread": fullRun } },
+        },
+      ],
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
     const updated = { ...task, revision: 2 };
     emitDesktop({
       ...legacy,
@@ -748,7 +786,7 @@ describe("Host renderer read authority", () => {
             ...legacy.projects[0].state,
             connected: true,
             tasks: { task: updated },
-            threads: { side },
+            threads: { side, "run-thread": fullRun },
           },
         },
       ],
@@ -766,6 +804,7 @@ describe("Host renderer read authority", () => {
     });
     expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
     expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
     expect((await services.snapshot()).projects[0].core.serviceGeneration).toBe("next-gen");
     emitDesktop({
       ...legacy,
@@ -777,13 +816,14 @@ describe("Host renderer read authority", () => {
             ...legacy.projects[0].state,
             connected: true,
             tasks: { task: updated },
-            threads: { side },
+            threads: { side, "run-thread": fullRun },
           },
         },
       ],
     });
     expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task: updated });
     expect((await services.snapshot()).projects[0].state.threads.side).toBeDefined();
+    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeDefined();
     wire.send({
       event: "shell.updated",
       ...connection,
@@ -796,6 +836,7 @@ describe("Host renderer read authority", () => {
     });
     expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
     expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
     expect(snapshot.library?.projects.alias.title).toBe("Host project title");
     expect(snapshot.library?.settings.sidebarSort).toBe("manual");
     expect(snapshot.library?.settings.unmigratedPreference).toBe("retained");

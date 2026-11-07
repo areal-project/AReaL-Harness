@@ -343,21 +343,54 @@ export function createHostSnapshotProjector(
         project.serviceGeneration &&
         desktopProject.core?.serviceGeneration === project.serviceGeneration &&
         bound;
-      const sides = trustedDesktop
+      const runThreadIds = new Set(
+        trustedDesktop
+          ? Object.entries(desktopProject.state.tasks ?? {}).flatMap(
+              ([id, task]: [string, unknown]) => {
+                if (
+                  !task ||
+                  typeof task !== "object" ||
+                  !("id" in task) ||
+                  task.id !== id ||
+                  !("mode" in task) ||
+                  task.mode !== "scheduled" ||
+                  !("runs" in task) ||
+                  !Array.isArray(task.runs)
+                )
+                  return [];
+                return task.runs.flatMap((run: unknown) =>
+                  run &&
+                  typeof run === "object" &&
+                  "id" in run &&
+                  typeof run.id === "string" &&
+                  run.id.length > 0 &&
+                  "threadId" in run &&
+                  typeof run.threadId === "string" &&
+                  run.threadId.length > 0
+                    ? [run.threadId]
+                    : [],
+                );
+              },
+            )
+          : [],
+      );
+      const auxiliaryThreads = trustedDesktop
         ? Object.entries(
             (desktopProject.state.threads ?? {}) as Record<string, Observation["thread"]>,
           ).filter(
             ([key, value]) =>
               value?.id === key &&
               key !== thread?.id &&
-              value.conversation?.kind === "side" &&
-              value.conversation.policy?.kind === "sideExecutableV2" &&
-              typeof (value.conversation.origin as { sourceThreadId?: unknown } | undefined)
-                ?.sourceThreadId === "string" &&
-              Array.isArray(value.turns),
+              Array.isArray(value.turns) &&
+              (runThreadIds.has(key) ||
+                (value.conversation?.kind === "side" &&
+                  value.conversation.policy?.kind === "sideExecutableV2" &&
+                  typeof (value.conversation.origin as { sourceThreadId?: unknown } | undefined)
+                    ?.sourceThreadId === "string")),
           )
         : [];
-      for (const [sideId] of sides) threadTargets.set(`${logicalId}:${sideId}`, project.projectId);
+      for (const [threadId] of auxiliaryThreads)
+        threadTargets.set(`${logicalId}:${threadId}`, project.projectId);
       const value: ReadProject = {
         ...auxiliary,
         models: Array.isArray(auxiliary?.models) ? auxiliary.models : [],
@@ -383,12 +416,14 @@ export function createHostSnapshotProjector(
           hostState: fresh ? project.state : undefined,
           error: null,
           threads: {
-            ...Object.fromEntries(sides.map(([key, side]) => [key, { ...side, ...execution }])),
+            ...Object.fromEntries(
+              auxiliaryThreads.map(([key, side]) => [key, { ...side, ...execution }]),
+            ),
             ...(thread ? { [thread.id]: { ...thread, ...execution } } : {}),
           },
           queues: {
             ...Object.fromEntries(
-              sides
+              auxiliaryThreads
                 .filter(([, side]) => side.desktop?.queue)
                 .map(([key, side]) => [key, side.desktop!.queue]),
             ),
@@ -396,7 +431,7 @@ export function createHostSnapshotProjector(
           },
           interactions: {
             ...Object.fromEntries(
-              sides
+              auxiliaryThreads
                 .filter(([, side]) => side.desktop?.interactions)
                 .map(([key, side]) => [
                   key,
@@ -418,7 +453,7 @@ export function createHostSnapshotProjector(
         },
         configurations: {
           ...Object.fromEntries(
-            sides
+            auxiliaryThreads
               .filter(([, side]) => side.desktop?.configuration)
               .map(([key, side]) => [key, side.desktop!.configuration]),
           ),

@@ -3420,15 +3420,15 @@ try {
         taskCwd,
       );
       await send("更新描述，只汇报阻塞项。");
-      await until(
-        async () => (await task(taskId)).objective.startsWith("只汇报阻塞项"),
-        "Agent updated description",
-      );
+      const updated = await until(async () => {
+        const value = await task(taskId);
+        return value.objective === "只汇报阻塞项 SCHEDULE_FIXTURE_COMPLETE" && value;
+      }, "Agent updated description");
+      assert.equal(updated.id, taskId);
+      assert.ok(updated.objective.length > 24);
+      const expectedSummary = `${updated.objective.slice(0, 24)}…`;
       await resources.click();
-      await page
-        .getByLabel("定时任务安排")
-        .getByText("只汇报阻塞项 SCHEDULE_FIXTURE_COMPLETE", { exact: true })
-        .waitFor();
+      await page.getByLabel("定时任务安排").getByText(expectedSummary, { exact: true }).waitFor();
       assert.equal(
         (await call("manage", { projectId: pid, operation: "taskDraftHistory", taskId })).threadId,
         managementThread,

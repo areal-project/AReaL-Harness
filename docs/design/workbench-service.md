@@ -60,6 +60,8 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 | 定时任务 | Core 管理任务与配置草稿，Host 聚合目录、published 预览、收件箱及观察状态 | 已选供应商输入准备和目录展示 |
 | Worktree | Core 执行 Git 与进程操作，Host 管理跨项目归属、环境配置与生命周期记录 | 页面工具准备与结果投影 |
 
+页面投影只合入已绑定来源、在线且服务代次一致的完整 Side 会话及原定时任务 Run 引用的执行会话。摘要不能充当完整会话；非当前导航会话的运行记录也必须保留可读投影，不改变用户导航。
+
 Host 的资料库事务从原位置读取完整 JSON，在同一同步段中校验、修改并原子写回；导航公开回执仍经同一过滤器。桌面设置仅在有界字段上按原值比较替换，Host 不解释代理、硬件加速等设置。Worktree 设置与环境配置复用同一资料库事务，不能另建文件写者。
 
 Core 通过 `features.taskPrepareCreate` 声明创建前预约能力，Host 仅为声明能力的 GUI 来源 Core 以 `areal/task/host/ready {prepareCreate:true}` 登记支持；CLI 来源沿用原准入。能力绑定原 Host 连接；Core 在定时任务校验后、持久化和调度发布前，经原 `areal/task/prepare` 的 `intent:create` 请求 Host 核对目录作者并保存原创建请求与执行锚点的预约。原请求已完成时直接返回既有回执；创建结果丢失时只按原 Core 回执绑定 Task，不重发。旧空 readiness 请求仍使用原语义。

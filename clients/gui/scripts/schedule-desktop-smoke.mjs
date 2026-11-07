@@ -334,12 +334,18 @@ try {
   await page.getByLabel("定时任务会话").waitFor();
   await page.getByRole("button", { name: "任务资源", exact: true }).click();
   await page.getByLabel("任务资源面板").waitFor();
-  await page.getByText("运行记录", { exact: true }).click();
+  await page.getByLabel("定时任务安排").waitFor();
   assert.equal(await page.getByLabel("任务执行方式").count(), 0);
   const recurring = await until(async () => {
     const value = await task(schedule.id);
     return value.runs.filter((r) => r.status === "completed").length >= 2 && value;
   }, "two completed runs");
+  for (const run of recurring.runs.slice(0, 2)) {
+    const row = page.locator(`[data-task-run-id="${run.id}"]`);
+    await row.getByRole("status").filter({ hasText: "已完成" }).waitFor();
+    await row.getByText("SCHEDULE_FIXTURE_DONE", { exact: true }).waitFor();
+    assert.equal(await row.getByRole("alert").count(), 0, "run conversation projected");
+  }
   assert.notEqual(recurring.runs[0].threadId, recurring.runs[1].threadId);
   assert.notEqual(recurring.runs[0].threadId, schedule.threadId);
   await control(schedule.id, "taskPause");
@@ -421,11 +427,8 @@ try {
   await call("open", { projectId: pid, threadId: approvalRun.threadId });
   // 用户明确打开运行会话，审批复用普通 Conversation UI。
   await page.getByRole("button", { name: `打开自动化 ${approval.objective}`, exact: true }).click();
-  await page.getByRole("button", { name: "任务资源", exact: true }).click();
-  const approvalHistory = page.locator(".task-resource-history");
-  await approvalHistory.waitFor();
-  await page.getByRole("button", { name: "打开执行会话", exact: true }).click();
-  await page.getByRole("button", { name: "允许一次", exact: true }).waitFor();
+  const approvalRow = page.locator(`[data-task-run-id="${approvalRun.id}"]`);
+  await approvalRow.getByRole("button", { name: "允许一次", exact: true }).waitFor();
   await page.screenshot({ path: join(scratch, "schedule-approval.png") });
   if (process.env.AREAL_SCHEDULE_APPROVAL_EXPIRY === "1") {
     await until(
@@ -461,7 +464,7 @@ try {
       "default 300-second approval expiry settles Turn, explicit same-run resume creates fresh approval",
     );
   }
-  await page
+  await approvalRow
     .getByRole("button", { name: "允许一次", exact: true })
     .and(page.locator(":enabled"))
     .click();
