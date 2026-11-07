@@ -5,7 +5,7 @@ given: [规格包快照, Token 源及生成的变量, 图标, 空项目]
 result:
   first-pass:
     behavior: 22/22
-    screenshots: 22/34（首轮门槛）；凡是带置顶分组的窗口截图都不过，差 1.0–2.7%
+    screenshots: 22/34（首轮门槛）；凡是带置顶分组的窗口截图都不过，超出首轮门槛最多不到三倍
     difference: 对话与首页截图都在门槛内；按回归门槛 6/34 一致
   check-run:
     screenshots: 改两行后 34/34（首轮门槛）
