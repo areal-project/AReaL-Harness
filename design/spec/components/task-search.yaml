@@ -19,7 +19,7 @@ parts:
     padding: spacing-field
     gap: spacing-inline
     icon: search-large，颜色 foreground-subtle
-    input: 占满中间；text-ui-base，行高 line-height-ui，文字 foreground-subtle，占位文字“搜索任务”；打开时自动获得焦点；输入框本身不画焦点框
+    input: 占满中间；text-ui-base，行高 line-height-ui，文字 foreground-subtle，占位文字“搜索任务”，颜色 foreground-subtle 的一半不透明度；打开时自动获得焦点；输入框本身不画焦点框
     close: spacing-control 见方的关闭按钮，图标 dismiss，颜色 foreground-subtle
   results:
     divider: 上方一道 border-width-default 的 color-border 线

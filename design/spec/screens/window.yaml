@@ -24,12 +24,12 @@ regions:
     name: 会话标题栏
     layout: 在顶栏右段；左 spacing-field、右 spacing-inline，元素间隔 spacing-inline
     contains:
-      - title: folder 图标（icon-size-control，foreground-subtle）加当前对话标题（text-ui-base，font-weight-medium，foreground，单行省略）
+      - title: folder 图标（icon-size-control，foreground-subtle）加侧栏里当前对话的标题（text-ui-base，font-weight-medium，行高 line-height-ui，foreground，单行省略）；在顶栏内垂直居中
       - side-panel: 最右一个 spacing-control 见方的按钮，图标 side-panel，颜色 foreground-subtle，读屏名“展开侧边面板”
       - window-controls: 侧栏收起时，后退、前进、展开侧栏三个按钮移到标题最前
   - id: main
     name: 主区
-    layout: 纸面右段，内容与 thread 界面的 D、E 相同；回合导航贴主区左缘
+    layout: 纸面右段，内容与 thread 界面的 D、E 相同（示例数据里显示 thread-idle）；回合导航贴主区左缘
     contains: [thread]
   - id: search
     name: 搜索任务

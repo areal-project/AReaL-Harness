@@ -275,6 +275,7 @@ kbd {
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
+  line-height: var(--line-height-ui);
   min-width: 0;
 }
 .header-task {

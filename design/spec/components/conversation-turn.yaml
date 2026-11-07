@@ -10,7 +10,7 @@ typography:
 
 layout:
   column: 内容在阅读列内水平居中，列宽不超过 reading-width，左右留白 spacing-field，上下留白 message-reading-inset
-  rhythm: 回合内相邻块（段落、过程行、状态行）之间只有一个 conversation-gap，不叠加；唯一例外是过程标题到展开的过程体，见 turn-process
+  rhythm: 回合内相邻块之间只有一个 conversation-gap，不叠加；用户消息（气泡连同下方占位的操作行）、过程标题块、段落、过程行、状态行各算一块；唯一例外是过程标题到展开的过程体，见 turn-process
   between-turns: 相邻回合之间 spacing-section
 
 anatomy:
