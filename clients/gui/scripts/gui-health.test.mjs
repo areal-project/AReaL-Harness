@@ -206,8 +206,8 @@ test("Main cannot regrow against base using unused baseline headroom", async (t)
 });
 
 test("reviewed document transition matches only its exact values and unchanged ownership", () => {
-  const before = { value: 262924, direction: "down", owner: "design/ clients/gui/design-system" };
-  const current = { ...before, value: 269714 };
+  const before = { value: 184954, direction: "down", owner: "design/ clients/gui/design-system" };
+  const current = { ...before, value: 193947 };
   assert.ok(reviewedBaselineTransition("activeDesignDocBytes", before, current));
   for (const [name, old, next] of [
     ["appLines", before, current],
@@ -226,7 +226,7 @@ test("reviewed document transition never waives actual growth or other caps", as
   const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
   assert.equal(f.run("--write").status, 0);
   const baseline = await f.baseline();
-  baseline.activeDesignDocBytes.value = 262924;
+  baseline.activeDesignDocBytes.value = 184954;
   await f.put("health-baseline.json", JSON.stringify(baseline));
   assert.equal(git("init", "-q").status, 0);
   assert.equal(git("add", ".").status, 0);
@@ -242,15 +242,15 @@ test("reviewed document transition never waives actual growth or other caps", as
     ).status,
     0,
   );
-  baseline.activeDesignDocBytes.value = 269714;
+  baseline.activeDesignDocBytes.value = 193947;
   await f.put("health-baseline.json", JSON.stringify(baseline));
-  await f.put("../../design/principles.md", "x".repeat(269714));
+  await f.put("../../design/principles.md", "x".repeat(193947));
   const accepted = f.run("--check", "--base=HEAD");
   assert.equal(accepted.status, 0, accepted.stderr);
   assert.equal(JSON.parse(accepted.stdout).reviewedTransitions.length, 1);
   await f.put("../../design/principles.md", "x".repeat(269715));
   assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
-  await f.put("../../design/principles.md", "x".repeat(269714));
+  await f.put("../../design/principles.md", "x".repeat(193947));
   baseline.appLines.value++;
   await f.put("health-baseline.json", JSON.stringify(baseline));
   assert.notEqual(f.run("--check", "--base=HEAD").status, 0);

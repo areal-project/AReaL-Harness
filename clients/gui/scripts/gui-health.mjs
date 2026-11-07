@@ -8,15 +8,16 @@ import { collectUiAdoption } from "./design-system-maturity.mjs";
 import { readTestManifest } from "./test-manifest.mjs";
 import { collectDesignRuleMetrics } from "./design-rules.mjs";
 
-// PR #128 的人工审阅声明，不是授权验证。新基线进入 base 后自然失效，可移除此迁移记录。
+// D-005 规格包与 R-CHECK-024 的人工审阅声明，不是授权验证。新基线进入 base 后自然失效，可移除此迁移记录。
 const reviewedDocBudgetTransition = Object.freeze({
   metric: "activeDesignDocBytes",
-  from: 262924,
-  to: 269714,
+  from: 184954,
+  to: 193947,
   direction: "down",
   owner: "design/ clients/gui/design-system",
-  reason: "Bilingual plugin resource specifications and disclosure/copy rules; no extra headroom",
-  review: "PR #128: owner-approved document-only budget adjustment",
+  reason:
+    "Reproducible design spec package (D-005, design/spec) and layer check rule; no extra headroom",
+  review: "Owner-approved architecture in the project thread; document-only budget adjustment",
 });
 
 export function reviewedBaselineTransition(name, before, current) {
