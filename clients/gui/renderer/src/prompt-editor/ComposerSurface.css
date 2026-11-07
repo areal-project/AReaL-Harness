@@ -26,6 +26,7 @@
   border-radius: var(--radius-navigation);
   font-size: var(--text-ui-caption);
   font-weight: var(--font-weight-toolbar);
+  line-height: var(--line-height-toolbar);
 }
 .composer-model-trigger > span {
   overflow: hidden;

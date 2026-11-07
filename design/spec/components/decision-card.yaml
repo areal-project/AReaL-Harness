@@ -42,7 +42,7 @@ parts:
     command: 命令预览块。等宽字体 text-ui-caption、行高 line-height-ui；内边距 spacing-inline；底色 color-surface；文字 foreground-subtle；圆角 radius-inset；最多两行
     details: 与命令块相隔 spacing-inline 的一半；标题行上下 spacing-inline，文字 text-ui-caption；右侧“展开”按钮：text-ui-sm、行高 line-height-ui，上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-button，底色 color-button-surface，文字 foreground，悬停底色 color-button-hover；展开后文字为“收起”
   question:
-    options: 竖排，间隔 spacing-inline。每项：内边距 spacing-inline，最小高 spacing-control，圆角 radius-control，文字 font-weight-medium；左侧序号方块（边长 line-height-ui，border-width-default 的 color-border 描边，底色 color-hover，圆角 radius-inline，序号 text-ui-sm、foreground-subtle、等宽数字，比文字低 spacing-inline 的四分之一），序号与文字间隔 spacing-inline
+    options: 竖排，间隔 spacing-inline。每项：内边距 spacing-inline，最小高 spacing-control，圆角 radius-control，文字 font-weight-medium；左侧序号方块（边长 line-height-ui，border-width-default 的 color-border 描边，底色 color-hover，圆角 radius-inline，序号 text-ui-sm、foreground-subtle、等宽数字，上方留 spacing-inline 的四分之一外边距，这段外边距占位，所以每项内容高为 line-height-ui 加这段外边距），序号与文字间隔 spacing-inline
     option-selected: 选中、悬停或键盘聚焦的选项底色 color-hover
     footer-gap: 提问卡的按钮行与上方相隔 spacing-field（审批卡为 spacing-inline）
   footer:

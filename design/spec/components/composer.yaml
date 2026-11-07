@@ -30,7 +30,7 @@ variants:
   layout:
     default: 编辑区在上，工具栏在下
     compact: 窄容器与侧边对话，编辑区与工具栏同一行；容器变窄时工具栏换到编辑区下方
-    decision: 有待决卡片时压成一行：添加按钮在左，编辑区单行（最多四行），右侧上下文占用、模型、强度与主按钮；不显示权限入口；上下内边距 spacing-inline 的四分之三，左 composer-inset，右 spacing-inline，控件间隔 spacing-inline 的一半；工具栏入口仍按 toolbar-height（含透明描边），所以整行高 = toolbar-height 加上下内边距；添加按钮绝对定位，左缘距外框 composer-inset 减 spacing-inline 的四分之一，下缘距外框 spacing-inline 的四分之三；文字起点距外框左缘 composer-inset 加 spacing-inline 的一半，再加 spacing-control 与 spacing-inline 的四分之三；文字 text-ui-base、行高 line-height-ui；草稿不丢
+    decision: 有待决卡片时压成一行：添加按钮在左，编辑区单行（最多四行），右侧上下文占用、模型、强度与主按钮；不显示权限入口；上下内边距 spacing-inline 的四分之三，左 composer-inset，右 spacing-inline，添加按钮与编辑区之间 spacing-inline 的一半，右侧各控件之间的间隔与默认工具栏右组相同（不改成一半）；工具栏入口仍按 toolbar-height（含透明描边），所以整行高 = toolbar-height 加上下内边距；添加按钮绝对定位，左缘距外框 composer-inset 减 spacing-inline 的四分之一，下缘距外框 spacing-inline 的四分之三；文字起点距外框左缘 composer-inset 加 spacing-inline 的一半，再加 spacing-control 与 spacing-inline 的四分之三；文字 text-ui-base、行高 line-height-ui；草稿不丢
 
 states:
   - empty: 占位文字说明输入目标；主按钮不可用并说明原因
@@ -53,7 +53,7 @@ tokens:
     compact: radius-composer-large；容器变窄时 radius-composer
   inset: composer-inset（编辑区左右与顶部、工具栏左右）；工具栏下方 spacing-inline
   toolbar-groups: 工具栏分左右两组，组间 spacing-inline；左组（添加、权限）组内间隔 spacing-inline 的一半；右组（上下文占用、模型与强度、主按钮）组内间隔 spacing-inline 的四分之三，其中模型与强度两个入口之间只有 spacing-inline 的四分之一
-  toolbar-height: 由模型入口决定：text-ui-caption 乘 line-height-relaxed 的一行，加上下各 spacing-inline 的一半，再加上下各一道 border-width-default 的透明描边；其他控件在这一行内垂直居中
+  toolbar-height: 由模型入口决定：text-ui-caption 乘 line-height-toolbar 的一行，加上下各 spacing-inline 的一半，再加上下各一道 border-width-default 的透明描边；其他控件在这一行内垂直居中
   button-border: 工具栏里的文字入口与主按钮都带 border-width-default 的透明描边，计入尺寸；所以相邻按钮的可见间距比组内间隔多出两道描边
   icon: 图标按文件自带宽高；添加 icon-size-control，权限图标、菜单箭头与发送、停止见各自文件
   disabled: opacity-disabled
