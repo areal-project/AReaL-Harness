@@ -20,7 +20,7 @@ regions:
     note: 回合导航相对本区域定位（输入框与队列以上的部分），所以输入框上方出现队列时它的垂直位置随之变化
   - id: E
     name: 输入框
-    layout: 与信息流同宽居中；上留 spacing-inline，距窗口底部 spacing-field
+    layout: 与信息流正文列同宽居中，但不受信息流滚动条留位影响（主区变窄时输入框比正文宽出两侧滚动条留位）；上留 spacing-inline，距窗口底部 spacing-field
     contains:
       - composer:
           variant: thread

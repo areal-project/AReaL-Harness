@@ -33,7 +33,7 @@ parts:
     icons: 新增 panel-add；完整视图在分屏时 panel-full-view、铺满时 panel-exit-full-view；关闭 side-panel
     empty: 没有标签时（显示入口列表）不显示新增标签按钮
   tab:
-    size: 高 spacing-control-lg；所有标签平分可用宽度，每个最宽 reading-width 的十六分之五减去 spacing-inline 的四分之一，最窄 spacing-control-lg 的两倍；圆角 radius-navigation
+    size: 高 spacing-control-lg；标签条的宽度按标签数乘单个标签最宽值给出，再受可用宽度限制，所以所有标签平分可用宽度，每个最宽 reading-width 的十六分之五减去 spacing-inline 的四分之一，最窄 spacing-control-lg 的两倍；圆角 radius-navigation
     content: 左内边距 spacing-inline 的一倍又四分之一，右内边距 spacing-control-xs 加 spacing-inline（给关闭按钮留位）；图标 icon-size-control 与名称间隔 spacing-inline 的一半；名称 text-ui-caption，ui-font-weight，行高 line-height-ui-sm，单行省略
     icon: 颜色 foreground 的六成五不透明度；审查 panel-review，终端 panel-terminal，浏览器 panel-browser，文件 panel-files
     rest: 文字 foreground-subtle，底色透明

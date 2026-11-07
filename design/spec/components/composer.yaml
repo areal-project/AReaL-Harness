@@ -60,7 +60,7 @@ tokens:
   text: text-conversation
   line: conversation-line
   focus: color-focus-ring-soft
-  editor-min: 编辑区最少两行正文高（两倍 text-conversation 乘 conversation-line），这个高度已含下方 spacing-inline 的留白（留白在文字下面，第一行文字与占位文字紧贴编辑区顶边）；首页与对话相同
+  editor-min: 编辑区最少两行正文高（两倍 text-conversation 乘 conversation-line），这个高度已含下方 spacing-inline 的留白（留白在文字下面，第一行文字与占位文字紧贴编辑区顶边）；首页与对话相同；用多行文本框实现时要按一行起算再撑到这个最小高（浏览器默认的两行会多出一截）
   toolbar-label: text-ui-caption，字重 font-weight-toolbar；模型名 foreground，权限名 foreground-subtle
   toolbar-item: 权限、模型、强度入口：左右 spacing-inline，图标与文字间隔 spacing-inline 的一半，圆角 radius-navigation；模型与强度上下 spacing-inline 的一半、最小高 spacing-control，文字后带 menu-chevron；权限入口高 spacing-control-sm，图标在文字前，不带箭头
   add-button: spacing-control 见方，图标颜色 foreground
