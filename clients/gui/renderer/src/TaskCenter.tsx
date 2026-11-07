@@ -100,9 +100,15 @@ type OwnerRows = {
   coverage: { kind: string; reason?: string };
 } & ({ source: "published" } | { source: "live"; connectionGeneration: number });
 type OwnerRead =
-  | { status: "pending"; identity: CatalogIdentity; previous?: OwnerRows }
+  | { status: "pending"; identity: CatalogIdentity; previous?: OwnerRows; explicit?: boolean }
   | { status: "ready"; identity: CatalogIdentity; value: OwnerRows }
-  | { status: "error"; identity: CatalogIdentity; message: string; previous?: OwnerRows };
+  | {
+      status: "error";
+      identity: CatalogIdentity;
+      message: string;
+      previous?: OwnerRows;
+      explicit?: boolean;
+    };
 const ownerRows = (read?: OwnerRead) => (read?.status === "ready" ? read.value : read?.previous);
 const catalogTrace = (
   kind: "begin" | "response_received" | "epoch_discarded" | "owner_committed" | "end" | "abandoned",
@@ -1080,6 +1086,7 @@ export function TaskCenter({
             const owner = queue.shift();
             if (!owner) continue;
             const quiet = !!quietOwners && catalogState.current[owner.id]?.status === "ready";
+            const explicit = !!retryProjectId || explicitRefresh;
             if (!quiet)
               setCatalog((previous) => ({
                 ...previous,
@@ -1087,82 +1094,37 @@ export function TaskCenter({
                   status: "pending",
                   identity,
                   previous: ownerRows(previous[owner.id]),
+                  explicit,
                 },
               }));
-            let observed = quiet;
-            if (!quiet)
-              void action("tasks", {
-                operation: "preview",
-                projectId: owner.id,
-                limit: Math.min(1024, 30 * pages.current),
-                ...identity,
-              })
-                .then((result) => {
-                  if (
-                    !active ||
-                    observed ||
-                    result.errors.length ||
-                    result.projectId !== owner.id ||
-                    result.requestId !== identity.requestId ||
-                    result.viewEpoch !== viewEpoch
-                  )
-                    return;
-                  const observation = result.owners[0];
-                  if (observation.status !== "unobserved") return;
-                  setCatalog((previous) => {
-                    const read = previous[owner.id];
-                    if (
-                      (read?.status !== "pending" && read?.status !== "error") ||
-                      read.identity !== identity ||
-                      (!result.data.length && read.previous)
-                    )
-                      return previous;
-                    return {
-                      ...previous,
-                      [owner.id]: {
-                        ...read,
-                        previous: {
-                          source: "published",
-                          data: result.data,
-                          hasMore: result.hasMore,
-                          readAt: observation.readAt,
-                          coverage: observation.coverage,
-                        },
-                      },
-                    };
-                  });
-                })
-                .catch(() => {});
             try {
               if (retryProjectId)
                 await action("connect", { projectId: owner.id, resumeScheduling: true });
-              const result =
-                retryProjectId || explicitRefresh
-                  ? await action("tasks", {
-                      operation: "list",
-                      projectId: owner.id,
-                      limit: Math.min(1024, 30 * pages.current),
-                      ...identity,
-                    }).then((result) => ({
-                      ...result,
-                      owners: result.owners.map((observation): ObservedCatalogOwner =>
-                        observation.status === "ready"
-                          ? {
-                              ...observation,
-                              source: "live",
-                              coverage: { kind: "complete" },
-                              readAt: Date.now(),
-                            }
-                          : observation,
-                      ),
-                    }))
-                  : await action("tasks", {
-                      operation: "observe",
-                      projectId: owner.id,
-                      limit: Math.min(1024, 30 * pages.current),
-                      ...identity,
-                    });
-              observed = result.errors.length === 0;
+              const result = explicit
+                ? await action("tasks", {
+                    operation: "list",
+                    projectId: owner.id,
+                    limit: Math.min(1024, 30 * pages.current),
+                    ...identity,
+                  }).then((result) => ({
+                    ...result,
+                    owners: result.owners.map((observation): ObservedCatalogOwner =>
+                      observation.status === "ready"
+                        ? {
+                            ...observation,
+                            source: "live",
+                            coverage: { kind: "complete" },
+                            readAt: Date.now(),
+                          }
+                        : observation,
+                    ),
+                  }))
+                : await action("tasks", {
+                    operation: "observe",
+                    projectId: owner.id,
+                    limit: Math.min(1024, 30 * pages.current),
+                    ...identity,
+                  });
               catalogTrace("response_received", identity, owner.id, result.data.length);
               if (!active) {
                 catalogTrace("epoch_discarded", identity, owner.id);
@@ -1184,6 +1146,7 @@ export function TaskCenter({
                     identity,
                     message: result.errors.map((error) => error.message).join("\n"),
                     previous: ownerRows(previous[owner.id]),
+                    explicit,
                   },
                 }));
                 continue;
@@ -1210,6 +1173,7 @@ export function TaskCenter({
                   identity,
                   message: (cause as Error).message,
                   previous: ownerRows(previous[owner.id]),
+                  explicit,
                 },
               }));
             }
@@ -2019,12 +1983,20 @@ export function TaskCenter({
             {!connected && <p role="status">{t("operations.schedules.disconnectedCatalog")}</p>}
             {projects.map((owner) => {
               const read = catalog[owner.id];
+              const relevant =
+                (read?.status === "error" && read.explicit) ||
+                Boolean(owner.state?.connected) ||
+                Boolean(owner.hasTaskHistory) ||
+                Boolean(ownerRows(read)?.data.length) ||
+                Object.values<Data>(owner.state?.tasks ?? {}).some(
+                  (entry) => entry.mode === "scheduled",
+                );
               return (
                 <TaskCatalogNotice
                   key={owner.id}
                   projectName={projectLabel(owner)}
                   error={
-                    catalogSupported && read?.status === "error"
+                    catalogSupported && read?.status === "error" && relevant
                       ? read.message || t("operations.schedules.readFailed")
                       : undefined
                   }
@@ -2216,7 +2188,9 @@ export function TaskCenter({
           project &&
           !creating &&
           detailsReady &&
-          (task.sourceThreadId || task.delivery === "thread") && (
+          (task.sourceThreadId ||
+            task.delivery === "thread" ||
+            project.projectlessRequestId === "00000000-0000-4000-a000-5c4a7c400001") && (
             <ScheduledTaskConversation
               task={task}
               project={project}
@@ -2237,7 +2211,8 @@ export function TaskCenter({
           !creating &&
           detailsReady &&
           !task.sourceThreadId &&
-          task.delivery !== "thread" && (
+          task.delivery !== "thread" &&
+          project.projectlessRequestId !== "00000000-0000-4000-a000-5c4a7c400001" && (
             <TaskDraft
               key={selected}
               projects={projects}

@@ -1245,3 +1245,89 @@ async fn archiving_a_bound_conversation_pauses_its_tasks() {
     assert!(!engine.task_read(&paused(&detached)).await.unwrap().paused);
     engine.shutdown().await;
 }
+
+#[tokio::test]
+async fn elapsed_time_updates_publish_without_invalidating_current_run_control() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let host = Arc::new(Host {
+        closed: AtomicBool::new(false),
+    });
+    engine.register_schedule_host(host).await.unwrap();
+    let anchor = engine.create("/workspace".into()).await.unwrap();
+    let created = engine
+        .task_create(
+            "fixture".into(),
+            serde_json::from_value(json!({
+                "requestId":"clock-task", "mode":"scheduled", "objective":"inspect",
+                "threadId":anchor.id, "schedule":{"at":now()-1}
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap();
+    engine.advance_task(id).await.unwrap();
+    let before = engine.task_read(id).await.unwrap();
+    let run = before.runs[0].clone();
+    let (_, mut updates) = engine.task_snapshot_and_subscribe(id).await.unwrap();
+    let directory_revision = engine.owner_watch().0.directory_revision;
+    let elapsed = run.usage.time_used_seconds + 1.0;
+    engine
+        .edit_task(id, |task| task.runs[0].usage.time_used_seconds = elapsed)
+        .await
+        .unwrap();
+    let updated = engine.task_read(id).await.unwrap();
+    assert_eq!(updated.revision, before.revision);
+    assert_eq!(updated.runs[0].usage.time_used_seconds, elapsed);
+    assert!(engine.owner_watch().0.directory_revision > directory_revision);
+    let event = updates.try_recv().unwrap();
+    assert_eq!(event["params"]["task"]["revision"], before.revision);
+    assert_eq!(
+        event["params"]["task"]["runs"][0]["usage"]["timeUsedSeconds"],
+        elapsed
+    );
+    let durable = Snapshot::open(dir.path(), &engine.store).unwrap();
+    assert_eq!(durable.tasks[id].revision, before.revision);
+    assert_eq!(durable.tasks[id].runs[0].usage.time_used_seconds, elapsed);
+    let accepted = engine
+        .task_control(
+            "fixture".into(),
+            "stopRun".into(),
+            TaskControl {
+                request_id: "stop-original-run".into(),
+                task_id: id.into(),
+                expected_revision: before.revision,
+                expected_run_id: Some(run.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(accepted["runs"][0]["id"], run.id);
+    assert_eq!(accepted["runs"][0]["reason"], "stopRequested");
+    for edit in [
+        (|task: &mut Task| task.runs[0].usage.tokens_used += 1) as fn(&mut Task),
+        |task: &mut Task| task.paused = !task.paused,
+        |task: &mut Task| task.objective.push('!'),
+        |task: &mut Task| task.runs[0].usage.time_used_seconds -= 0.5,
+    ] {
+        let original = engine.task_read(id).await.unwrap();
+        engine.edit_task(id, edit).await.unwrap();
+        assert!(engine.task_read(id).await.unwrap().revision > original.revision);
+        let stale = engine
+            .task_control(
+                "fixture".into(),
+                "pause".into(),
+                TaskControl {
+                    request_id: format!("stale-{}", original.revision),
+                    task_id: id.into(),
+                    expected_revision: original.revision,
+                    expected_run_id: Some(run.id.clone()),
+                },
+            )
+            .await;
+        assert!(matches!(stale, Err(Error::Conflict)));
+    }
+    engine.shutdown().await;
+}

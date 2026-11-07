@@ -763,6 +763,13 @@ fn keys(host: &Host, connection: &str, mut value: Value) -> Value {
     value
 }
 fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
+    if let Some(mut result) = super::task_catalog::task_rejection_response(error) {
+        result["submissionUnknown"] = json!(false);
+        if let Some(command) = request.get("commandId") {
+            result["commandId"] = command.clone();
+        }
+        return result;
+    }
     let message = error.to_string();
     let code = error
         .downcast_ref::<wire::Error>()
@@ -840,6 +847,20 @@ async fn send(socket: &mut Socket, value: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn task_rejection_is_definitive_on_loopback_wire() {
+        let error: anyhow::Error = super::super::task_catalog::TaskRejection(
+            json!({"code":-32009,"message":"private","data":{"outcome":{"kind":"rejected"}}}),
+        )
+        .into();
+        assert_eq!(
+            loopback_error(
+                &json!({"method":"manage.command","commandId":"original"}),
+                &error
+            ),
+            json!({"code":"TASK_REJECTED","message":"Core rejected task request","coreCode":-32009,"coreError":{"code":-32009,"message":"Core rejected task request","data":{"outcome":{"kind":"rejected"}}},"submissionUnknown":false,"commandId":"original"})
+        );
+    }
     use crate::{Client, HostIdentity};
     use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     use ring::{

@@ -497,7 +497,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                     let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,source,request.params["options"].clone())?;
                     frontend_events=Some(events);Ok(result)
                 } else {host.dispatch_connection(&request.method,request.params,&connection).await};
-                let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>{let code=e.downcast_ref::<wire::Error>().map(|e|e.code).unwrap_or(if e.downcast_ref::<serde_json::Error>().is_some(){"invalidRequest"}else{"internalError"});json!({"version":VERSION,"id":request.id,"error":{"code":code,"message":e.to_string()}})}};
+                let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>json!({"version":VERSION,"id":request.id,"error":local_command_error(&e)})};
                 let sent=write_local_frame(&mut writer,&response,frame_limit).await;
                 if host.stop.borrow().as_ref().is_some_and(|v|v["state"]=="completed") {host.exit.notify_one();}
                 sent?;
@@ -526,6 +526,21 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
             }
         }
     }
+}
+
+fn local_command_error(error: &anyhow::Error) -> Value {
+    if let Some(rejected) = task_catalog::task_rejection_response(error) {
+        return rejected;
+    }
+    let code = error
+        .downcast_ref::<wire::Error>()
+        .map(|error| error.code)
+        .unwrap_or(if error.downcast_ref::<serde_json::Error>().is_some() {
+            "invalidRequest"
+        } else {
+            "internalError"
+        });
+    json!({"code":code,"message":error.to_string()})
 }
 impl Host {
     fn intent_digest(
@@ -2474,6 +2489,17 @@ fn aggregate(receipt: &Value) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn task_rejection_keeps_safe_core_code_and_definitive_outcome_on_local_wire() {
+        let error: anyhow::Error = task_catalog::TaskRejection(
+            json!({"code":-32009,"message":"private","data":{"outcome":{"kind":"rejected"}}}),
+        )
+        .into();
+        assert_eq!(
+            local_command_error(&error),
+            json!({"code":"TASK_REJECTED","message":"Core rejected task request","coreCode":-32009,"coreError":{"code":-32009,"message":"Core rejected task request","data":{"outcome":{"kind":"rejected"}}}})
+        );
+    }
     use crate::{Client, ProjectSource};
 
     #[tokio::test(flavor = "current_thread")]

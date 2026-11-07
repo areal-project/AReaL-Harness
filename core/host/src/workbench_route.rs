@@ -892,6 +892,14 @@ pub(super) fn backend_receipt(
     principal: &str,
     command: &str,
 ) -> Result<Option<Value>> {
+    let receipt = backend_receipt_raw(host, principal, command)?;
+    if let Some(error) = receipt.as_ref().and_then(|value| value.get("error")) {
+        return Err(super::task_catalog::TaskRejection(error.clone()).into());
+    }
+    Ok(receipt)
+}
+
+fn backend_receipt_raw(host: &Host, principal: &str, command: &str) -> Result<Option<Value>> {
     let command = uuid::Uuid::parse_str(command)
         .context("INVALID_PARAMS")?
         .to_string();
@@ -965,8 +973,11 @@ pub(super) async fn backend_command(
     };
     let digest =
         areal_local_service::storage::digest(&serde_json::to_vec(&json!([method, params]))?);
-    if let Some(mut original) = backend_receipt(host, principal, &command)? {
+    if let Some(mut original) = backend_receipt_raw(host, principal, &command)? {
         ensure!(original["semanticDigest"] == digest, "COMMAND_CONFLICT");
+        if let Some(error) = original.get("error") {
+            return Err(super::task_catalog::TaskRejection(error.clone()).into());
+        }
         original.as_object_mut().unwrap().remove("semanticDigest");
         return Ok(original);
     }
@@ -1024,6 +1035,9 @@ pub(super) async fn backend_command(
     if method == "manage.command" && payload.get("requestId").is_none() {
         payload["requestId"] = json!(command);
     }
+    let native_task = method == "manage.command"
+        && host.gateway.workbench.rust_domain("tasks-rust", &source)
+        && super::task_catalog::mutation(payload["operation"].as_str().unwrap_or("")).is_some();
     let result = if method == "library.command"
         && host.gateway.workbench.rust_domain("library-rust", &source)
     {
@@ -1032,10 +1046,7 @@ pub(super) async fn backend_command(
         && (native || host.gateway.workbench.rust_domain("worktree-rust", &source))
     {
         super::worktree_catalog::command(host, &source, payload).await
-    } else if method == "manage.command"
-        && host.gateway.workbench.rust_domain("tasks-rust", &source)
-        && super::task_catalog::mutation(payload["operation"].as_str().unwrap_or("")).is_some()
-    {
+    } else if native_task {
         payload["sourceId"] = json!(source);
         super::task_catalog::command(host, &payload).await
     } else {
@@ -1056,7 +1067,15 @@ pub(super) async fn backend_command(
         Ok(value) => {
             json!({"commandId":command,"method":method,"admissionState":"accepted","submissionUnknown":false,"receipt":value,"semanticDigest":digest})
         }
-        Err(_) => unknown,
+        Err(error) => match native_task
+            .then(|| super::task_catalog::definitive_task_rejection(&error))
+            .flatten()
+        {
+            Some(error) => {
+                json!({"commandId":command,"method":method,"sourceId":source,"admissionState":"rejected","submissionUnknown":false,"error":error,"semanticDigest":digest})
+            }
+            None => unknown,
+        },
     };
     if receipt["submissionUnknown"] == false {
         let (revision, mut snapshot) = host.journal.native_snapshot(&scope)?;
@@ -1066,6 +1085,9 @@ pub(super) async fn backend_command(
             .retain(|row| row["requestId"] != command);
         snapshot["outcomes"][&command] = receipt.clone();
         host.journal.native_replace(&scope, revision, snapshot)?;
+    }
+    if let Some(error) = receipt.get("error") {
+        return Err(super::task_catalog::TaskRejection(error.clone()).into());
     }
     receipt.as_object_mut().unwrap().remove("semanticDigest");
     Ok(receipt)
@@ -1851,6 +1873,66 @@ async fn core_request(host: &Host, params: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn task_rejection_is_recovered_for_original_workbench_command() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+        tokio::task::LocalSet::new().run_until(async {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
+                crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
+            host.gateway.workbench.ensure_backend(&host, input).await.unwrap();
+            host.gateway.workbench.test_rust_domains(&source, &["tasks-rust"]);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let registration = host.slots.borrow()["project"].registration.clone();
+            let service = areal_protocol::service::Service {
+                identity: areal_protocol::service::Identity { protocol_version: 1, service_id: "fixture".into(), generation: "first".into(), workspace: registration.workspace, data_dir: registration.data_dir, config_fingerprint: "fixture".into() },
+                owner: Some(host.owner()), endpoint: format!("ws://{}/", listener.local_addr().unwrap()), web_url: String::new(), auth_file: host.home.join("core-auth.json"), log_file: host.home.join("core.log"), host_pid: 1, core_pid: 2, state: areal_protocol::service::State::Ready,
+            };
+            areal_local_service::storage::write(&service.auth_file, &json!({"principals":[{"id":"desktop-owner","token":"fixture"}]})).unwrap();
+            let gate = host.slots.borrow()["project"].gate.clone();
+            let _guard = gate.write().await;
+            { let mut slots = host.slots.borrow_mut(); let slot = slots.get_mut("project").unwrap(); slot.service = Some(service.clone()); slot.state = "ready".into(); let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap(); slot.writer = Some(writer); slot.lifetime = Some(Rc::new(lifetime)); }
+            let count = Rc::new(std::cell::Cell::new(0)); let observed = count.clone();
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                    let call: Value = serde_json::from_str(&text).unwrap();
+                    if call.get("id").is_none() { continue; }
+                    let response = match call["method"].as_str().unwrap() {
+                        "initialize" => json!({"id":call["id"],"result":{}}),
+                        "areal/conversation/list" | "areal/work/overview" => json!({"id":call["id"],"result":{"data":[],"nextCursor":null}}),
+                        "areal/task/stopRun" => { observed.set(observed.get()+1); if call["params"]["taskId"] == "lost" { break; } json!({"id":call["id"],"error":{"code":-32009,"message":"private","data":{"outcome":{"kind":"rejected"}}}}) },
+                        method => panic!("unexpected {method}"),
+                    };
+                    socket.send(Message::Text(response.to_string().into())).await.unwrap();
+                }
+            });
+            let close = host.schedules.connections.connect_test_core(host.clone(), "project", service).await.unwrap();
+            let command = uuid::Uuid::new_v4().to_string();
+            let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":source,"projectId":"logical","operation":"taskStopRun","taskId":"task","expectedRevision":9,"expectedRunId":"run"}});
+            for _ in 0..2 {
+                let error = backend_command(&host, "local", &request).await.unwrap_err();
+                assert_eq!(super::super::task_catalog::task_rejection_response(&error).unwrap()["coreCode"], -32009);
+            }
+            assert_eq!(count.get(), 1);
+            let mut changed = request.clone(); changed["params"]["expectedRevision"] = json!(10);
+            assert_eq!(backend_command(&host, "local", &changed).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            let mut foreign = request.clone(); foreign["params"]["sourceId"] = json!("different-source");
+            assert_eq!(backend_command(&host, "local", &foreign).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            assert!(backend_receipt(&host, "local", &command).unwrap_err().downcast_ref::<super::super::task_catalog::TaskRejection>().is_some());
+            let mut lost = request.clone(); lost["commandId"] = json!(uuid::Uuid::new_v4().to_string()); lost["params"]["taskId"] = json!("lost");
+            let unknown = backend_command(&host, "local", &lost).await.unwrap();
+            assert_eq!(unknown["submissionUnknown"], true);
+            assert_eq!(backend_command(&host, "local", &lost).await.unwrap(), unknown);
+            assert_eq!(count.get(), 2);
+            close(); server.abort(); host.gateway.workbench.stop_backend().await;
+        }).await;
+    }
 
     // 只替代 Node 业务装配，恢复、来源校验、启动记录和子进程监督均走正式路径。
     fn resumable_host(root: &Path) -> (Rc<Host>, Ensure, String) {

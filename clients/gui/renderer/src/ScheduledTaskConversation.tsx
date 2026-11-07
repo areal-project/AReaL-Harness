@@ -45,7 +45,7 @@ export function ScheduledTaskConversation({
   const state = scheduledTaskState(task, project, t);
   // 运行接在这段对话里时，详情就是这段对话；旧的“每次新开”任务列出各次运行的对话。
   const bound = scheduledTaskConversation(task);
-  const target: string | undefined = bound ?? task.sourceThreadId ?? undefined;
+  const target: string | undefined = bound ?? task.sourceThreadId ?? task.threadId ?? undefined;
   useEffect(() => {
     if (!project.state?.connected || !target) return;
     let live = true;

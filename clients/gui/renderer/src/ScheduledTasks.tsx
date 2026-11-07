@@ -594,7 +594,7 @@ function ScheduledTaskCard({
   ]);
   const pushed = project.state?.tasks?.[saved.task.id];
   const task =
-    pushed && read.task && pushed.revision > read.task.revision ? pushed : (read.task ?? pushed);
+    pushed && read.task && pushed.revision >= read.task.revision ? pushed : (read.task ?? pushed);
   const ready = !!project.state?.connected && read.status === "ready" && !!task;
   return (
     <div

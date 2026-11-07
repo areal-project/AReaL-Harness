@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
@@ -29,6 +29,7 @@ const snapshotCompletion = process.env.AREAL_STOP_SNAPSHOT_COMPLETION === "1";
 assert.ok(binary && isAbsolute(binary), "Set AREAL_CORE_BIN to an absolute fixed Core binary");
 const scratch = await makeTempDir("stop-turn-");
 const rust = process.argv.includes("--rust");
+if (snapshotCompletion) assert.ok(rust, "Snapshot completion requires --rust");
 const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
 if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const workspace = join(scratch, "workspace");
@@ -74,45 +75,7 @@ const server = createServer(async (request, response) => {
 const commandLog = join(scratch, "commands.jsonl");
 const receiptGate = join(scratch, "receipt.gate");
 const omittedCompletionLog = join(scratch, "omitted-completions.jsonl");
-const preload = join(scratch, "snapshot-preload.cjs");
-if (snapshotCompletion) {
-  const runtime = await realpath(process.execPath);
-  const directory = join(scratch, "snapshot-bin");
-  await mkdir(directory);
-  await writeFile(
-    preload,
-    `
-const { HostCoreClient } = require(${JSON.stringify(join(root, "services/workbench/src/generated/host-core-client.cjs"))});
-const { appendFileSync } = require('node:fs');
-const observation = ${JSON.stringify(join(scratch, "snapshot-preload-observation.jsonl"))};
-appendFileSync(observation, JSON.stringify({type:'loaded', pid:process.pid, entry:process.argv[1], module:require.resolve(${JSON.stringify(join(root, "services/workbench/src/generated/host-core-client.cjs"))})}) + '\\n');
-const event = HostCoreClient.prototype.event;
-let observed = 0;
-HostCoreClient.prototype.event = function(frame) {
-  if (typeof frame.method === 'string' && frame.method.startsWith('turn/') && observed++ < 512) appendFileSync(observation, JSON.stringify({type:'event', pid:process.pid,
-    method:frame.method, threadId:frame.params?.threadId, turnId:frame.params?.turn?.id,
-    owned:this.owns(frame.lease), connectionId:this.identity()?.connectionId}) + '\\n');
-  if (this.owns(frame.lease) && frame.method === 'turn/completed') {
-    appendFileSync(${JSON.stringify(omittedCompletionLog)}, JSON.stringify({
-      threadId: frame.params?.threadId, turnId: frame.params?.turn?.id,
-      connectionId: this.identity()?.connectionId, owned: true
-    }) + '\\n');
-    return;
-  }
-  return event.call(this, frame);
-};
-`,
-  );
-  const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
-  await writeFile(
-    join(directory, "node"),
-    `#!/bin/sh\nexec ${quote(runtime)} --require ${quote(preload)} "$@"\n`,
-    { mode: 0o700 },
-  );
-  env.PATH = `${directory}:${env.PATH ?? ""}`;
-}
 const bootstrap = `
-${snapshotCompletion ? `require(${JSON.stringify(preload)});` : ""}
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
 const { appendFileSync, existsSync } = require('node:fs');
 const command = SharedCoreBackend.prototype.command;
@@ -296,32 +259,137 @@ try {
         .catch(() => null);
       return rustDomains.every((domain) => record?.options?.rustDomains?.includes(domain));
     }, "Rust backend launch domains");
-    if (snapshotCompletion) {
-      const { HostClient } = require("@areal/client/node");
-      const host = new HostClient();
-      try {
-        await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
-        const backend = await host.request("backend.status", {});
-        assert.ok(backend.owned && Number.isSafeInteger(backend.service?.pid), "owned backend PID");
-        const observations = (
-          await readFile(join(scratch, "snapshot-preload-observation.jsonl"), "utf8")
-        )
-          .split("\n")
-          .filter(Boolean)
-          .map(JSON.parse);
-        assert.ok(
-          observations.some(
-            (entry) =>
-              entry.type === "loaded" &&
-              entry.pid === backend.service.pid &&
-              entry.entry?.endsWith("/backend-main.cjs"),
-          ),
-          "snapshot preload loaded in original backend PID",
-        );
-      } finally {
-        host.close();
+  }
+  if (snapshotCompletion) {
+    await page.addInitScript(() => {
+      const NativeWebSocket = window.WebSocket;
+      const fixture = (window.__stopSnapshotFixture = {
+        sessions: [],
+        target: null,
+        omitted: null,
+        recovered: null,
+        candidates: [],
+      });
+      window.WebSocket = class extends NativeWebSocket {
+        constructor(...args) {
+          super(...args);
+          const pending = new Map();
+          this.__stopPending = pending;
+          this.addEventListener("close", () => {
+            fixture.sessions = fixture.sessions.filter(
+              (entry) => entry.socket !== this.__stopSocket,
+            );
+          });
+          this.__stopSocket = crypto.randomUUID();
+          this.addEventListener(
+            "message",
+            (event) => {
+              if (typeof event.data !== "string") return;
+              let message;
+              try {
+                message = JSON.parse(event.data);
+              } catch {
+                return;
+              }
+              if (pending.has(String(message.id))) {
+                const request = pending.get(String(message.id));
+                pending.delete(String(message.id));
+                const result = message.result;
+                if (result?.view !== "conversation" || result.threadId !== request.threadId) return;
+                const identity = {
+                  projectId: result.projectId,
+                  serviceGeneration: result.serviceGeneration,
+                  connectionId: result.connectionId,
+                  subscriptionId: result.subscriptionId,
+                  threadId: result.threadId,
+                };
+                fixture.sessions.push({ ...identity, socket: this.__stopSocket });
+                const target = fixture.target;
+                const turn = result.snapshot?.thread?.turns?.find(
+                  (item) => item.id === target?.turnId,
+                );
+                if (
+                  fixture.omitted &&
+                  target &&
+                  identity.projectId === target.projectId &&
+                  identity.serviceGeneration === target.serviceGeneration &&
+                  identity.threadId === target.threadId &&
+                  identity.connectionId !== target.connectionId &&
+                  turn?.status === "interrupted"
+                ) {
+                  fixture.recovered = { ...identity, turnId: turn.id, status: turn.status };
+                }
+                return;
+              }
+              const value = message.params;
+              const target = fixture.target;
+              if (
+                target &&
+                message.method === "session.updated" &&
+                fixture.candidates.length < 64
+              ) {
+                fixture.candidates.push({
+                  projectId: value?.projectId,
+                  serviceGeneration: value?.serviceGeneration,
+                  connectionId: value?.connectionId,
+                  subscriptionId: value?.subscriptionId,
+                  threadId: value?.threadId,
+                  turns: value?.patch?.turns?.map((turn) => ({
+                    id: turn.id,
+                    status: turn.head?.status,
+                  })),
+                });
+              }
+              if (
+                !target ||
+                fixture.omitted ||
+                message.method !== "session.updated" ||
+                value?.projectId !== target.projectId ||
+                value.serviceGeneration !== target.serviceGeneration ||
+                value.connectionId !== target.connectionId ||
+                value.subscriptionId !== target.subscriptionId ||
+                value.threadId !== target.threadId
+              )
+                return;
+              const turn = value.patch?.turns?.find(
+                (item) => item.id === target.turnId && item.head?.status === "interrupted",
+              );
+              if (!turn) return;
+              fixture.omitted = {
+                ...target,
+                turnId: turn.id,
+                sequence: value.sequence,
+                status: turn.head.status,
+              };
+              event.stopImmediatePropagation();
+              this.close();
+            },
+            true,
+          );
+        }
+        send(data) {
+          if (typeof data === "string") {
+            try {
+              const request = JSON.parse(data);
+              if (request.method === "session.open" && request.params?.view === "conversation")
+                pendingFor(this).set(String(request.id), request.params);
+            } catch {
+              /* 非 Host 请求原样发送。 */
+            }
+          }
+          return super.send(data);
+        }
+      };
+      function pendingFor(socket) {
+        return socket.__stopPending;
       }
-    }
+    });
+    await page.reload();
+    await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+    await until(
+      async () => (await snapshot()).connection?.state === "ready",
+      "Snapshot Renderer ready",
+    );
   }
   // Rust Host 管理项目代际，旧桌面服务文件不是其身份。
   metadata = rust
@@ -356,6 +424,63 @@ try {
         ),
     "Streaming reply",
   );
+  if (snapshotCompletion) {
+    const streaming = await snapshot();
+    const selected = project(streaming);
+    assert.equal(
+      current(streaming).turns.at(-1).status,
+      "inProgress",
+      "Original Turn is active before dropping its terminal update",
+    );
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
+    let binding;
+    try {
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      const source = await host.sourceState({
+        profile: env.AREAL_GUI_USER_DATA,
+        coreHome: env.AREAL_CORE_HOME,
+        legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
+      });
+      const matches = source.bindings.filter(
+        (entry) => entry.alias.legacyProjectId === selected.id && entry.workspace === workspace,
+      );
+      assert.equal(matches.length, 1, "Original workspace has one Host binding");
+      [binding] = matches;
+    } finally {
+      host.close();
+    }
+    const target = {
+      projectId: binding.projectId,
+      serviceGeneration: selected.core.serviceGeneration,
+      threadId: primaryThreadId,
+      turnId: current(streaming).turns.at(-1).id,
+    };
+    assert.ok(Object.values(target).every((value) => typeof value === "string" && value.length));
+    const armed = await until(
+      () =>
+        page.evaluate((identity) => {
+          const fixture = window.__stopSnapshotFixture;
+          const session = fixture?.sessions.findLast(
+            (entry) =>
+              entry.projectId === identity.projectId &&
+              entry.serviceGeneration === identity.serviceGeneration &&
+              entry.threadId === identity.threadId &&
+              entry.connectionId &&
+              entry.subscriptionId,
+          );
+          if (!session) return null;
+          fixture.target = {
+            ...identity,
+            connectionId: session.connectionId,
+            subscriptionId: session.subscriptionId,
+          };
+          return fixture.target;
+        }, target),
+      "Original Renderer session identity",
+    );
+    await writeFile(join(scratch, "snapshot-target.json"), JSON.stringify(armed, null, 2));
+  }
   await page.bringToFront();
   await page.getByRole("button", { name: "暂停执行", exact: true }).click();
   await until(
@@ -392,31 +517,21 @@ try {
   const projectId = project(pending).id;
   const turnId = stoppedThread.turns.at(-1).id;
   if (snapshotCompletion) {
-    const omitted = await until(async () => {
-      const text = await readFile(omittedCompletionLog, "utf8").catch((error) => {
-        if (error.code === "ENOENT") return "";
-        throw error;
-      });
-      return text
-        .split("\n")
-        .filter(Boolean)
-        .map(JSON.parse)
-        .find(
-          (event) =>
-            event.owned === true &&
-            event.threadId === stoppedThread.id &&
-            event.turnId === turnId &&
-            typeof event.connectionId === "string" &&
-            event.connectionId.length > 0,
-        );
-    }, "original turn completion omitted from owned Workbench connection");
-    assert.equal(omitted.threadId, stoppedThread.id);
-    assert.equal(
-      omitted.turnId,
-      turnId,
-      "Snapshot fixture must omit the original turn completion from the owned Workbench connection",
-    );
+    const evidence = await until(async () => {
+      const fixture = await page.evaluate(() => window.__stopSnapshotFixture);
+      return fixture?.omitted && fixture.recovered ? fixture : null;
+    }, "original terminal frame omitted and original session recovered");
+    await writeFile(omittedCompletionLog, `${JSON.stringify(evidence, null, 2)}\n`);
+    assert.equal(evidence.omitted.threadId, stoppedThread.id);
+    assert.equal(evidence.omitted.turnId, turnId);
+    assert.equal(evidence.recovered.threadId, stoppedThread.id);
+    assert.equal(evidence.recovered.turnId, turnId);
+    assert.equal(evidence.recovered.projectId, evidence.omitted.projectId);
+    assert.equal(evidence.recovered.serviceGeneration, evidence.omitted.serviceGeneration);
+    assert.notEqual(evidence.recovered.connectionId, evidence.omitted.connectionId);
+    assert.notEqual(evidence.recovered.subscriptionId, evidence.omitted.subscriptionId);
   }
+
   assert.equal(pending.library.threads[`${projectId}:${stoppedThread.id}`].completionId, turnId);
   assert.equal(
     pending.lifecycle.operations.some(
@@ -726,6 +841,12 @@ try {
   failure = error.stack;
   console.error(error.message);
   if (page) {
+    if (snapshotCompletion) {
+      const fixture = await page.evaluate(() => window.__stopSnapshotFixture).catch(() => null);
+      await writeFile(omittedCompletionLog, `${JSON.stringify(fixture, null, 2)}\n`).catch(
+        () => {},
+      );
+    }
     await writeFile(
       join(scratch, "failure-snapshot.json"),
       JSON.stringify(await snapshot(), null, 2),
@@ -794,7 +915,7 @@ try {
         cleanup,
         errors,
         boundaries:
-          "Source Electron and real Core. Deterministic loopback model. A file barrier holds the completed stop receipt through the paused UI render, then explicitly releases it. Optional fixture omits the original completion notification from the owned Workbench desktop projection; Renderer Host subscriptions may still receive it. History handler and unread checks also use the public bridge. Native folder picker stubbed. No packaged app or physical input.",
+          "Source Electron and real Core. Deterministic loopback model. A file barrier holds the completed stop receipt through the paused UI render, then explicitly releases it. Optional fixture drops the original terminal session update on the Renderer Host WebSocket, then verifies the same thread and turn in a reconnected authoritative snapshot. History handler and unread checks also use the public bridge. Native folder picker stubbed. No packaged app or physical input.",
       },
       null,
       2,

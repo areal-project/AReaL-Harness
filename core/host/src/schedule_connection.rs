@@ -86,10 +86,15 @@ impl Drop for CoreObservation {
             return;
         }
         observed.remove(&self.thread_id);
-        let sequence = self.session.sequence.get() + 1;
-        self.session.sequence.set(sequence);
-        if self.session.outgoing.try_send(json!({"id":format!("host-{sequence}"),"method":"areal/subscription/remove","params":{"threadIds":[self.thread_id]}})).is_err() {
-            self.session.close();
+        drop(observed);
+        if !self
+            .session
+            .workbench_observed
+            .borrow()
+            .contains_key(&self.thread_id)
+        {
+            self.session
+                .remove_subscriptions(vec![self.thread_id.clone()]);
         }
     }
 }
@@ -479,6 +484,10 @@ struct CoreSession {
     event_sequence: Cell<u64>,
     shell_revision: Cell<u64>,
     observed: RefCell<BTreeMap<String, usize>>,
+    workbench_observed: RefCell<BTreeMap<String, (String, u64)>>,
+    workbench_claim_sequence: Cell<u64>,
+    workbench_creations: Cell<usize>,
+    deferred_removals: RefCell<BTreeSet<String>>,
     capabilities: RefCell<Value>,
     workbench_lease: RefCell<Option<String>>,
     terminal: bool,
@@ -492,6 +501,48 @@ struct CoreSession {
     driver: RefCell<Option<AbortHandle>>,
 }
 impl CoreSession {
+    fn defer_removals(&self, threads: Vec<String>) -> Vec<String> {
+        if self.workbench_creations.get() == 0 {
+            return threads;
+        }
+        let mut deferred = self.deferred_removals.borrow_mut();
+        deferred.extend(threads);
+        if deferred.len() > areal_protocol::desktop::MAX_SUBSCRIPTIONS {
+            drop(deferred);
+            self.close();
+        }
+        Vec::new()
+    }
+    fn remove_subscriptions(&self, threads: Vec<String>) {
+        let threads = self.defer_removals(threads);
+        if threads.is_empty() {
+            return;
+        }
+        let sequence = self.sequence.get() + 1;
+        self.sequence.set(sequence);
+        if self.outgoing.try_send(json!({"id":format!("host-{sequence}"),"method":"areal/subscription/remove","params":{"threadIds":threads}})).is_err() {
+            self.close();
+        }
+    }
+    fn release_workbench(&self, lease: &str) {
+        let mut owned = self.workbench_observed.borrow_mut();
+        let threads: Vec<_> = owned
+            .iter()
+            .filter(|(_, (owner, _))| owner.as_str() == lease)
+            .map(|(thread, _)| thread.clone())
+            .collect();
+        for thread in &threads {
+            owned.remove(thread);
+        }
+        drop(owned);
+        let observed = self.observed.borrow();
+        self.remove_subscriptions(
+            threads
+                .into_iter()
+                .filter(|thread| !observed.contains_key(thread))
+                .collect(),
+        );
+    }
     fn current(&self, host: &Host) -> bool {
         self.shared_current(host)
             && !host.schedules.suppressed(&self.project_id)
@@ -757,6 +808,10 @@ async fn connect_authorized(
         event_sequence: Cell::new(0),
         shell_revision: Cell::new(0),
         observed: RefCell::new(BTreeMap::new()),
+        workbench_observed: RefCell::new(BTreeMap::new()),
+        workbench_claim_sequence: Cell::new(0),
+        workbench_creations: Cell::new(0),
+        deferred_removals: RefCell::new(BTreeSet::new()),
         capabilities: RefCell::new(Value::Null),
         workbench_lease: RefCell::new(None),
         terminal,
@@ -1657,6 +1712,174 @@ mod tests {
             release.send(()).unwrap();
             server.await.unwrap();
             session.close();
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn host_release_before_workbench_thread_start_receipt_preserves_subscription() {
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+            }
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders).await.unwrap();
+                let mut subscribed = false;
+                let mut creation = None;
+                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                    let call: Value = serde_json::from_str(&text).unwrap();
+                    if call.get("id").is_none() { continue; }
+                    match call["method"].as_str().unwrap() {
+                        "initialize" | "areal/capabilities" => send(&mut socket, json!({"id":call["id"],"result":{}})).await,
+                        "thread/start" => {
+                            subscribed = true;
+                            creation = Some(call["id"].clone());
+                            send(&mut socket, json!({"method":"thread/started","params":{"thread":{"id":"created"}}})).await;
+                        }
+                        "areal/thread/observe" => {
+                            subscribed = true;
+                            send(&mut socket, json!({"id":call["id"],"result":{"thread":{"id":"created","turns":[]}}})).await;
+                        }
+                        "areal/subscription/remove" => {
+                            if call["params"]["threadIds"].as_array().unwrap().iter().any(|id| id == "created") { subscribed = false; }
+                            send(&mut socket, json!({"id":call["id"],"result":{"subscriptionCount":usize::from(subscribed)}})).await;
+                        }
+                        "areal/server/status" => {
+                            send(&mut socket, json!({"id":call["id"],"result":{"subscribed":subscribed}})).await;
+                            if let Some(id) = creation.take() { send(&mut socket, json!({"id":id,"result":{"thread":{"id":"created"}}})).await; }
+                            if subscribed { send(&mut socket, json!({"method":"item/agentMessage/delta","params":{"threadId":"created","delta":"original"}})).await; }
+                        }
+                        other => panic!("unexpected request {other}"),
+                    }
+                }
+            });
+            let session = connect(host.clone(), "project", service).await.unwrap();
+            session.ready.set(true);
+            host.schedules.connections.sessions.borrow_mut().insert("project".into(), session.clone());
+            let attached = host.schedules.connections.workbench_attach(&host, "project", None).await.unwrap();
+            let lease = attached["lease"].as_str().unwrap().to_owned();
+            let mut events = session.events.subscribe();
+            let request_host = host.clone();
+            let request_lease = lease.clone();
+            let creation = tokio::task::spawn_local(async move {
+                request_host.schedules.connections.workbench_request(&request_host, "project", &request_lease, "thread/start", json!({})).await.unwrap()
+            });
+            loop { if events.recv().await.unwrap().value["method"] == "thread/started" { break; } }
+            let (_, _, observation) = host.schedules.connections.remote_observe(&host, "project", "first", "created").await.unwrap();
+            drop(observation);
+            session.request("areal/server/status", json!({})).await.unwrap();
+            assert_eq!(creation.await.unwrap()["result"]["thread"]["id"], "created");
+            let mut events = session.events.subscribe();
+            let status = host.schedules.connections.workbench_request(&host, "project", &lease, "areal/server/status", json!({})).await.unwrap();
+            assert_eq!(status["result"]["subscribed"], true, "Host release before creation receipt must not remove the new Workbench subscription");
+            loop { if events.recv().await.unwrap().value["method"] == "item/agentMessage/delta" { break; } }
+            host.schedules.connections.workbench_detach(&host, "project", &lease).unwrap();
+            assert_eq!(session.request("areal/server/status", json!({})).await.unwrap()["subscribed"], false);
+            let replacement = host.schedules.connections.workbench_attach(&host, "project", None).await.unwrap();
+            let replacement_lease = replacement["lease"].as_str().unwrap().to_owned();
+            let request_host = host.clone();
+            let creation = tokio::task::spawn_local(async move {
+                request_host.schedules.connections.workbench_request(&request_host, "project", &replacement_lease, "thread/start", json!({})).await
+            });
+            loop { if events.recv().await.unwrap().value["method"] == "thread/started" { break; } }
+            let (_, _, observation) = host.schedules.connections.remote_observe(&host, "project", "first", "created").await.unwrap();
+            drop(observation);
+            creation.abort();
+            assert!(creation.await.unwrap_err().is_cancelled());
+            assert_eq!(session.request("areal/server/status", json!({})).await.unwrap()["subscribed"], false, "cancelled creation flushes deferred removal");
+            session.close();
+            server.await.unwrap();
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn shared_thread_subscription_survives_each_owner_release() {
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+            {
+                let mut slots = host.slots.borrow_mut();
+                let slot = slots.get_mut("project").unwrap();
+                let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+                slot.writer = Some(writer);
+                slot.lifetime = Some(Rc::new(lifetime));
+            }
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders).await.unwrap();
+                let mut subscribed = false;
+                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                    let call: Value = serde_json::from_str(&text).unwrap();
+                    if call.get("id").is_none() { continue; }
+                    if call["method"] == "areal/thread/observe" && call["params"]["maxBytes"] == 0 {
+                        send(&mut socket, json!({"id":call["id"],"error":{"code":-32602,"message":"invalid maxBytes"}})).await;
+                        continue;
+                    }
+                    let result = match call["method"].as_str().unwrap() {
+                        "initialize" | "areal/capabilities" => json!({}),
+                        "areal/thread/observe" | "thread/resume" => { subscribed = true; json!({"thread":{"id":"thread","turns":[]}}) },
+                        "areal/subscription/remove" => { if call["params"]["threadIds"].as_array().unwrap().iter().any(|id| id == "thread") { subscribed = false; } json!({"subscriptionCount":usize::from(subscribed)}) },
+                        "areal/server/status" => json!({"subscribed":subscribed}),
+                        other => panic!("unexpected request {other}"),
+                    };
+                    send(&mut socket, json!({"id":call["id"],"result":result})).await;
+                    if call["method"] == "areal/server/status" && subscribed {
+                        send(&mut socket, json!({"method":"item/agentMessage/delta","params":{"threadId":"thread","delta":"original"}})).await;
+                    }
+                }
+            });
+            let session = connect(host.clone(), "project", service).await.unwrap();
+            session.ready.set(true);
+            let connections = &host.schedules.connections;
+            connections.sessions.borrow_mut().insert("project".into(), session.clone());
+            let attached = connections.workbench_attach(&host, "project", None).await.unwrap();
+            let lease = attached["lease"].as_str().unwrap();
+            let (_, _, observation) = connections.remote_observe(&host, "project", "first", "thread").await.unwrap();
+            let rejected = connections.workbench_request(&host, "project", lease, "areal/thread/observe", json!({"threadId":"thread","mode":"bounded","maxBytes":0})).await.unwrap();
+            assert_eq!(rejected["error"]["code"], -32602);
+            drop(observation);
+            let status = connections.workbench_request(&host, "project", lease, "areal/server/status", json!({})).await.unwrap();
+            assert_eq!(status["result"]["subscribed"], false, "rejected new claim cannot retain subscription");
+            connections.workbench_request(&host, "project", lease, "thread/resume", json!({"threadId":"thread"})).await.unwrap();
+            let rejected = connections.workbench_request(&host, "project", lease, "areal/thread/observe", json!({"threadId":"thread","mode":"bounded","maxBytes":0})).await.unwrap();
+            assert_eq!(rejected["error"]["code"], -32602);
+            let (_, _, observation) = connections.remote_observe(&host, "project", "first", "thread").await.unwrap();
+            let mut workbench_events = session.events.subscribe();
+            drop(observation);
+            let status = connections.workbench_request(&host, "project", lease, "areal/server/status", json!({})).await.unwrap();
+            assert_eq!(status["result"]["subscribed"], true, "Host release must retain Workbench subscription");
+            loop { let event = workbench_events.recv().await.unwrap().value; if event["method"] == "item/agentMessage/delta" { assert_eq!(event["params"]["threadId"], "thread"); break; } }
+            let (_, _, mut observation) = connections.remote_observe(&host, "project", "first", "thread").await.unwrap();
+            connections.workbench_request(&host, "project", lease, "areal/subscription/remove", json!({"threadIds":["thread"]})).await.unwrap();
+            let status = connections.workbench_request(&host, "project", lease, "areal/server/status", json!({})).await.unwrap();
+            assert_eq!(status["result"]["subscribed"], true, "Workbench release must retain Host subscription");
+            loop { if observation.events.recv().await.unwrap().value["method"] == "item/agentMessage/delta" { break; } }
+            drop(observation);
+            let status = connections.workbench_request(&host, "project", lease, "areal/server/status", json!({})).await.unwrap();
+            assert_eq!(status["result"]["subscribed"], false, "last owner releases Core subscription");
+            let replacement = connections.workbench_attach(&host, "project", None).await.unwrap();
+            let replacement_lease = replacement["lease"].as_str().unwrap();
+            assert_eq!(replacement["connectionId"], attached["connectionId"]);
+            assert_eq!(replacement["coreGeneration"], attached["coreGeneration"]);
+            connections.workbench_request(&host, "project", replacement_lease, "areal/thread/observe", json!({"threadId":"thread"})).await.unwrap();
+            assert_eq!(connections.workbench_detach(&host, "project", lease).unwrap()["closed"], false);
+            assert!(connections.workbench_request(&host, "project", lease, "areal/subscription/remove", json!({"threadIds":["thread"]})).await.is_err());
+            let status = connections.workbench_request(&host, "project", replacement_lease, "areal/server/status", json!({})).await.unwrap();
+            assert_eq!(status["result"]["subscribed"], true, "old lease cannot release replacement owner");
+            connections.workbench_detach(&host, "project", replacement_lease).unwrap();
+            assert_eq!(session.request("areal/server/status", json!({})).await.unwrap()["subscribed"], false);
+            session.close();
+            server.await.unwrap();
         }).await;
     }
 

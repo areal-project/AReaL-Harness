@@ -312,6 +312,8 @@ impl Engine {
     async fn draft_view(&self, owner: &str, thread: &Thread) -> Result<Value> {
         let zone = zone(thread)?;
         let target = saved_target(thread)?;
+        let created_in_thread = self.draft_created_task(owner, thread).await?.is_some();
+        let mut seen_committed = !created_in_thread && target.is_some();
         let mut users = Vec::new();
         let mut messages = Vec::new();
         let mut selected = Value::Null;
@@ -346,9 +348,10 @@ impl Engine {
                     .is_some()
                 {
                     message = Some(
-                        if target.is_some() {
+                        if seen_committed {
                             "已保存修改。"
                         } else {
+                            seen_committed = true;
                             "已创建任务。"
                         }
                         .to_owned(),
@@ -455,7 +458,8 @@ impl Engine {
             .or_else(|| value["proposal"].get("scheduleV2"));
         if let Some(schedule) = schedule {
             let preview: SchedulePreview =
-                serde_json::from_value(json!({"schedule":schedule,"count":5})).map_err(invalid)?;
+                serde_json::from_value(json!({"schedule":schedule,"timeZone":zone,"count":5}))
+                    .map_err(invalid)?;
             match self.task_schedule_preview(preview) {
                 Ok(preview) => value["preview"] = serde_json::to_value(preview).map_err(invalid)?,
                 Err(cause) => {

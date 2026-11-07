@@ -43,6 +43,8 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 
 本机 `gui-write-v1` 及配对来源与后台一致的远程会话，在 send/enqueue 与 steer 受理前，经私有 `input.prepare` 复用后台 `genUiText` 的状态投影；只有 modelContent 进入有效输入，privateContent 保留在页面状态。Host 按原始请求去重，把准备后的输入冻结在原 journal 中；重复命令不重新读取状态。未绑定桌面后台的旧入口保持原行为，已绑定后台失联则明确失败。Host 项目 ID 先经已绑定 source 的权威绑定转为后台 alias，再由后台解析线程执行项目。
 
+Host 与工作台在同一个 Core 连接上分别持有 Thread 订阅兴趣；任一方释放后，只有最后一个持有者离开才撤销 Core 订阅。工作台兴趣绑定原租约，旧租约不能撤销新连接持有的兴趣。
+
 私有 `execution.prepare` 复用页面宿主的供应商与工具准备，send/enqueue 与 steer 的 Core 派发由 Host 共享连接执行。带 Worktree 的创建仍经后台薄适配衔接 Host 原生准备与绑定；后台的 Core 请求同样经过 Host。创建准备与原 `createThreadInProject` 共享实现，发送沿用 `ensureBrowserTools` 和 `browserEntrypoints`；Host 冻结原 Core requestId/参数并写 journal，后台只消费一次性页面宿主句柄。句柄绑定原 Host 连接、项目/线程、Core 代际、client 与原生 owner；失败或断开不重放。浏览器发现和页面认领沿原 Main attach 回调，断开原 Host 连接会撤销其入口、发现计划与认领。原生窗口行为仍需桌面端验收。 远程普通新建、发送和引导使用相同执行路径，仍按原设备、项目和 submit 授权校验；仅凭项目别名相同不能取得其他来源的后台。连接结束会撤销后台入口，已发布客户端的请求形状与权限预设不变。工具宿主断开后的确定拒绝通过 Core 的 `TOOL_HOST_UNAVAILABLE` 原因映射为 Host `CAPABILITY_UNAVAILABLE`；保留原命令回执，不自动重发。
 
 资源经认证 WebSocket 分块读取，每块最多 192 KiB、单资源最多 8 MiB。公开 `/host/pages/proxy` 仅含固定代理代码，外层与内层均为不带同源权限的 sandbox；页面 HTML 和资源不进入公开 HTTP 路由。Gen-UI 固定资源沿原白名单读取后内联，页面继续受原 CSP 限制。当前仅开放本机回环连接，要求 `gui-write-v1` 与 manage；手动打开 MCP App 与页面 JSON-RPC 请求另需 submit。这是保守的阶段授权，尚未覆盖仅有 submit 的普通设备或远程 Noise。原生文件选择和打开仍属外壳能力。
@@ -70,7 +72,7 @@ Core 通过 `features.taskPrepareCreate` 声明创建前预约能力，Host 仅�
 
 `worktree.thread.prepare` 从原 Core 保存的部署中返回已应用的资源 profile 与 revision，后台仅据此恢复可重建投影。原创建绑定期间，资源检查仍比较当前选择与该部署；发生变化时保留原请求并拒绝继续，不隐式重启 Core 或把原绑定换到新代次。
 
-`areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。读取停止项目的任务预览使用 published 目录并保留 unobserved，显式 observe 才请求实时状态；私有任务观察只使用既有连接，不重新启动已停止项目。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。
+`areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。任务 list、preview、observe 对停止项目读取 published 目录并保留 unobserved，不启动 Core；observe 仅为已连接项目登记实时目录观察；私有任务观察只使用既有连接，不重新启动已停止项目。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。
 
 CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@revision` 显式选择已部署、允许线程进程的 Profile，执行项目仍受原并发写授权和进程预算约束；不由 Host 自动提权。`worktree --command-id <原 ID>` 可重复原参数核对已受理命令，不能换 ID 重放 UNKNOWN。 本机 CLI 的 `--source <已登记 GUI 来源>` 同样支持显式 Profile，但仍要求当前后台绑定该来源且启用 `worktree-rust`；关闭该 Rust 域时在准入前拒绝此参数。浏览器与远程继续使用不含 `agentProfile` 的公共合同。
 

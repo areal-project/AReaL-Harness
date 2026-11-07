@@ -34,6 +34,10 @@ function SchedulePreview({ value }: { value?: Data }) {
   const { t } = useI18n();
   if (!value) return null;
   const policy = value.schedule.misfire;
+  const showSeconds =
+    (typeof value.schedule?.rule?.intervalSeconds === "number" &&
+      value.schedule.rule.intervalSeconds % 60 !== 0) ||
+    value.occurrences.some((item: Data) => item.localTime.slice(16, 19) !== ":00");
   return (
     <section aria-label={t("operations.schedulePreview")} className="task-plan-summary">
       <p>
@@ -43,7 +47,9 @@ function SchedulePreview({ value }: { value?: Data }) {
       <ol>
         {value.occurrences.map((item: Data) => (
           <li key={item.at}>
-            <time dateTime={item.localTime}>{item.localTime.slice(0, 16).replace("T", " ")}</time>
+            <time dateTime={item.localTime}>
+              {item.localTime.slice(0, showSeconds ? 19 : 16).replace("T", " ")}
+            </time>
           </li>
         ))}
       </ol>

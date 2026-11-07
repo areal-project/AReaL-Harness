@@ -1,7 +1,7 @@
 //! 跨项目任务目录只聚合 Core 读模型；停止项目的 published 快照不代表实时执行状态。
 use super::{Ensure, Host};
 use anyhow::{Context, Result, bail, ensure};
-use areal_local_service::{native_process::TrustedCommand, storage};
+use areal_local_service::storage;
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -387,42 +387,25 @@ async fn published(host: &Host, id: &str, source_thread: Option<&str>) -> Result
         .context("RESOURCE_UNAVAILABLE")?
         .registration
         .clone();
-    let mut command = TrustedCommand::supervised(&host.bin.join("areal"), &[])?;
-    command
-        .env_clear()
-        .args(["service", "task-catalog", "--workspace"])
-        .arg(&registration.workspace)
-        .arg("--data-dir")
-        .arg(&registration.data_dir)
-        .args(["--limit", "1024", "--json"]);
-    if let Some(thread) = source_thread {
-        command.args(["--source-thread-id", thread]);
-    }
-    for name in ["HOME", "PATH", "TMPDIR", "LANG"] {
-        if let Some(value) = std::env::var_os(name) {
-            command.env(name, value);
-        }
-    }
-    let output = command.output(Duration::from_secs(5)).await?;
-    ensure!(output.status.success(), "TASK_CATALOG_READ_FAILED");
-    let value: Value = serde_json::from_slice(&output.stdout)?;
-    let (target, _) =
+    let (target, bound) =
         areal_local_service::catalog_target(&registration.workspace, &registration.data_dir)?;
-    ensure!(
-        value["version"] == 2
-            && value["source"] == "published"
-            && value["executionState"] == "unobserved"
-            && value["target"] == serde_json::to_value(target)?,
-        "TASK_CATALOG_READ_FAILED"
-    );
+    let catalog = if bound {
+        serde_json::to_value(areal_engine::read_published_task_catalog(
+            &target.data_dir,
+            source_thread,
+            1024,
+        )?)?
+    } else {
+        json!({"kind":"requiresCore","reason":"unbound"})
+    };
     ensure!(
         matches!(
-            value["catalog"]["kind"].as_str(),
+            catalog["kind"].as_str(),
             Some("snapshot" | "empty" | "requiresCore")
         ),
         "TASK_CATALOG_READ_FAILED"
     );
-    Ok(value["catalog"].clone())
+    Ok(catalog)
 }
 /// 冷目录读取共用原 published 校验，不取得或启动 Core 连接。
 pub(super) async fn preview(host: &Rc<Host>, params: &Value) -> Result<Value> {
@@ -531,7 +514,7 @@ fn scoped(mut row: Value, owner: &Owner) -> Value {
     }
     row
 }
-/// list/preview 从不唤醒停止的 Core；observe 是用户显式取得实时任务状态的入口。
+/// list/preview/observe 从不唤醒停止的 Core；已连接项目在 observe 时注册目录观察。
 pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
     let operation = params["operation"].as_str().unwrap_or("list");
     if operation == "receipt" {
@@ -549,9 +532,10 @@ pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
     let mut has_more = false;
     for owner in owners(host, params).await? {
         let result:Result<(Vec<Value>,bool,Value)>=async{
-            if operation=="observe"{ensure_project(host,&owner.id).await?;watch_owner(host,&owner.id).await?;}
             let live=operation!="preview"&&host.schedules.connections.shared_identity(host,&owner.id).is_ok();
-            if live{let scope=host.schedules.connections.shared_identity(host,&owner.id)?;
+            if live{
+                if operation=="observe"{watch_owner(host,&owner.id).await?;}
+                let scope=host.schedules.connections.shared_identity(host,&owner.id)?;
                 let value=if operation=="inbox"{rpc(host,&owner.id,"areal/inbox/list",json!({"limit":limit.min(100)})).await?}else{directory(host,&owner.id).await?};
                 if operation=="observe" {
                     super::library_service::record_scheduled_baseline(host,&owner.id,value["data"].as_array().context("INVALID_RESPONSE")?).await?;
@@ -804,6 +788,45 @@ fn execution_request_id(request: &str) -> String {
         &hex[20..32]
     )
 }
+/// 仅 Core 明确保证没有变更时，才能把原请求从未知状态结算为拒绝。
+pub(super) fn definitive_task_rejection(error: &anyhow::Error) -> Option<Value> {
+    let failure = error.downcast_ref::<super::schedule_connection::RpcFailure>()?;
+    let kind = failure.0["data"]["outcome"]["kind"].as_str()?;
+    if !matches!(kind, "rejected" | "noMutation") {
+        return None;
+    }
+    let code = failure.0.get("code")?.clone();
+    if !(code.as_i64().is_some()
+        || code.as_str().is_some_and(|code| {
+            !code.is_empty()
+                && code.len() <= 64
+                && code
+                    .bytes()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == b'_')
+        }))
+    {
+        return None;
+    }
+    Some(
+        json!({"code":code,"message":"Core rejected task request","data":{"outcome":{"kind":kind}}}),
+    )
+}
+#[derive(Debug)]
+pub(super) struct TaskRejection(pub Value);
+impl std::fmt::Display for TaskRejection {
+    fn fmt(&self, output: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        output.write_str("Core rejected task request")
+    }
+}
+impl std::error::Error for TaskRejection {}
+pub(super) fn task_rejection_response(error: &anyhow::Error) -> Option<Value> {
+    let rejected = &error.downcast_ref::<TaskRejection>()?.0;
+    let mut result = json!({"code":"TASK_REJECTED","message":"Core rejected task request","coreError":{"code":rejected["code"],"message":"Core rejected task request","data":{"outcome":rejected["data"]["outcome"]}}});
+    if rejected["code"].as_i64().is_some() {
+        result["coreCode"] = rejected["code"].clone();
+    }
+    Some(result)
+}
 /// 本机 CLI 也进入 Host journal；响应丢失后只核对原 Core receipt，不重新 dispatch。
 pub(super) async fn native_command(
     host: &Rc<Host>,
@@ -851,6 +874,9 @@ pub(super) async fn native_command(
     let (revision, mut snapshot) = host.journal.native_snapshot(&scope)?;
     if let Some(original) = snapshot["outcomes"].get(request) {
         ensure!(original["semanticDigest"] == digest, "COMMAND_CONFLICT");
+        if let Some(error) = original.get("error") {
+            return Err(TaskRejection(error.clone()).into());
+        }
         return Ok(original["receipt"].clone());
     }
     if let Some(original) = snapshot["pending"]
@@ -865,16 +891,26 @@ pub(super) async fn native_command(
     host.admission()?;
     snapshot["pending"].as_array_mut().unwrap().push(json!({"requestId":request,"operationId":request,"method":method,"params":params,"semanticDigest":digest}));
     host.journal.native_replace(&scope, revision, snapshot)?;
-    let value = command(host, params).await?;
+    let result = command(host, params).await;
+    let rejection = result.as_ref().err().and_then(definitive_task_rejection);
+    if result.is_err() && rejection.is_none() {
+        return result;
+    }
     let (revision, mut snapshot) = host.journal.native_snapshot(&scope)?;
     snapshot["pending"]
         .as_array_mut()
         .unwrap()
         .retain(|entry| entry["requestId"] != request);
-    snapshot["outcomes"][request] =
-        json!({"method":"tasks.command","semanticDigest":digest,"receipt":value});
+    snapshot["outcomes"][request] = if let Some(error) = &rejection {
+        json!({"requestId":request,"method":"tasks.command","coreMethod":method,"sourceId":params["sourceId"],"semanticDigest":digest,"error":error})
+    } else {
+        json!({"method":"tasks.command","semanticDigest":digest,"receipt":result.as_ref().unwrap()})
+    };
     host.journal.native_replace(&scope, revision, snapshot)?;
-    Ok(value)
+    if let Some(error) = rejection {
+        return Err(TaskRejection(error).into());
+    }
+    result
 }
 pub(super) async fn manage_read(host: &Rc<Host>, params: &Value) -> Result<Value> {
     let operation = params["operation"].as_str().context("INVALID_PARAMS")?;
@@ -1029,6 +1065,9 @@ pub(super) async fn native_receipt(
     let scope = format!("tasks-{}", storage::digest(principal.as_bytes()));
     let (_, snapshot) = host.journal.native_snapshot(&scope)?;
     if let Some(original) = snapshot["outcomes"].get(request) {
+        if let Some(error) = original.get("error") {
+            return Err(TaskRejection(error.clone()).into());
+        }
         return Ok(
             json!({"requestId":request,"submissionUnknown":false,"receipt":original["receipt"]}),
         );
@@ -1252,6 +1291,89 @@ pub(super) fn accept_event(
 mod tests {
     use super::*;
     #[test]
+    fn task_rejection_requires_explicit_no_mutation_and_safe_code() {
+        for failure in [
+            json!({"code":-32009}),
+            json!({"code":-32009,"data":{"outcome":{"kind":"unknown"}}}),
+            json!({"code":"sensitive detail","data":{"outcome":{"kind":"rejected"}}}),
+        ] {
+            let error: anyhow::Error =
+                super::super::schedule_connection::RpcFailure(failure).into();
+            assert!(definitive_task_rejection(&error).is_none());
+        }
+        let error: anyhow::Error = super::super::schedule_connection::RpcFailure(
+            json!({"code":-32602,"message":"private","data":{"outcome":{"kind":"noMutation"}}}),
+        )
+        .into();
+        assert_eq!(
+            definitive_task_rejection(&error).unwrap(),
+            json!({"code":-32602,"message":"Core rejected task request","data":{"outcome":{"kind":"noMutation"}}})
+        );
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn core_rejection_is_settled_and_original_request_is_never_redispatched() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let registration = host.slots.borrow()["project"].registration.clone();
+            let service = areal_protocol::service::Service {
+                identity: areal_protocol::service::Identity { protocol_version: 1, service_id: "fixture".into(), generation: "first".into(), workspace: registration.workspace, data_dir: registration.data_dir, config_fingerprint: "fixture".into() },
+                owner: Some(host.owner()), endpoint: format!("ws://{}/", listener.local_addr().unwrap()), web_url: String::new(), auth_file: host.home.join("core-auth.json"), log_file: host.home.join("core.log"), host_pid: 1, core_pid: 2, state: areal_protocol::service::State::Ready,
+            };
+            storage::write(&service.auth_file, &json!({"principals":[{"id":"desktop-owner","token":"fixture-owner-token"}]})).unwrap();
+            let gate = host.slots.borrow()["project"].gate.clone();
+            let _guard = gate.write().await;
+            { let mut slots = host.slots.borrow_mut(); let slot = slots.get_mut("project").unwrap(); slot.service = Some(service.clone()); slot.state = "ready".into();
+              let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap(); slot.writer = Some(writer); slot.lifetime = Some(Rc::new(lifetime)); }
+            let count = Rc::new(std::cell::Cell::new(0));
+            let observed = count.clone();
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                    let call: Value = serde_json::from_str(&text).unwrap();
+                    if call["method"] == "initialized" { continue; }
+                    let response = if call["method"] == "initialize" { json!({"id":call["id"],"result":{}}) } else if matches!(call["method"].as_str(), Some("areal/conversation/list" | "areal/work/overview")) {
+                        json!({"id":call["id"],"result":{"data":[],"nextCursor":null}})
+                    } else {
+                        assert_eq!(call["method"], "areal/task/stopRun"); observed.set(observed.get()+1);
+                        if call["params"]["taskId"] == "lost" { break; }
+                        json!({"id":call["id"],"error":{"code":-32009,"message":"revision conflict","data":{"outcome":{"kind":"rejected"}}}})
+                    };
+                    socket.send(Message::Text(response.to_string().into())).await.unwrap();
+                }
+            });
+            let close = host.schedules.connections.connect_test_core(host.clone(), "project", service).await.unwrap();
+            assert!(host.schedules.connections.shared_identity(&host, "project").is_ok());
+            let request = uuid::Uuid::new_v4().to_string();
+            let params = json!({"sourceId":"host","projectId":"project","operation":"taskStopRun","requestId":request,"taskId":"task","expectedRevision":9,"expectedRunId":"run"});
+            for attempt in 0..2 {
+                let error = native_command(&host, "local", &params).await.unwrap_err();
+                let failure = error.downcast_ref::<TaskRejection>()
+                    .unwrap_or_else(|| panic!("attempt {attempt}: {error}; dispatches {}", count.get()));
+                assert_eq!(failure.0["code"], -32009);
+                assert_eq!(failure.0["data"]["outcome"]["kind"], "rejected");
+            }
+            assert_eq!(count.get(), 1);
+            let mut changed = params.clone(); changed["expectedRevision"] = json!(10);
+            assert_eq!(native_command(&host, "local", &changed).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            let error = native_receipt(&host, "local", &params).await.unwrap_err();
+            assert_eq!(error.downcast_ref::<TaskRejection>().unwrap().0["code"], -32009);
+            let lost_id = uuid::Uuid::new_v4().to_string();
+            let mut lost = params.clone(); lost["requestId"] = json!(lost_id); lost["taskId"] = json!("lost");
+            assert!(native_command(&host, "local", &lost).await.is_err());
+            assert_eq!(native_command(&host, "local", &lost).await.unwrap_err().to_string(), "SUBMISSION_UNKNOWN");
+            assert_eq!(count.get(), 2);
+            let scope = format!("tasks-{}", storage::digest(b"local"));
+            let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
+            assert!(snapshot["pending"].as_array().unwrap().iter().any(|row| row["requestId"] == lost_id));
+            close(); server.abort();
+        }).await;
+    }
+    #[test]
     fn task_read_uses_core_target_after_desktop_owner_routing() {
         let input = json!({"sourceId":"source","projectId":"project","executionProjectId":"project","operation":"task","taskId":"task","threadId":"owner-thread"});
         let query = read_params("areal/task/read", &input);
@@ -1337,6 +1459,36 @@ mod tests {
                 .registration
                 .data_dir
                 .exists()
+        );
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn stopped_observe_reads_published_catalog_without_waking_core() {
+        let root = tempfile::tempdir().unwrap();
+        let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+        let registration = host.slots.borrow()["project"].registration.clone();
+        storage::private_dir(&registration.data_dir).unwrap();
+        storage::write(
+            &registration.data_dir.join("service-workspace"),
+            &registration.workspace.canonicalize().unwrap(),
+        )
+        .unwrap();
+        host.slots.borrow_mut().get_mut("project").unwrap().state = "stopped".into();
+        let result = read(
+            &host,
+            &json!({"sourceId":"host","projectId":"project","operation":"observe"}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["data"], json!([]));
+        assert_eq!(result["owners"][0]["source"], "published");
+        assert_eq!(result["owners"][0]["status"], "unobserved");
+        assert_eq!(result["owners"][0]["coverage"]["kind"], "empty");
+        assert_eq!(host.slots.borrow()["project"].state, "stopped");
+        assert_eq!(
+            std::fs::read_dir(host.home.join("host/operations"))
+                .unwrap()
+                .count(),
+            0
         );
     }
     #[test]

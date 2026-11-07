@@ -341,3 +341,5 @@ Main 中其余业务迁入 Host 监督的 Node 工作台服务或 Core，经协�
 定时任务的独立目录预约必须先于 Core 发布任务。新 Core 与 Host 通过 `taskPrepareCreate` 和原连接的 `prepareCreate` 显式协商，由 Core 的创建入口回调 Host 预约；配置草稿、Agent 工具与直接创建共用该边界，不能在成功响应后才补记录。固定共享 Scratch 的每个任务使用真实直接子目录，原 Core 登记根保持不变；省略 `cwd` 按原创建 requestId 生成稳定目录名。预约和恢复绑定原请求摘要、锚点及唯一 Core 创建回执，兄弟目录活动须经完整有界归属检查，不可用全局计数豁免代替。
 
 统一验收覆盖原资料库回执逐字段一致、后台冒烟、`node clients/gui/scripts/seed-host-copy.mjs` 生成的真实数据副本旅程，以及无 GUI 环境的 CLI 定时任务和 Worktree 生命周期。未运行的平台保留待验收，不用单测替代。
+
+任务写入只有在 Core 明确返回 `data.outcome.kind=rejected/noMutation` 时才结算为确定拒绝。Host 持久保存脱敏拒绝事实，原 ID 查询返回同一拒绝，改参冲突；本机协议返回 `TASK_REJECTED`，保留数值 `coreCode` 与 `coreError.data.outcome`。传输失败继续保留 pending/UNKNOWN，不重新派发。

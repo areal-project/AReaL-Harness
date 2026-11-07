@@ -206,6 +206,26 @@ impl Drop for AttachGuard {
         }
     }
 }
+struct CreationGuard<'a>(&'a CoreSession);
+impl Drop for CreationGuard<'_> {
+    fn drop(&mut self) {
+        let session = self.0;
+        session
+            .workbench_creations
+            .set(session.workbench_creations.get() - 1);
+        if session.workbench_creations.get() != 0 {
+            return;
+        }
+        let deferred = std::mem::take(&mut *session.deferred_removals.borrow_mut());
+        let host = session.observed.borrow();
+        let workbench = session.workbench_observed.borrow();
+        let threads = deferred
+            .into_iter()
+            .filter(|thread| !host.contains_key(thread) && !workbench.contains_key(thread))
+            .collect();
+        session.remove_subscriptions(threads);
+    }
+}
 
 impl Connections {
     pub(crate) fn workbench_validate(
@@ -400,6 +420,9 @@ impl Connections {
             }
         }
         let lease = uuid::Uuid::new_v4().to_string();
+        if let Some(previous) = session.workbench_lease.borrow().as_deref() {
+            session.release_workbench(previous);
+        }
         *session.workbench_lease.borrow_mut() = Some(lease.clone());
         if scope.is_some() || desktop {
             ensure!(self.terminals.borrow().len() < 64, "CAPACITY_EXCEEDED");
@@ -421,10 +444,72 @@ impl Connections {
         id: &str,
         lease: &str,
         method: &str,
-        params: Value,
+        mut params: Value,
     ) -> Result<Value> {
         self.workbench_validate(host, id, lease, method, &params)?;
         let session = self.workbench_session(host, id, lease)?;
+        let invalid_observation_budget = matches!(method, "areal/thread/observe" | "thread/resume")
+            && serde_json::from_value::<areal_protocol::desktop::ObserveThread>(params.clone())
+                .is_ok_and(|request| match (request.mode, request.max_bytes) {
+                    (None, Some(_)) => true,
+                    (Some(_), Some(bytes)) => {
+                        !(1..=areal_protocol::desktop::MAX_HISTORY_PAGE_BYTES).contains(&bytes)
+                    }
+                    _ => false,
+                });
+        let mut claim = None;
+        if !session.terminal {
+            if matches!(
+                method,
+                "areal/thread/observe"
+                    | "thread/resume"
+                    | "turn/start"
+                    | "areal/turn/start"
+                    | "areal/turn/enqueue"
+                    | "areal/turn/submit"
+            ) {
+                if let Some(thread) = params["threadId"].as_str() {
+                    let sequence = session.workbench_claim_sequence.get() + 1;
+                    session.workbench_claim_sequence.set(sequence);
+                    let previous = session
+                        .workbench_observed
+                        .borrow_mut()
+                        .insert(thread.into(), (lease.into(), sequence));
+                    if previous.is_none() {
+                        claim = Some((thread.to_owned(), sequence));
+                    }
+                }
+            } else if method == "areal/subscription/remove" {
+                if let Ok(request) = serde_json::from_value::<
+                    areal_protocol::desktop::RemoveSubscriptions,
+                >(params.clone())
+                {
+                    if request.thread_ids.len() <= areal_protocol::desktop::MAX_SUBSCRIPTIONS {
+                        let mut owned = session.workbench_observed.borrow_mut();
+                        let observed = session.observed.borrow();
+                        let mut removable = Vec::new();
+                        for thread in request.thread_ids {
+                            if owned.get(&thread).is_some_and(|(owner, _)| owner == lease) {
+                                owned.remove(&thread);
+                                if !observed.contains_key(&thread) {
+                                    removable.push(thread);
+                                }
+                            }
+                        }
+                        params["threadIds"] = json!(session.defer_removals(removable));
+                    }
+                }
+            }
+        }
+        let _creation =
+            if !session.terminal && matches!(method, "thread/start" | "areal/thread/start") {
+                session
+                    .workbench_creations
+                    .set(session.workbench_creations.get() + 1);
+                Some(CreationGuard(&session))
+            } else {
+                None
+            };
         let result = session.request_with_barrier(method, params).await;
         ensure!(
             session.shared_current(host)
@@ -433,9 +518,38 @@ impl Connections {
         );
         // Core 的原始错误保留回执/准入事实；传输失败仍然是未知，不能伪装成确定拒绝。
         match result {
-            Ok(result) => Ok(json!({"result":result.value,"sequence":result.sequence})),
+            Ok(result) => {
+                if !session.terminal && matches!(method, "thread/start" | "areal/thread/start") {
+                    if let Some(thread) = result.value["thread"]["id"].as_str() {
+                        session.workbench_observed.borrow_mut().insert(
+                            thread.into(),
+                            (lease.into(), session.workbench_claim_sequence.get() + 1),
+                        );
+                        session
+                            .workbench_claim_sequence
+                            .set(session.workbench_claim_sequence.get() + 1);
+                    }
+                }
+                Ok(json!({"result":result.value,"sequence":result.sequence}))
+            }
             Err(error) => match error.downcast_ref::<RpcFailure>() {
-                Some(error) => Ok(json!({"error":error.0})),
+                Some(error) => {
+                    if invalid_observation_budget && error.0["code"] == -32602 {
+                        if let Some((thread, sequence)) = claim {
+                            let mut owned = session.workbench_observed.borrow_mut();
+                            if owned.get(&thread).is_some_and(|(owner, current)| {
+                                owner == lease && *current == sequence
+                            }) {
+                                owned.remove(&thread);
+                                drop(owned);
+                                if !session.observed.borrow().contains_key(&thread) {
+                                    session.remove_subscriptions(vec![thread]);
+                                }
+                            }
+                        }
+                    }
+                    Ok(json!({"error":error.0}))
+                }
                 None => Err(error),
             },
         }
@@ -453,6 +567,7 @@ impl Connections {
         let closed = session.is_some();
         if let Some(session) = session {
             // 投影只拥有租约；共享 socket 的建立与关闭仍由 Host 项目监督负责。
+            session.release_workbench(lease);
             session.workbench_lease.borrow_mut().take();
         }
         self.terminals.borrow_mut().remove(lease);
