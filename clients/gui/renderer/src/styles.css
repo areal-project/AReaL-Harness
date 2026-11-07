@@ -601,7 +601,7 @@ body {
 }
 
 .areal-draft-prompt-waterfall {
-  animation: zcode-draft-prompt-waterfall 260ms cubic-bezier(0.22, 1, 0.36, 1)
+  animation: zcode-draft-prompt-waterfall var(--motion-slow) var(--ease-enter)
     var(--zcode-draft-prompt-waterfall-delay, 0ms) both;
 }
 
@@ -622,19 +622,19 @@ body {
 }
 
 [data-zcode-stream-animate="true"] {
-  animation: zcode-stream-text-in 900ms cubic-bezier(0.16, 1, 0.3, 1)
+  animation: zcode-stream-text-in var(--motion-reveal) var(--ease-spring)
     var(--zcode-stream-animation-delay, 0ms) both;
   will-change: opacity;
 }
 
 [data-zcode-stream-marker-animate="true"]::marker {
-  animation: zcode-stream-marker-in 900ms cubic-bezier(0.16, 1, 0.3, 1)
+  animation: zcode-stream-marker-in var(--motion-reveal) var(--ease-spring)
     var(--zcode-stream-animation-delay, 0ms) both;
 }
 
 [data-zcode-tool-stream-animate="true"],
 [data-zcode-chat-loading-animate="true"] {
-  animation: zcode-stream-text-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: zcode-stream-text-in var(--motion-reveal) var(--ease-spring) both;
   will-change: opacity;
 }
 
@@ -642,11 +642,11 @@ body {
    assistant 历史区自动结束收起需要在延迟卸载期间继续播放高度动画，
    所以这里用 !important 覆盖 Radix 的 inline style，只作用于显式标记的收起窗口。 */
 [data-zcode-collapsible-animate-close="true"][data-state="closed"] {
-  animation: zcode-collapsible-up 300ms ease-in-out forwards !important;
+  animation: zcode-collapsible-up var(--motion-slow) var(--ease-in-out) forwards !important;
 }
 
 [data-zcode-collapsible-animate-close="true"][data-state="closed"] > * {
-  animation: zcode-collapsible-fade-out 300ms ease-in-out forwards !important;
+  animation: zcode-collapsible-fade-out var(--motion-slow) var(--ease-in-out) forwards !important;
 }
 
 @keyframes zcode-collapsible-up {
@@ -688,7 +688,7 @@ body {
 }
 
 .areal-reaction-burst > svg {
-  animation: zcode-reaction-pop 450ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: zcode-reaction-pop var(--motion-emphasis) var(--ease-overshoot);
 }
 
 .areal-reaction-burst::after {
@@ -703,7 +703,8 @@ body {
   background: transparent;
   opacity: 0;
   pointer-events: none;
-  animation: zcode-reaction-particles 560ms cubic-bezier(0.16, 1, 0.3, 1) 60ms forwards;
+  animation: zcode-reaction-particles var(--motion-emphasis) var(--ease-spring)
+    calc(var(--motion-fast) / 2) forwards;
 }
 
 @keyframes zcode-reaction-pop {
@@ -798,7 +799,7 @@ body {
     color-mix(in oklab, var(--color-primary-foreground) 62%, transparent),
     transparent
   );
-  animation: zcode-update-charge-sweep 1.15s cubic-bezier(0.65, 0, 0.35, 1) var(--motion-loop);
+  animation: zcode-update-charge-sweep var(--motion-cycle) var(--ease-in-out) var(--motion-loop);
   transform: translateX(-120%);
 }
 
@@ -834,7 +835,7 @@ body {
 }
 
 [data-fork-highlight="true"] {
-  animation: fork-highlight-pulse 1.6s ease-out 1;
+  animation: fork-highlight-pulse var(--motion-cycle-slow) var(--ease-standard) 1;
   border-radius: 0.5rem;
 }
 
@@ -888,10 +889,10 @@ body {
 .areal-update-ring-value {
   stroke: var(--color-foreground);
   stroke-linecap: round;
-  transition: stroke-dashoffset var(--motion-normal) ease-out;
+  transition: stroke-dashoffset var(--motion-normal) var(--ease-standard);
 }
 .areal-update-ring[data-indeterminate="true"] {
-  animation: areal-update-rotate 1.2s linear var(--motion-loop);
+  animation: areal-update-rotate var(--motion-cycle) linear var(--motion-loop);
 }
 .areal-update-panel {
   width: 304px;
@@ -906,11 +907,11 @@ body {
   border-radius: inherit;
   background: var(--color-foreground);
   transform-origin: left;
-  transition: transform var(--motion-normal) ease-out;
+  transition: transform var(--motion-normal) var(--ease-standard);
 }
 .areal-update-progress[data-indeterminate="true"] > span {
   width: 35%;
-  animation: areal-update-scan 1.4s ease-in-out var(--motion-loop);
+  animation: areal-update-scan var(--motion-cycle-slow) var(--ease-in-out) var(--motion-loop);
 }
 @keyframes areal-update-rotate {
   to {

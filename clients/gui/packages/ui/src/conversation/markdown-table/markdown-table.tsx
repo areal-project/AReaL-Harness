@@ -931,7 +931,7 @@ export function MarkdownTable({
           className={cn(
             "min-w-full w-max",
             viewportLeftOffset <= 0 &&
-              "transition-[max-width] duration-200 ease-out motion-reduce:transition-none",
+              "transition-[max-width] duration-(--motion-normal) ease-(--ease-standard) motion-reduce:transition-none",
           )}
           style={{
             maxWidth: contentViewportMaxWidth,
@@ -993,7 +993,7 @@ export function MarkdownTable({
           // overflow 测量变化时只切换可见性，保留节点和纵向占位，避免扰动 timeline 高度。
           style={{ width: scrollbarWidth }}
           className={cn(
-            "py-1 transition-[width] duration-200 ease-out motion-reduce:transition-none",
+            "py-1 transition-[width] duration-(--motion-normal) ease-(--ease-standard) motion-reduce:transition-none",
             virtualScrollbarVisible ? "visible" : "invisible",
             virtualScrollbarSticky && "relative z-20",
           )}

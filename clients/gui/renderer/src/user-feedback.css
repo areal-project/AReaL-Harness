@@ -30,7 +30,7 @@
   box-shadow: 0 12px 36px color-mix(in srgb, var(--color-foreground) 12%, transparent);
   font-family: var(--font-sans);
   font-size: var(--text-ui-base, var(--text-fixed-label));
-  animation: feedback-arrive 160ms ease-out;
+  animation: feedback-arrive var(--motion-normal) var(--ease-standard);
 }
 .user-feedback-panel[hidden] {
   display: none;
@@ -131,7 +131,7 @@
   width: 30%;
   height: calc(var(--spacing-inline) / 4);
   background: var(--color-brand);
-  animation: feedback-progress 1.6s ease-in-out var(--motion-loop);
+  animation: feedback-progress var(--motion-cycle-slow) var(--ease-in-out) var(--motion-loop);
 }
 @keyframes feedback-arrive {
   from {
