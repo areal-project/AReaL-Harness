@@ -703,23 +703,53 @@ describe("Host renderer read authority", () => {
     expect(snapshot.projects[0].summaries[0].name).toBe("Host title");
     expect(snapshot.projects[0].state.threads.thread.name).toBe("Host thread");
     const task = { id: "task", revision: 1 };
+    const side = {
+      id: "side",
+      conversation: {
+        kind: "side",
+        policy: { kind: "sideExecutableV2" },
+        origin: { sourceThreadId: "thread" },
+      },
+      turns: [],
+      desktop: { queue: { revision: 1, items: [] }, interactions: [], interactionRevision: 2 },
+    };
     emitDesktop({
       ...legacy,
       projects: [
         {
           ...legacy.projects[0],
-          state: { ...legacy.projects[0].state, connected: true, tasks: { task } },
+          state: {
+            ...legacy.projects[0].state,
+            connected: true,
+            tasks: { task },
+            threads: {
+              ...legacy.projects[0].state.threads,
+              side,
+              summary: { id: "summary", conversation: side.conversation },
+            },
+          },
         },
       ],
     });
     expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task });
+    const projected = (await services.snapshot()).projects[0];
+    expect(projected.state.threads.side).toMatchObject(side);
+    expect(projected.state.threads.thread.name).toBe("Host thread");
+    expect(projected.state.threads.summary).toBeUndefined();
+    expect(projected.state.queues.side).toEqual(side.desktop.queue);
+    expect(projected.state.interactions.side).toEqual({ revision: 2, data: [] });
     const updated = { ...task, revision: 2 };
     emitDesktop({
       ...legacy,
       projects: [
         {
           ...legacy.projects[0],
-          state: { ...legacy.projects[0].state, connected: true, tasks: { task: updated } },
+          state: {
+            ...legacy.projects[0].state,
+            connected: true,
+            tasks: { task: updated },
+            threads: { side },
+          },
         },
       ],
     });
@@ -735,6 +765,7 @@ describe("Host renderer read authority", () => {
       },
     });
     expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
     expect((await services.snapshot()).projects[0].core.serviceGeneration).toBe("next-gen");
     emitDesktop({
       ...legacy,
@@ -742,11 +773,17 @@ describe("Host renderer read authority", () => {
         {
           ...legacy.projects[0],
           core: { serviceGeneration: "next-gen" },
-          state: { ...legacy.projects[0].state, connected: true, tasks: { task: updated } },
+          state: {
+            ...legacy.projects[0].state,
+            connected: true,
+            tasks: { task: updated },
+            threads: { side },
+          },
         },
       ],
     });
     expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task: updated });
+    expect((await services.snapshot()).projects[0].state.threads.side).toBeDefined();
     wire.send({
       event: "shell.updated",
       ...connection,
@@ -758,6 +795,7 @@ describe("Host renderer read authority", () => {
       },
     });
     expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
     expect(snapshot.library?.projects.alias.title).toBe("Host project title");
     expect(snapshot.library?.settings.sidebarSort).toBe("manual");
     expect(snapshot.library?.settings.unmigratedPreference).toBe("retained");

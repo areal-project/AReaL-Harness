@@ -253,6 +253,14 @@ struct WorktreeOperation {
     #[serde(default)]
     automatic: bool,
     record: Option<WorktreeRecord>,
+    #[serde(default)]
+    deleted: bool,
+    #[serde(default)]
+    thread_id: Option<String>,
+    #[serde(default)]
+    deletion: Value,
+    #[serde(default)]
+    prepared_core: Value,
 }
 
 #[derive(Deserialize)]
@@ -333,10 +341,27 @@ pub(crate) fn snapshot(
             NavigationState::Unknown
         };
         let library = library.unwrap_or_default();
-        let aliases: BTreeSet<_> = source
-            .bindings
+        let mut deleted_projects = BTreeSet::new();
+        for binding in &bindings {
+            if !binding.owned {
+                continue;
+            }
+            if let (Some(metadata), Some(project)) = (
+                index.iter().find(|item| item.id == binding.alias),
+                projects.get(&binding.project_id),
+            ) {
+                if read_worktree_display(source, binding, metadata, &project.workspace)?.1 {
+                    deleted_projects.insert(binding.project_id.clone());
+                }
+            }
+        }
+        bindings.retain(|binding| !deleted_projects.contains(&binding.project_id));
+        for id in &deleted_projects {
+            projects.remove(id);
+        }
+        let aliases: BTreeSet<_> = bindings
             .iter()
-            .map(|binding| binding.alias.as_str())
+            .map(|binding| binding.alias.clone())
             .collect();
         let belongs = |key: &str| {
             key.split_once(':')
@@ -361,7 +386,7 @@ pub(crate) fn snapshot(
             project.projectless = binding.projectless;
             if let Some(metadata) = index.iter().find(|item| item.id == binding.alias) {
                 project.worktree =
-                    read_worktree_display(source, binding, metadata, &project.workspace)?;
+                    read_worktree_display(source, binding, metadata, &project.workspace)?.0;
             }
             let cached = library
                 .projects
@@ -469,9 +494,9 @@ fn read_worktree_display(
     binding: &NavigationBinding,
     metadata: &ProjectMetadata,
     workspace: &Path,
-) -> Result<Option<WorktreeDisplay>> {
+) -> Result<(Option<WorktreeDisplay>, bool)> {
     let Some(request_id) = &metadata.worktree_request_id else {
-        return Ok(None);
+        return Ok((None, false));
     };
     ensure!(
         request_id.len() == 36 && uuid::Uuid::parse_str(request_id).is_ok(),
@@ -487,7 +512,7 @@ fn read_worktree_display(
         .open(source.core_home.join("worktree-requests"));
     let directory = match directory {
         Ok(directory) => directory,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok((None, false)),
         Err(error) => return Err(error).context("worktree display is unavailable"),
     };
     ensure!(
@@ -506,7 +531,7 @@ fn read_worktree_display(
     if fd == -1 {
         let error = std::io::Error::last_os_error();
         if error.kind() == std::io::ErrorKind::NotFound {
-            return Ok(None);
+            return Ok((None, false));
         }
         return Err(error).context("worktree display is unavailable");
     }
@@ -521,7 +546,7 @@ fn read_worktree_display(
         "sourceConflict: worktree display identity changed"
     );
     let Some(record) = operation.record else {
-        return Ok(None);
+        return Ok((None, false));
     };
     ensure!(
         operation.execution_project_id.as_ref() == Some(&binding.alias)
@@ -542,16 +567,64 @@ fn read_worktree_display(
         ),
         "invalid worktree display state"
     );
-    Ok(Some(WorktreeDisplay {
-        state: operation.state,
-        directory: workspace.to_path_buf(),
-        checkout_root: record.directory,
-        branch: record.branch,
-        base: record.base,
-        source_root: operation.source_root.unwrap_or(record.target),
-        request_id: operation.request_id,
-        automatic: operation.automatic,
-    }))
+    let deletion = &operation.deletion;
+    let stop = &deletion["stopReceipt"];
+    let result = &deletion["result"];
+    let target = stop["targets"]
+        .as_array()
+        .filter(|rows| rows.len() == 1)
+        .and_then(|rows| rows.first());
+    let confirmed_deleted = operation.deleted
+        && operation
+            .thread_id
+            .as_deref()
+            .is_some_and(|id| uuid::Uuid::parse_str(id).is_ok())
+        && Path::new(&metadata._root) == workspace
+        && deletion["requestId"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+        && deletion["stopRequestId"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+        && operation.prepared_core["generation"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+        && operation.prepared_core["instanceId"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty())
+        && deletion["status"] == "succeeded"
+        && result["removed"] == true
+        && result["creationId"] == operation.request_id
+        && result["requestId"] == deletion["requestId"]
+        && result["directory"] == record.directory.to_string_lossy().as_ref()
+        && result["target"] == record.target.to_string_lossy().as_ref()
+        && stop["kind"] == "stopProject"
+        && stop["mode"] == "ifIdle"
+        && stop["phase"] == "completed"
+        && stop["requestId"] == deletion["stopRequestId"]
+        && target.is_some_and(|target| {
+            target["projectId"] == binding.alias
+                && target["phase"] == "completed"
+                && target["requestId"] == stop["requestId"]
+                && target["generation"] == operation.prepared_core["generation"]
+                && target["serviceId"] == operation.prepared_core["instanceId"]
+                && target["hostReceipt"]["state"] == "completed"
+                && target["hostReceipt"]["serviceGeneration"] == target["generation"]
+                && target["hostReceipt"]["serviceId"] == target["serviceId"]
+        });
+    Ok((
+        Some(WorktreeDisplay {
+            state: operation.state,
+            directory: workspace.to_path_buf(),
+            checkout_root: record.directory,
+            branch: record.branch,
+            base: record.base,
+            source_root: operation.source_root.unwrap_or(record.target),
+            request_id: operation.request_id,
+            automatic: operation.automatic,
+        }),
+        confirmed_deleted,
+    ))
 }
 
 fn read_document<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
@@ -838,6 +911,70 @@ mod tests {
             json!([{"id":"legacy","root":"/workspace","logicalProjectId":"unregistered"}]),
         );
         assert!(snapshot(&[status("canonical")], &[self::source(root.path())]).is_err());
+    }
+
+    #[test]
+    fn confirmed_worktree_deletion_removes_only_its_navigation_owner() {
+        let root = tempfile::tempdir().unwrap();
+        let request = "00000000-0000-4000-8000-000000000001";
+        let mut source = source(root.path());
+        source.bindings.push(NavigationBinding {
+            project_id: "worktree".into(),
+            alias: "tree-alias".into(),
+            owned: true,
+            logical_project_id: None,
+            projectless: false,
+        });
+        write(
+            root.path(),
+            "projects.json",
+            json!([{"id":"tree-alias","root":"/workspace",
+            "logicalProjectId":"legacy","worktreeRequestId":request}]),
+        );
+        std::fs::create_dir(root.path().join("worktree-requests")).unwrap();
+        let path = format!("worktree-requests/{request}.json");
+        let operation = json!({"requestId":request,"projectId":"legacy",
+            "executionProjectId":"tree-alias","threadId":"00000000-0000-4000-8000-000000000002","state":"ready",
+            "record":{"directory":"/workspace","branch":"feature","base":"main","target":"/source"},
+            "preparedCore":{"generation":"generation","instanceId":"service"},
+            "deleted":true,"deletion":{"requestId":"delete","status":"succeeded",
+                "stopRequestId":"stop",
+                "result":{"creationId":request,"requestId":"delete","directory":"/workspace","target":"/source","removed":true},
+                "stopReceipt":{"kind":"stopProject","mode":"ifIdle","requestId":"stop","phase":"completed",
+                    "targets":[{"projectId":"tree-alias","requestId":"stop","generation":"generation","serviceId":"service","phase":"completed",
+                        "hostReceipt":{"state":"completed","serviceGeneration":"generation","serviceId":"service"}}]}}});
+        let sources = [source];
+        let statuses = [status("canonical"), status("worktree")];
+        let has_owner = || {
+            snapshot(&statuses, &sources)
+                .unwrap()
+                .projects
+                .iter()
+                .any(|p| p.project_id == "worktree")
+        };
+        write(root.path(), &path, operation.clone());
+        assert!(!has_owner());
+        assert!(!has_owner(), "repeated reads preserve deletion");
+        for (field, value) in [("status", json!("unknown")), ("status", json!("running"))] {
+            let mut other = operation.clone();
+            other["deletion"][field] = value;
+            write(root.path(), &path, other);
+            assert!(has_owner());
+        }
+        let mut other = operation.clone();
+        other["deletion"]["result"]["creationId"] = json!("different");
+        write(root.path(), &path, other);
+        assert!(has_owner());
+        let mut other = operation.clone();
+        other["deletion"]["stopReceipt"]["targets"][0]["generation"] = json!("new-owner");
+        write(root.path(), &path, other);
+        assert!(has_owner());
+        let mut other = operation.clone();
+        other["deleted"] = json!(false);
+        write(root.path(), &path, other);
+        assert!(has_owner());
+        std::fs::remove_file(root.path().join(path)).unwrap();
+        assert!(has_owner());
     }
 
     #[test]

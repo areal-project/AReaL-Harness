@@ -965,6 +965,33 @@ pub(super) async fn manage_read(host: &Rc<Host>, params: &Value) -> Result<Value
         "taskScheduleContext" => "areal/task/schedule/context",
         _ => bail!("INVALID_PARAMS"),
     };
+    let query = read_params(method, params);
+    rpc(host, &project, method, query).await
+}
+
+fn read_params(method: &str, params: &Value) -> Value {
+    let fields: &[&str] = match method {
+        "areal/task/read" => &["taskId"],
+        "areal/task/list" | "areal/inbox/list" => &["after", "limit"],
+        "areal/channel/read" => &["taskId", "afterSequence", "limit"],
+        "areal/task/runs/list" => &["taskId", "cursor", "limit"],
+        "areal/task/run/read" => &["taskId", "runId"],
+        "areal/task/schedule/preview" => &["schedule", "from", "count"],
+        "areal/task/schedule/context" => &["timeZone"],
+        _ => &[],
+    };
+    if method != "areal/task/draft" {
+        return Value::Object(
+            fields
+                .iter()
+                .filter_map(|field| {
+                    params
+                        .get(*field)
+                        .map(|value| ((*field).into(), value.clone()))
+                })
+                .collect(),
+        );
+    }
     let mut query = params.clone();
     for field in [
         "sourceId",
@@ -975,10 +1002,7 @@ pub(super) async fn manage_read(host: &Rc<Host>, params: &Value) -> Result<Value
     ] {
         query.as_object_mut().unwrap().remove(field);
     }
-    if method != "areal/task/draft" {
-        query.as_object_mut().unwrap().remove("operation");
-    }
-    rpc(host, &project, method, query).await
+    query
 }
 
 pub(super) async fn native_receipt(
@@ -1213,6 +1237,26 @@ pub(super) fn accept_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn task_read_uses_core_target_after_desktop_owner_routing() {
+        let input = json!({"sourceId":"source","projectId":"project","executionProjectId":"project","operation":"task","taskId":"task","threadId":"owner-thread"});
+        let query = read_params("areal/task/read", &input);
+        let target: areal_protocol::tasks::TaskTarget = serde_json::from_value(query).unwrap();
+        assert_eq!(target.task_id, "task");
+        let channel = read_params(
+            "areal/channel/read",
+            &json!({"taskId":"task","threadId":"owner-thread","afterSequence":4,"limit":10}),
+        );
+        let channel: areal_protocol::tasks::ChannelRead = serde_json::from_value(channel).unwrap();
+        assert_eq!(
+            (
+                channel.task_id.as_str(),
+                channel.after_sequence,
+                channel.limit
+            ),
+            ("task", Some(4), Some(10))
+        );
+    }
     #[test]
     fn scheduled_task_directory_requires_reserved_source_owner() {
         let directory = tempfile::tempdir().unwrap();
