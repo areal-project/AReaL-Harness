@@ -44,7 +44,7 @@ parts:
     divider: 同一卡片里相邻两行之间一道线，高 border-width-default 的一半，color-border-subtle，左右各缩进 spacing-field
     detail: 需要整行宽的控件（例如文字输入框）放在文字与控件列下方，上方留 spacing-inline 的一倍半，占满行内宽度
   disclosure:
-    summary: 一行，上下 spacing-inline；左为分区标题（text-ui-base，font-weight-medium，行高 line-height-toolbar，foreground），右为“展开”
+    summary: 不在卡片里，左右没有内边距，与分区标题左对齐；一行，上下 spacing-inline；左为分区标题（text-ui-base，font-weight-medium，行高 line-height-toolbar，foreground），右为“展开”
     action: 内边距上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-button，底色 color-button-surface，text-ui-sm，foreground；悬停整行时底色 color-button-hover
     open: 点整行展开，“展开”换成“收起”；展开后的内容不在本规格内
 

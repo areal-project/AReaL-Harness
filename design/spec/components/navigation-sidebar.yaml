@@ -34,12 +34,12 @@ parts:
     height: 顶栏高度，即 height-toolbar 与 text-ui-base 加 spacing-control-lg 两者取大
     padding: 左右 spacing-inline 的一倍半
     divider: 这一段右缘一道 border-width-default 的 color-border 竖线
-    buttons: spacing-control 见方，间隔 spacing-inline 的一半，圆角 radius-control；图标 nav-back、nav-forward、sidebar-toggle，颜色 foreground-subtle；不可用时 opacity-disabled；悬停 foreground，底色 color-hover
+    buttons: 从左缘起依次排后退、前进、收起侧栏，三个挨在一起；spacing-control 见方，间隔 spacing-inline 的一半，圆角 radius-control；图标 nav-back、nav-forward、sidebar-toggle，颜色 foreground-subtle；不可用时 opacity-disabled；悬停 foreground，底色 color-hover
   application-rail:
     padding: 上 spacing-inline，左右 spacing-inline，下 spacing-inline 的一半
     gap: spacing-inline
     button: rail-button-size 见方，圆角 radius-navigation；图标 icon-size-rail；颜色 foreground 一半不透明度
-    current: 当前入口底色 color-selected，图标 foreground；首页当前时用实心图标 rail-home
+    current: 当前入口底色 color-selected，图标 foreground；首页当前时用实心图标 rail-home，不是当前时用空心的 rail-home-outline
     hover: 图标 foreground
     footer: 设置按钮贴底
   workspace-header:
@@ -122,7 +122,7 @@ states:
 
 icons:
   source: 见 icons/ 目录，按名称引用，颜色取 currentColor
-  used: [nav-back, nav-forward, sidebar-toggle, rail-home, rail-schedule, rail-plugins, rail-settings, search, new-chat, section-chevron, section-add, more, folder, folder-open, project-new-chat, running, pin, archive]
+  used: [nav-back, nav-forward, sidebar-toggle, rail-home, rail-schedule, rail-plugins, rail-settings, search, new-chat, section-chevron, section-add, more, folder, folder-open, project-new-chat, running, pin, archive, rail-home-outline]
 
 behavior:
   - 点项目行展开或收起该项目；点分组标题展开或收起该分组；收起状态在下次打开时保留

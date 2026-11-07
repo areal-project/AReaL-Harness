@@ -35,7 +35,7 @@ parts:
     gap: 分组之间 spacing-field
   group:
     label: text-ui-base，font-weight-medium，行高 line-height-ui，foreground-subtle；左右 spacing-inline，下 spacing-inline 的一半
-    gap: 组内各项之间 spacing-inline 的四分之一
+    gap: 组内各项之间、分组标题与第一项之间都是 spacing-inline 的四分之一（所以标题文字到第一项共 spacing-inline 的四分之三）
   item:
     height: navigation-row-height
     padding: 左右 spacing-inline
