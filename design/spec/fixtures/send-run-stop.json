@@ -323,6 +323,24 @@
       },
       "overlay": "review-files"
     },
+    "window.files": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["文件"],
+        "active": "文件"
+      }
+    },
+    "window.files-open": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["文件", "file:src/math.ts"],
+        "active": "file:src/math.ts"
+      }
+    },
     "window.tasks": {
       "screen": "window",
       "conversation": "thread-idle",
@@ -977,6 +995,14 @@
           "directory": "~/.areal/worktrees/fix-lint"
         }
       ]
+    }
+  },
+  "workspace": {
+    "$comment": "文件面板的示例工作区：这里的文件加上 review.files 里改动后的文件；review.files 的状态即文件树的改动标记。",
+    "files": {
+      "README.md": "# 示例项目\n\n一个用来演示 AReaL Harness 界面的小项目。\n\n## 开始\n\n```sh\npnpm install\npnpm test\n```\n",
+      "package.json": "{\n  \"name\": \"example\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"vitest run\"\n  }\n}\n",
+      "src/index.ts": "export { clamp, sum } from \"./math\";\n"
     }
   }
 }

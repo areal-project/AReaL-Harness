@@ -79,6 +79,8 @@ states:
     - review: 面板只开“审查”标签，显示示例数据 review 的两个文件改动（审查面板规格待写，暂只作防回归截图）
     - review-scope-menu: 同 review，“改动范围”菜单用鼠标刚打开
     - review-files: 同 review，文件列表已显示
+    - files: 面板只开着“文件”标签：文件树占满面板，改动过的文件带 A/M 标记
+    - files-open: 打开了改动过的那个源文件：左边代码、右边文件树，当前文件在树里选中
     - tasks: 点应用导航栏“定时任务”，列出示例数据 tasks 的两个任务，未选中任务（规格待写，暂只作防回归截图）
     - tasks-new: 同 tasks，“新建定时任务”弹窗刚打开
     - plugins: 点应用导航栏“插件”，插件市场列出示例数据 plugins 的四个插件（规格待写，暂只作防回归截图）
@@ -141,4 +143,8 @@ references:
     - state: review-scope-menu
       themes: [light, dark]
     - state: review-files
+      themes: [light, dark]
+    - state: files
+      themes: [light, dark]
+    - state: files-open
       themes: [light, dark]

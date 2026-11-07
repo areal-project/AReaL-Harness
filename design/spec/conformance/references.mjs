@@ -45,6 +45,8 @@ const SHOTS = [
   "window.review",
   "window.review-scope-menu",
   "window.review-files",
+  "window.files",
+  "window.files-open",
   "window.tasks",
   "window.tasks-new",
   "window.plugins",

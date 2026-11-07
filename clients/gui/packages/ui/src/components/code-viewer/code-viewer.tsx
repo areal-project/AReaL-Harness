@@ -8,7 +8,12 @@ import type {
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2Icon } from "lucide-react";
-import { RegisteredCustomLanguages, type FileContents, type LineAnnotation, type SupportedLanguages } from "@pierre/diffs";
+import {
+  RegisteredCustomLanguages,
+  type FileContents,
+  type LineAnnotation,
+  type SupportedLanguages,
+} from "@pierre/diffs";
 import { bundledLanguages } from "shiki";
 import { File, type FileOptions } from "@pierre/diffs/react";
 import type { CodePreviewTheme } from "../../lib/code-preview-settings.js";
@@ -257,11 +262,13 @@ function createCodeViewerFile(params: {
   theme?: CodePreviewTheme;
 }): FileContents {
   // Markdown fences may name arbitrary languages; unknown names still render as text.
-  const lang = params.enableSyntaxHighlighting
-    && (params.language === "ansi" || Object.hasOwn(bundledLanguages, params.language)
-      || RegisteredCustomLanguages.has(params.language))
-    ? (params.language as SupportedLanguages)
-    : "text";
+  const lang =
+    params.enableSyntaxHighlighting &&
+    (params.language === "ansi" ||
+      Object.hasOwn(bundledLanguages, params.language) ||
+      RegisteredCustomLanguages.has(params.language))
+      ? (params.language as SupportedLanguages)
+      : "text";
   const name = params.language ? `preview.${params.language}` : "preview.txt";
   const themeCacheKey = params.theme ?? "auto";
 
@@ -701,7 +708,10 @@ export function CodeViewer({
       onGutterUtilityClick: canUseCommentGutterUtility ? handleGutterUtilitySelection : undefined,
       // 内建 comment + 默认贴在行号右侧，用户拖拽时容易和代码起点混在一起。
       // 这里只调整 Shadow DOM 内 gutter utility 的位置，不接管 pointer 事件，避免破坏多行拖拽 range。
-      unsafeCSS: CODE_VIEWER_UNSAFE_CSS + markedLinesCss + (transparentBackground ? ":host,pre,code{background-color:transparent!important;}" : ""),
+      unsafeCSS:
+        CODE_VIEWER_UNSAFE_CSS +
+        markedLinesCss +
+        (transparentBackground ? ":host,pre,code{background-color:transparent!important;}" : ""),
     }),
     [
       canUseCommentGutterUtility,
@@ -724,6 +734,8 @@ export function CodeViewer({
       "--diffs-bg": "var(--color-background)",
       "--diffs-light-bg": "var(--color-background)",
       "--diffs-dark-bg": "var(--color-background)",
+      // 代码主题会给宿主元素铺自己的底色（深色为 #111），代码不满一屏时下方露出另一种黑。
+      backgroundColor: "var(--color-background)",
       // @pierre/diffs 在 Shadow DOM 内使用自己的等宽 fallback，Windows 中文会落到宋体。
       // 显式透传应用 token，让 Markdown code block、文件预览和 inline code 使用同一 CJK fallback。
       "--diffs-font-family": "var(--font-mono)",

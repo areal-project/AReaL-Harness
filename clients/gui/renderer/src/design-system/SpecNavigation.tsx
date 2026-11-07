@@ -3,6 +3,8 @@ import fixture from "../../../../../design/spec/fixtures/send-run-stop.json";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { SidePane } from "../app-shell/SidePane.js";
 import { GitPane } from "../GitPane.js";
+import { WorkspaceFilePane } from "../WorkspaceFilePane.js";
+import { WorkspaceFileTree } from "../workspace-file-tree/WorkspaceFileTree.js";
 import { TaskCenter } from "../TaskCenter.js";
 import { PluginCenter } from "../settings/PluginCenter.js";
 import { WorkSurface, WorkbenchShell, WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
@@ -108,6 +110,7 @@ export function SpecNavigation({
     initialPanel?.view ?? "split",
   );
   const [reviewFiles, setReviewFiles] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(true);
   const [lastPanel, setLastPanel] = useState(initialPanel?.active ?? "");
   const selectPanel = (name: string) => {
     setPanel(name);
@@ -115,6 +118,17 @@ export function SpecNavigation({
     if (name && name !== "功能")
       setPanelTabs((tabs) => (tabs.includes(name) ? tabs : [...tabs, name]));
   };
+  const root = `/${fixture.project.name}`;
+  const fileTree = filesOpen ? (
+    <WorkspaceFileTree
+      projectId="spec-project"
+      root={root}
+      action={action}
+      onClose={() => setFilesOpen(false)}
+      onOpen={(path) => selectPanel(`file:${path}`)}
+      activePath={panel.startsWith("file:") ? panel.slice(5) : ""}
+    />
+  ) : undefined;
   const hidePanel = () => {
     setWorkspaceView("split");
     setPanel("");
@@ -371,8 +385,26 @@ export function SpecNavigation({
               onSelect={selectPanel}
               onChange={setPanelTabs}
               onHide={hidePanel}
+              auxiliary={panel === "文件" ? fileTree : undefined}
+              titleFor={(name) =>
+                name.startsWith("file:") ? name.slice(5).split("/").pop() : undefined
+              }
               render={(name) =>
-                name === "改动" ? (
+                name === "文件" ? (
+                  <div className="file-preview-empty">{t("common.files.selectPreview")}</div>
+                ) : name.startsWith("file:") ? (
+                  <WorkspaceFilePane
+                    projectId="spec-project"
+                    root={root}
+                    path={name.slice(5)}
+                    action={action}
+                    onDirty={() => {}}
+                    onLink={() => {}}
+                    filesOpen={filesOpen}
+                    onToggleFiles={() => setFilesOpen((open) => !open)}
+                    tree={fileTree}
+                  />
+                ) : name === "改动" ? (
                   <GitPane
                     projectId="spec-project"
                     root={`/${fixture.project.name}`}

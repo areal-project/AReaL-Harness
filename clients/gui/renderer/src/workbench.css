@@ -3559,7 +3559,7 @@ button[aria-label="停止"] {
   background: var(--color-surface-hover);
 }
 .review-file-tree-row[aria-selected="true"] {
-  background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
+  background: var(--color-selected);
 }
 .review-file-tree-row:focus-visible {
   outline: var(--border-width-default) solid var(--color-input-border-focused);
@@ -3832,7 +3832,7 @@ button[aria-label="停止"] {
   width: 100%;
   height: var(--spacing-control);
   margin: 0;
-  line-height: 28px;
+  line-height: var(--spacing-control);
   padding-left: calc(
     calc(var(--spacing-inline) / 4) + var(--workspace-file-tree-depth) * var(--spacing-inline)
   );
