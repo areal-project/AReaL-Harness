@@ -375,7 +375,7 @@ impl Model for SurfaceModel {
         unreachable!()
     }
     async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
-        let round = self.round.fetch_add(1, Ordering::SeqCst) % 4;
+        let round = self.round.fetch_add(1, Ordering::SeqCst) % 7;
         let names: Vec<_> = tools
             .iter()
             .filter_map(|d| d["function"]["name"].as_str())
@@ -418,29 +418,82 @@ impl Model for SurfaceModel {
                 assert!(catalog.contains("await collect(await tools.verify_command(input.check))"));
                 call("tool_search", json!({"query":"read_history","limit":1}), 0)
             }
-            1 if self.direct_edit => call(
-                "edit_files",
-                json!({"files":[{"path":"created","text":"content"}]}),
-                1,
-            ),
-            1 => call(
-                "tool_program",
-                json!({"code":"text(await tools.edit_files({files:[{path:'created',text:'content'}]}));"}),
-                1,
-            ),
+            1 => {
+                let found: Value = serde_json::from_str(&messages.last().unwrap().text_content())?;
+                let invocation = &found["tools"][0]["invocation"];
+                assert_eq!(found["tools"][0]["name"], "read_history");
+                if self.program_only {
+                    assert_eq!(
+                        invocation,
+                        &json!({"entrypoint":"tool_program","member":"tools.read_history"})
+                    );
+                } else {
+                    assert_eq!(invocation, &json!({"entrypoint":"read_history"}));
+                }
+                call(
+                    "tool_search",
+                    json!({"query":" TOOL_PROGRAM ","limit":1}),
+                    1,
+                )
+            }
             2 => {
+                let found: Value = serde_json::from_str(&messages.last().unwrap().text_content())?;
+                assert_eq!(found["tools"][0]["name"], "tool_program");
+                assert_eq!(
+                    found["tools"][0]["invocation"],
+                    json!({"entrypoint":"tool_program"})
+                );
+                if self.direct_edit {
+                    call(
+                        "edit_files",
+                        json!({"files":[{"path":"created","text":"content"}]}),
+                        2,
+                    )
+                } else {
+                    call(
+                        "tool_program",
+                        json!({"code":"text(await tools.edit_files({files:[{path:'created',text:'content'}]}));"}),
+                        2,
+                    )
+                }
+            }
+            3 => {
                 assert!(messages.last().unwrap().text_content().contains("APPLIED"));
+                call("tool_search", json!({"query":"edit_files","limit":1}), 3)
+            }
+            4 => {
+                let found: Value = serde_json::from_str(&messages.last().unwrap().text_content())?;
+                assert_eq!(found["tools"][0]["name"], "edit_files");
+                let expected = if self.program_only && !self.direct_edit {
+                    json!({"entrypoint":"tool_program","member":"tools.edit_files"})
+                } else {
+                    json!({"entrypoint":"edit_files"})
+                };
+                assert_eq!(found["tools"][0]["invocation"], expected);
                 if self.program_only {
                     call(
                         "tool_program",
                         json!({"code":"text(await tools.read_history({limit:1}));"}),
-                        2,
+                        4,
                     )
                 } else {
-                    call("read_history", json!({"limit":1}), 2)
+                    call("read_history", json!({"limit":1}), 4)
                 }
             }
-            _ => ModelEvent::text("discovered and edited through native children"),
+            5 => call(
+                "tool_search",
+                json!({"query":"agent_spawn_configured","limit":1}),
+                5,
+            ),
+            _ => {
+                let found: Value = serde_json::from_str(&messages.last().unwrap().text_content())?;
+                assert_eq!(
+                    found["tools"],
+                    json!([]),
+                    "search cannot expose a filtered registry entry"
+                );
+                ModelEvent::text("discovered and edited through native children")
+            }
         };
         Ok(Box::pin(futures_util::stream::iter([Ok(event)])))
     }

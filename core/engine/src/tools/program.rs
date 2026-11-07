@@ -20,7 +20,7 @@ pub(super) fn definition() -> areal_protocol::ToolDefinition {
     }
 }
 
-fn eligible(entry: &RegisteredTool) -> bool {
+pub(crate) fn eligible(entry: &RegisteredTool) -> bool {
     matches!(entry.backend, Backend::Builtin)
         || matches!(entry.backend, Backend::Core)
             && matches!(

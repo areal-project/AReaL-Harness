@@ -17,6 +17,16 @@ struct ToolSummary {
     name: String,
     server_id: String,
     description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    invocation: Option<NativeInvocation>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeInvocation {
+    entrypoint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    member: Option<String>,
 }
 
 impl ToolExposure {
@@ -27,12 +37,19 @@ impl ToolExposure {
     }
 
     fn search(&mut self, query: &str, limit: usize) -> Value {
-        let query = query.to_lowercase();
+        let query = query.trim().to_lowercase();
         let terms: Vec<_> = query.split_whitespace().collect();
         let mut matches: Vec<_> = self
             .catalog
             .iter()
             .filter(|tool| {
+                // 常用入口只补精确名称，避免挤占原有模糊发现的有界结果。
+                if tool.invocation.is_some()
+                    && common_native(&tool.name)
+                    && tool.name.to_lowercase() != query
+                {
+                    return false;
+                }
                 let text =
                     format!("{} {} {}", tool.name, tool.server_id, tool.description).to_lowercase();
                 terms.iter().all(|term| text.contains(term))
@@ -62,6 +79,10 @@ impl Engine {
             return definitions;
         }
         let bindings = cell.bindings.read().await;
+        let program_only = self.extensions.policy.programmatic_tools_only
+            && definitions
+                .iter()
+                .any(|d| d["function"]["name"] == "tool_program");
         let catalog: Vec<_> = definitions
             .iter()
             .filter_map(|d| {
@@ -73,10 +94,17 @@ impl Engine {
                         | crate::tools::Backend::Core
                         | crate::tools::Backend::Agent
                         | crate::tools::Backend::Coordination
-                ) || common_native(name)
-                {
+                ) {
                     return None;
                 }
+                let through_program = program_only
+                    && crate::tools::program::eligible(&entry)
+                    && !self
+                        .extensions
+                        .policy
+                        .programmatic_direct_tools
+                        .iter()
+                        .any(|n| n == name);
                 Some(ToolSummary {
                     name: name.into(),
                     server_id: "native".into(),
@@ -86,6 +114,15 @@ impl Engine {
                         .chars()
                         .take(256)
                         .collect(),
+                    invocation: Some(NativeInvocation {
+                        entrypoint: if through_program {
+                            "tool_program"
+                        } else {
+                            name
+                        }
+                        .into(),
+                        member: through_program.then(|| format!("tools.{name}")),
+                    }),
                 })
             })
             .collect();
@@ -96,7 +133,13 @@ impl Engine {
         };
         let exposure = &mut active.native_tool_exposure;
         exposure.catalog = catalog;
-        let names: BTreeSet<_> = exposure.catalog.iter().map(|t| t.name.as_str()).collect();
+        // 常用入口也可被搜索解释，但不能因此延迟原来已展示的 schema。
+        let names: BTreeSet<_> = exposure
+            .catalog
+            .iter()
+            .filter(|t| !common_native(&t.name))
+            .map(|t| t.name.as_str())
+            .collect();
         definitions.retain(|d| {
             let name = d["function"]["name"].as_str().unwrap_or("");
             !names.contains(name) || exposure.loaded.contains(name)
@@ -109,6 +152,7 @@ impl Engine {
             let directory = exposure
                 .catalog
                 .iter()
+                .filter(|t| !common_native(&t.name))
                 .map(|t| t.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -141,7 +185,11 @@ impl Engine {
             .as_mut()
             .filter(|a| a.id == turn_id)
             .ok_or(Error::Conflict)?;
-        Ok(active.native_tool_exposure.search(query, limit))
+        let mut result = active.native_tool_exposure.search(query, limit);
+        result["guidance"] = json!(
+            "Use each result's invocation on the NEXT model request; no further search is needed. entrypoint is the model tool name; member means call it inside tool_program code, with its parameters shown in that tool's description. Do not call newly discovered tools in this batch. An empty result means no catalog match, not that a tool is unavailable; use an exact name from the current definitions or directory."
+        );
+        Ok(result)
     }
 
     pub(crate) async fn project_mcp_tools(
@@ -170,6 +218,7 @@ impl Engine {
                         .chars()
                         .take(256)
                         .collect(),
+                    invocation: None,
                 })
             })
             .collect();

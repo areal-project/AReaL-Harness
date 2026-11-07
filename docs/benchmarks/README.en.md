@@ -6,6 +6,8 @@
 
 ## Environment and first run
 
+Before full tasks, `uv run --with jsonschema==4.25.1 python tests/perf/tool_contract_lab.py --help` provides single-call argument probes. `--capture` supplies tool definitions from a real Core request. `--preflight` checks public expected arguments and negative controls without a model call. Live runs require `jsonschema`, an owner-only credentials JSON (`base_url`, `api_key`), and a new `--output` directory retaining each intent, receipt, and unknown usage. Defaults are two repetitions per Astra/Qwen case, independent concurrency ceilings of 36/50, and no automatic retries. This measures argument fidelity when a tool is explicitly specified; it does not establish task success, a Codex comparison, or end-to-end gains.
+
 Requires Python 3.11+, Docker/BuildKit and sufficient image storage. Use native Linux amd64 for formal comparisons; cross-architecture emulation is not a same-platform baseline. The host must permit Bubblewrap user/PID namespaces and seccomp. Investigate failed sandbox smoke tests rather than disabling the sandbox to score tasks.
 
 ```sh

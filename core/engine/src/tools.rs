@@ -369,7 +369,7 @@ pub mod plugins;
 pub(crate) mod registry;
 mod results;
 pub(crate) use registry::Backend;
-mod program;
+pub(crate) mod program;
 mod scheduling;
 pub(crate) use program::recovered_program_content;
 mod verification;

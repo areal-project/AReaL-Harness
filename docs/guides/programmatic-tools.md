@@ -56,7 +56,7 @@
 
 ## 精简交互候选
 
-`policy.compactTools:true` 将原生常用层收敛为读取、搜索、`edit_files`、命令/验证、进程交互、图像、环境事实和原文回取；`tool_search` 按名称/说明发现其余已授权原生能力，完整 schema 在下一次模型请求可见，Turn 结束清空。底层文件、恢复、技能、服务和协作入口仍注册、受原权限及 allowlist 约束；批量编辑在内部调用底层工具。若 allowlist 不允许发现入口，保留原展示，避免让能力不可达。MCP 的 `lazyMcpSchemas` 仍独立配置。
+`policy.compactTools:true` 将原生常用层收敛为读取、搜索、`edit_files`、命令/验证、进程交互、图像、环境事实和原文回取；`tool_search` 按名称/说明发现其余已授权原生能力，完整 schema 在下一次模型请求可见，Turn 结束清空。底层文件、恢复、技能、服务和协作入口仍注册、受原权限及 allowlist 约束；批量编辑在内部调用底层工具。若 allowlist 不允许发现入口，保留原展示，避免让能力不可达。MCP 的 `lazyMcpSchemas` 仍独立配置。搜索也识别已经展示的常用入口；结果的 `invocation.entrypoint` 给出下一请求的工具名。存在 `invocation.member` 时，使用 `tool_program` 的 `code` 调用该 `tools.NAME`，参数以程序描述中的 schema 为准；否则直接调用 entrypoint。空结果只代表目录没有匹配，不能推断能力不可用。搜索不执行工具、不重复附加完整 schema，也不改变执行权限、预算或重试。
 
 精简配置使用较短基础说明和程序描述；不改变执行内核。`programmaticTools` 可独立开关，不按模型名称选择。`programmaticToolsOnly` 仍会把 schema 移入程序描述，不能据入口减少推断 token 下降。可将下面片段并入现有 extensions 文件，保留部署原有 tools/hooks/权限；它是显式候选，不是通用性能默认。
 

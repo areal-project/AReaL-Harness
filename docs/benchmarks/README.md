@@ -6,6 +6,8 @@
 
 ## 环境与首跑
 
+完整任务前可运行 `uv run --with jsonschema==4.25.1 python tests/perf/tool_contract_lab.py --help` 做单次工具参数探针。输入 `--capture` 是真实 Core 请求中的工具定义；`--preflight` 仅校验公开预期参数与负控制，不调用模型。真实运行用 `--credentials` 指向仅用户可读的 JSON（`base_url`、`api_key`），并用新的 `--output` 目录保留每次请求的意图、回执及 UNKNOWN 用量。离线探针回归使用 `uv run --with jsonschema==4.25.1 python tests/perf/test_tool_contract_lab.py`。探针默认对 Astra/Qwen 各做两次重复，独立并发上限 36/50，无自动重试；只衡量明确指定工具后的参数保真度，不代表实际任务成功率、Codex 对比或端到端收益。
+
 需要 Python 3.11+、Docker/BuildKit 和足够镜像空间。正式比较使用原生 Linux amd64；跨架构模拟开销不作为同平台基线。宿主须允许 Bubblewrap 的 user/PID namespace 和 seccomp；沙箱 smoke 失败需排查，不能关闭沙箱继续评分。
 
 ```sh
