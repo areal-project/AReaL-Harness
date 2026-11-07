@@ -226,7 +226,9 @@ Solve and summary HTTP requests share Engine and model-pool capacity. Both outer
 
 Goal shared-budget and unknown-usage constraints take precedence over retry settings. Goal requests disable internal HTTP retries; failures or timeouts with unknown usage retain their reservation and stop automatic progress. Neither the watchdog nor finite retry allowances bypass this constraint.
 
-`limits.max_completion_retries` defaults to 0, accepts 0–8, and budgets bounded incomplete-response recovery per Turn separately from HTTP `max_retries` and the network watchdog. Disabling the watchdog preserves existing finite retry allowances. See [Core recovery](../api/core.en.md#recovery). HTTPS uses public roots and the host trust store; install private CAs there. Tools execute only from structured protocol fields, never from XML/JSON in response text.
+`limits.max_completion_retries` defaults to 0, accepts 0–8, and by default budgets bounded incomplete-response recovery per Turn separately from HTTP `max_retries` and the network watchdog. Disabling the watchdog preserves existing finite retry allowances. See [Core recovery](../api/core.en.md#recovery). HTTPS uses public roots and the host trust store; install private CAs there. Tools execute only from structured protocol fields, never from XML/JSON in response text.
+
+`limits.completion_retry_scope="turn"` retains Turn-cumulative accounting. The explicit experimental value `"consecutive"` resets the used recovery count only after Core accepts a complete response; empty, truncated, malformed, steered or pending-verification completions do not reset it. `max_empty_completion_retries` shares the selected scope. `AREAL_HARNESS_COMPLETION_RETRY_SCOPE` overrides file configuration, and configuration diagnostics expose the resolved value. Consecutive mode can exceed the previous total recoveries per Turn and increase tokens and latency; it is a resource-policy experiment, not a correctness fix under an equal recovery allowance or a quality guarantee. Explicit deadlines, model-round and token budgets, cancellation and failure classification remain unchanged. Selecting consecutive mode without a recovery allowance does not enable retries. Existing configurations retain `turn`.
 
 `limits.max_goal_report_rounds=0` is disabled by default and accepts integers 0–8; `AREAL_HARNESS_MAX_GOAL_REPORT_ROUNDS` overrides it. Opt-in routes missing active-root Goal reports through a bounded phase with only reporting tools. Its allowance is separate from generic completion recovery; physical-request, token and time budgets stay unchanged. Missing reports or unavailable report tools return `GOAL_PROGRESS_UNREPORTED`, never fabricated completion. See [Core recovery](../api/core.en.md#recovery).
 
@@ -625,6 +627,7 @@ Observation folding, file-reference retention, repeated-failure execution caps a
 | `context.reference_tokens` | 0 | 8192 | 0–2000000 |
 | `limits.max_repeated_tool_failures` | 0 | 2 | 0–8 |
 | `limits.max_empty_completion_retries` | 0 | 2 | 0–8 |
+| `limits.completion_retry_scope` | turn | consecutive | Turn-cumulative by default; explicit consecutive-failure scope |
 
 `context.observation_tokens` is an experimental per-request soft budget defaulting to 0. It applies only in auto compaction mode with retrieval allowed. Core may fold older successful text receipts into head/tail excerpts with exact raw-result references, without rewriting authoritative history or arguments. The latest two results, failures, UNKNOWN, media, unretrievable content and conversations bound to opaque reasoning remain intact. The soft target is not guaranteed; actual sends still pass full-request hard-budget preflight.
 

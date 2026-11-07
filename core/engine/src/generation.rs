@@ -1154,6 +1154,14 @@ impl Engine {
                             }
                             return Err(error);
                         }
+                        // 仅完整且被接受的响应结束连续失败序列；空白、steer 和待验收不能清零。
+                        // 重置不删除失败审计或 usage，也不授权重放此前已经执行的工具。
+                        if self.limits.completion_retry_scope
+                            == areal_config::CompletionRetryScope::Consecutive
+                            && !goal_report_missing
+                        {
+                            completion_retries = 0;
+                        }
                         // 冲突回执必须确实进入已接受的请求；恢复决策前不让出其保护租约。
                         if state
                             .active
@@ -1820,7 +1828,7 @@ impl Engine {
         error: &anyhow::Error,
         retries: usize,
     ) -> anyhow::Result<bool> {
-        // 空白恢复不扩大截断、网络或非法协议的默认重试范围；所有恢复共用整轮计数。
+        // 空白恢复不扩大截断、网络或非法协议的默认重试范围；所有恢复共用所选范围的计数。
         let limit = if matches!(
             error.downcast_ref::<model::ModelFailure>(),
             Some(model::ModelFailure::EmptyCompletion)

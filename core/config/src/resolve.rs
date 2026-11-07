@@ -200,6 +200,11 @@ const ENV: &[(&str, &str, &str)] = &[
         "limits.max_empty_completion_retries",
     ),
     (
+        "AREAL_HARNESS_COMPLETION_RETRY_SCOPE",
+        "",
+        "limits.completion_retry_scope",
+    ),
+    (
         "AREAL_HARNESS_MAX_GOAL_REPORT_ROUNDS",
         "",
         "limits.max_goal_report_rounds",
@@ -500,6 +505,11 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
                 return Err(reject("model retries must be between 0 and 8"));
             }
         }
+        "completion_retry_scope" => {
+            if !matches!(value.as_str(), "turn" | "consecutive") {
+                return Err(reject("completion retry scope must be turn or consecutive"));
+            }
+        }
         "max_turns" | "max_active_seconds" | "max_unreported_turns" | "turn_model_rounds" => {
             let max = if field.ends_with("turn_model_rounds") {
                 1024
@@ -721,6 +731,7 @@ pub(crate) fn load_mode(
         ("model.responses_websocket", "false"),
         ("model.responses_prompt_cache", "false"),
         ("limits.max_completion_retries", "0"),
+        ("limits.completion_retry_scope", "turn"),
         ("limits.max_goal_report_rounds", "0"),
         ("limits.goal_recover_unknown_model_usage", "false"),
         ("limits.max_empty_completion_retries", "0"),
@@ -1197,6 +1208,10 @@ pub(crate) fn load_mode(
             .value
             .parse()
             .unwrap(),
+        completion_retry_scope: match values["limits.completion_retry_scope"].value.as_str() {
+            "consecutive" => crate::CompletionRetryScope::Consecutive,
+            _ => crate::CompletionRetryScope::Turn,
+        },
         max_goal_report_rounds: values["limits.max_goal_report_rounds"]
             .value
             .parse()

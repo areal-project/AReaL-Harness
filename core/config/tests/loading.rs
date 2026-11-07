@@ -81,6 +81,43 @@ fn set(i: &mut ConfigInputs, name: &str, value: &str) {
 }
 
 #[test]
+fn completion_retry_scope_is_explicit_validated_and_visible() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    let defaults = load_config(&i).unwrap();
+    assert_eq!(defaults.completion_retry_scope, CompletionRetryScope::Turn);
+    write(
+        &mut i,
+        "schema_version=2\n[limits]\nmax_completion_retries=3\ncompletion_retry_scope='consecutive'\n",
+    );
+    let config = load_config(&i).unwrap();
+    assert_eq!(config.max_completion_retries, 3);
+    assert_eq!(
+        config.completion_retry_scope,
+        CompletionRetryScope::Consecutive
+    );
+    assert_eq!(
+        config.diagnostic(false)["limits"]["completion_retry_scope"],
+        "consecutive"
+    );
+    set(&mut i, "AREAL_HARNESS_COMPLETION_RETRY_SCOPE", "turn");
+    assert_eq!(
+        load_config(&i).unwrap().completion_retry_scope,
+        CompletionRetryScope::Turn
+    );
+    set(&mut i, "AREAL_HARNESS_COMPLETION_RETRY_SCOPE", "invalid");
+    assert_eq!(failure(&i).field, "limits.completion_retry_scope");
+    i.env.clear();
+    for value in ["'invalid'", "true", "3"] {
+        write(
+            &mut i,
+            &format!("schema_version=2\n[limits]\ncompletion_retry_scope={value}\n"),
+        );
+        assert!(load_config(&i).is_err());
+    }
+}
+
+#[test]
 fn bounded_network_mode_keeps_recovery_and_explicit_disable_is_independent() {
     let root = tempfile::tempdir().unwrap();
     let mut i = inputs(root.path());

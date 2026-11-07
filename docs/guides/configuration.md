@@ -226,7 +226,9 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 Goal 的共享预算与未知用量约束优先于重试配置。Goal 请求禁用 HTTP 内部重试；失败或超时产生未知消费时保留预算预留并停止自动推进，watchdog 与有限重试额度均不能绕过此限制。
 
-`limits.max_completion_retries` 默认为 0、范围 0–8，是每 Turn 的有限未完成响应恢复额度，与 HTTP `max_retries` 和网络 watchdog 分开；关闭 watchdog 不关闭已有的有限重试。恢复条件与审计见 [Core API](../api/core.md#recovery)。HTTPS 使用公开根证书和宿主系统信任库；私有 CA 应安装到信任库。工具调用仅来自协议结构化字段，正文中的 XML/JSON 不作为调用执行。
+`limits.max_completion_retries` 默认为 0、范围 0–8，默认按每 Turn 累计有限未完成响应恢复额度，与 HTTP `max_retries` 和网络 watchdog 分开；关闭 watchdog 不关闭已有的有限重试。恢复条件与审计见 [Core API](../api/core.md#recovery)。HTTPS 使用公开根证书和宿主系统信任库；私有 CA 应安装到信任库。工具调用仅来自协议结构化字段，正文中的 XML/JSON 不作为调用执行。
+
+`limits.completion_retry_scope="turn"` 保留整轮累计行为。显式实验值 `"consecutive"` 仅在完整响应被 Core 接受后清零已用恢复计数；空白、截断、非法参数、被 steer 拒收或待验证响应均不清零。`max_empty_completion_retries` 与一般恢复共用所选范围。环境变量 `AREAL_HARNESS_COMPLETION_RETRY_SCOPE` 可覆盖文件配置，配置诊断显示实际值。连续模式可能在同一 Turn 内超过原累计恢复次数、增加 token 和耗时；它不是相同恢复预算下的正确性修复，也不保证质量改善。显式任务期限、模型轮次、token 预算、取消和失败分类不变；没有恢复额度时选择连续模式仍不重试。普通配置与旧文件继续使用 `turn`。
 
 `limits.max_goal_report_rounds=0` 默认关闭，整数 0–8；`AREAL_HARNESS_MAX_GOAL_REPORT_ROUNDS` 可覆盖。显式启用时，活跃根 Goal 的缺失进度报告进入只允许报告工具的有界阶段，额度与通用响应恢复分开，物理请求/token/时间预算保持原值。报告失败或工具不可用返回 `GOAL_PROGRESS_UNREPORTED`，不伪造完成。见 [Core API](../api/core.md#recovery)。
 
@@ -625,6 +627,7 @@ WebSocket 求解连接携带 Core 线程 ID 作为 session-id/thread-id，以便
 | `context.reference_tokens` | 0 | 8192 | 0–2000000 |
 | `limits.max_repeated_tool_failures` | 0 | 2 | 0–8 |
 | `limits.max_empty_completion_retries` | 0 | 2 | 0–8 |
+| `limits.completion_retry_scope` | turn | consecutive | 默认整轮累计；显式连续失败范围 |
 
 `context.observation_tokens` 是默认 0 的实验性每请求软预算，仅在 auto 压缩模式且允许回取时生效。Core 可将较早的成功文本回执折叠为首尾摘要与精确原文引用，不改写权威历史或调用参数；最近两个结果、失败、UNKNOWN、媒体、无法回取的内容和绑定不透明推理的会话保持原样。软预算不保证达成，实际发送仍经过完整请求硬预算预检。
 

@@ -142,6 +142,24 @@ impl NetworkRetryMode {
     }
 }
 
+/// 恢复默认按整轮累计；连续模式只在接受完整响应后重置，是显式资源策略实验。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompletionRetryScope {
+    #[default]
+    Turn,
+    Consecutive,
+}
+
+impl CompletionRetryScope {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Turn => "turn",
+            Self::Consecutive => "consecutive",
+        }
+    }
+}
+
 impl InspectionPermissions {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -367,6 +385,7 @@ pub struct ResolvedCoreConfig {
     pub command_stdin_closed: bool,
     pub max_empty_completion_retries: usize,
     pub max_completion_retries: usize,
+    pub completion_retry_scope: CompletionRetryScope,
     pub max_goal_report_rounds: usize,
     pub goal_recover_unknown_model_usage: bool,
     pub watchdog_disable: bool,
@@ -442,6 +461,8 @@ impl ResolvedCoreConfig {
             serde_json::json!(self.context_observation_tokens);
         result["limits"]["max_empty_completion_retries"] =
             serde_json::json!(self.max_empty_completion_retries);
+        result["limits"]["completion_retry_scope"] =
+            serde_json::json!(self.completion_retry_scope.as_str());
         result["limits"]["max_goal_report_rounds"] = serde_json::json!(self.max_goal_report_rounds);
         result["limits"]["goal_recover_unknown_model_usage"] =
             serde_json::json!(self.goal_recover_unknown_model_usage);

@@ -49,6 +49,9 @@ mode = "auto"
 [limits]
 # 实验性恢复策略；每次只验证一个假设，保持根预算不变。
 # max_empty_completion_retries = 2
+# 默认 turn 累计；consecutive 在接受完整响应后重置，可能增加整轮恢复次数与消费。
+# max_completion_retries = 3
+# completion_retry_scope = "consecutive"
 # max_repeated_tool_failures = 2
 
 [budget]

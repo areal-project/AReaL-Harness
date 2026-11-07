@@ -420,6 +420,7 @@ fn walk(
     );
     let string = string
         || names.as_slice() == ["limits", "context_mode"]
+        || names.as_slice() == ["limits", "completion_retry_scope"]
         || names.as_slice() == ["network", "retry_mode"];
     let boolean = matches!(
         names.as_slice(),

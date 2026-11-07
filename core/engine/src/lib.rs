@@ -102,10 +102,12 @@ pub struct Limits {
     /// 实验性相同失败调用执行上限；默认 0 不限制。
     pub max_repeated_tool_failures: usize,
     pub command_stdin_closed: bool,
-    /// 实验性空白恢复额度；默认 0 关闭，与一般恢复共享整轮已用计数。
+    /// 实验性空白恢复额度；默认 0 关闭，与一般恢复共享所选范围的已用计数。
     pub max_empty_completion_retries: usize,
-    /// Total discarded completions that may be retried within one Turn.
+    /// 允许恢复的未接受响应数；默认按整轮累计。
     pub max_completion_retries: usize,
+    /// 显式连续恢复实验；不改变失败分类、已执行工具或消费账本。
+    pub completion_retry_scope: areal_config::CompletionRetryScope,
     /// 显式 Goal 报告阶段的请求轮次上限；默认 0，沿用既有进度保护。
     pub max_goal_report_rounds: usize,
     /// 显式实验：有限 Goal 下保留未知模型用量的保守上界，使用原完成恢复额度续跑。
@@ -169,6 +171,7 @@ impl Default for Limits {
             command_stdin_closed: true,
             max_empty_completion_retries: 0,
             max_completion_retries: 0,
+            completion_retry_scope: areal_config::CompletionRetryScope::Turn,
             max_goal_report_rounds: 0,
             goal_recover_unknown_model_usage: false,
             watchdog_disable: false,
