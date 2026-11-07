@@ -260,6 +260,9 @@ export function createWorkbenchRoutes(
   }
   return {
     async call(name, params) {
+      // 原生进程的连接租约归 Main；其薄适配仍经 Host 访问 Core。
+      if (desktop && name === "manage" && String(params.operation).startsWith("process"))
+        return undefined;
       if (name === "manage" && params.operation === "mcpApps" && domains.has("pages")) {
         if (!client.writable("pages.command")) return undefined;
         return {

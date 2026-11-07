@@ -47,6 +47,8 @@ Host 与工作台在同一个 Core 连接上分别持有 Thread 订阅兴趣；�
 
 私有 `execution.prepare` 复用页面宿主的供应商与工具准备，send/enqueue 与 steer 的 Core 派发由 Host 共享连接执行。带 Worktree 的创建仍经后台薄适配衔接 Host 原生准备与绑定；后台的 Core 请求同样经过 Host。创建准备与原 `createThreadInProject` 共享实现，发送沿用 `ensureBrowserTools` 和 `browserEntrypoints`；Host 冻结原 Core requestId/参数并写 journal，后台只消费一次性页面宿主句柄。句柄绑定原 Host 连接、项目/线程、Core 代际、client 与原生 owner；失败或断开不重放。浏览器发现和页面认领沿原 Main attach 回调，断开原 Host 连接会撤销其入口、发现计划与认领。原生窗口行为仍需桌面端验收。 远程普通新建、发送和引导使用相同执行路径，仍按原设备、项目和 submit 授权校验；仅凭项目别名相同不能取得其他来源的后台。连接结束会撤销后台入口，已发布客户端的请求形状与权限预设不变。工具宿主断开后的确定拒绝通过 Core 的 `TOOL_HOST_UNAVAILABLE` 原因映射为 Host `CAPABILITY_UNAVAILABLE`；保留原命令回执，不自动重发。
 
+Electron 的进程命令保留 Main 原生连接适配，即使启用 `manage` 领域也不绕过其终端租约；该适配仍经 Host 连接 Core。浏览器继续经 Host 的 `manage` 合同访问受授权的进程能力。
+
 资源经认证 WebSocket 分块读取，每块最多 192 KiB、单资源最多 8 MiB。公开 `/host/pages/proxy` 仅含固定代理代码，外层与内层均为不带同源权限的 sandbox；页面 HTML 和资源不进入公开 HTTP 路由。Gen-UI 固定资源沿原白名单读取后内联，页面继续受原 CSP 限制。当前仅开放本机回环连接，要求 `gui-write-v1` 与 manage；手动打开 MCP App 与页面 JSON-RPC 请求另需 submit。这是保守的阶段授权，尚未覆盖仅有 submit 的普通设备或远程 Noise。原生文件选择和打开仍属外壳能力。
 
 ## Rust 领域实现与回退

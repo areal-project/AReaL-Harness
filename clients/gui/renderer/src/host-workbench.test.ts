@@ -38,6 +38,43 @@ function setup(answer: (method: string, params: unknown) => unknown) {
 }
 
 describe("workbench routes", () => {
+  it("keeps native process controls with the desktop connection owner", async () => {
+    const client = {
+      writable: () => true,
+      workbench: async () => {
+        throw new Error("Native process reached the public Host manage route");
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(
+      client,
+      {} as PlatformServices,
+      new Set(["manage"]),
+      undefined,
+      undefined,
+      () => "fixture",
+    )!;
+    for (const operation of [
+      "processStart",
+      "processSubmission",
+      "processOutput",
+      "processWrite",
+      "processResize",
+      "processTerminate",
+    ]) {
+      expect(
+        await routes.call("manage", {
+          operation,
+          projectId: "project",
+          threadId: "thread",
+          id: "process",
+          ...(operation === "processStart" || operation === "processSubmission"
+            ? { guiOwned: true }
+            : {}),
+        }),
+      ).toBeUndefined();
+    }
+  });
+
   it("reads analytics through Host after merging the desktop's active days", async () => {
     const { routes, calls } = setup((method) => (method === "analytics.read" ? { tokens: 1 } : {}));
     expect(await routes.call("analytics", { operation: "read" })).toEqual({ value: { tokens: 1 } });
