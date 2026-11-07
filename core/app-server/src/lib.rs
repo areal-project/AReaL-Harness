@@ -1147,9 +1147,16 @@ impl Connection {
             return Ok(json!({"ready":true}));
         }
         if method == "areal/task/host/ready" {
-            if !params.as_object().is_some_and(|p| p.is_empty()) {
-                return Err(RpcError::invalid("expected empty host readiness request"));
-            }
+            let prepare_create = match params.as_object() {
+                Some(p) if p.keys().all(|key| key == "prepareCreate") => {
+                    match p.get("prepareCreate") {
+                        None => false,
+                        Some(Value::Bool(value)) => *value,
+                        _ => return Err(RpcError::invalid("invalid host readiness request")),
+                    }
+                }
+                _ => return Err(RpcError::invalid("invalid host readiness request")),
+            };
             if self.principal.thread_ids.is_some()
                 || !self.principal.allows(auth::Permission::Manage)
                 || !self.principal.allows(auth::Permission::Tools)
@@ -1161,7 +1168,7 @@ impl Connection {
                 });
             }
             engine
-                .register_schedule_host(self.tool_host.clone())
+                .register_schedule_host_capabilities(self.tool_host.clone(), prepare_create)
                 .await
                 .map_err(map_error)?;
             return Ok(json!({"ready":true}));
@@ -1426,6 +1433,7 @@ impl Connection {
                     "runtime":engine.runtime_capabilities()});
                 capabilities["features"]["submissionReceiptReconciliation"] = json!(true);
                 capabilities["features"]["taskDirectoryPreparation"] = json!(true);
+                capabilities["features"]["taskPrepareCreate"] = json!(true);
                 capabilities["features"]["threadCreationJournal"] = json!({"version":1,"binding":engine.creation_admission(&self.principal.id).await});
                 capabilities["features"]["sideExecutableV2"] = json!(true);
                 capabilities["features"]["hostUpdateStatus"] = json!(true);

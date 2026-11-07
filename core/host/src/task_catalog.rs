@@ -653,6 +653,10 @@ fn mutation_params(operation: &str, mut params: Value) -> Result<Value> {
     if !operation.starts_with("taskDraft") {
         object.remove("operation");
         object.remove("cwd");
+        // 桌面解析任务归属时附加执行锚点；只有创建任务将它作为 Core 参数。
+        if operation != "taskCreate" {
+            object.remove("threadId");
+        }
     }
     macro_rules! normalized {
         ($ty:ty) => {
@@ -1362,11 +1366,25 @@ mod tests {
 
     #[test]
     fn native_controls_preserve_identity_and_reject_extra_core_parameters() {
-        let input = json!({"sourceId":"host","projectId":"p","logicalProjectId":"logical","executionProjectId":"execution","operation":"taskStopRun","requestId":"11111111-1111-4111-8111-111111111111","taskId":"t","expectedRevision":2,"expectedRunId":"r"});
+        let input = json!({"sourceId":"host","projectId":"p","logicalProjectId":"logical","executionProjectId":"execution","operation":"taskStopRun","threadId":"owner-thread","requestId":"11111111-1111-4111-8111-111111111111","taskId":"t","expectedRevision":2,"expectedRunId":"r"});
         assert_eq!(
             mutation_params("taskStopRun", input.clone()).unwrap(),
             json!({"requestId":"11111111-1111-4111-8111-111111111111","taskId":"t","expectedRevision":2,"expectedRunId":"r"})
         );
+        for operation in [
+            "taskPause",
+            "taskResume",
+            "taskCancel",
+            "taskDelete",
+            "taskResumeRun",
+        ] {
+            let mut routed = input.clone();
+            routed["operation"] = json!(operation);
+            let native = mutation_params(operation, routed).unwrap();
+            assert!(native.get("threadId").is_none());
+            assert_eq!(native["taskId"], "t");
+            assert_eq!(native["expectedRunId"], "r");
+        }
         let mut illegal = input;
         illegal["providerSecret"] = json!("unregistered");
         assert!(mutation_params("taskStopRun", illegal).is_err());

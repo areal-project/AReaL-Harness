@@ -905,8 +905,7 @@ async fn task_workspace<R: AdmissionRpc>(
                                 .get("requestId")
                                 .or_else(|| receipt["operation"].get("requestId"))
                                 .and_then(Value::as_str)
-                                .unwrap_or(&value.task_request_id)
-                                == value.task_request_id
+                                == Some(value.task_request_id.as_str())
                     })
                 });
                 let bound = receipt
@@ -1230,6 +1229,9 @@ pub(crate) async fn prepare<R: AdmissionRpc>(
     params: &Value,
     rpc: &R,
 ) -> Result<()> {
+    if params["intent"] == "create" {
+        return prepare_create(project, peers, params, rpc).await;
+    }
     let task_id = params["taskId"].as_str().filter(|value| identifier(value));
     let run_id = params["runId"].as_str().filter(|value| identifier(value));
     let thread_id = params["threadId"]
@@ -1290,6 +1292,123 @@ pub(crate) async fn prepare<R: AdmissionRpc>(
     Ok(())
 }
 
+async fn prepare_create<R: AdmissionRpc>(
+    project: &AdmissionProject,
+    peers: &[AdmissionProject],
+    params: &Value,
+    rpc: &R,
+) -> Result<()> {
+    let request_id = params["requestId"]
+        .as_str()
+        .filter(|id| identifier(id))
+        .ok_or_else(|| reject("定时创建请求身份无效"))?;
+    let digest = params["requestDigest"]
+        .as_str()
+        .filter(|value| {
+            value.len() == 64
+                && value
+                    .bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        })
+        .ok_or_else(|| reject("定时创建请求摘要无效"))?;
+    let anchor_id = params["threadId"]
+        .as_str()
+        .filter(|id| identifier(id))
+        .ok_or_else(|| reject("定时创建执行锚点无效"))?;
+    let source_id = match params.get("sourceThreadId") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(id)) if identifier(id) => Some(id.clone()),
+        _ => return Err(reject("定时创建来源身份无效")),
+    };
+    if matches!(project.registration.source, crate::ProjectSource::Cli) || source_id.is_some() {
+        let task = Task {
+            id: request_id.into(),
+            owner: "desktop-owner".into(),
+            mode: TaskMode::Scheduled,
+            cancelled: false,
+            thread_id: Some(anchor_id.into()),
+            source_thread_id: source_id,
+            runs: vec![],
+        };
+        let (_, session) = source_workspace(rpc, project, &task).await?;
+        return directory_admission(rpc, project, peers, &session, false).await;
+    }
+    let anchor = read_thread(rpc, project, anchor_id).await?;
+    ensure!(
+        ordinary(&anchor)
+            && anchor.source.as_deref() != Some("nativeTaskAgent")
+            && anchor
+                .desktop
+                .as_ref()
+                .is_none_or(|v| v["configuration"]["readOnly"] != true),
+        reject("定时创建执行锚点不可写或不是普通会话")
+    );
+    let root = project.registration.workspace.canonicalize()?;
+    let cwd = anchor.cwd.canonicalize()?;
+    let projects =
+        read_optional::<Vec<SavedProject>>(&project.metadata_home.join("projects.json"))?
+            .unwrap_or_default();
+    let allocation_id = projects
+        .iter()
+        .find(|saved| saved.id == project.legacy_project_id)
+        .and_then(|saved| saved.projectless_request_id.clone())
+        .ok_or_else(|| reject("原定时任务没有独立目录分配身份"))?;
+    let family = Family {
+        kind: "request".into(),
+        id: request_id.into(),
+    };
+    let token = format!(
+        "schedule:{}",
+        storage::digest(&serde_json::to_vec(&json!([
+            project.legacy_project_id,
+            family.kind,
+            family.id
+        ]))?)
+    );
+    let candidate = Reservation {
+        version: 1,
+        project_id: project.legacy_project_id.clone(),
+        root,
+        cwd,
+        allocation_id,
+        family,
+        token,
+        task_request_id: request_id.into(),
+        execution_request_id: None,
+        anchor_thread_id: Some(anchor_id.into()),
+        task_id: None,
+        extra: BTreeMap::new(),
+    };
+    eligible(project, &candidate).await?;
+    let directory = project.metadata_home.join("schedule-authors");
+    storage::private_dir(&directory)?;
+    let _lock = claim_lock(&directory).await?;
+    let existing = reservation(project)?;
+    let mut chosen = if let Some(value) = existing {
+        ensure!(
+            value.root == candidate.root
+                && value.cwd == candidate.cwd
+                && value.allocation_id == candidate.allocation_id
+                && value.task_request_id == request_id
+                && value.anchor_thread_id.as_deref() == Some(anchor_id)
+                && value
+                    .extra
+                    .get("creationDigest")
+                    .is_none_or(|previous| previous.as_str() == Some(digest)),
+            reject("此目录已保留给不同的定时创建请求")
+        );
+        value
+    } else {
+        candidate
+    };
+    directory_admission(rpc, project, peers, &chosen.token, true).await?;
+    if chosen.extra.get("creationDigest").is_none() {
+        chosen.extra.insert("creationDigest".into(), json!(digest));
+        storage::write(&reservation_file(project)?, &chosen)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1299,18 +1418,21 @@ mod tests {
         task: Value,
         run: Value,
         threads: BTreeMap<String, Value>,
+        empty_catalog: bool,
+        receipt: Value,
     }
     impl AdmissionRpc for Rpc {
         async fn request(&self, _: &str, method: &str, params: Value) -> Result<Value> {
             match method {
                 "areal/task/read" => Ok(self.task.clone()),
                 "areal/task/run/read" => Ok(self.run.clone()),
+                "areal/request/read" => Ok(self.receipt.clone()),
                 "thread/read" => Ok(
                     json!({"thread":self.threads.get(params["threadId"].as_str().unwrap()).context("unknown thread")?}),
                 ),
-                "areal/task/list" => {
-                    Ok(json!({"data":[self.task],"nextCursor":null,"hasMore":false}))
-                }
+                "areal/task/list" => Ok(
+                    json!({"data":if self.empty_catalog {vec![]} else {vec![self.task.clone()]},"nextCursor":null,"hasMore":false}),
+                ),
                 "areal/server/status" => Ok(
                     json!({"acceptingWork":true,"activeTurns":[],"resources":[],"unresolvedTools":[],"activeGoals":[],"compactions":[],"workgroups":[],"activeTasks":0,"pendingQueueItems":0}),
                 ),
@@ -1348,7 +1470,163 @@ mod tests {
         let threads = ["source", "anchor", "coordinator"].into_iter().map(|id| (id.into(), json!({
             "id":id,"sessionId":format!("session-{id}"),"cwd":workspace,"desktop":{"configuration":{"readOnly":false}}
         }))).collect();
-        (project, Rpc { task, run, threads })
+        (
+            project,
+            Rpc {
+                task,
+                run,
+                threads,
+                empty_catalog: false,
+                receipt: json!({"data":[]}),
+            },
+        )
+    }
+    #[tokio::test]
+    async fn create_reserves_original_anchor_and_rejects_other_requests() {
+        let base = tempfile::tempdir().unwrap();
+        let (project, mut rpc) = fixture(base.path());
+        rpc.empty_catalog = true;
+        storage::write(&project.metadata_home.join("projects.json"), &json!([{"id":project.legacy_project_id,"root":project.registration.workspace,"projectless":true,"projectlessRequestId":"allocation"}])).unwrap();
+        storage::write(
+            &project.metadata_home.join("projectless-drafts.json"),
+            &json!({"allocation":{"root":project.registration.workspace}}),
+        )
+        .unwrap();
+        let params = json!({"intent":"create","requestDigest":"a".repeat(64),"requestId":"request","threadId":"anchor"});
+        prepare(&project, &[], &params, &rpc).await.unwrap();
+        let value = reservation(&project).unwrap().unwrap();
+        assert_eq!(value.family.kind, "request");
+        assert_eq!(value.task_request_id, "request");
+        assert_eq!(value.anchor_thread_id.as_deref(), Some("anchor"));
+        assert!(value.task_id.is_none());
+        assert_eq!(value.extra["creationDigest"], "a".repeat(64));
+        prepare(&project, &[], &params, &rpc).await.unwrap();
+        let mut changed = params.clone();
+        changed["requestDigest"] = json!("b".repeat(64));
+        assert!(prepare(&project, &[], &changed, &rpc).await.is_err());
+        assert!(
+            prepare(
+                &project,
+                &[],
+                &json!({"intent":"create","requestDigest":"a".repeat(64),"requestId":"other","threadId":"anchor"}),
+                &rpc
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            prepare(
+                &project,
+                &[],
+                &json!({"intent":"create","requestDigest":"a".repeat(64),"requestId":"request","threadId":"coordinator"}),
+                &rpc
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(
+            reservation(&project).unwrap().unwrap().task_request_id,
+            "request"
+        );
+    }
+    #[tokio::test]
+    async fn created_reservation_binds_only_the_original_core_receipt() {
+        let base = tempfile::tempdir().unwrap();
+        let (project, mut rpc) = fixture(base.path());
+        let mut value = exclusive(&project, &mut rpc);
+        value.task_id = None;
+        storage::write(&reservation_file(&project).unwrap(), &value).unwrap();
+        author(&project, &value.token);
+        assert!(prepare(&project, &[], &params(), &rpc).await.is_err());
+        assert!(reservation(&project).unwrap().unwrap().task_id.is_none());
+        rpc.receipt = json!({"data":[{"method":"areal/task/create","result":{"id":"task"}}]});
+        assert!(prepare(&project, &[], &params(), &rpc).await.is_err());
+        assert!(reservation(&project).unwrap().unwrap().task_id.is_none());
+        rpc.receipt = json!({"data":[{"method":"areal/task/create","requestId":"other","result":{"id":"task"}}]});
+        assert!(prepare(&project, &[], &params(), &rpc).await.is_err());
+        assert!(reservation(&project).unwrap().unwrap().task_id.is_none());
+        rpc.receipt = json!({"data":[{"method":"areal/task/create","requestId":"request","result":{"id":"task"}}]});
+        prepare(&project, &[], &params(), &rpc).await.unwrap();
+        assert_eq!(
+            reservation(&project).unwrap().unwrap().task_id.as_deref(),
+            Some("task")
+        );
+    }
+    #[tokio::test]
+    async fn create_preserves_matching_legacy_draft_reservation() {
+        let base = tempfile::tempdir().unwrap();
+        let (project, mut rpc) = fixture(base.path());
+        let mut value = exclusive(&project, &mut rpc);
+        value.family = Family {
+            kind: "draft".into(),
+            id: "draft".into(),
+        };
+        value.token = format!(
+            "schedule:{}",
+            storage::digest(
+                &serde_json::to_vec(&json!([project.legacy_project_id, "draft", "draft"])).unwrap()
+            )
+        );
+        value.execution_request_id = Some("original-execution".into());
+        storage::write(&reservation_file(&project).unwrap(), &value).unwrap();
+        author(&project, &value.token);
+        rpc.empty_catalog = true;
+        prepare(
+            &project,
+            &[],
+            &json!({"intent":"create","requestDigest":"a".repeat(64),"requestId":"request","threadId":"anchor"}),
+            &rpc,
+        )
+        .await
+        .unwrap();
+        let actual = reservation(&project).unwrap().unwrap();
+        assert_eq!(actual.family.kind, "draft");
+        assert_eq!(actual.token, value.token);
+        assert_eq!(actual.extra["creationDigest"], "a".repeat(64));
+        assert_eq!(actual.task_id.as_deref(), Some("task"));
+        assert_eq!(
+            actual.execution_request_id.as_deref(),
+            Some("original-execution")
+        );
+    }
+    #[tokio::test]
+    async fn create_rejects_another_project_on_the_same_directory() {
+        let base = tempfile::tempdir().unwrap();
+        let (project, mut rpc) = fixture(base.path());
+        rpc.empty_catalog = true;
+        let mut other = project.clone();
+        other.registration.project_id = "other-host-project".into();
+        other.legacy_project_id = "b".repeat(24);
+        other.registration.source = ProjectSource::Gui {
+            profile: base.path().join("profile"),
+            legacy_project_id: other.legacy_project_id.clone(),
+        };
+        storage::write(&project.metadata_home.join("projects.json"), &json!([
+            {"id":project.legacy_project_id,"root":project.registration.workspace,"projectless":true,"projectlessRequestId":"allocation"},
+            {"id":other.legacy_project_id,"root":other.registration.workspace,"projectless":true,"projectlessRequestId":"other-allocation"}
+        ])).unwrap();
+        storage::write(&project.metadata_home.join("projectless-drafts.json"), &json!({
+            "allocation":{"root":project.registration.workspace},"other-allocation":{"root":other.registration.workspace}
+        })).unwrap();
+        prepare(
+            &project,
+            &[other.clone()],
+            &json!({"intent":"create","requestDigest":"a".repeat(64),"requestId":"first","threadId":"anchor"}),
+            &rpc,
+        )
+        .await
+        .unwrap();
+        assert!(
+            prepare(
+                &other,
+                &[project.clone()],
+                &json!({"intent":"create","requestDigest":"a".repeat(64),"requestId":"second","threadId":"anchor"}),
+                &rpc
+            )
+            .await
+            .is_err()
+        );
+        assert!(reservation(&other).unwrap().is_none());
     }
     #[tokio::test]
     async fn cli_anchor_only_schedule_checks_real_workspace_and_thread_identity() {

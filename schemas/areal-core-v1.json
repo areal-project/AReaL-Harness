@@ -27021,7 +27021,12 @@
     },
     "areal/task/host/ready": {
       "additionalProperties": false,
-      "properties": {},
+      "properties": {
+        "prepareCreate": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
       "type": "object"
     },
     "areal/task/list": {
@@ -158630,36 +158635,68 @@
       "type": "object"
     },
     "areal/task/prepare": {
-      "additionalProperties": false,
-      "properties": {
-        "intent": {
-          "enum": [
-            "start",
-            "resume"
-          ]
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "enum": [
+                "start",
+                "resume"
+              ]
+            },
+            "runId": {
+              "type": "string"
+            },
+            "scheduledAt": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "taskId",
+            "runId",
+            "threadId",
+            "scheduledAt",
+            "intent"
+          ],
+          "type": "object"
         },
-        "runId": {
-          "type": "string"
-        },
-        "scheduledAt": {
-          "minimum": 0,
-          "type": "integer"
-        },
-        "taskId": {
-          "type": "string"
-        },
-        "threadId": {
-          "type": "string"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "const": "create"
+            },
+            "requestDigest": {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            "requestId": {
+              "type": "string"
+            },
+            "sourceThreadId": {
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent",
+            "requestId",
+            "requestDigest",
+            "threadId"
+          ],
+          "type": "object"
         }
-      },
-      "required": [
-        "taskId",
-        "runId",
-        "threadId",
-        "scheduledAt",
-        "intent"
-      ],
-      "type": "object"
+      ]
     },
     "item/tool/call": {
       "additionalProperties": false,

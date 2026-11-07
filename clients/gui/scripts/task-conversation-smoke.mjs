@@ -3326,13 +3326,15 @@ try {
       passed = true;
     } else {
       await send("每天上午九点，稍后安排。");
+      const expectedObjective = "检查项目提交和 PR SCHEDULE_FIXTURE_COMPLETE";
       const created = await until(
         async () =>
           (await call("tasks", { operation: "list" })).data.find(
             (t) =>
               t.id === creation.seed.id &&
               t.revision > creation.seed.revision &&
-              t.objective.includes("SCHEDULE_FIXTURE_COMPLETE"),
+              t.objectiveTruncated === false &&
+              t.objectivePreview === expectedObjective,
           ),
         "Agent updates the seeded legacy task",
       );
@@ -3342,6 +3344,9 @@ try {
         "existing fixture cannot satisfy the schedule-update wait",
       );
       const taskId = created.id;
+      const savedTask = await task(taskId);
+      assert.equal(savedTask.id, taskId);
+      assert.equal(savedTask.objective, expectedObjective);
       let resources = page.getByRole("button", { name: "任务资源", exact: true });
       assert.equal(
         await page.getByLabel("任务资源面板").isVisible(),

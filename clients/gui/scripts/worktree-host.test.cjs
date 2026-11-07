@@ -764,6 +764,10 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
     generation: "prepared-generation",
     configFingerprint: "prepared-deployment",
   };
+  let bindState;
+  let bindThread = true;
+  let bindRequestId = requestId;
+  let opened = 0;
   const backend = {
     home,
     rustDomains: ["worktree-rust"],
@@ -799,7 +803,10 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
       assert.deepEqual(options, { preparedCore: true });
       return { current: () => true, params: { cwd: execution.root } };
     },
-    openThread: async (_project, id) => assert.equal(id, "thread"),
+    openThread: async (_project, id) => {
+      opened++;
+      assert.equal(id, "thread");
+    },
     hostCall: async (method, params) => {
       if (method === "worktree.thread.prepare")
         return {
@@ -815,7 +822,11 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
       assert.equal(params.executionProjectId, "canonical");
       assert.equal(params.coreInstanceId, service.serviceId);
       assert.equal(params.coreGeneration, service.generation);
-      return { threadId: "thread", requestId };
+      return {
+        ...(bindThread ? { threadId: "thread" } : {}),
+        requestId: bindRequestId,
+        ...(bindState ? { state: bindState } : {}),
+      };
     },
   };
   const owner = new CoreWorktrees(backend);
@@ -823,6 +834,33 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
     threadId: "thread",
     requestId,
   });
+  for (const state of ["failed", "cancelled"]) {
+    bindState = state;
+    await assert.rejects(
+      owner.createThread(source, { requestId }),
+      (error) => error.requestId === requestId && error.submissionUnknown === false,
+    );
+    assert.equal(opened, 1, `${state} must not open the thread`);
+  }
+  bindState = "failed";
+  bindThread = false;
+  await assert.rejects(
+    owner.createThread(source, { requestId }),
+    (error) => error.requestId === requestId && error.submissionUnknown === false,
+  );
+  bindRequestId = randomUUID();
+  await assert.rejects(
+    owner.createThread(source, { requestId }),
+    (error) => error.submissionUnknown === true,
+  );
+  bindThread = true;
+  bindRequestId = requestId;
+  bindState = "unknown";
+  await assert.rejects(
+    owner.createThread(source, { requestId }),
+    (error) => error.requestId === requestId && error.submissionUnknown === true,
+  );
+  assert.equal(opened, 1, "unknown must not open the thread");
   backend.host.resolve = () => ({ projectId: "foreign", sourceId: "source" });
   await assert.rejects(owner.createThread(source, { requestId }), /执行归属已变化/);
 });

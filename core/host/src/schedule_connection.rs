@@ -947,7 +947,7 @@ async fn callback(
         .context("schedule project missing")?;
     schedule_admission::prepare(project, &peers, params, &Admission { host, connection }).await?;
     connection.require_current(host)?;
-    if params["intent"] == "resume" {
+    if params["intent"] == "resume" || params["intent"] == "create" {
         return Ok(json!({}));
     }
     let inputs = inputs(host, &connection.project_id)?;
@@ -1330,7 +1330,16 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
             std::fs::remove_file(refresh_path(&host, &id))?;
         }
         session.require_current(&host)?;
-        session.request("areal/task/host/ready", json!({})).await?;
+        let capabilities = session.request("areal/capabilities", json!({})).await?;
+        session.require_current(&host)?;
+        let ready = if matches!(&registration.source, crate::ProjectSource::Gui { .. })
+            && capabilities["features"]["taskPrepareCreate"] == true
+        {
+            json!({"prepareCreate":true})
+        } else {
+            json!({})
+        };
+        session.request("areal/task/host/ready", ready).await?;
         session.require_current(&host)?;
         session.ready.set(true);
         host.schedules.preparation_result(&id, Ok(()))?;

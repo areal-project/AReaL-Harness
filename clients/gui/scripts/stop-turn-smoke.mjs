@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
@@ -134,6 +134,64 @@ let application,
   failure,
   cleanup;
 const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
+async function acceptedCompletionReads(projectId, threadId, completionId) {
+  const imports = join(env.AREAL_HARNESS_SERVICE_HOME, "host/imports");
+  const migrations = await readdir(imports).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const sources = (
+    await Promise.all(
+      migrations.map(async (name) => {
+        const record = await readFile(join(imports, name, "record.json"), "utf8")
+          .then(JSON.parse)
+          .catch((error) => {
+            if (error.code === "ENOENT") return null;
+            throw error;
+          });
+        return record?.phase === "committed" && record.source?.profile === env.AREAL_GUI_USER_DATA
+          ? record.sourceId
+          : null;
+      }),
+    )
+  ).filter(Boolean);
+  assert.equal(new Set(sources).size, 1, "Fixture profile has one committed Host source");
+  const params = {
+    completionId,
+    operation: "readThread",
+    projectId,
+    read: true,
+    sourceId: sources[0],
+    threadId,
+  };
+  const digest = createHash("sha256")
+    .update(JSON.stringify(["library.command", params]))
+    .digest("hex");
+  const directory = join(env.AREAL_HARNESS_SERVICE_HOME, "host/journals/records");
+  const records = await readdir(directory).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const outcomes = await Promise.all(
+    records.map(async (name) => {
+      const record = JSON.parse(await readFile(join(directory, name), "utf8"));
+      return Object.values(record.snapshot?.outcomes ?? {});
+    }),
+  );
+  const key = `${projectId}:${threadId}`;
+  return outcomes.flat().filter((outcome) => {
+    const item = outcome.receipt?.threads?.[key];
+    return (
+      outcome.method === "library.command" &&
+      outcome.admissionState === "accepted" &&
+      outcome.submissionUnknown === false &&
+      /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(outcome.commandId) &&
+      outcome.semanticDigest === digest &&
+      item?.completionId === completionId &&
+      item.unread === false
+    );
+  });
+}
 const project = (value) => value.projects.find((item) => item.root === workspace);
 const current = (value) => {
   return project(value)?.state?.threads[primaryThreadId];
@@ -456,26 +514,44 @@ try {
     /此任务的原后台操作尚未结算/,
     "Waiting to send must not surface a lifecycle rejection",
   );
+  if (rust)
+    assert.equal(
+      (await acceptedCompletionReads(projectId, stoppedThread.id, turnId)).length,
+      0,
+      "No completion read is accepted before the original stop settles",
+    );
   await rm(receiptGate);
   await until(
     async () =>
-      (await readFile(commandLog, "utf8"))
-        .split("\n")
-        .filter(Boolean)
-        .map(JSON.parse)
-        .some(
-          (item) =>
-            item.name === "library" &&
-            item.request.operation === "readThread" &&
-            item.request.completionId &&
-            item.ok,
-        ),
+      rust
+        ? (await acceptedCompletionReads(projectId, stoppedThread.id, turnId)).length > 0 &&
+          (await snapshot()).library.threads[`${projectId}:${stoppedThread.id}`]?.unread === false
+        : (await readFile(commandLog, "utf8"))
+            .split("\n")
+            .filter(Boolean)
+            .map(JSON.parse)
+            .some(
+              (item) =>
+                item.name === "library" &&
+                item.request.operation === "readThread" &&
+                item.request.completionId &&
+                item.ok,
+            ),
     "Automatic read after settlement",
   );
   assert.equal(
     (await snapshot()).library.threads[`${projectId}:${stoppedThread.id}`].unread,
     false,
     "Settled completion becomes read",
+  );
+  assert.ok(
+    (await snapshot()).lifecycle.operations.some(
+      (operation) =>
+        operation.kind === "interruptTurn" &&
+        operation.turnId === turnId &&
+        operation.phase === "completed",
+    ),
+    "Original interruption has settled before the completion read",
   );
   const commands = (await readFile(commandLog, "utf8")).split("\n").filter(Boolean).map(JSON.parse);
   const stopCommands = commands.filter((item) => item.name === "stop");

@@ -585,8 +585,17 @@ class CoreWorktrees {
         coreGeneration: execution.service?.generation,
         params: { ...prepared.params, requestId: request.requestId },
       });
-      if (!modelRecord(result) || typeof result.threadId !== "string")
+      if (!modelRecord(result) || result.requestId !== request.requestId)
         throw unavailable("Host 工作树会话回执尚未确认");
+      if (result.state === "failed" || result.state === "cancelled")
+        throw Object.assign(
+          new Error(typeof result.message === "string" ? result.message : "原工作树创建失败，请使用新请求"),
+          { requestId: request.requestId, submissionUnknown: false },
+        );
+      if (typeof result.threadId !== "string" || (result.state !== undefined && result.state !== "ready"))
+        throw Object.assign(unavailable("Host 工作树创建结果尚未确认"), {
+          requestId: request.requestId,
+        });
       await this.reloadNative();
       await this.backend.openThread(execution, result.threadId);
       return { threadId: result.threadId, requestId: request.requestId };

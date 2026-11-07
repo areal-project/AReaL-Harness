@@ -63,6 +63,11 @@ struct DesktopScheduleTools {
     definitions: Vec<areal_protocol::ToolDefinition>,
 }
 
+struct ScheduleHost {
+    host: Arc<dyn tools::DynamicToolHost>,
+    prepare_create: bool,
+}
+
 pub(crate) struct Tasks {
     state: Mutex<Snapshot>,
     pub(crate) directory: directory::OwnerDirectory,
@@ -72,7 +77,7 @@ pub(crate) struct Tasks {
     #[cfg(feature = "test-support")]
     clock: std::sync::atomic::AtomicI64,
     frozen: AtomicBool,
-    hosts: Mutex<BTreeMap<String, Arc<dyn tools::DynamicToolHost>>>,
+    hosts: Mutex<BTreeMap<String, ScheduleHost>>,
     desktop_tools: Mutex<BTreeMap<String, DesktopScheduleTools>>,
     dispatching: Arc<std::sync::Mutex<HashSet<String>>>,
 }
@@ -497,12 +502,24 @@ impl Engine {
                 engine.resolve_config(None, Some(model.clone()), request.parameters.clone().unwrap_or_default(), 1)?;
             }
             engine.validate_schedule_source(&owner, &request).await?;
+            let captured_now = engine.schedule_now();
+            let schedule_v2 = request.schedule_v2.clone().map(|input| schedule::resolve(input, captured_now)).transpose()?;
+            let next_run_at = if let Some(value) = &schedule_v2 { Some(schedule::Plan::versioned(value)?.first(captured_now, false)?) } else { request.schedule.as_ref().map(|s|s.at) };
+            {
+                let state = engine.task_modes.state.lock().await;
+                if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
+                if state.tasks.len() >= MAX_TASKS { return Err(Error::Exhausted("task capacity reached".into())); }
+            }
+            if request.mode == TaskMode::Scheduled {
+                if let Some(host) = engine.schedule_create_host(&owner).await {
+                    let mut prepare = json!({"intent":"create", "requestId":request.request_id, "requestDigest":hash, "threadId":request.thread_id});
+                    if let Some(source) = &request.source_thread_id { prepare["sourceThreadId"] = json!(source); }
+                    host.prepare_schedule(prepare, engine.shutdown.child_token()).await.map_err(invalid)?;
+                    if !engine.host_current(&host).await { return Err(Error::Closed); }
+                }
+            }
             let mut state = engine.task_modes.state.lock().await;
             if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
-            let captured_now = engine.schedule_now();
-            let schedule_v2 = request.schedule_v2.map(|input| schedule::resolve(input, captured_now)).transpose()?;
-            let next_run_at = if let Some(value) = &schedule_v2 { Some(schedule::Plan::versioned(value)?.first(captured_now, false)?) } else { request.schedule.as_ref().map(|s|s.at) };
-            if state.tasks.len() >= MAX_TASKS { return Err(Error::Exhausted("task capacity reached".into())); }
             let mut candidate = state.clone();
             let task = Task {
                 source_thread_id: request.source_thread_id, deleted_at: None,
