@@ -32,6 +32,9 @@ const SHOTS = [
   "window.panel-tabs",
   "window.panel-add-menu",
   "window.panel-full",
+  "window.review",
+  "window.review-scope-menu",
+  "window.review-files",
 ].flatMap((state) => ["light", "dark"].map((theme) => ({ state, theme })));
 // 本仓库防回归用 0.001；交接演练首轮另按 --threshold 0.01 计分。
 const THRESHOLD = process.argv.includes("--threshold")

@@ -63,7 +63,6 @@ export function SortableSidePaneTabTrigger({
   closeTabMenuLabel,
   closeOtherTabsLabel,
   closeAllTabsLabel,
-  diffBadgeLabel,
   isActive,
   onCloseTab,
   onCloseOtherTabs,

@@ -20,11 +20,7 @@
         {
           "status": "completed",
           "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
-          "process": [
-            "读取 src/math.ts",
-            "修改 src/math.ts",
-            "运行测试"
-          ],
+          "process": ["读取 src/math.ts", "修改 src/math.ts", "运行测试"],
           "answer": "已在 `src/math.ts` 加了 `clamp(value, min, max)`，并补了三条边界测试，全部通过。"
         }
       ]
@@ -35,9 +31,7 @@
         {
           "status": "running",
           "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
-          "process": [
-            "读取 src/math.ts"
-          ]
+          "process": ["读取 src/math.ts"]
         }
       ]
     },
@@ -47,9 +41,7 @@
         {
           "status": "stopped",
           "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
-          "process": [
-            "读取 src/math.ts"
-          ]
+          "process": ["读取 src/math.ts"]
         }
       ]
     },
@@ -59,10 +51,7 @@
         {
           "status": "running",
           "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
-          "process": [
-            "读取 src/math.ts",
-            "修改 src/math.ts"
-          ]
+          "process": ["读取 src/math.ts", "修改 src/math.ts"]
         }
       ],
       "decision": {
@@ -79,18 +68,13 @@
         {
           "status": "running",
           "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
-          "process": [
-            "读取 src/math.ts"
-          ]
+          "process": ["读取 src/math.ts"]
         }
       ],
       "decision": {
         "kind": "question",
         "title": "clamp 放在哪个文件？",
-        "options": [
-          "放进 src/math.ts",
-          "新建 src/clamp.ts"
-        ]
+        "options": ["放进 src/math.ts", "新建 src/clamp.ts"]
       }
     }
   },
@@ -122,9 +106,7 @@
       "screen": "thread",
       "conversation": "thread-running",
       "draft": "",
-      "queue": [
-        "顺便把 README 里的用法也更新一下"
-      ]
+      "queue": ["顺便把 README 里的用法也更新一下"]
     },
     "thread.stopped": {
       "screen": "thread",
@@ -150,9 +132,7 @@
       "screen": "window",
       "conversation": "thread-idle",
       "draft": "",
-      "collapsed": [
-        "docs-project"
-      ]
+      "collapsed": ["docs-project"]
     },
     "window.search": {
       "screen": "window",
@@ -230,10 +210,7 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": [
-          "改动",
-          "文件"
-        ],
+        "tabs": ["改动", "文件"],
         "active": "文件"
       }
     },
@@ -242,10 +219,7 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": [
-          "改动",
-          "文件"
-        ],
+        "tabs": ["改动", "文件"],
         "active": "改动",
         "view": "panel"
       }
@@ -255,13 +229,39 @@
       "conversation": "thread-idle",
       "draft": "",
       "panel": {
-        "tabs": [
-          "改动",
-          "文件"
-        ],
+        "tabs": ["改动", "文件"],
         "active": "文件"
       },
       "overlay": "panel-add-menu"
+    },
+    "window.review": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动"],
+        "active": "改动"
+      }
+    },
+    "window.review-scope-menu": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动"],
+        "active": "改动"
+      },
+      "overlay": "review-scope-menu"
+    },
+    "window.review-files": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动"],
+        "active": "改动"
+      },
+      "overlay": "review-files"
     }
   },
   "agent": {
@@ -444,10 +444,7 @@
               "label": "语言",
               "description": "选择设置界面的显示语言",
               "kind": "segmented",
-              "options": [
-                "简体中文",
-                "English"
-              ],
+              "options": ["简体中文", "English"],
               "value": "简体中文"
             }
           ]
@@ -488,10 +485,7 @@
               "label": "默认终端位置",
               "description": "新终端标签页的默认位置",
               "kind": "segmented",
-              "options": [
-                "底部",
-                "右侧"
-              ],
+              "options": ["底部", "右侧"],
               "value": "右侧"
             }
           ]
@@ -579,20 +573,14 @@
               "label": "发送快捷键",
               "description": "Shift+Enter 始终换行。",
               "kind": "segmented",
-              "options": [
-                "Enter 发送",
-                "⌘/Ctrl+Enter 发送"
-              ],
+              "options": ["Enter 发送", "⌘/Ctrl+Enter 发送"],
               "value": "Enter 发送"
             },
             {
               "label": "交互行为",
               "description": "加入队列：等本轮结束再发送；调整方向：中断当前输出并继续。",
               "kind": "segmented",
-              "options": [
-                "加入队列",
-                "调整方向"
-              ],
+              "options": ["加入队列", "调整方向"],
               "value": "加入队列"
             }
           ]
@@ -628,10 +616,7 @@
               "label": "通知声音",
               "description": "任务完成、权限请求和提问时播放的声音",
               "kind": "segmented",
-              "options": [
-                "默认",
-                "无"
-              ],
+              "options": ["默认", "无"],
               "value": "默认"
             }
           ]
@@ -710,11 +695,24 @@
       ]
     },
     "select-options": {
-      "界面主题": [
-        "跟随系统",
-        "浅色",
-        "深色"
-      ]
+      "界面主题": ["跟随系统", "浅色", "深色"]
     }
+  },
+  "review": {
+    "turn": "thread-idle",
+    "files": [
+      {
+        "path": "src/math.ts",
+        "status": "modified",
+        "before": "export function sum(values: number[]): number {\n  return values.reduce((total, value) => total + value, 0);\n}\n",
+        "after": "export function sum(values: number[]): number {\n  return values.reduce((total, value) => total + value, 0);\n}\n\nexport function clamp(value: number, min: number, max: number): number {\n  if (min > max) throw new RangeError(\"min must not exceed max\");\n  return Math.min(Math.max(value, min), max);\n}\n"
+      },
+      {
+        "path": "src/math.test.ts",
+        "status": "added",
+        "before": "",
+        "after": "import { describe, expect, it } from \"vitest\";\nimport { clamp } from \"./math\";\n\ndescribe(\"clamp\", () => {\n  it(\"keeps values inside the range\", () => {\n    expect(clamp(5, 0, 10)).toBe(5);\n  });\n  it(\"raises values below min\", () => {\n    expect(clamp(-3, 0, 10)).toBe(0);\n  });\n  it(\"lowers values above max\", () => {\n    expect(clamp(42, 0, 10)).toBe(10);\n  });\n});\n"
+      }
+    ]
   }
 }

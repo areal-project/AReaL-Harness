@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import fixture from "../../../../../design/spec/fixtures/send-run-stop.json";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { SidePane } from "../app-shell/SidePane.js";
+import { GitPane } from "../GitPane.js";
 import { WorkSurface, WorkbenchShell, WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { ProjectFolderIcon, SidePanelIcon } from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -101,6 +102,7 @@ export function SpecNavigation({
   const [workspaceView, setWorkspaceView] = useState<"split" | "panel" | "conversation">(
     initialPanel?.view ?? "split",
   );
+  const [reviewFiles, setReviewFiles] = useState(false);
   const [lastPanel, setLastPanel] = useState(initialPanel?.active ?? "");
   const selectPanel = (name: string) => {
     setPanel(name);
@@ -312,7 +314,21 @@ export function SpecNavigation({
               onSelect={selectPanel}
               onChange={setPanelTabs}
               onHide={hidePanel}
-              render={() => null}
+              render={(name) =>
+                name === "改动" ? (
+                  <GitPane
+                    projectId="spec-project"
+                    root={`/${fixture.project.name}`}
+                    threadId="spec-thread"
+                    turnId="turn-0"
+                    action={action}
+                    onReveal={() => {}}
+                    onFile={() => {}}
+                    filesOpen={reviewFiles}
+                    onToggleFiles={() => setReviewFiles((open) => !open)}
+                  />
+                ) : null
+              }
             />
           )}
         </main>

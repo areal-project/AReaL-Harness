@@ -144,7 +144,9 @@ export function ReviewFileTree({
               aria-expanded={node.file ? undefined : !collapsed.includes(node.path)}
               title={node.path}
               className="review-file-tree-row"
-              style={{ paddingLeft: 3 + ancestors.length * 12.5 }}
+              style={{
+                paddingLeft: `calc(var(--spacing-inline) / 2 + var(--icon-size-control) * 3 / 4 * ${ancestors.length})`,
+              }}
               onClick={() => (node.file ? onSelect(node.path) : onToggle(node.path))}
               onKeyDown={(event) => {
                 if (
@@ -163,7 +165,9 @@ export function ReviewFileTree({
                   aria-hidden
                   className="review-tree-guide"
                   data-active-ancestor={Boolean(activePath?.startsWith(path + "/"))}
-                  style={{ left: 3 + 7.5 - 0.25 + index * 12.5 }}
+                  style={{
+                    left: `calc(var(--spacing-inline) / 2 + var(--icon-size-control) / 2 - var(--border-width-default) / 2 + var(--icon-size-control) * 3 / 4 * ${index})`,
+                  }}
                 />
               ))}
               {node.file ? (

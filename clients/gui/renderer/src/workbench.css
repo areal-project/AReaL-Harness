@@ -2907,9 +2907,9 @@ button[aria-label="停止"] {
   color: var(--color-foreground-subtle);
 }
 .review-toolbar {
-  height: 48px;
-  padding: 8px;
-  gap: 8px;
+  height: calc(var(--spacing-control-lg) + var(--spacing-field));
+  padding: var(--spacing-inline);
+  gap: var(--spacing-inline);
   border-bottom: 0;
 }
 .review-toolbar-source,
@@ -2917,17 +2917,17 @@ button[aria-label="停止"] {
   display: flex;
   min-width: 0;
   align-items: center;
-  height: 32px;
-  padding: 2px;
-  gap: 2px;
+  height: var(--spacing-control-lg);
+  padding: calc(var(--spacing-inline) / 4);
+  gap: calc(var(--spacing-inline) / 4);
   border-radius: var(--radius-pill);
   background: var(--color-viewer-control);
 }
 .review-totals {
   display: flex;
   flex-shrink: 0;
-  gap: 4px;
-  margin: 0 4px 0 0;
+  gap: calc(var(--spacing-inline) / 2);
+  margin: 0 calc(var(--spacing-inline) / 2) 0 0;
   font-size: var(--text-ui-base);
   line-height: 1;
   letter-spacing: -0.025em;
@@ -2937,7 +2937,7 @@ button[aria-label="停止"] {
 .review-toolbar-actions {
   flex-shrink: 0;
   margin-left: auto;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
 }
 /* Historical review separates its version choice from authoritative totals;
    the live Git overview retains its observed combined control. */
@@ -2947,11 +2947,11 @@ button[aria-label="停止"] {
   backdrop-filter: none;
 }
 .workspace-review[data-review-source="history"] .review-scope-trigger {
-  height: 32px;
+  height: var(--spacing-control-lg);
   background: var(--color-viewer-control);
 }
 .workspace-review[data-review-source="history"] .review-totals {
-  margin-left: 4px;
+  margin-left: calc(var(--spacing-inline) / 2);
 }
 .review-workspace-context {
   flex: 0 1 auto;
@@ -2989,8 +2989,8 @@ button[aria-label="停止"] {
   line-height: 20px;
 }
 .review-toolbar-actions > button {
-  width: 28px;
-  height: 28px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   color: var(--color-foreground-subtle);
 }
 .browser-navigation-controls {
@@ -3030,18 +3030,18 @@ button[aria-label="停止"] {
   padding-inline: 6px;
 }
 .workspace-review .review-scope-trigger {
-  height: 28px;
+  height: var(--spacing-control);
   flex-shrink: 1;
-  padding: 0 6px 0 12px;
-  gap: 4px;
+  padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 calc(var(--spacing-inline) * 3 / 2);
+  gap: calc(var(--spacing-inline) / 2);
   border: 0;
   border-radius: var(--radius-pill);
   font-size: var(--text-ui-caption);
-  line-height: 20px;
+  line-height: var(--line-height-ui);
 }
 .workspace-review .review-scope-trigger svg {
-  width: 12px;
-  height: 12px;
+  width: calc(var(--icon-size-control) * 3 / 4);
+  height: calc(var(--icon-size-control) * 3 / 4);
   color: inherit;
 }
 .review-toolbar-actions > button {
@@ -3462,55 +3462,56 @@ button[aria-label="停止"] {
 }
 
 .review-resource-layout {
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .review-tree-pane {
   position: relative;
 }
 .review-change-scroll {
-  padding: 0 0 12px;
+  padding: 0 0 calc(var(--spacing-inline) * 3 / 2);
 }
 .review-file-tree {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding: 0 4px;
+  padding: 0 calc(var(--spacing-inline) / 2);
 }
 .review-file-tree-filter {
   display: flex;
   flex-shrink: 0;
-  padding: 4px 4px 1px;
+  padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) / 2)
+    var(--border-width-default);
 }
 .review-file-filter-field {
   display: flex;
   align-items: center;
   flex: 1;
   min-width: 0;
-  height: 28px;
-  gap: 4px;
-  border: 1px solid color-mix(in srgb, var(--color-foreground) 8.2%, transparent);
+  height: var(--spacing-control);
+  gap: calc(var(--spacing-inline) / 2);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-navigation);
-  background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  background: var(--color-viewer-control);
 }
 .review-file-filter-icon {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-left: var(--spacing-inline);
   color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
   pointer-events: none;
 }
 .review-file-filter-input {
   flex: 1;
   min-width: 0;
-  height: 18px;
-  padding: 0 6px 0 0;
+  height: var(--line-height-ui-sm);
+  padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   font-size: var(--text-ui-base);
-  line-height: 18px;
+  line-height: var(--line-height-ui-sm);
   box-shadow: none;
 }
 .review-file-filter-input::placeholder {
@@ -3520,16 +3521,16 @@ button[aria-label="停止"] {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 5px;
-  width: calc(100% - 8px);
-  height: 29px;
-  margin: 0 4px;
-  padding: 0 3px;
+  gap: calc(var(--spacing-inline) / 2);
+  width: calc(100% - var(--spacing-inline));
+  height: var(--navigation-row-height);
+  margin: 0 calc(var(--spacing-inline) / 2);
+  padding: 0 calc(var(--spacing-inline) / 2);
   border: 0;
   border-radius: var(--radius-compact);
   font-size: var(--text-ui-caption);
   font-weight: 400;
-  line-height: 29px;
+  line-height: var(--line-height-ui-sm);
   color: var(--color-foreground);
 }
 .review-tree-guide {
@@ -3537,7 +3538,8 @@ button[aria-label="停止"] {
   top: 0;
   bottom: 0;
   width: 0;
-  border-left: 1px solid color-mix(in lab, var(--color-review-tree-guide-ink) 25%, transparent);
+  border-left: var(--border-width-default) solid
+    color-mix(in lab, var(--color-review-tree-guide-ink) 25%, transparent);
   opacity: 0;
   transition: opacity var(--motion-normal) var(--ease-standard);
   pointer-events: none;
@@ -3555,30 +3557,31 @@ button[aria-label="停止"] {
   background: color-mix(in srgb, var(--color-foreground) 5%, transparent);
 }
 .review-file-tree-row:focus-visible {
-  outline: 1px solid var(--color-input-border-focused);
-  outline-offset: -1px;
+  outline: var(--border-width-default) solid var(--color-input-border-focused);
+  outline-offset: calc(var(--border-width-default) * -1);
 }
 .review-file-tree-stats {
   display: flex;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
 }
 .review-file-header {
-  padding: 8px 8px 8px 12px;
-  margin-bottom: 1px;
-  border-bottom: 1px solid var(--color-border);
+  padding: var(--spacing-inline) var(--spacing-inline) var(--spacing-inline)
+    calc(var(--spacing-inline) * 3 / 2);
+  margin-bottom: var(--border-width-default);
+  border-bottom: var(--border-width-default) solid var(--color-border);
   font-size: var(--text-ui-base);
   line-height: 1.5;
 }
 .review-file-identity {
   border: 0;
   background: transparent;
-  padding: 0 0 0 4px;
+  padding: 0 0 0 calc(var(--spacing-inline) / 2);
   min-height: 1.5em;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .review-file-path {
   flex: 1;
@@ -3670,6 +3673,20 @@ button[aria-label="停止"] {
 .review-file-header:has(:focus-visible) .review-file-actions {
   opacity: 1;
 }
+/* A narrow diff column lays the hover actions over the path end instead of reserving room. */
+.review-change-scroll {
+  container-type: inline-size;
+}
+@container (max-width: 360px) {
+  .review-file-controls {
+    position: relative;
+  }
+  .review-file-actions {
+    position: absolute;
+    right: 100%;
+    background: var(--color-background);
+  }
+}
 .review-file-disclosure[aria-expanded="true"] svg {
   transform: rotate(90deg);
 }
@@ -3678,8 +3695,8 @@ button[aria-label="停止"] {
 }
 .review-file-controls [data-slot="button"],
 .review-file-controls [data-slot="dropdown-menu-trigger"] {
-  width: 20px;
-  height: 20px;
+  width: var(--spacing-control-xs);
+  height: var(--spacing-control-xs);
   padding: 0;
   border-radius: var(--radius-pill);
   background: transparent;

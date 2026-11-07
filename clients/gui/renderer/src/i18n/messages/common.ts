@@ -149,6 +149,14 @@ export const commonMessages = {
   "common.review.branch": { "zh-CN": "分支比较", en: "Branch comparison" },
   "common.review.task": { "zh-CN": "任务工作区更改", en: "Task workspace changes" },
   "common.review.lastTurn": { "zh-CN": "上一轮", en: "Last turn" },
+  "common.review.unmodifiedLines": {
+    "zh-CN": "{count} 行未改动",
+    en: "{count, plural, one {# unmodified line} other {# unmodified lines}}",
+  },
+  "common.review.moreContext": {
+    "zh-CN": "可能还有未改动的上下文",
+    en: "More unchanged context may be available",
+  },
   "common.browser.manualFrame": {
     "zh-CN": "· 仅人工操作，iframe 使用区域标注",
     en: "· Manual control only; use region annotations for iframes",

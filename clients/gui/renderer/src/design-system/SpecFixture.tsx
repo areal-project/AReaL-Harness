@@ -140,6 +140,8 @@ const OVERLAYS: Record<string, Step[]> = {
   "send-tooltip": [{ name: "发送", how: "hover" }],
   "theme-select": [{ name: "界面主题", how: "press" }],
   "panel-add-menu": [{ name: "打开侧边面板标签页", how: "press" }],
+  "review-scope-menu": [{ name: "改动范围", how: "press" }],
+  "review-files": [{ name: "显示文件", how: "press" }],
 };
 
 async function openOverlay(steps: Step[], cancelled: () => boolean) {
@@ -192,6 +194,50 @@ async function openOverlay(steps: Step[], cancelled: () => boolean) {
     }
     await new Promise((resolve) => setTimeout(resolve, 60));
   }
+}
+
+// 示例数据只给改前改后全文；这里拼出 Git 风格补丁（共同前缀之后整段替换）。
+function patch(file: { path: string; status: string; before: string; after: string }) {
+  const before = file.before ? file.before.replace(/\n$/, "").split("\n") : [];
+  const after = file.after.replace(/\n$/, "").split("\n");
+  let same = 0;
+  while (same < before.length && same < after.length && before[same] === after[same]) same++;
+  const removed = before.slice(same);
+  const added = after.slice(same);
+  const header =
+    file.status === "added"
+      ? `diff --git a/${file.path} b/${file.path}\nnew file mode 100644\n--- /dev/null\n+++ b/${file.path}\n`
+      : `diff --git a/${file.path} b/${file.path}\n--- a/${file.path}\n+++ b/${file.path}\n`;
+  const hunk = `@@ -${before.length ? 1 : 0},${before.length} +1,${after.length} @@\n`;
+  const body = [
+    ...before.slice(0, same).map((line) => ` ${line}`),
+    ...removed.map((line) => `-${line}`),
+    ...added.map((line) => `+${line}`),
+  ].join("\n");
+  return {
+    text: `${header}${hunk}${body}\n`,
+    file: {
+      path: file.path,
+      additions: added.length,
+      deletions: removed.length,
+      binary: false,
+      beforeText: file.before,
+      afterText: file.after,
+    },
+  };
+}
+
+function review(turnId: string) {
+  const patches = fixture.review.files.map(patch);
+  return {
+    turnId,
+    token: "spec-review",
+    head: "spec-head",
+    base: "spec-base",
+    root: `/${fixture.project.name}`,
+    diff: patches.map((item) => item.text).join(""),
+    files: patches.map((item) => item.file),
+  };
 }
 
 export function SpecFixture() {
@@ -344,6 +390,11 @@ export function SpecFixture() {
         },
       };
     }
+    if (name === "workspace" && request.operation === "turnReview") return review(request.turnId);
+    if (name === "workspace" && request.operation === "review") return review("");
+    if (name === "workspace" && request.operation === "reviewCommits")
+      return { commits: [], truncated: false };
+    if (name === "workspace" && request.operation === "reviewBranches") return { branches: [] };
     if (name === "queue") return data.state.queues[threadId];
     if (name === "tasks") return { tasks: [] };
     return {};
