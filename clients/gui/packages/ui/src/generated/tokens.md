@@ -235,6 +235,7 @@
 | `surface-glass-opacity` | {"value":{"light":86,"dark":84},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 吸顶摘要头与半透明浮层玻璃不透明度。"} |
 | `border-subtle-mix` | {"contrast":{"base":{"light":5.5,"dark":6},"slope":0.06},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 内嵌极细分隔线 OKLab 对比度响应参数。"} |
 | `activity-summary-opacity` | {"value":60,"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 对话流工具组摘要行 60% 前景阶梯。"} |
+| `text-floor` | {"value":4.5,"source":"D-005 R-DECISION-023：用户需要阅读的文字（含过程子步骤）对比度不低于 4.5:1；生成时把未达标的文字推深到达标。"} |
 | `activity-child-opacity` | {"value":36,"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 对话流工具组展开子项 36% 前景阶梯。"} |
 | `diff-surface-opacity` | {"value":{"light":10,"dark":14},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 顶栏与回合内 Pin Summary 增删行胶囊柔化底色比例。"} |
 | `focus-ring-soft-opacity` | {"value":{"light":22,"dark":28},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 输入框与 Composer 柔和聚焦外发光混合比例。"} |
@@ -377,8 +378,8 @@
 | `--color-surface-tertiary` | semantic · 基于 OKLab 均匀感知插值派生的三级表面，用于内嵌徽章、分段底槽与代码块工具栏悬停。 | surface-tertiary-oklab  | `color-mix(in oklab, #1a1c1f 6.5%, #ffffff)` | `color-mix(in oklab, #ffffff 11%, #181818)` |
 | `--color-surface-glass` | semantic · 基于 OKLab 派生的半透明毛玻璃表面，配合 backdrop-filter 用于吸顶摘要头与浮层顶栏。 | surface-glass-oklab  | `color-mix(in oklab, color-mix(in oklab, #1a1c1f 4%, #ffffff) 86%, transparent)` | `color-mix(in oklab, color-mix(in oklab, #ffffff 7%, #181818) 84%, transparent)` |
 | `--color-border-subtle` | semantic · 基于 OKLab 派生的极细内嵌分隔线，随 contrast 偏好平滑缩放。 | border-subtle-oklab  | `color-mix(in oklab, #1a1c1f 5.5%, transparent)` | `color-mix(in oklab, #ffffff 6%, transparent)` |
-| `--color-activity-summary` | component · 对话流工具调用聚合摘要行与折叠态过程行前景（60% OKLab 感知阶梯）。 | text-activity-summary 引用 text-activity-summary；用于折叠态工具聚合组标题与次级摘要。 | `color-mix(in oklab, #1a1c1f 60%, transparent)` | `color-mix(in oklab, #ffffff 60%, transparent)` |
-| `--color-activity-child` | component · 对话流工具调用组展开后的子步骤低强调前景（36% OKLab 感知阶梯）。 | text-activity-child 引用 text-activity-child；用于展开态子活动行非悬停态的柔和降噪。 | `color-mix(in oklab, #1a1c1f 36%, transparent)` | `color-mix(in oklab, #ffffff 36%, transparent)` |
+| `--color-activity-summary` | component · 对话流工具调用聚合摘要行与折叠态过程行前景（60% OKLab 感知阶梯）。 | text-activity-summary 引用 text-activity-summary；用于折叠态工具聚合组标题与次级摘要。 | `color-mix(in oklab, #1a1c1f 60.5%, transparent)` | `color-mix(in oklab, #ffffff 60%, transparent)` |
+| `--color-activity-child` | component · 对话流工具调用组展开后的子步骤低强调前景（36% OKLab 感知阶梯）。 | text-activity-child 引用 text-activity-child；用于展开态子活动行非悬停态的柔和降噪。 | `color-mix(in oklab, #1a1c1f 60.5%, transparent)` | `color-mix(in oklab, #ffffff 45.5%, transparent)` |
 | `--color-diff-added-surface` | component · Pin Summary 与文件变更胶囊的新增行柔化底色。 | surface-diff-added 引用 surface-diff-added；用于顶栏及回合内 diff 统计胶囊底色。 | `color-mix(in oklab, #16a45d 10%, transparent)` | `color-mix(in oklab, #16a45d 14%, transparent)` |
 | `--color-diff-removed-surface` | component · Pin Summary 与文件变更胶囊的删除行柔化底色。 | surface-diff-removed 引用 surface-diff-removed；用于顶栏及回合内 diff 统计胶囊底色。 | `color-mix(in oklab, #df515b 10%, transparent)` | `color-mix(in oklab, #df515b 14%, transparent)` |
 | `--color-focus-ring-soft` | semantic · Composer 与表单控件聚焦态的柔和强调色光晕。 | interaction-focus-ring-soft  | `color-mix(in oklab, #3a83f7 22%, transparent)` | `color-mix(in oklab, #3a83f7 28%, transparent)` |

@@ -1,6 +1,33 @@
 import { expect, test } from "vite-plus/test";
 import { paletteVariables, readableForeground, colorContrastRatio } from "./theme.js";
 
+// R-DECISION-023：这些文字角色在任何主题、任何对比度偏好下都不低于 4.5:1。
+const TEXT_ROLES = [
+  "--color-foreground-subtle",
+  "--color-foreground-subtlest",
+  "--color-activity-summary",
+  "--color-activity-child",
+  "--color-settings-secondary",
+  "--color-status-settled",
+];
+function textContrast(value: string, background: string) {
+  const [, foreground, percent, into] = value.match(
+    /^color-mix\(in \w+, (#[\da-f]{6}) ([\d.]+)%, (#[\da-f]{6}|transparent)\)$/,
+  )!;
+  const base = into === "transparent" ? background : into;
+  const mixed = [0, 1, 2]
+    .map((index) => {
+      const channel = (color: string) => parseInt(color.slice(1 + index * 2, 3 + index * 2), 16);
+      return Math.round(
+        (channel(foreground) * Number(percent) + channel(base) * (100 - Number(percent))) / 100,
+      )
+        .toString(16)
+        .padStart(2, "0");
+    })
+    .join("");
+  return colorContrastRatio(`#${mixed}`, background);
+}
+
 test("primary controls choose a readable foreground at both luminance extremes", () => {
   expect(readableForeground("#ffffff")).toBe("#000000");
   expect(readableForeground("#000000")).toBe("#ffffff");
@@ -24,6 +51,8 @@ test("default and custom palettes retain input roles and component aliases", () 
       expect(variables["--color-composer-action"]).toBe("var(--color-primary)");
       expect(variables["--color-input-border"]).toBe("var(--color-border)");
       expect(variables["--color-user-message"]).toBe(dark ? "#173e76" : "#e8f3fe");
+      for (const role of TEXT_ROLES)
+        expect(textContrast(variables[role], palette.background)).toBeGreaterThanOrEqual(4.5);
     }
   }
   const custom = paletteVariables(

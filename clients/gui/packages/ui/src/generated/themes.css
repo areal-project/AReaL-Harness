@@ -4,8 +4,8 @@
   --color-surface-tertiary: color-mix(in oklab, #1a1c1f 6.5%, #ffffff);
   --color-surface-glass: color-mix(in oklab, color-mix(in oklab, #1a1c1f 4%, #ffffff) 86%, transparent);
   --color-border-subtle: color-mix(in oklab, #1a1c1f 5.5%, transparent);
-  --color-activity-summary: color-mix(in oklab, #1a1c1f 60%, transparent);
-  --color-activity-child: color-mix(in oklab, #1a1c1f 36%, transparent);
+  --color-activity-summary: color-mix(in oklab, #1a1c1f 60.5%, transparent);
+  --color-activity-child: color-mix(in oklab, #1a1c1f 60.5%, transparent);
   --color-diff-added-surface: color-mix(in oklab, #16a45d 10%, transparent);
   --color-diff-removed-surface: color-mix(in oklab, #df515b 10%, transparent);
   --color-focus-ring-soft: color-mix(in oklab, #3a83f7 22%, transparent);
@@ -94,7 +94,7 @@
   --color-surface-glass: color-mix(in oklab, color-mix(in oklab, #ffffff 7%, #181818) 84%, transparent);
   --color-border-subtle: color-mix(in oklab, #ffffff 6%, transparent);
   --color-activity-summary: color-mix(in oklab, #ffffff 60%, transparent);
-  --color-activity-child: color-mix(in oklab, #ffffff 36%, transparent);
+  --color-activity-child: color-mix(in oklab, #ffffff 45.5%, transparent);
   --color-diff-added-surface: color-mix(in oklab, #16a45d 14%, transparent);
   --color-diff-removed-surface: color-mix(in oklab, #df515b 14%, transparent);
   --color-focus-ring-soft: color-mix(in oklab, #3a83f7 28%, transparent);

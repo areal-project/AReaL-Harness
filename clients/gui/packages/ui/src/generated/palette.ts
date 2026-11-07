@@ -47,14 +47,14 @@ export const PALETTE_REFERENCES = {
   "workbench-annotation-selected-surface": "#4795ff26",
 } as const;
 
-export function derivePaletteVariables(p: Palette, dark: boolean, readableForeground: (background: string) => string): Record<string, string> {
+export function derivePaletteVariables(p: Palette, dark: boolean, readableForeground: (background: string) => string, minimumPercent: (foreground: string, background: string, percent: number, contrast: number) => number): Record<string, string> {
   const contrastDelta = p.contrast - (dark ? 60 : 45);
   const surfaceElevatedOklab = `color-mix(in oklab, ${p.foreground} ${(dark ? 7 : 4)}%, ${p.background})`;
   const surfaceTertiaryOklab = `color-mix(in oklab, ${p.foreground} ${(dark ? 11 : 6.5)}%, ${p.background})`;
   const surfaceGlassOklab = `color-mix(in oklab, ${surfaceElevatedOklab} ${(dark ? 84 : 86)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const borderSubtleOklab = `color-mix(in oklab, ${p.foreground} ${((dark ? 6 : 5.5) + contrastDelta * 0.06)}%, ${PALETTE_REFERENCES["transparent"]})`;
-  const textActivitySummary = `color-mix(in oklab, ${p.foreground} ${60}%, ${PALETTE_REFERENCES["transparent"]})`;
-  const textActivityChild = `color-mix(in oklab, ${p.foreground} ${36}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const textActivitySummary = `color-mix(in oklab, ${p.foreground} ${minimumPercent(p.foreground, p.background, 60, 4.5)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const textActivityChild = `color-mix(in oklab, ${p.foreground} ${minimumPercent(p.foreground, p.background, 36, 4.5)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const surfaceDiffAdded = `color-mix(in oklab, ${PALETTE_REFERENCES["workbench-diff-count-added"]} ${(dark ? 14 : 10)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const surfaceDiffRemoved = `color-mix(in oklab, ${PALETTE_REFERENCES["workbench-diff-count-removed"]} ${(dark ? 14 : 10)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const interactionFocusRingSoft = `color-mix(in oklab, ${p.accent} ${(dark ? 28 : 22)}%, ${PALETTE_REFERENCES["transparent"]})`;
@@ -63,8 +63,8 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
   const interactionFocus = p.accent;
   const textFileLink = (p.accent === PALETTE_REFERENCES["default-accent"]) ? PALETTE_REFERENCES["file-link-default"] : p.accent;
   const textFileLinkOnSurface = (dark ? `color-mix(in srgb, ${textFileLink} ${80}%, ${textDefault})` : textFileLink);
-  const textSubtle = `color-mix(in srgb, ${p.foreground} ${((dark ? 69.5 : 75) + contrastDelta * 0.15)}%, ${p.background})`;
-  const statusSettled = (dark ? `color-mix(in srgb, ${p.foreground} ${(55 + contrastDelta * 0.15)}%, ${PALETTE_REFERENCES["transparent"]})` : textSubtle);
+  const textSubtle = `color-mix(in srgb, ${p.foreground} ${minimumPercent(p.foreground, p.background, ((dark ? 69.5 : 75) + contrastDelta * 0.15), 4.5)}%, ${p.background})`;
+  const statusSettled = (dark ? `color-mix(in srgb, ${p.foreground} ${minimumPercent(p.foreground, p.background, (55 + contrastDelta * 0.15), 4.5)}%, ${PALETTE_REFERENCES["transparent"]})` : textSubtle);
   const surfaceRaised = `color-mix(in srgb, ${p.foreground} ${(2100 / 231)}%, ${p.background})`;
   const surfaceMuted = `color-mix(in srgb, ${p.foreground} ${(3 + contrastDelta * 0.03)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const surfaceRaisedTranslucent = (dark ? `color-mix(in srgb, ${surfaceRaised} ${50}%, ${PALETTE_REFERENCES["transparent"]})` : surfaceMuted);
@@ -98,8 +98,8 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
   const surfaceCatalog = (dark ? `color-mix(in srgb, ${p.foreground} ${(2000 / 231)}%, ${p.background})` : surfaceBase);
   const borderDefault = `color-mix(in srgb, ${p.foreground} ${((dark ? 8.4 : 7.8) + contrastDelta * 0.08)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const borderHover = `color-mix(in srgb, ${p.foreground} ${(11.7 + contrastDelta * 0.1)}%, ${PALETTE_REFERENCES["transparent"]})`;
-  const textSubtlest = `color-mix(in srgb, ${p.foreground} ${((dark ? 55 : 70) + contrastDelta * 0.05)}%, ${p.background})`;
-  const textSettingsSecondary = (dark ? `color-mix(in srgb, ${p.foreground} ${(65 + contrastDelta * 0.15)}%, ${PALETTE_REFERENCES["transparent"]})` : textSubtle);
+  const textSubtlest = `color-mix(in srgb, ${p.foreground} ${minimumPercent(p.foreground, p.background, ((dark ? 55 : 70) + contrastDelta * 0.05), 4.5)}%, ${p.background})`;
+  const textSettingsSecondary = (dark ? `color-mix(in srgb, ${p.foreground} ${minimumPercent(p.foreground, p.background, (65 + contrastDelta * 0.15), 4.5)}%, ${PALETTE_REFERENCES["transparent"]})` : textSubtle);
   const statusRunning = textSubtle;
   const statusSuccess = PALETTE_REFERENCES["success"];
   const statusAttention = PALETTE_REFERENCES["warning"];
