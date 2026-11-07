@@ -14,7 +14,7 @@ regions:
     contains: [conversation-list]
   - id: main
     name: 主区
-    layout: 内容水平居中，宽度不超过 reading-width（含左右各 spacing-field 内边距）；主区顶部留 spacing-section；迎宾区高 home-composer-top，标题贴其底部，输入框紧接其下
+    layout: 内容水平居中，宽度不超过 reading-width（含左右各 spacing-field 内边距）；主区顶部留 spacing-section；迎宾区高 home-composer-top，标题在其底部，标题下沿到输入框留两倍 spacing-section；标题字重常规
     contains:
       - heading: 迎宾标题“你想让我们在 {项目名} 中构建什么？”，无项目时“你想构建什么？”；字号 text-fixed-page-title，字距 tracking-heading-tight
       - composer:

@@ -174,6 +174,7 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
     "--color-menu-border": borderMenu,
     "--color-menu-hover": interactionMenuHover,
     "--color-composer-catalog": surfaceCatalog,
+    "--color-markdown-inline-code": surfaceTertiaryOklab,
     "--color-input": surfaceBase,
     "--color-input-focused": surfaceBase,
     "--color-input-border": "var(--color-border)",

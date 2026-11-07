@@ -94,7 +94,6 @@ body {
   --color-trajectory-tool-result: #0284c7;
   --color-find-highlight: #fde68a;
   --color-find-highlight-active: #facc15;
-  --color-markdown-inline-code: var(--color-tag);
   --color-card-selected: var(--color-neutral-200);
   --color-card-border: var(--color-border);
   /* 修复：浮层组件已使用 text-popover-foreground，但变量缺失会让暗色主题日志浮层继承黑色文本。 */

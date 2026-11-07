@@ -548,7 +548,7 @@ export const MessageResponse = memo(function MessageResponse({
           return (
             <code
               className={cn(
-                "rounded-md bg-markdown-inline-code/50 mx-0.5 px-1.5 py-0.5 font-mono text-ui-sm",
+                "rounded-md bg-markdown-inline-code mx-0.5 px-1.5 py-0.5 font-mono text-ui-sm",
                 codeClassName,
               )}
               {...props}

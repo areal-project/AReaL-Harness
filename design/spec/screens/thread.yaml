@@ -19,6 +19,7 @@ regions:
     contains: [user-message, turn-process, final-answer, turn-status-line]
   - id: E
     name: 输入框
+    layout: 与信息流同宽居中；上留 spacing-inline，距窗口底部 spacing-field
     contains:
       - composer:
           variant: thread

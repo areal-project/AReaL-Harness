@@ -45,7 +45,8 @@
   --message-bubble-max: 70%;
   --composer-inset: 12px;
   --icon-size-control: 16px;
-  --opacity-disabled: 0.5;
+  --opacity-disabled: 0.45;
+  --opacity-resting: 0.45;
   --turn-marker-length: 6px;
   --turn-marker-thickness: 2px;
   --conversation-gap: 12px;

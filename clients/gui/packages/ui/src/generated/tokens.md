@@ -171,7 +171,8 @@
 | `--message-bubble-max` | `70%` | 用户消息气泡相对阅读列的最大宽度 |
 | `--composer-inset` | `12px` | 输入框内侧留白：编辑区左右与顶部、工具栏左右 |
 | `--icon-size-control` | `16px` | 控件内图标尺寸：输入框工具栏、消息操作行与图标按钮 |
-| `--opacity-disabled` | `0.5` | 不可用控件的整体不透明度 |
+| `--opacity-disabled` | `0.45` | 不可用控件的整体不透明度 |
+| `--opacity-resting` | `0.45` | 常驻的次要导航（如左缘回合导航）未被指向时的不透明度 |
 | `--turn-marker-length` | `6px` | 左缘回合导航标记的长度 |
 | `--turn-marker-thickness` | `2px` | 左缘回合导航标记的粗细 |
 | `--conversation-gap` | `12px` | 对话时间线块间距：段落、活动行、子代理行、状态行之间的统一节奏 |
@@ -427,6 +428,7 @@
 | `--color-menu-border` | component · 菜单描边，保留与通用边框不同的暗色强度。 | border-menu 保留已有组件变量名；仅引用 border-menu。菜单描边，保留与通用边框不同的暗色强度。 | `color-mix(in srgb, #1a1c1f 8%, transparent)` | `color-mix(in srgb, #ffffff 8.2%, transparent)` |
 | `--color-menu-hover` | component · 菜单行悬停层，不随 contrast 改变。 | interaction-menu-hover 保留已有组件变量名；仅引用 interaction-menu-hover。菜单行悬停层，不随 contrast 改变。 | `color-mix(in srgb, #1a1c1f 5.5%, transparent)` | `color-mix(in srgb, #ffffff 5.5%, transparent)` |
 | `--color-composer-catalog` | component · 目录选择器表面，保留与菜单不同的抬升高度。 | surface-catalog 保留已有组件变量名；仅引用 surface-catalog。目录选择器表面，保留与菜单不同的抬升高度。 | `#ffffff` | `color-mix(in srgb, #ffffff 8.658008658008658%, #181818)` |
+| `--color-markdown-inline-code` | component · 正文里行内代码的底色。 | surface-tertiary-oklab 仅引用 surface-tertiary-oklab；行内代码属于内嵌徽章。 | `color-mix(in oklab, #1a1c1f 6.5%, #ffffff)` | `color-mix(in oklab, #ffffff 11%, #181818)` |
 | `--color-input` | semantic · 基础阅读表面，卡片、面板和输入静止背景共用。 | surface-base  | `#ffffff` | `#181818` |
 | `--color-input-focused` | semantic · 基础阅读表面，卡片、面板和输入静止背景共用。 | surface-base  | `#ffffff` | `#181818` |
 | `--color-input-border` | semantic · 通用边框。 | border-default  | `var(--color-border)` | `var(--color-border)` |

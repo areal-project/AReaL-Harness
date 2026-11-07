@@ -15,7 +15,7 @@ button {
 }
 button:disabled {
   cursor: default;
-  opacity: 0.45;
+  opacity: var(--opacity-disabled);
 }
 :focus-visible {
   outline: var(--focus-width) solid var(--color-brand);
@@ -310,7 +310,7 @@ kbd {
   overflow: auto;
 }
 .conversation-pane.draft-pane {
-  padding: 24px 16px 0;
+  padding: var(--spacing-section) var(--spacing-field) 0;
 }
 /* The home greeting and input share the available space with a zero flex basis.
    The greeting's bottom gap belongs to its half; growing input only changes the
@@ -321,7 +321,7 @@ kbd {
   width: 100%;
   max-width: calc(var(--reading-width) - 32px);
   margin: 0 auto;
-  padding-bottom: 48px;
+  padding-bottom: calc(2 * var(--spacing-section));
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -1248,7 +1248,7 @@ button.composer-project:hover > svg,
   border-bottom: 1px solid var(--color-border);
 }
 .settings-page input:disabled {
-  opacity: 0.45;
+  opacity: var(--opacity-disabled);
   cursor: default;
 }
 @media (max-width: 1050px) {
@@ -1452,9 +1452,10 @@ button.composer-project:hover > svg,
 /* 队列紧贴 Composer；主编辑器承载编辑，不建立队列内输入框。 */
 .composer-queue {
   position: relative;
-  margin: 0 12px -20px;
-  background: var(--color-composer-catalog, var(--color-surface));
-  border: 1px solid var(--color-border);
+  /* 卡片底边藏进输入框：缩进与重叠都跟着输入框内边距走。 */
+  margin: 0 var(--composer-inset) calc(-1 * (var(--composer-inset) + var(--spacing-inline)));
+  background: var(--color-composer-catalog);
+  border: var(--border-width-default) solid var(--color-border);
   border-bottom: 0;
   border-radius: var(--radius-composer) var(--radius-composer) 0 0;
   padding: 5px 9px 24px 5px;
@@ -1826,7 +1827,7 @@ button[aria-label="停止"] {
   overflow-x: hidden;
   overscroll-behavior-y: contain;
   scrollbar-width: none;
-  opacity: 0.45;
+  opacity: var(--opacity-resting);
   transition: opacity var(--motion-normal) ease;
 }
 .messages-shell:hover > .turn-navigation {
@@ -3894,7 +3895,7 @@ button[aria-label="停止"] {
   background: var(--color-hover);
 }
 .composer-catalog-row[aria-disabled="true"] {
-  opacity: 0.45;
+  opacity: var(--opacity-disabled);
 }
 .composer-catalog-icon {
   display: flex;

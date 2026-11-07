@@ -129,6 +129,7 @@
   --color-menu-border: color-mix(in srgb, #1a1c1f 8%, transparent);
   --color-menu-hover: color-mix(in srgb, #1a1c1f 5.5%, transparent);
   --color-composer-catalog: #ffffff;
+  --color-markdown-inline-code: color-mix(in oklab, #1a1c1f 6.5%, #ffffff);
   --color-input: #ffffff;
   --color-input-focused: #ffffff;
   --color-input-border: var(--color-border);

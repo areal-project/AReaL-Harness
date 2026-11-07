@@ -47,6 +47,7 @@
   --color-menu-border: color-mix(in srgb, #1a1c1f 8%, transparent);
   --color-menu-hover: color-mix(in srgb, #1a1c1f 5.5%, transparent);
   --color-composer-catalog: #ffffff;
+  --color-markdown-inline-code: color-mix(in oklab, #1a1c1f 6.5%, #ffffff);
   --color-input: #ffffff;
   --color-input-focused: #ffffff;
   --color-input-border: var(--color-border);
@@ -136,6 +137,7 @@
   --color-menu-border: color-mix(in srgb, #ffffff 8.2%, transparent);
   --color-menu-hover: color-mix(in srgb, #ffffff 5.5%, transparent);
   --color-composer-catalog: color-mix(in srgb, #ffffff 8.658008658008658%, #181818);
+  --color-markdown-inline-code: color-mix(in oklab, #ffffff 11%, #181818);
   --color-input: #181818;
   --color-input-focused: #181818;
   --color-input-border: var(--color-border);

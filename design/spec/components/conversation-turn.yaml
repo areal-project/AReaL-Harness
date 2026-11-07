@@ -60,7 +60,7 @@ parts:
     inline-code:
       font: font-mono
       text-size: text-ui-sm
-      surface: color-markdown-inline-code，叠加一半不透明度
+      surface: color-markdown-inline-code
       margin: 左右各为 spacing-inline 的四分之一
       radius: radius-button
       padding: 左右为 spacing-inline 的四分之三，上下为 spacing-inline 的四分之一
@@ -95,7 +95,7 @@ parts:
       color: foreground-subtle；当前回合为 foreground 且不透明
     column:
       position: 页面左缘、垂直居中，过高时在内部滚动且不显示滚动条
-      opacity: 平时淡出，鼠标进入对话区时加深，悬停或聚焦本列时完全不透明；触屏设备上始终不透明
+      opacity: 平时 opacity-resting，鼠标进入对话区时加深，悬停或聚焦本列时完全不透明；触屏设备上始终不透明
 
 states:
   - running: 过程展开，末尾为 status-line，没有 action-row

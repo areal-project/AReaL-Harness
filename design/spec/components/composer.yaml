@@ -61,9 +61,16 @@ tokens:
   focus: color-focus-ring-soft
   editor-min: 最少两行高（两倍 conversation-line），再往上 composer-inset
   toolbar-label: text-ui-caption；模型名 foreground，权限名 foreground-subtle
-  primary-action-shape: spacing-control 见方的圆（radius-pill）
-  running: 运行中权限、模型、强度三个入口降低不透明度，但仍可读
+  primary-action-shape: spacing-control 见方的圆（radius-pill）；发送图标比 icon-size-control 大 spacing-inline 的一半，停止图标为 icon-size-control
+  primary-disabled: 保留按钮默认底色，整体 opacity-disabled
+  running: 运行中权限、模型、强度三个入口不可用，按 opacity-disabled 显示
   primary-action: color-composer-action
+
+queue:
+  card: 位于输入框正上方，左右各缩进 composer-inset；底边藏进输入框，重叠 composer-inset 加 spacing-inline
+  surface: color-composer-catalog，边框 border-width-default 的 color-border，无下边框，上方两角 radius-composer
+  row: 左侧序号（text-ui-xs，foreground-subtlest，等宽数字），悬停时序号换成拖动把手；正文 text-fixed-control 单行省略；行悬停底色 color-hover，圆角 radius-compact-row
+  actions: 立即发送、删除、更多操作只在悬停或聚焦这一行时出现；触屏设备常显
 
 behavior:
   - 草稿在切换布局、收起审批、模型保存期间保持同一实例，不丢失、不重建
