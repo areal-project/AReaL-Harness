@@ -14,7 +14,7 @@ regions:
     material: chrome
   - id: D
     name: 对话信息流
-    layout: 内容水平居中，宽度不超过 layout-thread-content-max-width (待建)；底部在输入框上沿渐隐
+    layout: 内容水平居中，宽度不超过 reading-width；底部在输入框上沿渐隐
     contains: [user-message, turn-process, final-answer, turn-status-line]
   - id: E
     name: 输入框
@@ -28,17 +28,21 @@ rules:
   - 读者向上阅读后，新内容不抢走阅读位置；“回到最新”是显式动作
   - 回合过程标题吸顶时用平面材质，不加模糊
 
-fixtures: [thread-idle, thread-running, thread-done-with-changes]
+fixtures: [send-run-stop]
 
 states:
   - idle: 已有历史，未在运行
   - running: 回合进行中，末尾状态行在变化
   - done: 回合结束，过程收起，最终回答完整可见
+  - queued: 运行中，输入框上方有一条“待发送消息”
+  - stopped: 回合被暂停，末尾一行写明，已产生内容保留
 
 references:
   - state: idle
     themes: [light, dark]
   - state: running
     themes: [light, dark]
-  - state: done
+  - state: queued
+    themes: [light, dark]
+  - state: stopped
     themes: [light, dark]

@@ -351,7 +351,8 @@ kbd {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  /* 输入框顶部停在 --home-composer-top，不贴窗口底部（design/spec/screens/home.yaml）。 */
+  justify-content: flex-start;
   position: relative;
 }
 .draft-composer .composer-surface {

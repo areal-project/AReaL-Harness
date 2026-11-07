@@ -1,0 +1,93 @@
+{
+  "$comment": "输入框试点的示例数据。界面不连后台，按 screen 与 state 渲染；agent 段描述示例后台对操作的回应。",
+  "project": {
+    "name": "示例项目",
+    "greeting": "要做点什么？",
+    "model": "示例模型",
+    "context": {
+      "usedTokens": 18000,
+      "windowTokens": 200000
+    }
+  },
+  "conversations": {
+    "thread-idle": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "completed",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": [
+            "读取 src/math.ts",
+            "修改 src/math.ts",
+            "运行测试"
+          ],
+          "answer": "已在 `src/math.ts` 加了 `clamp(value, min, max)`，并补了三条边界测试，全部通过。"
+        }
+      ]
+    },
+    "thread-running": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "running",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": [
+            "读取 src/math.ts"
+          ]
+        }
+      ]
+    },
+    "thread-stopped": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "stopped",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": [
+            "读取 src/math.ts"
+          ]
+        }
+      ]
+    }
+  },
+  "states": {
+    "home.empty": {
+      "screen": "home",
+      "draft": ""
+    },
+    "home.draft": {
+      "screen": "home",
+      "draft": "给 src/math.ts 加一个 clamp 函数"
+    },
+    "thread.idle": {
+      "screen": "thread",
+      "conversation": "thread-idle",
+      "draft": ""
+    },
+    "thread.running": {
+      "screen": "thread",
+      "conversation": "thread-running",
+      "draft": ""
+    },
+    "thread.queued": {
+      "screen": "thread",
+      "conversation": "thread-running",
+      "draft": "",
+      "queue": [
+        "顺便把 README 里的用法也更新一下"
+      ]
+    },
+    "thread.stopped": {
+      "screen": "thread",
+      "conversation": "thread-stopped",
+      "draft": ""
+    }
+  },
+  "agent": {
+    "accepts": "除 rejects 列出的文字外，提交都会被受理：用户消息进入信息流，回合开始运行并停在第一步，直到用户停止。",
+    "firstStep": "读取相关文件",
+    "rejects": {
+      "这条会被拒绝": "示例后台拒绝了这次提交，草稿已保留。"
+    }
+  }
+}

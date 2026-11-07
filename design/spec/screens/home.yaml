@@ -13,16 +13,16 @@ regions:
     contains: [conversation-list]
   - id: main
     name: 主区
-    layout: 内容水平居中，宽度不超过 layout-thread-content-max-width (待建)；输入框顶部位于 layout-home-composer-top
+    layout: 内容水平居中，宽度不超过 reading-width；迎宾标题区高 home-composer-top，输入框紧接其下
     contains:
-      - heading: 迎宾标题，字号 text-ui-display，字距 tracking-heading-tight
+      - heading: 迎宾标题，字号 text-fixed-page-title，字距 tracking-heading-tight
       - composer:
           variant: home
           state: empty
 
 narrow: 侧栏收起；输入框占满主区宽度，保留左右页边距
 
-fixtures: [project-default]
+fixtures: [send-run-stop]
 
 states:
   - empty: 输入框为空

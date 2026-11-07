@@ -6,9 +6,7 @@
 
 1. 先看 `screens/`：有哪些界面，每个界面分哪些区域、放哪些组件。
 2. 再看 `components/`：每个组件的结构、变体、状态、用到哪些用途变量。
-3. 交互看 `flows/`：状态表写明在哪个状态、发生什么、变成什么样。
-4. 数值只查 Token 源。
-5. 外观以 `references/` 的标准截图为准，行为以 `conformance/` 的验收为准。
+3. 交互看 `flows/`：在哪个状态、发生什么、变成什么样。
 
 ## 目录
 
@@ -19,7 +17,9 @@
 | `flows/*.yaml` | 流程：状态 × 事件 → 新状态、应看到什么、动效角色 | YAML |
 | `fixtures/*.json` | 示例数据：界面不连后台也能渲染各个状态 | JSON |
 | `references/` | 本产品标准截图，按 界面 × 状态 × 亮暗 生成 | PNG，生成产物 |
-| `conformance/` | 验收：只用角色、可读名称和文字操作与断言，任何实现都能运行 | Playwright 测试 |
+| `conformance/` | 验收：只用角色、可读名称和文字操作与断言，任何实现都能运行；另含截图对比 | Playwright 脚本 |
+
+实现提供一个入口页，接受 `?state=<流程状态>&theme=light|dark` 并用示例数据渲染；本仓库是设计系统页加 `?spec`。运行 `conformance/run.mjs --url <入口>` 和 `conformance/references.mjs --url <入口>`。
 
 Token 源暂时仍是 `clients/gui/packages/ui/tokens.json`，按下文三层改造完成后再决定是否迁入本目录。
 
@@ -70,8 +70,8 @@ Token 源暂时仍是 `clients/gui/packages/ui/tokens.json`，按下文三层改
 
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
-| 0 | 检查与基线：分层引用、材质、外观走变体、规格纯净（`clients/gui/scripts/layers-lint.mjs`）；文字下限与截图对比随阶段 1、2 加入 | 部分完成 |
-| 1 | 输入框试点：组件、首页与对话界面、发送—运行—停止流程、示例数据、截图、验收、一次交接演练 | 规格草稿 |
+| 0 | 检查与基线（`clients/gui/scripts/layers-lint.mjs`）；文字下限随阶段 2 加入 | 部分完成 |
+| 1 | 输入框试点：组件、首页与对话界面、发送—运行—停止流程、示例数据、截图、验收、一次交接演练 | 交接演练中 |
 | 2 | 文字层级 | 未开始 |
 | 3 | 圆角、阴影、材质三层改造 | 未开始 |
 | 4 | 组件变体 | 未开始 |
