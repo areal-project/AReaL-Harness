@@ -751,3 +751,73 @@ test("bound setup thread rejects ordinary writes before environment is ready", a
     /环境|就绪/,
   );
 });
+
+test("native Worktree binds the Host-prepared Core without recalculating its deployment", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "areal-prepared-worktree-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const { CoreWorktrees } = requireApp("@areal/workbench-service/desktop/core/worktrees.cjs");
+  const requestId = randomUUID();
+  const source = { id: "logical", root: "/isolated/source" };
+  const execution = { id: "execution", root: "/isolated/worktree", logicalProjectId: source.id };
+  const service = {
+    serviceId: "prepared-instance",
+    generation: "prepared-generation",
+    configFingerprint: "prepared-deployment",
+  };
+  const backend = {
+    home,
+    rustDomains: ["worktree-rust"],
+    saved: [source],
+    projects: new Map(),
+    host: {
+      sourceId: "source",
+      list: async () => [source, execution],
+      client: {
+        status: async () => ({
+          projects: [{ registration: { projectId: "canonical" }, state: "ready", service }],
+        }),
+      },
+      rememberStatus() {},
+      resolve: () => ({ projectId: "canonical", sourceId: "source" }),
+    },
+    loadProjectJournal: async () => execution,
+    refreshHostProjects: CoreBackend.prototype.refreshHostProjects,
+    start: async () => {
+      throw new Error("service configuration conflict (configuration, deployment)");
+    },
+    connections: {
+      reconnectProjectObserved: async (project) => {
+        assert.equal(project.service, service);
+        project.client = { ready: true };
+        return project;
+      },
+    },
+    prepareThreadInProject: async (project) => {
+      assert.equal(project.client.ready, true);
+      return { current: () => true, params: { cwd: execution.root } };
+    },
+    openThread: async (_project, id) => assert.equal(id, "thread"),
+    hostCall: async (method, params) => {
+      if (method === "worktree.thread.prepare")
+        return {
+          projectId: "canonical",
+          alias: execution.id,
+          root: execution.root,
+          requestId,
+        };
+      assert.equal(method, "worktree.thread.bind");
+      assert.equal(params.requestId, requestId);
+      assert.equal(params.executionProjectId, "canonical");
+      assert.equal(params.coreInstanceId, service.serviceId);
+      assert.equal(params.coreGeneration, service.generation);
+      return { threadId: "thread", requestId };
+    },
+  };
+  const owner = new CoreWorktrees(backend);
+  assert.deepEqual(await owner.createThread(source, { requestId }), {
+    threadId: "thread",
+    requestId,
+  });
+  backend.host.resolve = () => ({ projectId: "foreign", sourceId: "source" });
+  await assert.rejects(owner.createThread(source, { requestId }), /执行归属已变化/);
+});

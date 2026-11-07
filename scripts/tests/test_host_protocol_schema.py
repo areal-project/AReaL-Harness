@@ -198,6 +198,11 @@ validate('#/$defs/ProjectStatus', {...projectStatus,usesSharedModelConfig:true})
 validate('#/$defs/ProjectStatus', {...projectStatus,usesSharedModelConfig:false});
 validate('#/$defs/ProjectStatus', {...projectStatus,usesSharedModelConfig:'yes'}, false);
 validate('#/$defs/ProjectStatus', {...projectStatus,unregisteredConfigState:true}, false);
+const providerStatus = structuredClone(schema.$defs.WorkbenchProviderReadResult.examples[0]);
+validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,credentialErrors:{provider:'storageLocked'}});
+validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,credentialErrors:{provider:'arbitrary diagnostic'}}, false);
+validate('#/$defs/WorkbenchProviderReadResult', {...providerStatus,unregisteredCredentialState:{}}, false);
+
 validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','httpProxy'],before:null,after:'opaque'}]});
 validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','sidebarSort'],before:null,after:'manual'}]}, false);
 validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['httpProxy','settings'],before:null,after:'opaque'}]}, false);

@@ -2013,7 +2013,7 @@ class CoreBackend {
           await this.refreshAfterAdmission(
             project,
             id,
-            recovered.operation ?? operationOf(method, { requestId, sourceThreadId, threadId }),
+            operationOf(method, { requestId, sourceThreadId, threadId }),
           );
           return {
             confirmed: true,

@@ -546,9 +546,15 @@ class CoreWorktrees {
       if (!modelRecord(target) || typeof target.alias !== "string" || typeof target.projectId !== "string")
         throw unavailable("Host 工作树执行归属尚未确认");
       if (typeof target.threadId === "string") return { threadId: target.threadId, requestId: request.requestId };
-      this.backend.saved = await this.backend.host.list();
+      // Host 已冻结执行 Core；这里只观察并认证原服务，不能重算部署再 ensure。
+      await this.backend.refreshHostProjects();
       await this.reloadNative();
-      const execution = await this.backend.start(target.alias);
+      const binding = this.backend.host.resolve(target.alias);
+      const execution = await this.backend.loadProjectJournal(target.alias);
+      if (binding.projectId !== target.projectId || execution.root !== target.root || !execution.service)
+        throw unavailable("Host 工作树执行归属已变化");
+      if (!execution.client?.ready)
+        await this.backend.connections.reconnectProjectObserved(execution);
       const prepared = await this.backend.prepareThreadInProject(execution, request);
       if (!prepared.current()) throw unavailable("原 Core 执行归属已变化");
       const result = await this.backend.hostCall("worktree.thread.bind", {

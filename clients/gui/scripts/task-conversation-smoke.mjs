@@ -2920,45 +2920,57 @@ try {
       navigationFixture = fixture;
       await writeFile(join(coreHome, "projects.json"), JSON.stringify(fixture.projects));
       await writeFile(join(coreHome, "library.json"), JSON.stringify(fixture.library));
-      const {
-        GuiHostProjects,
-      } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
-      const projects = new GuiHostProjects({
-        binary,
-        home: env.AREAL_HARNESS_SERVICE_HOME,
-        singletonHeld: true,
-        source: {
-          profile: env.AREAL_GUI_USER_DATA,
-          coreHome,
-          legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
-        },
-      });
-      try {
-        await projects.init();
-        for (const project of fixture.importedProjects)
-          await projects.register(randomUUID(), project);
-        const listing = await projects.client.listProjects();
-        for (const project of listing.projects) {
-          assert.ok(
-            project.workspace.startsWith(scratch + "/"),
-            "All registered workspaces must be isolated",
-          );
-        }
-      } finally {
-        projects.close();
-      }
-      const seededStop = JSON.parse(
-        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
-          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
-          encoding: "utf8",
-        }),
-      );
-      await writeFile(
-        join(scratch, "seed-navigation-stop.json"),
-        JSON.stringify(seededStop, null, 2),
-      );
-      assert.equal(seededStop.state, "completed");
     }
+    const {
+      GuiHostProjects,
+    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+    const projects = new GuiHostProjects({
+      binary,
+      home: env.AREAL_HARNESS_SERVICE_HOME,
+      singletonHeld: true,
+      source: {
+        profile: env.AREAL_GUI_USER_DATA,
+        coreHome: env.AREAL_CORE_HOME,
+        legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
+      },
+    });
+    try {
+      await projects.init();
+      for (const project of navigationFixture?.importedProjects ?? [])
+        await projects.register(randomUUID(), project);
+      const listing = await projects.client.listProjects();
+      for (const project of listing.projects) {
+        assert.ok(
+          project.workspace.startsWith(scratch + "/"),
+          "All registered workspaces must be isolated",
+        );
+      }
+      const receipt = await projects.client.vaultReplace(
+        randomUUID(),
+        {
+          kind: "providerCredential",
+          sourceId: projects.sourceId,
+          reference: "AREAL_CREDENTIAL_task_fixture",
+        },
+        0,
+        "task-fixture-key",
+      );
+      assert.equal(receipt.state, "completed");
+      await writeFile(
+        join(scratch, "fixture-credential-receipt.json"),
+        JSON.stringify(receipt, null, 2),
+      );
+    } finally {
+      projects.close();
+    }
+    const seededStop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    await writeFile(join(scratch, "fixture-seed-stop.json"), JSON.stringify(seededStop, null, 2));
+    assert.equal(seededStop.state, "completed");
     await launch();
     await until(async () => {
       const record = await readFile(

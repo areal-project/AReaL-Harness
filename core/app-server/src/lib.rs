@@ -299,7 +299,7 @@ struct Connection {
     initialized: bool,
     experimental_api: bool,
     ready: bool,
-    subscriptions: HashMap<String, CancellationToken>,
+    subscriptions: HashMap<String, Subscription>,
     owner_subscription: Option<CancellationToken>,
     suppressed: HashSet<String>,
     tx: mpsc::Sender<Outbound>,
@@ -310,11 +310,23 @@ struct Connection {
     rpc_permits: Arc<tokio::sync::Semaphore>,
 }
 
+#[derive(Clone)]
+struct Subscription {
+    receiver: CancellationToken,
+    delivery: CancellationToken,
+}
+impl Subscription {
+    fn cancel(&self) {
+        self.receiver.cancel();
+        self.delivery.cancel();
+    }
+}
+
 enum Outbound {
     Message(Value),
     Observation {
         value: Value,
-        subscription: CancellationToken,
+        subscription: Subscription,
     },
     Event {
         value: Value,
@@ -389,11 +401,17 @@ async fn connection(
                     subscription,
                 } => {
                     if subscription.is_cancelled() {
+                        if value["method"] == "turn/completed" {
+                            eprintln!(
+                                "Core event: method=turn/completed stage=discarded reason=subscriptionRevoked"
+                            );
+                        }
                         continue;
                     }
                     (value, None)
                 }
             };
+            let terminal = value["method"] == "turn/completed";
             let text = encode_outbound(&value).or_else(|| {
                 if let Some(subscription) = observation {
                     subscription.cancel();
@@ -422,7 +440,11 @@ async fn connection(
             };
             let closing = matches!(&message, Message::Close(_));
             match tokio::time::timeout(Duration::from_secs(5), sink.send(message)).await {
-                Ok(Ok(())) if !closing => {}
+                Ok(Ok(())) if !closing => {
+                    if terminal {
+                        eprintln!("Core event: method=turn/completed stage=written");
+                    }
+                }
                 _ => {
                     writer_stop.cancel();
                     break;
@@ -996,11 +1018,21 @@ impl Connection {
         let task_filter = id.strip_prefix("task:").map(str::to_owned);
         let principal = self.principal.clone();
         let subscription = self.stop.child_token();
-        if let Some(old) = self
+        let queued_delivery = self
             .subscriptions
-            .insert(id.to_owned(), subscription.clone())
-        {
-            old.cancel();
+            .get(id)
+            .filter(|old| !old.delivery.is_cancelled())
+            .map(|old| old.delivery.clone())
+            .unwrap_or_else(|| self.stop.child_token());
+        if let Some(old) = self.subscriptions.insert(
+            id.to_owned(),
+            Subscription {
+                receiver: subscription.clone(),
+                delivery: queued_delivery.clone(),
+            },
+        ) {
+            // 已入发送FIFO的旧事件先于新快照；替换只停止接收，显式remove才撤销交付。
+            old.receiver.cancel();
         }
         let tx = self.tx.clone();
         let stop = self.stop.clone();
@@ -1011,15 +1043,18 @@ impl Connection {
                 let event = tokio::select! { biased; _ = subscription.cancelled() => break, event = events.recv() => event };
                 match event {
                     Ok(event) => {
+                        if event["method"] == "turn/completed" {
+                            eprintln!("Core event: method=turn/completed stage=forwarded");
+                        }
                         if task_filter.as_ref().is_some_and(|id| event["params"]["taskId"].as_str()!=Some(id)) { continue; }
                         if let Some(task_id)=&task_filter {
-                            let Some(engine)=task_engine.as_ref().and_then(|weak|weak.upgrade()) else {subscription.cancel();break;};
-                            if !engine.task_visible(task_id,principal.thread_ids.as_ref()).await.unwrap_or(false) {subscription.cancel();break;}
+                            let Some(engine)=task_engine.as_ref().and_then(|weak|weak.upgrade()) else {queued_delivery.cancel();subscription.cancel();break;};
+                            if !engine.task_visible(task_id,principal.thread_ids.as_ref()).await.unwrap_or(false) {queued_delivery.cancel();subscription.cancel();break;}
                         }
                         if event["method"].as_str().is_some_and(|m| suppressed.contains(m)) { continue; }
                         let _delivery = delivery.lock().await;
                         if subscription.is_cancelled() { break; }
-                        if tx.try_send(Outbound::Event { value: event, subscription: subscription.clone() }).is_err() { stop.cancel(); break; }
+                        if tx.try_send(Outbound::Event { value: event, subscription: queued_delivery.clone() }).is_err() { stop.cancel(); break; }
                     }
                     Err(_) => { stop.cancel(); break; }
                 }
@@ -1966,6 +2001,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn replacing_observation_preserves_already_queued_terminal_until_explicit_remove() {
+        let (tx, mut queued) = mpsc::channel(8);
+        let stop = CancellationToken::new();
+        let mut conn = Connection {
+            configuration: None,
+            principal: auth::Principal::embedded(),
+            tool_host: dynamic_tools::ToolHost::new(tx.clone(), stop.clone()),
+            initialized: true,
+            experimental_api: false,
+            ready: true,
+            owner_subscription: None,
+            subscriptions: HashMap::new(),
+            suppressed: HashSet::new(),
+            tx,
+            stop: stop.clone(),
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
+            tasks: TaskTracker::new(),
+            delivery: Arc::new(Mutex::new(())),
+            rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),
+        };
+        let (events, receiver) = broadcast::channel(8);
+        conn.forward("thread", receiver);
+        events.send(json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"turn","status":"interrupted"}}})).unwrap();
+        let terminal = tokio::time::timeout(Duration::from_secs(1), queued.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let Outbound::Event {
+            value,
+            subscription,
+        } = terminal
+        else {
+            panic!("expected queued event");
+        };
+        assert_eq!(value["method"], "turn/completed");
+        // 旧终态已在FIFO中，新观察响应排在它之后；替换接收器不能撤回已入队事实。
+        conn.forward("thread", events.subscribe());
+        assert!(
+            !subscription.is_cancelled(),
+            "replacing an observation must not discard its queued terminal event"
+        );
+        conn.subscriptions.remove("thread").unwrap().cancel();
+        assert!(
+            subscription.is_cancelled(),
+            "explicit removal must still revoke queued delivery"
+        );
+        stop.cancel();
+        conn.tasks.close();
+        conn.tasks.wait().await;
+    }
+
+    #[tokio::test]
     async fn slow_subscription_closes_connection_instead_of_dropping_events() {
         let (tx, _unread) = mpsc::channel(1);
         let stop = CancellationToken::new();
@@ -2020,7 +2107,15 @@ mod tests {
             ready: true,
             owner_subscription: None,
             subscriptions: (0..128)
-                .map(|n| (n.to_string(), CancellationToken::new()))
+                .map(|n| {
+                    (
+                        n.to_string(),
+                        Subscription {
+                            receiver: CancellationToken::new(),
+                            delivery: CancellationToken::new(),
+                        },
+                    )
+                })
                 .collect(),
             suppressed: HashSet::new(),
             tx,

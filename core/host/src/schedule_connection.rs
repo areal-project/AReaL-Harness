@@ -349,6 +349,25 @@ fn emit_workbench_event(host: &Host, project: &str, lease: &str, event: &Value) 
 }
 
 fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
+    if value["method"] == "turn/completed" {
+        let shared_owner = host
+            .schedules
+            .connections
+            .sessions
+            .borrow()
+            .get(&connection.project_id)
+            .is_some_and(|current| Rc::ptr_eq(current, connection));
+        eprintln!(
+            "Host Core event: method=turn/completed stage=received terminal={} current={} sharedOwner={} status={}",
+            connection.terminal,
+            connection.shared_current(host),
+            shared_owner,
+            value["params"]["turn"]["status"]
+                .as_str()
+                .filter(|status| matches!(*status, "completed" | "failed" | "interrupted"))
+                .unwrap_or("invalid")
+        );
+    }
     if changes_shell(&value) {
         connection
             .shell_revision
@@ -1360,11 +1379,21 @@ mod tests {
                 let (stream,_) = listener.accept().await.unwrap();
                 let mut socket = tokio_tungstenite::accept_hdr_async(stream,ScheduleHeaders).await.unwrap();
                 let mut reads = 0;
+                let mut subscribed = false;
                 loop {
                     let call = receive(&mut socket).await;
                     match call["method"].as_str().unwrap() {
                         "initialize" => send(&mut socket,json!({"id":call["id"],"result":{}})).await,
+                        "areal/capabilities" => send(&mut socket,json!({"id":call["id"],"result":{"features":{"conversationObservation":true}}})).await,
+                        "areal/thread/observe" => {
+                            assert_eq!(call["params"]["threadId"],"thread");
+                            assert_eq!(call["params"]["mode"],"conversation");
+                            assert_eq!(call["params"]["maxBytes"],64*1024);
+                            subscribed = true;
+                            send(&mut socket,json!({"id":call["id"],"result":{"thread":{"id":"thread"}}})).await;
+                        }
                         "turn/interrupt" => {
+                            assert!(subscribed, "停止派发前必须建立原线程观察");
                             count.set(count.get()+1);
                             assert_eq!(call["params"],json!({"threadId":"thread","turnId":"turn"}));
                             send(&mut socket,json!({"id":call["id"],"result":{}})).await;
@@ -1373,7 +1402,7 @@ mod tests {
                             reads += 1;
                             let status = if reads < 3 { "inProgress" } else { "interrupted" };
                             send(&mut socket,json!({"id":call["id"],"result":{"thread":{"id":"thread","turns":[{"id":"turn","status":status}]}}})).await;
-                            if reads == 2 {
+                            if reads == 2 && subscribed {
                                 // 原命令的首次结算仍在执行；终态通知只负责唤醒下一次权威读。
                                 send(&mut socket,json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"turn","status":"interrupted"}}})).await;
                             } else if reads == 3 { released.await.unwrap(); break; }

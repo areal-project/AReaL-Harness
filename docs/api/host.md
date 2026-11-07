@@ -297,7 +297,7 @@ journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目�
 
 provider 值是非空字符串或 null；subscription 值是完整记录对象或 null。null 是持久撤销值，并增加 revision。原导入回执只初始化尚不存在的槽，不覆盖后续替换或撤销。过期 expectedRevision 在写入前返回顶层 `revisionConflict` 错误，客户端不得重做远端 OAuth refresh。
 
-`credentialVaultNoninteractiveV1` 支持 `interactionAllowed:false`，在本次槽读取的 state、恢复与值读取整条同步路径中禁止安全存储交互；缺省值保留原交互语义。需要交互时返回 `storageLocked`，不当作 null 或已撤销。GUI 初始读取使用该模式；旧 Host 缺少此能力时，将对应槽标为不可用，不退回交互读取。单槽 `storageLocked` 或 `storageMissing` 仅使引用它的 provider 凭据不可用；后续刷新重新核查可恢复的槽。其他传输或协议错误继续向上返回。
+`credentialVaultNoninteractiveV1` 支持 `interactionAllowed:false`，在本次槽读取的 state、恢复与值读取整条同步路径中禁止安全存储交互；缺省值保留原交互语义。需要交互时返回 `storageLocked`，不当作 null 或已撤销。GUI 初始读取使用该模式；旧 Host 缺少此能力时，将对应槽标为不可用，不退回交互读取。单槽 `storageLocked` 或 `storageMissing` 仅使引用它的 provider 凭据不可用；后续刷新重新核查可恢复的槽。工作台 `providers.read` 的可选 `credentialErrors` 按 provider ID 返回 `storageLocked`，供设置页提示安全存储不可用；不包含凭据或原始诊断。其他传输或协议错误继续向上返回。
 
 Host 项目启动也采用非交互凭据读取。槽不可读时本次启动不注入该凭据，并移除项目内存中的旧值，保留 vault 原状态和恢复回执；模型凭据不可用不会阻止历史读取。
 

@@ -24643,6 +24643,14 @@
             "type": "string"
           }
         },
+        "credentialErrors": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["storageLocked"]
+          },
+          "description": "Optional provider-ID map of unavailable secure-storage slots; contains no credential values or raw diagnostics."
+        },
         "effective": {
           "type": "object",
           "additionalProperties": true,

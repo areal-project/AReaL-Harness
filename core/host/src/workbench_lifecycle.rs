@@ -467,6 +467,32 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
             "LIFECYCLE_BLOCKED"
         );
     }
+    // 停止的观察属于原命令，不能依赖界面的线程阅读订阅；先订阅再派发，避免漏掉快速终态。
+    let mut observation = if request.kind == "interruptTurn" {
+        let target = &targets[0];
+        let (_, _, observation) = host
+            .schedules
+            .connections
+            .conversation_observe(
+                host,
+                &bindings[&target.project_id],
+                &target.generation,
+                request.thread_id.as_deref().unwrap(),
+                64 * 1024,
+            )
+            .await?;
+        ensure!(
+            observation.service().identity.service_id == target.service_id,
+            "CONFIRMATION_STALE"
+        );
+        eprintln!(
+            "Host lifecycle: method=interruptTurn stage=observed current={}",
+            observation.current(host)
+        );
+        Some(observation)
+    } else {
+        None
+    };
     let target_rows: Vec<_> = targets.iter().map(|target| {
         let canonical = &bindings[&target.project_id];
         let data_dir = host.slots.borrow()[canonical].registration.data_dir.clone();
@@ -528,6 +554,12 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
             })
             .await
         };
+        if request.kind == "interruptTurn" {
+            eprintln!(
+                "Host lifecycle: method=interruptTurn stage=interruptAck accepted={}",
+                dispatched.is_ok()
+            );
+        }
         match dispatched {
             Ok(operation) if !operation.is_null() => host_receipt(
                 &mut record["targets"][index],
@@ -544,8 +576,26 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
     let mut changes = host.changes.subscribe();
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
-        if settle(host, &bindings, &mut record).await.is_err() {
+        if let Err(cause) = settle(host, &bindings, &mut record).await {
+            let classification =
+                if let Some(cause) = cause.downcast_ref::<schedule_connection::RpcFailure>() {
+                    json!({"kind":"coreRpc","code":cause.0["code"].as_i64()})
+                } else if let Some(cause) = cause.downcast_ref::<wire::Error>() {
+                    json!({"kind":"hostProtocol","code":cause.code})
+                } else {
+                    json!({"kind":"internal"})
+                };
+            eprintln!(
+                "Host lifecycle: method={} stage=settleError classification={classification}",
+                request.kind
+            );
             break;
+        }
+        if request.kind == "interruptTurn" {
+            eprintln!(
+                "Host lifecycle: method=interruptTurn stage=settled phase={}",
+                record["phase"].as_str().unwrap_or("invalid")
+            );
         }
         store(host, &directory, &record)?;
         if !record["targets"]
@@ -556,10 +606,43 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
         {
             break;
         }
-        if tokio::time::timeout_at(deadline, changes.changed())
-            .await
-            .is_err()
-        {
+        let changed = async {
+            let terminal = async {
+                let Some(observation) = observation.as_mut() else {
+                    return std::future::pending::<bool>().await;
+                };
+                loop {
+                    match observation.events.recv().await {
+                        Ok(event)
+                            if event.value["method"] == "turn/completed"
+                                && event.value["params"]["threadId"] == record["threadId"]
+                                && event.value["params"]["turn"]["id"] == record["turnId"] =>
+                        {
+                            return true;
+                        }
+                        Ok(_) => {}
+                        // 丢帧只要求重新核原权威状态，不从通知推断完成或重派停止。
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => return true,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => return false,
+                    }
+                }
+            };
+            tokio::select! {
+                result = changes.changed() => result.is_ok(),
+                result = terminal => result,
+            }
+        };
+        let changed = tokio::time::timeout_at(deadline, changed).await;
+        if !matches!(changed, Ok(true)) {
+            eprintln!(
+                "Host lifecycle: method={} stage=waitEnded reason={}",
+                request.kind,
+                if changed.is_err() {
+                    "deadline"
+                } else {
+                    "closed"
+                }
+            );
             break;
         }
     }

@@ -13,10 +13,12 @@ import {
   stat,
   symlink,
   utimes,
+  chmod,
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { once } from "node:events";
+import { createServer as createNetServer } from "node:net";
 
 const require = createRequire(import.meta.url);
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
@@ -135,10 +137,13 @@ test("historical project aliases authenticate Host ownership and explicit stop r
     endpoint: "ws://127.0.0.1:1",
     authFile,
   };
-  assert.deepEqual(await local.authenticateService(host, id, descriptor), {
-    descriptor,
-    token: "fixture-token",
-  });
+  const authenticated = await local.authenticateService(host, id, descriptor);
+  assert.deepEqual(authenticated, { descriptor, token: "" });
+  assert.equal(
+    JSON.stringify(authenticated).includes("fixture-token"),
+    false,
+    "Core authentication credentials remain inside Host",
+  );
   for (const changed of [
     { dataDir: join(home, "another-project", "state") },
     { workspace: join(home, "another-workspace") },
@@ -540,10 +545,23 @@ async function fixture(
   });
   const backend = new SharedCoreBackend({ app: { getPath: () => home }, home });
   let mainFailure;
+  const hostCapabilityChecks = [];
   const connectMain = async () => {
     let closed = false;
     const transports = new Set();
+    const mainBackend = new CoreBackend({ binary: process.execPath, home });
+    mainBackend.host.client.capabilities = ["workbenchUtilities"];
+    const requireCapability = mainBackend.host.client.requireCapability.bind(
+      mainBackend.host.client,
+    );
+    mainBackend.host.client.requireCapability = (capability) => {
+      requireCapability(capability);
+      hostCapabilityChecks.push(capability);
+    };
+    mainBackend.hostCall = async () =>
+      assert.fail("Capability preflight must not dispatch a Core action");
     backend.mainDesktop = {
+      backend: mainBackend,
       adapter: {
         connectMain(onMessage, onClose) {
           const transport = new ServiceConnection(
@@ -593,6 +611,7 @@ async function fixture(
     home,
     backend,
     connectMain,
+    hostCapabilityChecks,
     failNextMain: (error) => {
       mainFailure = error;
     },
@@ -1549,10 +1568,9 @@ async function startupFixture(t, options = {}) {
     ...options,
     onStop: async ({ home, metadata }) => {
       controlAtStop = JSON.parse(await readFile(join(home, "service-control.json"), "utf8"));
-      const capabilities = await readFile(join(home, "capabilities.log"), "utf8");
       assert.ok(
-        capabilities.includes("config models --help"),
-        "inspect the replacement before stopping the retained service",
+        f.hostCapabilityChecks.includes("workbenchUtilities"),
+        "inspect Host configuration capability before stopping the retained service",
       );
       metadata.identity = replacementIdentity;
     },
@@ -1775,15 +1793,18 @@ test("explicit connect observes a changed deployment without automatic replaceme
   assert.equal(await f.launches(), 0);
 });
 
-test("replacement capability failure keeps the original connected service", async (t) => {
+test("missing Host configuration capability keeps the original connected service", async (t) => {
   const f = await startupFixture(t);
-  await writeFile(f.binary, '#!/bin/sh\nprintf "unrecognized subcommand\\n"\n');
   await f.connectMain();
-  await assert.rejects(f.backend.applyUpdate(), /当前 Core 不支持/);
+  f.backend.mainDesktop.backend.host.client.capabilities = [];
+  await assert.rejects(f.backend.applyUpdate(), /Host does not support workbenchUtilities/);
   assert.equal(f.backend.status.connected, true);
   assert.equal(f.backend.snapshot().connection.state, "ready");
   assert.equal(f.backend.snapshot().backendUpdate.state, "failed");
-  assert.match(f.backend.snapshot().backendUpdate.message, /当前 Core 不支持/);
+  assert.match(
+    f.backend.snapshot().backendUpdate.message,
+    /Host does not support workbenchUtilities/,
+  );
   assert.equal(
     f.calls.some((call) => call.method === "stopService"),
     false,
@@ -2140,21 +2161,71 @@ test("offline recovery queries the original Host receipt without relaunching or 
   const target = first.operation.targets[0];
   const path = join(f.home, "lifecycle-operations", `${first.operation.requestId}.json`);
   const original = await readFile(path, "utf8");
-  const binary = join(f.home, "areal-receipt");
   const operation = {
     version: 1,
     requestId: target.requestId,
     serviceId: target.serviceId,
-    generation: target.generation,
-    cancel: false,
+    serviceGeneration: target.generation,
+    strategy: "ifIdle",
     state: "completed",
   };
+  // 沿用 host-lifecycle 的有限本机 Host socket；原 ID 只读核查，不启动 CLI。
+  const socketRoot = await realpath(await mkdtemp("/tmp/ah-receipt-"));
+  const socketPath = join(socketRoot, "host.sock");
+  const hostId = "fixture-original-host",
+    generation = "fixture-original-generation";
+  const authFile = join(originalRegistry, "host/auth.json");
+  await mkdir(join(originalRegistry, "host"), { recursive: true, mode: 0o700 });
+  await writeFile(authFile, JSON.stringify("original-host-token"), { mode: 0o600 });
   await writeFile(
-    binary,
-    `#!${process.execPath}\nconst fs=require('node:fs');\nfs.appendFileSync(${JSON.stringify(join(f.home, "host-reads.jsonl"))}, JSON.stringify({args:process.argv.slice(2),registry:process.env.AREAL_HARNESS_SERVICE_HOME})+'\\n');\nprocess.stdout.write(${JSON.stringify(JSON.stringify({ operation }))});\n`,
-    { mode: 0o700 },
+    join(originalRegistry, "host/host.json"),
+    JSON.stringify({
+      version: 1,
+      hostId,
+      generation,
+      socketPath,
+      authFile,
+      pid: process.pid,
+    }),
+    { mode: 0o600 },
   );
-  f.backend.options.binary = binary;
+  const hostCalls = [],
+    hostSockets = new Set();
+  const hostServer = createNetServer((socket) => {
+    hostSockets.add(socket);
+    socket.on("close", () => hostSockets.delete(socket));
+    socket.on("error", () => {});
+    let bytes = "";
+    socket.on("data", (chunk) => {
+      bytes += chunk;
+      for (;;) {
+        const end = bytes.indexOf("\n");
+        if (end < 0) break;
+        const request = JSON.parse(bytes.slice(0, end));
+        bytes = bytes.slice(end + 1);
+        hostCalls.push(request);
+        let result;
+        if (request.method === "hello") {
+          assert.equal(request.params.authToken, "original-host-token");
+          result = { version: 1, hostId, generation, capabilities: ["stopOperations"] };
+        } else {
+          assert.equal(request.method, "host.operation", "Recovery never dispatches stop/ensure");
+          assert.deepEqual(request.params, { requestId: target.requestId });
+          result = { operation };
+        }
+        socket.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n");
+      }
+    });
+  });
+  hostServer.listen(socketPath);
+  await once(hostServer, "listening");
+  await chmod(socketPath, 0o600);
+  t.after(async () => {
+    for (const socket of hostSockets) socket.destroy();
+    await new Promise((done) => hostServer.close(done));
+    await rm(socketRoot, { recursive: true, force: true });
+  });
+  f.backend.options.binary = process.execPath;
   f.backend.options.harnessHome = join(f.home, "harness");
   f.backend.reconnectBlocked = true;
   f.drop();
@@ -2162,20 +2233,11 @@ test("offline recovery queries the original Host receipt without relaunching or 
   await rm(join(f.home, "service.json"));
   const checked = await f.backend.checkLifecycle();
   assert.equal(checked.phase, "completed");
-  assert.deepEqual(JSON.parse((await readFile(join(f.home, "host-reads.jsonl"), "utf8")).trim()), {
-    args: [
-      "service",
-      "operation",
-      "--instance",
-      "s",
-      "--expected-generation",
-      "g",
-      "--request-id",
-      target.requestId,
-      "--json",
-    ],
-    registry: originalRegistry,
-  });
+  assert.deepEqual(
+    hostCalls.map((request) => request.method),
+    ["hello", "host.operation"],
+  );
+  assert.deepEqual(hostCalls[1].params, { requestId: target.requestId });
   assert.equal(await readFile(path, "utf8"), original);
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
   assert.equal(f.backend.status.connected, false);
