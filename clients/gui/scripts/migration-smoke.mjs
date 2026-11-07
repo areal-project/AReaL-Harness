@@ -651,7 +651,21 @@ try {
     );
     const resized = await size("AREAL_PTY_AFTER");
     assert.notDeepEqual(resized, initialSize, "original PTY received resize");
-    await button("关闭当前终端").click();
+    const activeTerminalTab = page
+      .getByRole("tablist", { name: "侧边面板标签", exact: true })
+      .getByRole("tab", { selected: true });
+    assert.match(
+      await activeTerminalTab.evaluate(
+        (tab) =>
+          tab.closest("[data-side-pane-tab-id]")?.getAttribute("data-side-pane-tab-id") ?? "",
+      ),
+      /^terminal:/,
+    );
+    assert.equal(
+      await page.locator(".terminal-pane [data-terminal-id]").getAttribute("data-terminal-id"),
+      first.id,
+    );
+    await activeTerminalTab.press("Delete");
     let firstCleanup;
     await waitForSnapshot(async () => {
       firstCleanup = (await processList()).find((item) => item.id === first.id);
@@ -664,12 +678,17 @@ try {
     checks.push(
       "Electron xterm input/output and resize use the original PTY; explicit close confirms Runtime cleanup",
     );
-    await button("新建终端").click();
+    await openPanel("终端");
     let second;
     await waitForSnapshot(async () => {
       second = (await processList()).find((item) => item.id !== first.id && !before.has(item.id));
       return second?.state === "running" && second.processId;
     }, "second GUI terminal running before quit");
+    assert.notEqual(
+      second.processId,
+      first.processId,
+      "second terminal owns a new Runtime process",
+    );
     const { HostClient } = require("@areal/client/node");
     const host = new HostClient();
     await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
