@@ -1,0 +1,23 @@
+clients/gui/packages/workbench/client/desktop-contract/generated/management-plugin-setup-protocol.cjs
+  s_7c03c19a0799f8::t_48bf996d6b90aa 538-541,554,556,574,576
+clients/gui/packages/workbench/client/desktop-contract/generated/management-agents-protocol.cjs
+  s_7c03c19a0799f8::t_48bf996d6b90aa 538-541,554,556,626,628,646,648
+clients/gui/packages/workbench/client/desktop-contract/generated/management-execution-protocol.cjs
+  s_7c03c19a0799f8::t_48bf996d6b90aa 270-273,290,292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d9284e91162a65feea5d4af4d7b84c61687bb235",
+  "prompts": {},
+  "sessions": {
+    "s_7c03c19a0799f8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b435-5e31-7c61-b3a4-ba468385e3d6",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
