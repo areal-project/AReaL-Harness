@@ -15,6 +15,11 @@ const SHOTS = [
   "thread.stopped",
   "thread.approval",
   "thread.question",
+  "window.sidebar",
+  "window.collapsed",
+  "window.search",
+  "window.search-query",
+  "window.rail",
 ].flatMap((state) => ["light", "dark"].map((theme) => ({ state, theme })));
 // 本仓库防回归用 0.001；交接演练首轮另按 --threshold 0.01 计分。
 const THRESHOLD = process.argv.includes("--threshold")

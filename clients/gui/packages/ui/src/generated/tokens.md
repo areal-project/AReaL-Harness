@@ -201,6 +201,12 @@
 | `--thread-summary-max-height` | `calc(100svh - var(--height-toolbar, 46px) - 24px)` | 顶栏任务资源与上下文摘要弹窗（Pin Summary）的最大可用高度 |
 | `--thread-sticky-header-top` | `0px` | 对话时间线内展开态回合过程摘要头（TurnProgress）的滚动吸顶偏移 |
 | `--font-weight-toolbar` | `430` | 输入框工具栏入口文字（模型、强度）的字重 |
+| `--rail-width` | `52px` | 应用导航栏宽度；侧栏标题区高度与之相同 |
+| `--rail-button-size` | `36px` | 应用导航栏图标按钮边长 |
+| `--icon-size-rail` | `20px` | 应用导航栏图标边长 |
+| `--navigation-row-height` | `max(30px, calc(var(--ui-font-size) + 16px))` | 侧栏项目行、对话行与新聊天入口的最小高度 |
+| `--sidebar-default-width` | `320px` | 侧栏默认宽度；用户可拖动调整 |
+| `--font-weight-strong` | `600` | 侧栏工作区名称等强调标题的字重 |
 | `--font-weight-medium` | `500` | 卡片标题与选项文字的中等字重 |
 
 ## 派生参数与来源

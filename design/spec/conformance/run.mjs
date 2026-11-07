@@ -2,9 +2,10 @@
 // 需要能从当前目录解析到 playwright 或 playwright-core；断言是下面的最小实现，不依赖测试框架。
 import { createRequire } from "node:module";
 import { checks as decide } from "./decide.mjs";
+import { checks as navigate } from "./navigate.mjs";
 import { checks as sendRunStop } from "./send-run-stop.mjs";
 
-const checks = [...sendRunStop, ...decide];
+const checks = [...sendRunStop, ...decide, ...navigate];
 
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const url = process.argv.includes("--url") ? arg("--url") : undefined;
@@ -39,6 +40,10 @@ const expect = (locator) => ({
   toBeEnabled: () => until(`${locator} enabled`, () => locator.first().isEnabled()),
   toBeDisabled: () => until(`${locator} disabled`, () => locator.first().isDisabled()),
   toBeHidden: () => until(`${locator} hidden`, async () => !(await locator.first().isVisible())),
+  toHaveAttribute: (name, value) =>
+    until(`${locator} [${name}="${value}"]`, async () =>
+      (await locator.first().getAttribute(name)) === value,
+    ),
   toContainText: (text) =>
     until(`${locator} to contain "${text}"`, async () =>
       (await locator.first().textContent()).includes(text),

@@ -135,6 +135,37 @@
       "screen": "thread",
       "conversation": "thread-question",
       "draft": ""
+    },
+    "window.sidebar": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": ""
+    },
+    "window.collapsed": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "collapsed": [
+        "docs-project"
+      ]
+    },
+    "window.search": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "search": ""
+    },
+    "window.search-query": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "search": "README"
+    },
+    "window.rail": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "rail": true
     }
   },
   "agent": {
@@ -149,5 +180,75 @@
       "deny": "未获批准，跳过运行测试",
       "answer": "按你的选择继续：{answer}"
     }
+  },
+  "navigation": {
+    "$comment": "侧栏示例数据。updatedAt 为相对 thread-idle 回合时间的分钟数，越大越新；侧栏按最近更新排序。current 是当前打开的对话，主区显示 thread-idle。",
+    "workspace": "AReaL Harness",
+    "projects": [
+      {
+        "id": "spec-project",
+        "name": "示例项目",
+        "threads": [
+          {
+            "id": "spec-thread",
+            "title": "给 src/math.ts 加一个 clamp 函数",
+            "updatedAt": 50,
+            "current": true
+          },
+          {
+            "id": "t-lint",
+            "title": "修复 lint 报错",
+            "updatedAt": 40,
+            "running": true
+          },
+          {
+            "id": "t-release",
+            "title": "整理发布说明",
+            "updatedAt": 30,
+            "attention": true
+          },
+          {
+            "id": "t-readme",
+            "title": "更新 README 用法",
+            "updatedAt": 20,
+            "unread": true
+          },
+          {
+            "id": "t-ci",
+            "title": "排查 CI 超时",
+            "updatedAt": 10
+          }
+        ]
+      },
+      {
+        "id": "docs-project",
+        "name": "文档站",
+        "threads": [
+          {
+            "id": "t-nav",
+            "title": "调整目录结构",
+            "updatedAt": 45
+          },
+          {
+            "id": "t-search",
+            "title": "接入站内搜索",
+            "updatedAt": 35
+          }
+        ]
+      }
+    ],
+    "pinned": [
+      {
+        "project": "spec-project",
+        "thread": "t-ci"
+      }
+    ],
+    "chats": [
+      {
+        "id": "t-weekly",
+        "title": "写本周周报",
+        "updatedAt": 25
+      }
+    ]
   }
 }

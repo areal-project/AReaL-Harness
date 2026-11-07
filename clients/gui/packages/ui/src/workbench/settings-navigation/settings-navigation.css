@@ -192,16 +192,16 @@
 .workspace-navigation {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   flex-shrink: 0;
 }
 .workspace-navigation button:disabled {
-  opacity: 0.4;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 .icon-button {
-  width: 28px;
-  height: 28px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   display: inline-flex;
   align-items: center;
   justify-content: center;

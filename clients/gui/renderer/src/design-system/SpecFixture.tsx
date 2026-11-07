@@ -6,6 +6,7 @@ import { DraftComposer } from "../DraftComposer.js";
 import { Messages } from "../Messages.js";
 import type { Action, Data } from "../services.js";
 import { useAppearance } from "../settings/applicationPreferences.js";
+import { SpecNavigation } from "./SpecNavigation.js";
 
 // design/spec 的复现入口：?spec&state=<flow 状态>&theme=light|dark。示例数据只在这里翻译成本仓库的数据形状。
 type Conversation = (typeof fixture.conversations)[keyof typeof fixture.conversations];
@@ -134,7 +135,7 @@ export function SpecFixture() {
   useState(() => {
     if (start.draft) localStorage.setItem(`areal-gui:draft:${projectId}:new`, start.draft);
   });
-  const [opened, setOpened] = useState(start.screen === "thread");
+  const [opened, setOpened] = useState(start.screen !== "home");
   const [turns, setTurns] = useState<Data[]>(() => (initial?.turns ?? []).map(turn));
   const [queue, setQueue] = useState<string[]>(() => ("queue" in start ? start.queue : []));
   const [decision, setDecision] = useState<Decision | undefined>(() =>
@@ -257,55 +258,67 @@ export function SpecFixture() {
     if (name === "tasks") return { tasks: [] };
     return {};
   }) as Action;
-  return (
-    <div className="workspace-content" data-spec-fixture style={{ height: "100dvh" }}>
-      <div className="conversation-column">
-        <section className={`conversation-pane ${opened ? "" : "draft-pane"}`}>
-          {opened ? (
-            <>
-              <Messages
+  const column = (
+    <div className="conversation-column">
+      <section className={`conversation-pane ${opened ? "" : "draft-pane"}`}>
+        {opened ? (
+          <>
+            <Messages
+              project={data}
+              thread={thread}
+              action={action}
+              dark={dark}
+              decisionShown
+              readTurnReview={async () => ({})}
+              onLink={() => {}}
+              onFile={() => {}}
+              onReview={() => {}}
+            />
+            <div className="active-composer">
+              <Composer
                 project={data}
                 thread={thread}
                 action={action}
-                dark={dark}
-                decisionShown
-                readTurnReview={async () => ({})}
-                onLink={() => {}}
-                onFile={() => {}}
-                onReview={() => {}}
+                readAction={action}
+                executionBlocked={false}
+                onPanel={() => {}}
+                onNew={() => {}}
               />
-              <div className="active-composer">
-                <Composer
-                  project={data}
-                  thread={thread}
-                  action={action}
-                  readAction={action}
-                  executionBlocked={false}
-                  onPanel={() => {}}
-                  onNew={() => {}}
-                />
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="draft-greeting">
-                <ConversationDraftEmptyState projectName={fixture.project.name} />
-              </div>
-              <div className="draft-composer">
-                <DraftComposer
-                  project={data}
-                  action={action}
-                  readAction={action}
-                  backendReady
-                  modelCatalogReady
-                  onOpen={async () => setOpened(true)}
-                  onPanel={() => {}}
-                />
-              </div>
-            </>
-          )}
-        </section>
-      </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="draft-greeting">
+              <ConversationDraftEmptyState projectName={fixture.project.name} />
+            </div>
+            <div className="draft-composer">
+              <DraftComposer
+                project={data}
+                action={action}
+                readAction={action}
+                backendReady
+                modelCatalogReady
+                onOpen={async () => setOpened(true)}
+                onPanel={() => {}}
+              />
+            </div>
+          </>
+        )}
+      </section>
+    </div>
+  );
+  return start.screen === "window" ? (
+    <SpecNavigation
+      collapsed={"collapsed" in start ? start.collapsed : []}
+      search={"search" in start ? start.search : undefined}
+      rail={"rail" in start ? start.rail : false}
+      action={action}
+    >
+      <div className="workspace-content">{column}</div>
+    </SpecNavigation>
+  ) : (
+    <div className="workspace-content" data-spec-fixture style={{ height: "100dvh" }}>
+      {column}
     </div>
   );
 }

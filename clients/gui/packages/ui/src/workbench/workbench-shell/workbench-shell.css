@@ -1,7 +1,10 @@
 .areal-workbench {
   position: relative;
   --window-inset: 0px;
-  --shell-bar-height: max(var(--height-toolbar), calc(var(--ui-font-size) + 32px));
+  --shell-bar-height: max(
+    var(--height-toolbar),
+    calc(var(--ui-font-size) + var(--spacing-control-lg))
+  );
   --page-radius: var(--radius-panel);
   --page-frame-left: 0px;
   --page-clip-start: 0px;
@@ -9,7 +12,7 @@
   height: 100dvh;
   display: flex;
   /* Page frame inset belongs to the shell, including every pane and footer. */
-  padding: 0 4px 4px 0;
+  padding: 0 calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) / 2) 0;
   background: var(--color-shell);
   color: var(--color-foreground);
   overflow: hidden;
@@ -24,7 +27,7 @@
   display: none;
 }
 .areal-workbench:has(.sidebar-with-rail) {
-  --page-frame-left: 52px;
+  --page-frame-left: var(--rail-width);
   --page-clip-start: calc(-1 * var(--page-radius));
 }
 .areal-workbench:has(.workspace-side-panel[data-open="true"]) {
@@ -34,8 +37,8 @@
   content: "";
   position: absolute;
   top: var(--shell-bar-height);
-  right: 4px;
-  bottom: 4px;
+  right: calc(var(--spacing-inline) / 2);
+  bottom: calc(var(--spacing-inline) / 2);
   left: var(--page-frame-left);
   border-radius: var(--page-radius);
   box-shadow: var(--shadow-page-surface);
@@ -50,7 +53,7 @@
 }
 .sidebar {
   position: relative;
-  width: var(--sidebar-width, 320px);
+  width: var(--sidebar-width, var(--sidebar-default-width));
   flex-shrink: 0;
   min-width: 0;
   display: flex;
@@ -78,22 +81,22 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  height: 52px;
+  gap: var(--spacing-inline);
+  height: var(--rail-width);
   flex-shrink: 0;
-  padding: 0 12px 0 16px;
+  padding: 0 calc(var(--spacing-inline) * 3 / 2) 0 var(--spacing-field);
 }
 .sidebar-workspace-header strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--text-ui-xl);
-  line-height: 24px;
-  font-weight: 600;
+  line-height: var(--line-height-title);
+  font-weight: var(--font-weight-strong);
 }
 .sidebar-workspace-header button {
-  width: 28px;
-  height: 28px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
 }
 .sidebar-with-rail .sidebar-tools {
   padding-top: 0;
@@ -103,41 +106,42 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 12px 0 max(12px, var(--window-inset));
+  padding: 0 calc(var(--spacing-inline) * 3 / 2) 0
+    max(calc(var(--spacing-inline) * 3 / 2), var(--window-inset));
   -webkit-app-region: drag;
 }
 .sidebar-chrome {
-  border-right: 1px solid var(--color-border);
+  border-right: var(--border-width-default) solid var(--color-border);
 }
 .sidebar-chrome button {
   -webkit-app-region: no-drag;
 }
 .sidebar-tools {
-  padding: 4px 8px 8px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline) var(--spacing-inline);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
 }
 .sidebar-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 8px;
+  padding: 0 var(--spacing-inline);
 }
 .sidebar-section-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   flex: 1;
   min-width: 0;
-  height: 25px;
+  height: var(--spacing-control-sm);
   padding: 0;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
   color: inherit;
   font: inherit;
-  line-height: 1.5;
+  line-height: var(--line-height-toolbar);
   text-align: left;
   cursor: var(--interactive-cursor, pointer);
 }
@@ -245,8 +249,8 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 10px 0 16px;
+  gap: var(--spacing-inline);
+  padding: 0 var(--spacing-inline) 0 var(--spacing-field);
   -webkit-app-region: drag;
 }
 .workspace-header button {
@@ -610,12 +614,14 @@
 }
 
 .navigation-task-row {
-  min-height: max(30px, calc(var(--ui-font-size) + 16px));
-  padding: 5px 5px 5px 8px;
+  min-height: var(--navigation-row-height);
+  padding: calc((var(--navigation-row-height) - var(--line-height-ui)) / 2)
+    calc((var(--navigation-row-height) - var(--line-height-ui)) / 2)
+    calc((var(--navigation-row-height) - var(--line-height-ui)) / 2) var(--spacing-inline);
   border-radius: var(--radius-navigation);
   font-size: var(--text-ui-base);
   font-weight: var(--ui-font-weight);
-  line-height: 1.42857;
+  line-height: var(--line-height-ui);
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .navigation-task-row:hover,
@@ -630,17 +636,17 @@
 /* 显隐交给 HoverActions；这里只负责定位，标题在操作区可见时让出空间。 */
 .task-row-actions {
   position: absolute;
-  right: 8px;
+  right: var(--spacing-inline);
   top: 50%;
   transform: translateY(-50%);
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .navigation-task-row:is(:hover, :has(:focus-visible), :has([data-popup-open])) .task-row-title {
   padding-right: 80px;
 }
 .navigation-task-title {
   font-size: var(--text-ui-base);
-  line-height: calc(var(--ui-font-size) + 6px);
+  line-height: var(--line-height-ui);
   color: color-mix(in oklab, var(--color-foreground) 85%, transparent);
 }
 .resource-scope {

@@ -1,0 +1,57 @@
+id: navigate
+name: 在侧栏里找对话
+status: draft
+screens: [window]
+components: [navigation-sidebar, task-search]
+
+initial: window.sidebar
+
+states:
+  window.sidebar:
+    see: 置顶、项目、任务三组；当前对话行高亮；运行中、等待处理、未读各有状态位
+  window.collapsed:
+    see: “文档站”只剩项目行，图标为合上的文件夹
+  window.search:
+    see: 窗口盖上背景层，搜索框获得焦点，下方按最近更新列出全部对话及其项目名
+  window.search-query:
+    see: 只剩标题或项目名包含关键词的对话；侧栏列表同样只剩这些
+  window.rail:
+    see: 侧栏只剩应用导航栏；后退、前进与“展开侧栏”出现在会话标题之前
+
+transitions:
+  - from: window.sidebar
+    on: click 项目行
+    to: window.collapsed
+    note: 再点一次展开
+  - from: window.sidebar
+    on: click 分组标题
+    to: window.sidebar
+    note: 该分组只剩标题，箭头常显朝右；再点一次展开
+  - from: window.sidebar
+    on: click 搜索任务
+    to: window.search
+  - from: window.search
+    on: 输入关键词
+    to: window.search-query
+  - from: [window.search, window.search-query]
+    on: [click 关闭搜索, click 背景]
+    to: window.sidebar
+    note: 关键词清空，侧栏恢复完整列表
+  - from: [window.search, window.search-query]
+    on: click 一条结果
+    to: window.sidebar
+    note: 被点的对话成为当前对话，会话标题换成它的标题
+  - from: window.sidebar
+    on: click 对话行
+    to: window.sidebar
+    note: 被点的对话成为当前对话（示例数据里各对话的主区都显示同一段对话）
+  - from: window.sidebar
+    on: click 收起侧栏
+    to: window.rail
+  - from: window.rail
+    on: click 展开侧栏
+    to: window.sidebar
+
+invariants:
+  - 同一时刻只有一行是当前对话
+  - 收起项目或分组不改变当前对话

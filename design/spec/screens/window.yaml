@@ -1,0 +1,57 @@
+id: window
+name: 窗口（侧栏加对话）
+status: draft
+purpose: 桌面窗口的完整骨架：左边找对话，右边读和写。
+why: 侧栏与对话共用一张纸面，只在顶栏和最左一列露出窗口底色，视线落在内容上。
+
+regions:
+  - id: frame
+    name: 窗口
+    layout: 底色 color-shell；右缘与下缘各留 spacing-inline 的一半
+  - id: top-bar
+    name: 顶栏
+    layout: 横贯窗口，高度为 height-toolbar 与 text-ui-base 加 spacing-control-lg 两者取大；左段属于侧栏（见 navigation-sidebar 的 window-controls），其余属于会话标题栏 C；顶栏没有自己的底色
+  - id: page
+    name: 纸面
+    layout: 顶栏以下、应用导航栏以右，到窗口右下的留白为止；圆角 radius-panel，投影 shadow-page-surface；左段是侧栏的导航内容（color-navigation-background），右段是主区（color-background），两段之间没有分隔线
+  - id: A
+    name: 应用导航栏
+    contains: [navigation-sidebar.application-rail]
+  - id: B
+    name: 侧栏
+    contains: [navigation-sidebar]
+  - id: C
+    name: 会话标题栏
+    layout: 在顶栏右段；左 spacing-field、右 spacing-inline，元素间隔 spacing-inline
+    contains:
+      - title: folder 图标（icon-size-control，foreground-subtle）加当前对话标题（text-ui-base，font-weight-medium，foreground，单行省略）
+      - side-panel: 最右一个 spacing-control 见方的按钮，图标 side-panel，颜色 foreground-subtle，读屏名“展开侧边面板”
+      - window-controls: 侧栏收起时，后退、前进、展开侧栏三个按钮移到标题最前
+  - id: main
+    name: 主区
+    layout: 纸面右段，内容与 thread 界面的 D、E 相同；回合导航贴主区左缘
+    contains: [thread]
+  - id: search
+    name: 搜索任务
+    contains: [task-search]
+
+fixtures: [send-run-stop]
+
+states:
+  - sidebar: 侧栏展开，当前对话为 thread-idle
+  - collapsed: 同上，但“文档站”项目收起
+  - search: 搜索打开，关键词为空，列出全部对话
+  - search-query: 搜索关键词“README”
+  - rail: 侧栏收起，只剩应用导航栏
+
+references:
+  - state: sidebar
+    themes: [light, dark]
+  - state: collapsed
+    themes: [light, dark]
+  - state: search
+    themes: [light, dark]
+  - state: search-query
+    themes: [light, dark]
+  - state: rail
+    themes: [light, dark]

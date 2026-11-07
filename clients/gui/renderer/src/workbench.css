@@ -18,7 +18,7 @@ button:disabled {
   opacity: var(--opacity-disabled);
 }
 /* 程序移入焦点的标题（tabindex=-1）只为读屏定位，不画焦点环。 */
-:focus-visible:not([tabindex="-1"]) {
+:focus-visible:where(:not([tabindex="-1"])) {
   outline: var(--focus-width) solid var(--color-brand);
   outline-offset: var(--focus-offset);
 }
@@ -95,20 +95,20 @@ pre {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  width: 52px;
+  gap: var(--spacing-inline);
+  width: var(--rail-width);
   flex-shrink: 0;
-  padding: 8px 8px 4px;
+  padding: var(--spacing-inline) var(--spacing-inline) calc(var(--spacing-inline) / 2);
 }
 .application-rail .application-rail-button {
-  width: 36px;
-  height: 36px;
+  width: var(--rail-button-size);
+  height: var(--rail-button-size);
   border-radius: var(--radius-navigation);
   color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 }
 .application-rail .application-rail-button svg {
-  width: 20px;
-  height: 20px;
+  width: var(--icon-size-rail);
+  height: var(--icon-size-rail);
 }
 .application-rail-button[aria-current="page"] {
   background: var(--color-selected);
@@ -121,7 +121,7 @@ pre {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 kbd {
   font-size: var(--text-ui-xs);
@@ -129,7 +129,7 @@ kbd {
   color: var(--color-foreground-subtlest);
 }
 .project-group {
-  margin: 0 0 8px;
+  margin: 0 0 var(--spacing-inline);
 }
 .group-heading {
   display: flex;
@@ -143,18 +143,18 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 25px;
-  height: 25px;
-  padding: 0 4px 0 8px;
-  margin-top: 8px;
-  margin-bottom: 2px;
+  min-height: var(--spacing-control-sm);
+  height: var(--spacing-control-sm);
+  padding: 0 calc(var(--spacing-inline) / 2) 0 var(--spacing-inline);
+  margin-top: var(--spacing-inline);
+  margin-bottom: calc(var(--spacing-inline) / 4);
   font-size: var(--text-ui-base);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-foreground-subtle);
 }
 .section-action-btn {
-  width: 22px;
-  height: 22px;
+  width: calc(var(--spacing-control-xs) + var(--spacing-inline) / 4);
+  height: calc(var(--spacing-control-xs) + var(--spacing-inline) / 4);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -177,17 +177,17 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 30px;
-  min-height: 30px;
-  padding: 0 4px 0 8px;
+  height: var(--navigation-row-height);
+  min-height: var(--navigation-row-height);
+  padding: 0 calc(var(--spacing-inline) / 2) 0 var(--spacing-inline);
   border-radius: var(--radius-navigation);
   color: var(--color-foreground);
   transition: background-color var(--motion-normal) var(--ease-standard);
 }
 [data-sidebar-pinned] {
-  padding-bottom: 6px;
-  margin-bottom: 6px;
-  border-bottom: 1px solid var(--color-border-subtle, var(--color-border));
+  padding-bottom: calc(var(--spacing-inline) * 3 / 4);
+  margin-bottom: calc(var(--spacing-inline) * 3 / 4);
+  border-bottom: var(--border-width-default) solid var(--color-border-subtle, var(--color-border));
 }
 .project-row:hover,
 .project-row:has([data-popup-open]),
@@ -197,23 +197,23 @@ kbd {
 /* 显隐交给 HoverActions；绝对定位让锚点不随悬停移动，标题只在悬停时让出空间。 */
 .project-actions {
   position: absolute;
-  right: 4px;
+  right: calc(var(--spacing-inline) / 2);
   top: 50%;
   transform: translateY(-50%);
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .project-row:is(:hover, :has(:focus-visible), :has([data-popup-open])) > .project-label {
-  padding-right: 52px;
+  padding-right: calc(var(--spacing-control-xs) * 2 + var(--spacing-inline) * 3 / 2);
 }
 .project-actions .icon-button {
-  width: 20px;
-  height: 20px;
+  width: var(--spacing-control-xs);
+  height: var(--spacing-control-xs);
   flex-shrink: 0;
 }
 .project-label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   min-width: 0;
   flex: 1;
   height: 100%;
@@ -228,8 +228,8 @@ kbd {
 }
 .project-label > svg,
 .header-context > svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   flex-shrink: 0;
   color: var(--color-foreground-subtle);
 }
@@ -242,8 +242,8 @@ kbd {
 .project-show-more {
   display: block;
   width: 100%;
-  height: 28px;
-  padding: 5px 8px 5px 32px;
+  height: var(--spacing-control);
+  padding: 0 var(--spacing-inline) 0 calc(var(--spacing-inline) * 2 + var(--icon-size-control));
   text-align: left;
   font-size: var(--text-ui-caption);
   color: var(--color-foreground-subtle);
@@ -260,7 +260,7 @@ kbd {
   color: var(--color-foreground);
 }
 .empty-tasks {
-  padding: 8px 32px;
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 2 + var(--icon-size-control));
   font-size: var(--text-ui-caption);
   color: var(--color-foreground-subtlest);
 }
@@ -274,18 +274,18 @@ kbd {
 .header-context {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   min-width: 0;
 }
 .header-task {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .header-tools {
   display: flex;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
   margin-left: auto;
 }
 .workspace-content {
@@ -695,42 +695,44 @@ button.composer-project:hover > svg,
 }
 .search {
   display: flex;
-  gap: 10px;
+  gap: var(--spacing-inline);
   align-items: center;
-  padding: 16px;
+  padding: var(--spacing-field);
   color: var(--color-foreground-subtle);
 }
 .search input {
   flex: 1;
   min-width: 0;
+  line-height: var(--line-height-ui);
   outline: none;
   background: transparent;
 }
 .search-backdrop {
   align-items: start !important;
-  padding-top: 120px;
+  padding-top: calc(var(--spacing-section) * 5);
 }
 .search-dialog {
-  width: min(640px, 90vw);
-  border: 1px solid var(--color-border);
+  width: min(calc(var(--reading-width) * 5 / 6), 90vw);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-panel);
   background: var(--color-popover);
   box-shadow: var(--shadow-large-overlay);
   overflow: hidden;
 }
 .search-results {
-  border-top: 1px solid var(--color-border);
-  padding: 8px;
-  max-height: 400px;
+  border-top: var(--border-width-default) solid var(--color-border);
+  padding: var(--spacing-inline);
+  max-height: calc(var(--reading-width) / 2 + var(--spacing-field));
   overflow: auto;
 }
 .search-results button {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--spacing-inline);
   width: 100%;
+  line-height: var(--line-height-ui);
   border-radius: var(--radius-compact);
-  padding: 10px;
+  padding: var(--spacing-inline);
   text-align: left;
 }
 .search-results button:hover {
@@ -745,6 +747,9 @@ button.composer-project:hover > svg,
 .search-results small,
 .search-results p {
   color: var(--color-foreground-subtle);
+}
+.search-results small {
+  font-size: var(--text-ui-xs);
 }
 /* A narrow host uses a navigation page; hidden main content cannot take focus. */
 @media (max-width: 1100px) {
@@ -2670,14 +2675,14 @@ button[aria-label="停止"] {
   display: flex;
   align-items: center;
   width: 100%;
-  height: 30px;
-  min-height: 30px;
-  padding: 5px 8px;
-  gap: 8px;
+  height: var(--navigation-row-height);
+  min-height: var(--navigation-row-height);
+  padding: 0 var(--spacing-inline);
+  gap: var(--spacing-inline);
   text-align: left;
   font-size: var(--text-ui-caption);
-  font-weight: 430;
-  line-height: 1.42857;
+  font-weight: var(--font-weight-toolbar);
+  line-height: var(--line-height-ui);
   border-radius: var(--radius-navigation);
   color: var(--color-foreground);
   background: transparent;
@@ -2689,8 +2694,8 @@ button[aria-label="停止"] {
 }
 .new-task-action > svg {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   color: var(--color-foreground-subtle);
   transition: color var(--motion-normal) var(--ease-standard);
 }
@@ -2711,7 +2716,7 @@ button[aria-label="停止"] {
   color: var(--color-foreground);
 }
 .new-task-action:disabled {
-  opacity: 0.4;
+  opacity: var(--opacity-disabled);
   cursor: default;
 }
 .new-task-shortcut {
