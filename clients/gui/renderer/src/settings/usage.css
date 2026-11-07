@@ -123,7 +123,7 @@
   display: block;
   padding: 0;
   height: 11px;
-  border-radius: 2px;
+  border-radius: var(--radius-2xs);
   min-width: 0;
   border: 0;
 }

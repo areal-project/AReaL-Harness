@@ -1,8 +1,8 @@
 .areal-workbench {
   position: relative;
   --window-inset: 0px;
-  --shell-bar-height: max(44px, calc(var(--ui-font-size) + 30px));
-  --page-radius: 14px;
+  --shell-bar-height: max(var(--height-toolbar, 46px), calc(var(--ui-font-size) + 32px));
+  --page-radius: var(--radius-xl, 16px);
   --page-frame-left: 0px;
   --page-clip-start: 0px;
   --main-clip-end: 0px;
@@ -420,16 +420,17 @@
   gap: 8px;
   padding: 8px 10px;
   border: 0;
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  border-radius: var(--radius-md, var(--radius-control));
+  background: var(--color-surface-elevated, var(--color-surface));
   color: var(--color-foreground);
   font-size: var(--text-fixed-label);
   font-weight: 400;
   line-height: 24px;
   text-align: start;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .side-pane-launcher-item:hover {
-  background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  background: var(--color-surface-tertiary, var(--color-hover));
 }
 .side-pane-launcher-item > svg {
   width: 16px;
@@ -447,21 +448,22 @@
 .side-pane-launcher-shortcut {
   margin-inline-start: auto;
   padding: 2px 6px;
-  border-radius: var(--radius-compact);
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  color: color-mix(in srgb, var(--color-foreground) 65%, transparent);
+  border-radius: var(--radius-xs, var(--radius-compact));
+  background: var(--color-surface-tertiary, var(--color-hover));
+  color: var(--color-foreground-subtle);
   font-family: var(--font-sans);
   font-size: var(--text-fixed-caption);
   font-weight: 430;
   line-height: 1;
 }
 .side-pane-tabbar {
-  height: var(--shell-bar-height, 44px);
+  height: var(--shell-bar-height, var(--height-toolbar, 46px));
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 0 8px;
+  backdrop-filter: blur(var(--blur-header, 18px));
 }
 .side-pane-tabs-root {
   min-width: 0;
@@ -594,7 +596,7 @@
   max-width: 280px;
   padding: 5px 8px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-navigation);
+  border-radius: var(--radius-md, var(--radius-navigation));
   background: var(--color-popover);
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
@@ -610,10 +612,11 @@
 .navigation-task-row {
   min-height: max(30px, calc(var(--ui-font-size) + 16px));
   padding: 5px 5px 5px 8px;
-  border-radius: var(--radius-navigation);
+  border-radius: var(--radius-md, var(--radius-navigation));
   font-size: var(--text-ui-base);
   font-weight: var(--ui-font-weight);
   line-height: 1.42857;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .navigation-task-row:hover,
 .navigation-task-row:has([data-popup-open]),

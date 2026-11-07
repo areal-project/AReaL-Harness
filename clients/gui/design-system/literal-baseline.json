@@ -1,9 +1,9 @@
 {
   "$description": "生产 UI 字面量存量上限，由 scripts/design-system-baseline.mjs --write 生成；只允许减少。",
   "total": {
-    "color": 61,
-    "radius": 4,
-    "typography": 5
+    "color": 60,
+    "radius": 3,
+    "typography": 4
   },
   "files": {
     "renderer/src/AnnotationNoteEditor.css": {
@@ -34,12 +34,9 @@
     "renderer/src/settings/usage.css": {
       "color": 10,
       "typography": 1,
-      "radius": 3
+      "radius": 2
     },
     "packages/ui/src/components/dialog/dialog.tsx": {
-      "color": 1
-    },
-    "packages/ui/src/components/switch/switch.tsx": {
       "color": 1
     },
     "packages/ui/src/components/tabs/tabs.tsx": {
@@ -53,9 +50,6 @@
     },
     "packages/ui/src/conversation/thinking-status/thinking-status.css": {
       "color": 1
-    },
-    "packages/ui/src/workbench/settings-navigation/settings-navigation.css": {
-      "typography": 1
     }
   },
   "exceptions": [
@@ -474,13 +468,6 @@
     },
     {
       "file": "renderer/src/settings/usage.css",
-      "finding": "literal radius: border-radius: 2px",
-      "occurrence": 1,
-      "reason": "这是微型图表柱或热力图单元的局部几何，2px 或 3px 不用于普通控件。",
-      "exitCondition": "图表布局所有者调整单元形状时复核。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
       "finding": "literal radius: border-radius: 3px",
       "occurrence": 1,
       "reason": "这是微型图表柱或热力图单元的局部几何，2px 或 3px 不用于普通控件。",
@@ -499,13 +486,6 @@
       "occurrence": 1,
       "reason": "对话框遮罩固定为 60% 黑色，语义表面 Token 的混色或透明度不相同。",
       "exitCondition": "公共 Dialog 明确遮罩 Token 后保留原 alpha 等价迁移。"
-    },
-    {
-      "file": "packages/ui/src/components/switch/switch.tsx",
-      "finding": "literal color class: bg-white",
-      "occurrence": 1,
-      "reason": "控件滑块固定白色。现有 foreground-inverse 在暗色主题会变黑，不能直接替代。",
-      "exitCondition": "共享 Switch 或 Slider 定义固定滑块语义角色后迁移。"
     },
     {
       "file": "packages/ui/src/components/tabs/tabs.tsx",
@@ -541,13 +521,6 @@
       "occurrence": 1,
       "reason": "黑色只定义 alpha 遮罩的覆盖度，颜色不进入最终前景。保持现有扫光和遮罩范围。",
       "exitCondition": "遮罩形状变更时以动画像素证据复核，不映射到主题前景色。"
-    },
-    {
-      "file": "packages/ui/src/workbench/settings-navigation/settings-navigation.css",
-      "finding": "literal typography: font-size: 18px",
-      "occurrence": 1,
-      "reason": "保留该具体内容或标题的局部字号关系。当前通用 text-ui/content 角色没有完全相同的固定值或相对关系。",
-      "exitCondition": "该组件在 D2 采用统一排版合同后复核，不能只为减少计数改变字号。"
     }
   ],
   "classification": {

@@ -243,7 +243,7 @@
 .task-resources-popup > .areal-task-context {
   border: 0;
   border-radius: inherit;
-  max-height: min(75dvh, var(--available-height));
+  max-height: min(var(--thread-summary-max-height, 360px), 75dvh, var(--available-height));
 }
 .agent-history-reader {
   display: flex;
@@ -268,7 +268,7 @@
 .areal-task-context .task-resources-section {
   padding-block: var(--spacing-inline);
   border-top: 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-subtle, var(--color-border));
 }
 .areal-task-context .task-resources-section:last-child {
   border-bottom: 0;
@@ -296,6 +296,11 @@
   width: auto;
   gap: 6px;
   padding: 0 8px 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-elevated, var(--color-surface));
+}
+.icon-button.task-resources-trigger.with-count:hover {
+  background: var(--color-surface-tertiary, var(--color-hover));
 }
 .task-resources-trigger .diff-count {
   margin-left: 0;
@@ -307,5 +312,5 @@
   flex-wrap: wrap;
   gap: 4px;
   padding: 6px 8px 8px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-subtle, var(--color-border));
 }

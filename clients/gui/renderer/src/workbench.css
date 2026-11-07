@@ -180,9 +180,14 @@ kbd {
   height: 30px;
   min-height: 30px;
   padding: 0 4px 0 8px;
-  border-radius: var(--radius-navigation);
+  border-radius: var(--radius-md, var(--radius-navigation));
   color: var(--color-foreground);
   transition: background-color var(--motion-normal) var(--ease-standard);
+}
+[data-sidebar-pinned] {
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--color-border-subtle, var(--color-border));
 }
 .project-row:hover,
 .project-row:has([data-popup-open]),
@@ -242,7 +247,7 @@ kbd {
   text-align: left;
   font-size: var(--text-ui-caption);
   color: var(--color-foreground-subtle);
-  border-radius: var(--radius-navigation);
+  border-radius: var(--radius-md, var(--radius-navigation));
   background: transparent;
   border: 0;
   cursor: var(--interactive-cursor, pointer);
@@ -312,12 +317,12 @@ kbd {
    The greeting's bottom gap belongs to its half; growing input only changes the
    split when its intrinsic height needs more room in a short window. */
 .draft-greeting {
-  flex: 1 1 0;
+  flex: 0 1 var(--home-composer-top, 38vh);
   min-height: fit-content;
   width: 100%;
   max-width: calc(var(--reading-width) - 32px);
   margin: 0 auto;
-  padding-bottom: 96px;
+  padding-bottom: 48px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -335,6 +340,7 @@ kbd {
   font-size: var(--text-fixed-page-title);
   font-weight: 400;
   line-height: 1.2;
+  letter-spacing: var(--tracking-heading-tight, -0.02em);
   overflow-wrap: anywhere;
 }
 .draft-composer {
@@ -347,6 +353,9 @@ kbd {
   flex-direction: column;
   justify-content: flex-end;
   position: relative;
+}
+.draft-composer .composer-surface {
+  border-radius: var(--radius-4xl, var(--radius-2xl, var(--radius-composer)));
 }
 .draft-pane > .draft-composer:first-child {
   margin-top: auto;
@@ -361,7 +370,8 @@ kbd {
   /* WT-PICKER-01 tray: 34px visible above the composer (28px row + 3/7 padding − 4px overlap). */
   padding: 3px 4px 7px;
   overflow: clip;
-  border-radius: var(--radius-composer) var(--radius-composer) 0 0;
+  border-radius: var(--radius-2xl, var(--radius-composer)) var(--radius-2xl, var(--radius-composer))
+    0 0;
   corner-shape: superellipse(1.5);
   background: var(--color-composer-action-bar);
 }
@@ -2281,8 +2291,14 @@ button[aria-label="停止"] {
   margin: 0;
 }
 .turn-progress-heading {
+  position: sticky;
+  top: var(--thread-sticky-header-top, 0px);
+  z-index: 2;
   display: flex;
   flex-direction: column;
+  padding-block: 4px;
+  background: var(--color-surface-glass, var(--color-background));
+  backdrop-filter: blur(var(--blur-header, 18px));
 }
 .turn-progress-label {
   display: flex;
@@ -2305,6 +2321,10 @@ button[aria-label="停止"] {
   color: var(--color-status-settled);
   font: inherit;
   text-align: left;
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.turn-progress-summary:hover {
+  color: var(--color-foreground);
 }
 .model-change-notice {
   margin: var(--spacing-inline) 0;
@@ -2314,7 +2334,7 @@ button[aria-label="停止"] {
 }
 .turn-progress-divider {
   margin-top: 4px;
-  border-bottom: 1px solid var(--color-menu-border, var(--color-border));
+  border-bottom: 1px solid var(--color-border-subtle, var(--color-menu-border, var(--color-border)));
 }
 .turn-progress:not(:has(> .turn-progress-heading)) {
   margin: 0;
@@ -2364,7 +2384,7 @@ button[aria-label="停止"] {
 .conversation-disclosure {
   height: var(--collapsible-panel-height);
   overflow: hidden;
-  transition: height 300ms cubic-bezier(0.19, 1, 0.22, 1);
+  transition: height var(--motion-slow) var(--ease-enter, cubic-bezier(0.19, 1, 0.22, 1));
 }
 .conversation-disclosure[data-starting-style],
 .conversation-disclosure[data-ending-style],
@@ -3277,8 +3297,8 @@ button[aria-label="停止"] {
   flex-direction: column;
   max-width: 100%;
   margin: 12px 0 8px;
-  border-radius: var(--radius-panel);
-  background: var(--color-result-card, var(--color-surface));
+  border-radius: var(--radius-xl, var(--radius-panel));
+  background: var(--color-result-card, var(--color-surface-elevated, var(--color-surface)));
   box-shadow: var(--shadow-result-card, 0 0 0 0.5px var(--color-border));
   font-size: var(--text-ui-base);
 }
@@ -3288,14 +3308,14 @@ button[aria-label="停止"] {
   gap: 10px;
   min-width: 0;
   padding: 12px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-subtle, var(--color-border));
 }
 .turn-file-summary-badge {
   display: grid;
   place-items: center;
   flex: 0 0 40px;
   height: 40px;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-md, var(--radius-control));
   background: var(--color-background);
   color: var(--color-foreground-subtle);
 }
@@ -3318,7 +3338,7 @@ button[aria-label="停止"] {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 0 8px;
+  padding: 4px 8px;
 }
 .turn-file-summary-files[data-expanded="true"] {
   max-height: 240px;
@@ -3332,11 +3352,12 @@ button[aria-label="停止"] {
   width: 100%;
   min-height: 36px;
   height: auto;
-  padding: 7px 4px;
+  padding: 7px 6px;
   border: 0;
-  border-radius: var(--radius-compact);
+  border-radius: var(--radius-sm, var(--radius-compact));
   gap: 12px;
   text-align: left;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .turn-file-summary-files > button:hover {
   background: var(--color-hover);
@@ -3356,9 +3377,15 @@ button[aria-label="停止"] {
 }
 :is(.turn-file-summary-stats, .turn-file-summary-totals) .added {
   color: var(--color-git-added);
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-diff-added-surface, transparent);
 }
 :is(.turn-file-summary-stats, .turn-file-summary-totals) .deleted {
   color: var(--color-git-deleted);
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--color-diff-removed-surface, transparent);
 }
 .turn-file-summary-review-action {
   flex-shrink: 0;
@@ -3367,7 +3394,7 @@ button[aria-label="停止"] {
   padding: 0 8px;
   font-size: var(--text-ui-caption);
   font-weight: 400;
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-md, var(--radius-control));
 }
 .turn-file-summary-title {
   display: flex;
@@ -4616,9 +4643,6 @@ button[aria-label="停止"] {
   font-size: var(--text-ui-sm);
 }
 
-.turn-progress-heading {
-  position: relative;
-}
 .content-system-preview > section {
   margin-block: var(--spacing-section);
 }

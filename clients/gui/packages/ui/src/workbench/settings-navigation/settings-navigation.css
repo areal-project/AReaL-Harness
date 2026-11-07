@@ -11,12 +11,12 @@
 }
 
 .settings-sidebar .settings-sidebar-title {
-  font-size: 18px;
+  font-size: var(--text-ui-xl);
   line-height: 24px;
   font-weight: 600;
   color: var(--color-foreground);
   margin: 0 8px 12px;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tracking-heading-tight, -0.01em);
 }
 
 .settings-sidebar .settings-navigation-search input {
@@ -30,13 +30,15 @@
   color: var(--color-foreground);
   transition:
     border-color var(--motion-normal) var(--ease-standard),
-    background-color var(--motion-normal) var(--ease-standard);
+    background-color var(--motion-normal) var(--ease-standard),
+    box-shadow var(--motion-normal) var(--ease-standard);
 }
 
 .settings-sidebar .settings-navigation-search input:focus {
   outline: none;
   border-color: var(--color-brand);
   background: var(--color-background);
+  box-shadow: 0 0 0 3px var(--color-focus-ring-soft, transparent);
 }
 
 .settings-sidebar .settings-category-navigation {
@@ -73,7 +75,7 @@
   min-height: 30px;
   padding: 5px 8px;
   margin: 0;
-  border-radius: var(--radius-navigation);
+  border-radius: var(--radius-md, var(--radius-navigation));
   border: none !important;
   border-left: none !important;
   box-shadow: none !important;

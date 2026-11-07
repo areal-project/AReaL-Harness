@@ -68,8 +68,31 @@
   --text-compact-caption--line-height: 1rem;
   --text-compact-body: 0.875rem;
   --text-compact-body--line-height: 1.25rem;
+  --blur-menu: 16px;
+  --blur-header: 18px;
+  --blur-popover: 24px;
+  --radius-2xs: 2px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 20px;
+  --radius-4xl: 24px;
+  --height-toolbar: 46px;
+  --tracking-heading-tight: -0.02em;
 }
 @theme {
+  --color-surface-elevated: color-mix(in oklab, #1a1c1f 4%, #ffffff);
+  --color-surface-tertiary: color-mix(in oklab, #1a1c1f 6.5%, #ffffff);
+  --color-surface-glass: color-mix(in oklab, color-mix(in oklab, #1a1c1f 4%, #ffffff) 86%, transparent);
+  --color-border-subtle: color-mix(in oklab, #1a1c1f 5.5%, transparent);
+  --color-activity-summary: color-mix(in oklab, #1a1c1f 60%, transparent);
+  --color-activity-child: color-mix(in oklab, #1a1c1f 36%, transparent);
+  --color-diff-added-surface: color-mix(in oklab, #16a45d 10%, transparent);
+  --color-diff-removed-surface: color-mix(in oklab, #df515b 10%, transparent);
+  --color-focus-ring-soft: color-mix(in oklab, #3a83f7 22%, transparent);
   --color-background: #ffffff;
   --color-foreground: #1a1c1f;
   --color-brand: #3a83f7;

@@ -14,7 +14,8 @@
   font: inherit;
   font-size: var(--text-conversation);
   line-height: var(--conversation-line);
-  color: var(--activity-foreground, var(--color-foreground-subtle));
+  color: var(--activity-foreground, var(--color-activity-summary, var(--color-foreground-subtle)));
+  transition: color var(--motion-fast) var(--ease-standard);
 }
 .areal-activity-row:is(:hover, :focus-within) {
   color: var(--color-foreground);

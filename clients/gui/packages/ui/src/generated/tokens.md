@@ -51,6 +51,7 @@
 | `--line-height-ui-sm` | `max(18px, calc(var(--ui-font-size) + 4px))` | 紧凑说明行高 |
 | `--tracking-wf-label` | `0.09em` | 工作流图大写等宽微标签字距 |
 | `--line-height-code-example` | `22px` | 主题 Diff 缩略图代码行高，保留原固定 22px。 |
+| `--tracking-heading-tight` | `-0.02em` | 首页迎宾大标题与页面主标题的紧凑负字距 |
 
 ## 间距与尺寸
 
@@ -96,6 +97,15 @@
 | `--radius-turn-marker` | `1px` | 轮次导航细标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
 | `--radius-inspection-dialog` | `24px` | Hook 统计检查对话框的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
 | `--radius-context-category-dot` | `2px` | 上下文组成类别标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
+| `--radius-2xs` | `2px` | Codex 9 档圆角阶梯：微型指示器与进度条圆角 |
+| `--radius-xs` | `4px` | Codex 9 档圆角阶梯：行内代码与微型徽章圆角 |
+| `--radius-sm` | `6px` | Codex 9 档圆角阶梯：紧凑按钮与小型标签圆角 |
+| `--radius-md` | `8px` | Codex 9 档圆角阶梯：侧栏导航行、常规按钮与菜单项圆角 |
+| `--radius-lg` | `10px` | Codex 9 档圆角阶梯：内嵌容器、附件卡片与回合文件改动汇总卡圆角 |
+| `--radius-xl` | `12px` | Codex 9 档圆角阶梯：设置分组卡片、Popover 浮层与面板圆角 |
+| `--radius-2xl` | `16px` | Codex 9 档圆角阶梯：用户消息胶囊、紧凑态 Composer 与对话框圆角 |
+| `--radius-3xl` | `20px` | Codex 9 档圆角阶梯：大浮层与复合输入容器圆角 |
+| `--radius-4xl` | `24px` | Codex 9 档圆角阶梯：主输入台（Composer）外框与大型模态面板圆角 |
 
 ## 阴影
 
@@ -147,6 +157,8 @@
 | `--layer-dialog` | `50` | 对话框层级 |
 | `--layer-popover` | `60` | 菜单、Popover 层级，高于对话框 |
 | `--layer-tooltip` | `70` | Tooltip 层级，最高 |
+| `--ease-enter` | `cubic-bezier(0.19, 1, 0.22, 1)` | 浮层、面板与消息入场的高阻尼缓动曲线 |
+| `--ease-spring` | `cubic-bezier(0.16, 1, 0.3, 1)` | 侧栏、折叠面板与胶囊控件的弹簧缓动曲线 |
 
 ## 其他
 
@@ -170,6 +182,13 @@
 | `--browser-file-status-block-padding` | `3px` | 浏览器文件交接状态项的既有纵向内边距；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
 | `--size-status-dot` | `7px` | 移动端会话状态圆点尺寸 |
 | `--size-touch-target` | `44px` | 移动端按钮与输入框的最小触控目标 |
+| `--blur-menu` | `16px` | 下拉菜单与紧凑浮层的毛玻璃背景模糊半径 |
+| `--blur-header` | `18px` | 工作台顶栏与吸顶摘要栏的毛玻璃模糊半径 |
+| `--blur-popover` | `24px` | 任务上下文摘要（Pin Summary）与大浮层的液态玻璃模糊半径 |
+| `--height-toolbar` | `46px` | 工作台顶栏、侧栏头部与设置导航顶栏的统一高度契约 |
+| `--home-composer-top` | `max(0px, calc(38svh - var(--height-toolbar, 46px)))` | 首页草稿视图（Draft View）迎宾区与 Composer 的黄金视觉重心顶部偏移 |
+| `--thread-summary-max-height` | `calc(100svh - var(--height-toolbar, 46px) - 24px)` | 顶栏任务资源与上下文摘要弹窗（Pin Summary）的最大可用高度 |
+| `--thread-sticky-header-top` | `0px` | 对话时间线内展开态回合过程摘要头（TurnProgress）的滚动吸顶偏移 |
 
 ## 派生参数与来源
 
@@ -211,6 +230,14 @@
 | `border-hover` | {"contrast":{"base":11.7,"slope":0.1},"source":"palette.source.preMigration"} |
 | `surface` | {"contrast":{"base":3,"slope":0.03},"source":"palette.source.preMigration"} |
 | `navigation-selected` | {"ratio":[2400,231],"source":"palette.source.preMigration"} |
+| `surface-elevated-mix` | {"value":{"light":4,"dark":7},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex OKLab 抬升卡片与代码块表面混合比例。"} |
+| `surface-tertiary-mix` | {"value":{"light":6.5,"dark":11},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex OKLab 三级嵌套表面混合比例。"} |
+| `surface-glass-opacity` | {"value":{"light":86,"dark":84},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 吸顶摘要头与半透明浮层玻璃不透明度。"} |
+| `border-subtle-mix` | {"contrast":{"base":{"light":5.5,"dark":6},"slope":0.06},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 内嵌极细分隔线 OKLab 对比度响应参数。"} |
+| `activity-summary-opacity` | {"value":60,"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 对话流工具组摘要行 60% 前景阶梯。"} |
+| `activity-child-opacity` | {"value":36,"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 对话流工具组展开子项 36% 前景阶梯。"} |
+| `diff-surface-opacity` | {"value":{"light":10,"dark":14},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 顶栏与回合内 Pin Summary 增删行胶囊柔化底色比例。"} |
+| `focus-ring-soft-opacity` | {"value":{"light":22,"dark":28},"source":"design/archive/research/codex-design-system-review.md#阶段一；Codex 输入框与 Composer 柔和聚焦外发光混合比例。"} |
 
 ## 参考值与语义派生
 
@@ -332,11 +359,29 @@
 | `interaction-slider-selected-track` | `{"reference":"workbench-slider-selected-track"}` | `[]` | 输入器推理档位中已选轨道的半透明填充。 renderer/src/workbench.css .composer-slider-track i[data-selected=true]；D2 精确迁移，值来自原字面量债务。 |
 | `text-annotation-selected` | `{"reference":"workbench-annotation-selected-foreground"}` | `[]` | 浏览器标注模式已选入口的文字色。 renderer/src/workbench.css .browser-annotation-trigger[aria-pressed="true"]；D2 精确迁移，值来自原字面量债务。 |
 | `surface-annotation-selected` | `{"reference":"workbench-annotation-selected-surface"}` | `[]` | 浏览器标注模式已选入口的透明背景色。 renderer/src/workbench.css .browser-annotation-trigger[aria-pressed="true"]；D2 精确迁移，值来自原字面量债务。 |
+| `surface-elevated-oklab` | `{"mix":{"from":{"input":"foreground"},"into":{"input":"background"},"percent":"surface-elevated-mix","space":"oklab"}}` | `[]` | 基于 OKLab 均匀感知插值派生的抬升表面，用于代码块表头、决策卡片与二级面板。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `surface-tertiary-oklab` | `{"mix":{"from":{"input":"foreground"},"into":{"input":"background"},"percent":"surface-tertiary-mix","space":"oklab"}}` | `[]` | 基于 OKLab 均匀感知插值派生的三级表面，用于内嵌徽章、分段底槽与代码块工具栏悬停。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `surface-glass-oklab` | `{"mix":{"from":{"semantic":"surface-elevated-oklab"},"into":{"reference":"transparent"},"percent":"surface-glass-opacity","space":"oklab"}}` | `[]` | 基于 OKLab 派生的半透明毛玻璃表面，配合 backdrop-filter 用于吸顶摘要头与浮层顶栏。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `border-subtle-oklab` | `{"mix":{"from":{"input":"foreground"},"into":{"reference":"transparent"},"percent":"border-subtle-mix","space":"oklab"}}` | `[]` | 基于 OKLab 派生的极细内嵌分隔线，随 contrast 偏好平滑缩放。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `text-activity-summary` | `{"mix":{"from":{"input":"foreground"},"into":{"reference":"transparent"},"percent":"activity-summary-opacity","space":"oklab"}}` | `[]` | 对话流工具调用聚合摘要行与折叠态过程行前景（60% OKLab 感知阶梯）。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `text-activity-child` | `{"mix":{"from":{"input":"foreground"},"into":{"reference":"transparent"},"percent":"activity-child-opacity","space":"oklab"}}` | `[]` | 对话流工具调用组展开后的子步骤低强调前景（36% OKLab 感知阶梯）。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `surface-diff-added` | `{"mix":{"from":{"reference":"workbench-diff-count-added"},"into":{"reference":"transparent"},"percent":"diff-surface-opacity","space":"oklab"}}` | `[]` | Pin Summary 与文件变更胶囊的新增行柔化底色。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `surface-diff-removed` | `{"mix":{"from":{"reference":"workbench-diff-count-removed"},"into":{"reference":"transparent"},"percent":"diff-surface-opacity","space":"oklab"}}` | `[]` | Pin Summary 与文件变更胶囊的删除行柔化底色。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `interaction-focus-ring-soft` | `{"mix":{"from":{"input":"accent"},"into":{"reference":"transparent"},"percent":"focus-ring-soft-opacity","space":"oklab"}}` | `[]` | Composer 与表单控件聚焦态的柔和强调色光晕。 design/archive/research/codex-design-system-review.md#阶段一 |
 
 ## 调色板（由主题输入派生，用户可在外观设置中覆盖）
 
 | 变量 | 层与角色 | 语义引用与组件映射 | 默认亮色 | 默认暗色 |
 | --- | --- | --- | --- | --- |
+| `--color-surface-elevated` | semantic · 基于 OKLab 均匀感知插值派生的抬升表面，用于代码块表头、决策卡片与二级面板。 | surface-elevated-oklab  | `color-mix(in oklab, #1a1c1f 4%, #ffffff)` | `color-mix(in oklab, #ffffff 7%, #181818)` |
+| `--color-surface-tertiary` | semantic · 基于 OKLab 均匀感知插值派生的三级表面，用于内嵌徽章、分段底槽与代码块工具栏悬停。 | surface-tertiary-oklab  | `color-mix(in oklab, #1a1c1f 6.5%, #ffffff)` | `color-mix(in oklab, #ffffff 11%, #181818)` |
+| `--color-surface-glass` | semantic · 基于 OKLab 派生的半透明毛玻璃表面，配合 backdrop-filter 用于吸顶摘要头与浮层顶栏。 | surface-glass-oklab  | `color-mix(in oklab, color-mix(in oklab, #1a1c1f 4%, #ffffff) 86%, transparent)` | `color-mix(in oklab, color-mix(in oklab, #ffffff 7%, #181818) 84%, transparent)` |
+| `--color-border-subtle` | semantic · 基于 OKLab 派生的极细内嵌分隔线，随 contrast 偏好平滑缩放。 | border-subtle-oklab  | `color-mix(in oklab, #1a1c1f 5.5%, transparent)` | `color-mix(in oklab, #ffffff 6%, transparent)` |
+| `--color-activity-summary` | component · 对话流工具调用聚合摘要行与折叠态过程行前景（60% OKLab 感知阶梯）。 | text-activity-summary 引用 text-activity-summary；用于折叠态工具聚合组标题与次级摘要。 | `color-mix(in oklab, #1a1c1f 60%, transparent)` | `color-mix(in oklab, #ffffff 60%, transparent)` |
+| `--color-activity-child` | component · 对话流工具调用组展开后的子步骤低强调前景（36% OKLab 感知阶梯）。 | text-activity-child 引用 text-activity-child；用于展开态子活动行非悬停态的柔和降噪。 | `color-mix(in oklab, #1a1c1f 36%, transparent)` | `color-mix(in oklab, #ffffff 36%, transparent)` |
+| `--color-diff-added-surface` | component · Pin Summary 与文件变更胶囊的新增行柔化底色。 | surface-diff-added 引用 surface-diff-added；用于顶栏及回合内 diff 统计胶囊底色。 | `color-mix(in oklab, #16a45d 10%, transparent)` | `color-mix(in oklab, #16a45d 14%, transparent)` |
+| `--color-diff-removed-surface` | component · Pin Summary 与文件变更胶囊的删除行柔化底色。 | surface-diff-removed 引用 surface-diff-removed；用于顶栏及回合内 diff 统计胶囊底色。 | `color-mix(in oklab, #df515b 10%, transparent)` | `color-mix(in oklab, #df515b 14%, transparent)` |
+| `--color-focus-ring-soft` | semantic · Composer 与表单控件聚焦态的柔和强调色光晕。 | interaction-focus-ring-soft  | `color-mix(in oklab, #3a83f7 22%, transparent)` | `color-mix(in oklab, #3a83f7 28%, transparent)` |
 | `--color-background` | semantic · 基础阅读表面，卡片、面板和输入静止背景共用。 | surface-base  | `#ffffff` | `#181818` |
 | `--color-foreground` | semantic · 默认正文与中性主动作底色。 | text-default  | `#1a1c1f` | `#ffffff` |
 | `--color-brand` | semantic · 用户强调色和键盘焦点。 | interaction-focus  | `#3a83f7` | `#3a83f7` |

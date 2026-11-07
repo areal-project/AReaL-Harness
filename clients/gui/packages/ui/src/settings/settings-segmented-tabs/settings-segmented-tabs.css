@@ -32,17 +32,20 @@
   box-shadow: none;
   cursor: var(--interactive-cursor, pointer);
   user-select: none;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
 }
 
 /* Base UI exposes data-active by presence, not a string boolean. */
 .settings-segmented-tabs [data-slot="tabs-trigger"][data-active] {
-  background: var(--color-hover);
+  background: var(--color-surface-tertiary, var(--color-hover));
   color: var(--color-foreground);
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"]:hover:not([data-active]) {
   color: var(--color-foreground);
-  background: var(--color-surface);
+  background: var(--color-surface-elevated, var(--color-surface));
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"]:focus-visible {

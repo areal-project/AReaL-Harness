@@ -128,6 +128,25 @@
   --browser-file-status-block-padding: 3px;
   --size-status-dot: 7px;
   --size-touch-target: 44px;
+  --blur-menu: 16px;
+  --blur-header: 18px;
+  --blur-popover: 24px;
+  --radius-2xs: 2px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-3xl: 20px;
+  --radius-4xl: 24px;
+  --height-toolbar: 46px;
+  --home-composer-top: max(0px, calc(38svh - var(--height-toolbar, 46px)));
+  --thread-summary-max-height: calc(100svh - var(--height-toolbar, 46px) - 24px);
+  --thread-sticky-header-top: 0px;
+  --ease-enter: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --tracking-heading-tight: -0.02em;
 }
 .dark {
   --color-destructive: #ff5c5c;

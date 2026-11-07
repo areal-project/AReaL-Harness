@@ -49,6 +49,15 @@ export const PALETTE_REFERENCES = {
 
 export function derivePaletteVariables(p: Palette, dark: boolean, readableForeground: (background: string) => string): Record<string, string> {
   const contrastDelta = p.contrast - (dark ? 60 : 45);
+  const surfaceElevatedOklab = `color-mix(in oklab, ${p.foreground} ${(dark ? 7 : 4)}%, ${p.background})`;
+  const surfaceTertiaryOklab = `color-mix(in oklab, ${p.foreground} ${(dark ? 11 : 6.5)}%, ${p.background})`;
+  const surfaceGlassOklab = `color-mix(in oklab, ${surfaceElevatedOklab} ${(dark ? 84 : 86)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const borderSubtleOklab = `color-mix(in oklab, ${p.foreground} ${((dark ? 6 : 5.5) + contrastDelta * 0.06)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const textActivitySummary = `color-mix(in oklab, ${p.foreground} ${60}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const textActivityChild = `color-mix(in oklab, ${p.foreground} ${36}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const surfaceDiffAdded = `color-mix(in oklab, ${PALETTE_REFERENCES["workbench-diff-count-added"]} ${(dark ? 14 : 10)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const surfaceDiffRemoved = `color-mix(in oklab, ${PALETTE_REFERENCES["workbench-diff-count-removed"]} ${(dark ? 14 : 10)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const interactionFocusRingSoft = `color-mix(in oklab, ${p.accent} ${(dark ? 28 : 22)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const surfaceBase = p.background;
   const textDefault = p.foreground;
   const interactionFocus = p.accent;
@@ -118,6 +127,15 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
   const surfaceAnnotationSelected = PALETTE_REFERENCES["workbench-annotation-selected-surface"];
   const interactionPressed = interactionSelected;
   return {
+    "--color-surface-elevated": surfaceElevatedOklab,
+    "--color-surface-tertiary": surfaceTertiaryOklab,
+    "--color-surface-glass": surfaceGlassOklab,
+    "--color-border-subtle": borderSubtleOklab,
+    "--color-activity-summary": textActivitySummary,
+    "--color-activity-child": textActivityChild,
+    "--color-diff-added-surface": surfaceDiffAdded,
+    "--color-diff-removed-surface": surfaceDiffRemoved,
+    "--color-focus-ring-soft": interactionFocusRingSoft,
     "--color-background": surfaceBase,
     "--color-foreground": textDefault,
     "--color-brand": interactionFocus,
