@@ -14,6 +14,7 @@ async fn fork_settled_failure_and_interruption_preserve_status() {
         (&active, TurnStatus::InProgress),
     ] {
         source.turns.push(Turn {
+            process_receipts: Vec::new(),
             trace: Default::default(),
             interruption: None,
             continued_from_turn_id: None,
@@ -140,6 +141,7 @@ async fn fork_unknown_hook_requires_source_inspection_and_keeps_unknown() {
     }))
     .unwrap();
     source.turns.push(Turn {
+        process_receipts: Vec::new(),
         trace: Default::default(),
         interruption: None,
         continued_from_turn_id: None,
@@ -292,6 +294,7 @@ async fn fork_creation_faults_recover_only_committed_targets() {
         let mut source = engine.create("/fixture".into()).await.unwrap();
         let anchor = id();
         source.turns.push(Turn {
+            process_receipts: Vec::new(),
             trace: Default::default(),
             interruption: None,
             continued_from_turn_id: None,
@@ -458,6 +461,7 @@ async fn inherited_media_survives_release_gc_and_restart() {
     source = engine.read(&source.id, true).await.unwrap();
     let anchor = id();
     source.turns.push(Turn {
+        process_receipts: Vec::new(),
         trace: Default::default(),
         interruption: None,
         continued_from_turn_id: None,
@@ -600,6 +604,7 @@ async fn model_history_preserves_completion_batches_and_defers_tool_images() {
         .unwrap()
     };
     thread.turns.push(Turn {
+        process_receipts: Vec::new(),
         trace: Default::default(),
         interruption: None,
         continued_from_turn_id: None,
@@ -682,6 +687,7 @@ async fn model_history_keeps_short_references_and_preserves_runtime_audit() {
         );
     }
     thread.turns.push(Turn {
+        process_receipts: Vec::new(),
         trace: Default::default(),
         interruption: None,
         continued_from_turn_id: None,
@@ -788,6 +794,7 @@ async fn browser_history_keeps_plan_private_and_preserves_rejected_arguments() {
         expected.push(want);
     }
     thread.turns.push(Turn {
+        process_receipts: Vec::new(),
         trace: Default::default(),
         interruption: None,
         continued_from_turn_id: None,
@@ -929,6 +936,7 @@ async fn compacted_history_preserves_steer_inside_an_automatic_goal_turn() {
     let engine = Engine::open(dir.path(), Arc::new(PendingModel), Limits::default()).unwrap();
     let mut thread = engine.create("/fixture".into()).await.unwrap();
     thread.turns.push(Turn {
+        process_receipts: Vec::new(),
         trace: Default::default(),
         interruption: None,
         continued_from_turn_id: None,
@@ -1015,6 +1023,7 @@ async fn persistence_encoding_benchmark() {
     let engine = Engine::open(dir.path(), Arc::new(PendingModel), Limits::default()).unwrap();
     let mut thread = engine.create("/fixture".into()).await.unwrap();
     thread.turns.push(Turn {
+        process_receipts: Vec::new(),
         trace: Default::default(),
         interruption: None,
         continued_from_turn_id: None,

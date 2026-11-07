@@ -241,6 +241,7 @@ impl Handles {
                 "processId",
                 "state",
                 "exitCode",
+                "signal",
                 "stopReason",
                 "outputReadComplete",
                 "nextCursor",
@@ -272,6 +273,25 @@ impl Handles {
             value["path"] = json!(path);
             value["fileVersion"] = json!(alias);
         }
+    }
+
+    pub(crate) fn pending_processes(&self) -> Vec<(String, String, String)> {
+        self.processes
+            .iter()
+            .filter(|(alias, _)| {
+                let observed = self.process_snapshots.get(*alias);
+                !observed.is_some_and(|value| {
+                    value["state"] == "exited"
+                        && (value["exitCode"].is_i64() || value["signal"].is_string())
+                })
+            })
+            .filter_map(|(alias, process)| {
+                // 只结算经 Runtime 执行登记的进程，外部工具的同名 JSON 字段不是句柄。
+                self.process_scopes
+                    .get(process)
+                    .map(|scope| (alias.clone(), process.clone(), scope.clone()))
+            })
+            .collect()
     }
 
     // 待验证句柄单独分页，不随普通观察列表截断；游标按别名排序，回收后仍可续页。
