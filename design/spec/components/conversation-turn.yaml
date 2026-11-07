@@ -10,7 +10,7 @@ typography:
 
 layout:
   column: 内容在阅读列内水平居中，列宽不超过 reading-width，左右留白 spacing-field，上下留白 message-reading-inset
-  rhythm: 回合内相邻块（段落、过程行、状态行）之间只有一个 conversation-gap，不叠加
+  rhythm: 回合内相邻块（段落、过程行、状态行）之间只有一个 conversation-gap，不叠加；唯一例外是过程标题到展开的过程体，见 turn-process
   between-turns: 相邻回合之间 spacing-section
 
 anatomy:
@@ -55,7 +55,7 @@ parts:
       material: flat（吸顶时同样不加模糊，底色为 color-background）
       divider: 标题文字下方隔 spacing-inline 的一半画一条 border-width-default 的 color-border-subtle 线；线属于标题块，线下面还有标题块自己的下内边距（spacing-inline 的一半）
     body:
-      gap-from-heading: 标题块下沿（即线下方那段内边距的底边）到下一块（第一条过程文字，或收起时的最终回答）一个 conversation-gap
+      gap-from-heading: 从标题块下沿（线下方那段内边距的底边）量起；收起时到最终回答一个 conversation-gap；展开时到第一条过程文字两倍 conversation-gap（过程体自身再留一个，标出过程与标题的分组）
       item-text: 过程文字与正文同字号，颜色 foreground
       default: 已完成的回合默认收起；运行中与暂停后默认展开
   final-answer:

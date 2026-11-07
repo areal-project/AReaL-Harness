@@ -52,8 +52,8 @@ tokens:
     inline: radius-composer
     compact: radius-composer-large；容器变窄时 radius-composer
   inset: composer-inset（编辑区左右与顶部、工具栏左右）；工具栏下方 spacing-inline
-  toolbar-gap: spacing-inline
-  toolbar-height: spacing-control
+  toolbar-groups: 工具栏分左右两组，组间 spacing-inline；左组（添加、权限）组内间隔 spacing-inline 的一半；右组（上下文占用、模型与强度、主按钮）组内间隔 spacing-inline 的四分之三，其中模型与强度两个入口之间只有 spacing-inline 的四分之一
+  toolbar-height: 由模型入口决定（text-ui-caption 一行加上下各 spacing-inline 的一半），比 spacing-control 略高；其他控件在这一行内垂直居中
   icon: 图标按文件自带宽高；添加 icon-size-control，权限图标、菜单箭头与发送、停止见各自文件
   disabled: opacity-disabled
   text: text-conversation
@@ -61,7 +61,8 @@ tokens:
   focus: color-focus-ring-soft
   editor-min: 编辑区最少两行正文高（两倍 text-conversation 乘 conversation-line），这个高度已含下方 spacing-inline 的留白；首页与对话相同
   toolbar-label: text-ui-caption，字重 font-weight-toolbar；模型名 foreground，权限名 foreground-subtle
-  toolbar-item: 权限、模型、强度入口：左右 spacing-inline，图标与文字间隔 spacing-inline 的一半，圆角 radius-navigation；模型与强度上下 spacing-inline 的一半、最小高 spacing-control，两者之间 spacing-inline 的四分之一；权限入口高 spacing-control-sm，在工具栏内垂直居中
+  toolbar-item: 权限、模型、强度入口：左右 spacing-inline，图标与文字间隔 spacing-inline 的一半，圆角 radius-navigation；模型与强度上下 spacing-inline 的一半、最小高 spacing-control，文字后带 menu-chevron；权限入口高 spacing-control-sm，图标在文字前，不带箭头
+  add-button: spacing-control 见方，图标颜色 foreground
   tracking: 输入框文字不加字距（tracking-conversation 只给 Agent 正文）
   context-meter: spacing-control 见方的按钮，居中放 context-ring 图标，颜色 foreground-subtle；悬停时 foreground，底色 color-muted
   primary-action-shape: spacing-control 见方的圆（radius-pill）；发送图标比 icon-size-control 大 spacing-inline 的一半，停止图标为 icon-size-control
@@ -109,7 +110,7 @@ accessible-names:
     more: 更多操作 {内容}
   model-menu: 选择模型
   effort-menu: 选择思考强度
-  placeholder: 描述要做的事，@ 引用文件，/ 查看命令
+  placeholder: 描述要做的事，@ 引用文件，/ 查看命令（颜色 foreground-subtle，字号与行高同正文）
 
 references:
   - state: home.empty
