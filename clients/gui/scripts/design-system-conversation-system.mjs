@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 // Renderer-only acceptance, driven by the published conversation-flow brief.
@@ -43,11 +44,55 @@ export async function runConversationSystem(page, scratch, checks) {
   // R-ACTIVITYGROUP-028 / R-ACTIVITYGROUP-029：列表有界纵向滚动，不产生横向溢出。
   assert.equal(geometry.vertical, true);
   assert.equal(geometry.horizontal, false);
+  const listElement = await list.elementHandle();
+  // 可见的子列表不代表祖先的高度过渡已结束；原生滚轮先等待真实展开和命中区域就绪。
+  await page.waitForFunction((element) => {
+    const panel = element.closest(".areal-disclosure-panel");
+    return (
+      panel?.hasAttribute("data-open") &&
+      !panel.hasAttribute("data-starting-style") &&
+      !panel.getAnimations().some((animation) => animation.playState === "running")
+    );
+  }, listElement);
   await list.hover();
-  await page.mouse.wheel(0, 260);
-  await page.waitForFunction(
-    () => document.querySelector('[aria-label="分组活动列表"]').scrollTop > 0,
-  );
+  await page.waitForFunction((element) => {
+    const rect = element.getBoundingClientRect();
+    return (
+      element.matches(":hover") &&
+      element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2))
+    );
+  }, listElement);
+  await list.evaluate((element) => {
+    window.conversationWheel = { before: element.scrollTop, events: [] };
+    element.addEventListener(
+      "wheel",
+      (event) => {
+        window.conversationWheel.events.push({
+          trusted: event.isTrusted,
+          deltaY: event.deltaY,
+          defaultPrevented: event.defaultPrevented,
+          withinList: element.contains(event.target),
+        });
+      },
+      { once: true, passive: true },
+    );
+  });
+  try {
+    await page.mouse.wheel(0, 260);
+    await page.waitForFunction((element) => element.scrollTop > 0, listElement);
+    const wheel = await page.evaluate(() => window.conversationWheel);
+    assert.equal(wheel.events.length, 1);
+    assert.equal(wheel.events[0].trusted && wheel.events[0].withinList, true);
+  } finally {
+    const wheel = await list.evaluate((element) => ({
+      ...window.conversationWheel,
+      after: element.scrollTop,
+    }));
+    await writeFile(
+      join(scratch, "conversation-wheel.json"),
+      JSON.stringify(wheel, null, 2) + "\n",
+    );
+  }
   await list.evaluate((element) => element.scrollTo(0, 0));
   // R-ACTIVITYROW-002：箭头静止时隐藏，键盘焦点时出现；开合由按钮的 aria-expanded 表达。
   const row = list.locator("button.areal-activity-row").first();
@@ -126,9 +171,18 @@ export async function runConversationSystem(page, scratch, checks) {
   await activity.click();
   assert.equal(await command.getAttribute("aria-expanded"), "true");
   await preview.getByLabel("图片状态", { exact: true }).selectOption("unavailable");
+  const unavailableImage = preview.getByRole("status").filter({ hasText: "图片引用暂不可用" });
+  // 等待实际资源状态提交后再操作，避免选择框变更与 Disclosure 开合交错。
+  await unavailableImage.waitFor();
   await image.click();
-  await preview.getByRole("status").filter({ hasText: "图片引用暂不可用" }).waitFor();
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('button[aria-label="已查看图片 · 界面参考.png"]')
+        ?.getAttribute("aria-expanded") === "false",
+  );
   await preview.getByLabel("图片状态", { exact: true }).selectOption("available");
+  await unavailableImage.waitFor({ state: "hidden" });
   assert.equal(await image.getAttribute("aria-expanded"), "false");
   await image.click();
   checks.push(

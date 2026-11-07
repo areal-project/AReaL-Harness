@@ -2510,10 +2510,10 @@ async function runFullModelSelection() {
     1,
     "confirmed invalidity is marked inside the model label",
   );
-  await openModelSettings();
   checks.push(
     "Core credential states and saved enablement remain separate from drafts and pending apply; Composer explicitly selects and executes another available model",
   );
+  // 空目录是后续场景的夹具准备；离开设置页后再写入，避免其目录刷新与管理命令竞争。
   let providers = await call("providers", { operation: "list" });
   for (const provider of providers.data) {
     await page.waitForFunction(async () => {
@@ -2532,7 +2532,6 @@ async function runFullModelSelection() {
       expectedRevision: providers.revision,
     });
   }
-  await button("返回应用").click();
   await createProjectConversation(page, "workspace");
   await until((s) => fixtureProject(s).models.length === 0, "empty Core catalog");
   const fallbackNotice = page.getByRole("status").filter({ hasText: "上次使用的模型" });
