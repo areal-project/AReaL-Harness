@@ -204,6 +204,7 @@ async function manageTask(backend, project, rawRequest) {
     if (taskDraftOperations.has(request.operation)) return manageTaskDraft(backend, project, request);
     /** @type {Record<string,unknown>} */
     const payload = { ...request, executionProjectId: project.id };
+    delete payload.logicalProjectId;
     if (request.operation === "taskDraftSend") {
       payload.input = require("./media.cjs").messageInput(backend, request);
       for (const key of ["text", "attachments", "mcpContent", "conversationQuotes"])

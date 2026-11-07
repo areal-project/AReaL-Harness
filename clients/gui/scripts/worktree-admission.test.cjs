@@ -66,7 +66,7 @@ async function fixture(t, status = idle()) {
   };
   const reads = [],
     dispatched = [],
-    backend = { home: join(directory, "desktop") };
+    backend = { home: join(directory, "desktop"), rustDomains: [] };
   const project = {
     id: "physical",
     root,

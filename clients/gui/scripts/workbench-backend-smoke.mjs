@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, writeFile, realpath, readdir } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, realpath, readdir, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { watch } from "node:fs";
 import { join, resolve } from "node:path";
@@ -75,6 +75,18 @@ const backend = new SharedCoreBackend({
 });
 backend.setOneProtocol({ library: true, backend: true, rustDomains });
 const checks = [];
+const ownedProcesses = [];
+async function recordProcesses(service) {
+  const host = JSON.parse(await readFile(join(home, "host", "host.json"), "utf8"));
+  for (const record of [
+    { role: "host", pid: host.pid, generation: host.generation },
+    { role: "backend", pid: service.pid, generation: service.generation },
+  ]) {
+    assert.ok(Number.isSafeInteger(record.pid) && record.pid > 0);
+    if (!ownedProcesses.some((owned) => owned.pid === record.pid)) ownedProcesses.push(record);
+  }
+  await writeFile(join(root, "owned-processes.json"), JSON.stringify(ownedProcesses, null, 2));
+}
 let owner, stopping, web, stopRequestId;
 const stopHost = () => {
   stopRequestId = randomUUID();
@@ -110,11 +122,26 @@ try {
     projects.client.request("backend.ensure", { profile: source.profile, options });
   const owners = await Promise.all([ensure(), ensure()]);
   owner = owners[0];
+  await recordProcesses(owner);
   assert.deepEqual(owners[0], owners[1]);
   assert.notEqual(owner.pid, process.pid);
   checks.push("concurrent ensure owns one child");
   console.log("backend ready");
-  assert.equal(await backend.attach({ expectedIdentity: owner.identity }), true);
+  const attached = await backend.attach({ expectedIdentity: owner.identity });
+  if (!attached)
+    await writeFile(
+      join(root, "attach-failure.json"),
+      JSON.stringify(
+        {
+          connectionState: backend.connectionState,
+          owner,
+          host: await projects.client.request("backend.status", {}),
+        },
+        null,
+        2,
+      ),
+    );
+  assert.equal(attached, true);
   assert.equal(backend.foreignOwner, null);
   assert.equal(backend.connectionState.state, "ready");
   assert.equal(backend.computerHostOwned, true);
@@ -170,7 +197,13 @@ try {
       const id = randomUUID();
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error("Web protocol request timed out"));
+        reject(
+          Object.assign(new Error(`Web protocol request timed out: ${method}`), {
+            requestId: id,
+            commandId,
+            operation: params.operation,
+          }),
+        );
       }, 10000);
       pending.set(id, { resolve: resolveCall, reject, timer });
       web.send(JSON.stringify({ version: 1, id, method, params, ...(commandId && { commandId }) }));
@@ -511,7 +544,34 @@ try {
     assert.match(unboundCatalog.errors[0]?.message, /unbound/);
     assert.equal((await projects.status(projectId)).state, "stopped");
     const { scheduled, startedProject } = await scheduledFixture(projectId);
-    await projects.stop(randomUUID(), projectId, startedProject.service.generation, "ifIdle");
+    if (!rustDomains.some((domain) => domain === "tasks-rust" || domain === "execution-rust")) {
+      const task = await backend.command("manage", {
+        operation: "task",
+        projectId,
+        taskId: scheduled.id,
+      });
+      assert.equal(task.id, scheduled.id);
+      const indexPath = join(source.coreHome, "task-owners", `${projectId}.json`);
+      const before = await stat(indexPath, { bigint: true });
+      const observed = await projects.client.request("tasks.read", {
+        operation: "list",
+        sourceId: change.sourceId,
+        projectId,
+        limit: 30,
+      });
+      assert.ok(observed.data.some((task) => task.id === scheduled.id));
+      const after = await stat(indexPath, { bigint: true });
+      assert.equal(after.ino, before.ino, "Native reads must not replace the JS-owned task index");
+      assert.equal(after.mtimeNs, before.mtimeNs);
+      checks.push("Native task reads preserve the flag-off JS index writer");
+    }
+    const stopped = await projects.stop(
+      randomUUID(),
+      projectId,
+      startedProject.service.generation,
+      "ifIdle",
+    );
+    assert.equal(stopped.state, "completed");
     assert.equal((await projects.status(projectId)).state, "stopped");
     const catalog = await call("tasks.read", {
       sourceId: change.sourceId,
@@ -833,6 +893,7 @@ try {
       backend.readHostActivity(),
       projects.client.status().then(() => backend.readHostActivity()),
     ]);
+    await writeFile(join(root, "concurrent-activity.json"), JSON.stringify(observations, null, 2));
     for (const activity of observations)
       assert.equal(
         activity.complete,
@@ -861,6 +922,7 @@ try {
     process.kill(previousPid, "SIGKILL");
     await recovered;
     owner = (await projects.client.request("backend.status", {})).service;
+    await recordProcesses(owner);
     assert.equal(backend.metadata.pid, owner.pid);
     const restored = JSON.parse(await readFile(join(source.coreHome, "library.json"), "utf8"));
     assert.deepEqual(restored, library);
@@ -895,6 +957,7 @@ try {
     assert.notEqual(projects.client.generation, previousGeneration);
     stopping = undefined;
     owner = await ensure();
+    await recordProcesses(owner);
     const restartedChallenge = await auth("challenge", { publicKey });
     assert.equal(restartedChallenge.state, "challenge");
     const restartedSignature = sign(

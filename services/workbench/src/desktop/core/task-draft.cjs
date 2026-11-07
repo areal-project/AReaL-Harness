@@ -441,6 +441,7 @@ async function manageTaskDraft(backend, project, request) {
   if (backend.rustDomains.includes("tasks-rust") && backend.hostCall) {
     /** @type {Record<string,unknown>} */
     const payload = { ...request, projectId: project.logicalProjectId ?? project.id, executionProjectId: project.id };
+    delete payload.logicalProjectId;
     let modelNotice;
     if (request.operation === "taskDraftStart") {
       const selection = resolveNewConversationModel(backend.providers.catalog(project.models ?? [], project), backend.providers.lastAcceptedModel, true);

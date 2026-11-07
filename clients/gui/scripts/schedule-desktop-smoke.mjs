@@ -8,6 +8,11 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import {
+  assertApplicationStopped,
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+} from "./application-cleanup.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
@@ -16,6 +21,9 @@ const binarySha256 = createHash("sha256")
   .update(await readFile(binary))
   .digest("hex");
 const scratch = await makeTempDir("areal-schedule-desktop-");
+const rust = process.argv.includes("--rust");
+const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
+if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
 await mkdir(workspace);
@@ -241,6 +249,40 @@ async function launch() {
 }
 try {
   await launch();
+  if (rust) {
+    await until(async () => (await call("serviceStatus", {})).connected, "bootstrap backend ready");
+    await page.evaluate((domains) => {
+      localStorage.setItem("areal.oneProtocol.reads", "1");
+      localStorage.setItem(
+        "areal.oneProtocol.domains",
+        ["backend", "library", "tasks", "worktree", ...domains].join(","),
+      );
+    }, rustDomains);
+    const stop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    assert.equal(stop.state, "completed");
+    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    await closeSmokeApplication(app);
+    await assertApplicationStopped(binary, env, null);
+    await launch();
+    await until(async () => {
+      const record = await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "workbench/backend-launch.json"),
+        "utf8",
+      )
+        .then(JSON.parse)
+        .catch(() => null);
+      return rustDomains.every((domain) => record?.options?.rustDomains?.includes(domain));
+    }, "Rust backend launch domains");
+  }
   await app.evaluate(({ dialog, BrowserWindow }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
     BrowserWindow.getAllWindows()[0].setSize(1440, 960);
@@ -255,25 +297,34 @@ try {
   ).id;
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   await page.getByRole("button", { name: "新建定时任务", exact: true }).click();
-  const chat = page.getByTestId("chat-input");
-  await chat.waitFor();
-  assert.equal(await page.getByRole("dialog").count(), 0);
-  assert.equal(await page.locator("[data-v4-composer-dock]").count(), 1);
-  assert.equal(await page.getByLabel("任务执行方式").count(), 0);
-  assert.equal(await page.getByLabel("任务交互方式").count(), 0);
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("textbox", { name: "指令", exact: true })
+    .fill("SCHEDULE_FIXTURE_COMPLETE");
   await page.screenshot({ path: join(scratch, "schedule-create.png") });
-  checks.push(
-    "visible task creation uses the ordinary conversation Composer and selected project scope without a separate mode or interaction selector",
-  );
-  await chat.fill("从八秒后开始，每六秒回复检查结果，每次用新会话。");
-  await page.getByTestId("chat-send-button").click();
-  const schedule = await until(
+  await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  let schedule = await until(
     async () =>
       (await call("tasks", { operation: "list" })).data.find(
         (t) => t.objective === "SCHEDULE_FIXTURE_COMPLETE",
       ),
-    "natural schedule saved through the conversation",
+    "task saved through scheduled task form",
   );
+  pid = schedule.executionProjectId ?? schedule.projectId;
+  assert.ok(pid, "catalog supplies the actual task owner");
+  assert.ok(schedule.scheduleV2, "form persists its schedule");
+  schedule = await call("manage", {
+    projectId: pid,
+    operation: "taskUpdate",
+    taskId: schedule.id,
+    expectedRevision: schedule.revision,
+    schedule: {
+      at: Math.floor(Date.now() / 1000) + 8,
+      intervalSeconds: 6,
+      timeZone: "Asia/Shanghai",
+    },
+    delivery: "newThread",
+  });
   assert.equal(schedule.interactionMode, "interactive");
   assert.equal(schedule.schedule.timeZone, "Asia/Shanghai");
   await page.getByLabel("定时任务会话").waitFor();
@@ -317,7 +368,7 @@ try {
       .every((run) => value.library.threads[`${pid}:${run.threadId}`]?.unread);
   }, "unopened scheduled results marked unread");
   checks.push(
-    "natural draft, saved timezone, two new execution Threads with no inherited results, visible plan/history without focus switch",
+    "form creation, fixture short schedule, two new execution Threads with no inherited results, visible plan/history without focus switch",
   );
   const holding = await call("manage", {
     projectId: pid,
@@ -369,8 +420,6 @@ try {
   await page.getByRole("button", { name: "任务资源", exact: true }).click();
   const approvalHistory = page.locator(".task-resource-history");
   await approvalHistory.waitFor();
-  if ((await approvalHistory.getAttribute("open")) === null)
-    await approvalHistory.locator("summary").click();
   await page.getByRole("button", { name: "打开执行会话", exact: true }).click();
   await page.getByRole("button", { name: "允许一次", exact: true }).waitFor();
   await page.screenshot({ path: join(scratch, "schedule-approval.png") });
@@ -467,26 +516,18 @@ try {
     completionId: earlier,
   });
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  const adapter = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  await app.close();
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 0 });
+  });
+  await closeSmokeApplication(app);
   app = null;
   page = null;
-  process.kill(adapter.pid, "SIGKILL");
-  await until(async () => {
-    try {
-      process.kill(adapter.pid, 0);
-      return false;
-    } catch (error) {
-      if (error.code === "ESRCH") return true;
-      throw error;
-    }
-  }, "owned adapter stopped");
   await launch();
   await task(multi.id);
   assert.equal(
     (await snapshot()).library.threads[`${pid}:${multiRun.threadId}`].unread,
     false,
-    "earlier read survives adapter restart",
+    "earlier read survives app restart",
   );
   await control(multi.id, "taskResumeRun", multiRun.id);
   await until(
@@ -498,11 +539,12 @@ try {
     return meta.unread && meta.completionId !== earlier;
   }, "final Turn result becomes unread after restart");
   checks.push(
-    "read earlier Turn survives adapter restart; unopened same-Run resume marks its new final Turn unread",
+    "read earlier Turn survives app restart; unopened same-Run resume marks its new final Turn unread",
   );
   assert.deepEqual(errors, []);
   passed = true;
 } catch (error) {
+  console.error(error);
   if (page) {
     await writeFile(
       join(scratch, "failure-state.json"),
@@ -537,7 +579,33 @@ try {
       errors.push(`cleanup: ${error.message}`);
     }
   }
-  if (app) await app.close().catch(() => {});
+  if (app)
+    await closeSmokeApplication(app).catch((error) => {
+      errors.push(`Electron cleanup: ${error.message}`);
+      passed = false;
+    });
+  if (rust) {
+    try {
+      const stop = JSON.parse(
+        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+          encoding: "utf8",
+        }),
+      );
+      await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
+      assert.equal(stop.state, "completed");
+      assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      await writeFile(
+        join(scratch, "synthetic-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    } catch (error) {
+      errors.push(`Rust cleanup: ${error.message}`);
+      passed = false;
+      process.exitCode = 1;
+    }
+  }
   model.closeAllConnections();
   await new Promise((resolve) => model.close(resolve));
   await writeFile(

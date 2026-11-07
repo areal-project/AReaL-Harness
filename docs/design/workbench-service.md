@@ -27,7 +27,7 @@ Host 复用 `workbench_route.rs` 与 `workbench.rs` 的监督机制，分别监�
 
 ## 协议与回执
 
-Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`，单帧上限 64 MiB。公共客户端仍受自己的协议帧上限限制。方法在 `schemas/areal-host-protocol-v1.json` 登记为 `x-owner: workbench`，还必须在 Host 白名单及服务 `ready` 中出现；没有通用后台 RPC。
+Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`，单帧上限 64 MiB。公共客户端仍受自己的协议帧上限限制。方法在 `schemas/areal-host-protocol-v1.json` 登记为 `x-owner: workbench`，还必须在 Host 白名单及服务 `ready` 中出现；没有通用后台 RPC。`lifecycle.dependencies.lifecycleGeneration` 只读投影当前生命周期代次；Worktree 删除把原 Host 停止回执嵌入既有桌面生命周期回执，不改变停止或恢复语义。
 
 `library.command` 接受有界的整理操作：重命名、置顶、分区、移动、排序、拖放、已读、隐藏项目及导航显示偏好。请求必须绑定 `sourceId` 并匹配当前后台，不能把另一个 GUI 来源的整理误写入当前资料库。成功回执返回与导航读模型同样过滤的资料库状态，不透传桌面配置或缓存正文。Host 在副作用前写入 journal，以主体和 `commandId` 隔离回执。相同语义的重复请求返回原回执；同 ID 不同语义报 `COMMAND_CONFLICT`。没有可信回复的操作保持 `submissionUnknown`，`command.read` 查询原 ID，不自动重发，也不退回 Main 重做。当前无法从后台补证的 UNKNOWN 会一直保留，不能显示为成功。
 
@@ -62,7 +62,7 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 
 Host 的资料库事务从原位置读取完整 JSON，在同一同步段中校验、修改并原子写回；导航公开回执仍经同一过滤器。桌面设置仅在有界字段上按原值比较替换，Host 不解释代理、硬件加速等设置。Worktree 设置与环境配置复用同一资料库事务，不能另建文件写者。
 
-`areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。读取停止项目的任务预览使用 published 目录并保留 unobserved，显式 observe 才请求实时状态。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。
+`areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。读取停止项目的任务预览使用 published 目录并保留 unobserved，显式 observe 才请求实时状态；私有任务观察只使用既有连接，不重新启动已停止项目。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。
 
 CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@revision` 显式选择已部署、允许线程进程的 Profile，执行项目仍受原并发写授权和进程预算约束；不由 Host 自动提权。`worktree --command-id <原 ID>` 可重复原参数核对已受理命令，不能换 ID 重放 UNKNOWN。
 

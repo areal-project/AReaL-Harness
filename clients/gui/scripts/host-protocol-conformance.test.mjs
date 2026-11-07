@@ -34,7 +34,9 @@ ajv.addKeyword({
   schemaType: "number",
   validate: (limit, value) => Buffer.byteLength(value, "utf8") <= limit,
 });
-const { addHostProtocolSchemas } = require("./host-protocol-schema-registry.cjs");
+const { addHostProtocolSchemas } = createRequire(import.meta.url)(
+  "./host-protocol-schema-registry.cjs",
+);
 addHostProtocolSchemas(
   ajv,
   schema,

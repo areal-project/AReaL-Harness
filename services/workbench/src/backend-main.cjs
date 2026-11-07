@@ -151,6 +151,7 @@ async function start({ input, output }) {
           inflight: Math.max(desktop.adapter.inflight, desktop.backend.activeCommands ?? 0),
           providerUpdating: desktop.backend.providerUpdating === true || desktop.backend.resourcesUpdating === true,
           starting: desktop.backend.starting.size,
+          lifecycleGeneration: desktop.backend.lifecycleOperations.generation,
         };
         if (request.method === "lifecycle.flush") {
           await desktop.backend.library.writes;

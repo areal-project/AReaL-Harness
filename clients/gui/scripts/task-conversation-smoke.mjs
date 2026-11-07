@@ -36,6 +36,8 @@ const binarySha256 = createHash("sha256")
   .digest("hex");
 const scratch = await makeTempDir("areal-schedule-desktop-");
 const rust = process.argv.includes("--rust");
+const seedNavigation = process.argv.includes("--seed-navigation");
+assert.ok(!seedNavigation || rust, "Navigation projection requires Rust mode");
 const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
 if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const legacyTargetOnly = process.argv.includes("--legacy-target-only");
@@ -635,6 +637,7 @@ let app,
   pid,
   workspacePid,
   taskCwd,
+  navigationFixture,
   passed = false;
 async function until(fn, label, timeout = 60000) {
   const end = Date.now() + timeout;
@@ -2601,7 +2604,7 @@ async function checkInlineRegression() {
   await page.getByRole("button", { name: `打开自动化 ${inlineObjective}`, exact: true }).click();
   await assertRestored("reopen");
 }
-async function closeOwnedApp() {
+async function closeOwnedApp(quitResponse = 1) {
   const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
     .then(JSON.parse)
     .catch((error) => {
@@ -2609,7 +2612,7 @@ async function closeOwnedApp() {
       throw error;
     });
   await app.evaluate(
-    ({ dialog }, trace) => {
+    ({ dialog }, { trace, quitResponse }) => {
       const fs = process.getBuiltinModule("node:fs");
       if (typeof fs?.appendFileSync !== "function")
         throw Error("Main builtin filesystem is unavailable for quit evidence");
@@ -2628,12 +2631,12 @@ async function closeOwnedApp() {
             trace,
             JSON.stringify({ message: options.message, buttons: options.buttons }) + "\n",
           );
-          return { response: 1 };
+          return { response: quitResponse };
         }
         return old(...args);
       };
     },
-    join(scratch, "manual-quit-dialogs.jsonl"),
+    { trace: join(scratch, "manual-quit-dialogs.jsonl"), quitResponse },
   );
   const processHandle = app.process();
   await closeSmokeApplication(app, 20000);
@@ -2880,6 +2883,7 @@ async function checkManualRegression() {
 try {
   await launch();
   if (rust) {
+    await until(async () => (await call("serviceStatus", {})).connected, "bootstrap backend ready");
     await page.evaluate((domains) => {
       localStorage.setItem("areal.oneProtocol.reads", "1");
       localStorage.setItem(
@@ -2887,7 +2891,6 @@ try {
         ["backend", "library", "tasks", "worktree", ...domains].join(","),
       );
     }, rustDomains);
-    await closeOwnedApp();
     const stop = JSON.parse(
       execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
         env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
@@ -2897,6 +2900,65 @@ try {
     assert.equal(stop.state, "completed");
     assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
     await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    await closeOwnedApp(0);
+    if (seedNavigation) {
+      const { createSeedNavigationFixture } = await import("./support/seed-navigation-fixture.mjs");
+      const readJson = async (path, fallback) =>
+        readFile(path, "utf8")
+          .then(JSON.parse)
+          .catch((error) => {
+            if (error.code === "ENOENT") return fallback;
+            throw error;
+          });
+      const coreHome = env.AREAL_CORE_HOME;
+      const fixture = await createSeedNavigationFixture({
+        seedHome: resolve(gui, "../../.scratch/one-protocol-rust/seed-real"),
+        fixtureRoot: scratch,
+        existingProjects: await readJson(join(coreHome, "projects.json"), []),
+        existingLibrary: await readJson(join(coreHome, "library.json"), {}),
+      });
+      navigationFixture = fixture;
+      await writeFile(join(coreHome, "projects.json"), JSON.stringify(fixture.projects));
+      await writeFile(join(coreHome, "library.json"), JSON.stringify(fixture.library));
+      const {
+        GuiHostProjects,
+      } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+      const projects = new GuiHostProjects({
+        binary,
+        home: env.AREAL_HARNESS_SERVICE_HOME,
+        singletonHeld: true,
+        source: {
+          profile: env.AREAL_GUI_USER_DATA,
+          coreHome,
+          legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
+        },
+      });
+      try {
+        await projects.init();
+        for (const project of fixture.importedProjects)
+          await projects.register(randomUUID(), project);
+        const listing = await projects.client.listProjects();
+        for (const project of listing.projects) {
+          assert.ok(
+            project.workspace.startsWith(scratch + "/"),
+            "All registered workspaces must be isolated",
+          );
+        }
+      } finally {
+        projects.close();
+      }
+      const seededStop = JSON.parse(
+        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+          encoding: "utf8",
+        }),
+      );
+      await writeFile(
+        join(scratch, "seed-navigation-stop.json"),
+        JSON.stringify(seededStop, null, 2),
+      );
+      assert.equal(seededStop.state, "completed");
+    }
     await launch();
     await until(async () => {
       const record = await readFile(
@@ -2921,6 +2983,38 @@ try {
     )
   ).id;
   workspacePid = pid;
+  if (seedNavigation) {
+    const imported = navigationFixture.importedProjects[0];
+    const originalTitle =
+      navigationFixture.library.projects[imported.id]?.title || imported.root.split("/").at(-1);
+    const row = page.locator(`[data-sidebar-project="${imported.id}"]`);
+    await row.waitFor();
+    const actions = row.getByRole("button", { name: `项目操作 ${originalTitle}`, exact: true });
+    await actions.focus();
+    await actions.press("Enter");
+    await page.getByRole("menuitem", { name: "置顶项目", exact: true }).click();
+    await until(
+      async () => (await snapshot()).library.projects[imported.id]?.pinned === true,
+      "project pinned",
+    );
+    await page
+      .locator("[data-sidebar-pinned]")
+      .locator(`[data-sidebar-project="${imported.id}"]`)
+      .waitFor();
+    await actions.focus();
+    await actions.press("Enter");
+    await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
+    await page.getByRole("textbox", { name: "名称", exact: true }).fill("隔离导航验收项目");
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await until(
+      async () => (await snapshot()).library.projects[imported.id]?.title === "隔离导航验收项目",
+      "project renamed",
+    );
+    await row.getByRole("button", { name: "隔离导航验收项目", exact: true }).waitFor();
+    checks.push(
+      "projected navigation opens in isolated sidebar; GUI pins and renames a projected project",
+    );
+  }
   if (legacyTargetOnly) {
     await checkLegacyTargetRegression();
     passed = true;
@@ -3606,8 +3700,13 @@ try {
       }
     }
     if (app) {
-      const handle = app.process();
-      if (handle.exitCode === null && handle.signalCode === null) {
+      let handle;
+      try {
+        handle = app.process();
+      } catch {
+        // Playwright 已释放退出中的应用对象。
+      }
+      if (handle && handle.exitCode === null && handle.signalCode === null) {
         manualCleanup.forcedElectronExit = true;
         handle.kill("SIGKILL");
         await until(

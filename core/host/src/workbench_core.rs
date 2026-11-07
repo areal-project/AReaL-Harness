@@ -331,8 +331,29 @@ impl Connections {
         } else {
             None
         };
-        let status = host.project_status(id).await;
-        let service = status.service.context("Core project is unavailable")?;
+        // 已受理的启动与配置变更持有同一写锁；投影等它结算，不把中途 starting 当成失连。
+        let (state, service) = {
+            let gate = host.gate(id)?;
+            let _startup = gate.read().await;
+            host.admission()?;
+            let slots = host.slots.borrow();
+            let slot = slots.get(id).context("RESOURCE_UNAVAILABLE")?;
+            (
+                slot.state.clone(),
+                slot.service.clone().filter(|service| {
+                    slot.state == "ready"
+                        && slot.writer.is_some()
+                        && service.owner.as_ref() == Some(&host.owner())
+                }),
+            )
+        };
+        if service.is_none() {
+            eprintln!(
+                "Host Core attach unavailable: projectId={id} stage=service state={}",
+                state
+            );
+        }
+        let service = service.context("Core project is unavailable")?;
         let session = if scope.is_some() || desktop {
             self.terminals
                 .borrow_mut()
@@ -344,7 +365,12 @@ impl Connections {
             session.ready.set(true);
             session
         } else {
-            self.ready(host, id, &service.identity.generation).await?;
+            self.ready(host, id, &service.identity.generation)
+                .await
+                .map_err(|cause| {
+                    eprintln!("Host Core attach unavailable: projectId={id} stage=sharedReady");
+                    cause
+                })?;
             self.sessions
                 .borrow()
                 .get(id)
@@ -352,10 +378,17 @@ impl Connections {
                 .ok_or_else(unavailable)?
         };
         let mut guard = AttachGuard((scope.is_some() || desktop).then(|| session.clone()));
+        // 等共享准备时不阻塞恢复的写锁；授租的短握手则与下一次生命周期变更互斥。
+        let gate = host.gate(id)?;
+        let _attachment = gate.read().await;
         ensure!(session.shared_current(host), unavailable());
         let capabilities = session
             .request("areal/capabilities", json!({"apiVersion":"areal.core.v1"}))
-            .await?;
+            .await
+            .map_err(|cause| {
+                eprintln!("Host Core attach unavailable: projectId={id} stage=capabilities");
+                cause
+            })?;
         ensure!(session.shared_current(host), unavailable());
         if scope.is_some() || desktop {
             ensure!(self.terminal_epoch.get() == terminal_epoch, unavailable());
@@ -419,7 +452,8 @@ impl Connections {
         let session = self.workbench_session(host, id, lease).ok();
         let closed = session.is_some();
         if let Some(session) = session {
-            session.close();
+            // 投影只拥有租约；共享 socket 的建立与关闭仍由 Host 项目监督负责。
+            session.workbench_lease.borrow_mut().take();
         }
         self.terminals.borrow_mut().remove(lease);
         Ok(json!({"closed":closed}))

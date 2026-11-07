@@ -369,6 +369,19 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
         }
         return;
     }
+    if value["method"] == "turn/completed"
+        && connection.shared_current(host)
+        && host
+            .schedules
+            .connections
+            .sessions
+            .borrow()
+            .get(&connection.project_id)
+            .is_some_and(|current| Rc::ptr_eq(current, connection))
+    {
+        // Core 先结算再发终态；这里只唤醒原生命周期权威重读，不把通知直接当作停止回执。
+        host.changed();
+    }
     if super::library_service::core_event(host, &connection.project_id, &value).is_err() {
         eprintln!("Host library Core event update failed");
     }
@@ -1322,6 +1335,142 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn turn_completed_wakes_original_lifecycle_receipt_without_redispatch() {
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let mut base = super::super::schedules::tests::fixture(root.path());
+            Rc::get_mut(&mut base.migration).unwrap().vault = crate::vault::Vault::isolated_files(&base.home);
+            let source = crate::migration::Source { profile:root.path().join("profile"),core_home:root.path().join("core"),legacy_service_home:root.path().join("legacy") };
+            storage::private_dir(&source.profile).unwrap();
+            storage::private_dir(&source.core_home).unwrap();
+            storage::write(&source.core_home.join("projects.json"),&json!([])).unwrap();
+            base.migration.attach(source.clone(),"fixture",None).unwrap();
+            let imported = base.migration.import(serde_json::from_value(json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":base.identity.generation,"source":source})).unwrap(),"fixture",&[],&base.journal).unwrap();
+            assert_eq!(imported["kind"],"ready");
+            let source_id = base.migration.source(source,&[]).unwrap()["sourceId"].as_str().unwrap().to_owned();
+            let registration = base.slots.borrow()["project"].registration.clone();
+            let alias = base.migration.remote_bindings(&source_id,&[registration]).unwrap().remove(0).1;
+            let host = Rc::new(base);
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(&host,format!("ws://{}/",listener.local_addr().unwrap()));
+            let dispatches = Rc::new(Cell::new(0));
+            let count = dispatches.clone();
+            let (release, released) = oneshot::channel::<()>();
+            let server = tokio::task::spawn_local(async move {
+                let (stream,_) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_hdr_async(stream,ScheduleHeaders).await.unwrap();
+                let mut reads = 0;
+                loop {
+                    let call = receive(&mut socket).await;
+                    match call["method"].as_str().unwrap() {
+                        "initialize" => send(&mut socket,json!({"id":call["id"],"result":{}})).await,
+                        "turn/interrupt" => {
+                            count.set(count.get()+1);
+                            assert_eq!(call["params"],json!({"threadId":"thread","turnId":"turn"}));
+                            send(&mut socket,json!({"id":call["id"],"result":{}})).await;
+                        }
+                        "thread/read" => {
+                            reads += 1;
+                            let status = if reads < 3 { "inProgress" } else { "interrupted" };
+                            send(&mut socket,json!({"id":call["id"],"result":{"thread":{"id":"thread","turns":[{"id":"turn","status":status}]}}})).await;
+                            if reads == 2 {
+                                // 原命令的首次结算仍在执行；终态通知只负责唤醒下一次权威读。
+                                send(&mut socket,json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"turn","status":"interrupted"}}})).await;
+                            } else if reads == 3 { released.await.unwrap(); break; }
+                        }
+                        method => panic!("unexpected Core method {method}"),
+                    }
+                }
+            });
+            let session = connect(host.clone(),"project",service).await.unwrap();
+            session.ready.set(true);
+            host.schedules.connections.sessions.borrow_mut().insert("project".into(),session.clone());
+            let changes = host.changes.subscribe();
+            publish_event(&host,&session,json!({"method":"item/agentMessage/delta","params":{"threadId":"thread","delta":"text"}}));
+            assert!(!changes.has_changed().unwrap(),"流delta不唤醒Host全局观察");
+            let snapshot = super::super::workbench_lifecycle::read_request(&host,&source_id,"snapshot",&json!({"ownerNonce":uuid::Uuid::new_v4().to_string()})).await.unwrap();
+            let request = uuid::Uuid::new_v4().to_string();
+            let result = super::super::workbench_lifecycle::command(&host,&source_id,json!({"requestId":request,"kind":"interruptTurn","mode":"cancel","expectedDesktopGeneration":snapshot["desktopGeneration"],"expectedTargets":[{"projectId":alias,"serviceId":"fixture","generation":"first"}],"threadId":"thread","turnId":"turn"})).await.unwrap();
+            assert_eq!(result["requestId"],request);
+            assert_eq!(result["phase"],"completed");
+            assert_eq!(result["targets"][0]["phase"],"completed");
+            assert_eq!(dispatches.get(),1);
+            let stored = super::super::workbench_lifecycle::read_request(&host,&source_id,"read",&json!({"requestId":request})).await.unwrap();
+            assert_eq!(stored["phase"],"completed");
+            assert_eq!(stored["requestId"],request);
+            release.send(()).unwrap();
+            server.await.unwrap();
+            session.close();
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn workbench_attach_waits_for_original_project_startup_before_leasing_shared_socket() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+                let server = tokio::task::spawn_local(async move {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                        .await
+                        .unwrap();
+                    let initialize = receive(&mut socket).await;
+                    send(&mut socket, json!({"id":initialize["id"],"result":{}})).await;
+                    let capabilities = receive(&mut socket).await;
+                    assert_eq!(capabilities["method"], "areal/capabilities");
+                    send(&mut socket, json!({"id":capabilities["id"],"result":{}})).await;
+                    while let Some(message) = socket.next().await {
+                        if message.is_err() {
+                            break;
+                        }
+                    }
+                });
+                let primary = connect(host.clone(), "project", service).await.unwrap();
+                primary.ready.set(true);
+                host.schedules
+                    .connections
+                    .sessions
+                    .borrow_mut()
+                    .insert("project".into(), primary.clone());
+                let gate = host.gate("project").unwrap();
+                let startup = gate.write().await;
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+                    slot.writer = Some(writer);
+                    slot.lifetime = Some(Rc::new(lifetime));
+                    slot.state = "starting".into();
+                }
+                let attach = host
+                    .schedules
+                    .connections
+                    .workbench_attach(&host, "project", None);
+                tokio::pin!(attach);
+                assert!(
+                    futures_util::poll!(attach.as_mut()).is_pending(),
+                    "启动未结算前不能发出失败或授予租约"
+                );
+                assert!(primary.workbench_lease.borrow().is_none());
+                host.slots.borrow_mut().get_mut("project").unwrap().state = "ready".into();
+                drop(startup);
+                let attached = attach.await.unwrap();
+                assert_eq!(attached["connectionId"], primary.connection_id);
+                assert_eq!(
+                    attached["coreGeneration"],
+                    primary.service.identity.generation
+                );
+                assert!(attached["lease"].is_string());
+                primary.close();
+                server.await.unwrap();
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn terminal_detach_closes_only_its_original_core_socket() {
         tokio::task::LocalSet::new()
             .run_until(async {
@@ -1384,6 +1533,15 @@ mod tests {
                 );
                 assert!(terminal.closed.get());
                 assert!(!primary.closed.get());
+                assert_eq!(
+                    host.schedules
+                        .connections
+                        .workbench_detach(&host, "project", "primary")
+                        .unwrap()["closed"],
+                    true
+                );
+                assert!(!primary.closed.get(), "后台投影撤租不能关闭 Host 共享连接");
+                assert!(primary.workbench_lease.borrow().is_none());
                 assert_eq!(
                     primary
                         .request("areal/server/status", json!({}))

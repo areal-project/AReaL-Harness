@@ -171,7 +171,10 @@ fn checked_target(
     );
     Ok(canonical.clone())
 }
-fn host_receipt(target: &mut Value, operation: &Value, cancel: bool) -> Result<()> {
+pub(super) fn current_generation(source: &str) -> Option<String> {
+    OWNERS.with(|owners| owners.borrow().get(source).map(|owner| owner.1.clone()))
+}
+pub(super) fn host_receipt(target: &mut Value, operation: &Value, cancel: bool) -> Result<()> {
     ensure!(
         operation["version"] == 1
             && operation["requestId"] == target["requestId"]

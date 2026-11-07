@@ -321,6 +321,45 @@ fn timestamp() -> String {
     chrono::DateTime::<chrono::Utc>::from(std::time::SystemTime::now())
         .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
+fn initial_checkout(value: &mut Value) {
+    // 旧 checkout 只在 record 保存时间；首次纳入 Host 不能改变既有自动清理排序。
+    if value["kind"] == "checkout" {
+        value.as_object_mut().unwrap().remove("createdAt");
+    }
+}
+fn cancel_transition(value: &mut Value) {
+    let created = matches!(value["state"].as_str(), Some("created" | "failed"));
+    event(value, "cancelled");
+    if created {
+        value["message"] = json!("创建已取消，目录保留");
+        value["events"].as_array_mut().unwrap().last_mut().unwrap()["message"] =
+            json!("创建已取消，目录保留");
+    }
+}
+fn begin_cancel(value: &mut Value) -> bool {
+    if value["state"] == "ready" {
+        value["cancelResult"] = json!("tooLate");
+        return false;
+    }
+    if value["state"] == "cancelled" {
+        return false;
+    }
+    value["intent"] = json!("cancel");
+    if value["state"] != "failed"
+        || !matches!(
+            value["setup"]["status"].as_str(),
+            Some("running" | "unknown")
+        )
+    {
+        cancel_transition(value);
+    }
+    true
+}
+fn open_record(value: &mut Value, execution: &str) {
+    value["executionProjectId"] = json!(execution);
+    value["kind"] = json!("thread");
+    value["sourceRoot"] = value["record"]["target"].clone();
+}
 
 pub(super) async fn read(host: &Rc<Host>, source: &str, mut params: Value) -> Result<Value> {
     if let Some(object) = params.as_object_mut() {
@@ -575,6 +614,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 value["environment"] = environment;
                 value["environmentRevision"] = json!(environment_revision);
             }
+            initial_checkout(&mut value);
             persist(&home, &mut value)?;
             host.changed();
             Ok(value)
@@ -583,12 +623,8 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
             let creation = required(&params, "worktreeRequestId")
                 .or_else(|_| required(&params, "requestId"))?;
             let mut value = record(&home, creation, &alias)?;
-            value["intent"] = json!("cancel");
-            if !matches!(
-                value["state"].as_str(),
-                Some("ready" | "failed" | "cancelled")
-            ) {
-                event(&mut value, "cancelled");
+            if !begin_cancel(&mut value) {
+                return Ok(value);
             }
             if value["setup"]["status"] == "running" || value["setup"]["status"] == "unknown" {
                 if let (Some(execution), Some(thread), Some(process)) = (
@@ -664,8 +700,8 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
             let mut dispatched = false;
             let outcome = async {
                 request(host,&source_project.project_id,"areal/worktree/read",json!({"operation":"worktreeInspect","requestId":creation,"legacyOperation":value,"allowDirty":true})).await?;
-                if let Some(execution_alias) = value["executionProjectId"].as_str() {
-                    let execution = project(host, source, execution_alias)?;
+                if let Some(execution_alias) = value["executionProjectId"].as_str().map(str::to_owned) {
+                    let execution = project(host, source, &execution_alias)?;
                     let status = request(
                         host,
                         &execution.project_id,
@@ -772,22 +808,28 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                         .get(&execution.project_id)
                         .and_then(|slot| slot.service.clone())
                         .context("RESOURCE_UNAVAILABLE")?;
+                    let desktop_generation = deletion_generation(host, source).await?;
+                    let stop_id = stable_id(&format!("{id}:stop"));
+                    let mut target = json!({"projectId":execution_alias,"serviceId":service.identity.service_id,"generation":service.identity.generation,"dataDir":execution.data_dir,"requestId":stop_id,"phase":"acceptedPending"});
                     dispatched = true;
-                    let receipt = host
+                    let operation = host
                         .stop_project(super::Stop {
-                            request_id: stable_id(&format!("{id}:stop")),
+                            request_id: stop_id.clone(),
                             expected_generation: host.identity.generation.clone(),
                             strategy: crate::StopStrategy::IfIdle,
                             suppress_scheduling: true,
-                            project_id: Some(execution.project_id),
+                            project_id: Some(execution.project_id.clone()),
                             service_generation: Some(service.identity.generation),
                         })
                         .await?;
                     dispatched = false;
+                    ensure!(operation["projectId"] == execution.project_id, "LIFECYCLE_RECEIPT_INVALID");
+                    super::workbench_lifecycle::host_receipt(&mut target, &operation, false)?;
+                    let receipt = deletion_stop_receipt(&stop_id, &desktop_generation, &host.home, target)?;
                     value["deletion"]["stopReceipt"] = receipt.clone();
                     persist(&home, &mut value)?;
                     ensure!(
-                        receipt["state"] == "completed",
+                        receipt["phase"] == "completed",
                         "worktree Core stop remains unconfirmed"
                     );
                 }
@@ -819,7 +861,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 let uncertain = dispatched
                     || value["cleanup"]["status"] == "unknown"
                     || value["deletion"]["stopReceipt"]
-                        .get("state")
+                        .get("phase")
                         .is_some_and(|state| state != "completed")
                     || error.to_string().contains("SUBMISSION_UNKNOWN");
                 value["deletion"]["status"] = json!(if uncertain { "unknown" } else { "blocked" });
@@ -997,6 +1039,49 @@ fn validate_script(value: &Value) -> Result<()> {
         "invalid environment script"
     );
     Ok(())
+}
+
+async fn deletion_generation(host: &Rc<Host>, source: &str) -> Result<String> {
+    if source == "host" {
+        return Ok(host.identity.generation.clone());
+    }
+    if host.gateway.workbench.rust_domain("execution-rust", source) {
+        return super::workbench_lifecycle::current_generation(source)
+            .context("CAPABILITY_UNAVAILABLE");
+    }
+    let owner = host
+        .gateway
+        .workbench
+        .worktree_backend_identity(source)
+        .context("CAPABILITY_UNAVAILABLE")?;
+    let dependencies = host
+        .gateway
+        .workbench
+        .backend_private("lifecycle.dependencies", json!({}))
+        .await?;
+    ensure!(
+        host.gateway
+            .workbench
+            .worktree_backend_identity(source)
+            .as_ref()
+            == Some(&owner),
+        "RESYNC_REQUIRED"
+    );
+    let generation = required(&dependencies, "lifecycleGeneration")?;
+    uuid::Uuid::parse_str(generation).context("LIFECYCLE_RECEIPT_INVALID")?;
+    Ok(generation.to_owned())
+}
+
+fn deletion_stop_receipt(
+    request: &str,
+    generation: &str,
+    home: &Path,
+    target: Value,
+) -> Result<Value> {
+    let value = json!({"version":1,"requestId":request,"desktopGeneration":generation,"kind":"stopProject","mode":"ifIdle","targets":[target.clone()],"phase":target["phase"],"desktopExit":"notRequested","sharedHost":true,"harnessHome":home});
+    serde_json::from_value::<areal_protocol::host::WorkbenchLifecycleReceipt>(value.clone())
+        .context("LIFECYCLE_RECEIPT_INVALID")?;
+    Ok(value)
 }
 
 fn platform_script(value: &Value) -> Result<String> {
@@ -1244,6 +1329,213 @@ async fn environment_attempt(
 mod tests {
     use super::*;
     #[test]
+    fn thread_checkout_empty_options_match_legacy_defaults() {
+        let empty = json!({"mode":"worktree","sourceRoot":"","ref":"","branch":"","worktreeRoot":"","environmentId":""});
+        assert_eq!(
+            thread_checkout_params("project", "request", &empty).unwrap(),
+            json!({"operation":"worktreeCreate","projectId":"project","requestId":"request","source":"head"})
+        );
+        let mut selected = empty;
+        selected["ref"] = json!("release/acceptance");
+        selected["environmentId"] = json!("acceptance");
+        let params = thread_checkout_params("project", "request", &selected).unwrap();
+        assert_eq!(params["source"], "branch");
+        assert_eq!(params["ref"], "release/acceptance");
+        assert_eq!(params["environmentId"], "acceptance");
+        assert!(
+            params.get("branch").is_none(),
+            "UI空分支必须让Core使用配置前缀生成原request分支"
+        );
+        assert!(params.get("worktreeRoot").is_none());
+        selected["branch"] = json!("feature/explicit");
+        selected["worktreeRoot"] = json!("/isolated/trees");
+        let params = thread_checkout_params("project", "request", &selected).unwrap();
+        assert_eq!(params["branch"], "feature/explicit");
+        assert_eq!(params["worktreeRoot"], "/isolated/trees");
+        selected["branch"] = json!(" ");
+        assert_eq!(
+            thread_checkout_params("project", "request", &selected).unwrap()["branch"],
+            " ",
+            "不修正或放宽显式无效分支"
+        );
+        selected["branch"] = json!(42);
+        assert!(thread_checkout_params("project", "request", &selected).is_err());
+    }
+    #[test]
+    fn checkout_receipt_keeps_legacy_fields_and_cleanup_order() {
+        let mut checkout = json!({"kind":"checkout","requestId":"checkout","projectId":"source","parameters":{},"state":"created","createdAt":"2030-01-01T00:00:00.000Z","record":{"createdAt":"2030-01-01T00:00:00.000Z","target":"/source","directory":"/checkout"},"events":[{"id":"checkout:0","state":"created","time":"2030-01-01T00:00:00.000Z"}],"recordRevision":1});
+        initial_checkout(&mut checkout);
+        assert!(checkout.get("createdAt").is_none());
+        assert_eq!(checkout["record"]["createdAt"], "2030-01-01T00:00:00.000Z");
+        assert_eq!(checkout["recordRevision"], 1);
+        let mut retained = vec![
+            json!({"requestId":"thread","createdAt":"2020-01-01T00:00:00.000Z"}),
+            checkout.clone(),
+        ];
+        retained.sort_by(|a, b| a["createdAt"].as_str().cmp(&b["createdAt"].as_str()));
+        assert_eq!(
+            retained[0]["requestId"], "checkout",
+            "旧 checkout 缺省时间不能变成比现有 thread 更新"
+        );
+        cancel_transition(&mut checkout);
+        assert_eq!(checkout["message"], "创建已取消，目录保留");
+        assert_eq!(checkout["events"][1]["message"], checkout["message"]);
+        assert_eq!(checkout["events"][0]["state"], "created");
+        open_record(&mut checkout, "execution");
+        assert_eq!(checkout["sourceRoot"], "/source");
+        assert_ne!(checkout["sourceRoot"], checkout["record"]["directory"]);
+        assert_eq!(checkout["kind"], "thread");
+        assert_eq!(checkout["executionProjectId"], "execution");
+        let mut thread = json!({"kind":"thread","createdAt":"2020-01-01T00:00:00.000Z"});
+        initial_checkout(&mut thread);
+        assert_eq!(thread["createdAt"], "2020-01-01T00:00:00.000Z");
+    }
+    #[test]
+    fn cancellation_terminal_states_match_legacy_oracle() {
+        for state in ["created", "failed"] {
+            let original = json!({"state":state,"requestId":"request","recordRevision":7,"events":[{"state":state,"id":"request:0","time":"original"}]});
+            let mut value = original.clone();
+            assert!(begin_cancel(&mut value));
+            assert_eq!(value["state"], "cancelled");
+            assert_eq!(value["intent"], "cancel");
+            assert_eq!(value["message"], "创建已取消，目录保留");
+            assert_eq!(value["events"][0], original["events"][0]);
+            assert_eq!(value["events"][1]["message"], value["message"]);
+            assert_eq!(value["recordRevision"], 7);
+        }
+        let original = json!({"state":"ready","intent":"continue","recordRevision":7,"events":[]});
+        let mut ready = original.clone();
+        assert!(!begin_cancel(&mut ready));
+        ready.as_object_mut().unwrap().remove("cancelResult");
+        assert_eq!(ready, original, "太晚取消不得持久修改 intent 或日志");
+        let mut ready = original;
+        assert!(!begin_cancel(&mut ready));
+        assert_eq!(ready["cancelResult"], "tooLate");
+        let original =
+            json!({"state":"cancelled","intent":"cancel","recordRevision":7,"events":[]});
+        let mut cancelled = original.clone();
+        assert!(!begin_cancel(&mut cancelled));
+        assert_eq!(cancelled, original);
+        let mut active = json!({"state":"failed","setup":{"status":"running"},"events":[]});
+        assert!(begin_cancel(&mut active));
+        assert_eq!(active["state"], "failed", "活动 setup 仍须走原进程终止确认");
+        assert_eq!(active["events"], json!([]));
+    }
+    #[test]
+    fn deletion_receipt_survives_desktop_restart_and_keeps_unknown_phase() {
+        let request = "11111111-1111-4111-8111-111111111111";
+        let node = std::env::var_os("AREAL_GUI_NODE_BIN").unwrap_or_else(|| "node".into());
+        for (state, phase) in [
+            ("completed", "completed"),
+            ("admissionUnknown", "admissionUnconfirmed"),
+        ] {
+            let home = tempfile::tempdir().unwrap();
+            let operation = json!({"version":1,"projectId":"canonical","requestId":request,"serviceId":"core","serviceGeneration":"generation","strategy":"ifIdle","state":state});
+            let mut target = json!({"projectId":"execution-alias","requestId":request,"serviceId":"core","generation":"generation","dataDir":home.path().join("execution/state")});
+            super::super::workbench_lifecycle::host_receipt(&mut target, &operation, false)
+                .unwrap();
+            let receipt =
+                deletion_stop_receipt(request, "desktop-owner", home.path(), target).unwrap();
+            assert_eq!(receipt["phase"], phase);
+            assert_eq!(
+                receipt["targets"][0]["dataDir"],
+                json!(home.path().join("execution/state"))
+            );
+            assert_eq!(receipt["targets"][0]["hostReceipt"]["requestId"], request);
+            assert_eq!(
+                receipt["targets"][0]["hostReceipt"]["serviceGeneration"],
+                "generation"
+            );
+            let mut value = json!({"kind":"thread","requestId":request,"projectId":"logical","parameters":{},"state":"ready","deletion":{"requestId":request,"status":if state=="completed"{"succeeded"}else{"unknown"},"stopRequestId":request,"stopReceipt":receipt}});
+            persist(home.path(), &mut value).unwrap();
+            let path = home
+                .path()
+                .join("worktree-requests")
+                .join(format!("{request}.json"));
+            assert_eq!(
+                record(home.path(), request, "logical").unwrap()["deletion"]["stopReceipt"]["phase"],
+                phase
+            );
+            let result = std::process::Command::new(&node).current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+                .arg("-e").arg("const fs=require('node:fs');const {readOperation}=require('./clients/gui/packages/workbench/client/desktop-contract/workspace-worktrees.cjs');readOperation(JSON.parse(fs.readFileSync(process.argv[1],'utf8')));").arg(path).output();
+            match result {
+                Ok(output) => assert!(
+                    output.status.success(),
+                    "desktop decoder rejected persisted {phase}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => eprintln!(
+                    "desktop decoder not run: Node unavailable; Rust receipt schema/persistence checked"
+                ),
+                Err(error) => panic!("desktop decoder failed: {error}"),
+            }
+            let mut changed = operation;
+            changed["serviceGeneration"] = json!("different");
+            let mut target = json!({"projectId":"execution-alias","requestId":request,"serviceId":"core","generation":"generation"});
+            assert!(
+                super::super::workbench_lifecycle::host_receipt(&mut target, &changed, false)
+                    .is_err()
+            );
+        }
+    }
+    #[test]
+    fn worktree_target_keeps_host_connection_preparation_and_rebinds_managed_resources() {
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("gui");
+        let root = fixture.path().join("checkout");
+        let data = home.join("execution/state");
+        let profile = json!({"id":"fixture","revision":"v1"});
+        let template = LaunchInputs {
+            workspace: fixture.path().join("source"),
+            cwd: fixture.path().join("source"),
+            config_home: home.clone(),
+            homedir: None,
+            config_path: None,
+            deployment_path: None,
+            schedule_preparation: Some(crate::SchedulePreparation::External {
+                default_profile: Some(profile.clone()),
+            }),
+            environment: BTreeMap::new(),
+            credential_names: vec![],
+            options: Default::default(),
+        };
+        let target =
+            target_launch_inputs(template.clone(), &root, &data, &home, "execution").unwrap();
+        assert!(
+            matches!(target.schedule_preparation, Some(crate::SchedulePreparation::External { default_profile: Some(value) }) if value == profile)
+        );
+        assert_eq!(target.workspace, root);
+        assert_eq!(target.options.data_dir.as_deref(), Some(data.as_path()));
+        assert!(target.options.scratch.unwrap().is_dir());
+        let mut managed = template;
+        managed.schedule_preparation = Some(crate::SchedulePreparation::Managed {
+            resource_state_path: home.join("resource-state.json"),
+            user_managed_skills_root: home.join("user-skills"),
+            project_managed_skills_root: home.join("resources/source/skills"),
+            project_resource_scope: "source".into(),
+            default_profile: profile.clone(),
+        });
+        let target = target_launch_inputs(managed, &root, &data, &home, "execution").unwrap();
+        let Some(crate::SchedulePreparation::Managed {
+            resource_state_path,
+            user_managed_skills_root,
+            project_managed_skills_root,
+            project_resource_scope,
+            default_profile,
+        }) = target.schedule_preparation
+        else {
+            panic!("GUI preparation must remain configured")
+        };
+        assert_eq!(resource_state_path, home.join("resource-state.json"));
+        assert_eq!(user_managed_skills_root, home.join("user-skills"));
+        assert_eq!(
+            project_managed_skills_root,
+            home.join("resources/execution/skills")
+        );
+        assert_eq!(project_resource_scope, "execution");
+        assert_eq!(default_profile, profile);
+    }
+    #[test]
     fn project_metadata_add_merges_current_owners_and_keeps_unknown_fields() {
         let home = tempfile::tempdir().unwrap();
         use std::os::unix::fs::PermissionsExt;
@@ -1387,25 +1679,8 @@ async fn register_target(
         .join("host/launch")
         .join(storage::digest(source_project.project_id.as_bytes()))
         .join("inputs.json");
-    let mut launch: LaunchInputs = storage::read(&template_path)?;
-    launch.workspace = root.clone();
-    launch.cwd = root.clone();
-    launch.options.workspace = Some(root.clone());
-    launch.options.data_dir = Some(target_data.clone());
-    launch.options.scratch = Some(
-        target_data
-            .parent()
-            .context("target state parent missing")?
-            .join("scratch"),
-    );
-    storage::private_dir(
-        launch
-            .options
-            .scratch
-            .as_ref()
-            .context("target scratch missing")?,
-    )?;
-    launch.schedule_preparation = None;
+    let launch: LaunchInputs = storage::read(&template_path)?;
+    let launch = target_launch_inputs(launch, &root, &target_data, home, &execution_alias)?;
     let credentials = host
         .slots
         .borrow()
@@ -1436,12 +1711,48 @@ async fn register_target(
     }
     storage::private_dir(home)?;
     crate::migration::atomic_bytes(&home.join("projects.json"), &serde_json::to_vec(&rows)?)?;
-    value["executionProjectId"] = json!(saved_alias);
-    value["kind"] = json!("thread");
+    open_record(value, saved_alias);
     freeze_prepared_core(host, source, &execution_id, value)?;
     persist(home, value)?;
 
     Ok(json!({"projectId":execution_id,"alias":saved_alias,"root":root,"requestId":creation}))
+}
+
+fn target_launch_inputs(
+    mut launch: LaunchInputs,
+    root: &Path,
+    target_data: &Path,
+    home: &Path,
+    alias: &str,
+) -> Result<LaunchInputs> {
+    launch.workspace = root.to_owned();
+    launch.cwd = root.to_owned();
+    launch.options.workspace = Some(root.to_owned());
+    launch.options.data_dir = Some(target_data.to_owned());
+    launch.options.scratch = Some(
+        target_data
+            .parent()
+            .context("target state parent missing")?
+            .join("scratch"),
+    );
+    storage::private_dir(
+        launch
+            .options
+            .scratch
+            .as_ref()
+            .context("target scratch missing")?,
+    )?;
+    // 调度准备也是 Host 共享连接的合同；只重绑项目资源，不丢弃可信的来源配置。
+    if let Some(crate::SchedulePreparation::Managed {
+        project_managed_skills_root,
+        project_resource_scope,
+        ..
+    }) = &mut launch.schedule_preparation
+    {
+        *project_managed_skills_root = home.join("resources").join(alias).join("skills");
+        *project_resource_scope = alias.to_owned();
+    }
+    Ok(launch)
 }
 
 fn freeze_prepared_core(
@@ -1533,6 +1844,30 @@ fn thread_signature(request: &Value) -> Value {
     }
     signature
 }
+
+fn thread_checkout_params(logical: &str, id: &str, worktree: &Value) -> Result<Value> {
+    let mut params =
+        json!({"operation":"worktreeCreate","projectId":logical,"requestId":id,"source":"head"});
+    // 旧 thread 准备把空可选字符串按 || undefined 省略；公共 Core create 仍严格校验显式值。
+    for key in [
+        "sourceRoot",
+        "ref",
+        "branch",
+        "worktreeRoot",
+        "environmentId",
+    ] {
+        if let Some(value) = worktree.get(key) {
+            let text = value.as_str().context("INVALID_PARAMS")?;
+            if !text.is_empty() {
+                params[key] = value.clone();
+            }
+        }
+    }
+    if params.get("ref").is_some() {
+        params["source"] = json!("branch");
+    }
+    Ok(params)
+}
 /// 只准备归属与目录，不执行会话创建；供应商和页面工具仍由原 JS 宿主准备。
 pub(super) async fn prepare_thread_target(
     host: &Rc<Host>,
@@ -1565,21 +1900,11 @@ pub(super) async fn prepare_thread_target(
                 return Err(error);
             }
             if input["worktree"]["mode"] == "worktree" {
-                let mut params = json!({"operation":"worktreeCreate","projectId":logical,"requestId":id,"source":if input["worktree"].get("ref").is_some(){"branch"}else{"head"}});
-                for key in [
-                    "sourceRoot",
-                    "ref",
-                    "branch",
-                    "worktreeRoot",
-                    "environmentId",
-                ] {
-                    if let Some(value) = input["worktree"].get(key) {
-                        params[key] = value.clone();
-                    }
-                }
+                let params = thread_checkout_params(logical, &id, &input["worktree"])?;
                 let mut value = command(host, source, params).await?;
                 ensure!(value["state"] == "created", "SUBMISSION_UNKNOWN");
                 value["kind"] = json!("thread");
+                value["createdAt"] = value["record"]["createdAt"].clone();
                 value["parameters"] = signature.clone();
                 value["intent"] = json!("continue");
                 value["usesSource"] = json!(false);

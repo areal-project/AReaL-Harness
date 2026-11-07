@@ -2,7 +2,7 @@ import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -246,7 +246,8 @@ async function platform(name, script = "设置脚本") {
     .click();
 }
 async function projectEnvironments() {
-  const entry = button("配置环境 repo");
+  const entry = button(`配置环境 repo ${workspace}`);
+  await entry.or(button("添加环境")).first().waitFor();
   if (await entry.isVisible()) await entry.click();
   await button("添加环境").waitFor();
 }
@@ -274,22 +275,43 @@ async function addEnvironment({ name, setup, cleanup = "", action, overrides }) 
   }
   await platform("默认");
   await button("保存").click();
-  await page.getByText("已保存", { exact: true }).waitFor();
+  await button(`编辑环境 ${name}`).waitFor();
   record("environment-saved", { name });
 }
-async function selectEnvironment(name) {
-  await button("新会话工作区").click();
-  const toggle = page.getByRole("switch", { name: "在新 Worktree 中工作", exact: true });
+async function selectEnvironment(name, branch = "release/acceptance") {
+  const trigger = button("新会话工作区");
+  await trigger.focus();
+  await trigger.press("Enter");
+  const picker = page.locator('.worktree-picker[aria-label="新会话工作区"]');
+  await picker.waitFor();
+  const toggle = picker.getByRole("switch", { name: "在新 Worktree 中工作", exact: true });
   await toggle.waitFor();
   await until(async () => !(await toggle.isDisabled()), "worktree options loaded");
-  if ((await toggle.getAttribute("aria-checked")) !== "true") await toggle.click();
-  await button("起始分支").click();
-  await page.getByRole("searchbox", { name: "搜索分支", exact: true }).fill("release/acceptance");
-  await page.getByRole("option", { name: "release/acceptance", exact: true }).click();
-  await page.getByLabel("项目环境", { exact: true }).click();
-  await page.getByRole("option", { name, exact: true }).click();
+  if ((await toggle.getAttribute("aria-checked")) !== "true") {
+    await toggle.focus();
+    await toggle.press("Space");
+  }
+  if (branch) {
+    await picker.getByRole("button", { name: /^起始分支 分支 / }).click();
+    await picker.getByRole("searchbox", { name: "搜索分支", exact: true }).fill(branch);
+    await picker.getByRole("option", { name: branch, exact: true }).click();
+  }
+  await picker.getByRole("button", { name: /^项目环境 环境 / }).click();
+  await picker.getByRole("option", { name, exact: true }).click();
   await shot(`picker-${name.toLowerCase()}`);
   await page.keyboard.press("Escape");
+}
+async function newRepoConversation() {
+  await createProjectConversation(page, "repo");
+  await until(async () => {
+    const target = project(await state());
+    const workbench = page.getByTestId("areal-workbench");
+    return (
+      target &&
+      (await workbench.getAttribute("data-project-id")) === target.id &&
+      !(await workbench.getAttribute("data-thread-id"))
+    );
+  }, "new repo conversation owner");
 }
 async function markerPath(filename) {
   return until(async () => {
@@ -326,6 +348,14 @@ try {
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   if (rust) {
+    await until(
+      async () => {
+        const reply = await page.evaluate(() => window.arealDesktop.command("serviceStatus", {}));
+        return reply.ok && reply.value.connected;
+      },
+      "bootstrap backend ready",
+      120000,
+    );
     await page.evaluate((domains) => {
       localStorage.setItem("areal.oneProtocol.reads", "1");
       localStorage.setItem(
@@ -333,11 +363,6 @@ try {
         ["backend", "library", "tasks", "worktree", ...domains].join(","),
       );
     }, rustDomains);
-    await app.evaluate(({ dialog }) => {
-      dialog.showMessageBox = async () => ({ response: 1 });
-    });
-    await closeSmokeApplication(app);
-    await assertApplicationStopped(binary, env, null);
     const stop = JSON.parse(
       execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
         env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
@@ -347,6 +372,11 @@ try {
     assert.equal(stop.state, "completed");
     assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
     await writeFile(join(evidence, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    await closeSmokeApplication(app);
+    await assertApplicationStopped(binary, env, null);
     app = await electron.launch({
       executablePath: process.env.AREAL_GUI_EXECUTABLE || require("electron"),
       args: process.env.AREAL_GUI_EXECUTABLE ? [] : [join(gui, "app")],
@@ -453,7 +483,7 @@ try {
     setup: slowScript.replace("slow-started.txt", "original-started.txt"),
   });
   await button("返回应用").click();
-  await createProjectConversation(page, "repo");
+  await newRepoConversation();
   await selectEnvironment("Acceptance");
   assert.equal(worktrees().length, 0, "configuration creates no worktree before Send");
   await sendDraft("WORKTREE_ACCEPTANCE_HAPPY Read setup.txt and report its marker.");
@@ -511,6 +541,15 @@ try {
   const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
   assert.ok(threadId);
   await page.getByTestId(`task-item-${threadId}`).getByTestId("task-worktree-badge").waitFor();
+  const logicalProjectId = project(await state()).id;
+  assert.equal(
+    await page
+      .getByTestId(`task-item-${threadId}`)
+      .locator("xpath=ancestor::*[@data-sidebar-project]")
+      .getAttribute("data-sidebar-project"),
+    logicalProjectId,
+    "worktree conversation remains grouped under its logical source project",
+  );
   const readyStatus = page.locator('[data-worktree-state="ready"]');
   const firstUser = page.locator(".messages .user-message").first();
   assert.ok(
@@ -541,7 +580,7 @@ try {
   checks.push("A ready-state custom action runs in the actual worktree and writes action.txt");
   await page.keyboard.press("Escape");
   const submittedBeforeFailure = requests.length;
-  await createProjectConversation(page, "repo");
+  await newRepoConversation();
   await selectEnvironment("Failure");
   const failedDraft = "WORKTREE_ACCEPTANCE_FAILURE Keep this exact draft.";
   await sendDraft(failedDraft);
@@ -566,7 +605,7 @@ try {
   checks.push(
     "A real setup exit 17 exposes failure, preserves the typed draft and sends no model request",
   );
-  await createProjectConversation(page, "repo");
+  await newRepoConversation();
   await selectEnvironment("Slow");
   const cancelledDraft = "WORKTREE_ACCEPTANCE_CANCEL Keep this cancelled draft.";
   await sendDraft(cancelledDraft);
@@ -603,7 +642,7 @@ try {
   checks.push(
     "Cancel terminates a real waiting setup operation, exposes cancelled state, preserves the draft and sends no model request",
   );
-  await createProjectConversation(page, "repo");
+  await newRepoConversation();
   await selectEnvironment("Original");
   const sourceDraft = "WORKTREE_ACCEPTANCE_SOURCE Continue in the original checkout.";
   await sendDraft(sourceDraft);
@@ -652,7 +691,10 @@ try {
   await dirtyWorktree.waitFor();
   page.once("dialog", (dialog) => dialog.accept());
   await dirtyWorktree.getByRole("button", { name: /^删除 / }).click();
-  await dirtyWorktree.getByRole("alert").waitFor();
+  await dirtyWorktree
+    .getByRole("button", { name: `查看详情 ${cancelledBranch}`, exact: true })
+    .click();
+  await dirtyWorktree.locator(".worktrees-error").waitFor();
   assert.ok(
     worktrees().includes(cancelledPath),
     "deleting a dirty cancelled worktree is rejected and retains the Git worktree",
@@ -661,6 +703,50 @@ try {
   await shot("dirty-worktree-delete-rejected");
   checks.push(
     "Deleting a dirty worktree through General settings is rejected and retains its directory and contents",
+  );
+  await button("返回应用").click();
+  await newRepoConversation();
+  await selectEnvironment("无环境", null);
+  const beforeClean = new Set(worktrees());
+  await sendDraft("WORKTREE_ACCEPTANCE_CLEAN Complete this clean worktree run.");
+  const cleanPath = await until(
+    () => worktrees().find((path) => !beforeClean.has(path)),
+    "clean worktree created",
+    90000,
+  );
+  await page
+    .getByText("WORKTREE_ACCEPTANCE_COMPLETE", { exact: true })
+    .waitFor({ timeout: 120000 });
+  const operation = await until(
+    async () =>
+      project(await state())?.worktreeOperations?.find(
+        (item) => item.record?.directory === cleanPath && item.state === "ready",
+      ),
+    "clean worktree receipt",
+  );
+  await openWorktreeSettings("常规");
+  const cleanBranch = git("-C", cleanPath, "branch", "--show-current");
+  const cleanWorktree = page
+    .locator(".worktrees-directory-item")
+    .filter({ has: button(`查看详情 ${cleanBranch}`) });
+  await cleanWorktree.waitFor();
+  page.once("dialog", (dialog) => dialog.accept());
+  await cleanWorktree.getByRole("button", { name: /^删除 / }).click();
+  await cleanWorktree.waitFor({ state: "detached" });
+  await until(() => !worktrees().includes(cleanPath), "clean worktree removed");
+  assert.equal(await textFile(join(cleanPath, "branch.txt")), null);
+  await assert.rejects(lstat(cleanPath), { code: "ENOENT" });
+  const deletion = await page.evaluate(
+    ({ projectId, requestId }) =>
+      window.arealDesktop.command("workspace", { projectId, operation: "worktreeRead", requestId }),
+    { projectId: logicalProjectId, requestId: operation.requestId },
+  );
+  assert.equal(deletion.ok, true, JSON.stringify(deletion));
+  assert.equal(deletion.value.deleted, true);
+  assert.equal(deletion.value.deletion.status, "succeeded");
+  assert.equal(deletion.value.deletion.stopReceipt.phase, "completed");
+  checks.push(
+    "Deleting a clean worktree through General settings removes its Git registration and directory",
   );
   assert.deepEqual(errors, []);
   passed = true;

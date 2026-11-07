@@ -15,6 +15,36 @@ fn now() -> u64 {
         .unwrap_or_default()
         .as_millis() as u64
 }
+#[derive(Debug)]
+struct CatalogRequiresCore(&'static str);
+impl std::fmt::Display for CatalogRequiresCore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "任务目录需要启动原工作区完成迁移或检查：{}", self.0)
+    }
+}
+impl std::error::Error for CatalogRequiresCore {}
+
+fn requires_core_reason(catalog: &Value) -> Result<&'static str> {
+    match catalog["reason"].as_str() {
+        Some("unbound") => Ok("unbound"),
+        Some("legacyFormat") => Ok("legacyFormat"),
+        Some("readBudgetExceeded") => Ok("readBudgetExceeded"),
+        _ => bail!("INVALID_RESPONSE"),
+    }
+}
+fn require_published_catalog(catalog: &Value) -> Result<()> {
+    if catalog["kind"] == "requiresCore" {
+        return Err(CatalogRequiresCore(requires_core_reason(catalog)?).into());
+    }
+    Ok(())
+}
+fn catalog_error_message(error: &anyhow::Error) -> String {
+    // 仅公开目录合同中的有限原因，不把进程 stderr 或传输错误带给客户端。
+    error
+        .downcast_ref::<CatalogRequiresCore>()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "任务目录暂不可用，尚不能确认实时状态".into())
+}
 #[derive(Clone)]
 struct Owner {
     id: String,
@@ -171,6 +201,14 @@ fn owner_records(home: &std::path::Path) -> Result<BTreeMap<String, Vec<Value>>>
     Ok(result)
 }
 fn remember_owner(host: &Host, params: &Value, project: &str, tasks: &[Value]) -> Result<()> {
+    let source = params["sourceId"].as_str().unwrap_or("host");
+    if source != "host"
+        && !host.gateway.workbench.rust_domain("tasks-rust", source)
+        && !host.gateway.workbench.rust_domain("execution-rust", source)
+    {
+        // 读取仍可用，归属索引只交给当前领域开关指定的唯一写者。
+        return Ok(());
+    }
     let home = owner_home(host, params)?;
     let file = owner_file(&home, project)?;
     let mut records: Vec<Value> = storage::read_optional(&file)?.unwrap_or_default();
@@ -397,14 +435,7 @@ pub(super) async fn preview(host: &Rc<Host>, params: &Value) -> Result<Value> {
     if kind == "empty" || kind == "requiresCore" {
         let mut coverage = json!({"kind":kind});
         if kind == "requiresCore" {
-            ensure!(
-                matches!(
-                    catalog["reason"].as_str(),
-                    Some("unbound" | "legacyFormat" | "readBudgetExceeded")
-                ),
-                "INVALID_RESPONSE"
-            );
-            coverage["reason"] = catalog["reason"].clone();
+            coverage["reason"] = json!(requires_core_reason(&catalog)?);
         }
         return Ok(json!({"data":[],"hasMore":false,"coverage":coverage,"readAt":now()}));
     }
@@ -530,7 +561,7 @@ pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
                 let rows=value["data"].as_array().context("INVALID_RESPONSE")?.iter().filter(|row|operation=="inbox"||(row["mode"]=="scheduled"&&(row["deletedAt"].is_null()||row["hasUnsettledWork"]==true)&&source_thread.is_none_or(|thread|row["sourceThreadId"]==thread))).cloned().collect();
                 let scope=host.schedules.connections.shared_identity(host,&owner.id)?;
                 Ok((rows,value["hasMore"]==true||value["nextCursor"].is_string(),json!({"projectId":owner.public,"status":"ready","source":"live","coverage":{"kind":"complete"},"readAt":now(),"connectionGeneration":connection_generation(host,&owner.id,&scope.2)?})))
-            }else{ensure!(operation!="inbox","TASK_CATALOG_READ_FAILED");let value=published(host,&owner.id,source_thread).await?;ensure!(value["kind"]!="requiresCore","TASK_CATALOG_REQUIRES_CORE");Ok((value["data"].as_array().cloned().unwrap_or_default(),value["hasMore"]==true,json!({"projectId":owner.public,"status":"unobserved","source":"published","coverage":{"kind":value["kind"]},"readAt":now()})))}
+            }else{ensure!(operation!="inbox","TASK_CATALOG_READ_FAILED");let value=published(host,&owner.id,source_thread).await?;require_published_catalog(&value)?;Ok((value["data"].as_array().cloned().unwrap_or_default(),value["hasMore"]==true,json!({"projectId":owner.public,"status":"unobserved","source":"published","coverage":{"kind":value["kind"]},"readAt":now()})))}
         }.await;
         match result {
             Ok((rows, more, state)) => {
@@ -551,7 +582,7 @@ pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
                     owner_states.insert(owner.public, state);
                 }
             }
-            Err(_) => {
+            Err(error) => {
                 if operation != "inbox" {
                     let cached = host.schedules.task_rows.borrow().get(&owner.id).cloned();
                     if let Some((registration, rows)) = cached {
@@ -577,7 +608,7 @@ pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
                     owner.public.clone(),
                     json!({"projectId":owner.public,"status":"error"}),
                 );
-                errors.push(json!({"projectId":owner.public,"code":"TASK_CATALOG_READ_FAILED","message":"任务目录暂不可用，尚不能确认实时状态"}));
+                errors.push(json!({"projectId":owner.public,"code":"TASK_CATALOG_READ_FAILED","message":catalog_error_message(&error)}));
             }
         }
     }
@@ -611,7 +642,12 @@ pub(super) fn mutation(operation: &str) -> Option<&'static str> {
 }
 fn mutation_params(operation: &str, mut params: Value) -> Result<Value> {
     let object = params.as_object_mut().context("INVALID_PARAMS")?;
-    for field in ["sourceId", "projectId", "executionProjectId"] {
+    for field in [
+        "sourceId",
+        "projectId",
+        "executionProjectId",
+        "logicalProjectId",
+    ] {
         object.remove(field);
     }
     if !operation.starts_with("taskDraft") {
@@ -869,7 +905,13 @@ pub(super) async fn manage_read(host: &Rc<Host>, params: &Value) -> Result<Value
         _ => bail!("INVALID_PARAMS"),
     };
     let mut query = params.clone();
-    for field in ["sourceId", "projectId", "executionProjectId", "viewId"] {
+    for field in [
+        "sourceId",
+        "projectId",
+        "executionProjectId",
+        "logicalProjectId",
+        "viewId",
+    ] {
         query.as_object_mut().unwrap().remove(field);
     }
     if method != "areal/task/draft" {
@@ -1024,7 +1066,7 @@ pub(super) async fn library_baseline(
 /// 私有页面投影读取完整有界目录；公开分页上限不随内部通知观察扩大。
 pub(super) async fn observe(host: &Rc<Host>, params: &Value) -> Result<Value> {
     let project = resolve_project(host, params).await?;
-    ensure_project(host, &project).await?;
+    // 私有通知投影只跟随 Host 已有连接；停止期间的在途读不能重新启动项目。
     let scope = host.schedules.connections.shared_identity(host, &project)?;
     let barrier = watch_owner(host, &project).await?;
     let value = directory(host, &project).await?;
@@ -1110,6 +1152,55 @@ pub(super) fn accept_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test(flavor = "current_thread")]
+    async fn passive_task_observation_never_restarts_a_stopped_project() {
+        let root = tempfile::tempdir().unwrap();
+        let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+        host.schedules.suppress("project", true).unwrap();
+        host.slots.borrow_mut().get_mut("project").unwrap().state = "stopped".into();
+        let params = json!({"sourceId":"host","projectId":"project"});
+        assert_eq!(resolve_project(&host, &params).await.unwrap(), "project");
+        let error = observe(&host, &params).await.unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<crate::wire::Error>().unwrap().code,
+            "scheduleHostUnavailable"
+        );
+        assert!(host.schedules.suppressed("project"));
+        assert_eq!(host.slots.borrow()["project"].state, "stopped");
+        assert_eq!(
+            std::fs::read_dir(host.home.join("host/operations"))
+                .unwrap()
+                .count(),
+            0,
+            "被动基线不得受理 project.ensure"
+        );
+        assert!(
+            !host.slots.borrow()["project"]
+                .registration
+                .data_dir
+                .exists()
+        );
+    }
+    #[test]
+    fn published_catalog_keeps_bounded_migration_diagnostics() {
+        for reason in ["unbound", "legacyFormat", "readBudgetExceeded"] {
+            let error = require_published_catalog(&json!({"kind":"requiresCore","reason":reason}))
+                .unwrap_err();
+            assert_eq!(
+                catalog_error_message(&error),
+                format!("任务目录需要启动原工作区完成迁移或检查：{reason}")
+            );
+        }
+        let error = require_published_catalog(
+            &json!({"kind":"requiresCore","reason":"unregistered-secret"}),
+        )
+        .unwrap_err();
+        assert_eq!(
+            catalog_error_message(&error),
+            "任务目录暂不可用，尚不能确认实时状态"
+        );
+        assert!(require_published_catalog(&json!({"kind":"snapshot"})).is_ok());
+    }
     #[test]
     fn owner_index_keeps_removed_hosts_and_legacy_identity_constraints() {
         let home = tempfile::tempdir().unwrap();
@@ -1136,7 +1227,7 @@ mod tests {
 
     #[test]
     fn native_controls_preserve_identity_and_reject_extra_core_parameters() {
-        let input = json!({"sourceId":"host","projectId":"p","operation":"taskStopRun","requestId":"11111111-1111-4111-8111-111111111111","taskId":"t","expectedRevision":2,"expectedRunId":"r"});
+        let input = json!({"sourceId":"host","projectId":"p","logicalProjectId":"logical","executionProjectId":"execution","operation":"taskStopRun","requestId":"11111111-1111-4111-8111-111111111111","taskId":"t","expectedRevision":2,"expectedRunId":"r"});
         assert_eq!(
             mutation_params("taskStopRun", input.clone()).unwrap(),
             json!({"requestId":"11111111-1111-4111-8111-111111111111","taskId":"t","expectedRevision":2,"expectedRunId":"r"})
@@ -1144,6 +1235,30 @@ mod tests {
         let mut illegal = input;
         illegal["providerSecret"] = json!("unregistered");
         assert!(mutation_params("taskStopRun", illegal).is_err());
+    }
+    #[test]
+    fn desktop_draft_start_strips_routing_and_preserves_core_identity() {
+        let request = "86c4e608-6b00-49b9-a6bc-f753977c612d";
+        let input = json!({"sourceId":"source","projectId":"logical","logicalProjectId":"logical","executionProjectId":"execution","operation":"taskDraftStart","draftId":request,"requestId":request,"cwd":"/isolated/workspace","timeZone":"Asia/Shanghai","parameters":{"maxOutputTokens":16384,"reasoningEffort":null,"temperature":null}});
+        let native = mutation_params("taskDraftStart", input.clone()).unwrap();
+        let decoded: areal_protocol::tasks::TaskDraftRequest =
+            serde_json::from_value(native.clone()).unwrap();
+        assert_eq!(decoded.draft_id.as_deref(), Some(request));
+        assert_eq!(decoded.request_id.as_deref(), Some(request));
+        assert_eq!(decoded.cwd.as_deref(), Some("/isolated/workspace"));
+        assert_eq!(decoded.time_zone.as_deref(), Some("Asia/Shanghai"));
+        assert_eq!(native["parameters"]["maxOutputTokens"], 16384);
+        for field in [
+            "sourceId",
+            "projectId",
+            "logicalProjectId",
+            "executionProjectId",
+        ] {
+            assert!(native.get(field).is_none());
+        }
+        let mut unknown = input;
+        unknown["providerSecret"] = json!("unregistered");
+        assert!(mutation_params("taskDraftStart", unknown).is_err());
     }
     #[test]
     fn execution_prelude_identity_matches_desktop() {

@@ -8,9 +8,17 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
-import { captureSmokeFailure } from "./smoke-navigation.mjs";
+import {
+  captureSmokeFailure,
+  createProjectConversation,
+  openSideChat,
+} from "./smoke-navigation.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
@@ -20,6 +28,9 @@ const binary = process.env.AREAL_CORE_BIN;
 const snapshotCompletion = process.env.AREAL_STOP_SNAPSHOT_COMPLETION === "1";
 assert.ok(binary && isAbsolute(binary), "Set AREAL_CORE_BIN to an absolute fixed Core binary");
 const scratch = await makeTempDir("stop-turn-");
+const rust = process.argv.includes("--rust");
+const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
+if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const workspace = join(scratch, "workspace");
 await mkdir(workspace);
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
@@ -37,6 +48,7 @@ Object.assign(env, {
   NO_PROXY: [env.NO_PROXY, "127.0.0.1,localhost,::1"].filter(Boolean).join(","),
   no_proxy: [env.no_proxy, "127.0.0.1,localhost,::1"].filter(Boolean).join(","),
 });
+if (rust) env.AREAL_TEST_HOST_KEYCHAIN = "1";
 const requests = [],
   held = new Set(),
   errors = [],
@@ -117,14 +129,14 @@ let application,
   app,
   page,
   metadata,
+  primaryThreadId,
   passed = false,
   failure,
   cleanup;
 const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
 const project = (value) => value.projects.find((item) => item.root === workspace);
 const current = (value) => {
-  const id = value.activeThreadId ?? Object.keys(project(value)?.state?.threads ?? {})[0];
-  return project(value)?.state?.threads[id];
+  return project(value)?.state?.threads[primaryThreadId];
 };
 const until = async (read, label) => {
   const deadline = Date.now() + 45000;
@@ -158,15 +170,76 @@ try {
   page.on("pageerror", (error) => errors.push(error.stack));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
-  metadata = JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"));
+  if (rust) {
+    await page.evaluate((domains) => {
+      localStorage.setItem("areal.oneProtocol.reads", "1");
+      localStorage.setItem(
+        "areal.oneProtocol.domains",
+        ["backend", "library", "tasks", "worktree", ...domains].join(","),
+      );
+    }, rustDomains);
+    const stop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    assert.equal(stop.state, "completed");
+    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    await closeSmokeApplication(app);
+    await assertApplicationStopped(binary, env, null);
+    app = await electron.launch({
+      executablePath: require("electron"),
+      args: [application.path],
+      env,
+      timeout: 120000,
+    });
+    app.process().stderr.on("data", (chunk) => {
+      void writeFile(join(scratch, "electron.log"), chunk, { flag: "a" });
+    });
+    page = await app.firstWindow();
+    page.setDefaultTimeout(20000);
+    page.on("pageerror", (error) => errors.push(error.stack));
+    await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+    await until(async () => (await snapshot()).connection?.state === "ready", "Rust desktop ready");
+    await until(async () => {
+      const record = await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "workbench/backend-launch.json"),
+        "utf8",
+      )
+        .then(JSON.parse)
+        .catch(() => null);
+      return rustDomains.every((domain) => record?.options?.rustDomains?.includes(domain));
+    }, "Rust backend launch domains");
+  }
+  // Rust Host 管理项目代际，旧桌面服务文件不是其身份。
+  metadata = rust
+    ? null
+    : JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"));
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);
   await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
   await until(async () => project(await snapshot())?.state?.connected, "Project ready");
+  await createProjectConversation(page, "workspace");
+  await until(async () => {
+    const target = project(await snapshot());
+    return (
+      target &&
+      (await page.getByTestId("areal-workbench").getAttribute("data-project-id")) === target.id
+    );
+  }, "selected workspace conversation");
   await page.getByTestId("chat-input").fill("Keep streaming until I pause.");
   await page.getByTestId("chat-send-button").click();
+  primaryThreadId = await until(async () => {
+    const id = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    return id && project(await snapshot())?.state?.threads[id] ? id : null;
+  }, "submitted workspace thread identity");
   await until(
     async () =>
       current(await snapshot())
@@ -189,7 +262,10 @@ try {
   );
   await page.locator('section[data-turn-status="interrupted"]').waitFor();
   assert.equal(await page.getByText("执行已暂停", { exact: true }).count(), 0);
-  assert.equal(await page.locator(".turn-stop-heading").count(), 0);
+  await page
+    .locator(".turn-stop-heading[role='status']")
+    .getByText("你暂停了本轮执行", { exact: true })
+    .waitFor();
   assert.equal(await page.locator(".turn-execution [role='status']").count(), 0);
   assert.equal(await page.getByText(/^命令资源/).count(), 0);
   await page.evaluate(
@@ -320,8 +396,7 @@ try {
     followup,
     "Enter preserves the follow-up draft while interruption settlement is pending",
   );
-  await page.getByRole("button", { name: "任务操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "旁路讨论", exact: true }).click();
+  await openSideChat(page);
   const sideDraft = page.getByTestId("side-chat-input");
   await sideDraft.fill("Side draft while the original project pause is pending.");
   assert.equal(
@@ -494,7 +569,13 @@ try {
 } catch (error) {
   failure = error.stack;
   console.error(error.message);
-  if (page) await captureSmokeFailure(page, scratch, error);
+  if (page) {
+    await writeFile(
+      join(scratch, "failure-snapshot.json"),
+      JSON.stringify(await snapshot(), null, 2),
+    ).catch(() => {});
+    await captureSmokeFailure(page, scratch, error);
+  }
 } finally {
   await rm(receiptGate, { force: true });
   if (app) {
@@ -511,11 +592,33 @@ try {
   }
   await application?.close();
   try {
-    await assertApplicationStopped(binary, env, metadata);
+    if (!rust) await assertApplicationStopped(binary, env, metadata);
     cleanup = "passed";
   } catch (error) {
     cleanup = error.stack;
     passed = false;
+  }
+  if (rust) {
+    try {
+      const stop = JSON.parse(
+        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+          encoding: "utf8",
+        }),
+      );
+      await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
+      assert.equal(stop.state, "completed");
+      assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+      await assertApplicationStopped(binary, env, null);
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      await writeFile(
+        join(scratch, "synthetic-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    } catch (error) {
+      errors.push(`Rust cleanup: ${error.message}`);
+      passed = false;
+    }
   }
   for (const response of held) response.destroy();
   if (server.listening) await new Promise((resolve) => server.close(resolve));

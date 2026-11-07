@@ -44810,6 +44810,11 @@
     "WorkbenchPrivateLifecycleDependenciesResult": {
       "type": "object",
       "properties": {
+        "lifecycleGeneration": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
         "clients": {
           "type": "integer",
           "minimum": 0,
@@ -44830,6 +44835,7 @@
         }
       },
       "required": [
+        "lifecycleGeneration",
         "clients",
         "inflight",
         "providerUpdating",

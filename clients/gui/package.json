@@ -212,7 +212,7 @@
     "test:host-protocol-conformance": "node --test scripts/host-protocol-conformance.test.mjs",
     "test:desktop-ipc-freeze": "node --test scripts/desktop-ipc-freeze.test.cjs",
     "test:host-client": "node --test scripts/host-client.test.mjs",
-    "test:host-seed-copy": "node --test scripts/seed-host-copy.test.mjs",
+    "test:host-seed-copy": "node --test scripts/seed-host-copy.test.mjs scripts/seed-navigation-fixture.test.mjs",
     "lint:workbench-boundary": "node scripts/workbench-boundary.mjs"
   },
   "devDependencies": {

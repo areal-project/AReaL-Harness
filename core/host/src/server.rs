@@ -930,42 +930,55 @@ impl Host {
             total_active_tasks: 0,
         };
         for id in ids {
-            let (registration, gate, supervised, known_service) = {
-                let slots = self.slots.borrow();
-                let slot = &slots[&id];
-                (
-                    slot.registration.clone(),
-                    slot.gate.clone(),
-                    slot.writer.is_some(),
-                    slot.service.clone(),
+            let gate = self.slots.borrow()[&id].gate.clone();
+            let acquired = std::cell::Cell::new(false);
+            let observed = tokio::time::timeout(Duration::from_secs(3), async {
+                // 短配置同步可能正在排队写锁；等它结算后重取权威身份，锁等待共用原观察预算。
+                let _guard = gate.read().await;
+                acquired.set(true);
+                let (registration, supervised, known_service, stable) = {
+                    let slots = self.slots.borrow();
+                    let slot = &slots[&id];
+                    (
+                        slot.registration.clone(),
+                        slot.writer.is_some(),
+                        slot.service.clone(),
+                        !slot.uncertain_start && slot.migration.is_none(),
+                    )
+                };
+                if !stable {
+                    eprintln!("Host activity unavailable: projectId={id} stage=hostLifecycleState");
+                    return None;
+                }
+                match crate::activity::observe(
+                    &self.home,
+                    &registration,
+                    &self.owner(),
+                    supervised,
+                    known_service.as_ref(),
                 )
-            };
-            let observed = match gate.try_read() {
-                Ok(_guard) => {
-                    let stable = {
-                        let slots = self.slots.borrow();
-                        !slots[&id].uncertain_start && slots[&id].migration.is_none()
-                    };
-                    if stable {
-                        tokio::time::timeout(
-                            Duration::from_secs(3),
-                            crate::activity::observe(
-                                &self.home,
-                                &registration,
-                                &self.owner(),
-                                supervised,
-                                known_service.as_ref(),
-                            ),
-                        )
-                        .await
-                        .ok()
-                        .and_then(Result::ok)
-                    } else {
+                .await
+                {
+                    Ok(activity) => Some(activity),
+                    Err(cause) => {
+                        eprintln!(
+                            "Host activity unavailable: projectId={id} stage={}",
+                            crate::activity::failure_stage(&cause)
+                        );
                         None
                     }
                 }
-                Err(_) => None,
-            };
+            })
+            .await
+            .unwrap_or_else(|_| {
+                let stage = if acquired.get() {
+                    "observationBudget"
+                } else {
+                    "hostLifecycleGate"
+                };
+                eprintln!("Host activity unavailable: projectId={id} stage={stage}");
+                None
+            });
             let observed = observed.filter(|activity| {
                 let ProjectActivity::Observed { active_tasks, .. } = activity else {
                     return false;
@@ -2421,12 +2434,21 @@ mod tests {
                     })
                 }));
             let server = tokio::task::spawn_local(async move { axum::serve(listener, app).await.unwrap() });
-            let (first, second) = tokio::join!(host.activity(), host.activity());
-            server.abort();
-            assert!(first.complete && second.complete, "readers must not invalidate each other: {first:?} {second:?}");
+            let (first, second, third) = tokio::join!(host.activity(), host.activity(), async { host.status().await; host.activity().await });
+            assert!(first.complete && second.complete && third.complete, "readers must not invalidate each other: {first:?} {second:?} {third:?}");
             assert_eq!(first, second);
+            assert_eq!(first, third);
             assert!(matches!(first.projects[0], ProjectActivity::Observed { idle_allowed: true, .. }));
             let gate = host.gate("project").unwrap();
+            let syncing = gate.write().await;
+            let writer = host.slots.borrow_mut().get_mut("project").unwrap().writer.take();
+            let activity = host.activity();
+            tokio::pin!(activity);
+            assert!(futures_util::poll!(activity.as_mut()).is_pending(), "短同步不能直接投影成 UNKNOWN");
+            host.slots.borrow_mut().get_mut("project").unwrap().writer = writer;
+            drop(syncing);
+            assert!(activity.await.complete, "取得读锁后必须重取已结算的 owner，再核对真实 Core 活动");
+            server.abort();
             let _changing = gate.write().await;
             assert!(!host.activity().await.complete, "a real lifecycle change must remain unknown");
         }).await;

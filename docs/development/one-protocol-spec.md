@@ -328,6 +328,6 @@ Main 中其余业务迁入 Host 监督的 Node 工作台服务或 Core，经协�
 
 ## Rust 收口验收边界
 
-资料库、执行与连接、定时任务、Worktree 四组实现可以并行开发，完整集成后统一验收。先登记协议与递减预算，再迁移权威行为；执行迁移必须先列逐函数等价实现与差异处置。功能实现、编译、真实服务、页面旅程和 CLI-only 环境分别给出证据。旧路径删除单独确认，回退不能重放 UNKNOWN。所有权与开关见[工作台服务](../design/workbench-service.md#rust-领域实现与回退)。
+资料库、执行与连接、定时任务、Worktree 四组实现可以并行开发，完整集成后统一验收。先登记协议与递减预算，再迁移权威行为；执行迁移必须先列逐函数等价实现与差异处置。功能实现、编译、真实服务、页面旅程和 CLI-only 环境分别给出证据。旧路径删除单独确认，回退不能重放 UNKNOWN。Worktree 删除日志沿用桌面生命周期回执形状，私有 `lifecycle.dependencies.lifecycleGeneration` 只读提供回退模式下的原生命周期代次。所有权与开关见[工作台服务](../design/workbench-service.md#rust-领域实现与回退)。
 
 统一验收覆盖原资料库回执逐字段一致、后台冒烟、`node clients/gui/scripts/seed-host-copy.mjs` 生成的真实数据副本旅程，以及无 GUI 环境的 CLI 定时任务和 Worktree 生命周期。未运行的平台保留待验收，不用单测替代。
