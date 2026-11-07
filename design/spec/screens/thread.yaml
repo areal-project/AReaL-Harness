@@ -1,0 +1,44 @@
+id: thread
+name: 对话
+status: draft
+purpose: 阅读 Agent 的过程与结果，并继续下达任务。
+
+regions:
+  - id: A
+    name: 应用导航栏
+  - id: B
+    name: 侧栏
+  - id: C
+    name: 会话标题栏
+    contains: [conversation-title, changes-summary-trigger]
+    material: chrome
+  - id: D
+    name: 对话信息流
+    layout: 内容水平居中，宽度不超过 layout-thread-content-max-width (待建)；底部在输入框上沿渐隐
+    contains: [user-message, turn-process, final-answer, turn-status-line]
+  - id: E
+    name: 输入框
+    contains:
+      - composer:
+          variant: thread
+
+rules:
+  - 一个回合只有一处实时状态，在回合末尾一行；状态变化只换文字不改高度
+  - 已完成的过程默认收起；最终回答不在收起范围
+  - 读者向上阅读后，新内容不抢走阅读位置；“回到最新”是显式动作
+  - 回合过程标题吸顶时用平面材质，不加模糊
+
+fixtures: [thread-idle, thread-running, thread-done-with-changes]
+
+states:
+  - idle: 已有历史，未在运行
+  - running: 回合进行中，末尾状态行在变化
+  - done: 回合结束，过程收起，最终回答完整可见
+
+references:
+  - state: idle
+    themes: [light, dark]
+  - state: running
+    themes: [light, dark]
+  - state: done
+    themes: [light, dark]

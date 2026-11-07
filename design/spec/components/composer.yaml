@@ -1,0 +1,79 @@
+id: composer
+name: 输入框
+status: draft
+purpose: 用户写下任务并提交给 Agent；运行中继续输入会进入队列，停止也在这里。
+why: 输入区与对话正文同一字号与节奏，读起来像对话的下一行，视线在读和写之间不换尺度。
+
+anatomy:
+  - part: context-bar
+    optional: true
+    role: 输入框上方的一条，显示当前项目与工作区，最右是工作区设置入口
+  - part: attachments
+    optional: true
+    role: 实际上传的附件缩略卡；文件、技能等引用不在这里，而是正文内的行内标识
+  - part: editor
+    role: 多行文字输入，随内容增高，到上限后在内部滚动
+  - part: toolbar
+    role: 一行控件，左侧添加与模式，右侧模型、强度与主按钮
+    children: [add-menu, permission-menu, model-menu, effort-menu, primary-action]
+  - part: decision-slot
+    optional: true
+    role: 待处理的审批或提问卡片出现在输入框正上方，只在这里出现
+
+variants:
+  placement:
+    home: 首页草稿，位于视觉重心，圆角取大号
+    thread: 对话底部
+    compact: 窄容器与侧边对话，工具栏可换到编辑区下方
+
+states:
+  - empty: 占位文字说明输入目标；主按钮不可用并说明原因
+  - draft: 有文字或附件；主按钮为“发送”
+  - focused: 外框出现焦点描边与柔和光圈
+  - dragover: 拖入文件时整体出现放置提示
+  - sending: 提交中；保留草稿直到确认受理
+  - running: 草稿为空时主按钮为“停止”（普通对话为“暂停执行”）；有草稿时主按钮为“发送”，提交进入队列
+  - blocked: 不能发送时，原因以可见文字关联到主按钮，不只靠悬停提示
+  - error: 错误在顶部反馈弹窗中出现，草稿保留，输入框内不另放错误条
+
+tokens:
+  surface: color-composer
+  material: raised
+  elevation: shadow-composer
+  radius:
+    home: radius-composer-large
+    thread: radius-composer
+    compact: radius-composer-compact (待建)
+  text: text-conversation
+  line: conversation-line
+  focus: interaction-focus-ring-soft
+  primary-action: color-composer-action
+
+behavior:
+  - 草稿在切换布局、收起审批、模型保存期间保持同一实例，不丢失、不重建
+  - 编辑区高度到上限后在内部滚动，外框不再长高
+  - 输入 @ 引用文件与资源，$ 选技能，/ 打开命令；关键词就在输入框里输入，菜单不另设搜索框
+  - 保存模型或强度配置时不播放发送中的提示，也不打断输入焦点
+
+accessibility:
+  - 编辑区有可读名称；图标按钮都有可读名称
+  - 键盘顺序与视觉顺序一致：编辑区、工具栏、主按钮
+  - 不可发送的原因对读屏可见，并关联主按钮
+  - 中文输入法组合期间按回车不提交
+
+accessible-names:
+  editor: 待核对（试点时从现有实现提取）
+  primary-action:
+    draft: 发送
+    running-empty: 停止；普通对话为“暂停执行”
+    running-with-draft: 发送
+  add-menu: 待核对
+  model-menu: 选择模型
+  effort-menu: 选择思考强度
+  placeholder: 描述要做的事，@ 引用文件，/ 查看命令
+
+references:
+  - screen: home
+    state: empty
+  - screen: thread
+    state: running

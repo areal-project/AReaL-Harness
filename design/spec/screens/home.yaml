@@ -1,0 +1,35 @@
+id: home
+name: 首页（新对话草稿）
+status: draft
+purpose: 打开应用或新建对话时的起点，只做一件事：写下任务。
+why: 面向普通用户，首页只留标题和输入框，高级选项收在输入框的菜单里。
+
+regions:
+  - id: A
+    name: 应用导航栏
+    contains: [rail]
+  - id: B
+    name: 侧栏
+    contains: [conversation-list]
+  - id: main
+    name: 主区
+    layout: 内容水平居中，宽度不超过 layout-thread-content-max-width (待建)；输入框顶部位于 layout-home-composer-top
+    contains:
+      - heading: 迎宾标题，字号 text-ui-display，字距 tracking-heading-tight
+      - composer:
+          variant: home
+          state: empty
+
+narrow: 侧栏收起；输入框占满主区宽度，保留左右页边距
+
+fixtures: [project-default]
+
+states:
+  - empty: 输入框为空
+  - draft: 输入框有文字
+
+references:
+  - state: empty
+    themes: [light, dark]
+  - state: draft
+    themes: [light, dark]

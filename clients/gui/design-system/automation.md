@@ -70,3 +70,5 @@ pnpm --dir clients/gui verify:design
 `R-CHECK-022` @areal/ui 组件自己拥有外观：页面只给布局类，不传 style，CSS 不选 data-slot；外观差异做成 variant 或 slot；存量只减不增。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-restyle.ts` 与 `clients/gui/scripts/restyle-lint.mjs`
 
 `R-CHECK-023` 组件合同只写需要判断的强制规则，每个包内组件合同不超过 10 条；能机器判断的写成检查，默认做法靠组件默认值表达。**检查：** `clients/gui/scripts/design-rules.mjs`
+
+`R-CHECK-024` 样式只引用用途层变量，不引用圆角等原料刻度；组件库不给已生成的 Token 写回退值；模糊只在材质定义里；页面选择器不命中组件自己渲染的类名；规格包 YAML 不写裸数值和实现名词。存量只减不增，见 [设计规格包](../../../design/spec/README.md#检查)。**检查：** `clients/gui/scripts/layers-lint.mjs`

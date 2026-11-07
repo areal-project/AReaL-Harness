@@ -967,6 +967,11 @@
     "status": "active"
   },
   {
+    "path": "design/decisions/005-reproducible-spec.md",
+    "role": "cross-product",
+    "status": "active"
+  },
+  {
     "path": "design/decisions/README.md",
     "role": "cross-product",
     "status": "active"
@@ -1091,5 +1096,10 @@
     "role": "maintainer",
     "status": "redirect",
     "target": "clients/gui/design-system/roadmap.md"
+  },
+  {
+    "path": "design/spec/README.md",
+    "role": "cross-product",
+    "status": "active"
   }
 ]

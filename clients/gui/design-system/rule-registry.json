@@ -3402,6 +3402,63 @@
       "strength": "must",
       "textSha256": "5ab8342c8167a74c6216bbb602c8a889b381840d67c49d8b559e07094a1b24c2",
       "check": "clients/gui/scripts/design-rules.mjs"
+    },
+    {
+      "id": "R-DECISION-022",
+      "title": "1.",
+      "owner": "design/decisions/005-reproducible-spec.md#选择",
+      "strength": "default",
+      "textSha256": "8e31f463fecd9cfff26c1aa2c8cd0e0bde2ebe1c0b1b142dc9a3479c55209d7a"
+    },
+    {
+      "id": "R-DECISION-023",
+      "title": "| 文字下限 | 用户需要阅读的文字（含过程子步骤）对比度不低于 4.5:1",
+      "owner": "design/decisions/005-reproducible-spec.md#已定取舍",
+      "strength": "default",
+      "textSha256": "04a8cc03fab010dcd3bab3c08d94d8d2d522a8b6e1f08ba8526fb5161439ec26"
+    },
+    {
+      "id": "R-DECISION-024",
+      "title": "规格与代码两处维护，容易重新长成大量规则",
+      "owner": "design/decisions/005-reproducible-spec.md#代价与护栏",
+      "strength": "default",
+      "textSha256": "4b6f327ea723237f359f4a2a2b99ad943bbcdd74403d21fe50c9d2459188c42a"
+    },
+    {
+      "id": "R-DECISION-025",
+      "title": "输入框试点交接后一次通过率低于一半，或规格维护成本明显高于收益时，退回只保留分层 Token、标准截图与通用验收，不继续",
+      "owner": "design/decisions/005-reproducible-spec.md#重新评估",
+      "strength": "default",
+      "textSha256": "8520782d6952a8e7ef26bce28b37de9ede79c75ffcc01113a2cb940c7745e5d5"
+    },
+    {
+      "id": "R-SPEC-001",
+      "title": "3.",
+      "owner": "design/spec/README.md#四条规则",
+      "strength": "default",
+      "textSha256": "9eda805578e409727a85913685700a5f2007eb89a16a5d578f8ab4de4a6fda01"
+    },
+    {
+      "id": "R-SPEC-002",
+      "title": "| 平面 | 正文区、列表行、回合标题 | 不允许 |",
+      "owner": "design/spec/README.md#token-三层",
+      "strength": "default",
+      "textSha256": "d9c329b8d1fe4418d3bc2712a1db64337f427fbc0d27625cb87d13604ee35977"
+    },
+    {
+      "id": "R-SPEC-003",
+      "title": "| 抬起 | 输入框、卡片、代码块 | 不允许，用阴影表达高度 |",
+      "owner": "design/spec/README.md#token-三层",
+      "strength": "default",
+      "textSha256": "e5a9dfcad31e6b2f2b8bb0be6f45e257b5f7d61cdfe5f46dec3dc0ccd56c985c"
+    },
+    {
+      "id": "R-CHECK-024",
+      "title": "样式只引用用途层变量，不引用圆角等原料刻度",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "default",
+      "textSha256": "717ae8c8d3a63dc462f7babd4808f2101f76060a5a9e587c285f840cbba77422",
+      "check": "clients/gui/scripts/layers-lint.mjs"
     }
   ]
 }
