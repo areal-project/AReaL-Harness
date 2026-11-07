@@ -1,0 +1,55 @@
+core/config/src/file.rs
+  s_3c0bde1ee78b7e::t_68a122d519c9f3 423
+core/engine/src/generation.rs
+  s_3c0bde1ee78b7e::t_4e34b23a5359bf 1161
+  s_3c0bde1ee78b7e::t_68a122d519c9f3 1157-1160,1162-1164,1831
+core/engine/tests/completion_retry_scope.rs
+  s_3c0bde1ee78b7e::t_2e75ce43f47d32 258-264
+  s_3c0bde1ee78b7e::t_ad519977615e7a 1-40,45,59-120,125-126,147-151,165-168,171-181,214-217,236-240,253-255,280,301-302
+  s_3c0bde1ee78b7e::t_a9a8cc4f73c228 41-44,46-58,121-124,127-146,152-164,169-170,182-213,218-235,241-252,281-300
+  s_3c0bde1ee78b7e::t_6795206de38f16 256-257,265-279
+core/config/examples/config.toml
+  s_3c0bde1ee78b7e::t_ad519977615e7a 52-54
+docs/api/core.md
+  s_3c0bde1ee78b7e::t_a9a8cc4f73c228 172,178
+  s_3c0bde1ee78b7e::t_5ff4b13e256131 179
+core/config/src/lib.rs
+  s_3c0bde1ee78b7e::t_68a122d519c9f3 145-162,388,464-465
+docs/guides/configuration.en.md
+  s_3c0bde1ee78b7e::t_a9a8cc4f73c228 231
+  s_3c0bde1ee78b7e::t_37a12e02334a78 630
+  s_3c0bde1ee78b7e::t_4a0336574e6325 229-230
+docs/guides/configuration.md
+  s_3c0bde1ee78b7e::t_37a12e02334a78 630
+  s_3c0bde1ee78b7e::t_a9a8cc4f73c228 229-231
+core/engine/src/lib.rs
+  s_3c0bde1ee78b7e::t_68a122d519c9f3 105,107,109-110,174
+core/config/tests/loading.rs
+  s_3c0bde1ee78b7e::t_ad519977615e7a 84-94,103,108-111,116-119
+  s_3c0bde1ee78b7e::t_a9a8cc4f73c228 95-102,104-107,112-115
+  s_3c0bde1ee78b7e::t_d5a95934cd4def 83
+core/config/src/resolve.rs
+  s_3c0bde1ee78b7e::t_68a122d519c9f3 203-206,508-512,734,1211-1214
+  s_3c0bde1ee78b7e::t_45c548cf93f192 202
+core/server/src/lib.rs
+  s_3c0bde1ee78b7e::t_68a122d519c9f3 53
+docs/api/core.en.md
+  s_3c0bde1ee78b7e::t_37a12e02334a78 172
+  s_3c0bde1ee78b7e::t_a9a8cc4f73c228 178-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f7fcdefc31f87b2fc0ce49fd71748d56acd2f467",
+  "prompts": {},
+  "sessions": {
+    "s_3c0bde1ee78b7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b160-5434-7080-8ff1-1f4237be48e6",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
