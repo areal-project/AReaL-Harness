@@ -56,7 +56,7 @@ parts:
     padding: 左右 spacing-inline；超出高度时在内部滚动
   section:
     gap-below: 每个分组下方 spacing-inline；项目分组里每个项目（项目行连同它的对话）也是一组，下方同样 spacing-inline
-    heading: 高 spacing-control-sm，左 spacing-inline、右 spacing-inline 的一半；上 spacing-inline、下 spacing-inline 的四分之一；文字 text-ui-base、font-weight-medium、foreground-subtle
+    heading: 高 spacing-control-sm，左 spacing-inline、右 spacing-inline 的一半；上 spacing-inline、下 spacing-inline 的四分之一；文字 text-ui-base、font-weight-medium、行高 line-height-toolbar、foreground-subtle，在标题高度内垂直居中
     chevron: 文字后 spacing-inline 的一半放 section-chevron；平时隐藏，悬停标题或键盘聚焦时出现；分组收起后常显，并转为朝右
     actions: 仅项目分组：右侧“打开项目”（section-add）与“侧栏整理”（more）两个按钮，各为 spacing-control-xs 加 spacing-inline 的四分之一见方，圆角 radius-control，颜色 foreground-subtle
     pinned: 置顶分组下方再留 spacing-inline 的四分之三，画一道 border-width-default 的 color-border-subtle 线，线下再留同样的距离
