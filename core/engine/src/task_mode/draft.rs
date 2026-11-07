@@ -458,9 +458,8 @@ impl Engine {
             .or_else(|| value["proposal"].get("scheduleV2"));
         if let Some(schedule) = schedule {
             let preview: SchedulePreview =
-                serde_json::from_value(json!({"schedule":schedule,"timeZone":zone,"count":5}))
-                    .map_err(invalid)?;
-            match self.task_schedule_preview(preview) {
+                serde_json::from_value(json!({"schedule":schedule,"count":5})).map_err(invalid)?;
+            match super::schedule::preview_in_zone(preview, self.schedule_now(), &zone) {
                 Ok(preview) => value["preview"] = serde_json::to_value(preview).map_err(invalid)?,
                 Err(cause) => {
                     value["proposal"] = Value::Null;

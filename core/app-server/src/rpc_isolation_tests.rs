@@ -236,7 +236,7 @@ impl areal_engine::model::Model for DraftModel {
         &self,
         _: Vec<areal_engine::model::Message>,
     ) -> anyhow::Result<areal_engine::model::ModelStream> {
-        Ok(Box::pin(futures_util::stream::iter([Ok(areal_engine::model::ModelEvent::TextDelta(json!({"kind":"proposal","objective":"fixture","schedule":{"at":"2099-01-01T00:00:00Z"}}).to_string()))])))
+        Ok(Box::pin(futures_util::stream::iter([Ok(areal_engine::model::ModelEvent::TextDelta(json!({"kind":"proposal","objective":"fixture","schedule":{"at":"2099-01-01T09:00:00+08:00"}}).to_string()))])))
     }
 }
 
@@ -276,18 +276,25 @@ async fn draft_confirm_callback_allows_same_socket_reads() {
         serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
     assert_eq!(ready["result"]["ready"], true);
     let owner = "trusted-embedded-host".to_string();
-    let draft=engine.task_draft(owner.clone(),serde_json::from_value(json!({"operation":"taskDraftStart","draftId":uuid::Uuid::new_v4().to_string(),"timeZone":"UTC","cwd":root.path()})).unwrap()).await.unwrap();
+    let draft=engine.task_draft(owner.clone(),serde_json::from_value(json!({"operation":"taskDraftStart","draftId":uuid::Uuid::new_v4().to_string(),"timeZone":"Asia/Shanghai","cwd":root.path()})).unwrap()).await.unwrap();
     let thread = draft["threadId"].as_str().unwrap();
-    engine.task_draft(owner.clone(),serde_json::from_value(json!({"operation":"taskDraftSend","requestId":uuid::Uuid::new_v4().to_string(),"threadId":thread,"timeZone":"UTC","text":"schedule fixture"})).unwrap()).await.unwrap();
+    engine.task_draft(owner.clone(),serde_json::from_value(json!({"operation":"taskDraftSend","requestId":uuid::Uuid::new_v4().to_string(),"threadId":thread,"timeZone":"Asia/Shanghai","text":"schedule fixture"})).unwrap()).await.unwrap();
     engine.wait(thread).await.unwrap();
     let view = engine
         .task_draft(
-            owner,
+            owner.clone(),
             serde_json::from_value(json!({"operation":"taskDraftRead","threadId":thread})).unwrap(),
         )
         .await
         .unwrap();
     assert!(view["proposal"].is_object(), "{view}");
+    assert_eq!(view["running"], false);
+    assert_eq!(view["preview"]["timeZone"], "Asia/Shanghai");
+    assert_eq!(view["preview"]["occurrences"][0]["at"], 4070912400_i64);
+    assert_eq!(
+        view["preview"]["occurrences"][0]["localTime"],
+        "2099-01-01T09:00:00+08:00"
+    );
     let params = json!({"operation":"taskDraftConfirm","threadId":thread,"turnId":view["turnId"],"digest":view["digest"]});
     socket
         .send(Wire::Text(
@@ -370,6 +377,21 @@ async fn draft_confirm_callback_allows_same_socket_reads() {
     .await
     .unwrap();
     assert_eq!(repeated["result"], result["result"]);
+    let created_view = engine
+        .task_draft(
+            owner,
+            serde_json::from_value(json!({"operation":"taskDraftRead","threadId":thread})).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(created_view["task"]["id"], result["result"]["id"]);
+    assert!(
+        created_view["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["text"] == "已创建任务。")
+    );
     socket.close(None).await.unwrap();
     stop.cancel();
     server.await.unwrap().unwrap();

@@ -343,7 +343,7 @@ export function createHostSnapshotProjector(
         project.serviceGeneration &&
         desktopProject.core?.serviceGeneration === project.serviceGeneration &&
         bound;
-      const runThreadIds = new Set(
+      const taskThreadIds = new Set(
         trustedDesktop
           ? Object.entries(desktopProject.state.tasks ?? {}).flatMap(
               ([id, task]: [string, unknown]) => {
@@ -358,18 +358,23 @@ export function createHostSnapshotProjector(
                   !Array.isArray(task.runs)
                 )
                   return [];
-                return task.runs.flatMap((run: unknown) =>
-                  run &&
-                  typeof run === "object" &&
-                  "id" in run &&
-                  typeof run.id === "string" &&
-                  run.id.length > 0 &&
-                  "threadId" in run &&
-                  typeof run.threadId === "string" &&
-                  run.threadId.length > 0
-                    ? [run.threadId]
-                    : [],
-                );
+                return [
+                  ...("threadId" in task && typeof task.threadId === "string" && task.threadId
+                    ? [task.threadId]
+                    : []),
+                  ...task.runs.flatMap((run: unknown) =>
+                    run &&
+                    typeof run === "object" &&
+                    "id" in run &&
+                    typeof run.id === "string" &&
+                    run.id.length > 0 &&
+                    "threadId" in run &&
+                    typeof run.threadId === "string" &&
+                    run.threadId.length > 0
+                      ? [run.threadId]
+                      : [],
+                  ),
+                ];
               },
             )
           : [],
@@ -382,7 +387,7 @@ export function createHostSnapshotProjector(
               value?.id === key &&
               key !== thread?.id &&
               Array.isArray(value.turns) &&
-              (runThreadIds.has(key) ||
+              (taskThreadIds.has(key) ||
                 (value.conversation?.kind === "side" &&
                   value.conversation.policy?.kind === "sideExecutableV2" &&
                   typeof (value.conversation.origin as { sourceThreadId?: unknown } | undefined)

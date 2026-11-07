@@ -485,7 +485,7 @@ try {
   await launch();
   if (terminalMode) {
     await waitForSnapshot(
-      async () => (await call("serviceStatus", {})).connected,
+      (snapshot) => snapshot.connection?.state === "ready",
       "bootstrap desktop",
     );
     await page.evaluate(() => {

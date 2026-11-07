@@ -706,6 +706,7 @@ describe("Host renderer read authority", () => {
       id: "task",
       revision: 1,
       mode: "scheduled",
+      threadId: "task-anchor",
       runs: [
         { id: "run", threadId: "run-thread" },
         { id: "summary-run", threadId: "run-summary" },
@@ -732,6 +733,7 @@ describe("Host renderer read authority", () => {
         configuration: { model: "run-model" },
       },
     };
+    const anchor = { ...fullRun, id: "task-anchor" };
     emitDesktop({
       ...legacy,
       projects: [
@@ -744,6 +746,7 @@ describe("Host renderer read authority", () => {
             threads: {
               ...legacy.projects[0].state.threads,
               side,
+              "task-anchor": anchor,
               "run-thread": fullRun,
               unrelated: { id: "unrelated", turns: [] },
               "run-summary": { id: "run-summary" },
@@ -756,6 +759,8 @@ describe("Host renderer read authority", () => {
     expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task });
     const projected = (await services.snapshot()).projects[0];
     expect(projected.state.threads.side).toMatchObject(side);
+    expect(projected.state.threads["task-anchor"]).toMatchObject(anchor);
+    expect(projected.state.threads["task-anchor"].displayHistory.owner).toBe("workbench");
     expect(projected.state.threads["run-thread"]).toMatchObject(fullRun);
     expect(projected.state.threads["run-thread"].displayHistory.owner).toBe("workbench");
     expect(projected.state.threads.thread.displayHistory.owner).not.toBe("workbench");
