@@ -43,7 +43,7 @@ pnpm --dir clients/gui verify:design
 
 `R-CHECK-014` 页面执行[结构化 B 路线](structured-flow.md#执行顺序与每步完成条件)，准入归 [governance](governance.md#差异筛选准入)。复用[提示词](templates/video-analysis.prompt.md)、[schema](templates/video-analysis.schema.json)、[核查模板](templates/evidence-review.template.json)；尚未接入 `verify:design` 视觉判断或强制模型调用，目录检查不核实帧、误判与执行。
 
-`Q-CONVERSATION-VIDEO-AB-07` 的三段录像、误判裁决与图片缩放修复见[复合题](exercises/conversation-flow.md#视频分析辅助的双路线实验)。样本仅支持工作流程选择。
+`Q-CONVERSATION-VIDEO-AB-07` 的三段录像、误判裁决与图片缩放修复见[复合题](../../../design/archive/gui/exercises/conversation-flow.md#视频分析辅助的双路线实验)。样本仅支持工作流程选择。
 
 ## 无障碍与主题证据
 

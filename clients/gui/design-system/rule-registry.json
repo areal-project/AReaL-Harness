@@ -553,7 +553,7 @@
       "title": "默认的过程入口同时说明内容和展开动作",
       "owner": "clients/gui/design-system/interactions.md#对话阶段二的生产应用",
       "strength": "default",
-      "textSha256": "72f28e6e4f34d91012744bed89564342e8bb0f5b075cb95ecab1043c038f89b8"
+      "textSha256": "524f003b3c78636a3f2e6c3a99427dc0087067d0c52ecff44e68f2db5a2c27e8"
     },
     {
       "id": "R-CATALOG-001",
@@ -623,7 +623,7 @@
       "title": "这里拥有对话组合的设计决策",
       "owner": "clients/gui/design-system/patterns.md#从证据回溯到规则和组件",
       "strength": "must",
-      "textSha256": "4f529e8293f5dc4c4c9a4f543a52bd6d89656f3d8c0247a737f808169a654a71"
+      "textSha256": "69ca285c47c098073ab51d4bbd4673577e70824f7e198aa077e8de392a4e4a51"
     },
     {
       "id": "R-LAYOUT-025",
@@ -2098,14 +2098,14 @@
       "title": "E-CONVERSATION 映射本地 phased/legacy 过程与阅读题目",
       "owner": "clients/gui/renderer/src/Messages.md#证据与边界",
       "strength": "must",
-      "textSha256": "bc9fbf1cd578324772dd80105d0e27641b3f336418636d674844e7c743d27fd4"
+      "textSha256": "01bd81de6b3893dd6a2a9f0dcde503024cfe0979cc575c267aa0fd9072d4ecfb"
     },
     {
       "id": "R-LAYOUT-007",
       "title": "以下是 P-CONVERSATION 的目标合同",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "must",
-      "textSha256": "d2914040d62de48221edcf94f12ac0c7ef9338511c00ac6d9f382ace690c60fa"
+      "textSha256": "a27779aea47f54bf78f8fbd9b61bcd8c5aa3884edf2638a1cfe8deab99c5dd42"
     },
     {
       "id": "CONV-OWNER-01",
@@ -2218,7 +2218,7 @@
       "title": "减少动态效果沿同一有效偏好覆盖正文、过程箭头、侧面板和任务列表运行图标",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "default",
-      "textSha256": "6f98dae907bdac498036a86a5707c91b2161c31225f41828b4fb64c930550856"
+      "textSha256": "b92fe2a9a888e505173577dfd74d5fbb66f80197fdc888d3453e5066ada48e7d"
     },
     {
       "id": "R-CONTENT-033",
@@ -2512,7 +2512,7 @@
       "title": "Project 项目 不用项目名称暗示授权，也不将项目外聊天称为无效会话 工作台、身份与所有权",
       "owner": "design/content/terminology.md#界面术语",
       "strength": "default",
-      "textSha256": "30c29c3985a7cd8d348b397e9393a114cf8e3f780392f17149e8e6e68c44b444"
+      "textSha256": "aceae296b5d9129b399a933adc34d3b73ce69cc4aa0d4de8b9a15e45d7654610"
     },
     {
       "id": "R-TERM-003",

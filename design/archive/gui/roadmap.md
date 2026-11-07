@@ -22,7 +22,7 @@ B 流程已经提供视频候选 → 关键帧/事件核查 → 差异裁决 →
 
 ### E1：真实 Electron 的完整对话切片
 
-当前状态：选定macOS暗色旅程已通过，包含真实命令/子代理、图片缩放返回、阅读/收敛、暂停UNKNOWN核查及GUI重开。入口、证据字段和限制见[真实Electron专项](../../../clients/gui/design-system/exercises/conversation-flow.md#真实-electron-专项-e1)。暂停中的工具UNKNOWN仍保留；该结果不表示所有停止都会得到已确认终态。
+当前状态：选定macOS暗色旅程已通过，包含真实命令/子代理、图片缩放返回、阅读/收敛、暂停UNKNOWN核查及GUI重开。入口、证据字段和限制见[真实Electron专项](exercises/conversation-flow.md#真实-electron-专项-e1)。暂停中的工具UNKNOWN仍保留；该结果不表示所有停止都会得到已确认终态。
 
 优先复用 [migration-smoke](../../../clients/gui/scripts/migration-smoke.mjs) 的隔离 home、workspace、真实 Core 与源码/二进制身份记录。它是现有验收入口，不表示当前设计 worktree 已通过本阶段；先核对该入口实际覆盖，再只补本旅程需要的断言与证据。
 
@@ -35,7 +35,7 @@ B 流程已经提供视频候选 → 关键帧/事件核查 → 差异裁决 →
 
 ### E2：围绕已通过旅程补连续动效
 
-当前状态：macOS 暗色指定连续切片已验证，修复外层隐藏滚动、展开高度跳切和 reduced-motion 侧栏等待图标漏项；范围、参考差异和采样限制见[E2专项](../../../clients/gui/design-system/exercises/conversation-flow.md#真实-electron-连续动效专项-e2)。完整动效一致性与E3不因此通过。
+当前状态：macOS 暗色指定连续切片已验证，修复外层隐藏滚动、展开高度跳切和 reduced-motion 侧栏等待图标漏项；范围、参考差异和采样限制见[E2专项](exercises/conversation-flow.md#真实-electron-连续动效专项-e2)。完整动效一致性与E3不因此通过。
 
 从 E1 中选取会影响理解的短片段：流式追加与等待、工具展开收起、子对话进入退出、图片查看返回、回到最新和完成收敛。保留现有动效 smoke；追加真实 Electron 的连续证据，不能只靠指定相位断言。
 
@@ -46,7 +46,7 @@ B 流程已经提供视频候选 → 关键帧/事件核查 → 差异裁决 →
 
 ### E3：桌面宿主、回归与准入
 
-当前已完成本次 macOS 暗色有界切片：真实窗口三档尺寸与125%缩放、子代理/设置焦点返回、多行草稿、豆包拼音组合输入和编辑 Escape、新图书内容。修复与边界见[E3专项](../../../clients/gui/design-system/exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)。E4补充同应用窗口往返与原生网页交互/返回，并修复预览返回焦点；见[E4](../../../clients/gui/design-system/exercises/conversation-flow.md#原生宿主补充-e4)。独立候选浮窗未触发，跨应用/显示器、原生文件视图、全条件组合及安装包仍未覆盖；不自动提升Base。
+当前已完成本次 macOS 暗色有界切片：真实窗口三档尺寸与125%缩放、子代理/设置焦点返回、多行草稿、豆包拼音组合输入和编辑 Escape、新图书内容。修复与边界见[E3专项](exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)。E4补充同应用窗口往返与原生网页交互/返回，并修复预览返回焦点；见[E4](exercises/conversation-flow.md#原生宿主补充-e4)。独立候选浮窗未触发，跨应用/显示器、原生文件视图、全条件组合及安装包仍未覆盖；不自动提升Base。
 
 在同一会话中验证与旅程有关的窗口缩放、面板开关/焦点返回、中文输入法与快捷键边界、切换窗口后的阅读保持，以及实际涉及的原生文件/浏览器预览。原生视图独立取证；选择器注入和 renderer 截图不能证明原生路径。
 

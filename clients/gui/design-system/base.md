@@ -33,7 +33,7 @@
 | ToolEvent | [合同](../renderer/src/Messages.md#toolevent) | E-CONVERSATION |
 | SettingsSearchInput | [合同](../renderer/src/settings/SettingsSearchInput.md) | E-PLUGINS |
 
-证据见 [Base索引](base-evidence.md)。
+证据见 [Base索引](../../../design/archive/gui/base-evidence.md)。
 
 ### 验收条件
 

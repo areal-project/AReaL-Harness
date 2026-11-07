@@ -53,7 +53,7 @@
 
 ### Electron 宿主与输入边界
 
-以下细化已有 `CONV-INPUT-01`、`CONV-RESOURCE-01` 与 `CONV-PARALLEL-01`，不新建页面模式或执行状态机。验证入口与取证边界见 [E3 专项](exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)及[E4原生补充](exercises/conversation-flow.md#原生宿主补充-e4)。
+以下细化已有 `CONV-INPUT-01`、`CONV-RESOURCE-01` 与 `CONV-PARALLEL-01`，不新建页面模式或执行状态机。验证入口与取证边界见 [E3 专项](../../../design/archive/gui/exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)及[E4原生补充](../../../design/archive/gui/exercises/conversation-flow.md#原生宿主补充-e4)。
 
 - `R-LAYOUT-014` **焦点和阅读分开保留**：打开子对话或原生浏览器面板时记住实际入口及所属项目/会话。关闭后优先回该入口；入口已卸载时才回同会话 Composer。恢复使用 `preventScroll`，不能为了键盘可达性把读者拉到另一段历史。跨会话的旧入口不得抢焦点。设置页替换聊天子树时，返回可解析同会话重挂的 Composer，不能只保留已断开的 DOM 引用。
 - `R-LAYOUT-015` **输入法先于应用动作**：组合输入期间的 Enter/Space 属于确认上屏，Escape 属于取消组合；不能发送、取消消息编辑或关闭工作区。检查 `isComposing` 及 Chromium `keyCode=229`；非组合状态的下一次 Enter/Escape 才按原提交/取消合同执行。不要把中文粘贴、CDP `insertText` 或合成 composition 当作原生候选验证。
@@ -63,7 +63,7 @@
 
 ### 从证据回溯到规则和组件
 
-`R-LAYOUT-021` 这里拥有对话组合的设计决策；结构化引用在[信息流合同](surfaces/conversation-flow.json)，观察事实在[参考观察索引](references.md#对话信息流的动态观察)。正文规则不复制到JSON。调用方选择P-CONVERSATION后必须声明全部规则ID和必需检查点；目录检查只能阻断遗漏或虚构引用，不能证明实现遵守。
+`R-LAYOUT-021` 这里拥有对话组合的设计决策；结构化引用在[信息流合同](surfaces/conversation-flow.json)，观察事实在[参考观察索引](../../../design/archive/gui/reference-observations.md#对话信息流的动态观察)。正文规则不复制到JSON。调用方选择P-CONVERSATION后必须声明全部规则ID和必需检查点；目录检查只能阻断遗漏或虚构引用，不能证明实现遵守。
 
 | 规则 | 依据与判断强度 | 修改所有者 | 合同检查点 |
 | --- | --- | --- | --- |

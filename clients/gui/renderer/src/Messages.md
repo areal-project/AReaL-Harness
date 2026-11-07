@@ -24,11 +24,11 @@
 
 ## 证据与边界
 
-`R-MESSAGES-009` [E-CONVERSATION](../../design-system/base-evidence.md#e-conversation) 映射本地 phased/legacy 过程与阅读题目。已完成检查必须列明实际条件，不代表全部状态与变体组合、原生资源焦点、重连、真实执行、供应商或安装包已验收。
+`R-MESSAGES-009` [E-CONVERSATION](../../../../design/archive/gui/base-evidence.md#e-conversation) 映射本地 phased/legacy 过程与阅读题目。已完成检查必须列明实际条件，不代表全部状态与变体组合、原生资源焦点、重连、真实执行、供应商或安装包已验收。
 
 ## 对话信息流
 
-`R-LAYOUT-007` 以下是 P-CONVERSATION 的目标合同。参考依据见[信息流观察](../../design-system/references.md#对话信息流的动态观察)，复验题见[动态信息流题](../../design-system/exercises/conversation-flow.md)。该完整模式尚未准入Base候选0.1.3；已准入的仅是下述动态题验证过的过程/阅读组合；另有真实 Electron E1 对话专项，范围见复验题，不能据此提升完整模式或所有桌面宿主准入。
+`R-LAYOUT-007` 以下是 P-CONVERSATION 的目标合同。参考依据见[信息流观察](../../../../design/archive/gui/reference-observations.md#对话信息流的动态观察)，复验题见[动态信息流题](../../../../design/archive/gui/exercises/conversation-flow.md)。该完整模式尚未准入Base候选0.1.3；已准入的仅是下述动态题验证过的过程/阅读组合；另有真实 Electron E1 对话专项，范围见复验题，不能据此提升完整模式或所有桌面宿主准入。
 
 `CONV-OWNER-01`：执行、内容展示和阅读意图分别拥有状态，不合成一个页面大枚举。暂停意图、轮次终态与工具结算分别表达：Core 已记录 userPause / coreRecovery 时，即使未确认的工具结果使轮次成为 failed，也保留对应中断原因；UNKNOWN 仍可见并进入原核查路径，不能显示为正常完成或已确认终止。核查只记录实际检查的事实，不重放工具或改写原结果。
 
@@ -81,7 +81,7 @@
 
 `CONV-SCENARIO-01`：复杂信息流必须有一条有意义的复合任务作为组合样板，包含命令增量、并行子代理、资源查看和最终收敛。固定输入沿既有投影接口到达，场景仅拥有到达顺序及面板选择；分组、进程归并、阅读锚点与详情状态仍由生产所有者处理。每个关键状态关联参考证据、实现帧和差异判断；缺少对应参考的时序标为产品选择，不能把独立采样拼成一次真实参考旅程。规则/目录检查、行为通过和视觉一致分别报告。视频候选、关键帧核查和差异裁决按[默认设计流程](../../design-system/structured-flow.md#执行顺序与每步完成条件)及[准入合同](../../design-system/governance.md#差异筛选准入)执行；本规则仅拥有信息流组合，候选意见不直接改变过程、阅读或业务状态所有权。
 
-`R-LAYOUT-010` 减少动态效果沿同一有效偏好覆盖正文、过程箭头、侧面板和任务列表运行图标；静止图标仍表示真实运行，不把“停止动画”投影为任务已结束。图片缩放反馈可保持即时，不为所有资源虚构淡入/退场动画。按[E2 专项](../../design-system/exercises/conversation-flow.md#真实-electron-连续动效专项-e2)将视频与 RAF/输入/阅读证据关联。
+`R-LAYOUT-010` 减少动态效果沿同一有效偏好覆盖正文、过程箭头、侧面板和任务列表运行图标；静止图标仍表示真实运行，不把“停止动画”投影为任务已结束。图片缩放反馈可保持即时，不为所有资源虚构淡入/退场动画。按[E2 专项](../../../../design/archive/gui/exercises/conversation-flow.md#真实-electron-连续动效专项-e2)将视频与 RAF/输入/阅读证据关联。
 
 ## 混合内容与过程标题
 

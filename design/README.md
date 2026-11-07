@@ -16,15 +16,15 @@
 | [设计规格包](spec/README.md) | 界面是什么、怎么动、怎么算做对，交给新 Agent 能复现 | 组件、界面、流程、示例数据、标准截图与通用验收；数值只引用 Token 源 |
 | [设计决策](decisions/README.md) | 已经选择什么，何时重新评估 | 一项重要取舍一篇记录，状态在该记录中维护 |
 
-[设计系统架构](architecture.md)说明知识、实现与验证如何依赖。[建设计划](roadmap.md)维护当前缺口、下一步产物与完成条件。具体工作先选主题，只有改变跨主题职责时才回到架构与决策。作者流程见[修改设计文档](contributing.md)。
+[设计系统架构](architecture.md)说明知识、实现与验证如何依赖。[建设计划](../clients/gui/design-system/roadmap.md)维护当前缺口、下一步产物与完成条件。具体工作先选主题，只有改变跨主题职责时才回到架构与决策。作者流程见[修改设计文档](contributing.md)。
 
 ## 阅读与预览
 
 打开 `/design-system.html?dashboard` 查看建设看板，了解目标、当前阶段、下一步与验证边界。看板是带日期的来源摘要，具体计划与准入仍由原文档维护。
 
-从仓库根运行 `pnpm --dir clients/gui design:dev` 打开现有预览。文档入口使用 `?docs=design/README.md`，内容和示例仍由各自所有者维护。`pnpm --dir clients/gui design:build` 检查预览构建。组件合同与真实示例从[组件目录](components/README.md)进入，预览证据的边界见[工作台](products/workbench/README.md#预览与真实路径分别核对)。
+从仓库根运行 `pnpm --dir clients/gui design:dev` 打开现有预览。文档入口使用 `?docs=design/README.md`，内容和示例仍由各自所有者维护。`pnpm --dir clients/gui design:build` 检查预览构建。组件合同与真实示例从[组件目录](components/README.md)进入，预览证据的边界见[工作台](../clients/gui/design-system/workbench.md#预览与真实路径分别核对)。
 
-完整体验从[工作台候选](products/workbench/candidate.md)进入，打开 `/design-system.html?product-candidate` 连续体验提交、过程、审批、资源与设置。
+完整体验从[工作台候选](../clients/gui/design-system/workbench-candidate.md)进入，打开 `/design-system.html?product-candidate` 连续体验提交、过程、审批、资源与设置。
 
 ## 客户端地图
 
