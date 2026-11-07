@@ -654,18 +654,16 @@ try {
     const activeTerminalTab = page
       .getByRole("tablist", { name: "侧边面板标签", exact: true })
       .getByRole("tab", { selected: true });
-    assert.match(
-      await activeTerminalTab.evaluate(
-        (tab) =>
-          tab.closest("[data-side-pane-tab-id]")?.getAttribute("data-side-pane-tab-id") ?? "",
-      ),
-      /^terminal:/,
+    const firstTabId = await activeTerminalTab.evaluate(
+      (tab) => tab.closest("[data-side-pane-tab-id]")?.getAttribute("data-side-pane-tab-id") ?? "",
     );
+    assert.match(firstTabId, /^terminal:/);
     assert.equal(
       await page.locator(".terminal-pane [data-terminal-id]").getAttribute("data-terminal-id"),
       first.id,
     );
     await activeTerminalTab.press("Delete");
+    await page.locator(`[data-side-pane-tab-id="${firstTabId}"]`).waitFor({ state: "detached" });
     let firstCleanup;
     await waitForSnapshot(async () => {
       firstCleanup = (await processList()).find((item) => item.id === first.id);
@@ -678,7 +676,13 @@ try {
     checks.push(
       "Electron xterm input/output and resize use the original PTY; explicit close confirms Runtime cleanup",
     );
-    await openPanel("终端");
+    await openPanel("文件");
+    const openSideTab = button("打开侧边面板标签页");
+    await openSideTab.waitFor();
+    await openSideTab.click();
+    const terminalMenu = page.getByRole("menuitem", { name: /^终端/ });
+    await terminalMenu.waitFor();
+    await terminalMenu.click();
     let second;
     await waitForSnapshot(async () => {
       second = (await processList()).find((item) => item.id !== first.id && !before.has(item.id));
@@ -688,6 +692,38 @@ try {
       second.processId,
       first.processId,
       "second terminal owns a new Runtime process",
+    );
+    await page.waitForFunction(
+      (id) =>
+        [...document.querySelectorAll(".terminal-pane [data-terminal-id]")].some(
+          (element) => element.getAttribute("data-terminal-id") === id,
+        ),
+      second.id,
+    );
+    const secondTabId = await page
+      .getByRole("tablist", { name: "侧边面板标签", exact: true })
+      .getByRole("tab", { selected: true })
+      .evaluate(
+        (tab) =>
+          tab.closest("[data-side-pane-tab-id]")?.getAttribute("data-side-pane-tab-id") ?? "",
+      );
+    assert.match(secondTabId, /^terminal:/);
+    assert.notEqual(secondTabId, firstTabId);
+    await writeFile(
+      join(scratch, "terminal-reopen.json"),
+      JSON.stringify(
+        {
+          firstTabId,
+          firstTabDetached: true,
+          sidePaneVisible: true,
+          terminalMenuVisible: true,
+          secondTabId,
+          secondTerminalId: second.id,
+          secondProcessId: second.processId,
+        },
+        null,
+        2,
+      ),
     );
     const { HostClient } = require("@areal/client/node");
     const host = new HostClient();
