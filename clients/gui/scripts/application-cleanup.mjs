@@ -85,16 +85,39 @@ export async function assertApplicationStopped(binary, env, metadata) {
 // A failed quit must not leave the test runner held open until the CI job timeout.
 // Only the exact child returned by this fixture's Electron launch may be killed.
 export async function closeSmokeApplication(application, timeoutMs = 20000) {
+  const child = application.process();
+  if (!child) throw new Error("Owned Electron process unavailable");
+  let onExit;
+  const exited = new Promise((resolve, reject) => {
+    onExit = (code, signal) => {
+      if (code === 0 && signal === null) resolve();
+      else reject(new Error(`Owned Electron process exit: code=${code} signal=${signal}`));
+    };
+    child.once("exit", onExit);
+    if (child.exitCode !== null || child.signalCode !== null)
+      onExit(child.exitCode, child.signalCode);
+  });
   try {
-    await withSmokeDeadline("Electron cleanup", () => application.close(), timeoutMs);
+    await withSmokeDeadline(
+      "Electron cleanup",
+      () =>
+        Promise.race([
+          exited,
+          Promise.resolve()
+            .then(() => application.close())
+            .then(() => exited),
+        ]),
+      timeoutMs,
+    );
   } catch (error) {
-    const child = application.process();
     if (child && child.exitCode === null && child.signalCode === null) {
       const exited = once(child, "exit");
       child.kill("SIGKILL");
       await withSmokeDeadline("owned Electron process exit", () => exited, 5000);
     }
     throw error;
+  } finally {
+    child.removeListener("exit", onExit);
   }
 }
 

@@ -51,7 +51,7 @@ Core 拥有 Thread/Turn/Item 的稳定 ID 与历史。read 不订阅，resume �
 
 Fork 的模型兼容检查同时接受旧版 Responses 单项上下文与 `areal_response_output` 完整输出封装，按原顺序保留供应商字段。它们只允许 Responses 适配器回放；切换到无法保留该上下文的协议仍返回 `MODEL_CONTEXT_INCOMPATIBLE`，不通过丢弃不透明历史放行。
 
-`features.taskPrepareCreate` 表示 Host 可在 `areal/task/host/ready` 中发送 `prepareCreate: true`。该能力绑定登记的 Host 连接及主体；Host 为 GUI 来源启用目录预约，CLI 来源继续使用原准入。省略时保留原行为。启用后，Core 在定时任务校验之后、持久化与发布之前发送 `areal/task/prepare {intent:"create",requestId,requestDigest,threadId,sourceThreadId?}`。`requestDigest` 为完整规范化创建参数的摘要；Host 以原请求和执行锚点预约目录，冲突或断连会阻止本次创建。已完成原请求直接返回保存的回执，不重复预约。`start` 与 `resume` 回调合同不变。
+`features.taskPrepareCreate` 表示 Host 可在 `areal/task/host/ready` 中发送 `prepareCreate: true`。该能力绑定登记的 Host 连接及主体；Host 为 GUI 来源启用目录预约，CLI 来源继续使用原准入。省略时保留原行为。启用后，Core 在定时任务校验之后、持久化与发布之前发送 `areal/task/prepare {intent:"create",requestId,requestDigest,threadId,sourceThreadId?}`。`requestDigest` 为完整规范化创建参数的摘要；Host 以原请求和执行锚点预约目录，冲突或断连会阻止本次创建。已完成原请求直接返回保存的回执，不重复预约。`start` 与 `resume` 回调合同不变。`areal/task/create` 与 `areal/task/draft` 使用现有有界并发槽处理，等待回调时同一连接仍可读取状态并响应回调；已受理写入在连接断开后仍结算原记录。
 
 `features.taskDirectoryPreparation` 表示 `areal/thread/start` 支持可选 `prepareTaskDirectory: true`。Host 仅为已核对固定无项目任务工作区归属的任务创建设置它；Core 要求 `cwd` 为工作区的直接子目录（名称最多 128 个 UTF-16 单元，不以点开头，不含路径分隔符），拒绝符号链接和越界。目录在原请求准入后以私有权限创建；查询相同已完成请求不重复创建。省略或 `false` 不改变原请求摘要，也不自动准备目录。
 

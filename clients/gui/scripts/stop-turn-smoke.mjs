@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
@@ -73,25 +73,42 @@ const server = createServer(async (request, response) => {
 });
 const commandLog = join(scratch, "commands.jsonl");
 const receiptGate = join(scratch, "receipt.gate");
+const omittedCompletionLog = join(scratch, "omitted-completions.jsonl");
+const preload = join(scratch, "snapshot-preload.cjs");
+if (snapshotCompletion) {
+  const runtime = await realpath(process.execPath);
+  const directory = join(scratch, "snapshot-bin");
+  await mkdir(directory);
+  await writeFile(
+    preload,
+    `
+const { HostCoreClient } = require(${JSON.stringify(join(root, "services/workbench/src/generated/host-core-client.cjs"))});
+const { appendFileSync } = require('node:fs');
+const event = HostCoreClient.prototype.event;
+HostCoreClient.prototype.event = function(frame) {
+  if (this.owns(frame.lease) && frame.method === 'turn/completed') {
+    appendFileSync(${JSON.stringify(omittedCompletionLog)}, JSON.stringify({
+      threadId: frame.params?.threadId, turnId: frame.params?.turn?.id,
+      connectionId: this.identity()?.connectionId, owned: true
+    }) + '\\n');
+    return;
+  }
+  return event.call(this, frame);
+};
+`,
+  );
+  const quote = (value) => `'${value.replaceAll("'", "'\\''")}'`;
+  await writeFile(
+    join(directory, "node"),
+    `#!/bin/sh\nexec ${quote(runtime)} --require ${quote(preload)} "$@"\n`,
+    { mode: 0o700 },
+  );
+  env.PATH = `${directory}:${env.PATH ?? ""}`;
+}
 const bootstrap = `
-const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
+${snapshotCompletion ? `require(${JSON.stringify(preload)});` : ""}
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
 const { appendFileSync, existsSync } = require('node:fs');
-const connect = CoreBackend.prototype.connect;
-CoreBackend.prototype.connect = async function(project, ...args) {
-  const value = await connect.call(this, project, ...args);
-  if (${JSON.stringify(snapshotCompletion)}) {
-    const receive = project.client.receive.bind(project.client);
-    project.client.receive = bytes => {
-      if (JSON.parse(String(bytes)).method === 'turn/completed') {
-        appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ completionNotificationOmitted: true }) + '\\n');
-        return;
-      }
-      return receive(bytes);
-    };
-  }
-  return value;
-};
 const command = SharedCoreBackend.prototype.command;
 const accept = SharedCoreBackend.prototype.acceptLifecycleReceipt;
 SharedCoreBackend.prototype.command = async function(name, request) {
@@ -342,6 +359,32 @@ try {
   const stoppedThread = current(pending);
   const projectId = project(pending).id;
   const turnId = stoppedThread.turns.at(-1).id;
+  if (snapshotCompletion) {
+    const omitted = await until(async () => {
+      const text = await readFile(omittedCompletionLog, "utf8").catch((error) => {
+        if (error.code === "ENOENT") return "";
+        throw error;
+      });
+      return text
+        .split("\n")
+        .filter(Boolean)
+        .map(JSON.parse)
+        .find(
+          (event) =>
+            event.owned === true &&
+            event.threadId === stoppedThread.id &&
+            event.turnId === turnId &&
+            typeof event.connectionId === "string" &&
+            event.connectionId.length > 0,
+        );
+    }, "original turn completion omitted from owned Workbench connection");
+    assert.equal(omitted.threadId, stoppedThread.id);
+    assert.equal(
+      omitted.turnId,
+      turnId,
+      "Snapshot fixture must omit the original turn completion from the owned Workbench connection",
+    );
+  }
   assert.equal(pending.library.threads[`${projectId}:${stoppedThread.id}`].completionId, turnId);
   assert.equal(
     pending.lifecycle.operations.some(
@@ -719,7 +762,7 @@ try {
         cleanup,
         errors,
         boundaries:
-          "Source Electron and real Core. Deterministic loopback model. A file barrier holds the completed stop receipt through the paused UI render, then explicitly releases it. Optional client delivery fixture omits completion notifications to require authoritative snapshot recovery. History handler and unread checks also use the public bridge. Native folder picker stubbed. No packaged app or physical input.",
+          "Source Electron and real Core. Deterministic loopback model. A file barrier holds the completed stop receipt through the paused UI render, then explicitly releases it. Optional fixture omits the original completion notification from the owned Workbench desktop projection; Renderer Host subscriptions may still receive it. History handler and unread checks also use the public bridge. Native folder picker stubbed. No packaged app or physical input.",
       },
       null,
       2,

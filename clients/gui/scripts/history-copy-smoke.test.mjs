@@ -82,7 +82,9 @@ async function finish(
   t,
   { blocked = false, businessFailure, inventoryFailure, metadata = "valid", metadataError } = {},
 ) {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const child = spawn(process.execPath, ["-e", "process.on('message', () => process.exit(0))"], {
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
   await once(child, "spawn");
   t.after(async () => {
     if (child.exitCode === null && child.signalCode === null) {
@@ -106,7 +108,7 @@ async function finish(
       close: async () => {
         if (blocked) return new Promise(() => {});
         const exited = once(child, "exit");
-        child.kill("SIGTERM");
+        child.send("quit");
         await exited;
       },
     },
@@ -178,7 +180,7 @@ test("history inventory failure is independently recorded after a successful chi
   const { report, child, inventoryCalls } = await finish(t, {
     inventoryFailure: "Core is still alive",
   });
-  assert.equal(child.signalCode, "SIGTERM");
+  assert.equal(child.exitCode, 0);
   assert.equal(inventoryCalls, 1);
   assert.equal(report.passed, false);
   assert.equal(report.cleanup.applicationStopped, false);
@@ -212,7 +214,7 @@ test("history close and inventory errors both fail an otherwise successful run",
 for (const metadata of ["missing", {}, { pid: "unverifiable" }, { pid: 1 }]) {
   test(`history does not confirm shutdown without valid Desktop metadata: ${JSON.stringify(metadata)}`, async (t) => {
     const { report, child, inventoryCalls, exitCode } = await finish(t, { metadata });
-    assert.equal(child.signalCode, "SIGTERM");
+    assert.equal(child.exitCode, 0);
     assert.equal(inventoryCalls, 1);
     assert.equal(report.passed, false);
     assert.equal(exitCode, 1);
@@ -226,7 +228,7 @@ test("history metadata read failure still closes its child and checks inventory"
   const { report, child, inventoryCalls } = await finish(t, {
     metadataError: Object.assign(Error("permission denied"), { code: "EACCES" }),
   });
-  assert.equal(child.signalCode, "SIGTERM");
+  assert.equal(child.exitCode, 0);
   assert.equal(inventoryCalls, 1);
   assert.equal(report.passed, false);
   assert.equal(report.cleanup.applicationStopped, false);

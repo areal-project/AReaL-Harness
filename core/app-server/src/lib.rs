@@ -656,6 +656,8 @@ async fn connection(
                         | "areal/conversation/history"
                         | "areal/side/context/read"
                         | "areal/genUi/source"
+                        | "areal/task/create"
+                        | "areal/task/draft"
                         | "turn/interrupt"
                         | "turn/steer"
                         | "areal/queue/steer"
@@ -721,16 +723,20 @@ async fn connection(
             let id = id.unwrap();
             conn.tasks.spawn(async move {
                 let _permit = permit;
-                let durable_derivation = matches!(
+                let durable_write = matches!(
                     method.as_str(),
                     "areal/thread/fork"
                         | "areal/side/start"
                         | "areal/side/create"
                         | "areal/side/close"
+                        | "areal/task/create"
+                        | "areal/task/draft"
                 );
                 let dispatch = async {
                     check_side_policy(&engine, &method, &params).await?;
-                    if configuration::METHODS.contains(&method.as_str()) {
+                    if matches!(method.as_str(), "areal/task/create" | "areal/task/draft") {
+                        task_mode::dispatch(&engine, &principal, &method, params).await
+                    } else if configuration::METHODS.contains(&method.as_str()) {
                         configuration::dispatch(configuration, &principal, &method, params).await
                     } else if method == "areal/host/status" {
                         read_host_status(&engine, &principal, params).await
@@ -768,8 +774,8 @@ async fn connection(
                         workgroups::dispatch(engine, &identity, &method, params).await
                     }
                 };
-                // 已通过容量检查的派生写入必须进入 Core 的持久受理门；响应丢失不撤销它。
-                let result = if durable_derivation {
+                // 已通过容量检查的持久写入必须进入 Core 的受理门；响应丢失不撤销它。
+                let result = if durable_write {
                     dispatch.await
                 } else {
                     tokio::select! { biased; _=stop.cancelled()=>return, value=dispatch=>value }
