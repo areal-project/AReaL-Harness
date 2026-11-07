@@ -1,1 +1,242 @@
-[]
+[
+  {
+    "file": "renderer/src/AgentResources.css",
+    "kind": "selected",
+    "snippet": "background: var(--color-hover)",
+    "fingerprint": "3a12fb009c8dcbdea49b63d6283093e82b65a88101d37f932ced35344b5cb3b3"
+  },
+  {
+    "file": "renderer/src/BrowserRegionAnnotation.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 16%, transparent)",
+    "fingerprint": "0db04cf4af139e6e06ade0ee0de51aab3d6c048795e2c71a91d4ea36cc593a1a"
+  },
+  {
+    "file": "renderer/src/SideChat.css",
+    "kind": "selected",
+    "snippet": "background: var(--color-surface)",
+    "fingerprint": "7aedd6e7abe8a319e09bf5dac042c5ac8b4bfbb9ea4dd988e3848e38e7e233a8"
+  },
+  {
+    "file": "renderer/src/settings/SettingsWorkspace.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 8%, transparent)",
+    "fingerprint": "ff2bad10c775367b0106be4454023f1664b6e79745fe4308bfa5f39e21236bc5"
+  },
+  {
+    "file": "renderer/src/slash-command-menu.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 8%, transparent)",
+    "fingerprint": "2ee27e05c33c169454a162f3dbe062726f0c587c7fafa1a2c590f23a831de3ac"
+  },
+  {
+    "file": "renderer/src/slash-command-menu.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 5.5%, transparent)",
+    "fingerprint": "a90aa07a7165213f0dcae2cd7b06555bbef47ca3a8f3192aeabfa640fe60f3bc"
+  },
+  {
+    "file": "renderer/src/slash-command-menu.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 8.2%, transparent)",
+    "fingerprint": "fd5642e4b05d3e46159a13a811e78ac2de2fa8ef7f2a161831fcff9967e37b9a"
+  },
+  {
+    "file": "renderer/src/slash-command-menu.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 8%, transparent)",
+    "fingerprint": "13f11a0a126adcf0f85801e66fda55b7d6b70b2e8b5c59bc678222b84d87ef3c"
+  },
+  {
+    "file": "renderer/src/slash-command-menu.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 49.8%, transparent)",
+    "fingerprint": "23a58cf86bb796fb1b7aff568a68ac467e59d2aa71da798cb0a3b655d60fc737"
+  },
+  {
+    "file": "renderer/src/slash-command-menu.css",
+    "kind": "selected",
+    "snippet": "background: var(--slash-selected)",
+    "fingerprint": "baad358bee5ee62d6a935fe22c85186e741d47ac0eaddb1b269949e35129b3ac"
+  },
+  {
+    "file": "renderer/src/styles.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 10%, transparent)",
+    "fingerprint": "217ab828adc0a6d37b5d3077f7cf076f3f3fe567e0a185ba321a7b85b93d5ca7"
+  },
+  {
+    "file": "renderer/src/user-feedback.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 12%, transparent)",
+    "fingerprint": "16f278db354c22dda5d66d77cd89c5104eb67032d983a9f0e45405790c572dfa"
+  },
+  {
+    "file": "renderer/src/user-feedback.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 4%, transparent)",
+    "fingerprint": "08afa59c338d5d40c59826d26d164ed221e0f41ef1baeeffae4c25181b69b685"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
+    "fingerprint": "46b30e0f08ec94db9ff28db2d592d6acdf8f94ec6a376932c67cd69a58883ccf"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 65%, transparent)",
+    "fingerprint": "f799395d2fd69d2d63c8077d5125f2288679e29e3fe8be0007761720acbed56b"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 7%, transparent)",
+    "fingerprint": "ab31be3a5988ce7c12178bff3fa210cf21bbbd3f23ea8215207b6fc66d572a33"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
+    "fingerprint": "a356d5d99aba08e9f73ad94b0242299ab7b7a91bf654e773537dc32ca1e5ba9c"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 3%, transparent)",
+    "fingerprint": "8da3e65541aacf23ec6801061274e35560e4635de339959917ff81d08ff2becc"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
+    "fingerprint": "d878d788d2e79d8ab165687e723dcb3f893a1458545c96caa439d0f8bc1d9aba"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
+    "fingerprint": "07332e51d301486897c14a9a665de131afa6549c0004bb9fe7067b83ddbf1bfd"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
+    "fingerprint": "1f1240d46f6d0acd780ab64cd108e4c24ee5fe3613b28a5e1a8cc5a26bc954d0"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 65%, transparent)",
+    "fingerprint": "5a175f3449a5c9de55f28a55c1c15293dd5efae90070049f9bfaf3b7c970b848"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 8%, transparent)",
+    "fingerprint": "7013922269d2042e8a5dc81b7cccb38f7476df0e1f9eedafe8d6b2759d638711"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
+    "fingerprint": "2842db652641e9770079db1d22afaa6e48f579a1f8e1f5798b86a357d092ccf6"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
+    "fingerprint": "62b5178e0887f10130830d483b46721d2ab2861b0233887d5e847539f4f35112"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 5%, transparent)",
+    "fingerprint": "1f3810ea8e69cf9a513b7fa343c4b1ad138df16429769d4262fb21f031bca88f"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 50%, transparent)",
+    "fingerprint": "b8b1ab3487dc41f45e9ae42c511db5ca89cfc670a79502847cd2e76d678812dc"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 49.5%, transparent)",
+    "fingerprint": "f36932ddac732f3387efcd6b22a313195ae1e3151056f08bc15f706420dc7d2d"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 65%, transparent)",
+    "fingerprint": "eca8659c20494647d8fd4318c675f9d0e7957395f1a8172e7bc6c3620cf5762e"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 8%, transparent)",
+    "fingerprint": "d4838b6eff922a6ea22b85f9314f8dd37369f77fb174ce4fedecbbc01f47fc7f"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 35%, transparent)",
+    "fingerprint": "5b450ea2508db56d9d873a3ee29639fff07ed16470aba74dda9be12d6b8d9d4b"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "selected",
+    "snippet": "background: var(--color-sidebar-item, var(--color-hover))",
+    "fingerprint": "4b2c5493e81170e2c9d7d21472c059bf0e6442f65d68f74b25b5c49531d74d9d"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "selected",
+    "snippet": "background: var(--color-hover)",
+    "fingerprint": "3b4acc9ebe1ae5f3820d6c9ee4214c2bd43945aa534270a8e1d2b3b71a64d078"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "selected",
+    "snippet": "background: var(--color-foreground)",
+    "fingerprint": "a0e727394571503c9e4ee79034d53776a8601c9a9ec3e964b67bc2b3ea935b82"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "selected",
+    "snippet": "; background: var(--color-foreground)",
+    "fingerprint": "742b427a2407aec53d8e1cc5e9957c4b835479038313dc4532d6013ae85d17b1"
+  },
+  {
+    "file": "renderer/src/workbench.css",
+    "kind": "selected",
+    "snippet": "background: var(--color-hover)",
+    "fingerprint": "62fa85733064427ede9b00e267b37dd570a5fefc9a75d7ce92608b9090c98ed3"
+  },
+  {
+    "file": "packages/ui/src/conversation/command-details/command-details.css",
+    "kind": "tint",
+    "snippet": "color-mix(in srgb, var(--color-foreground) 5.5%, transparent)",
+    "fingerprint": "233ac07bb85d9b09d8d456a75507c0f02e91badc13d7b15377037c56f72559c7"
+  },
+  {
+    "file": "packages/ui/src/conversation/question-card/question-card.css",
+    "kind": "selected",
+    "snippet": "background: var(--color-hover)",
+    "fingerprint": "d9a7248a866d6aeed2b85b3428060f7975f0098b40491da2eb9f830d278ca562"
+  },
+  {
+    "file": "packages/ui/src/workbench/workbench-shell/workbench-shell.css",
+    "kind": "tint",
+    "snippet": "color-mix(in oklab, var(--color-foreground) 85%, transparent)",
+    "fingerprint": "159fd64e39c62b88774d14b76fa60f4fb15d7e063d5ea88705893d2517bca8be"
+  },
+  {
+    "file": "packages/ui/src/worktree/worktree-picker/worktree-picker.css",
+    "kind": "selected",
+    "snippet": "background: var(--color-hover)",
+    "fingerprint": "b5677453ee442efe04d1869d513c3e3c63e5f2ed9271b3dc8f041a320c124bb7"
+  }
+]

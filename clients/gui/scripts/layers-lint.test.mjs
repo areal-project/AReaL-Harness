@@ -13,6 +13,19 @@ test("flags primitive scale references and keeps purpose names", () => {
   );
 });
 
+test("flags hand-mixed foreground tints and selected states off the selected tokens", () => {
+  const css = [
+    ".a { background: color-mix(in srgb, var(--color-foreground) 5%, transparent); }",
+    '.b[aria-selected="true"] { background: var(--color-hover); }',
+    '.c[aria-current="page"] { background-color: var(--color-navigation-selected) !important; }',
+    ".d[data-selected] { background: var(--color-selected); }",
+  ].join("\n");
+  assert.deepEqual(
+    kinds(lintCss("renderer/src/a.css", css, { tokens, classes: new Set(), isPackage: false })),
+    ["tint", "selected"],
+  );
+});
+
 test("flags blur outside material definitions but not backdrop-filter none", () => {
   const css = ".a { backdrop-filter: blur(18px); }\n.b { backdrop-filter: none; }";
   assert.deepEqual(

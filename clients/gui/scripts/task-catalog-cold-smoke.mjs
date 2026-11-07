@@ -293,7 +293,7 @@ try {
       const check = () => {
         if (timing.clickedAt === null || timing.visibleAt !== null) return;
         const row = [...document.querySelectorAll("button[aria-label]")].find(
-          (el) => el.getAttribute("aria-label") === "打开自动化 " + objective,
+          (el) => el.getAttribute("aria-label") === "打开定时任务 " + objective,
         );
         if (!row || frame) return;
         frame = requestAnimationFrame(() => {
@@ -335,7 +335,7 @@ try {
     { objective, taskOwner },
   );
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  const row = page.getByRole("button", { name: `打开自动化 ${objective}`, exact: true });
+  const row = page.getByRole("button", { name: `打开定时任务 ${objective}`, exact: true });
   await row.waitFor({ timeout: 60000 });
   await page.waitForFunction(() => window.__coldTaskTiming.visibleAt !== null);
   observation = await page.evaluate(() => window.__coldTaskTiming);

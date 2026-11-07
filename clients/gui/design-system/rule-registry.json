@@ -3440,17 +3440,17 @@
     },
     {
       "id": "R-SPEC-002",
-      "title": "| 平面 | 正文区、列表行、回合标题 | 不允许 |",
+      "title": "| 平面 | 正文区、列表行、回合标题 | 不允许                   |",
       "owner": "design/spec/README.md#token-三层",
       "strength": "default",
-      "textSha256": "d9c329b8d1fe4418d3bc2712a1db64337f427fbc0d27625cb87d13604ee35977"
+      "textSha256": "f194f78c0f2592b61c6372450ff8aa9d9d1979c6786068745c78c22494dc9eb4"
     },
     {
       "id": "R-SPEC-003",
-      "title": "| 抬起 | 输入框、卡片、代码块 | 不允许，用阴影表达高度 |",
+      "title": "| 抬起 | 输入框、卡片、代码块     | 不允许，用阴影表达高度   |",
       "owner": "design/spec/README.md#token-三层",
       "strength": "default",
-      "textSha256": "e5a9dfcad31e6b2f2b8bb0be6f45e257b5f7d61cdfe5f46dec3dc0ccd56c985c"
+      "textSha256": "88417ef47b9fe6a1e41f9c16244ec66a8adceba3433683bd6baec7da2905a3d9"
     },
     {
       "id": "R-CHECK-024",
@@ -3459,6 +3459,48 @@
       "strength": "default",
       "textSha256": "717ae8c8d3a63dc462f7babd4808f2101f76060a5a9e587c285f840cbba77422",
       "check": "clients/gui/scripts/layers-lint.mjs"
+    },
+    {
+      "id": "R-QUALITY-001",
+      "title": "| 悬停不改变布局：隐藏的操作靠叠放出现，不靠挤开别的内容 | popup-anchor-lint           ",
+      "owner": "design/spec/quality.md#所有模块",
+      "strength": "default",
+      "textSha256": "f011564dcb7f63c49946df6be5b34dea03c94ce7464828003dd578f7fc6b6b74"
+    },
+    {
+      "id": "R-QUALITY-002",
+      "title": "| 页面不改组件外观，只决定组件放在哪、多大",
+      "owner": "design/spec/quality.md#所有模块",
+      "strength": "default",
+      "textSha256": "bec104e378a3448b7012d03fcdb4be38cd1de8de0a02c0f1a245c2d5e02b509b"
+    },
+    {
+      "id": "R-QUALITY-003",
+      "title": "| 同一个东西只用一个名字（如“定时任务”，不再叫“自动化”） | terms-lint                ",
+      "owner": "design/spec/quality.md#所有模块",
+      "strength": "default",
+      "textSha256": "7ae21550f5df4fe5057eb948ba901cd0501807afb92f4c05049f410798c163b4"
+    },
+    {
+      "id": "R-QUALITY-004",
+      "title": "- 一个面只有一个标题、一个关闭入口",
+      "owner": "design/spec/quality.md#页面框架",
+      "strength": "default",
+      "textSha256": "fbbdc5e34e9467d72112898854e85ba3104125be650766a76c75c2ed1ce0997b"
+    },
+    {
+      "id": "R-QUALITY-005",
+      "title": "| 对话回合 | 过程默认收起，最终回答直接可读",
+      "owner": "design/spec/quality.md#模块",
+      "strength": "default",
+      "textSha256": "13dc6bc4fbc91b3efafdbf13915e3fc5a9d2eab33f9f9cd6ffe058f3471151c7"
+    },
+    {
+      "id": "R-QUALITY-006",
+      "title": "- 浏览器标签（含标注）和终端标签需要一个假的浏览器、终端宿主才能在规格入口里打开，暂未接入",
+      "owner": "design/spec/quality.md#还没覆盖",
+      "strength": "default",
+      "textSha256": "73a0310c8fa25dd628e7cc583dfff9fe7b138b2ad8c6d503957df29ef476ad24"
     }
   ]
 }

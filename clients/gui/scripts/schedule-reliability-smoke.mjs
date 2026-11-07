@@ -396,7 +396,7 @@ async function measureOpen() {
     window.__scheduleTiming = { clickedAt: null, visibleAt: null };
     const timing = window.__scheduleTiming;
     const observer = new MutationObserver(() => {
-      const row = document.querySelector('button[aria-label^="打开自动化 SCHEDULE_"]');
+      const row = document.querySelector('button[aria-label^="打开定时任务 SCHEDULE_"]');
       if (!row || timing.clickedAt === null || timing.visibleAt !== null) return;
       requestAnimationFrame(() => {
         const box = row.getBoundingClientRect();
@@ -434,7 +434,7 @@ async function measureOpen() {
   await until(
     () =>
       page
-        .getByRole("button", { name: /^打开自动化 SCHEDULE_/ })
+        .getByRole("button", { name: /^打开定时任务 SCHEDULE_/ })
         .count()
         .then((count) => count === scheduleScale.projects * scheduleScale.scheduled),
     "all schedule rows rendered",
@@ -445,7 +445,7 @@ async function measureOpen() {
         requestAnimationFrame(() =>
           resolve({
             at: performance.now(),
-            rows: document.querySelectorAll('button[aria-label^="打开自动化 SCHEDULE_"]').length,
+            rows: document.querySelectorAll('button[aria-label^="打开定时任务 SCHEDULE_"]').length,
             errors: [...document.querySelectorAll(".task-catalog-error")]
               .filter((node) => /读取失败|加载失败/.test(node.textContent))
               .map((node) => node.textContent),
@@ -456,13 +456,13 @@ async function measureOpen() {
   assert.deepEqual(full.errors, [], "full UI refresh source errors");
   assert.equal(full.rows, scheduleScale.projects * scheduleScale.scheduled);
   const visible = await page
-    .locator('button[aria-label^="打开自动化 SCHEDULE_"]')
+    .locator('button[aria-label^="打开定时任务 SCHEDULE_"]')
     .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("aria-label")));
   const expected = owners.flatMap((_, index) =>
     Array.from(
       { length: scheduleScale.scheduled },
       (_, taskIndex) =>
-        `打开自动化 SCHEDULE_${String(index).padStart(2, "0")}_${String(taskIndex).padStart(3, "0")}`,
+        `打开定时任务 SCHEDULE_${String(index).padStart(2, "0")}_${String(taskIndex).padStart(3, "0")}`,
     ),
   );
   assert.deepEqual(
@@ -603,7 +603,7 @@ try {
           schedule: { at: 1893456000, intervalSeconds: 86400 },
         });
         await page
-          .getByRole("button", { name: "打开自动化 SCHEDULE_FAULT_INITIAL", exact: true })
+          .getByRole("button", { name: "打开定时任务 SCHEDULE_FAULT_INITIAL", exact: true })
           .waitFor({ timeout: 15000 });
         await writeFile(faultTargetFile, task.id);
         const service = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
@@ -649,10 +649,10 @@ try {
           15000,
         );
         await page
-          .getByRole("button", { name: "打开自动化 SCHEDULE_FAULT_LATEST", exact: true })
+          .getByRole("button", { name: "打开定时任务 SCHEDULE_FAULT_LATEST", exact: true })
           .waitFor({ timeout: 15000 });
         await page
-          .getByRole("button", { name: "打开自动化 SCHEDULE_FAULT_DROPPED", exact: true })
+          .getByRole("button", { name: "打开定时任务 SCHEDULE_FAULT_DROPPED", exact: true })
           .waitFor({ state: "hidden", timeout: 15000 });
         const events = (await readFile(traceFile, "utf8"))
           .trim()
@@ -675,7 +675,7 @@ try {
           expectedRevision: task.revision,
         });
         await page
-          .getByRole("button", { name: "打开自动化 SCHEDULE_FAULT_LATEST", exact: true })
+          .getByRole("button", { name: "打开定时任务 SCHEDULE_FAULT_LATEST", exact: true })
           .waitFor({ state: "hidden", timeout: 15000 });
         const afterDelete = await call("tasks", {
           operation: "observe",
@@ -722,7 +722,7 @@ try {
       assert.ok(Buffer.byteLength(listed.objectivePreview) <= 512);
       assert.notEqual(listed.objectivePreview, objective);
       await page
-        .getByRole("button", { name: `打开自动化 ${listed.objectivePreview}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${listed.objectivePreview}`, exact: true })
         .click();
       await page.waitForFunction(
         ({ taskId, objective }) =>
@@ -1031,7 +1031,7 @@ try {
         await page.getByRole("button", { name: "首页", exact: true }).click();
         await page.getByRole("button", { name: "定时任务", exact: true }).click();
         await page
-          .getByRole("button", { name: `打开自动化 ${retained.objectivePreview}`, exact: true })
+          .getByRole("button", { name: `打开定时任务 ${retained.objectivePreview}`, exact: true })
           .waitFor();
         await page.locator(".task-catalog-error").first().waitFor();
         assert.deepEqual(
@@ -1297,7 +1297,7 @@ try {
     });
     await check("live-create", async () => {
       await page
-        .getByRole("button", { name: "打开自动化 SCHEDULE_LIVE_INITIAL", exact: true })
+        .getByRole("button", { name: "打开定时任务 SCHEDULE_LIVE_INITIAL", exact: true })
         .waitFor({ timeout: 15000 });
       return { taskId: current.id, executionProjectId: liveOwner.projectId };
     });
@@ -1319,7 +1319,7 @@ try {
       });
       const commandReturned = performance.now();
       await page
-        .getByRole("button", { name: `打开自动化 ${objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${objective}`, exact: true })
         .waitFor({ timeout: 15000 });
       const visible = performance.now();
       samples.liveMutation.push({
@@ -1338,7 +1338,7 @@ try {
         expectedRevision: current.revision,
       });
       await page
-        .getByRole("button", { name: `打开自动化 ${current.objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${current.objective}`, exact: true })
         .waitFor({ state: "hidden", timeout: 15000 });
     });
     await page.screenshot({ path: join(evidence, "schedules.png") });

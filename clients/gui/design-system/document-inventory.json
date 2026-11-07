@@ -1011,5 +1011,10 @@
     "path": "design/spec/README.md",
     "role": "cross-product",
     "status": "active"
+  },
+  {
+    "path": "design/spec/quality.md",
+    "role": "cross-product",
+    "status": "active"
   }
 ]

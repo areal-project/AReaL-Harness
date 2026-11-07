@@ -24,6 +24,14 @@ const SPEC_NUMBER =
 const SPEC_WORDS =
   /\b(?:React|Lexical|Electron|Tailwind|Core|Host|renderer|packages\/|tokens\.json|\w+\.(?:tsx?|css|mjs))\b/g;
 
+// 前景色手调的半透明底：悬停、选中、分隔线各有用途变量，手调的深浅会和它们对不上。
+const TINT =
+  /color-mix\(\s*in\s+[\w-]+\s*,\s*var\(--color-foreground\)\s*[\d.]+%\s*,\s*transparent\s*\)/g;
+// 选中、当前项的底色只能取选中类用途变量，保证选中永远不比悬停淡。
+const SELECTED_STATE =
+  /\[(?:aria-selected|aria-current|data-selected|data-current)(?:="?(?:true|page)"?)?\]/;
+const SELECTED_TOKEN = /^var\(--color-(?:[\w-]*selected[\w-]*|sidebar-item|accent)\)$/;
+
 // 外观属性：页面只能决定组件放在哪、多大，不能改它长什么样（D-005 外观走变体）。
 const APPEARANCE =
   /(?:^|;)\s*(?:color|background[\w-]*|border[\w-]*|outline[\w-]*|box-shadow|font[\w-]*|line-height|letter-spacing|text-[\w-]+|opacity|filter|backdrop-filter|padding[\w-]*|fill|stroke)\s*:/;
@@ -76,6 +84,18 @@ export function lintCss(path, source, { tokens, classes, isPackage }) {
       snippet: snippet.replace(/\s+/g, " ").trim(),
     });
   for (const match of text.matchAll(PRIMITIVE)) push("primitive", match.index, match[0]);
+  for (const match of text.matchAll(TINT)) push("tint", match.index, match[0]);
+  for (const block of text.matchAll(/([^{}]+)\{([^{}]*)\}?/g)) {
+    if (!SELECTED_STATE.test(block[1])) continue;
+    for (const declaration of (block[2] ?? "").matchAll(
+      /(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/g,
+    ))
+      if (
+        !SELECTED_TOKEN.test(declaration[1].replace(/!important/, "").trim()) &&
+        !/^(?:transparent|none|inherit)$/.test(declaration[1].trim())
+      )
+        push("selected", block.index + block[0].indexOf("{") + declaration.index, declaration[0]);
+  }
   for (const match of text.matchAll(BACKDROP))
     if (!/^\s*(?:none|var\(--material-[\w-]+\))\s*$/.test(match[1]) && !MATERIAL_FILES.has(path))
       push("material", match.index, match[0]);

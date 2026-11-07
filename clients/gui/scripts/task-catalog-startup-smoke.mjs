@@ -357,7 +357,7 @@ try {
     "provider configuration held after handshake",
   );
   assert.equal(held.clientReady, true, "Barrier follows an authenticated Core client");
-  const row = page.getByRole("button", { name: `打开自动化 ${objective}`, exact: true });
+  const row = page.getByRole("button", { name: `打开定时任务 ${objective}`, exact: true });
   let visibleAt;
   await until(
     async () => {
@@ -457,11 +457,11 @@ try {
     "Global scheduled-task navigation queries all registered owners",
   );
   await page
-    .getByRole("button", { name: `打开自动化 ${workspaceTask.objective}`, exact: true })
+    .getByRole("button", { name: `打开定时任务 ${workspaceTask.objective}`, exact: true })
     .waitFor();
   assert.equal(
     await page
-      .getByRole("button", { name: `打开自动化 ${workspaceTask.objective}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 ${workspaceTask.objective}`, exact: true })
       .count(),
     1,
     "Global scheduled-task navigation includes ready workspace-owned rows",
@@ -526,11 +526,11 @@ try {
     }, "registered owner catalog responses after reopening");
     await row.waitFor();
     await page
-      .getByRole("button", { name: `打开自动化 ${workspaceTask.objective}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 ${workspaceTask.objective}`, exact: true })
       .waitFor();
     assert.equal(
       await page
-        .getByRole("button", { name: `打开自动化 ${workspaceTask.objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${workspaceTask.objective}`, exact: true })
         .count(),
       1,
       "Ready workspace task remains included in the global catalog",

@@ -89,7 +89,8 @@
 
 .settings-field-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) fit-content(calc(var(--reading-width) * 3 / 8));
+  /* 控件按内容取宽，最多占半行；一组按钮宁可挤窄说明也不折行。 */
+  grid-template-columns: minmax(0, 1fr) fit-content(calc(var(--reading-width) / 2));
   align-items: center;
   gap: var(--spacing-section);
   width: 100%;
