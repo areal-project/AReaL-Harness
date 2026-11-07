@@ -1,0 +1,14 @@
+clients/gui/scripts/packaging-dependencies.test.cjs
+  h_247f0d3940ae9c 5,48-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f691f3a5aeba3cf48c33a3304f08b2bba631c769",
+  "prompts": {},
+  "humans": {
+    "h_247f0d3940ae9c": {
+      "author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
