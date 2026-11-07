@@ -82,17 +82,16 @@ export function WorkbenchSettings({
   const library = snapshot.library ?? {};
   const { theme, setTheme, uiFontSize, setUiFontSize } = appearance;
   const { backendActionPending, backendActionError, runBackendAction } = backend;
+  const pageClass = ["插件", "Skills", "MCP"].includes(settingsTab)
+    ? "plugins-settings-page"
+    : settingsTab === "模型服务"
+      ? "model-settings-page"
+      : undefined;
   return (
     <SettingsPage
       key={settingsTab}
-      width={settingsTab === "模型服务" ? "wide" : "default"}
-      className={
-        ["插件", "Skills", "MCP"].includes(settingsTab)
-          ? "plugins-settings-page"
-          : settingsTab === "模型服务"
-            ? "model-settings-page"
-            : undefined
-      }
+      width={pageClass === "model-settings-page" ? "wide" : "default"}
+      className={pageClass}
       title={settingsLabel(settingsTab, t)}
       subtitle={settingsTab === "浏览器" ? t("settings.browser.subtitle") : undefined}
     >
