@@ -1,7 +1,6 @@
 @import "@areal/ui/workbench.css";
 
 :root {
-  --message-reading-inset: 32px;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -537,7 +536,7 @@ button.composer-project:hover > svg,
   margin-bottom: 8px;
 }
 .user-bubble {
-  max-width: 70%;
+  max-width: var(--message-bubble-max);
   min-width: 0;
   padding: var(--spacing-inline) var(--spacing-field);
   border: 0;
@@ -1855,8 +1854,8 @@ button[aria-label="停止"] {
 .turn-marker {
   display: block;
   flex: none;
-  width: 6px;
-  height: 2px;
+  width: var(--turn-marker-length);
+  height: var(--turn-marker-thickness);
   border-radius: var(--radius-turn-marker);
   background: var(--color-foreground-subtle);
   opacity: var(--turn-opacity, 0.55);
@@ -2293,7 +2292,7 @@ button[aria-label="停止"] {
   z-index: 2;
   display: flex;
   flex-direction: column;
-  padding-block: 4px;
+  padding-block: calc(var(--spacing-inline) / 2);
   background: var(--color-background);
 }
 .turn-progress-label {
@@ -2329,8 +2328,8 @@ button[aria-label="停止"] {
   overflow-wrap: anywhere;
 }
 .turn-progress-divider {
-  margin-top: 4px;
-  border-bottom: 1px solid var(--color-border-subtle, var(--color-menu-border, var(--color-border)));
+  margin-top: calc(var(--spacing-inline) / 2);
+  border-bottom: var(--border-width-default) solid var(--color-border-subtle);
 }
 .turn-progress:not(:has(> .turn-progress-heading)) {
   margin: 0;
@@ -2393,7 +2392,7 @@ button[aria-label="停止"] {
   }
 }
 .turn-stop-heading {
-  margin: 16px 0;
+  margin: var(--spacing-field) 0;
 }
 .turn-stop-heading .turn-status {
   margin: 0;
@@ -2407,9 +2406,9 @@ button[aria-label="停止"] {
   margin: 6px 0 0 -4px;
 }
 .message-actions > button {
-  width: 28px;
-  height: 28px;
-  padding: 4px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
+  padding: calc((var(--spacing-control) - var(--icon-size-control)) / 2);
   border-radius: var(--radius-control);
   color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 }
@@ -4553,7 +4552,7 @@ button[aria-label="停止"] {
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
-  margin: 16px 0;
+  margin: var(--spacing-field) 0;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-xs);
   line-height: var(--conversation-line);
@@ -4563,8 +4562,8 @@ button[aria-label="停止"] {
 .conversation-event::after {
   content: "";
   flex: 1 1 0;
-  border-top: 1px solid var(--color-menu-border, var(--color-border));
-  min-width: 16px;
+  border-top: var(--border-width-default) solid var(--color-menu-border);
+  min-width: var(--spacing-field);
 }
 .conversation-event-content {
   display: inline-flex;

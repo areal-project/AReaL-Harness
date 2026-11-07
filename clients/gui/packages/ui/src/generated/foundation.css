@@ -41,6 +41,13 @@
   --line-height-ui-sm: max(18px, calc(var(--ui-font-size) + 4px));
   --text-conversation: var(--content-font-size, 14px);
   --conversation-line: 1.43;
+  --message-reading-inset: 32px;
+  --message-bubble-max: 70%;
+  --composer-inset: 12px;
+  --icon-size-control: 16px;
+  --opacity-disabled: 0.5;
+  --turn-marker-length: 6px;
+  --turn-marker-thickness: 2px;
   --conversation-gap: 12px;
   --activity-icon-size: 16px;
   --activity-chevron-size: 14px;

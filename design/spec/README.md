@@ -6,7 +6,7 @@
 
 1. 先看 `screens/`：有哪些界面，每个界面分哪些区域、放哪些组件。
 2. 再看 `components/`：每个组件的结构、变体、状态、用到哪些用途变量。
-3. 交互看 `flows/`：在哪个状态、发生什么、变成什么样。
+3. 交互看 `flows/`：状态、事件、结果。
 
 ## 目录
 
@@ -16,12 +16,13 @@
 | `screens/*.yaml` | 界面：区域、组件树、使用的示例数据、窄窗变化 | YAML |
 | `flows/*.yaml` | 流程：状态 × 事件 → 新状态、应看到什么、动效角色 | YAML |
 | `fixtures/*.json` | 示例数据：界面不连后台也能渲染各个状态 | JSON |
+| `icons/*.svg` | 规格里按名称引用的图标，颜色取 currentColor | SVG |
 | `references/` | 本产品标准截图，按 界面 × 状态 × 亮暗 生成 | PNG，生成产物 |
 | `conformance/` | 验收：只用角色、可读名称和文字操作与断言，任何实现都能运行；另含截图对比 | Playwright 脚本 |
 
-实现提供一个入口页，接受 `?state=<流程状态>&theme=light|dark` 并用示例数据渲染；本仓库是设计系统页加 `?spec`。运行 `conformance/run.mjs --url <入口>` 和 `conformance/references.mjs --url <入口>`。
+实现提供入口页，接受 `?state=<流程状态>&theme=light|dark` 并用示例数据渲染（本仓库：设计系统页加 `?spec`）。运行 `conformance/run.mjs --url <入口>` 和 `conformance/references.mjs --url <入口>`。
 
-Token 源暂时仍是 `clients/gui/packages/ui/tokens.json`，按下文三层改造完成后再决定是否迁入本目录。
+Token 源：`clients/gui/packages/ui/tokens.json`。
 
 ## 四条规则
 
@@ -55,7 +56,7 @@ Token 源暂时仍是 `clients/gui/packages/ui/tokens.json`，按下文三层改
 | --- | --- |
 | 分层引用 | 组件或页面样式引用原料层变量；组件库中出现 `var(--x, 回退值)` |
 | 材质 | `backdrop-filter` 出现在材质定义之外 |
-| 外观走变体 | 页面样式的选择器命中组件根类名或 `data-slot` |
+| 外观走变体 | 页面样式选择器作用于组件类名并写外观属性 |
 | 规格纯净 | 规格文件出现裸数值或禁用的实现名词 |
 | 文字下限 | 标准主题与极端主题下任一文字级别低于下限 |
 | 截图对比 | 标准截图与当前渲染不一致且 PR 未更新基线 |
@@ -64,7 +65,7 @@ Token 源暂时仍是 `clients/gui/packages/ui/tokens.json`，按下文三层改
 
 ## 交接演练
 
-只把本目录和一个空项目交给新 Agent，复现一个模块，然后运行 `conformance/` 并逐张对比 `references/`。未通过项追溯到规格缺口并修规格。记录每次的一次通过率。
+只把本目录和空项目交给新 Agent 复现一个模块，跑 `conformance/` 并对比 `references/`；未过项追溯到规格缺口并修规格，记录一次通过率。
 
 ## 进度
 
@@ -74,6 +75,6 @@ Token 源暂时仍是 `clients/gui/packages/ui/tokens.json`，按下文三层改
 | 1 | 输入框试点：组件、首页与对话界面、发送—运行—停止流程、示例数据、截图、验收、一次交接演练 | 完成，见 `drills/` |
 | 2 | 文字层级：生成器下限与主题测试 | 完成 |
 | 3 | 圆角、阴影、材质三层改造 | 完成 |
-| 4 | 组件变体 | 未开始 |
-| 5 | 推广到设置、首页、工作台、右侧面板、对话流、Pin Summary | 视试点结果 |
+| 4 | 组件变体：页面改组件外观 44 处清零 | 完成 |
+| 5 | 对话回合规格、图标、尺寸变量、第二次演练；再推广到其他模块 | 进行中 |
 | 6 | 合并设计文档入口 | 未开始 |

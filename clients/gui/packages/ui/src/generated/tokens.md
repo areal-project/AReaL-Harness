@@ -167,6 +167,13 @@
 | `--font-sans` | `-apple-system, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif` | 基础界面字体及平台回退 |
 | `--font-mono` | `ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace` | 代码字体及CJK无衬线回退 |
 | `--conversation-line` | `1.43` | 对话时间线行高（无单位比例）：14px 时为 20px；标题与更大的内容字号按比例增长 |
+| `--message-reading-inset` | `32px` | 对话信息流上下留白：首条消息与列顶部、末条内容与输入框之间 |
+| `--message-bubble-max` | `70%` | 用户消息气泡相对阅读列的最大宽度 |
+| `--composer-inset` | `12px` | 输入框内侧留白：编辑区左右与顶部、工具栏左右 |
+| `--icon-size-control` | `16px` | 控件内图标尺寸：输入框工具栏、消息操作行与图标按钮 |
+| `--opacity-disabled` | `0.5` | 不可用控件的整体不透明度 |
+| `--turn-marker-length` | `6px` | 左缘回合导航标记的长度 |
+| `--turn-marker-thickness` | `2px` | 左缘回合导航标记的粗细 |
 | `--conversation-gap` | `12px` | 对话时间线块间距：段落、活动行、子代理行、状态行之间的统一节奏 |
 | `--activity-icon-size` | `16px` | 活动行与活动组摘要的行首图标尺寸；ActivityIcon 按 16 单位网格绘制 |
 | `--activity-chevron-size` | `14px` | 活动行与活动组摘要的展开箭头尺寸 |

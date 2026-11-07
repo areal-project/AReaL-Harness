@@ -32,6 +32,7 @@ export function TurnHookStats({ turn }: { turn: Data }) {
     cancelled: "已取消",
     unknown: "结果未知",
   };
+  if (!runs.length) return null;
   const counts = [
     ["运行次数", runs.length],
     ["已阻止", runs.filter(({ hook }: Data) => blocked(hook)).length],

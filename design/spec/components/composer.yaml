@@ -26,7 +26,11 @@ variants:
   placement:
     home: 首页草稿，位于视觉重心，圆角取大号
     thread: 对话底部
-    compact: 窄容器与侧边对话，工具栏可换到编辑区下方
+    inline: 在一条用户消息内改写；平面无阴影，底色 color-composer-catalog，聚焦时只有一圈 border-hover 描边
+  layout:
+    default: 编辑区在上，工具栏在下
+    compact: 窄容器与侧边对话，编辑区与工具栏同一行；容器变窄时工具栏换到编辑区下方
+    decision: 有待处理的审批或提问时压成一行，只保留添加、模型与主按钮，草稿不丢
 
 states:
   - empty: 占位文字说明输入目标；主按钮不可用并说明原因
@@ -45,7 +49,13 @@ tokens:
   radius:
     home: radius-composer-large
     thread: radius-composer
-    compact: radius-composer-compact (待建)
+    inline: radius-composer
+    compact: radius-composer-large；容器变窄时 radius-composer
+  inset: composer-inset（编辑区左右与顶部、工具栏左右）
+  toolbar-gap: spacing-inline
+  toolbar-height: spacing-control
+  icon: icon-size-control
+  disabled: opacity-disabled
   text: text-conversation
   line: conversation-line
   focus: interaction-focus-ring-soft
