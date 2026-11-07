@@ -361,6 +361,7 @@ mod edit_files;
 mod extensions;
 mod file_before;
 mod images;
+mod input_errors;
 mod navigation;
 mod output;
 mod page;

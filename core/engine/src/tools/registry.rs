@@ -23,6 +23,8 @@ pub struct ToolPolicy {
     pub completion_focus: bool,
     /// 显式实验：减少独立读取与等待之间的无效模型往返，不改写工具参数。
     pub execution_focus: bool,
+    /// 显式实验：展示有界 schema 分支约束，不回显被拒绝的参数值。
+    pub detailed_input_errors: bool,
     pub result_views: ResultViewPolicy,
     pub command_wait_ms: u64,
     pub pty_wait_ms: u64,
@@ -46,6 +48,7 @@ impl Default for ToolPolicy {
             parallel_read_calls: 1,
             completion_focus: false,
             execution_focus: false,
+            detailed_input_errors: false,
             result_views: ResultViewPolicy::default(),
             command_wait_ms: 120_000,
             pty_wait_ms: 1000,
@@ -215,6 +218,7 @@ pub(crate) struct RegisteredTool {
     pub backend: Backend,
     input: jsonschema::Validator,
     output: Option<jsonschema::Validator>,
+    detailed_input_errors: bool,
 }
 
 impl RegisteredTool {
@@ -234,9 +238,13 @@ impl RegisteredTool {
         {
             return result;
         }
-        self.input
-            .validate(arguments)
-            .map_err(|e| anyhow::anyhow!("invalid tool arguments at {}: {}", e.instance_path, e))
+        self.input.validate(arguments).map_err(|e| {
+            if self.detailed_input_errors {
+                anyhow::anyhow!(super::input_errors::describe(&e))
+            } else {
+                anyhow::anyhow!("invalid tool arguments at {}: {}", e.instance_path, e)
+            }
+        })
     }
     pub fn validate_output(&self, result: &Value) -> anyhow::Result<()> {
         if let Some(output) = &self.output {
@@ -252,6 +260,7 @@ impl RegisteredTool {
 pub(crate) struct Registry {
     tools: BTreeMap<String, Arc<RegisteredTool>>,
     order: Vec<String>,
+    detailed_input_errors: bool,
 }
 
 struct OfflineSchemas;
@@ -319,6 +328,7 @@ impl Registry {
                     backend: Backend::Builtin,
                     input,
                     output: None,
+                    detailed_input_errors: self.detailed_input_errors,
                 }),
             );
         }
@@ -372,7 +382,10 @@ impl Registry {
             );
             config.validate()?;
         }
-        let mut registry = Self::default();
+        let mut registry = Self {
+            detailed_input_errors: extensions.policy.detailed_input_errors,
+            ..Self::default()
+        };
         if extensions.gen_ui {
             registry.insert(crate::desktop::gen_ui::definition(), Backend::Core)?;
         }
@@ -521,6 +534,7 @@ impl Registry {
                 backend,
                 input,
                 output,
+                detailed_input_errors: self.detailed_input_errors,
             }),
         );
         Ok(())
@@ -584,6 +598,72 @@ impl ToolExtensions {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detailed_input_errors_are_opt_in_and_preserve_validation_and_dynamic_tools() {
+        let default = Registry::new(true, &ToolExtensions::default()).unwrap();
+        assert!(!ToolPolicy::default().detailed_input_errors);
+        let extensions: ToolExtensions =
+            serde_json::from_value(json!({"policy":{"detailedInputErrors":true}})).unwrap();
+        let detailed = Registry::new(true, &extensions).unwrap();
+        assert_eq!(default.definitions(), detailed.definitions());
+        let invalid = json!({"files":[{"path":"x","newText":"private-body-marker"}]});
+        let old = default
+            .get("edit_files")
+            .unwrap()
+            .validate_input(&invalid)
+            .unwrap_err()
+            .to_string();
+        let new = detailed
+            .get("edit_files")
+            .unwrap()
+            .validate_input(&invalid)
+            .unwrap_err()
+            .to_string();
+        assert!(old.contains("private-body-marker"));
+        assert!(!new.contains("private-body-marker"));
+        assert!(new.contains("Schema alternative"));
+        let definition = ToolDefinition {
+            name: "external_edit".into(),
+            description: "Synthetic external schema".into(),
+            input_schema: json!({"type":"object","oneOf":[{"required":["body"]},{"required":["patch"]}]}),
+            output_schema: None,
+        };
+        let detailed = detailed
+            .with_dynamic(&[definition])
+            .unwrap()
+            .with_runtime_limits(&rt::Limits {
+                wall_time_ms: 7000,
+                ..Default::default()
+            })
+            .unwrap();
+        let external = detailed.get("external_edit").unwrap();
+        assert!(
+            external
+                .validate_input(&json!({}))
+                .unwrap_err()
+                .to_string()
+                .contains("Schema alternative")
+        );
+        assert!(external.validate_input(&json!({"body":"valid"})).is_ok());
+        assert!(
+            external
+                .validate_input(&json!({"body":"a","patch":"b"}))
+                .is_err()
+        );
+        let command = detailed.get("run_command").unwrap();
+        assert!(command.detailed_input_errors);
+        assert!(
+            command
+                .validate_input(&json!({"argv":["true"],"timeoutMs":7001}))
+                .is_err()
+        );
+        assert!(
+            command
+                .validate_input(&json!({"argv":["true"],"timeoutMs":7000}))
+                .is_ok()
+        );
+    }
     #[test]
     fn direct_program_entries_require_explicit_bounded_configuration() {
         for (policy, valid) in [

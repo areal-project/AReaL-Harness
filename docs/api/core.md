@@ -559,7 +559,9 @@ Core 的通用 Responses HTTP 传输发送稳定的 `session-id/thread-id`，并
 
 Responses HTTP 请求以 `x-areal-thread-id`、`x-areal-turn-id` 和 `x-areal-model-purpose=solve|summary|permissionReview` 携带可信 Core 的不透明所有者身份，不改写模型输入。无所有者的标题或探测请求不共享路由状态。订阅转发据此发送稳定的 `session-id/thread-id`；只在内存中保留服务端首次返回的 `x-codex-turn-state`，同一账号 revision、模型、Thread、Turn 和请求用途内复用，不跨 Turn。账号变更或关闭清空状态；迟到/取消响应不能重新填入已清理项。最多 128 项、空闲 30 分钟回收，单值上限 8 KiB；审计只记录 `sessionIdentitySent`、`turnStateSent` 和 `turnStateReceived` 三个布尔字段；可选桌面审计保留它们，不存储不透明路由值。不增加 POST 重试，不修改上下文、工具执行或用量未知的语义。缺少上游路由头时保持普通完整请求。
 
-Rust `ToolPolicy` 的穷举结构体字面量调用方需要补上 `parallel_read_calls` 和 `completion_focus`，或使用 `..ToolPolicy::default()`；旧部署 JSON 可省略该字段并保持串行。
+Rust `ToolPolicy` 的穷举结构体字面量调用方需要补上新增字段，或使用 `..ToolPolicy::default()`；旧部署 JSON 可省略可选字段并保留默认行为。
+
+`ToolPolicy.detailed_input_errors`（JSON `detailedInputErrors`，默认 false）是显式实验配置。开启后，输入 schema 校验失败隐藏被拒绝的参数值，并展示有界的 `oneOf` / `anyOf` 分支约束；反馈最多 4096 UTF-8 字节，保留失败路径。它不修改 schema、接受条件、参数、自动重试或工具执行权限；动态工具与按运行时限重建的内置工具保留该配置。关闭时保持既有反馈格式，行为收益需另行评测。
 
 原生 Runtime 工具结果提供 `turnElapsedSeconds`，表示当前 Turn 的真实已用秒数，便于模型遵守用户显式时限。该事实不构成新任务、自动完成或验收结论；不额外插入用户消息，也不装饰协调回执，以保持已消费回执的版本判断。 Workgroup 重复成功检查点不把该时钟元数据计入结果身份；真实工具输出或已观察源码字节变化仍会阻止检查点。
 

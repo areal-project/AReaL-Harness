@@ -440,6 +440,8 @@ turn_model_rounds = 0
 
 工具结果视图通过 `[tools] extensions_file` 指向的 JSON 配置，在 `policy.resultViews` 下设置 `mode: off|observe|on`（默认 observe）及 `searchGroups`、`repeatLines` 开关。大结果快照与内置 rg 不依赖该开关；额度和回取行为见[工具指南](tools.md)。
 
+`ToolPolicy.detailedInputErrors`（JSON `detailedInputErrors`）默认 false。显式开启后，参数校验失败提供有界的 JSON pointer、约束和 `oneOf`/`anyOf` 分支错误，不重复回显被拒绝的参数值。最多展开两层、每层四个分支及每分支四条错误，消息最多 4096 字节；省略时要求查阅完整 schema。内置、MCP、插件与动态工具使用相同入口，后续 Runtime 时限投影保留该设置。合法参数、校验规则、错误类别、收据、权限和恢复预算不变；不会修正参数或自动重试。示例：`{"policy":{"detailedInputErrors":true}}`。这是反馈实验，机制回归不代表真实任务的请求或 token 已下降。
+
 ## 持久轨迹导出
 
 `[trajectory]` 为本地 TUI、GUI、`exec` 和服务提供可选的数据采集模式，默认关闭。启用后，Core 将轨迹 Events/Logs 放入有界内存缓冲，由后台线程保存到用户级磁盘队列；独立上传进程通常等待所属 Turn 的终态记录后，逐条发送标准 OTLP HTTP/protobuf 到接收端。生产进程结束或崩溃时也允许补传已落盘的不完整记录。为避免终态丢失造成永久积压，单条记录入队满 5 分钟后，即使生产进程仍存活也允许上传；因此超长 Turn 可能先同步部分轨迹，随后追加终态。接收端须将缺少终态的内容视为不完整，不能据此推断成功。Agent 返回和关闭流程不等待网络上传；独占 CLI 退出后，上传进程仍可处理已经落盘的数据。此功能不依赖特定接收平台或对象存储：接收端负责归档、索引、分析来源登记和后续训练数据管理，配置一个 OSS 对象地址不能代替 OTLP 接收服务。
