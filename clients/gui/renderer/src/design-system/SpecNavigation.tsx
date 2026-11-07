@@ -70,6 +70,7 @@ export function SpecNavigation({
   panel: initialPanel,
   surface: initialSurface,
   action,
+  renderPanel,
   children,
 }: {
   collapsed: string[];
@@ -79,6 +80,10 @@ export function SpecNavigation({
   panel?: { tabs: string[]; active: string; view?: "split" | "panel" | "conversation" };
   surface?: "tasks" | "plugins";
   action: Action;
+  renderPanel?: (
+    name: string,
+    controls: { show: (name: string) => void; hide: () => void },
+  ) => ReactNode;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -404,6 +409,8 @@ export function SpecNavigation({
                     onToggleFiles={() => setFilesOpen((open) => !open)}
                     tree={fileTree}
                   />
+                ) : renderPanel?.(name, { show: selectPanel, hide: hidePanel }) ? (
+                  renderPanel(name, { show: selectPanel, hide: hidePanel })
                 ) : name === "改动" ? (
                   <GitPane
                     projectId="spec-project"

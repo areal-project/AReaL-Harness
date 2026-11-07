@@ -8,6 +8,7 @@ import type { Action, Data } from "../services.js";
 import { useAppearance } from "../settings/applicationPreferences.js";
 import { SpecNavigation } from "./SpecNavigation.js";
 import { pluginAction } from "./specPlugins.js";
+import { SideChatPane } from "../SideChatPane.js";
 import { settingsAction } from "./specSettings.js";
 import { workspaceAction } from "./specWorkspace.js";
 
@@ -481,6 +482,19 @@ export function SpecFixture() {
       panel={"panel" in start ? (start.panel as never) : undefined}
       surface={"surface" in start ? (start.surface as "tasks" | "plugins") : undefined}
       action={action}
+      renderPanel={(name, { show, hide }) =>
+        name === "旁路讨论" ? (
+          <SideChatPane
+            project={data}
+            source={thread}
+            executionBlocked={false}
+            action={action}
+            dark={dark}
+            onPanel={show}
+            onReturn={hide}
+          />
+        ) : null
+      }
     >
       <div className="workspace-content">{column}</div>
     </SpecNavigation>

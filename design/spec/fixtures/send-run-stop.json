@@ -341,6 +341,15 @@
         "active": "file:src/math.ts"
       }
     },
+    "window.side-chat": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["旁路讨论"],
+        "active": "旁路讨论"
+      }
+    },
     "window.tasks": {
       "screen": "window",
       "conversation": "thread-idle",

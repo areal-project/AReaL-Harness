@@ -47,6 +47,7 @@ const SHOTS = [
   "window.review-files",
   "window.files",
   "window.files-open",
+  "window.side-chat",
   "window.tasks",
   "window.tasks-new",
   "window.plugins",
