@@ -40,15 +40,15 @@ parts:
   approval:
     target: 工作目录，text-ui-sm，foreground-subtle，单行省略；下方 spacing-inline
     command: 命令预览块。等宽字体 text-ui-caption、行高 line-height-ui；内边距 spacing-inline；底色 color-surface；文字 foreground-subtle；圆角 radius-inset；最多两行
-    details: 与命令块相隔 spacing-inline 的一半；标题行上下 spacing-inline，文字 text-ui-caption；“展开”是小号胶囊按钮
+    details: 与命令块相隔 spacing-inline 的一半；标题行上下 spacing-inline，文字 text-ui-caption；右侧“展开”按钮：text-ui-sm、行高 line-height-ui，上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-button，底色 color-button-surface，文字 foreground，悬停底色 color-button-hover；展开后文字为“收起”
   question:
     options: 竖排，间隔 spacing-inline。每项：内边距 spacing-inline，最小高 spacing-control，圆角 radius-control，文字 font-weight-medium；左侧序号方块（边长 line-height-ui，border-width-default 的 color-border 描边，底色 color-hover，圆角 radius-inline，序号 text-ui-sm、foreground-subtle、等宽数字，比文字低 spacing-inline 的四分之一），序号与文字间隔 spacing-inline
     option-selected: 选中、悬停或键盘聚焦的选项底色 color-hover
     footer-gap: 提问卡的按钮行与上方相隔 spacing-field（审批卡为 spacing-inline）
   footer:
     gap: spacing-inline
-    button: 高 spacing-control，左右 spacing-inline，胶囊圆角 radius-pill，text-ui-base；次要按钮为描边样式
-    primary: 底色 color-primary，文字 color-primary-foreground；不可用时底色 foreground-subtle
+    button: 高 spacing-control，左右 spacing-inline，胶囊圆角 radius-pill，text-ui-base；带 border-width-default 描边（计入尺寸）；次要按钮描边 color-border、底色透明，主按钮描边透明
+    primary: 底色 color-primary，文字 color-primary-foreground；不可用时底色 foreground-subtle，再整体 opacity-disabled
     shortcut: 按钮文字后的快捷键标记：高 line-height-ui-sm，左右 spacing-inline 的一半，圆角 radius-micro，底色 color-surface-tertiary，文字 text-ui-sm、foreground-subtle；与按钮文字间隔 spacing-inline 的一半
 
 variants:
@@ -57,7 +57,7 @@ variants:
     remember: 允许记住授权时，主按钮右侧连着一个向下箭头，展开“允许一次 / 本任务允许此操作 / 本项目允许此操作”
   question:
     header-action: 右侧一个收起按钮（关闭图标）
-    footer: 稍后回答、发送（主按钮）；没选答案时发送不可用
+    footer: 稍后回答、发送（主按钮）；没选答案时发送不可用；这两个按钮不带快捷键标记
     free-text: 问题允许自由回答，或没有选项时，按钮行左侧出现一个单行文本框
 
 states:

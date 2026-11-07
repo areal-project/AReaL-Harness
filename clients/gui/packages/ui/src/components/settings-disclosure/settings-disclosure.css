@@ -23,7 +23,7 @@
 }
 .settings-disclosure-action {
   flex-shrink: 0;
-  padding: 2px 8px;
+  padding: calc(var(--spacing-inline) / 4) var(--spacing-inline);
   border-radius: var(--radius-button);
   background: var(--color-button-surface);
   color: var(--color-foreground);

@@ -30,7 +30,7 @@ variants:
   layout:
     default: 编辑区在上，工具栏在下
     compact: 窄容器与侧边对话，编辑区与工具栏同一行；容器变窄时工具栏换到编辑区下方
-    decision: 有待决卡片时压成一行：添加按钮在左，编辑区单行（最多四行），右侧上下文占用、模型、强度与主按钮；不显示权限入口；上下内边距 spacing-inline 的四分之三，左 composer-inset，右 spacing-inline，控件间隔 spacing-inline 的一半；编辑区左侧让出添加按钮的位置（spacing-control 加 spacing-inline 的四分之三）；文字 text-ui-base、行高 line-height-ui；草稿不丢
+    decision: 有待决卡片时压成一行：添加按钮在左，编辑区单行（最多四行），右侧上下文占用、模型、强度与主按钮；不显示权限入口；上下内边距 spacing-inline 的四分之三，左 composer-inset，右 spacing-inline，控件间隔 spacing-inline 的一半；工具栏入口仍按 toolbar-height（含透明描边），所以整行高 = toolbar-height 加上下内边距；添加按钮绝对定位，左缘距外框 composer-inset 减 spacing-inline 的四分之一，下缘距外框 spacing-inline 的四分之三；文字起点距外框左缘 composer-inset 加 spacing-inline 的一半，再加 spacing-control 与 spacing-inline 的四分之三；文字 text-ui-base、行高 line-height-ui；草稿不丢
 
 states:
   - empty: 占位文字说明输入目标；主按钮不可用并说明原因
