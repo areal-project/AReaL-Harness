@@ -1,4 +1,4 @@
-// R-CHECK-024：界面只说用户能认出的事。存量写进基线，只减不增。
+// 界面只说用户能认出的事：用户文案不外露内部用语和状态。存量写进基线，只减不增。
 //   node scripts/ui-honesty-lint.mjs           检查：出现基线外的新问题就失败
 //   node scripts/ui-honesty-lint.mjs --write   重写基线（只允许删掉已修好的条目）
 import assert from "node:assert/strict";
@@ -155,7 +155,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const added = compareUiHonesty(findings, previous);
     for (const finding of added)
       console.error(`${finding.file}: ${finding.kind}: ${finding.snippet}`);
-    assert.equal(added.length, 0, "new user-facing internal state or copy (R-CHECK-024)");
+    assert.equal(added.length, 0, "new user-facing internal state or copy");
     const counts = Object.fromEntries(
       [...new Set(findings.map((f) => f.kind))].map((kind) => [
         kind,
