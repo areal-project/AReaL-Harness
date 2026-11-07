@@ -8,7 +8,7 @@ layout:
   material: overlay
   layer: layer-popover
   position: 默认在触发按钮下方、与按钮左缘对齐，间隔 spacing-inline 的四分之一；靠近窗口边缘时自动翻到另一侧，离窗口边缘至少 spacing-inline
-  submenu: 子菜单出现在子菜单项右侧，左缘距该项右缘 spacing-inline 的四分之一，顶端与该项顶端对齐
+  submenu: 子菜单出现在子菜单项右侧，左缘距该项右缘 spacing-inline 的四分之一，子菜单浮层的顶边（不是它的第一项）与该项顶边对齐
 
 anatomy:
   - part: popup

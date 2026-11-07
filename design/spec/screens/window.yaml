@@ -16,6 +16,7 @@ regions:
     layout: 顶栏以下、应用导航栏以右，到窗口右下的留白为止；圆角 radius-panel，投影 shadow-page-surface；左段是侧栏的导航内容（color-navigation-background），右段是主区（color-background），两段之间没有分隔线
   - id: A
     name: 应用导航栏
+    layout: 当前入口在设置相关状态（settings*）为“设置”，其余所有 window 状态为“首页”
     contains: [navigation-sidebar.application-rail]
   - id: B
     name: 侧栏
