@@ -22,7 +22,7 @@ Returning is navigation. It preserves the project, task, unsent draft, and avail
 
 ## Snapshot and component status
 
-The plugin center reads the Rust Store through the packaged CLI before starting project Core. User reads need no selected project. Project reads take the workspace from Main. The page shows the read scope, revision, and observation time. Offline reads do not claim runtime readiness.
+The plugin center reads the Rust Store through the packaged CLI before starting project Core. User reads need no selected project. Project reads take the workspace from Main. Offline reads do not claim runtime readiness.
 
 The read hook owns catalog and detail generations. A pure presentation chooses one primary status and next step while preserving MCP, authentication, and Hook facts. Optional Hook review does not block installed Skills. Both entry points share resource navigation and the same detail. An unresolved receipt retains its original identity while users browse another plugin or project.
 

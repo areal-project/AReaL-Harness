@@ -2,12 +2,18 @@ import { SnapShotSettings } from "../snapshots/SnapShotSettings.js";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
-import type { Action, PlatformServices } from "../services.js";
+import type {
+  Action,
+  ManagementRequest,
+  ManagementResponse,
+  PlatformServices,
+} from "../services.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
 import { CloudSettings } from "../settings/CloudSettings.js";
 import { ComputerSettings } from "../settings/ComputerSettings.js";
 import { CreationRecoverySettings } from "../settings/CreationRecoverySettings.js";
 import { CoreCapabilitiesSettings } from "../settings/CoreCapabilitiesSettings.js";
+import { PluginDoctorSummary } from "../settings/PluginDoctorSummary.js";
 import { AppearanceSettings, GeneralSettings } from "../settings/DisplaySettings.js";
 import { HooksSettings } from "../settings/HooksSettings.js";
 import { MobileSettings } from "../settings/MobileSettings.js";
@@ -205,6 +211,11 @@ export function WorkbenchSettings({
           <CoreCapabilitiesSettings
             projects={snapshot.projects}
             connected={snapshot.connection?.state === "ready"}
+          />
+          <PluginDoctorSummary
+            command={<P extends ManagementRequest>(request: P) =>
+              resourceAction("manage", request) as Promise<ManagementResponse<P>>
+            }
           />
         </>
       ) : settingsTab === "用量" ? (

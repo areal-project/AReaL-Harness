@@ -990,6 +990,13 @@
     "requires": []
   },
   {
+    "script": "test:ui-honesty",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["design"],
+    "requires": []
+  },
+  {
     "script": "test:cloud-lifecycle",
     "layer": "e2e",
     "platforms": ["darwin", "linux", "win32"],

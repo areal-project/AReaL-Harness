@@ -86,7 +86,10 @@ export function useSessionNavigation(
         }),
     [snapshot.projects, library],
   );
-  const summaries = useMemo(() => conversationCatalog(projects, library), [projects, library]);
+  const summaries = useMemo(
+    () => conversationCatalog(projects, library, { projectId, threadId }),
+    [projects, library, projectId, threadId],
+  );
   // Sidebar visibility must not change the owner of an explicitly opened resource.
   const logicalProject = noProject
     ? undefined

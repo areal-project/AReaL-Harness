@@ -172,6 +172,7 @@
     "lint": "vp lint",
     "test:design-rules": "node --test scripts/design-rules.test.mjs",
     "test:copy-budget": "node scripts/copy-budget.mjs",
+    "test:ui-honesty": "node scripts/ui-honesty-lint.mjs",
     "measure:gui": "node scripts/gui-performance.mjs",
     "contracts:check": "python3 scripts/generate-management-contracts.py --check",
     "test:cloud-contracts": "node --test scripts/cloud-*.test.cjs",
