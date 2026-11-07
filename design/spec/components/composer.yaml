@@ -30,7 +30,7 @@ variants:
   layout:
     default: 编辑区在上，工具栏在下
     compact: 窄容器与侧边对话，编辑区与工具栏同一行；容器变窄时工具栏换到编辑区下方
-    decision: 有待处理的审批或提问时压成一行，只保留添加、模型与主按钮，草稿不丢
+    decision: 有待决卡片时压成一行：添加按钮在左，编辑区单行（最多四行），右侧上下文占用、模型、强度与主按钮；不显示权限入口；上下内边距 spacing-inline 的四分之三，左 composer-inset，右 spacing-inline，控件间隔 spacing-inline 的一半；编辑区左侧让出添加按钮的位置（spacing-control 加 spacing-inline 的四分之三）；文字 text-ui-base、行高 line-height-ui；草稿不丢
 
 states:
   - empty: 占位文字说明输入目标；主按钮不可用并说明原因
@@ -112,6 +112,7 @@ accessible-names:
   model-menu: 选择模型
   effort-menu: 选择思考强度
   placeholder: 描述要做的事，@ 引用文件，/ 查看命令（颜色 foreground-subtle，字号与行高同正文）
+  placeholder-decision: 可以继续输入，消息会排在这一轮之后发送
 
 references:
   - state: home.empty

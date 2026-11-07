@@ -13,6 +13,8 @@ const SHOTS = [
   "thread.running",
   "thread.queued",
   "thread.stopped",
+  "thread.approval",
+  "thread.question",
 ].flatMap((state) => ["light", "dark"].map((theme) => ({ state, theme })));
 // 本仓库防回归用 0.001；交接演练首轮另按 --threshold 0.01 计分。
 const THRESHOLD = process.argv.includes("--threshold")
@@ -67,7 +69,10 @@ async function difference(a, b) {
       const y = pixels(right);
       let changed = 0;
       for (let i = 0; i < x.length; i += 4)
-        if (Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]) > 48)
+        if (
+          Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]) >
+          48
+        )
           changed += 1;
       return changed / (x.length / 4);
     },

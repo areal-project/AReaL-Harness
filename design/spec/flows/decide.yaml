@@ -1,0 +1,49 @@
+id: decide
+name: 审批与回答
+status: draft
+screens: [thread]
+components: [decision-card, composer]
+
+initial: thread.approval
+
+states:
+  thread.approval:
+    see: 回合过程标题为“等待你批准”；输入框上方一张审批卡，显示理由、工作目录与命令；输入框为 decision 布局，占位文字提示消息会排到这一轮之后
+  thread.question:
+    see: 输入框上方一张提问卡，显示问题与编号选项；发送不可用直到选中一项
+  thread.question-deferred:
+    see: 提问卡收起为输入框上方一个“问题等待回答”按钮；输入框仍是 decision 布局
+  thread.running:
+    see: 卡片消失；回合过程末尾追加示例后台给出的下一步；主按钮仍是“停止”（普通对话为“暂停执行”）
+
+transitions:
+  - from: thread.approval
+    on: [click 允许一次, press Enter]
+    to: thread.running
+    note: 追加 agent.decisions.allow
+  - from: thread.approval
+    on: [click 拒绝, press Escape]
+    to: thread.running
+    note: 追加 agent.decisions.deny
+  - from: thread.question
+    on: 选中一项后 click 发送
+    to: thread.running
+    note: 追加 agent.decisions.answer，{answer} 换成所选选项
+  - from: thread.question
+    on: [click 稍后回答, click 收起问题, press Escape]
+    to: thread.question-deferred
+  - from: thread.question-deferred
+    on: click 展开待回答问题
+    to: thread.question
+
+invariants:
+  - 处理待决卡片不打断回合，也不清空输入框里的草稿
+  - 同一时刻只有一张待决卡片
+  - 提交未确认前按钮保持不可用，不重复提交
+
+# 可执行的验收在 conformance/decide.mjs。
+conformance:
+  approval-allow-continues: 点“允许一次”后卡片消失，过程末尾出现允许后的下一步，主按钮仍是停止
+  approval-deny-continues: 点“拒绝”后卡片消失，过程末尾出现拒绝后的下一步
+  question-answer-continues: 未选时发送不可用；选中第二项并发送后卡片消失，过程末尾出现带所选答案的下一步
+  question-defer-and-reopen: 点“稍后回答”后卡片收起，点“展开待回答问题”后恢复

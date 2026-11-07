@@ -46,7 +46,7 @@ parts:
     actions: 复制、发送时间、编辑；鼠标悬停或键盘聚焦到这条消息时才出现，出现与消失不改变布局
   turn-process:
     heading:
-      text: 本轮过程；早于回合机制的历史消息写“早前消息与活动”
+      text: 本轮过程；等待审批时写“等待你批准”；早于回合机制的历史消息写“早前消息与活动”
       text-size: text-conversation
       color: status-settled，悬停时 foreground
       icon: disclosure-chevron，收起时朝右，展开时朝下

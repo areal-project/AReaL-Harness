@@ -4,7 +4,7 @@
 .ask-user-navigation {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }
@@ -22,20 +22,20 @@
   margin: 0;
   min-width: 0;
   display: grid;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .ask-user-option {
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--spacing-inline);
   padding: var(--spacing-inline);
   margin-inline: 0;
   min-height: var(--spacing-control);
   border-radius: var(--radius-control);
   cursor: var(--interactive-cursor, pointer);
   font-size: var(--text-ui-base);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: var(--line-height-ui);
   overflow-wrap: anywhere;
 }
@@ -55,12 +55,12 @@
   opacity: 0;
 }
 .ask-user-number {
-  flex: 0 0 20px;
-  width: 20px;
-  height: 20px;
+  flex: 0 0 var(--line-height-ui);
+  width: var(--line-height-ui);
+  height: var(--line-height-ui);
   display: grid;
   place-items: center;
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-inline);
   background: var(--color-hover);
   color: var(--color-foreground-subtle);
@@ -75,7 +75,7 @@
 .ask-user-custom {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--spacing-inline);
   flex: 1;
   min-width: 0;
   color: var(--color-foreground-subtle);
@@ -83,13 +83,13 @@
 .ask-user-custom textarea {
   flex: 1;
   min-width: 0;
-  min-height: 28px;
+  min-height: var(--spacing-control);
   max-height: 5lh;
   field-sizing: content;
   border: 0;
   border-radius: var(--radius-micro);
   background: transparent;
-  padding: 4px 0;
+  padding: calc(var(--spacing-inline) / 2) 0;
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
   box-shadow: none;
@@ -104,18 +104,18 @@
   color: var(--color-foreground-subtle);
 }
 .ask-user-options:disabled {
-  opacity: 0.6;
+  opacity: var(--opacity-disabled);
 }
 .decision-deferred {
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-inline);
   border-radius: var(--radius-panel);
   font-size: var(--text-ui-caption);
 }
 .decision-deferred span {
-  margin-left: 12px;
+  margin-left: calc(var(--spacing-inline) * 3 / 2);
 }
 .ask-user-card .decision-card-footer {
-  margin-top: 16px;
+  margin-top: var(--spacing-field);
 }
 @media (max-width: 600px) {
   .ask-user-custom {
@@ -138,5 +138,5 @@
 
 .ask-user-number,
 .ask-user-check {
-  margin-top: 2px;
+  margin-top: calc(var(--spacing-inline) / 4);
 }

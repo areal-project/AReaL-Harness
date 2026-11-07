@@ -49,7 +49,33 @@ function turn(source: FixtureTurn, index: number): Data {
   };
 }
 
-function project(turns: Data[], queue: string[]): Data {
+type Decision = {
+  kind: string;
+  title: string;
+  source?: string;
+  target?: string;
+  command?: string;
+  options?: string[];
+};
+
+function interaction(decision: Decision): Data {
+  const base = { status: "pending", threadId, requestId: "spec-request" };
+  return decision.kind === "approval"
+    ? {
+        ...base,
+        kind: "approval",
+        tool: "shell",
+        reason: decision.title,
+        effectiveArguments: { command: decision.command, cwd: decision.target },
+      }
+    : {
+        ...base,
+        kind: "userInput",
+        questions: [{ id: "spec-question", title: decision.title, options: decision.options }],
+      };
+}
+
+function project(turns: Data[], queue: string[], decision?: Decision): Data {
   const thread = { id: threadId, title: "", turns };
   return {
     id: projectId,
@@ -80,7 +106,7 @@ function project(turns: Data[], queue: string[]): Data {
     state: {
       connected: true,
       threads: { [threadId]: thread },
-      interactions: {},
+      interactions: { [threadId]: { data: decision ? [interaction(decision)] : [] } },
       queues: {
         [threadId]: {
           revision: 0,
@@ -111,6 +137,9 @@ export function SpecFixture() {
   const [opened, setOpened] = useState(start.screen === "thread");
   const [turns, setTurns] = useState<Data[]>(() => (initial?.turns ?? []).map(turn));
   const [queue, setQueue] = useState<string[]>(() => ("queue" in start ? start.queue : []));
+  const [decision, setDecision] = useState<Decision | undefined>(() =>
+    initial && "decision" in initial ? (initial.decision as Decision) : undefined,
+  );
   useAppearance(dark);
   useLayoutEffect(() => {
     const root = document.documentElement;
@@ -119,7 +148,7 @@ export function SpecFixture() {
     root.classList.toggle("theme-areal-dark", dark);
     root.style.colorScheme = dark ? "dark" : "light";
   }, [dark]);
-  const data = useMemo(() => project(turns, queue), [turns, queue]);
+  const data = useMemo(() => project(turns, queue, decision), [turns, queue, decision]);
   const thread = data.state.threads[threadId];
   const action = (async (name: string, request: Data) => {
     const reject = (fixture.agent.rejects as Record<string, string>)[request?.text?.trim()];
@@ -142,6 +171,34 @@ export function SpecFixture() {
         ),
       ]);
       return { threadId };
+    }
+    if (name === "respond") {
+      const { allow, deny, answer } = fixture.agent.decisions;
+      const text = request.answers
+        ? answer.replace("{answer}", String(Object.values(request.answers)[0]))
+        : request.decision === "deny"
+          ? deny
+          : allow;
+      setDecision(undefined);
+      setTurns((items) =>
+        items.map((item) =>
+          item.status === "inProgress"
+            ? {
+                ...item,
+                items: [
+                  ...item.items,
+                  {
+                    id: `step-${item.items.length}`,
+                    type: "agentMessage",
+                    phase: "commentary",
+                    text,
+                  },
+                ],
+              }
+            : item,
+        ),
+      );
+      return {};
     }
     if (name === "stop") {
       setTurns((items) =>

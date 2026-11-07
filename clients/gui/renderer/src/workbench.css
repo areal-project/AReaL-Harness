@@ -17,7 +17,8 @@ button:disabled {
   cursor: default;
   opacity: var(--opacity-disabled);
 }
-:focus-visible {
+/* 程序移入焦点的标题（tabindex=-1）只为读屏定位，不画焦点环。 */
+:focus-visible:not([tabindex="-1"]) {
   outline: var(--focus-width) solid var(--color-brand);
   outline-offset: var(--focus-offset);
 }

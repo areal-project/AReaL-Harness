@@ -52,6 +52,46 @@
           ]
         }
       ]
+    },
+    "thread-approval": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "running",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": [
+            "读取 src/math.ts",
+            "修改 src/math.ts"
+          ]
+        }
+      ],
+      "decision": {
+        "kind": "approval",
+        "source": "终端",
+        "title": "运行测试确认修改",
+        "target": "/示例项目",
+        "command": "pnpm test"
+      }
+    },
+    "thread-question": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "running",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": [
+            "读取 src/math.ts"
+          ]
+        }
+      ],
+      "decision": {
+        "kind": "question",
+        "title": "clamp 放在哪个文件？",
+        "options": [
+          "放进 src/math.ts",
+          "新建 src/clamp.ts"
+        ]
+      }
     }
   },
   "states": {
@@ -85,6 +125,16 @@
       "screen": "thread",
       "conversation": "thread-stopped",
       "draft": ""
+    },
+    "thread.approval": {
+      "screen": "thread",
+      "conversation": "thread-approval",
+      "draft": ""
+    },
+    "thread.question": {
+      "screen": "thread",
+      "conversation": "thread-question",
+      "draft": ""
     }
   },
   "agent": {
@@ -92,6 +142,12 @@
     "firstStep": "读取相关文件",
     "rejects": {
       "这条会被拒绝": "示例后台拒绝了这次提交，草稿已保留。"
+    },
+    "decisions": {
+      "$comment": "用户处理完待决卡片后，卡片消失，回合继续运行，过程末尾追加一步；{answer} 换成用户的回答。",
+      "allow": "运行 pnpm test",
+      "deny": "未获批准，跳过运行测试",
+      "answer": "按你的选择继续：{answer}"
     }
   }
 }

@@ -1,7 +1,10 @@
 // 用法：node design/spec/conformance/run.mjs --url <入口 URL> [--browser <chromium 路径>]
 // 需要能从当前目录解析到 playwright 或 playwright-core；断言是下面的最小实现，不依赖测试框架。
 import { createRequire } from "node:module";
-import { checks } from "./send-run-stop.mjs";
+import { checks as decide } from "./decide.mjs";
+import { checks as sendRunStop } from "./send-run-stop.mjs";
+
+const checks = [...sendRunStop, ...decide];
 
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const url = process.argv.includes("--url") ? arg("--url") : undefined;
@@ -35,8 +38,11 @@ const expect = (locator) => ({
   toBeVisible: () => until(`${locator} visible`, () => locator.first().isVisible()),
   toBeEnabled: () => until(`${locator} enabled`, () => locator.first().isEnabled()),
   toBeDisabled: () => until(`${locator} disabled`, () => locator.first().isDisabled()),
+  toBeHidden: () => until(`${locator} hidden`, async () => !(await locator.first().isVisible())),
   toContainText: (text) =>
-    until(`${locator} to contain "${text}"`, async () => (await locator.first().textContent()).includes(text)),
+    until(`${locator} to contain "${text}"`, async () =>
+      (await locator.first().textContent()).includes(text),
+    ),
   // 输入框可以是 textarea，也可以是可编辑区域；两种都按可见内容比较。
   toHaveText: (text) =>
     until(`${locator} to have "${text}"`, async () => {
@@ -53,7 +59,10 @@ const browser = await playwright.chromium.launch({
 });
 let passed = 0;
 for (const check of checks) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "zh-CN" });
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+    locale: "zh-CN",
+  });
   const open = async (state, theme = "light") => {
     const page = await context.newPage();
     const target = new URL(url);

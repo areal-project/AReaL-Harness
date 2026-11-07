@@ -1041,7 +1041,7 @@ export function Composer({
                 ? "描述目标，明确可衡量的结果"
                 : planActive
                   ? "描述任务，生成计划…"
-                  : approvals.length
+                  : approvals.length || questions.length
                     ? t("chat.composer.approvalPlaceholder")
                     : t("chat.composer.placeholder")
           }

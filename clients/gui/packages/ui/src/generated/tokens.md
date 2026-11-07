@@ -200,6 +200,7 @@
 | `--thread-summary-max-height` | `calc(100svh - var(--height-toolbar, 46px) - 24px)` | 顶栏任务资源与上下文摘要弹窗（Pin Summary）的最大可用高度 |
 | `--thread-sticky-header-top` | `0px` | 对话时间线内展开态回合过程摘要头（TurnProgress）的滚动吸顶偏移 |
 | `--font-weight-toolbar` | `430` | 输入框工具栏入口文字（模型、强度）的字重 |
+| `--font-weight-medium` | `500` | 卡片标题与选项文字的中等字重 |
 
 ## 派生参数与来源
 

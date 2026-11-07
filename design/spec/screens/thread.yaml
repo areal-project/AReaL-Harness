@@ -40,6 +40,8 @@ states:
   - done: 回合结束，过程收起，最终回答完整可见
   - queued: 运行中，输入框上方有一条“待发送消息”
   - stopped: 回合被暂停，末尾一行写明，已产生内容保留
+  - approval: 运行中，输入框上方一张审批卡，见 decision-card
+  - question: 运行中，输入框上方一张提问卡，见 decision-card
 
 references:
   - state: idle
@@ -49,4 +51,8 @@ references:
   - state: queued
     themes: [light, dark]
   - state: stopped
+    themes: [light, dark]
+  - state: approval
+    themes: [light, dark]
+  - state: question
     themes: [light, dark]
