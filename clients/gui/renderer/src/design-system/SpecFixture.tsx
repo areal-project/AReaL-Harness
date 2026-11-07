@@ -139,6 +139,7 @@ const OVERLAYS: Record<string, Step[]> = {
   ],
   "send-tooltip": [{ name: "发送", how: "hover" }],
   "theme-select": [{ name: "界面主题", how: "press" }],
+  "panel-add-menu": [{ name: "打开侧边面板标签页", how: "press" }],
 };
 
 async function openOverlay(steps: Step[], cancelled: () => boolean) {
@@ -402,6 +403,7 @@ export function SpecFixture() {
       search={"search" in start ? start.search : undefined}
       rail={"rail" in start ? start.rail : false}
       settings={"settings" in start ? start.settings : undefined}
+      panel={"panel" in start ? (start.panel as never) : undefined}
       action={action}
     >
       <div className="workspace-content">{column}</div>

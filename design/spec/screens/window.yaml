@@ -26,7 +26,7 @@ regions:
     layout: 在顶栏右段；左 spacing-field、右 spacing-inline，元素间隔 spacing-inline
     contains:
       - title: folder 图标（icon-size-control，foreground-subtle）加侧栏里当前对话的标题（text-ui-base，font-weight-medium，行高 line-height-ui，foreground，单行省略）；在顶栏内垂直居中
-      - side-panel: 最右一个 spacing-control 见方的按钮，图标 side-panel，颜色 foreground-subtle，读屏名“展开侧边面板”
+      - side-panel: 最右一个 spacing-control 见方的按钮，图标 side-panel，颜色 foreground-subtle，读屏名“展开侧边面板”；面板打开期间底色 color-selected、图标 foreground
       - window-controls: 侧栏收起时，后退、前进、展开侧栏三个按钮作为一组移到标题最前；组内仍按 window-controls 的间隔（spacing-inline 的一半），组与标题之间才是 spacing-inline
   - id: main
     name: 主区
@@ -42,6 +42,10 @@ regions:
     name: 设置
     layout: 点应用导航栏底部的“设置”打开：B 换成 settings-navigation，主区换成 settings-page，会话标题栏只留空顶栏；应用导航栏里“设置”成为当前入口（底色 color-selected），首页图标换回空心；“返回应用”回到原样
     contains: [settings-navigation, settings-page]
+  - id: panel
+    name: 右侧面板
+    layout: 点会话标题栏的“展开侧边面板”打开，排在主区右侧、从窗口顶边到底；会话标题栏随对话区一起变窄，按钮底色 color-selected；完整视图时铺满主区、会话标题栏隐藏
+    contains: [side-panel]
 
 fixtures: [send-run-stop]
 
@@ -58,6 +62,10 @@ states:
   - settings-appearance: 设置打开，当前页“外观”
   - settings-search: 设置打开，当前页“常规”，搜索框里是“字号”（未聚焦），列表只剩个人组的“外观”，右端写“字号”
   - settings-select: 设置打开，当前页“外观”，“界面主题”下拉用鼠标刚打开，当前值“跟随系统”打勾并高亮
+  - panel: 同 sidebar，右侧面板打开，没有标签，显示入口列表
+  - panel-tabs: 面板打开，标签“审查”“文件”，“文件”为当前标签
+  - panel-add-menu: 同 panel-tabs，新增标签菜单用鼠标刚打开，没有高亮项
+  - panel-full: 同 panel-tabs 但“审查”为当前标签，面板铺满主区
 
 references:
   - state: sidebar
@@ -83,4 +91,12 @@ references:
   - state: settings-search
     themes: [light, dark]
   - state: settings-select
+    themes: [light, dark]
+  - state: panel
+    themes: [light, dark]
+  - state: panel-tabs
+    themes: [light, dark]
+  - state: panel-add-menu
+    themes: [light, dark]
+  - state: panel-full
     themes: [light, dark]

@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react";
 import fixture from "../../../../../design/spec/fixtures/send-run-stop.json";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
-import { WorkbenchShell, WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
+import { SidePane } from "../app-shell/SidePane.js";
+import { WorkSurface, WorkbenchShell, WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { ProjectFolderIcon, SidePanelIcon } from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { Home, ScheduledIcon, Settings } from "../interfaceIcons.js";
@@ -61,6 +62,7 @@ export function SpecNavigation({
   search,
   rail = false,
   settings,
+  panel: initialPanel,
   action,
   children,
 }: {
@@ -68,6 +70,7 @@ export function SpecNavigation({
   search?: string;
   rail?: boolean;
   settings?: string;
+  panel?: { tabs: string[]; active: string; view?: "split" | "panel" | "conversation" };
   action: Action;
   children: ReactNode;
 }) {
@@ -93,6 +96,23 @@ export function SpecNavigation({
     return { projectId: thread?.project ?? "", threadId: thread?.thread.id ?? "" };
   });
   const [settingsTab, setSettingsTab] = useState(settings);
+  const [panelTabs, setPanelTabs] = useState(initialPanel?.tabs ?? []);
+  const [panel, setPanel] = useState(initialPanel?.active ?? "");
+  const [workspaceView, setWorkspaceView] = useState<"split" | "panel" | "conversation">(
+    initialPanel?.view ?? "split",
+  );
+  const [lastPanel, setLastPanel] = useState(initialPanel?.active ?? "");
+  const selectPanel = (name: string) => {
+    setPanel(name);
+    if (name) setLastPanel(name);
+    if (name && name !== "功能")
+      setPanelTabs((tabs) => (tabs.includes(name) ? tabs : [...tabs, name]));
+  };
+  const hidePanel = () => {
+    setWorkspaceView("split");
+    setPanel("");
+  };
+  const panelOpen = Boolean(panel) && !settingsTab;
   const [titles, setTitles] = useState<Record<string, string>>({});
   const currentTitle =
     titles[current.threadId] ??
@@ -234,8 +254,11 @@ export function SpecNavigation({
           onOpenProjectTasks={() => {}}
           closePanels={() => {}}
         />
-        <main className={`work-area ${settingsTab ? "settings-open" : ""}`}>
-          <div className="work-surface">
+        <main
+          className={`work-area ${settingsTab ? "settings-open" : ""}`}
+          data-workspace-view={panelOpen && workspaceView !== "split" ? workspaceView : undefined}
+        >
+          <WorkSurface panelOpen={panelOpen} split={workspaceView === "split"} reducedMotion>
             {settingsTab ? (
               <>
                 <WorkspaceHeader>{null}</WorkspaceHeader>
@@ -252,8 +275,18 @@ export function SpecNavigation({
                   <div className="header-tools">
                     <Button
                       unstyled
-                      className="icon-button"
+                      className={`icon-button ${panel ? "active" : ""}`}
                       aria-label={t("common.navigation.expandPanel")}
+                      aria-pressed={Boolean(panel)}
+                      onClick={() =>
+                        panel
+                          ? hidePanel()
+                          : selectPanel(
+                              lastPanel === "功能" || panelTabs.includes(lastPanel)
+                                ? lastPanel
+                                : (panelTabs.at(-1) ?? "功能"),
+                            )
+                      }
                     >
                       <SidePanelIcon />
                     </Button>
@@ -262,7 +295,26 @@ export function SpecNavigation({
                 {children}
               </>
             )}
-          </div>
+          </WorkSurface>
+          {!settingsTab && (
+            <SidePane
+              workspaceKey="spec"
+              ownerTaskId={current.threadId}
+              active={panel}
+              names={panelTabs}
+              workspaceView={{
+                mode: workspaceView,
+                title: currentTitle ?? "",
+                onChange: (mode) => setWorkspaceView(mode),
+              }}
+              dirtyFiles={{}}
+              canClose={() => true}
+              onSelect={selectPanel}
+              onChange={setPanelTabs}
+              onHide={hidePanel}
+              render={() => null}
+            />
+          )}
         </main>
       </WorkbenchShell>
     </UnsavedChangesProvider>

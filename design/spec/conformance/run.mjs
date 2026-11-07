@@ -6,8 +6,9 @@ import { checks as navigate } from "./navigate.mjs";
 import { checks as overlays } from "./overlays.mjs";
 import { checks as sendRunStop } from "./send-run-stop.mjs";
 import { checks as settings } from "./settings.mjs";
+import { checks as panel } from "./panel.mjs";
 
-const checks = [...sendRunStop, ...decide, ...navigate, ...overlays, ...settings];
+const checks = [...sendRunStop, ...decide, ...navigate, ...overlays, ...settings, ...panel];
 
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const url = process.argv.includes("--url") ? arg("--url") : undefined;
@@ -48,6 +49,8 @@ const expect = (locator) => ({
     until(`${locator} [${name}="${value}"]`, async () =>
       (await locator.first().getAttribute(name)) === value,
     ),
+  toHaveCount: (count) =>
+    until(`${locator} count ${count}`, async () => (await locator.count()) === count),
   toContainText: (text) =>
     until(`${locator} to contain "${text}"`, async () =>
       (await locator.first().textContent()).includes(text),

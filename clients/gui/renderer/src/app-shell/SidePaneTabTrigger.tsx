@@ -4,8 +4,21 @@ import { CloseIcon as XIcon, SideChatIcon } from "../interfaceIcons.js";
 import { useRef, type CSSProperties } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { BoxesIcon, TargetIcon, ListChecksIcon, FileTextIcon, ShieldCheckIcon, CalendarClockIcon } from "lucide-react";
-import { BrowserPanelIcon, DocumentPanelIcon, FilesPanelIcon, ReviewPanelIcon, TerminalPanelIcon } from "./panelIcons.js";
+import {
+  BoxesIcon,
+  TargetIcon,
+  ListChecksIcon,
+  FileTextIcon,
+  ShieldCheckIcon,
+  CalendarClockIcon,
+} from "lucide-react";
+import {
+  BrowserPanelIcon,
+  DocumentPanelIcon,
+  FilesPanelIcon,
+  ReviewPanelIcon,
+  TerminalPanelIcon,
+} from "./panelIcons.js";
 import { cn } from "../components/lib/utils.js";
 import {
   ContextMenu,
@@ -25,10 +38,21 @@ export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
   if (tab.id.startsWith("file:")) return <DocumentPanelIcon className="size-4 shrink-0" />;
   const Icon =
     (
-      { 旁路讨论: SideChatIcon, 任务资源: TaskSummaryIcon, 文件: FilesPanelIcon, 改动: ReviewPanelIcon, 预览: BrowserPanelIcon, 终端: TerminalPanelIcon, 进程: TerminalPanelIcon, 编辑目标: TargetIcon, 执行计划: ListChecksIcon, 上下文: FileTextIcon, 已保存授权: ShieldCheckIcon, 自动化: CalendarClockIcon, CalendarClockIcon } as Record<
-        string,
-        typeof FilesPanelIcon
-      >
+      {
+        旁路讨论: SideChatIcon,
+        任务资源: TaskSummaryIcon,
+        文件: FilesPanelIcon,
+        改动: ReviewPanelIcon,
+        预览: BrowserPanelIcon,
+        终端: TerminalPanelIcon,
+        进程: TerminalPanelIcon,
+        编辑目标: TargetIcon,
+        执行计划: ListChecksIcon,
+        上下文: FileTextIcon,
+        已保存授权: ShieldCheckIcon,
+        自动化: CalendarClockIcon,
+        CalendarClockIcon,
+      } as Record<string, typeof FilesPanelIcon>
     )[tab.id] ?? BoxesIcon;
   return <Icon className="size-4 shrink-0" />;
 }
@@ -101,7 +125,7 @@ export function SortableSidePaneTabTrigger({
             data-active={isActive ? "" : undefined}
             style={style}
             className={cn(
-              "group relative inline-flex h-8 min-w-15 max-w-[238px] flex-[1_1_0] items-center rounded-navigation text-ui-caption",
+              "group relative inline-flex h-(--spacing-control-lg) min-w-[calc(var(--spacing-control-lg)*2)] max-w-[calc(var(--reading-width)*5/16-var(--spacing-inline)/4)] flex-[1_1_0] items-center rounded-navigation text-ui-caption",
               isActive
                 ? "bg-selected text-foreground"
                 : "text-foreground-subtle hover:bg-hover hover:text-foreground",
@@ -125,7 +149,7 @@ export function SortableSidePaneTabTrigger({
                     listeners?.onKeyDown?.(event);
                   }
                 }}
-                className="h-full min-w-0 flex-1 justify-start gap-1 border-0 bg-transparent pl-2.5 pr-[27px] py-1 text-ui-caption text-inherit data-active:bg-transparent after:hidden"
+                className="h-full min-w-0 flex-1 justify-start gap-[calc(var(--spacing-inline)/2)] border-0 bg-transparent py-0 pl-[calc(var(--spacing-inline)*1.25)] pr-[calc(var(--spacing-control-xs)+var(--spacing-inline))] text-ui-caption text-inherit data-active:bg-transparent after:hidden"
                 onPointerDown={(event) => {
                   // A new gesture must not inherit the previous drag's click guard.
                   wasDraggingRef.current = false;
@@ -151,7 +175,9 @@ export function SortableSidePaneTabTrigger({
                 }}
               >
                 <SidePaneTabIcon tab={tab} />
-                <span className={cn("min-w-0 flex-1 truncate text-start", isPreview && "italic")}>{title}</span>
+                <span className={cn("min-w-0 flex-1 truncate text-start", isPreview && "italic")}>
+                  {title}
+                </span>
               </TabsTrigger>
             </SidePaneTabTitleTooltip>
             {/* The pointer close affordance is outside the tab's accessible name.
@@ -164,7 +190,7 @@ export function SortableSidePaneTabTrigger({
               aria-hidden="true"
               tabIndex={-1}
               className={cn(
-                "absolute right-[7px] top-1/2 -translate-y-1/2 rounded-control",
+                "absolute right-[calc(var(--spacing-inline)*3/4)] top-1/2 -translate-y-1/2",
                 !isActive &&
                   "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
               )}
@@ -175,13 +201,15 @@ export function SortableSidePaneTabTrigger({
                 onCloseTab(tab.id);
               }}
             >
-              <XIcon className="size-3.5" />
+              <XIcon className="size-[calc(var(--icon-size-control)*7/8)]" />
             </Button>
           </div>
         }
       />
       <ContextMenuContent className="w-44">
-        {isPreview && onKeepTab && <ContextMenuItem onClick={() => onKeepTab(tab.id)}>保留标签页</ContextMenuItem>}
+        {isPreview && onKeepTab && (
+          <ContextMenuItem onClick={() => onKeepTab(tab.id)}>保留标签页</ContextMenuItem>
+        )}
         <ContextMenuItem onClick={() => onCloseTab(tab.id)}>{closeTabMenuLabel}</ContextMenuItem>
         <ContextMenuItem disabled={!canCloseOtherTabs} onClick={() => onCloseOtherTabs(tab.id)}>
           {closeOtherTabsLabel}

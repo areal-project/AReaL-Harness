@@ -352,13 +352,13 @@
 .workspace-side-panel {
   position: relative;
   container: right-panel / inline-size;
-  min-width: 240px;
+  min-width: calc(var(--reading-width) * 5 / 16);
   max-width: 65%;
   overflow: visible;
   flex-shrink: 0;
   margin: 0;
   border: 0;
-  border-left: 1px solid var(--color-border);
+  border-left: var(--border-width-default) solid var(--color-border);
   border-radius: 0;
   background: transparent;
   box-shadow: var(--shadow-leading-panel);
@@ -404,14 +404,14 @@
   flex: 1;
   align-items: flex-start;
   justify-content: center;
-  padding: 12px;
+  padding: calc(var(--spacing-inline) * 1.5);
 }
 .side-pane-launcher-list {
   display: flex;
   width: 100%;
-  max-width: 36rem;
+  max-width: calc(var(--reading-width) * 3 / 4);
   flex-direction: column;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   margin: 0 auto;
   padding: 0;
   list-style: none;
@@ -419,17 +419,17 @@
 .side-pane-launcher-item {
   display: flex;
   width: 100%;
-  min-height: 40px;
+  min-height: calc(var(--spacing-control-lg) + var(--spacing-inline));
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: var(--spacing-inline);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 1.25);
   border: 0;
   border-radius: var(--radius-button);
   background: var(--color-surface-elevated);
   color: var(--color-foreground);
   font-size: var(--text-fixed-label);
-  font-weight: 400;
-  line-height: 24px;
+  font-weight: var(--ui-font-weight);
+  line-height: var(--line-height-ui);
   text-align: start;
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
@@ -437,8 +437,8 @@
   background: var(--color-surface-tertiary);
 }
 .side-pane-launcher-item > svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   flex-shrink: 0;
 }
 .side-pane-launcher-label {
@@ -451,13 +451,13 @@
 .side-pane-launcher-item kbd,
 .side-pane-launcher-shortcut {
   margin-inline-start: auto;
-  padding: 2px 6px;
+  padding: calc(var(--spacing-inline) / 4) calc(var(--spacing-inline) * 3 / 4);
   border-radius: var(--radius-micro);
   background: var(--color-surface-tertiary);
   color: var(--color-foreground-subtle);
   font-family: var(--font-sans);
   font-size: var(--text-fixed-caption);
-  font-weight: 430;
+  font-weight: var(--font-weight-toolbar);
   line-height: 1;
 }
 .side-pane-tabbar {
@@ -465,8 +465,8 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 8px;
+  gap: calc(var(--spacing-inline) / 4);
+  padding: 0 var(--spacing-inline);
   backdrop-filter: var(--material-chrome-filter);
 }
 .side-pane-tabs-root {
@@ -477,7 +477,7 @@
 .side-pane-tabs-scroll {
   display: flex;
   justify-content: flex-start;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
   width: 100%;
   min-width: 0;
   overflow-x: auto;
@@ -487,14 +487,14 @@
 .side-pane-tabs-scroll [role="tab"] {
   font-size: var(--text-ui-caption);
   font-weight: var(--ui-font-weight);
-  line-height: 1.42857143;
+  line-height: var(--line-height-ui-sm);
 }
 .side-pane-resize {
   position: absolute;
-  left: -8px;
+  left: calc(-1 * var(--spacing-inline));
   top: 0;
   bottom: 0;
-  width: 16px;
+  width: var(--spacing-field);
   cursor: col-resize;
   touch-action: none;
   z-index: 5;
@@ -502,10 +502,10 @@
 .side-pane-resize::after {
   content: "";
   position: absolute;
-  left: 7px;
+  left: calc(var(--spacing-inline) - var(--border-width-default));
   top: 0;
   bottom: 0;
-  width: 1px;
+  width: var(--border-width-default);
 }
 .side-pane-resize:hover::after,
 .side-pane-resize:focus-visible::after {
@@ -513,11 +513,11 @@
 }
 .side-pane-conversation-tab {
   flex: 0 1 auto;
-  min-width: 90px;
-  max-width: 238px;
-  gap: 8px;
-  padding: 4px 10px;
-  border-right: 1px solid var(--color-border);
+  min-width: calc(var(--spacing-control-lg) * 3);
+  max-width: calc(var(--reading-width) * 5 / 16 - var(--spacing-inline) / 4);
+  gap: var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) * 1.25);
+  border-right: var(--border-width-default) solid var(--color-border);
   border-radius: 0;
 }
 .work-area[data-workspace-view] > :is(.work-surface, .workspace-side-panel) {

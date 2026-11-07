@@ -215,6 +215,53 @@
       "draft": "",
       "settings": "外观",
       "overlay": "theme-select"
+    },
+    "window.panel": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": [],
+        "active": "功能"
+      }
+    },
+    "window.panel-tabs": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": [
+          "改动",
+          "文件"
+        ],
+        "active": "文件"
+      }
+    },
+    "window.panel-full": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": [
+          "改动",
+          "文件"
+        ],
+        "active": "改动",
+        "view": "panel"
+      }
+    },
+    "window.panel-add-menu": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": [
+          "改动",
+          "文件"
+        ],
+        "active": "文件"
+      },
+      "overlay": "panel-add-menu"
     }
   },
   "agent": {
