@@ -65,7 +65,7 @@ Token 源：`clients/gui/packages/ui/tokens.json`。
 
 ## 交接演练
 
-只把本目录和空项目交给新 Agent 复现一个模块，跑 `conformance/` 并对比 `references/`；未过项追溯到规格缺口并修规格，记录一次通过率。
+只把本目录交给新 Agent 复现一个模块，跑 `conformance/` 并对比 `references/`；未过项追溯到规格缺口并修规格，记录首轮通过率（截图加 `--threshold 0.01`）。
 
 ## 进度
 

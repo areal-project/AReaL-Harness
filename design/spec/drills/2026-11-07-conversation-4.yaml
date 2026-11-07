@@ -5,7 +5,7 @@ given: [规格包, Token 源及生成的变量, 图标, 空项目]
 result:
   first-pass:
     behavior: 6/6
-    screenshots: 0/12
+    screenshots: 0/12（按首轮门槛 --threshold 0.01 计为 10/12）
     difference: 首页约为门槛的二到五倍，对话约为门槛的五到十三倍；比第三次（首页最多七十倍）大幅收窄
   after-iteration:
     behavior: 6/6

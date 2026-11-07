@@ -1,4 +1,4 @@
-// 标准截图：node design/spec/conformance/references.mjs --url <入口 URL> [--write] [--out <目录>] [--browser <路径>]
+// 标准截图：node design/spec/conformance/references.mjs --url <入口 URL> [--write] [--out <目录>] [--browser <路径>] [--threshold <比例>]
 // 不带 --write 时与 references/ 逐张比较，差异像素超过阈值即失败；带 --write 时重新生成。
 // 字体和渲染环境不同会产生差异，基线只在同一环境下更新，并随 PR 说明。
 import { createRequire } from "node:module";
@@ -14,7 +14,10 @@ const SHOTS = [
   "thread.queued",
   "thread.stopped",
 ].flatMap((state) => ["light", "dark"].map((theme) => ({ state, theme })));
-const THRESHOLD = 0.001;
+// 本仓库防回归用 0.001；交接演练首轮另按 --threshold 0.01 计分。
+const THRESHOLD = process.argv.includes("--threshold")
+  ? Number(process.argv[process.argv.indexOf("--threshold") + 1])
+  : 0.001;
 
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const url = process.argv.includes("--url") ? arg("--url") : undefined;
