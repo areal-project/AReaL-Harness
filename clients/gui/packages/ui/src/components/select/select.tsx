@@ -5,7 +5,8 @@ import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "../../lib/utils.js";
-import { ChevronDownIcon, CheckIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
+import { MenuSelectedIcon as CheckIcon } from "../../icons.js";
 
 type StyledProps<T extends React.ElementType> = Omit<React.ComponentProps<T>, "className"> & {
   className?: string;
@@ -110,18 +111,18 @@ function SelectContent({
       <SelectPrimitive.Positioner
         align={align}
         alignItemWithTrigger={alignItemWithTrigger}
-        sideOffset={4}
+        sideOffset={2}
         className="z-(--layer-popover) outline-none"
       >
         <SelectPrimitive.Popup
           data-slot="select-content"
           className={cn(
-            "ui-popup min-w-(--anchor-width) max-w-(--available-width) overflow-hidden rounded-panel border border-popover-border bg-menu p-1 text-foreground shadow-overlay outline-none [app-region:no-drag]",
+            "ui-popup min-w-[max(var(--anchor-width),calc(var(--reading-width)/6))] max-w-(--available-width) overflow-hidden rounded-overlay border-0 bg-menu p-[calc(var(--spacing-inline)/2)] text-foreground shadow-menu [backdrop-filter:var(--material-overlay-filter)] outline-none [app-region:no-drag]",
             className,
           )}
           {...props}
         >
-          <SelectPrimitive.List className="flex max-h-(--available-height) flex-col gap-0.5 overflow-y-auto outline-none">
+          <SelectPrimitive.List className="flex max-h-(--available-height) flex-col gap-[calc(var(--spacing-inline)/4)] overflow-y-auto outline-none">
             {children}
           </SelectPrimitive.List>
         </SelectPrimitive.Popup>
@@ -134,7 +135,10 @@ function SelectLabel({ className, ...props }: StyledProps<typeof SelectPrimitive
   return (
     <SelectPrimitive.GroupLabel
       data-slot="select-label"
-      className={cn("px-2 py-1.5 text-ui-base text-foreground-subtlest", className)}
+      className={cn(
+        "px-inline py-[calc(var(--spacing-inline)/2)] text-ui-base text-foreground-subtlest",
+        className,
+      )}
       {...props}
     />
   );
@@ -151,19 +155,19 @@ const SelectItem = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Item
         ref={ref}
         data-slot="select-item"
         className={cn(
-          "relative flex min-h-control-sm w-full cursor-default items-center gap-2 rounded-button pl-2 pr-7 py-1 text-ui-caption/(--line-height-relaxed) text-foreground outline-hidden select-none data-[highlighted]:bg-menu-hover data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:text-foreground-subtlest data-[disabled]:opacity-100 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+          "relative flex min-h-control w-full cursor-default items-center gap-inline rounded-inset pl-inline pr-[calc(var(--icon-size-control)+var(--spacing-inline)*2)] py-[calc(var(--spacing-inline)/2)] text-ui-base/(--line-height-ui) text-foreground outline-hidden select-none data-[highlighted]:bg-menu-hover data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:text-foreground-subtlest data-[disabled]:opacity-100 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-(--icon-size-control) *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-inline",
           className,
         )}
         {...props}
       >
         {trailing ? (
-          <span className="pointer-events-auto absolute right-2 flex items-center justify-center">
+          <span className="pointer-events-auto absolute right-inline flex items-center justify-center">
             {trailing}
           </span>
         ) : null}
-        <span className="pointer-events-none absolute right-2 flex items-center justify-center">
+        <span className="pointer-events-none absolute right-inline flex items-center justify-center">
           <SelectPrimitive.ItemIndicator>
-            <CheckIcon className="pointer-events-none size-4 text-foreground-subtle" />
+            <CheckIcon className="pointer-events-none size-(--icon-size-control) text-foreground-subtle" />
           </SelectPrimitive.ItemIndicator>
         </span>
         <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
@@ -178,7 +182,10 @@ function SelectSeparator({ className, ...props }: StyledProps<typeof SelectPrimi
   return (
     <SelectPrimitive.Separator
       data-slot="select-separator"
-      className={cn("pointer-events-none my-1 h-px bg-border", className)}
+      className={cn(
+        "pointer-events-none -mx-[calc(var(--spacing-inline)/2)] my-[calc(var(--spacing-inline)/2)] h-(--border-width-default) bg-border",
+        className,
+      )}
       {...props}
     />
   );

@@ -1,7 +1,13 @@
 import type { ReactNode } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "../../components/button/button.js";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../../components/dialog/dialog.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "../../components/dialog/dialog.js";
 export function SettingsToolbar({
   description,
   loading,
@@ -40,7 +46,6 @@ export function SettingsToolbar({
         )}
         {onAdd && (
           <Button disabled={disabled || addDisabled} onClick={onAdd}>
-
             {addLabel ?? newLabel}
           </Button>
         )}

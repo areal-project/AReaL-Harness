@@ -384,6 +384,7 @@ export function SpecFixture() {
       collapsed={"collapsed" in start ? start.collapsed : []}
       search={"search" in start ? start.search : undefined}
       rail={"rail" in start ? start.rail : false}
+      settings={params.get("settings") ?? undefined}
       action={action}
     >
       <div className="workspace-content">{column}</div>

@@ -7,7 +7,7 @@ why: 侧栏与对话共用一张纸面，只在顶栏和最左一列露出窗口
 regions:
   - id: frame
     name: 窗口
-    layout: 底色 color-shell，四角 radius-overlay；右缘与下缘各留 spacing-inline 的一半
+    layout: 底色 color-shell，四角 radius-overlay；右缘与下缘各留 spacing-inline 的一半；顶栏、应用导航栏与纸面都排在这圈留白以内（应用导航栏下缘、会话标题栏右缘都以留白内侧为准，不贴窗口边）
   - id: top-bar
     name: 顶栏
     layout: 横贯窗口，高度为 height-toolbar 与 text-ui-base 加 spacing-control-lg 两者取大；左段属于侧栏（见 navigation-sidebar 的 window-controls），其余属于会话标题栏 C；顶栏没有自己的底色

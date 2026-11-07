@@ -12,7 +12,7 @@
   min-height: var(--spacing-control-sm);
   max-width: 100%;
   padding: 0;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
   border-radius: var(--radius-full);
   background: transparent;
   border: 0;
@@ -21,12 +21,12 @@
 .settings-segmented-tabs [data-slot="tabs-trigger"] {
   flex: none;
   height: var(--spacing-control-sm);
-  padding: 2px 8px;
+  padding: calc(var(--spacing-inline) / 4) var(--spacing-inline);
   border-radius: var(--radius-full);
-  border: 1px solid transparent;
+  border: var(--border-width-default) solid transparent;
   font-size: var(--text-ui-caption);
-  line-height: calc(var(--ui-font-size) + 4px);
-  font-weight: 430;
+  line-height: var(--line-height-ui-sm);
+  font-weight: var(--font-weight-toolbar);
   color: var(--color-settings-secondary);
   background: transparent;
   box-shadow: none;
@@ -46,9 +46,4 @@
 .settings-segmented-tabs [data-slot="tabs-trigger"]:hover:not([data-active]) {
   color: var(--color-foreground);
   background: var(--color-surface-elevated);
-}
-
-.settings-segmented-tabs [data-slot="tabs-trigger"]:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: 2px;
 }

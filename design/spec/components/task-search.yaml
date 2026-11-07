@@ -5,7 +5,7 @@ purpose: 按标题或项目名找到任意项目里的对话并打开。
 why: 侧栏只显示每个项目最近五条；搜索面向全部对话，结果带项目名，同名对话也分得清。
 
 layout:
-  backdrop: 盖住整个窗口，color-dialog-backdrop；点空白处关闭
+  backdrop: 盖住整个窗口，叠在包括输入框在内的所有内容之上，color-dialog-backdrop；点空白处关闭
   dialog: 水平居中，上沿距窗口顶部 spacing-section 的五倍；宽为 reading-width 的六分之五（窗口太窄时不超过窗口宽的九成）
   material: overlay
 

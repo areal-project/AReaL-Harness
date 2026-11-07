@@ -12,6 +12,10 @@ import { createNavigationWorkspace } from "../state/navigationWorkspace.js";
 import { ConversationNavigation } from "../views/ConversationNavigation.js";
 import { WorkspaceNavigation } from "../views/WorkbenchChrome.js";
 import { Button } from "../components/ui/button.js";
+import { SpecSettingsPage } from "./SpecSettings.js";
+import { SettingsNavigation } from "../settings/SettingsWorkspace.js";
+import { settingsNavigationGroups } from "../settings/settingsNavigation.js";
+import { UnsavedChangesProvider } from "../settings/UnsavedChanges.js";
 
 // 侧栏示例：把 fixture.navigation 翻译成侧栏读取的项目、摘要与资料库形状。
 type Navigation = typeof fixture.navigation;
@@ -56,12 +60,14 @@ export function SpecNavigation({
   collapsed,
   search,
   rail = false,
+  settings,
   action,
   children,
 }: {
   collapsed: string[];
   search?: string;
   rail?: boolean;
+  settings?: string;
   action: Action;
   children: ReactNode;
 }) {
@@ -86,6 +92,7 @@ export function SpecNavigation({
       .find(({ thread }) => "current" in thread && thread.current);
     return { projectId: thread?.project ?? "", threadId: thread?.thread.id ?? "" };
   });
+  const [settingsTab, setSettingsTab] = useState(settings);
   const [titles, setTitles] = useState<Record<string, string>>({});
   const currentTitle =
     titles[current.threadId] ??
@@ -139,12 +146,12 @@ export function SpecNavigation({
   );
   const applicationRail = (
     <ApplicationRail
-      activeId="home"
+      activeId={settingsTab ? "settings" : "home"}
       items={[
         {
           id: "home",
           label: t("common.navigation.home"),
-          icon: <Home active />,
+          icon: <Home active={!settingsTab} />,
           onSelect: () => {},
         },
         {
@@ -167,6 +174,8 @@ export function SpecNavigation({
           className="application-rail-button relative"
           aria-label={t("settings.title")}
           title={t("settings.title")}
+          aria-current={settingsTab ? "page" : undefined}
+          onClick={() => setSettingsTab("常规")}
         >
           <Settings />
         </Button>
@@ -174,59 +183,88 @@ export function SpecNavigation({
     />
   );
   return (
-    <WorkbenchShell data-spec-fixture data-view="workspace" style={{ height: "100dvh" }}>
-      <ConversationNavigation
-        services={{}}
-        setError={() => {}}
-        snapshot={{ library } as never}
-        projects={projects}
-        summaries={summaries}
-        projectId={current.projectId}
-        threadId={current.threadId}
-        taskCenterOpen={false}
-        pluginsOpen={false}
-        sidebar={sidebar}
-        visible
-        appearance={{
-          sidebarWidth,
-          setSidebarWidth,
-          collapsedProjects,
-          setCollapsedProjects,
-          toggleSidebarGroup: (id) =>
-            setCollapsedProjects((value) => ({ ...value, [id]: !value[id] })),
-        }}
-        workspaceNavigation={workspaceNavigation}
-        applicationRail={applicationRail}
-        navigation={navigation}
-        action={navigationAction}
-        requestNavigation={((run: () => void) => run()) as never}
-        choose={async () => {}}
-        newTask={() => {}}
-        open={async (projectId, threadId) => setCurrent({ projectId, threadId })}
-        onOpenProjectTasks={() => {}}
-        closePanels={() => {}}
-      />
-      <main className="work-area">
-        <div className="work-surface">
-          <WorkspaceHeader>
-            {!sidebar && workspaceNavigation}
-            <div className="header-context">
-              <ProjectFolderIcon />
-              <strong className="header-task">{currentTitle}</strong>
-            </div>
-            <div className="header-tools">
-              <Button
-                unstyled
-                className="icon-button"
-                aria-label={t("common.navigation.expandPanel")}
-              >
-                <SidePanelIcon />
-              </Button>
-            </div>
-          </WorkspaceHeader>
-          {children}
-        </div>
-      </main>
-    </WorkbenchShell>
+    <UnsavedChangesProvider>
+      <WorkbenchShell data-spec-fixture data-view="workspace" style={{ height: "100dvh" }}>
+        {settingsTab && (
+          <SettingsNavigation
+            width={sidebarWidth}
+            rail={applicationRail}
+            activeId={settingsTab}
+            onSelect={setSettingsTab}
+            onBack={() => setSettingsTab(undefined)}
+            groups={settingsNavigationGroups.map((group) => ({
+              ...group,
+              label: t(group.label),
+              items: group.items.map((item) => ({
+                ...item,
+                keywords: "keywords" in item ? t(item.keywords) : undefined,
+                label: t(item.label),
+              })),
+            }))}
+          />
+        )}
+        <ConversationNavigation
+          services={{}}
+          setError={() => {}}
+          snapshot={{ library } as never}
+          projects={projects}
+          summaries={summaries}
+          projectId={current.projectId}
+          threadId={current.threadId}
+          taskCenterOpen={false}
+          pluginsOpen={false}
+          sidebar={sidebar}
+          visible={!settingsTab}
+          appearance={{
+            sidebarWidth,
+            setSidebarWidth,
+            collapsedProjects,
+            setCollapsedProjects,
+            toggleSidebarGroup: (id) =>
+              setCollapsedProjects((value) => ({ ...value, [id]: !value[id] })),
+          }}
+          workspaceNavigation={workspaceNavigation}
+          applicationRail={applicationRail}
+          navigation={navigation}
+          action={navigationAction}
+          requestNavigation={((run: () => void) => run()) as never}
+          choose={async () => {}}
+          newTask={() => {}}
+          open={async (projectId, threadId) => setCurrent({ projectId, threadId })}
+          onOpenProjectTasks={() => {}}
+          closePanels={() => {}}
+        />
+        <main className={`work-area ${settingsTab ? "settings-open" : ""}`}>
+          <div className="work-surface">
+            {settingsTab ? (
+              <>
+                <WorkspaceHeader>{null}</WorkspaceHeader>
+                <SpecSettingsPage tab={settingsTab} />
+              </>
+            ) : (
+              <>
+                <WorkspaceHeader>
+                  {!sidebar && workspaceNavigation}
+                  <div className="header-context">
+                    <ProjectFolderIcon />
+                    <strong className="header-task">{currentTitle}</strong>
+                  </div>
+                  <div className="header-tools">
+                    <Button
+                      unstyled
+                      className="icon-button"
+                      aria-label={t("common.navigation.expandPanel")}
+                    >
+                      <SidePanelIcon />
+                    </Button>
+                  </div>
+                </WorkspaceHeader>
+                {children}
+              </>
+            )}
+          </div>
+        </main>
+      </WorkbenchShell>
+    </UnsavedChangesProvider>
   );
 }

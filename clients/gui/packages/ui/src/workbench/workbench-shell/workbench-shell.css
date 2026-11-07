@@ -642,7 +642,7 @@
   gap: var(--spacing-inline);
 }
 .navigation-task-row:is(:hover, :has(:focus-visible), :has([data-popup-open])) .task-row-title {
-  padding-right: 80px;
+  padding-right: calc(var(--spacing-control-xs) * 3 + var(--spacing-inline) * 2);
 }
 .navigation-task-title {
   font-size: var(--text-ui-base);
