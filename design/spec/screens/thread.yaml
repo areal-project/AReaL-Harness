@@ -15,7 +15,7 @@ regions:
     material: chrome
   - id: D
     name: 对话信息流
-    layout: 内容水平居中，宽度不超过 reading-width（含左右各 spacing-field 内边距）；底部在输入框上沿渐隐
+    layout: 内容水平居中，宽度不超过 reading-width（含左右各 spacing-field 内边距）；滚动区左右两侧都为细滚动条预留位置（滚动条只出现在右侧，左侧对称留空），所以主区变窄时正文两侧各再缩进一个细滚动条宽；底部在输入框上沿渐隐
     contains: [user-message, turn-process, final-answer, turn-status-line, turn-navigation]
     note: 回合导航相对本区域定位（输入框与队列以上的部分），所以输入框上方出现队列时它的垂直位置随之变化
   - id: E

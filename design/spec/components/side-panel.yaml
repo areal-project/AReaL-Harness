@@ -6,7 +6,7 @@ why: 工具和对话并排，看改动或跑命令时不用离开对话；标签
 layout:
   place: 主区右段，紧贴对话区右侧，从窗口顶边一直到底；打开后对话区让出宽度，侧栏与应用导航栏不动
   width: 默认占主区宽的百分之四十五；可在百分之二十五到六十五之间拖动，最窄 reading-width 的十六分之五
-  surface: 左缘 border-width-default 的 color-border，外加 shadow-leading-panel 向左投影；顶栏透明，内容区底色 color-background，右侧沿用页面外框圆角
+  surface: 左缘 border-width-default 的 color-border，外加 shadow-leading-panel 向左投影；顶栏透明；顶栏以下的内容区底色 color-background，右上、右下两角 radius-panel（与纸面外框同），左侧两角直角
   open: 会话标题栏右端“展开侧边面板”按钮（side-panel 图标）打开面板；打开期间按钮底色 color-selected、标为按下；再点一次关闭
   restore: 打开时回到上次看的标签；没有打开过标签时显示入口列表
 anatomy:
@@ -28,13 +28,13 @@ parts:
     height: height-toolbar，与会话标题栏同高、顶边对齐
     padding: 左右 spacing-inline
     gap: 各项之间 spacing-inline 的四分之一
-    order: 自左向右为标签页、新增标签按钮；最右为完整视图按钮与关闭按钮（靠右）
-    buttons: 新增、完整视图、关闭三个按钮都是 spacing-control 见方，圆角 radius-button，图标 icon-size-control，foreground；悬停底色 color-hover
+    order: 自左向右为标签页、新增标签按钮（紧跟最后一个标签，不被推到右端）；最右为完整视图按钮与关闭按钮（靠右）
+    buttons: 新增、完整视图、关闭三个按钮都是 spacing-control 见方，圆角 radius-button，图标 icon-size-control；新增与完整视图的图标颜色同 tab 图标（foreground 的六成五不透明度），关闭图标 foreground；悬停底色 color-hover
     icons: 新增 panel-add；完整视图在分屏时 panel-full-view、铺满时 panel-exit-full-view；关闭 side-panel
     empty: 没有标签时（显示入口列表）不显示新增标签按钮
   tab:
     size: 高 spacing-control-lg；所有标签平分可用宽度，每个最宽 reading-width 的十六分之五减去 spacing-inline 的四分之一，最窄 spacing-control-lg 的两倍；圆角 radius-navigation
-    content: 左内边距 spacing-inline 的一倍又四分之一，右内边距 spacing-control-xs 加 spacing-inline（给关闭按钮留位）；图标 icon-size-control 与名称间隔 spacing-inline 的一半；名称 text-ui-caption，font-weight-normal，行高 line-height-ui-sm，单行省略
+    content: 左内边距 spacing-inline 的一倍又四分之一，右内边距 spacing-control-xs 加 spacing-inline（给关闭按钮留位）；图标 icon-size-control 与名称间隔 spacing-inline 的一半；名称 text-ui-caption，ui-font-weight，行高 line-height-ui-sm，单行省略
     icon: 颜色 foreground 的六成五不透明度；审查 panel-review，终端 panel-terminal，浏览器 panel-browser，文件 panel-files
     rest: 文字 foreground-subtle，底色透明
     hover: 文字 foreground，底色 color-hover
@@ -46,7 +46,7 @@ parts:
     list: 竖排，紧贴顶部，占满宽但最宽 reading-width 的四分之三，水平居中；各项间隔 spacing-inline 的一半
     item: 最小高 spacing-control-lg 加 spacing-inline；内边距上下 spacing-inline、左右 spacing-inline 的一倍又四分之一；图标、名称、快捷键横排，间隔 spacing-inline；圆角 radius-button；底色 color-surface-elevated，悬停 color-surface-tertiary
     icon: icon-size-control，颜色同 tab 图标
-    label: text-fixed-label，font-weight-normal，行高 line-height-ui，foreground，单行省略
+    label: text-fixed-label，ui-font-weight，行高 line-height-ui，foreground，单行省略
     shortcut: 靠右；内边距上下 spacing-inline 的四分之一、左右 spacing-inline 的四分之三；圆角 radius-micro；底色 color-surface-tertiary；text-fixed-caption，font-weight-toolbar，行高与字号相同，foreground-subtle
     entries: 依次为 审查（Ctrl+Shift+G）、终端（Ctrl+`）、浏览器（Ctrl+T）、文件（Ctrl+P）；在苹果电脑上快捷键写作 ⌃⇧G、⌃`、⌘T、⌘P
   add-menu:
@@ -58,8 +58,8 @@ parts:
     keyboard: 获得焦点后左右方向键每次改变主区宽的百分之二
   full-view:
     place: 面板铺满整个主区，左缘描边与投影去掉；会话标题栏隐藏，面板顶栏占它的位置
-    conversation-tab: 顶栏最左一个对话标签：side-chat 图标与当前对话标题，间隔 spacing-inline，单行省略；内边距上下 spacing-inline 的一半、左右 spacing-inline 的一倍又四分之一；最窄 spacing-control-lg 的三倍，最宽同 tab；右缘 border-width-default 的 color-border；不圆角
-    composer: 对话的输入框仍浮在主区底部正中，最宽 reading-width；对话内容隐藏
+    conversation-tab: 顶栏最左一个对话标签：side-chat 图标与当前对话标题（文字同 tab 名称，颜色 foreground-subtle，图标同色），间隔 spacing-inline，单行省略；高 spacing-control-lg 减 border-width-default；内边距上下 spacing-inline 的一半、左右 spacing-inline 的一倍又四分之一；最窄 spacing-control-lg 的三倍，最宽同 tab；右缘 border-width-default 的 color-border；不圆角
+    composer: 对话的输入框仍浮在主区底部正中，位置与宽度同分屏前的对话底部输入框；对话内容隐藏
     close: 最右的按钮变成“进入分屏视图”，点它回到分屏
   content:
     note: 各标签里的内容（审查、终端、浏览器、文件）不在本规格内
@@ -85,5 +85,5 @@ behavior:
   - 已打开的工具再从新增菜单或入口选择时，不重复开标签，只切过去
   - 关闭当前标签后，最后一个标签成为当前标签；关掉最后一个标签时面板收起
   - 关闭面板不清空标签，下次打开回到原来的当前标签
-  - 完整视图下点对话标签切回对话；点“进入分屏视图”回到并排
+  - 完整视图下点对话标签：仍是完整视图，但主区换回对话，面板内容隐藏、面板顶栏保留；点“进入分屏视图”回到并排
   - 宽度在本机记住，下次打开沿用

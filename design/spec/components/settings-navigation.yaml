@@ -42,7 +42,7 @@ parts:
     gap: 图标与文字 spacing-inline
     radius: radius-navigation
     icon: icon-size-control，foreground
-    text: text-ui-base，font-weight-normal，行高 line-height-ui，foreground，单行省略
+    text: text-ui-base，ui-font-weight，行高 line-height-ui，foreground，单行省略
     hover: 底色 color-sidebar-item
     current: 当前页底色 color-navigation-selected
     match: 搜索只命中页内条目时，文字右端靠右写出命中的条目名：text-ui-xs，foreground-subtle，单行省略

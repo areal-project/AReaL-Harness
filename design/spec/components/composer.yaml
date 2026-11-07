@@ -101,7 +101,7 @@ accessible-names:
   add-menu: 添加功能与 Skills
   permission-menu: 更改权限
   context-meter: 上下文占用
-  permission-label: 当前权限模式名，见示例数据
+  permission-label: 当前权限模式名，见示例数据；输入框宽度不到 reading-width 的四分之三时不显示，只留图标
   effort-label: 当前思考强度名，见示例数据
   queue-region: 待发送消息
   queue-item:
