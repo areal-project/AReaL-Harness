@@ -32,10 +32,6 @@ related: ["task-context", "activity-group", "thinking-status"]
 
 历史显示请求、过程、活动及最终结果；运行可显示公开模型摘要，无摘要才回退 Thinking。完成用已确认结果，未知说明待核对。时间来自原记录，不生成伪计时。
 
-## 可访问性
-
-`R-SUBAGENTPANEL-003` 打开详情聚焦标题，返回聚焦原行。状态同时有图标与文字。列表/历史各有独立纵向滚动，窄窗保持返回和关闭可达。
-
 ## 规则
 
 `R-SUBAGENTPANEL-004` 父任务完成不改写子任务状态。阅读不提交或重试。生产适配复用AgentsPane的Core列表/状态读取及AgentConversationPane的历史；设计预览仍使用固定历史，不代表完整Codex能力。statusLabel由宿主表达失败/中断/未知，不把关注组都写成同一种结果。selectedId尚未在分页列表中出现时仍保留详情入口，由宿主读取和核对归属。

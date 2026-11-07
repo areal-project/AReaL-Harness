@@ -61,7 +61,24 @@ const LAYERS = {
   popover: ".task-resources-popup",
 };
 
-/** 在当前页面跑检查 2–5，返回 { step, problems }。 */
+/** 用户没动手时冒出的提示：后台的事自己恢复，或等用户用到时再说，不打断。 */
+export function unsolicitedToasts(toasts, quietMs = 3000) {
+  return toasts.filter((toast) => toast.sinceInput > quietMs).map((toast) => toast.message);
+}
+
+/** 6. 记下每条提示与它之前最近一次用户输入的间隔；要在页面加载前装上，才能看到启动时的提示。 */
+export function recordToasts() {
+  if (window.__uxToasts) return;
+  const toasts = (window.__uxToasts = []);
+  let input = -Infinity;
+  for (const type of ["pointerdown", "keydown"])
+    document.addEventListener(type, () => (input = performance.now()), true);
+  document.addEventListener("areal:toast", (event) =>
+    toasts.push({ message: event.detail.message, sinceInput: performance.now() - input }),
+  );
+}
+
+/** 在当前页面跑检查 2–6，返回 { step, problems }。 */
 export async function inspectPage(page, step, { locale = "zh-CN" } = {}) {
   const state = await page.evaluate((layers) => {
     const visible = (element) => {
@@ -96,6 +113,7 @@ export async function inspectPage(page, step, { locale = "zh-CN" } = {}) {
       text: document.body.innerText,
       awaiting: !!document.querySelector('.decision-card[data-interaction="approval"]'),
       boxes,
+      toasts: window.__uxToasts?.splice(0) ?? [],
     };
   }, LAYERS);
   const problems = [
@@ -103,6 +121,7 @@ export async function inspectPage(page, step, { locale = "zh-CN" } = {}) {
     ...(locale === "zh-CN" ? mixedLanguage(state.chrome) : []).map((hit) => `混用英文：${hit}`),
     ...overlaps(state.boxes).map(([a, b]) => `浮层重叠：${a} 与 ${b}`),
     ...untruthfulStatus(state.chrome, state.awaiting).map((hit) => `等审批时显示“${hit}”`),
+    ...unsolicitedToasts(state.toasts).map((hit) => `没操作就弹出提示：${hit}`),
   ];
   return { step, problems };
 }

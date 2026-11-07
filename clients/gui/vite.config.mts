@@ -186,6 +186,7 @@ export default defineConfig({
           "node --test scripts/design-system-catalog.test.mjs scripts/design-system-changes.test.mjs scripts/design-system-accessibility.test.mjs scripts/a11y-lint.test.mjs scripts/popup-anchor-lint.test.mjs scripts/design-system-baseline.test.mjs scripts/design-verified.test.mjs scripts/activity-runs.test.mjs scripts/motion-lint.test.mjs",
           "node scripts/design-system-audit.mjs",
           "node scripts/a11y-lint.mjs",
+          "node scripts/restyle-lint.mjs",
           "node scripts/popup-anchor-lint.mjs",
           "node scripts/motion-lint.mjs",
           "node scripts/design-rules.mjs",

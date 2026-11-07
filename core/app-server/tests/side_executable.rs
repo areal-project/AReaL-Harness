@@ -163,6 +163,41 @@ async fn create(socket: &mut Socket, params: Value) -> Value {
 }
 
 #[tokio::test]
+async fn side_creation_preconditions_are_rejected_without_an_unknown_submission() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = Fixture::open(dir.path()).await;
+    let mut socket = f.socket().await;
+    let source = parent(&mut socket).await;
+    let child = create(
+        &mut socket,
+        json!({"requestId":uuid::Uuid::new_v4().to_string(),"sourceThreadId":source}),
+    )
+    .await;
+    for source in [json!("missing-source"), child["thread"]["id"].clone()] {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let response = call(
+            &mut socket,
+            "areal/side/create",
+            json!({"requestId":request_id,"sourceThreadId":source}),
+        )
+        .await;
+        assert_eq!(
+            response["error"]["data"]["outcome"]["kind"], "rejected",
+            "{response}"
+        );
+        assert_eq!(response["error"]["data"]["recovery"]["kind"], "none");
+        let receipts = call(
+            &mut socket,
+            "areal/request/read",
+            json!({"requestId":request_id}),
+        )
+        .await;
+        assert_eq!(receipts["result"]["data"], json!([]));
+    }
+    f.close(socket).await;
+}
+
+#[tokio::test]
 async fn empty_side_freezes_full_stable_history_and_keeps_visible_history_local() {
     let dir = tempfile::tempdir().unwrap();
     let f = Fixture::open(dir.path()).await;

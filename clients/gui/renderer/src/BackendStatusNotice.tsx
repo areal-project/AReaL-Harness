@@ -119,6 +119,8 @@ function backendPresentation({
       "backend.stoppedConfirmed",
       "backend.updating",
       "backend.operationPending",
+      // 发送按钮处已说明原因；用户去发送时才需要知道。
+      "backend.updateRequired",
     ].includes(message);
   return { message, diagnostic, tone, action, retryUpdate, notify };
 }

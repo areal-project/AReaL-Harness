@@ -73,11 +73,8 @@ impl Session {
         let command = text(request, "commandId")?.to_ascii_lowercase();
         uuid::Uuid::parse_str(&command).map_err(|_| fail("INVALID_PARAMS"))?;
         self.authorize(Some(project), "submit")?;
-        if params["permissionPreset"] == "fullAccess"
-            || params["options"]["permissionPreset"] == "fullAccess"
-        {
-            self.authorize(Some(project), "manage")?;
-        }
+        self.authorize_permission_options(project, params)?;
+        self.authorize_permission_options(project, &params["options"])?;
         let digest =
             areal_local_service::storage::digest(&serde_json::to_vec(&if exact(params, &[]) {
                 json!({"method":"session.create"})
@@ -154,9 +151,7 @@ impl Session {
                 ensure!(execution.params[key] == *value, "INVALID_RESPONSE");
             }
             self.authorize(Some(project), "submit")?;
-            if params["options"]["permissionPreset"] == "fullAccess" {
-                self.authorize(Some(project), "manage")?;
-            }
+            self.authorize_permission_options(project, &params["options"])?;
             if let Some(record) = self.command_record(project, &command)? {
                 ensure!(
                     record["remote"]["semanticDigest"] == digest,
@@ -313,11 +308,8 @@ impl Session {
         let typed: areal_protocol::desktop::ThreadStart = serde_json::from_value(native.clone())?;
         let native_digest = areal_local_service::storage::digest(&serde_json::to_vec(&typed)?);
         self.authorize(Some(project), "submit")?;
-        if params["permissionPreset"] == "fullAccess"
-            || params["options"]["permissionPreset"] == "fullAccess"
-        {
-            self.authorize(Some(project), "manage")?;
-        }
+        self.authorize_permission_options(project, params)?;
+        self.authorize_permission_options(project, &params["options"])?;
         if let Some(record) = self.command_record(project, &command)? {
             ensure!(
                 record["remote"]["semanticDigest"] == digest,

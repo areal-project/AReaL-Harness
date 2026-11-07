@@ -11,6 +11,7 @@ pub(crate) struct HostProject {
 impl HostProject {
     pub(crate) async fn update_notice(&self) -> Result<Option<String>> {
         let client = areal_host::Client::connect_at(self.client.home().to_path_buf()).await?;
+        let version_notice = client.version_notice();
         if !client
             .status()
             .await?
@@ -18,23 +19,22 @@ impl HostProject {
             .iter()
             .any(|c| c == "updates")
         {
-            return Ok(None);
+            return Ok(version_notice);
         }
         let state = client.update_status().await?;
         let host = &client.identity().executable_version;
         if state["restartPending"] == true {
-            return Ok(Some(format!(
+            let mut notice = format!(
                 "Host {host} · update {} pending · apply explicitly with areal host update apply",
                 state["targetVersion"].as_str().unwrap_or("unknown")
-            )));
+            );
+            if let Some(version_notice) = version_notice {
+                notice.push_str(" · ");
+                notice.push_str(&version_notice);
+            }
+            return Ok(Some(notice));
         }
-        // 一个用户只跑一个后台，版本高者应接管；停止后由较新的客户端重新拉起。
-        Ok(older(host, env!("CARGO_PKG_VERSION")).then(|| {
-            format!(
-                "Host {host} is older than this client {} · when idle run areal host stop, then reopen",
-                env!("CARGO_PKG_VERSION")
-            )
-        }))
+        Ok(version_notice)
     }
     pub(crate) async fn observe_service(&self) -> Result<areal_protocol::service::Service> {
         let client = areal_host::Client::connect_at(self.client.home().to_path_buf()).await?;
@@ -43,45 +43,9 @@ impl HostProject {
     }
 }
 
-/// 只比较 X.Y.Z 与 X.Y.Z-beta.N；其他版本（开发构建、fixture）一律不提示。
-fn older(host: &str, client: &str) -> bool {
-    let order = |version: &str| -> Option<(u64, u64, u64, bool, u64)> {
-        let (base, beta) = match version.split_once("-beta.") {
-            Some((base, beta)) => (base, Some(beta.parse::<u64>().ok().filter(|n| *n > 0)?)),
-            None => (version, None),
-        };
-        let mut parts = base.split('.').map(|part| part.parse::<u64>().ok());
-        let parsed = (parts.next()??, parts.next()??, parts.next()??);
-        parts.next().is_none().then_some((
-            parsed.0,
-            parsed.1,
-            parsed.2,
-            beta.is_none(),
-            beta.unwrap_or(0),
-        ))
-    };
-    matches!((order(host), order(client)), (Some(host), Some(client)) if host < client)
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::Args;
-
-    #[test]
-    fn only_a_newer_release_client_reports_an_older_host() {
-        assert!(super::older("0.2.0", "0.2.1"));
-        assert!(super::older("0.2.1-beta.1", "0.2.1"));
-        assert!(super::older("0.2.0", "0.2.1-beta.1"));
-        for (host, client) in [
-            ("0.2.1", "0.2.1"),
-            ("0.2.1", "0.2.0"),
-            ("fixture", "0.2.1"),
-            ("0.2.0", "0.2.1-test.1"),
-            ("0.2.0.1", "0.2.1"),
-        ] {
-            assert!(!super::older(host, client), "{host} {client}");
-        }
-    }
     use clap::Parser;
 
     #[test]

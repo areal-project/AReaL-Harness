@@ -6,7 +6,7 @@
 
 工作台后台冒烟可按领域运行，例如 `pnpm --dir clients/gui test:workbench-backend --domain=providers`。支持 library、trajectory、feedback、tasks、manage、worktree、providers、lifecycle，可组合；省略参数运行完整链路。每次运行使用独立数据目录；停机任务目录和运行中任务管理分别初始化不同项目。开发时选择目标领域及受影响回归，收尾运行完整链路。协议冒烟不替代真实 Web 页面操作。
 
-高频操作基线 `pnpm --dir clients/gui test:ux-journeys` 在真实 Electron、后台和 Core 上走三条旅程：没配模型时去配置、打开项目发消息并在审批中继续排队、右上角摘要。外部模型是脚本内的假模型。每步截图并做 5 项确定性检查（400ms 内有反馈、无原始错误、中文界面不混英文、浮层不互相遮挡、等审批时不显示“运行中”）；检查逻辑在 `scripts/ux-checks.mjs`，由 `test:ux-checks` 单测。修一个体验问题时，往这里加一条检查防止回退。
+高频操作基线 `pnpm --dir clients/gui test:ux-journeys` 在真实 Electron、后台和 Core 上走三条旅程：没配模型时去配置、打开项目发消息并在审批中继续排队、右上角摘要。外部模型是脚本内的假模型。每步截图并做 6 项确定性检查（400ms 内有反馈、无原始错误、中文界面不混英文、浮层不互相遮挡、等审批时不显示“运行中”、用户没操作时不弹提示）；检查逻辑在 `scripts/ux-checks.mjs`，由 `test:ux-checks` 单测。修一个体验问题时，往这里加一条检查防止回退。
 
 双产品对照复用同一合同的[六条基线旅程](conversation-reading-acceptance.md#双产品基线)与共享素材生成器。运行报告区分本轮实测、历史复用、源码推断和未验证，不以开发服务器启动代表用户路径通过。
 
@@ -281,6 +281,8 @@ Composer smoke 通过 Side 标签的 Delete 键关闭已完成的阅读视图，
 Slash 键盘验收等待本次打开触发的 Core 目录刷新完成，再核对方向键移动到的具体选项及编辑器 `aria-activedescendant` 一致后按 Enter；原选项的已选中状态不能证明方向键已经生效。
 
 原生工具 smoke 在断言前等待 HTTP fixture 的请求线程全部结束。主求解请求与完成审计严格等量；单次辅助命名允许在 HTTP 抵达前取消，此时只接受无 HTTP 状态的中断审计。已观测请求缺审计、重复命名、未观测却完成以及命名携带工具均失败。
+
+Runtime 输出验收分页收齐超出热窗口的全部原文，并独立检查显式输出额度超限。Harness 的转义密集输出验收通过 `read_tool_result` 续读预览省略的快照，逐字核对 stdout/stderr、终态与页大小；验证命令同时核对有界尾部和保存的完整日志。恢复与重试测试按 `kind=discardedCompletion` 选择审计，不能把上下文预算等诊断记录计作丢弃响应。
 
 `node --test clients/gui/scripts/browser-diagnostics-contract.test.cjs` 覆盖原生关闭的资源所有权和错误边界：先释放后 dispose/profile quiesce、输入与录制收敛、旧 Page 重建、隔离动作超时及迟到销毁。它用受控事件检验等待条件，不证明真实 DOM、窗口焦点或 SELECT popup。后者须用隔离 Electron 核对活动 open SELECT 的关闭、无窗口聚焦、真实 `destroyed` 与自然退出；保留原 10 秒原生关闭和 20 秒 runner 清理期限，强杀仍计失败。
 
@@ -653,6 +655,10 @@ GUI 的仓库规则位于 `clients/gui/oxlint-plugin-areal`，由 `vite.config.m
 
 新增规则：在 rules/ 使用 @oxlint/plugins 的 defineRule，提供原因与替代写法，在 index.ts 注册，并在 vite.config.mts 指定严重度和适用路径。每条规则在 rules.test.ts 增加合法与违规源码，通过真实 oxlint 子进程验证规则名和退出码；运行 `pnpm --dir clients/gui test:unit oxlint-plugin-areal/rules.test.ts`。不引入 ESLint 运行时。豁免写同行 `-- 原因` 或紧邻上方的独立说明注释。
 
+存量较多的规则不写豁免注释，改用基线脚本：`areal/no-restyle`（R-CHECK-022，页面不改 @areal/ui 组件外观）由 `node clients/gui/scripts/restyle-lint.mjs` 对照 `design-system/restyle-baseline.json`，基线外的新违规失败；修好后运行 `--write` 删除对应条目，`--write` 不能加入新条目。
+
 尺寸观察使用 `@areal/ui/observe-resize`，并将清理函数用于 effect 卸载。该工具拥有原生构造；增量门禁约束新增和修改的调用点，存量调用尚未批量迁移。运行 `pnpm --dir clients/gui test:resize-observer` 在隔离 Chrome 中对照原生回调与共享工具的提交时序，并验证 disconnect。该测试不证明所有布局抖动已修复。
 
 无障碍专项只收集四条 JSX-a11y 规则，仓库插件诊断交由常规增量检查；两类检查分别执行，避免存量仓库规则混入无障碍基线。规则正反例和增量检查仍必须通过。
+
+`python3 scripts/runtime-image-smoke.py --bin-dir target/debug --evidence /tmp/runtime-image-evidence.json` 使用真实 Runtime 和文件助手验证大源图在传输前缩小、派生输出计量、只读来源、分页回取与小额度失败，不调用模型。可用 `--image /path/to/existing.png --dimension 1500` 复用既有原图；运行记录必须区分原始文件与 observer 导出的缩略图。

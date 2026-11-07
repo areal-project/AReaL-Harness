@@ -57,6 +57,7 @@ export function useRecoveryNotices(
           if (
             !requestId ||
             isIndependentCreation(entry, []) ||
+            entry.method === "areal/side/create" ||
             entry.awaitingResponse ||
             observed.some(
               (notice) => notice.projectId === owner.id && notice.requestId === requestId,

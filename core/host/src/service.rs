@@ -17,6 +17,8 @@ pub struct ServiceInstallation {
     pub descriptor: PathBuf,
     pub executable: PathBuf,
     pub home: PathBuf,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    executable_version: Option<String>,
     descriptor_digest: String,
 }
 impl ServiceInstallation {
@@ -96,6 +98,7 @@ impl ServiceInstallation {
             descriptor,
             executable: stable,
             home,
+            executable_version: Some(env!("CARGO_PKG_VERSION").to_owned()),
             descriptor_digest: String::new(),
         };
         installation.descriptor_digest = storage::digest(installation.contents()?.as_bytes());
@@ -152,11 +155,14 @@ impl ServiceInstallation {
         let host_dir = self.home.join("host");
         storage::private_dir(&host_dir)
             .with_context(|| format!("check Host directory {}", host_dir.display()))?;
+        self.ensure_no_downgrade(env!("CARGO_PKG_VERSION"))?;
         let lock_path = self.home.join("host.lock");
         let lock = storage::open_private(&lock_path, true)
             .with_context(|| format!("open Host lock {}", lock_path.display()))?;
         lock.try_lock_exclusive()
             .context("Host is running; explicitly stop it before installing a system service")?;
+        // 锁内重新核对，避免检查后另一个安装者发布了更高版本。
+        self.ensure_no_downgrade(env!("CARGO_PKG_VERSION"))?;
         let directory = self
             .descriptor
             .parent()
@@ -226,6 +232,42 @@ impl ServiceInstallation {
                     .args(["--user", "enable", "--now"])
                     .arg(&self.descriptor),
             )?;
+        }
+        Ok(())
+    }
+    fn ensure_no_downgrade(&self, candidate: &str) -> Result<()> {
+        let check = |installed: &str| -> Result<()> {
+            ensure!(
+                crate::server::updates::compare_versions(candidate, installed)?
+                    != std::cmp::Ordering::Less,
+                "refusing Host downgrade from {installed} to {candidate}; use the newer Host/CLI to manage this home"
+            );
+            Ok(())
+        };
+        if let Some(identity) =
+            storage::read_optional::<crate::HostIdentity>(&self.home.join("host/host.json"))?
+        {
+            check(&identity.executable_version)?;
+        }
+        if let Some(previous) =
+            storage::read_optional::<Self>(&self.home.join("host/service-install.json"))?
+        {
+            if let Some(version) = &previous.executable_version {
+                check(version)?;
+            } else {
+                // 旧记录没有版本字段；只查询已验证的原安装，不猜测版本或放行覆盖。
+                previous.verify_descriptor()?;
+                let output = Command::new(&previous.executable).arg("--version").output()
+                    .context("cannot determine installed Host version; use its CLI to manage the service")?;
+                ensure!(
+                    output.status.success(),
+                    "cannot determine installed Host version; refusing service replacement"
+                );
+                let output = std::str::from_utf8(&output.stdout)?.trim();
+                check(output.strip_prefix("areal ").context(
+                    "invalid installed Host version output; refusing service replacement",
+                )?)?;
+            }
         }
         Ok(())
     }
@@ -443,6 +485,110 @@ fn checked(command: &mut Command) -> Result<()> {
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn service_install_rejects_newer_records_before_publishing_or_contacting_manager() {
+        let root = tempfile::tempdir().unwrap();
+        let service = ServiceInstallation::at(
+            root.path().join("home"),
+            &root.path().join("agents"),
+            &std::env::current_exe().unwrap(),
+        )
+        .unwrap();
+        storage::private_dir(&service.home).unwrap();
+        storage::private_dir(&service.home.join("host")).unwrap();
+        let record = service.home.join("host/service-install.json");
+        let mut previous = service.clone();
+        previous.executable_version = Some("9.0.0".into());
+        storage::write(&record, &previous).unwrap();
+        let before = std::fs::read(&record).unwrap();
+        let error = service.install().unwrap_err().to_string();
+        assert!(
+            error.contains("refusing Host downgrade from 9.0.0"),
+            "{error}"
+        );
+        assert_eq!(std::fs::read(&record).unwrap(), before);
+        assert!(!service.descriptor.parent().unwrap().exists());
+        std::fs::remove_file(&record).unwrap();
+        let identity = crate::HostIdentity {
+            version: crate::VERSION,
+            host_id: "fixture-host".into(),
+            generation: "fixture-generation".into(),
+            socket_path: service.home.join("host/host.sock"),
+            auth_file: service.home.join("host/auth.json"),
+            pid: std::process::id(),
+            executable_version: "9.0.0".into(),
+        };
+        storage::write(&service.home.join("host/host.json"), &identity).unwrap();
+        assert!(
+            service
+                .install()
+                .unwrap_err()
+                .to_string()
+                .contains("refusing Host downgrade")
+        );
+        assert!(!service.descriptor.parent().unwrap().exists());
+    }
+
+    #[test]
+    fn service_version_guard_accepts_upgrades_and_rejects_beta_downgrades() {
+        let root = tempfile::tempdir().unwrap();
+        let service = ServiceInstallation::at(
+            root.path().join("home"),
+            &root.path().join("agents"),
+            &std::env::current_exe().unwrap(),
+        )
+        .unwrap();
+        storage::private_dir(&service.home).unwrap();
+        storage::private_dir(&service.home.join("host")).unwrap();
+        let versions = ["0.1.8", "0.1.18", "0.1.19-beta.1", "0.1.19"];
+        for (i, installed) in versions.iter().enumerate() {
+            let mut previous = service.clone();
+            previous.executable_version = Some((*installed).into());
+            storage::write(&service.home.join("host/service-install.json"), &previous).unwrap();
+            for (j, candidate) in versions.iter().enumerate() {
+                assert_eq!(
+                    service.ensure_no_downgrade(candidate).is_ok(),
+                    j >= i,
+                    "{installed} -> {candidate}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn service_legacy_record_queries_its_verified_installation_before_replacement() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let executable = root.path().join("areal");
+        std::fs::write(&executable, "#!/bin/sh\nprintf 'areal 0.1.19\\n'\n").unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let mut previous = ServiceInstallation::at(
+            root.path().join("home"),
+            &root.path().join("agents"),
+            &executable,
+        )
+        .unwrap();
+        previous.executable_version = None;
+        storage::private_dir(&previous.home).unwrap();
+        storage::private_dir(&previous.home.join("host")).unwrap();
+        std::fs::create_dir(previous.descriptor.parent().unwrap()).unwrap();
+        previous
+            .publish_descriptor(previous.descriptor.parent().unwrap())
+            .unwrap();
+        storage::write(&previous.home.join("host/service-install.json"), &previous).unwrap();
+        assert!(
+            previous
+                .ensure_no_downgrade("0.1.18")
+                .unwrap_err()
+                .to_string()
+                .contains("refusing Host downgrade")
+        );
+        previous.ensure_no_downgrade("0.1.19").unwrap();
+        previous.ensure_no_downgrade("0.1.20").unwrap();
+        std::fs::write(executable, "#!/bin/sh\nexit 1\n").unwrap();
+        assert!(previous.ensure_no_downgrade("0.1.20").is_err());
+    }
 
     #[test]
     fn descriptor_temporary_file_rejects_existing_entries() {

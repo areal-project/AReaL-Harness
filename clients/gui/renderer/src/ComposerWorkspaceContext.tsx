@@ -73,12 +73,7 @@ export function ComposerWorkspaceContext({
               : undefined
           }
         />
-      ) : current?.error ? (
-        <WorkspacePreparationStatus
-          state={{ kind: "unavailable", detail: current.error }}
-          scope="info"
-        />
-      ) : !current?.info ? (
+      ) : current?.error ? null : !current?.info ? ( // 分支与工作树只是补充信息，读不到就不显示，不打断输入。
         <span>{t("workspace.readingInfo")}</span>
       ) : (
         <>

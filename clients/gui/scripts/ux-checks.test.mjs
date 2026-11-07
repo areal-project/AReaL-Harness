@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mixedLanguage, overlaps, rawErrors, untruthfulStatus } from "./ux-checks.mjs";
+import {
+  mixedLanguage,
+  overlaps,
+  rawErrors,
+  unsolicitedToasts,
+  untruthfulStatus,
+} from "./ux-checks.mjs";
 
 test("raw errors catch protocol codes and Host wording", () => {
   assert.deepEqual(rawErrors("设置读取失败：Host command failed"), ["Host command failed"]);
@@ -35,4 +41,15 @@ test("overlaps ignore nested layers and touching edges", () => {
 test("status words only count while an approval is pending", () => {
   assert.deepEqual(untruthfulStatus("正在运行 npm test", true), ["正在运行"]);
   assert.deepEqual(untruthfulStatus("正在运行 npm test", false), []);
+});
+
+test("only toasts long after the last user input count as unsolicited", () => {
+  assert.deepEqual(
+    unsolicitedToasts([
+      { message: "发送失败", sinceInput: 120 },
+      { message: "工作区信息不可用", sinceInput: Infinity },
+      { message: "已复制", sinceInput: 2999 },
+    ]),
+    ["工作区信息不可用"],
+  );
 });

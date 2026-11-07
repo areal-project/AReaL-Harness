@@ -359,3 +359,27 @@ describe("no-workbench-core-owner", () => {
     ).toBe(0);
   });
 });
+
+describe("no-restyle", () => {
+  const header =
+    'import { Button, DialogContent } from "@areal/ui";\nimport { ChevronIcon } from "@areal/ui/icons";\n';
+  test.each([
+    '<Button variant="ghost" />',
+    '<Button className="w-full sm:max-w-md flex-1" />',
+    "<Button className={cn('mt-2', open && 'hidden')} />",
+    '<ChevronIcon className="text-muted size-3" />',
+    '<button className="text-red-500" style={{ color: "red" }} />',
+  ])("accepts %s", (jsx) => {
+    expect(lint("no-restyle", `${header}export const A = () => ${jsx};`).status).toBe(0);
+  });
+  test.each([
+    '<Button className="rounded-full px-2" />',
+    '<Button className="composer-primary-action" />',
+    "<Button className={classes} />",
+    "<DialogContent style={{ width: 400 }} />",
+  ])("rejects %s", (jsx) => {
+    const result = lint("no-restyle", `${header}export const A = () => ${jsx};`);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("R-CHECK-022");
+  });
+});

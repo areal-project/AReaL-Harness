@@ -31,6 +31,15 @@ pub(crate) struct WireLimits {
     pub(crate) max_message_bytes: usize,
 }
 
+impl WireLimits {
+    pub(crate) fn authenticated() -> Self {
+        // 应用消息跨多个 Noise record；保留加密层单 record 的独立上限。
+        Self {
+            max_message_bytes: 8 * 1024 * 1024,
+        }
+    }
+}
+
 impl Default for WireLimits {
     fn default() -> Self {
         Self {
@@ -81,6 +90,14 @@ pub(crate) async fn read_json<R: AsyncRead + Unpin>(
     reader: &mut R,
     limits: WireLimits,
 ) -> Result<Option<Vec<u8>>> {
+    read_json_with_limits(reader, || limits).await
+}
+
+// 在读完长度头时取当前授权上限，避免空闲读取提前冻结 hello 阶段的限制。
+pub(crate) async fn read_json_with_limits<R: AsyncRead + Unpin>(
+    reader: &mut R,
+    limits: impl Fn() -> WireLimits,
+) -> Result<Option<Vec<u8>>> {
     let mut length = 0usize;
     for index in 0..8 {
         let mut byte = [0];
@@ -90,7 +107,7 @@ pub(crate) async fn read_json<R: AsyncRead + Unpin>(
             return Ok(None);
         }
         length |= usize::from(byte[0] & 0x7f) << (index * 7);
-        ensure!(length <= limits.max_message_bytes, "数据超过传输上限");
+        ensure!(length <= limits().max_message_bytes, "数据超过传输上限");
         if byte[0] & 0x80 == 0 {
             let mut bytes = vec![0; length];
             reader.read_exact(&mut bytes).await?;
@@ -165,6 +182,111 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn authenticated_noise_carries_gui_upload_mcp_and_long_read_messages() {
+        let identity = Identity::from_base64(IDENTITY).unwrap();
+        let limits = WireLimits::authenticated();
+        let (left, right) = tokio::io::duplex(4096);
+        let (host, client) = tokio::join!(
+            authenticate(left.compat(), &identity, None, limits),
+            authenticate(right.compat(), &identity, Some(identity.peer()), limits),
+        );
+        let mut host = host.unwrap();
+        let mut client = client.unwrap();
+        let upload = serde_json::json!({"id":"upload","method":"attachment.upload","params":{
+            "threadId":"thread","uploadId":"upload","mimeType":"application/pdf",
+            "sizeBytes":262144,"offset":0,"base64":STANDARD.encode(vec![42; 256 * 1024])
+        }});
+        let mcp = serde_json::json!({"id":"mcp","method":"session.send","params":{
+            "mcpContent":[{"type":"text","text":"m".repeat(512 * 1024)}]
+        }});
+        for request in [upload, mcp] {
+            let bytes = serde_json::to_vec(&request).unwrap();
+            assert!(bytes.len() > WireLimits::default().max_message_bytes);
+            let (sent, received) = tokio::join!(
+                write_json(&mut client.stream, &bytes, client.limits),
+                read_json(&mut host.stream, host.limits),
+            );
+            sent.unwrap();
+            assert_eq!(received.unwrap().unwrap(), bytes);
+        }
+        let response = serde_json::to_vec(&serde_json::json!({"id":"read","result":{
+            "event":"session.snapshot","items":[{"type":"message","text":"r".repeat(4 * 1024 * 1024)}]
+        }})).unwrap();
+        let (sent, received) = tokio::join!(
+            write_json(&mut host.stream, &response, host.limits),
+            read_json(&mut client.stream, client.limits),
+        );
+        sent.unwrap();
+        assert_eq!(received.unwrap().unwrap(), response);
+        // 大消息后仍能复用原 Noise 通道。
+        let (sent, received) = tokio::join!(
+            write_json(
+                &mut client.stream,
+                br#"{"method":"host.describe"}"#,
+                client.limits
+            ),
+            read_json(&mut host.stream, host.limits),
+        );
+        sent.unwrap();
+        assert_eq!(received.unwrap().unwrap(), br#"{"method":"host.describe"}"#);
+    }
+
+    #[tokio::test]
+    async fn message_limits_remain_small_until_authorized_and_bound_authenticated_allocations() {
+        let large = serde_json::to_vec(&"x".repeat(256 * 1024)).unwrap();
+        assert!(
+            write_json(&mut Cursor::new(Vec::new()), &large, WireLimits::default())
+                .await
+                .is_err()
+        );
+        let mut encoded = Cursor::new(Vec::new());
+        write_json(&mut encoded, &large, WireLimits::authenticated())
+            .await
+            .unwrap();
+        encoded.set_position(0);
+        assert!(
+            read_json(&mut encoded, WireLimits::default())
+                .await
+                .is_err()
+        );
+        let too_large = serde_json::to_vec(&"x".repeat(8 * 1024 * 1024)).unwrap();
+        assert!(
+            write_json(
+                &mut Cursor::new(Vec::new()),
+                &too_large,
+                WireLimits::authenticated()
+            )
+            .await
+            .is_err()
+        );
+        // 8 MiB + 1 的长度头必须在分配正文前拒绝。
+        assert!(
+            read_json(
+                &mut Cursor::new(vec![0x81, 0x80, 0x80, 0x04]),
+                WireLimits::authenticated()
+            )
+            .await
+            .is_err()
+        );
+
+        let limits = std::cell::Cell::new(WireLimits::default());
+        let (reader, writer) = tokio::io::duplex(4096);
+        let (mut reader, mut writer) = (reader.compat(), writer.compat());
+        let reading = read_json_with_limits(&mut reader, || limits.get());
+        tokio::pin!(reading);
+        // 先开始空闲读取，再完成授权：已挂起的读取也必须使用新上限。
+        tokio::select! {
+            biased;
+            _ = &mut reading => panic!("read should await a message"),
+            _ = std::future::ready(()) => {},
+        }
+        limits.set(WireLimits::authenticated());
+        let (sent, received) = tokio::join!(write_json(&mut writer, &large, limits.get()), reading);
+        sent.unwrap();
+        assert_eq!(received.unwrap().unwrap(), large);
     }
 
     #[tokio::test]

@@ -37,10 +37,6 @@ exports: ["MarkdownSurface"]
 
 引用 [R-UI-COMMON-012](../../../README.md#共同合同)。
 
-## 规则
-
-`R-MARKDOWNSURFACE-001` Streamdown渲染与错误回退在包；插件引用解析、资源链接/媒体授权、代码偏好与Markdown组件适配留原MessageResponse。渲染不执行Agent工具。
-
 ## 示例
 
 [组件目录与可操作实例](../../../../../renderer/design-system.html?ui-library#component-markdown-surface)。真实业务路径沿原生产专项验证。

@@ -25,10 +25,6 @@ exports: ["Dialog", "DialogClose", "DialogContent", "DialogDescription", "Dialog
 
 打开、关闭、无关闭按钮、无遮罩、受控。
 
-## 行为
-
-`R-DIALOG-002` 设置、附件预览、命令选择和移动模型面板复用同一稳定 API。保留 Base UI 焦点约束与恢复、受控开关及本地化关闭参数；业务 busy/dirty 守卫由宿主负责。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

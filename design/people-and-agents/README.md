@@ -13,14 +13,8 @@
 
 ## 规范边界
 
-`R-ENTRY-040` 这里是人与 Agent 关系的设计规范归属。跨界面复用这些概念，不在各组件重新定义。
-
 Core 与 Runtime 契约定义可执行行为、权限和结算条件。字段、错误码、容量及兼容规则仍由 [桌面 API](../../docs/api/desktop.md)、[Task API](../../docs/api/tasks.md) 和 [委派设计](../../docs/design/multi-agent.md) 维护。
-
-`R-ENTRY-041` GUI 将这些关系绑定到具体控件、状态和导航。入口见 [GUI 指南](../../clients/gui/README.md)，各主题页链接对应实现。本文不把 Core 能力视为所有 GUI 入口均已覆盖。
 
 ## 与其他设计目录的关系
 
 [设计原则](../principles/README.md) 约束整体取舍。[基础规范](../foundations/README.md) 维护视觉表达。[交互模式](../patterns/README.md) 说明如何组织操作与反馈。
-
-`R-ENTRY-042` [组件规范](../components/README.md) 维护可复用控件。[设计决策](../decisions/README.md) 保存需要追溯的取舍。本目录不复制这些规范。

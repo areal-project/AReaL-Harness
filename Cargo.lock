@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "areal-app-server"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-engine",
@@ -177,7 +177,7 @@ dependencies = [
 
 [[package]]
 name = "areal-cli"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -205,7 +205,7 @@ dependencies = [
 
 [[package]]
 name = "areal-config"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "fs2",
@@ -222,7 +222,7 @@ dependencies = [
 
 [[package]]
 name = "areal-engine"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -240,12 +240,11 @@ dependencies = [
  "chrono-tz",
  "fs2",
  "futures-util",
- "gif",
  "ignore",
- "image",
  "jsonschema",
  "libc",
  "reqwest 0.12.28",
+ "rquickjs",
  "rusqlite",
  "rustix",
  "rustls",
@@ -268,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "areal-host"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -313,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "areal-local-service"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -334,7 +333,7 @@ dependencies = [
 
 [[package]]
 name = "areal-mcp"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-config",
@@ -365,7 +364,7 @@ dependencies = [
 
 [[package]]
 name = "areal-plugins"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-mcp",
@@ -390,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "areal-protocol"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "schemars",
  "serde",
@@ -399,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-runtime-client",
@@ -421,7 +420,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-client"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "areal-runtime-host-tools",
  "areal-runtime-protocol",
@@ -435,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-exec-native"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "areal-runtime-host-tools",
  "areal-runtime-protocol",
@@ -449,13 +448,15 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-fs"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "areal-runtime-protocol",
  "base64 0.22.1",
+ "gif",
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "image",
  "mime_guess",
  "rustix",
  "serde",
@@ -467,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-host-tools"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "libc",
  "serde_json",
@@ -477,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-protocol"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "schemars",
  "serde",
@@ -487,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "areal-runtime-supervisor"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "areal-runtime-host-tools",
  "areal-runtime-protocol",
@@ -505,7 +506,7 @@ dependencies = [
 
 [[package]]
 name = "areal-server"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-app-server",
@@ -541,7 +542,7 @@ dependencies = [
 
 [[package]]
 name = "areal-service-host"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-local-service",
@@ -561,7 +562,7 @@ dependencies = [
 
 [[package]]
 name = "areal-tui"
-version = "0.1.8"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "areal-host",
@@ -3534,6 +3535,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
+name = "relative-path"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38540a682c6e9bca04a8bca9e5ec5a6ba168dfbb04c9998fe517a9befb92eb68"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "reqwest"
 version = "0.12.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3657,6 +3667,35 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "rquickjs"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a0a22bf72f515cc4189dd7c63d016f6de92a11eee98ddf7dd64794198f6eb34e"
+dependencies = [
+ "rquickjs-core",
+]
+
+[[package]]
+name = "rquickjs-core"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6657979a24d543e5fc66f32cef2f47ca82ce8eb55cec5f7d59a12b7b570bbf24"
+dependencies = [
+ "hashbrown 0.17.1",
+ "relative-path",
+ "rquickjs-sys",
+]
+
+[[package]]
+name = "rquickjs-sys"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cee271d0eeba64f0915b846cb7ae02e16faf3dfdffdca91731101d9d30fe3423"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

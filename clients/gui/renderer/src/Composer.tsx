@@ -53,7 +53,7 @@ import {
   permissionOptions,
   planModeOptions,
 } from "./permissions.js";
-import { ComposerPlanMode } from "./ComposerPlanMode.js";
+import { ComposerGoalMode, ComposerPlanMode } from "./ComposerPlanMode.js";
 import { ControlHintTooltip } from "./ControlHintTooltip.js";
 import { Button } from "./components/ui/button.js";
 import { ComposerQueue } from "./ComposerQueue.js";
@@ -64,9 +64,7 @@ import { AskUserQuestion } from "./AskUserQuestion.js";
 import { ApprovalRequest } from "./ApprovalRequest.js";
 import { GoalCard, goalControlError } from "./Goal.js";
 import { goalContinuationLabel } from "./conversationPresentation.js";
-import { GoalIcon as Target, PlanModeIcon as Lightbulb } from "./interfaceIcons.js";
 import {
-  FileTree,
   ArchiveChatIcon,
   SendMessageIcon,
   StopIcon,
@@ -75,7 +73,7 @@ import {
 } from "./interfaceIcons.js";
 import { ConversationComposer } from "./ConversationComposer.js";
 import {
-  ComposerAttachment,
+  ComposerFileList,
   composerInput,
   composerPaste,
   isComposerFile,
@@ -85,8 +83,8 @@ import {
 import { useComposerPlugins } from "./ComposerPlugins.js";
 import { useComposerSkills } from "./ComposerSkills.js";
 import { ComposerMcpIcon } from "./ComposerIcons.js";
+import { composerFeatureEntries } from "./composerFeatures.js";
 import { ComposerMcp } from "./ComposerMcp.js";
-import { AttachmentIcon } from "./interfaceIcons.js";
 import type { ComposerCatalogEntry } from "./prompt-editor/ComposerCatalog.js";
 import {
   conversationReferenceEntries,
@@ -724,55 +722,27 @@ export function Composer({
         ]
       : []),
     ...snapShotCommandEntries(snapshotCapture, t, setDeliveryError),
-    {
-      value: "upload",
-      label: "上传文件",
-      description: "添加图片、文档或其他文件",
-      icon: <AttachmentIcon />,
-      group: "功能",
-      run: () => upload.current?.click(),
-    },
-    {
-      value: "mcp",
-      label: "MCP",
-      description: "查看服务器与连接状态",
-      icon: <ComposerMcpIcon />,
-      group: "功能",
-      run: () => setMcpOpen(true),
-    },
-    {
-      value: "files",
-      label: t("chat.composer.workspaceFiles"),
-      description: t("chat.composer.workspaceFilesDescription"),
-      icon: <FileTree />,
-      group: "功能",
-      run: () => onPanel("文件"),
-    },
-    {
-      value: "plan",
-      label: "计划模式",
-      description: planActive ? "关闭计划模式" : "先规划，再开始执行",
-      icon: <Lightbulb />,
-      group: "功能",
-      disabled:
-        disabled || taskManagement || !!running || !config || config.profile?.readOnly === true,
-      run: () => {
-        void configure({ options: planModeOptions(!planActive, config?.options) });
+    ...composerFeatureEntries(t, {
+      upload: { run: () => upload.current?.click() },
+      mcp: { run: () => setMcpOpen(true) },
+      files: { run: () => onPanel("文件") },
+      plan: {
+        active: planActive,
+        disabled:
+          disabled || taskManagement || !!running || !config || config.profile?.readOnly === true,
+        run: () => {
+          void configure({ options: planModeOptions(!planActive, config?.options) });
+        },
       },
-    },
-    ...(!readOnly && !isSide && !thread.goals?.goal
-      ? [
-          {
-            value: "goal",
-            label: "设置目标",
-            description: creatingGoal ? "关闭目标模式" : "设置持续目标与停止条件",
-            icon: <Target />,
-            group: "功能" as const,
-            disabled: disabled || taskManagement || !!running || !!thread.parentThreadId,
-            run: () => changeGoalMode(!goalMode),
-          },
-        ]
-      : []),
+      goal:
+        !readOnly && !isSide && !thread.goals?.goal
+          ? {
+              active: creatingGoal,
+              disabled: disabled || taskManagement || !!running || !!thread.parentThreadId,
+              run: () => changeGoalMode(!goalMode),
+            }
+          : undefined,
+    }),
     {
       value: "compact",
       label: "压缩",
@@ -1230,66 +1200,36 @@ export function Composer({
                     ))}
                   </div>
                 )}
-                {files.some((file) => !isComposerFile(file) || !browserAnnotation(file)) ? (
-                  <div className="composer-attachments" data-testid="composer-attachments">
-                    {files
-                      .filter((file) => !isComposerFile(file) || !browserAnnotation(file))
-                      .map((file, i) => (
-                        <ComposerAttachment
-                          disabled={editorDisabled}
-                          key={
-                            isComposerFile(file)
-                              ? `${file.name}-${file.lastModified}-${i}`
-                              : `pasted-text-${i}`
-                          }
-                          file={file}
-                          onReplace={(replacement) =>
-                            setFiles((current) =>
-                              current.map((entry) => (entry === file ? replacement : entry)),
-                            )
-                          }
-                          uploadOwner={uploadOwner}
-                          onRetry={async (file) => {
-                            setAdmissionError("");
-                            try {
-                              await uploadComposerFiles(
-                                action,
-                                project.id,
-                                thread.id,
-                                [file],
-                                undefined,
-                                uploadOwner,
-                              );
-                            } catch (cause) {
-                              setAdmissionAttempt((attempt) => attempt + 1);
-                              setAdmissionError((cause as Error).message);
-                            }
-                          }}
-                          onAnnotate={
-                            onAnnotate
-                              ? (file) =>
-                                  onAnnotate({
-                                    draftKey: key,
-                                    file,
-                                    returnFocus: () => api.current?.focus(),
-                                  })
-                              : undefined
-                          }
-                          onRemove={() => {
-                            if (isComposerFile(file)) forgetComposerUploads(uploadOwner, [file]);
-                            setFiles((current) => current.filter((item) => item !== file));
-                            if (isComposerFile(file)) void consumeSnapShotFiles([file]);
-                          }}
-                          onExpand={(content) => {
-                            if (isComposerFile(file)) forgetComposerUploads(uploadOwner, [file]);
-                            api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
-                            setFiles((current) => current.filter((item) => item !== file));
-                            if (isComposerFile(file)) void consumeSnapShotFiles([file]);
-                          }}
-                        />
-                      ))}
-                  </div>
-                ) : null}
+                <ComposerFileList
+                  files={files}
+                  onChange={setFiles}
+                  disabled={editorDisabled}
+                  editor={api}
+                  include={(file) => !isComposerFile(file) || !browserAnnotation(file)}
+                  uploadOwner={uploadOwner}
+                  onForget={(file) => forgetComposerUploads(uploadOwner, [file])}
+                  onRetry={async (file) => {
+                    setAdmissionError("");
+                    try {
+                      await uploadComposerFiles(
+                        action,
+                        project.id,
+                        thread.id,
+                        [file],
+                        undefined,
+                        uploadOwner,
+                      );
+                    } catch (cause) {
+                      setAdmissionAttempt((attempt) => attempt + 1);
+                      setAdmissionError((cause as Error).message);
+                    }
+                  }}
+                  onAnnotate={
+                    onAnnotate &&
+                    ((file) =>
+                      onAnnotate({ draftKey: key, file, returnFocus: () => api.current?.focus() }))
+                  }
+                />
                 {!queueEditor.edit && (
                   <ReviewCommentAttachment
                     comments={comments}
@@ -1383,22 +1323,10 @@ export function Composer({
                 />
               )}
               {creatingGoal && (
-                <div className="flex shrink-0 items-center gap-1">
-                  <span className="h-4 border-l border-border" aria-hidden="true" />
-                  <ControlHintTooltip title="退出目标模式">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="gap-1 rounded-full px-2 text-ui-caption text-foreground-subtle"
-                      aria-label="退出目标模式"
-                      disabled={disabled || !!queueEditor.edit}
-                      onClick={() => changeGoalMode(false)}
-                    >
-                      <Target className="size-4" />
-                      <span>目标</span>
-                    </Button>
-                  </ControlHintTooltip>
-                </div>
+                <ComposerGoalMode
+                  disabled={disabled || !!queueEditor.edit}
+                  onExit={() => changeGoalMode(false)}
+                />
               )}
             </>
           }

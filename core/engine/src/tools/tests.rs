@@ -877,6 +877,81 @@ async fn verification_waits_for_exit_after_an_early_output_burst() {
 }
 
 #[tokio::test]
+async fn verification_attachment_preserves_diagnostics_and_omissions() {
+    let (pipe, peer) = tokio::io::duplex(64 * 1024);
+    let (read, write) = tokio::io::split(pipe);
+    let (peer_read, mut peer_write) = tokio::io::split(peer);
+    let receipt = json!({"schema":"areal.verification.v1","exitCode":7,
+        "argv":["python","check.py"],"outputTail":"AssertionError: required invariant failed\n",
+        "outputTailStartByte":1000,"outputTailTruncated":true,"logBytes":1042,
+        "logPath":"workspace://scratch/check.log","sourceUnchanged":true});
+    let expected = receipt.clone();
+    let server = tokio::spawn(async move {
+        let mut lines = BufReader::new(peer_read).lines();
+        let mut reads = 0;
+        while let Some(line) = lines.next_line().await.unwrap() {
+            let request: Value = serde_json::from_str(&line).unwrap();
+            let method = request["method"].as_str().unwrap();
+            let result = match method {
+                "connection.open" => json!({"protocolVersion":rt::VERSION,"runtimeEpoch":"epoch",
+                    "connectionId":"fixture","rootScopeId":"scope","capabilities":{"methods":["fs.execute"]}}),
+                "fs.execute" => {
+                    reads += 1;
+                    assert_eq!(request["params"]["scopeId"], "scope");
+                    assert_eq!(
+                        request["params"]["command"]["path"],
+                        "workspace://scratch/check.json"
+                    );
+                    json!({"dataBase64":STANDARD.encode(receipt.to_string()),"eof":true})
+                }
+                "connection.close" => json!({"closed":true}),
+                _ => panic!("unexpected {method}"),
+            };
+            peer_write
+                .write_all(format!("{}\n", json!({"id":request["id"],"result":result})).as_bytes())
+                .await
+                .unwrap();
+            if method == "connection.close" {
+                return reads;
+            }
+        }
+        reads
+    });
+    let client = Client::connect(read, write).await.unwrap();
+    let mut result = json!({"state":"running"});
+    verification::attach(
+        &client,
+        "scope",
+        "workspace://scratch/check.json",
+        &mut result,
+    )
+    .await;
+    assert_eq!(result["verification"]["status"], "pending");
+    result["state"] = json!("exited");
+    verification::attach(
+        &client,
+        "scope",
+        "workspace://scratch/check.json",
+        &mut result,
+    )
+    .await;
+    for key in [
+        "exitCode",
+        "outputTail",
+        "outputTailStartByte",
+        "outputTailTruncated",
+        "logPath",
+        "sourceUnchanged",
+    ] {
+        assert_eq!(result["verification"][key], expected[key]);
+    }
+    assert!(result["verification"].get("argv").is_none());
+    assert_eq!(result["verification"]["status"], "complete");
+    client.shutdown().await.unwrap();
+    assert_eq!(server.await.unwrap(), 1);
+}
+
+#[tokio::test]
 async fn aliases_reject_cross_process_cursor_and_cross_file_version() {
     let client = process_fixture(0, None, None, false).await;
     let runtime = RuntimeConfig {
@@ -1119,7 +1194,7 @@ async fn output_does_not_short_circuit_budgets_pty_deadlines_or_loss() {
         let client = process_fixture(2000, Some(100), Some("wallTime"), loss).await;
         let started = Instant::now();
         let (success, result) = command(&client, None, false).await;
-        assert_eq!(success, loss); // Loss returns a still-running process; it is not test success.
+        assert!(!success); // 输出缺失和进程终止都不能作为成功收据。
         assert_eq!(
             result["returnReason"],
             if loss { "outputLoss" } else { "completed" }
@@ -2133,4 +2208,141 @@ async fn read_helpers_work_without_write_or_network_permissions() {
     .await;
     client.shutdown().await.unwrap();
     result.unwrap();
+}
+
+#[test]
+fn environment_fact_snapshot_keeps_source_reference_without_repeating_declarations() {
+    let mut handles = Handles::default();
+    handles.environment_facts.insert("/repo".into(), json!({"cwd":"/repo","fingerprint":"observed","sourceItemId":"original-item","invalidateOn":"environment changes","declarations":[{"text":"public config\n".repeat(2000)}]}));
+    let snapshot = handles.snapshot();
+    assert_eq!(snapshot["environmentFactCount"], 1);
+    assert_eq!(
+        snapshot["environmentFacts"][0]["sourceItemId"],
+        "original-item"
+    );
+    assert_eq!(snapshot["environmentFacts"][0]["fingerprint"], "observed");
+    assert!(!snapshot.to_string().contains("public config"));
+    assert!(snapshot.to_string().len() < 2000);
+}
+
+#[tokio::test(start_paused = true)]
+async fn collection_drains_many_display_pages_and_keeps_exit_failure() {
+    let raw = format!(
+        "{}\nFAIL: assertion in final output\n",
+        "progress\n".repeat(9000)
+    );
+    let client = process_fixture_output(0, Some(0), Some("wallTime"), false, raw.clone()).await;
+    let (success, result) = process_output(
+        &client,
+        "scope",
+        ReadProcess {
+            process_id: "process".into(),
+            after: None,
+            wait_ms: 0,
+            view: OutputView::Auto,
+        },
+        0,
+        None,
+        8192,
+    )
+    .await
+    .unwrap();
+    assert!(!success);
+    assert_eq!(result["stdout"], raw);
+    assert_eq!(result["processComplete"], true);
+    assert_eq!(result["outputReadComplete"], true);
+    let mut archived = result.clone();
+    archived["rawResult"] = json!({"resultId":"saved-output"});
+    let view = output::bounded_preview(&archived, 8192).unwrap();
+    assert_eq!(view["commandStatus"], "terminated");
+    assert_eq!(view["exitCode"], 1);
+    assert_eq!(view["rawResult"]["resultId"], "saved-output");
+    assert!(view["stdout"].as_str().unwrap().contains("FAIL: assertion"));
+    assert!(view["displayOmittedBytes"].as_u64().unwrap() > 60000);
+    assert_eq!(view["evidenceSufficiency"], "requiresJudgment");
+    assert!(view.to_string().len() <= MAX_RESULT);
+    client.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn collection_cap_does_not_confuse_process_exit_with_drained_output() {
+    let raw = "x".repeat(1024 * 1024 + 19);
+    let client = process_fixture_output(0, Some(0), None, false, raw).await;
+    let (_, first) = process_output(
+        &client,
+        "scope",
+        ReadProcess {
+            process_id: "process".into(),
+            after: None,
+            wait_ms: 0,
+            view: OutputView::Auto,
+        },
+        0,
+        None,
+        8192,
+    )
+    .await
+    .unwrap();
+    assert_eq!(first["commandStatus"], "succeeded");
+    assert_eq!(first["outputReadComplete"], false);
+    assert_eq!(first["returnReason"], "collectionLimit");
+    let (_, last) = process_output(
+        &client,
+        "scope",
+        ReadProcess {
+            process_id: "process".into(),
+            after: Some(first["nextCursor"].as_str().unwrap().into()),
+            wait_ms: 0,
+            view: OutputView::Auto,
+        },
+        0,
+        None,
+        8192,
+    )
+    .await
+    .unwrap();
+    assert_eq!(last["stdout"].as_str().unwrap().len(), 19);
+    assert_eq!(last["outputReadComplete"], true);
+    client.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn empty_polls_do_not_spend_the_data_page_budget() {
+    let client = process_fixture(700_000, None, None, false).await;
+    let (_, result) = command(&client, Some(800_000), false).await;
+    assert_eq!(result["returnReason"], "completed");
+    assert_eq!(result["collectionPages"], 0);
+    client.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn unknown_process_keeps_collected_bytes_and_cursor() {
+    let client = process_fixture_exit(
+        0,
+        Some(0),
+        None,
+        false,
+        "before unknown".into(),
+        Some(json!({"state":"unknown"})),
+    )
+    .await;
+    let error = process_output(
+        &client,
+        "scope",
+        ReadProcess {
+            process_id: "process".into(),
+            after: None,
+            wait_ms: 0,
+            view: OutputView::Auto,
+        },
+        0,
+        None,
+        8192,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error.code, rt::ErrorCode::Unavailable);
+    assert_eq!(error.details.as_ref().unwrap()["stdout"], "before unknown");
+    assert_eq!(error.details.as_ref().unwrap()["state"], "unknown");
+    client.shutdown().await.unwrap();
 }

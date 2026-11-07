@@ -28,7 +28,7 @@ export function useSideConversations(
   const { t } = useI18n();
   const { panel, workspaceView } = workspacePanels.view;
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
-  const sideChats = useSideChatTabs(resourceAction);
+  const sideChats = useSideChatTabs(resourceAction, snapshot.projects);
   const sideSource = useRef({ owner: panelOwner, instanceId: project?.core?.instanceId });
   sideSource.current = { owner: panelOwner, instanceId: project?.core?.instanceId };
   const canCreateSide =
@@ -55,21 +55,30 @@ export function useSideConversations(
   const createSide = async (text = "") => {
     if (!canCreateSide || !project || !thread) throw new Error(t("chat.side.unavailable"));
     rememberPanelTrigger();
+    const owner = sideSource.current;
     const tab = await sideChats.create(project.id, thread.id, text);
-    revealSide(tab);
+    if (
+      sideSource.current.owner === owner.owner &&
+      sideSource.current.instanceId === owner.instanceId
+    )
+      revealSide(tab);
     return tab;
   };
   const newSide = () => {
     if (!project || !thread) return;
+    const owner = sideSource.current;
     const recovering = sideChats.pendingCreation(project.id, thread.id);
     const operation = recovering
       ? sideChats.recoverCreation(project.id, thread.id).then((tab) => {
-          if (tab) revealSide(tab);
+          if (
+            tab &&
+            sideSource.current.owner === owner.owner &&
+            sideSource.current.instanceId === owner.instanceId
+          )
+            revealSide(tab);
         })
       : createSide();
-    void operation.catch((cause) => {
-      if (!cause.submissionUnknown) setError(cause.message);
-    });
+    void operation.catch(() => {});
   };
   const removeSideTab = (tab: SideChatTab) => {
     sideChats.forget(tab);

@@ -36,7 +36,12 @@
   width: 32px;
 }
 .interaction-composer-compact
-  :is([aria-label="更改权限"], [aria-label="退出计划模式"], [aria-label="退出目标模式"]) {
+  :is(
+    [aria-label="更改权限"],
+    [data-composer-mode],
+    [aria-label="退出计划模式"],
+    [aria-label="退出目标模式"]
+  ) {
   display: none;
 }
 .interaction-composer-compact .composer-model-trigger {

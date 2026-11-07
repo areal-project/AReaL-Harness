@@ -1,4 +1,12 @@
 export const browserMessages = {
+  "browser.chatRequired": {
+    "zh-CN": "发送第一条消息或打开已有聊天后，即可使用浏览器。",
+    en: "Send your first message or open an existing chat to use the browser.",
+  },
+  "browser.desktopRequired": {
+    "zh-CN": "内嵌浏览器需要桌面应用。网页链接会在当前设备的浏览器中打开。",
+    en: "The embedded browser requires the desktop app. Web links open in this device's browser.",
+  },
   "browser.details.label": { "zh-CN": "浏览器详情", en: "Browser details" },
   "browser.details.close": { "zh-CN": "关闭详情", en: "Close details" },
   "browser.details.handoff": { "zh-CN": "网页文件交接", en: "Web file handoff" },

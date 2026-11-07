@@ -104,7 +104,7 @@ pub(super) async fn request(
     let Some(root) = host.loopback.ui_root.borrow().clone() else {
         return response(
             StatusCode::SERVICE_UNAVAILABLE,
-            Bytes::from_static(b"Shared interface is not installed"),
+            Bytes::from_static(b"Shared web interface is unavailable. It is supplied by AReaL Harness GUI.app, not the standalone CLI. Install or upgrade the desktop application. When Host is idle, run areal host stop, then open the desktop application (or run its Contents/Resources/areal-core/bin/areal host run) and retry areal web. Do not restart Host while tasks are active."),
             "text/plain",
         );
     };

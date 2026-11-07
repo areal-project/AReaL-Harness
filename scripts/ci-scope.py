@@ -12,6 +12,7 @@ SCOPES = {
     "gui": [
         "design/**",
         "services/remote-relay/**",
+        "services/workbench/**",
         "clients/**",
         "core/**",
         "runtime/**",
@@ -25,6 +26,7 @@ SCOPES = {
     ],
     "release": [
         "design/tokens/**",
+        "services/workbench/**",
         "clients/**",
         "core/**",
         "runtime/**",
@@ -111,17 +113,35 @@ def impact(paths):
     code = [
         path
         for path in paths
-        # 仅明确的说明文档可跳过；内置 SKILL.md、设计合同等仍是产品输入。
+        # 仅明确的说明文档、仓库非运行时元数据与独立 workflow 站点可跳过；内置 SKILL.md、设计合同等仍是产品输入。
         if not (
-            path.startswith("docs/")
+            path.startswith(("docs/", "website/", ".github/ISSUE_TEMPLATE/"))
+            or path.startswith("tests/guides/")
+            and path.endswith(".md")
             or path
             in {
-                "README.md",
-                "README.en.md",
-                "CONTRIBUTING.md",
+                ".editorconfig",
+                ".gitattributes",
+                ".github/PULL_REQUEST_TEMPLATE.md",
+                ".gitignore",
+                ".worktreeinclude",
+                "AGENTS.md",
+                "CHANGELOG.en.md",
+                "CHANGELOG.md",
                 "CONTRIBUTING.en.md",
-                "SECURITY.md",
+                "CONTRIBUTING.md",
+                "DESIGN.md",
+                "GLOSSARY.en.md",
+                "GLOSSARY.md",
+                "LEGAL.md",
+                "LICENSE",
+                "PRODUCT.md",
+                "README.en.md",
+                "README.md",
+                "REVIEW.md",
                 "SECURITY.en.md",
+                "SECURITY.md",
+                "handoff.md",
             }
             or path.endswith(".md")
             and path.startswith(("design/", "clients/gui/design-system/"))
@@ -142,6 +162,7 @@ def impact(paths):
                 "core/",
                 "runtime/",
                 "schemas/",
+                "services/workbench/",
                 "scripts/",
                 ".github/",
                 ".githooks/",

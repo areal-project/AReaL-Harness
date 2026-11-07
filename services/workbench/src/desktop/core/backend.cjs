@@ -1992,50 +1992,36 @@ class CoreBackend {
           )
             throw new Error("无效 Side 恢复身份");
           const method = request.method ?? "areal/side/start";
-          const receipts = await project.client.request(
-            "areal/request/read",
-            {
+          const recovered = await this.readSubmission(project, method, {
+            requestId: request.requestId,
+            ...(sourceThreadId ? { sourceThreadId } : {}),
+            ...(threadId ? { threadId } : {}),
+          });
+          if (!recovered.confirmed || !("status" in recovered)) return { confirmed: false };
+          if (recovered.status === "failed" || recovered.accepted === false)
+            return {
+              confirmed: true,
               requestId: request.requestId,
-              ...(request.threadId ? { threadId: request.threadId } : {}),
-            },
-            { decode: require("./receipt-contract.cjs").readReceipts },
-          );
-          const receipt = receipts.data?.find((item) => item.method === method);
-          if (!receipt?.result) return { confirmed: false };
-          const result = readAdmission(receipt.result);
-          const id = result.threadId;
+              status: "failed",
+              accepted: recovered.accepted,
+              message: "message" in recovered ? recovered.message : "操作未完成，请检查后重试。",
+            };
+          if (!("result" in recovered)) return { confirmed: false };
+          const result = readAdmission(recovered.result);
+          const id = result.threadId ?? result.thread?.id;
           if (!id) return { confirmed: false };
-          if (this.rustDomains.includes("execution-rust")) {
-            const pending = project.pending.find((entry) => entry.method === method && entry.params.requestId === request.requestId);
-            if (pending) await this.readSubmission(project, method, { ...pending.params, requestId: request.requestId });
-          } else {
-          await this.changeOutcomes(project, (outcomes) => ({
-            ...outcomes,
-            [request.requestId]: {
-              accepted: true,
-              method,
-              sourceThreadId,
-              threadId: id,
-              ...(result.turnId ? { turnId: result.turnId } : {}),
-              ...(method === "areal/side/close"
-                ? { cleanupConfirmed: result.cleanupConfirmed === true }
-                : {}),
-            },
-          }));
-          await this.changePending(project, (pending) =>
-            pending.filter((item) => item.params.requestId !== request.requestId),
-          );
-          }
           await this.refreshAfterAdmission(
             project,
             id,
-            operationOf(method, { requestId, sourceThreadId, threadId }),
+            recovered.operation ?? operationOf(method, { requestId, sourceThreadId, threadId }),
           );
           return {
             confirmed: true,
             requestId: request.requestId,
             threadId: id,
-            ...(result.turnId ? { turnId: result.turnId } : {}),
+            ...((result.turnId ?? result.turn?.id)
+              ? { turnId: result.turnId ?? result.turn?.id }
+              : {}),
             ...(method === "areal/side/close"
               ? { accepted: true, cleanupConfirmed: result.cleanupConfirmed === true }
               : {}),

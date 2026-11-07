@@ -8,7 +8,7 @@ import {
 import { snapShotCommandEntries } from "./snapshots/shortcut.js";
 import { useSnapShotCapture } from "./snapshots/captureContext.js";
 import { useSnapShotDraft } from "./snapshots/activeDraft.js";
-import { consumeSnapShotFiles, moveSnapShotDraft } from "./snapshots/drafts.js";
+import { moveSnapShotDraft } from "./snapshots/drafts.js";
 import { requestTurnStart, cancelTurnStart, type TurnStartRequest } from "./readingViews.js";
 import { composerUploadOwner } from "./ComposerUploadState.js";
 import type { DraftComposerProps } from "./draftComposerTypes.js";
@@ -26,16 +26,14 @@ import {
 import { ComposerModelMenu } from "./ComposerModelMenu.js";
 import { ComposerPermissionMenu } from "./ComposerPermissionMenu.js";
 import { permissionOptions, planModeOptions } from "./permissions.js";
-import { ComposerPlanMode } from "./ComposerPlanMode.js";
-import { FileTree, AttachmentIcon, GoalIcon, PlanModeIcon as Lightbulb } from "./interfaceIcons.js";
+import { ComposerGoalMode, ComposerPlanMode } from "./ComposerPlanMode.js";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
 
 import {
-  ComposerAttachment,
+  ComposerFileList,
   composerInput,
   composerPaste,
-  isComposerFile,
   hasMissingComposerFiles,
 } from "./ComposerAttachments.js";
 import {
@@ -50,8 +48,8 @@ import {
   clearComposerSkills,
   readComposerSkills,
 } from "./ComposerSkills.js";
-import { ComposerMcpIcon } from "./ComposerIcons.js";
 import { ComposerMcp } from "./ComposerMcp.js";
+import { composerFeatureEntries } from "./composerFeatures.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { CircleAlert } from "lucide-react";
 import {
@@ -66,7 +64,6 @@ import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
 import type { Data } from "./services.js";
 import { conversationReferenceEntries } from "./ConversationReferences.js";
 import {
-  isIndependentCreation,
   isTechnicalErrorMessage,
   recoveredOutcome,
   recoveryMessage,
@@ -189,10 +186,7 @@ export function DraftComposer({
   const executionReady = backendReady && !!project.state?.connected;
   const modelReady = executionReady || (backendReady && !!prepareProject && modelCatalogReady);
   const modelSelectionDisabled = editLocked || !modelReady || unavailableProfile;
-  const blockingPending = project.pending.filter(
-    (entry: Data) => !isIndependentCreation(entry, [unknown, activeCreation?.requestId]),
-  );
-  const submitDisabled = modelSelectionDisabled || !!blockingPending.length || !effectiveModel;
+  const submitDisabled = modelSelectionDisabled || !effectiveModel;
   const models = draftModelChoices(project, effectiveModel, currentModel);
   const desktopUnsupported =
     conversationSubmitReadOnly ||
@@ -255,7 +249,11 @@ export function DraftComposer({
         throw new Error(t("worktree.recoveryMismatch"));
       const result = await readAction("reconcile", { projectId: project.id, requestId });
       if (!mounted.current || localStorage.getItem(`${key}:pending-create`) !== requestId) return;
-      const outcome = recoveredOutcome({ ...project, outcomes: result.outcomes }, requestId, "");
+      const outcome = recoveredOutcome({ ...project, outcomes: result.outcomes }, requestId, "", {
+        requestId,
+        method: "areal/thread/start",
+        target: { kind: "project" },
+      });
       const creationOutcome =
         outcome && (!outcome.operation || outcome.operation.method === "areal/thread/start")
           ? outcome
@@ -352,7 +350,11 @@ export function DraftComposer({
   };
   useEffect(() => {
     if (!unknown || stoppedCreation.current.has(unknown)) return;
-    const outcome = recoveredOutcome(project, unknown, "");
+    const outcome = recoveredOutcome(project, unknown, "", {
+      requestId: unknown,
+      method: "areal/thread/start",
+      target: { kind: "project" },
+    });
     if (!outcome || (outcome.operation && outcome.operation.method !== "areal/thread/start"))
       return;
     if (outcome.status === "failed" || outcome.accepted === false) {
@@ -835,73 +837,47 @@ export function DraftComposer({
             },
             entries: [
               ...snapShotCommandEntries(snapshotCapture, t, setDraftError),
-              {
-                value: "upload",
-                label: "上传文件",
-                description: "添加图片、文档或其他文件",
-                group: "功能",
-                icon: <AttachmentIcon />,
-                disabled: editLocked,
-                run: () => {
-                  if (!editLocked) upload.current?.click();
+              ...composerFeatureEntries(t, {
+                upload: {
+                  disabled: editLocked,
+                  run: () => {
+                    if (!editLocked) upload.current?.click();
+                  },
                 },
-              },
-              ...(project.id !== "projectless"
-                ? [
-                    {
-                      value: "mcp",
-                      label: "MCP",
-                      description: "查看服务器与连接状态",
-                      group: "功能" as const,
-                      icon: <ComposerMcpIcon />,
-                      disabled: !executionReady,
-                      run: () => {
-                        if (executionReady) setMcpOpen(true);
-                      },
-                    },
-                  ]
-                : []),
-              ...(project.root
-                ? [
-                    {
-                      value: "files",
-                      label: t("chat.composer.workspaceFiles"),
-                      description: t("chat.composer.workspaceFilesDescription"),
-                      group: "功能" as const,
-                      icon: <FileTree />,
+                mcp:
+                  project.id !== "projectless"
+                    ? {
+                        disabled: !executionReady,
+                        run: () => {
+                          if (executionReady) setMcpOpen(true);
+                        },
+                      }
+                    : undefined,
+                files: project.root
+                  ? {
                       disabled: !executionReady,
                       run: () => {
                         if (executionReady) onPanel("文件");
                       },
-                    },
-                  ]
-                : []),
-              {
-                value: "plan",
-                label: "计划模式",
-                description: plan ? "关闭计划模式" : "先规划，再开始执行",
-                group: "功能",
-                icon: <Lightbulb />,
-                disabled: editLocked || chosenProfile?.readOnly === true,
-                run: () => {
-                  if (!editLocked) setPlanMode(!plan);
+                    }
+                  : undefined,
+                plan: {
+                  active: plan,
+                  disabled: editLocked || chosenProfile?.readOnly === true,
+                  run: () => {
+                    if (!editLocked) setPlanMode(!plan);
+                  },
                 },
-              },
-              ...(!readOnly
-                ? [
-                    {
-                      value: "goal",
-                      label: "设置目标",
-                      description: goalMode ? "关闭目标模式" : "设置持续目标与停止条件",
-                      group: "功能" as const,
-                      icon: <GoalIcon />,
+                goal: !readOnly
+                  ? {
+                      active: goalMode,
                       disabled: editLocked,
                       run: () => {
                         if (!editLocked) changeGoalMode(!goalMode);
                       },
-                    },
-                  ]
-                : []),
+                    }
+                  : undefined,
+              }),
               ...referenceEntries,
               ...appEntries.map((entry) => ({
                 ...entry,
@@ -930,49 +906,17 @@ export function DraftComposer({
             <div hidden={!!outgoing}>
               {skills.tags}
               <div className="composer-attachment-row">
-                {files.length ? (
-                  <div className="composer-attachments" data-testid="composer-attachments">
-                    {files.map((file, i) => (
-                      <ComposerAttachment
-                        disabled={editLocked}
-                        key={
-                          isComposerFile(file)
-                            ? `${file.name}-${file.lastModified}-${i}`
-                            : `pasted-text-${i}`
-                        }
-                        file={file}
-                        onReplace={(replacement) =>
-                          setFiles((current) =>
-                            current.map((entry) => (entry === file ? replacement : entry)),
-                          )
-                        }
-                        onAnnotate={
-                          onAnnotate
-                            ? (file) => {
-                                if (!editLocked)
-                                  onAnnotate({
-                                    draftKey: key,
-                                    file,
-                                    returnFocus: () => api.current?.focus(),
-                                  });
-                              }
-                            : undefined
-                        }
-                        onRemove={() => {
-                          if (!editLocked)
-                            setFiles((current) => current.filter((_, at) => at !== i));
-                          if (isComposerFile(file)) void consumeSnapShotFiles([file]);
-                        }}
-                        onExpand={(content) => {
-                          if (editLocked) return;
-                          api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
-                          setFiles((current) => current.filter((item) => item !== file));
-                          if (isComposerFile(file)) void consumeSnapShotFiles([file]);
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : null}
+                <ComposerFileList
+                  files={files}
+                  onChange={setFiles}
+                  disabled={editLocked}
+                  editor={api}
+                  onAnnotate={
+                    onAnnotate &&
+                    ((file) =>
+                      onAnnotate({ draftKey: key, file, returnFocus: () => api.current?.focus() }))
+                  }
+                />
                 <ReviewCommentAttachment
                   comments={comments}
                   disabled={editLocked}
@@ -1033,16 +977,7 @@ export function DraftComposer({
                 />
               )}
               {goalMode && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={editLocked}
-                  aria-label="退出目标模式"
-                  onClick={() => changeGoalMode(false)}
-                >
-                  <GoalIcon size={16} />
-                  目标
-                </Button>
+                <ComposerGoalMode disabled={editLocked} onExit={() => changeGoalMode(false)} />
               )}
               {plan && (
                 <ComposerPlanMode

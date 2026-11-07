@@ -50,6 +50,33 @@ pub struct TextPatch {
     pub new_text: String,
 }
 
+/// 有界派生视图的显式请求；不授予额外文件或进程权限。
+#[derive(Clone, Debug, Default, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageViewOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_dimension: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_view_bytes: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crop: Option<ImageCrop>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame_index: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_ms: Option<f64>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageCrop {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+// 三幅 1 MiB PNG 的 base64 加元数据；单个 RPC 帧和进程输出额度保持原值。
+pub const MAX_IMAGE_RESPONSE_BYTES: usize = 4 * 1024 * 1024 + 32 * 1024;
+
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(
     tag = "kind",
@@ -58,6 +85,11 @@ pub struct TextPatch {
     deny_unknown_fields
 )]
 pub enum FileCommand {
+    ReadImage {
+        path: String,
+        #[serde(default)]
+        options: ImageViewOptions,
+    },
     Read {
         path: String,
         #[serde(default)]
@@ -126,7 +158,8 @@ pub enum FileCommand {
 impl FileCommand {
     pub fn path(&self) -> &str {
         match self {
-            Self::Read { path, .. }
+            Self::ReadImage { path, .. }
+            | Self::Read { path, .. }
             | Self::ReadForHistory { path, .. }
             | Self::Stat { path }
             | Self::List { path, .. }
@@ -141,7 +174,8 @@ impl FileCommand {
     }
     pub fn path_mut(&mut self) -> &mut String {
         match self {
-            Self::Read { path, .. }
+            Self::ReadImage { path, .. }
+            | Self::Read { path, .. }
             | Self::ReadForHistory { path, .. }
             | Self::Stat { path }
             | Self::List { path, .. }

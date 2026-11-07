@@ -72,7 +72,7 @@
     "owner": "scripts"
   },
   "activeDesignDocBytes": {
-    "value": 269714,
+    "value": 184954,
     "direction": "down",
     "owner": "design/ clients/gui/design-system"
   },
@@ -928,7 +928,7 @@
     "app/src/update/package-users.cjs": "Electron application update installation, Squirrel readiness and package occupancy"
   },
   "mainBusinessLines": {
-    "value": 8057,
+    "value": 8055,
     "direction": "down",
     "owner": "app/src"
   },

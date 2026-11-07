@@ -1,4 +1,14 @@
 #!/bin/sh
 root=$(git rev-parse --show-toplevel) || exit
-export PATH="$root/.venv/bin:$root/.local/tools/node/bin:$PATH"
+primary=$(git worktree list --porcelain 2>/dev/null | sed -n '1s/^worktree //p')
+primary=${primary:-$root}
+if [ -z "${AREAL_RELAY_NODE_BIN:-}" ]; then
+  for relay in /usr/local/bin/node /opt/homebrew/bin/node "$HOME/.nvm/versions/node/v24.2.0/bin/node"; do
+    if [ -x "$relay" ] && [ "$("$relay" -p 'process.versions.node' 2>/dev/null)" = "24.2.0" ]; then
+      export AREAL_RELAY_NODE_BIN="$relay"
+      break
+    fi
+  done
+fi
+export PATH="$root/.venv/bin:$root/.local/tools/node/bin:$primary/.venv/bin:$primary/.local/tools/node/bin:$PATH"
 exec python3 "$root/scripts/git-hooks.py" pre-commit "$@"

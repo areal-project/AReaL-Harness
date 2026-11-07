@@ -53,20 +53,68 @@ pub(crate) fn restart_pending(home: &Path) -> Result<bool> {
     let Some(pending) = pending(home)? else {
         return Ok(false);
     };
-    if let Some(id) = pending.apply_request_id {
-        let record: Operation = storage::read(&wire::operation_path(home, &id))?;
-        return Ok(record.receipt["state"] != "completed");
-    }
-    Ok(true)
+    let id = pending
+        .apply_request_id
+        .as_ref()
+        .unwrap_or(&pending.prepare_request_id);
+    let record: Operation = storage::read(&wire::operation_path(home, id))?;
+    needs_restart(&record.receipt, env!("CARGO_PKG_VERSION"))
+}
+
+fn needs_restart(receipt: &Value, running: &str) -> Result<bool> {
+    Ok(receipt["state"] != "completed"
+        && compare_versions(
+            receipt["targetVersion"]
+                .as_str()
+                .context("missing update target version")?,
+            running,
+        )? == std::cmp::Ordering::Greater)
 }
 
 fn valid_version(version: &str) -> bool {
-    !version.is_empty()
-        && version.len() <= 96
-        && version
-            .bytes()
-            .all(|c| c.is_ascii_alphanumeric() || b".-".contains(&c))
-        && version.as_bytes()[0].is_ascii_digit()
+    release_order(version).is_ok()
+}
+
+// 与统一发版脚本一致：只接受 X.Y.Z 和 X.Y.Z-beta.N，正式版排在同号 beta 之后。
+fn release_order(version: &str) -> Result<(u64, u64, u64, bool, u64)> {
+    let number = |part: &str| -> Result<u64> {
+        ensure!(
+            !part.is_empty()
+                && part.bytes().all(|c| c.is_ascii_digit())
+                && (part == "0" || !part.starts_with('0')),
+            "invalid release version: {version}"
+        );
+        Ok(part.parse()?)
+    };
+    let (base, beta) = match version.split_once("-beta.") {
+        Some((base, beta)) => {
+            let beta = number(beta)?;
+            ensure!(beta > 0, "invalid beta version: {version}");
+            (base, Some(beta))
+        }
+        None => (version, None),
+    };
+    let parts: Vec<_> = base.split('.').collect();
+    ensure!(parts.len() == 3, "invalid release version: {version}");
+    Ok((
+        number(parts[0])?,
+        number(parts[1])?,
+        number(parts[2])?,
+        beta.is_none(),
+        beta.unwrap_or(0),
+    ))
+}
+
+pub(crate) fn compare_versions(left: &str, right: &str) -> Result<std::cmp::Ordering> {
+    Ok(release_order(left)?.cmp(&release_order(right)?))
+}
+
+fn require_upgrade(target: &str, running: &str) -> Result<()> {
+    ensure!(
+        compare_versions(target, running)? == std::cmp::Ordering::Greater,
+        "target {target} must be newer than running Host {running}; downgrades and same-version switches are not supported"
+    );
+    Ok(())
 }
 
 fn layout(executable: &Path, version: &str) -> Result<Target> {
@@ -332,7 +380,7 @@ impl Host {
             .context("missing original update receipt")?
             .receipt;
         Ok(
-            json!({"restartPending":operation["state"]!="completed","targetVersion":operation["targetVersion"],"prepareRequestId":pending.prepare_request_id,"operation":operation}),
+            json!({"restartPending":needs_restart(&operation, &self.identity.executable_version)?,"targetVersion":operation["targetVersion"],"prepareRequestId":pending.prepare_request_id,"operation":operation}),
         )
     }
 
@@ -392,6 +440,8 @@ impl Host {
             wire::error("requestConflict", "requestId belongs to another operation")
         );
         self.admission()?;
+        require_upgrade(&input.target_version, &self.identity.executable_version)
+            .map_err(|e| wire::error("invalidUpdateTarget", e.to_string()))?;
         ensure!(
             self.reserved_update_stop()?.is_none(),
             wire::error(
@@ -405,10 +455,6 @@ impl Host {
                 ensure!(
                     input.strategy.is_none(),
                     wire::error("invalidRequest", "prepare does not accept a stop strategy")
-                );
-                ensure!(
-                    input.target_version != self.identity.executable_version,
-                    wire::error("invalidUpdateTarget", "target is already running")
                 );
                 let target = layout(&self.bin.join("areal"), &input.target_version)
                     .map_err(|e| wire::error("updateUnavailable", e.to_string()))?;
@@ -727,7 +773,9 @@ impl Host {
             return Ok(());
         }
         let target: Target = serde_json::from_value(record.evidence["target"].clone())?;
-        if let Err(e) = target.verify() {
+        if let Err(e) = require_upgrade(&target.version, &self.identity.executable_version)
+            .and_then(|()| target.verify())
+        {
             record.receipt["state"] = json!("blocked");
             record.receipt["message"] = json!(format!(
                 "Prepared target unavailable; original stop retained: {e}"
@@ -759,6 +807,82 @@ impl Host {
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn updates_only_admit_strictly_newer_semver_targets() {
+        let versions = [
+            "0.1.8",
+            "0.1.18",
+            "0.1.19-beta.1",
+            "0.1.19-beta.2",
+            "0.1.19",
+        ];
+        for (i, running) in versions.iter().enumerate() {
+            for (j, target) in versions.iter().enumerate() {
+                assert_eq!(
+                    require_upgrade(target, running).is_ok(),
+                    j > i,
+                    "{running} -> {target}"
+                );
+            }
+        }
+        for invalid in [
+            "",
+            "fixture",
+            "0.1",
+            "0.1.19-beta.0",
+            "0.1.19-beta.01",
+            "0.01.19",
+            "0.1.19-test.1",
+            "0.1.19+build",
+        ] {
+            assert!(require_upgrade(invalid, "0.1.18").is_err(), "{invalid}");
+            assert!(require_upgrade("0.1.19", invalid).is_err(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn updates_ignore_stale_pending_targets_after_a_newer_host_starts() {
+        let root = tempfile::tempdir().unwrap();
+        let host = root.path().join("host");
+        storage::private_dir(&host).unwrap();
+        storage::private_dir(&host.join("operations")).unwrap();
+        for target in [
+            "0.1.8",
+            "0.1.18",
+            "0.1.19-beta.1",
+            env!("CARGO_PKG_VERSION"),
+        ] {
+            storage::write(
+                &wire::operation_path(root.path(), "prepare"),
+                &Operation {
+                    digest: "fixture".into(),
+                    receipt: json!({"state":"prepared","targetVersion":target}),
+                    evidence: Value::Null,
+                },
+            )
+            .unwrap();
+            storage::write(
+                &host.join("update.json"),
+                &Pending {
+                    prepare_request_id: "prepare".into(),
+                    apply_request_id: None,
+                },
+            )
+            .unwrap();
+            assert!(!restart_pending(root.path()).unwrap(), "{target}");
+        }
+        storage::write(
+            &wire::operation_path(root.path(), "prepare"),
+            &Operation {
+                digest: "fixture".into(),
+                receipt: json!({"state":"prepared","targetVersion":"9.0.0"}),
+                evidence: Value::Null,
+            },
+        )
+        .unwrap();
+        assert!(restart_pending(root.path()).unwrap());
+    }
 
     #[test]
     fn prepared_inventory_rejects_entry_switch_and_changed_runtime() {

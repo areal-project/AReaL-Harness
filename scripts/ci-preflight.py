@@ -593,8 +593,66 @@ def main():
     return 0 if report["status"] in {"passed", "not-applicable"} else 1
 
 
+def bootstrap_local_runtime(root=ROOT):
+    """本地 CLI 入口自动装配仓库 Python .venv、GUI Node 24.22.1 与独立 Relay Node 24.2.0。"""
+    if os.environ.get("GITHUB_ACTIONS"):
+        return
+    primary = root
+    worktrees = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=root,
+        text=True,
+        capture_output=True,
+    )
+    if worktrees.returncode == 0:
+        first = next(
+            (
+                line.removeprefix("worktree ")
+                for line in worktrees.stdout.splitlines()
+                if line.startswith("worktree ")
+            ),
+            None,
+        )
+        if first:
+            primary = Path(first).resolve()
+    if not (os.environ.get("AREAL_RELAY_NODE_BIN") or os.environ.get("AREAL_RELAY_NODE")):
+        candidates = [
+            shutil.which("node"),
+            "/usr/local/bin/node",
+            "/opt/homebrew/bin/node",
+            str(Path.home() / ".nvm/versions/node/v24.2.0/bin/node"),
+            str(root / ".local/tools/relay-node/bin/node"),
+            str(primary / ".local/tools/relay-node/bin/node"),
+        ]
+        for candidate in candidates:
+            if not candidate or not os.access(candidate, os.X_OK):
+                continue
+            probe = subprocess.run(
+                [candidate, "-p", "process.versions.node"],
+                text=True,
+                capture_output=True,
+            )
+            if probe.returncode == 0 and probe.stdout.strip() == "24.2.0":
+                os.environ["AREAL_RELAY_NODE_BIN"] = candidate
+                break
+    current_parts = os.environ.get("PATH", "").split(os.pathsep) if os.environ.get("PATH") else []
+    prepend = []
+    for base in (root, primary):
+        for rel, binary in ((".venv/bin", "python3"), (".local/tools/node/bin", "node")):
+            directory = str(base / rel)
+            if (
+                os.access(Path(directory) / binary, os.X_OK)
+                and directory not in current_parts
+                and directory not in prepend
+            ):
+                prepend.append(directory)
+    if prepend:
+        os.environ["PATH"] = os.pathsep.join([*prepend, *current_parts])
+
+
 if __name__ == "__main__":
     try:
+        bootstrap_local_runtime(ROOT)
         raise SystemExit(main())
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(str(error), file=sys.stderr)

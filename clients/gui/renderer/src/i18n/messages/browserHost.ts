@@ -27,4 +27,20 @@ export const browserHostMessages = {
     "zh-CN": "重试",
     en: "Retry",
   },
+  "browserHost.approveCommand": {
+    "zh-CN": "areal host web approve {requestId}",
+    en: "areal host web approve {requestId}",
+  },
+  "hostRead.status": {
+    "zh-CN": "Host 状态：{status}",
+    en: "Host status: {status}",
+  },
+  "hostRead.state.ready": { "zh-CN": "已连接", en: "Connected" },
+  "hostRead.state.running": { "zh-CN": "运行中", en: "Running" },
+  "hostRead.state.connecting": { "zh-CN": "连接中", en: "Connecting" },
+  "hostRead.state.reconnecting": { "zh-CN": "重新连接中", en: "Reconnecting" },
+  "hostRead.state.stale": { "zh-CN": "等待刷新", en: "Awaiting refresh" },
+  "hostRead.state.unavailable": { "zh-CN": "不可用", en: "Unavailable" },
+  "hostRead.state.closed": { "zh-CN": "已断开", en: "Disconnected" },
+  "hostRead.state.unknown": { "zh-CN": "未知", en: "Unknown" },
 };

@@ -24,8 +24,8 @@ import { DismissIcon } from "../interfaceIcons.js";
 import { McpMentionsPicker, useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
-import { isIndependentCreation } from "../recoveryPresentation.js";
-import { type Action, type Data, type PlatformServices } from "../services.js";
+import { recoverySettings } from "../recoveryPresentation.js";
+import { type Action, type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
 import { useTaskWorkspace } from "../state/taskWorkspace.js";
 import type { useComposerWorkspace } from "../state/useComposerWorkspace.js";
@@ -98,6 +98,7 @@ function ConversationContent() {
     preview,
     panelNavigation,
     startup,
+    surfaces,
     pending,
     setError,
   } = useConversationContext();
@@ -109,7 +110,8 @@ function ConversationContent() {
 
   const { terminalOpen, setTerminalOpen } = panelNavigation;
 
-  const { restorationFailed, viewRefreshing } = startup;
+  const { restorationFailed, restorationError, viewFailure, viewRefreshing } = startup;
+  const settings = viewFailure && recoverySettings(viewFailure);
   const projectStopped = project?.state?.hostState === "stopped" && !project.state.connected;
 
   const { t } = useI18n();
@@ -135,7 +137,7 @@ function ConversationContent() {
                   {projectStopped
                     ? t("startup.projectStopped")
                     : restorationFailed
-                      ? t("common.conversation.unavailable")
+                      ? restorationError || t("common.conversation.unavailable")
                       : t(
                           project?.state?.connected
                             ? "startup.readingConversation"
@@ -150,6 +152,19 @@ function ConversationContent() {
                     onClick={() => void retryRestoration()}
                   >
                     {t("recovery.retryView")}
+                  </Button>
+                )}
+                {restorationFailed && settings && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => {
+                      surfaces.setSettingsTab(settings);
+                      surfaces.setSettingsOpen(true);
+                    }}
+                  >
+                    {t("recovery.checkSettings")}
                   </Button>
                 )}
               </div>
@@ -252,6 +267,7 @@ function ActiveConversation() {
   const { t } = useI18n();
   const pendingSide =
     project && thread ? sideChats.pendingCreation(project.id, thread.id) : undefined;
+  const sideError = project && thread ? sideChats.creationError(project.id, thread.id) : undefined;
   if (!project || !thread) return null;
   return (
     <>
@@ -335,15 +351,17 @@ function ActiveConversation() {
               </div>
             </div>
           )}
-          {pendingSide && (
+          {(pendingSide || sideError) && (
             <FeedbackNotice
-              tone="warning"
-              requestId={pendingSide.requestId}
-              message={t("chat.side.createUnconfirmed")}
+              tone={pendingSide ? "warning" : "error"}
+              requestId={pendingSide?.requestId}
+              message={sideError || t("chat.side.createUnconfirmed")}
               actions={
-                <Button variant="ghost" size="sm" onClick={newSide}>
-                  {t("chat.side.inspectCreation")}
-                </Button>
+                pendingSide && (
+                  <Button variant="ghost" size="sm" onClick={newSide}>
+                    {t("chat.side.inspectCreation")}
+                  </Button>
+                )
               }
             />
           )}
@@ -527,10 +545,7 @@ function DraftConversation() {
                       setSettingsOpen(true);
                     }
               }
-              disabled={
-                admitting ||
-                project.pending?.some((entry: Data) => !isIndependentCreation(entry, []))
-              }
+              disabled={admitting}
             />
           )}
         </div>

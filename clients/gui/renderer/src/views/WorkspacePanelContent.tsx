@@ -229,6 +229,16 @@ export function WorkspacePanelContent({
         <panels.Providers {...props} />
       </div>
     );
+  if (panel === "预览")
+    return (
+      <p role="status" className="p-3 text-ui-base text-foreground-subtle">
+        {t(
+          services.capabilities?.native === false
+            ? "browser.desktopRequired"
+            : "browser.chatRequired",
+        )}
+      </p>
+    );
   if (isBrowserTab(panel))
     return (
       <Preview

@@ -131,6 +131,7 @@ pub(crate) struct Handles {
     process_snapshots: BTreeMap<String, Value>,
     verification: BTreeMap<String, String>,
     pub(crate) pending_verifications: HashSet<String>,
+    environment_facts: BTreeMap<String, Value>,
 }
 
 fn short_handle(kind: char) -> String {
@@ -209,6 +210,13 @@ impl Handles {
     }
 
     fn expose(&mut self, name: &str, args: &Value, value: &mut Value, runtime: &RuntimeConfig) {
+        if name == "environment_info" && value["fingerprint"].is_string() {
+            if self.environment_facts.len() >= 4 {
+                self.environment_facts.clear();
+            }
+            self.environment_facts
+                .insert(value["cwd"].as_str().unwrap_or("").into(), value.clone());
+        }
         if let Some(process) = value["processId"].as_str().map(str::to_owned) {
             let alias = self
                 .processes
@@ -315,13 +323,21 @@ impl Handles {
                 .then(|| json!({"path":path,"fileVersion":id}))
         });
         json!({"processes":bounded(self.process_snapshots.values().cloned()),
+            "environmentFacts":bounded(self.environment_facts.values().map(|fact| json!({
+                "cwd":fact["cwd"],"fingerprint":fact["fingerprint"],"sourceItemId":fact["sourceItemId"],
+                "readback":"read_history(itemId=sourceItemId); follow rawResult if present",
+                "invalidateOn":fact["invalidateOn"],"observedOnly":true
+            }))),
+            "environmentFactCount":self.environment_facts.len(),"environmentFactsObservedOnly":true,
             "files":bounded(files),"processCount":self.processes.len(),
             "retainedFileVersions":self.versions.len(),"observedOnly":true,
             "guidance":"Only this Turn's observed handles are valid. Process state is the last observation: read_process refreshes it. File versions may be stale after shell/external edits: Runtime CAS still checks. Lists are byte bounded; re-read omitted files. Handles expire at Turn completion/restart. An omitted after resumes the current process cursor."})
     }
 }
 mod agents;
+mod composition;
 mod conversation_context;
+mod edit_files;
 mod extensions;
 mod file_before;
 mod images;
@@ -333,7 +349,9 @@ pub mod plugins;
 pub(crate) mod registry;
 mod results;
 pub(crate) use registry::Backend;
+mod program;
 mod scheduling;
+pub(crate) use program::recovered_program_content;
 mod verification;
 pub(crate) use registry::Registry;
 pub use registry::{
@@ -374,8 +392,8 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
     fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
         json!({"type":"function","function":{"name":name,"description":description,"parameters":{"type":"object","properties":properties,"required":required,"additionalProperties":false}}})
     }
-    let path = json!({"type":"string","description":"Workspace path, e.g. src/main.py, ., or workspace://repo/src/main.py. Absolute paths outside the workspace require host access from the deployment and may require approval. No parent traversal."});
-    let process_id = json!({"type":"string","description":"Copy the complete opaque processId returned by run_command. Do not shorten, reconstruct or substitute a cursor."});
+    let path = json!({"type":"string","description":"Workspace path: src/main.py, . or workspace://repo/…; no parent traversal. External absolute paths need host access; approval may apply."});
+    let process_id = json!({"type":"string","description":"Copy the complete returned processId; never reconstruct it or substitute a cursor."});
     let mut definitions = vec![
         tool(
             "task_state",
@@ -385,20 +403,20 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         ),
         tool(
             "read_file",
-            "Read a UTF-8 file with 1-based line offset/limit and line numbers. Returns fileVersion for conditional edits; follow nextLine when truncated. At most 8 MiB source and bounded output; use fs_read for an oversized single line.",
-            json!({"path":path,"offset":{"type":"integer","minimum":1},"limit":{"type":"integer","minimum":1,"maximum":1000}}),
+            "Read UTF-8 source with 1-based line offset/limit. Returns fileVersion for edits. Oversized lines (including minified JSON) return exact fragments with column/complete and nextRead; pass nextRead unchanged to continue the same source version. Columns count Unicode characters, not bytes. Otherwise follow nextLine. A fragment is not a complete JSON value. At most 8 MiB source and bounded output.",
+            json!({"path":path,"offset":{"type":"integer","minimum":1},"limit":{"type":"integer","minimum":1,"maximum":1000},"column":{"type":"integer","minimum":1},"expectedSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}}),
             &["path"],
         ),
         tool(
             "search_files",
-            "Search with ripgrep regex inside a workspace path, returning file names, line numbers and nearby lines. Respects gitignore, does not follow symlinks. Invalid regex is an error; limited results require narrowing the path or pattern.",
-            json!({"path":path,"pattern":{"type":"string"},"glob":{"type":"string"},"context":{"type":"integer","minimum":0,"maximum":10},"limit":{"type":"integer","minimum":1,"maximum":100}}),
+            "Search a workspace path using ripgrep regex; returns file names, line numbers and nearby lines. Respects gitignore; no symlink following. Correct invalid regex before repeating this read. Narrow path/pattern when limited; no matches is conclusive only when limited=false.",
+            json!({"path":path,"pattern":{"type":"string","description":"Ripgrep regex. In tool_program pass it through input to avoid a second string-escaping layer; see its regex example."},"glob":{"type":"string"},"context":{"type":"integer","minimum":0,"maximum":10},"limit":{"type":"integer","minimum":1,"maximum":100}}),
             &["pattern"],
         ),
         tool(
             "image_read",
-            "Read PNG/JPEG/WebP or GIF from the workspace or workspace://scratch as visual content. GIF defaults to sampled first/middle/last composited frames with frame count and timestamps; use zero-based frameIndex or timeMs to inspect omitted intervals. Crop uses original pixels. maxDimension defaults to 2048; each PNG view is reduced to at most 1 MiB. Sources are limited to 8 MiB/32 megapixels and remaining Runtime output budgets. If source transfer exceeds the remaining budget, derive a smaller image file with a local command before reading it. GIF decoding is bounded.",
-            json!({"path":path,"frameIndex":{"type":"integer","minimum":0,"maximum":4095},"timeMs":{"type":"number","minimum":0},"maxDimension":{"type":"integer","minimum":64,"maximum":4096},"crop":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),
+            "Read PNG/JPEG/WebP or GIF from the workspace or workspace://scratch as visual content. GIF defaults to sampled first/middle/last composited frames with frame count and timestamps; use zero-based frameIndex or timeMs to inspect omitted intervals. Crop uses original pixels. maxDimension defaults to 2048; each PNG view is reduced to at most 1 MiB. Runtime crops/resizes before transfer: source bytes are not sent to Core. maxViewBytes (4096..1048576, default 1 MiB) bounds each derived PNG. Source limits remain 8 MiB/32 megapixels; decoding time, memory, permissions and actual derived-output bytes retain Runtime budgets. No external image dependency or automatic command recovery. GIF decoding is bounded.",
+            json!({"path":path,"frameIndex":{"type":"integer","minimum":0,"maximum":4095},"timeMs":{"type":"number","minimum":0},"maxDimension":{"type":"integer","minimum":64,"maximum":4096},"maxViewBytes":{"type":"integer","minimum":4096,"maximum":1048576},"crop":{"type":"object","properties":{"x":{"type":"integer","minimum":0},"y":{"type":"integer","minimum":0},"width":{"type":"integer","minimum":1},"height":{"type":"integer","minimum":1}},"required":["x","y","width","height"],"additionalProperties":false}}),
             &["path"],
         ),
         tool(
@@ -438,15 +456,21 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
             &["path", "patches"],
         ),
         tool(
+            "environment_info",
+            "Inspect public project/test declarations and available interpreters: PATH, active/project environments and public conda inventory; at most four probes. Explicit executables override discovery (empty skips probes). Reports actual paths, pytest availability, omitted candidates and source fingerprints. Reuse unchanged observations; recheck after relevant changes. No activation, recursive scan, install or test execution; observations never certify a test pass.",
+            json!({"cwd":path,"executables":{"type":"array","maxItems":4,"items":{"type":"object","properties":{"name":{"type":"string","minLength":1,"maxLength":1024},"kind":{"enum":["python","node"]}},"required":["name","kind"],"additionalProperties":false}}}),
+            &[],
+        ),
+        tool(
             "verify_command",
-            "Run a test/build executable directly (no shell pipelines). Saves the complete output and a receipt in task scratch, with actual exit code and before/after source fingerprint. For example argv=[\"python\",\"-m\",\"pytest\",\"tests/test_feature.py\"]. Read the returned process until it exits; later source edits invalidate the receipt. Exit zero alone does not prove the task correct.",
+            "Run an already-selected test/build executable directly; use run_command for shell pipelines. Saves full output and a source/command/environment-bound receipt. In tool_program use await collect(await tools.verify_command(input.check)). Inspect exitCode and verification.outputTail; changed conditions invalidate reuse. Blender Python checks require nonzero --python-exit-code before the script/expression. Exit zero does not certify assertion coverage.",
             json!({"argv":{"type":"array","items":{"type":"string"},"minItems":1},"cwd":path,"timeoutMs":{"type":"integer","minimum":1},"yieldMs":{"type":"integer","minimum":0}}),
             &["argv"],
         ),
         tool(
             "run_command",
             &format!(
-                "Run command text with bash -o pipefail -c, or pass argv for a direct executable. Supply exactly one of command/argv; argv does not interpret shell operators. Collects output until completion or the wait budget, up to yieldMs (default {}, or {} for PTY). Use yieldMs=0 for independent work, then read_process. Inspect commandStatus and outputReadComplete. Non-PTY stdin is closed by default (legacy configurations may keep it open); stdinOpen explicitly selects open/closed. Use stdinOpen=true only when intending to write input, then write_process(close=true) to send EOF. Shell redirection still works. A running silent process is not proof it needs input; inspect its command and input contract before waiting or terminating. Turn completion reclaims commands.",
+                "Run command text with bash -o pipefail -c, or pass argv for a direct executable. Supply exactly one of command/argv; argv does not interpret shell operators. Collects output until completion or the wait budget, up to yieldMs (default {}, or {} for PTY). If only waiting/collection follows, use collect(await tools.run_command(...)) inside tool_program. Early yield outside collect is for independent work or interactive judgment. Inspect commandStatus and outputReadComplete. Non-PTY stdin is closed by default (legacy configurations may keep it open); stdinOpen explicitly selects open/closed. Use stdinOpen=true only when intending to write input, then write_process(close=true) to send EOF. Shell redirection still works. A running silent process is not proof it needs input; inspect its command and input contract before waiting or terminating. Turn completion reclaims commands.",
                 policy.command_wait_ms, policy.pty_wait_ms
             ),
             json!({"command":{"type":"string","minLength":1},"argv":{"type":"array","items":{"type":"string"},"minItems":1},"cwd":path,"timeoutMs":{"type":"integer","minimum":1},"yieldMs":{"type":"integer","minimum":0},"tty":{"type":"boolean","default":false},"stdinOpen":{"type":"boolean","default":false}}),
@@ -455,7 +479,7 @@ fn definitions_with_policy(policy: &ToolPolicy) -> Vec<Value> {
         tool(
             "read_process",
             &format!(
-                "Collect output until completion or waitMs (default {}; 0 drains retained output without waiting). Output pages are bounded to {} bytes and may return earlier. No fixed wait ceiling; Turn deadline and cancellation still apply. Omit after to resume this Turn's last returned cursor. Explicit null starts at the earliest retained output. Set view=raw to disable folding and inspect original output, including on every continuation. Check state, exitCode and stopReason; gap means older output was lost.",
+                "Collect output until completion or waitMs (default {}; 0 drains retained output without waiting). Auto collects up to 1 MiB/512 Runtime pages per call; the model preview is bounded to {} bytes. Collected output may be omitted from the preview, with a rawResult reference. Process completion, outputReadComplete and evidence sufficiency are distinct. No fixed wait ceiling; Turn deadline and cancellation still apply. Omit after to resume this Turn's last returned cursor. Explicit null starts at the earliest retained output. Set view=raw to disable folding and inspect original output, including on every continuation. Check state, exitCode and stopReason; gap means older output was lost.",
                 policy.read_wait_ms, policy.output_page_bytes
             ),
             json!({"processId":process_id,"after":{"type":["string","null"]},"waitMs":{"type":"integer","minimum":0,"default":policy.read_wait_ms},"view":{"type":"string","enum":["auto","raw"],"default":"auto"}}),
@@ -803,7 +827,7 @@ impl Engine {
         call: ToolCall,
         remaining: usize,
     ) -> anyhow::Result<usize> {
-        self.start_tool(cell, cancel, call, remaining, None)
+        self.start_tool(cell, cancel, call, remaining, None, None)
             .await?
             .await?
     }
@@ -814,6 +838,7 @@ impl Engine {
         call: ToolCall,
         remaining: usize,
         started: Option<tokio::sync::oneshot::Sender<()>>,
+        parent_call_id: Option<String>,
     ) -> anyhow::Result<tokio::sync::oneshot::Receiver<anyhow::Result<usize>>> {
         anyhow::ensure!(
             remaining >= self.tool_output_budget(cell, &call).await,
@@ -834,6 +859,8 @@ impl Engine {
                         &token,
                         call,
                         started,
+                        remaining,
+                        parent_call_id,
                     ))
                     .catch_unwind()
                     .await
@@ -855,6 +882,8 @@ impl Engine {
         cancel: &CancellationToken,
         call: ToolCall,
         ready: Option<tokio::sync::oneshot::Sender<()>>,
+        remaining_output: usize,
+        parent_call_id: Option<String>,
     ) -> anyhow::Result<usize> {
         let (session_id, turn_id, turn_number) = {
             let state = cell.state.lock().await;
@@ -906,7 +935,7 @@ impl Engine {
         let span = operation.span.clone();
         let result = async {
             tracing::event!(target: trajectory::TARGET, tracing::Level::INFO, { "event.name" = "areal.tool.call" });
-            self.tool_inner(cell, cancel, call, ready).await
+            self.tool_inner(cell, cancel, call, ready, remaining_output, parent_call_id).await
         }
         .instrument(span)
         .await;
@@ -926,6 +955,8 @@ impl Engine {
         cancel: &CancellationToken,
         call: ToolCall,
         ready: Option<tokio::sync::oneshot::Sender<()>>,
+        remaining_output: usize,
+        parent_call_id: Option<String>,
     ) -> anyhow::Result<usize> {
         let blocked_by_workspace_conflict = cell
             .state
@@ -1193,6 +1224,7 @@ impl Engine {
             content_items: None,
             call_id: call.id.clone(),
             execution: Box::new(ToolExecution {
+                parent_call_id: parent_call_id.clone(),
                 started_at_ms: Some(crate::execution_trace::now_ms()),
                 permission_review: None,
                 permission_scopes: Vec::new(),
@@ -1280,6 +1312,7 @@ impl Engine {
         let intent_ms = started.elapsed().as_secs_f64() * 1000.0;
         let invocation_started = std::time::Instant::now();
         let submitted = !cancel.is_cancelled() && rejection.is_none();
+        let nested_output_bytes = std::sync::atomic::AtomicUsize::new(0);
         let mut post_hook_failed = false;
         let result = if let Some(error) = rejection {
             Err(error)
@@ -1302,6 +1335,8 @@ impl Engine {
                 turn_id: &turn_id,
                 host: bindings.host,
                 entry: entry.unwrap(),
+                remaining_output,
+                nested_output_bytes: &nested_output_bytes,
             })
             .run(&mut post_hook_failed)
             .await
@@ -1339,6 +1374,13 @@ impl Engine {
                 (outcome, false, json!({"error":error}))
             }
         };
+        if call.name == "edit_files" && !success && result.get("files").is_none() {
+            self.edit_files_failure_receipt(cell, &call, &mut result)
+                .await;
+        }
+        if call.name == "tool_program" && result.get("contentItems").is_none() {
+            self.program_failure_receipt(cell, &call, &mut result).await;
+        }
         {
             let state = cell.state.lock().await;
             if let Some(Item::DynamicToolCall {
@@ -1435,6 +1477,9 @@ impl Engine {
                     );
                 }
             }
+            if call.name == "environment_info" && success {
+                result["sourceItemId"] = json!(item_id);
+            }
             cell.state
                 .lock()
                 .await
@@ -1519,6 +1564,8 @@ impl Engine {
         let prepared = if coordination && call.name == "agent_wait_any" {
             self.prepare_coordination_result(cell, &item_id, &call.name, &result)
                 .await?
+        } else if call.name == "tool_program" {
+            self.prepare_program_result(cell, &item_id, &result).await?
         } else {
             self.prepare_tool_result(cell, &item_id, &call.name, &result, output_argv.as_deref())
                 .await?
@@ -1528,7 +1575,10 @@ impl Engine {
             "areal.tool.result.projected",
             &prepared.value,
         );
-        if prepared.value != model_result
+        if call.name == "tool_program" {
+            // 程序投影同时保留真实图片和强制回执；采用保存原文后的有界文本视图。
+            custom_content = Some(extensions::content_items(&prepared.value));
+        } else if prepared.value != model_result
             && custom_content
                 .as_ref()
                 .is_some_and(|items| items.iter().all(|v| v["type"] == "inputText"))
@@ -1624,7 +1674,7 @@ impl Engine {
             !post_hook_failed,
             "post-tool hook failed; tool result is retained; automatic replay is disabled"
         );
-        Ok(bytes)
+        Ok(bytes.saturating_add(nested_output_bytes.load(Ordering::Relaxed)))
     }
 }
 
@@ -1976,11 +2026,28 @@ async fn process_output(
     let mut closed = false;
     // Bound raw bytes and the escaped model payload independently. The latter
     // keeps binary/control-heavy output from falling into the journal fallback.
-    let mut remaining = output_page_bytes;
-    let mut request_bytes = remaining.min(1024);
+    // 收集预算与模型展示预算分离；原文交给既有结果快照保存后再投影。
+    let collection_limit = if read.view == OutputView::Auto {
+        1024 * 1024
+    } else {
+        output_page_bytes
+    };
+    let mut remaining = collection_limit;
+    let mut request_bytes = if read.view == OutputView::Auto {
+        rt::MAX_READ_BYTES
+    } else {
+        1024
+    }
+    .min(remaining);
+    let mut pages = 0;
+    let from_cursor = after.clone();
     let return_reason = loop {
-        if remaining == 0 {
-            break "outputLimit";
+        if remaining == 0 || pages >= 512 {
+            break if read.view == OutputView::Auto {
+                "collectionLimit"
+            } else {
+                "outputLimit"
+            };
         }
         let mut wait = budget.saturating_sub(started.elapsed());
         if output_quiet_ms > 0
@@ -2021,7 +2088,8 @@ async fn process_output(
                 "Runtime returned more output than requested",
             ));
         }
-        let fits = model_output_fits(&stdout, &stderr, &page_stdout, &page_stderr);
+        let fits = read.view == OutputView::Auto
+            || model_output_fits(&stdout, &stderr, &page_stdout, &page_stderr);
         if !fits && (!page_stdout.is_empty() || !page_stderr.is_empty()) {
             // Retry from the same cursor with a smaller request. Runtime output
             // is retained, so no bytes are lost while finding a JSON-safe page.
@@ -2038,6 +2106,7 @@ async fn process_output(
         truncated |= page.truncated;
         let received_output = !page_stdout.is_empty() || !page_stderr.is_empty();
         if received_output {
+            pages += 1;
             // Output arrival does not hand control back to the model by default.
             // An explicit nonzero policy can restore legacy burst coalescing.
             last_output = Some(tokio::time::Instant::now());
@@ -2055,7 +2124,7 @@ async fn process_output(
         }
         request_bytes = request_bytes.max(1024).min(remaining.max(1));
         // waitMs=0 只禁止等待新输出，已保留的字节仍应填满当前安全页。
-        if started.elapsed() >= budget && !received_output {
+        if started.elapsed() >= budget && (!received_output || read.wait_ms > 0) {
             break "waitBudget";
         }
         if output_quiet_ms > 0
@@ -2067,12 +2136,20 @@ async fn process_output(
     };
     let info = owned_process(client, scope, &read.process_id).await?;
     if info.state == rt::ProcessState::Unknown {
-        return Err(rt::Error::new(
-            rt::ErrorCode::Unavailable,
-            "process outcome is UNKNOWN",
-        ));
+        let mut error = rt::Error::new(rt::ErrorCode::Unavailable, "process outcome is UNKNOWN");
+        // 未知终态不抹掉已经回收的证据；二进制保持无损，原错误仍是 UNKNOWN。
+        error.details = Some(
+            json!({"processId":read.process_id,"state":"unknown","nextCursor":after,
+            "outputReadComplete":closed,"gap":gap,"truncated":truncated,
+            "stdout":String::from_utf8_lossy(&stdout),"stderr":String::from_utf8_lossy(&stderr),
+            "stdoutBase64":STANDARD.encode(&stdout),"stderrBase64":STANDARD.encode(&stderr),
+            "evidenceSufficiency":"unknown"}),
+        );
+        return Err(error);
     }
-    let success = info.state != rt::ProcessState::Unknown
+    let success = !gap
+        && !truncated
+        && info.state != rt::ProcessState::Unknown
         && (info.state != rt::ProcessState::Exited
             || (info.exit_code == Some(0) && info.stop_reason.is_none()));
     let command_status = if info.state != rt::ProcessState::Exited {
@@ -2088,9 +2165,11 @@ async fn process_output(
     let stderr_text = String::from_utf8_lossy(&stderr).into_owned();
     // 保留 Runtime 的退出事实；137 也可能是程序自行返回，不能据此猜测信号或终止来源。
     let mut result = json!({"processId":read.process_id, "state":info.state, "returnReason":return_reason, "exitCode":info.exit_code, "signal":info.signal, "sandboxDenied":info.sandbox_denied, "stopReason":info.stop_reason, "stdout":stdout_text, "stderr":stderr_text, "stdoutBytes":stdout.len(), "stderrBytes":stderr.len(), "outputPageBytes":output_page_bytes, "nextCursor":after, "outputClosed":closed, "gap":gap, "truncated":truncated,
-        "commandStatus":command_status,"outputReadComplete":closed,
+        "commandStatus":command_status,"processComplete":info.state == rt::ProcessState::Exited,"outputReadComplete":closed,
+        "collectedFromCursor":from_cursor,"collectionLimitBytes":collection_limit,"collectionPages":pages,
+        "evidenceStatus":if gap || truncated { "incomplete" } else if closed { "collected" } else { "partial" },
         "outputIntegrity":if gap || truncated { "incomplete" } else { "retained" },
-        "nextAction":if !closed { "Read this process again to collect remaining/new output; omit after to continue." } else { "Retained output has been read to its end. Evaluate the actual checks; exit zero alone does not prove correctness." }});
+        "nextAction":if !closed { "Process or collection remains unfinished. Continue the same process within the remaining budget when necessary; omit after to resume." } else { "Retained output has been read to its end. Evaluate the actual checks; exit zero alone does not prove correctness." }});
     if read.view == OutputView::Auto
         && std::str::from_utf8(&stdout).is_ok()
         && std::str::from_utf8(&stderr).is_ok()

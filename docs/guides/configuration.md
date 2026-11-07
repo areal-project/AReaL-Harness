@@ -184,6 +184,8 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 可选采样参数不配置时省略，显式 0 保留。`temperature` 为有限数 [0,2]，`top_p` / `min_p` 为 [0,1]，`top_k` 为正整数或 -1，`presence_penalty` 为 [-2,2]，`repetition_penalty` 大于 0。Chat 与 Responses 均接受 temperature/top_p；其余四项只支持 Chat，Responses 配置时拒绝。参数发送不证明供应商实际采纳。摘要默认继承求解采样/推理配置并禁用工具。可单独设置 `model.summary_reasoning_effort` 和 `model.summary_max_output_tokens`（环境变量 `AREAL_HARNESS_SUMMARY_REASONING_EFFORT` / `AREAL_HARNESS_SUMMARY_MAX_OUTPUT_TOKENS`），不会修改后续求解参数。摘要输出上限为全局输出上限、摘要专用上限、Goal 剩余额度与 16384 中的最小值；专用上限需大于零。未配置时兼容原行为；例如可在求解 high 时显式选择摘要 low/4096，需验证供应商支持和任务保留效果。
 
+`model.summary_preserve_prefix` 是可选的摘要输入策略（环境变量 `AREAL_HARNESS_SUMMARY_PRESERVE_PREFIX`）。省略时保持原行为：Responses 尝试复用求解前缀与工具定义，Chat 使用引用式历史。显式 `false` 让 Responses 从首次摘要就使用引用式历史，省去已知不保真网关上的前缀尝试；普通求解的工具、缓存和预算不变。`true` 不会为 Chat 开启前缀复用。应按端点实际是否保留 system / developer 顺序、工具 schema 与缓存身份配置，不按模型名称猜测；关闭可能损失真实可复用的缓存。引用式摘要仍须通过原检查点提交校验，较少请求不能单独证明任务效果提升。旧配置继续兼容；旧版本不识别新增字段。
+
 `model.context_window_tokens` 设置当前模型的用户工作预算（1–2000000），Provider/模型参数及 `parameters.contextWindowTokens` 同样支持。工作窗口依次取用户显式配置、当前账号/渠道报告的默认值、渠道与完整型号对应的内置默认值、全局 `limits.context_window_tokens`（默认 131072）。用户值无论大于或小于报告值都优先；清空用户参数后恢复默认解析。报告值和用户值分别保留，目录更新不改写用户参数。它们控制本地预检，不能改变供应商服务端上限。
 
 模型目录中的可选 `reportedContextWindowTokens`（TOML 为每个模型上的 `reported_context_window_tokens`，1–2000000）保存自动发现的上游默认值，独立于 `parameters.contextWindowTokens`。旧配置中的参数继续视为用户显式设置；自动发现的新模型把报告值写入独立字段。新版本可读取省略该字段的旧配置；旧 Core 不支持包含该字段的新配置。诊断分别显示报告来源、用户预算与实际窗口。GPT 订阅使用账号报告与订阅专用默认表，API 使用 API 表；不会把 `max_context_window` 等可选最大容量当作默认值，也不按供应商显示名或模糊型号前缀匹配。
@@ -203,7 +205,7 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 内置值依据 [OpenAI API](https://developers.openai.com/api/docs/models/gpt-6.1-terra)、[Codex 产品默认](https://learn.chatgpt.com/docs/models)、[Codex 目录](https://github.com/openai/codex/blob/main/codex-rs/models-manager/models.json)、[Claude](https://platform.claude.com/docs/en/models/overview)、[DeepSeek](https://api-docs.deepseek.com/quick_start/pricing/)、[Qwen 3.6](https://help.aliyun.com/en/model-studio/qwen3-6-plus)、[Qwen 3.8 Max](https://help.aliyun.com/en/model-studio/qwen3-8-max)、[Flash](https://help.aliyun.com/en/model-studio/qwen3-8-flash)、[3.7 Max](https://help.aliyun.com/en/model-studio/qwen3-7-max)、[Plus](https://help.aliyun.com/en/model-studio/qwen3-7-plus)、[Flash](https://help.aliyun.com/en/model-studio/qwen3-7-flash)、[Qwen Plus](https://help.aliyun.com/en/model-studio/qwen-plus)、[Kimi](https://platform.kimi.ai/docs/pricing/chat) 与 [GLM](https://docs.z.ai/guides/llm/glm-5)。GLM 文档仅写 200K，内置值沿用保守的 200000；渠道报告或用户设置可覆盖。Sol 订阅产品文档与客户端内置目录数值不同，缺少账号报告时采用产品默认 500000。完整匹配表由 `core/engine/src/model/context_windows.rs` 维护，第三方目录不参与运行时拉取。
 
-输出预留取 `context.output_reserve_tokens`（默认 8192）与当前模型输出上限的较大值；默认 HTTP 模型因此预留 16384 token，使用 131072 兜底窗口时完整输入最多为 114688 token（其中还需容纳动态指令与工具 schema）。小窗口模型应同时调低输出上限和必要的预留。每次求解请求在发送前检查完整消息、动态指令和工具 schema 是否落在窗口减预留以内。估算按 ASCII 约 3 字节/token、非 ASCII 约 2 token/字符及媒体代理成本计算；已结算完整输入用量（含缓存）加 10% 余量校准追加历史，压缩后重置。估计不等于供应商 tokenizer 精确计数。
+输出预留取 `context.output_reserve_tokens`（默认 8192）与当前模型输出上限的较大值；默认 HTTP 模型因此预留 16384 token，使用 131072 兜底窗口时完整输入最多为 114688 token（其中还需容纳动态指令与工具 schema）。小窗口模型应同时调低输出上限和必要的预留。每次求解请求在发送前检查完整消息、动态指令和工具 schema 是否落在窗口减预留以内。估算按 ASCII 约 3 字节/token、非 ASCII 约 2 token/字符及媒体代理成本计算；在同次 generation、同模型与相同工具 schema 下，已结算完整输入用量（含缓存）加 10% 余量替代未变前缀的原始估算，再全额计入新增内容；压缩触发和最终硬预检共用该值。历史或工具变化、usage 缺失、媒体来自可变 URL/文件时回退原始估算；压缩后重置。估计不等于供应商 tokenizer 精确计数。
 
 常规使用只需设置模型窗口、输出上限和 `context.mode`。`context.target_tokens=0` 自动选择可用输入窗口的 60%；正数必须小于输入上限。`context.recent_tokens` 默认改为 0（自动），正数和旧 `context_recent_bytes` 仍作为兼容边界偏好，诊断保留配置来源；常用示例不再固定近期额度。Core 使用同一完整请求预算分配近期完整轮次、用户原文、摘要和历史证据，删除用户原文/证据各自的固定 8192 软配额，也不再永久优先首问。最新真实用户请求及附件必须完整保留；其他原文从近到远分配，旧附件超额时可保留其文字并明确标记附件省略。未完成或 UNKNOWN 工具操作不得纳入压缩前缀。旧原文与完整附件仍在磁盘，可通过 `read_history` 查回。
 
@@ -589,7 +591,7 @@ export OTEL_EXPORTER_OTLP_TIMEOUT=10000
 
 ## 缓存诊断
 
-`[model] responses_prompt_cache = true` 或 `AREAL_HARNESS_RESPONSES_PROMPT_CACHE=true` 显式启用实验性 Responses 正文缓存键；默认 false。可信模型装配和目录中的 Responses Provider 均生效，Chat Completions 不发送该字段；选定 Chat 协议时配置为 true 会提前拒绝。键根据 Core 线程、模型、凭据和请求用途派生为不含原文的 64 位十六进制摘要，同线程跨 Turn 与进程重建保持稳定；更换线程、模型、凭据或用途会更换键。无有效 Core 所有者的直接调用不设置键。该选项不改变输入、工具、预算、重试或压缩，也不保存服务端响应状态。更改可信启动配置后需按已有服务兼容性流程重启。旧配置和归档省略此字段时仍可读取；旧二进制不能读取记录了 true 的新配置归档，实验与回退使用独立状态目录。
+`[model] responses_prompt_cache = true` 或 `AREAL_HARNESS_RESPONSES_PROMPT_CACHE=true` 显式启用实验性 Responses 正文缓存键；默认 false。可信模型装配和目录中的 Responses Provider 均生效，Chat Completions 不发送该字段；选定 Chat 协议时配置为 true 会提前拒绝。键根据 Core 线程、模型、凭据和请求用途派生为不含原文的 64 位十六进制摘要，同线程跨 Turn 与进程重建保持稳定；摘要与求解共享缓存键；更换线程、模型、凭据或其它辅助用途会更换键。HTTP/WebSocket continuation 状态仍按真实请求用途隔离。无有效 Core 所有者的直接调用不设置键。该选项不改变输入、工具、预算、重试或压缩，也不保存服务端响应状态。更改可信启动配置后需按已有服务兼容性流程重启。旧配置和归档省略此字段时仍可读取；旧二进制不能读取记录了 true 的新配置归档，实验与回退使用独立状态目录。
 
 该字段只为公开协议支持的缓存分组提供身份，不能保证命中或降低时延；网关对正文键和会话头的处理可能不同。[OpenAI 缓存指南](https://developers.openai.com/api/docs/guides/prompt-caching)说明 GPT-6 官方 API 的路由不要求此键，其他网关应实测后显式选用。审计仅增加 `promptCacheKeySha256` 摘要，null 表示本请求未发送键，旧记录缺字段保持未知；缓存报告将键变化与输入前缀变化分开。它仍是实验候选，不代表完整制题流水线提速或默认策略晋级。
 
@@ -649,3 +651,7 @@ hooks = [{ type = "command", command = "python3 /absolute/path/hook.py", timeout
 ```
 
 有效来源、显式审阅、执行与剩余限制见 [插件指南](plugins.md)。
+
+`programmaticTools` 默认开启，在 Runtime 会话中同时展示程序化组合入口与原生工具；设为 false 可回退。`programmaticToolsOnly` 默认关闭，只用于显式收窄模型展示。配置和兼容性见[程序化工具调用](programmatic-tools.md)。 `programmaticDirectTools` 默认空数组；在 only 模式下可保留已可见原生工具的指定直达入口，示例为 `["edit_files"]`，不扩大权限或发现范围。
+
+`model.summary_quoted_retry`（`AREAL_HARNESS_SUMMARY_QUOTED_RETRY`）默认省略/false，仅显式开启时在既有第二次摘要额度内把格式失败的保留前缀切为引用证据，不增加重试或预算。格式验收不证明语义准确；已观察到的公式失真仍是负面证据，该策略及 `summary_preserve_prefix=false` 都不能直接视为语义恢复通过。普通请求截断、空回复仍按独立失败与 usage 契约处理。

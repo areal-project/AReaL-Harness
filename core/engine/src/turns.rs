@@ -293,6 +293,8 @@ impl Engine {
         }));
         state.active = Some(Active {
             tool_exposure: Default::default(),
+            native_tool_exposure: Default::default(),
+            observation_results: Default::default(),
             context_usage: None,
             context_sequence: 0,
             generation: Default::default(),

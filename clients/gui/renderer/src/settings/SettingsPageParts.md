@@ -1,7 +1,5 @@
 # 设置组合合同
 
-`R-SETTINGSPAGEPARTS-001` 纯布局实现与完整合同已迁入私有UI包，原路径保留转接；字段适配、导航守卫和配置保存继续归renderer。
-
 本组记录已准入的 GUI 切片。Props 与数值设计定义仍归源码所有者。目录列明的有限变体限定准入范围，不复制所有可用 Props。
 
 ## SettingsPage
@@ -31,7 +29,3 @@
 ## SettingsDisclosure
 
 `R-SETTINGSPAGEPARTS-007` [SettingsDisclosure.tsx](SettingsDisclosure.tsx) 保留原生 details/summary 语义、明确的展开收起文字与受控内容关系。Tab 可到达摘要，Enter 或 Space 可切换。折叠与展开是本地阅读状态，不表示业务成功或失败。组件不提供专用禁用、处理中或错误状态。DisplaySettings 提供其生产子内容。
-
-## 证据与边界
-
-`R-SETTINGSPAGEPARTS-008` [E-SETTINGS](../../../design-system/base-evidence.md#e-settings) 分别映射可重复检查与已完成运行。本地设置夹具覆盖列明条件，不证明原生桌面焦点、供应商保存或全部主题与变体组合。

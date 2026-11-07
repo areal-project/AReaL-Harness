@@ -624,7 +624,23 @@ async fn responses_tools_retain_provider_context_and_exact_arguments() {
             .count(),
         1
     );
-    assert!(done.turns[0].items.iter().any(|i| matches!(i, Item::ModelContext {value,..} if value["encrypted_content"] == "opaque-fixture")));
+    // Responses 保留完整有序输出封套；不再把 reasoning 拆成独立历史项。
+    let outputs: Vec<_> = done.turns[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::ModelContext { value, .. } if value["type"] == "areal_response_output" => {
+                value["items"].as_array()
+            }
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert_eq!(outputs.len(), 2);
+    assert_eq!(outputs[0]["type"], "reasoning");
+    assert_eq!(outputs[0]["encrypted_content"], "opaque-fixture");
+    assert_eq!(outputs[1]["type"], "function_call");
+    assert_eq!(outputs[1]["call_id"], "call_test");
     engine.shutdown().await;
     fixture.client.shutdown().await.unwrap();
     fixture.task.await.unwrap();

@@ -2,12 +2,6 @@
 
 这里是 AReaL Harness 的设计地图，供设计师、客户端工程师和 Agent 使用。从用户任务进入，找到负责该判断的唯一文档，再前往实现与验证位置。
 
-`R-ENTRY-012` 本目录是设计规则的源头，[@areal/ui](../clients/gui/packages/ui/README.md) 是它的实现：改变外观的修改同时更新这里的规则与理由；两者不一致时修改其中之一，不让它们并存（[P5](principles/README.md#p5-共享规则只维护一次)）。写代码时从 @areal/ui 的说明和 [Token 速查](../clients/gui/packages/ui/src/generated/tokens.md) 开始。
-
-`R-ENTRY-013` 设计系统以桌面 GUI 为准，先完成 GUI 的视觉、交互与生产迁移。后续 Web 复用适用的设计原则、Token、组件和模式，并按浏览器能力适配。TUI、CLI 不在本设计系统的建设与验收范围内。设计知识仍集中在根目录 `design/`，范围取舍见[D-001](decisions/001-shared-design-knowledge.md)。
-
-`R-ENTRY-014` 本目录只维护中文。外部使用与 API 文档由 `docs/` 维护。文档归档不改变产品行为、GUI Base 准入或视觉基线。
-
 ## 设计知识地图
 
 | 目录 | 回答的问题 | 维护边界 |
@@ -36,15 +30,6 @@
 | 客户端 | 现有设计与实现入口 | 平台责任 |
 | --- | --- | --- |
 | 桌面 GUI | [GUI 设计入口](../clients/gui/design-system/README.md)、[@areal/ui](../clients/gui/packages/ui/README.md)、[生产目录](../clients/gui/design-system/inventory.md) | React 控件、布局、窗口与原生视图的适配和准入 |
-| `R-ENTRY-015` Remote Web | [RemoteWorkbench](../clients/gui/renderer/src/remote/RemoteWorkbench.tsx) | 复用的 GUI 组件，以及浏览器权限和偏好边界 |
 | 本地 Web | [界面](../clients/web/app.js)、[样式](../clients/web/style.css) | 独立 Web 实现及主题偏好，不等同于 Remote Web |
 
-`R-ENTRY-016` Web 两行记录现有接线，供后续复用时核对，不表示完整设计系统已经接入 Web，也不构成当前 GUI 交付的前置条件。
-
 已完成的过程记录与调研材料在[设计归档](archive/README.md)，不是现行规则。
-
-## 唯一维护位置
-
-`R-ENTRY-017` GUI 的设计含义在本目录维护。GUI 实现规则引用这些含义，并拥有组件、数值、规则 ID、布局和准入。Web 复用时只补浏览器适配与验证。Core、Runtime 及已有服务契约仍拥有执行、权限、恢复与历史事实。
-
-`R-ENTRY-018` 新增要求先判断归属。修改设计含义时更新对应主题；移动正文时同步迁移引用并删除旧定义。原始取证与平台运行报告留在原位置，目录存在不证明 GUI 或 Web 已经实现或验收。

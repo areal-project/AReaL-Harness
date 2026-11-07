@@ -38,7 +38,7 @@ window.fixtureCalls=[];
 window.fixtureRecovery=params.has('recovery');
 if(params.has('unrelated-pending')){
  project.models=[{providerId:'fixture',modelId:'fixture-model',name:'Fixture model',available:true,isDefault:true,parameters:{}}];
- project.pending=[{method:'areal/thread/start',params:{requestId:params.get('unrelated-pending')==='invalid'?'invalid-request':'00000000-0000-4000-a000-000000000111'},awaitingResponse:false}];
+ project.pending=[{method:params.get('unrelated-pending')==='side'?'areal/side/create':'areal/thread/start',params:{requestId:params.get('unrelated-pending')==='invalid'?'invalid-request':'00000000-0000-4000-a000-000000000111',...(params.get('unrelated-pending')==='side'?{sourceThreadId:'existing-source'}:{})},awaitingResponse:false}];
  window.fixturePending=project.pending;
  if(params.get('unrelated-pending')==='own')localStorage.setItem('fixture-draft:pending-create',project.pending[0].params.requestId);
  localStorage.setItem('fixture-draft','[111](#sess_existing-source) 这个会话记录是什么');
@@ -69,7 +69,8 @@ function Fixture(){
  window.updateEvents=(value,record)=>{setEvents(value);setCurrent(record);};
  window.setFixtureAppearance=({dark,size,reducedMotion})=>{setDark(dark);document.documentElement.classList.toggle('dark',dark);document.documentElement.style.setProperty('--ui-font-size',size+'px');document.documentElement.style.fontSize=size+'px';setApplicationPreferences({contentSize:size,reducedMotion:reducedMotion?'on':'off'});};
  if(params.has('messages')){const kind=params.get('messages');const thread={id:'worktree-thread',conversation:kind==='inherited'?{kind:'fork',historySeed:{snapshotId:'fixture-snapshot'}}:undefined,turns:[fixtureTurn('local-own',kind==='partial'?'Later paginated local prompt':'First own local prompt')],displayHistory:{supported:kind==='partial',complete:kind!=='partial',latestTurnComplete:true},worktree:{state:'ready',directory:'/fixture/new-trees/task-proof',branch:'areal/gui-proof'}};return <main className='h-full bg-background p-6 text-foreground'><Messages project={project} thread={thread} action={action} dark={dark} embedded readOnly onLink={()=>{}} onFile={()=>{}} onReview={()=>{}} readTurnReview={async()=>({})}/></main>;}
- if(params.has('toast'))return <main className='p-6'><button onClick={()=>setEvents(events=>[...events,{}])}>更新快照</button><FeedbackNotice requestId='same-request' tone={events.length>2?'error':'warning'} message='正在核对操作' actions={<button onClick={()=>window.fixtureCalls.push({name:'check'})}>核对通知</button>}/><FeedbackNotice requestId='same-request' tone={events.length>2?'error':'warning'} message='正在核对操作' actions={<button onClick={()=>window.fixtureCalls.push({name:'check'})}>核对通知</button>}/></main>;
+ if(params.has('inline'))return <main className='p-6'><FeedbackNotice tone='warning' message='附件状态待确认' /></main>;
+ if(params.has('toast'))return <main className='p-6'><button onClick={()=>setEvents(events=>[...events,{}])}>更新快照</button><FeedbackNotice transient requestId='same-request' tone={events.length>2?'error':'warning'} message='正在核对操作' actions={<button onClick={()=>window.fixtureCalls.push({name:'check'})}>核对通知</button>}/><FeedbackNotice transient requestId='same-request' tone={events.length>2?'error':'warning'} message='正在核对操作' actions={<button onClick={()=>window.fixtureCalls.push({name:'check'})}>核对通知</button>}/></main>;
  if(params.has('unrelated-pending'))return <main className='p-6'><DraftComposer project={project} backendReady draftKey='fixture-draft' action={action} readAction={action} onOpen={async()=>{}} onPanel={()=>{}} /></main>;
  if(window.fixtureRecovery)return <main className='p-6'><DraftComposer project={{...project,state:{connected:false}}} draftKey='fixture-draft' action={action} readAction={action} onOpen={async(pid,tid)=>window.fixtureCalls.push({name:'opened',params:{projectId:pid,threadId:tid}})} onPanel={()=>{}} /></main>;
  if(params.has('settings'))return <main className='h-full bg-background text-foreground'><UnsavedChangesProvider><SettingsPage title='Worktrees'><WorktreesSettings action={action} projects={listing.projects} onAddProject={async()=>{window.fixtureCalls.push({name:'addProject',params:{}});return undefined;}}/></SettingsPage></UnsavedChangesProvider></main>;
@@ -248,12 +249,29 @@ try {
     originalPending,
     "new send retains original unconfirmed creation",
   );
+  await page.goto(base + "?unrelated-pending=side");
+  await page.getByTestId("chat-input").waitFor();
+  assert.equal(await page.getByTestId("chat-send-button").isEnabled(), true);
+  await page.getByTestId("chat-send-button").click();
+  await page.waitForFunction(() => window.fixtureCalls.some((call) => call.name === "send"));
+  assert.equal(
+    await page.evaluate(() => window.fixtureCalls.filter((call) => call.name === "create").length),
+    1,
+    "an unrelated side creation does not block a new conversation",
+  );
+  assert.equal(await page.evaluate(() => window.fixturePending[0].method), "areal/side/create");
   await page.goto(base + "?unrelated-pending=invalid");
   await page.getByTestId("chat-input").waitFor();
   assert.equal(
     await page.getByTestId("chat-send-button").isEnabled(),
-    false,
-    "unrecognized original request remains blocking",
+    true,
+    "an unrelated unrecognized request does not block a new conversation",
+  );
+  await page.getByTestId("chat-send-button").click();
+  await page.waitForFunction(() => window.fixtureCalls.some((call) => call.name === "send"));
+  assert.equal(
+    await page.evaluate(() => window.fixturePending[0].params.requestId),
+    "invalid-request",
   );
   await page.goto(base + "?unrelated-pending=own");
   await page.getByTestId("chat-input").waitFor();
@@ -270,7 +288,7 @@ try {
     [],
   );
   checks.push(
-    "a fresh modeled draft creates and sends once despite unrelated valid creation, retains original pending, and blocks malformed or own identity",
+    "a fresh modeled draft sends despite unrelated pending records while its own pending creation stays blocked",
   );
   await messagesAcceptance();
   if (process.env.AREAL_WORKTREE_UI_MESSAGES_ONLY === "1") {
@@ -764,6 +782,16 @@ try {
     checks.push(
       "a known creation receipt converges despite an unrelated pending project request, without create/send replay",
     );
+    await page.goto(base + "?inline=1");
+    await page.getByTestId("feedback-notice").waitFor();
+    assert.equal(await page.getByTestId("toast").count(), 0);
+    await capture("inline-feedback-light");
+    await page.evaluate(() =>
+      window.setFixtureAppearance({ dark: true, size: 16, reducedMotion: false }),
+    );
+    await capture("inline-feedback-dark");
+    assert.equal(await page.getByTestId("toast").count(), 0);
+    checks.push("Local feedback remains inline in light and dark themes without a global toast");
     await page.goto(base + "?toast=1");
     await page.getByTestId("toast").waitFor();
     assert.equal(await page.locator('[data-recovery-request-id="same-request"]').count(), 1);

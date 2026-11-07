@@ -330,6 +330,9 @@ pub enum ToolOutcome {
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolExecution {
+    /// Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_call_id: Option<String>,
     #[serde(default)]
     pub started_at_ms: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

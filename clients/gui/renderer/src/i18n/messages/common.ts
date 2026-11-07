@@ -399,14 +399,6 @@ export const commonMessages = {
     en: "Your draft is saved. You can keep writing and attach local files. Sending will be available when connected.",
   },
   "workspace.readingInfo": { "zh-CN": "读取工作区…", en: "Reading workspace…" },
-  "workspace.infoUnavailable": {
-    "zh-CN": "工作区信息不可用",
-    en: "Workspace information unavailable",
-  },
-  "workspace.infoSupplemental": {
-    "zh-CN": "分支等补充信息暂时无法读取，不影响发送。",
-    en: "Supplemental information such as the branch is unavailable. You can still send messages.",
-  },
   "workspace.worktree": { "zh-CN": "工作树", en: "Worktree" },
   "workspace.local": { "zh-CN": "本地", en: "Local" },
   "workspace.currentBranch": { "zh-CN": "当前分支", en: "Current branch" },

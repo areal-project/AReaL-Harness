@@ -1,7 +1,17 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { EventEmitter } = require("node:events");
+const { EventEmitter, once } = require("node:events");
+const { createServer } = require("node:net");
+const { execFileSync } = require("node:child_process");
+const { mkdtemp, mkdir, realpath, writeFile, copyFile, chmod, rm } = require("node:fs/promises");
+const { join } = require("node:path");
+const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
+const { waitForProcessExit } = require("../app/src/core/service-client.cjs");
+const {
+  assertPackageUsersReleased,
+  releasePackageForInstall,
+} = require("../app/src/update/package-users.cjs");
 const { createUpdater } = require("../app/src/update/controller.cjs");
 const { prepareNativeInstall } = require("../app/src/update/native-ready.cjs");
 const {
@@ -47,6 +57,171 @@ function fixture(options = {}) {
   });
   return { updater, controller, calls, states };
 }
+
+async function hostInstallFixture(t, activity) {
+  const root = await realpath(await mkdtemp("/tmp/ah-install-"));
+  const home = join(root, "desktop"),
+    profile = join(root, "profile"),
+    hostHome = join(root, "host");
+  const hostId = "11111111-1111-4111-a111-111111111111";
+  const generation = "22222222-2222-4222-a222-222222222222";
+  const contents = join(root, "Fixture.app/Contents");
+  const binary = join(contents, "Resources/areal-core/bin/areal");
+  const executable = join(contents, "MacOS/Fixture");
+  await mkdir(join(contents, "Resources/areal-core/bin"), { recursive: true });
+  await mkdir(join(contents, "MacOS"));
+  await copyFile("/bin/sleep", binary);
+  await writeFile(executable, "fixture");
+  // 模拟独立守护进程，不能落入安装门禁排除的当前 GUI 后代集合。
+  const pid = Number(
+    execFileSync(
+      process.execPath,
+      [
+        "-e",
+        'const child = require("node:child_process").spawn(process.argv[1], ["60"], { detached: true, stdio: "ignore" }); console.log(child.pid); child.unref();',
+        binary,
+      ],
+      { encoding: "utf8" },
+    ).trim(),
+  );
+  const alive = () => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      if (error.code === "ESRCH") return false;
+      throw error;
+    }
+  };
+  const stop = () => {
+    if (alive()) process.kill(pid, "SIGTERM");
+  };
+  const sockets = new Set(),
+    calls = [];
+  let stopState = "completed";
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+    let bytes = "";
+    socket.on("data", (chunk) => {
+      bytes += chunk;
+      for (;;) {
+        const end = bytes.indexOf("\n");
+        if (end < 0) break;
+        const request = JSON.parse(bytes.slice(0, end));
+        bytes = bytes.slice(end + 1);
+        calls.push(request);
+        let result;
+        if (request.method === "hello")
+          result = { version: 1, hostId, generation, capabilities: ["activity", "stopOperations"] };
+        else if (request.method === "host.activity") {
+          if (activity instanceof Error) {
+            socket.write(
+              JSON.stringify({
+                version: 1,
+                id: request.id,
+                error: { code: "internalError", message: activity.message },
+              }) + "\n",
+            );
+            continue;
+          }
+          result = activity;
+        } else if (request.method === "host.stop") {
+          assert.equal(request.params.strategy, "ifIdle");
+          assert.equal(request.params.expectedGeneration, generation);
+          result = {
+            version: 1,
+            hostId,
+            generation,
+            requestId: request.params.requestId,
+            strategy: "ifIdle",
+            state: stopState,
+            projects: [],
+          };
+          // 回执先于进程退出，安装必须等这段释放窗口结束。
+          if (stopState === "completed") setTimeout(stop, 100);
+        } else assert.fail("unexpected Host call: " + request.method);
+        socket.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n");
+      }
+    });
+  });
+  t.after(async () => {
+    stop();
+    await waitForProcessExit(pid);
+    for (const socket of sockets) socket.destroy();
+    await new Promise((done) => server.close(done));
+    await rm(root, { recursive: true, force: true });
+  });
+  for (const path of [home, profile, join(hostHome, "host")])
+    await mkdir(path, { recursive: true, mode: 0o700 });
+  const socketPath = join(hostHome, "host/control.sock"),
+    authFile = join(hostHome, "host/auth.json");
+  await writeFile(authFile, JSON.stringify("fixture-token"), { mode: 0o600 });
+  await writeFile(
+    join(hostHome, "host/host.json"),
+    JSON.stringify({ version: 1, hostId, generation, pid, socketPath, authFile }),
+    { mode: 0o600 },
+  );
+  server.listen(socketPath);
+  await once(server, "listening");
+  await chmod(socketPath, 0o600);
+  const backend = new SharedCoreBackend({ app: { getPath: () => profile }, home, hostHome });
+  return {
+    backend,
+    calls,
+    alive,
+    hostHome,
+    executable,
+    setStopState: (value) => {
+      stopState = value;
+    },
+  };
+}
+
+const hostIdle = { complete: true, projects: [], totalActiveTasks: 0 };
+
+test("install stops the idle connected Host and waits past its receipt for process exit", async (t) => {
+  const f = await hostInstallFixture(t, hostIdle);
+  const options = { backend: f.backend, packaged: true, executable: f.executable };
+  if (process.platform === "darwin")
+    await assert.rejects(assertPackageUsersReleased(options), { code: "LIFECYCLE_BLOCKED" });
+  await releasePackageForInstall(options);
+  assert.equal(f.alive(), false);
+  assert.equal(f.calls.filter((call) => call.method === "host.stop").length, 1);
+});
+
+test("install blocks active or unknown Host work without submitting cancellation", async (t) => {
+  for (const activity of [
+    new Error("Host activity unavailable"),
+    { ...hostIdle, totalActiveTasks: 1 },
+    { ...hostIdle, complete: false },
+    { ...hostIdle, projects: [{ projectId: "cli", state: "unavailable" }] },
+    {
+      ...hostIdle,
+      projects: [{ projectId: "cli", state: "observed", activeTurns: 1, idleAllowed: false }],
+    },
+  ]) {
+    const f = await hostInstallFixture(t, activity);
+    await assert.rejects(releasePackageForInstall({ backend: f.backend }), {
+      code: "LIFECYCLE_BLOCKED",
+    });
+    assert.equal(
+      f.calls.some((call) => call.method === "host.stop"),
+      false,
+    );
+    assert.equal(f.alive(), true);
+  }
+});
+
+test("install cannot proceed when work arrives at Host stop admission", async (t) => {
+  const f = await hostInstallFixture(t, hostIdle);
+  f.setStopState("blocked");
+  await assert.rejects(releasePackageForInstall({ backend: f.backend }), {
+    code: "LIFECYCLE_INCOMPLETE",
+  });
+  assert.equal(f.calls.filter((call) => call.method === "host.stop").length, 1);
+  assert.equal(f.alive(), true);
+});
 
 test("adjacent formal version passes safety checks before native staging and handoff", async () => {
   const { controller, calls, states } = fixture();

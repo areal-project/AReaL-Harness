@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import { CoreClient } from "../packages/runtime-client/core.js";
 
 const require = createRequire(import.meta.url);
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { waitForProcessExit } = require("../app/src/core/service-client.cjs");
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { HostClient } = createRequire(new URL("../app/package.json", import.meta.url))(
   "@areal/client/node",
@@ -57,8 +58,10 @@ await writeFile(join(source.coreHome, "projects.json"), JSON.stringify([cliProje
 const cli = new HostClient();
 const owner = new GuiHostProjects({ binary, home, source, singletonHeld: true });
 let client;
+let hostPid;
 try {
   await cli.connectOrStart(home, binary);
+  hostPid = JSON.parse(await readFile(join(home, "host/host.json"), "utf8")).pid;
   await cli.registerProject(randomUUID(), {
     projectId: "original-cli-project",
     workspace,
@@ -152,12 +155,17 @@ try {
     }),
   );
   Object.assign(backend, {
+    prepareThreadInProject: CoreBackend.prototype.prepareThreadInProject,
     assertThreadCreationAvailable() {},
+    currentConnection: (current, connection) => current === project && connection === client,
     desktopTools: () => [],
     library: { value: { settings: {} } },
     defaultProfile: invalidProfile,
-    submit: async (_project, method, params) =>
-      client.request(method, { ...params, requestId: randomUUID() }),
+    submit: async (_project, method, params, { preDispatch }) => {
+      assert.equal(preDispatch(), true);
+      assert.equal(Object.hasOwn(params, "agentProfile"), false);
+      return client.request(method, { ...params, requestId: randomUUID() });
+    },
     refreshAfterAdmission: async () => {},
   });
   const thread = await CoreBackend.prototype.createThreadInProject.call(backend, project, {});
@@ -176,13 +184,20 @@ try {
   client?.close();
   try {
     if (cli.socket && !cli.socket.destroyed)
-      await cli.request("host.stop", {
-        requestId: randomUUID(),
-        expectedGeneration: cli.generation,
-        strategy: "cancel",
-      });
+      assert.equal(
+        (
+          await cli.request("host.stop", {
+            requestId: randomUUID(),
+            expectedGeneration: cli.generation,
+            strategy: "cancel",
+          })
+        ).state,
+        "completed",
+      );
   } finally {
     owner.close();
     cli.close();
   }
+  if (hostPid) await waitForProcessExit(hostPid);
+  await rm(root, { recursive: true, force: true });
 }

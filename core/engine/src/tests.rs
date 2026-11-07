@@ -1255,3 +1255,62 @@ async fn side_capacity_recheck_does_not_invert_parent_state_and_creation_locks()
         "Side capacity inspection inverted parent-state/create admission lock order"
     );
 }
+
+#[tokio::test]
+async fn canonical_responses_history_survives_restart_and_projects_hook_and_unknown_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(PendingModel), Limits::default()).unwrap();
+    let mut thread = engine.create("/fixture".into()).await.unwrap();
+    let reasoning = json!({"type":"reasoning","id":"rs","summary":[],"encrypted_content":"opaque"});
+    let message = json!({"type":"message","id":"msg","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"Inspect"}]});
+    let raw_call = |id: &str| json!({"type":"function_call","id":format!("item-{id}"),"call_id":id,"name":"read_file","arguments":"{ \"path\": \"x\" }"});
+    let raw = json!([
+        reasoning,
+        message,
+        raw_call("a"),
+        raw_call("b"),
+        raw_call("undispatched")
+    ]);
+    let tool = |id: &str, outcome: &str, content: Value| {
+        json!({
+            "type":"dynamicToolCall","id":format!("tool-{id}"),"tool":"read_file","callId":id,
+            "arguments":{"path":"x"},"status":"completed","success":outcome=="succeeded","contentItems":content,
+        "execution":{"backend":"runtime","runtimeEpoch":"epoch","scopeId":"scope","operationId":format!("operation-{id}"),"outcome":outcome,"originalArguments":"{ \"path\": \"x\" }",
+                "modelArguments":if id=="a" {json!({"path":"y"})}else{json!({"path":"x"})}}
+        })
+    };
+    let turn:Turn=serde_json::from_value(json!({"id":"turn","status":"completed","items":[
+        {"type":"agentMessage","id":"visible","phase":"commentary","text":"Inspect"},
+        {"type":"modelContext","id":"canonical","value":{"type":"areal_response_output","visibleMessageId":"visible","items":raw}},
+        tool("a","succeeded",json!([{"type":"inputText","text":"actual y bytes"}])),
+        tool("b","unknown",Value::Null)
+    ]})).unwrap();
+    thread.turns.push(turn);
+    let restored: Thread = serde_json::from_slice(&serde_json::to_vec(&thread).unwrap()).unwrap();
+    let messages = history(&restored, &engine.store).unwrap();
+    assert_eq!(
+        messages.iter().map(|m| m.role.as_str()).collect::<Vec<_>>(),
+        ["assistant", "tool", "tool"]
+    );
+    assert_eq!(
+        messages
+            .iter()
+            .filter(|m| m.text_content() == "Inspect")
+            .count(),
+        1
+    );
+    let output = messages[0].responses_output().unwrap();
+    assert_eq!(output.len(), 4);
+    assert_eq!(output[0], reasoning);
+    assert_eq!(output[1], message);
+    assert_eq!(output[2]["arguments"], "{\"path\":\"y\"}");
+    assert_eq!(output[3], raw_call("b"));
+    assert_eq!(messages[1].text_content(), "actual y bytes");
+    assert!(messages[2].text_content().starts_with("UNKNOWN:"));
+    assert_eq!(messages[2].tool_call_id.as_deref(), Some("b"));
+    assert_eq!(
+        serde_json::to_value(&restored.turns[0].items[0]).unwrap(),
+        serde_json::to_value(&thread.turns[0].items[0]).unwrap()
+    );
+    engine.shutdown().await;
+}

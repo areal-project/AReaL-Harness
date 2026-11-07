@@ -30,6 +30,14 @@ const domains = {
   "manage.command": "manage",
 };
 
+// 与 Host 的 error_code 白名单一致；未知内部错误仍使用原来的兜底，不回传异常详情。
+const businessErrorCodes = new Set([
+  "INVALID_PARAMS", "FORBIDDEN", "GRANT_CHANGED", "RESYNC_REQUIRED", "REVIEW_INCOMPLETE",
+  "TARGET_CHANGED", "COMMAND_CONFLICT", "CAPABILITY_UNAVAILABLE", "RESOURCE_UNAVAILABLE",
+  "CORE_INCOMPATIBLE", "LIMIT_EXCEEDED", "CAPACITY_EXCEEDED", "TURN_BUSY",
+  "TASK_CONTROL_REQUIRED", "SUBMISSION_UNKNOWN", "CORE_UNAVAILABLE",
+]);
+
 async function start({ input, output }) {
   const lines = createInterface({ input, crlfDelay: Infinity });
   const iterator = lines[Symbol.asyncIterator]();
@@ -263,9 +271,11 @@ async function start({ input, output }) {
       };
       const task = execute().then(
         (result) => output.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n"),
-        (error) => output.write(JSON.stringify({ version: 1, id: request.id, error: request.method === "desktop.command"
-          ? { code: "COMMAND_FAILED", message: String(error?.message ?? "").slice(0, 512) }
-          : { code: "CORE_UNAVAILABLE" } }) + "\n"),
+        (error) => output.write(JSON.stringify({ version: 1, id: request.id, error: businessErrorCodes.has(error?.code)
+          ? { code: error.code }
+          : request.method === "desktop.command"
+            ? { code: "COMMAND_FAILED", message: String(error?.message ?? "").slice(0, 512) }
+            : { code: "CORE_UNAVAILABLE" } }) + "\n"),
       );
       pending.add(task);
       void task.then(() => pending.delete(task), () => pending.delete(task));

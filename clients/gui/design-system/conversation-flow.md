@@ -2,8 +2,6 @@
 
 状态：2026-10-24 设计目录与生产对话共用组件，仍保留实验导出与有限Base边界。生产接线见文末，设计预览继续供状态评审；不把采用等同于完整模式准入。适用桌面GUI的主聊天、活动详情与任务上下文；Side等复用Messages的入口共享活动呈现，Remote及各入口宿主仍分别验收。
 
-`R-CONVERSATION-002` 用户目标是把两张 Codex 截图中反复出现的结构变成可复用的设计语言：正文负责沟通，活动行负责说明做了什么，展开区负责核对细节，右侧负责整理当前工作的对象与输入。视觉沿用现有 AReaL Token、图标和控件，不从截图另建主题。
-
 ## 可操作预览
 
 从仓库根运行 `pnpm --dir clients/gui design:dev`，打开 [对话流设计预览](../renderer/design-system.html?conversation-system)。建设看板和组件目录也提供“对话流设计”入口。
@@ -21,8 +19,6 @@
 见[冻结原文](../../../design/archive/gui/conversation-design-research.md#依据与规则强度)。
 
 ## 设计系统如何组织
-
-`R-CONVERSATION-021` 沿 [AReaL 架构](../../../design/architecture.md)和 [D-004 私有 UI 包](../../../design/decisions/004-local-ui-package.md)组织，复用已有包、Token/主题和目录构建链，不新增平行组件库或页面 DSL。
 
 | 层 | 本题维护什么 | 唯一来源与后续落点 |
 | --- | --- | --- |
@@ -62,15 +58,3 @@
 ## 后续样例与验收清单
 
 见[冻结原文](../../../design/archive/gui/conversation-design-research.md#后续样例与验收清单)。
-
-## 生产接线
-
-`R-CONVERSATION-035` 生产主会话、子历史及复用Messages的入口消费同一实验包；不复制预览fixture或另建执行状态。TurnExecution负责原事件分组，单项以inline呈现，增加条目后同实例折叠；活动默认收起，人工选择跨增量和完成保留，失败/UNKNOWN在折叠外。
-
-`R-CONVERSATION-036` ToolEvent通过ImageDisclosure按需阅读已确认的工具图片，原SentAttachment负责Core媒体读取和查看器，读取失败在折叠外反馈。用户输入附件与最终交付图片保持原呈现。TurnActivity以连接、审批、重试、工具和未确认状态为先，仅在实际模型生成期间使用ThinkingStatus；消费Core reasoning.summary公开摘要，无摘要回退，不从modelContext提取隐藏信息。
-
-`R-CONVERSATION-037` App沿原顶部“任务资源”入口承载TaskContext。Sources来自已保存附件、已验证文件读取及用户明确网页引用；仅展示引用不宣称抓取，三项/全部/返回由原卡片维护。加号打开原Composer附件入口，只加入草稿。关联信息仅来自实际worktree.sourceRoot/directory，不把工作区内任意目录列为关联项目。Changes仍为工作区未暂存范围，定时任务与后台进程保留原动作。
-
-`R-CONVERSATION-038` Subagents入口先打开分状态列表，再进入AgentConversationPane真实历史，时间线子任务仍可直达。AgentsPane继续拥有原agents/agentWait分页查询与状态，AgentHistoryPane仅拥有阅读选择；失败、中断、未知使用原状态文字，不由父任务结算推导。原子任务管理页不替换。阅读卡片暂收起，关闭阅读器恢复；卡片通过React Activity保留阅读状态，隐藏期间清理查询effect。SidePane继续负责资源标签与主对话草稿/焦点返回。
-
-`R-CONVERSATION-039` 实验导出保留wip；生产采用不等于稳定API、完整Codex复刻或Base升级。真实桌面验收与安装包、供应商能力分别记录。

@@ -21,13 +21,6 @@
       "textSha256": "2d9db5f752aae0e4a29d737112a22eb7d9dde53413fe00a62ffe2c9e7fd30a8f"
     },
     {
-      "id": "R-ENTRY-002",
-      "title": "修改普通页面时，使用使用者入口、Token 入口及对应组件合同",
-      "owner": "clients/gui/design-system/README.md#开工顺序",
-      "strength": "default",
-      "textSha256": "3a3ac675214c70bcdd1cf1eaddf8e9bfcc17b5557fbc57a42a9a529cf1e1d1a8"
-    },
-    {
       "id": "R-ENTRY-047",
       "title": "修改公共规则或准入时，查规则登记找到唯一正文所有者",
       "owner": "clients/gui/design-system/README.md#开工顺序",
@@ -35,25 +28,11 @@
       "textSha256": "f22da08b67477759a27a327f0b9b310fab4a55fd6877341c0ca51b1d03816858"
     },
     {
-      "id": "R-ENTRY-048",
-      "title": "页面合同与差异裁决按结构化流程执行",
-      "owner": "clients/gui/design-system/README.md#开工顺序",
-      "strength": "default",
-      "textSha256": "48423f6e1396abfe994f824896451dd64966dfc62510fc2d4f4b8667fb1133ac"
-    },
-    {
       "id": "R-ENTRY-003",
       "title": "从仓库根运行 pnpm --dir clients/gui design:dev ，打开 /design-system.html",
       "owner": "clients/gui/design-system/README.md#预览与检查",
       "strength": "must",
       "textSha256": "b54580e862d35d1fb2c15bdfcff3b4793cdf4ff33966c9579714a859e69ed5eb"
-    },
-    {
-      "id": "R-ENTRY-004",
-      "title": "design:build 输出 clients/gui/dist/design-system/ ",
-      "owner": "clients/gui/design-system/README.md#预览与检查",
-      "strength": "default",
-      "textSha256": "73999f967d6d63b1048adb05b878573f2903510352ab4957b37315521d61de00"
     },
     {
       "id": "R-ENTRY-005",
@@ -70,20 +49,6 @@
       "textSha256": "d5cf3dc43dee0377c884a1dc3dfafaea7ba7cea84d43dfb2ab6d55f0aabeb641"
     },
     {
-      "id": "R-ENTRY-007",
-      "title": "实现职责由架构维护",
-      "owner": "clients/gui/design-system/README.md#目录与完成边界",
-      "strength": "default",
-      "textSha256": "184dc80a676fc3404551231321b89e0dcaf4624e5409e36d6ca783d6ae938d86"
-    },
-    {
-      "id": "R-ACCESSIBILITY-001",
-      "title": "默认主题的 serious、critical 问题、默认对比度矩阵失败和新增 moderate 问题阻断 test:design",
-      "owner": "clients/gui/design-system/accessibility.md#无障碍验收",
-      "strength": "default",
-      "textSha256": "d739c5719fe7da5aef82aad40a5b5545a5ccc67be9eaac57a846c7ff56c58740"
-    },
-    {
       "id": "R-ACCESSIBILITY-002",
       "title": "Base 0.4.1 提高了最弱元信息、已结算状态和浅色次要文字的可读性",
       "owner": "clients/gui/design-system/accessibility.md#默认主题修订",
@@ -96,111 +61,6 @@
       "owner": "clients/gui/design-system/accessibility.md#默认主题修订",
       "strength": "default",
       "textSha256": "58d19d5df86a20fd577f52acc0bf201c7e2cb7c607285e614a58501d9b90c694"
-    },
-    {
-      "id": "R-ACCESSIBILITY-004",
-      "title": "生产组件的键盘路径在设计 smoke 和 Electron 交互 smoke 中核对",
-      "owner": "clients/gui/design-system/accessibility.md#键盘与动效",
-      "strength": "default",
-      "textSha256": "5facf45eabc042826cb8b2499b1ed9826a415ab85ec662ebb6252ec402c0c632"
-    },
-    {
-      "id": "R-ACCESSIBILITY-005",
-      "title": "每个发布周期在真实应用中记录以下人工结果，不从 axe 结果推断",
-      "owner": "clients/gui/design-system/accessibility.md#voiceover-抽查",
-      "strength": "default",
-      "textSha256": "8341c3a6dc6ec58f891231ee1d1431f74e24015543ed188814ff1e4d2b461140"
-    },
-    {
-      "id": "R-ACCESSIBILITY-006",
-      "title": "记录源码提交、macOS 与 VoiceOver 版本、旅程和结果",
-      "owner": "clients/gui/design-system/accessibility.md#voiceover-抽查",
-      "strength": "default",
-      "textSha256": "7529596554ffdcf856a44932e386cefac221d88468feb2dda418db5163c62d28"
-    },
-    {
-      "id": "R-ARCH-001",
-      "title": "本文件定义 GUI v1 实现职责与阶段准入",
-      "owner": "clients/gui/design-system/architecture.md#gui-设计系统实现与准入",
-      "strength": "default",
-      "textSha256": "dd8848bf39d32ec1ee018d376346c0a74f81bb5e73c7977ba81b4f291c64861a"
-    },
-    {
-      "id": "R-ARCH-002",
-      "title": "按 D-004采用私有 @areal/ui 包的首批闭环：源、生成 CSS/主题、控件、类型/文档与 Agent 索引、独立示例",
-      "owner": "clients/gui/design-system/architecture.md#gui-设计系统实现与准入",
-      "strength": "default",
-      "textSha256": "e763cd3779cf80912f53a71e796f1a619bf7f41c4eddefd868111afb617b5d26"
-    },
-    {
-      "id": "R-ARCH-003",
-      "title": "目标是让 Agent 把页面需求映射为已有设计决策，而不是为每页重新决定字体、颜色、控件、分组和状态反馈",
-      "owner": "clients/gui/design-system/architecture.md#目标与质量场景",
-      "strength": "default",
-      "textSha256": "bcddd6dd5dba6832a90a6749dfa405910f7a8b73711a61ddea5938e903977a9b"
-    },
-    {
-      "id": "R-ARCH-004",
-      "title": "调整某个公共语义角色 在生产数值/主题所有者改变",
-      "owner": "clients/gui/design-system/architecture.md#目标与质量场景",
-      "strength": "default",
-      "textSha256": "2520b08371a5d288e6f0206dcd80cabfbffe8712b83e6ed8fbe6b9ee84a099aa"
-    },
-    {
-      "id": "R-ARCH-005",
-      "title": "长标签或字号增长 公共布局约束决定换行与动作落位 宽窄条件下动作可达",
-      "owner": "clients/gui/design-system/architecture.md#目标与质量场景",
-      "strength": "default",
-      "textSha256": "c1a4bf7d95611474c5e0f92e7680707ea9ce9d6732690ea345a450a15b13397a"
-    },
-    {
-      "id": "R-ARCH-006",
-      "title": "架构初稿先于 Base 和题目交付",
-      "owner": "clients/gui/design-system/architecture.md#目标与质量场景",
-      "strength": "default",
-      "textSha256": "3909204dd7b12f85191501f6605f702cb857a7721ac6d2e0eb8d5a7267c58a15"
-    },
-    {
-      "id": "R-ARCH-007",
-      "title": "这是职责分层，不要求每层各建一个包",
-      "owner": "clients/gui/design-system/architecture.md#分层与所有权",
-      "strength": "default",
-      "textSha256": "ee2587250dabc81b6d5dc1b9bb7fb167ab979210e9f95af4d15faaf4f9e435cc"
-    },
-    {
-      "id": "R-ARCH-008",
-      "title": "设计依据与决策 用户约束、参考来源、适用条件、采纳理由与例外 外部参考/观察 → 明确规则和待决项 不从参考图片直接覆盖生产值，",
-      "owner": "clients/gui/design-system/architecture.md#分层与所有权",
-      "strength": "default",
-      "textSha256": "9adfe56a62c77a53df5b8369b68f59d3ed47ed721abb81822fb610de858e5baf"
-    },
-    {
-      "id": "R-ARCH-009",
-      "title": "Foundations / Token 文字、表面、状态、尺寸、形状与动效的语义角色及主题/偏好关系 生产基础与运行期偏好 → ",
-      "owner": "clients/gui/design-system/architecture.md#分层与所有权",
-      "strength": "default",
-      "textSha256": "522aa0cfd2134a3beb9b8a1d36d0be0c118410e80114cb99685929f308a6cb52"
-    },
-    {
-      "id": "R-ARCH-010",
-      "title": "Primitives Button、Select、Switch、Input、Dialog、Feedback 等有限变体及键盘/焦",
-      "owner": "clients/gui/design-system/architecture.md#分层与所有权",
-      "strength": "default",
-      "textSha256": "e5dcb5bbbd459c5daab6e1f9a4c2b80f7bf666e756e830051b4938123da68343"
-    },
-    {
-      "id": "R-ARCH-011",
-      "title": "Patterns 设置分组/行、输入区、决策卡、长文本和过程等组合约束 Primitives + 业务插槽 → 一致的结构和状态",
-      "owner": "clients/gui/design-system/architecture.md#分层与所有权",
-      "strength": "default",
-      "textSha256": "c84e1b9bdb920bc4994385576b843940a213dd48d4c16a360c938f10b6d48b82"
-    },
-    {
-      "id": "R-ARCH-012",
-      "title": "Validation / evidence 声明检查、生成一致性、交互结果与视觉证据 固定来源/状态/条件 → 可追溯报告和待修",
-      "owner": "clients/gui/design-system/architecture.md#分层与所有权",
-      "strength": "default",
-      "textSha256": "b4f1014c138b81d83f4b9da7a54d9cff5a603faf086576570b4cb30f0c3f858e"
     },
     {
       "id": "R-ARCH-013",
@@ -224,46 +84,11 @@
       "textSha256": "a16946dc1bc37f340faaa7c5ec275c176fca16c26e0f9e010920600dc4f7b9b8"
     },
     {
-      "id": "R-ARCH-017",
-      "title": "精确设计值与动态派生 首批包内 tokens.json/theme.ts",
-      "owner": "clients/gui/design-system/architecture.md#数据合同与权威",
-      "strength": "default",
-      "textSha256": "c4abb8013146ba589767d3790b62d479a9f8ca3e3d4110c2d5c252f24452976c"
-    },
-    {
-      "id": "R-ARCH-018",
-      "title": "角色/组件/模式目录 registry.json catalog.ts、inventory/patterns 的生成区块 同源生",
-      "owner": "clients/gui/design-system/architecture.md#数据合同与权威",
-      "strength": "default",
-      "textSha256": "9b8d3fd220dca0c22ebe1460a3936d63db380a63b5f5d4b93060a0da92276ede"
-    },
-    {
-      "id": "R-ARCH-019",
-      "title": "模式的使用原则与准入 foundations / patterns / governance 中的人工区块 Agent、实现与评",
-      "owner": "clients/gui/design-system/architecture.md#数据合同与权威",
-      "strength": "default",
-      "textSha256": "edf9b082a8c5c954cbb6b9a0813a9ed7f84d166cadc18b4cc4f4ead49cc41d97"
-    },
-    {
-      "id": "R-ARCH-020",
-      "title": "做题输入与评判依据 后续独立的题目包与 rubric 实现者只读题目",
-      "owner": "clients/gui/design-system/architecture.md#数据合同与权威",
-      "strength": "default",
-      "textSha256": "d9f3ae6f5e2fec29fe9ae65987b694a5575340e90e64f7885104f60584f7d241"
-    },
-    {
       "id": "R-ARCH-021",
       "title": "原始运行证据 本地 run manifest、原图与日志 对照报告及规范的采纳结论 绑定实际版本和条件，保护私有数据",
       "owner": "clients/gui/design-system/architecture.md#数据合同与权威",
       "strength": "must",
       "textSha256": "ae6e0fe3132e41c118157ca81399d4b98eef27211520f8088c4f658d9bede15e"
-    },
-    {
-      "id": "R-ARCH-022",
-      "title": "视频候选与核查裁决 原始模型结果、本地核查记录",
-      "owner": "clients/gui/design-system/architecture.md#数据合同与权威",
-      "strength": "default",
-      "textSha256": "295697676baab9faa8f14b78926cba1f64b7182d66a533f320123a356e348bc1"
     },
     {
       "id": "R-ARCH-023",
@@ -273,20 +98,6 @@
       "textSha256": "2eb3b40f5aa1abcacc20c3f57a935b21cea4fec9b9256241f5f8cb07ab40ae22"
     },
     {
-      "id": "R-ARCH-024",
-      "title": "结构化合同负责保留“选择了什么”，类型/校验负责排除可判定的非法选择，组件与组合负责运行呈现，独立取证负责判断实际效果",
-      "owner": "clients/gui/design-system/architecture.md#结构化数据如何约束实现",
-      "strength": "default",
-      "textSha256": "cd253314b532fb277851ac7bb2260e54889f4a901d8765e50ab2cd73f0ca8058"
-    },
-    {
-      "id": "R-ARCH-025",
-      "title": "不建设通用页面 JSON 渲染器，不创建第二套 Token 编译器，不把所有 JSX 改成配置驱动",
-      "owner": "clients/gui/design-system/architecture.md#结构化数据如何约束实现",
-      "strength": "default",
-      "textSha256": "8025291226f48eec2310faf83e3df2c42147743fd9524ad3e14f1c546f307768"
-    },
-    {
       "id": "R-ARCH-026",
       "title": "截图是反馈传感器，不能成为逐页设计的唯一机制",
       "owner": "clients/gui/design-system/architecture.md#自动化分工与约束强度",
@@ -294,39 +105,11 @@
       "textSha256": "2e3b3c4bbed6c4cb7a659b81f352ec06b1b5e4b474b226672b4a41c1c94b4c3c"
     },
     {
-      "id": "R-ARCH-027",
-      "title": "全量替换为独立设计包、DTCG 全生成或通用页面 DSL 来源集中、可跨端转译 共享展示逐批迁入同源私有包",
-      "owner": "clients/gui/design-system/architecture.md#方案取舍",
-      "strength": "default",
-      "textSha256": "aa36e59bf97f64b0b21230ade3c2aff379b99e5c90bb2c1da1d8d14b475ea0a8"
-    },
-    {
-      "id": "R-ARCH-028",
-      "title": "复用生产所有者，补职责分层、单源目录、有限组合及独立验证 可增量落地，已有公共控件立即受益 JSX 依从与视觉质量仍需单独检查",
-      "owner": "clients/gui/design-system/architecture.md#方案取舍",
-      "strength": "default",
-      "textSha256": "6794e972f7339b9448506a94d081ab473f6ea78a1d0bc517a2efa77207221170"
-    },
-    {
       "id": "R-ARCH-029",
       "title": "若未来出现多个独立运行端必须消费同一设计源，再复审 Token 编译与跨端 recipe",
       "owner": "clients/gui/design-system/architecture.md#方案取舍",
       "strength": "must",
       "textSha256": "4f4b5dc4838cbb7f611431c6a269de049c346295c585854bbd9b35f2f54ec302"
-    },
-    {
-      "id": "R-ARCH-030",
-      "title": "完成条件：分层、来源、所有者、依赖、数据合同、自动化边界和后续准入均明确",
-      "owner": "clients/gui/design-system/architecture.md#a架构",
-      "strength": "default",
-      "textSha256": "79e8fec77ca6dbcc0f3d5febe918286112bc8c60b73d47b8f039e023899a3b34"
-    },
-    {
-      "id": "R-ARCH-031",
-      "title": "准入条件：每个角色有唯一生产来源",
-      "owner": "clients/gui/design-system/architecture.md#bbase-设计系统",
-      "strength": "default",
-      "textSha256": "aac971dbea9609dfbbe617dd488b314393f63f5f3f74300c4a8014ef15dc7932"
     },
     {
       "id": "R-ARCH-032",
@@ -343,39 +126,11 @@
       "textSha256": "d9247d0a872d3ff3ff1444a4ce86bcddc0ad5374271841b487605528130af1e1"
     },
     {
-      "id": "R-ARCH-034",
-      "title": "将偏差分为规则缺失、规则含糊、组件/组合缺陷、未遵守规则、任务或参考含糊",
-      "owner": "clients/gui/design-system/architecture.md#d归因并改进",
-      "strength": "default",
-      "textSha256": "035874971ed8ad0e6187a4505e416d6a8de4415ab05da1f5083890a48e8b3fb6"
-    },
-    {
-      "id": "R-ARCH-035",
-      "title": "阶段按 A → B → C → D 推进",
-      "owner": "clients/gui/design-system/architecture.md#d归因并改进",
-      "strength": "default",
-      "textSha256": "22d57c314522956ce6856e0e0336c436713a95fd36b3a57a46060cab317682e6"
-    },
-    {
       "id": "R-ARCH-036",
       "title": "基础语言 → 交互模式 → 业务组合 → 验证",
       "owner": "clients/gui/design-system/architecture.md#按用户交互组织",
       "strength": "must",
       "textSha256": "83892857a22977a85ffc0e88013fe64419307f283bb56a803a0354367bae3c44"
-    },
-    {
-      "id": "R-CHECK-001",
-      "title": "node scripts/gui-health.mjs 输出范围、源码摘要和指标口径",
-      "owner": "clients/gui/design-system/automation.md#工程检查入口",
-      "strength": "default",
-      "textSha256": "8d338b3897615c582241bda95d2e3dd301cf43b48601892b9ab5d2229706c0f6"
-    },
-    {
-      "id": "R-CHECK-002",
-      "title": "测试元数据归 scripts/test-manifest.json，命令归根 package.json",
-      "owner": "clients/gui/design-system/automation.md#工程检查入口",
-      "strength": "default",
-      "textSha256": "edeb91a7cd98b533769d31ef19e9a3a00f45a4944c492f4bf776d20774a53acb"
     },
     {
       "id": "R-CHECK-003",
@@ -385,53 +140,11 @@
       "textSha256": "efa6721595bda78ac100965c4e53cf19c45eee5f690f9970a6fb916b5e3b6236"
     },
     {
-      "id": "R-CHECK-004",
-      "title": "同一 registry 的组件、模式与 Base 候选范围 生成 inventory / patterns / base 中标记",
-      "owner": "clients/gui/design-system/automation.md#areal-v1-已接入的闭环",
-      "strength": "default",
-      "textSha256": "7784f1f9e6558433b983d10a9e2dad63d7ed017d26781e73e214cba0c4f0c58a"
-    },
-    {
-      "id": "R-CHECK-005",
-      "title": "生成器只改 catalog 和标记的文档表格",
-      "owner": "clients/gui/design-system/automation.md#areal-v1-已接入的闭环",
-      "strength": "default",
-      "textSha256": "8a2d15586ac88d5ebfcba8935f10762f62aad38851dc38adf6530dbc1375c602"
-    },
-    {
-      "id": "R-CHECK-006",
-      "title": "design-system-audit.mjs 在目录检查和已迁移文件审计之外，检查 Git 中生产 renderer ",
-      "owner": "clients/gui/design-system/automation.md#增量设计检查",
-      "strength": "default",
-      "textSha256": "9d5d300b3ee5c9b52e3d865cd7757cd738328e8e2c708ea9dc0a802d3e174ee8"
-    },
-    {
-      "id": "R-CHECK-007",
-      "title": "本地默认与 HEAD 比较",
-      "owner": "clients/gui/design-system/automation.md#增量设计检查",
-      "strength": "default",
-      "textSha256": "0ba424fc4b946b98ca5e90169fc995db8aa9e369e1b6c54471b50a001d5f67b8"
-    },
-    {
       "id": "R-CHECK-008",
       "title": "GUI 和 provider 配置 CI 获取完整历史：PR 使用 base 与当前检出的合并提交的 merge-base，pu",
       "owner": "clients/gui/design-system/automation.md#增量设计检查",
       "strength": "must",
       "textSha256": "dcabd2706dc0bee871fb9515cd89a249db79c166068c7a2a9bf1f5227be3662c"
-    },
-    {
-      "id": "R-CHECK-009",
-      "title": "- 逐文件比较违规类型、值和次数",
-      "owner": "clients/gui/design-system/automation.md#增量设计检查",
-      "strength": "default",
-      "textSha256": "09a5863b502c12b4bccdb9e8c4303425014f9c494d7cecf4ae57358ea1632d6d"
-    },
-    {
-      "id": "R-CHECK-010",
-      "title": "例外沿原变更准入提供理由与证据",
-      "owner": "clients/gui/design-system/automation.md#增量设计检查",
-      "strength": "default",
-      "textSha256": "fcb021aebe3423dc1d2c322d6a1fac3e2b5182ea2351b0afecc58c788859db09"
     },
     {
       "id": "R-CHECK-011",
@@ -462,34 +175,6 @@
       "textSha256": "79be4d49ab253fbd260c1a8a8ff254e3d023b7b5a880aeb8a0b3f4580ec06799"
     },
     {
-      "id": "R-CHECK-016",
-      "title": "观察器提名差异，实现者结合合同、原件及日志裁决",
-      "owner": "clients/gui/design-system/automation.md#视频分析辅助核查的默认路线",
-      "strength": "default",
-      "textSha256": "4dd4cea4649c23ea6fd09238006f9a30bac576c44e78d1327f997867f4cb337f"
-    },
-    {
-      "id": "R-BASE-001",
-      "title": "此处是架构阶段 B的最小基础切片",
-      "owner": "clients/gui/design-system/base.md#base-设计系统-beta",
-      "strength": "default",
-      "textSha256": "614f143643a4f26809bf76dd80e5e3edd1982f65ed2f4089521606ba12f70808"
-    },
-    {
-      "id": "R-BASE-002",
-      "title": "Base beta 是阶段 C 使用的固定 GUI 输入快照，尚不承诺稳定公共 API，也不代表全 GUI 已准入",
-      "owner": "clients/gui/design-system/base.md#使用与变更",
-      "strength": "default",
-      "textSha256": "78997a7e0d3190a0aa3f9d988bd857e6addcb1c2da964fb8cc7a550ce2a35158"
-    },
-    {
-      "id": "R-BASE-003",
-      "title": "阶段 C 的独立题目通过生成的 base-components.ts 复用真实成员",
-      "owner": "clients/gui/design-system/base.md#使用与变更",
-      "strength": "default",
-      "textSha256": "f932ac10e8dba556a83ddedb0597ceee9e7dc955df87d51197f3149b5919a1f2"
-    },
-    {
       "id": "R-BASE-004",
       "title": "删除已准入成员或改变已准入行为，需要提升 Base 版本并迁移消费者",
       "owner": "clients/gui/design-system/base.md#使用与变更",
@@ -497,95 +182,11 @@
       "textSha256": "61864dbf9bc4c171d8102603769faf17bcf6f3242fa6f14f61a8617be2a7a85d"
     },
     {
-      "id": "R-BASE-005",
-      "title": "历史探索题及其候选版本保留，以复现当时输入",
-      "owner": "clients/gui/design-system/base.md#使用与变更",
-      "strength": "default",
-      "textSha256": "c1a08341a99ab48fbfe06818fc6d170979b388c6e0ba607bb338322ba2669385"
-    },
-    {
-      "id": "R-BASE-008",
-      "title": "现有测试保存源码 SHA、工作树差异摘要、构建入口资产摘要、浏览器/viewport/DPR、状态条件、计算样式、原始截图哈希及",
-      "owner": "clients/gui/design-system/base.md#使用与变更",
-      "strength": "default",
-      "textSha256": "a55a6a74234bfd7e48e397f01b62aadb1f7df53b1f1881fcbfc2bbff29fc4d9e"
-    },
-    {
-      "id": "R-CONTENT-002",
-      "title": "设计对象提升为“对话内容呈现系统”",
-      "owner": "clients/gui/design-system/content-system.md#结论与范围",
-      "strength": "default",
-      "textSha256": "3531efd3bd2f9f2da0d96919dde3c10b0a137a5c836df1fc88609d114aa09986"
-    },
-    {
-      "id": "R-CONTENT-008",
-      "title": "内容来源与身份 原Project/Thread/Turn/item、制品/工具结果引用与版本、可读摘要 Core历史、发布和MC",
-      "owner": "clients/gui/design-system/content-system.md#推荐的四层职责",
-      "strength": "default",
-      "textSha256": "17266201836bf0021bb8e3d0f184138881aa7e980db0913dc0a7953ecac8a055"
-    },
-    {
-      "id": "R-CONTENT-009",
-      "title": "内容展示与路由 决定正文、原生结构化控件或隔离页面",
-      "owner": "clients/gui/design-system/content-system.md#推荐的四层职责",
-      "strength": "default",
-      "textSha256": "74728dc9d7ff337bb2817021b497cc520bf9f330a51cfa0f4fd42bda9fe55eae"
-    },
-    {
-      "id": "R-CONTENT-010",
-      "title": "宿主交互与执行 资源打开、状态保存、带上下文追问、工具请求、审批/UNKNOWN与生命周期 原renderer/Electron",
-      "owner": "clients/gui/design-system/content-system.md#推荐的四层职责",
-      "strength": "default",
-      "textSha256": "907c454ed7845387a1718ca043e958f3d109ffec47ac3a8604bda4e321c6745d"
-    },
-    {
-      "id": "R-CONTENT-011",
-      "title": "统一的是来源、呈现、状态和动作合同",
-      "owner": "clients/gui/design-system/content-system.md#推荐的四层职责",
-      "strength": "default",
-      "textSha256": "8402c2dd5b2416b6202a58fa42ae6ea0f0f51e0bb5fedd08d5b3bf4c093c4635"
-    },
-    {
-      "id": "R-CONTENT-012",
-      "title": "阅读解释、公式或短表格 原生正文/Streamdown 长公式和表格仅内容内部横滚，保留全文/原式可访问性",
-      "owner": "clients/gui/design-system/content-system.md#选择哪种呈现",
-      "strength": "default",
-      "textSha256": "ae243109ddbb5904605c7c80de1ce0e849ed050d68abe712046dd49f181b5985"
-    },
-    {
       "id": "R-CONTENT-013",
       "title": "选择、批准、回答问题、查看固定结构数据 已登记的可信React组合 数据/动作由现有业务契约绑定",
       "owner": "clients/gui/design-system/content-system.md#选择哪种呈现",
       "strength": "must",
       "textSha256": "269563632391568f90b8a19973f124363d6275cfe64d96affe8f59340892b206"
-    },
-    {
-      "id": "R-CONTENT-014",
-      "title": "调参数、模拟、地图或自由可视化 已发布的隔离Gen UI页面 空间不足时按宿主实际能力展开",
-      "owner": "clients/gui/design-system/content-system.md#选择哪种呈现",
-      "strength": "default",
-      "textSha256": "0d48a7877552338330c9cab0e68fbfe562129e1ff941956b565a97bc12c98ddb"
-    },
-    {
-      "id": "R-CONTENT-015",
-      "title": "使用带工具的第三方交互应用 MCP Apps宿主 按实际协商的工具、资源和显示能力工作",
-      "owner": "clients/gui/design-system/content-system.md#选择哪种呈现",
-      "strength": "default",
-      "textSha256": "490e5825ebd511e9c46ee8a00ef86f4218431a73f9939dd989b3f8d244bf08ad"
-    },
-    {
-      "id": "R-CONTENT-016",
-      "title": "把一切放进iframe会增加选区、读屏、焦点、缓存和滚动成本",
-      "owner": "clients/gui/design-system/content-system.md#选择哪种呈现",
-      "strength": "default",
-      "textSha256": "6d575c5189b3e5157bc9283e04b64e3224eca6dfd5d94006f3f8adcfb6f7c06c"
-    },
-    {
-      "id": "R-CONTENT-017",
-      "title": "内容外壳 ：普通正文保持阅读流",
-      "owner": "clients/gui/design-system/content-system.md#统一设计合同",
-      "strength": "default",
-      "textSha256": "bbd22d4eaf6a7a0345eea118b413cba9e6d86a551c2c3eb8b78c5cc6dab33dda"
     },
     {
       "id": "R-CONTENT-018",
@@ -609,39 +210,11 @@
       "textSha256": "d3371fa9e2475650387f38373d7989081961e2114535d48737840ab90a3b56f7"
     },
     {
-      "id": "R-CONTENT-021",
-      "title": "三类状态 ：局部选中/展开由组件或guest拥有",
-      "owner": "clients/gui/design-system/content-system.md#统一设计合同",
-      "strength": "default",
-      "textSha256": "ecf456992e84bc4ffaa1aecdb0813e3edbad41648d19d483a715856d2e6f66af"
-    },
-    {
       "id": "R-CONTENT-022",
       "title": "动作等级 ：复制、筛选与调参可留在局部",
       "owner": "clients/gui/design-system/content-system.md#统一设计合同",
       "strength": "must",
       "textSha256": "21612c6f9ca0ba0ef959c314b2319660f7afa4a5f8c6898bc1139b748123bd54"
-    },
-    {
-      "id": "R-CONTENT-023",
-      "title": "共同主题 ：同一Token源生成主界面CSS和guest可消费的语义变量白名单，通过现有host context更新字体、字号、",
-      "owner": "clients/gui/design-system/content-system.md#统一设计合同",
-      "strength": "default",
-      "textSha256": "6c9e22c7c7ad4b663aaa73f7f0775404ef74755b512b393a08ac6eb192e8c2a4"
-    },
-    {
-      "id": "R-CONTENT-024",
-      "title": "可访问与退化 ：公式提供原式复制，图表有标题/坐标/单位及文字摘要或数据入口",
-      "owner": "clients/gui/design-system/content-system.md#统一设计合同",
-      "strength": "default",
-      "textSha256": "4bbdc978b77b9bfff92ad4831450438cda0a2d0a44c944c4960031b84901eae7"
-    },
-    {
-      "id": "R-CONTENT-025",
-      "title": "继续以现有KaTeX链处理常规行内/块级公式、矩阵和对齐，按固定版本支持表评估所需语法",
-      "owner": "clients/gui/design-system/content-system.md#公式与科学内容",
-      "strength": "default",
-      "textSha256": "bec1a581b32131186fbacdc30bef1e7174ef400e21313a645da106b82b26e255"
     },
     {
       "id": "R-CONTENT-026",
@@ -651,46 +224,11 @@
       "textSha256": "e5f7ba1a0b65c17da934394f2345950f3fba1b98128d8354013ef412d0e17323"
     },
     {
-      "id": "R-CONTENT-027",
-      "title": "先做混合内容预览题 ：同一回复交错文字、长公式/矩阵、表格、Mermaid、参数可调图、MCP结果入口与失败摘要",
-      "owner": "clients/gui/design-system/content-system.md#最小落地顺序与验收",
-      "strength": "default",
-      "textSha256": "1c643a3b3c4e79b3908c1fb2a9ef0e04688f34d0404273f5bcae835d1e18edf6"
-    },
-    {
-      "id": "R-CONTENT-034",
-      "title": "统一轻量外壳和状态 ：逐步让GenUiCard与MCP工具结果采用同一展示合同",
-      "owner": "clients/gui/design-system/content-system.md#最小落地顺序与验收",
-      "strength": "default",
-      "textSha256": "bc97e62718aeeee72e4bf0d80c90fbefcd8051ca59720e8525a0ab1b41317e3b"
-    },
-    {
-      "id": "R-CONTENT-035",
-      "title": "补齐Token桥与阅读动线 ：验证14/18px、明暗、减少动态效果、宽窄/主聊/Side",
-      "owner": "clients/gui/design-system/content-system.md#最小落地顺序与验收",
-      "strength": "default",
-      "textSha256": "cdab01201beab1dccd4e568b9cb5b145e24d6b27d7ae387ad2c22edf2929b827"
-    },
-    {
-      "id": "R-CONTENT-036",
-      "title": "按证据收口 ：再执行表格上游复用对照",
-      "owner": "clients/gui/design-system/content-system.md#最小落地顺序与验收",
-      "strength": "default",
-      "textSha256": "2b0d47cb0f646b85f8612ec99da4075d65981e981d76379b9411c8bc61a33583"
-    },
-    {
       "id": "R-CONTENT-028",
       "title": "必须覆盖的验收场景：流式中不完整公式与引用",
       "owner": "clients/gui/design-system/content-system.md#最小落地顺序与验收",
       "strength": "must",
       "textSha256": "28020c08fd2fe286bc7f41a98b0f2d85458951b0bd40e3c14c641bb99d0eb543"
-    },
-    {
-      "id": "R-CONVERSATION-002",
-      "title": "用户目标是把两张 Codex 截图中反复出现的结构变成可复用的设计语言：正文负责沟通，活动行负责说明做了什么，展开区负责核对细节",
-      "owner": "clients/gui/design-system/conversation-flow.md#对话流设计系统活动与上下文",
-      "strength": "default",
-      "textSha256": "39f6ed22d564e6522faac957137e16d1eb177d4ddd1abc8477cb988918950de9"
     },
     {
       "id": "R-CONVERSATION-004",
@@ -700,53 +238,11 @@
       "textSha256": "768b1a60bbb1bf2dfb19597ed02f609f55725e01d3fe1f4909866bfd9482358e"
     },
     {
-      "id": "R-CONVERSATION-021",
-      "title": "沿 AReaL 架构和 D-004 私有 UI 包组织，复用已有包、Token/主题和目录构建链，不新增平行组件库或页面 DSL",
-      "owner": "clients/gui/design-system/conversation-flow.md#设计系统如何组织",
-      "strength": "default",
-      "textSha256": "163fd77c9e668d4b9b9d21fc161d7d5f2ad4d9c9f10a179380cb4bc6946a277b"
-    },
-    {
       "id": "R-CONVERSATION-028",
       "title": "活动采用轻量行式表达，右侧分区使用已有面板表面与分隔",
       "owner": "clients/gui/design-system/conversation-flow.md#视觉与可访问性",
       "strength": "must",
       "textSha256": "f3f4539c534ac2ab44881f82c731986b96337215d5781c41a23d242598a7cd8f"
-    },
-    {
-      "id": "R-CONVERSATION-035",
-      "title": "生产主会话、子历史及复用Messages的入口消费同一实验包",
-      "owner": "clients/gui/design-system/conversation-flow.md#生产接线",
-      "strength": "default",
-      "textSha256": "cef6b977461021fb01fff97d90beb13dd5f4ad3462ff8eff0eff3a48d58d8062"
-    },
-    {
-      "id": "R-CONVERSATION-036",
-      "title": "ToolEvent通过ImageDisclosure按需阅读已确认的工具图片，原SentAttachment负责Core媒体读取",
-      "owner": "clients/gui/design-system/conversation-flow.md#生产接线",
-      "strength": "default",
-      "textSha256": "2989f8a69088072867fa54f1cf8554b0f27f914ab24e646d6b26cb4ecf84e04d"
-    },
-    {
-      "id": "R-CONVERSATION-037",
-      "title": "App沿原顶部“任务资源”入口承载TaskContext",
-      "owner": "clients/gui/design-system/conversation-flow.md#生产接线",
-      "strength": "default",
-      "textSha256": "6c22257d6eb10f0984d4a7310961f01c93847a5eb7f973a48ebe0ca2af45aac1"
-    },
-    {
-      "id": "R-CONVERSATION-038",
-      "title": "Subagents入口先打开分状态列表，再进入AgentConversationPane真实历史，时间线子任务仍可直达",
-      "owner": "clients/gui/design-system/conversation-flow.md#生产接线",
-      "strength": "default",
-      "textSha256": "c8c66cbc283ffd4865031d898c0fc9d8f680007391b9890ad1cbf1087d86b2b0"
-    },
-    {
-      "id": "R-CONVERSATION-039",
-      "title": "实验导出保留wip",
-      "owner": "clients/gui/design-system/conversation-flow.md#生产接线",
-      "strength": "default",
-      "textSha256": "b2b35185b419d1bc9800147dce49c8b861373eb61489654dfd796040560dc438"
     },
     {
       "id": "R-HOVERACTIONS-001",
@@ -773,53 +269,11 @@
       "check": "clients/gui/scripts/design-system-popup-anchors.mjs"
     },
     {
-      "id": "R-TOKEN-001",
-      "title": "共同的内容层级、表面、资产、动效和可达性由设计基础维护",
-      "owner": "clients/gui/design-system/foundations.md#视觉语言",
-      "strength": "default",
-      "textSha256": "0e1e74356399893c74a5f1a129c8a90e4e4ac578b3933919e555733eeeeabf29"
-    },
-    {
-      "id": "R-TOKEN-002",
-      "title": "完整 Token 角色表见 Token 速查",
-      "owner": "clients/gui/design-system/foundations.md#token-按用途选择",
-      "strength": "default",
-      "textSha256": "b6b6fae4fc270e8eac42cec78da0efaf9b6cd3dcd1dc1d18ed34bd04d0597961"
-    },
-    {
-      "id": "R-TOKEN-004",
-      "title": "字体 UI 使用生产 --font-sans 、 --text-ui- 、 --ui-font-weight 与公共行高",
-      "owner": "clients/gui/design-system/foundations.md#token-按用途选择",
-      "strength": "default",
-      "textSha256": "9e3e9c4985c1ae3848f6d593215d86fbcc0ae7ad4c7cb1a088c196cd4bd0aed1"
-    },
-    {
-      "id": "R-TOKEN-005",
-      "title": "字号偏好 尊重 applicationSettings.ts / applicationPreferences.ts ",
-      "owner": "clients/gui/design-system/foundations.md#token-按用途选择",
-      "strength": "default",
-      "textSha256": "7c88af6056be0c89b6f66a00fe98b88a962d86c8e6e80f76d761919ee9d6101c"
-    },
-    {
-      "id": "R-TOKEN-006",
-      "title": "间距与密度 优先 --spacing-inline/field/section/panel 及既有组合",
-      "owner": "clients/gui/design-system/foundations.md#token-按用途选择",
-      "strength": "default",
-      "textSha256": "4d56cefd2f972eeea586025cd45377819d355e9802bc91d24e5bbcecae2a5fba"
-    },
-    {
       "id": "R-TOKEN-007",
       "title": "数值传递方向是生产基础/主题 → 语义角色 → 公共控件 → 页面组合",
       "owner": "clients/gui/design-system/foundations.md#token-按用途选择",
       "strength": "must",
       "textSha256": "c7a06d0cb4e94c3de1417cd55d9a65a18d04563c76c5f9bb8947c542a9225f5c"
-    },
-    {
-      "id": "R-TOKEN-008",
-      "title": "工作台沿用当前导航、主内容与辅助面板所有者",
-      "owner": "clients/gui/design-system/foundations.md#布局约束",
-      "strength": "default",
-      "textSha256": "f995373ea6dff595adf3d5b15b2feb0bb99cee435c93dc6b18749c2047c044cd"
     },
     {
       "id": "R-TOKEN-009",
@@ -843,32 +297,11 @@
       "textSha256": "1e61c8d0823e61f6096b9e1c1a1ab390f46a2a101efa2067ecfc7175c89b1bb5"
     },
     {
-      "id": "R-TOKEN-012",
-      "title": "调色板参考值、派生参数、默认主题覆盖、语义公式和组件映射归 packages/ui/tokens.json 的 palette ",
-      "owner": "clients/gui/design-system/foundations.md#可访问与内容",
-      "strength": "default",
-      "textSha256": "7886dee30274903339bfae933a47aff863ef509afe3042af7aaa132f706e1f66"
-    },
-    {
       "id": "R-TOKEN-013",
       "title": "theme-baseline.json 保存修改前真实 Chrome 解析的五套主题、三档 contrast、两种侧栏材料，共 ",
       "owner": "clients/gui/design-system/foundations.md#可访问与内容",
       "strength": "must",
       "textSha256": "de212f904b80bead65936cffaedda29b27ac62c5c1a9951563b5092afa3dbe99"
-    },
-    {
-      "id": "R-TOKEN-014",
-      "title": "字面量例外以 file、finding、occurrence 标识，理由、退出条件与更新准入见 R-TOKEN-022",
-      "owner": "clients/gui/design-system/foundations.md#可访问与内容",
-      "strength": "default",
-      "textSha256": "ce424bec62874b99660314cb02e2ab4cfc20265e823a35f92cae5d2e09e454c8"
-    },
-    {
-      "id": "R-EVIDENCE-001",
-      "title": "优先顺序：复用模式 → 复用组件与变体 → 在现有所有者补充真实缺失的状态 → 必要时新增公共角色",
-      "owner": "clients/gui/design-system/governance.md#变更准入",
-      "strength": "default",
-      "textSha256": "03cf40a5ec0962f03a9a3c90b979f0acf891f545ba5f1cd6ecaa51b54a357112"
     },
     {
       "id": "R-EVIDENCE-002",
@@ -885,74 +318,11 @@
       "textSha256": "3d913947a179fc1adc379ee488c7bb31dd977bc988668f484143b5a6c41d085a"
     },
     {
-      "id": "R-EVIDENCE-004",
-      "title": "截图用于校正规则的顺序是：定位具体状态 → 保存原图和计算样式 → 直接观察 → 与当前规则对照 → 登记采纳或保留差异 → 修",
-      "owner": "clients/gui/design-system/governance.md#证据分层",
-      "strength": "default",
-      "textSha256": "eb35d50b6d1dce490e85daedfb75cb200a6c7cf3844d07dbb16dda8851e21997"
-    },
-    {
-      "id": "R-EVIDENCE-005",
-      "title": "在既有页面合同和 run manifest 上记录一个可回答的问题：稳定 question ID、所需观察、可反驳条件、关联规则",
-      "owner": "clients/gui/design-system/governance.md#有界问题与逐步证据",
-      "strength": "default",
-      "textSha256": "64d2ed402cf6cc623f5a4023b903fed5f79b0856f7466a90993e4fff8676e507"
-    },
-    {
       "id": "R-EVIDENCE-006",
       "title": "材料有效性与测试结果分开：完整捕获、部分/裁剪、未请求、不可用分别标明",
       "owner": "clients/gui/design-system/governance.md#有界问题与逐步证据",
       "strength": "must",
       "textSha256": "d47b5a0cd33c63d8f43857b6234e8f9b50b121137077e520244d34b9881bea7b"
-    },
-    {
-      "id": "R-EVIDENCE-007",
-      "title": "成对比较先列出内容、状态、组件实际宽度、字体、主题、DPR及窗口壳层",
-      "owner": "clients/gui/design-system/governance.md#有界问题与逐步证据",
-      "strength": "default",
-      "textSha256": "28af2e4068da00f63501f5cdd6b88c889753f75e574ce05b62a272ccd4a61858"
-    },
-    {
-      "id": "R-EVIDENCE-008",
-      "title": "默认执行流程中的视频分析只提名候选",
-      "owner": "clients/gui/design-system/governance.md#差异筛选准入",
-      "strength": "default",
-      "textSha256": "e913ca1945de5be5badaa253b8f45bad831133815e6bc2ffee086862be66bd0f"
-    },
-    {
-      "id": "R-EVIDENCE-009",
-      "title": "accepted 采纳 可比较的目标与当前状态及证据（参考对照需原图），相关动作/事件核查，已确认的任务内缺口，原规则或明确的产",
-      "owner": "clients/gui/design-system/governance.md#差异筛选准入",
-      "strength": "default",
-      "textSha256": "36120f8781b04d442f070cc9f8b28f9751bfbd638fd60596cf93a15ddece8487"
-    },
-    {
-      "id": "R-EVIDENCE-010",
-      "title": "rejected 拒绝 原件或运行记录反驳候选，或候选不属于当前任务 保留候选、反证与原因，不据此重建现有机制",
-      "owner": "clients/gui/design-system/governance.md#差异筛选准入",
-      "strength": "default",
-      "textSha256": "964530c51b9b17d38c866ae3138f7b3b94c0428a04f07002103808c18856624e"
-    },
-    {
-      "id": "R-EVIDENCE-011",
-      "title": "retained-difference 保留差异 明确的产品约束/用户决定/不同平台能力及适用范围 在原规则或变更说明中登记原因",
-      "owner": "clients/gui/design-system/governance.md#差异筛选准入",
-      "strength": "default",
-      "textSha256": "d6ac40c4e0fb8ad9559ac1df7105536c3b52ad252b677ac1904fff5473f99a59"
-    },
-    {
-      "id": "R-EVIDENCE-012",
-      "title": "needs-evidence 待补证据 材料缺失、时钟或状态不明、条件不相称，或证据相互冲突 写出待回答的问题及下一次有界观察",
-      "owner": "clients/gui/design-system/governance.md#差异筛选准入",
-      "strength": "default",
-      "textSha256": "d940497777685937d4267e4f7cf99483bf4a271649f1a9802158f9abcc4ec1c1"
-    },
-    {
-      "id": "R-EVIDENCE-013",
-      "title": "屏幕文字与图标是可见事实",
-      "owner": "clients/gui/design-system/governance.md#差异筛选准入",
-      "strength": "default",
-      "textSha256": "27100960846a6e3db7a76d4520d2a7817bfdaae179c72c7aca6a024c64fb2b86"
     },
     {
       "id": "R-EVIDENCE-014",
@@ -974,13 +344,6 @@
       "owner": "clients/gui/design-system/governance.md#动态信息流的关联证据",
       "strength": "must",
       "textSha256": "f8d58a823958c3d92eed27e70ab93834a36fb348e0d29924d51bc29648953bcc"
-    },
-    {
-      "id": "R-EVIDENCE-017",
-      "title": "输入动作 稳定事件 ID、目标、实际操作、前后时间及状态 记录执行成功或失败",
-      "owner": "clients/gui/design-system/governance.md#动态信息流的关联证据",
-      "strength": "default",
-      "textSha256": "f81dc7eab5e0d060b6baf2e94598cb446a7003bc66b0002d587ee24f1145d14e"
     },
     {
       "id": "R-EVIDENCE-018",
@@ -1011,39 +374,11 @@
       "textSha256": "9d9127d72eac51c2c604bb7071bf2959ed7f6653bef1ec1437cfbc7d9ce1e133"
     },
     {
-      "id": "R-EVIDENCE-022",
-      "title": "录像编码帧率不证明实际采样无缺帧",
-      "owner": "clients/gui/design-system/governance.md#动态信息流的关联证据",
-      "strength": "default",
-      "textSha256": "94757a5ae81518242461ed58f294a34162f4df5b261d69c9faeeb4f4474ad7f6"
-    },
-    {
-      "id": "R-EVIDENCE-023",
-      "title": "规范写入时区分：参考直接观察、产品采纳的规则、当前源码事实、尚未验收的实现差异",
-      "owner": "clients/gui/design-system/governance.md#动态信息流的关联证据",
-      "strength": "default",
-      "textSha256": "16712b210eff223dc329f85406cc43f22fc0b04b6444d062d62b306f622e9a55"
-    },
-    {
-      "id": "R-EVIDENCE-024",
-      "title": "复用已授权的 CDP 实例，先 tab 和 snapshot -i 确认目标",
-      "owner": "clients/gui/design-system/governance.md#agent-browser-采集约定",
-      "strength": "default",
-      "textSha256": "1c78e52031159eca3af0445515f9336b0c002c4a2593cb7544f6acfa311c95f8"
-    },
-    {
       "id": "R-EVIDENCE-025",
       "title": "独立实例由任务授权启动",
       "owner": "clients/gui/design-system/governance.md#agent-browser-采集约定",
       "strength": "must",
       "textSha256": "06dab32a8f7d65890ac6db596cc6cc21240f7079d1c3a181926eb8d6995eb3bf"
-    },
-    {
-      "id": "R-EVIDENCE-026",
-      "title": "仅规范： python3 scripts/check-docs.py 、 git diff --check ，核对链接与生产导出",
-      "owner": "clients/gui/design-system/governance.md#按改动选择检查",
-      "strength": "default",
-      "textSha256": "b3de51d42b59bece6506f3df3dbccb598ff076ce1638a22504b7de47c099b083"
     },
     {
       "id": "R-EVIDENCE-027",
@@ -1053,25 +388,11 @@
       "textSha256": "3249e3de4a13811a7c729078fa605943163170ca2c869bde6e2fec9e3bae5824"
     },
     {
-      "id": "R-EVIDENCE-028",
-      "title": "GUI 交付在现有 PR、任务结果或所引用报告中回答以下五项",
-      "owner": "clients/gui/design-system/governance.md#完成条件",
-      "strength": "default",
-      "textSha256": "adabc992ca0472cdd064f3637a9fd571984e10d7a063eae405a3e957be36b259"
-    },
-    {
       "id": "R-EVIDENCE-029",
       "title": "用户任务与规则 指出主要交互族及适用的 must/default 规则",
       "owner": "clients/gui/design-system/governance.md#完成条件",
       "strength": "must",
       "textSha256": "1b58621f44ff03f36bf5f759805df4503e78619374bb565637c9a519d71511d5"
-    },
-    {
-      "id": "R-EVIDENCE-030",
-      "title": "复用与所有者 列出实际采用的生产组件、组合和改动的唯一所有者",
-      "owner": "clients/gui/design-system/governance.md#完成条件",
-      "strength": "default",
-      "textSha256": "e543696523b9933b9c47cea1c982d8e757f9b1473591c7c4e0128e7d74e2b6a1"
     },
     {
       "id": "R-EVIDENCE-031",
@@ -1081,34 +402,6 @@
       "textSha256": "dc51df148278b8a2c0f728c4fa275f83e4d53f719e8537cc871a7a5864a6e2ad"
     },
     {
-      "id": "R-EVIDENCE-032",
-      "title": "证据与缺口 提供可审查的运行/报告引用，区分预览、源码 Electron 与安装包，并保留未关闭项",
-      "owner": "clients/gui/design-system/governance.md#完成条件",
-      "strength": "default",
-      "textSha256": "f0d3d2a9acd853d5f94adac7853099af9ca5bf04135259ebb6ce9a3bd8e04189"
-    },
-    {
-      "id": "R-EVIDENCE-033",
-      "title": "PR 模板提供填写入口",
-      "owner": "clients/gui/design-system/governance.md#完成条件",
-      "strength": "default",
-      "textSha256": "6391b37f4b2052c81b5aafda2acec87d69c15c5032e42a590fa9042121e27bb4"
-    },
-    {
-      "id": "R-INTERACTION-001",
-      "title": "用一句话写用户要完成的事，从下表选一至三个主要交互族，补充必要的恢复路径",
-      "owner": "clients/gui/design-system/interactions.md#使用方式与规则强度",
-      "strength": "default",
-      "textSha256": "5aeff46b21729ec5ddbdb9a84b75b902ea8ee55826643ee87682cc53529ffba8"
-    },
-    {
-      "id": "R-INTERACTION-030",
-      "title": "阅读对应模式卡",
-      "owner": "clients/gui/design-system/interactions.md#使用方式与规则强度",
-      "strength": "default",
-      "textSha256": "326d3ecc9e67389f834641dc5c31a6f3196987f5f3a03bd7ec6c8da27ecba8d4"
-    },
-    {
       "id": "R-INTERACTION-031",
       "title": "记录采用的默认规则及少量例外",
       "owner": "clients/gui/design-system/interactions.md#使用方式与规则强度",
@@ -1116,46 +409,11 @@
       "textSha256": "27d5db0b5b89c2ff232fbd9b901e05157ca3f2f038ef8ccbe765a78c761be4b0"
     },
     {
-      "id": "R-INTERACTION-032",
-      "title": "固定状态、数据、主题、字号、窗口和可观察结果，沿用 B 流程验证",
-      "owner": "clients/gui/design-system/interactions.md#使用方式与规则强度",
-      "strength": "default",
-      "textSha256": "c710eafac819273499f9893917dc7ba4fe2395e22ce1a9fa4006c27accc7881c"
-    },
-    {
       "id": "R-INTERACTION-002",
       "title": "必须 must 保持状态可信、必要上下文和可达性",
       "owner": "clients/gui/design-system/interactions.md#使用方式与规则强度",
       "strength": "must",
       "textSha256": "95b52251d7884551339f14016effb5c7a3e0ee5440bdf46b5a8ce3e846f52aa7"
-    },
-    {
-      "id": "R-INTERACTION-003",
-      "title": "默认 default 直接采用已有结构与视觉角色",
-      "owner": "clients/gui/design-system/interactions.md#使用方式与规则强度",
-      "strength": "default",
-      "textSha256": "7c5fa97d300fed9e0e9926f46f5ae8ed036087146b8c3480e3c3b124acaaed8f"
-    },
-    {
-      "id": "R-INTERACTION-004",
-      "title": "可探索 explore 允许领域内容、信息组织和专属可视化变化",
-      "owner": "clients/gui/design-system/interactions.md#使用方式与规则强度",
-      "strength": "explore",
-      "textSha256": "f5d6cfbbf250cbb31010c28d7401cad81edfdec4719e3e163e421f2f4834ed2d"
-    },
-    {
-      "id": "R-INTERACTION-005",
-      "title": "模式卡是设计建议与约束，不表示所有生产页面已迁移或所有状态已验证",
-      "owner": "clients/gui/design-system/interactions.md#使用方式与规则强度",
-      "strength": "explore",
-      "textSha256": "c72de095e800406f59541d154b34cc113eeeb103e88023f559ff73deedbfa912"
-    },
-    {
-      "id": "R-INTERACTION-006",
-      "title": "默认结构：现有工作台导航、SettingsNavigation",
-      "owner": "clients/gui/design-system/interactions.md#i-nav-定位与切换",
-      "strength": "default",
-      "textSha256": "aa069e2c2877f49cbd483d0a066397a3936e3e81fe25dc582e6d33490e96fc0d"
     },
     {
       "id": "NAV-CONTEXT-01",
@@ -1172,20 +430,6 @@
       "textSha256": "fba43d1b05aca28fc751a3896fc51318dbf2b9ade5c62254c805b3aefa2541a3"
     },
     {
-      "id": "R-INTERACTION-007",
-      "title": "连续性/视觉/动效：页面内容变化与所选入口同步",
-      "owner": "clients/gui/design-system/interactions.md#i-nav-定位与切换",
-      "strength": "default",
-      "textSha256": "e357641638ea0d726ad7e93a412424ca4e601600224d6a872f0f334e7a1fedf6"
-    },
-    {
-      "id": "R-INTERACTION-008",
-      "title": "默认结构：ConversationComposer、现有 Input/表单与明确提交动作",
-      "owner": "clients/gui/design-system/interactions.md#i-input-输入与提交",
-      "strength": "default",
-      "textSha256": "c0817b5e1be8565af593bac26bcba77460472795461584a5fcd709b57a845960"
-    },
-    {
       "id": "INPUT-TRUTH-01",
       "title": "必须",
       "owner": "clients/gui/design-system/interactions.md#i-input-输入与提交",
@@ -1198,27 +442,6 @@
       "owner": "clients/gui/design-system/interactions.md#i-input-输入与提交",
       "strength": "must",
       "textSha256": "822642b177873d3b9f379baa12e52f013023070265a8e1f777e7659d80374b7b"
-    },
-    {
-      "id": "R-INTERACTION-009",
-      "title": "连续性/视觉/动效：保留草稿与操作位置",
-      "owner": "clients/gui/design-system/interactions.md#i-input-输入与提交",
-      "strength": "explore",
-      "textSha256": "e8532a816eb8117ce1b9a69362e81a47b3a6c3ec003b8306df26ab50f51d0cfc"
-    },
-    {
-      "id": "R-INTERACTION-010",
-      "title": "意图：判断系统正在做什么、是否需要介入",
-      "owner": "clients/gui/design-system/interactions.md#i-observe-等待与观察",
-      "strength": "default",
-      "textSha256": "a207a2535c7b80b512600a9314cde1c2c3427e3c85af5af879bf04f2251ac3ae"
-    },
-    {
-      "id": "R-INTERACTION-011",
-      "title": "默认结构：TurnExecution、TurnProgress、ToolEvent、Feedback",
-      "owner": "clients/gui/design-system/interactions.md#i-observe-等待与观察",
-      "strength": "default",
-      "textSha256": "431ebf4f31f5f273504b636ecbd53592e385b4b46a5eb8326758203b141e1b90"
     },
     {
       "id": "OBSERVE-TRUTH-01",
@@ -1235,20 +458,6 @@
       "textSha256": "a59ad143a781e6d86efef6d52c3c5acb61b5e0948ef4a54572b018eab8c08b11"
     },
     {
-      "id": "R-INTERACTION-012",
-      "title": "连续性/视觉/动效：运行反馈不抢读者位置",
-      "owner": "clients/gui/design-system/interactions.md#i-observe-等待与观察",
-      "strength": "explore",
-      "textSha256": "0c5a53b286b0ec5346e54a4180fb68526b6c0153c16b60ea771b4757f2e6e537"
-    },
-    {
-      "id": "R-INTERACTION-013",
-      "title": "默认结构：Messages、CollapsibleText、SettingsDisclosure",
-      "owner": "clients/gui/design-system/interactions.md#i-read-阅读与探索",
-      "strength": "default",
-      "textSha256": "9dd9bee1788bd27f7b77c220d2b97e14f7fc221b76be058a66cdad4167e62d19"
-    },
-    {
       "id": "READ-CONTINUITY-01",
       "title": "必须",
       "owner": "clients/gui/design-system/interactions.md#i-read-阅读与探索",
@@ -1261,13 +470,6 @@
       "owner": "clients/gui/design-system/interactions.md#i-read-阅读与探索",
       "strength": "default",
       "textSha256": "d340c69b69ef6debf0531f133e65104c0e3845d40d7e777ad9de9ce4310fbe6c"
-    },
-    {
-      "id": "R-INTERACTION-014",
-      "title": "默认结构：既有资源面板、AgentConversationPane、图片查看器、SettingsDialog",
-      "owner": "clients/gui/design-system/interactions.md#i-return-打开与返回",
-      "strength": "default",
-      "textSha256": "88a251766626e0cf38a7e0dfaa6ef1524ee6a659424a8bafe9723c30b806a030"
     },
     {
       "id": "R-INTERACTION-015",
@@ -1291,27 +493,6 @@
       "textSha256": "688b2a2f19c396de10fcd74de84d5395394cad917c24a3de6272cfd4a5574b16"
     },
     {
-      "id": "R-INTERACTION-016",
-      "title": "连续性/视觉/动效：展开解释空间关系，返回不重新播放整页",
-      "owner": "clients/gui/design-system/interactions.md#i-return-打开与返回",
-      "strength": "explore",
-      "textSha256": "19a54556045a04d44c8c7c4445a79b2e6592bcd21fdb54b17fd86fed93ed0115"
-    },
-    {
-      "id": "R-INTERACTION-017",
-      "title": "依据：子代理、图片和原生网页预览的已测切片",
-      "owner": "clients/gui/design-system/interactions.md#i-return-打开与返回",
-      "strength": "default",
-      "textSha256": "4f9ccef94c1799f1f5ca01e7a9ad45a90d732f9c433bc1724c8def87a5e4eee6"
-    },
-    {
-      "id": "R-INTERACTION-018",
-      "title": "默认结构：SettingsSelect、Switch、SettingsSegmentedTabs、DecisionCard、Ap",
-      "owner": "clients/gui/design-system/interactions.md#i-decide-选择与确认",
-      "strength": "default",
-      "textSha256": "ccb3d89b43e4b2917125af9b02e7a86532198515deb4bd53bbdc7ea1d7fd9f85"
-    },
-    {
       "id": "DECIDE-RESULT-01",
       "title": "必须",
       "owner": "clients/gui/design-system/interactions.md#i-decide-选择与确认",
@@ -1324,13 +505,6 @@
       "owner": "clients/gui/design-system/interactions.md#i-decide-选择与确认",
       "strength": "default",
       "textSha256": "89d19f814f415f65826287f4da64538d0b6a288cd0e4dc34855725a7114a0fe5"
-    },
-    {
-      "id": "R-INTERACTION-019",
-      "title": "默认结构：SettingsPage → SettingsSection → SettingsGroupCard → Settin",
-      "owner": "clients/gui/design-system/interactions.md#i-manage-调整与管理",
-      "strength": "default",
-      "textSha256": "940cc175a37def1e10adeae7a9ba49c731027338c95ae610b30b913b354265c6"
     },
     {
       "id": "R-INTERACTION-020",
@@ -1354,27 +528,6 @@
       "textSha256": "1a38598c163c3ce417ace22796599c84ab2c224723c0a8cd6d61486f47fd2d78"
     },
     {
-      "id": "R-INTERACTION-021",
-      "title": "依据：现有设置与偏好链路",
-      "owner": "clients/gui/design-system/interactions.md#i-manage-调整与管理",
-      "strength": "default",
-      "textSha256": "55c797abcf00df2ddb825d6baa3681af626401d90bb6851610e99f0d42221ad5"
-    },
-    {
-      "id": "R-INTERACTION-022",
-      "title": "默认结构：Feedback、EmptySettings 和业务现有恢复动作",
-      "owner": "clients/gui/design-system/interactions.md#i-recover-异常与恢复",
-      "strength": "default",
-      "textSha256": "aa42622f432ee9f338fe6deb5dba2c52422c1f567f4748d4e2f808724e5c5b1d"
-    },
-    {
-      "id": "R-INTERACTION-023",
-      "title": "状态：空、加载失败、离线、明确拒绝、结果未知、恢复中、恢复完成",
-      "owner": "clients/gui/design-system/interactions.md#i-recover-异常与恢复",
-      "strength": "default",
-      "textSha256": "4292003bf03b32f9416f5f5e053f21875787e88c4e04bd22f5c57293d3830a3b"
-    },
-    {
       "id": "RECOVER-TRUTH-01",
       "title": "必须",
       "owner": "clients/gui/design-system/interactions.md#i-recover-异常与恢复",
@@ -1396,39 +549,11 @@
       "textSha256": "a87800ca0c57ea55e36a904d208e7f195b0ccd16642ddbbf1b8d440c7544228e"
     },
     {
-      "id": "R-INTERACTION-025",
-      "title": "精确字体、颜色、空间和形状引用 foundations 与生产 token，不在模式卡复制数值",
-      "owner": "clients/gui/design-system/interactions.md#跨交互族的共同语言",
-      "strength": "default",
-      "textSha256": "1c36838dee24bef99f212ad92ea8fb5203e8d3b5a6a3568a86780665a5898a1a"
-    },
-    {
-      "id": "R-INTERACTION-026",
-      "title": "使用 交互任务简报记录用户意图、交互族、所选组件、默认规则及例外、验收状态和未知",
-      "owner": "clients/gui/design-system/interactions.md#例外与验证",
-      "strength": "default",
-      "textSha256": "7ca16afcda1b3c770f9901f6251d7307f28569199aac0486b6ac7770450eb386"
-    },
-    {
-      "id": "R-INTERACTION-027",
-      "title": "验收分别报告：业务结果、交互连续性、视觉一致性、平台行为",
-      "owner": "clients/gui/design-system/interactions.md#例外与验证",
-      "strength": "default",
-      "textSha256": "12d1ab9ad9e7ca0c602976192305c29479a81c71f8d5a9a53baccb4ffdf4d59d"
-    },
-    {
       "id": "R-INTERACTION-028",
       "title": "默认的过程入口同时说明内容和展开动作",
       "owner": "clients/gui/design-system/interactions.md#对话阶段二的生产应用",
       "strength": "default",
       "textSha256": "72f28e6e4f34d91012744bed89564342e8bb0f5b075cb95ecab1043c038f89b8"
-    },
-    {
-      "id": "R-INTERACTION-029",
-      "title": "共享输入的 default/compact 由当前宿主显式选择",
-      "owner": "clients/gui/design-system/interactions.md#对话阶段二的生产应用",
-      "strength": "default",
-      "textSha256": "2ff5a64762680b8d2e457e75f9a835c23659d91adfadda6212801d614275b073"
     },
     {
       "id": "R-CATALOG-001",
@@ -1452,39 +577,11 @@
       "textSha256": "a5e5c017eece0eeb5d475895c8736c9038134536ff2470e708da6a520c6287d1"
     },
     {
-      "id": "R-CATALOG-007",
-      "title": "新增公共组件或页面模式时维护 registry.json ，再运行 design:sync 更新本目录",
-      "owner": "clients/gui/design-system/inventory.md#覆盖与缺口",
-      "strength": "default",
-      "textSha256": "cc96dc1c26bcdd22e999799239203376b5959290c0b65f0ac1c551dc78826959"
-    },
-    {
-      "id": "R-CATALOG-008",
-      "title": "输入表面的几何、模型入口基本样式归 ComposerSurface.css",
-      "owner": "clients/gui/design-system/inventory.md#覆盖与缺口",
-      "strength": "default",
-      "textSha256": "bd9ea6eca636cf93b54d9d731945aa77543180ca4e4295c13a3671abc1c04d3a"
-    },
-    {
-      "id": "R-LAYOUT-001",
-      "title": "先从用户交互模式识别用户意图与约束，再选下列业务组合",
-      "owner": "clients/gui/design-system/patterns.md#页面模式与有限选择",
-      "strength": "default",
-      "textSha256": "321d6085da4c780cdfb60b6be74376ffc9dca3ecad3bcd158ad5d95c501b500e"
-    },
-    {
       "id": "R-LAYOUT-002",
       "title": "P-RESOURCES 沿现有 PluginCenter 领域布局组合搜索、分类、列表、详情与反馈，不建立通用列表框架",
       "owner": "clients/gui/design-system/patterns.md#页面模式与有限选择",
       "strength": "must",
       "textSha256": "229a87dc8250146742cc61ae82fb34699eb9b37f6ef9de25c467e9b9f579b302"
-    },
-    {
-      "id": "R-LAYOUT-003",
-      "title": "定时任务沿用 P-CONVERSATION 的普通 Composer 和既有 ScheduledWorkspace 列表",
-      "owner": "clients/gui/design-system/patterns.md#页面模式与有限选择",
-      "strength": "default",
-      "textSha256": "8031a8d84172bf3f20833b4be42e96e18ce39c1cd52e3a31ac392c86bcbfba72"
     },
     {
       "id": "R-LAYOUT-004",
@@ -1508,27 +605,6 @@
       "textSha256": "aed1291da5a4721936a072f1268434edf3e94a54eb6e8629fe60ee035887ebd5"
     },
     {
-      "id": "R-LAYOUT-016",
-      "title": "缩放不改变业务 ：记录真实 BrowserWindow content bounds、CSS viewport、DPR 和 we",
-      "owner": "clients/gui/design-system/patterns.md#electron-宿主与输入边界",
-      "strength": "default",
-      "textSha256": "bc360464a219250198c1716a94c3b7d5bb731341d278ceb970a444a2a8a925db"
-    },
-    {
-      "id": "R-LAYOUT-017",
-      "title": "快捷键逐层验收 ：Shift+Enter 换行、Cmd+, 进入设置、Escape 返回分别核对可见目标、焦点和草稿",
-      "owner": "clients/gui/design-system/patterns.md#electron-宿主与输入边界",
-      "strength": "default",
-      "textSha256": "fe0e02ede82bc49e5376d311d28d5ce491ea8fbdbf3d3e1dc0aeb82413209e18"
-    },
-    {
-      "id": "R-LAYOUT-018",
-      "title": "焦点恢复和组合 Escape 是本产品采纳的可达性/输入正确性要求",
-      "owner": "clients/gui/design-system/patterns.md#electron-宿主与输入边界",
-      "strength": "default",
-      "textSha256": "8df4f1fa974012d7831ae6a5fe42aea9b34b3ff20d6111fe0aaa8c047e20c1ae"
-    },
-    {
       "id": "R-LAYOUT-019",
       "title": "窗口激活独立核对 ：记录真实窗口身份与 focus/blur 事件",
       "owner": "clients/gui/design-system/patterns.md#electron-宿主与输入边界",
@@ -1550,60 +626,11 @@
       "textSha256": "4f529e8293f5dc4c4c9a4f543a52bd6d89656f3d8c0247a737f808169a654a71"
     },
     {
-      "id": "R-LAYOUT-022",
-      "title": "CONV-GROUP-01 OBS-CONV-GROUP：参考终态层级",
-      "owner": "clients/gui/design-system/patterns.md#从证据回溯到规则和组件",
-      "strength": "default",
-      "textSha256": "1b660903780e1b05402b4a0fff7347c801929f661c5935e4c1053f82d435ddf9"
-    },
-    {
-      "id": "R-LAYOUT-023",
-      "title": "CONV-DISCLOSURE-01 OBS-CONV-OPEN-GAP：跨完成保留未实测",
-      "owner": "clients/gui/design-system/patterns.md#从证据回溯到规则和组件",
-      "strength": "default",
-      "textSha256": "1ebb55731553d829237642c29ffbce09461e3ee20b5ceac972329342176aaa5c"
-    },
-    {
-      "id": "R-LAYOUT-024",
-      "title": "引用本页的 CONV-OWNER-01、CONV-GROUP-01、CONV-DISCLOSURE-01、CONV-READ-0",
-      "owner": "clients/gui/design-system/patterns.md#组合与变化边界",
-      "strength": "default",
-      "textSha256": "8d40841f32abfb56303c6ca88cab1b116f6046524a2051f2be94a5d1bb949eb5"
-    },
-    {
       "id": "R-LAYOUT-025",
       "title": "结构化合同的states是验收检查点，不能拿它替代Core状态、重连快照或真实用户操作",
       "owner": "clients/gui/design-system/patterns.md#组合与变化边界",
       "strength": "must",
       "textSha256": "7b51701dd8a77293618b5b092c6dd102a693bfcd1319f05b93099298e2a18b00"
-    },
-    {
-      "id": "R-LAYOUT-026",
-      "title": "Messages / TurnProgress 带phase与legacy均复用从运行期挂载的过程总组",
-      "owner": "clients/gui/design-system/patterns.md#当前实现差异",
-      "strength": "default",
-      "textSha256": "2b8df58f4acc953dd1a1b99960d05024cd3b606102fc48bac31d17ed4af2b869"
-    },
-    {
-      "id": "R-LAYOUT-027",
-      "title": "TurnExecution / ToolEvent 同一命令归并分批输出",
-      "owner": "clients/gui/design-system/patterns.md#当前实现差异",
-      "strength": "default",
-      "textSha256": "17cc79730d75fd48179615069c406d4c6ffc0178f7809b1bbe19bed5f2d6580b"
-    },
-    {
-      "id": "R-LAYOUT-028",
-      "title": "ConversationTimelinePreview 切换整份live/completed fixture，并关闭回复占位 不",
-      "owner": "clients/gui/design-system/patterns.md#当前实现差异",
-      "strength": "default",
-      "textSha256": "50b687f281bb9eef490ca9961acbc010f4ea64d2ba784a35e3bab677ae500a72"
-    },
-    {
-      "id": "R-LAYOUT-029",
-      "title": "普通行内操作采用 ActionButton ",
-      "owner": "clients/gui/design-system/patterns.md#按钮与表面",
-      "strength": "default",
-      "textSha256": "3ec900551133c03bc783be9a9250eaf3e52d32b209ca24a92a5f7e824dd01d44"
     },
     {
       "id": "R-LAYOUT-030",
@@ -1613,46 +640,11 @@
       "textSha256": "b75573c11ec356ad0c3e165754234b66c4cfd620ab893fcc09604900f77a17bc"
     },
     {
-      "id": "R-LAYOUT-031",
-      "title": "共享状态的展示与动作统一见反馈与恢复",
-      "owner": "clients/gui/design-system/patterns.md#状态必须先于样式决定",
-      "strength": "default",
-      "textSha256": "e348ed76ec3f58f9cacb5229ed5695ddfb19d3381cbaca920d93d0494331ef97"
-    },
-    {
       "id": "R-LAYOUT-032",
       "title": "例如新增配置导入入口：P-SETTINGS，沿用设置行和 ActionButton，调用方管理文件选择及提交",
       "owner": "clients/gui/design-system/patterns.md#最小实现说明",
       "strength": "must",
       "textSha256": "2d12d3d6cffb70260c9565a9f79eefe2eb5a79d0a9e9e604c7e879efeafd4a15"
-    },
-    {
-      "id": "R-PLAN-001",
-      "title": "AReaL 已有生产控件、GUI 目录、状态合同和开发预览",
-      "owner": "clients/gui/design-system/roadmap.md#设计系统建设顺序与缺口",
-      "strength": "default",
-      "textSha256": "acf48830aa07ef01ea224c59883c9f200df5129e56e3a47cbb7aca97dc4c696a"
-    },
-    {
-      "id": "R-PLAN-004",
-      "title": "Token 角色与平台映射、浏览器焦点共享源已接入",
-      "owner": "clients/gui/design-system/roadmap.md#当前基础与缺口",
-      "strength": "default",
-      "textSha256": "d6a37e6ee67d279d787641e6af7e1eebba84a3ff099c87491c51edf988f0da52"
-    },
-    {
-      "id": "R-PLAN-005",
-      "title": "文档与可运行示例 文档与预览入口、现有 catalog 与生成器 核对原 Markdown 链接、合同和生产示例的阅读路径",
-      "owner": "clients/gui/design-system/roadmap.md#当前基础与缺口",
-      "strength": "default",
-      "textSha256": "bbdf5bce953ce2a22886be85977a2a46b2cbdd61756db1a0cc858d23bde1b6cd"
-    },
-    {
-      "id": "R-PLAN-006",
-      "title": "变更约束与准入 目录检查、增量审计约束有限成员",
-      "owner": "clients/gui/design-system/roadmap.md#当前基础与缺口",
-      "strength": "default",
-      "textSha256": "6531c81a17b6185d72f709f23a1c32c7d44aa46eda929073936c6721e54405b4"
     },
     {
       "id": "R-PLAN-007",
@@ -1662,60 +654,11 @@
       "textSha256": "7194a6dee7b7eed5cd5ba305776c7a69a1c9aefa0cfeaf32aa89e46832761d75"
     },
     {
-      "id": "R-PLAN-008",
-      "title": "先评价五条切片的整体体验，继续覆盖文字层级、表面、密度、形状、状态与动效",
-      "owner": "clients/gui/design-system/roadmap.md#下一步",
-      "strength": "default",
-      "textSha256": "89be8a1f9ab2e799a0b24e33db1ea80601995a5f69fa1cd43477ed2efb887107"
-    },
-    {
-      "id": "R-PLAN-009",
-      "title": "后续以用户评价、实际任务出现的缺口及异常恢复为方向，回到原组件、模式和业务所有者修订",
-      "owner": "clients/gui/design-system/roadmap.md#下一步",
-      "strength": "default",
-      "textSha256": "aa5ea42c7de00d5c6d1991b59e74233b25b2a6d3edffac96291058c9b7135d89"
-    },
-    {
-      "id": "R-PLAN-010",
-      "title": "所选 Token 和组件有明确所有者、真实消费者、状态合同与验证位置",
-      "owner": "clients/gui/design-system/roadmap.md#首轮完成条件",
-      "strength": "default",
-      "textSha256": "1dfdb241775f06c316d2c49348a2cd2c1e24ae97643d1a353ddfe066ac3afcc6"
-    },
-    {
-      "id": "R-PLAN-011",
-      "title": "行为、视觉、原生平台与安装包分别报告实际覆盖，未覆盖项保留",
-      "owner": "clients/gui/design-system/roadmap.md#首轮完成条件",
-      "strength": "default",
-      "textSha256": "0eb470f52da9c631fc56c708d2d34d8b50c5b8190faf1604aeb23fc53281385e"
-    },
-    {
-      "id": "R-PLAN-012",
-      "title": "原有调用方完成迁移，被替代定义删除，新增任务能复用同一设计选择",
-      "owner": "clients/gui/design-system/roadmap.md#首轮完成条件",
-      "strength": "default",
-      "textSha256": "53ea9b786909788350a3d56b47b103da084151fa430d9caa6512dea7e3668fcb"
-    },
-    {
-      "id": "R-PLAN-013",
-      "title": "本目录只维护中文",
-      "owner": "clients/gui/design-system/roadmap.md#首轮完成条件",
-      "strength": "default",
-      "textSha256": "b085f9a8ac2cd2fa5b9ada37e42c2f304afbcf5eadf53de959352ad1e7c67e54"
-    },
-    {
       "id": "R-RULES-001",
       "title": "正文用可读的 R-域-编号 前缀声明 ID",
       "owner": "clients/gui/design-system/rule-maintenance.md#定义与引用",
       "strength": "must",
       "textSha256": "026025d9c857abb3e3207c980232edf7031afe759852206ae3fbdeedd85d9bcb"
-    },
-    {
-      "id": "R-RULES-002",
-      "title": "结构化规则使用 json-pointer 指向 registry 中的唯一字段",
-      "owner": "clients/gui/design-system/rule-maintenance.md#定义与引用",
-      "strength": "default",
-      "textSha256": "ba62e4f1c0c70bd7183a4391027cac3dd6810be507f1f36249aa6346b8f433b7"
     },
     {
       "id": "R-RULES-003",
@@ -1725,67 +668,11 @@
       "textSha256": "56b8e6c062cc3cb64eb97806ecc7e88abe8bafb2ccedc2d8e948c5af72e73781"
     },
     {
-      "id": "R-RULES-004",
-      "title": "从 clients/gui 运行 node scripts/design-rules.mjs ",
-      "owner": "clients/gui/design-system/rule-maintenance.md#校验范围",
-      "strength": "default",
-      "textSha256": "2c565fb19037e6d56a08c14e456f90ae55db0f0685f5ed9016fbc5e5e544cfe5"
-    },
-    {
-      "id": "R-RULES-005",
-      "title": "使用者路径为包说明、生成的 Token 入口和对应组件合同",
-      "owner": "clients/gui/design-system/rule-maintenance.md#校验范围",
-      "strength": "default",
-      "textSha256": "82ca1d0745536d104783d48da8686911ef510800a5e47f48485b1542aac4876f"
-    },
-    {
-      "id": "R-RULES-006",
-      "title": "活跃设计文档口径固定为 design/ 与 clients/gui/design-system/ 下全部 Markdown，排除",
-      "owner": "clients/gui/design-system/rule-maintenance.md#校验范围",
-      "strength": "default",
-      "textSha256": "15735c0424c62c6ac2a4f55987b3791a624807320923197b5118627f074102cd"
-    },
-    {
-      "id": "R-FLOW-001",
-      "title": "本页定义 架构阶段 B/C 的 v1 合同",
-      "owner": "clients/gui/design-system/structured-flow.md#结构化数据到高保真实现",
-      "strength": "default",
-      "textSha256": "c579fa61c8981b02db7cf12de040f84db2fb08e9522be0839ae9557c0b1cdbee"
-    },
-    {
-      "id": "R-FLOW-002",
-      "title": "本页是设计系统维护者开展受控比较的执行流程，采用已选定的视频辅助核查路线（B路线，与架构阶段B的Base准入不同）",
-      "owner": "clients/gui/design-system/structured-flow.md#结构化数据到高保真实现",
-      "strength": "default",
-      "textSha256": "49011e3c0681110e714a04dc94ade5f68b0670d161001a600632f00097194010"
-    },
-    {
-      "id": "R-FLOW-003",
-      "title": "registry.json 是系统级目录，拥有 Token 角色、组件 ID、模式 ID 和最低状态合同",
-      "owner": "clients/gui/design-system/structured-flow.md#两类数据",
-      "strength": "default",
-      "textSha256": "391d6bf8d91c85f4a7cb301c6a701488e8580d71cf2d111d454c6d7ba40d6e1b"
-    },
-    {
-      "id": "R-FLOW-004",
-      "title": "intent 用户需要完成的任务 必填，语义仍需评审",
-      "owner": "clients/gui/design-system/structured-flow.md#页面合同字段",
-      "strength": "default",
-      "textSha256": "11150dcd9c542101ba9cb63034f38210632f2b4e1ddc1a70724035b9ca9daa30"
-    },
-    {
       "id": "R-FLOW-005",
       "title": "pattern 页面组合模式 必须在 registry 中",
       "owner": "clients/gui/design-system/structured-flow.md#页面合同字段",
       "strength": "must",
       "textSha256": "d806cfdaa8aa33e2d23919bf17e2aa514cfe68a3f9af9bccdf8b953e7fd774a2"
-    },
-    {
-      "id": "R-FLOW-006",
-      "title": "target / runtime 实现入口与 component-preview / desktop / remote 边界 路",
-      "owner": "clients/gui/design-system/structured-flow.md#页面合同字段",
-      "strength": "default",
-      "textSha256": "02d1c007ea1d89a02a99f13a6851ea83e83c783bef8e7aa8ea777002fc29a5c1"
     },
     {
       "id": "R-FLOW-007",
@@ -1795,25 +682,11 @@
       "textSha256": "079b55acfbf6b6d27e6a84770f23b17341ab45fda252888a0417c2876a2d6d40"
     },
     {
-      "id": "R-FLOW-008",
-      "title": "rules（模式声明时必需） 引用模式要求的全部规则ID",
-      "owner": "clients/gui/design-system/structured-flow.md#页面合同字段",
-      "strength": "default",
-      "textSha256": "4ba9266de0be56acd1d34d335dbc901e2f9a8d9a978f75f72a7a533f854951bb"
-    },
-    {
       "id": "R-FLOW-009",
       "title": "states 每个状态的到达条件及可观察结果 模式必需状态不能缺",
       "owner": "clients/gui/design-system/structured-flow.md#页面合同字段",
       "strength": "must",
       "textSha256": "54d9215e3514f75466fd26931cce0d50ea3cb546428c4251e7cfc9b5612045c4"
-    },
-    {
-      "id": "R-FLOW-010",
-      "title": "evidence pending / captured / compared、artifacts 与 gaps 非 pendin",
-      "owner": "clients/gui/design-system/structured-flow.md#页面合同字段",
-      "strength": "default",
-      "textSha256": "2340895daee33b9ceb2a75b496c8fa9e9fdf1431ec36b059b26b14d21028a301"
     },
     {
       "id": "R-FLOW-011",
@@ -1830,46 +703,11 @@
       "textSha256": "c5f41cee77571b0dff3f7b5dda6a5e7c067352fd11339d7a3e8cbc33a96123e8"
     },
     {
-      "id": "R-FLOW-013",
-      "title": "固定题目与合同 写用户任务、问题ID、模式/规则、target、slots、states、conditions与可反驳的验收条件",
-      "owner": "clients/gui/design-system/structured-flow.md#执行顺序与每步完成条件",
-      "strength": "default",
-      "textSha256": "c3bbab366c6e55f742809853b8d2f0db4d09b6ac225aef8d23eebc2efeb3a9d5"
-    },
-    {
-      "id": "R-FLOW-043",
-      "title": "固定参考与当前运行 复用适用的 run manifest",
-      "owner": "clients/gui/design-system/structured-flow.md#执行顺序与每步完成条件",
-      "strength": "default",
-      "textSha256": "1556dae5b1031ceb58409d60f7c5416adca1fa9a7fd6b5acb704c2b90c76f601"
-    },
-    {
       "id": "R-FLOW-015",
       "title": "视频提名候选 按视频分析提示词，向已授权的视频工具提供限定材料和输出schema",
       "owner": "clients/gui/design-system/structured-flow.md#执行顺序与每步完成条件",
       "strength": "must",
       "textSha256": "f9d5034c306ca736c0a612de66895c9aba7e4fbeb5140a8cc0dd603ba05a1744"
-    },
-    {
-      "id": "R-FLOW-045",
-      "title": "关键帧与日志核查 按候选边界、冲突或重要动作查看关键帧总览，并放大相关原图",
-      "owner": "clients/gui/design-system/structured-flow.md#执行顺序与每步完成条件",
-      "strength": "default",
-      "textSha256": "b0414f8daed8122c40ee54dc083fd80f3c8e7edaaff3f724f0ab827027251802"
-    },
-    {
-      "id": "R-FLOW-019",
-      "title": "默认顺序是先核查再改动，验证后才将设计决定写为已确立规范",
-      "owner": "clients/gui/design-system/structured-flow.md#执行顺序与每步完成条件",
-      "strength": "default",
-      "textSha256": "88946f59f14003974af5d4eac45c567c83242bfcd501b25fe81cfabf0dbbcd97"
-    },
-    {
-      "id": "R-FLOW-020",
-      "title": "静态文案、沿既有规则的小改动：可复用仍适用的原图与运行证据，记录为何适用",
-      "owner": "clients/gui/design-system/structured-flow.md#按任务裁剪",
-      "strength": "default",
-      "textSha256": "6e1e2b94f07da56b4483cd25ef0036d966e1e5c290abfad75e90d2b5637effff"
     },
     {
       "id": "R-FLOW-021",
@@ -1886,13 +724,6 @@
       "textSha256": "bdedef2b48c73c61eda44023ea0efcc67fb6ffbb51d4c60c40969cbd2c1aef69"
     },
     {
-      "id": "R-FLOW-023",
-      "title": "按状态行为 → 布局 → 组件 → 表面样式排序差异",
-      "owner": "clients/gui/design-system/structured-flow.md#按任务裁剪",
-      "strength": "default",
-      "textSha256": "af45783f1a8fecc97937adc655892b2ecd93ea8f646fd405589c049cbc4bcf81"
-    },
-    {
       "id": "R-FLOW-024",
       "title": "已有runner和报告可保留自己的字段",
       "owner": "clients/gui/design-system/structured-flow.md#按任务裁剪",
@@ -1905,20 +736,6 @@
       "owner": "clients/gui/design-system/structured-flow.md#截图取证方案",
       "strength": "must",
       "textSha256": "92a9fed3c11f8d7a2f53f4bd78749d23ed121b4a9af60e5636c00a6ef84d9d08"
-    },
-    {
-      "id": "R-FLOW-026",
-      "title": "同一帧比较包括：整体层次与区域比例、字体/换行、间距/对齐、语义色/状态、资产/图标和实际文案",
-      "owner": "clients/gui/design-system/structured-flow.md#截图取证方案",
-      "strength": "default",
-      "textSha256": "63aa8cc34e53f173365317775beceb66925ee4a7d6d7f87a02b76bb1fbf4d6d9"
-    },
-    {
-      "id": "R-FLOW-027",
-      "title": "当前阶段先建立自动化数据链和取证合同，截图采集不作为生成步骤",
-      "owner": "clients/gui/design-system/structured-flow.md#截图取证方案",
-      "strength": "default",
-      "textSha256": "497191a505d39c6b5f24545340984ee6832ab4b353275d59e7adb40dfe49b46a"
     },
     {
       "id": "R-FLOW-028",
@@ -1935,76 +752,6 @@
       "textSha256": "316d22d3d7c7d2e495e01c81063c383a0418913f1ee1f66609f9be45eb29bfda"
     },
     {
-      "id": "R-VIDEOANALYSISPROMPT-001",
-      "title": "由默认流程步骤3调用，配套输出schema",
-      "owner": "clients/gui/design-system/templates/video-analysis.prompt.md#视频候选分析提示词",
-      "strength": "default",
-      "textSha256": "3fc1a4de6b5478662a94cb9088125f02703911d65c5f0f4abe279e41ba151d93"
-    },
-    {
-      "id": "R-VIDEOANALYSISPROMPT-002",
-      "title": "使用本机已授权的Antigravity时，先用当前 agy --help 、 agy models 确认入口、模型与认证",
-      "owner": "clients/gui/design-system/templates/video-analysis.prompt.md#视频候选分析提示词",
-      "strength": "default",
-      "textSha256": "eb82216a890fd887032ee74b6056a7068351ac8f8b8bdf48c1f128e837bb21f6"
-    },
-    {
-      "id": "R-WORKBENCH-001",
-      "title": "本候选将提交任务、阅读过程、处理审批、查看资源和修改外观串成一条连续路径，供评价 AReaL Harness 的整体体验",
-      "owner": "clients/gui/design-system/workbench-candidate.md#完整工作台候选",
-      "strength": "default",
-      "textSha256": "cad4502deeff0b0ea000b6471c9a7748db106cb62510a5fedeed0e1bcc199e10"
-    },
-    {
-      "id": "R-WORKBENCH-002",
-      "title": "输入一项要求或采用示例要求，发送后观察过程",
-      "owner": "clients/gui/design-system/workbench-candidate.md#打开与体验",
-      "strength": "default",
-      "textSha256": "19b35c01629e3cd071f1e8ee2b328ce9b235f48da0f4f82b6c4f8e5fbac30348"
-    },
-    {
-      "id": "R-WORKBENCH-003",
-      "title": "“本地演示”入口集中提供异常场景与重新开始",
-      "owner": "clients/gui/design-system/workbench-candidate.md#打开与体验",
-      "strength": "default",
-      "textSha256": "400e00f606f53e8551ce54c36c4857c800b6cdca8b84949061a352837f3b77f4"
-    },
-    {
-      "id": "R-WORKBENCH-004",
-      "title": "过程与决定 轻量过程入口与生产审批卡 需要用户决定的操作直接可见，细节按需展开",
-      "owner": "clients/gui/design-system/workbench-candidate.md#整体表达选择",
-      "strength": "default",
-      "textSha256": "1b6d84b1aad92fd3052e7ad9e95b91d4e3b849a8697c7ac3b1878b02a80913e4"
-    },
-    {
-      "id": "R-WORKBENCH-005",
-      "title": "资源 宽窗并列查看，窄窗独立查看并明确返回 查看内容时保留任务身份，窄窗避免压缩正文与操作",
-      "owner": "clients/gui/design-system/workbench-candidate.md#整体表达选择",
-      "strength": "default",
-      "textSha256": "fa10d9ddaaf9b9e87dc3aaf57e4f68f1a7441b8feecd90162d84860764d0c55c"
-    },
-    {
-      "id": "R-WORKBENCH-006",
-      "title": "视觉语言 既有中性表面、生产字体、图标及控件角色 通过信息层级与组合形成整体，不另建一套组件外观",
-      "owner": "clients/gui/design-system/workbench-candidate.md#整体表达选择",
-      "strength": "default",
-      "textSha256": "4268c6fd5d037232dfd26da5106b0b0d558e1183ce174868c8441f01daa157fc"
-    },
-    {
-      "id": "R-WORKBENCH-007",
-      "title": "异常 失败、拒绝、未知有各自文字与合法动作 不将点击、回执或未知结果改写为完成",
-      "owner": "clients/gui/design-system/workbench-candidate.md#整体表达选择",
-      "strength": "default",
-      "textSha256": "160e88bc4f187c79c4f63c55e4c11d0d4d872a1fd1c81c7812dfb8b6f5b7cf46"
-    },
-    {
-      "id": "R-WORKBENCH-008",
-      "title": "提交、过程、审批与结果使用生产调色板和组件样式",
-      "owner": "clients/gui/design-system/workbench-candidate.md#整体表达选择",
-      "strength": "default",
-      "textSha256": "e578202a99a97ad612791ed8e2c12badda60879d7b3012528c4d079a7dfcce58"
-    },
-    {
       "id": "R-WORKBENCH-009",
       "title": "候选入口与组合由 ProductCandidate 维护，复用 Messages、ConversationComposer、Ap",
       "owner": "clients/gui/design-system/workbench-candidate.md#实现与状态边界",
@@ -2019,53 +766,11 @@
       "textSha256": "adc5cb915f0590f6b35793d9bc9006a8ac20dee21a54a7801c3f6ef51f908a48"
     },
     {
-      "id": "R-WORKBENCH-011",
-      "title": "发送后能否判断目前在做什么、是否需要介入，以及已经完成什么",
-      "owner": "clients/gui/design-system/workbench-candidate.md#评价重点",
-      "strength": "default",
-      "textSha256": "7970d035c60b4f58b853d2534266a2a4fb04b38f185178329700e00ec4820ed0"
-    },
-    {
-      "id": "R-WORKBENCH-012",
-      "title": "资源打开与返回是否清楚，未发送内容和阅读位置是否保留",
-      "owner": "clients/gui/design-system/workbench-candidate.md#评价重点",
-      "strength": "default",
-      "textSha256": "d81aa82381b92e54e8d3e6ec96ed2119ef29097312280976411354ab9191af81"
-    },
-    {
-      "id": "R-WORKBENCH-013",
-      "title": "外观设置沿生产页面提供另一条真实路径",
-      "owner": "clients/gui/design-system/workbench-candidate.md#真实-gui-体验",
-      "strength": "default",
-      "textSha256": "1aa2e9bdee556a84607bc96338815d76175619dc71c725a900f6758b7e39f3dc"
-    },
-    {
-      "id": "R-WORKBENCH-014",
-      "title": "这些证据只覆盖所挂载生产组件与本地演示交互",
-      "owner": "clients/gui/design-system/workbench-candidate.md#验证范围",
-      "strength": "default",
-      "textSha256": "fe30c7aa66d64b6635a6ee1534167f187b1ff7b88c89d7146f370cb18ee7a11f"
-    },
-    {
       "id": "R-WORKBENCH-015",
       "title": "本页维护 AReaL Harness 桌面主路径的信息组织与设计要求",
       "owner": "clients/gui/design-system/workbench.md#桌面工作台",
       "strength": "must",
       "textSha256": "34113988a7da42300e72c1e9f598f9187a76ab0c929a53bd6c20e62d6550529a"
-    },
-    {
-      "id": "R-WORKBENCH-016",
-      "title": "项目与聊天导航 选择工作归属，找到已有聊天或新建聊天 项目内与项目外聊天保留区别",
-      "owner": "clients/gui/design-system/workbench.md#信息放在所属工作中",
-      "strength": "default",
-      "textSha256": "c09f98a9bb99e5606adb37bc105323719c83068d067cb495d207b9ffbedee24b"
-    },
-    {
-      "id": "R-WORKBENCH-017",
-      "title": "定时任务 管理安排，阅读每次执行及待处理决定 任务管理与 Run 执行记录保留身份区别，不为每个任务另建一套聊天控件",
-      "owner": "clients/gui/design-system/workbench.md#信息放在所属工作中",
-      "strength": "default",
-      "textSha256": "604ec3f2c8420b3c42205a07104c98c740841e5320b82c67cd6cba81e8ce8df3"
     },
     {
       "id": "R-WORKBENCH-018",
@@ -2089,32 +794,11 @@
       "textSha256": "dd43b67c1987b9537644586fe2e9a78881aebeaf23e7e5ddad59ced84410db25"
     },
     {
-      "id": "R-WORKBENCH-021",
-      "title": "从项目或聊天进入时，标题、内容和可用动作指向同一对象",
-      "owner": "clients/gui/design-system/workbench.md#进入深入查看与返回",
-      "strength": "default",
-      "textSha256": "bef771c165b1734a8de67913ff68f103bd442eb378025bff9a53de33fefdf41c"
-    },
-    {
-      "id": "R-WORKBENCH-022",
-      "title": "从聊天打开资源时保留来源",
-      "owner": "clients/gui/design-system/workbench.md#进入深入查看与返回",
-      "strength": "default",
-      "textSha256": "404145f97a6842c3cee12ee4c82ee01eeeade9732d6b1dc28c6cf4e0ba585106"
-    },
-    {
       "id": "R-WORKBENCH-023",
       "title": "设置是独立工作区域，返回后继续原工作",
       "owner": "clients/gui/design-system/workbench.md#进入深入查看与返回",
       "strength": "must",
       "textSha256": "304214fccda89ede5932e1a5315a766f4de38d6be7947bfdabc14b0b9e6478be"
-    },
-    {
-      "id": "R-WORKBENCH-024",
-      "title": "主聊天、旁路讨论、队列编辑和设置分别保留自身输入",
-      "owner": "clients/gui/design-system/workbench.md#草稿与焦点保留归属",
-      "strength": "default",
-      "textSha256": "2b9e68b3423271c1cdc64d5d3187658549d71f5013aca302ac4aa6fda4f3cda6"
     },
     {
       "id": "R-WORKBENCH-025",
@@ -2131,34 +815,6 @@
       "textSha256": "987bb5d65718363c6374b6af1c843f313e2f2ce72f1cf09b0a32bd9ee5e38cb4"
     },
     {
-      "id": "R-WORKBENCH-028",
-      "title": "定时任务目录使用ScheduledWorkspace：按已开启、已暂停、已结束分组，默认只展示名称与计划摘要",
-      "owner": "clients/gui/design-system/workbench.md#预览与真实路径分别核对",
-      "strength": "default",
-      "textSha256": "d20d24495c49674b9e7987725ec6c75287242dd3c3242142d80a86b53e02c4b3"
-    },
-    {
-      "id": "R-WORKTREE-001",
-      "title": "状态：生产 UI 已按本文迁移，代表状态的视觉对照与交互覆盖见Worktree 验收题",
-      "owner": "clients/gui/design-system/worktrees.md#worktree-设计系统配置准备与管理",
-      "strength": "default",
-      "textSha256": "056c3384626e384e7fe0a4401e203909f098b17440522d0b03dbd855d743e7b4"
-    },
-    {
-      "id": "R-WORKTREE-002",
-      "title": "目标是让用户在发送前选清工作位置，发送后看懂准备过程，进入聊天后保留轻量的工作区身份，并在设置中管理目录与项目环境",
-      "owner": "clients/gui/design-system/worktrees.md#worktree-设计系统配置准备与管理",
-      "strength": "default",
-      "textSha256": "1660572553ec264a87e58edd1fce81bcabe148a17d2118b3575cf11337004e71"
-    },
-    {
-      "id": "R-WORKTREE-051",
-      "title": "九张截图的逐项观察和采样限制见冻结参考观察",
-      "owner": "clients/gui/design-system/worktrees.md#依据与取舍",
-      "strength": "default",
-      "textSha256": "d493824f4d61a065767ed3260aea89e4a8a1c5a9c26ec367640d8855d0df97ef"
-    },
-    {
       "id": "R-WORKTREE-005",
       "title": "“with local code changes”来源 当前只从已提交版本创建，不复制未提交内容",
       "owner": "clients/gui/design-system/worktrees.md#依据与取舍",
@@ -2166,67 +822,11 @@
       "textSha256": "229f904081a231841978f7dbacc740132e2af9dac6e637f903cb5637fa500bcf"
     },
     {
-      "id": "R-WORKTREE-006",
-      "title": "自动删除前保存恢复快照 当前删除合同没有可恢复快照承诺",
-      "owner": "clients/gui/design-system/worktrees.md#依据与取舍",
-      "strength": "default",
-      "textSha256": "cc9da7446a706954fe31b5d8bea0339960b48ba4afda5e2bacaab0dbe2307f93"
-    },
-    {
-      "id": "R-WORKTREE-007",
-      "title": "Windows 脚本标签 本期仅 Default / macOS / Linux，不展示可编辑的 Windows 标签",
-      "owner": "clients/gui/design-system/worktrees.md#依据与取舍",
-      "strength": "default",
-      "textSha256": "459be21f61554cc364704dd18a391ffd84245f54d9d278cdbf3f1705e31137fb"
-    },
-    {
       "id": "R-WORKTREE-008",
       "title": "目录行中的第二个小图标 单帧不能证明用途",
       "owner": "clients/gui/design-system/worktrees.md#依据与取舍",
       "strength": "must",
       "textSha256": "f03c8631b29fc5f5a96e1640940454bea46efd6c02f1bb5c10e3863983d6b8af"
-    },
-    {
-      "id": "R-WORKTREE-009",
-      "title": "通用控件 Button、Switch、搜索、Tabs、Popover、详情、输入与反馈 原 UI / Settings 控件",
-      "owner": "clients/gui/design-system/worktrees.md#在现有系统中的位置",
-      "strength": "default",
-      "textSha256": "7b8909cf860aae6af5a6563613bc2d491fc4f55888e64db24386c08afae55087"
-    },
-    {
-      "id": "R-WORKTREE-010",
-      "title": "领域组合 配置行、分支条目、准备摘要、目录行、脚本字段、Action 条目 UI包Worktree层承接有限组合与就近MD，原W",
-      "owner": "clients/gui/design-system/worktrees.md#在现有系统中的位置",
-      "strength": "default",
-      "textSha256": "e5296f6761ca277f24e53f547d996b88f93f6c81897e95f9335ce7a636b6432b"
-    },
-    {
-      "id": "R-WORKTREE-011",
-      "title": "交互模式 选择、观察、管理、返回与恢复 复用 P-DETAIL、P-STATUS、P-SETTINGS",
-      "owner": "clients/gui/design-system/worktrees.md#在现有系统中的位置",
-      "strength": "default",
-      "textSha256": "08039128b402f3ce0037a1f29a83d7e3b5698b988bfdde738f894bdae139ef56"
-    },
-    {
-      "id": "R-WORKTREE-012",
-      "title": "主要交互族为 I-INPUT、I-OBSERVE、I-MANAGE，返回和异常沿 I-RETURN / I-RECOVER",
-      "owner": "clients/gui/design-system/worktrees.md#在现有系统中的位置",
-      "strength": "default",
-      "textSha256": "7c84c112d557eb9954f5abcbcad726f971779186e0074765de2cb829c433da9c"
-    },
-    {
-      "id": "R-WORKTREE-013",
-      "title": "配置浮层 候选宽度 20rem，上限为窗口可用宽度减两侧 --spacing-inline ",
-      "owner": "clients/gui/design-system/worktrees.md#视觉基础与几何",
-      "strength": "default",
-      "textSha256": "87cd80da2f113cfc1e85dd79377883fa6ce4007154b3f309d01d6cf157c8d06e"
-    },
-    {
-      "id": "R-WORKTREE-014",
-      "title": "表面层级 页面底色 → 一个安静的设置组 / 浮层表面 → 必要的输入或日志内衬",
-      "owner": "clients/gui/design-system/worktrees.md#视觉基础与几何",
-      "strength": "default",
-      "textSha256": "b227e737f00d6d469851223174490cb11f555540e2ce785ff83afbb786c50256"
     },
     {
       "id": "R-WORKTREE-015",
@@ -2243,60 +843,11 @@
       "textSha256": "31b098b618c502c17c24abe87883238e3c3d1fce3ad4577dbd4d963da8e06b25"
     },
     {
-      "id": "R-WORKTREE-017",
-      "title": "图标 沿现有图标集：文件夹 / 本机 / 齿轮 / Git 分支 / GitFork / 勾 / Chevron / Plus ",
-      "owner": "clients/gui/design-system/worktrees.md#视觉基础与几何",
-      "strength": "default",
-      "textSha256": "b340ccad2b66c36abe61f5193efe6cde89a6393c5ab6bcdaf04b66053ad4345a"
-    },
-    {
       "id": "WT-VISUAL-01",
       "title": "先核对轮廓、阅读宽度、对齐和层级，再核对局部细节",
       "owner": "clients/gui/design-system/worktrees.md#视觉基础与几何",
       "strength": "must",
       "textSha256": "5597d4a4f73be911bcafecf10a44cd54d68bc3b418d2d3d8b1e0cb7b7c70033f"
-    },
-    {
-      "id": "R-WORKTREE-019",
-      "title": "下面是对控件选择的 本领域有限例外 ，只限所列用途",
-      "owner": "clients/gui/design-system/worktrees.md#有限例外与共享规则",
-      "strength": "default",
-      "textSha256": "476b7a8af7b625e8c040a4f243705e95bb4d917cf365920137362520ecb53115"
-    },
-    {
-      "id": "R-WORKTREE-020",
-      "title": "General / Environments 标签导航 参考强调同一设置领域内的两个页面 采用真实 tab / 导航语义，不当作",
-      "owner": "clients/gui/design-system/worktrees.md#有限例外与共享规则",
-      "strength": "default",
-      "textSha256": "f31df6200670ea35ee44f2e6d98a05daf8e91c3338dafa053fd1e89533455437"
-    },
-    {
-      "id": "R-WORKTREE-021",
-      "title": "三个脚本平台标签 用户需要来回编辑同一个脚本的多个平台版本 这是编辑面板切换，允许三个可见标签",
-      "owner": "clients/gui/design-system/worktrees.md#有限例外与共享规则",
-      "strength": "default",
-      "textSha256": "7438f9cf4d2c592466c73d649d2b8229b17f93b51491d232368093d2e07ef0c5"
-    },
-    {
-      "id": "R-WORKTREE-022",
-      "title": "分支 / 环境的行式选择 长列表需要搜索、分组和返回，参考主菜单要求单行 label/value 沿公共浮层与选择语义组合，不另",
-      "owner": "clients/gui/design-system/worktrees.md#有限例外与共享规则",
-      "strength": "default",
-      "textSha256": "3e5d77d22e086f3812320e1557c369bcf6d6544f3e63eaf889289a38f09601c8"
-    },
-    {
-      "id": "R-WORKTREE-023",
-      "title": "目录行首 Chevron 表达树层级，保留紧凑的文件目录语言 只用于目录树",
-      "owner": "clients/gui/design-system/worktrees.md#有限例外与共享规则",
-      "strength": "default",
-      "textSha256": "3dda11ddd280bc203d47aef7033d709f6f92feb4b5c2ccee08cac654ca4e43c5"
-    },
-    {
-      "id": "R-WORKTREE-024",
-      "title": "目录行尾图标删除 管理列表需要稳定窄动作列 始终可键盘触达、有可访问名称及确认",
-      "owner": "clients/gui/design-system/worktrees.md#有限例外与共享规则",
-      "strength": "default",
-      "textSha256": "8e523e0913993a29fca99105323947ace5e24d498be5e83bd3c0a890781d5240"
     },
     {
       "id": "WT-STATE-01",
@@ -2318,13 +869,6 @@
       "owner": "clients/gui/design-system/worktrees.md#状态内容与可访问性",
       "strength": "default",
       "textSha256": "b87eb005ef8b9f90f7f711be46d0c38ddc467ceb7522425910d180c665e8d0ba"
-    },
-    {
-      "id": "R-WORKTREE-027",
-      "title": "文字沿现有 i18n",
-      "owner": "clients/gui/design-system/worktrees.md#状态内容与可访问性",
-      "strength": "default",
-      "textSha256": "39b909e86072b0e651fd0eae0f5f60ee149dcc680296b5756ca10074be90936b"
     },
     {
       "id": "R-WORKTREE-028",
@@ -2355,32 +899,11 @@
       "textSha256": "db214cea2e90cd2e69e1da0811c3cb044c3c0c4b7a56350b5e5684fbbe8b16d5"
     },
     {
-      "id": "R-WORKTREE-032",
-      "title": "窄窗优先保住名称、当前值、尾部动作及返回",
-      "owner": "clients/gui/design-system/worktrees.md#状态内容与可访问性",
-      "strength": "default",
-      "textSha256": "5d91c9dc14f0b9278443530c749b3b358631bf39250db6ada227b9e89e66aa3f"
-    },
-    {
-      "id": "R-WORKTREE-033",
-      "title": "沿原动效与 reduced motion",
-      "owner": "clients/gui/design-system/worktrees.md#状态内容与可访问性",
-      "strength": "default",
-      "textSha256": "5fc2f5b98f275f46596519dbaa27c30e04d5049284377a33839321cb6f1582d3"
-    },
-    {
       "id": "R-WORKTREE-038",
       "title": "局部几何与样式落在 Worktree.css 和 WorktreesSettings.css",
       "owner": "clients/gui/design-system/worktrees.md#实现落点与保留差异",
       "strength": "must",
       "textSha256": "9f74e11dd98842357d2cf10cd5fad53dd0d1be3bdac4db6bf3aec9feebb2daf2"
-    },
-    {
-      "id": "R-WORKTREE-047",
-      "title": "五个 Worktree 组合从私有 @areal/ui/experimental 消费，样式入口为 worktree.css ",
-      "owner": "clients/gui/design-system/worktrees.md#ui包采用",
-      "strength": "default",
-      "textSha256": "31108f1dabbb529ee7ba8fd71578d6b51c7c97dc34d47586f68baf349beeea4e"
     },
     {
       "id": "R-WORKTREE-048",
@@ -2390,46 +913,11 @@
       "textSha256": "47df5d079b945a9ef9d91537db8549a1155e24c2c50be43a658f2a8ef96a18ab"
     },
     {
-      "id": "R-ENTRY-008",
-      "title": "宿主使用 React 19、Base UI 与 Tailwind 4，在 Tailwind 之后导入 @areal/ui/sty",
-      "owner": "clients/gui/packages/ui/README.md#使用",
-      "strength": "default",
-      "textSha256": "72e2ac6c637c213b519abf88c6e76a69977b67849597df9b57e66d7dc6dda3ca"
-    },
-    {
       "id": "R-ENTRY-009",
       "title": "src/components （core）放通用控件",
       "owner": "clients/gui/packages/ui/README.md#分层与成熟度",
       "strength": "must",
       "textSha256": "b5a874c9e92fdeee444ceb73ff9a2e6a8c96c004c4129989c5ce563e161a4e9d"
-    },
-    {
-      "id": "R-ENTRY-010",
-      "title": "core 组件在 3 个及以上生产文件使用后评估进入稳定入口 @areal/ui ",
-      "owner": "clients/gui/packages/ui/README.md#分层与成熟度",
-      "strength": "default",
-      "textSha256": "aedf50520537739c2803d587d0345bf13c90e0ede68f51ca180107aee4a1a279"
-    },
-    {
-      "id": "R-ENTRY-011",
-      "title": "基础值及调色板公式改 tokens.json",
-      "owner": "clients/gui/packages/ui/README.md#修改",
-      "strength": "default",
-      "textSha256": "f3413503412f28bcd8c9d077c84ae6e53468f2800427684ea3bfadeef4ce807e"
-    },
-    {
-      "id": "R-ENTRY-045",
-      "title": "pnpm --filter @areal/ui generate → build → check ",
-      "owner": "clients/gui/packages/ui/README.md#修改",
-      "strength": "default",
-      "textSha256": "926f4b608d7d6f3eb133c4c5c1b1403645f81cf2d1e78ac58c5181dc21b68997"
-    },
-    {
-      "id": "R-ENTRY-046",
-      "title": "在 clients/gui 运行 node scripts/design-system-audit.mjs 与 pnpm typ",
-      "owner": "clients/gui/packages/ui/README.md#修改",
-      "strength": "default",
-      "textSha256": "1324bd1b64962357735510be8760e7fb410ea414bc9eef27d40268c906f3ffab"
     },
     {
       "id": "R-UI-COMMON-001",
@@ -2558,27 +1046,6 @@
       "textSha256": "7c867bdfca0ad0615bcfb21c09bab88b28d58a87f3b3f0edba2be1f019597086"
     },
     {
-      "id": "R-BUTTON-002",
-      "title": "Base UI Button 与现有 cva recipe",
-      "owner": "clients/gui/packages/ui/src/components/button/button.md#组成",
-      "strength": "default",
-      "textSha256": "494b570a577a78dc5bae170bc5f7224d344fb4bde2fa30366f2da76a53f48f71"
-    },
-    {
-      "id": "R-BUTTON-003",
-      "title": "默认、hover、按下、focus-visible、disabled、aria-invalid",
-      "owner": "clients/gui/packages/ui/src/components/button/button.md#状态",
-      "strength": "default",
-      "textSha256": "7635e6899f98d7ceaa4c182cf1fd8407336e8a389b5d6c18f390dac47dce67a8"
-    },
-    {
-      "id": "R-BUTTON-004",
-      "title": "Tab 进入可用按钮，Enter/Space 触发",
-      "owner": "clients/gui/packages/ui/src/components/button/button.md#行为",
-      "strength": "default",
-      "textSha256": "504af05a12b77c6edb8c284bdb702aaf153aad303a5f819916d4719a84cf4110"
-    },
-    {
       "id": "R-BUTTON-005",
       "title": "可见文字命名动作",
       "owner": "clients/gui/packages/ui/src/components/button/button.md#内容",
@@ -2586,39 +1053,11 @@
       "textSha256": "003ea652700a4d4450966ed064451adb12ffd0ad4f0bd3b0cd645f3489458e50"
     },
     {
-      "id": "R-BUTTON-006",
-      "title": "沿 Base UI 按钮语义及键盘",
-      "owner": "clients/gui/packages/ui/src/components/button/button.md#可访问性",
-      "strength": "default",
-      "textSha256": "2ca23badbedb03e5a5fde1ba6066eaa4039670dd0930be8d8bbf307dff2a8a21"
-    },
-    {
-      "id": "R-BUTTON-007",
-      "title": "沿包内语义 Token，保留既有视觉",
-      "owner": "clients/gui/packages/ui/src/components/button/button.md#规则",
-      "strength": "default",
-      "textSha256": "e9b9228c8c50e030c4b34fa41397f5dbaaed1fee6638b34dd1e23dd7b87f2fa4"
-    },
-    {
       "id": "R-BUTTON-008",
       "title": "变体只表达通用动作层级： default 、 secondary 、 outline 、 ghost 、 link 、 dest",
       "owner": "clients/gui/packages/ui/src/components/button/button.md#规则",
       "strength": "default",
       "textSha256": "5def27ca602adc1c222a29d016b9542f14d268d7d75125fa4f987e1fa26e19f4"
-    },
-    {
-      "id": "R-BUTTON-009",
-      "title": "unstyled 保留 Base UI 的原生按钮、键盘、disabled、ref 和 render 组合行为，不应用 reci",
-      "owner": "clients/gui/packages/ui/src/components/button/button.md#规则",
-      "strength": "default",
-      "textSha256": "4281fa6695c576396a9dc344c216d0ac623099205cba5ec080eda3e9ef1340c1"
-    },
-    {
-      "id": "R-BUTTON-010",
-      "title": "尺寸：文字按钮 xs / sm / default / lg ",
-      "owner": "clients/gui/packages/ui/src/components/button/button.md#规则",
-      "strength": "default",
-      "textSha256": "bab360bdeddbd97515d635808a3822e6f842cd972da9c43a2f08b242ace51504"
     },
     {
       "id": "R-CARD-001",
@@ -2635,20 +1074,6 @@
       "textSha256": "3c10c3e1413dbc9215a811d945d000145d2d1afd13bbcb7265d70b05a7434e4d"
     },
     {
-      "id": "R-CODEVIEWER-002",
-      "title": "从原CodeViewer提取纯展示",
-      "owner": "clients/gui/packages/ui/src/components/code-viewer/code-viewer.md#行为",
-      "strength": "default",
-      "textSha256": "6dba181099238127d4068e0da43c2e2c8f505e74199e4ad036d3a0b3e9eca187"
-    },
-    {
-      "id": "R-COMMAND-001",
-      "title": "复用现有cmdk，候选与执行由宿主提供",
-      "owner": "clients/gui/packages/ui/src/components/command/command.md#行为",
-      "strength": "default",
-      "textSha256": "d667bfa0dab360fb04bdbfeeaeea2df2959629d4e4a6ecf113b19bab41d99904"
-    },
-    {
       "id": "R-CONTEXTMENU-001",
       "title": "沿原Base UI右键与键盘路径，不从菜单可见性推断服务端权限",
       "owner": "clients/gui/packages/ui/src/components/context-menu/context-menu.md#行为",
@@ -2663,32 +1088,11 @@
       "textSha256": "c11a39ffc11b342636f2caff66da839aa7a66f3b505f6b68b4c5135618f87f1a"
     },
     {
-      "id": "R-DIALOG-002",
-      "title": "设置、附件预览、命令选择和移动模型面板复用同一稳定 API",
-      "owner": "clients/gui/packages/ui/src/components/dialog/dialog.md#行为",
-      "strength": "default",
-      "textSha256": "fec322c090ca361e32fc7fcbbccd03a3e1e879c123076de5caf00d4e3795aadd"
-    },
-    {
       "id": "R-DIFFVIEWER-001",
       "title": "变更对比与行级批注呈现",
       "owner": "clients/gui/packages/ui/src/components/diff-viewer/diff-viewer.md#何时使用",
       "strength": "default",
       "textSha256": "fa4d73b80bf34d7220e361ce78c8cbc290550f38e6d9c7c1089bc3cec62af1fe"
-    },
-    {
-      "id": "R-DIFFVIEWER-002",
-      "title": "从原DiffViewer提取纯展示",
-      "owner": "clients/gui/packages/ui/src/components/diff-viewer/diff-viewer.md#行为",
-      "strength": "default",
-      "textSha256": "a286adbd5a99a560fd3bcb15274cbd7900b4aae21132ee76c21db85d1b9bc0bc"
-    },
-    {
-      "id": "R-DISCLOSURE-001",
-      "title": "Root、具名 Trigger、指示箭头、Panel",
-      "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#组成",
-      "strength": "default",
-      "textSha256": "3be00a73089fb043167bbf1cee678c72d441f0020932a506b6983163d6d0f939"
     },
     {
       "id": "R-DISCLOSURE-002",
@@ -2698,46 +1102,11 @@
       "textSha256": "f05c24a237a33769308d61bbfd44a56139db8f64c61ed627c4874937dbe1fee0"
     },
     {
-      "id": "R-DISCLOSURE-003",
-      "title": "presentation=inline隐藏入口并展开同一Panel",
-      "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#行为",
-      "strength": "default",
-      "textSha256": "e919f546f26c71adbcd3fbd6ba4b38f97eb37015bdeb14277dd96261639cac81"
-    },
-    {
-      "id": "R-DISCLOSURE-004",
-      "title": "Enter/Space 切换 expanded",
-      "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#行为",
-      "strength": "default",
-      "textSha256": "6fbfca335be78571ac5472245618b21a959c9bfa30e8921332c4c0d9cd6cd38f"
-    },
-    {
       "id": "R-DISCLOSURE-005",
       "title": "标题回答展开后能读什么",
       "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#内容",
       "strength": "must",
       "textSha256": "af1dddb8afdbe465b1f29f02c4ae77ccab0c92095e7174b2f5ed60da265197d9"
-    },
-    {
-      "id": "R-DISCLOSURE-006",
-      "title": "Base UI Collapsible 提供 expanded/controls 和隐藏内容的焦点约束",
-      "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#可访问性",
-      "strength": "default",
-      "textSha256": "f13d7ae2beba62cdd9e2c3740ad86dd09957274982b34f28f0699f0faec0b186"
-    },
-    {
-      "id": "R-DISCLOSURE-007",
-      "title": "展开收起过渡面板高度，时长用 --motion-normal，沿 reduced motion 偏好",
-      "owner": "clients/gui/packages/ui/src/components/disclosure/disclosure.md#规则",
-      "strength": "default",
-      "textSha256": "52479cb5251dc20b46aac36e5e89a0745b1cfcfb352388cd28976c5bf1edf287"
-    },
-    {
-      "id": "R-DROPDOWNMENU-001",
-      "title": "维持原Base UI菜单焦点、方向键、Escape与返回",
-      "owner": "clients/gui/packages/ui/src/components/dropdown-menu/dropdown-menu.md#行为",
-      "strength": "default",
-      "textSha256": "73f027db4b213d5b0891a05b846a07f8fffa9484c132a518339d42510ffe830a"
     },
     {
       "id": "R-FEEDBACKNOTICE-001",
@@ -2748,24 +1117,10 @@
     },
     {
       "id": "R-FEEDBACKNOTICE-002",
-      "title": "这是底层纯展示表面，不用于新的操作通知",
+      "title": "这是底层纯展示表面",
       "owner": "clients/gui/packages/ui/src/components/feedback-notice/feedback-notice.md#规则",
       "strength": "default",
-      "textSha256": "822a655427b8e165f5abb20c0692369cf5d1e25f009a061e2184534f9aa34552"
-    },
-    {
-      "id": "R-INPUTGROUP-001",
-      "title": "子控件保留原生名称和事件",
-      "owner": "clients/gui/packages/ui/src/components/input-group/input-group.md#行为",
-      "strength": "default",
-      "textSha256": "7ff40d944a1e8c8fb674424964e72184ba7998693f380957006c45081ecd1295"
-    },
-    {
-      "id": "R-INPUT-001",
-      "title": "默认、xs/sm/lg、只读、禁用、无效及文件字段",
-      "owner": "clients/gui/packages/ui/src/components/input/input.md#状态",
-      "strength": "default",
-      "textSha256": "8298b0ebca31b9fc4f26046ff2ed3bbdf89926f76ff84944353b5406617d69b6"
+      "textSha256": "164e8ebdca0e0c81437263970aaf6b6d1b9dd5430d80585eb2554b65ba16f843"
     },
     {
       "id": "R-INPUT-002",
@@ -2775,25 +1130,11 @@
       "textSha256": "637d8c0cd680f6c61d9152659c7ef7a56c64e87df6e018b3d2f9a3061dfe30bc"
     },
     {
-      "id": "R-INPUT-003",
-      "title": "unstyled 仅用于已经拥有完整外观的组合，如会话搜索与重命名弹层",
-      "owner": "clients/gui/packages/ui/src/components/input/input.md#规则",
-      "strength": "default",
-      "textSha256": "5d08962ab9e279ac0727b38ea5d2d27335f5d037e0054a126694d2d4d0412a6e"
-    },
-    {
       "id": "R-NOTIFICATIONTOAST-001",
       "title": "用于需要用户决策或采取行动的短时通知，须提供明确且必要的处理入口",
       "owner": "clients/gui/packages/ui/src/components/notification-toast/notification-toast.md#何时使用",
       "strength": "default",
       "textSha256": "3fec6c412fd9306c3d4591298ce129616e6b6d40f03b7d2613ff990a0c64d7b6"
-    },
-    {
-      "id": "R-NOTIFICATIONTOAST-002",
-      "title": "默认5秒后调用onDismiss",
-      "owner": "clients/gui/packages/ui/src/components/notification-toast/notification-toast.md#行为",
-      "strength": "default",
-      "textSha256": "2bf7f170d036e3f44f9d71c2ce6eff1ee5bad0af363ca579e290b9305adde362"
     },
     {
       "id": "R-NOTIFICATIONTOAST-003",
@@ -2803,32 +1144,11 @@
       "textSha256": "30db89002ce50626d9fbc4f01b1cf974003bedc2e3fd1ff1854d52143168a20d"
     },
     {
-      "id": "R-NOTIFICATIONTOAST-004",
-      "title": "错误为alert，其余为status",
-      "owner": "clients/gui/packages/ui/src/components/notification-toast/notification-toast.md#可访问性",
-      "strength": "default",
-      "textSha256": "29161e7887e237b333e171f6c2a454fe20d6294fc431782606ddb1b789d2cdf9"
-    },
-    {
-      "id": "R-NOTIFICATIONTOAST-005",
-      "title": "使用notifications.css与既有语义颜色",
-      "owner": "clients/gui/packages/ui/src/components/notification-toast/notification-toast.md#规则",
-      "strength": "default",
-      "textSha256": "62acaf58d8cc72cc48b1aa07f6003ae029dfde18ac8204098b43d6a40114acc5"
-    },
-    {
       "id": "R-POPOVER-001",
       "title": "Escape/外部点击与焦点返回沿Base UI，不接管业务请求或资源生命周期",
       "owner": "clients/gui/packages/ui/src/components/popover/popover.md#行为",
       "strength": "default",
       "textSha256": "124c8bd50965fbb5ec43293ae9844a5f9828763c43155b1f3fb9d8e67cf1b47e"
-    },
-    {
-      "id": "R-SELECT-001",
-      "title": "由同一Base UI Root/Trigger/Popup/List/Item维持类型与键盘，定位/层级属于组件，宿主负责选值回",
-      "owner": "clients/gui/packages/ui/src/components/select/select.md#行为",
-      "strength": "default",
-      "textSha256": "07daef44dbf3ba0ec1f8c4df512018f854d96e02b41a06c13ce90fd42c1ce736"
     },
     {
       "id": "R-SETTINGSDISCLOSURE-001",
@@ -2845,53 +1165,11 @@
       "textSha256": "8101261d68ab7c9370899a02329293db2f93a44583f8aca6202d60d8dc9d8603"
     },
     {
-      "id": "R-SPINNER-002",
-      "title": "默认尺寸、宿主className、局部加载",
-      "owner": "clients/gui/packages/ui/src/components/spinner/spinner.md#状态",
-      "strength": "default",
-      "textSha256": "ae980251645ef9c54e0b7b9c4945725fe092fff9dbadd3466ef751d38fa20dda"
-    },
-    {
-      "id": "R-SPINNER-003",
-      "title": "宿主传入本地化label",
-      "owner": "clients/gui/packages/ui/src/components/spinner/spinner.md#行为",
-      "strength": "default",
-      "textSha256": "0579e5490bd8d5d7d06189a617bb2e909315d590c5c822e25fd7d11f675d90b0"
-    },
-    {
-      "id": "R-SWITCH-001",
-      "title": "checked/unchecked、sm/default、disabled",
-      "owner": "clients/gui/packages/ui/src/components/switch/switch.md#状态",
-      "strength": "default",
-      "textSha256": "63189f9db0679c1a33e25290f1128d93e62efbd13d51a439cc51830f39c165e7"
-    },
-    {
-      "id": "R-SWITCH-002",
-      "title": "由Base UI维护原生按钮语义与键盘，宿主提供受控值和真实写入",
-      "owner": "clients/gui/packages/ui/src/components/switch/switch.md#行为",
-      "strength": "default",
-      "textSha256": "7ebdb8967530315ac92761ab5f63682f85f14845f05b20b3f501fbce527ef438"
-    },
-    {
-      "id": "R-TABS-001",
-      "title": "保留手动/自动激活能力",
-      "owner": "clients/gui/packages/ui/src/components/tabs/tabs.md#行为",
-      "strength": "default",
-      "textSha256": "e39229ba52793d071b99b59ebf87cfb5a9e385db157d423ae5327f62a44d2cec"
-    },
-    {
       "id": "R-TEXTAREA-001",
       "title": "保持原生textarea事件与field-sizing，不承担草稿持久化或发送",
       "owner": "clients/gui/packages/ui/src/components/textarea/textarea.md#行为",
       "strength": "default",
       "textSha256": "3ef1b3e784748d08ff7ef9ca0cb1472ad27b24d4c941ef669d93f69bd5849606"
-    },
-    {
-      "id": "R-TEXTAREA-002",
-      "title": "unstyled 用于已经由所属组合定义完整外观的编辑区，例如审批回复、标注笔记和配置文本",
-      "owner": "clients/gui/packages/ui/src/components/textarea/textarea.md#规则",
-      "strength": "default",
-      "textSha256": "095e2a33a52f9a1593d53a6dab27146c46c34c4e44989c208f8e4f27c2fb3474"
     },
     {
       "id": "R-TOOLTIP-001",
@@ -2908,25 +1186,11 @@
       "textSha256": "14ff935ca32f7be49cc546f4080b211145ba3f15b3bb11b5779c22a8b8b1475e"
     },
     {
-      "id": "R-ACTIVITYGROUP-002",
-      "title": "具名摘要、可聚焦的有界滚动区、折叠外的 status 插槽",
-      "owner": "clients/gui/packages/ui/src/conversation/activity-group/activity-group.md#组成",
-      "strength": "default",
-      "textSha256": "787fd3ae7c1dd089e611b5e70abe802fed8ebc529422c9b4a2a891c5edf2b754"
-    },
-    {
       "id": "R-ACTIVITYGROUP-003",
       "title": "默认收起",
       "owner": "clients/gui/packages/ui/src/conversation/activity-group/activity-group.md#状态",
       "strength": "default",
       "textSha256": "f8833a40ce601b44e78dfb06f59f687f99ab867162bffbbc1e756da0cd977c53"
-    },
-    {
-      "id": "R-ACTIVITYGROUP-004",
-      "title": "列表只纵向滚动，高度上限为 --activity-list-max-height，摘要不随列表滚走",
-      "owner": "clients/gui/packages/ui/src/conversation/activity-group/activity-group.md#行为",
-      "strength": "default",
-      "textSha256": "e3cc416cd0e13162a993f619e74ab2d756aca09032c48d4d9d83b88487400e02"
     },
     {
       "id": "R-ACTIVITYGROUP-005",
@@ -3018,25 +1282,11 @@
       "textSha256": "bb6474e36f97f12a8168545566c5d16820720c0cdf24c5a3acadcc0061ddb5af"
     },
     {
-      "id": "R-COLLAPSIBLETEXT-004",
-      "title": "可访问且稳定 ：原生按钮支持键盘、可见焦点、 aria-expanded 与 aria-controls ",
-      "owner": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.md#gui-接线",
-      "strength": "default",
-      "textSha256": "d650a42dfd90065976f0bb9de1f1981ad0903c58469bff6c54260adca300623e"
-    },
-    {
       "id": "R-COLLAPSIBLETEXT-005",
       "title": "按任务设定例外 ：正在编辑的输入、流式主要回复、需要完整核对的审批关键信息以及专用文件/日志阅读器，保留其现有阅读机制",
       "owner": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.md#gui-接线",
       "strength": "must",
       "textSha256": "7e1aac9d45377efebd0d125637bcbbbacd8f70600e18f751a9597f5ce7f65f75"
-    },
-    {
-      "id": "R-COLLAPSIBLETEXT-006",
-      "title": "已发送消息在共享 Messages 中应用此规则，主聊天、Side 与 Remote 复用同一展示路径",
-      "owner": "clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.md#gui-接线",
-      "strength": "default",
-      "textSha256": "f3be901f2c34fc6536fd43d23665201ead42a1e0435f70aaf6b09d755038469e"
     },
     {
       "id": "R-COMPOSERSURFACE-001",
@@ -3081,13 +1331,6 @@
       "textSha256": "3b93ed16322f7d76c167586fb11fef73574f6e564c1fb2432303c7712ab8b2a6"
     },
     {
-      "id": "R-LAYOUT-011",
-      "title": "审批按钮的 split 几何、Side 面板比例、Composer 紧凑布局是当前组合规则，不作为全局控件的新默认值",
-      "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#输入区与面板组合",
-      "strength": "default",
-      "textSha256": "1f77afac792e9aa9a547070648903d3be6bc593137397553ac3c300d33f0ef5d"
-    },
-    {
       "id": "CONV-COMPOSER-01",
       "title": "默认布局的 Composer 是对话的一部分",
       "owner": "clients/gui/packages/ui/src/conversation/composer-surface/composer-surface.md#输入区与面板组合",
@@ -3109,25 +1352,11 @@
       "textSha256": "ada5ccd8409a887e8550150927d0a8994f96c33346fa47728503ef59d89bdb9f"
     },
     {
-      "id": "R-COMPOSERTOOLBAR-001",
-      "title": "leading与trailing两个必要插槽",
-      "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#组成",
-      "strength": "default",
-      "textSha256": "c8a8b3b1ace79996b8e2209cf28d57f22401440a64f05f9b4ba7930f8494bd2b"
-    },
-    {
       "id": "R-COMPOSERTOOLBAR-002",
       "title": "默认、窄容器换行、宿主提供的不可用/发送中/运行中控件",
       "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#状态",
       "strength": "must",
       "textSha256": "ec28172dc95231cdaec0ab0cc8f9eae10898daf49ad2ff3d043a34eb4c9d4a5a"
-    },
-    {
-      "id": "R-COMPOSERTOOLBAR-003",
-      "title": "前置工具在前，后置动作靠末端",
-      "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#行为",
-      "strength": "default",
-      "textSha256": "2dda5665e0aef745609f237caa9a30db82443f018e93f68085eebcee1a402ada"
     },
     {
       "id": "R-COMPOSERTOOLBAR-004",
@@ -3142,20 +1371,6 @@
       "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#可访问性",
       "strength": "must",
       "textSha256": "e70940bfcb478c69b10d5fe6c4bbfcd2be6db9d717bdc2673b5140dfbab79191"
-    },
-    {
-      "id": "R-COMPOSERTOOLBAR-006",
-      "title": "发送/继续等主动作使用 ComposerActionButton ：胶囊形、前景色底、禁用时退为次要表面，默认 size=\"ic",
-      "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#规则",
-      "strength": "default",
-      "textSha256": "4f730c80f8a2ac7c545195d503302099cbd6142b82f69181eb13e4837cd5a1e4"
-    },
-    {
-      "id": "R-COMPOSERTOOLBAR-007",
-      "title": "不导入模型目录、权限策略或UI导航",
-      "owner": "clients/gui/packages/ui/src/conversation/composer-toolbar/composer-toolbar.md#规则",
-      "strength": "default",
-      "textSha256": "20af1402ee875bcf5e7fc43cdb61bed13ad1102dea5ef63ad2e0c3d941470336"
     },
     {
       "id": "R-DECISIONCARD-001",
@@ -3177,13 +1392,6 @@
       "owner": "clients/gui/packages/ui/src/conversation/decision-card/decision-card.md#内容",
       "strength": "must",
       "textSha256": "da56c37a38785709ba80fe702af927c575714bee2104e242f915c8b8005855ca"
-    },
-    {
-      "id": "R-DECISIONCARD-004",
-      "title": "审批、问答草稿、提交锁、UNKNOWN核对和动作合法性归原ApprovalRequest/AskUserQuestion",
-      "owner": "clients/gui/packages/ui/src/conversation/decision-card/decision-card.md#规则",
-      "strength": "default",
-      "textSha256": "67594aebb7dd84aac557c2937d0573a8fda51907e1354c09a86f4c1ed0f13aef"
     },
     {
       "id": "R-IMAGEDISCLOSURE-001",
@@ -3221,13 +1429,6 @@
       "textSha256": "4663a766479c0376136fd7fac3ddd5f4ebe4b81416ec837ca06bf8a7f5ad1127"
     },
     {
-      "id": "R-IMAGEDISCLOSURE-006",
-      "title": "宿主图片提供可理解替代文本，原查看器拥有打开/关闭焦点",
-      "owner": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md#可访问性",
-      "strength": "default",
-      "textSha256": "a027a7d9ad1d086394f4aba27817eaf4a959ef45de5522ff620f9dd22d09c686"
-    },
-    {
       "id": "R-IMAGEDISCLOSURE-007",
       "title": "原资源 ID 作 key，不从文件名推断可用性",
       "owner": "clients/gui/packages/ui/src/conversation/image-disclosure/image-disclosure.md#规则",
@@ -3235,39 +1436,11 @@
       "textSha256": "ae73366bdf5f4aa7b699eae4d5ff45e3c6ac6a31867b48220fc8fb8d5b289a9c"
     },
     {
-      "id": "R-MARKDOWNSURFACE-001",
-      "title": "Streamdown渲染与错误回退在包",
-      "owner": "clients/gui/packages/ui/src/conversation/markdown-surface/markdown-surface.md#规则",
-      "strength": "default",
-      "textSha256": "fd3949bf2679d44c3f579db5fa94880087f83396d7f09cd20da70bf5142f8c93"
-    },
-    {
       "id": "R-MARKDOWNTABLE-001",
       "title": "横向滚动属于表格内部",
       "owner": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.md#行为",
       "strength": "must",
       "textSha256": "44af24f7fcafb4d2d7b313eac3cad8b30bcba94f8b74480c11521ab29a8ce0ae"
-    },
-    {
-      "id": "R-MARKDOWNTABLE-002",
-      "title": "保留原虚拟滚动、列测量和预览",
-      "owner": "clients/gui/packages/ui/src/conversation/markdown-table/markdown-table.md#行为",
-      "strength": "default",
-      "textSha256": "94ed5dd35aafb87255b4e4c0baf11b87978641f6ad6f28ee41ea3dbbc0147d14"
-    },
-    {
-      "id": "R-MESSAGEATTACHMENTS-001",
-      "title": "保留原AI Elements Apache-2.0来源说明",
-      "owner": "clients/gui/packages/ui/src/conversation/message-attachments/message-attachments.md#规则",
-      "strength": "default",
-      "textSha256": "7397e50f650984fe34ca7ebd3c67162bd00a2826021d798c89f00f34d47a3e53"
-    },
-    {
-      "id": "R-MESSAGECODEBLOCK-001",
-      "title": "preview插槽由宿主提供已完成图形，默认预览并可切换完整源码",
-      "owner": "clients/gui/packages/ui/src/conversation/message-code-block/message-code-block.md#行为",
-      "strength": "default",
-      "textSha256": "0c5bcd730b270d0d24d3da95585cfe3ea59f3bb156430fa99eed8cf7c21acc9c"
     },
     {
       "id": "R-MESSAGECODEBLOCK-002",
@@ -3284,32 +1457,11 @@
       "textSha256": "27790f8c0d5cccb776e939055e9e18c4b9b16493d63b381344f3407fa33da8a2"
     },
     {
-      "id": "R-NATIVECONTENT-002",
-      "title": "复制使用注册表同一toText",
-      "owner": "clients/gui/packages/ui/src/conversation/native-content/native-content.md#行为",
-      "strength": "default",
-      "textSha256": "7cdabae792bada9d087eb3435323901ed6b0def978af781d91f864fff08f2ed3"
-    },
-    {
       "id": "R-NATIVECONTENT-003",
       "title": "version固定为1",
       "owner": "clients/gui/packages/ui/src/conversation/native-content/native-content.md#内容",
       "strength": "must",
       "textSha256": "a82d1b73b7115e686e8ef045cd42dc510b6d5f159a9535b01a88cd32c8375f13"
-    },
-    {
-      "id": "R-NATIVECONTENT-004",
-      "title": "标题为区域命名，表格保留表头语义，图形带原值和文字数据入口",
-      "owner": "clients/gui/packages/ui/src/conversation/native-content/native-content.md#可访问性",
-      "strength": "default",
-      "textSha256": "ff563de967187571f30dbdcde4c496d17d9f8a5aef79ab6b74ad7de20200362f"
-    },
-    {
-      "id": "R-NATIVECONTENT-005",
-      "title": "实验入口使用conversation.css",
-      "owner": "clients/gui/packages/ui/src/conversation/native-content/native-content.md#规则",
-      "strength": "default",
-      "textSha256": "f1f83c71c96b2ece1d20321204546f6d835a6a8c0d16be9559b8fa08a62e63c4"
     },
     {
       "id": "R-CONTENT-029",
@@ -3347,20 +1499,6 @@
       "textSha256": "c0ef669015b797f54e9bfe5f092cb54b6fb955833585c6ae9441650e8c6f61ec"
     },
     {
-      "id": "R-QUESTIONCARD-004",
-      "title": "fieldset引用当前标题，radio保留键盘行为",
-      "owner": "clients/gui/packages/ui/src/conversation/question-card/question-card.md#可访问性",
-      "strength": "default",
-      "textSha256": "0c675bcd5b9dc6131f41e1e7c492345f5987fc2418f70a4b650b1900da5c1040"
-    },
-    {
-      "id": "R-QUESTIONCARD-005",
-      "title": "实验入口采用conversation.css",
-      "owner": "clients/gui/packages/ui/src/conversation/question-card/question-card.md#规则",
-      "strength": "default",
-      "textSha256": "a6252e5f397ccefad7670ac87a04927271cf314d1b9a6644576b09e476643bb3"
-    },
-    {
       "id": "R-SUBAGENTPANEL-001",
       "title": "运行、已确认完成、需要核对分别呈现",
       "owner": "clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.md#状态",
@@ -3373,13 +1511,6 @@
       "owner": "clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.md#行为",
       "strength": "default",
       "textSha256": "99e2df02b415834861355374753baa13996bae43fe8b77641e92bb6cae4fbb78"
-    },
-    {
-      "id": "R-SUBAGENTPANEL-003",
-      "title": "打开详情聚焦标题，返回聚焦原行",
-      "owner": "clients/gui/packages/ui/src/conversation/subagent-panel/subagent-panel.md#可访问性",
-      "strength": "default",
-      "textSha256": "39b9d78f800b301a82c3e0206ed26bad35f66388e0e3a9e07b1a572f5d3934f7"
     },
     {
       "id": "R-SUBAGENTPANEL-004",
@@ -3410,27 +1541,6 @@
       "textSha256": "54b4b5f0552b3cd12aebec02d4b171ba538b9769cc5a6df570f8498dd05e4fc5"
     },
     {
-      "id": "R-TASKCONTEXT-004",
-      "title": "卡片使用菜单表面和紧凑行式布局，项目标题为次级色",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#内容",
-      "strength": "default",
-      "textSha256": "1d271aba7b316262ef555b766944113bf0fca36d25afeb6f79ea6c882f62fb13"
-    },
-    {
-      "id": "R-TASKCONTEXT-005",
-      "title": "宿主通过 headingRef 聚焦详情，返回原入口",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#可访问性",
-      "strength": "default",
-      "textSha256": "11cd32bbdc8ae27796488042bb3f643a87e33bce70882aef831970db6f0a8c9c"
-    },
-    {
-      "id": "R-TASKCONTEXT-006",
-      "title": "共享分区、图标/头像和尾部状态的布局由本组件维护",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#规则",
-      "strength": "default",
-      "textSha256": "01f53ea87fc4ce4854596253a910781629bb5746260b8abea47e01facca2aa72"
-    },
-    {
       "id": "R-TASKCONTEXT-007",
       "title": "来源默认最多三项，超过提供带总数的全部入口",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#规则",
@@ -3452,39 +1562,11 @@
       "textSha256": "bc414d6ca8b01cdb425c03290c3a1f83f19b6eab07f305a4d3e28448acd5689c"
     },
     {
-      "id": "R-TASKCONTEXT-011",
-      "title": "Related projects / 关联项目 用户要求列出当前 Worktree 下的其他项目",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
-      "strength": "default",
-      "textSha256": "dbd96ce63918f02c52021523f4c7299e0413938c77b609864621ba36ff0fa382"
-    },
-    {
       "id": "R-TASKCONTEXT-012",
       "title": "Subagents / 子代理 用户要求有列表",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
       "strength": "must",
       "textSha256": "372634bfcde7ca605dab4fd2e567cc10e5f9766948c6fd01f44548617db1a3c3"
-    },
-    {
-      "id": "R-TASKCONTEXT-013",
-      "title": "Sources / 来源 可折叠区块、总数、添加入口",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
-      "strength": "default",
-      "textSha256": "01f085cda056d990d89a5ccecb44d5c6ad4c34ed7471e8d783c39ba3131343df"
-    },
-    {
-      "id": "R-TASKCONTEXT-014",
-      "title": "这里的“关联项目”描述产品上下文关系，不断言多个 Git 仓库物理处于同一个 Git Worktree，也不因展开而切换 cwd",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
-      "strength": "default",
-      "textSha256": "698a303b2b5954505ad6cf0347b8aef68c01599ca138781e0ed9bd0310b616a4"
-    },
-    {
-      "id": "R-TASKCONTEXT-015",
-      "title": "Subagents 入口首先打开全部列表，按Active/Needs attention/Done区分任务状态，配合头像、状态图",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
-      "strength": "default",
-      "textSha256": "fd9b0b221f916f5980582032cc3bdb3c8efd67b61f64fdba08eb13086a73c8a4"
     },
     {
       "id": "R-TASKCONTEXT-016",
@@ -3494,32 +1576,11 @@
       "textSha256": "db9c1484699e506b7547e935510accc27ec20d807d4f6e96979aff390b276270"
     },
     {
-      "id": "R-TASKCONTEXT-017",
-      "title": "任务概览卡片与深入阅读的面板是两个用途",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
-      "strength": "default",
-      "textSha256": "f04b2586f1915ada670c704c7f83bdc15739cc6b00ab1d335e93599c80d6f9f5"
-    },
-    {
       "id": "R-TASKCONTEXT-018",
       "title": "各区块分别处理读取状态：首次加载显示读取中",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#右侧任务上下文",
       "strength": "default",
       "textSha256": "00cf11b13cfedc710e29e401abdb3ed70f450894c081dc7cb43f8575f172d4db"
-    },
-    {
-      "id": "R-TASKCONTEXT-019",
-      "title": "用户要求的 Sources 是输入来源集合，可容纳图片、网页、文件及其他已有引用类型",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#sources-管理输入",
-      "strength": "default",
-      "textSha256": "de92b2d6870c242cccabfe051fa029ac7c0933a62301475638a3ed45a0221461"
-    },
-    {
-      "id": "R-TASKCONTEXT-020",
-      "title": "归属与状态 区分草稿待发送、已随消息提交、显式引用、读取记录",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#sources-管理输入",
-      "strength": "default",
-      "textSha256": "57c89b05b34c8aa8d4968fa4d2753302ed8856015e3a51cc0600da74dd8cb002"
     },
     {
       "id": "R-TASKCONTEXT-021",
@@ -3536,32 +1597,11 @@
       "textSha256": "a83d826f8716365a94919839f9752eba755a7b5e0bbae88acca7ac6bfa65f2cd"
     },
     {
-      "id": "R-TASKCONTEXT-023",
-      "title": "支持网页这一设计类型不代表本轮承诺自动抓取、持久化网页全文或新增上传后端",
-      "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#sources-管理输入",
-      "strength": "default",
-      "textSha256": "a5eab797dadf9a3fefd24e488161135bfd8233c20a655f44ef086f48838e383b"
-    },
-    {
       "id": "R-CONVERSATION-009",
       "title": "卡片使用非模态阅读：可以继续主对话，显式按钮/Escape关闭",
       "owner": "clients/gui/packages/ui/src/conversation/task-context/task-context.md#非模态阅读",
       "strength": "default",
       "textSha256": "e841f895d81a59045497f3888be376bbae4a09020183d4eee6299ce760876e58"
-    },
-    {
-      "id": "R-THINKINGSTATUS-001",
-      "title": "稳定的 status 容器、随 label 更新的文字层、aria-hidden 扫光层",
-      "owner": "clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.md#组成",
-      "strength": "default",
-      "textSha256": "c52e6d9af9afc6926b9a33d510f52d972a086b170ae1883ebeb38017f559b7f4"
-    },
-    {
-      "id": "R-THINKINGSTATUS-002",
-      "title": "文字变化时使用局部淡入与轻微位移，当前文字从左到右扫描亮度",
-      "owner": "clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.md#行为",
-      "strength": "default",
-      "textSha256": "43f6ed5cf14e1c7eb27ae67606ef9442a5e548081525f5930b26ac5d7e728757"
     },
     {
       "id": "R-THINKINGSTATUS-003",
@@ -3578,13 +1618,6 @@
       "textSha256": "116d25a8d2da0d6b0a8a7ae822e1979d74c1ddedc46cb5405bece1a060dd3cc4"
     },
     {
-      "id": "R-THINKINGSTATUS-005",
-      "title": "保持同一对象的组件身份",
-      "owner": "clients/gui/packages/ui/src/conversation/thinking-status/thinking-status.md#规则",
-      "strength": "default",
-      "textSha256": "c1dfa3ebe2c6fff2fab2344638e2db056537b6a5eb01af0eb83475c6ca846d1b"
-    },
-    {
       "id": "R-SETTINGSDIALOG-001",
       "title": "设置弹窗、工具栏与空态",
       "owner": "clients/gui/packages/ui/src/settings/settings-dialog/settings-dialog.md#何时使用",
@@ -3592,39 +1625,11 @@
       "textSha256": "7b818270d532a7e264730e92e5c8df109c56de2c9d9029badb87a00613b0d6dc"
     },
     {
-      "id": "R-SETTINGSDIALOG-002",
-      "title": "保留原Base UI模态焦点及busy关闭守卫",
-      "owner": "clients/gui/packages/ui/src/settings/settings-dialog/settings-dialog.md#行为",
-      "strength": "default",
-      "textSha256": "ac6a720fdaec6627eeadd3ea926686f183f42ceaac426252d457719c63ac88d9"
-    },
-    {
       "id": "R-SETTINGSGROUPCARD-001",
       "title": "用于同一主题的设置行组",
       "owner": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md#何时使用",
       "strength": "default",
       "textSha256": "66be0442237ae798b9848338024f91b4bd4f3e5c0fa9ced57ed92db27cf5ffe6"
-    },
-    {
-      "id": "R-SETTINGSGROUPCARD-002",
-      "title": "外层卡片、内部card-content与children",
-      "owner": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md#组成",
-      "strength": "default",
-      "textSha256": "e28d2259bdffd38ba8ba4ea37c1db4c33e67e1ef640f69b447cc5f6cd11eeac1"
-    },
-    {
-      "id": "R-SETTINGSGROUPCARD-003",
-      "title": "默认与compact密度、宽窄容器、明暗主题",
-      "owner": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md#状态",
-      "strength": "default",
-      "textSha256": "2da08e40b00f1193dc91279019442fe3faa609bbe28ab6d0e57447cc9047c46d"
-    },
-    {
-      "id": "R-SETTINGSGROUPCARD-004",
-      "title": "卡片建立inline-size容器，行在520px及以下叠排",
-      "owner": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md#行为",
-      "strength": "default",
-      "textSha256": "c9ca41f2be7eb4f3bb9e04fab42f535dd5949b8053ba785524f2714982e9b0e8"
     },
     {
       "id": "R-SETTINGSGROUPCARD-005",
@@ -3641,13 +1646,6 @@
       "textSha256": "778d8508d3a17c65996bc7e8541ab49975cebea85c6342badfd304218152f670"
     },
     {
-      "id": "R-SETTINGSGROUPCARD-007",
-      "title": "独立实例展示默认输入组与compact锁定组，窄窗自动叠排",
-      "owner": "clients/gui/packages/ui/src/settings/settings-group-card/settings-group-card.md#示例",
-      "strength": "default",
-      "textSha256": "e3d60d7e9dbc7d2e21cb2982eb84cf11bf3b0a2473a423a8053947c14f18ec71"
-    },
-    {
       "id": "R-SETTINGSPAGE-001",
       "title": "用于完整设置工作区",
       "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#何时使用",
@@ -3660,34 +1658,6 @@
       "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#行为",
       "strength": "default",
       "textSha256": "737d7da859517aa71d616ed29635cd03972c73d9e8c05fd30713131f4fa14e78"
-    },
-    {
-      "id": "R-SETTINGSPAGE-003",
-      "title": "标题使用设置任务名，副标题说明范围",
-      "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#内容",
-      "strength": "default",
-      "textSha256": "05d9127fa5d61f6ef2e8a982d18a6262e7c7885a78908abe5cc3621e9222e34a"
-    },
-    {
-      "id": "R-SETTINGSPAGE-004",
-      "title": "外层可通过Tab聚焦，使用原生滚动键",
-      "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#可访问性",
-      "strength": "default",
-      "textSha256": "9ac0512413faa17077eb7d3ebef83605bf3bf7ecfd6f65f91fde425d99a1dfe7"
-    },
-    {
-      "id": "R-SETTINGSPAGE-005",
-      "title": "导入@areal/ui/settings.css",
-      "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#规则",
-      "strength": "default",
-      "textSha256": "87ef47dd2ec933c210c1b5a0a02b2f2e92ec14788ca64e4e327a58e5fd9e100f"
-    },
-    {
-      "id": "R-SETTINGSPAGE-007",
-      "title": "Worktree 的配置菜单、准备状态和项目环境按领域设计规范组合既有模式",
-      "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#设置组合布局",
-      "strength": "default",
-      "textSha256": "61f19a3321b8dba412bcafd726d56c6c25edaa1d15dca3fbd6d276fb720aca78"
     },
     {
       "id": "SET-LAYOUT-01",
@@ -3709,13 +1679,6 @@
       "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#设置控件与反馈",
       "strength": "must",
       "textSha256": "7481aa6d853b8d70aa4af23ae682089ef20c45679ba828f08700d0e3bd5df11c"
-    },
-    {
-      "id": "R-SETTINGSPAGE-009",
-      "title": "使用 SettingsSection 标记功能组、 SettingsGroupCard 的外框包住相关设置",
-      "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#按功能分组并保持对齐",
-      "strength": "default",
-      "textSha256": "9bc669eb7c07ff334a43cb8080390a9b188e93be56e9945257e1d211aec7ed83"
     },
     {
       "id": "R-SETTINGSPAGE-010",
@@ -3767,53 +1730,11 @@
       "textSha256": "ea518616b8b718c7d8f42ad75c79d9a552bd8da943b03f914d8107e8154f0867"
     },
     {
-      "id": "R-SETTINGSPAGE-017",
-      "title": "常驻信息按设置与管理组织",
-      "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#用状态反馈代替大段操作说明",
-      "strength": "default",
-      "textSha256": "b68c5fb18a451030cfdeab7677618ac672a58f12cae92f7dc397f83d3192441c"
-    },
-    {
-      "id": "R-SETTINGSPAGE-018",
-      "title": "共享状态与动作见反馈与恢复",
-      "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#用状态反馈代替大段操作说明",
-      "strength": "default",
-      "textSha256": "4a3fdf4e676eaaef93aaea8bab205ddcfdf8da9dd7a70776542fc051d17d3f72"
-    },
-    {
-      "id": "R-SETTINGSPAGE-019",
-      "title": "普通操作按钮采用紧凑圆角矩形、轻填充和克制的边框",
-      "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#用状态反馈代替大段操作说明",
-      "strength": "default",
-      "textSha256": "7aa68cfeaae10d298500a823780e7ce58a0eccb52b8f0dc538923e2e72c9d2e8"
-    },
-    {
       "id": "R-BASE-009",
       "title": "设置组合必须包含生产 SettingsPage 上下文",
       "owner": "clients/gui/packages/ui/src/settings/settings-page/settings-page.md#生产上下文",
       "strength": "must",
       "textSha256": "697a1351854dd3955819ef004ee3058ec95de4271e2ce757fa46007056887f5b"
-    },
-    {
-      "id": "R-SETTINGSROW-001",
-      "title": "label、description、control、detail插槽",
-      "owner": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md#组成",
-      "strength": "default",
-      "textSha256": "5a83072a0fc743b0d66e8e371a7050dd56d59903d4f41071e7254f459d9f8d18"
-    },
-    {
-      "id": "R-SETTINGSROW-002",
-      "title": "默认、宽控件布局、视觉禁用",
-      "owner": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md#状态",
-      "strength": "default",
-      "textSha256": "7e135a772b54b2fd4b2221ecf68a9b59636404ae62a6e9a95a68731f01ecab07"
-    },
-    {
-      "id": "R-SETTINGSROW-003",
-      "title": "默认列适应控件宽度，wide控件列280px",
-      "owner": "clients/gui/packages/ui/src/settings/settings-row/settings-row.md#行为",
-      "strength": "default",
-      "textSha256": "81c741ed1e61cbb869ffc82660d6db52a88fbba035b0f822addcd3843e5df5dd"
     },
     {
       "id": "R-SETTINGSROW-004",
@@ -3844,34 +1765,6 @@
       "textSha256": "c09252c864314902fe1773646a01f675cc25b70f47c5cbe89f0d5821988f87d9"
     },
     {
-      "id": "R-SETTINGSSECTION-001",
-      "title": "标题与操作在窄容器换行，正文保持DOM阅读顺序",
-      "owner": "clients/gui/packages/ui/src/settings/settings-section/settings-section.md#行为",
-      "strength": "default",
-      "textSha256": "7f9a706741cce27ceef0dc3de55be811035b5bc17bad6e3da56197dc1556bfaf"
-    },
-    {
-      "id": "R-SETTINGSSECTION-002",
-      "title": "标题概括配置主题，说明交代作用范围",
-      "owner": "clients/gui/packages/ui/src/settings/settings-section/settings-section.md#内容",
-      "strength": "default",
-      "textSha256": "c38efd4e9ec293bfd2554370d08e4a808d04020f60e77bbdb1edf53a8037ea3c"
-    },
-    {
-      "id": "R-SETTINGSSECTION-003",
-      "title": "有标题时使用h2",
-      "owner": "clients/gui/packages/ui/src/settings/settings-section/settings-section.md#可访问性",
-      "strength": "default",
-      "textSha256": "f8cb8874a9544eeee4b724380168093c5ae0d9cbbe85e4545cc62abc865547b9"
-    },
-    {
-      "id": "R-SETTINGSSECTION-004",
-      "title": "组件只组合插槽，不调用Intl、Store或Core",
-      "owner": "clients/gui/packages/ui/src/settings/settings-section/settings-section.md#规则",
-      "strength": "default",
-      "textSha256": "d9729b38cd115aa18043c7345187e92f1a316cd3847ccdb3ac472771e90eea82"
-    },
-    {
       "id": "R-SETTINGSSEGMENTEDTABS-001",
       "title": "设置值的分段切换",
       "owner": "clients/gui/packages/ui/src/settings/settings-segmented-tabs/settings-segmented-tabs.md#何时使用",
@@ -3893,25 +1786,11 @@
       "textSha256": "de5972bd999115eb7a7732c9b2f511ae5598db69697fdde168c4c28d54700c96"
     },
     {
-      "id": "R-SCHEDULEDWORKSPACE-002",
-      "title": "点任务进入详情，窄容器隐藏列表并提供返回",
-      "owner": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md#行为",
-      "strength": "default",
-      "textSha256": "b90b931dec76cf8c9ca9e61d5a506b210013e90a211058ead03c77278982570f"
-    },
-    {
       "id": "R-SCHEDULEDWORKSPACE-003",
       "title": "名称与下次运行时间优先",
       "owner": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md#内容",
       "strength": "default",
       "textSha256": "0dca78c4e097159fd53e211fa013b0525dca78d06046fa5f35c33ace2cd0928a"
-    },
-    {
-      "id": "R-SCHEDULEDWORKSPACE-004",
-      "title": "分组使用命名 group",
-      "owner": "clients/gui/packages/ui/src/workbench/scheduled-workspace/scheduled-workspace.md#可访问性",
-      "strength": "default",
-      "textSha256": "69c53ce5368bdacd89eb5dc951181372c5bd819a07b4c9988f667162510d3302"
     },
     {
       "id": "R-SCHEDULEDWORKSPACE-005",
@@ -3928,39 +1807,11 @@
       "textSha256": "efc272883ca154d34310236465b5129e1193fc35e369d8d194f333cfdb2aa2a2"
     },
     {
-      "id": "R-TASKLISTITEM-001",
-      "title": "任务运行/未读/置顶/Worktree事实来自宿主",
-      "owner": "clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.md#规则",
-      "strength": "default",
-      "textSha256": "a431122a06b0c7de584ff997959846eaceb6530f1dee7ad23a4536d84d3eb3be"
-    },
-    {
       "id": "WT-IDENTITY-01",
       "title": "（WT-R04～06）：会话名称仍为侧栏主内容",
       "owner": "clients/gui/packages/ui/src/workbench/task-list-item/task-list-item.md#worktree-身份",
       "strength": "must",
       "textSha256": "d5d5098a006dc198173773011a701d7069c3756301b9ac589e63e701c874430d"
-    },
-    {
-      "id": "R-TASKTITLEOVERFLOW-001",
-      "title": "默认样式见同目录 task-title-overflow.css，由 workbench.css 聚合",
-      "owner": "clients/gui/packages/ui/src/workbench/task-title-overflow/task-title-overflow.md#示例",
-      "strength": "default",
-      "textSha256": "f3a257de0e72fbd42a9034f6b4f78061c3dba45f48f4c5fa5bf46793aee445d4"
-    },
-    {
-      "id": "R-WORKBENCHSHELL-001",
-      "title": "侧栏测量、拖动/键盘调整及布局动效沿原实现",
-      "owner": "clients/gui/packages/ui/src/workbench/workbench-shell/workbench-shell.md#行为",
-      "strength": "default",
-      "textSha256": "3c0d6ceb7a7213b166fc246793fbb8b003a06381168400fd2b2a8389780975a6"
-    },
-    {
-      "id": "R-WORKTREEDIRECTORY-001",
-      "title": "收起/展开、删除中、删除受阻及未知",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#状态",
-      "strength": "default",
-      "textSha256": "fdd008e887d6e6088352bcd855990b33d17058cd2b4a19557e13c512e7bd51b8"
     },
     {
       "id": "R-WORKTREEDIRECTORY-002",
@@ -3970,32 +1821,11 @@
       "textSha256": "3b64a7beaf1bac52442b9887eeb64d0187ee99d90467a627fb47a6f6be696495"
     },
     {
-      "id": "R-WORKTREEDIRECTORY-003",
-      "title": "名称优先任务名/分支，路径与请求身份在详情中可读",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#内容",
-      "strength": "default",
-      "textSha256": "d238e9428459a57ef885c2d92faf165174953f0a34c93ce8664d2b775c56b32c"
-    },
-    {
-      "id": "R-WORKTREEDIRECTORY-004",
-      "title": "展开有独立唯一id与aria关系",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#可访问性",
-      "strength": "default",
-      "textSha256": "cdf08fd77edbf2091590377db2fed528e938b6655dacbd8ec20a36968356c028"
-    },
-    {
       "id": "R-WORKTREEDIRECTORY-005",
       "title": "Item不会自动确认、重试或移除目录",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#规则",
       "strength": "default",
       "textSha256": "041ef26e96d6e7234f1b952b4c75ed5165cf86343b24036e81fb31596e31ad77"
-    },
-    {
-      "id": "R-WORKTREEDIRECTORY-006",
-      "title": "独立实例可查看长路径和模拟删除受阻",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#示例",
-      "strength": "default",
-      "textSha256": "62f8687c858d2b3d56fc717d008edacd734a25a9112223687a8e077e88612cda"
     },
     {
       "id": "WT-LIST-01",
@@ -4012,46 +1842,11 @@
       "textSha256": "2d564a7111562308dd077ea9ace02442fa2756ca34fb9bf88e600d7df53fdc86"
     },
     {
-      "id": "R-WORKTREEDIRECTORY-008",
-      "title": "一次只给正在操作的行 busy 反馈",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#按项目管理目录",
-      "strength": "default",
-      "textSha256": "76cc3080f85664fb7887633d89971e28a0e7f227d8eae8cb6dea3bfa857f424d"
-    },
-    {
       "id": "R-WORKTREEDIRECTORY-009",
       "title": "删除前显示目录身份及“移除目录，保留分支和历史”，沿现有删除确认合同",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#按项目管理目录",
       "strength": "default",
       "textSha256": "081151b0de0a93f3a14f5818f438dd566c213332305373b2e6d7929fd10f0a98"
-    },
-    {
-      "id": "R-WORKTREEDIRECTORY-010",
-      "title": "空列表显示“尚无 Worktree”",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-directory/worktree-directory.md#按项目管理目录",
-      "strength": "default",
-      "textSha256": "4d781133fbbdb3806eaf6e5e4ba40b4dfc11b1dfb5488f70633baf49f105bf51"
-    },
-    {
-      "id": "R-WORKTREEPICKER-001",
-      "title": "Root组合内容，不新增影响浮层高度的布局容器",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#组成",
-      "strength": "default",
-      "textSha256": "216d3b8d901535576886ea574ddf1e29999b0fba457cd5961a50e7480bf50244"
-    },
-    {
-      "id": "R-WORKTREEPICKER-002",
-      "title": "Options方向键/Home/End移动焦点，Enter/Space激活真实按钮",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#行为",
-      "strength": "default",
-      "textSha256": "66f07c1abd024bc0eb955bd3d2d27f6d48a2fddbd49c450e182902a44a2fde16"
-    },
-    {
-      "id": "R-WORKTREEPICKER-003",
-      "title": "分支显示完整title，长名称省略时保留可读名称",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#内容",
-      "strength": "default",
-      "textSha256": "d885392577d076f5109a263c375d889c63575f32cbc233abefda0388f2c181ee"
     },
     {
       "id": "R-WORKTREEPICKER-004",
@@ -4061,32 +1856,11 @@
       "textSha256": "6236f15aeb871bcc7cb560b1dd85cc1cb5ea17618203354049bf1d2dae39c045"
     },
     {
-      "id": "R-WORKTREEPICKER-005",
-      "title": "从@areal/ui/experimental导入，样式使用worktree.css",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#规则",
-      "strength": "default",
-      "textSha256": "5154d93eb7a82359aa87ed43d8b511e37b822a5dd1b47f9923724a5b9296c943"
-    },
-    {
-      "id": "R-WORKTREEPICKER-006",
-      "title": "独立实例提供长列表、搜索、失败重试与选择",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#示例",
-      "strength": "default",
-      "textSha256": "877c370003b1a85044343904323a17374f079ddc5e9227a4b17a26388ca0a837"
-    },
-    {
       "id": "WT-PICKER-01",
       "title": "（WT-R09）：入口在 Composer 上方的上下文条最右侧",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#composer上下文条与配置菜单",
       "strength": "default",
       "textSha256": "02a455ce6666b255d50026254d7f2546f8828b78ab4e7d01f3f1c1551bc82637"
-    },
-    {
-      "id": "R-WORKTREEPICKER-007",
-      "title": "上面的字符仅表示槽位，实际使用原图标",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#composer上下文条与配置菜单",
-      "strength": "default",
-      "textSha256": "b38e69ab971e8469f360d83d5d23766b107634ab894806cd8be7a3932f01e6ef"
     },
     {
       "id": "R-WORKTREEPICKER-008",
@@ -4110,13 +1884,6 @@
       "textSha256": "c6eff3b9a45d0f5416536251eb030d201dc826550ff5939861102229a7c2794e"
     },
     {
-      "id": "R-WORKTREEPICKER-011",
-      "title": "已存在的会话 使用真实工作区身份入口查看目录、分支、环境和 Actions，不沿用“新 Worktree”开关暗示可搬迁",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#composer上下文条与配置菜单",
-      "strength": "default",
-      "textSha256": "d5a70125ac64a7fe50aff9595249d2bd64f99852c9d9f70e1dffd5c5d295458d"
-    },
-    {
       "id": "WT-PICKER-02",
       "title": "（WT-R08）：进入分支选择时替换同一浮层的内容，齿轮锚点不变，不在第一层旁边再堆一个弹窗",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#分支与环境子页",
@@ -4138,13 +1905,6 @@
       "textSha256": "5f854a7a8f43ff11ff05a1cfa19b74a8b07fc300458b02b7d8f68da4571a3120"
     },
     {
-      "id": "R-WORKTREEPICKER-014",
-      "title": "选择后返回主菜单并更新分支行",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#分支与环境子页",
-      "strength": "default",
-      "textSha256": "673285479cf9e8a00680e2105ebd31471b6b96f703ec949b1c0e5533bb341450"
-    },
-    {
       "id": "WT-PICKER-03",
       "title": "环境子页沿相同的返回、选择、选中标记与滚动结构",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-picker/worktree-picker.md#分支与环境子页",
@@ -4159,46 +1919,11 @@
       "textSha256": "305d1331a224afe9d24148cb6f1fd8beda2f132ad2e092b1fd242e040215e4fb"
     },
     {
-      "id": "R-WORKTREESETTINGS-001",
-      "title": "项目/环境空态、编辑、分平台覆盖、Actions空态、保存中、失败与待核对",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#状态",
-      "strength": "default",
-      "textSha256": "c2401a9e60a554f23aa55988c2257fb36e675530c246713cbaa8d09679e0f323"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-002",
-      "title": "面包屑和列表发出导航意图",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#行为",
-      "strength": "default",
-      "textSha256": "1790298425022add4c7589ea21fd7e347bf51ccd65176d6a693342a69393730e"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-003",
-      "title": "支持Default/macOS/Linux",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#内容",
-      "strength": "default",
-      "textSha256": "746270045bcb243ee80e1df20f5a68351c44cc308344c3cbb29ea6c7c7d370f0"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-004",
-      "title": "实际Tabs/Input/Textarea由宿主命名、禁用和关联说明",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#可访问性",
-      "strength": "default",
-      "textSha256": "f5d0aaeadab928c6c99f6e9e4b433ecee2b8ca6ed4949496cb7b981289f41d7d"
-    },
-    {
       "id": "R-WORKTREESETTINGS-005",
       "title": "包不认识存储revision或requestId，不改变确认、版本冲突和锁定语义",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#规则",
       "strength": "default",
       "textSha256": "45d2125359919854276bf65999295a99c75978d7ef4e32cacb91686818228dd5"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-006",
-      "title": "独立实例验证项目→环境→脚本、平台值保留、保存中禁用及失败保留",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#示例",
-      "strength": "default",
-      "textSha256": "5ced09d059c6f551d32d26dfc6eee15565082b67ce0ae98fc6387e21a6259fc4"
     },
     {
       "id": "WT-SETTINGS-01",
@@ -4208,34 +1933,6 @@
       "textSha256": "8ca46c3eda57b2462cd8843d7e14da3068a3b0326d679515018d1885da0d7e91"
     },
     {
-      "id": "R-WORKTREESETTINGS-007",
-      "title": "Worktree 根目录 留空使用默认位置",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#general",
-      "strength": "default",
-      "textSha256": "3801e323314d73a4c30e25d83ccfaaaeecbcddeceba86216dce5ac31a0c8f364"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-008",
-      "title": "自动清理旧 Worktree 说明仅清理符合安全条件的目录",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#general",
-      "strength": "default",
-      "textSha256": "bfa112ad41701e03ea07ee116d20bb68eebf1bc4fb4afd54697b11d77506a999"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-009",
-      "title": "保留数量 固定 / 活动 / 受保护目录可能超过数量 右侧数字输入",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#general",
-      "strength": "default",
-      "textSha256": "1f88b7eba4da5ce5b03f5d45c8693130aab3bcdc66fbd0fd37207c92d484e8d7"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-010",
-      "title": "分支前缀是 AReaL 的已有配置，但不在参考主组中",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#general",
-      "strength": "default",
-      "textSha256": "ad0006732ef5820cf4a80d9e01505ef2689566325487ba74e33b2802e52dde34"
-    },
-    {
       "id": "WT-ENV-01",
       "title": "（WT-R01）：Environments 默认是项目列表",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#设置environments-与环境编辑",
@@ -4243,46 +1940,11 @@
       "textSha256": "f51a404cae7b50b19ee8dde0733637469666cf86ccb62890f9852ab9c5ea12c9"
     },
     {
-      "id": "R-WORKTREESETTINGS-011",
-      "title": "环境编辑是独立内容页，不追加在项目选择器和完整环境列表底部",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#设置environments-与环境编辑",
-      "strength": "default",
-      "textSha256": "68506edd56ff4608b0bcaeab05ef743bbaf68eb2a5edcc937f94e2fd5dccc749"
-    },
-    {
       "id": "WT-ENV-02",
       "title": "（WT-R02、07）：编辑内容自上而下为页面标题 → 名称组 → Setup script → Cleanup script ",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#设置environments-与环境编辑",
       "strength": "default",
       "textSha256": "4d4984cc058f3fb5684d56ea88f1825e1d409a7b7f95c2dc2f1d900e3d38e202"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-012",
-      "title": "名称 一个安静的圆角分组，标签在上、全宽名称输入在下",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#设置environments-与环境编辑",
-      "strength": "default",
-      "textSha256": "4e6e4f51e5d1a0a5e18dbb72160dc6a289b0fd02d1dc313f26e0bf6c17669ea2"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-013",
-      "title": "Setup 标题左、Variables 入口右",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#设置environments-与环境编辑",
-      "strength": "default",
-      "textSha256": "2578aa57dfbd67d74a5911cc194eca53f342d524f395aef040f702b74fc73e72"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-014",
-      "title": "Actions 标题左、“添加 Action”右",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#设置environments-与环境编辑",
-      "strength": "default",
-      "textSha256": "3f27d046bd06f73bf512794813ea7df928a883a7b183995da85e014f100202b1"
-    },
-    {
-      "id": "R-WORKTREESETTINGS-015",
-      "title": "保存 内容列末尾右对齐的主按钮",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-settings/worktree-settings.md#设置environments-与环境编辑",
-      "strength": "default",
-      "textSha256": "1ff6b6bd9dfb3f735959fe727036861f34d4d84cd95323d57e9462bde99a5e80"
     },
     {
       "id": "R-WORKTREESETTINGS-016",
@@ -4313,34 +1975,6 @@
       "textSha256": "bd482bba30021dfc574436f4b7f9143b77a5fee55d026ee34496992e969f6c9d"
     },
     {
-      "id": "R-WORKTREESTATUS-002",
-      "title": "摘要与终态说明在折叠外",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#行为",
-      "strength": "default",
-      "textSha256": "aed2ba9ef96c956df4dae63b564568a98e0cf01dea3a2c4e4957556b1d5e6274"
-    },
-    {
-      "id": "R-WORKTREESTATUS-003",
-      "title": "标题说明当前事实",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#内容",
-      "strength": "default",
-      "textSha256": "3fce39589e2cd5f320d287d093b4a5b55a1ce006d775237eccb745d4cb9d8020"
-    },
-    {
-      "id": "R-WORKTREESTATUS-004",
-      "title": "摘要使用status，失败使用alert",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#可访问性",
-      "strength": "default",
-      "textSha256": "5848e43b76aaa3310e33ffa3a5415015bb470c3e4a65d005e917949fba46f19c"
-    },
-    {
-      "id": "R-WORKTREESTATUS-005",
-      "title": "运行期状态推导仍在原适配器，UI包不导入Core事件类型、不执行取消或创建",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#规则",
-      "strength": "default",
-      "textSha256": "e870f52f6e2b3a3d25961bc07e16ae008e5bfa432447d021e325868b3dd88dbf"
-    },
-    {
       "id": "WT-PROGRESS-01",
       "title": "（WT-R04～06）：用户 Prompt → Worktree 准备记录 → 助手内容，顺序可核对",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
@@ -4348,32 +1982,11 @@
       "textSha256": "5203b15b3e7051cb916bea645292eaa20162eb8249576c92ed40f0813ff6101d"
     },
     {
-      "id": "R-WORKTREESTATUS-006",
-      "title": "准备详情 一个弱边框区域，可展开",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
-      "strength": "default",
-      "textSha256": "14527b90872ee72c6c54f81419de461e82fd403bfbf6fbb19b9fa6b4627be980"
-    },
-    {
       "id": "R-WORKTREESTATUS-007",
       "title": "控制行 左侧“展开详情 / 收起详情”，右侧“不使用 Worktree”“取消” 动作保持具名、同一基线",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
       "strength": "must",
       "textSha256": "04426ae62a29674edf3e0e93ba4c53ed6724a806027bd9297bf322082069f543"
-    },
-    {
-      "id": "R-WORKTREESTATUS-008",
-      "title": "日志 仅详情展开后显示的内衬区域 有界纵向滚动，长命令/路径换行、原文可复制",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
-      "strength": "default",
-      "textSha256": "3ea884cfd33557cff91bfb50876fe39d28d89ee478da9b846be843519733af36"
-    },
-    {
-      "id": "R-WORKTREESTATUS-009",
-      "title": "已就绪 保留轻量创建事实",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-status/worktree-status.md#时间线准备取消与完成",
-      "strength": "default",
-      "textSha256": "44dcae8ebc7ea0f32618df0e5b586a863e3fa49f374d0dae9109864a3823d469"
     },
     {
       "id": "R-WORKTREESTATUS-010",
@@ -4404,13 +2017,6 @@
       "textSha256": "37dce2709e879bd1d27543b21990621a37d58452d1c85f812a1793688ba6cd10"
     },
     {
-      "id": "R-WORKTREEWORKSPACE-001",
-      "title": "点击动作由宿主执行一次",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.md#行为",
-      "strength": "default",
-      "textSha256": "f0d0cfbb1671dac0447a3fd1307569d3e1727d69d2989ae36a4b11665df9a3e1"
-    },
-    {
       "id": "R-WORKTREEWORKSPACE-002",
       "title": "名称与路径使用实际绑定记录",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.md#内容",
@@ -4425,32 +2031,11 @@
       "textSha256": "7c18489db1810221e65558ad36ed2f3227f6835c3f3e1de6dc0eee8eec34d4fc"
     },
     {
-      "id": "R-WORKTREEWORKSPACE-004",
-      "title": "包不读取记录、不生成请求UUID、不执行脚本",
-      "owner": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.md#规则",
-      "strength": "default",
-      "textSha256": "c08d48796456260442a58b3ee815b7e35b969b0738e0f0b855265903205edb5a"
-    },
-    {
       "id": "R-WORKTREE-018",
       "title": "会话头部的工作区入口展示真实目录、分支和已选环境",
       "owner": "clients/gui/packages/ui/src/worktree/worktree-workspace/worktree-workspace.md#会话入口与操作位置",
       "strength": "default",
       "textSha256": "470d79eff5149bfbcc0257fd383757b7a901c8cabe408c3944241bc02e476410"
-    },
-    {
-      "id": "R-COLLAPSIBLETEXT-013",
-      "title": "CollapsibleText.tsx 按实际内容与生产预览行数角色测量",
-      "owner": "clients/gui/renderer/src/CollapsibleText.md#collapsibletext-合同",
-      "strength": "default",
-      "textSha256": "57f65b6f741f4e9823d6890317867752752754e2277b6690ccb2bd5d0ab8db7c"
-    },
-    {
-      "id": "R-COLLAPSIBLETEXT-014",
-      "title": "需要展开控件时，Tab 可到达有名称的 Button，Enter 与 Space 可切换",
-      "owner": "clients/gui/renderer/src/CollapsibleText.md#collapsibletext-合同",
-      "strength": "default",
-      "textSha256": "41cac12d03fb37ca5d94ca3cb174c3780bf6233c151006a53c68086af0999261"
     },
     {
       "id": "R-DECISIONCARD-009",
@@ -4481,48 +2066,6 @@
       "textSha256": "1432c701d82b3f77a90d4ff14fca4b428c0d3605f848e059bcd406e35b4ff59f"
     },
     {
-      "id": "R-DECISIONCARD-013",
-      "title": "E-DECISION 记录本地决策与长内容检查",
-      "owner": "clients/gui/renderer/src/DecisionCard.md#证据与边界",
-      "strength": "default",
-      "textSha256": "9492022755f27fef8d6bc509d0e6d033ab7270214d67678209e8f37044ee4998"
-    },
-    {
-      "id": "R-DECISIONCARD-014",
-      "title": "AskUserQuestion保留业务草稿、问题导航、输入法处理与提交锁，使用包内QuestionCard",
-      "owner": "clients/gui/renderer/src/DecisionCard.md#ask-user与过程展示",
-      "strength": "default",
-      "textSha256": "599b71e4dc3e6b2803d1fa1fc7d4429bf1f716f09bf2b8fa856aa2be2b640c97"
-    },
-    {
-      "id": "R-DECISIONCARD-015",
-      "title": "TurnElapsed使用Core起始时间和终态durationMs，按界面语言显示耗时（见 R-CONTENT-033",
-      "owner": "clients/gui/renderer/src/DecisionCard.md#ask-user与过程展示",
-      "strength": "default",
-      "textSha256": "bac6f2963a07c7f96515ad1576c02c2c9794455bb32157a5540002fcdee2f5f6"
-    },
-    {
-      "id": "R-MESSAGES-001",
-      "title": "本次准入限于投影、阅读与展开收起",
-      "owner": "clients/gui/renderer/src/Messages.md#对话阅读组合合同",
-      "strength": "default",
-      "textSha256": "1f4f11df42d6d445ee6cdf7e917cf9a2553d54a4f44fc6dfa8e4fd0671a9d5e1"
-    },
-    {
-      "id": "R-MESSAGES-002",
-      "title": "Messages.tsx 由 App.tsx 挂载，在主阅读区或嵌入上下文中展示传入的任务投影",
-      "owner": "clients/gui/renderer/src/Messages.md#messages",
-      "strength": "default",
-      "textSha256": "73fcd3ca917d8d27e43e295f227eff622899471bbbb52665ed0dd2de01d714d1"
-    },
-    {
-      "id": "R-MESSAGES-003",
-      "title": "此有限合同已通过隔离真实 Electron/Core 验证，见 E-RECOVERY",
-      "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
-      "strength": "default",
-      "textSha256": "368f5705124770d512e0c3b319fd790d42ebfae84215449f7b01033e29f8e8ca"
-    },
-    {
       "id": "R-MESSAGES-004",
       "title": "Messages 继续拥有阅读状态",
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
@@ -4535,13 +2078,6 @@
       "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
       "strength": "must",
       "textSha256": "c0d6c9752b99482f69570f69411e68eefd744f1bc50e16c83565c41f0ffdaa73"
-    },
-    {
-      "id": "R-MESSAGES-006",
-      "title": "本合同不承诺同一字符、完整应用退出后的阅读位置、跨窗口或嵌入阅读区恢复",
-      "owner": "clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读",
-      "strength": "default",
-      "textSha256": "62aa7235d17d8e2a04c9aca9869fa857b148189614ca781345fbcc2c5fb0a15f"
     },
     {
       "id": "R-MESSAGES-007",
@@ -4565,20 +2101,6 @@
       "textSha256": "bc9fbf1cd578324772dd80105d0e27641b3f336418636d674844e7c743d27fd4"
     },
     {
-      "id": "R-LAYOUT-005",
-      "title": "活动类型、图片与命令组默认收起、组内纵向滚动，以及右侧上下文的新增设计要求见对话流设计草案",
-      "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
-      "strength": "default",
-      "textSha256": "44ca484f00c517a2a2665a4d299961cbba6980176636aa68c144e121596ccf54"
-    },
-    {
-      "id": "R-LAYOUT-006",
-      "title": "共享内容与阅读组织见任务推进与过程阅读，请求与回执含义见控制与审批，父子关系与停止交接见委派与交接",
-      "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
-      "strength": "default",
-      "textSha256": "274d940551a8d251eefa2f1828a2e496c5371c8116e53f26a1c1b20ab8321c79"
-    },
-    {
       "id": "R-LAYOUT-007",
       "title": "以下是 P-CONVERSATION 的目标合同",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
@@ -4591,13 +2113,6 @@
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "must",
       "textSha256": "cf2ccf95234dfae41470fdca42e3455bcde2fc41162f5eeda257022c27f0d596"
-    },
-    {
-      "id": "R-LAYOUT-008",
-      "title": "用户消息、过程、工具、最终回答与资源入口 Messages / TurnExecution / ToolEvent 保留身份、顺",
-      "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
-      "strength": "default",
-      "textSha256": "0118218b09ff01a659411739da33db87007c0758c758932d360195ed33cd3a2d"
     },
     {
       "id": "CONV-INPUT-01",
@@ -4706,13 +2221,6 @@
       "textSha256": "6f98dae907bdac498036a86a5707c91b2161c31225f41828b4fb64c930550856"
     },
     {
-      "id": "R-CONTENT-031",
-      "title": "Messages将Markdown、原生内容和已验证的Gen UI引用交错展示",
-      "owner": "clients/gui/renderer/src/Messages.md#混合内容与过程标题",
-      "strength": "default",
-      "textSha256": "a8be1c946e80c9ac265a456d88694fbc1381ece0786e65fc52b9a8b591f6874b"
-    },
-    {
       "id": "R-CONTENT-033",
       "title": "过程耗时按界面语言显示：中文运行中为已工作 15 分 29 秒，完成后为工作了 15 分 29 秒",
       "owner": "clients/gui/renderer/src/Messages.md#混合内容与过程标题",
@@ -4748,13 +2256,6 @@
       "textSha256": "c688ed07023722d8a8bbbe05264c12185c25e12065681d1c20747d7b9c6daada"
     },
     {
-      "id": "R-ACTIONBUTTON-009",
-      "title": "查看真实操作按钮与控件示例",
-      "owner": "clients/gui/renderer/src/components/ui/action-button.md#示例",
-      "strength": "default",
-      "textSha256": "99a34d0a0655536ea827715c44f3f84c14b674d02ac052eb2f07637df3a9f655"
-    },
-    {
       "id": "R-FEEDBACK-001",
       "title": "字段校验和局部操作错误在所属组件附近持续展示，状态正文沿用原位置",
       "owner": "clients/gui/renderer/src/components/ui/feedback.md#用途",
@@ -4767,13 +2268,6 @@
       "owner": "clients/gui/renderer/src/components/ui/feedback.md#不适用",
       "strength": "default",
       "textSha256": "54cfa3a77519ae8ed24f7caf6b8d93237b093d54b8bbd895faa8aeb3efc64868"
-    },
-    {
-      "id": "R-FEEDBACK-003",
-      "title": "有 error 时在原位置显示 alert 错误正文，并保留id供输入字段关联",
-      "owner": "clients/gui/renderer/src/components/ui/feedback.md#状态",
-      "strength": "default",
-      "textSha256": "54bfefde915b827ed144725d240cf739e1ac6b7f6f7057b068b960a2013825d0"
     },
     {
       "id": "R-FEEDBACK-004",
@@ -4790,25 +2284,11 @@
       "textSha256": "0b73974c9692108f5c72d82157491df98480b011647a5a3ad78bd9418df39303"
     },
     {
-      "id": "R-FEEDBACK-006",
-      "title": "查看真实反馈与控件示例",
-      "owner": "clients/gui/renderer/src/components/ui/feedback.md#示例",
-      "strength": "default",
-      "textSha256": "7d7097faaebea4373e9926c8223d083032cc2a5c4760a8fa5acdeb08d0ac2901"
-    },
-    {
       "id": "R-SELECT-003",
       "title": "执行一次操作使用 ActionButton",
       "owner": "clients/gui/renderer/src/components/ui/select.md#不适用",
       "strength": "default",
       "textSha256": "dda4b17129b132bf274d4a588f81b7b09a04db65e078e3405af43d6a856d5d56"
-    },
-    {
-      "id": "R-SELECT-004",
-      "title": "触发按钮区分默认、展开、焦点、禁用与无效状态",
-      "owner": "clients/gui/renderer/src/components/ui/select.md#状态",
-      "strength": "default",
-      "textSha256": "c5fec8e6af6b09532040bf9d27bb9bbf6f71fba8b24c54157a1923d2dee10944"
     },
     {
       "id": "R-SELECT-005",
@@ -4825,25 +2305,11 @@
       "textSha256": "927569853471facac0957b76f3319182db4e7d70d56e30ae178b6e508d501a75"
     },
     {
-      "id": "R-SWITCH-006",
-      "title": "使用 Tab 进入开关，按空格改变值",
-      "owner": "clients/gui/renderer/src/components/ui/switch.md#键盘与焦点",
-      "strength": "default",
-      "textSha256": "457cb05e755c40e30efd7b0178ee738401b3749eaf109a6884c05f02170d9069"
-    },
-    {
       "id": "R-SWITCH-007",
       "title": "禁用时保留当前值且不能切换",
       "owner": "clients/gui/renderer/src/components/ui/switch.md#禁用",
       "strength": "must",
       "textSha256": "f2508466550aa72944107bc13097ad3aac1bf5b8d8775dd47ba9e67ae29bca8c"
-    },
-    {
-      "id": "R-SETTINGSPAGEPARTS-001",
-      "title": "纯布局实现与完整合同已迁入私有UI包，原路径保留转接",
-      "owner": "clients/gui/renderer/src/settings/SettingsPageParts.md#设置组合合同",
-      "strength": "default",
-      "textSha256": "14a53457a8cb682fb4055e89de47c416e0cd64103b166db885eef4220b3589e2"
     },
     {
       "id": "R-SETTINGSPAGEPARTS-002",
@@ -4888,20 +2354,6 @@
       "textSha256": "7ec2b90941c64bfa6fa4f9fa9d81ebc0911e65834de5b6b9086aa82f54b0fd85"
     },
     {
-      "id": "R-SETTINGSPAGEPARTS-008",
-      "title": "E-SETTINGS 分别映射可重复检查与已完成运行",
-      "owner": "clients/gui/renderer/src/settings/SettingsPageParts.md#证据与边界",
-      "strength": "default",
-      "textSha256": "c26440e7ad6b6bffb85b2345ab1f977aa57314e5b328d5811caa381600ce60be"
-    },
-    {
-      "id": "R-SETTINGSSEARCHINPUT-003",
-      "title": "SettingsSearchInput.tsx 组合生产 Input、Button 与既有搜索、清除图标",
-      "owner": "clients/gui/renderer/src/settings/SettingsSearchInput.md#settingssearchinput-合同",
-      "strength": "default",
-      "textSha256": "86589d0c634b865d344958da0a3c51c65842f55b50dffdd249b32b4fae07d607"
-    },
-    {
       "id": "R-SETTINGSSEARCHINPUT-004",
       "title": "本次仅准入现有 search-lg 变体",
       "owner": "clients/gui/renderer/src/settings/SettingsSearchInput.md#settingssearchinput-合同",
@@ -4909,116 +2361,11 @@
       "textSha256": "e3013878651866fb4137c87d4566b70d8875ea1dc993bd33cea4bd6c069c9fde"
     },
     {
-      "id": "R-SETTINGSSEARCHINPUT-005",
-      "title": "Tab 可到达输入及可用清除按钮，Enter 与 Space 沿 Button 语义激活清除",
-      "owner": "clients/gui/renderer/src/settings/SettingsSearchInput.md#settingssearchinput-合同",
-      "strength": "default",
-      "textSha256": "503badbfd4a03993c2ffb68c7c1296f017ed2b784e7fe9d600b08936471bf133"
-    },
-    {
-      "id": "R-SETTINGSSEARCHINPUT-006",
-      "title": "本次准入的空查询、输入、清除与键盘状态需要实际运行证据",
-      "owner": "clients/gui/renderer/src/settings/SettingsSearchInput.md#settingssearchinput-合同",
-      "strength": "default",
-      "textSha256": "d9d158a705ca1e59258d1c9202481b62f35c9e8fcdaac61c8bfd5fa3197c0417"
-    },
-    {
-      "id": "R-ENTRY-012",
-      "title": "本目录是设计规则的源头，@areal/ui 是它的实现：改变外观的修改同时更新这里的规则与理由",
-      "owner": "design/README.md#areal-设计文档",
-      "strength": "default",
-      "textSha256": "6c96de14af00656bf365e75eaad244f9261365f8917a53548ee774e3312033c7"
-    },
-    {
-      "id": "R-ENTRY-013",
-      "title": "设计系统以桌面 GUI 为准，先完成 GUI 的视觉、交互与生产迁移",
-      "owner": "design/README.md#areal-设计文档",
-      "strength": "default",
-      "textSha256": "31bff349d138d749c2e44e7f6936b693cf893fa86cef7a75e290fc993e75507b"
-    },
-    {
-      "id": "R-ENTRY-014",
-      "title": "本目录只维护中文",
-      "owner": "design/README.md#areal-设计文档",
-      "strength": "default",
-      "textSha256": "25b3b7392c3289a919b07fc303e0c73013067a5036273c9a29d8b824eae148f9"
-    },
-    {
-      "id": "R-ENTRY-015",
-      "title": "Remote Web RemoteWorkbench 复用的 GUI 组件，以及浏览器权限和偏好边界",
-      "owner": "design/README.md#客户端地图",
-      "strength": "default",
-      "textSha256": "5813ff792627cd9494e9dcad0681f96ae236b537abd81bda14796206c12b5d3f"
-    },
-    {
-      "id": "R-ENTRY-016",
-      "title": "Web 两行记录现有接线，供后续复用时核对，不表示完整设计系统已经接入 Web，也不构成当前 GUI 交付的前置条件",
-      "owner": "design/README.md#客户端地图",
-      "strength": "default",
-      "textSha256": "497ea3920263d7cdbaee191a0cfe0af8ec1412051ec4229f979003e9ff93722d"
-    },
-    {
-      "id": "R-ENTRY-017",
-      "title": "GUI 的设计含义在本目录维护",
-      "owner": "design/README.md#唯一维护位置",
-      "strength": "default",
-      "textSha256": "2e00f5b1cb09cb8bc534419f1abb1a5a18d43b01a6902c0f59b813cecb749d2e"
-    },
-    {
-      "id": "R-ENTRY-018",
-      "title": "新增要求先判断归属",
-      "owner": "design/README.md#唯一维护位置",
-      "strength": "default",
-      "textSha256": "e7414314889b6fe7a867cac545dc023a7abd6d89f14c9908dafd0c43cf26fda0"
-    },
-    {
-      "id": "R-ARCH-037",
-      "title": "设计地图组织以 GUI 为准的设计知识，为后续 Web 复用保留边界",
-      "owner": "design/architecture.md#areal-gui-设计系统架构",
-      "strength": "default",
-      "textSha256": "eecde0b93c38f92a7c97f3fdebfb687671ebf1505349efe7647195ccb59cd759"
-    },
-    {
       "id": "R-ARCH-038",
       "title": "主题与实现入口见设计知识地图",
       "owner": "design/architecture.md#知识实现与执行分开",
       "strength": "must",
       "textSha256": "eb3998a334447f5647984784b42c681068d386a1c0bbcf5bf6e29ebd6af459d5"
-    },
-    {
-      "id": "R-ARCH-039",
-      "title": "共享焦点源是编译输入，由 GUI 样式构建和 Core 静态资源交付分别消费",
-      "owner": "design/architecture.md#知识实现与执行分开",
-      "strength": "default",
-      "textSha256": "b9aee1c1cafdf4b7f673691f4ec0fc3e7b741f3237030a5c7547d4dd4c487ac1"
-    },
-    {
-      "id": "R-ARCH-040",
-      "title": "GUI 是设计与验收主线",
-      "owner": "design/architecture.md#共享语义与平台差异",
-      "strength": "default",
-      "textSha256": "1bb32c97805f2a68615e7ba3e8d25751f312eee99aee989a237d4f37f70e8e74"
-    },
-    {
-      "id": "R-ARCH-041",
-      "title": "GUI 的 registry.json 仍是本端索引",
-      "owner": "design/architecture.md#共享语义与平台差异",
-      "strength": "default",
-      "textSha256": "5b1a586981dbff2f1314b066807878f6fc3bdee520916293954b576f5400b4fe"
-    },
-    {
-      "id": "R-ARCH-042",
-      "title": "按 D-004，基础值、原纯调色板函数和共享展示实现由私有 @areal/ui承接，原 GUI registry 继续拥有模式与",
-      "owner": "design/architecture.md#共享语义与平台差异",
-      "strength": "default",
-      "textSha256": "7480e0b50096d8450ea758d71251a94baf3a4e8e7981ecec99667b9cac1c0f93"
-    },
-    {
-      "id": "R-ARCH-043",
-      "title": "目录组织的决定见D-001",
-      "owner": "design/architecture.md#文档整理与产品演进",
-      "strength": "default",
-      "textSha256": "1c10a7da2a2117a844ab91b3436501272a3bf4ae0e9bf3aac1cbee6f8a47412c"
     },
     {
       "id": "R-ARCH-044",
@@ -5035,27 +2382,6 @@
       "textSha256": "8d31e75ad5bbd0ba90158ed7e80a7f4ae5e50f576cf79f13ec4e9ed8843b8b4f"
     },
     {
-      "id": "R-ARCH-046",
-      "title": "GUI 使用既有准入与证据合同",
-      "owner": "design/architecture.md#验证边界",
-      "strength": "default",
-      "textSha256": "53d37806418c0dcb6efeb0070ea79cfa7d444f6b44c675efc15542547b8991ed"
-    },
-    {
-      "id": "R-ENTRY-019",
-      "title": "产品绑定 业务对象、真实值、合法动作及原有服务接线 GUI 原有控制器和执行契约",
-      "owner": "design/components/README.md#三类职责",
-      "strength": "default",
-      "textSha256": "2d63f815f9ca43c086a36c1a8ca35c182107c9fee1e0dbfe6a1717b7a6e11517"
-    },
-    {
-      "id": "R-ENTRY-020",
-      "title": "通用控件不反向导入领域组合，也不持有执行循环、凭据或历史权威",
-      "owner": "design/components/README.md#三类职责",
-      "strength": "default",
-      "textSha256": "75b1497208c56c03794a2f9a395f75dd43f05583cc88a50fd0e8487ee0991639"
-    },
-    {
       "id": "R-ENTRY-021",
       "title": "引用 @areal/ui 的分层与成熟度合同",
       "owner": "design/components/README.md#成熟度",
@@ -5063,39 +2389,11 @@
       "textSha256": "b3e1557c142c1c4533e024a66d8770a3703fd0b1151c617f0bbb757482cc2052"
     },
     {
-      "id": "R-ENTRY-023",
-      "title": "正文、公式、图表与Gen UI/MCP Apps的关系见对话内容呈现系统",
-      "owner": "design/components/README.md#首批-gui-控件合同",
-      "strength": "explore",
-      "textSha256": "5cd5c0a434b2f81938cf001a25f699eb1ace8df49c79d3937a00fdaae397a258"
-    },
-    {
-      "id": "R-ENTRY-024",
-      "title": "GUI 控件选择与后续 Web 复用边界由本目录维护",
-      "owner": "design/components/README.md#一份合同对应一个实现所有者",
-      "strength": "default",
-      "textSha256": "17db9783443486af8ae706ff394c8ce8baefb1a5c213febe0485a6a2ea871020"
-    },
-    {
       "id": "R-ENTRY-025",
       "title": "新增或改变公共组件时，在原实现附近维护用途、适用与不适用条件、必要状态、键盘和焦点行为，以及生产示例",
       "owner": "design/components/README.md#一份合同对应一个实现所有者",
       "strength": "must",
       "textSha256": "8e9d947c4dbf233cd999c4d8a379c07a68d30d983ba7d5d529302ac7fc13698c"
-    },
-    {
-      "id": "R-ENTRY-026",
-      "title": "示例使用生产实现",
-      "owner": "design/components/README.md#一份合同对应一个实现所有者",
-      "strength": "default",
-      "textSha256": "0177dc56587485d13b89de8df32302db6b449ae588dd8718b512e39a7adc14ae"
-    },
-    {
-      "id": "R-ENTRY-027",
-      "title": "交付物核对题固定内容、初态、操作结果、语义与代表条件",
-      "owner": "design/components/README.md#固定输入的独立复用",
-      "strength": "default",
-      "textSha256": "06d726e3971b2e45ef34d454100a43844b56bd9a11e700880d01a24531f41cb4"
     },
     {
       "id": "R-CONTROL-001",
@@ -5147,34 +2445,6 @@
       "textSha256": "5851926546348b0006d5ceadc0aa9f7658a5634265f16e78e002e03ec5361729"
     },
     {
-      "id": "R-CONTROL-008",
-      "title": "GUI 的两项与多项设置选择、按钮变体和展开形式继续见控件映射",
-      "owner": "design/components/controls.md#按意图选择控件",
-      "strength": "default",
-      "textSha256": "f72a4ca5428922cf1b707bbd20a1bf56d9fec779781d0ee1e3103fc49ea1aec9"
-    },
-    {
-      "id": "R-ENTRY-028",
-      "title": "内容帮助用户识别工作对象、理解当前事实和选择下一步",
-      "owner": "design/content/README.md#内容与文案",
-      "strength": "default",
-      "textSha256": "878c6ed7eb3955b5790775c167f40f293ba0e1a5d7a378f440b89916c8d8205e"
-    },
-    {
-      "id": "R-ENTRY-029",
-      "title": "Markdown渲染采用开源能力还是自有组件 开源复用调研与建议",
-      "owner": "design/content/README.md#内容与文案",
-      "strength": "default",
-      "textSha256": "076a2819fd76ecc875eb2c81c9d381f461fe0c66b52d3446471ed2d65bb078df"
-    },
-    {
-      "id": "R-ENTRY-030",
-      "title": "对象的职责与授权含义由人与 Agent维护",
-      "owner": "design/content/README.md#内容与文案",
-      "strength": "default",
-      "textSha256": "a3bd8a668a5ddd77fcab7c06674b76ff68b3d694d7d66c7cb9ae6d6f64af71e0"
-    },
-    {
       "id": "R-COPY-001",
       "title": "按钮用动作命名",
       "owner": "design/content/interface-copy.md#操作名称说明点击后的动作",
@@ -5196,25 +2466,11 @@
       "textSha256": "7f17e64625f6d977011289fdb02f9107c79bfa667067f5cdeb50b1f5cce3cf99"
     },
     {
-      "id": "R-COPY-004",
-      "title": "请求尚在提交 正在提交… 防止重复提交，保留原输入",
-      "owner": "design/content/interface-copy.md#反馈先说已知事实",
-      "strength": "default",
-      "textSha256": "cfaac066ca4c445da865e38111381db3dff4853aeabb6d2f1b95810b91776166"
-    },
-    {
       "id": "R-COPY-005",
       "title": "正在执行 运行中 来自当前对象的执行状态，不从动画或最后回复推测",
       "owner": "design/content/interface-copy.md#反馈先说已知事实",
       "strength": "default",
       "textSha256": "53e9bd17a1fa88becefd238e83ab08c5922609b5a69e0046588955ec44cb1160"
-    },
-    {
-      "id": "R-COPY-006",
-      "title": "等待人介入 等待回答",
-      "owner": "design/content/interface-copy.md#反馈先说已知事实",
-      "strength": "default",
-      "textSha256": "dafc8f94c7830c92623a7cb6ab05e2fbb775a098f2db5751b8cc4e9c6518c086"
     },
     {
       "id": "R-COPY-007",
@@ -5245,39 +2501,11 @@
       "textSha256": "4332eea50d0c17623a60778bed20fa8033c0a41f84e2ac8cea8a69a708c13f25"
     },
     {
-      "id": "R-COPY-011",
-      "title": "提交审批答案后可用“已提交，等待执行状态更新”",
-      "owner": "design/content/interface-copy.md#审批说明动作与授权范围",
-      "strength": "default",
-      "textSha256": "0d44ecd5001ac48a7efc84d21e3e99e02806941fa78a1e224b1d0891793946dd"
-    },
-    {
       "id": "R-COPY-012",
       "title": "追问中保留已填写内容",
       "owner": "design/content/interface-copy.md#审批说明动作与授权范围",
       "strength": "default",
       "textSha256": "0e02030e743120dcf382ffef280cc410f20ec66e962a0767dea372f1f63ea562"
-    },
-    {
-      "id": "R-COPY-013",
-      "title": "说明尚未确认的对象及仍保留的内容",
-      "owner": "design/content/interface-copy.md#未知结果不诱导再次执行",
-      "strength": "default",
-      "textSha256": "426bbd3cdfe0a8a9d0688627d7d55e479ac54523cf96e6ba964c378086f6f627"
-    },
-    {
-      "id": "R-COPY-014",
-      "title": "现有 GUI 的审批、追问及执行记录可核对这些区别",
-      "owner": "design/content/interface-copy.md#未知结果不诱导再次执行",
-      "strength": "default",
-      "textSha256": "c33c47ca64194d2642419c4dd82538b038b2415176874221b0afe2d59de2efa2"
-    },
-    {
-      "id": "R-TERM-001",
-      "title": "本页约定界面如何称呼 AReaL Harness 的对象",
-      "owner": "design/content/terminology.md#界面术语",
-      "strength": "default",
-      "textSha256": "4e837991e73763ba8d8f2502c4ece34fccb070d14395a0966d03afdeebc44924"
     },
     {
       "id": "R-TERM-002",
@@ -5301,32 +2529,11 @@
       "textSha256": "126f6be96447c770167b354e253d562413de498da78fc1eabaf76c16946efc80"
     },
     {
-      "id": "R-TERM-005",
-      "title": "Task 任务",
-      "owner": "design/content/terminology.md#界面术语",
-      "strength": "default",
-      "textSha256": "d17d5e3acaa49d628314fe45619f3008efa148cd079cb4ac1e9603a31249f295"
-    },
-    {
-      "id": "R-TERM-006",
-      "title": "TaskRun / Run 一次执行",
-      "owner": "design/content/terminology.md#界面术语",
-      "strength": "default",
-      "textSha256": "78174ac3a59ece07d6beed59f65ad656445c00465f20a9920c6477cc14495717"
-    },
-    {
       "id": "R-TERM-007",
       "title": "Goal 目标 不把用户一句目标描述当作已经创建 Goal，不把轮次结束当作目标完成 身份与所有权、Task API",
       "owner": "design/content/terminology.md#界面术语",
       "strength": "default",
       "textSha256": "7ffac5b34e4f6bf224948ae56a2c91308485cd892b2097eebe3019e02d5d8087"
-    },
-    {
-      "id": "R-TERM-008",
-      "title": "Agent Agent",
-      "owner": "design/content/terminology.md#界面术语",
-      "strength": "default",
-      "textSha256": "33bed0ed8fabfc7b6fbea9ee39b67e2e2647a0894d95b324650e9d757581b14e"
     },
     {
       "id": "R-TERM-009",
@@ -5343,123 +2550,11 @@
       "textSha256": "214944cc0773dfdebac77f66a648c92e409132d21c6ff525ef774e32cf13b8d1"
     },
     {
-      "id": "R-CONTRIBUTING-001",
-      "title": "说明用户在 GUI 中要完成的操作与可观察结果",
-      "owner": "design/contributing.md#修改设计文档",
-      "strength": "default",
-      "textSha256": "7c4e307973d506118d05591ee7004ccc1adc9d5ac7a5625d4f750da5269f31c9"
-    },
-    {
-      "id": "R-CONTRIBUTING-004",
-      "title": "核对当前源码、服务契约和已有设计规则",
-      "owner": "design/contributing.md#修改设计文档",
-      "strength": "default",
-      "textSha256": "ed0af771934f5f99c644bc97f349da0733542d90e1ff3aa2e07801f8f3485692"
-    },
-    {
-      "id": "R-CONTRIBUTING-005",
-      "title": "在所有者处修改正文",
-      "owner": "design/contributing.md#修改设计文档",
-      "strength": "default",
-      "textSha256": "54a5f18ae20c15cc020ec51728ff048c22e2496232623bae0e2cd75a9c6feb27"
-    },
-    {
-      "id": "R-CONTRIBUTING-006",
-      "title": "补上正常与必要异常状态、平台限制和验证位置",
-      "owner": "design/contributing.md#修改设计文档",
-      "strength": "default",
-      "textSha256": "a0875b8e13fe3c394e6ad08e0861c04dad034fa0cfe562b410be1bfaca1174ee"
-    },
-    {
-      "id": "R-CONTRIBUTING-007",
-      "title": "检查链接、重复定义及本次差异",
-      "owner": "design/contributing.md#修改设计文档",
-      "strength": "default",
-      "textSha256": "e5b3b3b735fbc1dcfcfd197d5aee0872669648d6d34893baa0e41b2d6bf507b1"
-    },
-    {
-      "id": "R-CONTRIBUTING-002",
-      "title": "现有行为给出源码或契约依据",
-      "owner": "design/contributing.md#状态写在相关产物中",
-      "strength": "default",
-      "textSha256": "c7b5b68359dd24ca2cab29fdc32b73f74e6c0aa569b63809bf3bc11d97c49beb"
-    },
-    {
       "id": "R-CONTRIBUTING-003",
       "title": "design/ 只维护中文设计知识，以 GUI 为准并支持后续 Web 复用",
       "owner": "design/contributing.md#状态写在相关产物中",
       "strength": "must",
       "textSha256": "c66393518feaa18dcc6c9e4bcd12e01753bd053650f0b469897c384bd7562139"
-    },
-    {
-      "id": "R-DECISION-001",
-      "title": "已采用",
-      "owner": "design/decisions/001-shared-design-knowledge.md#d-001-gui-优先设计知识集中维护",
-      "strength": "default",
-      "textSha256": "5ec7a160c1cd9b4c406d2ae3a6d3f0e7cb798be69ac164a64a1a36693422c9f4"
-    },
-    {
-      "id": "R-DECISION-002",
-      "title": "设计系统先服务桌面 GUI 的完整体验",
-      "owner": "design/decisions/001-shared-design-knowledge.md#d-001-gui-优先设计知识集中维护",
-      "strength": "default",
-      "textSha256": "8e49b35fbc6e1d9bb651b5e8cb974f2afa3e3cf3952a11e2b3a6e8a988879be2"
-    },
-    {
-      "id": "R-DECISION-003",
-      "title": "GUI 的组件、布局、平台行为和准入继续放在原所有者",
-      "owner": "design/decisions/001-shared-design-knowledge.md#d-001-gui-优先设计知识集中维护",
-      "strength": "default",
-      "textSha256": "d9511e2b1ce12beea01680c74e7d5d0221708e8198a18db98777492d4c1ffcce"
-    },
-    {
-      "id": "R-DECISION-004",
-      "title": "代价是需要区分设计知识与 GUI 实现合同，并在 Web 接入时重新核对原生能力差异",
-      "owner": "design/decisions/001-shared-design-knowledge.md#d-001-gui-优先设计知识集中维护",
-      "strength": "default",
-      "textSha256": "f91880850652c178b50c737822894e3f124f6879a3455e4b2763836e50a1ada0"
-    },
-    {
-      "id": "R-DECISION-005",
-      "title": "已采用共享浏览器焦点默认值",
-      "owner": "design/decisions/002-shared-semantics.md#d-002-共享语义先于统一数值与实现",
-      "strength": "default",
-      "textSha256": "fe556e59472c0634a05cf472d9f78b9c37faaa3cd41bb82264784ab82a5e1bcd"
-    },
-    {
-      "id": "R-DECISION-006",
-      "title": "的 D-004进一步采用本地 UI 包，首批既有 GUI 值迁入单源 Token 并生成产物",
-      "owner": "design/decisions/002-shared-semantics.md#d-002-共享语义先于统一数值与实现",
-      "strength": "default",
-      "textSha256": "ee2f78c3b539f7686a40221980c25f3816e51aa09d51e5e38b598126a0ed06f9"
-    },
-    {
-      "id": "R-DECISION-007",
-      "title": "GUI 确立设计角色及默认值，不以多个客户端同时采用为前提",
-      "owner": "design/decisions/002-shared-semantics.md#d-002-共享语义先于统一数值与实现",
-      "strength": "default",
-      "textSha256": "2e489947af1c1b20d22096a70488e4ac516d83948a60628c1ae99171363cc015"
-    },
-    {
-      "id": "R-DECISION-008",
-      "title": "首组将焦点宽度与偏移的既有默认值迁入 focus.css",
-      "owner": "design/decisions/002-shared-semantics.md#d-002-共享语义先于统一数值与实现",
-      "strength": "default",
-      "textSha256": "c3e2bad0f093937e8cf97f3bd14d301775a2f3bb8b57f40b08131450197a56f3"
-    },
-    {
-      "id": "R-DECISION-009",
-      "title": "整体候选同时呈现工作区、对话、资源与设置，先检验共同视觉与交互语言",
-      "owner": "design/decisions/003-whole-candidate-and-migration.md#d-003-先设计完整候选再迁移真实路径",
-      "strength": "default",
-      "textSha256": "2c1c231de897c7e484bd0807bbcded19c0a2bc2ab85a12bdc010f78828f62470"
-    },
-    {
-      "id": "R-DECISION-010",
-      "title": "，按用户“先参照 Raft 搭系统，再实践改进”的方向采用本地包",
-      "owner": "design/decisions/004-local-ui-package.md#d-004-本地-ui-包与可运行产出链",
-      "strength": "default",
-      "textSha256": "88e0db9d1cb7b043d27a1860afc6d798b2121335bb2c707e1d00ae04cdebb057"
     },
     {
       "id": "R-DECISION-011",
@@ -5469,67 +2564,11 @@
       "textSha256": "b913512a9bfd64f334f506e03b9e7530e5c5d3d004262bc1b1e180a43ceed962"
     },
     {
-      "id": "R-DECISION-012",
-      "title": "Source 原 design/ 拥有原则与模式",
-      "owner": "design/decisions/004-local-ui-package.md#四层对应",
-      "strength": "default",
-      "textSha256": "93e11bf7ba2758b262127fcd31bc5a998ee943a081c1c6cfb7f47cf1543aa7cc"
-    },
-    {
-      "id": "R-DECISION-013",
-      "title": "实现 源生成 foundation.css、Tailwind 映射、默认明暗 themes.css 与主题输入",
-      "owner": "design/decisions/004-local-ui-package.md#四层对应",
-      "strength": "default",
-      "textSha256": "7cbf48317bba76345bd3ba70f8e392d036876255d946ac2690ed071f5edc64ae"
-    },
-    {
-      "id": "R-DECISION-014",
-      "title": "这是首个完整产出链，尚非全部 UI 迁移",
-      "owner": "design/decisions/004-local-ui-package.md#四层对应",
-      "strength": "default",
-      "textSha256": "7a9e447411040f4973a93392bff15aa07185cf4338278fa63a269a9dc54c6f10"
-    },
-    {
       "id": "R-DECISION-015",
       "title": "后续对话预览按用户授权增加实验 conversation 层：ActivityGroup、ImageDisclosure 和 T",
       "owner": "design/decisions/004-local-ui-package.md#四层对应",
       "strength": "must",
       "textSha256": "68c1ada2c7a46c35716602f1aae335388c4f547ac9d92df2c478711db8fc7dec"
-    },
-    {
-      "id": "R-DECISION-016",
-      "title": "采用的基础值从原 styles.css 移除可编辑默认定义，保留已有名称与值",
-      "owner": "design/decisions/004-local-ui-package.md#单源与兼容",
-      "strength": "default",
-      "textSha256": "ca26a936a34d27b858f3ad3e0c27fcb689ffee6a18aa98323197394e2af4696c"
-    },
-    {
-      "id": "R-DECISION-017",
-      "title": "调色板函数原样移到包内，默认主题由同一函数生成",
-      "owner": "design/decisions/004-local-ui-package.md#单源与兼容",
-      "strength": "default",
-      "textSha256": "2419c80171518a882c8956627c6c89edc3e096e4578140ab497fbfed82a2f00f"
-    },
-    {
-      "id": "R-DECISION-018",
-      "title": "Button 和 cn 的旧路径只转接包内实现，服务现有消费者",
-      "owner": "design/decisions/004-local-ui-package.md#单源与兼容",
-      "strength": "default",
-      "textSha256": "a8ce3df0d2cb8c07ead463eb97860d6ef79d736cabf7d5b57d48936994d8badc"
-    },
-    {
-      "id": "R-DECISION-019",
-      "title": "本决定在采用范围内扩展 D-002：焦点默认仍归共享 focus.css，其余首批值由包单源生成，未建立第二套值",
-      "owner": "design/decisions/004-local-ui-package.md#单源与兼容",
-      "strength": "default",
-      "textSha256": "e7c619674cb9bd0c469eefb1ae76ea1a2ce3100dcb6f13ba00a050a7849c5b0e"
-    },
-    {
-      "id": "R-DECISION-020",
-      "title": "出现第二个独立运行消费者、需要公开分发、组件稳定性或主题范围实质变化时再评估构建/发布策略",
-      "owner": "design/decisions/004-local-ui-package.md#使用与重审",
-      "strength": "default",
-      "textSha256": "23990cdf806dd7e87bcc2ebc642eea268c74b2b11fb28aaca7b88ea1841c0e87"
     },
     {
       "id": "R-DECISION-021",
@@ -5539,39 +2578,11 @@
       "textSha256": "e33d2d0ce8d178c2abac507412fbedb147852d0d69e4a638a0b60f07f3bdeffd"
     },
     {
-      "id": "R-DECISION-022",
-      "title": "D-001 GUI 优先，设计知识集中维护",
-      "owner": "design/decisions/README.md#决策索引",
-      "strength": "default",
-      "textSha256": "d5abe1593171d6d270cfd34bae59ef2803f071aa91c01d27f81567c2b741763f"
-    },
-    {
-      "id": "R-DECISION-023",
-      "title": "每项决定单独维护背景、选择、代价、状态和重审条件",
-      "owner": "design/decisions/README.md#决策索引",
-      "strength": "default",
-      "textSha256": "a94db2fc2e7c4bede10905e81a28e637f1038577266a9b9246e236472e4aa325"
-    },
-    {
-      "id": "R-ENTRY-031",
-      "title": "AReaL 是围绕任务执行与结果阅读的工作台",
-      "owner": "design/foundations/README.md#设计基础",
-      "strength": "default",
-      "textSha256": "f5a6e9db933bb2afcde0724fd76e525f27aebd262626c718133497293f70e10c"
-    },
-    {
       "id": "R-ENTRY-032",
       "title": "主次内容、选择、强调、危险与反馈的用途见颜色与内容层级",
       "owner": "design/foundations/README.md#内容层级与表面",
       "strength": "must",
       "textSha256": "3e48ae608444e5069565b78fe2360f26589f9b7ae3dacd978b39ab7ddde40434"
-    },
-    {
-      "id": "R-ENTRY-033",
-      "title": "文字用途、字号偏好、密度和重排要求见文字与空间密度",
-      "owner": "design/foundations/README.md#文字空间与形状",
-      "strength": "default",
-      "textSha256": "bcfdd9bab9829e7e2c1c9734f0df2c97d9c53a4fdffe082bd85862820e3a29fd"
     },
     {
       "id": "R-ENTRY-034",
@@ -5609,25 +2620,11 @@
       "textSha256": "6fe87a93e42bd73f529956ea79cb3eb58521964e4f558b06941c9322a9194a2f"
     },
     {
-      "id": "R-ROLE-005",
-      "title": "当前实现使用系统 UI 字体，macOS 由系统西文字体与苹方简体中文混排，其他平台采用所属系统的无衬线回退",
-      "owner": "design/foundations/roles.md#文字与空间密度",
-      "strength": "default",
-      "textSha256": "c8c0e93425497e2a3d4201d0bbf8815c64cf8eb7f11f741c1e132a5bec2b6e81"
-    },
-    {
       "id": "R-ROLE-006",
       "title": "对话时间线是阅读密度最高的表面：正文、活动、子代理与过程状态用同一字号、同一行高和同一块间距，层级只由颜色与图标表达，不用更小的",
       "owner": "design/foundations/roles.md#文字与空间密度",
       "strength": "default",
       "textSha256": "0c38d08303e9f9ab1b550ac2b293055c4c4ce6fac28e3fa2ddfc5582b533bb20"
-    },
-    {
-      "id": "R-ROLE-007",
-      "title": "图标帮助识别已有对象和操作，资产沿用设计基础",
-      "owner": "design/foundations/roles.md#图标动效与焦点",
-      "strength": "default",
-      "textSha256": "a1cd0c7daf064be0af3f31348357efd87d5eed342a9498ae061b3a455dcf96ef"
     },
     {
       "id": "R-ROLE-008",
@@ -5651,46 +2648,11 @@
       "textSha256": "89a7fcfa8f9f8c90c192d76b7f0aa2ff70a150f6d1473f2dd24d67cb063c6731"
     },
     {
-      "id": "R-ROLE-011",
-      "title": "控件保留所属平台的标签与键盘语义",
-      "owner": "design/foundations/roles.md#图标动效与焦点",
-      "strength": "default",
-      "textSha256": "3b9d103288bd4d85dc1faeab23ee2c9171ca8486a210e3473a337ba2c8288544"
-    },
-    {
-      "id": "R-ROLE-012",
-      "title": "GUI 的既有轮廓规则与本地 Web 的原生控件共用 focus.css 中的焦点宽度与偏移",
-      "owner": "design/foundations/roles.md#图标动效与焦点",
-      "strength": "default",
-      "textSha256": "36955d7e8ba098aa4a48c103f10e0dbf998e6786222ca2310f6aa6c57689eade"
-    },
-    {
-      "id": "R-ROLE-013",
-      "title": "GUI 的具体接线见基础规则",
-      "owner": "design/foundations/roles.md#图标动效与焦点",
-      "strength": "default",
-      "textSha256": "6c6ebf1907c71dac112ccc5c8e63fc3970de12610f86c7dc85e90203482606a2"
-    },
-    {
       "id": "R-TOKEN-015",
       "title": "GUI 的基础值只有一个可编辑来源",
       "owner": "design/foundations/tokens.md#token-来源与使用",
       "strength": "default",
       "textSha256": "53b318615ac47bb1088f50980b2ba4b6a0f17cc1e11bec12eab62aa5be5d2697"
-    },
-    {
-      "id": "R-TOKEN-016",
-      "title": "默认明暗调色板（背景、前景、边框、表面等） tokens.json 的 themes 作为输入、 palette 声明参考值与单",
-      "owner": "design/foundations/tokens.md#每类值在哪里改",
-      "strength": "default",
-      "textSha256": "543de40fe6d5cc7d9522670b0311524a290311f12bc80a50e402d4ca8000bea1"
-    },
-    {
-      "id": "R-TOKEN-017",
-      "title": "用户偏好（界面字号、内容字号、字体、调色板、动效） applicationSettings 与 applicationPrefe",
-      "owner": "design/foundations/tokens.md#每类值在哪里改",
-      "strength": "default",
-      "textSha256": "c1f5654620ef337df2b9274d66f065bc3fbd0a2a2d0fb2dfecdbe153cc8a738c"
     },
     {
       "id": "R-TOKEN-018",
@@ -5714,53 +2676,11 @@
       "textSha256": "23fbb247c7d4d6b080c966ae07ef2140b23b75c94af4017d4f8860b6267bf830"
     },
     {
-      "id": "R-TOKEN-021",
-      "title": "独有宽度、滚动上限或定位属于具体组件，可以保留局部数值",
-      "owner": "design/foundations/tokens.md#容易选错的角色",
-      "strength": "default",
-      "textSha256": "343584158ee0f92cd9265388aaf9154be2fc8cd9595d5f72a17040afefe0cfc3"
-    },
-    {
       "id": "R-TOKEN-022",
       "title": "字面量基线（literal-baseline.json） 某个文件写死的字号、颜色或圆角比基线多",
       "owner": "design/foundations/tokens.md#自动守卫",
       "strength": "must",
       "textSha256": "e6e5bb54dbe4c0e766ab797b037d2bfef182dab4222e20060c7bc9424dea85f7"
-    },
-    {
-      "id": "R-TOKEN-023",
-      "title": "本地 Web 由 style.css 与 app.js 拥有样式与主题偏好，只共享 focus.css",
-      "owner": "design/foundations/tokens.md#平台映射",
-      "strength": "default",
-      "textSha256": "a2f110c938e4ae5f712b6a2c08e225ff24ae3d8d92feffc12d166437d391eaaa"
-    },
-    {
-      "id": "R-ENTRY-035",
-      "title": "设计意图回答用户要完成什么",
-      "owner": "design/patterns/README.md#交互模式",
-      "strength": "default",
-      "textSha256": "6364848293ef37ab557fda4a4b0d0ad11cf38cc2d994f639366ec9b7e471550d"
-    },
-    {
-      "id": "R-ENTRY-036",
-      "title": "信息较长或需要查看资源时怎样返回 深入查看与返回 资源面板、展开、阅读与返回入口",
-      "owner": "design/patterns/README.md#交互模式",
-      "strength": "default",
-      "textSha256": "47362d33a406ab6de4155687f8f81b0339e4f1c318ac04d9dc3377ee94b3fae7"
-    },
-    {
-      "id": "R-ENTRY-037",
-      "title": "人的决定与执行事实由 人与 Agent解释，模式引用这些含义，不再定义一套审批、受理或委派状态机",
-      "owner": "design/patterns/README.md#交互模式",
-      "strength": "default",
-      "textSha256": "abbe0f5a2affdf0b6481a8309678c22ac1632c6891de70b0bfa10a0d7cd44a2b"
-    },
-    {
-      "id": "R-ENTRY-038",
-      "title": "先明确用户意图、必要事实和可观察结果，再选择已有 GUI 模式和真实组件",
-      "owner": "design/patterns/README.md#变更归属",
-      "strength": "default",
-      "textSha256": "8fe76bf89f867ccde521ca22803fd3e97ac36d496ae13c5312919c61de538afb"
     },
     {
       "id": "R-ENTRY-039",
@@ -5819,13 +2739,6 @@
       "textSha256": "b9b8b2194f39fc5c44fb0d4863a32f1cdbb74d5bafef7dcb54aaff1a93e96826"
     },
     {
-      "id": "R-RECOVERY-008",
-      "title": "GUI 的实际组件、错误展示和恢复入口见交互族",
-      "owner": "design/patterns/feedback-and-recovery.md#反馈的范围",
-      "strength": "default",
-      "textSha256": "7bc81363d53ec0e8b683fd3d25e2ff7d031d8cfba12c20ddd8bf5e02ef81525f"
-    },
-    {
       "id": "R-RECOVERY-009",
       "title": "必须打断用户且有明确处理入口的提示采用顶部居中的Toast：info、success、warning、error分别使用",
       "owner": "design/patterns/feedback-and-recovery.md#短时通知",
@@ -5861,13 +2774,6 @@
       "textSha256": "4cb97f950017397dfbec645b458a352541114ebaab0fcd4edda8ff17bd6b1ac7"
     },
     {
-      "id": "R-RETURN-002",
-      "title": "对话顶部的任务上下文采用紧凑概览：先核对改动、子代理和输入来源，再进入原阅读器",
-      "owner": "design/patterns/inspect-and-return.md#深入查看与返回",
-      "strength": "default",
-      "textSha256": "385934b48bdad30e425801f9e7c060cb6a52f8ab402f84f902fc286ebbcad482"
-    },
-    {
       "id": "R-RETURN-003",
       "title": "短内容完整呈现，长内容保留明确的全文入口",
       "owner": "design/patterns/inspect-and-return.md#长内容与全文",
@@ -5882,34 +2788,6 @@
       "textSha256": "77820e94869c4d8b060675c2618e14f15290c88ae25203823f240e31e9a1aea4"
     },
     {
-      "id": "R-RETURN-005",
-      "title": "Remote Web 复用 RemoteWorkbench 按实际接入的组件核对浏览器内的全文、返回与焦点，不推导桌面原生能力",
-      "owner": "design/patterns/inspect-and-return.md#资源与返回",
-      "strength": "default",
-      "textSha256": "1a9c4873e3bdd2b302371e06a193b7a9abf3980e506f8063d163c81457816e92"
-    },
-    {
-      "id": "R-RETURN-006",
-      "title": "返回是否成功需要实际操作验证",
-      "owner": "design/patterns/inspect-and-return.md#资源与返回",
-      "strength": "default",
-      "textSha256": "69cc299ebf4c4abf416379f829f7fbc795ccb65af6571fe0b54bb8ce7e0a8aa5"
-    },
-    {
-      "id": "R-INTENTS-001",
-      "title": "从用户在 GUI 中要完成的工作进入设计，再选择操作、布局和呈现",
-      "owner": "design/patterns/intents.md#共享设计意图",
-      "strength": "default",
-      "textSha256": "cb87bc1b047fce99dd2699d4bf824a874c24cdb45ad48206cdb5edb13664d663"
-    },
-    {
-      "id": "R-INTENTS-002",
-      "title": "定位任务 知道当前项目、会话和任务作用范围 导航和详情保留当前对象及所属任务",
-      "owner": "design/patterns/intents.md#共享设计意图",
-      "strength": "default",
-      "textSha256": "0723f412c318aadf0f09fbc45a3552bceb9ebb8e3e9082c6732b40b245b1a5dc"
-    },
-    {
       "id": "R-INTENTS-003",
       "title": "输入与提交 区分待提交输入、已受理和结果待核查 输入区保留草稿、提交状态与原生 IME 行为",
       "owner": "design/patterns/intents.md#共享设计意图",
@@ -5922,34 +2800,6 @@
       "owner": "design/patterns/intents.md#共享设计意图",
       "strength": "default",
       "textSha256": "4a2a352477f59dd7c76b6290b4669217c2f49bddf69b75cd20a261d81fe0c488"
-    },
-    {
-      "id": "R-INTENTS-005",
-      "title": "阅读与探索 信息有层次，用户可取到必要详情 消息展开、资源面板与滚动保留阅读上下文",
-      "owner": "design/patterns/intents.md#共享设计意图",
-      "strength": "default",
-      "textSha256": "a17a0f6d81058762d8bed115d05e7a49a900b48e075998a89def41d508de2f55"
-    },
-    {
-      "id": "R-INTENTS-006",
-      "title": "打开与返回 辅助查看保留所属任务和继续工作的路径 核对窗口、面板与原生视图的焦点和返回，关闭查看不推导后台取消",
-      "owner": "design/patterns/intents.md#共享设计意图",
-      "strength": "default",
-      "textSha256": "b7b8b1dad5181b40590f03a2c2027b8bbd69590fe16c4fc084a26f8aac68857f"
-    },
-    {
-      "id": "R-INTENTS-007",
-      "title": "调整偏好 理解设置范围和生效时机 保留 GUI 现有偏好所有者与持久化，跨设备同步需单独产品决定",
-      "owner": "design/patterns/intents.md#共享设计意图",
-      "strength": "default",
-      "textSha256": "e87451bebd975141b3497fe4d191cb3ccd060403f94477d0da60d04c9dbf9a64"
-    },
-    {
-      "id": "R-INTENTS-008",
-      "title": "完整的组合与变更入口见交互模式",
-      "owner": "design/patterns/intents.md#从意图进入模式",
-      "strength": "default",
-      "textSha256": "2676843020ab35a90a800aa81ea98f1a4b1d46943fd1bf34167041bab0d19faa"
     },
     {
       "id": "R-PLUGINRESOURCES-001",
@@ -5994,20 +2844,6 @@
       "textSha256": "a63e4cbae6f4748286693560eea8bf19c87bd3877933fa483b12daa4fa2ae496"
     },
     {
-      "id": "R-PLUGINRESOURCES-007",
-      "title": "真实 GUI 验收使用隔离本地插件包和确定性外部模型",
-      "owner": "design/patterns/plugin-resources.md#所有者与范围",
-      "strength": "default",
-      "textSha256": "c132be759db65da93b1ea0bdd36a6913b8faf897e0399ae54b5ea6a43ef0a07d"
-    },
-    {
-      "id": "R-SETTINGS-001",
-      "title": "控件选择遵循意图与控件",
-      "owner": "design/patterns/settings.md#值动作与生效范围",
-      "strength": "default",
-      "textSha256": "0678e9554ad69888806b280a528279607ed2b0536657d58bd13b562aed14604c"
-    },
-    {
       "id": "R-SETTINGS-002",
       "title": "常驻信息以简短名称、当前值和必要说明为主",
       "owner": "design/patterns/settings.md#值动作与生效范围",
@@ -6036,25 +2872,11 @@
       "textSha256": "fdae7421762463366d0549caeb66fdab8f3c5473776bbece601ab33dcfaa609a"
     },
     {
-      "id": "R-SETTINGS-006",
-      "title": "GUI 的分组、行、尺寸和窄窗重排由设置组合布局及组件指南维护",
-      "owner": "design/patterns/settings.md#平台接线",
-      "strength": "default",
-      "textSha256": "c35266e8411533b231859811b0b39d52cd09801523e2bd33ad46555633a103c2"
-    },
-    {
       "id": "R-SETTINGS-007",
       "title": "代表验证包括当前值、可修正错误、保存或即时生效、恢复默认、长内容与空间不足，以及主题或字号变化",
       "owner": "design/patterns/settings.md#平台接线",
       "strength": "must",
       "textSha256": "e6e9e1ff91ff124847569abd68adbc635e72bf388aa6abbae5df772d2dbcfdfe"
-    },
-    {
-      "id": "R-PROGRESS-001",
-      "title": "用户提出要求后，需要持续理解当前工作、找到需要介入的决定，并阅读结果",
-      "owner": "design/patterns/task-progress.md#任务推进与过程阅读",
-      "strength": "default",
-      "textSha256": "d02ad51e8d74ef5b5d6c7e05da638c2e0e3ed18696d4a2ff0bb8597907e6eff9"
     },
     {
       "id": "R-PROGRESS-002",
@@ -6078,53 +2900,11 @@
       "textSha256": "99519e9c6708a2b56fce47e2a4db3dd8a3f522e2fc4e0e98b06648556a4594db"
     },
     {
-      "id": "R-PROGRESS-005",
-      "title": "GUI 的分组、折叠、滚动和工具组合由对话信息流合同维护",
-      "owner": "design/patterns/task-progress.md#平台落实与验证",
-      "strength": "default",
-      "textSha256": "89061009b19320b01bd500e1a138c4a90d7fd5927167fc5841eecb1af53499b7"
-    },
-    {
-      "id": "R-PROGRESS-006",
-      "title": "用户标注图推动的活动与上下文草案补充 GUI 的有限活动变体、默认折叠与溢出设计，保留规范候选和当前实现的区别",
-      "owner": "design/patterns/task-progress.md#平台落实与验证",
-      "strength": "default",
-      "textSha256": "c6b36d92710b650bc5d2ae8970687ab150a40c552f0b17b6305e35ce93b1c134"
-    },
-    {
       "id": "R-PROGRESS-007",
       "title": "复验应覆盖新增内容时回看、明确返回、过程结束、人工展开保留，以及所选失败或未决路径",
       "owner": "design/patterns/task-progress.md#平台落实与验证",
       "strength": "must",
       "textSha256": "5d611bf8d71e2c49785c9317d6c59a5c8415113a107501b558885b869ae3aaf3"
-    },
-    {
-      "id": "R-ENTRY-040",
-      "title": "这里是人与 Agent 关系的设计规范归属",
-      "owner": "design/people-and-agents/README.md#规范边界",
-      "strength": "default",
-      "textSha256": "45a7a1a69a41b67f717b6ef7150246bb8d3e7f3c3d1380257ae56bd0b285a7f6"
-    },
-    {
-      "id": "R-ENTRY-041",
-      "title": "GUI 将这些关系绑定到具体控件、状态和导航",
-      "owner": "design/people-and-agents/README.md#规范边界",
-      "strength": "default",
-      "textSha256": "0ed1ce398b3d202cc3754c49f6383b785b38e27287d75fd66a2ac2b823a3399f"
-    },
-    {
-      "id": "R-ENTRY-042",
-      "title": "组件规范 维护可复用控件",
-      "owner": "design/people-and-agents/README.md#与其他设计目录的关系",
-      "strength": "default",
-      "textSha256": "3ccc294a129badc58d4f0b7ee9d46457949a158c9735068bfe1008c88b20d09b"
-    },
-    {
-      "id": "R-CONTEXT-001",
-      "title": "AReaL Harness 需要说明 Agent 的判断依据，以及这些依据对应的时间和范围",
-      "owner": "design/people-and-agents/context-and-evidence.md#上下文与证据",
-      "strength": "default",
-      "textSha256": "5c8e096850e2ed44ad23f8b1109ae3fbdfc7b5307d63add5cae48d3c425718bd"
     },
     {
       "id": "R-CONTEXT-002",
@@ -6146,20 +2926,6 @@
       "owner": "design/people-and-agents/context-and-evidence.md#参考内容的来源",
       "strength": "default",
       "textSha256": "51fc13b6557b49976f5662cba1ed5dc0c8b1eefc49952c7381c307459e547f63"
-    },
-    {
-      "id": "R-CONTEXT-005",
-      "title": "子任务结果被提供给一次成功模型请求，只证明对应版本进入了请求上下文",
-      "owner": "design/people-and-agents/context-and-evidence.md#参考内容的来源",
-      "strength": "default",
-      "textSha256": "a3c3f12297a4c3e7bd13603de03bcd8ae6184ef7fdbc7b4ed2ed02ad27b3ac80"
-    },
-    {
-      "id": "R-CONTEXT-006",
-      "title": "用户可以选择 Side 回复的部分文字或整条回复，预览并编辑后追加到主会话草稿",
-      "owner": "design/people-and-agents/context-and-evidence.md#把讨论带回主任务",
-      "strength": "default",
-      "textSha256": "860b0c5e4df2cfc20765fa6e94342bedce98cf637204d241c35a599b0a061879"
     },
     {
       "id": "R-CONTEXT-007",
@@ -6188,13 +2954,6 @@
       "owner": "design/people-and-agents/context-and-evidence.md#上下文容量与实际用量",
       "strength": "must",
       "textSha256": "10c399051ae74eabf26c66aa44457a385fba923850ebe1640bca9d6b605d76b9"
-    },
-    {
-      "id": "R-APPROVAL-001",
-      "title": "AReaL Harness 的操作反馈需要让用户知道已经承诺了什么，以及还有什么需要等待",
-      "owner": "design/people-and-agents/control-and-approval.md#控制与审批",
-      "strength": "default",
-      "textSha256": "30b952b96d4dd91e3bb7c18fb6a839d48d1161a31fd3b5de8ca6af8210c16d37"
     },
     {
       "id": "R-APPROVAL-002",
@@ -6260,25 +3019,11 @@
       "textSha256": "e797e59e23d1a3b10bfbaa4de0577a07df91e4ef1cc5bb1b7b1123966c585a1a"
     },
     {
-      "id": "R-DELEGATION-001",
-      "title": "只有职责可分离、结果形式明确且协调收益值得时，才需要子任务",
-      "owner": "design/people-and-agents/delegation-and-handoff.md#委派是有职责的选择",
-      "strength": "default",
-      "textSha256": "e72ecebb6d7a079f858fcb748bb1535928d11e731299f1a54dc5a47566b0fd5b"
-    },
-    {
       "id": "R-DELEGATION-002",
       "title": "子 Agent 使用独立上下文和历史，权限继承或收窄",
       "owner": "design/people-and-agents/delegation-and-handoff.md#委派是有职责的选择",
       "strength": "must",
       "textSha256": "8c07cf284d585441c3774758a2e32a57a5b2a3c19330059185e910adbc17ef5d"
-    },
-    {
-      "id": "R-DELEGATION-003",
-      "title": "共享执行与隔离执行的选择由 Core 按意图、授权及环境能力决定",
-      "owner": "design/people-and-agents/delegation-and-handoff.md#委派是有职责的选择",
-      "strength": "default",
-      "textSha256": "225881244f676912006abf8cb7f6ea35c01762f38cef7754dc4aed8e45da7cec"
     },
     {
       "id": "R-DELEGATION-004",
@@ -6316,25 +3061,11 @@
       "textSha256": "1541699f6272eadaa69169cb787f61e5bd88b98585e1f5318cc0c32a8d229fac"
     },
     {
-      "id": "R-DELEGATION-009",
-      "title": "任务进展如何排列、展开与回看归 任务进展",
-      "owner": "design/people-and-agents/delegation-and-handoff.md#契约与呈现",
-      "strength": "default",
-      "textSha256": "28796be67d01588ac115bba474893776aab6cb6840f4d8fcf8b3c08cdeeba43b"
-    },
-    {
       "id": "R-IDENTITY-001",
       "title": "AReaL Harness 中，用户需要区分正在看的会话、承担工作的 Agent，以及允许操作的身份",
       "owner": "design/people-and-agents/identity-and-ownership.md#身份与所有权",
       "strength": "must",
       "textSha256": "c8883b8a1eecae9ed639d37457dc7f344c3b4fe28ffe079c0413e66b09d07ae7"
-    },
-    {
-      "id": "R-IDENTITY-002",
-      "title": "Thread 保存会话历史",
-      "owner": "design/people-and-agents/identity-and-ownership.md#会话身份与执行职责",
-      "strength": "default",
-      "textSha256": "648f32b8aa2342cfd5938ca4ef66bbabea734da8ab4f95365c834a38921cdc2a"
     },
     {
       "id": "R-IDENTITY-003",
@@ -6356,13 +3087,6 @@
       "owner": "design/people-and-agents/identity-and-ownership.md#三种关系分别表达",
       "strength": "default",
       "textSha256": "f3cd0f9059ce4cb4ef7182f7be9b7be7588b0dfd47cd8a06bffa033dab690431"
-    },
-    {
-      "id": "R-IDENTITY-006",
-      "title": "Fork 是继承部分历史的独立会话",
-      "owner": "design/people-and-agents/identity-and-ownership.md#三种关系分别表达",
-      "strength": "default",
-      "textSha256": "bf26d0dc69322a4de0f39d796fdcda1d6ef3487127d45fc8e1ebce5c9663d684"
     },
     {
       "id": "R-IDENTITY-007",
@@ -6612,10 +3336,10 @@
     },
     {
       "id": "R-CHECK-019",
-      "title": "折叠只由共享组件拥有（依据 P6）：高级与详情分组用 SettingsDisclosure，默认收起",
+      "title": "折叠只用共享组件（P6）：高级分组 SettingsDisclosure 默认收起，长正文 CollapsibleTex",
       "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
       "strength": "must",
-      "textSha256": "6bfb3a376ae33f21be7d5195e31277281dd98cb9b4cfad93ccfc39a470360c4e",
+      "textSha256": "a5e66a565f7b255d7ddfe7f2dac5b904d2e4da5aa050acb0e56ae3cdb10b147f",
       "check": "clients/gui/oxlint-plugin-areal/rules/no-raw-disclosure.ts"
     },
     {
@@ -6633,48 +3357,6 @@
       "strength": "must",
       "textSha256": "aa84a71a911b1cc00867bb54a7f4a1ec55c7d56d9012282598485210bba2bc0f",
       "check": "clients/gui/scripts/composer-files-acceptance.mjs"
-    },
-    {
-      "id": "R-PLUGINRESOURCES-008",
-      "title": "插件中心在启动项目Core之前，通过同产物CLI读取Rust Store",
-      "owner": "design/patterns/plugin-resources.md#快照与组件状态",
-      "strength": "default",
-      "textSha256": "19c261b93f2235577b73638d4d3f423b347cbcddee6fe84c5fbceb91d276caa6"
-    },
-    {
-      "id": "R-PLUGINRESOURCES-009",
-      "title": "读取hook拥有目录与详情代次",
-      "owner": "design/patterns/plugin-resources.md#快照与组件状态",
-      "strength": "default",
-      "textSha256": "6b9073e830779814928fa96acc755ea2abee5a89b7150df25e7fb9f2887d7a32"
-    },
-    {
-      "id": "R-PLUGINRESOURCES-010",
-      "title": "Commands沿普通消息提交保留插件命名空间、固定组件身份与原始参数",
-      "owner": "design/patterns/plugin-resources.md#模板配置与开发",
-      "strength": "default",
-      "textSha256": "5bd18d0eb02be6c32a9ba3259b160c40ffdbe8d5ed826b464e93315a401f3f22"
-    },
-    {
-      "id": "R-PLUGINRESOURCES-011",
-      "title": "显式开发链接为后续轮次发布不可变快照，活动轮次保留受理时版本",
-      "owner": "design/patterns/plugin-resources.md#模板配置与开发",
-      "strength": "default",
-      "textSha256": "3734c78b0ced5174384097bfd84a306aa103effdb3e99e3f5587bba569899af3"
-    },
-    {
-      "id": "R-MESSAGES-010",
-      "title": "Core 消息的可选 createdAt 通过消息内时间控件显示",
-      "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
-      "strength": "default",
-      "textSha256": "7b2a59fca62693873d1d462cb074efb1a8aea5f9665f98029067e77399a342fe"
-    },
-    {
-      "id": "R-MESSAGES-011",
-      "title": "中断分隔行位于轮次边界，使用持久 interruption 区分用户暂停与 Core 恢复，无工具轮次也显示",
-      "owner": "clients/gui/renderer/src/Messages.md#时间线与发送锚点",
-      "strength": "default",
-      "textSha256": "b7bea27d647d28aadd4605e97a05a4c5831a5ea99c56aff2c22b18bde2b42c91"
     },
     {
       "id": "R-MESSAGES-012",
@@ -6698,26 +3380,28 @@
       "textSha256": "8af2936c4061f8cb95baeeac622dc885619b9524e28e34f066421d6babc82d92"
     },
     {
-      "id": "R-SKELETON-003",
-      "title": "全部占位条共用一次分步呼吸",
-      "owner": "clients/gui/packages/ui/src/components/skeleton/skeleton.md#行为",
-      "strength": "default",
-      "textSha256": "c899d56042dfde6c3e4d78836e666584d83bdc23e6a13188fe5201375a3c687f"
-    },
-    {
-      "id": "R-TOOLTIP-002",
-      "title": "延迟、打开、四向定位、触发器聚焦",
-      "owner": "clients/gui/packages/ui/src/components/tooltip/tooltip.md#状态",
-      "strength": "default",
-      "textSha256": "7d0814a72a86dd8f3aa100bea4b514dd6974c909746b65e09983025decbb4b7a"
-    },
-    {
       "id": "R-CHECK-021",
       "title": "提示用 TitleTooltip，不写原生 title",
       "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
       "strength": "default",
       "textSha256": "d82273b63fed2a527029a9292a9ac1abb9225363cf73a7d67d56f9d23d58d6b8",
       "check": "clients/gui/scripts/motion-lint.mjs"
+    },
+    {
+      "id": "R-CHECK-022",
+      "title": "@areal/ui 组件自己拥有外观：页面只给布局类，不传 style，CSS 不选 data-slot",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "must",
+      "textSha256": "9fa7d8389c9734018deda5098ffc9c58ff8a272613c1bf3a59f9b9ab279d4922",
+      "check": "clients/gui/oxlint-plugin-areal/rules/no-restyle.ts"
+    },
+    {
+      "id": "R-CHECK-023",
+      "title": "组件合同只写需要判断的强制规则，每个包内组件合同不超过 10 条",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "must",
+      "textSha256": "5ab8342c8167a74c6216bbb602c8a889b381840d67c49d8b559e07094a1b24c2",
+      "check": "clients/gui/scripts/design-rules.mjs"
     }
   ]
 }

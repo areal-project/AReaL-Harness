@@ -37,10 +37,6 @@ exports: ["DecisionCard"]
 
 引用 [R-UI-COMMON-007](../../../README.md#共同合同)。
 
-## 规则
-
-`R-DECISIONCARD-004` 审批、问答草稿、提交锁、UNKNOWN核对和动作合法性归原ApprovalRequest/AskUserQuestion。组件提供header/body/details/feedback/footer插槽，details默认折叠且不卸载原始参数；输入法和Esc仍沿宿主处理。
-
 ## 示例
 
 [组件目录与独立实例](../../../../../renderer/design-system.html?ui-library#component-decision-card)消费同一包实现。真实服务、持久化和桌面生命周期由原专项验证。

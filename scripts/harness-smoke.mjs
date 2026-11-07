@@ -301,19 +301,42 @@ const model = createServer(async (req, res) => {
         };
       } else {
         const pages = results.map((item) => JSON.parse(item.content));
-        const result = pages.at(-1);
-        if (!result.outputClosed) {
+        const intervals = pages.filter((page) => page.processId);
+        const result = intervals.at(-1);
+        let pending;
+        const originals = [];
+        for (const interval of intervals) {
+          if (!interval.displayOmittedBytes) {
+            originals.push(interval);
+            continue;
+          }
+          const resultId = interval.rawResult?.resultId;
+          assert(resultId, "omitted output must retain a durable readback reference");
+          const chunks = pages.filter(
+            (page) => page.historicalSnapshot && page.resultId === resultId,
+          );
+          if (!chunks.at(-1)?.eof) {
+            pending = { resultId, after: chunks.at(-1)?.nextCursor ?? null };
+            break;
+          }
+          originals.push(JSON.parse(chunks.map((page) => page.text).join("")));
+        }
+        if (pending) {
+          name = "read_tool_result";
+          args = pending;
+        } else if (!result.outputClosed) {
           name = "read_process";
           args = { processId: result.processId };
         } else {
-          const stdout = pages.map((page) => page.stdout ?? "").join("");
-          const stderr = pages.map((page) => page.stderr ?? "").join("");
-          assert(stdout.startsWith("你好"));
+          const stdout = originals.map((page) => page.stdout ?? "").join("");
+          const stderr = originals.map((page) => page.stderr ?? "").join("");
+          assert.equal(stdout, "你好" + "\0".repeat(7000));
           assert.equal(Buffer.byteLength(stdout), 7006);
           assert.equal(stderr, "末尾");
           assert.equal(result.exitCode, 0);
-          assert(pages.every((page) => !page.gap && !page.truncated));
-          assert(pages.some((page) => page.returnReason === "outputLimit"));
+          assert(intervals.every((page) => !page.gap && !page.truncated));
+          assert(intervals.some((page) => page.displayOmittedBytes > 0));
+          assert.equal(result.outputReadComplete, true);
           assert.equal(result.returnReason, "completed");
           assert(results.every((page) => Buffer.byteLength(page.content) <= 16384));
         }

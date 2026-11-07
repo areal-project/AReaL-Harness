@@ -24,10 +24,6 @@ heading、directory、actions、busy、error、output插槽/显示字段。主UI
 
 正在读取、就绪、操作中、失败、输出与结果未知。宿主仅在原记录ready时启用已保存的Action。
 
-## 行为
-
-`R-WORKTREEWORKSPACE-001` 点击动作由宿主执行一次；组件只呈现。未知结果不显示为成功，也不自动重放操作。输出保留原换行并纵向滚动。
-
 ## 内容
 
 `R-WORKTREEWORKSPACE-002` 名称与路径使用实际绑定记录；不能从可见按钮推断后台执行结束。
@@ -35,10 +31,6 @@ heading、directory、actions、busy、error、output插槽/显示字段。主UI
 ## 可访问性
 
 `R-WORKTREEWORKSPACE-003` 操作必须有清楚名称和真实disabled；忙碌为status。短时错误由宿主ToastHost播报，详情保留原始结果文字。日志使用明确aria-label，长路径换行。
-
-## 规则
-
-`R-WORKTREEWORKSPACE-004` 包不读取记录、不生成请求UUID、不执行脚本。服务归属、忙碌互斥和错误保留由原适配器负责。
 
 ## 示例
 

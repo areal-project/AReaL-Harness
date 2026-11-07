@@ -2318,6 +2318,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -9005,6 +9012,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -10436,6 +10450,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -11282,6 +11303,13 @@
                     {
                       "type": "null"
                     }
+                  ]
+                },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
                   ]
                 },
                 "permissionReview": true,
@@ -14688,6 +14716,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -16707,6 +16742,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -18563,6 +18605,13 @@
                     {
                       "type": "null"
                     }
+                  ]
+                },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
                   ]
                 },
                 "permissionReview": true,
@@ -35447,6 +35496,13 @@
                       }
                     ]
                   },
+                  "parentCallId": {
+                    "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "permissionReview": true,
                   "permissionScopes": {
                     "items": true,
@@ -39184,6 +39240,13 @@
                         }
                       ]
                     },
+                    "parentCallId": {
+                      "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
                     "permissionReview": true,
                     "permissionScopes": {
                       "items": true,
@@ -41192,6 +41255,13 @@
                         {
                           "type": "null"
                         }
+                      ]
+                    },
+                    "parentCallId": {
+                      "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "permissionReview": true,
@@ -43659,6 +43729,13 @@
                                   }
                                 ]
                               },
+                              "parentCallId": {
+                                "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
                               "permissionReview": true,
                               "permissionScopes": {
                                 "items": true,
@@ -44623,6 +44700,13 @@
                                   {
                                     "type": "null"
                                   }
+                                ]
+                              },
+                              "parentCallId": {
+                                "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                                "type": [
+                                  "string",
+                                  "null"
                                 ]
                               },
                               "permissionReview": true,
@@ -47993,6 +48077,13 @@
                       }
                     ]
                   },
+                  "parentCallId": {
+                    "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "permissionReview": true,
                   "permissionScopes": {
                     "items": true,
@@ -51173,6 +51264,13 @@
                         {
                           "type": "null"
                         }
+                      ]
+                    },
+                    "parentCallId": {
+                      "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "permissionReview": true,
@@ -70689,6 +70787,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -72694,6 +72799,13 @@
                     {
                       "type": "null"
                     }
+                  ]
+                },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
                   ]
                 },
                 "permissionReview": true,
@@ -85923,6 +86035,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -87930,6 +88049,13 @@
                         {
                           "type": "null"
                         }
+                      ]
+                    },
+                    "parentCallId": {
+                      "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "permissionReview": true,
@@ -91492,6 +91618,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -93497,6 +93630,13 @@
                     {
                       "type": "null"
                     }
+                  ]
+                },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
                   ]
                 },
                 "permissionReview": true,
@@ -116561,6 +116701,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -120910,6 +121057,13 @@
                             }
                           ]
                         },
+                        "parentCallId": {
+                          "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
                         "permissionReview": true,
                         "permissionScopes": {
                           "items": true,
@@ -122181,6 +122335,13 @@
                     {
                       "type": "null"
                     }
+                  ]
+                },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
                   ]
                 },
                 "permissionReview": true,
@@ -125986,6 +126147,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -128051,6 +128219,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -129905,6 +130080,13 @@
                         {
                           "type": "null"
                         }
+                      ]
+                    },
+                    "parentCallId": {
+                      "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "permissionReview": true,
@@ -143703,6 +143885,13 @@
                       }
                     ]
                   },
+                  "parentCallId": {
+                    "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
                   "permissionReview": true,
                   "permissionScopes": {
                     "items": true,
@@ -147428,6 +147617,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -150793,6 +150989,13 @@
                             }
                           ]
                         },
+                        "parentCallId": {
+                          "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
                         "permissionReview": true,
                         "permissionScopes": {
                           "items": true,
@@ -152064,6 +152267,13 @@
                     {
                       "type": "null"
                     }
+                  ]
+                },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
                   ]
                 },
                 "permissionReview": true,
@@ -155820,6 +156030,13 @@
                     }
                   ]
                 },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "permissionReview": true,
                 "permissionScopes": {
                   "items": true,
@@ -157848,6 +158065,13 @@
                     {
                       "type": "null"
                     }
+                  ]
+                },
+                "parentCallId": {
+                  "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                  "type": [
+                    "string",
+                    "null"
                   ]
                 },
                 "permissionReview": true,
@@ -161763,6 +161987,13 @@
               }
             ]
           },
+          "parentCallId": {
+            "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "permissionReview": true,
           "permissionScopes": {
             "items": true,
@@ -163768,6 +163999,13 @@
               {
                 "type": "null"
               }
+            ]
+          },
+          "parentCallId": {
+            "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+            "type": [
+              "string",
+              "null"
             ]
           },
           "permissionReview": true,

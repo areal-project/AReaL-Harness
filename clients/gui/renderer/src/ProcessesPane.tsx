@@ -197,7 +197,12 @@ export function ProcessesPane({
   }, [selected, connected, action, project.id, thread.id]);
   const current = items.find((p) => p.id === selected);
   const disabled =
-    busy || cleanupPending || loading || !connected || !!error || !!project.pending?.length;
+    busy ||
+    cleanupPending ||
+    loading ||
+    !connected ||
+    !!error ||
+    project.pending?.some((entry: Data) => entry.params?.threadId === thread.id);
   const create = async (recover = false) => {
     if (locked.current || !connected || (!recover && (disabled || unknown || !command.trim())))
       return;

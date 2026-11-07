@@ -47,7 +47,7 @@ const { modelRef, parameters, strings } = require("./provider.cjs");
 /** @typedef {{queueRevision:number,queueItemId:string,turnId:string,itemId:string}} QueueSteer */
 /** @typedef {{snapshotId:string,evidence:Array<{evidenceRef:string,sourceTurnId:string,sourceItemId:string,sourceTurnStatus:string,text:string,range:{startUtf8:number,endUtf8:number,totalBytes:number}}>,nextCursor:string|null,complete:boolean}} SideContext */
 /** @template P @typedef {P extends {operation:'release'} ? {released:true} : {supported:false,message:string}|(P extends {operation:'acquire'} ? {supported:true,complete:boolean} : P extends {operation:'retain'} ? {supported:true,retained:boolean,revision:number,viewGeneration:string} : P extends {operation:'ensureAnchor'} ? AnchorResult : P extends {operation:'loadItem'} ? {loaded:true,itemId:string} : import('./conversation-history.cjs').HistoryPage|{data:[],complete:true,nextCursor:null})} HistoryResponse */
-/** @template P @typedef {P extends {operation:'start'} ? Created & {requestId:string,turnId?:string} : P extends {operation:'create'} ? Created & {requestId:string,turnId?:string} : P extends {operation:'close'} ? {threadId:string,requestId:string,accepted:boolean,cleanupConfirmed:boolean} : P extends {operation:'recover'} ? {confirmed:false}|{confirmed:true,requestId:string,threadId:string,turnId?:string,accepted?:boolean,cleanupConfirmed?:boolean} : P extends {operation:'context'} ? SideContext : P extends {operation:'list'} ? {data:import('./conversation-history.cjs').HistorySummary[],nextCursor?:string|null} : TurnAdmission} SideResponse */
+/** @template P @typedef {P extends {operation:'start'} ? Created & {requestId:string,turnId?:string} : P extends {operation:'create'} ? Created & {requestId:string,turnId?:string} : P extends {operation:'close'} ? {threadId:string,requestId:string,accepted:boolean,cleanupConfirmed:boolean} : P extends {operation:'recover'} ? {confirmed:false}|{confirmed:true,requestId:string,threadId?:string,turnId?:string,accepted?:boolean,cleanupConfirmed?:boolean,status?:'failed',message?:string} : P extends {operation:'context'} ? SideContext : P extends {operation:'list'} ? {data:import('./conversation-history.cjs').HistorySummary[],nextCursor?:string|null} : TurnAdmission} SideResponse */
 /** @typedef {{projectId:string,profile:ResourceRef,skill:ResourceRef&{name:string,description:string},provenance:{upstream:string,revision:string,contentDigest:string}}} PrepareCreatorResponse */
 /** @template {Name} N @template [P=Requests[N]] @typedef {N extends 'connect'|'list'|'open'|'configure'|'respond'|'steer'|'dismissRecovery' ? import('./shared.cjs').DesktopSnapshot : N extends 'history' ? HistoryResponse<P> : N extends 'create' ? Created : N extends 'fork' ? Created & {requestId:string} : N extends 'prepareCreator' ? PrepareCreatorResponse : N extends 'side' ? SideResponse<P> : N extends 'prediction' ? Prediction|null : N extends 'send' ? TurnAdmission|{threadId:string,turnId?:string} : N extends 'continue'|'editMessage' ? TurnAdmission : N extends 'stop' ? import('./desktop-control.cjs').LifecycleResult : N extends 'attachBrowser' ? {threadId:string,toolsetRevision:number,bundleId:string} : N extends 'reconcile' ? {outcomes:Record<string,import('./shared.cjs').SubmissionOutcome>} : N extends 'queue' ? P extends {requestId:string} ? SubmissionRead : import('./shared.cjs').Queue : N extends 'queueEdit' ? P extends {operation:'steer'} ? QueueSteer : import('./shared.cjs').Queue : never} Response */
 /** @param {unknown} value @returns {value is string} */
@@ -594,7 +594,10 @@ function response(name, request, value) {
       return (
         value.confirmed === false ||
         (value.confirmed === true &&
-          typeof value.threadId === "string" &&
+          (typeof value.threadId === "string" ||
+            (value.status === "failed" &&
+              typeof value.accepted === "boolean" &&
+              typeof value.message === "string")) &&
           typeof value.requestId === "string" &&
           (value.turnId === undefined || typeof value.turnId === "string") &&
           ["accepted", "cleanupConfirmed"].every(

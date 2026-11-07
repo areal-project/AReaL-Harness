@@ -250,7 +250,7 @@ macOS 系统静态代理由 GUI 可信后台适配器读取，转换成标准代
 
 `core/engine/src/delegation.rs` 是统一委派与执行投影门面，记录身份、所有权和后端引用；原 Thread/Turn 与 Workgroup 保留各自执行状态。共享作者租约（含继承权限分析者的延迟写租约）、隔离快照和交付由 Core 协调，Runtime 不选择策略。`workgroup/delivery.rs` 组合候选、调用可信验收并持久化逐项交付回执，`runtime/fs-helper/src/delivery.rs` 实现受控分块提交与条件删除。Clients 只显示统一子任务与交付投影，高级历史入口保持兼容。接口见 [统一委派](../api/core.md#agent-tools)。
 
-平台公开输入物化与清单属于外部消费端；只读目录身份、文件操作拒绝及 OS 挂载保护属于 Runtime。Core 的媒体工具生成有界派生图与动画视图，模型适配器计量最终请求字节；外部消费端不维护 Core 的模型循环。契约见[工具](../guides/tools.md)、[Runtime](../api/runtime.md)和[评测](../benchmarks/README.md)。
+平台公开输入物化与清单属于外部消费端；只读目录身份、文件操作拒绝及 OS 挂载保护属于 Runtime。Runtime 文件助手在受权读取和进程预算内生成有界派生图与动画视图，Core 登记返回的媒体并由模型适配器计量最终请求字节；外部消费端不维护 Core 的模型循环。契约见[工具](../guides/tools.md)、[Runtime](../api/runtime.md)和[评测](../benchmarks/README.md)。
 
 共享 Browser 沿用 Core 会话、审批与历史所有权，独立桌面适配器负责认证工具回调，Electron Main 拥有原生页面，Renderer 投影状态。已实现能力通过 Host 发现；所有项目共用 Main 拥有的持久 Browser Profile；Page 和控制权继续按聊天隔离。云浏览器仍未提供。契约和限制见[Browser 规格](browser.md)、[Browser API](../api/browser.md)及[所有权决策](../adr/0002-shared-browser-ownership.md)。人工独立 Frame 授权与逐 Frame 截图隐私检查也归 Main，绑定当前 Human Page，不授予 Agent 跨源权限，复用既有 ThreadBlob/MediaRef。源码实现不等于安装版或真人验收通过。
 
@@ -274,3 +274,7 @@ Cloud 接入归 Clients：桌面适配器保存远端原生 Thread 身份及加�
 电脑控制采用独立原生 Helper，Main 拥有生命周期、系统授权与停止，Core 保留准备计划、审批与历史权威。设置只发起用户明确点击的系统授权；观察与模型请求不会弹出授权。原生 AX、截图与输入结果经认证桌面通道返回，未知输入不自动重放。边界与构建见[电脑控制](../api/computer.md)。
 
 外部 LCU 是显式选择的电脑控制方式。Main 持有固定版本原始 CUA client 与每聊天 JS 会话，沿现有 computerHost 认证连接提供原始工具与原生应用授权。Core 向手动新建聊天注入完整初始化指令，产生可信调用身份，复用 MCP 结果投影与媒体持久化，并在权威 turn 结算前等待清理。旧聊天不迁移工具表；provider 切换在执行准入再次校验。LCU 不承载内置浏览器，Preview/browser_v1 的所有者保持不变。
+
+程序化工具位于 `core/engine/src/tools/program`，`tools/edit_files` 提供直接批量编辑入口，两者通过 `tools/composition` 复用原生子调用的准入、预算和结算：无宿主 I/O 的解释器仅产生调用请求，Core 沿既有入口持有权限、预算、历史和结算，Runtime 继续持有原生效果与进程生命周期；不增加 Clients 到 Runtime 的旁路。契约见[程序化工具调用](../guides/programmatic-tools.md)。
+
+原生 schema 发现复用 Core registry 投影及 Turn 内展示状态。环境发现通过有界只读 Runtime helper 完成；来源观察、重复投影、验证绑定和上下文预算审计归 Core；临时路径别名及清理归 Runtime。接口细节见[工具](../guides/tools.md)。

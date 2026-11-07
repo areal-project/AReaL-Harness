@@ -1,0 +1,11 @@
+{
+  "policy": {
+    "compactTools": true,
+    "programmaticTools": true,
+    "programmaticToolsOnly": true,
+    "programmaticDirectTools": ["edit_files"],
+    "resultViews": {
+      "repeatedObservations": true
+    }
+  }
+}

@@ -56,6 +56,17 @@ test("existing explicit IDs define a rule without a duplicate comment", () => {
   assert.equal(validateRuleDocuments(input).rules, 1);
 });
 
+test("component contracts keep at most ten must rules", () => {
+  const input = base();
+  const template = input.registry.rules[0];
+  input.registry.rules = Array.from({ length: 11 }, (_, index) => ({
+    ...template,
+    id: `R-CONTROL-${String(index + 1).padStart(3, "0")}`,
+    owner: "clients/gui/packages/ui/src/control/control.md#规则",
+  }));
+  assert.throws(() => validateRuleDocuments(input), /too many must rules.*11 > 10/);
+});
+
 for (const fixture of JSON.parse(
   await readFile(new URL("fixtures/design-rules/cases.json", import.meta.url), "utf8"),
 )) {

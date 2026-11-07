@@ -45,7 +45,7 @@ export function BrowserHostAuthStatus() {
         <>
           <p className="text-ui-caption text-foreground-subtle">{t("browserHost.pairingHelp")}</p>
           <pre className="whitespace-pre-wrap break-all select-text">
-            areal host web approve {state.requestId}
+            {t("browserHost.approveCommand", { requestId: state.requestId })}
           </pre>
           <p className="text-ui-caption text-foreground-subtle">{t("browserHost.fingerprint")}</p>
           <code className="block break-all select-text">{state.fingerprint}</code>

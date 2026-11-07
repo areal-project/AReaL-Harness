@@ -14,6 +14,7 @@ async function fixture(t, entries, read) {
   const home = await mkdtemp(join(tmpdir(), "areal-desktop-receipts-"));
   const backend = Object.assign(Object.create(CoreBackend.prototype), {
     home,
+    rustDomains: [],
     saves: new Map(),
     awaitingResponses: new Set(),
     onChange() {},
@@ -492,4 +493,93 @@ test("a rebuilt Remote control journal preserves the original interaction and op
   assert.deepEqual(f.project.pending, [other]);
   assert.equal(f.project.outcomes[original.operationId].admissionState, "accepted");
   assert.equal(f.project.outcomes[other.operationId], undefined);
+});
+
+test("conflicting side creation returns the original operation identity without another write", async (t) => {
+  const item = entry("areal/side/create", { sourceThreadId: "parent" });
+  const f = await fixture(t, [item], async () => {
+    throw new Error("must not dispatch");
+  });
+  await assert.rejects(
+    f.backend.submit(
+      f.project,
+      item.method,
+      { sourceThreadId: "parent" },
+      { requestId: randomUUID() },
+    ),
+    (error) => {
+      assert.equal(error.requestId, item.params.requestId);
+      assert.equal(error.outcome.operation.requestId, item.params.requestId);
+      assert.equal(error.outcome.kind, "unconfirmed");
+      assert.equal(error.recovery.kind, "queryOriginal");
+      return true;
+    },
+  );
+  assert.deepEqual(f.project.pending, [item]);
+  assert.equal(f.calls.length, 0);
+});
+
+for (const failed of [false, true]) {
+  test(`side manual recovery settles the original ${failed ? "failed" : "successful"} receipt through the shared journal`, async (t) => {
+    const item = entry("areal/side/create", { sourceThreadId: "parent" });
+    const f = await fixture(t, [item], async (method) => {
+      assert.equal(method, "areal/request/read");
+      return {
+        data: [
+          {
+            requestId: item.params.requestId,
+            method: item.method,
+            threadId: "child",
+            operation: {
+              requestId: item.params.requestId,
+              method: item.method,
+              target: { kind: "thread", threadId: "child" },
+            },
+            status: failed ? "failed" : "completed",
+            ...(failed
+              ? { error: { code: -32000, message: "Side creation failed" } }
+              : { result: { thread: { id: "child" }, turn: { id: "turn" } } }),
+          },
+        ],
+      };
+    });
+    f.backend.worktrees = { assertAvailable() {}, records: new Map() };
+    f.backend.worktreeAdmission = { admit: async () => {} };
+    f.backend.start = async () => f.project;
+    f.backend.refreshAfterAdmission = async () => {};
+    f.project.client.capabilities.methods = ["areal/side/start"];
+    const request = {
+      operation: "recover",
+      projectId: f.project.id,
+      method: item.method,
+      ...item.params,
+    };
+    const result = await f.backend.dispatchCommand({ name: "side", request }, {});
+    contract.validateCommandResponse("side", request, result);
+    assert.equal(result.confirmed, true);
+    assert.deepEqual(f.project.pending, []);
+    assert.equal(f.project.outcomes[item.params.requestId].status, failed ? "failed" : "completed");
+    if (failed) {
+      assert.equal(result.status, "failed");
+      assert.equal(result.accepted, true, "a failed admitted operation is not a rejection");
+      assert.match(result.message, /Side creation failed/);
+    } else {
+      assert.equal(result.threadId, "child");
+      assert.equal(result.turnId, "turn");
+    }
+    assert.equal(f.calls.length, 1);
+  });
+}
+
+test("side recovery with a different source cannot consume the original pending receipt", async (t) => {
+  const item = entry("areal/side/create", { sourceThreadId: "parent" });
+  const f = await fixture(t, [item], async () => {
+    throw new Error("must not read");
+  });
+  await assert.rejects(
+    f.backend.readSubmission(f.project, item.method, { ...item.params, sourceThreadId: "other" }),
+    /身份不匹配/,
+  );
+  assert.equal(f.calls.length, 0);
+  assert.deepEqual(f.project.pending, [item]);
 });

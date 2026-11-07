@@ -1786,3 +1786,126 @@ impl tokio_tungstenite::tungstenite::handshake::server::Callback for OwnerHeader
         Ok(response)
     }
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn permission_boundary_rejects_submit_only_create_and_configure() {
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        f.grant("a", |grant| grant["capabilities"] = json!(["observe", "submit"]));
+        for options in [
+            json!({"permissionPreset":"fullAccess"}),
+            json!({"permissionPreset":"autoReview"}),
+            json!({"preapprovedTools":["exec_command"]}),
+        ] {
+            for method in ["session.control", "session.create"] {
+                let params = if method == "session.control" {
+                    json!({"threadId":"thread","operation":"configure","expectedRevision":1,"values":{"options":options}})
+                } else if options.get("preapprovedTools").is_some() {
+                    json!({"options":options})
+                } else { options.clone() };
+                let request = f.request(method, params, Some(&uuid::Uuid::new_v4().to_string()));
+                let mut session = f.session("a");
+                session.gui_write = true;
+                let (_, result) = Fixture::dispatch(session, request).await.unwrap();
+                assert_eq!(result.unwrap_err().to_string(), "FORBIDDEN", "{method}: {options}");
+                assert!(f.calls.try_recv().is_err());
+            }
+        }
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn project_list_boundary_preserves_local_visibility_and_remote_grants() {
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let f = Fixture::new().await;
+            let request = json!({"id":"projects","method":"project.list","params":{}});
+            let local = Session::local(f.host.clone(), "local-projects".into()).unwrap();
+            let (_, result) = Fixture::dispatch(local, request.clone()).await.unwrap();
+            let result = result.unwrap();
+            assert_eq!(
+                result["projects"].as_array().unwrap().len(),
+                f.host.slots.borrow().len()
+            );
+            assert_eq!(result["projects"][0]["projectId"], "project");
+            let (_, result) = Fixture::dispatch(f.session("a"), request.clone())
+                .await
+                .unwrap();
+            assert_eq!(result.unwrap()["projects"][0]["projectId"], f.alias);
+            f.grant("a", |grant| grant["projectIds"] = json!([]));
+            let (_, result) = Fixture::dispatch(f.session("a"), request).await.unwrap();
+            assert_eq!(result.unwrap()["projects"], json!([]));
+        })
+        .await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn configure_permission_boundary_requires_core_full_access_and_preserves_authorized_options()
+{
+    tokio::task::LocalSet::new().run_until(async {
+        let mut f = Fixture::new().await;
+        for (options, full_access) in [
+            (json!({"permissionPreset":"fullAccess"}), false),
+            (json!({"permissionPreset":"fullAccess"}), true),
+            (json!({"permissionPreset":"autoReview"}), false),
+            (json!({"preapprovedTools":["exec_command"]}), false),
+            (json!({"permissionPreset":"ask","preapprovedTools":[]}), false),
+        ] {
+            let session = Session::local(f.host.clone(), "local-options".into()).unwrap();
+            let mut request = f.request("session.control", json!({"threadId":"thread","operation":"configure","expectedRevision":1,"values":{"options":options}}), Some(&uuid::Uuid::new_v4().to_string()));
+            request["context"] = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            let configuring = Fixture::dispatch(session, request);
+            let mut caps = Fixture::capabilities();
+            caps["features"]["permissionPresets"] = json!(true);
+            caps["features"]["permissionFullAccess"] = json!(full_access);
+            f.call("areal/capabilities").await.reply(caps);
+            if options["permissionPreset"] == "fullAccess" && !full_access {
+                assert_eq!(configuring.await.unwrap().1.unwrap_err().to_string(), "CORE_INCOMPATIBLE");
+                assert!(f.calls.try_recv().is_err());
+                continue;
+            }
+            f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            f.call("areal/thread/inspect").await.reply(json!({"configuration":{"revision":1,"options":{}}}));
+            let configure = f.call("areal/thread/configure").await;
+            for (key, value) in options.as_object().unwrap() {
+                assert_eq!(configure.request["params"]["options"][key], *value);
+            }
+            configure.reply(json!({"revision":2}));
+            assert_eq!(configuring.await.unwrap().1.unwrap()["admissionState"], "accepted");
+        }
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn submit_only_browser_cannot_bypass_approval_with_nested_creation_options() {
+    use ring::signature::KeyPair;
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        let random = ring::rand::SystemRandom::new();
+        let algorithm = &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING;
+        let pkcs8 = ring::signature::EcdsaKeyPair::generate_pkcs8(algorithm, &random).unwrap();
+        let key = ring::signature::EcdsaKeyPair::from_pkcs8(algorithm, pkcs8.as_ref(), &random).unwrap();
+        let device = uuid::Uuid::new_v4().to_string();
+        storage::write(&f.host.home.join("host/browser-grants.json"), &json!({"version":1,"devices":[{
+            "deviceId":device,"publicKey":base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(key.public_key().as_ref()),"scopes":["observe","submit"]
+        }]})).unwrap();
+        let _listener = crate::server::loopback::bind(f.host.clone(), true).await.unwrap();
+        for options in [
+            json!({"permissionPreset":"autoReview"}),
+            json!({"preapprovedTools":["exec_command"]}),
+            json!({"permissionPreset":"fullAccess"}),
+        ] {
+            for method in ["session.create", "session.control"] {
+                let params = if method == "session.create" { json!({"options":options}) }
+                    else { json!({"threadId":"thread","operation":"configure","expectedRevision":1,"values":{"options":options}}) };
+                let mut request = f.request(method, params, Some(&uuid::Uuid::new_v4().to_string()));
+                request["context"] = json!({"projectId":"project","gatewayGeneration":f.host.identity.generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+                let session = Session::browser(f.host.clone(), "browser-options".into(), device.clone()).unwrap();
+                assert!(session.authorize(Some("project"), "submit").is_ok());
+                let (_, result) = Fixture::dispatch(session, request).await.unwrap();
+                assert_eq!(result.unwrap_err().to_string(), "FORBIDDEN", "{method}: {options}");
+            }
+        }
+        assert!(f.calls.is_empty());
+    }).await;
+}

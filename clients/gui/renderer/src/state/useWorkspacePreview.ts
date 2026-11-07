@@ -43,6 +43,12 @@ export function useWorkspacePreview(
       if (openingBrowser.current === owner) return;
       openingBrowser.current = owner;
       if (!isBrowserTab(panel)) rememberPanelTrigger();
+      if (!threadId || services.capabilities?.native === false) {
+        workspacePanels.exposePanel();
+        workspacePanels.selectPanel("预览");
+        openingBrowser.current = null;
+        return;
+      }
       try {
         let value = await browserWorkspace.request({ operation: "state" });
         if (previewOwner.current !== owner) return;

@@ -100,7 +100,8 @@ function SidebarTaskRow({ row }: { row: Data }) {
             projectId: row.owner.id,
             group: placementKey(taskPlacement(row)),
           },
-          row.owner.pending.length > 0 || !!search,
+          row.owner.pending.some((entry: Data) => entry.params?.threadId === row.summary.id) ||
+            !!search,
         ),
         ...sidebarDrag.target(`thread:${sidebarKey(row)}`, (source, edge) =>
           source.type === "thread"
@@ -165,7 +166,7 @@ function SidebarTaskRow({ row }: { row: Data }) {
         </>
       }
       archived={row.archived}
-      disabled={row.owner.pending.length > 0}
+      disabled={row.owner.pending.some((entry: Data) => entry.params?.threadId === row.summary.id)}
       onSelect={() => void open(row.owner.id, row.summary.id)}
       onRename={() =>
         startRename(

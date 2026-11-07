@@ -67,6 +67,16 @@ pub(super) fn manage_capability(method: &str, params: &Value) -> Option<&'static
 const EVENTS: &[&str] = &["turn/started", "turn/completed", "item/completed"];
 const FAILURE_WINDOW: Duration = Duration::from_secs(600);
 
+// 退出由请求惰性发现，首次退出不能从“现在”开始退避而必然拒绝恢复。
+// 仍记录这次失败；窗口内后续退出按 1、2、4…秒退避，启动失败也计入上限。
+fn record_exit(failures: &RefCell<Vec<Instant>>) -> bool {
+    let mut failures = failures.borrow_mut();
+    failures.retain(|time| time.elapsed() < FAILURE_WINDOW);
+    let first = failures.is_empty();
+    failures.push(Instant::now());
+    first
+}
+
 #[derive(Default)]
 pub(super) struct Supervisor {
     running: RefCell<Option<Rc<Workbench>>>,
@@ -708,6 +718,7 @@ impl Supervisor {
                 | "pages.resource"
                 | "desktop.command"
         ) {
+            self.resume_backend(host).await?;
             let backend = self
                 .backend
                 .running
@@ -809,14 +820,18 @@ impl Supervisor {
         let _guard = self.starting.lock().await;
         ensure!(!self.stopped.get(), "CAPABILITY_UNAVAILABLE");
         let current = self.running.borrow().clone();
+        let mut first_exit = false;
         if let Some(workbench) = current {
             if !workbench.closed() {
                 return Ok(workbench);
             }
+            workbench.stop().await?;
             self.running.borrow_mut().take();
-            self.failures.borrow_mut().push(Instant::now());
+            first_exit = record_exit(&self.failures);
         }
-        self.admit()?;
+        if !first_exit {
+            self.admit()?;
+        }
         match self.start(host).await {
             Ok(workbench) => {
                 let workbench = Rc::new(workbench);
@@ -838,7 +853,8 @@ impl Supervisor {
             return Ok(());
         };
         ensure!(failures.len() < 5, "CAPABILITY_UNAVAILABLE");
-        let delay = restart_delay(failures.len() as u32 - 1).context("CAPABILITY_UNAVAILABLE")?;
+        let delay = restart_delay((failures.len() as u32).saturating_sub(2))
+            .context("CAPABILITY_UNAVAILABLE")?;
         ensure!(last.elapsed() >= delay, "CAPABILITY_UNAVAILABLE");
         Ok(())
     }
@@ -1112,6 +1128,7 @@ pub(super) async fn backend_read(
         )?,
         _ => bail!("methodNotFound"),
     };
+    host.gateway.workbench.resume_backend(host).await?;
     ensure!(
         host.gateway.workbench.backend.source.borrow().as_deref() == params["sourceId"].as_str(),
         "FORBIDDEN"
@@ -1186,6 +1203,7 @@ impl Backend {
         let _guard = self.starting.lock().await;
         ensure!(!self.stopped.get(), "CAPABILITY_UNAVAILABLE");
         let current = self.running.borrow().clone();
+        let mut first_exit = false;
         if let Some(workbench) = current {
             if !workbench.closed() {
                 let owner = self.ownership.borrow().clone();
@@ -1199,9 +1217,11 @@ impl Backend {
             workbench.stop().await?;
             host.schedules.connections.workbench_close_terminals();
             self.running.borrow_mut().take();
-            self.failures.borrow_mut().push(Instant::now());
+            first_exit = record_exit(&self.failures);
         }
-        self.admit()?;
+        if !first_exit {
+            self.admit()?;
+        }
         let source = launch.source_id.clone();
         let record = input.clone();
         let rust_domains: Vec<String> = serde_json::from_value(
@@ -1297,7 +1317,8 @@ impl Backend {
             return Ok(());
         };
         ensure!(failures.len() < 5, "CAPABILITY_UNAVAILABLE");
-        let delay = restart_delay(failures.len() as u32 - 1).context("CAPABILITY_UNAVAILABLE")?;
+        let delay = restart_delay((failures.len() as u32).saturating_sub(2))
+            .context("CAPABILITY_UNAVAILABLE")?;
         ensure!(last.elapsed() >= delay, "CAPABILITY_UNAVAILABLE");
         Ok(())
     }
@@ -1807,6 +1828,192 @@ async fn core_request(host: &Host, params: &Value) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // 只替代 Node 业务装配，恢复、来源校验、启动记录和子进程监督均走正式路径。
+    fn resumable_host(root: &Path) -> (Rc<Host>, Ensure, String) {
+        let mut host = crate::server::schedules::tests::fixture(root);
+        host.bin = root.join("target/debug");
+        for path in [
+            host.bin.clone(),
+            root.join("services/workbench/src"),
+            root.join("clients/gui/app"),
+            root.join("profile"),
+            root.join("data"),
+        ] {
+            areal_local_service::storage::private_dir(&path).unwrap();
+        }
+        std::fs::write(host.bin.join("areal"), "").unwrap();
+        std::fs::write(root.join("services/workbench/package.json"), "{}").unwrap();
+        std::fs::write(root.join("services/workbench/src/backend-main.cjs"), r#"
+            const readline = require('node:readline');
+            const out = frame => console.log(JSON.stringify({version:1,...frame}));
+            readline.createInterface({input:process.stdin}).on('line', line => {
+                const frame = JSON.parse(line);
+                if (frame.method === 'backend.start') {
+                    out({event:'ready',methods:['providers.read','pages.command'],service:{pid:process.pid,identity:String(process.pid)}});
+                } else if (frame.params.crash) {
+                    process.exit(1);
+                } else {
+                    out({id:frame.id,result:frame.method === 'providers.read' ? {models:[]} : {pid:process.pid}});
+                }
+            });
+        "#).unwrap();
+        let source = crate::migration::Source {
+            profile: root.join("profile"),
+            core_home: root.join("data"),
+            legacy_service_home: root.join("legacy"),
+        };
+        host.migration
+            .attach(source.clone(), "fixture", None)
+            .unwrap();
+        let imported = host.migration.import(serde_json::from_value(json!({
+            "requestId": uuid::Uuid::new_v4().to_string(), "expectedGeneration":host.identity.generation, "source":source,
+        })).unwrap(), "fixture", &[], &host.journal).unwrap();
+        assert_eq!(imported["kind"], "ready");
+        let source_id = host
+            .migration
+            .navigation_source_id(&source.profile)
+            .unwrap()
+            .unwrap();
+        let input = Ensure {
+            profile: source.profile.clone(),
+            options: json!({
+                "binary":host.bin.join("areal"),"home":source.core_home,"guiProfile":source.profile,"hostHome":host.home,"userHome":root,
+            }),
+        };
+        (Rc::new(host), input, source_id)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cold_backend_read_and_managed_requests_resume_the_persisted_launch() {
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let root = root.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            host.gateway.workbench.ensure_backend(&host, input).await.unwrap();
+            host.gateway.workbench.stop_backend().await;
+            assert!(launch_record(&host).is_file());
+            // 重建 Host，只有磁盘记录，不保留 Supervisor 内存状态。
+            let (host, _, _) = resumable_host(&root);
+            let request = json!({"method":"providers.read","params":{"sourceId":source,"operation":"list"}});
+            assert_eq!(backend_read(&host, "web:fixture", &request).await.unwrap(), json!({"models":[]}));
+            let mut forged = request.clone();
+            forged["params"]["sourceId"] = json!("forged");
+            assert_eq!(backend_read(&host, "web:fixture", &forged).await.unwrap_err().to_string(), "FORBIDDEN");
+            host.gateway.workbench.stop_backend().await;
+            let (host, _, _) = resumable_host(&root);
+            let page = host.gateway.workbench.request(&host, "pages.command", json!({}), json!({"connection":"fixture"})).await.unwrap();
+            assert!(page["pid"].as_u64().is_some());
+            host.gateway.workbench.stop_backend().await;
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn backend_first_exit_recovers_immediately_but_repeated_exits_back_off() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let (host, input, _) = resumable_host(&root.path().canonicalize().unwrap());
+                let original = host
+                    .gateway
+                    .workbench
+                    .ensure_backend(&host, input)
+                    .await
+                    .unwrap();
+                let request = |params| {
+                    host.gateway.workbench.request(
+                        &host,
+                        "pages.command",
+                        params,
+                        json!({"connection":"fixture"}),
+                    )
+                };
+                assert!(request(json!({"crash":true})).await.is_err());
+                let restarted = request(json!({})).await.unwrap();
+                assert_ne!(restarted["pid"], original["pid"]);
+                assert!(request(json!({"crash":true})).await.is_err());
+                let error = request(json!({})).await.unwrap_err();
+                assert_eq!(
+                    error.downcast_ref::<crate::wire::Error>().unwrap().code,
+                    "CAPABILITY_UNAVAILABLE"
+                );
+                tokio::time::sleep(Duration::from_millis(1100)).await;
+                assert!(request(json!({})).await.is_ok());
+                host.gateway.workbench.stop_backend().await;
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn analytics_first_exit_recovers_immediately_but_repeated_exits_back_off() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let (host, _, _) = resumable_host(&root.path().canonicalize().unwrap());
+                std::fs::write(
+                    root.path().join("services/workbench/src/main.cjs"),
+                    r#"
+                const out = frame => console.log(JSON.stringify({version:1,...frame}));
+                out({event:'ready',methods:['analytics.read']});
+                require('node:readline').createInterface({input:process.stdin}).on('line', line => {
+                    const frame = JSON.parse(line);
+                    if (frame.params.crash) process.exit(1);
+                    out({id:frame.id,result:{pid:process.pid}});
+                });
+            "#,
+                )
+                .unwrap();
+                let request = |params| {
+                    host.gateway
+                        .workbench
+                        .request(&host, "analytics.read", params, json!({}))
+                };
+                let original = request(json!({})).await.unwrap();
+                assert!(request(json!({"crash":true})).await.is_err());
+                let restarted = request(json!({})).await.unwrap();
+                assert_ne!(restarted, original);
+                assert!(request(json!({"crash":true})).await.is_err());
+                assert_eq!(
+                    request(json!({})).await.unwrap_err().to_string(),
+                    "CAPABILITY_UNAVAILABLE"
+                );
+                tokio::time::sleep(Duration::from_millis(1100)).await;
+                assert!(request(json!({})).await.is_ok());
+                host.gateway.workbench.stop().await;
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let host = Rc::new(crate::server::schedules::tests::fixture(root.path()));
+            let app = root.path().join("app");
+            let package = app.join("node_modules/@areal/workbench-service");
+            std::fs::create_dir_all(&package).unwrap();
+            std::fs::write(app.join("package.json"), "{}").unwrap();
+            std::fs::write(package.join("package.json"), r#"{"exports":{"./desktop/core/service-main.cjs":"./main.cjs"}}"#).unwrap();
+            std::fs::write(package.join("main.cjs"), r#"
+                exports.createMainDesktop = async () => ({backend:{cloud:{}},adapter:{
+                    listen:async () => ({pid:process.pid,identity:'fixture'}),
+                    executeRemote:async (_, params) => { throw Object.assign(Error('private detail'), {code:params.code}); }
+                },close:async () => {}});
+            "#).unwrap();
+            let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+                .map(|path| path.join("node")).find(|path| path.is_file()).unwrap();
+            let runner = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/workbench/src/backend-main.cjs");
+            let data = root.path().join("data");
+            std::fs::create_dir(&data).unwrap();
+            let (backend, _) = Workbench::start_with(&runtime, &runner, root.path(), reverse(&host), Some(("backend.start", json!({
+                "appRoot":app,"options":{"home":data,"userHome":root.path()},
+            })))).await.unwrap();
+            for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
+                assert_eq!(backend.request("providers.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
+            }
+            backend.stop().await.unwrap();
+        }).await;
+    }
 
     #[tokio::test(flavor = "current_thread")]
     async fn pages_bind_authenticated_connection_and_forward_disconnect_without_a_journal() {

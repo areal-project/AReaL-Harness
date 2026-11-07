@@ -469,6 +469,13 @@ function SideChatEditor({
         setError("首问结果仍待核对；不会自动重复提交。");
         return;
       }
+      if (result.status === "failed" || result.accepted === false) {
+        localStorage.removeItem(pendingKey);
+        setPendingId("");
+        setError(result.message || "首问未完成，输入已保留。");
+        return;
+      }
+      if (!result.threadId) return;
       workspace.acceptCreated(token, result.threadId, generation);
       localStorage.removeItem(selectionKey);
       localStorage.removeItem(anchorKey);
