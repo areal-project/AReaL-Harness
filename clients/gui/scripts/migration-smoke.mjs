@@ -754,14 +754,26 @@ try {
       ),
     );
     // 同一 GUI 来源上的 manage.command 走 Host journal；desktop.command 本身不入该 journal。
+    const anchorCreateId = randomUUID();
+    await writeFile(
+      join(scratch, "terminal-anchor-create-intent.json"),
+      JSON.stringify({ projectId: pid, requestId: anchorCreateId }, null, 2),
+    );
+    const anchor = await call("create", { projectId: pid, requestId: anchorCreateId });
+    assert.ok(anchor.threadId && anchor.threadId !== tid, "scheduled task uses a separate anchor");
     const taskCreateId = randomUUID();
     await writeFile(
       join(scratch, "terminal-task-create-intent.json"),
-      JSON.stringify({ projectId: pid, threadId: tid, requestId: taskCreateId }, null, 2),
+      JSON.stringify(
+        { projectId: pid, threadId: anchor.threadId, sourceThreadId: tid, requestId: taskCreateId },
+        null,
+        2,
+      ),
     );
     const task = await call("manage", {
       projectId: pid,
-      threadId: tid,
+      threadId: anchor.threadId,
+      sourceThreadId: tid,
       requestId: taskCreateId,
       operation: "taskCreate",
       mode: "scheduled",
