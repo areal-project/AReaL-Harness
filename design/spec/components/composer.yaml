@@ -2,6 +2,8 @@ id: composer
 name: 输入框
 status: draft
 purpose: 用户写下任务并提交给 Agent；运行中继续输入会进入队列，停止也在这里。
+terms:
+  普通对话: 用户直接发起的主对话；任务、目标和侧边对话不算
 why: 输入区与对话正文同一字号与节奏，读起来像对话的下一行，视线在读和写之间不换尺度。
 
 anatomy:
@@ -33,7 +35,7 @@ states:
   - dragover: 拖入文件时整体出现放置提示
   - sending: 提交中；保留草稿直到确认受理
   - running: 草稿为空时主按钮为“停止”（普通对话为“暂停执行”）；有草稿时主按钮为“发送”，提交进入队列
-  - blocked: 不能发送时，原因以可见文字关联到主按钮，不只靠悬停提示
+  - blocked: 草稿为空时只禁用主按钮；其他不能发送的原因（没有模型、后台不可用）以可见文字关联到主按钮，不只靠悬停提示
   - error: 错误以一行可关闭的反馈出现在输入框正上方，草稿保留；不用顶部弹窗
 
 tokens:
@@ -62,7 +64,7 @@ accessibility:
   - 中文输入法组合期间按回车不提交
 
 accessible-names:
-  editor: 与占位文字相同
+  editor: 与占位文字相同；可以是多行文本框或可编辑区域
   primary-action:
     draft: 发送
     running-empty: 停止；普通对话为“暂停执行”
@@ -70,6 +72,14 @@ accessible-names:
   add-menu: 添加功能与 Skills
   permission-menu: 更改权限
   context-meter: 上下文占用
+  permission-label: 当前权限模式名，见示例数据
+  effort-label: 当前思考强度名，见示例数据
+  queue-region: 待发送消息
+  queue-item:
+    send-now: 立即发送 {内容}
+    delete: 删除排队消息 {内容}
+    reorder: 调整顺序 {内容}
+    more: 更多操作 {内容}
   model-menu: 选择模型
   effort-menu: 选择思考强度
   placeholder: 描述要做的事，@ 引用文件，/ 查看命令

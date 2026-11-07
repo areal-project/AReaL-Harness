@@ -2,12 +2,16 @@
   "$comment": "输入框试点的示例数据。界面不连后台，按 screen 与 state 渲染；agent 段描述示例后台对操作的回应。",
   "project": {
     "name": "示例项目",
-    "greeting": "要做点什么？",
     "model": "示例模型",
     "context": {
       "usedTokens": 18000,
       "windowTokens": 200000
-    }
+    },
+    "permission": {
+      "home": "帮我审批",
+      "thread": "自动执行"
+    },
+    "effort": "默认"
   },
   "conversations": {
     "thread-idle": {

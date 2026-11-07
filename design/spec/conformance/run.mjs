@@ -37,8 +37,15 @@ const expect = (locator) => ({
   toBeDisabled: () => until(`${locator} disabled`, () => locator.first().isDisabled()),
   toContainText: (text) =>
     until(`${locator} to contain "${text}"`, async () => (await locator.first().textContent()).includes(text)),
+  // 输入框可以是 textarea，也可以是可编辑区域；两种都按可见内容比较。
   toHaveText: (text) =>
-    until(`${locator} to have "${text}"`, async () => (await locator.first().textContent()).trim() === text),
+    until(`${locator} to have "${text}"`, async () => {
+      const element = locator.first();
+      const value = await element.evaluate((node) =>
+        "value" in node ? node.value : node.textContent,
+      );
+      return value.trim() === text;
+    }),
 });
 const browser = await playwright.chromium.launch({
   ...(process.argv.includes("--browser") ? { executablePath: arg("--browser") } : {}),
