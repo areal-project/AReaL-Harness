@@ -4,9 +4,9 @@
   --slash-selected: color-mix(in srgb, var(--color-foreground) 5.5%, transparent);
   display: flex;
   flex-direction: column;
-  margin-bottom: 8px;
-  padding: 4px;
-  border: 1px solid var(--slash-border);
+  margin-bottom: var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2);
+  border: var(--border-width-default) solid var(--slash-border);
   border-radius: var(--radius-overlay);
   background: var(--slash-surface);
   color: var(--color-foreground);
@@ -45,14 +45,14 @@
 }
 .slash-command-row,
 .slash-command-empty {
-  padding: 5px 8px;
+  padding: 5px var(--spacing-inline);
   border-radius: var(--radius-choice);
   text-align: left;
 }
 .slash-command-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   width: 100%;
   white-space: nowrap;
 }
@@ -62,12 +62,12 @@
 .slash-command-icon {
   display: flex;
   flex: 0 0 16px;
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
 }
 .slash-command-icon svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
 }
 .slash-command-label {
   flex: 0 1 auto;

@@ -14,8 +14,8 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 18px 12px 14px;
-  border-right: 1px solid var(--color-border);
+  padding: 18px calc(var(--spacing-inline) * 3 / 2) 14px;
+  border-right: var(--border-width-default) solid var(--color-border);
   background: var(--color-sidebar, var(--color-background));
 }
 .plugin-center-sidebar-title {
@@ -81,15 +81,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 28px;
+  gap: var(--spacing-section);
+  margin-bottom: calc(var(--spacing-inline) * 7 / 2);
 }
 .plugin-center h1 {
   font-size: var(--text-ui-display);
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.025em;
-  margin: 0 0 8px;
+  margin: 0 0 var(--spacing-inline);
 }
 .plugin-center-header p,
 .plugin-detail-header p {
@@ -101,18 +101,18 @@
 .plugin-center-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   flex-shrink: 0;
 }
 .plugin-center-toolbar .plugin-center-search {
   width: 200px;
 }
 .plugin-center-toolbar button {
-  min-height: 32px;
+  min-height: var(--spacing-control-lg);
   font-size: var(--text-ui-sm);
 }
 .plugin-center .settings-segmented-tabs {
-  margin-bottom: 24px;
+  margin-bottom: var(--spacing-section);
 }
 .plugin-market-group {
   margin: 26px 0 34px;
@@ -121,21 +121,21 @@
   font-size: var(--text-ui-base);
   line-height: 1.5;
   font-weight: 600;
-  margin: 0 0 12px;
+  margin: 0 0 calc(var(--spacing-inline) * 3 / 2);
 }
 .plugin-catalog-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 24px;
+  gap: var(--spacing-inline) var(--spacing-section);
 }
 .plugin-catalog-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
   min-width: 0;
   min-height: 72px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-border);
+  padding: calc(var(--spacing-inline) * 3 / 2) 0;
+  border-bottom: var(--border-width-default) solid var(--color-border);
 }
 .plugin-row-info {
   min-width: 0;
@@ -188,8 +188,8 @@
   color: var(--color-foreground-subtle);
   background: transparent;
   padding: 7px;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: var(--spacing-control-lg);
+  min-height: var(--spacing-control-lg);
   font-size: var(--text-ui-caption);
   border-radius: var(--radius-compact);
 }
@@ -216,7 +216,7 @@
   height: 17px;
 }
 .plugin-compact-list {
-  margin-top: 20px;
+  margin-top: calc(var(--spacing-inline) * 5 / 2);
 }
 .plugin-market-info {
   min-width: 0;
@@ -236,7 +236,7 @@
 }
 .plugin-breadcrumb button {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-inline);
   align-items: center;
   background: transparent;
   border: 0;
@@ -268,18 +268,18 @@
 .plugin-detail-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .plugin-detail-actions button {
   font-size: var(--text-ui-sm);
 }
 .plugin-detail-body {
-  gap: 24px;
+  gap: var(--spacing-section);
 }
 .plugin-metadata {
   display: grid;
   grid-template-columns: 130px minmax(0, 1fr);
-  gap: 10px 20px;
+  gap: 10px calc(var(--spacing-inline) * 5 / 2);
   margin: 22px 0;
   font-size: var(--text-ui-sm);
 }
@@ -294,10 +294,10 @@
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .plugin-detail-page section {
-  margin: 24px 0;
+  margin: var(--spacing-section) 0;
 }
 .plugin-detail-page section h3,
 .plugin-detail-page section > strong {
@@ -317,7 +317,7 @@
   flex-wrap: wrap;
 }
 .plugin-detail-page section ul {
-  padding-left: 20px;
+  padding-left: calc(var(--spacing-inline) * 5 / 2);
 }
 .plugin-detail-page li {
   margin: 9px 0;
@@ -344,7 +344,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .plugin-usage-examples button {
   white-space: normal;
@@ -353,13 +353,13 @@
   height: auto;
 }
 .plugin-skills {
-  margin-top: 28px;
+  margin-top: calc(var(--spacing-inline) * 7 / 2);
 }
 .plugin-skills-toolbar {
   display: flex;
-  gap: 12px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-inline);
 }
 .plugin-skills-toolbar h2 {
   flex: 1;
@@ -393,7 +393,8 @@
     width: 185px;
   }
   .plugin-center-content {
-    padding: 28px 28px 48px;
+    padding: calc(var(--spacing-inline) * 7 / 2) calc(var(--spacing-inline) * 7 / 2)
+      calc(var(--spacing-field) * 3);
   }
   .plugin-center-header {
     align-items: flex-start;
@@ -415,10 +416,10 @@
   }
   .plugin-center-sidebar-title {
     font-size: var(--text-ui-caption);
-    padding-left: 8px;
+    padding-left: var(--spacing-inline);
   }
   .plugin-center-content {
-    padding: 24px 18px 40px;
+    padding: var(--spacing-section) 18px calc(var(--spacing-inline) * 5);
   }
   .plugin-catalog-grid {
     grid-template-columns: 1fr;
@@ -433,7 +434,7 @@
 
 .plugin-center-header .plugin-management-context {
   font-size: var(--text-ui-caption);
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-inline);
   overflow-wrap: anywhere;
 }
 
@@ -456,7 +457,7 @@
   margin-top: 0;
 }
 .plugin-skills-header {
-  margin-bottom: 32px;
+  margin-bottom: calc(var(--spacing-field) * 2);
 }
 .plugin-skills-header .plugin-center-toolbar > :first-child {
   width: 200px;
@@ -465,7 +466,7 @@
   font-size: var(--text-ui-sm);
 }
 .plugin-skill-section-heading {
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width-default) solid var(--color-border);
   padding-bottom: 10px;
 }
 .plugin-skill-section-heading h2 {
@@ -474,25 +475,25 @@
   font-weight: 500;
 }
 .plugin-skill-section-heading small {
-  margin-left: 6px;
+  margin-left: calc(var(--spacing-inline) * 3 / 4);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-fine);
   font-weight: 400;
 }
 .plugin-skill-section {
-  margin-top: 12px;
+  margin-top: calc(var(--spacing-inline) * 3 / 2);
 }
 .plugin-skills-workspace .plugin-catalog-grid {
-  gap: 6px 30px;
+  gap: calc(var(--spacing-inline) * 3 / 4) 30px;
 }
 .plugin-skills-workspace .plugin-catalog-row {
   min-height: 60px;
-  padding: 8px 4px;
-  gap: 12px;
+  padding: var(--spacing-inline) calc(var(--spacing-inline) / 2);
+  gap: calc(var(--spacing-inline) * 3 / 2);
   border-bottom: 0;
 }
 .plugin-skills-workspace .plugin-row-info {
-  gap: 12px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
 }
 .plugin-skills-workspace .plugin-row-info strong {
   display: block;
@@ -507,8 +508,8 @@
   line-height: 1.6;
 }
 .plugin-skills-workspace .plugin-skill-icon {
-  width: 28px;
-  height: 28px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   border-radius: var(--radius-inset);
   background: var(--color-sidebar, var(--color-hover));
 }
@@ -522,9 +523,9 @@
 }
 .plugin-skills-more {
   display: block;
-  min-height: 32px;
-  margin: 12px 0 0;
-  padding: 6px 4px;
+  min-height: var(--spacing-control-lg);
+  margin: calc(var(--spacing-inline) * 3 / 2) 0 0;
+  padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) / 2);
   border: 0;
   border-radius: var(--radius-inline);
   background: transparent;
@@ -537,15 +538,15 @@
   background: var(--color-hover);
 }
 .plugin-skills-more:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: 2px;
+  outline: calc(var(--border-width-default) * 2) solid var(--color-ring);
+  outline-offset: calc(var(--border-width-default) * 2);
 }
 .plugin-skill-source-tabs {
   margin-top: 30px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  padding: 3px 2px;
+  padding: 3px calc(var(--spacing-inline) / 4);
 }
 .plugin-skill-source-tabs::-webkit-scrollbar {
   display: none;
@@ -557,13 +558,13 @@
   flex-wrap: nowrap;
   max-width: none;
   width: max-content;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .plugin-skill-source-tabs [data-slot="tabs-trigger"] {
   font-size: var(--text-ui-fine);
 }
 .plugin-skill-empty {
-  margin: 20px 4px;
+  margin: calc(var(--spacing-inline) * 5 / 2) calc(var(--spacing-inline) / 2);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }
@@ -584,12 +585,12 @@
 .plugin-detail-header {
   align-items: center;
   gap: 14px;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--spacing-section);
+  border-bottom: var(--border-width-default) solid var(--color-border);
 }
 .plugin-detail-header > .plugin-resource-icon {
-  width: 48px;
-  height: 48px;
+  width: calc(var(--spacing-field) * 3);
+  height: calc(var(--spacing-field) * 3);
   border-radius: var(--radius-control);
 }
 .plugin-detail-header > .plugin-resource-icon svg {
@@ -614,18 +615,18 @@
   gap: 0;
 }
 .plugin-detail-body > .plugin-long-description {
-  margin: 0 0 24px;
+  margin: 0 0 var(--spacing-section);
 }
 .plugin-detail-page .plugin-status-panel {
-  margin: 0 0 24px;
-  padding: 20px;
-  border: 1px solid var(--color-border);
+  margin: 0 0 var(--spacing-section);
+  padding: calc(var(--spacing-inline) * 5 / 2);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-control);
 }
 .plugin-detail-page .plugin-status-panel h2 {
   font-size: var(--text-ui-base);
   font-weight: 600;
-  margin: 0 0 8px;
+  margin: 0 0 var(--spacing-inline);
 }
 .plugin-status-description,
 .plugin-detail-setting-row p,
@@ -641,8 +642,8 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 14px 20px;
-  border-top: 1px solid var(--color-border);
+  gap: 14px calc(var(--spacing-inline) * 5 / 2);
+  border-top: var(--border-width-default) solid var(--color-border);
   padding-top: 18px;
   margin-top: 18px;
 }
@@ -675,14 +676,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: calc(var(--spacing-inline) * 5 / 2);
   padding: 22px 0;
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .plugin-detail-setting-row h3,
 .plugin-detail-resources h3,
 .plugin-trust-review h3 {
-  margin: 0 0 6px;
+  margin: 0 0 calc(var(--spacing-inline) * 3 / 4);
   font-size: var(--text-ui-base);
   font-weight: 600;
 }
@@ -690,8 +691,8 @@
   min-width: 0;
 }
 .plugin-trust-review {
-  border-top: 1px solid var(--color-border);
-  margin-top: 20px;
+  border-top: var(--border-width-default) solid var(--color-border);
+  margin-top: calc(var(--spacing-inline) * 5 / 2);
   padding-top: 18px;
 }
 .plugin-trust-review p {
@@ -704,7 +705,7 @@
   overflow-wrap: anywhere;
 }
 .plugin-detail-page .plugin-metadata {
-  margin: 16px 0;
+  margin: var(--spacing-field) 0;
   line-height: 1.65;
 }
 .plugin-scope-field {
@@ -712,27 +713,27 @@
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
-  margin-top: 16px;
+  margin-top: var(--spacing-field);
 }
 .plugin-scope-field .resource-scope {
   width: auto;
 }
 .plugin-scope-settings {
-  padding-bottom: 24px;
+  padding-bottom: var(--spacing-section);
 }
 .plugin-scope-settings p {
-  margin: 12px 0;
+  margin: calc(var(--spacing-inline) * 3 / 2) 0;
   line-height: 1.6;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }
 .plugin-detail-page .plugin-detail-resources {
   margin: 0;
-  padding: 24px 0;
-  border-top: 1px solid var(--color-border);
+  padding: var(--spacing-section) 0;
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .plugin-detail-resources .settings-group-card {
-  margin-top: 16px;
+  margin-top: var(--spacing-field);
 }
 .plugin-detail-page .plugin-component-list {
   list-style: none;
@@ -741,7 +742,7 @@
 }
 .plugin-detail-page .plugin-component-list li {
   margin: 0;
-  padding: 12px 0;
+  padding: calc(var(--spacing-inline) * 3 / 2) 0;
 }
 .plugin-detail-resources .settings-field-description p,
 .plugin-content-connection p {
@@ -756,32 +757,32 @@
   margin: 3px 0;
 }
 .plugin-source-details {
-  padding-bottom: 24px;
+  padding-bottom: var(--spacing-section);
 }
 .plugin-detail-page .settings-disclosure {
   margin-top: 18px;
 }
 .plugin-detail-page .plugin-apps-hub {
   margin: 0;
-  padding: 24px 0;
-  border-top: 1px solid var(--color-border);
+  padding: var(--spacing-section) 0;
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .plugin-apps-hub > div:first-child {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: var(--spacing-field);
+  margin-bottom: var(--spacing-field);
 }
 .plugin-apps-hub > label {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--spacing-field);
   margin: 18px 0;
 }
 @media (max-width: 900px) {
   .plugin-center-content.plugin-center-detail {
-    padding: 24px;
+    padding: var(--spacing-section);
   }
   .plugin-detail-header {
     flex-wrap: wrap;

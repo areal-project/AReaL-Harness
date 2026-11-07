@@ -4,8 +4,8 @@
   z-index: 2;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: var(--spacing-inline);
+  padding: calc(var(--spacing-inline) * 3 / 2);
   background: var(--color-background);
   overflow: auto;
 }
@@ -18,7 +18,7 @@
   align-self: center;
   width: fit-content;
   max-width: 100%;
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   line-height: 0;
 }
 .browser-region-image-wrap img {
@@ -34,18 +34,18 @@
 .browser-region-selection {
   position: absolute;
   box-sizing: border-box;
-  border: 2px solid var(--color-foreground);
+  border: calc(var(--border-width-default) * 2) solid var(--color-foreground);
   background: color-mix(in srgb, var(--color-foreground) 16%, transparent);
   pointer-events: none;
 }
 .browser-region-annotation label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
 }
 .browser-region-coordinates {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-inline);
   flex-wrap: wrap;
 }
 .browser-region-coordinates label {
@@ -56,7 +56,7 @@
 }
 .browser-region-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-inline);
   flex-wrap: wrap;
 }
 
@@ -85,14 +85,14 @@
 .browser-annotation-dock {
   position: absolute;
   z-index: 5;
-  bottom: 16px;
+  bottom: var(--spacing-field);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 5px;
   padding: 5px;
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-panel);
   background: var(--color-popover);
   box-shadow: var(--shadow-overlay);
@@ -110,10 +110,10 @@
   position: absolute;
   z-index: 5;
   bottom: 65px;
-  left: 8px;
-  right: 8px;
+  left: var(--spacing-inline);
+  right: var(--spacing-inline);
   width: fit-content;
-  max-width: calc(100% - 16px);
+  max-width: calc(100% - var(--icon-size-control));
   margin: auto;
   padding: 5px 9px;
   border-radius: var(--radius-compact-row);
@@ -124,20 +124,20 @@
 }
 .browser-annotation-coordinate-panel {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  right: 8px;
+  top: var(--spacing-inline);
+  left: var(--spacing-inline);
+  right: var(--spacing-inline);
   z-index: 6;
   padding: 7px;
   border-radius: var(--radius-attachment);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   background: var(--color-popover);
   font-size: var(--text-ui-xs);
 }
 .browser-annotation-attachments {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   font-size: var(--text-ui-caption);
   color: var(--color-foreground-subtle);
 }
@@ -147,8 +147,8 @@
 .browser-annotation-attachment-card {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  border-top: 1px solid var(--color-border);
+  gap: var(--spacing-inline);
+  border-top: var(--border-width-default) solid var(--color-border);
   padding: 10px 0;
 }
 .browser-annotation-attachment-copy {
@@ -166,9 +166,9 @@
 .browser-annotation-attachment-card textarea {
   width: 100%;
   min-height: 50px;
-  padding: 6px;
+  padding: calc(var(--spacing-inline) * 3 / 4);
   border-radius: var(--radius-compact);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   background: var(--color-background);
   font-size: var(--text-ui-sm);
 }

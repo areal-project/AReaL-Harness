@@ -535,8 +535,8 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-  min-height: 32px;
-  min-width: 32px;
+  min-height: var(--spacing-control-lg);
+  min-width: var(--spacing-control-lg);
   border: 3px solid transparent;
   border-radius: var(--radius-pill);
   background: var(--color-border);
@@ -864,8 +864,8 @@ body {
   background: var(--color-secondary);
 }
 .areal-update-trigger:focus-visible {
-  outline: 2px solid var(--color-brand);
-  outline-offset: 2px;
+  outline: calc(var(--border-width-default) * 2) solid var(--color-brand);
+  outline-offset: calc(var(--border-width-default) * 2);
 }
 .areal-update-trigger[data-state="available"] {
   color: var(--color-brand);
@@ -895,8 +895,8 @@ body {
 }
 .areal-update-panel {
   width: 304px;
-  max-width: min(304px, calc(100vw - 24px), var(--available-width));
-  padding: 16px;
+  max-width: min(304px, calc(100vw - var(--spacing-control-sm)), var(--available-width));
+  padding: var(--spacing-field);
   gap: 14px;
 }
 .areal-update-progress > span {
@@ -930,8 +930,8 @@ body {
 .areal-update-floating {
   display: none;
   position: fixed;
-  left: 12px;
-  bottom: 16px;
+  left: calc(var(--spacing-inline) * 3 / 2);
+  bottom: var(--spacing-field);
   z-index: var(--layer-popover);
 }
 /* Application choice also controls Tailwind consumers and native-like controls. */

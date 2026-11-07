@@ -19,7 +19,7 @@
 .composer-model-trigger {
   max-width: 220px;
   min-width: 0;
-  min-height: 28px;
+  min-height: var(--spacing-control);
   height: auto;
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   gap: calc(var(--spacing-inline) / 2);
@@ -46,12 +46,12 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
 }
 .composer-model-menu .composer-model-browser {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
-  gap: 8px;
+  gap: var(--spacing-inline);
   min-width: 0;
 }
 .composer-model-menu .composer-provider-list,
@@ -66,15 +66,15 @@
   justify-content: flex-start;
   align-items: stretch;
   width: 100%;
-  padding: 0 8px 0 0;
-  border-right: 1px solid var(--color-border);
+  padding: 0 var(--spacing-inline) 0 0;
+  border-right: var(--border-width-default) solid var(--color-border);
   border-radius: 0;
   background: transparent;
 }
 .composer-model-menu .composer-provider-option,
 .composer-model-option {
-  min-height: 32px;
-  padding: 6px 8px;
+  min-height: var(--spacing-control-lg);
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   border-radius: var(--radius-choice);
   text-align: left;
   font-size: var(--text-ui-base);
@@ -94,7 +94,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   width: 100%;
   cursor: pointer;
 }
@@ -102,8 +102,8 @@
   background: var(--color-hover);
 }
 .composer-model-option:has(input:focus-visible) {
-  outline: 2px solid var(--color-brand);
-  outline-offset: -2px;
+  outline: calc(var(--border-width-default) * 2) solid var(--color-brand);
+  outline-offset: calc(calc(var(--border-width-default) * 2) * -1);
 }
 .composer-model-option:has(input:disabled) {
   color: var(--color-foreground-subtle);
@@ -137,8 +137,8 @@
 
 .composer-effort-menu .composer-fast-toggle {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: var(--spacing-inline);
+  left: var(--spacing-inline);
   color: var(--color-foreground-subtle);
 }
 .composer-effort-menu .composer-fast-toggle[aria-pressed="true"],
@@ -147,5 +147,5 @@
 }
 
 .composer-effort-menu .composer-effort-center[data-fast-toggle="true"] {
-  padding-inline: 28px;
+  padding-inline: calc(var(--spacing-inline) * 7 / 2);
 }

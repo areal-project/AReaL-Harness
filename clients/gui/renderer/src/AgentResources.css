@@ -6,7 +6,7 @@
 .agent-spawn-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   min-height: 0;
   color: var(--color-foreground-subtle);
   font-size: var(--text-conversation);
@@ -19,7 +19,7 @@
   justify-content: flex-start;
   height: auto;
   min-height: 0;
-  gap: 8px;
+  gap: var(--spacing-inline);
   min-width: 0;
   padding: 0;
   border: 0;
@@ -74,9 +74,9 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
-  padding: 12px 16px;
+  padding: calc(var(--spacing-inline) * 3 / 2) var(--spacing-field);
   font-size: var(--text-ui-caption);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width-default) solid var(--color-border);
 }
 .agent-conversation-heading strong {
   font-weight: 500;
@@ -92,15 +92,15 @@
 }
 .agent-conversation-pane .message-column {
   width: 100%;
-  padding: 16px;
+  padding: var(--spacing-field);
 }
 .agent-pane-notice {
-  padding: 8px 16px;
+  padding: var(--spacing-inline) var(--spacing-field);
   font-size: var(--text-ui-sm);
   color: var(--color-foreground-subtle);
 }
 .agent-pane-notice button {
-  margin-left: 8px;
+  margin-left: var(--spacing-inline);
   text-decoration: underline;
 }
 .task-resources-popup {
@@ -110,23 +110,23 @@
   background: var(--color-menu);
 }
 .task-resources {
-  padding: 8px 12px;
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
   font-size: var(--text-ui-caption);
 }
 .task-resources-section {
   padding: 11px 0;
 }
 .task-resources-section + .task-resources-section {
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .task-resources-heading {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-inline);
   align-items: center;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
   font-weight: 400;
-  padding: 0 8px 7px;
+  padding: 0 var(--spacing-inline) 7px;
   min-height: 25px;
   margin: 0;
 }
@@ -140,7 +140,7 @@
   display: flex;
   align-items: center;
   gap: 11px;
-  padding: 8px;
+  padding: var(--spacing-inline);
   text-align: left;
   border-radius: var(--radius-compact);
   font: inherit;
@@ -257,7 +257,7 @@
 .areal-task-context .task-resources-section {
   padding-block: var(--spacing-inline);
   border-top: 0;
-  border-bottom: 1px solid var(--color-border-subtle, var(--color-border));
+  border-bottom: var(--border-width-default) solid var(--color-border-subtle, var(--color-border));
 }
 .areal-task-context .task-resources-section:last-child {
   border-bottom: 0;
@@ -272,11 +272,11 @@
 }
 .areal-task-context .task-resource-note {
   margin: 0;
-  padding-block: 4px;
+  padding-block: calc(var(--spacing-inline) / 2);
 }
 .areal-task-context .diff-count {
   flex: none;
-  gap: 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   font-size: var(--text-ui-base);
   font-variant-numeric: tabular-nums;
 }
@@ -289,7 +289,7 @@
 .task-resources-footer {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px 8px 8px;
-  border-top: 1px solid var(--color-border-subtle, var(--color-border));
+  gap: calc(var(--spacing-inline) / 2);
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline) var(--spacing-inline);
+  border-top: var(--border-width-default) solid var(--color-border-subtle, var(--color-border));
 }

@@ -1,18 +1,18 @@
 .usage-dashboard {
-  padding-bottom: 24px;
+  padding-bottom: var(--spacing-section);
   font-variant-numeric: tabular-nums;
 }
 .usage-heading,
 .usage-section-heading {
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: calc(var(--spacing-inline) * 5 / 2);
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: calc(var(--spacing-inline) * 5 / 2);
 }
 .usage-heading p,
 .usage-section-heading p {
-  margin: 6px 0 0;
+  margin: calc(var(--spacing-inline) * 3 / 4) 0 0;
   font-size: var(--text-ui-caption);
 }
 .usage-local {
@@ -23,23 +23,23 @@
   color: var(--color-foreground-subtle);
 }
 .usage-local > span {
-  width: 6px;
-  height: 6px;
+  width: calc(var(--spacing-inline) * 3 / 4);
+  height: calc(var(--spacing-inline) * 3 / 4);
   background: #47a582;
   border-radius: 50%;
 }
 .usage-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
+  margin-bottom: var(--spacing-section);
 }
 .usage-metric {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  padding: 18px 20px;
-  border: 1px solid var(--color-border);
+  padding: 18px calc(var(--spacing-inline) * 5 / 2);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-overlay);
   background: var(--color-settings-card, var(--color-card));
   min-width: 0;
@@ -62,20 +62,20 @@
   color: var(--color-foreground-subtle);
 }
 .usage-section {
-  padding: 24px;
-  border: 1px solid var(--color-border);
+  padding: var(--spacing-section);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-overlay);
   background: var(--color-settings-card, var(--color-card));
-  margin-bottom: 20px;
+  margin-bottom: calc(var(--spacing-inline) * 5 / 2);
 }
 .usage-section-heading h2 {
   font-size: var(--text-ui-lg);
 }
 .usage-section-heading select,
 .usage-section-heading input {
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-compact-row);
-  padding: 6px 9px;
+  padding: calc(var(--spacing-inline) * 3 / 4) 9px;
   background: transparent;
   font-size: var(--text-ui-sm);
   max-width: 180px;
@@ -87,7 +87,7 @@
 }
 .usage-calendar {
   display: flex;
-  gap: 8px;
+  gap: var(--spacing-inline);
   min-width: 680px;
 }
 .usage-weekdays {
@@ -96,7 +96,7 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding-top: 24px;
+  padding-top: var(--spacing-section);
   font-size: var(--text-fixed-metadata);
   color: var(--color-foreground-subtle);
 }
@@ -117,7 +117,7 @@
   font-size: var(--text-fixed-metadata);
   white-space: nowrap;
   color: var(--color-foreground-subtle);
-  width: 12px;
+  width: calc(var(--spacing-inline) * 3 / 2);
 }
 .usage-cell {
   display: block;
@@ -128,13 +128,13 @@
   border: 0;
 }
 button.usage-cell:hover {
-  outline: 1px solid var(--color-foreground-subtle);
-  outline-offset: 1px;
+  outline: var(--border-width-default) solid var(--color-foreground-subtle);
+  outline-offset: var(--border-width-default);
 }
 button.usage-cell[aria-pressed="true"],
 button.usage-cell:focus-visible {
-  outline: 2px solid var(--color-foreground);
-  outline-offset: 2px;
+  outline: calc(var(--border-width-default) * 2) solid var(--color-foreground);
+  outline-offset: calc(var(--border-width-default) * 2);
 }
 .usage-level-0 {
   background: var(--color-hover);
@@ -167,10 +167,10 @@ button.usage-cell:focus-visible {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   font-size: var(--text-fixed-metadata);
   color: var(--color-foreground-subtle);
-  margin: 12px 0 20px;
+  margin: calc(var(--spacing-inline) * 3 / 2) 0 calc(var(--spacing-inline) * 5 / 2);
 }
 .usage-legend .usage-cell {
   width: 11px;
@@ -178,14 +178,14 @@ button.usage-cell:focus-visible {
 .usage-day {
   display: grid;
   grid-template-columns: 1.3fr 1fr 1fr 1fr;
-  gap: 12px;
-  border-top: 1px solid var(--color-border);
+  gap: calc(var(--spacing-inline) * 3 / 2);
+  border-top: var(--border-width-default) solid var(--color-border);
   padding-top: 18px;
 }
 .usage-day > div {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
 }
 .usage-day strong {
   font-size: var(--text-ui-caption);
@@ -205,16 +205,16 @@ button.usage-cell:focus-visible {
 .usage-ranking li {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--spacing-field);
   padding: 14px 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--border-width-default) solid var(--color-border);
 }
 .usage-ranking li:last-child {
   border-bottom: 0;
 }
 .usage-rank {
   color: var(--color-foreground-subtle);
-  width: 20px;
+  width: var(--spacing-control-xs);
   font-size: var(--text-ui-sm);
 }
 .usage-skill-name {
@@ -227,8 +227,8 @@ button.usage-cell:focus-visible {
   overflow-wrap: anywhere;
 }
 .usage-rank-track {
-  margin-top: 8px;
-  height: 4px;
+  margin-top: var(--spacing-inline);
+  height: calc(var(--spacing-inline) / 2);
   width: 100%;
   max-width: 440px;
   border-radius: 3px;
@@ -250,7 +250,7 @@ button.usage-cell:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 28px 12px;
+  padding: calc(var(--spacing-inline) * 7 / 2) calc(var(--spacing-inline) * 3 / 2);
   gap: 10px;
   color: var(--color-foreground-subtle);
   text-align: center;
@@ -273,10 +273,10 @@ button.usage-cell:focus-visible {
 }
 .usage-error {
   color: var(--color-destructive);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-inset);
-  padding: 12px;
-  margin-bottom: 16px;
+  padding: calc(var(--spacing-inline) * 3 / 2);
+  margin-bottom: var(--spacing-field);
 }
 @media (max-width: 1100px) {
   .usage-metric {

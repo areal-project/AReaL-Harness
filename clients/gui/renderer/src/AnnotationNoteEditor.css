@@ -16,11 +16,11 @@
 .browser-annotation-editor {
   position: absolute;
   z-index: 4;
-  width: min(268px, calc(100% - 8px));
-  padding: 4px 5px;
+  width: min(268px, calc(100% - var(--spacing-inline)));
+  padding: calc(var(--spacing-inline) / 2) 5px;
   background: var(--color-popover);
   color: var(--color-foreground);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: 22px;
   box-shadow: var(--shadow-overlay);
 }
@@ -42,7 +42,7 @@
 .browser-annotation-editor-row > textarea {
   flex: 1;
   min-width: 0;
-  height: 28px;
+  height: var(--spacing-control);
   min-height: 0;
   padding: 5px 1px;
   resize: none;
@@ -71,12 +71,12 @@
   opacity: 0.5;
 }
 .browser-annotation-editor.expanded {
-  padding: 8px;
+  padding: var(--spacing-inline);
   border-radius: var(--radius-card);
 }
 .browser-annotation-editor.expanded > small {
   display: block;
-  padding: 6px 0;
+  padding: calc(var(--spacing-inline) * 3 / 4) 0;
   font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
 }
@@ -85,8 +85,8 @@
   width: 100%;
   height: 75px;
   min-height: 0;
-  padding: 8px;
-  border: 1px solid var(--color-border);
+  padding: var(--spacing-inline);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-compact-row);
   background: var(--color-background);
   font-size: var(--text-ui-sm);

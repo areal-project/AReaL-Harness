@@ -106,7 +106,7 @@
   align-items: center;
   gap: var(--spacing-field);
   padding: var(--spacing-field) var(--spacing-panel);
-  border: 1px solid color-mix(in srgb, var(--color-brand) 45%, transparent);
+  border: var(--border-width-default) solid color-mix(in srgb, var(--color-brand) 45%, transparent);
   border-radius: var(--radius-panel);
   background: color-mix(in srgb, var(--color-brand) 10%, var(--color-background));
 }
@@ -149,7 +149,7 @@
   color: var(--remote-muted);
 }
 .remote-device-row + .remote-device-row {
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .remote-device-text strong {
   overflow: hidden;
@@ -209,7 +209,7 @@
   content: "";
   width: var(--spacing-field);
   margin-left: calc(var(--spacing-inline) / 2);
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .remote-steps [data-current="true"] {
   color: var(--color-foreground);
@@ -282,7 +282,7 @@
 }
 .remote-fingerprint code span {
   padding: calc(var(--spacing-inline) / 2) 0;
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-button);
   background: var(--color-surface);
 }
@@ -320,7 +320,7 @@
   align-items: start;
   gap: var(--spacing-inline);
   padding: var(--spacing-inline) var(--spacing-field);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-control);
   cursor: pointer;
 }
@@ -346,32 +346,32 @@
   gap: var(--spacing-field);
 }
 .remote-grant input:focus-visible {
-  outline: 2px solid var(--color-foreground);
-  outline-offset: 2px;
+  outline: calc(var(--border-width-default) * 2) solid var(--color-foreground);
+  outline-offset: calc(var(--border-width-default) * 2);
 }
 
 /* 高级网络设置：保留 Tailscale / 组织 HTTPS 的确认流程，只在展开后出现。 */
 .remote-network-settings {
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .remote-network-settings > summary {
   display: flex;
-  gap: 12px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
   align-items: center;
-  padding: 20px 0;
+  padding: calc(var(--spacing-inline) * 5 / 2) 0;
   font-weight: 550;
 }
 .remote-network-content {
   display: grid;
-  gap: 32px;
-  padding: 12px 0 24px;
+  gap: calc(var(--spacing-field) * 2);
+  padding: calc(var(--spacing-inline) * 3 / 2) 0 var(--spacing-section);
 }
 .remote-network-content fieldset {
   min-width: 0;
 }
 .remote-network-content fieldset > label {
   display: block;
-  margin: 12px 0;
+  margin: calc(var(--spacing-inline) * 3 / 2) 0;
 }
 .remote-network-content p {
   line-height: 1.55;
@@ -386,13 +386,13 @@
 .remote-settings summary:focus-visible,
 .remote-settings input:focus-visible,
 .remote-settings select:focus-visible {
-  outline: 2px solid var(--color-foreground);
+  outline: calc(var(--border-width-default) * 2) solid var(--color-foreground);
   outline-offset: 3px;
 }
 .remote-settings select {
   min-height: var(--spacing-control-form);
-  padding: 6px 10px;
-  border: 1px solid var(--color-border);
+  padding: calc(var(--spacing-inline) * 3 / 4) 10px;
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-inset);
   background: var(--color-background);
   color: var(--color-foreground);
@@ -468,7 +468,7 @@
 .remote-connection-details {
   order: 2;
   margin-top: var(--spacing-section);
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width-default) solid var(--color-border);
   padding-top: var(--spacing-field);
 }
 .remote-access-panel .remote-error {
