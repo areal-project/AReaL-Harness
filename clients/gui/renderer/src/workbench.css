@@ -17,10 +17,13 @@ button:disabled {
   cursor: default;
   opacity: var(--opacity-disabled);
 }
-/* 程序移入焦点的标题（tabindex=-1）只为读屏定位，不画焦点环。 */
-:focus-visible:where(:not([tabindex="-1"])) {
-  outline: var(--focus-width) solid var(--color-brand);
-  outline-offset: var(--focus-offset);
+/* 程序移入焦点的标题（tabindex=-1）只为读屏定位，不画焦点环。
+ * 放进 base 层：组件自己声明的焦点样式（菜单项高亮、输入框描边）优先于这条兜底。 */
+@layer base {
+  :focus-visible:where(:not([tabindex="-1"])) {
+    outline: var(--focus-width) solid var(--color-brand);
+    outline-offset: var(--focus-offset);
+  }
 }
 @media (forced-colors: active) {
   :focus-visible {
@@ -792,8 +795,7 @@ button.composer-project:hover > svg,
 .areal-core-settings textarea,
 .interaction input,
 .interaction select,
-.utility-content textarea,
-.rename-dialog input {
+.utility-content textarea {
   border: 1px solid var(--color-border);
   background: var(--color-input);
   padding: 7px 9px;
@@ -916,24 +918,6 @@ button.composer-project:hover > svg,
   z-index: var(--layer-dialog);
   display: grid;
   place-items: center;
-}
-.rename-dialog {
-  background: var(--color-background);
-  padding: 24px;
-  width: 360px;
-  border-radius: var(--radius-card);
-  border: 1px solid var(--color-border);
-}
-.rename-dialog h2 {
-  font-size: var(--text-ui-xl);
-  margin-bottom: 15px;
-}
-.rename-dialog input {
-  width: 100%;
-  margin-bottom: 16px;
-}
-.rename-dialog .utility-actions {
-  justify-content: flex-end;
 }
 @keyframes pulse {
   50% {

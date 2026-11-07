@@ -171,4 +171,8 @@
   --color-slider-selected-track: #ffffff80;
   --color-annotation-selected-foreground: #91c5ff;
   --color-annotation-selected-surface: #4795ff26;
+  --color-tooltip: #f0f0f0;
+  --color-tooltip-foreground: #0d0d0d;
+  --color-tooltip-tag: #e6e6e6;
+  --color-tooltip-tag-foreground: #5c5c5c;
 }

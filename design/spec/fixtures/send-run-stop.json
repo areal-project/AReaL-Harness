@@ -103,6 +103,11 @@
       "screen": "home",
       "draft": "给 src/math.ts 加一个 clamp 函数"
     },
+    "home.tooltip": {
+      "screen": "home",
+      "draft": "给 src/math.ts 加一个 clamp 函数",
+      "overlay": "send-tooltip"
+    },
     "thread.idle": {
       "screen": "thread",
       "conversation": "thread-idle",
@@ -166,6 +171,24 @@
       "conversation": "thread-idle",
       "draft": "",
       "rail": true
+    },
+    "window.task-menu": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "overlay": "task-menu"
+    },
+    "window.organize-menu": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "overlay": "organize-menu"
+    },
+    "window.rename": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "overlay": "rename"
     }
   },
   "agent": {

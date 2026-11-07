@@ -7,7 +7,6 @@ import {
   ArchiveChatIcon as Archive,
   PinChatIcon as Pin,
   MoreOptionsIcon as MoreHorizontal,
-  EditMessageIcon as PenLine,
 } from "../../icons.js";
 import { cn } from "../../lib/utils.js";
 import { TaskTitleOverflowText } from "../task-title-overflow/task-title-overflow.js";
@@ -175,17 +174,14 @@ export const MemoTaskItem = memo(function TaskListItem({
             />
             <DropdownMenuContent align="start">
               <DropdownMenuItem onClick={onRename} disabled={disabled}>
-                <PenLine />
                 重命名
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onPin} disabled={disabled}>
-                <Pin />
                 {pinned ? "取消置顶" : "置顶"}
               </DropdownMenuItem>
               {organizationActions}
               {onArchive && (
                 <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
-                  <Archive />
                   归档
                 </DropdownMenuItem>
               )}

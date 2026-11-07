@@ -28,9 +28,12 @@ fixtures: [send-run-stop]
 states:
   - empty: 输入框为空
   - draft: 输入框有文字
+  - tooltip: 同 draft，鼠标停在“发送”上，上方出现提示“发送”和快捷键 Enter（见 tooltip）
 
 references:
   - state: empty
     themes: [light, dark]
   - state: draft
+    themes: [light, dark]
+  - state: tooltip
     themes: [light, dark]

@@ -45,6 +45,14 @@ export const PALETTE_REFERENCES = {
   "workbench-slider-selected-track": "#ffffff80",
   "workbench-annotation-selected-foreground": "#91c5ff",
   "workbench-annotation-selected-surface": "#4795ff26",
+  "tooltip-surface-light": "#f0f0f0",
+  "tooltip-surface-dark": "#2b2b2b",
+  "tooltip-text-light": "#0d0d0d",
+  "tooltip-text-dark": "#f8f8f8",
+  "tooltip-tag-light": "#e6e6e6",
+  "tooltip-tag-dark": "#363636",
+  "tooltip-tag-text-light": "#5c5c5c",
+  "tooltip-tag-text-dark": "#adadad",
 } as const;
 
 export function derivePaletteVariables(p: Palette, dark: boolean, readableForeground: (background: string) => string, minimumPercent: (foreground: string, background: string, percent: number, contrast: number) => number): Record<string, string> {
@@ -125,6 +133,10 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
   const interactionSliderSelectedTrack = PALETTE_REFERENCES["workbench-slider-selected-track"];
   const textAnnotationSelected = PALETTE_REFERENCES["workbench-annotation-selected-foreground"];
   const surfaceAnnotationSelected = PALETTE_REFERENCES["workbench-annotation-selected-surface"];
+  const surfaceTooltip = (dark ? PALETTE_REFERENCES["tooltip-surface-dark"] : PALETTE_REFERENCES["tooltip-surface-light"]);
+  const textTooltip = (dark ? PALETTE_REFERENCES["tooltip-text-dark"] : PALETTE_REFERENCES["tooltip-text-light"]);
+  const surfaceTooltipTag = (dark ? PALETTE_REFERENCES["tooltip-tag-dark"] : PALETTE_REFERENCES["tooltip-tag-light"]);
+  const textTooltipTag = (dark ? PALETTE_REFERENCES["tooltip-tag-text-dark"] : PALETTE_REFERENCES["tooltip-tag-text-light"]);
   const interactionPressed = interactionSelected;
   return {
     "--color-surface-elevated": surfaceElevatedOklab,
@@ -215,5 +227,9 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
     "--color-slider-selected-track": interactionSliderSelectedTrack,
     "--color-annotation-selected-foreground": textAnnotationSelected,
     "--color-annotation-selected-surface": surfaceAnnotationSelected,
+    "--color-tooltip": surfaceTooltip,
+    "--color-tooltip-foreground": textTooltip,
+    "--color-tooltip-tag": surfaceTooltipTag,
+    "--color-tooltip-tag-foreground": textTooltipTag,
   };
 }

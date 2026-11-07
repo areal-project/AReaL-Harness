@@ -308,6 +308,14 @@
 | `workbench-slider-selected-track` | `#ffffff80` | renderer/src/workbench.css .composer-slider-track i[data-selected=true]；D2 精确迁移，值来自原字面量债务。 |
 | `workbench-annotation-selected-foreground` | `#91c5ff` | renderer/src/workbench.css .browser-annotation-trigger[aria-pressed="true"]；D2 精确迁移，值来自原字面量债务。 |
 | `workbench-annotation-selected-surface` | `#4795ff26` | renderer/src/workbench.css .browser-annotation-trigger[aria-pressed="true"]；D2 精确迁移，值来自原字面量债务。 |
+| `tooltip-surface-light` | `#f0f0f0` | renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `tooltip-surface-dark` | `#2b2b2b` | renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `tooltip-text-light` | `#0d0d0d` | renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `tooltip-text-dark` | `#f8f8f8` | renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `tooltip-tag-light` | `#e6e6e6` | renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `tooltip-tag-dark` | `#363636` | renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `tooltip-tag-text-light` | `#5c5c5c` | renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `tooltip-tag-text-dark` | `#adadad` | renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
 
 | 语义角色 | 派生公式 | 默认主题覆盖 | 用途与来源 |
 | --- | --- | --- | --- |
@@ -388,6 +396,10 @@
 | `surface-diff-added` | `{"mix":{"from":{"reference":"workbench-diff-count-added"},"into":{"reference":"transparent"},"percent":"diff-surface-opacity","space":"oklab"}}` | `[]` | Pin Summary 与文件变更胶囊的新增行柔化底色。 design/archive/research/codex-design-system-review.md#阶段一 |
 | `surface-diff-removed` | `{"mix":{"from":{"reference":"workbench-diff-count-removed"},"into":{"reference":"transparent"},"percent":"diff-surface-opacity","space":"oklab"}}` | `[]` | Pin Summary 与文件变更胶囊的删除行柔化底色。 design/archive/research/codex-design-system-review.md#阶段一 |
 | `interaction-focus-ring-soft` | `{"mix":{"from":{"input":"accent"},"into":{"reference":"transparent"},"percent":"focus-ring-soft-opacity","space":"oklab"}}` | `[]` | Composer 与表单控件聚焦态的柔和强调色光晕。 design/archive/research/codex-design-system-review.md#阶段一 |
+| `surface-tooltip` | `{"mode":{"light":{"reference":"tooltip-surface-light"},"dark":{"reference":"tooltip-surface-dark"}}}` | `[]` | 提示的实色浮层底。 renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `text-tooltip` | `{"mode":{"light":{"reference":"tooltip-text-light"},"dark":{"reference":"tooltip-text-dark"}}}` | `[]` | 提示文字。 renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `surface-tooltip-tag` | `{"mode":{"light":{"reference":"tooltip-tag-light"},"dark":{"reference":"tooltip-tag-dark"}}}` | `[]` | 提示里快捷键标签的底。 renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
+| `text-tooltip-tag` | `{"mode":{"light":{"reference":"tooltip-tag-text-light"},"dark":{"reference":"tooltip-tag-text-dark"}}}` | `[]` | 提示里快捷键标签的文字。 renderer/src/styles.css .theme-areal-light/.theme-areal-dark；浮层规格迁入 Token 源，值不变。 |
 
 ## 调色板（由主题输入派生，用户可在外观设置中覆盖）
 
@@ -481,3 +493,7 @@
 | `--color-slider-selected-track` | component · 输入器推理档位中已选轨道的半透明填充。 | interaction-slider-selected-track 仅引用对应内容或控件语义角色，保留原值与浏览器色彩空间。 | `#ffffff80` | `#ffffff80` |
 | `--color-annotation-selected-foreground` | component · 浏览器标注模式已选入口的文字色。 | text-annotation-selected 仅引用对应内容或控件语义角色，保留原值与浏览器色彩空间。 | `#91c5ff` | `#91c5ff` |
 | `--color-annotation-selected-surface` | component · 浏览器标注模式已选入口的透明背景色。 | surface-annotation-selected 仅引用对应内容或控件语义角色，保留原值与浏览器色彩空间。 | `#4795ff26` | `#4795ff26` |
+| `--color-tooltip` | component · 提示的实色浮层底。 | surface-tooltip 仅引用对应语义角色，保留原值。 | `#f0f0f0` | `#2b2b2b` |
+| `--color-tooltip-foreground` | component · 提示文字。 | text-tooltip 仅引用对应语义角色，保留原值。 | `#0d0d0d` | `#f8f8f8` |
+| `--color-tooltip-tag` | component · 提示里快捷键标签的底。 | surface-tooltip-tag 仅引用对应语义角色，保留原值。 | `#e6e6e6` | `#363636` |
+| `--color-tooltip-tag-foreground` | component · 提示里快捷键标签的文字。 | text-tooltip-tag 仅引用对应语义角色，保留原值。 | `#5c5c5c` | `#adadad` |

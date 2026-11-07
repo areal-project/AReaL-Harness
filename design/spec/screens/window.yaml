@@ -34,6 +34,9 @@ regions:
   - id: search
     name: 搜索任务
     contains: [task-search]
+  - id: overlays
+    name: 浮层
+    contains: [menu.task-menu, menu.organize-menu, dialog.rename]
 
 fixtures: [send-run-stop]
 
@@ -43,6 +46,9 @@ states:
   - search: 搜索打开，关键词为空，列出全部对话
   - search-query: 搜索关键词“README”
   - rail: 侧栏收起，只剩应用导航栏
+  - task-menu: 同 sidebar，当前对话行的“任务操作”菜单用鼠标刚打开，没有高亮项；这一行保持悬停样子（悬停按钮可见、标题让位）
+  - organize-menu: 同 sidebar，“侧栏整理”菜单打开，在“项目内任务排序”上按右方向键打开了子菜单，子菜单第一项“最近更新”高亮且打勾
+  - rename: 同 sidebar，从当前对话的任务菜单点了“重命名”，弹窗打开，输入框预填当前标题并已聚焦
 
 references:
   - state: sidebar
@@ -54,4 +60,10 @@ references:
   - state: search-query
     themes: [light, dark]
   - state: rail
+    themes: [light, dark]
+  - state: task-menu
+    themes: [light, dark]
+  - state: organize-menu
+    themes: [light, dark]
+  - state: rename
     themes: [light, dark]

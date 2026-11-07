@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const SHOTS = [
   "home.empty",
   "home.draft",
+  "home.tooltip",
   "thread.idle",
   "thread.running",
   "thread.queued",
@@ -20,6 +21,9 @@ const SHOTS = [
   "window.search",
   "window.search-query",
   "window.rail",
+  "window.task-menu",
+  "window.organize-menu",
+  "window.rename",
 ].flatMap((state) => ["light", "dark"].map((theme) => ({ state, theme })));
 // 本仓库防回归用 0.001；交接演练首轮另按 --threshold 0.01 计分。
 const THRESHOLD = process.argv.includes("--threshold")
@@ -93,7 +97,7 @@ for (const { state, theme } of SHOTS) {
   target.searchParams.set("theme", theme);
   await page.goto(target.href);
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1000);
   const shot = await page.screenshot({ animations: "disabled", caret: "hide" });
   const name = `${state}.${theme}.png`;
   if (write) {

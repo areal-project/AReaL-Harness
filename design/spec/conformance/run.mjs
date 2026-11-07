@@ -3,9 +3,10 @@
 import { createRequire } from "node:module";
 import { checks as decide } from "./decide.mjs";
 import { checks as navigate } from "./navigate.mjs";
+import { checks as overlays } from "./overlays.mjs";
 import { checks as sendRunStop } from "./send-run-stop.mjs";
 
-const checks = [...sendRunStop, ...decide, ...navigate];
+const checks = [...sendRunStop, ...decide, ...navigate, ...overlays];
 
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const url = process.argv.includes("--url") ? arg("--url") : undefined;
@@ -40,6 +41,8 @@ const expect = (locator) => ({
   toBeEnabled: () => until(`${locator} enabled`, () => locator.first().isEnabled()),
   toBeDisabled: () => until(`${locator} disabled`, () => locator.first().isDisabled()),
   toBeHidden: () => until(`${locator} hidden`, async () => !(await locator.first().isVisible())),
+  toBeFocused: () =>
+    until(`${locator} focused`, () => locator.first().evaluate((node) => node === document.activeElement)),
   toHaveAttribute: (name, value) =>
     until(`${locator} [${name}="${value}"]`, async () =>
       (await locator.first().getAttribute(name)) === value,

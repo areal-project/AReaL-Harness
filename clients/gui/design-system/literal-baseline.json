@@ -36,9 +36,6 @@
       "typography": 1,
       "radius": 2
     },
-    "packages/ui/src/components/dialog/dialog.tsx": {
-      "color": 1
-    },
     "packages/ui/src/components/tabs/tabs.tsx": {
       "color": 1
     },
@@ -479,13 +476,6 @@
       "occurrence": 2,
       "reason": "这是微型图表柱或热力图单元的局部几何，2px 或 3px 不用于普通控件。",
       "exitCondition": "图表布局所有者调整单元形状时复核。"
-    },
-    {
-      "file": "packages/ui/src/components/dialog/dialog.tsx",
-      "finding": "literal color class: bg-black/60",
-      "occurrence": 1,
-      "reason": "对话框遮罩固定为 60% 黑色，语义表面 Token 的混色或透明度不相同。",
-      "exitCondition": "公共 Dialog 明确遮罩 Token 后保留原 alpha 等价迁移。"
     },
     {
       "file": "packages/ui/src/components/tabs/tabs.tsx",

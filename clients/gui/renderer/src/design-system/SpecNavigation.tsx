@@ -86,9 +86,19 @@ export function SpecNavigation({
       .find(({ thread }) => "current" in thread && thread.current);
     return { projectId: thread?.project ?? "", threadId: thread?.thread.id ?? "" };
   });
-  const currentTitle = [...nav.projects.flatMap((project) => project.threads), ...nav.chats].find(
-    (thread) => thread.id === current.threadId,
-  )?.title;
+  const [titles, setTitles] = useState<Record<string, string>>({});
+  const currentTitle =
+    titles[current.threadId] ??
+    [...nav.projects.flatMap((project) => project.threads), ...nav.chats].find(
+      (thread) => thread.id === current.threadId,
+    )?.title;
+  const navigationAction = (async (name: string, request: Data) => {
+    if (name === "library" && request.operation === "renameThread") {
+      setTitles((value) => ({ ...value, [request.threadId]: request.title }));
+      return {};
+    }
+    return (action as (name: string, request: Data) => Promise<Data>)(name, request);
+  }) as Action;
   const { projects, library } = useMemo(() => {
     const projects = [
       ...nav.projects.map((project) => owner(project.id, project.name, project.threads)),
@@ -104,7 +114,7 @@ export function SpecNavigation({
       ].map(([projectId, thread]) => [
         `${projectId}:${thread.id}`,
         {
-          title: thread.title,
+          title: titles[thread.id] ?? thread.title,
           pinned: pinned.has(`${projectId}:${thread.id}`),
           unread: !!thread.unread,
         },
@@ -116,7 +126,7 @@ export function SpecNavigation({
       threads,
     };
     return { projects, library };
-  }, [nav]);
+  }, [nav, titles]);
   const summaries = conversationCatalog(projects, library);
   const workspaceNavigation = (
     <WorkspaceNavigation
@@ -188,7 +198,7 @@ export function SpecNavigation({
         workspaceNavigation={workspaceNavigation}
         applicationRail={applicationRail}
         navigation={navigation}
-        action={action}
+        action={navigationAction}
         requestNavigation={((run: () => void) => run()) as never}
         choose={async () => {}}
         newTask={() => {}}

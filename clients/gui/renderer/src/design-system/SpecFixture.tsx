@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import fixture from "../../../../../design/spec/fixtures/send-run-stop.json";
 import { Composer } from "../Composer.js";
 import { ConversationDraftEmptyState } from "../ConversationDraftEmptyState.js";
@@ -122,6 +122,68 @@ function project(turns: Data[], queue: string[], decision?: Decision): Data {
   };
 }
 
+const currentTitle = fixture.navigation.projects
+  .flatMap((project) => project.threads)
+  .find((thread) => thread.id === threadId)?.title;
+// 示例状态里“某个浮层已打开”：按读屏名找到触发控件，像用户一样打开。
+const OVERLAYS: Record<string, Array<{ name: string; how: "press" | "hover" | "right" }>> = {
+  "task-menu": [{ name: `任务操作 ${currentTitle}`, how: "press" }],
+  "organize-menu": [
+    { name: "侧栏整理", how: "press" },
+    { name: "项目内任务排序", how: "right" },
+  ],
+  rename: [
+    { name: `任务操作 ${currentTitle}`, how: "press" },
+    { name: "重命名", how: "press" },
+  ],
+  "send-tooltip": [{ name: "发送", how: "hover" }],
+};
+
+async function openOverlay(steps: (typeof OVERLAYS)[string], cancelled: () => boolean) {
+  for (const step of steps) {
+    let target: HTMLElement | undefined;
+    for (let attempt = 0; attempt < 100 && !target && !cancelled(); attempt++) {
+      target = [...document.querySelectorAll<HTMLElement>("button, [role=menuitem]")].find(
+        (element) =>
+          element.getAttribute("aria-label") === step.name ||
+          (element.getAttribute("role") === "menuitem" &&
+            element.textContent?.trim() === step.name),
+      );
+      if (!target) await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    if (!target) return;
+    const element = target;
+    const pointer = (type: string) =>
+      element.dispatchEvent(
+        new (type.startsWith("pointer") ? PointerEvent : MouseEvent)(type, {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          detail: 1,
+          pointerType: "mouse",
+        } as PointerEventInit),
+      );
+    if (step.how === "press")
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"])
+        pointer(type);
+    if (step.how === "hover")
+      for (const type of [
+        "pointerover",
+        "pointerenter",
+        "mouseover",
+        "mouseenter",
+        "pointermove",
+        "mousemove",
+      ])
+        pointer(type);
+    if (step.how === "right") {
+      element.focus();
+      element.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  }
+}
+
 export function SpecFixture() {
   const params = new URLSearchParams(window.location.search);
   const dark = params.get("theme") === "dark";
@@ -149,6 +211,16 @@ export function SpecFixture() {
     root.classList.toggle("theme-areal-dark", dark);
     root.style.colorScheme = dark ? "dark" : "light";
   }, [dark]);
+  const overlay = "overlay" in start ? OVERLAYS[start.overlay as string] : undefined;
+  // 打开浮层要等真实控件挂载，再像用户一样操作。
+  useEffect(() => {
+    if (!overlay) return;
+    let cancelled = false;
+    void openOverlay(overlay, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [overlay]);
   const data = useMemo(() => project(turns, queue, decision), [turns, queue, decision]);
   const thread = data.state.threads[threadId];
   const action = (async (name: string, request: Data) => {

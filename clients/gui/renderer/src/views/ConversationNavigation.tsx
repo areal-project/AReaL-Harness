@@ -5,6 +5,14 @@ import {
 } from "../PlatformReadContext.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { Input } from "../components/ui/input.js";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog.js";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { createContext, useContext } from "react";
 import {
@@ -735,39 +743,39 @@ function SidebarRename() {
   const { t } = useI18n();
   const { action, rename, setRename, renameText, setRenameText } = useSidebarContext();
   return (
-    <>
-      {rename && (
-        <div className="dialog-backdrop">
-          <form
-            className="rename-dialog"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void action("library", { ...rename, title: renameText })
-                .then(() => setRename(null))
-                .catch(() => {});
-            }}
-          >
-            <h2>{t("common.navigation.rename")}</h2>
-            <Input
-              unstyled
-              autoFocus
-              aria-label={t("common.navigation.name")}
-              maxLength={200}
-              required
-              value={renameText}
-              onChange={(e) => setRenameText(e.target.value)}
-            />
-            <div className="utility-actions">
-              <Button unstyled type="button" onClick={() => setRename(null)}>
-                {t("common.navigation.cancel")}
-              </Button>
-              <Button unstyled type="submit">
-                {t("common.navigation.save")}
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
-    </>
+    <Dialog open={!!rename} onOpenChange={(open) => !open && setRename(null)}>
+      <DialogContent className="max-w-[min(calc(var(--reading-width)/2),calc(100%-var(--spacing-field)*2))]">
+        <form
+          className="contents"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!rename || !renameText.trim()) return;
+            void action("library", { ...rename, title: renameText.trim() })
+              .then(() => setRename(null))
+              .catch(() => {});
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{t("common.navigation.rename")}</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            aria-label={t("common.navigation.name")}
+            maxLength={200}
+            value={renameText}
+            onChange={(e) => setRenameText(e.target.value)}
+          />
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>
+              {t("common.navigation.cancel")}
+            </DialogClose>
+            <Button type="submit" disabled={!renameText.trim()}>
+              {t("common.navigation.save")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
