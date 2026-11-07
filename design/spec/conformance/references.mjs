@@ -28,6 +28,16 @@ const SHOTS = [
   "window.settings-appearance",
   "window.settings-search",
   "window.settings-select",
+  "window.settings-usage",
+  "window.settings-snapshots",
+  "window.settings-browser",
+  "window.settings-cloud",
+  "window.settings-computer",
+  "window.settings-worktrees",
+  "window.settings-hooks",
+  "window.settings-models",
+  "window.settings-mobile",
+  "window.settings-flywheel",
   "window.panel",
   "window.panel-tabs",
   "window.panel-add-menu",
@@ -61,14 +71,19 @@ const browser = await playwright.chromium.launch({
   ...(process.argv.includes("--browser") ? { executablePath: arg("--browser") } : {}),
   args: ["--no-sandbox", "--font-render-hinting=none"],
 });
-const context = await browser.newContext({
+const options = {
   viewport: { width: 1280, height: 800 },
   deviceScaleFactor: 1,
   locale: "zh-CN",
   timezoneId: "UTC",
   reducedMotion: "reduce",
-});
-const page = await context.newPage();
+};
+const page = await (await browser.newContext(options)).newPage();
+// 按日期或时刻显示的页面（用量日历、数据飞轮的上次读取）固定在示例数据 settingsBackend.today 那天；只给这些页冻结时钟，菜单等交互仍用真实时间。
+const DATED = new Set(["window.settings-usage", "window.settings-flywheel"]);
+const datedContext = await browser.newContext(options);
+await datedContext.clock.setFixedTime(new Date("2026-11-07T12:00:00Z"));
+const datedPage = await datedContext.newPage();
 
 async function difference(a, b) {
   return page.evaluate(
@@ -106,13 +121,14 @@ async function difference(a, b) {
 let failed = 0;
 await mkdir(out, { recursive: true });
 for (const { state, theme } of SHOTS) {
+  const tab = DATED.has(state) ? datedPage : page;
   const target = new URL(url);
   target.searchParams.set("state", state);
   target.searchParams.set("theme", theme);
-  await page.goto(target.href);
-  await page.evaluate(() => document.fonts.ready);
-  await page.waitForTimeout(1000);
-  const shot = await page.screenshot({ animations: "disabled", caret: "hide" });
+  await tab.goto(target.href);
+  await tab.evaluate(() => document.fonts.ready);
+  await tab.waitForTimeout(1000);
+  const shot = await tab.screenshot({ animations: "disabled", caret: "hide" });
   const name = `${state}.${theme}.png`;
   if (write) {
     await writeFile(join(out, name), shot);

@@ -23,7 +23,7 @@ import { ServiceStatusSettings } from "../settings/ServiceStatusSettings.js";
 import { SettingsPage } from "../settings/SettingsWorkspace.js";
 import { TrajectorySettings } from "../settings/TrajectorySettings.js";
 import { WorktreesSettings } from "../settings/WorktreesSettings.js";
-import { settingsLabel } from "../settings/settingsNavigation.js";
+import { settingsLabel, settingsSubtitle } from "../settings/settingsNavigation.js";
 import type { useTaskWorkspace } from "../state/taskWorkspace.js";
 import type { useBackendRecovery } from "../state/useBackendRecovery.js";
 import type { useSessionNavigation } from "../state/useSessionNavigation.js";
@@ -93,7 +93,7 @@ export function WorkbenchSettings({
       width={pageClass === "model-settings-page" ? "wide" : "default"}
       className={pageClass}
       title={settingsLabel(settingsTab, t)}
-      subtitle={settingsTab === "浏览器" ? t("settings.browser.subtitle") : undefined}
+      subtitle={settingsSubtitle(settingsTab, t)}
     >
       {settingsTab === "外观" ? (
         <AppearanceSettings

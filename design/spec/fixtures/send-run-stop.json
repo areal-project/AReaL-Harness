@@ -196,6 +196,66 @@
       "settings": "外观",
       "overlay": "theme-select"
     },
+    "window.settings-usage": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "用量"
+    },
+    "window.settings-snapshots": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "SnapShots"
+    },
+    "window.settings-browser": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "浏览器"
+    },
+    "window.settings-cloud": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "Cloud"
+    },
+    "window.settings-computer": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "电脑控制"
+    },
+    "window.settings-worktrees": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "Worktrees"
+    },
+    "window.settings-hooks": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "钩子"
+    },
+    "window.settings-models": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "模型服务"
+    },
+    "window.settings-mobile": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "手机连接"
+    },
+    "window.settings-flywheel": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "数据飞轮"
+    },
     "window.panel": {
       "screen": "window",
       "conversation": "thread-idle",
@@ -819,5 +879,104 @@
         "components": ["mcp"]
       }
     ]
+  },
+  "settingsBackend": {
+    "$comment": "设置各页的示例后台数据：today 固定，截图不随真实日期变化。",
+    "today": "2026-11-07",
+    "usage": {
+      "days": [
+        180000, 240000, 0, 320000, 410000, 150000, 260000, 380000, 90000, 300000, 450000, 220000,
+        340000, 280000
+      ],
+      "skills": [
+        {
+          "name": "代码审查",
+          "calls": 42
+        },
+        {
+          "name": "写测试",
+          "calls": 31
+        },
+        {
+          "name": "整理提交",
+          "calls": 18
+        }
+      ]
+    },
+    "trajectory": [
+      {
+        "status": "uploaded",
+        "bytes": 184320,
+        "ms": 2140
+      },
+      {
+        "status": "uploaded",
+        "bytes": 96256,
+        "ms": 1380
+      },
+      {
+        "status": "pending",
+        "bytes": 51200,
+        "ms": 980
+      },
+      {
+        "status": "failed",
+        "bytes": 40960,
+        "ms": 1720,
+        "error": "上传超时"
+      }
+    ],
+    "providers": [
+      {
+        "id": "example",
+        "name": "示例服务",
+        "baseUrl": "https://api.example.com/v1",
+        "models": ["示例模型", "示例模型-mini"]
+      }
+    ],
+    "cloud": {
+      "baseURL": "https://cloud.example.com"
+    },
+    "computer": {
+      "accessibility": "granted",
+      "screenRecording": "denied"
+    },
+    "mobile": {
+      "relay": "https://relay.example.com",
+      "devices": [
+        {
+          "name": "我的 iPhone",
+          "online": true
+        }
+      ]
+    },
+    "hooks": [
+      {
+        "name": "提交前检查",
+        "event": "PreToolUse",
+        "matcher": "Bash",
+        "argv": ["./scripts/check.sh"],
+        "timeoutMs": 10000
+      }
+    ],
+    "worktrees": {
+      "settings": {
+        "worktreeRoot": "~/.areal/worktrees",
+        "branchPrefix": "areal/",
+        "fetchBeforeCreate": true,
+        "autoCleanup": true,
+        "keepCount": 10
+      },
+      "list": [
+        {
+          "id": "wt-1",
+          "requestId": "wt-1",
+          "projectId": "spec-project",
+          "name": "修复 lint 报错",
+          "branch": "areal/fix-lint",
+          "directory": "~/.areal/worktrees/fix-lint"
+        }
+      ]
+    }
   }
 }

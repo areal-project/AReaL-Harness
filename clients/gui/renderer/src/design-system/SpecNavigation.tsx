@@ -321,7 +321,7 @@ export function SpecNavigation({
             ) : settingsTab ? (
               <>
                 <WorkspaceHeader>{null}</WorkspaceHeader>
-                <SpecSettingsPage tab={settingsTab} />
+                <SpecSettingsPage tab={settingsTab} action={action} project={pluginProject} />
               </>
             ) : (
               <>

@@ -62,6 +62,16 @@ states:
     - settings-appearance: 设置打开，当前页“外观”
     - settings-search: 设置打开，当前页“常规”，搜索框里是“字号”（未聚焦），列表只剩个人组的“外观”，右端写“字号”
     - settings-select: 设置打开，当前页“外观”，“界面主题”下拉用鼠标刚打开，当前值“跟随系统”打勾并高亮
+    - settings-usage: 设置打开，当前页“使用情况”，用量统计与活跃度日历
+    - settings-snapshots: 设置打开，当前页“SnapShots”，此环境不支持时的说明
+    - settings-browser: 设置打开，当前页“浏览器”，打开位置与浏览器数据
+    - settings-cloud: 设置打开，当前页“云端”，后端地址与 Token
+    - settings-computer: 设置打开，当前页“电脑控制”，控制方式、系统授权、控制进程
+    - settings-worktrees: 设置打开，当前页“工作树”，创建与清理默认值、已有工作树
+    - settings-hooks: 设置打开，当前页“钩子”，一条工具钩子，页面说明在标题下
+    - settings-models: 设置打开，当前页“模型设置”，一个已启用的供应商
+    - settings-mobile: 设置打开，当前页“手机连接”，已通过中继连接、一台设备
+    - settings-flywheel: 设置打开，当前页“数据飞轮”，上传正常，队列里有待传和失败记录
     - panel: 同 sidebar，右侧面板打开，没有标签，显示入口列表
     - panel-tabs: 面板打开，标签“审查”“文件”，“文件”为当前标签
     - panel-add-menu: 同 panel-tabs，新增标签菜单用鼠标刚打开，没有高亮项
@@ -97,6 +107,26 @@ references:
     - state: settings-search
       themes: [light, dark]
     - state: settings-select
+      themes: [light, dark]
+    - state: settings-usage
+      themes: [light, dark]
+    - state: settings-snapshots
+      themes: [light, dark]
+    - state: settings-browser
+      themes: [light, dark]
+    - state: settings-cloud
+      themes: [light, dark]
+    - state: settings-computer
+      themes: [light, dark]
+    - state: settings-worktrees
+      themes: [light, dark]
+    - state: settings-hooks
+      themes: [light, dark]
+    - state: settings-models
+      themes: [light, dark]
+    - state: settings-mobile
+      themes: [light, dark]
+    - state: settings-flywheel
       themes: [light, dark]
     - state: panel
       themes: [light, dark]

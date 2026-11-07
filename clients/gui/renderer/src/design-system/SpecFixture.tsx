@@ -8,6 +8,7 @@ import type { Action, Data } from "../services.js";
 import { useAppearance } from "../settings/applicationPreferences.js";
 import { SpecNavigation } from "./SpecNavigation.js";
 import { pluginAction } from "./specPlugins.js";
+import { settingsAction } from "./specSettings.js";
 
 // design/spec 的复现入口：?spec&state=<flow 状态>&theme=light|dark。示例数据只在这里翻译成本仓库的数据形状。
 type Conversation = (typeof fixture.conversations)[keyof typeof fixture.conversations];
@@ -419,7 +420,7 @@ export function SpecFixture() {
           connectionGeneration: 1,
         })),
       };
-    return {};
+    return settingsAction(name, request) ?? {};
   }) as Action;
   const column = (
     <div className="conversation-column">

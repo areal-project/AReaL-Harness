@@ -262,7 +262,6 @@
 
 .settings-workspace .settings-page:has(> .worktrees-settings) {
   position: relative;
-  max-width: 41rem;
   gap: var(--spacing-inline);
 }
 .settings-page:has(> .worktrees-settings) > .settings-page-header {
