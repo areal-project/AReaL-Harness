@@ -3579,7 +3579,15 @@ try {
       await send("取消任务。");
       await until(async () => (await task(taskId)).cancelled, "Agent cancelled schedule");
       await resources.click();
-      await page.getByLabel("定时任务安排").getByText("已取消", { exact: true }).waitFor();
+      await page
+        .getByLabel("定时任务安排")
+        .getByRole("status")
+        .filter({ hasText: /^已结束$/ })
+        .waitFor();
+      await page
+        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
+        .getByText("已取消", { exact: true })
+        .waitFor();
       assert.ok((await task(taskId)).runs.length >= 2);
       checks.push("Agent cancellation preserves execution history");
       assert.deepEqual(errors, []);

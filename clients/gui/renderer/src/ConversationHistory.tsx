@@ -9,10 +9,11 @@ import type { ReadingBlock } from "./conversationReading.js";
 /** 阅读视图只持有显示缓存；关闭或切换不发送停止、继续或任何任务写入。 */
 export function useConversationHistory(projectId: string, thread: Data, action: Action) {
   const { t } = useI18n();
-  const reads = usePlatformReads();
+  const platformReads = usePlatformReads();
+  const reads = thread.displayHistory?.owner === "workbench" ? undefined : platformReads;
   const [viewId] = useState(() => crypto.randomUUID());
   const owner = `${projectId}:${thread.id}`;
-  const generation = `${owner}:${thread.displayHistory?.viewGeneration ?? ""}`;
+  const generation = `${owner}:${reads ? "host" : "workbench"}:${thread.displayHistory?.viewGeneration ?? ""}`;
   const current = useRef<string | undefined>(generation);
   current.current = generation;
   const releaseGenerations = useRef(new Map<string, string>());

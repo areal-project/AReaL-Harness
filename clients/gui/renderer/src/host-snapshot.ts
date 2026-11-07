@@ -417,7 +417,16 @@ export function createHostSnapshotProjector(
           error: null,
           threads: {
             ...Object.fromEntries(
-              auxiliaryThreads.map(([key, side]) => [key, { ...side, ...execution }]),
+              auxiliaryThreads.map(([key, side]) => [
+                key,
+                {
+                  ...side,
+                  ...(side.displayHistory && typeof side.displayHistory === "object"
+                    ? { displayHistory: { ...side.displayHistory, owner: "workbench" } }
+                    : {}),
+                  ...execution,
+                },
+              ]),
             ),
             ...(thread ? { [thread.id]: { ...thread, ...execution } } : {}),
           },

@@ -724,6 +724,7 @@ describe("Host renderer read authority", () => {
     const fullRun = {
       id: "run-thread",
       turns: [],
+      displayHistory: { supported: true, viewGeneration: "run-history" },
       desktop: {
         queue: { revision: 3, items: [] },
         interactions: [],
@@ -756,6 +757,8 @@ describe("Host renderer read authority", () => {
     const projected = (await services.snapshot()).projects[0];
     expect(projected.state.threads.side).toMatchObject(side);
     expect(projected.state.threads["run-thread"]).toMatchObject(fullRun);
+    expect(projected.state.threads["run-thread"].displayHistory.owner).toBe("workbench");
+    expect(projected.state.threads.thread.displayHistory.owner).not.toBe("workbench");
     expect(projected.state.threads.unrelated).toBeUndefined();
     expect(projected.state.threads["run-summary"]).toBeUndefined();
     expect(projected.configurations["run-thread"]).toEqual(fullRun.desktop.configuration);
