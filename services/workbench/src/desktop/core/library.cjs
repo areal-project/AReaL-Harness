@@ -305,7 +305,7 @@ class CoreLibrary {
     const prefix = `${projectId}:`;
     return Object.keys(this.value.threads)
       .filter((key) => key.startsWith(prefix))
-      .map((key) => ({ id: key.slice(prefix.length), preview: "未加载的任务" }));
+      .map((key) => ({ id: key.slice(prefix.length) }));
   }
 
   /** @param {string} projectId @param {import('@areal/workbench/core-model-contract').CoreThread[]} summaries */

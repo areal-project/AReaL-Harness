@@ -3402,6 +3402,14 @@
       "strength": "must",
       "textSha256": "5ab8342c8167a74c6216bbb602c8a889b381840d67c49d8b559e07094a1b24c2",
       "check": "clients/gui/scripts/design-rules.mjs"
+    },
+    {
+      "id": "R-CHECK-024",
+      "title": "界面只说用户能认出的事：用户文案不用实现层用词（Core、Host、快照、受理、回执、核对等，诊断页与问题反馈除外）",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "must",
+      "textSha256": "33e742d7c495e58870c42a731a5af5c3810562c423268dc1862eefadbfcbd0b5",
+      "check": "clients/gui/scripts/ui-honesty-lint.mjs"
     }
   ]
 }

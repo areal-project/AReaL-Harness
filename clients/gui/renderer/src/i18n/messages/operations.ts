@@ -601,10 +601,6 @@ export const operationMessages = {
     "zh-CN": "每次运行新开对话",
     en: "Start each run in a new conversation",
   },
-  "operations.schedules.requiresApp": {
-    "zh-CN": "AReaL 退出后，任务不会运行。",
-    en: "Tasks don't run while AReaL is closed.",
-  },
   "operations.schedules.create": { "zh-CN": "创建", en: "Create" },
   "operations.schedules.revealFolder": { "zh-CN": "在文件夹中显示", en: "Show folder" },
   "operations.schedules.attention": { "zh-CN": "需要处理", en: "Needs attention" },

@@ -121,8 +121,8 @@ export const pluginMessages = {
     en: "This plugin is absent from the current snapshot. Return to the list and refresh.",
   },
   "settings.pluginCenter.snapshotScope": {
-    "zh-CN": "读取范围 {scope} · revision {revision} · {time}",
-    en: "Read scope {scope} \u00b7 revision {revision} \u00b7 {time}",
+    "zh-CN": "插件目录（{scope}）· 第 {revision} 版 · {time}",
+    en: "Plugin catalog ({scope}) \u00b7 version {revision} \u00b7 {time}",
   },
   "settings.pluginCenter.runtimeNotObserved": {
     "zh-CN": "连接项目以查看插件状态并继续操作。",
