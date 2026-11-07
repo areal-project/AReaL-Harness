@@ -401,17 +401,11 @@ async fn connection(
                     subscription,
                 } => {
                     if subscription.is_cancelled() {
-                        if value["method"] == "turn/completed" {
-                            eprintln!(
-                                "Core event: method=turn/completed stage=discarded reason=subscriptionRevoked"
-                            );
-                        }
                         continue;
                     }
                     (value, None)
                 }
             };
-            let terminal = value["method"] == "turn/completed";
             let text = encode_outbound(&value).or_else(|| {
                 if let Some(subscription) = observation {
                     subscription.cancel();
@@ -440,11 +434,7 @@ async fn connection(
             };
             let closing = matches!(&message, Message::Close(_));
             match tokio::time::timeout(Duration::from_secs(5), sink.send(message)).await {
-                Ok(Ok(())) if !closing => {
-                    if terminal {
-                        eprintln!("Core event: method=turn/completed stage=written");
-                    }
-                }
+                Ok(Ok(())) if !closing => {}
                 _ => {
                     writer_stop.cancel();
                     break;
@@ -1043,9 +1033,6 @@ impl Connection {
                 let event = tokio::select! { biased; _ = subscription.cancelled() => break, event = events.recv() => event };
                 match event {
                     Ok(event) => {
-                        if event["method"] == "turn/completed" {
-                            eprintln!("Core event: method=turn/completed stage=forwarded");
-                        }
                         if task_filter.as_ref().is_some_and(|id| event["params"]["taskId"].as_str()!=Some(id)) { continue; }
                         if let Some(task_id)=&task_filter {
                             let Some(engine)=task_engine.as_ref().and_then(|weak|weak.upgrade()) else {queued_delivery.cancel();subscription.cancel();break;};
@@ -1438,6 +1425,7 @@ impl Connection {
                     "limits":{"frameBytes":MAX_FRAME_BYTES,"responseBytes":MAX_RESPONSE_BYTES,"subscriptions":128,"sendQueue":256,"threadEventWindow":128},
                     "runtime":engine.runtime_capabilities()});
                 capabilities["features"]["submissionReceiptReconciliation"] = json!(true);
+                capabilities["features"]["taskDirectoryPreparation"] = json!(true);
                 capabilities["features"]["threadCreationJournal"] = json!({"version":1,"binding":engine.creation_admission(&self.principal.id).await});
                 capabilities["features"]["sideExecutableV2"] = json!(true);
                 capabilities["features"]["hostUpdateStatus"] = json!(true);

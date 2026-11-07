@@ -664,6 +664,7 @@ describe("Host renderer read authority", () => {
           root: "/legacy",
           models: [{ id: "legacy-model" }],
           profiles: [{ id: "legacy-profile" }],
+          core: { serviceGeneration: "core-gen" },
           state: { threads: { thread: { id: "thread", name: "WRONG LEGACY", turns: [] } } },
           summaries: [{ id: "wrong" }],
         },
@@ -674,9 +675,13 @@ describe("Host renderer read authority", () => {
         projects: { alias: { title: "WRONG LEGACY" } },
       },
     };
+    let emitDesktop: (value: Snapshot) => void = () => {};
     const desktop: PlatformServices = {
       snapshot: async () => legacy,
-      onState: () => () => {},
+      onState: (listener) => {
+        emitDesktop = listener;
+        return () => {};
+      },
       chooseProject: async () => null,
       command: async () => {
         throw new Error("Native write invoked");
@@ -697,6 +702,62 @@ describe("Host renderer read authority", () => {
     expect(snapshot.projects[0].profiles).toEqual([{ id: "legacy-profile" }]);
     expect(snapshot.projects[0].summaries[0].name).toBe("Host title");
     expect(snapshot.projects[0].state.threads.thread.name).toBe("Host thread");
+    const task = { id: "task", revision: 1 };
+    emitDesktop({
+      ...legacy,
+      projects: [
+        {
+          ...legacy.projects[0],
+          state: { ...legacy.projects[0].state, connected: true, tasks: { task } },
+        },
+      ],
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task });
+    const updated = { ...task, revision: 2 };
+    emitDesktop({
+      ...legacy,
+      projects: [
+        {
+          ...legacy.projects[0],
+          state: { ...legacy.projects[0].state, connected: true, tasks: { task: updated } },
+        },
+      ],
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task: updated });
+    wire.send({
+      event: "shell.updated",
+      ...connection,
+      subscriptionId: "shell",
+      sequence: 1,
+      delta: {
+        projects: { upsert: [{ ...project, serviceGeneration: "next-gen" }], remove: [] },
+        navigation: { upsert: [], remove: [] },
+      },
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
+    expect((await services.snapshot()).projects[0].core.serviceGeneration).toBe("next-gen");
+    emitDesktop({
+      ...legacy,
+      projects: [
+        {
+          ...legacy.projects[0],
+          core: { serviceGeneration: "next-gen" },
+          state: { ...legacy.projects[0].state, connected: true, tasks: { task: updated } },
+        },
+      ],
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task: updated });
+    wire.send({
+      event: "shell.updated",
+      ...connection,
+      subscriptionId: "shell",
+      sequence: 2,
+      delta: {
+        projects: { upsert: [], remove: [] },
+        navigation: { upsert: [{ ...navigation, bindings: [] }], remove: [] },
+      },
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
     expect(snapshot.library?.projects.alias.title).toBe("Host project title");
     expect(snapshot.library?.settings.sidebarSort).toBe("manual");
     expect(snapshot.library?.settings.unmigratedPreference).toBe("retained");

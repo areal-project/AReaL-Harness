@@ -30,7 +30,7 @@ This limit bounds JSON encoding output. Earlier full-history hydration and JSON 
 |---|---|
 | `model/list` | `{}` |
 | `thread/start` | `{cwd?,model?,dynamicTools?}` |
-| `areal/thread/start` | `{requestId,agentProfile?:{id,revision},cwd?,model?,parameters?,options?,dynamicTools?}`; atomically saves initial configuration and starts the Workflow bound to the Profile automatically |
+| `areal/thread/start` | `{requestId,agentProfile?:{id,revision},cwd?,prepareTaskDirectory?,model?,parameters?,options?,dynamicTools?}`; atomically saves initial configuration and starts the Workflow bound to the Profile automatically |
 | `thread/list` | `{cursor?,limit?}`; 1–100, default 30 |
 | `thread/read` | `{threadId,includeTurns?}` |
 | `thread/resume` | `{threadId,mode?:"bounded",maxBytes?}` |
@@ -50,6 +50,8 @@ Pagination advances through immutable sort keys without a consistent snapshot ac
 `areal/thread/fork` requires `anchor:{turnId,boundary}` with an explicit `before` or `after` and `workspaceMode:"sharedCurrent"`. `before` excludes the selected turn and everything after it, including an active turn; `after` requires a terminal turn. Failed and interrupted states in the included prefix remain unchanged. An unsettled tool or hook, or a tool, hook, or plugin UNKNOWN outcome without source inspection, returns `HISTORY_UNRESOLVED`. Inspection records facts and does not turn a historical UNKNOWN into success. A missing anchor returns `ANCHOR_NOT_FOUND`, a delegated Worker or Side source returns `SOURCE_KIND_UNSUPPORTED`, and `after` on an active turn returns `TURN_NOT_TERMINAL`; clients can use `error.data.reason` to present a recovery path. Fork inherits conversation history while project files remain in the current shared workspace. See the [desktop API](desktop.en.md) for the full request and origin metadata.
 
 Fork model compatibility accepts both legacy individual Responses context items and the complete `areal_response_output` envelope, retaining provider fields in their original order. Only Responses adapters can replay these forms. Switching to a protocol that cannot retain this context still returns `MODEL_CONTEXT_INCOMPATIBLE`; opaque history is never discarded to admit the switch.
+
+`features.taskDirectoryPreparation` declares support for optional `prepareTaskDirectory: true` on `areal/thread/start`. Host sets it only for task creation after verifying the reserved projectless task workspace owner. Core requires `cwd` to be a direct workspace child, with a name of at most 128 UTF-16 units that neither starts with a dot nor contains path separators, and rejects symlinks and escapes. The private directory is created after the original request is admitted; reading the same completed request does not repeat creation. Omitting the field or sending `false` preserves the original request digest and does not prepare a directory.
 
 input preserves text/image/audio/file ordering with at most 1 MiB aggregate UTF-8 text, also constrained by the history budget. Authenticated clients upload media Blobs rather than supplying host localImage/localAudio paths. Adapter/model capabilities validate modalities. Original thread/start model must match the service default; product model selection uses areal/thread/start/configure.
 

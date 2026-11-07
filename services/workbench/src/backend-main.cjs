@@ -125,6 +125,12 @@ async function start({ input, output }) {
         for (const client of desktop.backend.hostCoreClients.values()) client.event(request);
         continue;
       }
+      if (request.event === "worktree.changed") {
+        if (request.sourceId !== desktop.backend.host.sourceId) throw new Error("FORBIDDEN");
+        await desktop.backend.worktrees.reloadNative();
+        desktop.backend.onChange();
+        continue;
+      }
       if (request.event === "library.changed") {
         await desktop.backend.library.reload();
         desktop.backend.onChange();

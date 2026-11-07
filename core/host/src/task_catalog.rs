@@ -690,6 +690,48 @@ fn command_cwd(host: &Host, project: &str, params: &Value) -> Result<std::path::
     );
     Ok(cwd)
 }
+fn task_thread_cwd(
+    root: &std::path::Path,
+    params: &Value,
+    rows: &[Value],
+) -> Result<(std::path::PathBuf, bool)> {
+    let root = root.canonicalize()?;
+    let Some(cwd) = params["cwd"].as_str() else {
+        return Ok((root, false));
+    };
+    let cwd = std::path::Path::new(cwd);
+    if cwd == root {
+        return Ok((root, false));
+    }
+    let scratch = rows.iter().any(|row| {
+        row["projectless"] == true
+            && row["projectlessRequestId"] == "00000000-0000-4000-a000-5c4a7c400001"
+            && row["root"].as_str().is_some_and(|path| {
+                std::path::Path::new(path)
+                    .canonicalize()
+                    .is_ok_and(|path| path == root)
+            })
+    });
+    if scratch {
+        let name = cwd
+            .file_name()
+            .and_then(|name| name.to_str())
+            .context("INVALID_PARAMS")?;
+        ensure!(
+            cwd.parent() == Some(root.as_path())
+                && !name.starts_with('.')
+                && name.encode_utf16().count() <= 128
+                && !name.contains(['/', '\\'])
+                && root.join(name) == cwd,
+            "INVALID_PARAMS"
+        );
+        return Ok((cwd.to_path_buf(), true));
+    }
+    let cwd = cwd.canonicalize()?;
+    ensure!(cwd.starts_with(&root) && cwd.is_dir(), "INVALID_PARAMS");
+    Ok((cwd, false))
+}
+
 pub(super) async fn command(host: &Rc<Host>, params: &Value) -> Result<Value> {
     let operation = params["operation"].as_str().context("INVALID_PARAMS")?;
     let method = mutation(operation).context("INVALID_PARAMS")?;
@@ -707,7 +749,26 @@ pub(super) async fn command(host: &Rc<Host>, params: &Value) -> Result<Value> {
     }
     if operation == "taskCreate" && native["threadId"].is_null() {
         let request = native["requestId"].as_str().context("INVALID_PARAMS")?;
-        let started=rpc(host,&project,"areal/thread/start",json!({"requestId":execution_request_id(request),"cwd":command_cwd(host,&project,params)?})).await?;
+        let root = host
+            .slots
+            .borrow()
+            .get(&project)
+            .context("RESOURCE_UNAVAILABLE")?
+            .registration
+            .workspace
+            .clone();
+        let rows = super::worktree_catalog::saved_projects(&owner_home(host, params)?)?;
+        let (cwd, prepare) = task_thread_cwd(&root, params, &rows)?;
+        let mut start = json!({"requestId":execution_request_id(request),"cwd":cwd});
+        if prepare {
+            let capabilities = rpc(host, &project, "areal/capabilities", json!({})).await?;
+            ensure!(
+                capabilities["features"]["taskDirectoryPreparation"] == true,
+                "CAPABILITY_UNAVAILABLE"
+            );
+            start["prepareTaskDirectory"] = json!(true);
+        }
+        let started = rpc(host, &project, "areal/thread/start", start).await?;
         native["threadId"] = started["thread"]["id"].clone();
         ensure!(native["threadId"].is_string(), "INVALID_RESPONSE");
     }
@@ -1152,6 +1213,36 @@ pub(super) fn accept_event(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scheduled_task_directory_requires_reserved_source_owner() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let target = root.join("scheduled-task");
+        let params = json!({"cwd":target});
+        let ordinary = json!({"root":root,"projectless":true,"projectlessRequestId":"ordinary"});
+        assert!(task_thread_cwd(&root, &params, &[ordinary]).is_err());
+        let scratch = json!({"root":root,"projectless":true,"projectlessRequestId":"00000000-0000-4000-a000-5c4a7c400001"});
+        assert_eq!(
+            task_thread_cwd(&root, &params, &[scratch.clone()]).unwrap(),
+            (target.clone(), true)
+        );
+        assert!(
+            !target.exists(),
+            "Host validates but never creates the directory"
+        );
+        for cwd in [
+            root.join("../escape"),
+            root.join("nested/child"),
+            root.join(".hidden"),
+        ] {
+            assert!(task_thread_cwd(&root, &json!({"cwd":cwd}), &[scratch.clone()]).is_err());
+        }
+        assert_eq!(
+            task_thread_cwd(&root, &json!({}), &[]).unwrap(),
+            (root, false)
+        );
+    }
+
     #[tokio::test(flavor = "current_thread")]
     async fn passive_task_observation_never_restarts_a_stopped_project() {
         let root = tempfile::tempdir().unwrap();

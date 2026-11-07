@@ -140,6 +140,7 @@ export type ReadProject = Record<string, unknown> & {
     threads: Record<string, Observation["thread"] & ExecutionView>;
     queues: Record<string, unknown>;
     interactions: Record<string, unknown>;
+    tasks?: Record<string, unknown>;
   };
   summaries: (NavigationSummary & ExecutionView)[];
   summariesLoaded: boolean;
@@ -167,6 +168,7 @@ export function createHostSnapshotProjector(
     {
       source: ShellProject;
       auxiliary: unknown;
+      bound: boolean;
       session?: SessionRead;
       historyVersion: number;
       fresh: boolean;
@@ -221,8 +223,11 @@ export function createHostSnapshotProjector(
     const canonical = (id: string) => ids.get(id) ?? id;
     const rows = (shell?.snapshot.projects ?? []).map((project) => {
       const id = canonical(project.projectId);
-      const auxiliary =
-        legacy?.projects.find((value) => value.id === id) ?? catalogs.get(project.projectId)?.value;
+      const desktopProject = legacy?.projects.find((value) => value.id === id);
+      const auxiliary = desktopProject ?? catalogs.get(project.projectId)?.value;
+      const bound = !!navigation?.bindings.some(
+        (binding) => binding.projectId === project.projectId && binding.alias === id,
+      );
       const selectedSession =
         currentSession?.projectId === project.projectId &&
         currentSession.serviceGeneration === project.serviceGeneration
@@ -239,6 +244,7 @@ export function createHostSnapshotProjector(
         cached &&
         cached.source === project &&
         cached.auxiliary === auxiliary &&
+        cached.bound === bound &&
         cached.session === selectedSession &&
         cached.historyVersion === displayVersion &&
         cached.fresh === fresh &&
@@ -340,10 +346,19 @@ export function createHostSnapshotProjector(
           ...auxiliary?.core,
           // 网页没有桌面后台的项目快照，权限能力随 project.models 一起从 Host 来。
           ...(auxiliary?.features ? { features: auxiliary.features } : {}),
+          serviceGeneration: project.serviceGeneration ?? null,
           connectionGeneration: project.serviceGeneration ?? "",
           instanceId: project.serviceGeneration ?? "",
         },
         state: {
+          ...(fresh &&
+          project.state === "ready" &&
+          desktopProject?.state?.connected &&
+          project.serviceGeneration &&
+          desktopProject.core?.serviceGeneration === project.serviceGeneration &&
+          bound
+            ? { tasks: desktopProject.state.tasks }
+            : {}),
           connected: fresh && project.state === "ready",
           hostState: fresh ? project.state : undefined,
           error: null,
@@ -384,6 +399,7 @@ export function createHostSnapshotProjector(
       projectViews.set(project.projectId, {
         source: project,
         auxiliary,
+        bound,
         session: selectedSession,
         historyVersion: displayVersion,
         fresh,

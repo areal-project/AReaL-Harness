@@ -390,13 +390,18 @@ try {
   await page.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );
+  assert.equal(
+    (await page.getByTestId("chat-input").textContent()).trim(),
+    followup,
+    "Enter preserves the visible follow-up draft while interruption settlement is pending",
+  );
+  await openSideChat(page);
   const preservedDraft = await page.evaluate((key) => localStorage.getItem(key), draftKey);
   assert.equal(
     preservedDraft?.trim(),
     followup,
     "Enter preserves the follow-up draft while interruption settlement is pending",
   );
-  await openSideChat(page);
   const sideDraft = page.getByTestId("side-chat-input");
   await sideDraft.fill("Side draft while the original project pause is pending.");
   assert.equal(

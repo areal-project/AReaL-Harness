@@ -544,6 +544,25 @@ try {
     assert.match(unboundCatalog.errors[0]?.message, /unbound/);
     assert.equal((await projects.status(projectId)).state, "stopped");
     const { scheduled, startedProject } = await scheduledFixture(projectId);
+    const viewId = randomUUID();
+    const watched = await backend.command("manage", {
+      operation: "taskWatch",
+      projectId,
+      taskId: scheduled.id,
+      viewId,
+    });
+    assert.equal(watched.id, scheduled.id);
+    assert.deepEqual(
+      await backend.command("manage", {
+        operation: "taskUnwatch",
+        projectId,
+        taskId: scheduled.id,
+        viewId,
+      }),
+      { removed: true },
+    );
+    checks.push("Task view subscribes through Host and releases the original view without replay");
+
     if (!rustDomains.some((domain) => domain === "tasks-rust" || domain === "execution-rust")) {
       const task = await backend.command("manage", {
         operation: "task",

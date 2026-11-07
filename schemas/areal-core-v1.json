@@ -29029,6 +29029,12 @@
             "temperature": null
           }
         },
+        "prepareTaskDirectory": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
         "requestId": {
           "type": "string"
         }
@@ -102711,6 +102717,13 @@
                         {
                           "type": "null"
                         }
+                      ]
+                    },
+                    "parentCallId": {
+                      "description": "Core 编排创建的叶子调用；保留完整审计，但由父工具统一向模型返回结果。",
+                      "type": [
+                        "string",
+                        "null"
                       ]
                     },
                     "permissionReview": true,

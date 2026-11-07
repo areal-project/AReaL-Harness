@@ -64,10 +64,27 @@ class CoreWorktrees {
     this.writes = new Map();
     /** @type {Map<string,Promise<unknown> & {requestId?:string,worktreeRequestId?:string}>} */
     this.active = new Map();
+    /** @type {Promise<void>|undefined} */
+    this.nativeReload = undefined;
+    this.nativeReloadNeeded = false;
     this.environment = new WorktreeEnvironment(this);
   }
   get native() { return this.backend.rustDomains.includes("worktree-rust") && !!this.backend.hostCall; }
-  async reloadNative() {
+  /** @returns {Promise<void>} */
+  reloadNative() {
+    this.nativeReloadNeeded = true;
+    this.nativeReload ??= (async () => {
+      while (this.nativeReloadNeeded) {
+        this.nativeReloadNeeded = false;
+        await this.reloadNativeRecords();
+      }
+    })().finally(() => {
+      this.nativeReload = undefined;
+      if (this.nativeReloadNeeded) return this.reloadNative();
+    });
+    return this.nativeReload;
+  }
+  async reloadNativeRecords() {
     const directory = join(this.backend.home, "worktree-requests");
     const names = await readdir(directory).catch((error) => {
       if (!modelRecord(error) || error.code !== "ENOENT") throw error;
@@ -555,7 +572,11 @@ class CoreWorktrees {
         throw unavailable("Host 工作树执行归属已变化");
       if (!execution.client?.ready)
         await this.backend.connections.reconnectProjectObserved(execution);
-      const prepared = await this.backend.prepareThreadInProject(execution, request);
+      if (typeof target.resourceFingerprint !== "string")
+        throw unavailable("Host 工作树资源准备证明缺失");
+      execution.resourceFingerprint = target.resourceFingerprint;
+      execution.resourceProfile = /** @type {import('@areal/workbench/desktop-contract').ResourceRef|undefined} */ (target.resourceProfile);
+      const prepared = await this.backend.prepareThreadInProject(execution, request, { preparedCore: true });
       if (!prepared.current()) throw unavailable("原 Core 执行归属已变化");
       const result = await this.backend.hostCall("worktree.thread.bind", {
         projectId: project.id, requestId: request.requestId,

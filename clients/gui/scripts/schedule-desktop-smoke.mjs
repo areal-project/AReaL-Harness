@@ -306,12 +306,16 @@ try {
   let schedule = await until(
     async () =>
       (await call("tasks", { operation: "list" })).data.find(
-        (t) => t.objective === "SCHEDULE_FIXTURE_COMPLETE",
+        (t) => t.objectivePreview === "SCHEDULE_FIXTURE_COMPLETE" && t.objectiveTruncated === false,
       ),
     "task saved through scheduled task form",
   );
   pid = schedule.executionProjectId ?? schedule.projectId;
   assert.ok(pid, "catalog supplies the actual task owner");
+  const scheduleId = schedule.id;
+  schedule = await task(scheduleId);
+  assert.equal(schedule.id, scheduleId);
+  assert.equal(schedule.objective, "SCHEDULE_FIXTURE_COMPLETE");
   assert.ok(schedule.scheduleV2, "form persists its schedule");
   schedule = await call("manage", {
     projectId: pid,

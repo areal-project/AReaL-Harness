@@ -58,6 +58,7 @@ struct Upstream {
     headers: RefCell<Vec<reqwest::header::HeaderMap>>,
     forms: RefCell<Vec<String>>,
     token_payload: RefCell<Option<Value>>,
+    streams: RefCell<Vec<JoinHandle<()>>>,
 }
 impl Upstream {
     fn new() -> Self {
@@ -80,6 +81,7 @@ impl Upstream {
             headers: RefCell::new(Vec::new()),
             forms: RefCell::new(Vec::new()),
             token_payload: RefCell::new(None),
+            streams: RefCell::new(Vec::new()),
         }
     }
     async fn count(&self, field: &Cell<usize>, expected: usize) {
@@ -170,10 +172,13 @@ async fn upstream(
                     .await
                     .unwrap();
                 let stream_owner = state.clone();
-                tokio::task::spawn_local(async move {
-                    stream_owner.stream_gate.acquire().await.unwrap().forget();
-                    let _ = sender.send(Ok(Frame::data(Bytes::from_static(LAST)))).await;
-                });
+                state
+                    .streams
+                    .borrow_mut()
+                    .push(tokio::task::spawn_local(async move {
+                        stream_owner.stream_gate.acquire().await.unwrap().forget();
+                        let _ = sender.send(Ok(Frame::data(Bytes::from_static(LAST)))).await;
+                    }));
                 let stream = futures_util::stream::unfold(receiver, |mut rx| async {
                     rx.recv().await.map(|item| (item, rx))
                 });
@@ -212,7 +217,6 @@ struct Server {
     cancel: CancellationToken,
     task: JoinHandle<()>,
     state: Rc<Upstream>,
-    port: u16,
 }
 impl Server {
     async fn start() -> Self {
@@ -241,7 +245,6 @@ impl Server {
             cancel,
             task,
             state,
-            port,
         }
     }
     async fn close(self) {
@@ -249,7 +252,12 @@ impl Server {
         self.state.stream_gate.add_permits(100);
         self.cancel.cancel();
         self.task.await.unwrap();
-        assert!(std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, self.port)).is_err());
+        let streams = std::mem::take(&mut *self.state.streams.borrow_mut());
+        for stream in streams {
+            stream.await.unwrap();
+        }
+        // 并行测试可复用已释放端口；确认原任务及其连接持有的状态都已释放。
+        assert_eq!(Rc::strong_count(&self.state), 1);
     }
 }
 struct Rig {
@@ -312,10 +320,10 @@ impl Rig {
     }
     async fn close(self) {
         self.source.close().await;
-        assert!(
-            std::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, self.transport.port))
-                .is_err()
-        );
+        assert!(self.source.lifetime.is_cancelled());
+        assert!(self.source.tasks.borrow().is_empty());
+        // listener 与每个连接都持有原 source；不能用可能已被复用的端口证明它们已退出。
+        assert_eq!(Rc::strong_count(&self.source), 1);
         self.server.close().await;
     }
 }

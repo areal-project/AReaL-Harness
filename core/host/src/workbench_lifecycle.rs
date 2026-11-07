@@ -485,10 +485,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
             observation.service().identity.service_id == target.service_id,
             "CONFIRMATION_STALE"
         );
-        eprintln!(
-            "Host lifecycle: method=interruptTurn stage=observed current={}",
-            observation.current(host)
-        );
         Some(observation)
     } else {
         None
@@ -554,12 +550,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
             })
             .await
         };
-        if request.kind == "interruptTurn" {
-            eprintln!(
-                "Host lifecycle: method=interruptTurn stage=interruptAck accepted={}",
-                dispatched.is_ok()
-            );
-        }
         match dispatched {
             Ok(operation) if !operation.is_null() => host_receipt(
                 &mut record["targets"][index],
@@ -590,12 +580,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
                 request.kind
             );
             break;
-        }
-        if request.kind == "interruptTurn" {
-            eprintln!(
-                "Host lifecycle: method=interruptTurn stage=settled phase={}",
-                record["phase"].as_str().unwrap_or("invalid")
-            );
         }
         store(host, &directory, &record)?;
         if !record["targets"]
@@ -634,15 +618,6 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, input: Value) -> Resu
         };
         let changed = tokio::time::timeout_at(deadline, changed).await;
         if !matches!(changed, Ok(true)) {
-            eprintln!(
-                "Host lifecycle: method={} stage=waitEnded reason={}",
-                request.kind,
-                if changed.is_err() {
-                    "deadline"
-                } else {
-                    "closed"
-                }
-            );
             break;
         }
     }

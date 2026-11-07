@@ -3572,6 +3572,22 @@ try {
   errors.push(error.stack ?? String(error));
   await writeFile(join(scratch, "failure-error.txt"), error.stack ?? String(error)).catch(() => {});
   if (page && !page.isClosed()) {
+    const ownerId = legacySetups.at(-1)?.ownerId;
+    if (ownerId) {
+      const observe = await withSmokeDeadline("failure task observation", () =>
+        page.evaluate(
+          (projectId) => window.arealDesktop.command("tasks", { operation: "observe", projectId }),
+          ownerId,
+        ),
+      ).catch((cause) => ({ error: cause.message }));
+      const lifecycle = await withSmokeDeadline("failure lifecycle status", () =>
+        page.evaluate(() => window.arealDesktop.command("serviceStatus", {})),
+      ).catch((cause) => ({ error: cause.message }));
+      await writeFile(
+        join(scratch, "failure-owner-observation.json"),
+        JSON.stringify({ ownerId, observe, lifecycle }, null, 2),
+      );
+    }
     await snapshot()
       .then((value) =>
         writeFile(join(scratch, "failure-state.json"), JSON.stringify(value, null, 2)),

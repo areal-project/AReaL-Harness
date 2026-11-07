@@ -399,6 +399,11 @@ test("Desktop commands map to their own dispatch layer and Core catalog through 
       !targets.has(method) &&
       !templates.some(({ prefix, suffix }) => method.startsWith(prefix) && method.endsWith(suffix)),
   );
-  // Core exposes individual detail reads to other clients; the GUI consumes the corresponding lists.
-  assert.deepEqual(unmapped, ["areal/mcp/read", "areal/provider/read"]);
+  // Worktree 执行由 Host 直接调用 Core；GUI 只调用 Host 目录，另两项详情由对应列表提供。
+  assert.deepEqual(unmapped, [
+    "areal/worktree/read",
+    "areal/worktree/command",
+    "areal/mcp/read",
+    "areal/provider/read",
+  ]);
 });

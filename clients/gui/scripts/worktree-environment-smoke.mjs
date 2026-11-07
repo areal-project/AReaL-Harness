@@ -1,12 +1,13 @@
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { execFile, execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import {
   assertApplicationStopped,
   cleanupSyntheticHostKeychain,
@@ -18,6 +19,7 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
+const execFileAsync = promisify(execFile);
 const scratch = await makeTempDir("areal-worktree-environment-");
 const rust = process.argv.includes("--rust");
 const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
@@ -725,10 +727,29 @@ try {
     "clean worktree receipt",
   );
   await openWorktreeSettings("常规");
-  const cleanBranch = git("-C", cleanPath, "branch", "--show-current");
-  const cleanWorktree = page
-    .locator(".worktrees-directory-item")
-    .filter({ has: button(`查看详情 ${cleanBranch}`) });
+  const directories = page.locator(".worktrees-directory-item");
+  const directoryCount = await until(async () => {
+    const reply = await page.evaluate(
+      ({ projectId }) =>
+        window.arealDesktop.command("workspace", { operation: "worktreeList", projectId }),
+      { projectId: logicalProjectId },
+    );
+    return (
+      reply.ok &&
+      reply.value.worktrees.some(
+        (item) => item.requestId === operation.requestId && item.directory === cleanPath,
+      ) &&
+      reply.value.worktrees.filter((item) => !item.deleted).length
+    );
+  }, "clean worktree in directory listing");
+  await until(async () => (await directories.count()) >= directoryCount, "directory rows rendered");
+  for (const row of await directories.all()) {
+    const details = row.getByRole("button", { name: /^查看详情 / });
+    if ((await details.getAttribute("aria-expanded")) !== "true") await details.click();
+  }
+  const cleanWorktree = directories.filter({
+    has: page.locator("code").filter({ hasText: cleanPath }),
+  });
   await cleanWorktree.waitFor();
   page.once("dialog", (dialog) => dialog.accept());
   await cleanWorktree.getByRole("button", { name: /^删除 / }).click();
@@ -748,6 +769,100 @@ try {
   checks.push(
     "Deleting a clean worktree through General settings removes its Git registration and directory",
   );
+  if (rust) {
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
+    let sourceId;
+    try {
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      const source = await host.sourceState({
+        profile: env.AREAL_GUI_USER_DATA,
+        coreHome: env.AREAL_CORE_HOME,
+        legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
+      });
+      assert.ok(source?.sourceId, "isolated GUI source must be published");
+      sourceId = source.sourceId;
+      assert.ok(
+        source.bindings.some(
+          (binding) =>
+            binding.alias.legacyProjectId === logicalProjectId && binding.workspace === workspace,
+        ),
+      );
+    } finally {
+      host.close();
+    }
+    const creationId = randomUUID();
+    const cli = async (label, args) => {
+      const commandId = randomUUID();
+      await writeFile(
+        join(evidence, `cli-${label}-request.json`),
+        JSON.stringify({ commandId, creationId, args }, null, 2),
+      );
+      const result = await execFileAsync(
+        binary,
+        ["worktree", "--source", sourceId, "--command-id", commandId, ...args],
+        {
+          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+          timeout: 120000,
+        },
+      );
+      const value = JSON.parse(result.stdout);
+      await writeFile(
+        join(evidence, `cli-${label}.json`),
+        JSON.stringify({ commandId, value }, null, 2),
+      );
+      return value.receipt ?? value;
+    };
+    const created = await cli("create", [
+      "create",
+      logicalProjectId,
+      "--request-id",
+      creationId,
+      "--root",
+      join(scratch, "cli-trees"),
+      "--branch",
+      `fixture/${creationId}`,
+    ]);
+    assert.equal(created.state, "created");
+    assert.equal(created.requestId, creationId);
+    const profile = deletion.value.preparedCore?.resourceProfile;
+    assert.ok(
+      profile?.id && profile?.revision,
+      "GUI worktree receipt supplies its deployed profile",
+    );
+    const opened = await cli("open", [
+      "open",
+      logicalProjectId,
+      creationId,
+      "--agent",
+      `${profile.id}@${profile.revision}`,
+    ]);
+    assert.ok(opened.threadId);
+    assert.equal(opened.root, created.record.directory);
+    const openedRecord = await cli("read", ["read", logicalProjectId, creationId]);
+    assert.deepEqual(openedRecord.preparedCore.resourceProfile, profile);
+    assert.deepEqual(openedRecord.bindingParams.agentProfile, profile);
+    await button("返回应用").click();
+    const cliRow = page.getByTestId(`task-item-${opened.threadId}`);
+    await cliRow.waitFor();
+    assert.equal(
+      await cliRow
+        .locator("xpath=ancestor::*[@data-sidebar-project]")
+        .getAttribute("data-sidebar-project"),
+      logicalProjectId,
+    );
+    await cliRow.getByTestId("task-worktree-badge").waitFor();
+    await shot("cli-worktree-sidebar-group");
+    const removed = await cli("delete", ["delete", logicalProjectId, creationId]);
+    assert.equal(removed.deleted, true);
+    assert.equal(removed.deletion.status, "succeeded");
+    assert.equal(removed.deletion.stopReceipt.phase, "completed");
+    await cliRow.waitFor({ state: "detached" });
+    await assert.rejects(lstat(created.record.directory), { code: "ENOENT" });
+    checks.push(
+      "CLI-created worktree appears under its GUI source project and disappears after CLI deletion",
+    );
+  }
   assert.deepEqual(errors, []);
   passed = true;
 } catch (error) {

@@ -379,6 +379,13 @@ impl Supervisor {
         tokio::task::spawn_local(task);
     }
 
+    #[cfg(test)]
+    pub(super) fn test_rust_domains(&self, source: &str, domains: &[&str]) {
+        *self.backend.source.borrow_mut() = Some(source.into());
+        *self.backend.rust_domains.borrow_mut() =
+            domains.iter().map(|domain| (*domain).into()).collect();
+    }
+
     pub(super) fn rust_domain(&self, domain: &str, source: &str) -> bool {
         self.backend_has_source(source)
             && self
@@ -431,6 +438,18 @@ impl Supervisor {
         );
         Ok(result)
     }
+    pub(super) async fn worktree_changed(&self, source: &str) {
+        if !self.backend_has_source(source) {
+            return;
+        }
+        let backend = self.backend.running.borrow().clone();
+        if let Some(backend) = backend {
+            backend
+                .notify("worktree.changed", json!({"sourceId":source}))
+                .await;
+        }
+    }
+
     pub(super) async fn library_changed(&self) {
         let backend = self.backend.running.borrow().clone();
         if let Some(backend) = backend {
@@ -906,14 +925,12 @@ pub(super) async fn backend_command(
             )
             .context("INVALID_PARAMS")?,
         )?,
-        "worktree.command" if principal == "local" && request["params"]["sourceId"] == "host" => {
-            serde_json::to_value(
-                serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandInput>(
-                    request["params"].clone(),
-                )
-                .context("INVALID_PARAMS")?,
-            )?
-        }
+        "worktree.command" if principal == "local" => serde_json::to_value(
+            serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandInput>(
+                request["params"].clone(),
+            )
+            .context("INVALID_PARAMS")?,
+        )?,
         "worktree.command" => serde_json::to_value(
             serde_json::from_value::<areal_protocol::host::WorkbenchWorktreeCommandParams>(
                 request["params"].clone(),
@@ -978,6 +995,12 @@ pub(super) async fn backend_command(
         ensure!(
             host.gateway.workbench.backend_has_source(&source),
             "FORBIDDEN"
+        );
+    }
+    if method == "worktree.command" && params.get("agentProfile").is_some() {
+        ensure!(
+            native || host.gateway.workbench.rust_domain("worktree-rust", &source),
+            "CAPABILITY_UNAVAILABLE"
         );
     }
     let scope = format!(
@@ -2054,6 +2077,49 @@ mod tests {
             assert_eq!(event["connection"], "first");
             assert_eq!(event["notification"]["method"], "ui/notifications/closed");
             assert!(backend_receipt(&host, "local", &uuid::Uuid::new_v4().to_string()).unwrap().is_none());
+            host.gateway.workbench.stop_backend().await;
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn local_gui_source_worktree_profile_keeps_native_admission_and_identity() {
+        tokio::task::LocalSet::new().run_until(async {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
+                crate::ProjectSource::Gui { profile:input.profile.clone(), legacy_project_id:"logical".into() };
+            host.gateway.workbench.ensure_backend(&host,input).await.unwrap();
+            host.gateway.workbench.test_rust_domains(&source,&["worktree-rust"]);
+            let home=super::super::library_store::source_home(&host,&source).unwrap();
+            let creation=uuid::Uuid::new_v4().to_string();
+            areal_local_service::storage::private_dir(&home.join("worktree-requests")).unwrap();
+            areal_local_service::storage::write(&home.join("worktree-requests").join(format!("{creation}.json")),
+                &json!({"requestId":creation,"projectId":"logical","state":"ready","threadId":"original-thread","record":{"directory":root.join("workspace")}})).unwrap();
+            let command=uuid::Uuid::new_v4().to_string();
+            let request=json!({"method":"worktree.command","commandId":command,"params":{"sourceId":source,"projectId":"logical","operation":"worktreeOpen","requestId":uuid::Uuid::new_v4().to_string(),"worktreeRequestId":creation,"agentProfile":{"id":"areal-standard","revision":"resources-existing"}}});
+            let mut old_params=request["params"].clone();
+            old_params.as_object_mut().unwrap().remove("agentProfile");
+            assert_eq!(serde_json::to_value(serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandInput>(old_params.clone()).unwrap()).unwrap(),
+                serde_json::to_value(serde_json::from_value::<areal_protocol::host::WorkbenchWorktreeCommandParams>(old_params).unwrap()).unwrap());
+            let receipt=backend_command(&host,"local",&request).await.unwrap();
+            assert_eq!(receipt["submissionUnknown"],false);
+            assert_eq!(receipt["receipt"]["threadId"],"original-thread");
+            assert_eq!(backend_command(&host,"local",&request).await.unwrap(),receipt);
+            let mut changed=request.clone();
+            changed["params"]["agentProfile"]["revision"]=json!("different-revision");
+            assert_eq!(backend_command(&host,"local",&changed).await.unwrap_err().to_string(),"COMMAND_CONFLICT");
+            let mut foreign=request.clone();
+            foreign["commandId"]=json!(uuid::Uuid::new_v4().to_string());
+            foreign["params"]["sourceId"]=json!("foreign-source");
+            assert_eq!(backend_command(&host,"local",&foreign).await.unwrap_err().to_string(),"FORBIDDEN");
+            assert!(backend_receipt(&host,"local",foreign["commandId"].as_str().unwrap()).unwrap().is_none());
+            assert_eq!(backend_command(&host,"web:fixture",&request).await.unwrap_err().to_string(),"INVALID_PARAMS");
+            host.gateway.workbench.test_rust_domains(&source,&[]);
+            let mut fallback=request.clone();
+            fallback["commandId"]=json!(uuid::Uuid::new_v4().to_string());
+            assert_eq!(backend_command(&host,"local",&fallback).await.unwrap_err().to_string(),"CAPABILITY_UNAVAILABLE");
+            assert!(backend_receipt(&host,"local",fallback["commandId"].as_str().unwrap()).unwrap().is_none());
             host.gateway.workbench.stop_backend().await;
         }).await;
     }

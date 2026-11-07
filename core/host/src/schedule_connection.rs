@@ -29,6 +29,11 @@ struct CoreReply {
     value: Value,
     sequence: u64,
 }
+struct PendingReply {
+    reply: oneshot::Sender<Result<CoreReply>>,
+    snapshot_thread: Option<String>,
+    snapshot_lease: Option<String>,
+}
 pub(super) struct CoreObservation {
     pub events: broadcast::Receiver<CoreEvent>,
     session: Rc<CoreSession>,
@@ -349,25 +354,6 @@ fn emit_workbench_event(host: &Host, project: &str, lease: &str, event: &Value) 
 }
 
 fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
-    if value["method"] == "turn/completed" {
-        let shared_owner = host
-            .schedules
-            .connections
-            .sessions
-            .borrow()
-            .get(&connection.project_id)
-            .is_some_and(|current| Rc::ptr_eq(current, connection));
-        eprintln!(
-            "Host Core event: method=turn/completed stage=received terminal={} current={} sharedOwner={} status={}",
-            connection.terminal,
-            connection.shared_current(host),
-            shared_owner,
-            value["params"]["turn"]["status"]
-                .as_str()
-                .filter(|status| matches!(*status, "completed" | "failed" | "interrupted"))
-                .unwrap_or("invalid")
-        );
-    }
     if changes_shell(&value) {
         connection
             .shell_revision
@@ -388,21 +374,49 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
         }
         return;
     }
-    if value["method"] == "turn/completed"
-        && connection.shared_current(host)
+    let current_turn = matches!(
+        value["method"].as_str(),
+        Some("turn/started" | "turn/completed")
+    ) && connection.shared_current(host)
         && host
             .schedules
             .connections
             .sessions
             .borrow()
             .get(&connection.project_id)
-            .is_some_and(|current| Rc::ptr_eq(current, connection))
-    {
+            .is_some_and(|current| Rc::ptr_eq(current, connection));
+    if current_turn && value["method"] == "turn/started" {
+        if let (Some(thread), Some(turn)) = (
+            value["params"]["threadId"].as_str(),
+            value["params"]["turn"]["id"].as_str(),
+        ) {
+            connection.observe_running(thread, turn);
+        }
+    }
+    if current_turn && value["method"] == "turn/completed" {
         // Core 先结算再发终态；这里只唤醒原生命周期权威重读，不把通知直接当作停止回执。
+        if let Some(thread) = value["params"]["threadId"].as_str() {
+            if let Some(progress) = connection.observed_progress.borrow_mut().get_mut(thread) {
+                if value["params"]["turn"]["id"] == progress.turn {
+                    progress.terminal_hinted = true;
+                }
+            }
+        }
         host.changed();
     }
     if super::library_service::core_event(host, &connection.project_id, &value).is_err() {
         eprintln!("Host library Core event update failed");
+    } else if current_turn && value["method"] == "turn/completed" {
+        if let Some(thread) = value["params"]["threadId"].as_str() {
+            let terminal = connection
+                .observed_progress
+                .borrow()
+                .get(thread)
+                .is_some_and(|progress| value["params"]["turn"]["id"] == progress.turn);
+            if terminal {
+                connection.observed_progress.borrow_mut().remove(thread);
+            }
+        }
     }
     if let Some(body) = super::task_catalog::accept_event(
         host,
@@ -446,12 +460,18 @@ fn changes_shell(event: &Value) -> bool {
     )
 }
 
+struct ObservedProgress {
+    turn: String,
+    terminal_hinted: bool,
+}
+
 struct CoreSession {
     project_id: String,
     connection_id: String,
     service: Service,
     outgoing: mpsc::Sender<Value>,
-    pending: RefCell<BTreeMap<String, oneshot::Sender<Result<CoreReply>>>>,
+    pending: RefCell<BTreeMap<String, PendingReply>>,
+    observed_progress: RefCell<BTreeMap<String, ObservedProgress>>,
     sequence: Cell<u64>,
     closed: Cell<bool>,
     ready: Cell<bool>,
@@ -508,8 +528,9 @@ impl CoreSession {
             value: json!({"method":"host/connectionClosed","params":{}}),
         });
         self.ready.set(false);
+        self.observed_progress.borrow_mut().clear();
         for (_, reply) in std::mem::take(&mut *self.pending.borrow_mut()) {
-            let _ = reply.send(Err(unavailable()));
+            let _ = reply.reply.send(Err(unavailable()));
         }
         self.refresh.notify_one();
     }
@@ -519,6 +540,97 @@ impl CoreSession {
             driver.abort();
         }
     }
+    fn observe_running(&self, thread: &str, turn: &str) {
+        let mut progress = self.observed_progress.borrow_mut();
+        if progress
+            .get(thread)
+            .is_none_or(|previous| previous.turn != turn)
+        {
+            progress.insert(
+                thread.into(),
+                ObservedProgress {
+                    turn: turn.into(),
+                    terminal_hinted: false,
+                },
+            );
+        }
+    }
+
+    fn snapshot_progress(
+        &self,
+        host: &Rc<Host>,
+        thread: &str,
+        snapshot: &Value,
+        lease: Option<&str>,
+    ) -> Result<()> {
+        if self.terminal {
+            return Ok(());
+        }
+        ensure!(
+            self.shared_current(host)
+                && host
+                    .schedules
+                    .connections
+                    .sessions
+                    .borrow()
+                    .get(&self.project_id)
+                    .is_some_and(|current| std::ptr::eq(current.as_ref(), self)),
+            unavailable()
+        );
+        ensure!(
+            self.workbench_lease.borrow().as_deref() == lease,
+            unavailable()
+        );
+        ensure!(snapshot["thread"]["id"] == thread, "INVALID_RESPONSE");
+        if let Some(source) = host.gateway.workbench.rust_source("library-rust") {
+            super::library_store::source_home(host, &source)?;
+        }
+        for turn in snapshot["thread"]["turns"].as_array().into_iter().flatten() {
+            let Some(id) = turn["id"].as_str() else {
+                continue;
+            };
+            let progressing = self
+                .observed_progress
+                .borrow()
+                .get(thread)
+                .is_some_and(|previous| previous.turn == id);
+            match turn["status"].as_str() {
+                Some("inProgress") => {
+                    self.observe_running(thread, id);
+                }
+                Some("completed" | "failed" | "interrupted") if progressing => {
+                    // 与旧页面投影相同：只补已见执行中的轮次，不把首次历史快照标成新完成。
+                    let first_hint = {
+                        let mut progress = self.observed_progress.borrow_mut();
+                        let progress = progress.get_mut(thread).unwrap();
+                        let first_hint = !progress.terminal_hinted;
+                        progress.terminal_hinted = true;
+                        first_hint
+                    };
+                    match super::library_service::record_thread_activity(
+                        host,
+                        &self.project_id,
+                        thread,
+                        Some(id),
+                    ) {
+                        Ok(()) => {
+                            self.observed_progress.borrow_mut().remove(thread);
+                        }
+                        Err(_) if first_hint => {
+                            eprintln!("Host library snapshot completion update failed")
+                        }
+                        Err(_) => {}
+                    }
+                    if first_hint {
+                        host.changed();
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     async fn request(&self, method: &str, params: Value) -> Result<Value> {
         Ok(self.request_with_barrier(method, params).await?.value)
     }
@@ -531,7 +643,17 @@ impl CoreSession {
         self.sequence.set(sequence);
         let id = format!("host-{sequence}");
         let (sender, receiver) = oneshot::channel();
-        self.pending.borrow_mut().insert(id.clone(), sender);
+        let snapshot_thread = matches!(method, "areal/thread/observe" | "thread/resume")
+            .then(|| params["threadId"].as_str().map(str::to_owned))
+            .flatten();
+        self.pending.borrow_mut().insert(
+            id.clone(),
+            PendingReply {
+                reply: sender,
+                snapshot_thread,
+                snapshot_lease: self.workbench_lease.borrow().clone(),
+            },
+        );
         let _pending = Pending {
             session: self,
             id: id.clone(),
@@ -627,6 +749,7 @@ async fn connect_authorized(
         service,
         outgoing,
         pending: RefCell::new(BTreeMap::new()),
+        observed_progress: RefCell::new(BTreeMap::new()),
         sequence: Cell::new(0),
         closed: Cell::new(false),
         ready: Cell::new(false),
@@ -679,7 +802,13 @@ async fn connect_authorized(
                             } else if let Some(id) = value["id"].as_str()
                                 && let Some(reply) = connection.pending.borrow_mut().remove(id) {
                                     let result = if let Some(error) = value.get("error") { Err(RpcFailure(error.clone()).into()) } else { value.get("result").cloned().map(|value| CoreReply { value, sequence: connection.event_sequence.get() }).ok_or_else(unavailable) };
-                                    let _ = reply.send(result);
+                                    let result = result.and_then(|result| {
+                                        if let Some(thread) = reply.snapshot_thread.as_deref() {
+                                            connection.snapshot_progress(&host, thread, &result.value, reply.snapshot_lease.as_deref())?;
+                                        }
+                                        Ok(result)
+                                    });
+                                    let _ = reply.reply.send(result);
                                 }
                         }
                         Message::Ping(bytes) => if writer.send(Message::Pong(bytes)).await.is_err() { break; },
@@ -1355,6 +1484,20 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn turn_completed_wakes_original_lifecycle_receipt_without_redispatch() {
+        lifecycle_completion(false, false).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn terminal_only_in_replacement_snapshot_settles_original_lifecycle_without_redispatch() {
+        lifecycle_completion(true, false).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn library_write_failure_preserves_authoritative_snapshot_and_hints_terminal_once() {
+        lifecycle_completion(true, true).await;
+    }
+
+    async fn lifecycle_completion(snapshot_only: bool, library_failure: bool) {
         tokio::task::LocalSet::new().run_until(async {
             let root = tempfile::tempdir().unwrap();
             let mut base = super::super::schedules::tests::fixture(root.path());
@@ -1375,13 +1518,19 @@ mod tests {
             let dispatches = Rc::new(Cell::new(0));
             let count = dispatches.clone();
             let (release, released) = oneshot::channel::<()>();
+            let (snapshot_ready, snapshot_due) = oneshot::channel::<()>();
             let server = tokio::task::spawn_local(async move {
                 let (stream,_) = listener.accept().await.unwrap();
                 let mut socket = tokio_tungstenite::accept_hdr_async(stream,ScheduleHeaders).await.unwrap();
+                let mut released = Box::pin(released);
                 let mut reads = 0;
                 let mut subscribed = false;
+                let mut snapshot_ready = Some(snapshot_ready);
                 loop {
-                    let call = receive(&mut socket).await;
+                    let call = tokio::select! {
+                        _ = released.as_mut() => break,
+                        call = receive(&mut socket) => call,
+                    };
                     match call["method"].as_str().unwrap() {
                         "initialize" => send(&mut socket,json!({"id":call["id"],"result":{}})).await,
                         "areal/capabilities" => send(&mut socket,json!({"id":call["id"],"result":{"features":{"conversationObservation":true}}})).await,
@@ -1390,7 +1539,8 @@ mod tests {
                             assert_eq!(call["params"]["mode"],"conversation");
                             assert_eq!(call["params"]["maxBytes"],64*1024);
                             subscribed = true;
-                            send(&mut socket,json!({"id":call["id"],"result":{"thread":{"id":"thread"}}})).await;
+                            let status = if reads < 2 { "inProgress" } else { "interrupted" };
+                            send(&mut socket,json!({"id":call["id"],"result":{"thread":{"id":"thread","turns":[{"id":"turn","status":status}]}}})).await;
                         }
                         "turn/interrupt" => {
                             assert!(subscribed, "停止派发前必须建立原线程观察");
@@ -1399,14 +1549,23 @@ mod tests {
                             send(&mut socket,json!({"id":call["id"],"result":{}})).await;
                         }
                         "thread/read" => {
+                            if call["params"]["includeTurns"] == false {
+                                send(&mut socket,json!({"id":call["id"],"result":{"thread":{"id":"thread"}}})).await;
+                                continue;
+                            }
                             reads += 1;
                             let status = if reads < 3 { "inProgress" } else { "interrupted" };
                             send(&mut socket,json!({"id":call["id"],"result":{"thread":{"id":"thread","turns":[{"id":"turn","status":status}]}}})).await;
                             if reads == 2 && subscribed {
                                 // 原命令的首次结算仍在执行；终态通知只负责唤醒下一次权威读。
+                                if snapshot_only {
+                                    snapshot_ready.take().unwrap().send(()).unwrap();
+                                } else {
                                 send(&mut socket,json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"turn","status":"interrupted"}}})).await;
-                            } else if reads == 3 { released.await.unwrap(); break; }
+                                }
+                            }
                         }
+                        "areal/subscription/remove" => send(&mut socket,json!({"id":call["id"],"result":{"subscriptionCount":0}})).await,
                         method => panic!("unexpected Core method {method}"),
                     }
                 }
@@ -1414,6 +1573,39 @@ mod tests {
             let session = connect(host.clone(),"project",service).await.unwrap();
             session.ready.set(true);
             host.schedules.connections.sessions.borrow_mut().insert("project".into(),session.clone());
+            let snapshot_session = session.clone();
+            let refresh = tokio::task::spawn_local(async move {
+                if snapshot_only {
+                    snapshot_due.await.unwrap();
+                    snapshot_session.request("areal/thread/observe", json!({"threadId":"thread","mode":"conversation","maxBytes":65536})).await.unwrap();
+                }
+            });
+            if snapshot_only {
+                host.gateway.workbench.test_rust_domains(&source_id, &["library-rust"]);
+                let completion = |thread: &str, turn: &str, status: &str| json!({"thread":{"id":thread,"turns":[{"id":turn,"status":status}]}});
+                let initial = super::super::library_store::read_source(&host, &source_id).unwrap();
+                session.snapshot_progress(&host, "history", &completion("history", "past", "completed"), None).unwrap();
+                assert_eq!(super::super::library_store::read_source(&host, &source_id).unwrap(), initial, "首读历史终态不能标未读");
+                session.snapshot_progress(&host, "guarded", &completion("guarded", "guard-turn", "inProgress"), None).unwrap();
+                assert!(session.snapshot_progress(&host, "guarded", &completion("other-thread", "guard-turn", "completed"), None).is_err());
+                let original = host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().identity.generation.clone();
+                host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().identity.generation = "stale".into();
+                assert!(session.snapshot_progress(&host, "guarded", &completion("guarded", "guard-turn", "completed"), None).is_err());
+                host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().identity.generation = original;
+                host.schedules.connections.sessions.borrow_mut().remove("project");
+                assert!(session.snapshot_progress(&host, "guarded", &completion("guarded", "guard-turn", "completed"), None).is_err(), "非当前session owner不能写资料库");
+                host.schedules.connections.sessions.borrow_mut().insert("project".into(),session.clone());
+                *session.workbench_lease.borrow_mut() = Some("replacement-lease".into());
+                assert!(session.snapshot_progress(&host, "guarded", &completion("guarded", "guard-turn", "completed"), None).is_err(), "原租约过期响应不能先写投影");
+                session.workbench_lease.borrow_mut().take();
+                host.gateway.workbench.test_rust_domains("unbound-source", &["library-rust"]);
+                assert!(session.snapshot_progress(&host, "guarded", &completion("guarded", "guard-turn", "completed"), None).is_err(), "未知source不能写当前资料库");
+                host.gateway.workbench.test_rust_domains(&source_id, &["library-rust"]);
+                assert_eq!(super::super::library_store::read_source(&host, &source_id).unwrap(), initial);
+                session.observed_progress.borrow_mut().remove("guarded");
+            }
+            let library_path = super::super::library_store::source_home(&host,&source_id).unwrap().join("library.json");
+            if library_failure { std::fs::create_dir(&library_path).unwrap(); }
             let changes = host.changes.subscribe();
             publish_event(&host,&session,json!({"method":"item/agentMessage/delta","params":{"threadId":"thread","delta":"text"}}));
             assert!(!changes.has_changed().unwrap(),"流delta不唤醒Host全局观察");
@@ -1424,9 +1616,34 @@ mod tests {
             assert_eq!(result["phase"],"completed");
             assert_eq!(result["targets"][0]["phase"],"completed");
             assert_eq!(dispatches.get(),1);
+            if snapshot_only {
+                if library_failure {
+                    let changes = host.changes.subscribe();
+                    let result = session.request("areal/thread/observe",json!({"threadId":"thread","mode":"conversation","maxBytes":65536})).await.unwrap();
+                    assert_eq!(result["thread"]["turns"][0]["status"],"interrupted", "库写失败不能封死权威读取");
+                    assert!(!changes.has_changed().unwrap(), "相同终态在库仍失败时不能重复触发失效");
+                    assert!(session.observed_progress.borrow()["thread"].terminal_hinted);
+                    std::fs::remove_dir(&library_path).unwrap();
+                    session.request("areal/thread/observe",json!({"threadId":"thread","mode":"conversation","maxBytes":65536})).await.unwrap();
+                    assert!(changes.has_changed().unwrap(), "库恢复后原completion可补写");
+                }
+                let key = format!("{alias}:thread");
+                let library = super::super::library_store::read_source(&host,&source_id).unwrap();
+                assert_eq!(library["threads"][&key]["completionId"],"turn");
+                assert_eq!(library["threads"][&key]["unread"],true);
+                super::super::library_store::change(&host,&source_id,|state| { state["threads"][&key]["unread"] = json!(false); Ok(()) }).unwrap();
+                session.snapshot_progress(&host,"thread",&json!({"thread":{"id":"thread","turns":[{"id":"turn","status":"interrupted"}]}}), None).unwrap();
+                assert_eq!(super::super::library_store::read_source(&host,&source_id).unwrap()["threads"][&key]["unread"],false,"重复终态不覆盖已读");
+                assert!(session.observed_progress.borrow().is_empty(),"终态清除可重建进度");
+                publish_event(&host,&session,json!({"method":"turn/started","params":{"threadId":"event-thread","turn":{"id":"event-turn","status":"inProgress"}}}));
+                session.snapshot_progress(&host,"event-thread",&json!({"thread":{"id":"event-thread","turns":[{"id":"event-turn","status":"completed"}]}}), None).unwrap();
+                assert_eq!(super::super::library_store::read_source(&host,&source_id).unwrap()["threads"][format!("{alias}:event-thread")]["completionId"], "event-turn", "已见开始事件也能由终态快照补齐");
+                assert!(session.observed_progress.borrow().is_empty());
+            }
             let stored = super::super::workbench_lifecycle::read_request(&host,&source_id,"read",&json!({"requestId":request})).await.unwrap();
             assert_eq!(stored["phase"],"completed");
             assert_eq!(stored["requestId"],request);
+            refresh.await.unwrap();
             release.send(()).unwrap();
             server.await.unwrap();
             session.close();

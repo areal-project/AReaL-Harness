@@ -320,6 +320,46 @@ class LifecycleOperations {
     this.backend.onChange?.();
     return value;
   }
+  /** @param {unknown} value */
+  async projectHostRecord(value) {
+    const record = this.acceptHostRecord(value);
+    if (
+      !record ||
+      record.kind !== "interruptTurn" ||
+      record.phase !== "completed" ||
+      typeof record.threadId !== "string"
+    )
+      return record;
+    const threadId = record.threadId;
+    const target = record.targets[0];
+    const project = this.backend.projects.get(target.projectId);
+    const client = project?.client;
+    const source = this.backend.host.sourceId;
+    const current = () =>
+      this.generation === record.desktopGeneration &&
+      this.backend.host.sourceId === source &&
+      this.backend.projects.get(target.projectId) === project &&
+      project?.service?.serviceId === target.serviceId &&
+      project.service.generation === target.generation &&
+      this.backend.currentConnection(project, client);
+    if (!client || !project || !current()) return record;
+    const displayed = project.model.state.threads[threadId]?.turns?.find(
+      (turn) => turn.id === record.turnId,
+    );
+    if (displayed && ["completed", "failed", "interrupted"].includes(displayed.status ?? ""))
+      return record;
+    try {
+      // 完成证明先刷新原连接投影，再交付回执；Main延迟接收不应阻塞历史读取。
+      await this.backend.readObservation(project, threadId, {
+        client,
+        current,
+        timeoutMs: 6000,
+      });
+    } catch (error) {
+      if (current()) this.backend.observations.observationFailure(project, threadId, error);
+    }
+    return record;
+  }
   /** @param {string} operation @param {unknown} [requestId] */
   async hostRead(operation, requestId) {
     if (!this.backend.hostCall) throw failure("Host 生命周期不可用", "LIFECYCLE_UNSUPPORTED");
@@ -556,7 +596,7 @@ class LifecycleOperations {
 
   /** @param {unknown} requestId */
   async read(requestId) {
-    if (this.rustOwner()) return this.acceptHostRecord(await this.hostRead("read", requestId));
+    if (this.rustOwner()) return this.projectHostRecord(await this.hostRead("read", requestId));
     if (!uuid(requestId)) throw failure("无效的后台请求身份", "LIFECYCLE_INVALID_REQUEST");
     await this.init();
     return structuredClone(this.records.get(requestId) ?? null);
@@ -572,7 +612,7 @@ class LifecycleOperations {
         try {
           if (!this.backend.hostCall) throw failure("Host 生命周期不可用", "LIFECYCLE_UNSUPPORTED");
           this.hostOwnedRequests.add(request.requestId);
-          const receipt = this.acceptHostRecord(await this.backend.hostCall("lifecycle.command", {
+          const receipt = await this.projectHostRecord(await this.backend.hostCall("lifecycle.command", {
             sourceId: this.backend.host.sourceId,
             request: { requestId: request.requestId, kind: request.kind, mode: request.mode,
               expectedDesktopGeneration: request.desktopGeneration, expectedTargets: request.targets,
@@ -883,7 +923,7 @@ class LifecycleOperations {
 
   /** @param {unknown} requestId */
   reconcile(requestId) {
-    if (this.rustOwner()) return this.hostRead("reconcile", requestId).then((value) => this.acceptHostRecord(value));
+    if (this.rustOwner()) return this.hostRead("reconcile", requestId).then((value) => this.projectHostRecord(value));
     const task = this.tail
       .catch(() => {})
       .then(async () => {

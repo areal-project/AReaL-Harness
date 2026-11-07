@@ -55,16 +55,18 @@ Host 与服务通过私有 Unix socket pair 传送逐行 JSON，带 `version: 1`
 
 | 领域 | Rust 权威 | JS 保留的职责 |
 | --- | --- | --- |
-| 资料库 | Host 同步事务执行导航整理、写入未读与导航摘要；保留未知桌面设置 | 设置校验和页面投影；只读云会话归属及尚未提交状态 |
+| 资料库 | Host 同步事务执行导航整理，由 Core 通知与同代已观察进度的权威快照更新未读和导航摘要；保留未知桌面设置 | 设置校验和页面投影；只读云会话归属及尚未提交状态 |
 | 执行与恢复 | Host 持有 Core 连接与租约，Core 核对原请求回执；Host 汇总生命周期回执 | 阅读窗口、页面工具和输入状态准备 |
 | 定时任务 | Core 管理任务与配置草稿，Host 聚合目录、published 预览、收件箱及观察状态 | 已选供应商输入准备和目录展示 |
 | Worktree | Core 执行 Git 与进程操作，Host 管理跨项目归属、环境配置与生命周期记录 | 页面工具准备与结果投影 |
 
 Host 的资料库事务从原位置读取完整 JSON，在同一同步段中校验、修改并原子写回；导航公开回执仍经同一过滤器。桌面设置仅在有界字段上按原值比较替换，Host 不解释代理、硬件加速等设置。Worktree 设置与环境配置复用同一资料库事务，不能另建文件写者。
 
+`worktree.thread.prepare` 从原 Core 保存的部署中返回已应用的资源 profile 与 revision，后台仅据此恢复可重建投影。原创建绑定期间，资源检查仍比较当前选择与该部署；发生变化时保留原请求并拒绝继续，不隐式重启 Core 或把原绑定换到新代次。
+
 `areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。读取停止项目的任务预览使用 published 目录并保留 unobserved，显式 observe 才请求实时状态；私有任务观察只使用既有连接，不重新启动已停止项目。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。
 
-CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@revision` 显式选择已部署、允许线程进程的 Profile，执行项目仍受原并发写授权和进程预算约束；不由 Host 自动提权。`worktree --command-id <原 ID>` 可重复原参数核对已受理命令，不能换 ID 重放 UNKNOWN。
+CLI 打开带环境脚本的 Worktree 时，通过 `worktree open --agent id@revision` 显式选择已部署、允许线程进程的 Profile，执行项目仍受原并发写授权和进程预算约束；不由 Host 自动提权。`worktree --command-id <原 ID>` 可重复原参数核对已受理命令，不能换 ID 重放 UNKNOWN。 本机 CLI 的 `--source <已登记 GUI 来源>` 同样支持显式 Profile，但仍要求当前后台绑定该来源且启用 `worktree-rust`；关闭该 Rust 域时在准入前拒绝此参数。浏览器与远程继续使用不含 `agentProfile` 的公共合同。
 
 收口预算 `workbenchConvergeLines` 只统计待迁移资料库、提交恢复、历史观察、生命周期、服务协议、任务目录、任务草稿和 Worktree 模块。既有其余 JS 按精确路径保留；新文件和改名文件默认计入，基线不得增长，也不得新增排除路径掩盖迁移代码。协议方法仍必须同时登记 schema、Host 白名单和服务 ready；私有反向调用不成为公共 RPC。
 

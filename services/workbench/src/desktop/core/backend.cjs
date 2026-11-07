@@ -1579,11 +1579,11 @@ class CoreBackend {
     }
   }
 
-  /** @param {Project} project @param {Fields} request */
-  async prepareThreadInProject(project, request) {
+  /** @param {Project} project @param {Fields} request @param {{preparedCore?:boolean}} [options] */
+  async prepareThreadInProject(project, request, { preparedCore = false } = {}) {
     this.assertThreadCreationAvailable(project, request);
     try {
-      await this.resources.beforeCreate(project);
+      await this.resources.beforeCreate(project, { allowRestart: !preparedCore });
       const configured = request.model;
       if (modelRecord(configured) && configured.providerId === "areal_openai") {
         await this.providers.ensureSubscription(project);

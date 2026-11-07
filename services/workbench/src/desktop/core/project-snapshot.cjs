@@ -31,6 +31,7 @@ function snapshotProject(backend, project, taskHistoryOwners) {
     core: {
       ...projectCoreCapabilities(backend.binary, live?.client?.capabilities),
       instanceId: live?.service?.serviceId ?? null,
+      serviceGeneration: live?.service?.generation ?? null,
       connectionGeneration: live?.connectionGeneration ?? 0,
       taskDirectoryRevision: backend.ownerTasks.revision(project.id),
     },

@@ -669,6 +669,14 @@ impl Engine {
                     .validate_start(&start)
                     .map_err(invalid)?;
             }
+            let task_directory = if request.prepare_task_directory == Some(true) {
+                Some(task_directory_target(
+                    Path::new(&engine.default_cwd()),
+                    request.cwd.as_deref().ok_or_else(|| invalid("task cwd is required"))?,
+                )?)
+            } else {
+                None
+            };
             #[cfg(test)]
             engine
                 .desktop
@@ -682,6 +690,12 @@ impl Engine {
                 .desktop
                 .submissions
                 .creation_checkpoint("afterAdmission");
+            if let Some(directory) = task_directory {
+                prepare_task_directory(&directory).map_err(|error| {
+                    tracing::warn!(%error, request_id = %request.request_id, "task directory creation remains unconfirmed");
+                    engine.creation_unconfirmed(&request.request_id)
+                })?;
+            }
             let (thread, _) = engine
                 .create_inner(
                     request.cwd.unwrap_or_else(|| engine.default_cwd()),
@@ -1484,6 +1498,51 @@ fn normalize_thread_receipt(value: &mut Value, thread_id: &str) -> Result<()> {
                 .and_then(|revision| revision.checked_sub(1))
         );
         value["resultingRevision"] = value["result"]["revision"].clone();
+    }
+    Ok(())
+}
+
+// 只接受工作区的直接子目录；已存在目录也必须拒绝符号链接。
+pub(super) fn task_directory_target(workspace: &Path, cwd: &str) -> Result<std::path::PathBuf> {
+    let workspace = workspace.canonicalize().map_err(invalid)?;
+    let target = Path::new(cwd);
+    let name = target
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| {
+            !name.starts_with('.')
+                && name.encode_utf16().count() <= 128
+                && !name.contains(['/', '\\'])
+        })
+        .ok_or_else(|| invalid("invalid task directory name"))?;
+    if target.parent() != Some(workspace.as_path()) || workspace.join(name) != target {
+        return Err(invalid("task directory must be a direct workspace child"));
+    }
+    match std::fs::symlink_metadata(target) {
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            return Err(invalid("task directory must not be a symlink or file"));
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(invalid(error)),
+    }
+    Ok(target.to_path_buf())
+}
+fn prepare_task_directory(target: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    match builder.create(target) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(error),
+    }
+    let metadata = std::fs::symlink_metadata(target)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(std::io::Error::other("task directory identity changed"));
     }
     Ok(())
 }

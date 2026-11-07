@@ -792,8 +792,11 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
         return project;
       },
     },
-    prepareThreadInProject: async (project) => {
+    prepareThreadInProject: async (project, _request, options) => {
       assert.equal(project.client.ready, true);
+      assert.equal(project.resourceFingerprint, "external");
+      assert.deepEqual(project.resourceProfile, { id: "fixture", revision: "v1" });
+      assert.deepEqual(options, { preparedCore: true });
       return { current: () => true, params: { cwd: execution.root } };
     },
     openThread: async (_project, id) => assert.equal(id, "thread"),
@@ -804,6 +807,8 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
           alias: execution.id,
           root: execution.root,
           requestId,
+          resourceFingerprint: "external",
+          resourceProfile: { id: "fixture", revision: "v1" },
         };
       assert.equal(method, "worktree.thread.bind");
       assert.equal(params.requestId, requestId);

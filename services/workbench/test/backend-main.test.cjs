@@ -7,7 +7,7 @@ const { mkdtemp, mkdir, readFile, realpath, writeFile, rm } = require("node:fs/p
 const { join } = require("node:path");
 const { tmpdir } = require("node:os");
 
-async function fixture(t, retired) {
+async function fixture(t, retired, projectionFixture = false) {
   const root = await mkdtemp(join(tmpdir(), "workbench-backend-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const appRoot = join(root, "app"), home = join(root, "data");
@@ -21,7 +21,13 @@ async function fixture(t, retired) {
     exports.createMainDesktop = async (options, lifetime) => {
       if (lifetime.hostManaged !== true) throw Error("Host ownership must precede backend initialization");
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
-      return { backend: { cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path }, adapter: { listen: async () => ({
+      const backend = { home: options.home, rustDomains: ['worktree-rust'], host: { sourceId: 'fixture-source' }, cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path };
+      if (options.projectionFixture) {
+        const { CoreWorktrees } = require(${JSON.stringify(require.resolve('../src/desktop/core/worktrees.cjs'))});
+        backend.worktrees = new CoreWorktrees(backend);
+        backend.onChange = () => process.stdout.write(JSON.stringify({ event: 'projection', records: [...backend.worktrees.records.values()] }) + '\\n');
+      }
+      return { backend, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
       }), executeRemote: async (name, params) => {
         if (params.fail) throw Error('Core refused: ' + name);
@@ -43,7 +49,7 @@ async function fixture(t, retired) {
   const lines = createInterface({ input: child.stdout });
   t.after(() => lines.close());
   return { home, child, lines, exited, start: () => child.stdin.write(JSON.stringify({
-    version: 1, method: "backend.start", params: { appRoot, options: { home }, retired },
+    version: 1, method: "backend.start", params: { appRoot, options: { home, projectionFixture }, retired },
   }) + "\n") };
 }
 
@@ -108,4 +114,21 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
   ]) assert.deepEqual((await call(id, params)).error, { code: "COMMAND_FAILED", message }, id);
   f.child.stdin.end();
   assert.deepEqual(await f.exited, [0, null]);
+});
+
+
+test("Host Worktree invalidation refreshes persisted progress and rejects another source", async (t) => {
+  const f = await fixture(t, undefined, true);
+  const ready = once(f.lines, "line");
+  f.start();
+  await ready;
+  const requestId = require("node:crypto").randomUUID();
+  await mkdir(join(f.home, "worktree-requests"));
+  const record = {kind:"thread", requestId, projectId:"logical", parameters:{}, state:"settingUp", recordRevision:7, threadId:"original-thread"};
+  await writeFile(join(f.home, "worktree-requests", requestId + ".json"), JSON.stringify(record));
+  const projected = once(f.lines, "line");
+  f.child.stdin.write(JSON.stringify({version:1,event:"worktree.changed",sourceId:"fixture-source"}) + "\n");
+  assert.deepEqual(JSON.parse((await projected)[0]), {event:"projection", records:[record]});
+  f.child.stdin.write(JSON.stringify({version:1,event:"worktree.changed",sourceId:"another-source"}) + "\n");
+  assert.deepEqual(await f.exited, [1, null]);
 });

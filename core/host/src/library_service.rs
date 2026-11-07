@@ -268,20 +268,6 @@ pub(super) fn core_event(host: &Rc<Host>, project: &str, event: &Value) -> Resul
     if !["thread/started", "turn/started", "turn/completed"].contains(&method) {
         return Ok(());
     }
-    let Some(source) = host.gateway.workbench.rust_source("library-rust") else {
-        return Ok(());
-    };
-    let aliases = bindings(host, &source)?;
-    let Some((_, alias)) = aliases.iter().find(|(canonical, _)| canonical == project) else {
-        return Ok(());
-    };
-    let home = library_store::source_home(host, &source)?;
-    let projects = worktree_catalog::saved_projects(&home)?;
-    let logical = projects
-        .iter()
-        .find(|p| p["id"] == *alias)
-        .and_then(|p| p["logicalProjectId"].as_str())
-        .unwrap_or(alias);
     let params = &event["params"];
     let Some(thread) = params["threadId"]
         .as_str()
@@ -296,6 +282,29 @@ pub(super) fn core_event(host: &Rc<Host>, project: &str, event: &Value) -> Resul
                 .or_else(|| params["turnId"].as_str())
         })
         .flatten();
+    record_thread_activity(host, project, thread, completion)
+}
+
+pub(super) fn record_thread_activity(
+    host: &Rc<Host>,
+    project: &str,
+    thread: &str,
+    completion: Option<&str>,
+) -> Result<()> {
+    let Some(source) = host.gateway.workbench.rust_source("library-rust") else {
+        return Ok(());
+    };
+    let aliases = bindings(host, &source)?;
+    let Some((_, alias)) = aliases.iter().find(|(canonical, _)| canonical == project) else {
+        return Ok(());
+    };
+    let home = library_store::source_home(host, &source)?;
+    let projects = worktree_catalog::saved_projects(&home)?;
+    let logical = projects
+        .iter()
+        .find(|p| p["id"] == *alias)
+        .and_then(|p| p["logicalProjectId"].as_str())
+        .unwrap_or(alias);
     library_store::change(host, &source, |state| {
         let meta = state["projects"]
             .as_object_mut()

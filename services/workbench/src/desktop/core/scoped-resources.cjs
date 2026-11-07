@@ -261,12 +261,14 @@ class ScopedResources {
       fingerprint: profile.revision,
     };
   }
-  /** @param {CoreProject} project */
-  async beforeCreate(project) {
+  /** @param {CoreProject} project @param {{allowRestart?:boolean}} [options] */
+  async beforeCreate(project, { allowRestart = true } = {}) {
     if (!project.client) throw new Error("Core 尚未连接");
     if (!this.backend.providers.manages(project)) return project;
     const deployment = await this.deployment(project);
     if (deployment.fingerprint === project.resourceFingerprint) return project;
+    if (!allowRestart)
+      throw new Error("工作树原准备的技能配置已变化；原请求已保留，未重启 Core 或创建会话");
     if (
       this.backend.resourcesUpdating ||
       this.backend.activeCommands > 1 ||

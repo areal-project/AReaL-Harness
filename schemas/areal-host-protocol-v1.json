@@ -24647,7 +24647,9 @@
           "type": "object",
           "additionalProperties": {
             "type": "string",
-            "enum": ["storageLocked"]
+            "enum": [
+              "storageLocked"
+            ]
           },
           "description": "Optional provider-ID map of unavailable secure-storage slots; contains no credential values or raw diagnostics."
         },
@@ -46675,6 +46677,14 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 512
+        },
+        "resourceProfile": {
+          "$ref": "#/$defs/WorkbenchManagedVersionRef"
+        },
+        "resourceFingerprint": {
+          "type": "string",
+          "pattern": "^(external|resources-[a-f0-9]{32})$",
+          "maxLength": 42
         }
       },
       "required": [
@@ -66470,6 +66480,30 @@
         "params"
       ],
       "additionalProperties": false
+    },
+    "WorkbenchPrivateWorktreeChangedEvent": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "event": {
+          "type": "string",
+          "const": "worktree.changed"
+        },
+        "sourceId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "version",
+        "event",
+        "sourceId"
+      ],
+      "additionalProperties": false
     }
   },
   "x-current": {
@@ -67482,6 +67516,12 @@
           "direction": "workbenchToHost",
           "x-owner": "workbench",
           "source": "services/workbench/src/backend-main.cjs"
+        },
+        "worktree.changed": {
+          "schema": "#/$defs/WorkbenchPrivateWorktreeChangedEvent",
+          "direction": "hostToWorkbench",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
         }
       }
     }
