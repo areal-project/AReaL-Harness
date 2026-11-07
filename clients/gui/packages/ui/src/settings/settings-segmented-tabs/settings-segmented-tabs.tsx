@@ -11,14 +11,14 @@ export function SettingsSegmentedTabs<TValue extends string>({
   items,
   value,
   onValueChange,
-  activateOnFocus = true,
+  activateOnFocus = false,
   disabled = false,
   ariaLabel,
 }: {
   items: readonly SettingsSegmentedTabItem<TValue>[];
   value: TValue;
   onValueChange: (value: TValue) => void;
-  /** Guarded (dirty-checked) tab switches must activate on click only, not focus. */
+  /** 设置里的分段选择只在点按或回车、空格时生效，方向键只移动焦点。 */
   activateOnFocus?: boolean;
   disabled?: boolean;
   ariaLabel?: string;

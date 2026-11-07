@@ -352,11 +352,11 @@
 
 /* Task-named settings details share the existing disclosure recipe. */
 
-.appearance-reading-preview {
+.settings-page .appearance-reading-preview {
   margin: 0;
   padding: var(--spacing-field);
   font-family: var(--font-content, var(--font-sans));
-  font-size: var(--content-font-size);
-  line-height: 1.6;
+  font-size: var(--text-conversation);
+  line-height: var(--conversation-line);
   color: var(--color-foreground);
 }

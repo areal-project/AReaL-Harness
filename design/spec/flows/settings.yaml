@@ -1,0 +1,53 @@
+id: settings
+name: 设置
+status: draft
+screens: [window]
+components: [settings-navigation, settings-page]
+
+initial: window.sidebar
+
+states:
+  window.sidebar:
+    see: 侧栏与对话
+  window.settings:
+    see: 侧栏换成设置导航，“常规”为当前页；主区是常规页
+  window.settings-appearance:
+    see: “外观”为当前页；主区是外观页，最下面两个收起的分区
+  window.settings-search:
+    see: 设置导航只剩“外观”一项，右端写命中的条目“字号”；主区仍是常规页
+  window.settings-select:
+    see: “界面主题”下方弹出三项选择，当前值打勾
+
+transitions:
+  - from: window.sidebar
+    on: click 设置
+    to: window.settings
+    note: 首次打开时当前页为“常规”
+  - from: window.settings
+    on: click 外观
+    to: window.settings-appearance
+  - from: window.settings
+    on: 在搜索设置里输入 字号
+    to: window.settings-search
+  - from: window.settings-search
+    on: click 清除设置搜索
+    to: window.settings
+    note: 全部分组恢复
+  - from: window.settings-appearance
+    on: click 界面主题
+    to: window.settings-select
+  - from: window.settings-select
+    on: 选一项
+    to: window.settings-appearance
+    note: 下拉收起，“界面主题”显示新值
+  - from: window.settings-appearance
+    on: click 使用指针光标
+    to: window.settings-appearance
+    note: 开关翻转
+  - from: [window.settings, window.settings-appearance, window.settings-search]
+    on: click 返回应用
+    to: window.sidebar
+    note: 侧栏与当前对话和打开设置前一样
+
+motion:
+  - 下拉出现与消失同 menu；开关滑块与底色在 motion-fast 内过渡；减少动态时直接切换

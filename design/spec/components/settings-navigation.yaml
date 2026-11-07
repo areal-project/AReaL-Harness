@@ -1,0 +1,76 @@
+id: settings-navigation
+name: 设置导航
+status: draft
+purpose: 在设置里找到并切换设置页；按页名或页内条目名搜索。
+why: 设置页多且杂，分组加搜索让人不用记它放在哪一页；外形与对话侧栏相同，进出设置时窗口骨架不跳。
+
+layout:
+  place: 打开设置后取代侧栏的导航内容（navigation-sidebar 的 B 区），宽度、底色、圆角与侧栏相同；应用导航栏照旧在左
+  top-bar: 顶栏左段放“返回应用”与“前进”两个按钮，外形同 navigation-sidebar 的 window-controls（没有收起侧栏按钮）；“前进”总是不可用
+  order: 自上而下为标题区、分组列表；列表超出高度时在内部滚动
+
+anatomy:
+  - part: header
+    role: 标题“设置”与搜索框
+  - part: group
+    role: 分组标题加该组的设置页
+  - part: item
+    role: 一个设置页入口
+  - part: empty
+    optional: true
+    role: 搜索没有结果时的一行提示
+
+parts:
+  header:
+    padding: 上 spacing-field，左右 spacing-inline，下 spacing-inline 的一倍半
+    title: text-ui-xl，font-weight-strong，行高 line-height-title，foreground，字距 tracking-heading-tight；左右 spacing-inline，下方 spacing-inline 的一倍半
+  search:
+    box: 占满标题区宽；高 spacing-control-lg，圆角 radius-full，底色 color-sidebar-item，border-width-default 的透明描边
+    icon: search，icon-size-control，foreground-subtle；距左缘 spacing-inline 的一倍半，垂直居中
+    text: text-ui-base，行高 line-height-ui，foreground；左内边距 spacing-inline 的两倍半加 icon-size-control，右 spacing-inline 的一倍半；占位文字“搜索”，foreground-subtlest
+    focus: 描边 color-input-border-focused，底色 color-input-focused，不另画焦点环
+    clear: 有文字时右端出现清除按钮，spacing-control 见方、圆角 radius-full，距右缘 spacing-inline 的一半，图标 search-clear（icon-size-control，foreground-subtle）；这时右内边距加大到 spacing-inline 的两倍半加 icon-size-control
+  list:
+    padding: spacing-inline
+    gap: 分组之间 spacing-field
+  group:
+    label: text-ui-base，font-weight-medium，行高 line-height-ui，foreground-subtle；左右 spacing-inline，下 spacing-inline 的一半
+    gap: 组内各项之间 spacing-inline 的四分之一
+  item:
+    height: navigation-row-height
+    padding: 左右 spacing-inline
+    gap: 图标与文字 spacing-inline
+    radius: radius-navigation
+    icon: icon-size-control，foreground
+    text: text-ui-base，font-weight-normal，行高 line-height-ui，foreground，单行省略
+    hover: 底色 color-sidebar-item
+    current: 当前页底色 color-navigation-selected
+    match: 搜索只命中页内条目时，文字右端靠右写出命中的条目名：text-ui-xs，foreground-subtle，单行省略
+  empty:
+    text: “没有匹配的设置”，text-ui-caption，foreground-subtle，居中；四周 spacing-inline 的一倍半
+
+icons:
+  source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+  used: [nav-back, nav-forward, search, search-clear, settings-general, settings-appearance, settings-usage, settings-plugins, settings-snapshots, settings-browser, settings-computer, settings-worktrees, settings-hooks, settings-models, settings-session, settings-cloud, settings-trajectory, settings-mobile]
+
+content: 分组、各项名称、图标与搜索关键词见示例数据 settings.groups
+
+accessible-names:
+  title: 一级标题“设置”
+  back: 返回应用
+  forward: 前进
+  search: 搜索设置
+  clear: 清除设置搜索
+  list: 设置导航（导航地标）；每个分组是一个以分组名命名的区域
+  item: 按钮，名称即页名；当前页标为当前页
+
+keyboard:
+  - Tab 依次经过返回、搜索框、各项
+  - 回车或空格打开该页
+
+behavior:
+  - 关键词去掉首尾空白后不区分大小写匹配；页名包含关键词时整项保留，不写命中条目；否则在该页的关键词（“、”分隔）里找第一个包含关键词的条目，找到就保留并在右端写出它
+  - 没有任何项保留的分组整组隐藏；全部隐藏时只显示“没有匹配的设置”
+  - 点清除按钮清空关键词，列表恢复
+  - 点某项打开该页，它成为当前页；搜索关键词保留
+  - 点“返回应用”关闭设置，回到打开设置前的窗口（侧栏与当前对话不变）

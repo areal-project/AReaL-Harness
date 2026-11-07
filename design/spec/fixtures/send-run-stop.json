@@ -189,6 +189,32 @@
       "conversation": "thread-idle",
       "draft": "",
       "overlay": "rename"
+    },
+    "window.settings": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "常规"
+    },
+    "window.settings-appearance": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "外观"
+    },
+    "window.settings-search": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "常规",
+      "settingsSearch": "字号"
+    },
+    "window.settings-select": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "外观",
+      "overlay": "theme-select"
     }
   },
   "agent": {
@@ -273,5 +299,375 @@
         "updatedAt": 25
       }
     ]
+  },
+  "settings": {
+    "$comment": "设置页：导航分组与常规、外观两页的内容；其余页只有标题。keywords 用“、”分隔，供搜索命中页内条目。",
+    "groups": [
+      {
+        "label": "个人",
+        "items": [
+          {
+            "label": "常规",
+            "icon": "settings-general",
+            "keywords": "语言、文件与打开、窗口、终端、网络、代理、图形、电源、编辑器、通知、软件更新、Beta、诊断"
+          },
+          {
+            "label": "外观",
+            "icon": "settings-appearance",
+            "keywords": "主题、深色、浅色、字号、字体、阅读、动效"
+          },
+          {
+            "label": "使用情况",
+            "icon": "settings-usage",
+            "keywords": "使用活跃度、Skills 排行、用量"
+          }
+        ]
+      },
+      {
+        "label": "集成",
+        "items": [
+          {
+            "label": "插件",
+            "icon": "settings-plugins",
+            "keywords": "插件、Skills、技能、MCP、连接器"
+          },
+          {
+            "label": "SnapShots",
+            "icon": "settings-snapshots"
+          },
+          {
+            "label": "浏览器",
+            "icon": "settings-browser",
+            "keywords": "浏览器登录与数据、Cookie"
+          },
+          {
+            "label": "电脑控制",
+            "icon": "settings-computer",
+            "keywords": "系统授权、控制进程、辅助功能、屏幕录制"
+          }
+        ]
+      },
+      {
+        "label": "编码",
+        "items": [
+          {
+            "label": "工作树",
+            "icon": "settings-worktrees",
+            "keywords": "工作树、Worktree、创建与清理"
+          },
+          {
+            "label": "钩子",
+            "icon": "settings-hooks",
+            "keywords": "工具钩子、Hook、配置生效"
+          },
+          {
+            "label": "模型设置",
+            "icon": "settings-models",
+            "keywords": "模型、供应商、API Key、密钥、Base URL、API 格式、ChatGPT 订阅、默认模型"
+          },
+          {
+            "label": "会话配置",
+            "icon": "settings-session",
+            "keywords": "新会话、默认模型、会话模型、权限、安全、指令、会话技能、模型参数、温度"
+          },
+          {
+            "label": "云端",
+            "icon": "settings-cloud",
+            "keywords": "云端连接、后端地址、Token"
+          },
+          {
+            "label": "数据飞轮",
+            "icon": "settings-trajectory",
+            "keywords": "回答评价、轨迹上传、队列与失败、耗时、上传记录"
+          },
+          {
+            "label": "手机连接",
+            "icon": "settings-mobile",
+            "keywords": "手机、配对、Relay、中继、设备"
+          }
+        ]
+      }
+    ],
+    "pages": {
+      "常规": [
+        {
+          "title": "语言",
+          "rows": [
+            {
+              "label": "语言",
+              "description": "选择设置界面的显示语言",
+              "kind": "segmented",
+              "options": [
+                "简体中文",
+                "English"
+              ],
+              "value": "简体中文"
+            }
+          ]
+        },
+        {
+          "title": "文件与打开",
+          "rows": [
+            {
+              "label": "无项目任务文件夹",
+              "description": "新项目外任务各自保存到此文件夹中的独立目录；已有任务保留原位置。",
+              "kind": "value-action",
+              "value": "~/AReaL",
+              "action": "更改"
+            },
+            {
+              "label": "默认文件打开位置",
+              "kind": "select",
+              "value": "系统默认应用"
+            }
+          ]
+        },
+        {
+          "title": "窗口与终端",
+          "rows": [
+            {
+              "label": "在菜单栏中显示",
+              "description": "关闭主窗口后，仍可从 macOS 菜单栏返回应用",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "底部面板",
+              "description": "在应用标题栏中显示底部面板控件",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "默认终端位置",
+              "description": "新终端标签页的默认位置",
+              "kind": "segmented",
+              "options": [
+                "底部",
+                "右侧"
+              ],
+              "value": "右侧"
+            }
+          ]
+        },
+        {
+          "title": "终端",
+          "rows": [
+            {
+              "label": "继承系统终端 Profile",
+              "description": "新终端沿用系统终端的字体、字号和配色。",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "终端字体",
+              "description": "填写字体名称以覆盖系统字体，留空自动选择。新终端生效。",
+              "kind": "text",
+              "value": "~/AReaL",
+              "action": "保存",
+              "placeholder": "例如 MesloLGS NF, monospace"
+            }
+          ]
+        },
+        {
+          "title": "网络",
+          "rows": [
+            {
+              "label": "HTTP 代理",
+              "description": "模型、MCP、联网命令和应用浏览器使用此代理。留空使用系统代理，重启后生效。",
+              "kind": "text",
+              "value": "~/AReaL",
+              "action": "保存",
+              "placeholder": "例如 http://127.0.0.1:7890"
+            },
+            {
+              "label": "不使用代理的地址",
+              "description": "匹配的主机直接连接，用英文逗号分隔，支持域名、IP 和 CIDR。重启后生效。",
+              "kind": "text",
+              "value": "~/AReaL",
+              "action": "保存",
+              "placeholder": "例如 localhost,127.0.0.1,::1,.example.com"
+            },
+            {
+              "label": "自定义证书",
+              "description": "填写 PEM 根证书文件的绝对路径以增加信任，留空移除。重启后生效。",
+              "kind": "text",
+              "value": "~/AReaL",
+              "action": "保存",
+              "placeholder": "例如 /absolute/certs/root-ca.pem"
+            }
+          ]
+        },
+        {
+          "title": "图形",
+          "rows": [
+            {
+              "label": "Chromium 硬件加速",
+              "description": "关闭可缓解部分显卡导致的白屏或闪退。重启后生效。",
+              "kind": "switch",
+              "on": true
+            }
+          ]
+        },
+        {
+          "title": "电源",
+          "rows": [
+            {
+              "label": "运行时防止系统休眠",
+              "description": "任务运行时保持唤醒；仍可手动睡眠或合盖。",
+              "kind": "switch",
+              "on": true
+            }
+          ]
+        },
+        {
+          "title": "编辑器",
+          "rows": [
+            {
+              "label": "预测下一条提示词",
+              "description": "回复完成后预测下一条提示词，按 Tab 接受。会额外产生模型用量。",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "发送快捷键",
+              "description": "Shift+Enter 始终换行。",
+              "kind": "segmented",
+              "options": [
+                "Enter 发送",
+                "⌘/Ctrl+Enter 发送"
+              ],
+              "value": "Enter 发送"
+            },
+            {
+              "label": "交互行为",
+              "description": "加入队列：等本轮结束再发送；调整方向：中断当前输出并继续。",
+              "kind": "segmented",
+              "options": [
+                "加入队列",
+                "调整方向"
+              ],
+              "value": "加入队列"
+            }
+          ]
+        },
+        {
+          "title": "通知",
+          "rows": [
+            {
+              "label": "任务通知",
+              "description": "任务完成、需要审批或提问时发送系统通知。",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "轮次完成通知",
+              "description": "设置任务完成后何时提醒",
+              "kind": "select",
+              "value": "仅在未聚焦时"
+            },
+            {
+              "label": "启用权限通知",
+              "description": "需要你批准工具操作时显示提醒",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "启用问题通知",
+              "description": "需要输入才能继续时显示提醒",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "通知声音",
+              "description": "任务完成、权限请求和提问时播放的声音",
+              "kind": "segmented",
+              "options": [
+                "默认",
+                "无"
+              ],
+              "value": "默认"
+            }
+          ]
+        }
+      ],
+      "外观": [
+        {
+          "title": "界面",
+          "rows": [
+            {
+              "label": "界面主题",
+              "kind": "select",
+              "value": "跟随系统"
+            },
+            {
+              "label": "界面字体",
+              "kind": "select",
+              "value": "系统默认"
+            },
+            {
+              "label": "界面字号",
+              "description": "调整导航、设置和控件的基础字号",
+              "kind": "number",
+              "value": 13,
+              "unit": "px"
+            }
+          ]
+        },
+        {
+          "title": "阅读",
+          "rows": [
+            {
+              "label": "内容字体大小",
+              "description": "调整正文使用的基础字号",
+              "kind": "number",
+              "value": 14,
+              "unit": "px"
+            },
+            {
+              "kind": "preview",
+              "text": "阅读样例。调整内容字号后，对话正文会立即变化。"
+            }
+          ]
+        },
+        {
+          "title": "交互与动效",
+          "rows": [
+            {
+              "label": "减少动态效果",
+              "description": "减少动画效果，或跟随系统偏好",
+              "kind": "select",
+              "value": "跟随系统"
+            },
+            {
+              "label": "使用指针光标",
+              "description": "悬停交互元素时切换为指针光标",
+              "kind": "switch",
+              "on": false
+            },
+            {
+              "label": "字体平滑",
+              "description": "使用 macOS 原生字体抗锯齿",
+              "kind": "switch",
+              "on": true
+            }
+          ]
+        },
+        {
+          "title": "阅读与代码",
+          "collapsed": true
+        },
+        {
+          "title": "配色微调",
+          "collapsed": true
+        }
+      ]
+    },
+    "select-options": {
+      "界面主题": [
+        "跟随系统",
+        "浅色",
+        "深色"
+      ]
+    }
   }
 }

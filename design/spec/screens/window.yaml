@@ -37,6 +37,10 @@ regions:
   - id: overlays
     name: 浮层
     contains: [menu.task-menu, menu.organize-menu, dialog.rename]
+  - id: settings
+    name: 设置
+    layout: 点应用导航栏底部的“设置”打开：B 换成 settings-navigation，主区换成 settings-page，会话标题栏只留空顶栏；应用导航栏里“设置”成为当前入口（底色 color-selected），首页图标换回空心；“返回应用”回到原样
+    contains: [settings-navigation, settings-page]
 
 fixtures: [send-run-stop]
 
@@ -49,6 +53,10 @@ states:
   - task-menu: 同 sidebar，当前对话行的“任务操作”菜单用鼠标刚打开，没有高亮项；这一行保持悬停样子（悬停按钮可见、标题让位）
   - organize-menu: 同 sidebar，“侧栏整理”菜单打开，在“项目内任务排序”上按右方向键打开了子菜单，子菜单第一项“最近更新”高亮且打勾
   - rename: 同 sidebar，从当前对话的任务菜单点了“重命名”，弹窗打开，输入框预填当前标题并已聚焦
+  - settings: 同 sidebar，打开了设置，当前页“常规”
+  - settings-appearance: 设置打开，当前页“外观”
+  - settings-search: 设置打开，当前页“常规”，搜索框里是“字号”（未聚焦），列表只剩个人组的“外观”，右端写“字号”
+  - settings-select: 设置打开，当前页“外观”，“界面主题”下拉用鼠标刚打开，当前值“跟随系统”打勾并高亮
 
 references:
   - state: sidebar
@@ -66,4 +74,12 @@ references:
   - state: organize-menu
     themes: [light, dark]
   - state: rename
+    themes: [light, dark]
+  - state: settings
+    themes: [light, dark]
+  - state: settings-appearance
+    themes: [light, dark]
+  - state: settings-search
+    themes: [light, dark]
+  - state: settings-select
     themes: [light, dark]

@@ -126,7 +126,8 @@ const currentTitle = fixture.navigation.projects
   .flatMap((project) => project.threads)
   .find((thread) => thread.id === threadId)?.title;
 // 示例状态里“某个浮层已打开”：按读屏名找到触发控件，像用户一样打开。
-const OVERLAYS: Record<string, Array<{ name: string; how: "press" | "hover" | "right" }>> = {
+type Step = { name: string; how: "press" | "hover" | "right" | "type"; text?: string };
+const OVERLAYS: Record<string, Step[]> = {
   "task-menu": [{ name: `任务操作 ${currentTitle}`, how: "press" }],
   "organize-menu": [
     { name: "侧栏整理", how: "press" },
@@ -137,13 +138,14 @@ const OVERLAYS: Record<string, Array<{ name: string; how: "press" | "hover" | "r
     { name: "重命名", how: "press" },
   ],
   "send-tooltip": [{ name: "发送", how: "hover" }],
+  "theme-select": [{ name: "界面主题", how: "press" }],
 };
 
-async function openOverlay(steps: (typeof OVERLAYS)[string], cancelled: () => boolean) {
+async function openOverlay(steps: Step[], cancelled: () => boolean) {
   for (const step of steps) {
     let target: HTMLElement | undefined;
     for (let attempt = 0; attempt < 100 && !target && !cancelled(); attempt++) {
-      target = [...document.querySelectorAll<HTMLElement>("button, [role=menuitem]")].find(
+      target = [...document.querySelectorAll<HTMLElement>("button, input, [role=menuitem]")].find(
         (element) =>
           element.getAttribute("aria-label") === step.name ||
           (element.getAttribute("role") === "menuitem" &&
@@ -176,6 +178,13 @@ async function openOverlay(steps: (typeof OVERLAYS)[string], cancelled: () => bo
         "mousemove",
       ])
         pointer(type);
+    if (step.how === "type" && element instanceof HTMLInputElement) {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        element,
+        step.text,
+      );
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    }
     if (step.how === "right") {
       element.focus();
       element.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
@@ -211,7 +220,15 @@ export function SpecFixture() {
     root.classList.toggle("theme-areal-dark", dark);
     root.style.colorScheme = dark ? "dark" : "light";
   }, [dark]);
-  const overlay = "overlay" in start ? OVERLAYS[start.overlay as string] : undefined;
+  const overlay = useMemo(
+    () =>
+      "settingsSearch" in start
+        ? [{ name: "搜索设置", how: "type" as const, text: start.settingsSearch }]
+        : "overlay" in start
+          ? OVERLAYS[start.overlay as string]
+          : undefined,
+    [start],
+  );
   // 打开浮层要等真实控件挂载，再像用户一样操作。
   useEffect(() => {
     if (!overlay) return;
@@ -384,7 +401,7 @@ export function SpecFixture() {
       collapsed={"collapsed" in start ? start.collapsed : []}
       search={"search" in start ? start.search : undefined}
       rail={"rail" in start ? start.rail : false}
-      settings={params.get("settings") ?? undefined}
+      settings={"settings" in start ? start.settings : undefined}
       action={action}
     >
       <div className="workspace-content">{column}</div>

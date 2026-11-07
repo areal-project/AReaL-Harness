@@ -5,8 +5,9 @@ import { checks as decide } from "./decide.mjs";
 import { checks as navigate } from "./navigate.mjs";
 import { checks as overlays } from "./overlays.mjs";
 import { checks as sendRunStop } from "./send-run-stop.mjs";
+import { checks as settings } from "./settings.mjs";
 
-const checks = [...sendRunStop, ...decide, ...navigate, ...overlays];
+const checks = [...sendRunStop, ...decide, ...navigate, ...overlays, ...settings];
 
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const url = process.argv.includes("--url") ? arg("--url") : undefined;

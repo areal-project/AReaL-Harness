@@ -1,0 +1,108 @@
+id: settings-page
+name: 设置页
+status: draft
+purpose: 一页设置：按分区列出可调的项，每项一行，左边说清是什么，右边直接改。
+why: 所有设置页共用同一种分区、卡片和行，用户换页不用重新学；控件只有几种，同类选择永远长一个样。
+
+layout:
+  place: 打开设置后占满主区（顶栏以下的纸面右段，底色 color-background）；会话标题栏这时只剩一条空的顶栏
+  scroll: 整个主区一起竖向滚动；右侧始终给滚动条留位，内容不因出现滚动条而左右移动
+  padding: 上下 spacing-field 的四倍，左右 spacing-field 的两倍
+  column: 内容一列，最宽 reading-width，在留位后的宽度里水平居中
+  gap: 页标题、各分区之间 spacing-field 的两倍半
+
+anatomy:
+  - part: header
+    role: 页标题
+  - part: section
+    role: 分区：分区标题加一张卡片
+  - part: card
+    role: 卡片，竖排若干行
+  - part: row
+    role: 一项设置
+  - part: disclosure
+    optional: true
+    role: 平时收起的高级分区，只有一行标题和“展开”
+
+parts:
+  header:
+    padding: 上下 spacing-inline 的一倍半
+    title: text-fixed-page-title，font-weight-medium，行高 line-height-title，字距 tracking-heading-tight，foreground
+  section:
+    gap: 标题与卡片之间 spacing-inline
+    heading: 最小高 spacing-control-sm，文字贴底；text-ui-base，font-weight-medium，行高 line-height-ui，foreground
+  card:
+    surface: color-settings-card
+    border: border-width-default 的 color-border-subtle
+    radius: radius-panel
+  row:
+    padding: 上下 spacing-inline 的一倍半，左右 spacing-field
+    min-height: spacing-control-sm 加 spacing-section
+    layout: 左为文字列、右为控件列，两列间隔 spacing-section，垂直居中；控件列按内容撑开，最宽 reading-width 的八分之三，控件靠右，多个控件间隔 spacing-inline
+    label: text-ui-caption，font-weight-medium，行高 line-height-ui-sm，foreground
+    description: 名称下方 spacing-inline 的四分之一；text-ui-sm，font-weight-toolbar，行高 line-height-ui-sm，color-settings-secondary
+    divider: 同一卡片里相邻两行之间一道线，高 border-width-default 的一半，color-border-subtle，左右各缩进 spacing-field
+    detail: 需要整行宽的控件（例如文字输入框）放在文字与控件列下方，上方留 spacing-inline 的一倍半，占满行内宽度
+  disclosure:
+    summary: 一行，上下 spacing-inline；左为分区标题（text-ui-base，font-weight-medium，行高 line-height-toolbar，foreground），右为“展开”
+    action: 内边距上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-button，底色 color-button-surface，text-ui-sm，foreground；悬停整行时底色 color-button-hover
+    open: 点整行展开，“展开”换成“收起”；展开后的内容不在本规格内
+
+controls:
+  switch:
+    size: 宽 spacing-control-lg，高 line-height-ui，圆角 radius-full，内边距 spacing-inline 的四分之一
+    track: 开时 color-brand，关时 foreground 的一成不透明度
+    thumb: icon-size-control 见方的圆，color-control-thumb；关时在左，开时在右
+    disabled: 整体 opacity-disabled
+  select:
+    trigger: 高 spacing-control-sm，左内边距 spacing-inline，右内边距 spacing-inline 的四分之三，圆角 radius-button；border-width-default 的 color-border，底色 color-button-surface；text-ui-caption，行高 line-height-relaxed，foreground；当前值后隔 spacing-inline 的四分之三放 select-chevron（foreground-subtle）
+    hover: 底色 color-button-hover；打开期间保持
+    popup: 外观与条目同 menu 组件的浮层与单选项（当前值打勾），对齐触发按钮右缘，在其下方间隔 spacing-inline 的四分之一；最窄为触发按钮宽与 reading-width 的六分之一两者取大
+    two-options: 只有两个选项时不用下拉，改用 segmented
+  segmented:
+    list: 选项横排，间隔 spacing-inline 的四分之一，无底色
+    option: 高 spacing-control-sm，内边距上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-full，border-width-default 的透明描边；text-ui-caption，font-weight-toolbar，行高 line-height-ui-sm，color-settings-secondary，底色透明
+    selected: 底色 color-surface-tertiary，文字 foreground
+    hover: 未选中项文字 foreground，底色 color-surface-elevated
+  number:
+    input: 高 spacing-control，宽 spacing-control-lg 的两倍，圆角 radius-compact；border-width-default 的 color-input-border，底色 color-input；text-ui-caption，font-weight-toolbar，行高 line-height-ui-sm，foreground，文字居中；左右内边距 spacing-inline
+    unit: 输入框右侧隔 spacing-inline 的四分之三写单位，text-ui-sm，foreground-subtle
+    focus: 描边 color-input-border-focused，底色 color-input-focused，不另画焦点环
+  text:
+    input: 放在行的 detail 位置，占满宽；高 spacing-control，圆角 radius-control，左右内边距 spacing-inline；border-width-default 的 color-input-border，底色 color-input；text-ui-base，行高 line-height-relaxed，foreground；占位文字 foreground-subtlest
+    action: 控件列里一个“保存”按钮（button 的 secondary）；输入内容与已保存值相同时不可用
+  value-action:
+    value: 当前值，text-ui-sm，行高 line-height-ui-sm，foreground，单行省略，最宽 reading-width 的十六分之五
+    action: 值右侧隔 spacing-inline 一个按钮（button 的 outline）
+  button:
+    size: 高 spacing-control-sm，左右内边距 spacing-inline，圆角 radius-button，border-width-default 描边；text-ui-caption，行高 line-height-relaxed
+    secondary: 底色 color-button-surface，描边透明，文字 foreground；悬停底色 color-button-hover
+    outline: 底色透明，描边 color-border，文字 foreground；悬停描边 color-border-hover、底色 color-input 的一半不透明度
+    disabled: 整体 opacity-disabled
+  preview:
+    text: 卡片里一段示例文字，四周 spacing-field；字号 text-conversation，行高 conversation-line，foreground
+
+icons:
+  source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+  used: [select-chevron, menu-check]
+
+content: 常规、外观两页的分区、行与控件当前值见示例数据 settings.pages；kind 指 controls 里的控件；其余设置页只有页标题
+
+accessible-names:
+  page: 区域，名称取页标题；页标题是一级标题
+  section-title: 二级标题
+  switch: 开关，名称即该行名称
+  select: 组合框，名称即该行名称
+  segmented: 选项卡列表，名称即该行名称；每个选项是选项卡，当前项标为已选
+  number: 数字输入框，名称即该行名称
+  text: 文本输入框，名称即该行名称
+  disclosure: 摘要按钮，标为展开或收起
+
+keyboard:
+  - 开关按空格切换
+  - 下拉打开后上下方向键移动，回车选中并收起，Esc 收起不改
+  - 分段选择用左右方向键移动，回车或空格选中
+
+behavior:
+  - 改动立即生效，不需要另点保存（文字输入行除外，按“保存”或回车生效）
+  - 选择后控件立即显示新值

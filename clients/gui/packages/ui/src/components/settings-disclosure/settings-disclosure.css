@@ -6,7 +6,7 @@
   gap: var(--spacing-inline);
   list-style: none;
   cursor: pointer;
-  padding-block: 8px;
+  padding-block: var(--spacing-inline);
   font-size: var(--text-ui-caption);
 }
 .settings-disclosure > summary::-webkit-details-marker {
@@ -32,13 +32,8 @@
 .settings-disclosure > summary:hover .settings-disclosure-action {
   background: var(--color-button-hover);
 }
-.settings-disclosure > summary:focus-visible {
-  outline: 2px solid var(--color-ring);
-  outline-offset: 2px;
-  border-radius: var(--radius-button);
-}
 
 .settings-section > .settings-disclosure > summary {
   font-size: var(--text-ui-base);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
