@@ -8,6 +8,23 @@ Core 提供固定 Codex app-server 0.145.0 的子集与 AReaL 扩展，不代表
 
 `Turn.interruption` 可选取 `userPause` 或 `coreRecovery`，记录主动暂停或重启修复的事实。旧记录缺省时不猜原因。可选 `continuedFromTurnId` 只标记用户显式继续所创建的新 Turn，不表示旧模型调用或进程恢复。暂停仍结算原 Turn，UNKNOWN 和失败分类保留。打开会话、重连和重启不自动继续；普通会话的提交与继续见[桌面提交契约](desktop.md#submissions)。
 
+## 命令收尾回执
+
+Turn 结束时，Core 在关闭本轮 Scope 后、原 Runtime 退出前，按原生句柄查询工具最后
+一次观察仍未结束的命令。结果随原 Turn 持久保存为可选 `processReceipts` 数组，并由
+`turn/completed` 和现有历史读取接口返回。每条包含模型使用的 `processId`、原生
+`runtimeProcessId`、`scopeId`、`state`（`exited` 或 `unknown`）、`exitCode`、`signal`、
+`stopReason`、`cleanupConfirmed` 和 `error`。已结算的工具结果不重复收集，原始工具输出不改写。
+
+`exited` 必须具有退出码或 POSIX 信号之一，并确认资源清理；查询失败、身份不符或
+缺少真实终态记录为 `unknown`，该 Turn 失败。信号退出和非零退出仍是命令失败，
+不自动等同于整个任务失败。`processReceipts` 不说明输出分页已读完，也不证明验证通过。
+已存在的模型、预算或清理错误保留原分类与消息，额外的未知进程事实记录在回执中。
+普通取消只有在进程终态已确认时保留 interrupted；未知终态使其失败。
+历史缺省数组为空，不能据此推断旧命令成功。恢复仅读取原回执，不恢复过期句柄或重放命令。
+
+JSON 保持向后兼容；直接构造 Rust `Turn` 时需要初始化 `process_receipts`。
+
 ## 下一条提示词预测
 
 `areal/thread/prediction {threadId,sourceTurnId,operation:"request"|"cancel"}` 是显式桌面需求驱动的变更方法。Core 只接受普通主会话或 Side 最新成功结算的用户轮次；活动轮次、目标、任务、委派子会话、归档及未确认结果不生成预测。完成时仅保留该轮实际模型实例，后台 CLI 或隐藏会话不会自动请求模型。Core 重启后不重建模型、不补发预测。

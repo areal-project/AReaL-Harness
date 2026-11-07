@@ -1010,6 +1010,7 @@ async fn legacy_text_sessions_load_and_upgrade_on_next_write() {
             dynamic_tools: Vec::new(),
             toolset_revision: 0,
             turns: vec![Turn {
+                process_receipts: Vec::new(),
                 trace: Default::default(),
                 interruption: None,
                 continued_from_turn_id: None,

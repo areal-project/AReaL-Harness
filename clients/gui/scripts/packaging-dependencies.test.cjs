@@ -2,6 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createRequire } = require("node:module");
+const { finished } = require("node:stream/promises");
 const { mkdtemp, mkdir, writeFile, readFile, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { stat } = require("node:fs/promises");
@@ -44,7 +45,8 @@ test(
     const { root, source } = await fixture(t);
     for (const options of [{}, { unpack: "*.node" }, { unpackDir: "**/assets" }]) {
       const archive = join(root, `fixture-${Object.keys(options).join() || "packed"}.asar`);
-      await asar.createPackageWithOptions(source, archive, options);
+      // ASAR 返回尚未完成写入的流；读取内容前必须等待完成，避免读到尚未落盘的正文。
+      await finished(await asar.createPackageWithOptions(source, archive, options));
       for (const name of ["index.js", ".settings.json", "assets/image.txt", "native/addon.node"]) {
         assert.deepEqual(asar.extractFile(archive, name), await readFile(join(source, name)));
       }

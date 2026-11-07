@@ -8455,6 +8455,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -9283,6 +9343,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -14159,6 +14226,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -14987,6 +15114,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -16588,6 +16722,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/turn/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "Provider": {
               "additionalProperties": false,
               "properties": {
@@ -17122,6 +17316,13 @@
             "items": {
               "items": {
                 "$ref": "#/properties/turn/$defs/Item"
+              },
+              "type": "array"
+            },
+            "processReceipts": {
+              "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+              "items": {
+                "$ref": "#/properties/turn/$defs/ProcessReceipt"
               },
               "type": "array"
             },
@@ -18453,6 +18654,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/turn/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "Provider": {
               "additionalProperties": false,
               "properties": {
@@ -18987,6 +19248,13 @@
             "items": {
               "items": {
                 "$ref": "#/properties/turn/$defs/Item"
+              },
+              "type": "array"
+            },
+            "processReceipts": {
+              "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+              "items": {
+                "$ref": "#/properties/turn/$defs/ProcessReceipt"
               },
               "type": "array"
             },
@@ -34950,6 +35218,66 @@
                 ],
                 "type": "object"
               },
+              "ProcessReceipt": {
+                "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                "properties": {
+                  "cleanupConfirmed": {
+                    "type": "boolean"
+                  },
+                  "error": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "exitCode": {
+                    "format": "int32",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "processId": {
+                    "type": "string"
+                  },
+                  "runtimeProcessId": {
+                    "type": "string"
+                  },
+                  "scopeId": {
+                    "type": "string"
+                  },
+                  "signal": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "$ref": "#/properties/data/items/$defs/ProcessReceiptState"
+                  },
+                  "stopReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "processId",
+                  "runtimeProcessId",
+                  "scopeId",
+                  "state",
+                  "cleanupConfirmed"
+                ],
+                "type": "object"
+              },
+              "ProcessReceiptState": {
+                "enum": [
+                  "exited",
+                  "unknown"
+                ],
+                "type": "string"
+              },
               "PromptPrediction": {
                 "oneOf": [
                   {
@@ -35778,6 +36106,13 @@
                   "items": {
                     "items": {
                       "$ref": "#/properties/data/items/$defs/Item"
+                    },
+                    "type": "array"
+                  },
+                  "processReceipts": {
+                    "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                    "items": {
+                      "$ref": "#/properties/data/items/$defs/ProcessReceipt"
                     },
                     "type": "array"
                   },
@@ -38694,6 +39029,66 @@
                   ],
                   "type": "object"
                 },
+                "ProcessReceipt": {
+                  "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                  "properties": {
+                    "cleanupConfirmed": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "exitCode": {
+                      "format": "int32",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "processId": {
+                      "type": "string"
+                    },
+                    "runtimeProcessId": {
+                      "type": "string"
+                    },
+                    "scopeId": {
+                      "type": "string"
+                    },
+                    "signal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "$ref": "#/oneOf/0/properties/thread/$defs/ProcessReceiptState"
+                    },
+                    "stopReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "processId",
+                    "runtimeProcessId",
+                    "scopeId",
+                    "state",
+                    "cleanupConfirmed"
+                  ],
+                  "type": "object"
+                },
+                "ProcessReceiptState": {
+                  "enum": [
+                    "exited",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
                 "PromptPrediction": {
                   "oneOf": [
                     {
@@ -39522,6 +39917,13 @@
                     "items": {
                       "items": {
                         "$ref": "#/oneOf/0/properties/thread/$defs/Item"
+                      },
+                      "type": "array"
+                    },
+                    "processReceipts": {
+                      "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                      "items": {
+                        "$ref": "#/oneOf/0/properties/thread/$defs/ProcessReceipt"
                       },
                       "type": "array"
                     },
@@ -41114,6 +41516,66 @@
                   ],
                   "type": "object"
                 },
+                "ProcessReceipt": {
+                  "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                  "properties": {
+                    "cleanupConfirmed": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "exitCode": {
+                      "format": "int32",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "processId": {
+                      "type": "string"
+                    },
+                    "runtimeProcessId": {
+                      "type": "string"
+                    },
+                    "scopeId": {
+                      "type": "string"
+                    },
+                    "signal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "$ref": "#/oneOf/0/properties/turn/$defs/ProcessReceiptState"
+                    },
+                    "stopReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "processId",
+                    "runtimeProcessId",
+                    "scopeId",
+                    "state",
+                    "cleanupConfirmed"
+                  ],
+                  "type": "object"
+                },
+                "ProcessReceiptState": {
+                  "enum": [
+                    "exited",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
                 "Provider": {
                   "additionalProperties": false,
                   "properties": {
@@ -41648,6 +42110,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/oneOf/0/properties/turn/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/oneOf/0/properties/turn/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -47531,6 +48000,66 @@
                 ],
                 "type": "object"
               },
+              "ProcessReceipt": {
+                "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                "properties": {
+                  "cleanupConfirmed": {
+                    "type": "boolean"
+                  },
+                  "error": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "exitCode": {
+                    "format": "int32",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "processId": {
+                    "type": "string"
+                  },
+                  "runtimeProcessId": {
+                    "type": "string"
+                  },
+                  "scopeId": {
+                    "type": "string"
+                  },
+                  "signal": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "$ref": "#/properties/data/items/$defs/ProcessReceiptState"
+                  },
+                  "stopReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "processId",
+                  "runtimeProcessId",
+                  "scopeId",
+                  "state",
+                  "cleanupConfirmed"
+                ],
+                "type": "object"
+              },
+              "ProcessReceiptState": {
+                "enum": [
+                  "exited",
+                  "unknown"
+                ],
+                "type": "string"
+              },
               "PromptPrediction": {
                 "oneOf": [
                   {
@@ -48359,6 +48888,13 @@
                   "items": {
                     "items": {
                       "$ref": "#/properties/data/items/$defs/Item"
+                    },
+                    "type": "array"
+                  },
+                  "processReceipts": {
+                    "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                    "items": {
+                      "$ref": "#/properties/data/items/$defs/ProcessReceipt"
                     },
                     "type": "array"
                   },
@@ -51123,6 +51659,66 @@
                   ],
                   "type": "object"
                 },
+                "ProcessReceipt": {
+                  "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                  "properties": {
+                    "cleanupConfirmed": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "exitCode": {
+                      "format": "int32",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "processId": {
+                      "type": "string"
+                    },
+                    "runtimeProcessId": {
+                      "type": "string"
+                    },
+                    "scopeId": {
+                      "type": "string"
+                    },
+                    "signal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "$ref": "#/properties/activeTurn/anyOf/0/$defs/ProcessReceiptState"
+                    },
+                    "stopReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "processId",
+                    "runtimeProcessId",
+                    "scopeId",
+                    "state",
+                    "cleanupConfirmed"
+                  ],
+                  "type": "object"
+                },
+                "ProcessReceiptState": {
+                  "enum": [
+                    "exited",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
                 "Provider": {
                   "additionalProperties": false,
                   "properties": {
@@ -51657,6 +52253,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/activeTurn/anyOf/0/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/activeTurn/anyOf/0/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -70241,6 +70844,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -71069,6 +71732,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -72658,6 +73328,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/turn/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "Provider": {
               "additionalProperties": false,
               "properties": {
@@ -73192,6 +73922,13 @@
             "items": {
               "items": {
                 "$ref": "#/properties/turn/$defs/Item"
+              },
+              "type": "array"
+            },
+            "processReceipts": {
+              "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+              "items": {
+                "$ref": "#/properties/turn/$defs/ProcessReceipt"
               },
               "type": "array"
             },
@@ -85489,6 +86226,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -86317,6 +87114,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -87908,6 +88712,66 @@
                   ],
                   "type": "object"
                 },
+                "ProcessReceipt": {
+                  "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                  "properties": {
+                    "cleanupConfirmed": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "exitCode": {
+                      "format": "int32",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "processId": {
+                      "type": "string"
+                    },
+                    "runtimeProcessId": {
+                      "type": "string"
+                    },
+                    "scopeId": {
+                      "type": "string"
+                    },
+                    "signal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "$ref": "#/properties/turn/anyOf/0/$defs/ProcessReceiptState"
+                    },
+                    "stopReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "processId",
+                    "runtimeProcessId",
+                    "scopeId",
+                    "state",
+                    "cleanupConfirmed"
+                  ],
+                  "type": "object"
+                },
+                "ProcessReceiptState": {
+                  "enum": [
+                    "exited",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
                 "Provider": {
                   "additionalProperties": false,
                   "properties": {
@@ -88442,6 +89306,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/turn/anyOf/0/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/turn/anyOf/0/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -91072,6 +91943,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -91900,6 +92831,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -93489,6 +94427,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/turn/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "Provider": {
               "additionalProperties": false,
               "properties": {
@@ -94023,6 +95021,13 @@
             "items": {
               "items": {
                 "$ref": "#/properties/turn/$defs/Item"
+              },
+              "type": "array"
+            },
+            "processReceipts": {
+              "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+              "items": {
+                "$ref": "#/properties/turn/$defs/ProcessReceipt"
               },
               "type": "array"
             },
@@ -116162,6 +117167,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -116990,6 +118055,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -121798,6 +122870,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -122626,6 +123758,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -125608,6 +126747,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -126436,6 +127635,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -128083,6 +129289,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/turn/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "Provider": {
               "additionalProperties": false,
               "properties": {
@@ -128617,6 +129883,13 @@
             "items": {
               "items": {
                 "$ref": "#/properties/turn/$defs/Item"
+              },
+              "type": "array"
+            },
+            "processReceipts": {
+              "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+              "items": {
+                "$ref": "#/properties/turn/$defs/ProcessReceipt"
               },
               "type": "array"
             },
@@ -129946,6 +131219,66 @@
                   ],
                   "type": "object"
                 },
+                "ProcessReceipt": {
+                  "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                  "properties": {
+                    "cleanupConfirmed": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "exitCode": {
+                      "format": "int32",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "processId": {
+                      "type": "string"
+                    },
+                    "runtimeProcessId": {
+                      "type": "string"
+                    },
+                    "scopeId": {
+                      "type": "string"
+                    },
+                    "signal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "$ref": "#/oneOf/0/properties/turn/$defs/ProcessReceiptState"
+                    },
+                    "stopReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "processId",
+                    "runtimeProcessId",
+                    "scopeId",
+                    "state",
+                    "cleanupConfirmed"
+                  ],
+                  "type": "object"
+                },
+                "ProcessReceiptState": {
+                  "enum": [
+                    "exited",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
                 "Provider": {
                   "additionalProperties": false,
                   "properties": {
@@ -130480,6 +131813,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/oneOf/0/properties/turn/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/oneOf/0/properties/turn/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -143346,6 +144686,66 @@
                 ],
                 "type": "object"
               },
+              "ProcessReceipt": {
+                "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                "properties": {
+                  "cleanupConfirmed": {
+                    "type": "boolean"
+                  },
+                  "error": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "exitCode": {
+                    "format": "int32",
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "processId": {
+                    "type": "string"
+                  },
+                  "runtimeProcessId": {
+                    "type": "string"
+                  },
+                  "scopeId": {
+                    "type": "string"
+                  },
+                  "signal": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "state": {
+                    "$ref": "#/properties/data/items/$defs/ProcessReceiptState"
+                  },
+                  "stopReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "processId",
+                  "runtimeProcessId",
+                  "scopeId",
+                  "state",
+                  "cleanupConfirmed"
+                ],
+                "type": "object"
+              },
+              "ProcessReceiptState": {
+                "enum": [
+                  "exited",
+                  "unknown"
+                ],
+                "type": "string"
+              },
               "PromptPrediction": {
                 "oneOf": [
                   {
@@ -144174,6 +145574,13 @@
                   "items": {
                     "items": {
                       "$ref": "#/properties/data/items/$defs/Item"
+                    },
+                    "type": "array"
+                  },
+                  "processReceipts": {
+                    "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                    "items": {
+                      "$ref": "#/properties/data/items/$defs/ProcessReceipt"
                     },
                     "type": "array"
                   },
@@ -147078,6 +148485,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -147906,6 +149373,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -151730,6 +153204,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -152558,6 +154092,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -155491,6 +157032,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/thread/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "PromptPrediction": {
               "oneOf": [
                 {
@@ -156319,6 +157920,13 @@
                 "items": {
                   "items": {
                     "$ref": "#/properties/thread/$defs/Item"
+                  },
+                  "type": "array"
+                },
+                "processReceipts": {
+                  "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                  "items": {
+                    "$ref": "#/properties/thread/$defs/ProcessReceipt"
                   },
                   "type": "array"
                 },
@@ -157931,6 +159539,66 @@
               ],
               "type": "object"
             },
+            "ProcessReceipt": {
+              "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+              "properties": {
+                "cleanupConfirmed": {
+                  "type": "boolean"
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "exitCode": {
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "processId": {
+                  "type": "string"
+                },
+                "runtimeProcessId": {
+                  "type": "string"
+                },
+                "scopeId": {
+                  "type": "string"
+                },
+                "signal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "$ref": "#/properties/turn/$defs/ProcessReceiptState"
+                },
+                "stopReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "processId",
+                "runtimeProcessId",
+                "scopeId",
+                "state",
+                "cleanupConfirmed"
+              ],
+              "type": "object"
+            },
+            "ProcessReceiptState": {
+              "enum": [
+                "exited",
+                "unknown"
+              ],
+              "type": "string"
+            },
             "Provider": {
               "additionalProperties": false,
               "properties": {
@@ -158465,6 +160133,13 @@
             "items": {
               "items": {
                 "$ref": "#/properties/turn/$defs/Item"
+              },
+              "type": "array"
+            },
+            "processReceipts": {
+              "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+              "items": {
+                "$ref": "#/properties/turn/$defs/ProcessReceipt"
               },
               "type": "array"
             },
@@ -161480,6 +163155,66 @@
         ],
         "type": "object"
       },
+      "ProcessReceipt": {
+        "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+        "properties": {
+          "cleanupConfirmed": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exitCode": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "processId": {
+            "type": "string"
+          },
+          "runtimeProcessId": {
+            "type": "string"
+          },
+          "scopeId": {
+            "type": "string"
+          },
+          "signal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/$defs/ProcessReceiptState"
+          },
+          "stopReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "processId",
+          "runtimeProcessId",
+          "scopeId",
+          "state",
+          "cleanupConfirmed"
+        ],
+        "type": "object"
+      },
+      "ProcessReceiptState": {
+        "enum": [
+          "exited",
+          "unknown"
+        ],
+        "type": "string"
+      },
       "PromptPrediction": {
         "oneOf": [
           {
@@ -162308,6 +164043,13 @@
           "items": {
             "items": {
               "$ref": "#/$defs/Item"
+            },
+            "type": "array"
+          },
+          "processReceipts": {
+            "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+            "items": {
+              "$ref": "#/$defs/ProcessReceipt"
             },
             "type": "array"
           },
@@ -163897,6 +165639,66 @@
         ],
         "type": "object"
       },
+      "ProcessReceipt": {
+        "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+        "properties": {
+          "cleanupConfirmed": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exitCode": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "processId": {
+            "type": "string"
+          },
+          "runtimeProcessId": {
+            "type": "string"
+          },
+          "scopeId": {
+            "type": "string"
+          },
+          "signal": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "$ref": "#/$defs/ProcessReceiptState"
+          },
+          "stopReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "processId",
+          "runtimeProcessId",
+          "scopeId",
+          "state",
+          "cleanupConfirmed"
+        ],
+        "type": "object"
+      },
+      "ProcessReceiptState": {
+        "enum": [
+          "exited",
+          "unknown"
+        ],
+        "type": "string"
+      },
       "Provider": {
         "additionalProperties": false,
         "properties": {
@@ -164431,6 +166233,13 @@
       "items": {
         "items": {
           "$ref": "#/$defs/Item"
+        },
+        "type": "array"
+      },
+      "processReceipts": {
+        "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+        "items": {
+          "$ref": "#/$defs/ProcessReceipt"
         },
         "type": "array"
       },

@@ -170,6 +170,7 @@ impl Engine {
             candidate.preview = text.chars().take(120).collect();
         }
         let mut turn = Turn {
+            process_receipts: Vec::new(),
             trace: areal_protocol::TurnTrace {
                 started_at_ms: Some(crate::execution_trace::now_ms()),
                 ..Default::default()
@@ -885,6 +886,69 @@ impl Engine {
             cleanup_failed = true;
             result = Err(anyhow::anyhow!("Runtime scope cleanup failed: {error}"));
         }
+        // 清理完成不等于观察到退出码。Runtime 尚存活时查询原句柄，随同 Turn
+        // 持久化终态，避免 CLI 退出后调用方只能反复读取旧的 running 工具结果。
+        let pending = cell
+            .state
+            .lock()
+            .await
+            .active
+            .as_ref()
+            .unwrap()
+            .handles
+            .pending_processes();
+        let mut process_receipts = Vec::with_capacity(pending.len());
+        for (process_id, runtime_process_id, scope_id) in pending {
+            let mut receipt = areal_protocol::ProcessReceipt {
+                process_id,
+                runtime_process_id,
+                scope_id,
+                state: areal_protocol::ProcessReceiptState::Unknown,
+                exit_code: None,
+                signal: None,
+                stop_reason: None,
+                cleanup_confirmed: false,
+                error: None,
+            };
+            if let Some(runtime) = &self.runtime {
+                match runtime.client.process(&receipt.runtime_process_id).await {
+                    Ok(info)
+                        if info.process_id == receipt.runtime_process_id
+                            && info.scope_id == receipt.scope_id =>
+                    {
+                        receipt.exit_code = info.exit_code;
+                        receipt.signal = info.signal;
+                        receipt.stop_reason = info.stop_reason;
+                        receipt.cleanup_confirmed = info.cleanup_confirmed;
+                        if info.state == areal_runtime_protocol::ProcessState::Exited
+                            && (receipt.exit_code.is_some() ^ receipt.signal.is_some())
+                            && receipt.cleanup_confirmed
+                        {
+                            receipt.state = areal_protocol::ProcessReceiptState::Exited;
+                        } else {
+                            receipt.error =
+                                Some(info.failure_reason.or(info.cleanup_error).unwrap_or_else(
+                                    || "Runtime did not confirm a terminal process outcome".into(),
+                                ));
+                        }
+                    }
+                    Ok(_) => receipt.error = Some("Runtime process identity differs".into()),
+                    Err(error) => receipt.error = Some(error.to_string()),
+                }
+            } else {
+                receipt.error = Some("Original Runtime is unavailable".into());
+            }
+            // UNKNOWN 阻止成功或普通取消结算，但不能覆盖已经确定的模型、预算或清理错误。
+            if matches!(receipt.state, areal_protocol::ProcessReceiptState::Unknown)
+                && (result.is_ok() || result.as_ref().unwrap_err().to_string() == "cancelled")
+            {
+                result = Err(anyhow::anyhow!(
+                    "turn stopped with an UNKNOWN process outcome: {}",
+                    receipt.process_id
+                ));
+            }
+            process_receipts.push(receipt);
+        }
         for child in children {
             match self.wait(&child).await {
                 Ok(thread) if !matches!(thread.status, ThreadStatus::SystemError) => {
@@ -976,6 +1040,7 @@ impl Engine {
             .unwrap()
             .clone();
         let turn = state.thread.turns.last_mut().unwrap();
+        turn.process_receipts = process_receipts;
         if generation.measured_requests + generation.unmeasured_requests > 0 {
             turn.generation = Some(generation);
         }
