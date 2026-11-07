@@ -7,7 +7,9 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils.js";
 import { ChevronDownIcon, CheckIcon } from "lucide-react";
 
-type StyledProps<T extends React.ElementType> = Omit<React.ComponentProps<T>, "className"> & { className?: string };
+type StyledProps<T extends React.ElementType> = Omit<React.ComponentProps<T>, "className"> & {
+  className?: string;
+};
 
 // resize 大会话时 Select trigger 跟随基础控件批量重排，
 // transition-all 会把布局/滚动条相关属性也动画化；这里限定为颜色过渡。
@@ -30,9 +32,9 @@ const selectTriggerVariants = cva(
       },
       size: {
         xs: "h-control-xs rounded-sm pl-2 pr-1 text-ui-base [&_svg:not([class*='size-'])]:size-2.5",
-        sm: "h-control-sm rounded-button pl-2 pr-1.5 text-ui-caption/relaxed [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-control-sm rounded-button pl-2 pr-1.5 text-ui-caption/(--line-height-relaxed) [&_svg:not([class*='size-'])]:size-3",
         default:
-          "h-control rounded-button pl-2 pr-1.5 text-ui-caption/relaxed [&_svg:not([class*='size-'])]:size-3.5",
+          "h-control rounded-button pl-2 pr-1.5 text-ui-caption/(--line-height-relaxed) [&_svg:not([class*='size-'])]:size-3.5",
         lg: "h-control-lg rounded-button pl-3 pr-2 text-ui-base [&_svg:not([class*='size-'])]:size-4",
       },
     },
@@ -56,7 +58,13 @@ function SelectGroup({ className, ...props }: StyledProps<typeof SelectPrimitive
 }
 
 function SelectValue({ className, ...props }: StyledProps<typeof SelectPrimitive.Value>) {
-  return <SelectPrimitive.Value data-slot="select-value" className={cn("min-w-0 truncate", className)} {...props} />;
+  return (
+    <SelectPrimitive.Value
+      data-slot="select-value"
+      className={cn("min-w-0 truncate", className)}
+      {...props}
+    />
+  );
 }
 
 function SelectTrigger({
@@ -90,17 +98,36 @@ function SelectTrigger({
 
 /** Popup placement and layering belong to the component, never the consumer. */
 function SelectContent({
-  className, children, align = "start", alignItemWithTrigger = false, ...props
-}: StyledProps<typeof SelectPrimitive.Popup> & Pick<React.ComponentProps<typeof SelectPrimitive.Positioner>, "align" | "alignItemWithTrigger">) {
-  return <SelectPrimitive.Portal>
-    <SelectPrimitive.Positioner align={align} alignItemWithTrigger={alignItemWithTrigger} sideOffset={4} className="z-(--layer-popover) outline-none">
-      <SelectPrimitive.Popup data-slot="select-content" className={cn(
-        "ui-popup min-w-(--anchor-width) max-w-(--available-width) overflow-hidden rounded-panel border border-popover-border bg-menu p-1 text-foreground shadow-overlay outline-none [app-region:no-drag]", className,
-      )} {...props}>
-        <SelectPrimitive.List className="flex max-h-(--available-height) flex-col gap-0.5 overflow-y-auto outline-none">{children}</SelectPrimitive.List>
-      </SelectPrimitive.Popup>
-    </SelectPrimitive.Positioner>
-  </SelectPrimitive.Portal>;
+  className,
+  children,
+  align = "start",
+  alignItemWithTrigger = false,
+  ...props
+}: StyledProps<typeof SelectPrimitive.Popup> &
+  Pick<React.ComponentProps<typeof SelectPrimitive.Positioner>, "align" | "alignItemWithTrigger">) {
+  return (
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Positioner
+        align={align}
+        alignItemWithTrigger={alignItemWithTrigger}
+        sideOffset={4}
+        className="z-(--layer-popover) outline-none"
+      >
+        <SelectPrimitive.Popup
+          data-slot="select-content"
+          className={cn(
+            "ui-popup min-w-(--anchor-width) max-w-(--available-width) overflow-hidden rounded-panel border border-popover-border bg-menu p-1 text-foreground shadow-overlay outline-none [app-region:no-drag]",
+            className,
+          )}
+          {...props}
+        >
+          <SelectPrimitive.List className="flex max-h-(--available-height) flex-col gap-0.5 overflow-y-auto outline-none">
+            {children}
+          </SelectPrimitive.List>
+        </SelectPrimitive.Popup>
+      </SelectPrimitive.Positioner>
+    </SelectPrimitive.Portal>
+  );
 }
 
 function SelectLabel({ className, ...props }: StyledProps<typeof SelectPrimitive.GroupLabel>) {
@@ -124,7 +151,7 @@ const SelectItem = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Item
         ref={ref}
         data-slot="select-item"
         className={cn(
-          "relative flex min-h-control-sm w-full cursor-default items-center gap-2 rounded-button pl-2 pr-7 py-1 text-ui-caption/relaxed text-foreground outline-hidden select-none data-[highlighted]:bg-menu-hover data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:text-foreground-subtlest data-[disabled]:opacity-100 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+          "relative flex min-h-control-sm w-full cursor-default items-center gap-2 rounded-button pl-2 pr-7 py-1 text-ui-caption/(--line-height-relaxed) text-foreground outline-hidden select-none data-[highlighted]:bg-menu-hover data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:text-foreground-subtlest data-[disabled]:opacity-100 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
           className,
         )}
         {...props}
@@ -147,10 +174,7 @@ const SelectItem = React.forwardRef<React.ElementRef<typeof SelectPrimitive.Item
 
 SelectItem.displayName = "SelectItem";
 
-function SelectSeparator({
-  className,
-  ...props
-}: StyledProps<typeof SelectPrimitive.Separator>) {
+function SelectSeparator({ className, ...props }: StyledProps<typeof SelectPrimitive.Separator>) {
   return (
     <SelectPrimitive.Separator
       data-slot="select-separator"

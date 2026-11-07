@@ -52,6 +52,7 @@
 | `--tracking-wf-label` | `0.09em` | 工作流图大写等宽微标签字距 |
 | `--line-height-code-example` | `22px` | 主题 Diff 缩略图代码行高，保留原固定 22px。 |
 | `--tracking-conversation` | `0.025em` | Agent 正文与过程文字的字距；用户气泡、状态行、过程标题与输入框不用 |
+| `--line-height-relaxed` | `1.625` | 按钮与工具栏入口文字的宽松行高倍数 |
 | `--line-height-title` | `1.2` | 首页迎宾标题等大标题的行高倍数 |
 | `--tracking-heading-tight` | `-0.02em` | 首页迎宾大标题与页面主标题的紧凑负字距 |
 
