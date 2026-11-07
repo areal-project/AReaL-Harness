@@ -3391,7 +3391,7 @@ try {
       );
       await page.screenshot({ path: join(scratch, "task-detail-closed.png") });
       await page
-        .getByText(/^已创建任务。/)
+        .getByText(/^已保存修改。/)
         .last()
         .waitFor();
       const history = await call("manage", {

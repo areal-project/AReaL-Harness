@@ -573,14 +573,36 @@ try {
         "fixture cleanup",
         20000,
       );
-      await app.evaluate(({ dialog }) => {
-        const old = dialog.showMessageBox;
-        dialog.showMessageBox = async (...args) =>
-          args.at(-1).message === "停止共享后台服务？" ? { response: 1 } : old(...args);
-      });
-      await call("stopService", {});
+      if (!rust) {
+        await app.evaluate(({ dialog }) => {
+          const old = dialog.showMessageBox;
+          dialog.showMessageBox = async (...args) =>
+            args.at(-1).message === "停止共享后台服务？" ? { response: 1 } : old(...args);
+        });
+        await call("stopService", {});
+      }
     } catch (error) {
       errors.push(`cleanup: ${error.message}`);
+    }
+  }
+  let originalHost = null;
+  if (rust) {
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
+    try {
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      originalHost = { hostId: host.hostId, generation: host.generation };
+      if (app)
+        await app.evaluate(({ dialog }) => {
+          const old = dialog.showMessageBox;
+          dialog.showMessageBox = async (...args) =>
+            args.at(-1).message === "退出 AReaL Harness？" ? { response: 0 } : old(...args);
+        });
+    } catch (error) {
+      errors.push(`Host identity: ${error.message}`);
+      passed = false;
+    } finally {
+      host.close();
     }
   }
   if (app)
@@ -589,15 +611,18 @@ try {
       passed = false;
     });
   if (rust) {
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
     try {
-      const stop = JSON.parse(
-        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
-          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
-          encoding: "utf8",
-        }),
-      );
+      assert.ok(originalHost, "original Host identity was captured");
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      assert.equal(host.hostId, originalHost.hostId);
+      assert.equal(host.generation, originalHost.generation);
+      const stop = await host.stop(randomUUID(), originalHost.generation, "cancel");
       await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
       assert.equal(stop.state, "completed");
+      assert.equal(stop.hostId, originalHost.hostId);
+      assert.equal(stop.generation, originalHost.generation);
       assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
       const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
       await writeFile(
@@ -608,6 +633,8 @@ try {
       errors.push(`Rust cleanup: ${error.message}`);
       passed = false;
       process.exitCode = 1;
+    } finally {
+      host.close();
     }
   }
   model.closeAllConnections();

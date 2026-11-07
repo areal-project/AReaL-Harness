@@ -61,6 +61,8 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 客户端发送前解析路径与启动上下文。Host 启动前校验登记一致性、绝对路径、允许的环境名与配置。秘密通过认证连接中的独立字符串映射 `project.ensure.credentials` 传递；`credentialNames` 标识所需条目，也包括生成的 MCP 秘密引用。凭据值不进入 Debug 输出、日志、状态或持久操作参数。H1 将它们保存在当前 Host generation 的项目私有内存中。模型配置引用的凭据缺失时，Core 管理服务仍可启动并读取本地历史，相关模型在执行边界返回 `MODEL_CREDENTIAL_UNAVAILABLE`；其他必要凭据缺失仍返回 `credentialsRequired`。密钥库持久化属于 H2。
 
+重复 `project.ensure` 核实服务仍为 Ready、所有者和配置摘要一致且属于当前项目服务身份时，保留现有 Ready 状态与共享 Core 连接；实际启动或配置变化沿用原启动准入与代次检查。
+
 发布 ready 前，Host 将部署 JSON 和引用的 Skill 树快照到 `<home>/host/launch/<project-id-digest>/`，保留嵌套资源和可执行位。重写后的路径保存在 `inputs.json`，部署与 Skill 路径包含内容摘要。Core 对同一 `id/revision` 保留显式部署的 Skill 根目录，自动发现及刷新不会覆盖该快照；不同 revision 继续按现有发现规则处理。CLI 随后可移除自己的临时部署目录。普通 TOML 保留原路径与既有配置监听行为，配置兼容性与安全重启规则继续生效。各子进程使用提交的 cwd 和环境，Host 不修改进程全局 cwd 或环境。`configHome` 保留调用端的配置、插件与 Hook 根目录，与 Host registry home 独立；Host 仅把 `AREAL_HARNESS_SERVICE_HOME` 指向自身 registry。
 
 `noAutoRestart` 默认为 false。设为 true 时，ensure 不会自动重启已有但不兼容的服务；它仍是显式激活，可以启动已停止项目。自动重连只读取 `host.status`，配置变更需显式重新打开或重启。

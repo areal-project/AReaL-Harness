@@ -1661,6 +1661,108 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn repeated_ready_activation_preserves_original_workbench_connection() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let host = Rc::new(super::super::schedules::tests::fixture(root.path()));
+                let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
+                {
+                    let mut slots = host.slots.borrow_mut();
+                    let slot = slots.get_mut("project").unwrap();
+                    let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap();
+                    slot.writer = Some(writer);
+                    slot.lifetime = Some(Rc::new(lifetime));
+                }
+                let server = tokio::task::spawn_local(async move {
+                    let (stream, _) = listener.accept().await.unwrap();
+                    let mut socket = tokio_tungstenite::accept_hdr_async(stream, ScheduleHeaders)
+                        .await
+                        .unwrap();
+                    while let Some(Ok(Message::Text(text))) = socket.next().await {
+                        let request: Value = serde_json::from_str(&text).unwrap();
+                        if request.get("id").is_none() {
+                            continue;
+                        }
+                        let result = match request["method"].as_str().unwrap() {
+                            "initialize" | "areal/capabilities" => json!({}),
+                            "areal/server/status" => json!({"acceptingWork":true}),
+                            other => panic!("unexpected request {other}"),
+                        };
+                        send(&mut socket, json!({"id":request["id"],"result":result})).await;
+                    }
+                });
+                let session = connect(host.clone(), "project", service.clone())
+                    .await
+                    .unwrap();
+                session.ready.set(true);
+                host.schedules
+                    .connections
+                    .sessions
+                    .borrow_mut()
+                    .insert("project".into(), session.clone());
+                let attached = host
+                    .schedules
+                    .connections
+                    .workbench_attach(&host, "project", None)
+                    .await
+                    .unwrap();
+                let lease = attached["lease"].as_str().unwrap();
+                let original = host
+                    .schedules
+                    .connections
+                    .shared_identity(&host, "project")
+                    .unwrap();
+                let mut changed = host.changes.subscribe();
+                host.begin_project_activation(
+                    "project",
+                    &service.identity.config_fingerprint,
+                    Some(&service),
+                );
+                changed.changed().await.unwrap();
+                assert_eq!(
+                    host.schedules
+                        .connections
+                        .shared_identity(&host, "project")
+                        .unwrap(),
+                    original
+                );
+                assert_eq!(attached["connectionId"], original.2);
+                let result = host
+                    .schedules
+                    .connections
+                    .workbench_request(&host, "project", lease, "areal/server/status", json!({}))
+                    .await
+                    .unwrap();
+                assert_eq!(result["result"]["acceptingWork"], true);
+                host.begin_project_activation("project", "changed-fingerprint", Some(&service));
+                assert!(
+                    host.schedules
+                        .connections
+                        .shared_identity(&host, "project")
+                        .is_err()
+                );
+                assert!(
+                    host.schedules
+                        .connections
+                        .workbench_request(
+                            &host,
+                            "project",
+                            lease,
+                            "areal/server/status",
+                            json!({})
+                        )
+                        .await
+                        .is_err()
+                );
+                session.close();
+                server.await.unwrap();
+            })
+            .await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn workbench_attach_waits_for_original_project_startup_before_leasing_shared_socket() {
         tokio::task::LocalSet::new()
             .run_until(async {

@@ -464,11 +464,37 @@ struct CommandAdmission<'a> {
     host: &'a Host,
     connection: &'a CoreSession,
 }
+fn admission_diagnostic(project: &str, stage: &str, cause: &anyhow::Error) {
+    // 只记录边界和错误分类；请求正文、租约及凭据不能进入诊断。
+    let wire = cause.downcast_ref::<crate::wire::Error>();
+    let rpc = cause.downcast_ref::<super::RpcFailure>();
+    let code = wire.map(|error| error.code).unwrap_or("unclassified");
+    let reason = wire
+        .filter(|error| error.code == "scheduleWorkspaceRequired")
+        .map(|error| error.message.as_str())
+        .unwrap_or("");
+    eprintln!(
+        "Host workspace admission failed: projectId={project} stage={stage} code={code} rpcCode={} ioKind={:?} jsonCategory={:?} reason={reason}",
+        rpc.map(|error| &error.0["code"]).unwrap_or(&Value::Null),
+        cause
+            .downcast_ref::<std::io::Error>()
+            .map(std::io::Error::kind),
+        cause
+            .downcast_ref::<serde_json::Error>()
+            .map(serde_json::Error::classify),
+    );
+}
 impl AdmissionRpc for CommandAdmission<'_> {
     async fn request(&self, id: &str, method: &str, params: Value) -> Result<Value> {
         ensure!(self.connection.shared_current(self.host), unavailable());
         let result = if id == self.connection.project_id {
-            self.connection.request(method, params).await?
+            self.connection
+                .request(method, params)
+                .await
+                .map_err(|cause| {
+                    admission_diagnostic(id, method, &cause);
+                    cause
+                })?
         } else {
             let scope = self
                 .host
@@ -501,7 +527,10 @@ impl Connections {
         params: &Value,
     ) -> Result<Value> {
         let session = if let Some(lease) = lease {
-            self.workbench_session(host, id, lease)?
+            self.workbench_session(host, id, lease).map_err(|cause| {
+                admission_diagnostic(id, "lease", &cause);
+                cause
+            })?
         } else {
             self.sessions
                 .borrow()
@@ -509,7 +538,11 @@ impl Connections {
                 .cloned()
                 .ok_or_else(unavailable)?
         };
-        ensure!(session.shared_current(host), unavailable());
+        if !session.shared_current(host) {
+            let cause = unavailable();
+            admission_diagnostic(id, "current", &cause);
+            return Err(cause);
+        }
         let registrations = host
             .slots
             .borrow()
@@ -534,7 +567,15 @@ impl Connections {
                 connection: &session,
             },
         )
-        .await?;
+        .await
+        .map_err(|cause| {
+            eprintln!(
+                "Host workspace admission connection: projectId={id} coreGeneration={} connectionId={}",
+                session.service.identity.generation, session.connection_id
+            );
+            admission_diagnostic(id, "policy", &cause);
+            cause
+        })?;
         ensure!(session.shared_current(host), unavailable());
         Ok(json!({"admitted":true}))
     }

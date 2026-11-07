@@ -1509,6 +1509,32 @@ impl Host {
         }
         result
     }
+    fn begin_project_activation(
+        &self,
+        project: &str,
+        fingerprint: &str,
+        current: Option<&Service>,
+    ) {
+        {
+            let mut slots = self.slots.borrow_mut();
+            let slot = slots.get_mut(project).unwrap();
+            // 重复确认同一已运行服务不能撤销它的共享连接；实际启动和配置变化仍进入 starting。
+            let reusing_ready = current.is_some_and(|service| {
+                service.state == State::Ready
+                    && service.owner.as_ref() == Some(&self.owner())
+                    && service.identity.config_fingerprint == fingerprint
+                    && slot.state == "ready"
+                    && slot.writer.is_some()
+                    && slot.service.as_ref().is_some_and(|previous| {
+                        previous.identity == service.identity && previous.owner == service.owner
+                    })
+            });
+            if !reusing_ready {
+                slot.state = "starting".into();
+            }
+        }
+        self.changed();
+    }
     async fn ensure_inner(&self, input: &Ensure) -> Result<Value> {
         if self.migration.unpublished_reserved(&input.project_id)? {
             return Err(error(
@@ -1645,8 +1671,9 @@ impl Host {
         }) {
             self.cleanup_proof(previous).await?;
         }
-        if let Some(service) =
-            current.filter(|s| s.state == State::Ready || s.state == State::Stopping)
+        if let Some(service) = current
+            .as_ref()
+            .filter(|s| s.state == State::Ready || s.state == State::Stopping)
         {
             if service.owner.is_none() {
                 let migration_id = uuid::Uuid::new_v4().to_string();
@@ -1721,12 +1748,7 @@ impl Host {
             }
         }
         spec.owner = Some(self.owner());
-        {
-            let mut slots = self.slots.borrow_mut();
-            let slot = slots.get_mut(&input.project_id).unwrap();
-            slot.state = "starting".into();
-        }
-        self.changed();
+        self.begin_project_activation(&input.project_id, &spec.fingerprint, current.as_ref());
         let lifetime = {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();

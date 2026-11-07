@@ -84,8 +84,14 @@ if (snapshotCompletion) {
     `
 const { HostCoreClient } = require(${JSON.stringify(join(root, "services/workbench/src/generated/host-core-client.cjs"))});
 const { appendFileSync } = require('node:fs');
+const observation = ${JSON.stringify(join(scratch, "snapshot-preload-observation.jsonl"))};
+appendFileSync(observation, JSON.stringify({type:'loaded', pid:process.pid, entry:process.argv[1], module:require.resolve(${JSON.stringify(join(root, "services/workbench/src/generated/host-core-client.cjs"))})}) + '\\n');
 const event = HostCoreClient.prototype.event;
+let observed = 0;
 HostCoreClient.prototype.event = function(frame) {
+  if (typeof frame.method === 'string' && frame.method.startsWith('turn/') && observed++ < 512) appendFileSync(observation, JSON.stringify({type:'event', pid:process.pid,
+    method:frame.method, threadId:frame.params?.threadId, turnId:frame.params?.turn?.id,
+    owned:this.owns(frame.lease), connectionId:this.identity()?.connectionId}) + '\\n');
   if (this.owns(frame.lease) && frame.method === 'turn/completed') {
     appendFileSync(${JSON.stringify(omittedCompletionLog)}, JSON.stringify({
       threadId: frame.params?.threadId, turnId: frame.params?.turn?.id,
@@ -290,6 +296,32 @@ try {
         .catch(() => null);
       return rustDomains.every((domain) => record?.options?.rustDomains?.includes(domain));
     }, "Rust backend launch domains");
+    if (snapshotCompletion) {
+      const { HostClient } = require("@areal/client/node");
+      const host = new HostClient();
+      try {
+        await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+        const backend = await host.request("backend.status", {});
+        assert.ok(backend.owned && Number.isSafeInteger(backend.service?.pid), "owned backend PID");
+        const observations = (
+          await readFile(join(scratch, "snapshot-preload-observation.jsonl"), "utf8")
+        )
+          .split("\n")
+          .filter(Boolean)
+          .map(JSON.parse);
+        assert.ok(
+          observations.some(
+            (entry) =>
+              entry.type === "loaded" &&
+              entry.pid === backend.service.pid &&
+              entry.entry?.endsWith("/backend-main.cjs"),
+          ),
+          "snapshot preload loaded in original backend PID",
+        );
+      } finally {
+        host.close();
+      }
+    }
   }
   // Rust Host 管理项目代际，旧桌面服务文件不是其身份。
   metadata = rust
