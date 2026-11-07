@@ -26,7 +26,7 @@
 .settings-section-desc,
 .settings-section-heading .settings-section-desc {
   font-size: var(--text-ui-sm);
-  color: var(--color-settings-secondary, var(--color-muted-foreground));
+  color: var(--color-settings-secondary);
   margin: 2px 0 0;
   line-height: var(--line-height-ui-sm);
 }
@@ -48,9 +48,9 @@
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
-  border-radius: var(--radius-xl, var(--radius-overlay));
-  border: 1px solid var(--color-border-subtle, var(--color-border));
-  background-color: var(--color-settings-card, var(--color-card));
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--color-border-subtle);
+  background-color: var(--color-settings-card);
   overflow: hidden;
   box-shadow: none;
 }
@@ -83,7 +83,7 @@
   left: 16px;
   right: 16px;
   height: 0.5px;
-  background: var(--color-border-subtle, var(--color-border));
+  background: var(--color-border-subtle);
   pointer-events: none;
 }
 
@@ -113,7 +113,7 @@
   font-size: var(--text-ui-sm);
   font-weight: 430;
   line-height: 1.333333;
-  color: var(--color-settings-secondary, var(--color-muted-foreground));
+  color: var(--color-settings-secondary);
   overflow-wrap: break-word;
 }
 
@@ -148,7 +148,7 @@
 .settings-field-row .settings-field-control input[type="number"],
 .settings-field-row .settings-field-control input[type="text"] {
   height: var(--spacing-control);
-  border-radius: var(--radius-sm, var(--radius-control));
+  border-radius: var(--radius-compact);
   border: 1px solid var(--color-border);
   background-color: var(--color-background);
   color: var(--color-foreground);
@@ -166,7 +166,7 @@
 .settings-field-row .settings-field-control input[type="text"]:focus-visible {
   outline: none;
   border-color: var(--color-brand);
-  box-shadow: 0 0 0 3px var(--color-focus-ring-soft, transparent);
+  box-shadow: 0 0 0 3px var(--color-focus-ring-soft);
 }
 
 .settings-field-row .settings-field-control input[type="range"] {

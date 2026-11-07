@@ -17,7 +17,7 @@
   border: 0;
   font-size: var(--text-conversation);
   line-height: var(--conversation-line);
-  color: var(--activity-foreground, var(--color-activity-summary, var(--color-foreground-subtle)));
+  color: var(--activity-foreground, var(--color-activity-summary));
   transition: color var(--motion-fast) var(--ease-standard);
 }
 .areal-activity-group
@@ -83,7 +83,7 @@
 }
 /* 展开后子项与摘要左缘对齐，各自保留行首图标（读取、搜索、命令各不相同）；标题与子项、子项之间各隔一个行内间距。 */
 .areal-activity-group:not([data-presentation="inline"]) .areal-activity-list {
-  --activity-foreground: var(--color-activity-child, var(--color-foreground-subtle));
+  --activity-foreground: var(--color-activity-child);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-inline);

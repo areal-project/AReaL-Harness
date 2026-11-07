@@ -10,8 +10,15 @@ const extension = (token) => token.$extensions?.["build.areal.ui"] ?? {};
 const banner =
   "/* Generated from @areal/ui/tokens.json. Run pnpm --dir clients/gui --filter @areal/ui generate. */\n";
 const scalar = String;
+// 三层：原料刻度带 scale（乘全局倍率），用途写成 "{原料名}" 引用，组件只引用用途。
+const ALIAS = /^\{([a-z][a-z0-9-]*)\}$/;
 function serialize(token, name) {
   const value = token.$value;
+  if (typeof value === "string" && ALIAS.test(value)) return `var(--${value.match(ALIAS)[1]})`;
+  if (extension(token).scale) {
+    const { scale, ...rest } = extension(token);
+    return `calc(${serialize({ ...token, $extensions: { "build.areal.ui": rest } }, name)} * var(--${scale}))`;
+  }
   if (extension(token).css) {
     assert.equal(typeof value, "string");
     return value;
@@ -64,6 +71,12 @@ export function renderFoundations(tokens) {
     mappings = [],
     dark = [];
   for (const [key, token] of Object.entries(tokens.foundation)) {
+    const target = typeof token.$value === "string" && token.$value.match(ALIAS)?.[1];
+    if (target)
+      assert.ok(
+        extension(tokens.foundation[target] ?? {}).scale,
+        `purpose token ${key} must reference a primitive scale step, not ${target}`,
+      );
     const name = extension(token).name ?? key;
     assert.ok(/^[a-z][a-z0-9-]+$/.test(name), `invalid name: ${name}`);
     assert.ok(!seen.has(name), `duplicate CSS role: ${name}`);

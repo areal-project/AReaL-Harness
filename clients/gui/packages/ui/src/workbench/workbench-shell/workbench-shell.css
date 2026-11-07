@@ -1,8 +1,8 @@
 .areal-workbench {
   position: relative;
   --window-inset: 0px;
-  --shell-bar-height: max(var(--height-toolbar, 46px), calc(var(--ui-font-size) + 32px));
-  --page-radius: var(--radius-xl, 16px);
+  --shell-bar-height: max(var(--height-toolbar), calc(var(--ui-font-size) + 32px));
+  --page-radius: var(--radius-panel);
   --page-frame-left: 0px;
   --page-clip-start: 0px;
   --main-clip-end: 0px;
@@ -10,7 +10,7 @@
   display: flex;
   /* Page frame inset belongs to the shell, including every pane and footer. */
   padding: 0 4px 4px 0;
-  background: var(--color-shell, var(--color-background));
+  background: var(--color-shell);
   color: var(--color-foreground);
   overflow: hidden;
   border-radius: var(--radius-overlay);
@@ -205,7 +205,7 @@
   white-space: nowrap;
 }
 .sidebar-footer-settings:hover {
-  background: var(--color-sidebar-item, var(--color-hover));
+  background: var(--color-sidebar-item);
 }
 .sidebar-footer-settings:hover > svg {
   color: var(--color-foreground);
@@ -228,7 +228,7 @@
 }
 .sidebar-footer-help:hover {
   color: var(--color-foreground);
-  background: var(--color-sidebar-item, var(--color-hover));
+  background: var(--color-sidebar-item);
 }
 .work-surface {
   position: relative;
@@ -420,8 +420,8 @@
   gap: 8px;
   padding: 8px 10px;
   border: 0;
-  border-radius: var(--radius-md, var(--radius-control));
-  background: var(--color-surface-elevated, var(--color-surface));
+  border-radius: var(--radius-button);
+  background: var(--color-surface-elevated);
   color: var(--color-foreground);
   font-size: var(--text-fixed-label);
   font-weight: 400;
@@ -430,7 +430,7 @@
   transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .side-pane-launcher-item:hover {
-  background: var(--color-surface-tertiary, var(--color-hover));
+  background: var(--color-surface-tertiary);
 }
 .side-pane-launcher-item > svg {
   width: 16px;
@@ -448,8 +448,8 @@
 .side-pane-launcher-shortcut {
   margin-inline-start: auto;
   padding: 2px 6px;
-  border-radius: var(--radius-xs, var(--radius-compact));
-  background: var(--color-surface-tertiary, var(--color-hover));
+  border-radius: var(--radius-micro);
+  background: var(--color-surface-tertiary);
   color: var(--color-foreground-subtle);
   font-family: var(--font-sans);
   font-size: var(--text-fixed-caption);
@@ -457,13 +457,13 @@
   line-height: 1;
 }
 .side-pane-tabbar {
-  height: var(--shell-bar-height, var(--height-toolbar, 46px));
+  height: var(--shell-bar-height, var(--height-toolbar));
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 0 8px;
-  backdrop-filter: blur(var(--blur-header, 18px));
+  backdrop-filter: var(--material-chrome-filter);
 }
 .side-pane-tabs-root {
   min-width: 0;
@@ -596,7 +596,7 @@
   max-width: 280px;
   padding: 5px 8px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md, var(--radius-navigation));
+  border-radius: var(--radius-navigation);
   background: var(--color-popover);
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
@@ -612,7 +612,7 @@
 .navigation-task-row {
   min-height: max(30px, calc(var(--ui-font-size) + 16px));
   padding: 5px 5px 5px 8px;
-  border-radius: var(--radius-md, var(--radius-navigation));
+  border-radius: var(--radius-navigation);
   font-size: var(--text-ui-base);
   font-weight: var(--ui-font-weight);
   line-height: 1.42857;
@@ -621,7 +621,7 @@
 .navigation-task-row:hover,
 .navigation-task-row:has([data-popup-open]),
 .navigation-task-row[aria-current="page"] {
-  background: var(--color-sidebar-item, var(--color-hover));
+  background: var(--color-sidebar-item);
 }
 .navigation-task-row[aria-current="page"] {
   background: var(--color-navigation-selected);

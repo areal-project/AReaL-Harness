@@ -7,17 +7,16 @@
   gap: 0;
   padding: 12px 0 var(--spacing-inline);
   border: 0;
-  border-radius: var(--radius-2xl, var(--radius-composer));
-  background: var(--color-composer, var(--color-background));
+  border-radius: var(--radius-composer);
+  background: var(--color-composer);
   box-shadow: var(--shadow-composer);
-  backdrop-filter: blur(var(--blur-menu, 16px));
   transition: box-shadow var(--motion-fast) var(--ease-standard);
 }
 .composer-surface:focus-within {
   box-shadow:
     var(--shadow-composer),
     0 0 0 1px var(--color-border-hover),
-    0 0 0 3px var(--color-focus-ring-soft, transparent);
+    0 0 0 3px var(--color-focus-ring-soft);
 }
 .composer-surface[data-dragging] {
   outline: var(--focus-width) solid var(--color-brand);

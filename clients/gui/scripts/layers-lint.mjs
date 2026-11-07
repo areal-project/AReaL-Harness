@@ -12,8 +12,8 @@ const SKIP = /(?:^|\/)(?:node_modules|dist|generated|vendor|design-system)\//;
 
 // 原料层：只有生成器能用，组件和页面引用用途名。
 const PRIMITIVE = /var\(\s*--(radius-(?:2xs|xs|sm|md|lg|xl|2xl|3xl|4xl))\s*[,)]/g;
-// 材质：模糊只在材质定义里出现；目前还没有材质文件，所以全部进基线。
-const MATERIAL_FILES = new Set();
+// 材质：模糊只在材质定义里出现，其余地方只能引用材质变量。
+const MATERIAL_FILES = new Set(["packages/ui/src/materials.css"]);
 const BACKDROP = /backdrop-filter\s*:\s*([^;{}]+)/g;
 const VAR_FALLBACK = /var\(\s*--([\w-]+)\s*,/g;
 const CLASS = /\.(-?[_a-zA-Z][\w-]*)/g;
@@ -60,7 +60,7 @@ export function lintCss(path, source, { tokens, classes, isPackage }) {
     });
   for (const match of text.matchAll(PRIMITIVE)) push("primitive", match.index, match[0]);
   for (const match of text.matchAll(BACKDROP))
-    if (!/^\s*none\s*$/.test(match[1]) && !MATERIAL_FILES.has(path))
+    if (!/^\s*(?:none|var\(--material-[\w-]+\))\s*$/.test(match[1]) && !MATERIAL_FILES.has(path))
       push("material", match.index, match[0]);
   if (isPackage)
     for (const match of text.matchAll(VAR_FALLBACK))

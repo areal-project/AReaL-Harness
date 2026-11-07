@@ -16,7 +16,7 @@
   font-weight: 600;
   color: var(--color-foreground);
   margin: 0 8px 12px;
-  letter-spacing: var(--tracking-heading-tight, -0.01em);
+  letter-spacing: var(--tracking-heading-tight);
 }
 
 .settings-sidebar .settings-navigation-search input {
@@ -38,7 +38,7 @@
   outline: none;
   border-color: var(--color-brand);
   background: var(--color-background);
-  box-shadow: 0 0 0 3px var(--color-focus-ring-soft, transparent);
+  box-shadow: 0 0 0 3px var(--color-focus-ring-soft);
 }
 
 .settings-sidebar .settings-category-navigation {
@@ -75,7 +75,7 @@
   min-height: 30px;
   padding: 5px 8px;
   margin: 0;
-  border-radius: var(--radius-md, var(--radius-navigation));
+  border-radius: var(--radius-navigation);
   border: none !important;
   border-left: none !important;
   box-shadow: none !important;
@@ -108,13 +108,13 @@
 }
 
 .settings-sidebar .settings-navigation-item:hover {
-  background-color: var(--color-sidebar-item, var(--color-hover));
+  background-color: var(--color-sidebar-item);
   color: var(--color-foreground);
 }
 
 .settings-sidebar .settings-navigation-item[aria-pressed="true"],
 .settings-sidebar .settings-navigation-item[aria-current="page"] {
-  background-color: var(--color-sidebar-item, var(--color-selected)) !important;
+  background-color: var(--color-sidebar-item) !important;
   color: var(--color-foreground) !important;
   font-weight: 400;
 }

@@ -11,9 +11,9 @@
   width: 96px;
   height: 96px;
   flex: 0 0 96px;
-  border: 1px solid var(--color-border-subtle, var(--color-border));
-  border-radius: var(--radius-lg, var(--radius-attachment));
-  background: var(--color-surface-elevated, var(--color-surface));
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-attachment);
+  background: var(--color-surface-elevated);
   transition: border-color var(--motion-fast) var(--ease-standard);
 }
 .composer-image-card:hover,
@@ -41,7 +41,7 @@
   width: 28px;
   height: 28px;
   flex-shrink: 0;
-  border-radius: var(--radius-sm, var(--radius-control));
+  border-radius: var(--radius-compact);
   background: var(--color-background);
   color: var(--color-foreground-subtle);
 }

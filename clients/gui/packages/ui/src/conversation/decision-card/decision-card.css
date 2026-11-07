@@ -2,8 +2,8 @@
   margin-bottom: var(--spacing-inline);
   padding: 12px;
   border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-2xl, var(--radius-overlay));
-  background: var(--color-composer-catalog, var(--color-surface-elevated, var(--color-composer)));
+  border-radius: var(--radius-card);
+  background: var(--color-composer-catalog);
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
@@ -76,8 +76,8 @@
   justify-content: center;
   height: 18px;
   padding: 0 5px;
-  border-radius: var(--radius-xs, var(--radius-micro));
-  background: var(--color-surface-tertiary, var(--color-hover));
+  border-radius: var(--radius-micro);
+  background: var(--color-surface-tertiary);
   font: inherit;
   font-size: var(--text-ui-sm);
 }
@@ -87,8 +87,8 @@
 .approval-preview {
   margin: 0;
   padding: var(--spacing-inline) var(--spacing-field);
-  border-radius: var(--radius-md, var(--radius-inset));
-  background: var(--color-surface-elevated, var(--color-surface));
+  border-radius: var(--radius-inset);
+  background: var(--color-surface-elevated);
   color: var(--color-foreground);
   font-family: var(--font-mono);
   font-size: var(--text-ui-caption);

@@ -27,7 +27,7 @@
   font-size: var(--text-ui-caption);
   line-height: calc(var(--ui-font-size) + 4px);
   font-weight: 430;
-  color: var(--color-settings-secondary, var(--color-muted-foreground));
+  color: var(--color-settings-secondary);
   background: transparent;
   box-shadow: none;
   cursor: var(--interactive-cursor, pointer);
@@ -39,13 +39,13 @@
 
 /* Base UI exposes data-active by presence, not a string boolean. */
 .settings-segmented-tabs [data-slot="tabs-trigger"][data-active] {
-  background: var(--color-surface-tertiary, var(--color-hover));
+  background: var(--color-surface-tertiary);
   color: var(--color-foreground);
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"]:hover:not([data-active]) {
   color: var(--color-foreground);
-  background: var(--color-surface-elevated, var(--color-surface));
+  background: var(--color-surface-elevated);
 }
 
 .settings-segmented-tabs [data-slot="tabs-trigger"]:focus-visible {

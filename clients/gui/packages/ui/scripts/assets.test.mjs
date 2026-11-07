@@ -31,7 +31,8 @@ test("existing control geometry and default palette remain explicit", () => {
   const result = renderFoundations(tokens);
   assert.match(result.foundation, /--spacing-field: 16px;/);
   assert.match(result.tailwind, /--text-ui-base: var\(--ui-font-size\);/);
-  assert.match(result.tailwind, /--radius-button: 8px;/);
+  assert.match(result.tailwind, /--radius-button: var\(--radius-md\);/);
+  assert.match(result.tailwind, /--radius-md: calc\(8px \* var\(--corner-radius-scale\)\);/);
   assert.deepEqual(result.themes.light, {
     background: "#ffffff",
     foreground: "#1a1c1f",
@@ -52,6 +53,11 @@ test("two tokens cannot claim the same CSS role", () => {
     $extensions: { "build.areal.ui": { name: "spacing-field" } },
   };
   assert.throws(() => renderFoundations(broken), /duplicate.*spacing-field/);
+});
+test("purpose tokens may only reference a primitive scale step", () => {
+  const broken = structuredClone(tokens);
+  broken.foundation["radius-button"].$value = "{radius-control}";
+  assert.throws(() => renderFoundations(broken), /radius-button must reference a primitive/);
 });
 test("CSS expressions require an explicit extension", () => {
   const broken = structuredClone(tokens);

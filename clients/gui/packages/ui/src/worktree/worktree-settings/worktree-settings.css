@@ -65,7 +65,7 @@
   min-width: 0;
   padding-right: var(--spacing-inline);
   border-radius: var(--radius-control);
-  background: var(--color-settings-card, var(--color-card));
+  background: var(--color-settings-card);
 }
 .worktrees-settings .worktrees-project-open {
   flex: 1;
@@ -117,7 +117,7 @@
   margin: 0;
   padding: var(--spacing-panel);
   color: var(--color-foreground-subtle);
-  background: var(--color-settings-card, var(--color-card));
+  background: var(--color-settings-card);
   border-radius: var(--radius-overlay);
   font-size: var(--text-ui-sm);
   text-align: center;

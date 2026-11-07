@@ -72,40 +72,40 @@
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `--radius-control` | `10px` | 输入框、选择器、设置卡片等控件外框 |
-| `--radius-button` | `8px` | 文字按钮与按钮式入口 |
-| `--radius-inset` | `8px` | 容器内部的内嵌块：列表项、引用、图片视口 |
+| `--radius-control` | `var(--radius-lg)` | 输入框、选择器、设置卡片等控件外框 |
+| `--radius-button` | `var(--radius-md)` | 文字按钮与按钮式入口 |
+| `--radius-inset` | `var(--radius-md)` | 容器内部的内嵌块：列表项、引用、图片视口 |
 | `--radius-pill` | `999px` | 胶囊形：发送等主动作、标签、计数徽标 |
-| `--radius-overlay` | `20px` | 大浮层与独立工作区：Worktree 设置、目录列表、定时任务 |
-| `--radius-navigation` | `12.5px` | 导航项、侧栏行与拖拽预览 |
-| `--radius-composer` | `18px` | 输入区外框 |
-| `--radius-panel` | `12px` | 面板与分组卡片 |
-| `--radius-dialog` | `16px` | 对话框 |
-| `--radius-message` | `16px` | 用户消息气泡圆角 |
-| `--radius-compact` | `6px` | 紧凑工具按钮与小型输入的既有圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-micro` | `4px` | 微型工具、缩略图内部和细粒度选择区圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-compact-row` | `7px` | 紧凑队列和菜单行圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-inline` | `5px` | 嵌入式输入和紧凑标注工具圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-card` | `14px` | 中型资源列表与提示卡片圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-choice` | `15px` | 选择菜单和主题预览卡片圆角。 D3 保留原几何，不改变数值。 |
-| `--radius-attachment` | `9px` | 图片附件与紧凑批注圆角。D3 保留原几何。 |
-| `--radius-feedback` | `11px` | 输入反馈与提示卡片圆角。D3 保留原几何。 |
+| `--radius-overlay` | `var(--radius-3xl)` | 大浮层与独立工作区：Worktree 设置、目录列表、定时任务 |
+| `--radius-navigation` | `var(--radius-md)` | 导航项、侧栏行与拖拽预览 |
+| `--radius-composer` | `var(--radius-2xl)` | 输入区外框 |
+| `--radius-panel` | `var(--radius-xl)` | 面板与分组卡片 |
+| `--radius-dialog` | `var(--radius-2xl)` | 对话框 |
+| `--radius-message` | `var(--radius-2xl)` | 用户消息气泡圆角 |
+| `--radius-compact` | `var(--radius-sm)` | 紧凑工具按钮与小型输入的既有圆角。 D3 保留原几何，不改变数值。 |
+| `--radius-micro` | `var(--radius-xs)` | 微型工具、缩略图内部和细粒度选择区圆角。 D3 保留原几何，不改变数值。 |
+| `--radius-compact-row` | `var(--radius-sm)` | 紧凑队列和菜单行圆角。 D3 保留原几何，不改变数值。 |
+| `--radius-inline` | `var(--radius-sm)` | 嵌入式输入和紧凑标注工具圆角。 D3 保留原几何，不改变数值。 |
+| `--radius-card` | `var(--radius-2xl)` | 中型资源列表与提示卡片圆角。 D3 保留原几何，不改变数值。 |
+| `--radius-choice` | `var(--radius-2xl)` | 选择菜单和主题预览卡片圆角。 D3 保留原几何，不改变数值。 |
+| `--radius-attachment` | `var(--radius-lg)` | 图片附件与紧凑批注圆角。D3 保留原几何。 |
+| `--radius-feedback` | `var(--radius-xl)` | 输入反馈与提示卡片圆角。D3 保留原几何。 |
 | `--radius-full` | `9999px` | 全圆角胶囊，保留原最大半径。D3 保留原几何。 |
-| `--radius-composer-large` | `28px` | 大输入区外框圆角。D3 保留原几何。 |
+| `--radius-composer-large` | `var(--radius-4xl)` | 大输入区外框圆角。D3 保留原几何。 |
 | `--radius-status-dot` | `99px` | 供应商状态点的原固定圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-composer-queue-menu` | `17px` | 输入器队列菜单的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-turn-marker` | `1px` | 轮次导航细标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-inspection-dialog` | `24px` | Hook 统计检查对话框的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-context-category-dot` | `2px` | 上下文组成类别标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
-| `--radius-2xs` | `2px` | Codex 9 档圆角阶梯：微型指示器与进度条圆角 |
-| `--radius-xs` | `4px` | Codex 9 档圆角阶梯：行内代码与微型徽章圆角 |
-| `--radius-sm` | `6px` | Codex 9 档圆角阶梯：紧凑按钮与小型标签圆角 |
-| `--radius-md` | `8px` | Codex 9 档圆角阶梯：侧栏导航行、常规按钮与菜单项圆角 |
-| `--radius-lg` | `10px` | Codex 9 档圆角阶梯：内嵌容器、附件卡片与回合文件改动汇总卡圆角 |
-| `--radius-xl` | `12px` | Codex 9 档圆角阶梯：设置分组卡片、Popover 浮层与面板圆角 |
-| `--radius-2xl` | `16px` | Codex 9 档圆角阶梯：用户消息胶囊、紧凑态 Composer 与对话框圆角 |
-| `--radius-3xl` | `20px` | Codex 9 档圆角阶梯：大浮层与复合输入容器圆角 |
-| `--radius-4xl` | `24px` | Codex 9 档圆角阶梯：主输入台（Composer）外框与大型模态面板圆角 |
+| `--radius-composer-queue-menu` | `var(--radius-2xl)` | 输入器队列菜单的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
+| `--radius-turn-marker` | `var(--radius-2xs)` | 轮次导航细标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
+| `--radius-inspection-dialog` | `var(--radius-4xl)` | Hook 统计检查对话框的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
+| `--radius-context-category-dot` | `var(--radius-2xs)` | 上下文组成类别标记的原圆角。 D2 保留 renderer/src/workbench.css 原几何。 |
+| `--radius-2xs` | `calc(2px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：微型指示器与进度条圆角 |
+| `--radius-xs` | `calc(4px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：行内代码与微型徽章圆角 |
+| `--radius-sm` | `calc(6px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：紧凑按钮与小型标签圆角 |
+| `--radius-md` | `calc(8px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：侧栏导航行、常规按钮与菜单项圆角 |
+| `--radius-lg` | `calc(10px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：内嵌容器、附件卡片与回合文件改动汇总卡圆角 |
+| `--radius-xl` | `calc(12px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：设置分组卡片、Popover 浮层与面板圆角 |
+| `--radius-2xl` | `calc(16px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：用户消息胶囊、紧凑态 Composer 与对话框圆角 |
+| `--radius-3xl` | `calc(20px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：大浮层与复合输入容器圆角 |
+| `--radius-4xl` | `calc(24px * var(--corner-radius-scale))` | Codex 9 档圆角阶梯：主输入台（Composer）外框与大型模态面板圆角 |
 
 ## 阴影
 
@@ -113,7 +113,6 @@
 | --- | --- | --- |
 | `--shadow-menu` | `0 0 0 0.5px var(--color-menu-border, var(--color-border)), 0 8px 16px -4px rgb(0 0 0 / 12%)` | 下拉菜单与右键菜单 |
 | `--shadow-overlay` | `0 4px 12px rgb(0 0 0 / 10%), 0 14px 40px rgb(0 0 0 / 8%)` | Popover 与悬浮面板 |
-| `--shadow-composer` | `var(--composer-shadow-light)` | 输入区外框阴影，暗色由调色板切换 |
 | `--shadow-dialog` | `0 12px 32px rgb(0 0 0 / 20%)` | 对话框 |
 | `--shadow-inset-control` | `0 1px 1px rgba(0, 0, 0, 0.04)` | 微型设置按钮的轻投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
 | `--shadow-raised-control` | `0 1px 2px rgba(0, 0, 0, 0.06)` | 设置控件的轻投影。来源为迁移前对应 CSS 声明，保持原阴影几何与颜色。 |
@@ -182,9 +181,9 @@
 | `--browser-file-status-block-padding` | `3px` | 浏览器文件交接状态项的既有纵向内边距；来自renderer/src/BrowserFileHandoff.layout.css，D2保持原几何。 |
 | `--size-status-dot` | `7px` | 移动端会话状态圆点尺寸 |
 | `--size-touch-target` | `44px` | 移动端按钮与输入框的最小触控目标 |
-| `--blur-menu` | `16px` | 下拉菜单与紧凑浮层的毛玻璃背景模糊半径 |
 | `--blur-header` | `18px` | 工作台顶栏与吸顶摘要栏的毛玻璃模糊半径 |
 | `--blur-popover` | `24px` | 任务上下文摘要（Pin Summary）与大浮层的液态玻璃模糊半径 |
+| `--corner-radius-scale` | `1` | 内部圆角倍率：只乘原料刻度，用途圆角随之变化；不开放给用户（D-005） |
 | `--height-toolbar` | `46px` | 工作台顶栏、侧栏头部与设置导航顶栏的统一高度契约 |
 | `--home-composer-top` | `max(0px, calc(38svh - var(--height-toolbar, 46px)))` | 首页草稿视图（Draft View）迎宾区与 Composer 的黄金视觉重心顶部偏移 |
 | `--thread-summary-max-height` | `calc(100svh - var(--height-toolbar, 46px) - 24px)` | 顶栏任务资源与上下文摘要弹窗（Pin Summary）的最大可用高度 |
@@ -263,8 +262,8 @@
 | `settings-sidebar-default-translucent` | `rgb(40 40 40 / 0.7)` | palette.source.preMigration |
 | `settings-row-default-dark` | `rgba(255, 255, 255, 0.08)` | palette.source.preMigration |
 | `page-shadow-ambient` | `#0000000d` | palette.source.preMigration |
-| `composer-shadow-light` | `var(--composer-shadow-light)` | renderer/src/styles.css 的既有浅色输入区阴影，仍由现有宿主变量提供。 |
-| `composer-shadow-dark` | `var(--composer-shadow-dark)` | renderer/src/styles.css 的既有暗色输入区阴影，仍由现有宿主变量提供。 |
+| `composer-shadow-light` | `0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 80px 8px #00000006` | 原 renderer/src/styles.css 的浅色输入区阴影，数值迁入 Token 源（D-005 数值只在 Token 源）。 |
+| `composer-shadow-dark` | `inset 0 0 1px 0 #fff3` | 原 renderer/src/styles.css 的暗色输入区阴影，数值迁入 Token 源（D-005 数值只在 Token 源）。 |
 | `success` | `var(--color-success)` | foundation.color-success 已有成功反馈，不改变状态配色。 |
 | `warning` | `var(--color-warning)` | foundation.color-warning；subagent attention 与 UNKNOWN 的 warning toast 现有语义。 |
 | `error` | `var(--color-destructive)` | foundation.color-destructive 既有错误与危险反馈。 |
@@ -410,7 +409,7 @@
 | `--color-sidebar` | component · 设置侧栏材料，保留其与导航表面的区别。 | surface-settings-sidebar 保留已有组件变量名；仅引用 surface-settings-sidebar。设置侧栏材料，保留其与导航表面的区别。 | `color-mix(in srgb, #ffffff 70%, transparent)` | `rgb(40 40 40 / 0.7)` |
 | `--color-sidebar-item` | component · 设置侧栏行悬停层，默认暗色保留观察到的 8% 白色层。 | interaction-settings-row 保留已有组件变量名；仅引用 interaction-settings-row。设置侧栏行悬停层，默认暗色保留观察到的 8% 白色层。 | `color-mix(in srgb, #1a1c1f 5.5%, transparent)` | `rgba(255, 255, 255, 0.08)` |
 | `--color-composer` | component · 输入区半透明材料，明暗透明度不同。 | surface-composer 保留已有组件变量名；仅引用 surface-composer。输入区半透明材料，明暗透明度不同。 | `color-mix(in srgb, #ffffff 86.4706%, transparent)` | `color-mix(in srgb, color-mix(in srgb, #ffffff 12.987012987012987%, #181818) 96%, transparent)` |
-| `--shadow-composer` | component · 输入区阴影，默认主题沿用宿主变量。 | shadow-composer 保留已有组件变量名；仅引用 shadow-composer。输入区阴影，默认主题沿用宿主变量。 | `var(--composer-shadow-light)` | `var(--composer-shadow-dark)` |
+| `--shadow-composer` | component · 输入区阴影，默认主题沿用宿主变量。 | shadow-composer 保留已有组件变量名；仅引用 shadow-composer。输入区阴影，默认主题沿用宿主变量。 | `0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 80px 8px #00000006` | `inset 0 0 1px 0 #fff3` |
 | `--color-background-alt` | semantic · 基础表面之上的轻微分组层。 | surface-alt  | `color-mix(in srgb, #1a1c1f 3%, #ffffff)` | `color-mix(in srgb, #ffffff 3%, #181818)` |
 | `--color-card` | semantic · 基础阅读表面，卡片、面板和输入静止背景共用。 | surface-base  | `#ffffff` | `#181818` |
 | `--color-settings-card` | component · 设置组表面，暗色比通用抬升层更低。 | surface-settings-group 保留已有组件变量名；仅引用 surface-settings-group。设置组表面，暗色比通用抬升层更低。 | `#ffffff` | `color-mix(in srgb, #ffffff 4.761904761904762%, #181818)` |
