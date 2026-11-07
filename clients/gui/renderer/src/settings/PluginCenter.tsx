@@ -45,7 +45,6 @@ import { buildPluginMentionMarkdown } from "../mentions/mentionMarkdown.js";
 import { presentPlugin, type PluginConnectionFacts } from "./pluginPresentation.js";
 import { PluginConfiguration } from "./PluginConfiguration.js";
 import { PluginTemplateActions } from "./PluginTemplateActions.js";
-import { PluginDoctorSummary } from "./PluginDoctorSummary.js";
 import { PluginInstallReview } from "./PluginInstallReview.js";
 import { PluginOverview } from "./PluginOverview.js";
 import { usePluginSubmission, failure, failureText } from "./usePluginSubmission.js";
@@ -351,7 +350,6 @@ export function PluginCenter({
     catalog,
     components,
     componentError,
-    snapshot: storeSnapshot,
     supported,
     loading,
     readError,
@@ -1265,40 +1263,21 @@ export function PluginCenter({
               })}
             />
           )}
-          <Feedback
-            message={
-              storeSnapshot
-                ? t("settings.pluginCenter.snapshotScope", {
-                    scope:
-                      storeSnapshot.scope.kind === "user"
-                        ? t("settings.pluginCenter.user")
-                        : storeSnapshot.scope.workspace,
-                    revision: storeSnapshot.revision,
-                    time: new Date(storeSnapshot.observedAt).toLocaleString(),
-                  })
-                : ""
-            }
-          />
-          {(!project || !connected) && (
-            <>
-              <Feedback message={t("settings.pluginCenter.runtimeNotObserved")} />
-              {(!isDetail || pendingKind === "unknown" || pendingKind === "active") && (
-                <Button
-                  variant="outline"
-                  disabled={connectingProject}
-                  onClick={() => {
-                    if (projectId) void connectProject();
-                    else onChooseProject();
-                  }}
-                >
-                  {t(
-                    projectId
-                      ? "settings.pluginCenter.connectProjectBackend"
-                      : "settings.pluginCenter.chooseProjectToInstall",
-                  )}
-                </Button>
+          {(!project || !connected) && (pendingKind === "unknown" || pendingKind === "active") && (
+            <Button
+              variant="outline"
+              disabled={connectingProject}
+              onClick={() => {
+                if (projectId) void connectProject();
+                else onChooseProject();
+              }}
+            >
+              {t(
+                projectId
+                  ? "settings.pluginCenter.connectProjectBackend"
+                  : "settings.pluginCenter.chooseProjectToInstall",
               )}
-            </>
+            </Button>
           )}
           {supported === false && (
             <Feedback error={t("settings.pluginCenter.thisCoreDoesNotSupportThePlugin")} />
@@ -1375,9 +1354,6 @@ export function PluginCenter({
                 ))}
               </SettingsDisclosure>
             )}
-          {!isDetail && (
-            <PluginDoctorSummary key={projectId ?? "user"} command={api} projectId={projectId} />
-          )}
           {!isDetail && !adding && recoveryButton}
           {!isDetail && setupThreadId && onOpenThread && (
             <Button onClick={() => onOpenThread(projectId, setupThreadId)}>
@@ -2751,8 +2727,6 @@ export function PluginCenter({
                         mutate={mutate}
                         disabled={disabled}
                         active={panelActive}
-                        command={api}
-                        projectId={projectId}
                       />
                       <PluginTemplateActions
                         key={`${detail.id}:${detail.installedDigest}`}

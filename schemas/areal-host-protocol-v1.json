@@ -328,6 +328,9 @@
         "registration": {
           "$ref": "#/$defs/ProjectRegistration"
         },
+        "usesSharedModelConfig": {
+          "type": "boolean"
+        },
         "state": {
           "type": "string"
         },

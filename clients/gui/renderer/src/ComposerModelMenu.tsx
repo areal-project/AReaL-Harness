@@ -69,6 +69,9 @@ export function ComposerModelMenu({
   const availableOptions = options.filter(
     (option) => !option.unavailableReason && !option.historical,
   );
+  const unavailableOptions = options.filter(
+    (option) => option.unavailableReason && !option.historical,
+  );
   const providers = new Map<string, ComposerModelOption[]>();
   for (const option of availableOptions) {
     const providerId = option.providerId ?? "";
@@ -155,7 +158,7 @@ export function ComposerModelMenu({
       ))}
     </div>
   );
-  if (!availableOptions.length && !model)
+  if (!availableOptions.length && !unavailableOptions.length && !model)
     return openSettings ? (
       <Button type="button" variant="secondary" size="sm" onClick={() => openSettings("模型服务")}>
         {t("chat.composer.configureModels")}
@@ -249,6 +252,32 @@ export function ComposerModelMenu({
                 </TabsContent>
               ))}
             </Tabs>
+          ) : unavailableOptions.length ? (
+            <div>
+              {unavailableOptions.map((option) => (
+                <div key={option.value} aria-disabled="true">
+                  <span>{option.label}</span>
+                  {" · "}
+                  <span>{option.providerName || option.providerId}</span>
+                  {" · "}
+                  <span>{option.unavailableReason}</span>
+                </div>
+              ))}
+              {openSettings && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  aria-label={t("chat.composer.configureModels")}
+                  onClick={() => {
+                    setModelOpen(false);
+                    openSettings("模型服务");
+                  }}
+                >
+                  {t("chat.composer.configureModels")}
+                </Button>
+              )}
+            </div>
           ) : (
             <p className="composer-effort-unavailable">{t("chat.composer.noModelsGuidance")}</p>
           )}

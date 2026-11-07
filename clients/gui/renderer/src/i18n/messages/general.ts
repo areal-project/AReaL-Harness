@@ -707,6 +707,10 @@ export const generalMessages = {
     "zh-CN": "已停用",
     en: "Disabled",
   },
+  "settings.modelSettings.keychainLocked": {
+    "zh-CN": "钥匙串访问受限，请重新输入并保存密钥",
+    en: "Keychain access restricted; re-enter and save API key",
+  },
   "settings.modelSettings.missingCredentials": {
     "zh-CN": "缺少凭据",
     en: "Missing credentials",

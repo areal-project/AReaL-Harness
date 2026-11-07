@@ -98,6 +98,7 @@ export function composerModelOption(model: {
   available?: boolean;
   availability?: "checking" | "available" | "unavailable";
   credentialState?: string;
+  unavailableReason?: string;
 }): ComposerModelOption {
   return {
     value: model.providerId ? `${model.providerId}/${model.modelId}` : "",
@@ -110,11 +111,14 @@ export function composerModelOption(model: {
       model.capabilities?.reasoningEffortOptions !== undefined ||
       !!model.reasoningEffortOptions?.length,
     unavailableReason:
+      model.unavailableReason === "storageLocked" ||
       model.availability === "unavailable" ||
       (model.available === false && model.availability !== "checking")
-        ? model.credentialState === "unavailable"
-          ? "缺少 API Key"
-          : "模型不可用"
+        ? model.unavailableReason === "storageLocked"
+          ? "钥匙串访问受限，请重新保存密钥"
+          : model.credentialState === "unavailable"
+            ? "缺少 API Key"
+            : model.unavailableReason || "模型不可用"
         : undefined,
   };
 }

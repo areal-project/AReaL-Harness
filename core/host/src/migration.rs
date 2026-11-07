@@ -1757,6 +1757,29 @@ impl Migration {
         }
         Ok(None)
     }
+    pub fn shared_credential_source(
+        &self,
+        project: &ProjectRegistration,
+        shared: bool,
+    ) -> Result<Option<String>> {
+        if let Some(source) = self.credential_source(project)? {
+            return Ok(Some(source));
+        }
+        if !shared || !matches!(project.source, ProjectSource::Cli) {
+            return Ok(None);
+        }
+        let mut sources = BTreeSet::new();
+        for record in self.records()? {
+            if self.committed(&record)?.is_some() {
+                sources.insert(record.source_id);
+            }
+        }
+        Ok(if sources.len() == 1 {
+            sources.into_iter().next()
+        } else {
+            None
+        })
+    }
     pub(crate) fn navigation_sources(
         &self,
         current: &[ProjectRegistration],
@@ -1920,6 +1943,7 @@ impl Migration {
         }
         Ok(None)
     }
+    #[cfg(test)]
     pub fn credential(
         &self,
         project: &ProjectRegistration,
@@ -1931,6 +1955,17 @@ impl Migration {
         let Some(source_id) = self.credential_source(project)? else {
             return Ok(None);
         };
+        self.credential_for_source(&source_id, reference)
+    }
+    pub fn credential_for_source(
+        &self,
+        source_id: &str,
+        reference: &str,
+    ) -> Result<Option<String>> {
+        if !reference.starts_with("AREAL_CREDENTIAL_") {
+            return Ok(None);
+        }
+        let source_id = source_id.to_owned();
         if reference == "AREAL_CREDENTIAL_areal_openai" {
             let result = self.vault.dispatch(
                 "vault.read",

@@ -54,7 +54,7 @@
     {
       "id": "offline",
       "condition": "没有项目或当前项目Core未连接",
-      "expected": "读取同产物CLI的本地Store快照，显示作用域、revision和读取时间，运行状态明确未观察；浏览不启动项目Core，继续安装时给出显式选择项目或连接后台动作"
+      "expected": "浏览本地目录不启动项目；需要项目才能继续操作时提供选择或连接项目的动作"
     },
     {
       "id": "mixed-components",
@@ -89,12 +89,12 @@
     {
       "id": "credentials-reload",
       "condition": "其他已运行项目尚未载入共享配置中的新秘密引用",
-      "expected": "说明该Core需要重载；当前项目提供空闲drain与重新载入入口，不自动重启其他项目"
+      "expected": "保存后空闲项目自动应用；仍有运行中的项目时提示任务完成后自动应用"
     },
     {
       "id": "doctor",
       "condition": "用户主动读取插件诊断",
-      "expected": "仅展示静态Store事实、作用域与读取时间，运行状态未观察，与连接观察分别展示"
+      "expected": "诊断按需提供，不在市场或 Skills 页面常驻"
     }
   ],
   "conditions": {

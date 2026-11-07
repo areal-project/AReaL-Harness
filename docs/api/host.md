@@ -53,7 +53,7 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 普通 GUI 登记要求 `profile` 对应唯一已提交来源，`legacyProjectId` 为 24 位小写十六进制别名。新 GUI 项目的 `dataDir` 必须为该来源的 `<coreHome>/<legacyProjectId>/state`。原导入绑定保留原 Store 路径。同一来源别名不能改绑另一个 Host 项目。Host 在现有项目登记文件中保存新别名，不改原导入 manifest。未知或歧义来源分别返回 `sourceNotFound` 或 `sourceConflict`。
 
-`ProjectStatus` 包含 `registration`、`state`、可选 `service` 和 `migration`。状态为 `stopped`、`starting`、`ready`、`stopping`、`unavailable` 或 `legacyPending`。迁移记录包含原 `serviceId`、`generation`、存在时的 owner、来源 profile 与阶段。`legacyPending` 不制造 Host owner，也不签发声称受 Host 监督的描述。等待迁移时，客户端原有旧连接可以继续运行。
+`ProjectStatus` 包含 `registration`、`state`、可选 `service` 和 `migration`。可选 `usesSharedModelConfig:boolean` 表示 Host 确认项目使用共享模型配置，客户端读取旧回复时缺省为 false。状态为 `stopped`、`starting`、`ready`、`stopping`、`unavailable` 或 `legacyPending`。迁移记录包含原 `serviceId`、`generation`、存在时的 owner、来源 profile 与阶段。`legacyPending` 不制造 Host owner，也不签发声称受 Host 监督的描述。等待迁移时，客户端原有旧连接可以继续运行。
 
 监督 owner 为 `{kind:"host",hostId,generation}`，标识持有 service-host 生命期管道的进程。它与 Remote Noise peer 身份、设备授权分别建模。H1 与 H2 保留 `{kind:"gui",appRunId,profile}` 的运行支持，直到 GUI 生命周期迁移完成；之后只保留旧身份识别。旧 GUI 不能接管新 Host-owned 服务。不能静默改变严格 service-v1 的旧客户端解码行为，必须协商 Host-aware 描述或返回能力错误。
 

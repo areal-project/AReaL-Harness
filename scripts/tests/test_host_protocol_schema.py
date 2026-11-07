@@ -193,6 +193,11 @@ for (const transport of ['local','remote','loopback']) {
   }
 }
 const canonicalUuid = '01234567-89ab-cdef-0123-456789abcdef';
+const projectStatus = {registration:{projectId:'project',workspace:'/isolated/project',dataDir:'/isolated/data',source:{kind:'cli'},defaultBinding:true},state:'stopped'};
+validate('#/$defs/ProjectStatus', {...projectStatus,usesSharedModelConfig:true});
+validate('#/$defs/ProjectStatus', {...projectStatus,usesSharedModelConfig:false});
+validate('#/$defs/ProjectStatus', {...projectStatus,usesSharedModelConfig:'yes'}, false);
+validate('#/$defs/ProjectStatus', {...projectStatus,unregisteredConfigState:true}, false);
 validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','httpProxy'],before:null,after:'opaque'}]});
 validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['settings','sidebarSort'],before:null,after:'manual'}]}, false);
 validate('#/$defs/WorkbenchPrivateLibraryPatchParams', {patches:[{path:['httpProxy','settings'],before:null,after:'opaque'}]}, false);

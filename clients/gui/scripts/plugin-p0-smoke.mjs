@@ -287,6 +287,20 @@ try {
     .getByRole("navigation", { name: "应用导航", exact: true })
     .getByRole("button", { name: "插件", exact: true })
     .click();
+  const assertNoInternalBanners = async () => {
+    assert.equal(await page.getByText("读取范围", { exact: false }).count(), 0);
+    assert.equal(await page.getByText("插件诊断", { exact: true }).count(), 0);
+  };
+  await assertNoInternalBanners();
+  await page
+    .getByRole("complementary", { name: "插件导航" })
+    .getByRole("button", { name: "Skills", exact: true })
+    .click();
+  await assertNoInternalBanners();
+  await page
+    .getByRole("complementary", { name: "插件导航" })
+    .getByRole("button", { name: "插件市场", exact: true })
+    .click();
   const offline = await call("manage", { operation: "pluginStoreSnapshot" });
   assert.deepEqual(offline.scope, { kind: "user" });
   assert.equal(offline.runtimeObserved, false);

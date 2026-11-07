@@ -195,6 +195,22 @@ pub(super) struct Discovery {
     workspace: PathBuf,
     home: Option<PathBuf>,
     signature: String,
+    warnings: Vec<String>,
+}
+fn warn_discovery_changes(
+    signature: &str,
+    warnings: &[String],
+    previous: Option<(&str, &[String])>,
+) -> bool {
+    let changed = previous.is_none_or(|(old_signature, old_warnings)| {
+        signature != old_signature || warnings != old_warnings
+    });
+    if changed {
+        for warning in warnings {
+            tracing::warn!(%warning, "skill discovery warning");
+        }
+    }
+    changed
 }
 impl Engine {
     pub fn install_discovered_skill_sources(
@@ -206,13 +222,15 @@ impl Engine {
             workspace.is_absolute() && home.as_ref().is_none_or(|p| p.is_absolute()),
             "skill discovery requires trusted absolute paths"
         );
-        let locations = Self::discover_skill_locations(&workspace, home.as_deref())?;
+        let (locations, warnings) = Self::discover_skill_locations(&workspace, home.as_deref())?;
         let signature = digest(&locations)?;
+        warn_discovery_changes(&signature, &warnings, None);
         self.install_default_skills(locations)?;
         *self.desktop.discovered_skills.lock().unwrap() = Some(Discovery {
             workspace,
             home,
             signature,
+            warnings,
         });
         self.watch_plugin_state();
         Ok(())
@@ -220,36 +238,44 @@ impl Engine {
     fn discover_skill_locations(
         workspace: &Path,
         home: Option<&Path>,
-    ) -> anyhow::Result<Vec<SkillLocation>> {
-        let discovered = areal_config::skills::discover(Some(workspace), home)?;
-        for warning in discovered.warnings {
-            tracing::warn!(%warning, "skill discovery warning");
-        }
-        Ok(discovered
-            .skills
-            .into_iter()
-            .map(|skill| SkillLocation {
-                id: skill.id,
-                revision: skill.revision,
-                root: skill.root,
-                metadata: Some(skill.metadata),
-            })
-            .collect())
+    ) -> anyhow::Result<(Vec<SkillLocation>, Vec<String>)> {
+        let mut discovered = areal_config::skills::discover(Some(workspace), home)?;
+        discovered.warnings.sort();
+        Ok((
+            discovered
+                .skills
+                .into_iter()
+                .map(|skill| SkillLocation {
+                    id: skill.id,
+                    revision: skill.revision,
+                    root: skill.root,
+                    metadata: Some(skill.metadata),
+                })
+                .collect(),
+            discovered.warnings,
+        ))
     }
     pub(super) async fn refresh_discovered_skills(self: &Arc<Self>) -> Result<()> {
+        let _catalog = self.desktop.catalog_write.lock().await;
         let Some(source) = self.desktop.discovered_skills.lock().unwrap().clone() else {
             return Ok(());
         };
-        let _catalog = self.desktop.catalog_write.lock().await;
         let engine = self.clone();
         tokio::task::spawn_blocking(move || {
-            let locations =
+            let (locations, warnings) =
                 Self::discover_skill_locations(&source.workspace, source.home.as_deref())?;
             let signature = digest(&locations)?;
-            if signature != source.signature {
-                engine.install_default_skills(locations)?;
+            if warn_discovery_changes(
+                &signature,
+                &warnings,
+                Some((&source.signature, &source.warnings)),
+            ) {
+                if signature != source.signature {
+                    engine.install_default_skills(locations)?;
+                }
                 if let Some(current) = engine.desktop.discovered_skills.lock().unwrap().as_mut() {
                     current.signature = signature;
+                    current.warnings = warnings;
                 }
             }
             Ok::<_, anyhow::Error>(())
@@ -257,5 +283,49 @@ impl Engine {
         .await
         .map_err(invalid)?
         .map_err(invalid)
+    }
+}
+
+#[cfg(test)]
+mod discovery_warning_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    #[derive(Clone)]
+    struct Writer(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Writer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    #[test]
+    fn repeated_discovery_warnings_are_logged_only_on_change() {
+        let output = Arc::new(Mutex::new(Vec::new()));
+        let writer = Writer(output.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            let first = vec!["first-warning".to_owned()];
+            let second = vec!["second-warning".to_owned()];
+            assert!(warn_discovery_changes("one", &first, None));
+            assert!(!warn_discovery_changes(
+                "one",
+                &first,
+                Some(("one", &first))
+            ));
+            assert!(warn_discovery_changes(
+                "one",
+                &second,
+                Some(("one", &first))
+            ));
+        });
+        let log = String::from_utf8(output.lock().unwrap().clone()).unwrap();
+        assert_eq!(log.matches("first-warning").count(), 1);
+        assert_eq!(log.matches("second-warning").count(), 1);
     }
 }

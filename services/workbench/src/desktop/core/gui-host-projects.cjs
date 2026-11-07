@@ -9,7 +9,7 @@ const { canonicalSource, GuiSourceAdapter } = require("./gui-source.cjs");
 const { startupTrace } = require("./startup-timing.cjs");
 const diagnostics = require("./diagnostics.cjs");
 /** @typedef {import('./project-index.cjs').SavedProject} SavedProject */
-/** @typedef {{alias:{profile:string,legacyProjectId:string},projectId:string,workspace:string,dataDir:string,scratchDir:string,sourceId?:string,logicalAlias?:{profile:string,legacyProjectId:string},worktreeRequestId?:string,projectlessRequestId?:string}} Binding */
+/** @typedef {{alias:{profile:string,legacyProjectId:string},projectId:string,workspace:string,dataDir:string,scratchDir:string,sourceId?:string,usesSharedModelConfig?:boolean,logicalAlias?:{profile:string,legacyProjectId:string},worktreeRequestId?:string,projectlessRequestId?:string}} Binding */
 /** @typedef {{suppressed:boolean,activationError:string|null}} Scheduling */
 /** @typedef {{registration:{projectId:string},scheduleActivationSuppressed:boolean,scheduleActivationError?:string}} SchedulingStatus */
 /** @typedef {{state:'pending'|'completed',requestId?:string,error:string|null,code?:string}} RetirementState */
@@ -190,6 +190,11 @@ class GuiHostProjects {
     }
     this.metadata = metadata;
     const projects = await this.client.listProjects();
+    const status =
+      /** @type {{projects: (SchedulingStatus & {usesSharedModelConfig?: boolean})[]}} */ (
+        /** @type {unknown} */ (await this.client.status())
+      );
+    this.rememberStatus(status);
     this.bindings.clear();
     for (const binding of state.bindings)
       this.bindings.set(binding.alias.legacyProjectId, {
@@ -210,6 +215,13 @@ class GuiHostProjects {
         dataDir: registration.dataDir,
         scratchDir: join(this.source.coreHome, id, "scratch"),
       });
+    }
+    for (const binding of this.bindings.values()) {
+      const hostProject = status.projects.find(
+        (project) => project.registration.projectId === binding.projectId,
+      );
+      binding.usesSharedModelConfig =
+        binding.sourceId === state.sourceId || hostProject?.usesSharedModelConfig === true;
     }
     return [...this.bindings].map(([id, binding]) => ({
       ...metadata.find((project) => project.id === id),
@@ -244,7 +256,10 @@ class GuiHostProjects {
   scheduling(id) {
     const projectId = this.bindings.get(id)?.projectId;
     return (
-      (projectId && this.schedules.get(projectId)) || { suppressed: false, activationError: null }
+      (projectId && this.schedules.get(projectId)) || {
+        suppressed: false,
+        activationError: null,
+      }
     );
   }
   refreshScheduling() {

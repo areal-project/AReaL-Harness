@@ -666,6 +666,7 @@ mod tests {
 
     fn status(id: &str) -> ProjectStatus {
         ProjectStatus {
+            uses_shared_model_config: false,
             registration: ProjectRegistration {
                 project_id: id.into(),
                 workspace: PathBuf::from("/workspace"),

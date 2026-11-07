@@ -2282,8 +2282,9 @@ class CoreBackend {
     return this.snapshot();
   }
 
-  hasWork({ includePausedQueues = true } = {}) {
-    return [...this.projects.values()].some(
+  /** @param {{includePausedQueues?:boolean, project?:import('./project-state.cjs').CoreProject|null}} [options] */
+  hasWork({ includePausedQueues = true, project = null } = {}) {
+    return (project ? [project] : [...this.projects.values()]).some(
       (project) =>
         project.pending.some((entry) => !isRemoteControl(entry)) ||
         Object.values(project.model.state.threads).some((thread) =>
