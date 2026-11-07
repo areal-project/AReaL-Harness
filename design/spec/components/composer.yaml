@@ -35,7 +35,7 @@ variants:
 states:
   - empty: 占位文字说明输入目标；主按钮不可用并说明原因
   - draft: 有文字或附件；主按钮为“发送”
-  - focused: 外框出现焦点描边与柔和光圈
+  - focused: 阴影外再加一圈 border-width-default 粗的 color-border-hover，最外一圈三倍粗的 color-focus-ring-soft；有草稿时编辑区自动获得焦点
   - dragover: 拖入文件时整体出现放置提示
   - sending: 提交中；保留草稿直到确认受理
   - running: 草稿为空时主按钮为“停止”（普通对话为“暂停执行”）；有草稿时主按钮为“发送”，提交进入队列
@@ -58,7 +58,11 @@ tokens:
   disabled: opacity-disabled
   text: text-conversation
   line: conversation-line
-  focus: interaction-focus-ring-soft
+  focus: color-focus-ring-soft
+  editor-min: 最少两行高（两倍 conversation-line），再往上 composer-inset
+  toolbar-label: text-ui-caption；模型名 foreground，权限名 foreground-subtle
+  primary-action-shape: spacing-control 见方的圆（radius-pill）
+  running: 运行中权限、模型、强度三个入口降低不透明度，但仍可读
   primary-action: color-composer-action
 
 behavior:

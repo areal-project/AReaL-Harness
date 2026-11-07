@@ -1,5 +1,5 @@
 {
-  "$comment": "输入框试点的示例数据。界面不连后台，按 screen 与 state 渲染；agent 段描述示例后台对操作的回应。",
+  "$comment": "输入框试点的示例数据。界面不连后台，按 screen 与 state 渲染；agent 段描述示例后台对操作的回应。暗色主题由根元素上的 dark 类选择；标准截图在装有 Inter、Liberation Mono 与 Noto Sans CJK 的环境下生成。",
   "project": {
     "name": "示例项目",
     "model": "示例模型",

@@ -30,6 +30,7 @@ anatomy:
 
 parts:
   user-message:
+    actions-row: 高 spacing-control，隐藏时仍占位，紧贴气泡下方
     bubble:
       surface: color-user-message
       text: color-user-message-text
@@ -49,7 +50,7 @@ parts:
       material: flat（吸顶时同样不加模糊，底色为 color-background）
       divider: 标题下方一条 border-width-default 的 color-border-subtle 线，与标题相隔 spacing-inline 的一半
     body:
-      gap-from-heading: conversation-gap
+      gap-from-heading: 两倍 conversation-gap（标题块下沿到第一条过程文字）
       item-text: 过程文字与正文同字号，颜色 foreground
       default: 已完成的回合默认收起；运行中与暂停后默认展开
   final-answer:
@@ -58,8 +59,9 @@ parts:
     color: foreground
     inline-code:
       font: font-mono
-      text-size: text-ui-xs
-      surface: color-tag，叠加一半不透明度
+      text-size: text-ui-sm
+      surface: color-markdown-inline-code，叠加一半不透明度
+      margin: 左右各为 spacing-inline 的四分之一
       radius: radius-button
       padding: 左右为 spacing-inline 的四分之三，上下为 spacing-inline 的四分之一
   action-row:
@@ -79,6 +81,7 @@ parts:
   paused-divider:
     text: 你暂停了本轮执行
     text-size: text-ui-xs
+    line: conversation-line
     color: foreground-subtle
     rule-line: border-width-default 的 color-menu-border，左右各一段，最短 spacing-field
     gap: 文字与两侧线之间 spacing-inline
