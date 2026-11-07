@@ -945,7 +945,10 @@ impl Engine {
             } else {
                 receipt.error = Some("Original Runtime is unavailable".into());
             }
-            if matches!(receipt.state, areal_protocol::ProcessReceiptState::Unknown) {
+            // UNKNOWN 阻止成功或普通取消结算，但不能覆盖已经确定的模型、预算或清理错误。
+            if matches!(receipt.state, areal_protocol::ProcessReceiptState::Unknown)
+                && (result.is_ok() || result.as_ref().unwrap_err().to_string() == "cancelled")
+            {
                 result = Err(anyhow::anyhow!(
                     "turn stopped with an UNKNOWN process outcome: {}",
                     receipt.process_id

@@ -22,6 +22,9 @@ An `exited` receipt requires either an exit code or a POSIX signal, plus confirm
 Failed queries, mismatched identities, and missing terminal outcomes produce `unknown` and fail
 the Turn. Signal and nonzero exits remain command failures; they do not automatically fail the
 entire task. Receipts establish neither complete output collection nor successful verification.
+Existing model, budget or cleanup errors retain their original classification and message;
+additional unknown process outcomes remain in the receipts. Ordinary cancellation stays
+interrupted only when process outcomes are confirmed; unknown outcomes make it fail.
 Older history defaults to an empty array, which does not imply command success. Recovery reads
 the original receipts without restoring expired handles or replaying commands.
 
