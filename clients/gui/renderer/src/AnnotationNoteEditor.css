@@ -3,8 +3,8 @@
   z-index: 3;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: var(--spacing-control-sm);
+  height: var(--spacing-control-sm);
   transform: translate(-50%, -50%);
   border: 1px solid #bddbff;
   border-radius: 50%;
@@ -17,7 +17,7 @@
   position: absolute;
   z-index: 4;
   width: min(268px, calc(100% - var(--spacing-inline)));
-  padding: calc(var(--spacing-inline) / 2) 5px;
+  padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) / 2);
   background: var(--color-popover);
   color: var(--color-foreground);
   border: var(--border-width-default) solid var(--color-border);
@@ -27,15 +27,15 @@
 .browser-annotation-editor-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 30px;
+  gap: calc(var(--spacing-inline) / 2);
+  height: var(--spacing-control-lg);
 }
 .browser-annotation-editor-row > button {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   border-radius: 50%;
   color: var(--color-foreground-subtle);
 }
@@ -44,7 +44,7 @@
   min-width: 0;
   height: var(--spacing-control);
   min-height: 0;
-  padding: 5px 1px;
+  padding: calc(var(--spacing-inline) / 2) 1px;
   resize: none;
   border: 0;
   background: transparent;
@@ -61,8 +61,8 @@
 .browser-annotation-editor .browser-annotation-confirm {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   border-radius: 50%;
   background: var(--color-foreground);
   color: var(--color-background);
@@ -96,5 +96,5 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 7px;
+  margin-top: calc(var(--spacing-inline) * 3 / 4);
 }

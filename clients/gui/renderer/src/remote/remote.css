@@ -72,13 +72,13 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   white-space: nowrap;
 }
 .remote-session-list {
-  padding-left: 36px;
+  padding-left: calc(var(--spacing-field) * 2);
 }
 .remote-session-row {
   display: flex;
   width: 100%;
   justify-content: flex-start;
-  min-height: 46px;
+  min-height: calc(var(--spacing-field) * 3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -88,7 +88,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   display: flex;
   width: 100%;
   justify-content: flex-start;
-  padding: 5px var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   text-align: left;
   color: var(--color-foreground-subtle);
 }
@@ -144,7 +144,7 @@ main {
 }
 @media (max-width: 560px) {
   main {
-    padding: calc(var(--spacing-inline) * 5 / 2) 14px;
+    padding: calc(var(--spacing-inline) * 5 / 2) calc(var(--spacing-inline) * 3 / 2);
   }
   #session {
     height: calc(100dvh - calc(var(--spacing-inline) * 5));

@@ -45,7 +45,7 @@
 }
 .slash-command-row,
 .slash-command-empty {
-  padding: 5px var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   border-radius: var(--radius-choice);
   text-align: left;
 }

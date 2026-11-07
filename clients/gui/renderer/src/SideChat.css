@@ -11,14 +11,14 @@
   display: flex;
   align-items: center;
   gap: calc(var(--spacing-inline) / 2);
-  padding: calc(var(--spacing-inline) * 3 / 4) 14px;
+  padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) * 3 / 2);
   border-bottom: var(--border-width-default) solid var(--color-border);
   flex-shrink: 0;
 }
 .side-chat-heading {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   font-size: var(--text-ui-sm);
   margin-right: auto;
   color: var(--color-foreground-subtle);
@@ -35,14 +35,14 @@
 }
 .side-chat-related button {
   border-radius: var(--radius-compact);
-  padding: 5px;
+  padding: calc(var(--spacing-inline) / 2);
   text-align: left;
 }
 .side-chat-related button[aria-current] {
   background: var(--color-surface);
 }
 .side-chat-information {
-  padding: 10px 22px;
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 5 / 2);
   flex-shrink: 0;
   max-height: 35%;
   overflow: auto;
@@ -69,13 +69,13 @@
 .side-chat-empty {
   margin: auto;
   text-align: center;
-  padding: 30px calc(var(--spacing-inline) * 5 / 2);
+  padding: calc(var(--spacing-inline) * 7 / 2) calc(var(--spacing-inline) * 5 / 2);
   color: var(--color-foreground-subtle);
 }
 .side-chat-empty h2 {
   color: var(--color-foreground);
   font-size: var(--text-ui-lg);
-  margin: 14px 0 var(--spacing-inline);
+  margin: calc(var(--spacing-inline) * 3 / 2) 0 var(--spacing-inline);
   font-weight: 500;
 }
 .side-chat-empty p {
@@ -90,7 +90,7 @@
   flex-shrink: 0;
 }
 .side-chat-feedback {
-  padding: 0 22px;
+  padding: 0 calc(var(--spacing-inline) * 5 / 2);
   max-height: 36%;
   overflow: auto;
   flex-shrink: 0;
@@ -121,7 +121,7 @@
 .conversation-selection-references {
   display: flex;
   min-width: 0;
-  padding: calc(var(--spacing-inline) / 2) 10px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
 }
 .conversation-selection-pill {
   display: inline-flex;

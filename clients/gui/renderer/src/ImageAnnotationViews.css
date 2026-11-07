@@ -91,7 +91,7 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-inline);
-  padding: 10px var(--spacing-field);
+  padding: var(--spacing-inline) var(--spacing-field);
   border-top: var(--border-width-default) solid var(--color-border);
 }
 .image-annotation-list {
@@ -105,7 +105,7 @@
   list-style-type: decimal;
 }
 .image-annotation-list li {
-  margin-top: 5px;
+  margin-top: calc(var(--spacing-inline) / 2);
 }
 .image-annotation-list li > span {
   color: var(--color-foreground-subtle);

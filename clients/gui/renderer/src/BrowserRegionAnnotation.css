@@ -90,8 +90,8 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px;
+  gap: calc(var(--spacing-inline) / 2);
+  padding: calc(var(--spacing-inline) / 2);
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-panel);
   background: var(--color-popover);
@@ -100,7 +100,7 @@
 }
 .browser-annotation-dock > span {
   font-size: var(--text-ui-xs);
-  padding: 0 5px;
+  padding: 0 calc(var(--spacing-inline) / 2);
 }
 .browser-annotation-dock [aria-pressed="true"] {
   color: #91c5ff;
@@ -115,7 +115,7 @@
   width: fit-content;
   max-width: calc(100% - var(--icon-size-control));
   margin: auto;
-  padding: 5px 9px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   border-radius: var(--radius-compact-row);
   background: var(--color-popover);
   font-size: var(--text-ui-xs);
@@ -128,7 +128,7 @@
   left: var(--spacing-inline);
   right: var(--spacing-inline);
   z-index: 6;
-  padding: 7px;
+  padding: calc(var(--spacing-inline) * 3 / 4);
   border-radius: var(--radius-attachment);
   border: var(--border-width-default) solid var(--color-border);
   background: var(--color-popover);
@@ -149,7 +149,7 @@
   align-items: flex-start;
   gap: var(--spacing-inline);
   border-top: var(--border-width-default) solid var(--color-border);
-  padding: 10px 0;
+  padding: var(--spacing-inline) 0;
 }
 .browser-annotation-attachment-copy {
   flex: 1;
@@ -161,11 +161,11 @@
 .browser-annotation-attachment-card strong {
   display: block;
   font-size: var(--text-ui-sm);
-  margin-bottom: 5px;
+  margin-bottom: calc(var(--spacing-inline) / 2);
 }
 .browser-annotation-attachment-card textarea {
   width: 100%;
-  min-height: 50px;
+  min-height: calc(var(--spacing-field) * 3);
   padding: calc(var(--spacing-inline) * 3 / 4);
   border-radius: var(--radius-compact);
   border: var(--border-width-default) solid var(--color-border);
@@ -174,7 +174,7 @@
 }
 .browser-annotation-attachment-card small {
   display: block;
-  margin-top: 5px;
+  margin-top: calc(var(--spacing-inline) / 2);
   font-size: var(--text-fixed-metadata);
   color: var(--color-foreground-subtle);
   overflow: hidden;

@@ -138,8 +138,8 @@ kbd {
 .group-heading {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: calc(var(--spacing-inline) / 2) 10px;
+  gap: calc(var(--spacing-inline) / 4);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   min-height: var(--spacing-control-lg);
   color: var(--color-foreground-subtle);
 }
@@ -598,7 +598,7 @@ button.composer-project:hover > svg,
   padding-inline-start: var(--spacing-section);
 }
 .user-message-body li {
-  padding-inline-start: 5.25px;
+  padding-inline-start: calc(var(--spacing-inline) * 3 / 4);
   margin-block: 0;
 }
 .user-message-body li::marker {
@@ -621,7 +621,7 @@ button.composer-project:hover > svg,
 }
 .tool-call {
   font-size: var(--text-ui-caption);
-  margin: 9px 0;
+  margin: var(--spacing-inline) 0;
   border-radius: var(--radius-attachment);
   border: var(--border-width-default) solid var(--color-border);
   padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
@@ -779,7 +779,7 @@ button.composer-project:hover > svg,
 .notice button {
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-compact);
-  padding: 5px 9px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   background: var(--color-background);
 }
 .utility-content button:hover,
@@ -788,7 +788,7 @@ button.composer-project:hover > svg,
 .interaction label {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: calc(var(--spacing-inline) / 2);
   margin: calc(var(--spacing-inline) * 3 / 2) 0;
 }
 .areal-core-settings input,
@@ -799,7 +799,7 @@ button.composer-project:hover > svg,
 .utility-content textarea {
   border: var(--border-width-default) solid var(--color-border);
   background: var(--color-input);
-  padding: 7px 9px;
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   border-radius: var(--radius-compact);
   max-width: 100%;
 }
@@ -817,7 +817,7 @@ button.composer-project:hover > svg,
 .usage-grid article {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--spacing-inline);
 }
 .usage-grid strong {
   font-size: var(--text-page-title);
@@ -832,7 +832,7 @@ button.composer-project:hover > svg,
   padding: calc(var(--spacing-inline) * 3 / 2);
 }
 .terminal-pane > .utility-actions {
-  padding: 3px 0 9px;
+  padding: calc(var(--spacing-inline) / 4) 0 var(--spacing-inline);
   font-size: var(--text-ui-sm);
   justify-content: space-between;
 }
@@ -847,9 +847,9 @@ button.composer-project:hover > svg,
   flex-direction: column;
 }
 .preview-toolbar {
-  padding: 10px;
+  padding: var(--spacing-inline);
   display: flex;
-  gap: 7px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   align-items: center;
   font-size: var(--text-ui-sm);
 }
@@ -871,9 +871,9 @@ button.composer-project:hover > svg,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--spacing-inline);
   border: var(--border-width-default) solid var(--color-border);
-  padding: 9px 13px;
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
   font-size: var(--text-ui-sm);
   border-radius: var(--radius-inset);
   margin: 0 0 var(--spacing-inline) var(--spacing-inline);
@@ -898,15 +898,15 @@ button.composer-project:hover > svg,
 }
 .interaction strong {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: var(--spacing-inline);
 }
 .interaction pre {
   max-height: 240px;
   overflow: auto;
-  margin: 10px 0;
+  margin: var(--spacing-inline) 0;
 }
 .interaction button:not([data-slot="button"]) {
-  padding: calc(var(--spacing-inline) * 3 / 4) 10px;
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-compact);
 }
@@ -958,7 +958,7 @@ button.composer-project:hover > svg,
 }
 .provider-catalog-label {
   margin: 0;
-  padding: 10px calc(var(--spacing-inline) * 3 / 2) calc(var(--spacing-inline) / 2);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2) calc(var(--spacing-inline) / 2);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }
@@ -968,7 +968,7 @@ button.composer-project:hover > svg,
   width: 100%;
   align-items: center;
   gap: var(--spacing-inline);
-  min-height: 36px;
+  min-height: calc(var(--spacing-inline) * 5);
   padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) * 3 / 2);
   border: 0;
   background: transparent;
@@ -1066,7 +1066,7 @@ button.composer-project:hover > svg,
   width: 100%;
 }
 .provider-model-search {
-  margin-bottom: 10px;
+  margin-bottom: var(--spacing-inline);
 }
 .subscription-models {
   display: flex;
@@ -1181,7 +1181,7 @@ button.composer-project:hover > svg,
 .settings-page select {
   width: 100%;
   min-width: 0;
-  padding: calc(var(--spacing-inline) * 3 / 4) 10px;
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   min-height: var(--spacing-control-lg);
   border: var(--border-width-default) solid var(--color-input-border);
   border-radius: var(--radius-inset);
@@ -1189,7 +1189,7 @@ button.composer-project:hover > svg,
 }
 .settings-form textarea {
   width: 100%;
-  padding: 10px calc(var(--spacing-inline) * 3 / 2);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
   border: var(--border-width-default) solid var(--color-input-border);
   border-radius: var(--radius-inset);
   background: var(--color-input);
@@ -1299,8 +1299,8 @@ button.composer-project:hover > svg,
 .skill-resource-row .resource-card > svg,
 .resource-settings .resource-title > svg {
   padding: var(--spacing-inline);
-  width: 36px;
-  height: 36px;
+  width: calc(var(--spacing-inline) * 5);
+  height: calc(var(--spacing-inline) * 5);
   border-radius: var(--radius-panel);
   background: var(--color-background);
   flex-shrink: 0;
@@ -1436,7 +1436,7 @@ button.composer-project:hover > svg,
   font-variant-numeric: tabular-nums;
 }
 .activity-elapsed {
-  margin-left: 10px;
+  margin-left: var(--spacing-inline);
   color: var(--color-foreground-subtlest);
   font-size: var(--text-ui-sm);
   font-variant-numeric: tabular-nums;
@@ -1559,8 +1559,8 @@ button.composer-project:hover > svg,
 .composer-queue-pause {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
+  gap: calc(var(--spacing-inline) / 2);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
 }
@@ -1570,14 +1570,14 @@ button.composer-project:hover > svg,
 .composer-queue-menu {
   width: 198px;
   border-radius: var(--radius-composer-queue-menu);
-  padding: 7px;
+  padding: calc(var(--spacing-inline) * 3 / 4);
   background: var(--color-composer-catalog, var(--color-surface));
 }
 .composer-queue-edit-banner {
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
-  margin: calc(calc(var(--spacing-inline) / 4) * -1) 0 11px;
+  margin: calc(calc(var(--spacing-inline) / 4) * -1) 0 calc(var(--spacing-inline) * 3 / 2);
   padding-bottom: var(--spacing-inline);
   border-bottom: var(--border-width-default) solid var(--color-border);
   font-size: var(--text-ui-sm);
@@ -1586,19 +1586,19 @@ button.composer-project:hover > svg,
   flex: 1;
 }
 .composer-queue-feedback {
-  padding: 5px 10px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   font-size: var(--text-ui-sm);
   overflow-wrap: anywhere;
 }
 @media (max-width: 760px) {
   .composer-queue {
-    margin-inline: 9px;
+    margin-inline: var(--spacing-inline);
   }
   .composer-queue-actions {
     gap: 0;
   }
   .composer-queue-actions > button {
-    padding: 5px;
+    padding: calc(var(--spacing-inline) / 2);
   }
   .composer-queue-copy {
     font-size: var(--text-ui-base);
@@ -1812,10 +1812,10 @@ button[aria-label="停止"] {
   inset-inline-start: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 38px;
+  width: calc(var(--spacing-inline) * 5);
   z-index: 2;
   max-height: min(240px, calc(100% - var(--spacing-control-lg)));
-  padding: 9px 0;
+  padding: var(--spacing-inline) 0;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
@@ -1837,8 +1837,8 @@ button[aria-label="停止"] {
 }
 .turn-navigation button {
   position: relative;
-  width: 38px;
-  height: 10px;
+  width: calc(var(--spacing-inline) * 5);
+  height: calc(var(--spacing-inline) * 3 / 2);
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -1892,7 +1892,7 @@ button[aria-label="停止"] {
 }
 .turn-preview small {
   display: block;
-  margin-bottom: 7px;
+  margin-bottom: calc(var(--spacing-inline) * 3 / 4);
   color: var(--color-foreground-subtle);
   font-size: var(--text-fixed-metadata);
   font-variant-numeric: tabular-nums;
@@ -1929,7 +1929,7 @@ button[aria-label="停止"] {
 }
 .trajectory-header {
   flex: none;
-  padding: 10px calc(var(--spacing-inline) * 3 / 2);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
   border-bottom: var(--border-width-default) solid var(--color-border);
 }
 .trajectory-toolbar,
@@ -1961,7 +1961,7 @@ button[aria-label="停止"] {
 .trajectory-search input {
   flex: 1;
   min-width: 0;
-  padding: 5px var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-compact);
   background: var(--color-background);
@@ -1990,7 +1990,7 @@ button[aria-label="停止"] {
   display: flex;
   flex-wrap: wrap;
   gap: var(--spacing-inline);
-  padding: 0 calc(var(--spacing-inline) * 3 / 2) 10px;
+  padding: 0 calc(var(--spacing-inline) * 3 / 2) var(--spacing-inline);
 }
 .trajectory-entry {
   display: flex;
@@ -1998,7 +1998,7 @@ button[aria-label="停止"] {
   width: 100%;
   text-align: left;
   gap: var(--spacing-inline);
-  padding: 10px calc(var(--spacing-inline) * 3 / 2);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
   background: transparent;
   border: 0;
 }
@@ -2016,7 +2016,8 @@ button[aria-label="停止"] {
   max-height: 320px;
   overflow: auto;
   margin: 0;
-  padding: 0 14px 14px 33px;
+  padding: 0 calc(var(--spacing-inline) * 3 / 2) calc(var(--spacing-inline) * 3 / 2)
+    calc(var(--spacing-field) * 2);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font:
@@ -2122,7 +2123,7 @@ button[aria-label="停止"] {
   flex: 1;
   min-width: 0;
   flex-direction: column;
-  gap: 3px;
+  gap: calc(var(--spacing-inline) / 4);
 }
 .conversation-web-preview-info strong,
 .conversation-web-preview-info small {
@@ -2140,7 +2141,7 @@ button[aria-label="停止"] {
 }
 .conversation-web-preview > button {
   flex: none;
-  padding: calc(var(--spacing-inline) / 2) 10px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-inset);
   font-size: var(--text-ui-caption);
@@ -2204,7 +2205,7 @@ button[aria-label="停止"] {
   text-decoration: underline;
 }
 .tool-file-row .tool-file-record {
-  width: 18px;
+  width: var(--spacing-control-xs);
   height: auto;
   flex-shrink: 0;
   padding: 0;
@@ -2501,7 +2502,7 @@ button[aria-label="停止"] {
 .hook-stats-history ul {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--spacing-inline);
   min-height: 0;
   overflow: auto;
   margin: 0;
@@ -2542,12 +2543,12 @@ button[aria-label="停止"] {
 
 /* Shared user/project resource catalogs: fixed icon/control tracks, one text column. */
 .resource-settings .resource-catalog-bar {
-  gap: 18px;
+  gap: var(--spacing-field);
   align-items: center;
 }
 .resource-settings .resource-catalog-bar > strong {
   border-left: var(--border-width-default) solid var(--color-border);
-  padding-left: 18px;
+  padding-left: var(--spacing-field);
   white-space: nowrap;
   font-weight: 500;
 }
@@ -2562,7 +2563,7 @@ button[aria-label="停止"] {
 }
 .resource-settings .resource-title > svg {
   box-sizing: content-box;
-  padding: 10px;
+  padding: var(--spacing-inline);
   border-radius: var(--radius-panel);
   background: var(--color-background);
   flex-shrink: 0;
@@ -2574,7 +2575,7 @@ button[aria-label="停止"] {
 .resource-settings .resource-title p,
 .resource-settings .resource-card small {
   display: block;
-  margin: 3px 0 0;
+  margin: calc(var(--spacing-inline) / 4) 0 0;
   font-size: var(--text-ui-sm);
   line-height: 1.5;
   overflow: hidden;
@@ -2614,7 +2615,7 @@ button[aria-label="停止"] {
 }
 .utility-content .resource-catalog-bar {
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--spacing-inline);
 }
 .utility-content .resource-catalog-bar > .relative {
   width: 100%;
@@ -2723,7 +2724,7 @@ button[aria-label="停止"] {
   gap: 0;
 }
 .project-picker-menu [role="menuitem"] {
-  padding: 5px var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   border-radius: var(--radius-choice);
   font-size: var(--text-ui-caption);
   font-weight: 430;
@@ -2817,7 +2818,7 @@ button[aria-label="停止"] {
   border-radius: var(--radius-navigation) 0 0 var(--radius-navigation);
 }
 .file-preview-open-options {
-  width: 25px;
+  width: var(--spacing-control-sm);
   padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 calc(var(--spacing-inline) / 4);
   border-left: 0;
   border-radius: 0 var(--radius-navigation) var(--radius-navigation) 0;
@@ -2904,8 +2905,8 @@ button[aria-label="停止"] {
   position: absolute;
   top: var(--spacing-inline);
   right: var(--spacing-field);
-  width: 26px;
-  height: 26px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   padding: calc(var(--spacing-inline) / 2);
   color: var(--color-foreground-subtle);
 }
@@ -2962,7 +2963,7 @@ button[aria-label="停止"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 var(--spacing-inline) 0 10px;
+  padding: 0 var(--spacing-inline) 0 var(--spacing-inline);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-caption);
   line-height: 20px;
@@ -2987,7 +2988,7 @@ button[aria-label="停止"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 10px;
+  padding: 0 calc(var(--spacing-inline) * 3 / 4) 0 var(--spacing-inline);
   font-size: var(--text-ui-caption);
   line-height: 20px;
 }
@@ -3054,7 +3055,8 @@ button[aria-label="停止"] {
 
 .composer-permission-menu .permission-choice {
   min-height: 0;
-  padding: 5px calc(var(--spacing-inline) * 7 / 2) 5px var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) * 7 / 2)
+    calc(var(--spacing-inline) / 2) var(--spacing-inline);
   border-radius: var(--radius-choice);
   font-weight: 430;
   line-height: 1.42857;
@@ -3247,8 +3249,8 @@ button[aria-label="停止"] {
 }
 .review-comment-attachment-trigger > svg,
 .sent-review-comments [data-slot="button"] > svg {
-  width: 14px;
-  height: 14px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   color: color-mix(in srgb, var(--color-foreground) 50%, transparent);
 }
 
@@ -3296,7 +3298,7 @@ button[aria-label="停止"] {
 .turn-file-summary-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--spacing-inline);
   min-width: 0;
   padding: calc(var(--spacing-inline) * 3 / 2);
   border-bottom: var(--border-width-default) solid var(--color-border-subtle, var(--color-border));
@@ -3317,7 +3319,7 @@ button[aria-label="停止"] {
 .turn-file-summary-heading {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: calc(var(--spacing-inline) / 2);
   min-width: 0;
 }
 .turn-file-summary-heading strong {
@@ -3341,9 +3343,9 @@ button[aria-label="停止"] {
   flex: 0 0 auto;
   justify-content: flex-start;
   width: 100%;
-  min-height: 36px;
+  min-height: calc(var(--spacing-inline) * 5);
   height: auto;
-  padding: 7px calc(var(--spacing-inline) * 3 / 4);
+  padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) * 3 / 4);
   border: 0;
   border-radius: var(--radius-compact);
   gap: calc(var(--spacing-inline) * 3 / 2);
@@ -3356,7 +3358,7 @@ button[aria-label="停止"] {
 .turn-file-summary-stats,
 .turn-file-summary-totals {
   display: flex;
-  gap: 5px;
+  gap: calc(var(--spacing-inline) / 2);
   flex-shrink: 0;
   font-size: var(--text-ui-caption);
   font-weight: 400;
@@ -3368,13 +3370,13 @@ button[aria-label="停止"] {
 }
 :is(.turn-file-summary-stats, .turn-file-summary-totals) .added {
   color: var(--color-git-added);
-  padding: 0 5px;
+  padding: 0 calc(var(--spacing-inline) / 2);
   border-radius: var(--radius-pill);
   background: var(--color-diff-added-surface, transparent);
 }
 :is(.turn-file-summary-stats, .turn-file-summary-totals) .deleted {
   color: var(--color-git-deleted);
-  padding: 0 5px;
+  padding: 0 calc(var(--spacing-inline) / 2);
   border-radius: var(--radius-pill);
   background: var(--color-diff-removed-surface, transparent);
 }
@@ -3656,9 +3658,9 @@ button[aria-label="停止"] {
 .markdown-file-reference-icon {
   display: inline-flex;
   align-items: center;
-  width: 19px;
+  width: var(--spacing-control-xs);
   height: 1lh;
-  padding-right: 3px;
+  padding-right: calc(var(--spacing-inline) / 4);
   vertical-align: bottom;
 }
 .markdown-file-reference-icon > svg {
@@ -3732,7 +3734,7 @@ button[aria-label="停止"] {
 }
 .review-index-actions p {
   max-width: 100%;
-  padding: calc(var(--spacing-inline) * 3 / 4) 10px;
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   border-radius: var(--radius-inset);
   background: var(--color-background);
   color: var(--color-foreground);
@@ -3748,8 +3750,8 @@ button[aria-label="停止"] {
   line-height: 18px;
 }
 .review-index-actions [data-slot="button"] svg {
-  width: 14px;
-  height: 14px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
 }
 /* Diff colors must not replace the theme's destructive-action color. */
 .dark .workspace-review {
@@ -3770,7 +3772,7 @@ button[aria-label="停止"] {
 .review-comment-author {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--spacing-inline);
   min-width: 0;
 }
 .review-comment-avatar {
@@ -3831,7 +3833,9 @@ button[aria-label="停止"] {
   height: var(--spacing-control);
   margin: 0;
   line-height: 28px;
-  padding-left: calc(3px + var(--workspace-file-tree-depth) * 8.75px);
+  padding-left: calc(
+    calc(var(--spacing-inline) / 4) + var(--workspace-file-tree-depth) * var(--spacing-inline)
+  );
   outline: none;
 }
 .workspace-file-tree-row.review-file-tree-row:focus-visible {
@@ -3852,7 +3856,7 @@ button[aria-label="停止"] {
   overflow: hidden;
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-overlay);
-  padding: 5px;
+  padding: calc(var(--spacing-inline) / 2);
   background: var(--color-composer-catalog, var(--color-background));
   color: var(--color-foreground);
   box-shadow: var(--shadow-floating-toolbar);
@@ -3860,7 +3864,7 @@ button[aria-label="停止"] {
 .composer-catalog-search {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--spacing-inline);
   padding: var(--spacing-inline);
   border-bottom: var(--border-width-default) solid var(--color-border);
   color: var(--color-foreground-subtle);
@@ -3885,7 +3889,7 @@ button[aria-label="停止"] {
 .composer-catalog-group {
   display: flex;
   justify-content: space-between;
-  padding: 10px 9px 5px;
+  padding: var(--spacing-inline) var(--spacing-inline) calc(var(--spacing-inline) / 2);
   font-size: var(--text-ui-sm);
   color: var(--color-foreground-subtle);
 }
@@ -3897,8 +3901,8 @@ button[aria-label="停止"] {
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
-  min-height: 31px;
-  padding: 5px 9px;
+  min-height: var(--spacing-control-lg);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   font-size: var(--text-ui-base);
   text-align: left;
   border-radius: var(--radius-choice);
@@ -3933,7 +3937,7 @@ button[aria-label="停止"] {
   color: var(--color-foreground-subtle);
 }
 .composer-catalog-empty {
-  padding: 10px;
+  padding: var(--spacing-inline);
   font-size: var(--text-ui-caption);
   color: var(--color-foreground-subtle);
 }
@@ -3943,7 +3947,7 @@ button[aria-label="停止"] {
 }
 .composer-skill-tags {
   display: flex;
-  gap: 10px;
+  gap: var(--spacing-inline);
   flex-wrap: wrap;
 }
 .composer-skill-tags:empty {
@@ -3952,13 +3956,13 @@ button[aria-label="停止"] {
 .composer-skill-tag {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: calc(var(--spacing-inline) / 2);
   color: var(--color-brand);
   font-size: var(--text-ui-caption);
   padding-bottom: var(--spacing-inline);
 }
 .composer-skill-tag button {
-  padding: 3px;
+  padding: calc(var(--spacing-inline) / 4);
   border-radius: 50%;
 }
 .composer-skill-tag button:hover {
@@ -3979,7 +3983,7 @@ button[aria-label="停止"] {
   flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--spacing-inline);
-  margin-bottom: 10px;
+  margin-bottom: var(--spacing-inline);
   max-height: 270px;
   overflow-y: auto;
   padding: calc(var(--spacing-inline) / 4);
@@ -4052,7 +4056,7 @@ button[aria-label="停止"] {
 }
 .composer-slider-track i {
   position: absolute;
-  top: 10px;
+  top: var(--spacing-inline);
   width: calc(var(--spacing-inline) / 2);
   height: calc(var(--spacing-inline) / 2);
   border-radius: 50%;
@@ -4124,7 +4128,7 @@ button[aria-label="停止"] {
 .composer-skill-preview-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: calc(var(--spacing-inline) / 2);
   text-align: left;
 }
 .composer-skill-tag .composer-skill-preview-trigger {
@@ -4145,9 +4149,9 @@ button[aria-label="停止"] {
 .turn-fork-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: calc(var(--spacing-inline) / 2);
   color: var(--color-foreground-subtle);
-  padding: 3px calc(var(--spacing-inline) * 3 / 4);
+  padding: calc(var(--spacing-inline) / 4) calc(var(--spacing-inline) * 3 / 4);
   border-radius: var(--radius-compact);
   font-size: var(--text-ui-xs);
 }
@@ -4170,7 +4174,7 @@ button[aria-label="停止"] {
   align-items: center;
   gap: calc(var(--spacing-inline) * 3 / 2);
   width: 100%;
-  padding: 10px var(--spacing-inline);
+  padding: var(--spacing-inline) var(--spacing-inline);
   text-align: left;
   border-radius: var(--radius-inset);
   font-size: var(--text-ui-caption);
@@ -4201,15 +4205,15 @@ button[aria-label="停止"] {
 /* 批注与导航同组，地址栏保留可用宽度。 */
 .browser-navigation-controls {
   border-radius: var(--radius-pill);
-  padding: 1px 3px;
+  padding: 1px calc(var(--spacing-inline) / 4);
   background: var(--color-surface);
 }
 .browser-annotation-trigger {
   flex-shrink: 0;
   height: var(--spacing-control);
   border-radius: var(--radius-pill);
-  padding: 0 9px;
-  gap: 5px;
+  padding: 0 var(--spacing-inline);
+  gap: calc(var(--spacing-inline) / 2);
   background: var(--color-surface);
   font-size: var(--text-ui-caption);
 }
@@ -4259,7 +4263,7 @@ button[aria-label="停止"] {
 }
 .context-usage-popover {
   width: 420px;
-  padding: 18px calc(var(--spacing-inline) * 5 / 2);
+  padding: var(--spacing-field) calc(var(--spacing-inline) * 5 / 2);
   gap: calc(var(--spacing-inline) * 3 / 2);
 }
 .context-meter-popover {
@@ -4279,7 +4283,7 @@ button[aria-label="停止"] {
   align-items: center;
   justify-content: space-between;
   gap: calc(var(--spacing-inline) * 3 / 2);
-  padding-bottom: 10px;
+  padding-bottom: var(--spacing-inline);
   border-bottom: var(--border-width-default) solid var(--color-border);
 }
 .context-usage-close {
@@ -4311,7 +4315,7 @@ button[aria-label="停止"] {
   letter-spacing: -1px;
 }
 .context-usage-total strong small {
-  margin-left: 7px;
+  margin-left: calc(var(--spacing-inline) * 3 / 4);
   font-size: var(--text-ui-sm);
   font-weight: 400;
   letter-spacing: 0;
@@ -4401,7 +4405,8 @@ button[aria-label="停止"] {
   font-size: var(--text-ui-xs);
 }
 .context-category-child {
-  padding: calc(var(--spacing-inline) / 2) 0 calc(var(--spacing-inline) / 2) 14px;
+  padding: calc(var(--spacing-inline) / 2) 0 calc(var(--spacing-inline) / 2)
+    calc(var(--spacing-inline) * 3 / 2);
 }
 .context-category-child > span:first-child {
   overflow-wrap: anywhere;
@@ -4427,13 +4432,13 @@ button[aria-label="停止"] {
 .usage-scope {
   display: flex;
   gap: calc(var(--spacing-inline) / 2);
-  padding: 3px;
+  padding: calc(var(--spacing-inline) / 4);
   border-radius: var(--radius-inset);
   background: var(--color-muted);
 }
 .usage-scope button {
   flex: 1;
-  padding: 5px var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   border-radius: var(--radius-compact);
 }
 .usage-scope button[aria-pressed="true"] {
@@ -4442,7 +4447,7 @@ button[aria-label="停止"] {
 }
 .usage-details {
   display: grid;
-  gap: 10px;
+  gap: var(--spacing-inline);
   font-variant-numeric: tabular-nums;
 }
 .usage-details dt {
@@ -4461,10 +4466,10 @@ button[aria-label="停止"] {
 }
 .context-category-dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  width: var(--spacing-inline);
+  height: var(--spacing-inline);
   border-radius: var(--radius-context-category-dot);
-  margin-right: 7px;
+  margin-right: calc(var(--spacing-inline) * 3 / 4);
 }
 .context-color-systemPrompt {
   background: var(--color-usage-chart-3);

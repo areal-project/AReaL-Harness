@@ -391,7 +391,7 @@
 }
 .remote-settings select {
   min-height: var(--spacing-control-form);
-  padding: calc(var(--spacing-inline) * 3 / 4) 10px;
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-inset);
   background: var(--color-background);

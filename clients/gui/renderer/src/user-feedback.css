@@ -41,7 +41,7 @@
   align-items: center;
   justify-content: space-between;
   gap: calc(var(--spacing-inline) * 3 / 2);
-  padding: 14px var(--spacing-field);
+  padding: calc(var(--spacing-inline) * 3 / 2) var(--spacing-field);
 }
 .user-feedback-panel header > span {
   display: inline-flex;
@@ -70,7 +70,7 @@
 .user-feedback-body label {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   font-weight: 500;
 }
 .user-feedback-body textarea {
@@ -78,7 +78,7 @@
   min-height: 60px;
   max-height: 220px;
   width: 100%;
-  padding: 10px calc(var(--spacing-inline) * 3 / 2);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-feedback);
   background: var(--color-background);
@@ -96,7 +96,7 @@
 .feedback-refinement {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--spacing-inline);
   padding-top: calc(var(--spacing-inline) * 3 / 2);
   border-top: var(--border-width-default) solid var(--color-border);
 }
@@ -112,7 +112,7 @@
   color: var(--color-foreground-subtle);
 }
 .feedback-discussion > div {
-  margin-top: 10px;
+  margin-top: var(--spacing-inline);
   color: var(--color-foreground);
   overflow-wrap: anywhere;
 }

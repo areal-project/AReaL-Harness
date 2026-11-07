@@ -14,7 +14,7 @@
 }
 .user-prompt-edit .composer-toolbar button {
   height: var(--spacing-control);
-  padding: 3px 10px;
+  padding: calc(var(--spacing-inline) / 4) var(--spacing-inline);
   border-radius: var(--radius-control);
   font-size: var(--text-ui-base);
 }

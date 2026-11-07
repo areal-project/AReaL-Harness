@@ -61,7 +61,7 @@
   min-height: 0;
   border: 0;
   background: transparent;
-  padding: 3px;
+  padding: calc(var(--spacing-inline) / 4);
   color: var(--color-foreground-subtle);
 }
 .agent-conversation-pane {
@@ -114,7 +114,7 @@
   font-size: var(--text-ui-caption);
 }
 .task-resources-section {
-  padding: 11px 0;
+  padding: calc(var(--spacing-inline) * 3 / 2) 0;
 }
 .task-resources-section + .task-resources-section {
   border-top: var(--border-width-default) solid var(--color-border);
@@ -126,8 +126,8 @@
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
   font-weight: 400;
-  padding: 0 var(--spacing-inline) 7px;
-  min-height: 25px;
+  padding: 0 var(--spacing-inline) calc(var(--spacing-inline) * 3 / 4);
+  min-height: var(--spacing-control-sm);
   margin: 0;
 }
 .task-resources-heading > span:last-child {
@@ -139,7 +139,7 @@
   background: transparent;
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
   padding: var(--spacing-inline);
   text-align: left;
   border-radius: var(--radius-compact);
@@ -166,7 +166,7 @@
   min-width: 0;
 }
 .task-resource-agent-body p {
-  margin: 3px 0 0;
+  margin: calc(var(--spacing-inline) / 4) 0 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -176,7 +176,7 @@
 
 .task-resource-description {
   display: block;
-  margin-top: 3px;
+  margin-top: calc(var(--spacing-inline) / 4);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -188,8 +188,8 @@
   white-space: nowrap;
 }
 .task-resource-thumbnail {
-  width: 18px;
-  height: 22px;
+  width: var(--spacing-control-xs);
+  height: var(--spacing-control-sm);
   flex: none;
   object-fit: cover;
   border-radius: var(--radius-micro);

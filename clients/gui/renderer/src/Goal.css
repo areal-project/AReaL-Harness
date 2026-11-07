@@ -51,8 +51,8 @@
   width: auto;
 }
 .goal-strip > button svg {
-  width: 14px;
-  height: 14px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
 }
 .goal-detail {
   margin: calc(var(--spacing-inline) / 2) 0;

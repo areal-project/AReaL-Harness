@@ -526,8 +526,8 @@ body {
 }
 
 *::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
 }
 
 *::-webkit-scrollbar-track {
@@ -696,9 +696,9 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 3px;
-  height: 3px;
-  margin: -1.5px 0 0 -1.5px;
+  width: calc(var(--spacing-inline) / 2);
+  height: calc(var(--spacing-inline) / 2);
+  margin: calc(calc(var(--spacing-inline) / 4) * -1) 0 0 calc(calc(var(--spacing-inline) / 4) * -1);
   border-radius: 50%;
   background: transparent;
   opacity: 0;
@@ -876,8 +876,8 @@ body {
 .areal-update-ring {
   position: absolute;
   inset: 0;
-  width: 36px;
-  height: 36px;
+  width: calc(var(--spacing-inline) * 5);
+  height: calc(var(--spacing-inline) * 5);
   fill: none;
   stroke-width: 2;
   transform: rotate(-90deg);
@@ -897,7 +897,7 @@ body {
   width: 304px;
   max-width: min(304px, calc(100vw - var(--spacing-control-sm)), var(--available-width));
   padding: var(--spacing-field);
-  gap: 14px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
 }
 .areal-update-progress > span {
   display: block;

@@ -61,7 +61,7 @@
   align-items: center;
   justify-content: center;
   min-width: var(--spacing-control-sm);
-  height: 22px;
+  height: var(--spacing-control-sm);
   padding: 0 calc(var(--spacing-inline) * 3 / 4);
   font-size: var(--text-ui-xs);
   font-family: var(--font-mono, monospace);
@@ -111,7 +111,7 @@
 
 .theme-diff-gutter > span,
 .theme-diff-line {
-  height: 22px;
+  height: var(--spacing-control-sm);
   white-space: pre;
 }
 
