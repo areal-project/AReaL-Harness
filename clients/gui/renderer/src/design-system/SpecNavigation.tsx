@@ -297,6 +297,7 @@ export function SpecNavigation({
                 action={action}
                 onOpenThread={() => {}}
                 onOpenModelSettings={() => {}}
+                navigation={null}
                 renderConversation={() => null}
                 renderResources={() => null}
               />
