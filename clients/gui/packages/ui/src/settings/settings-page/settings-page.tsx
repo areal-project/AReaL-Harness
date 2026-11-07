@@ -7,15 +7,23 @@ export function SettingsPage({
   subtitle,
   children,
   className,
+  width = "default",
 }: {
   title?: string;
   subtitle?: string;
   children: ReactNode;
   className?: string;
+  /** wide: dense editors (two-column catalogs) that need the full window. */
+  width?: "default" | "wide";
 }) {
   const id = useId();
   return (
-    <section className="settings-workspace" tabIndex={0} aria-labelledby={title ? id : undefined}>
+    <section
+      className="settings-workspace"
+      data-width={width}
+      tabIndex={0}
+      aria-labelledby={title ? id : undefined}
+    >
       <div className={cn("settings-page", className)}>
         {title && (
           <header className="settings-page-header">

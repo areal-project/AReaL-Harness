@@ -169,3 +169,9 @@
   margin-left: auto;
   font-size: var(--text-ui-sm);
 }
+
+/* 浮层已画出外框时，卡片不再重复边框与圆角。 */
+.areal-task-context[data-embedded] {
+  border: 0;
+  border-radius: inherit;
+}

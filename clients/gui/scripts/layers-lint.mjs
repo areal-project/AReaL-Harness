@@ -24,6 +24,23 @@ const SPEC_NUMBER =
 const SPEC_WORDS =
   /\b(?:React|Lexical|Electron|Tailwind|Core|Host|renderer|packages\/|tokens\.json|\w+\.(?:tsx?|css|mjs))\b/g;
 
+// 外观属性：页面只能决定组件放在哪、多大，不能改它长什么样（D-005 外观走变体）。
+const APPEARANCE =
+  /(?:^|;)\s*(?:color|background[\w-]*|border[\w-]*|outline[\w-]*|box-shadow|font[\w-]*|line-height|letter-spacing|text-[\w-]+|opacity|filter|backdrop-filter|padding[\w-]*|fill|stroke)\s*:/;
+/** 选择器真正作用的元素：最后一段复合选择器，去掉 :not()/:has() 里的条件。 */
+const subject = (selector) =>
+  selector
+    .split(",")
+    .map((part) => {
+      let text = part;
+      while (/:(?:not|has)\([^()]*\)/.test(text))
+        text = text.replace(/:(?:not|has)\([^()]*\)/g, "");
+      return text
+        .trim()
+        .split(/\s*[\s>+~]\s*/)
+        .pop();
+    })
+    .join(" ");
 const lineOf = (source, index) => source.slice(0, index).split("\n").length;
 const stripComments = (source) =>
   source.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " "));
@@ -66,10 +83,11 @@ export function lintCss(path, source, { tokens, classes, isPackage }) {
     for (const match of text.matchAll(VAR_FALLBACK))
       if (tokens.has(match[1])) push("fallback", match.index, match[0]);
   if (!isPackage)
-    for (const block of text.matchAll(/([^{}]+)\{/g)) {
+    for (const block of text.matchAll(/([^{}]+)\{([^{}]*)\}?/g)) {
       const selector = block[1].trim();
       if (selector.startsWith("@") || /^(?:from|to|\d+%)/.test(selector)) continue;
-      for (const match of selector.matchAll(CLASS))
+      if (!APPEARANCE.test(block[2] ?? "")) continue;
+      for (const match of subject(selector).matchAll(CLASS))
         if (classes.has(match[1])) {
           push(
             "restyle",

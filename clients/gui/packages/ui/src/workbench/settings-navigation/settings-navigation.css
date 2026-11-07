@@ -232,3 +232,15 @@
   font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
 }
+
+/* 带计数的图标按钮：胶囊形，常驻显示数字。 */
+.icon-button[data-variant="count"] {
+  width: auto;
+  gap: 6px;
+  padding: 0 8px 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-elevated);
+}
+.icon-button[data-variant="count"]:hover:not(:disabled) {
+  background: var(--color-surface-tertiary);
+}

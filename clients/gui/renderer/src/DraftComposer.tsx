@@ -774,6 +774,7 @@ export function DraftComposer({
         <ChatPromptEditor
           key={outgoing || (activeCreation?.worktree && busy) ? "waiting" : "draft"}
           surfaceLayout={surfaceLayout}
+          surfacePlacement="home"
           triggerPanelContainer={menuAnchor}
           shellClassName="@container/composer"
           workspacePath={project.root}

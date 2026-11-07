@@ -140,6 +140,52 @@
   }
 }
 
+/* 放置位置：首页更大圆角；消息内编辑是平面、无阴影，只在聚焦时描边。 */
+.composer-surface[data-placement="home"] {
+  border-radius: var(--radius-composer-large);
+}
+.composer-surface[data-placement="inline"] {
+  background: var(--color-composer-catalog);
+  box-shadow: none;
+  border-radius: var(--radius-composer);
+}
+.composer-surface[data-placement="inline"]:focus-within {
+  box-shadow: 0 0 0 1px var(--color-border-hover);
+}
+/* 决策面（审批/提问）压成一行，保留已挂载的编辑器与草稿。 */
+.composer-surface[data-layout="decision"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px 6px 12px;
+}
+.composer-surface[data-layout="decision"] .composer-editor {
+  flex: 1 1 120px;
+  padding: 0 0 0 34px;
+  max-height: 80px;
+}
+.composer-surface[data-layout="decision"] .composer-editor :is([contenteditable], textarea) {
+  min-height: 20px;
+  padding-bottom: 0;
+}
+.composer-surface[data-layout="decision"]
+  .composer-editor
+  :is([contenteditable], textarea, .composer-prediction) {
+  font-size: var(--text-ui-base);
+  line-height: var(--line-height-ui);
+}
+.composer-surface[data-layout="decision"] .composer-toolbar {
+  position: static;
+  flex: 0 0 auto;
+}
+.composer-surface[data-layout="decision"] [data-composer-leading-actions] {
+  position: absolute;
+  left: 10px;
+  bottom: 6px;
+  width: 32px;
+}
+
 @media (max-width: 760px) {
   .composer-toolbar {
     flex-wrap: wrap;

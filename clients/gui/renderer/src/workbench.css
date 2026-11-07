@@ -355,9 +355,6 @@ kbd {
   justify-content: flex-start;
   position: relative;
 }
-.draft-composer .composer-surface {
-  border-radius: var(--radius-composer-large);
-}
 .draft-pane > .draft-composer:first-child {
   margin-top: auto;
 }

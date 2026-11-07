@@ -82,3 +82,11 @@
     padding: 0 24px 32px;
   }
 }
+
+.settings-workspace[data-width="wide"] {
+  padding-top: var(--spacing-panel);
+}
+.settings-workspace[data-width="wide"] > .settings-page {
+  max-width: 1200px;
+  gap: var(--spacing-panel);
+}

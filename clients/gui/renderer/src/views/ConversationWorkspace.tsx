@@ -381,6 +381,7 @@ function ActiveConversation() {
           ) : (
             <Composer
               surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+              surfacePlacement={empty ? "home" : "thread"}
               onAnnotate={openImageAnnotation}
               key={`${project.id}:${thread.id}`}
               onMcpMention={() => setMcpMentionsOpen(true)}

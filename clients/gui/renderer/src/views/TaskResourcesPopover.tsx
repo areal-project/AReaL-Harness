@@ -86,7 +86,8 @@ export function TaskResourcesPopover({
               unstyled
               type="button"
               ref={trigger}
-              className={`icon-button task-resources-trigger ${changed ? "with-count" : ""} ${open ? "active" : ""}`}
+              className={`icon-button task-resources-trigger ${open ? "active" : ""}`}
+              data-variant={changed ? "count" : undefined}
               aria-label={t("chat.resources.trigger")}
             />
           }

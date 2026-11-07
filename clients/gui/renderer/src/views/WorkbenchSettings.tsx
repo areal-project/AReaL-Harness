@@ -85,6 +85,7 @@ export function WorkbenchSettings({
   return (
     <SettingsPage
       key={settingsTab}
+      width={settingsTab === "模型服务" ? "wide" : "default"}
       className={
         ["插件", "Skills", "MCP"].includes(settingsTab)
           ? "plugins-settings-page"

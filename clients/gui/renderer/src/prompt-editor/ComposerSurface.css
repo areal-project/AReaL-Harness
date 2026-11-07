@@ -1,40 +1,7 @@
 @import "@areal/ui/conversation.css";
 
 /* Host model menus and decision-mode integration; shared geometry lives in @areal/ui. */
-/* 决策面只改变布局，保留已挂载编辑器与草稿。 */
-.interaction-composer-compact .composer-surface {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px 6px 12px;
-}
-.interaction-composer-compact .composer-editor {
-  flex: 1 1 120px;
-  padding: 0 0 0 34px;
-  max-height: 80px;
-}
-.interaction-composer-compact .composer-editor :is([contenteditable], textarea) {
-  min-height: 20px;
-  padding-bottom: 0;
-}
-.interaction-composer-compact
-  .composer-editor
-  :is([contenteditable], textarea, .composer-prediction) {
-  font-size: var(--text-ui-base);
-  line-height: var(--line-height-ui);
-}
-.interaction-composer-compact .composer-toolbar {
-  position: static;
-  flex: 0 0 auto;
-}
-
-.interaction-composer-compact [data-composer-leading-actions] {
-  position: absolute;
-  left: 10px;
-  bottom: 6px;
-  width: 32px;
-}
+/* 决策面几何由 ComposerSurface layout="decision" 负责；这里只隐藏宿主的模式入口。 */
 .interaction-composer-compact
   :is(
     [aria-label="更改权限"],

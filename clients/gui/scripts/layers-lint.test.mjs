@@ -36,8 +36,13 @@ test("flags page selectors that reach a rendered component class", () => {
     'className="composer-surface"',
   );
   assert.deepEqual([...classes], ["composer-surface"]);
-  const css =
-    ".draft-composer .composer-surface { border-radius: 0; }\n.draft-composer { gap: 0; }";
+  const css = [
+    ".draft-composer .composer-surface { border-radius: 0; }",
+    ".draft-composer { gap: 0; }",
+    ".draft-composer .composer-surface { margin-top: 8px; }",
+    ".composer-surface .page-part { color: red; }",
+    ".page section:not(.composer-surface) { color: red; }",
+  ].join("\n");
   assert.deepEqual(
     kinds(lintCss("renderer/src/a.css", css, { tokens, classes, isPackage: false })),
     ["restyle"],

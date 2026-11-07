@@ -1,10 +1,5 @@
 @import "@areal/ui/settings.css";
 @import "@areal/ui/workbench.css";
-/* 2. Right Content Column */
-.settings-workspace .settings-page.model-settings-page {
-  max-width: 1080px;
-}
-
 .settings-sections section:not(.settings-section) {
   display: flex;
   flex-direction: column;

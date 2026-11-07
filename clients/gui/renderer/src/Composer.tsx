@@ -146,10 +146,12 @@ export function Composer({
   conversationReferences = [],
   onAnnotate,
   surfaceLayout = "default",
+  surfacePlacement,
   inputTestId = "chat-input",
   submitTestId = "chat-send-button",
 }: {
   surfaceLayout?: "default" | "compact";
+  surfacePlacement?: "thread" | "home";
   inputTestId?: string;
   submitTestId?: string;
   project: Data;
@@ -981,7 +983,10 @@ export function Composer({
         )}
         <ConversationComposer
           nextPrompt={predictionVisible ? nextPrompt : undefined}
-          surfaceLayout={surfaceLayout}
+          surfaceLayout={
+            !queueEditor.edit && (approvals.length || questions.length) ? "decision" : surfaceLayout
+          }
+          surfacePlacement={surfacePlacement}
           project={project}
           contextControl={
             !readOnly && (

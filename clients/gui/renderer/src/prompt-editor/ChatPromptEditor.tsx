@@ -101,6 +101,7 @@ export function ChatPromptEditor({
   className,
   shellClassName,
   surfaceLayout = "default",
+  surfacePlacement,
   compactPlaceholder = false,
   touchInput = false,
   onChange,
@@ -170,7 +171,8 @@ export function ChatPromptEditor({
   promptHistory?: readonly string[];
   className?: string;
   shellClassName?: string;
-  surfaceLayout?: "default" | "compact";
+  surfaceLayout?: "default" | "compact" | "decision";
+  surfacePlacement?: "thread" | "home" | "inline";
   compactPlaceholder?: boolean;
   touchInput?: boolean;
   onChange?: (value: string) => void;
@@ -560,6 +562,7 @@ export function ChatPromptEditor({
       )}
       <ComposerSurface
         layout={surfaceLayout}
+        placement={surfacePlacement}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}

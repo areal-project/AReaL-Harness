@@ -241,8 +241,6 @@
 
 /* Production hosts compose the same package card and history reader as the catalog. */
 .task-resources-popup > .areal-task-context {
-  border: 0;
-  border-radius: inherit;
   max-height: min(var(--thread-summary-max-height, 360px), 75dvh, var(--available-height));
 }
 .agent-history-reader {
@@ -250,15 +248,6 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-}
-.agent-history-reader > .areal-subagent-panel {
-  flex: 1;
-  min-height: 0;
-  border: 0;
-}
-.agent-history-reader .areal-subagent-history:has(> .agent-conversation-pane) {
-  padding: 0;
-  overflow: hidden;
 }
 .agent-history-reader .areal-subagent-name {
   white-space: nowrap;
@@ -292,16 +281,6 @@
   font-variant-numeric: tabular-nums;
 }
 /* 有改动时按钮常驻显示 +x −y，不必点开才知道。 */
-.icon-button.task-resources-trigger.with-count {
-  width: auto;
-  gap: 6px;
-  padding: 0 8px 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-elevated, var(--color-surface));
-}
-.icon-button.task-resources-trigger.with-count:hover {
-  background: var(--color-surface-tertiary, var(--color-hover));
-}
 .task-resources-trigger .diff-count {
   margin-left: 0;
   font-size: var(--text-ui-xs);

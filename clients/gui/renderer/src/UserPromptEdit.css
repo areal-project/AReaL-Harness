@@ -12,15 +12,6 @@
   flex: 0 0 100%;
   min-width: 0;
 }
-.user-prompt-edit .composer-surface {
-  background: var(--color-composer-catalog, var(--color-surface));
-  box-shadow: none;
-  backdrop-filter: none;
-  border-radius: var(--radius-composer);
-}
-.user-prompt-edit .composer-surface:focus-within {
-  box-shadow: 0 0 0 1px var(--color-border-hover);
-}
 .user-prompt-edit .composer-toolbar button {
   height: 28px;
   padding: 3px 10px;
