@@ -71,6 +71,7 @@ states:
     - review-files: 同 review，文件列表已显示
     - tasks: 点应用导航栏“定时任务”，列出示例数据 tasks 的两个任务，未选中任务（规格待写，暂只作防回归截图）
     - tasks-new: 同 tasks，“新建定时任务”弹窗刚打开
+    - plugins: 点应用导航栏“插件”，插件市场列出示例数据 plugins 的四个插件（规格待写，暂只作防回归截图）
 
 references:
     - state: sidebar

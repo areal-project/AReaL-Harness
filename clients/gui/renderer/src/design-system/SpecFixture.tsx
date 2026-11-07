@@ -7,6 +7,7 @@ import { Messages } from "../Messages.js";
 import type { Action, Data } from "../services.js";
 import { useAppearance } from "../settings/applicationPreferences.js";
 import { SpecNavigation } from "./SpecNavigation.js";
+import { pluginAction } from "./specPlugins.js";
 
 // design/spec 的复现入口：?spec&state=<flow 状态>&theme=light|dark。示例数据只在这里翻译成本仓库的数据形状。
 type Conversation = (typeof fixture.conversations)[keyof typeof fixture.conversations];
@@ -396,6 +397,8 @@ export function SpecFixture() {
     if (name === "workspace" && request.operation === "reviewCommits")
       return { commits: [], truncated: false };
     if (name === "workspace" && request.operation === "reviewBranches") return { branches: [] };
+    if (name === "manage" && pluginAction(request)) return pluginAction(request);
+    if (name === "reconcile") return { outcomes: {} };
     if (name === "queue") return data.state.queues[threadId];
     if (name === "tasks")
       return {
@@ -474,7 +477,7 @@ export function SpecFixture() {
       rail={"rail" in start ? start.rail : false}
       settings={"settings" in start ? start.settings : undefined}
       panel={"panel" in start ? (start.panel as never) : undefined}
-      surface={"surface" in start ? (start.surface as "tasks") : undefined}
+      surface={"surface" in start ? (start.surface as "tasks" | "plugins") : undefined}
       action={action}
     >
       <div className="workspace-content">{column}</div>

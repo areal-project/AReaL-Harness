@@ -4,6 +4,7 @@ import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { SidePane } from "../app-shell/SidePane.js";
 import { GitPane } from "../GitPane.js";
 import { TaskCenter } from "../TaskCenter.js";
+import { PluginCenter } from "../settings/PluginCenter.js";
 import { WorkSurface, WorkbenchShell, WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { ProjectFolderIcon, SidePanelIcon } from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -74,7 +75,7 @@ export function SpecNavigation({
   rail?: boolean;
   settings?: string;
   panel?: { tabs: string[]; active: string; view?: "split" | "panel" | "conversation" };
-  surface?: "tasks";
+  surface?: "tasks" | "plugins";
   action: Action;
   children: ReactNode;
 }) {
@@ -161,6 +162,14 @@ export function SpecNavigation({
     return { projects, library };
   }, [nav, titles]);
   const summaries = conversationCatalog(projects, library);
+  const pluginProject = {
+    id: "spec-project",
+    name: fixture.project.name,
+    root: `/${fixture.project.name}`,
+    state: { connected: true },
+    profiles: [{ id: "standard", revision: 1 }],
+    pending: [],
+  };
   const workspaceNavigation = (
     <WorkspaceNavigation
       workspaceHistory={{ index: 0, entries: [{}] } as never}
@@ -196,7 +205,10 @@ export function SpecNavigation({
           id: "plugins",
           label: t("settings.plugins.title"),
           icon: <SettingsPluginIcon />,
-          onSelect: () => {},
+          onSelect: () => {
+            setSettingsTab(undefined);
+            setSurface("plugins");
+          },
         },
       ]}
       footer={
@@ -244,7 +256,7 @@ export function SpecNavigation({
           projectId={current.projectId}
           threadId={current.threadId}
           taskCenterOpen={surface === "tasks"}
-          pluginsOpen={false}
+          pluginsOpen={surface === "plugins"}
           sidebar={sidebar}
           visible={!settingsTab}
           appearance={{
@@ -288,6 +300,23 @@ export function SpecNavigation({
                 renderConversation={() => null}
                 renderResources={() => null}
               />
+            ) : surface === "plugins" && !settingsTab ? (
+              <>
+                <WorkspaceHeader>{null}</WorkspaceHeader>
+                <PluginCenter
+                  active
+                  surface="workspace"
+                  marketRequest={0}
+                  project={pluginProject}
+                  projects={[pluginProject]}
+                  action={action}
+                  onSettings={() => {}}
+                  onMarket={() => {}}
+                  onChooseProject={() => {}}
+                  onSelectProject={() => {}}
+                  onStartDraft={async () => {}}
+                />
+              </>
             ) : settingsTab ? (
               <>
                 <WorkspaceHeader>{null}</WorkspaceHeader>

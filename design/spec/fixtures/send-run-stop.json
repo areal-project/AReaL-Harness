@@ -275,6 +275,12 @@
       "draft": "",
       "surface": "tasks",
       "overlay": "tasks-new"
+    },
+    "window.plugins": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "surface": "plugins"
     }
   },
   "agent": {
@@ -768,6 +774,49 @@
             "localTime": "17:00"
           }
         }
+      }
+    ]
+  },
+  "plugins": {
+    "$comment": "插件中心示例数据：installed 为已安装；components 为插件带的能力。",
+    "marketplace": "official",
+    "sourceUrl": "https://github.com/openai/plugins",
+    "list": [
+      {
+        "id": "github@official",
+        "name": "github",
+        "displayName": "GitHub",
+        "description": "在对话中查看仓库、议题和拉取请求。",
+        "developer": "GitHub",
+        "installed": true,
+        "components": ["mcp"]
+      },
+      {
+        "id": "linear@official",
+        "name": "linear",
+        "displayName": "Linear",
+        "description": "把对话里的待办同步成 Linear 议题。",
+        "developer": "Linear",
+        "installed": false,
+        "components": ["mcp"]
+      },
+      {
+        "id": "review-kit@official",
+        "name": "review-kit",
+        "displayName": "代码审查工具包",
+        "description": "提供审查清单和常用审查技能。",
+        "developer": "示例团队",
+        "installed": true,
+        "components": ["skills"]
+      },
+      {
+        "id": "figma@official",
+        "name": "figma",
+        "displayName": "Figma",
+        "description": "读取设计稿并对照实现。",
+        "developer": "Figma",
+        "installed": false,
+        "components": ["mcp"]
       }
     ]
   }
