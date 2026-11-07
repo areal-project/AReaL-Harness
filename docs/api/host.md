@@ -108,7 +108,7 @@ Host 启动后及登记、迁移、启动输入变化后读取已发布任务目
 
 GUI 的 `LaunchInputs.schedulePreparation` 显式选择 `managed` 或 `external`。`managed` 携带绝对路径 `resourceStatePath`、`userManagedSkillsRoot`、`projectManagedSkillsRoot`，以及 `projectResourceScope` 和 `defaultProfile:{id,revision}`。Host 按现有用户/项目优先级及启停偏好生成部署，并保留历史 Skill revision。Skill revision 沿用 GUI 的目录、名称与描述摘要；只修改正文或附属文件不会生成新 revision，同一 `id/revision` 继续使用已保留的快照。`external` 只携带可选 `defaultProfile`，使用原部署和 Core 默认配置。CLI 可省略此字段；GUI 缺失准备描述时不推断资源来源。
 
-启动准备核对当前 Task、Run、来源线程、旧独立目录预约和工作区作者记录。资源 profile 变化时，Host 保存原重启请求 ID、MCP 及可信 plugin 连接，确认 `restartSafe` 后执行 drain 和受控重启。重连核对原回执并恢复精确连接后才注册调度宿主。原 Core 回调不返回新代际的 profile；`resume` 保留已冻结的执行配置。GUI 后续启动也合并 Host 已保存的 managed Skill 版本，避免旧 profile 引用丢失。
+启动准备核对当前 Task、Run、来源线程、旧独立目录预约和工作区作者记录。固定共享 Scratch 按真实直接子目录保存作者及原创建请求身份，Core 登记根不变；省略 `cwd` 的任务使用原 requestId 的规范 UUID 子目录。恢复须唯一匹配原 Core 创建回执，兄弟目录活动仅在完整有界快照可归属且前后状态一致时放行。资源 profile 变化时，Host 保存原重启请求 ID、MCP 及可信 plugin 连接，确认 `restartSafe` 后执行 drain 和受控重启。重连核对原回执并恢复精确连接后才注册调度宿主。原 Core 回调不返回新代际的 profile；`resume` 保留已冻结的执行配置。GUI 后续启动也合并 Host 已保存的 managed Skill 版本，避免旧 profile 引用丢失。
 
 ## 全局活动
 

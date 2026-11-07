@@ -64,6 +64,8 @@ Host 的资料库事务从原位置读取完整 JSON，在同一同步段中校�
 
 Core 通过 `features.taskPrepareCreate` 声明创建前预约能力，Host 仅为声明能力的 GUI 来源 Core 以 `areal/task/host/ready {prepareCreate:true}` 登记支持；CLI 来源沿用原准入。能力绑定原 Host 连接；Core 在定时任务校验后、持久化和调度发布前，经原 `areal/task/prepare` 的 `intent:create` 请求 Host 核对目录作者并保存原创建请求与执行锚点的预约。原请求已完成时直接返回既有回执；创建结果丢失时只按原 Core 回执绑定 Task，不重发。旧空 readiness 请求仍使用原语义。
 
+固定共享 Scratch 保留一个 Core 登记根，每个定时任务占用一个真实直接子目录；省略 `cwd` 时使用原创建 requestId 的规范 UUID 子目录。Host 严格核对来源登记与分配根，按子目录保存原请求、摘要和锚点作者记录。已有任务仅凭唯一匹配的 Core 创建回执恢复，缺证时不重发。其他子目录的活动只有在有界完整快照可归属且前后状态一致时才不阻塞当前目录；目录重叠、未知归属或快照变化均拒绝执行。
+
 `worktree.thread.prepare` 从原 Core 保存的部署中返回已应用的资源 profile 与 revision，后台仅据此恢复可重建投影。原创建绑定期间，资源检查仍比较当前选择与该部署；发生变化时保留原请求并拒绝继续，不隐式重启 Core 或把原绑定换到新代次。
 
 `areal tasks` 与 `areal worktree` 经本机 Host 协议提供原生目录入口，不依赖 GUI 或 Node。CLI 默认使用 Host 原生来源 `host`；项目先经 `areal host` 登记。读取停止项目的任务预览使用 published 目录并保留 unobserved，显式 observe 才请求实时状态；私有任务观察只使用既有连接，不重新启动已停止项目。写操作保留领域 requestId，Host commandId 与创建 Worktree 的 requestId 分开，避免取消或打开原工作树时与创建回执冲突。

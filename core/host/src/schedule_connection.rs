@@ -855,6 +855,7 @@ fn admission_project(host: &Host, registration: ProjectRegistration) -> Result<A
         registration,
         metadata_home,
         legacy_project_id,
+        scope: None,
     })
 }
 struct Admission<'a> {

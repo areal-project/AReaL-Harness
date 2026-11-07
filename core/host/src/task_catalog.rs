@@ -700,13 +700,6 @@ fn task_thread_cwd(
     rows: &[Value],
 ) -> Result<(std::path::PathBuf, bool)> {
     let root = root.canonicalize()?;
-    let Some(cwd) = params["cwd"].as_str() else {
-        return Ok((root, false));
-    };
-    let cwd = std::path::Path::new(cwd);
-    if cwd == root {
-        return Ok((root, false));
-    }
     let scratch = rows.iter().any(|row| {
         row["projectless"] == true
             && row["projectlessRequestId"] == "00000000-0000-4000-a000-5c4a7c400001"
@@ -716,6 +709,23 @@ fn task_thread_cwd(
                     .is_ok_and(|path| path == root)
             })
     });
+    let cwd = match params["cwd"].as_str() {
+        Some(cwd) => std::path::PathBuf::from(cwd),
+        None if scratch => {
+            // 共用 Scratch 的任务始终使用独立子目录，省略路径时沿用原请求身份。
+            let request = params["requestId"].as_str().context("INVALID_PARAMS")?;
+            root.join(
+                uuid::Uuid::parse_str(request)
+                    .context("INVALID_PARAMS")?
+                    .to_string(),
+            )
+        }
+        None => return Ok((root, false)),
+    };
+    if cwd == root {
+        ensure!(!scratch, "INVALID_PARAMS");
+        return Ok((root, false));
+    }
     if scratch {
         let name = cwd
             .file_name()
@@ -1277,6 +1287,15 @@ mod tests {
         assert!(
             !target.exists(),
             "Host validates but never creates the directory"
+        );
+        let request = "2dd38d32-36de-469b-951a-15caad2ed810";
+        assert_eq!(
+            task_thread_cwd(&root, &json!({"requestId":request}), &[scratch.clone()]).unwrap(),
+            (root.join(request), true)
+        );
+        assert!(task_thread_cwd(&root, &json!({"cwd":root}), &[scratch.clone()]).is_err());
+        assert!(
+            task_thread_cwd(&root, &json!({"requestId":"../escape"}), &[scratch.clone()]).is_err()
         );
         for cwd in [
             root.join("../escape"),

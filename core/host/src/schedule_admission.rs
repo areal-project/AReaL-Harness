@@ -19,6 +19,13 @@ pub(crate) struct AdmissionProject {
     pub registration: ProjectRegistration,
     pub metadata_home: PathBuf,
     pub legacy_project_id: String,
+    pub scope: Option<PathBuf>,
+}
+fn workspace(project: &AdmissionProject) -> &Path {
+    project
+        .scope
+        .as_deref()
+        .unwrap_or(&project.registration.workspace)
 }
 
 pub(crate) trait AdmissionRpc {
@@ -108,6 +115,74 @@ struct Author {
     root: PathBuf,
     project_id: String,
     session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    request_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    creation_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    anchor_thread_id: Option<String>,
+}
+
+const SCRATCH_ID: &str = "00000000-0000-4000-a000-5c4a7c400001";
+#[derive(Clone)]
+struct ScratchClaim {
+    request_id: String,
+    digest: String,
+    anchor: String,
+}
+
+fn scratch_root(project: &AdmissionProject) -> Result<Option<PathBuf>> {
+    if !matches!(
+        project.registration.source,
+        crate::ProjectSource::Gui { .. }
+    ) {
+        return Ok(None);
+    }
+    let projects =
+        read_optional::<Vec<SavedProject>>(&project.metadata_home.join("projects.json"))?
+            .unwrap_or_default();
+    let Some(saved) = projects
+        .iter()
+        .find(|saved| saved.id == project.legacy_project_id)
+    else {
+        return Ok(None);
+    };
+    if !saved.projectless || saved.projectless_request_id.as_deref() != Some(SCRATCH_ID) {
+        return Ok(None);
+    }
+    let allocations = read_optional::<BTreeMap<String, Allocation>>(
+        &project.metadata_home.join("projectless-drafts.json"),
+    )?
+    .unwrap_or_default();
+    let allocation = allocations
+        .get(SCRATCH_ID)
+        .ok_or_else(|| reject("Scratch 目录分配身份不存在"))?;
+    let root = saved.root.canonicalize()?;
+    ensure!(
+        saved.root == root
+            && allocation.root == root
+            && project.registration.workspace.canonicalize()? == root,
+        reject("Scratch 目录登记身份不一致")
+    );
+    Ok(Some(root))
+}
+
+fn scratch_child(root: &Path, cwd: &Path) -> Result<PathBuf> {
+    ensure!(
+        cwd.parent() == Some(root),
+        reject("Scratch 任务需要真实直接子目录")
+    );
+    let metadata = std::fs::symlink_metadata(cwd)?;
+    ensure!(
+        metadata.is_dir() && !metadata.file_type().is_symlink(),
+        reject("Scratch 任务目录不可为链接")
+    );
+    let child = cwd.canonicalize()?;
+    ensure!(
+        child == cwd && child.parent() == Some(root),
+        reject("Scratch 任务目录身份已变化")
+    );
+    Ok(child)
 }
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -440,6 +515,7 @@ async fn catalog<R: AdmissionRpc>(
     } else {
         None
     };
+    let scratch = scratch_root(project)?.filter(|_| project.scope.is_some());
     let mut rows = Vec::new();
     let mut after: Option<String> = None;
     let mut seen = BTreeSet::new();
@@ -464,6 +540,7 @@ async fn catalog<R: AdmissionRpc>(
             reject("任务目录分页状态尚未确认")
         );
         let mut previous = after.clone();
+        let mut scoped_rows = Vec::new();
         for task in &page.data {
             ensure!(
                 identifier(&task.id)
@@ -472,7 +549,28 @@ async fn catalog<R: AdmissionRpc>(
                 reject("任务目录包含无法核对的执行身份")
             );
             previous = Some(task.id.clone());
-            if task.mode != TaskMode::Scheduled || task.cancelled {
+            if task.mode != TaskMode::Scheduled {
+                continue;
+            }
+            if let Some(root) = &scratch {
+                let anchor_id = task
+                    .thread_id
+                    .as_deref()
+                    .filter(|id| identifier(id))
+                    .ok_or_else(|| reject("Scratch 任务缺少执行锚点"))?;
+                let anchor = read_thread(rpc, project, anchor_id).await?;
+                let cwd = scratch_child(root, &anchor.cwd)?;
+                if cwd != workspace(project) {
+                    continue;
+                }
+                ensure!(
+                    anchor.session_id == session,
+                    reject("Scratch 目录已有其他任务作者")
+                );
+                scoped_rows.push(task.clone());
+                continue;
+            }
+            if task.cancelled {
                 continue;
             }
             if matches!(project.registration.source, crate::ProjectSource::Cli)
@@ -513,8 +611,16 @@ async fn catalog<R: AdmissionRpc>(
                 reject("目录仍有不属于已核对调度家庭的定时任务，休眠或暂停不释放执行资格")
             );
         }
-        rows.extend(page.data.iter().cloned());
+        if scratch.is_some() {
+            rows.extend(scoped_rows);
+        } else {
+            rows.extend(page.data.iter().cloned());
+        }
         if page.next_cursor.is_none() {
+            ensure!(
+                scratch.is_none() || rows.len() <= 1,
+                reject("Scratch 目录存在多个定时任务")
+            );
             return Ok(rows);
         }
         ensure!(
@@ -673,7 +779,7 @@ async fn author_session<R: AdmissionRpc>(
                 .as_ref()
                 .is_none_or(|value| value["kind"] != "side")
             && owner.cwd.canonicalize()? == source.cwd.canonicalize()?
-            && owner.cwd.canonicalize()? == project.registration.workspace.canonicalize()?,
+            && owner.cwd.canonicalize()? == workspace(project).canonicalize()?,
         reject("可执行旁路讨论的来源与执行目录尚未确认")
     );
     Ok(source.session_id)
@@ -705,10 +811,115 @@ async fn existing_effects<R: AdmissionRpc>(
             && status["pendingQueueItems"].as_u64().is_some(),
         reject("后台执行状态尚未确认")
     );
+    let scratch = scratch_root(project)?.filter(|_| project.scope.is_some());
+    if scratch.is_some() && (status["activeTasks"] != 0 || status["pendingQueueItems"] != 0) {
+        let overview = rpc
+            .request(
+                &project.registration.project_id,
+                "areal/work/overview",
+                json!({"limit":100}),
+            )
+            .await?;
+        ensure!(
+            overview["complete"] == true && overview["nextCursor"].is_null(),
+            reject("Scratch 活动归属超出有界检查")
+        );
+        let mut tasks = BTreeSet::new();
+        let mut queues = BTreeMap::<String, u64>::new();
+        for row in overview["data"]
+            .as_array()
+            .ok_or_else(|| reject("Scratch 活动归属不可用"))?
+        {
+            let active = row["kind"] == "taskRun"
+                && matches!(
+                    row["execution"]["state"].as_str(),
+                    Some("queued" | "running" | "waitingForInput" | "waitingForAgents")
+                );
+            let queue = row["queue"]["pendingCount"]
+                .as_u64()
+                .ok_or_else(|| reject("Scratch 队列归属不可用"))?;
+            if !active && queue == 0 {
+                continue;
+            }
+            let task_id = row["taskId"].as_str();
+            if active {
+                tasks.insert(
+                    task_id
+                        .ok_or_else(|| reject("Scratch 活动任务身份不可用"))?
+                        .to_owned(),
+                );
+            }
+            let thread_id = if let Some(id) = row["threadId"].as_str() {
+                id.to_owned()
+            } else {
+                let task: Task =
+                    request(rpc, project, "areal/task/read", json!({"taskId":task_id})).await?;
+                task.thread_id
+                    .ok_or_else(|| reject("Scratch 活动任务锚点不可用"))?
+            };
+            if queue > 0 {
+                if let Some(previous) = queues.insert(thread_id.clone(), queue) {
+                    ensure!(previous == queue, reject("Scratch 队列快照不一致"));
+                }
+            }
+            let thread = read_thread(rpc, project, &thread_id).await?;
+            let cwd = thread.cwd.canonicalize()?;
+            if cwd == workspace(project) {
+                ensure!(
+                    author_session(rpc, project, thread).await? == session,
+                    reject("Scratch 目录已有其他活动作者")
+                );
+            } else {
+                ensure!(
+                    !cwd.starts_with(workspace(project)) && !workspace(project).starts_with(&cwd),
+                    reject("Scratch 活动目录物理重叠")
+                );
+            }
+        }
+        ensure!(
+            Some(tasks.len() as u64) == status["activeTasks"].as_u64()
+                && Some(queues.values().sum::<u64>()) == status["pendingQueueItems"].as_u64(),
+            reject("Scratch 活动数量无法完整归属")
+        );
+        let confirmed = rpc
+            .request(
+                &project.registration.project_id,
+                "areal/work/overview",
+                json!({"limit":100}),
+            )
+            .await?;
+        ensure!(confirmed == overview, reject("Scratch 活动归属已变化"));
+        let after = rpc
+            .request(
+                &project.registration.project_id,
+                "areal/server/status",
+                json!({}),
+            )
+            .await?;
+        ensure!(
+            [
+                "acceptingWork",
+                "activeTasks",
+                "pendingQueueItems",
+                "activeTurns",
+                "resources",
+                "unresolvedTools",
+                "activeGoals",
+                "compactions",
+                "workgroups"
+            ]
+            .iter()
+            .all(|key| after[*key] == status[*key]),
+            reject("Scratch 活动状态已变化")
+        );
+    } else {
+        ensure!(
+            status["activeTasks"] == 0 && status["pendingQueueItems"] == 0,
+            reject("后台仍有待结算或无法归属的执行")
+        );
+    }
     ensure!(
-        status["activeTasks"] == 0
-            && status["pendingQueueItems"] == 0
-            && status["unresolvedTools"].as_array().unwrap().is_empty()
+        status["unresolvedTools"].as_array().unwrap().is_empty()
             && status["workgroups"]
                 .as_array()
                 .unwrap()
@@ -750,6 +961,16 @@ async fn existing_effects<R: AdmissionRpc>(
     }
     for id in ids {
         let thread = read_thread(rpc, project, &id).await?;
+        if scratch.is_some() {
+            let cwd = thread.cwd.canonicalize()?;
+            if cwd != workspace(project) {
+                ensure!(
+                    !cwd.starts_with(workspace(project)) && !workspace(project).starts_with(&cwd),
+                    reject("Scratch 活动目录物理重叠")
+                );
+                continue;
+            }
+        }
         ensure!(
             author_session(rpc, project, thread).await? == session,
             reject("此目录已有其他会话或其后台任务在执行")
@@ -764,7 +985,17 @@ async fn directory_admission<R: AdmissionRpc>(
     session: &str,
     exclusive: bool,
 ) -> Result<()> {
-    let root = workspace_root(&project.registration.workspace).await?;
+    directory_admission_inner(rpc, project, peers, session, exclusive, None).await
+}
+async fn directory_admission_inner<R: AdmissionRpc>(
+    rpc: &R,
+    project: &AdmissionProject,
+    peers: &[AdmissionProject],
+    session: &str,
+    exclusive: bool,
+    scratch: Option<&ScratchClaim>,
+) -> Result<()> {
+    let root = workspace_root(workspace(project)).await?;
     let checkout_peers = checkout_peers(project, peers, &root, exclusive).await?;
     catalog(rpc, project, session).await?;
     for peer in &checkout_peers {
@@ -845,7 +1076,12 @@ async fn directory_admission<R: AdmissionRpc>(
                 .write(true)
                 .mode(0o600)
                 .open(&temporary)?;
-            let value = json!({"version":1,"root":root,"projectId":project.legacy_project_id,"sessionId":session});
+            let mut value = json!({"version":1,"root":root,"projectId":project.legacy_project_id,"sessionId":session});
+            if let Some(claim) = scratch {
+                value["requestId"] = json!(claim.request_id);
+                value["creationDigest"] = json!(claim.digest);
+                value["anchorThreadId"] = json!(claim.anchor);
+            }
             let written = (|| -> Result<()> {
                 handle.write_all(&serde_json::to_vec(&value)?)?;
                 handle.sync_all()?;
@@ -863,7 +1099,12 @@ async fn directory_admission<R: AdmissionRpc>(
         }
     }
     ensure!(
-        author.is_some_and(|author| author.session_id == session),
+        author.is_some_and(|author| author.session_id == session
+            && scratch.is_none_or(
+                |claim| author.request_id.as_deref() == Some(&claim.request_id)
+                    && author.creation_digest.as_deref() == Some(&claim.digest)
+                    && author.anchor_thread_id.as_deref() == Some(&claim.anchor)
+            )),
         reject("此执行目录已保留给另一个会话及其后台任务")
     );
     Ok(())
@@ -875,6 +1116,102 @@ async fn task_workspace<R: AdmissionRpc>(
     peers: &[AdmissionProject],
     task: &Task,
 ) -> Result<Workspace> {
+    task_workspace_inner(rpc, project, peers, task, false).await
+}
+async fn task_workspace_inner<R: AdmissionRpc>(
+    rpc: &R,
+    project: &AdmissionProject,
+    peers: &[AdmissionProject],
+    task: &Task,
+    allow_cancelled: bool,
+) -> Result<Workspace> {
+    if let Some(root) = scratch_root(project)? {
+        ensure!(
+            project.registration.workspace.canonicalize()? == root,
+            reject("Scratch 项目根身份已变化")
+        );
+        ensure!(
+            task.mode == TaskMode::Scheduled
+                && task.owner == "desktop-owner"
+                && (allow_cancelled || !task.cancelled)
+                && task.source_thread_id.is_none(),
+            reject("Scratch 任务身份无效")
+        );
+        let anchor_id = task
+            .thread_id
+            .as_deref()
+            .filter(|id| identifier(id))
+            .ok_or_else(|| reject("Scratch 任务缺少执行锚点"))?;
+        let anchor = read_thread(rpc, project, anchor_id).await?;
+        ensure!(
+            ordinary(&anchor)
+                && anchor.source.as_deref() != Some("nativeTaskAgent")
+                && anchor
+                    .desktop
+                    .as_ref()
+                    .is_none_or(|v| v["configuration"]["readOnly"] != true),
+            reject("Scratch 任务锚点无效")
+        );
+        let child = scratch_child(&root, &anchor.cwd)?;
+        let file = project
+            .metadata_home
+            .join("workspace-authors")
+            .join(format!(
+                "{}.json",
+                storage::digest(child.as_os_str().as_encoded_bytes())
+            ));
+        let author = read_author(&file, Some(&child))?
+            .ok_or_else(|| reject("Scratch 原目录作者尚未确认"))?;
+        let request_id = author
+            .request_id
+            .as_deref()
+            .filter(|id| identifier(id))
+            .ok_or_else(|| reject("Scratch 原创建请求尚未确认"))?;
+        let digest = author
+            .creation_digest
+            .as_deref()
+            .ok_or_else(|| reject("Scratch 原创建摘要尚未确认"))?;
+        ensure!(
+            author.project_id == project.legacy_project_id
+                && author.session_id == anchor.session_id
+                && author.anchor_thread_id.as_deref() == Some(anchor_id),
+            reject("Scratch 原作者身份已变化")
+        );
+        let receipts = rpc
+            .request(
+                &project.registration.project_id,
+                "areal/request/read",
+                json!({"requestId":request_id}),
+            )
+            .await?;
+        let matching: Vec<_> = receipts["data"]
+            .as_array()
+            .ok_or_else(|| reject("原任务创建回执不可用"))?
+            .iter()
+            .filter(|receipt| {
+                receipt["method"] == "areal/task/create"
+                    && receipt["requestId"] == request_id
+                    && receipt["digest"] == digest
+                    && receipt["result"]["id"] == task.id
+                    && receipt["result"]["threadId"] == anchor_id
+                    && receipt["status"] == "completed"
+            })
+            .collect();
+        ensure!(matching.len() == 1, reject("原任务创建回执尚未唯一确认"));
+        let mut scoped = project.clone();
+        scoped.scope = Some(child.clone());
+        let claim = ScratchClaim {
+            request_id: request_id.into(),
+            digest: digest.into(),
+            anchor: anchor_id.into(),
+        };
+        directory_admission_inner(rpc, &scoped, peers, &anchor.session_id, true, Some(&claim))
+            .await?;
+        return Ok(Workspace::Source {
+            cwd: child,
+            anchor: anchor_id.into(),
+        });
+    }
     let workspace = match reservation(project)? {
         None => {
             let (workspace, session) = source_workspace(rpc, project, &task).await?;
@@ -980,7 +1317,11 @@ pub(crate) async fn command<R: AdmissionRpc>(
     let mut authors = BTreeSet::new();
     for id in targets {
         let thread = read_thread(rpc, project, id).await?;
-        authors.insert(author_session(rpc, project, thread.clone()).await?);
+        let mut scoped = project.clone();
+        if let Some(root) = scratch_root(project)? {
+            scoped.scope = Some(scratch_child(&root, &thread.cwd)?);
+        }
+        authors.insert(author_session(rpc, &scoped, thread.clone()).await?);
         threads.push(thread);
     }
     ensure!(authors.len() == 1, reject("一次执行不能包含不同会话作者"));
@@ -1026,6 +1367,49 @@ pub(crate) async fn command<R: AdmissionRpc>(
     {
         return Ok(());
     }
+    if let Some(root) = scratch_root(project)? {
+        let first = threads
+            .first()
+            .ok_or_else(|| reject("Scratch 执行会话缺失"))?;
+        let child = scratch_child(&root, &first.cwd)?;
+        ensure!(
+            threads.iter().all(|thread| thread.cwd == child),
+            reject("Scratch 写入不能跨任务目录")
+        );
+        let file = project
+            .metadata_home
+            .join("workspace-authors")
+            .join(format!(
+                "{}.json",
+                storage::digest(child.as_os_str().as_encoded_bytes())
+            ));
+        let author = read_author(&file, Some(&child))?
+            .ok_or_else(|| reject("Scratch 原目录作者尚未确认"))?;
+        let mut scoped = project.clone();
+        scoped.scope = Some(child);
+        let tasks = catalog(rpc, &scoped, &author.session_id).await?;
+        ensure!(tasks.len() == 1, reject("Scratch 任务身份尚未唯一确认"));
+        let task = &tasks[0];
+        task_workspace_inner(rpc, project, peers, task, true).await?;
+        let mut allowed = BTreeSet::new();
+        for id in task
+            .thread_id
+            .iter()
+            .chain(task.runs.iter().flat_map(|run| {
+                run.thread_id
+                    .iter()
+                    .chain(run.workers.iter().map(|worker| &worker.thread_id))
+            }))
+        {
+            let thread = read_thread(rpc, project, id).await?;
+            allowed.insert(author_session(rpc, &scoped, thread).await?);
+        }
+        ensure!(
+            allowed.contains(&session),
+            reject("Scratch 写入不属于原任务执行")
+        );
+        return Ok(());
+    }
     directory_admission(rpc, project, peers, &session, false).await
 }
 
@@ -1039,7 +1423,34 @@ async fn scheduled_command<R: AdmissionRpc>(
     session: &str,
 ) -> Result<bool> {
     let exclusive = reservation(project)?;
-    let task_id = if let Some(value) = &exclusive {
+    let scratch_task = if let Some(root) = scratch_root(project)? {
+        let child = scratch_child(
+            &root,
+            &threads
+                .first()
+                .ok_or_else(|| reject("Scratch 执行会话缺失"))?
+                .cwd,
+        )?;
+        let file = project
+            .metadata_home
+            .join("workspace-authors")
+            .join(format!(
+                "{}.json",
+                storage::digest(child.as_os_str().as_encoded_bytes())
+            ));
+        let author = read_author(&file, Some(&child))?
+            .ok_or_else(|| reject("Scratch 原目录作者尚未确认"))?;
+        let mut scoped = project.clone();
+        scoped.scope = Some(child);
+        let tasks = catalog(rpc, &scoped, &author.session_id).await?;
+        ensure!(tasks.len() == 1, reject("Scratch 任务身份尚未唯一确认"));
+        Some(tasks[0].id.clone())
+    } else {
+        None
+    };
+    let task_id = if let Some(id) = scratch_task {
+        id
+    } else if let Some(value) = &exclusive {
         value
             .task_id
             .clone()
@@ -1343,6 +1754,29 @@ async fn prepare_create<R: AdmissionRpc>(
                 .is_none_or(|v| v["configuration"]["readOnly"] != true),
         reject("定时创建执行锚点不可写或不是普通会话")
     );
+    if let Some(root) = scratch_root(project)? {
+        ensure!(
+            project.registration.workspace.canonicalize()? == root,
+            reject("Scratch 项目根身份已变化")
+        );
+        let child = scratch_child(&root, &anchor.cwd)?;
+        let mut scoped = project.clone();
+        scoped.scope = Some(child);
+        let claim = ScratchClaim {
+            request_id: request_id.into(),
+            digest: digest.into(),
+            anchor: anchor_id.into(),
+        };
+        return directory_admission_inner(
+            rpc,
+            &scoped,
+            peers,
+            &anchor.session_id,
+            true,
+            Some(&claim),
+        )
+        .await;
+    }
     let root = project.registration.workspace.canonicalize()?;
     let cwd = anchor.cwd.canonicalize()?;
     let projects =
@@ -1420,6 +1854,8 @@ mod tests {
         threads: BTreeMap<String, Value>,
         empty_catalog: bool,
         receipt: Value,
+        status: Option<Value>,
+        overview: Option<Value>,
     }
     impl AdmissionRpc for Rpc {
         async fn request(&self, _: &str, method: &str, params: Value) -> Result<Value> {
@@ -1427,15 +1863,14 @@ mod tests {
                 "areal/task/read" => Ok(self.task.clone()),
                 "areal/task/run/read" => Ok(self.run.clone()),
                 "areal/request/read" => Ok(self.receipt.clone()),
+                "areal/work/overview" => self.overview.clone().context("missing overview"),
                 "thread/read" => Ok(
                     json!({"thread":self.threads.get(params["threadId"].as_str().unwrap()).context("unknown thread")?}),
                 ),
                 "areal/task/list" => Ok(
                     json!({"data":if self.empty_catalog {vec![]} else {vec![self.task.clone()]},"nextCursor":null,"hasMore":false}),
                 ),
-                "areal/server/status" => Ok(
-                    json!({"acceptingWork":true,"activeTurns":[],"resources":[],"unresolvedTools":[],"activeGoals":[],"compactions":[],"workgroups":[],"activeTasks":0,"pendingQueueItems":0}),
-                ),
+                "areal/server/status" => Ok(self.status.clone().unwrap_or_else(|| json!({"acceptingWork":true,"activeTurns":[],"resources":[],"unresolvedTools":[],"activeGoals":[],"compactions":[],"workgroups":[],"activeTasks":0,"pendingQueueItems":0}))),
                 _ => anyhow::bail!("unexpected method {method}"),
             }
         }
@@ -1460,6 +1895,7 @@ mod tests {
             },
             metadata_home,
             legacy_project_id: "a".repeat(24),
+            scope: None,
         };
         let run = json!({"id":"run","threadId":null,"goalId":null,"status":"queued","reason":null,
             "scheduledAt":0,"completedAt":null,"usage":areal_protocol::goals::GoalUsage::default(),"waitRequested":false});
@@ -1478,8 +1914,158 @@ mod tests {
                 threads,
                 empty_catalog: false,
                 receipt: json!({"data":[]}),
+                status: None,
+                overview: None,
             },
         )
+    }
+    #[tokio::test]
+    async fn scratch_children_keep_distinct_authors_and_original_receipts() {
+        let base = tempfile::tempdir().unwrap();
+        let (project, mut rpc) = fixture(base.path());
+        let root = &project.registration.workspace;
+        let first = root.join("first");
+        let second = root.join("second");
+        std::fs::create_dir(&first).unwrap();
+        std::fs::create_dir(&second).unwrap();
+        storage::write(&project.metadata_home.join("projects.json"), &json!([{"id":project.legacy_project_id,"root":root,"projectless":true,"projectlessRequestId":SCRATCH_ID}])).unwrap();
+        storage::write(
+            &project.metadata_home.join("projectless-drafts.json"),
+            &json!({(SCRATCH_ID):{"root":root,"existing":true}}),
+        )
+        .unwrap();
+        let mut mismatched = project.clone();
+        mismatched.registration.workspace = first.clone();
+        assert!(scratch_root(&mismatched).is_err());
+        rpc.threads.get_mut("anchor").unwrap()["cwd"] = json!(first);
+        rpc.threads.get_mut("coordinator").unwrap()["cwd"] = json!(second);
+        rpc.empty_catalog = true;
+        let first_request = json!({"intent":"create","requestId":"first","requestDigest":"a".repeat(64),"threadId":"anchor"});
+        prepare(&project, &[], &first_request, &rpc).await.unwrap();
+        prepare(&project, &[], &first_request, &rpc).await.unwrap();
+        let mut conflict = first_request.clone();
+        conflict["requestId"] = json!("other");
+        assert!(prepare(&project, &[], &conflict, &rpc).await.is_err());
+        rpc.threads.get_mut("source").unwrap()["cwd"] = json!(first);
+        conflict["threadId"] = json!("source");
+        assert!(prepare(&project, &[], &conflict, &rpc).await.is_err());
+        rpc.threads.get_mut("source").unwrap()["cwd"] = json!(root);
+        let mut digest_conflict = first_request.clone();
+        digest_conflict["requestDigest"] = json!("b".repeat(64));
+        assert!(
+            prepare(&project, &[], &digest_conflict, &rpc)
+                .await
+                .is_err()
+        );
+        rpc.task["sourceThreadId"] = Value::Null;
+        rpc.empty_catalog = false;
+        rpc.status = Some(
+            json!({"acceptingWork":true,"activeTurns":[],"resources":[],"unresolvedTools":[],"activeGoals":[],"compactions":[],"workgroups":[],"activeTasks":1,"pendingQueueItems":0}),
+        );
+        rpc.overview = Some(
+            json!({"complete":true,"nextCursor":null,"data":[{"kind":"taskRun","taskId":"task","threadId":"anchor","execution":{"state":"running"},"queue":{"pendingCount":0}}]}),
+        );
+        rpc.overview.as_mut().unwrap()["complete"] = json!(false);
+        assert!(prepare(&project, &[], &json!({"intent":"create","requestId":"second","requestDigest":"b".repeat(64),"threadId":"coordinator"}), &rpc).await.is_err());
+        rpc.overview.as_mut().unwrap()["complete"] = json!(true);
+        prepare(&project, &[], &json!({"intent":"create","requestId":"second","requestDigest":"b".repeat(64),"threadId":"coordinator"}), &rpc).await.unwrap();
+        assert!(prepare(&project, &[], &json!({"intent":"create","requestId":"root","requestDigest":"c".repeat(64),"threadId":"source"}), &rpc).await.is_err());
+        #[cfg(unix)]
+        {
+            let link = root.join("link");
+            std::os::unix::fs::symlink(&first, &link).unwrap();
+            rpc.threads.get_mut("source").unwrap()["cwd"] = json!(link);
+            assert!(prepare(&project, &[], &json!({"intent":"create","requestId":"link","requestDigest":"c".repeat(64),"threadId":"source"}), &rpc).await.is_err());
+        }
+        rpc.status = None;
+        let task: Task = serde_json::from_value(rpc.task.clone()).unwrap();
+        assert!(task_workspace(&rpc, &project, &[], &task).await.is_err());
+        let good = json!({"method":"areal/task/create","requestId":"first","digest":"a".repeat(64),"status":"completed","result":{"id":"task","threadId":"anchor"}});
+        rpc.receipt = json!({"data":[good.clone(),good.clone()]});
+        assert!(task_workspace(&rpc, &project, &[], &task).await.is_err());
+        rpc.receipt = json!({"data":[good]});
+        assert_eq!(
+            task_workspace(&rpc, &project, &[], &task)
+                .await
+                .unwrap()
+                .cwd(),
+            first
+        );
+        rpc.threads.insert("side".into(), json!({"id":"side","sessionId":"side-session","cwd":first,"conversation":{"version":2,"kind":"side","origin":{"sourceThreadId":"anchor"},"policy":{"kind":"sideExecutableV2"}}}));
+        command(&project, &[], "send", &json!({"threadId":"side"}), &rpc)
+            .await
+            .unwrap();
+        rpc.threads.get_mut("side").unwrap()["conversation"]["policy"]["kind"] =
+            json!("sideReadOnlyV1");
+        assert!(
+            command(&project, &[], "send", &json!({"threadId":"side"}), &rpc)
+                .await
+                .is_err()
+        );
+        command(
+            &project,
+            &[],
+            "manage",
+            &json!({"operation":"archive","threadId":"side"}),
+            &rpc,
+        )
+        .await
+        .unwrap();
+        rpc.run["threadId"] = json!("run-thread");
+        rpc.run["goalId"] = json!("goal");
+        rpc.run["status"] = json!("running");
+        rpc.task["runs"][0] = rpc.run.clone();
+        rpc.threads.insert("run-thread".into(), json!({"id":"run-thread","sessionId":"run-session","cwd":first,"goals":{"goal":{"id":"goal","threadId":"run-thread","status":"active","activeTurnId":"original-turn"}}}));
+        command(
+            &project,
+            &[],
+            "continue",
+            &json!({"threadId":"run-thread","expectedTurnId":"original-turn"}),
+            &rpc,
+        )
+        .await
+        .unwrap();
+        assert!(
+            command(
+                &project,
+                &[],
+                "continue",
+                &json!({"threadId":"run-thread","expectedTurnId":"stale-turn"}),
+                &rpc
+            )
+            .await
+            .is_err()
+        );
+        rpc.task["cancelled"] = json!(true);
+        command(&project, &[], "send", &json!({"threadId":"anchor"}), &rpc)
+            .await
+            .unwrap();
+        rpc.threads.insert(
+            "stranger".into(),
+            json!({"id":"stranger","sessionId":"stranger","cwd":first}),
+        );
+        assert!(
+            command(&project, &[], "send", &json!({"threadId":"stranger"}), &rpc)
+                .await
+                .is_err()
+        );
+        assert!(
+            command(
+                &project,
+                &[],
+                "manage",
+                &json!({"operation":"taskRunNow","taskId":"task"}),
+                &rpc
+            )
+            .await
+            .is_err()
+        );
+        rpc.receipt["data"][0]["digest"] = json!("b".repeat(64));
+        assert!(
+            command(&project, &[], "send", &json!({"threadId":"anchor"}), &rpc)
+                .await
+                .is_err()
+        );
     }
     #[tokio::test]
     async fn create_reserves_original_anchor_and_rejects_other_requests() {

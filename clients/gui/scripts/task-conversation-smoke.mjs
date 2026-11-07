@@ -2604,13 +2604,14 @@ async function checkInlineRegression() {
   await page.getByRole("button", { name: `打开自动化 ${inlineObjective}`, exact: true }).click();
   await assertRestored("reopen");
 }
-async function closeOwnedApp(quitResponse = 1) {
+async function closeOwnedApp(quitResponse = rust ? 0 : 1, expectHost = rust) {
   const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
     .then(JSON.parse)
     .catch((error) => {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  const hostIdentity = expectHost ? await observeHostIdentity() : null;
   await app.evaluate(
     ({ dialog }, { trace, quitResponse }) => {
       const fs = process.getBuiltinModule("node:fs");
@@ -2647,15 +2648,27 @@ async function closeOwnedApp(quitResponse = 1) {
   );
   assert.equal(processHandle.exitCode, 0, "owned Electron quit exit code");
   assert.equal(processHandle.signalCode, null, "owned Electron quit signal");
-  await assertApplicationStopped(binary, env, metadata);
+  if (expectHost)
+    assert.deepEqual(await observeHostIdentity(), hostIdentity, "original Host remains available");
+  else await assertApplicationStopped(binary, env, metadata);
   manualCleanup.exits.push({
     pid: processHandle.pid,
     exitCode: processHandle.exitCode,
     signal: processHandle.signalCode,
-    applicationStopped: true,
+    ...(expectHost ? { hostIdentity } : { applicationStopped: true }),
   });
   app = null;
   page = null;
+}
+async function observeHostIdentity() {
+  const { HostClient } = require("@areal/client/node");
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    return { hostId: host.hostId, generation: host.generation };
+  } finally {
+    host.close();
+  }
 }
 async function checkManualRegression() {
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
@@ -2900,7 +2913,7 @@ try {
     assert.equal(stop.state, "completed");
     assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
     await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
-    await closeOwnedApp(0);
+    await closeOwnedApp(0, false);
     if (seedNavigation) {
       const { createSeedNavigationFixture } = await import("./support/seed-navigation-fixture.mjs");
       const readJson = async (path, fallback) =>
@@ -3691,12 +3704,53 @@ try {
     try {
       if (app && app.process().exitCode === null && app.process().signalCode === null)
         await closeOwnedApp();
+    } catch (error) {
+      errors.push("manual cleanup: " + error.message);
+    }
+    if (rust && app) {
+      let handle;
+      try {
+        handle = app.process();
+      } catch {
+        // Playwright 已释放退出中的应用对象。
+      }
+      if (handle && handle.exitCode === null && handle.signalCode === null) {
+        manualCleanup.forcedElectronExit = true;
+        handle.kill("SIGKILL");
+        await until(
+          () => handle.exitCode !== null || handle.signalCode !== null,
+          "owned Electron forced cleanup exit",
+          5000,
+        );
+      }
+    }
+    if (rust) {
+      try {
+        const originalHost = await observeHostIdentity();
+        const lastHost = manualCleanup.exits.at(-1)?.hostIdentity;
+        if (lastHost) assert.deepEqual(originalHost, lastHost, "cleanup targets original Host");
+        const stop = JSON.parse(
+          execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+            env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+            encoding: "utf8",
+          }),
+        );
+        await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
+        assert.equal(stop.state, "completed");
+        assert.equal(stop.hostId, originalHost.hostId);
+        assert.equal(stop.generation, originalHost.generation);
+        assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+      } catch (error) {
+        errors.push("Host cleanup: " + error.message);
+      }
+    }
+    try {
       await assertApplicationStopped(binary, env, metadata);
       manualCleanup.applicationStopped = true;
     } catch (error) {
       errors.push("manual cleanup: " + error.message);
     }
-    if (metadata && !manualCleanup.applicationStopped) {
+    if (!rust && metadata && !manualCleanup.applicationStopped) {
       manualCleanup.assistedServiceStop = true;
       const {
         ServiceConnection,
@@ -3732,7 +3786,7 @@ try {
         connection.close();
       }
     }
-    if (app) {
+    if (!rust && app) {
       let handle;
       try {
         handle = app.process();
@@ -3784,15 +3838,6 @@ try {
   }
   if (rust) {
     try {
-      const stop = JSON.parse(
-        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
-          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
-          encoding: "utf8",
-        }),
-      );
-      await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
-      assert.equal(stop.state, "completed");
-      assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
       const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
       await writeFile(
         join(scratch, "synthetic-keychain-cleanup.json"),
