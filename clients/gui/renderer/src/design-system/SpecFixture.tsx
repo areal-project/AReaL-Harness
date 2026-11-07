@@ -142,6 +142,7 @@ const OVERLAYS: Record<string, Step[]> = {
   "panel-add-menu": [{ name: "打开侧边面板标签页", how: "press" }],
   "review-scope-menu": [{ name: "改动范围", how: "press" }],
   "review-files": [{ name: "显示文件", how: "press" }],
+  "tasks-new": [{ name: "新建定时任务", how: "press" }],
 };
 
 async function openOverlay(steps: Step[], cancelled: () => boolean) {
@@ -396,7 +397,25 @@ export function SpecFixture() {
       return { commits: [], truncated: false };
     if (name === "workspace" && request.operation === "reviewBranches") return { branches: [] };
     if (name === "queue") return data.state.queues[threadId];
-    if (name === "tasks") return { tasks: [] };
+    if (name === "tasks")
+      return {
+        projectId: request.projectId,
+        requestId: request.requestId,
+        viewEpoch: request.viewEpoch,
+        data: fixture.tasks.rows
+          .filter((row) => row.projectId === request.projectId || !request.projectId)
+          .map((row) => ({ ...row, mode: "scheduled", runs: [], scope: "workspace" })),
+        hasMore: false,
+        errors: [],
+        owners: fixture.tasks.projects.map((project) => ({
+          projectId: project.id,
+          status: "ready",
+          source: "live",
+          coverage: { kind: "complete" },
+          readAt: 0,
+          connectionGeneration: 1,
+        })),
+      };
     return {};
   }) as Action;
   const column = (
@@ -455,6 +474,7 @@ export function SpecFixture() {
       rail={"rail" in start ? start.rail : false}
       settings={"settings" in start ? start.settings : undefined}
       panel={"panel" in start ? (start.panel as never) : undefined}
+      surface={"surface" in start ? (start.surface as "tasks") : undefined}
       action={action}
     >
       <div className="workspace-content">{column}</div>

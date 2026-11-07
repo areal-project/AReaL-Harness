@@ -2708,7 +2708,7 @@ button[aria-label="停止"] {
   cursor: default;
 }
 .new-task-shortcut {
-  padding: 5px calc(var(--spacing-inline) * 3 / 2);
+  padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) * 3 / 2);
   border: var(--border-width-default) solid var(--color-shortcut-border);
   border-radius: var(--radius-overlay);
   background: var(--color-shortcut-surface);

@@ -3,6 +3,7 @@ import fixture from "../../../../../design/spec/fixtures/send-run-stop.json";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { SidePane } from "../app-shell/SidePane.js";
 import { GitPane } from "../GitPane.js";
+import { TaskCenter } from "../TaskCenter.js";
 import { WorkSurface, WorkbenchShell, WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { ProjectFolderIcon, SidePanelIcon } from "../homeChromeIcons.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -64,6 +65,7 @@ export function SpecNavigation({
   rail = false,
   settings,
   panel: initialPanel,
+  surface: initialSurface,
   action,
   children,
 }: {
@@ -72,6 +74,7 @@ export function SpecNavigation({
   rail?: boolean;
   settings?: string;
   panel?: { tabs: string[]; active: string; view?: "split" | "panel" | "conversation" };
+  surface?: "tasks";
   action: Action;
   children: ReactNode;
 }) {
@@ -97,6 +100,7 @@ export function SpecNavigation({
     return { projectId: thread?.project ?? "", threadId: thread?.thread.id ?? "" };
   });
   const [settingsTab, setSettingsTab] = useState(settings);
+  const [surface, setSurface] = useState(initialSurface);
   const [panelTabs, setPanelTabs] = useState(initialPanel?.tabs ?? []);
   const [panel, setPanel] = useState(initialPanel?.active ?? "");
   const [workspaceView, setWorkspaceView] = useState<"split" | "panel" | "conversation">(
@@ -168,19 +172,25 @@ export function SpecNavigation({
   );
   const applicationRail = (
     <ApplicationRail
-      activeId={settingsTab ? "settings" : "home"}
+      activeId={settingsTab ? "settings" : (surface ?? "home")}
       items={[
         {
           id: "home",
           label: t("common.navigation.home"),
-          icon: <Home active={!settingsTab} />,
-          onSelect: () => {},
+          icon: <Home active={!settingsTab && !surface} />,
+          onSelect: () => {
+            setSettingsTab(undefined);
+            setSurface(undefined);
+          },
         },
         {
           id: "tasks",
           label: t("operations.schedules.title"),
           icon: <ScheduledIcon />,
-          onSelect: () => {},
+          onSelect: () => {
+            setSettingsTab(undefined);
+            setSurface("tasks");
+          },
         },
         {
           id: "plugins",
@@ -233,7 +243,7 @@ export function SpecNavigation({
           summaries={summaries}
           projectId={current.projectId}
           threadId={current.threadId}
-          taskCenterOpen={false}
+          taskCenterOpen={surface === "tasks"}
           pluginsOpen={false}
           sidebar={sidebar}
           visible={!settingsTab}
@@ -261,7 +271,24 @@ export function SpecNavigation({
           data-workspace-view={panelOpen && workspaceView !== "split" ? workspaceView : undefined}
         >
           <WorkSurface panelOpen={panelOpen} split={workspaceView === "split"} reducedMotion>
-            {settingsTab ? (
+            {surface === "tasks" && !settingsTab ? (
+              <TaskCenter
+                projects={fixture.tasks.projects.map((project) => ({
+                  ...project,
+                  state: { connected: true, threads: {} },
+                  core: { connectionGeneration: 1 },
+                  pending: [],
+                  outcomes: {},
+                  desktopCapabilities: { currentCommands: true },
+                }))}
+                connected
+                action={action}
+                onOpenThread={() => {}}
+                onOpenModelSettings={() => {}}
+                renderConversation={() => null}
+                renderResources={() => null}
+              />
+            ) : settingsTab ? (
               <>
                 <WorkspaceHeader>{null}</WorkspaceHeader>
                 <SpecSettingsPage tab={settingsTab} />

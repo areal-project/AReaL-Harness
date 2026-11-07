@@ -69,6 +69,8 @@ states:
     - review: 面板只开“审查”标签，显示示例数据 review 的两个文件改动（审查面板规格待写，暂只作防回归截图）
     - review-scope-menu: 同 review，“改动范围”菜单用鼠标刚打开
     - review-files: 同 review，文件列表已显示
+    - tasks: 点应用导航栏“定时任务”，列出示例数据 tasks 的两个任务，未选中任务（规格待写，暂只作防回归截图）
+    - tasks-new: 同 tasks，“新建定时任务”弹窗刚打开
 
 references:
     - state: sidebar

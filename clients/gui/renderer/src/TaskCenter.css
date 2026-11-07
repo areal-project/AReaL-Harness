@@ -8,7 +8,7 @@
   min-width: 0;
 }
 .task-center-toolbar {
-  height: 44px;
+  height: var(--shell-bar-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -23,7 +23,7 @@
   flex-direction: column;
   background: var(--color-sidebar);
   border-right: var(--border-width-default) solid var(--color-border);
-  padding: var(--spacing-field) var(--spacing-inline);
+  padding: 0 var(--spacing-inline) var(--spacing-inline);
 }
 .task-center-list[hidden] {
   display: none;
@@ -32,14 +32,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--spacing-inline);
-  height: var(--spacing-control);
-  margin-bottom: calc(var(--spacing-inline) * 3 / 2);
+  padding: 0 calc(var(--spacing-inline) / 2) 0 var(--spacing-inline);
+  height: var(--rail-width);
+  flex-shrink: 0;
 }
 .task-list-heading h1 {
-  font-size: var(--text-ui-lg);
-  font-weight: 600;
-  line-height: 24px;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--line-height-title);
 }
 .task-list-heading button,
 .task-list-subheading button {
@@ -50,12 +50,12 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-inline);
-  height: 36px;
+  min-height: var(--navigation-row-height);
   flex-shrink: 0;
   padding: 0 var(--spacing-inline);
   font-size: var(--text-ui-base);
   text-align: left;
-  border-radius: var(--radius-inset);
+  border-radius: var(--radius-navigation);
 }
 .task-new:hover {
   background: var(--color-hover);
@@ -65,7 +65,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--spacing-inline);
-  height: 44px;
+  height: var(--navigation-row-height);
+  margin-top: var(--spacing-field);
   flex-shrink: 0;
   color: var(--color-foreground-subtle);
 }
@@ -99,7 +100,7 @@
   display: flex;
   align-items: center;
   gap: calc(var(--spacing-inline) * 3 / 2);
-  padding: 10px calc(var(--spacing-inline) * 5 / 2);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 5 / 2);
   flex-shrink: 0;
 }
 .task-conversation > header h2 {

@@ -262,6 +262,19 @@
         "active": "改动"
       },
       "overlay": "review-files"
+    },
+    "window.tasks": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "surface": "tasks"
+    },
+    "window.tasks-new": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "surface": "tasks",
+      "overlay": "tasks-new"
     }
   },
   "agent": {
@@ -712,6 +725,49 @@
         "status": "added",
         "before": "",
         "after": "import { describe, expect, it } from \"vitest\";\nimport { clamp } from \"./math\";\n\ndescribe(\"clamp\", () => {\n  it(\"keeps values inside the range\", () => {\n    expect(clamp(5, 0, 10)).toBe(5);\n  });\n  it(\"raises values below min\", () => {\n    expect(clamp(-3, 0, 10)).toBe(0);\n  });\n  it(\"lowers values above max\", () => {\n    expect(clamp(42, 0, 10)).toBe(10);\n  });\n});\n"
+      }
+    ]
+  },
+  "tasks": {
+    "$comment": "定时任务示例数据。nextRunAt 为秒级时间戳；scheduleV2.rule 同 Core 的日历规则。",
+    "projects": [
+      {
+        "id": "spec-project",
+        "name": "示例项目",
+        "root": "/示例项目"
+      }
+    ],
+    "rows": [
+      {
+        "id": "daily",
+        "projectId": "spec-project",
+        "objective": "每天早上汇总昨天的提交和未关闭的问题",
+        "paused": false,
+        "sourceThreadId": "daily-thread",
+        "nextRunAt": 2000000000,
+        "scheduleV2": {
+          "rule": {
+            "kind": "calendar",
+            "frequency": "daily",
+            "localTime": "09:00"
+          }
+        }
+      },
+      {
+        "id": "weekly",
+        "projectId": "spec-project",
+        "objective": "每周五整理本周发布说明",
+        "paused": true,
+        "sourceThreadId": "weekly-thread",
+        "nextRunAt": 2000300000,
+        "scheduleV2": {
+          "rule": {
+            "kind": "calendar",
+            "frequency": "weekly",
+            "weekdays": [5],
+            "localTime": "17:00"
+          }
+        }
       }
     ]
   }
