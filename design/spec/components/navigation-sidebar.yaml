@@ -73,12 +73,12 @@ parts:
     padding: 左 spacing-inline；上下与右为 navigation-row-height 减 line-height-ui 的一半
     radius: radius-navigation
     status-slot: 标题左侧 icon-size-control 见方的状态位，与标题间隔 spacing-inline；项目与任务分组里的对话总有这一位（无状态时留空），只有置顶分组里的对话在没有状态时不留这一位，标题直接与分组标题左对齐
-    status: 运行中显示 running 图标（foreground-subtle）；等待处理显示 spacing-inline 四分之三见方的圆点，color-warning；未读同样大小的圆点，color-primary；优先级依次为运行中、等待处理、未读
-    title: text-ui-base，行高 line-height-ui，颜色 foreground 的八成五不透明度，单行；放不下时直接裁掉，不加省略号，右端 spacing-control-sm 宽内渐隐为透明
+    status: 运行中显示 running 图标（foreground-subtle），匀速转动一圈接一圈，系统要求减少动态时静止；等待处理显示 spacing-inline 四分之三见方的圆点，color-warning；未读同样大小的圆点，color-primary；优先级依次为运行中、等待处理、未读
+    title: text-ui-base，行高 line-height-ui，颜色 foreground 的八成五不透明度，单行；放不下时直接裁掉，不加省略号，右端 spacing-control-sm 宽内渐隐为透明；放得下时不渐隐
     current: 当前对话底色 color-navigation-selected
     hover: 底色 color-sidebar-item；右侧出现置顶（pin）、归档（archive）、更多（more）三个按钮，标题让出三个按钮宽加两个间隔
     hover-actions: 按钮各 spacing-control-xs 见方，圆角 radius-compact，图标 icon-size-control，颜色 foreground，底色透明；按钮间隔 spacing-inline，最右一个距行右缘 spacing-inline，在行内垂直居中；悬停某个按钮时它的底色 color-hover
-    menu-open: 任务菜单打开期间这一行保持悬停样子（三个按钮可见、行底色 color-sidebar-item，当前对话仍为 color-navigation-selected），“更多”按钮底色 color-hover；菜单收起后焦点回到“更多”按钮，按钮在获得焦点时保持可见
+    menu-open: 任务菜单打开期间这一行保持悬停样子（三个按钮可见、行底色 color-sidebar-item，当前对话仍为 color-navigation-selected），“更多”按钮底色 color-hover；菜单收起后焦点回到“更多”按钮，按钮在获得焦点时保持可见（平时只能用透明度藏起，不能用让它无法获得焦点的隐藏方式）
   resize-handle:
     hit-area: 跨在侧栏右缘内外各 spacing-inline
     hover: 悬停或聚焦时显出一道 border-width-default 的 color-border-hover 竖线
