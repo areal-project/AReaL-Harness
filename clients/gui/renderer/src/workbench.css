@@ -338,7 +338,7 @@ kbd {
   margin: 0;
   font-size: var(--text-fixed-page-title);
   font-weight: 400;
-  line-height: 1.2;
+  line-height: var(--line-height-title);
   letter-spacing: var(--tracking-heading-tight, -0.02em);
   overflow-wrap: anywhere;
 }
@@ -1458,7 +1458,8 @@ button.composer-project:hover > svg,
   border: var(--border-width-default) solid var(--color-border);
   border-bottom: 0;
   border-radius: var(--radius-composer) var(--radius-composer) 0 0;
-  padding: 5px 9px 24px 5px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline)
+    calc(var(--composer-inset) + var(--spacing-inline) * 3 / 2) calc(var(--spacing-inline) / 2);
 }
 .composer-queue-rows {
   max-height: 220px;
@@ -1466,10 +1467,10 @@ button.composer-project:hover > svg,
   scrollbar-width: thin;
 }
 .composer-queue-row {
-  min-height: 35px;
+  min-height: calc(var(--spacing-control) + var(--spacing-inline));
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--spacing-inline);
   border-radius: var(--radius-compact-row);
 }
 .composer-queue-row:hover {
@@ -1481,7 +1482,7 @@ button.composer-project:hover > svg,
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
+  width: var(--icon-size-control);
   flex-shrink: 0;
 }
 .composer-queue-index {
@@ -1491,7 +1492,7 @@ button.composer-project:hover > svg,
 }
 .composer-queue-copy {
   font-size: var(--text-fixed-control);
-  line-height: 22px;
+  line-height: var(--line-height-ui);
   min-width: 0;
   flex: 1;
   white-space: nowrap;
@@ -1523,7 +1524,7 @@ button.composer-project:hover > svg,
 .composer-queue-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
   color: var(--color-foreground-subtle);
   opacity: 0;
 }
@@ -1540,13 +1541,13 @@ button.composer-project:hover > svg,
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
+  padding: calc((var(--spacing-control) - var(--icon-size-control)) / 2);
   border-radius: var(--radius-control);
-  height: 29px;
+  height: var(--spacing-control);
 }
 .composer-queue-actions .composer-queue-steer {
-  gap: 4px;
-  padding-inline: 7px;
+  gap: calc(var(--spacing-inline) / 2);
+  padding-inline: var(--spacing-inline);
   font-size: var(--text-ui-sm);
 }
 .composer-queue-actions button:hover {
@@ -1849,7 +1850,7 @@ button[aria-label="停止"] {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  padding: 0 0 0 8px;
+  padding: 0 0 0 var(--spacing-inline);
   border-radius: var(--radius-micro);
 }
 .turn-marker {
@@ -1870,9 +1871,9 @@ button[aria-label="停止"] {
 .turn-navigation button[aria-current]::before {
   content: "";
   position: absolute;
-  inset-inline-start: 3px;
-  width: 2px;
-  height: 2px;
+  inset-inline-start: calc((var(--spacing-inline) - var(--turn-marker-thickness)) / 2);
+  width: var(--turn-marker-thickness);
+  height: var(--turn-marker-thickness);
   border-radius: 50%;
   background: var(--color-foreground);
 }
@@ -2403,8 +2404,8 @@ button[aria-label="停止"] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 2px;
-  margin: 6px 0 0 -4px;
+  gap: calc(var(--spacing-inline) / 4);
+  margin: calc(var(--spacing-inline) * 3 / 4) 0 0 calc(var(--spacing-inline) / -2);
 }
 .message-actions > button {
   width: var(--spacing-control);

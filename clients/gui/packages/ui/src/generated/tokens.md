@@ -51,6 +51,8 @@
 | `--line-height-ui-sm` | `max(18px, calc(var(--ui-font-size) + 4px))` | 紧凑说明行高 |
 | `--tracking-wf-label` | `0.09em` | 工作流图大写等宽微标签字距 |
 | `--line-height-code-example` | `22px` | 主题 Diff 缩略图代码行高，保留原固定 22px。 |
+| `--tracking-conversation` | `0.025em` | Agent 正文与过程文字的字距；用户气泡、状态行、过程标题与输入框不用 |
+| `--line-height-title` | `1.2` | 首页迎宾标题等大标题的行高倍数 |
 | `--tracking-heading-tight` | `-0.02em` | 首页迎宾大标题与页面主标题的紧凑负字距 |
 
 ## 间距与尺寸
@@ -196,6 +198,7 @@
 | `--home-composer-top` | `max(0px, calc(38svh - var(--height-toolbar, 46px)))` | 首页草稿视图（Draft View）迎宾区与 Composer 的黄金视觉重心顶部偏移 |
 | `--thread-summary-max-height` | `calc(100svh - var(--height-toolbar, 46px) - 24px)` | 顶栏任务资源与上下文摘要弹窗（Pin Summary）的最大可用高度 |
 | `--thread-sticky-header-top` | `0px` | 对话时间线内展开态回合过程摘要头（TurnProgress）的滚动吸顶偏移 |
+| `--font-weight-toolbar` | `430` | 输入框工具栏入口文字（模型、强度）的字重 |
 
 ## 派生参数与来源
 

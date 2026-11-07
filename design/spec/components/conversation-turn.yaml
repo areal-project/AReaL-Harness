@@ -4,6 +4,10 @@ status: draft
 purpose: 一个回合 = 用户一条消息 + Agent 的过程 + 最终回答（或暂停/失败的末尾一行）。读者先看结论，过程按需展开。
 why: 正文与过程同一字号、同一行高、同一块间距，层级只靠颜色深浅与位置，不靠字号和底色，读起来是一条连续的文字流。
 
+typography:
+  agent-text: 过程文字与最终回答（含行内代码）加字距 tracking-conversation
+  plain-text: 用户气泡、过程标题、状态行、暂停分隔线、操作行不加字距
+
 layout:
   column: 内容在阅读列内水平居中，列宽不超过 reading-width，左右留白 spacing-field，上下留白 message-reading-inset
   rhythm: 回合内相邻块（段落、过程行、状态行）之间只有一个 conversation-gap，不叠加
@@ -47,10 +51,11 @@ parts:
       color: status-settled，悬停时 foreground
       icon: disclosure-chevron，收起时朝右，展开时朝下
       padding: 上下各为 spacing-inline 的一半
+      chevron-gap: 文字与箭头之间 spacing-inline
       material: flat（吸顶时同样不加模糊，底色为 color-background）
-      divider: 标题下方一条 border-width-default 的 color-border-subtle 线，与标题相隔 spacing-inline 的一半
+      divider: 标题文字下方隔 spacing-inline 的一半画一条 border-width-default 的 color-border-subtle 线；线属于标题块，线下面还有标题块自己的下内边距（spacing-inline 的一半）
     body:
-      gap-from-heading: 两倍 conversation-gap（标题块下沿到第一条过程文字）
+      gap-from-heading: 标题块下沿（即线下方那段内边距的底边）到下一块（第一条过程文字，或收起时的最终回答）一个 conversation-gap
       item-text: 过程文字与正文同字号，颜色 foreground
       default: 已完成的回合默认收起；运行中与暂停后默认展开
   final-answer:
@@ -66,10 +71,11 @@ parts:
       padding: 左右为 spacing-inline 的四分之三，上下为 spacing-inline 的四分之一
   action-row:
     gap-from-content: spacing-inline 的四分之三
+    offset: 整行向左外伸 spacing-inline 的一半，超出阅读列左缘
     gap: spacing-inline 的四分之一
     button:
       size: spacing-control（正方形）
-      icon: icon-size-control，居中
+      icon: 图标按文件自带宽高（复制、编辑比 icon-size-control 小），在按钮内居中
       radius: radius-control
       color: foreground 一半不透明度；悬停时 foreground
     usage: 用量入口是文字按钮，text-ui-sm，等宽数字；没有可信数据时不显示，不写占位破折号
@@ -93,8 +99,10 @@ parts:
       thickness: turn-marker-thickness
       radius: radius-turn-marker
       color: foreground-subtle；当前回合为 foreground 且不透明
+      inset: 标记距左缘 spacing-inline
+      current-dot: 当前回合的标记左侧另有一个 turn-marker-thickness 见方的圆点，圆心距左缘 spacing-inline 的一半，颜色 foreground
     column:
-      position: 页面左缘、垂直居中，过高时在内部滚动且不显示滚动条
+      position: 贴信息流区域（输入框与队列以上）左缘、在该区域内垂直居中，过高时在内部滚动且不显示滚动条
       opacity: 平时 opacity-resting，鼠标进入对话区时加深，悬停或聚焦本列时完全不透明；触屏设备上始终不透明
 
 states:

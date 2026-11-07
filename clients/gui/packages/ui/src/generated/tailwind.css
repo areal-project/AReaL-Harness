@@ -79,6 +79,7 @@
   --radius-3xl: calc(20px * var(--corner-radius-scale));
   --radius-4xl: calc(24px * var(--corner-radius-scale));
   --height-toolbar: 46px;
+  --tracking-conversation: 0.025em;
   --tracking-heading-tight: -0.02em;
 }
 @theme {

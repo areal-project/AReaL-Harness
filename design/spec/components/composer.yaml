@@ -35,7 +35,7 @@ variants:
 states:
   - empty: 占位文字说明输入目标；主按钮不可用并说明原因
   - draft: 有文字或附件；主按钮为“发送”
-  - focused: 阴影外再加一圈 border-width-default 粗的 color-border-hover，最外一圈三倍粗的 color-focus-ring-soft；有草稿时编辑区自动获得焦点
+  - focused: 在阴影之上从外框边缘向外画两圈：一圈 border-width-default 宽的 color-border-hover，压在一圈三倍 border-width-default 宽的 color-focus-ring-soft 之上（两圈都从边缘起算，所以柔光只露出外侧两倍宽）；有草稿时编辑区自动获得焦点
   - dragover: 拖入文件时整体出现放置提示
   - sending: 提交中；保留草稿直到确认受理
   - running: 草稿为空时主按钮为“停止”（普通对话为“暂停执行”）；有草稿时主按钮为“发送”，提交进入队列
@@ -51,23 +51,29 @@ tokens:
     thread: radius-composer
     inline: radius-composer
     compact: radius-composer-large；容器变窄时 radius-composer
-  inset: composer-inset（编辑区左右与顶部、工具栏左右）
+  inset: composer-inset（编辑区左右与顶部、工具栏左右）；工具栏下方 spacing-inline
   toolbar-gap: spacing-inline
   toolbar-height: spacing-control
-  icon: icon-size-control
+  icon: 图标按文件自带宽高；添加 icon-size-control，权限图标、菜单箭头与发送、停止见各自文件
   disabled: opacity-disabled
   text: text-conversation
   line: conversation-line
   focus: color-focus-ring-soft
-  editor-min: 最少两行高（两倍 conversation-line），再往上 composer-inset
-  toolbar-label: text-ui-caption；模型名 foreground，权限名 foreground-subtle
+  editor-min: 编辑区最少两行正文高（两倍 text-conversation 乘 conversation-line），这个高度已含下方 spacing-inline 的留白；首页与对话相同
+  toolbar-label: text-ui-caption，字重 font-weight-toolbar；模型名 foreground，权限名 foreground-subtle
+  toolbar-item: 权限、模型、强度入口：左右 spacing-inline，图标与文字间隔 spacing-inline 的一半，圆角 radius-navigation；模型与强度上下 spacing-inline 的一半、最小高 spacing-control，两者之间 spacing-inline 的四分之一；权限入口高 spacing-control-sm，在工具栏内垂直居中
+  tracking: 输入框文字不加字距（tracking-conversation 只给 Agent 正文）
+  context-meter: spacing-control 见方的按钮，居中放 context-ring 图标，颜色 foreground-subtle；悬停时 foreground，底色 color-muted
   primary-action-shape: spacing-control 见方的圆（radius-pill）；发送图标比 icon-size-control 大 spacing-inline 的一半，停止图标为 icon-size-control
-  primary-disabled: 保留按钮默认底色，整体 opacity-disabled
+  primary-disabled: 底色 color-secondary，图标 foreground-subtlest，再整体 opacity-disabled；只有可用时才用 color-composer-action
   running: 运行中权限、模型、强度三个入口不可用，按 opacity-disabled 显示
   primary-action: color-composer-action
 
 queue:
   card: 位于输入框正上方，左右各缩进 composer-inset；底边藏进输入框，重叠 composer-inset 加 spacing-inline
+  card-padding: 上与左 spacing-inline 的一半，右 spacing-inline，下为 composer-inset 加一倍半 spacing-inline（重叠部分加露出的 spacing-inline 的一半）
+  row-geometry: 行最小高 spacing-control 加 spacing-inline，内容垂直居中；序号列宽 icon-size-control，序号居中；序号、正文、操作之间 spacing-inline
+  action-button: 高 spacing-control，内边距为 spacing-control 减 icon-size-control 的一半，圆角 radius-control，按钮之间 spacing-inline 的四分之一；立即发送带文字（text-ui-sm，左右 spacing-inline，图标与文字间 spacing-inline 的一半），删除与更多只有图标
   surface: color-composer-catalog，边框 border-width-default 的 color-border，无下边框，上方两角 radius-composer
   row: 左侧序号（text-ui-xs，foreground-subtlest，等宽数字），悬停时序号换成拖动把手；正文 text-fixed-control 单行省略；行悬停底色 color-hover，圆角 radius-compact-row
   actions: 立即发送、删除、更多操作只在悬停或聚焦这一行时出现；触屏设备常显

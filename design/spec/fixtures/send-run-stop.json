@@ -1,5 +1,5 @@
 {
-  "$comment": "输入框试点的示例数据。界面不连后台，按 screen 与 state 渲染；agent 段描述示例后台对操作的回应。暗色主题由根元素上的 dark 类选择；标准截图在装有 Inter、Liberation Mono 与 Noto Sans CJK 的环境下生成。",
+  "$comment": "输入框试点的示例数据。界面不连后台，按 screen 与 state 渲染；agent 段描述示例后台对操作的回应。暗色主题由根元素上的 dark 类选择；标准截图的生成环境里 system-ui 解析为 Inter，中文回退到 WenQuanYi Zen Hei，等宽为 Liberation Mono；换环境要重新生成基线。",
   "project": {
     "name": "示例项目",
     "model": "示例模型",
