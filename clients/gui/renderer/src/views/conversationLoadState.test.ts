@@ -9,11 +9,7 @@ test.each([
   ["start attempt ended but project still not running", undefined, { pending: false }, "failed"],
 ] as const)("%s", (_, connected, currentRestoration, kind) => {
   expect(
-    conversationLoadState(
-      { state: { connected } },
-      { ...idle, currentRestoration },
-      false,
-    ).kind,
+    conversationLoadState({ state: { connected } }, { ...idle, currentRestoration }, false).kind,
   ).toBe(kind);
 });
 

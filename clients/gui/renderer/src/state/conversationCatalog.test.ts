@@ -1,11 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import { conversationCatalog } from "./conversationCatalog.js";
 
-const summaries = [
-  { id: "named", preview: "读一下 README" },
-  { id: "blank" },
-  { id: "titled" },
-];
+const summaries = [{ id: "named", preview: "读一下 README" }, { id: "blank" }, { id: "titled" }];
 // Host 对未启动项目给出缓存摘要，同一份也写进资料库的导航缓存。
 const library = {
   threads: { "p:titled": { title: "周报" } },

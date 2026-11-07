@@ -126,14 +126,19 @@ function ConversationContent() {
         >
           {thread && project ? (
             <ActiveConversation />
-          ) : threadId || (project && (restorationFailed || viewRefreshing || loadState.kind !== "reading")) ? (
+          ) : threadId ||
+            (project && (restorationFailed || viewRefreshing || loadState.kind !== "reading")) ? (
             <div
               className="conversation-loading"
               role="status"
               aria-busy={loadState.kind !== "failed"}
             >
               <div className="settings-empty conversation-loading-body">
-                <p>{loadState.kind === "failed" && loadState.detail ? loadState.detail : t(loadState.message)}</p>
+                <p>
+                  {loadState.kind === "failed" && loadState.detail
+                    ? loadState.detail
+                    : t(loadState.message)}
+                </p>
                 {loadState.kind === "failed" && (
                   <Button
                     variant="outline"

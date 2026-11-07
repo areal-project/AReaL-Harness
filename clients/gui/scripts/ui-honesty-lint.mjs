@@ -25,14 +25,16 @@ export const INTERNAL_TERMS = [
   "观察",
   "核对",
 ];
-const DIAGNOSTIC_KEYS = /^(?:settings\.diagnostics\.|bugReport\.|settings\.pluginCenter\.(?:snapshotScope|doctor|pluginDoctor|readDoctorReport))/;
+const DIAGNOSTIC_KEYS =
+  /^(?:settings\.diagnostics\.|bugReport\.|settings\.pluginCenter\.(?:snapshotScope|doctor|pluginDoctor|readDoctorReport))/;
 // 用显示文字当编号：改名、改语言或改形态时会出现同一个东西两个编号。
 const ID_CALLS =
   /\b(?:showPanel|selectPanel|onPanel|setPanel|retainSelectedTab|setSettingsTab|exposePanel)\(\s*["'`]([^"'`]*\p{Script=Han}[^"'`]*)["'`]/gu;
 const ID_COMPARE = /[!=]==\s*["']([^"']*\p{Script=Han}[^"']*)["']/gu;
 const LOCALE_DATE = /\.(?:toLocaleString|toLocaleDateString|toLocaleTimeString)\(\)/g;
 // 视图只读呈现器给出的用户状态，不直接读 Host/Core 的连接与加载字段。
-const INTERNAL_STATE = /\b(?:hostState|summariesLoaded|summariesFreshness)\b|\bstate\??\.connected\b/g;
+const INTERNAL_STATE =
+  /\b(?:hostState|summariesLoaded|summariesFreshness)\b|\bstate\??\.connected\b/g;
 const TEXT_ASSERTION = /getByText\(\s*["'`]([^"'`]*\p{Script=Han}[^"'`]*)["'`]/gu;
 
 function fingerprint(seen, file, kind, snippet) {
@@ -115,8 +117,10 @@ export async function collectUiHonesty() {
     text
       .split(/[\d.,]+|[A-Za-z][\w.-]*/)
       .filter((part) => han.test(part))
-      .every((part) => shipped.includes(part.trim()) || fragments.some((f) => f.includes(part.trim())));
-  for (const path of await files(resolve(root, "scripts"), (p) => /smoke\.mjs$/.test(p))) {
+      .every(
+        (part) => shipped.includes(part.trim()) || fragments.some((f) => f.includes(part.trim())),
+      );
+  for (const path of await files(resolve(root, "scripts"), (p) => p.endsWith("smoke.mjs"))) {
     const file = relative(root, path);
     const source = await readFile(path, "utf8");
     for (const [, text] of source.matchAll(TEXT_ASSERTION))
@@ -162,6 +166,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         findings.filter((f) => f.kind === kind).length,
       ]),
     );
-    console.log(JSON.stringify({ findings: findings.length, resolved: previous.length - findings.length, counts }));
+    console.log(
+      JSON.stringify({
+        findings: findings.length,
+        resolved: previous.length - findings.length,
+        counts,
+      }),
+    );
   }
 }

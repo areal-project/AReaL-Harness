@@ -22,7 +22,9 @@ export function conversationLoadState(
     failure: startup.restorationError,
     failed: startup.restorationFailed,
     attemptSettled:
-      !!startup.currentRestoration && !startup.currentRestoration.pending && !startup.viewRefreshing,
+      !!startup.currentRestoration &&
+      !startup.currentRestoration.pending &&
+      !startup.viewRefreshing,
     settings,
   };
   if (input.failed)
