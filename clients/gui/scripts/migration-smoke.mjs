@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { stripVTControlCharacters } from "node:util";
 import { connect as connectCore } from "../../../examples/desktop-api/client.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
@@ -609,6 +610,25 @@ try {
         .map((chunk) => Buffer.from(chunk.dataBase64, "base64").toString())
         .join("");
     };
+    await page.waitForFunction(
+      (id) =>
+        [...document.querySelectorAll(".terminal-pane [data-terminal-id]")].some(
+          (element) => element.getAttribute("data-terminal-id") === id,
+        ),
+      first.id,
+    );
+    await waitForSnapshot(async () => {
+      const text = stripVTControlCharacters(await output(first.id));
+      return /(?:^|[\r\n])[^\r\n]*[#$%>]\s*$/.test(text);
+    }, "original terminal shell prompt ready");
+    await writeFile(
+      join(scratch, "terminal-first-ready.json"),
+      JSON.stringify(
+        { terminalId: first.id, processId: first.processId, promptReady: true },
+        null,
+        2,
+      ),
+    );
     const size = async (marker) => {
       await terminal.focus();
       await terminal.pressSequentially(`printf '${marker}\\n'; stty size`);
