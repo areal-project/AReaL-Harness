@@ -480,6 +480,28 @@ pub struct TraceActivity {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ProcessReceiptState {
+    Exited,
+    Unknown,
+}
+
+/// Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessReceipt {
+    pub process_id: String,
+    pub runtime_process_id: String,
+    pub scope_id: String,
+    pub state: ProcessReceiptState,
+    pub exit_code: Option<i32>,
+    pub signal: Option<String>,
+    pub stop_reason: Option<String>,
+    pub cleanup_confirmed: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Turn {
     #[serde(default)]
@@ -497,6 +519,9 @@ pub struct Turn {
     /// 单调时钟测得的执行经过毫秒，包含模型、工具、审批与清理等待。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+    /// 补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub process_receipts: Vec<ProcessReceipt>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub goal: Option<goals::GoalTurn>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

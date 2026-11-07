@@ -1858,6 +1858,7 @@ impl Engine {
         let mut candidate = thread.clone();
         let configuration = self.freeze_configuration(desktop(thread).configuration);
         let turn = Turn {
+            process_receipts: Vec::new(),
             trace: Default::default(),
             interruption: None,
             continued_from_turn_id: None,

@@ -8,6 +8,28 @@ Core implements a subset of pinned Codex app-server 0.145.0 plus AReaL extension
 
 Optional `Turn.interruption` records `userPause` or `coreRecovery`. Missing facts in older records remain unknown. Optional `continuedFromTurnId` identifies a new Turn created by explicit continuation. It does not restore a model call or process. Pause still settles the original Turn and preserves UNKNOWN and failure classifications. Opening a conversation, reconnecting, or restarting never continues ordinary work automatically. See the [desktop submission contract](desktop.en.md#submissions).
 
+## Command settlement receipts
+
+At Turn completion, after closing the Turn scope and before the original Runtime exits, Core
+queries the original native handles whose last tool observation did not contain a terminal result.
+It persists an optional `processReceipts` array in the original Turn, returned by `turn/completed`
+and existing history reads. Each receipt contains the model-facing `processId`, original
+`runtimeProcessId`, `scopeId`, `state` (`exited` or `unknown`), `exitCode`, `signal`, `stopReason`,
+`cleanupConfirmed`, and `error`. Already settled tool results are not queried again, and original
+tool output is unchanged.
+
+An `exited` receipt requires either an exit code or a POSIX signal, plus confirmed cleanup.
+Failed queries, mismatched identities, and missing terminal outcomes produce `unknown` and fail
+the Turn. Signal and nonzero exits remain command failures; they do not automatically fail the
+entire task. Receipts establish neither complete output collection nor successful verification.
+Existing model, budget or cleanup errors retain their original classification and message;
+additional unknown process outcomes remain in the receipts. Ordinary cancellation stays
+interrupted only when process outcomes are confirmed; unknown outcomes make it fail.
+Older history defaults to an empty array, which does not imply command success. Recovery reads
+the original receipts without restoring expired handles or replaying commands.
+
+JSON remains backward compatible; Rust `Turn` literals must initialize `process_receipts`.
+
 ## Next prompt prediction
 
 `areal/thread/prediction {threadId,sourceTurnId,operation:"request"|"cancel"}` is a mutation driven by explicit desktop demand. Core accepts only the latest successfully settled user turn in an ordinary main or Side conversation. Active turns, goals, tasks, delegated children, archived threads and unresolved outcomes do not generate predictions. Completion only retains the actual model instance from that turn; background CLI and hidden conversations never trigger inference automatically. Core does not reconstruct the model or regenerate a prediction after restarting.
