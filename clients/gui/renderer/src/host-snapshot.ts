@@ -533,6 +533,13 @@ export function createHostSnapshotProjector(
           summariesLoaded: owners.every((owner) => owner.summariesLoaded),
           state: {
             ...logical.state,
+            ...(owners.some((owner) => owner.state.tasks)
+              ? {
+                  tasks: Object.fromEntries(
+                    owners.flatMap((owner) => Object.entries(owner.state.tasks ?? {})),
+                  ),
+                }
+              : {}),
             threads: Object.fromEntries(
               owners.flatMap((owner) => Object.entries(owner.state.threads)),
             ),

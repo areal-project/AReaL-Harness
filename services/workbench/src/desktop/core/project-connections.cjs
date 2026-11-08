@@ -219,7 +219,7 @@ class ProjectConnections {
       project.client?.ready
     )
       return;
-    const delay = Math.min(500 * 2 ** Math.min(project.reconnectAttempt ?? 0, 6), 30000);
+    const delay = project.reconnectAttempt ? Math.min(500 * 2 ** Math.min(project.reconnectAttempt, 6), 30000) : 0;
     project.reconnectTimer = setTimeout(() => {
       project.reconnectTimer = null;
       if (

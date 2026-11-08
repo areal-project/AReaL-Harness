@@ -130,6 +130,7 @@ const DESKTOP_ONLY_SETTINGS = new Set(["电脑控制"]);
 export function hostDesktopCommand(
   client: HostClient,
   source: () => string | undefined,
+  onSnapshot?: (snapshot: Record<string, unknown>) => void,
 ): PlatformServices["command"] {
   return async (name, params) => {
     if (!DESKTOP_COMMANDS.has(name) || !client.writable("desktop.command"))
@@ -142,6 +143,14 @@ export function hostDesktopCommand(
         command: name,
         request: params as Parameters<HostClient["workbench"]>[1],
       });
+      if (
+        value &&
+        typeof value === "object" &&
+        "projects" in value &&
+        Array.isArray((value as { projects?: unknown }).projects)
+      ) {
+        onSnapshot?.(value as Record<string, unknown>);
+      }
       return { ok: true, value };
     } catch (error) {
       const message =

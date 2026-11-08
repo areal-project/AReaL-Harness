@@ -17,6 +17,7 @@ import { useI18n, type MessageId, type Translate } from "./i18n/IntlProvider.js"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "./components/ui/button.js";
+import { Spinner } from "./components/ui/spinner.js";
 import { Textarea } from "./components/ui/textarea.js";
 import {
   Select,
@@ -752,7 +753,8 @@ export function TaskCenter({
   const [channelError, setChannelError] = useState("");
   const [confirmedWatch, setConfirmedWatch] = useState<{
     owner: string;
-    generation: number;
+    generation: number | string;
+    task?: Data;
   } | null>(null);
   const listed: Data[] = [];
   let projectedHasMore = false;
@@ -792,9 +794,13 @@ export function TaskCenter({
   // The control receipt is the Core response for this pause or cancel. Keep it
   // visible until the following read returns, including when a newer snapshot
   // has already settled the same workers.
-  const watchedTask = projects.find((owner) => owner.id === listedTask?.projectId)?.state?.tasks?.[
-    listedTask?.id
-  ];
+  const watchedProject = projects.find((owner) => owner.id === listedTask?.projectId);
+  const watchedTask =
+    watchedProject?.state?.tasks?.[listedTask?.id] ??
+    (confirmedWatch?.owner === selected &&
+    confirmedWatch?.generation === (watchedProject?.core?.connectionGeneration ?? 0)
+      ? confirmedWatch?.task
+      : undefined);
   const task =
     controlView && taskKey(controlView) === selected
       ? controlView
@@ -814,7 +820,7 @@ export function TaskCenter({
     confirmedWatch?.generation === (project?.core?.connectionGeneration ?? 0);
   const detailsReady =
     !!task &&
-    !!project?.state?.tasks?.[task.id] &&
+    Boolean(project?.state?.tasks?.[task.id] || (watchConfirmed && confirmedWatch?.task)) &&
     watchConfirmed &&
     connected &&
     !!project?.state?.connected &&
@@ -1234,8 +1240,17 @@ export function TaskCenter({
       taskId: task.id,
       viewId,
     })
-      .then(() => {
-        if (live) setConfirmedWatch(confirmation);
+      .then((watched) => {
+        if (!live) return;
+        const watchedRecord =
+          watched && typeof watched === "object"
+            ? "task" in watched && watched.task && typeof watched.task === "object"
+              ? (watched.task as Data)
+              : "id" in watched
+                ? (watched as Data)
+                : task
+            : task;
+        setConfirmedWatch({ ...confirmation, task: watchedRecord });
       })
       .catch((cause) => {
         if (live) {
@@ -2166,13 +2181,15 @@ export function TaskCenter({
                 <h2>{scheduledTaskName(task)}</h2>
               </TitleTooltip>
             </header>
-            <p role="status" className="task-plan-note">
-              {t(
-                ownerFailed
-                  ? "operations.schedules.unconfirmedStatus"
-                  : "operations.schedules.updatingStatus",
-              )}
-            </p>
+            {ownerFailed ? (
+              <p role="status" className="task-plan-note">
+                {t("operations.schedules.unconfirmedStatus")}
+              </p>
+            ) : !error ? (
+              <div className="task-conversation-pending flex items-center justify-center">
+                <Spinner label={t("operations.schedules.updatingStatus")} className="size-5" />
+              </div>
+            ) : null}
             {error && (
               <p role="alert" className="task-plan-note">
                 {error}

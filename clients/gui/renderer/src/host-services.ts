@@ -765,7 +765,14 @@ export function createHostReadServices(
   return {
     ...(desktop ?? {
       chooseProject: () => chooseHostProject(client, librarySourceId),
-      command: hostDesktopCommand(client, () => librarySourceId),
+      command: hostDesktopCommand(
+        client,
+        () => librarySourceId,
+        (next) => {
+          snapshot = next as unknown as Snapshot;
+          publish();
+        },
+      ),
       theme: async () => ({
         dark: matchMedia("(prefers-color-scheme: dark)").matches,
         id: "system",
