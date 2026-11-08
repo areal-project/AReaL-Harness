@@ -12,7 +12,7 @@
 
 ## Cindy 的机制
 
-固定版本和规则链接见 [references](../../../clients/gui/design-system/references.md#cindy分开规则数值目录与视觉证据)。进一步核对了以下实际入口：
+固定版本和规则链接见 [references](reference-observations.md#cindy分开规则数值目录与视觉证据)。进一步核对了以下实际入口：
 
 | 机制 | 源码依据 | 作用与限制 |
 | --- | --- | --- |
@@ -75,14 +75,14 @@ pnpm --dir clients/gui verify:design
 
 参考 `morluto/rea@781d5751` 的 [Evidence](https://github.com/morluto/rea/blob/781d5751ad18b25a1fe1ffa8c6035388be8c3283/src/domain/evidence.ts)、[ResidualUnknown](https://github.com/morluto/rea/blob/781d5751ad18b25a1fe1ffa8c6035388be8c3283/src/domain/residualUnknown.ts) 和[场景比较](https://github.com/morluto/rea/blob/781d5751ad18b25a1fe1ffa8c6035388be8c3283/docs/browser-scenario-contract.md)：来源、观察/推断、局限和逐步比较需可追溯；缺失证据保持未知。这些是不同契约，不能称为一个现成的设计系统 JSON DSL。
 
-AReaL 在[设置迁移题](../../../clients/gui/design-system/exercises/settings-reflow.md)中复用现有 renderer runner，记录问题、步骤、截图有效性、测量、trace 与原始材料摘要；研究结论与视觉基线批准分开。未引入 REA 工具、通用问题账本或 Token 提取器；参考应用继续由已授权的 agent-browser CDP 会话观察。视觉判断仍需选定目标和人工审查。
+AReaL 在[设置迁移题](exercises/settings-reflow.md)中复用现有 renderer runner，记录问题、步骤、截图有效性、测量、trace 与原始材料摘要；研究结论与视觉基线批准分开。未引入 REA 工具、通用问题账本或 Token 提取器；参考应用继续由已授权的 agent-browser CDP 会话观察。视觉判断仍需选定目标和人工审查。
 
 
 ## 视频分析辅助核查的默认路线
 
 后续页面工作按[结构化流程](../../../clients/gui/design-system/structured-flow.md#执行顺序与每步完成条件)执行选定的B路线；准入与裁决只在[governance](../../../clients/gui/design-system/governance.md#差异筛选准入)维护。可复用入口为[分析提示词](../../../clients/gui/design-system/templates/video-analysis.prompt.md)、[候选输出schema](../../../clients/gui/design-system/templates/video-analysis.schema.json)和[本地核查记录模板](../../../clients/gui/design-system/templates/evidence-review.template.json)。它们是设计期材料，尚未接入`verify:design`作为视觉判断或强制模型调用；目录检查不能自动核实帧内容、拒绝误判或证明流程已执行。
 
-`Q-CONVERSATION-VIDEO-AB-07`采用相同任务/Base/三段录像比较独立生成与视频分析后集成。核查拒绝了对既有子面板、完成收敛、主动回看和人工工具展开的误判，确认图片缺少缩放控制，并沿共享附件所有者修复；实际验收和规则采纳见[复合题](../../../clients/gui/design-system/exercises/conversation-flow.md#视频分析辅助的双路线实验)。样本用于选择可审查的工作流程，不用于推导模型准确率、供应商排名或整体效率结论。
+`Q-CONVERSATION-VIDEO-AB-07`采用相同任务/Base/三段录像比较独立生成与视频分析后集成。核查拒绝了对既有子面板、完成收敛、主动回看和人工工具展开的误判，确认图片缺少缩放控制，并沿共享附件所有者修复；实际验收和规则采纳见[复合题](exercises/conversation-flow.md#视频分析辅助的双路线实验)。样本用于选择可审查的工作流程，不用于推导模型准确率、供应商排名或整体效率结论。
 
 视频观察器与页面实现者分工：前者提名视觉事件/差异，后者结合合同、原件和日志裁决并实现。工具可以复用本机已授权的Antigravity或其它可处理视频的接口；启动前确认当前能力与素材范围，保留实际模型、强度、输入读取方式和采样限制。页面实现/采集不因采用本流程而获得新的外发、登录、执行或发布权限。
 

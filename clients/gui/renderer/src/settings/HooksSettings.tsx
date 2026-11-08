@@ -168,9 +168,6 @@ export function HooksSettings({
   const disabled = busy || !connected || state.loading || !!state.error;
   return (
     <div className="settings-sections" aria-label={t("settings.hooksSettings.hookManagement")}>
-      <p className="settings-section-desc">
-        {t("settings.hooksSettings.runToolEventCommandsInOrderRestart")}
-      </p>
       <Feedback error={draft ? undefined : error || state.error} message={notice} />
       <SettingsSection
         title={t("settings.hooksSettings.toolHooks")}
@@ -255,23 +252,25 @@ export function HooksSettings({
           </Button>
         }
       >
-        <SettingsGroupCard>
-          {value?.projects.map((p) => (
-            <SettingsRow
-              key={p.projectId}
-              label={p.root.split(/[\\/]/).at(-1) || p.root}
-              control={
-                <span>
-                  {!connected || !p.connected
-                    ? t("settings.hooksSettings.loadOnNextStart")
-                    : p.applied
-                      ? t("settings.hooksSettings.currentConfigurationLoaded")
-                      : t("settings.hooksSettings.restartRequiredToApply")}
-                </span>
-              }
-            />
-          ))}
-        </SettingsGroupCard>
+        {value?.projects.length ? (
+          <SettingsGroupCard>
+            {value.projects.map((p) => (
+              <SettingsRow
+                key={p.projectId}
+                label={p.root.split(/[\\/]/).at(-1) || p.root}
+                control={
+                  <span>
+                    {!connected || !p.connected
+                      ? t("settings.hooksSettings.loadOnNextStart")
+                      : p.applied
+                        ? t("settings.hooksSettings.currentConfigurationLoaded")
+                        : t("settings.hooksSettings.restartRequiredToApply")}
+                  </span>
+                }
+              />
+            ))}
+          </SettingsGroupCard>
+        ) : null}
       </SettingsSection>
       <SettingsDisclosure title={t("settings.hooksSettings.configurationDetails")}>
         <p className="settings-section-desc break-all">

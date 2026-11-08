@@ -27,7 +27,7 @@
 
 `R-RECOVERY-010` 恢复任务时保留未发送草稿，并从权威快照重新附着原执行，不重放提交。对正在阅读历史的用户，当前仍可用的正文段落也是恢复对象。新输出保持在原任务中，只有显式返回最新后才恢复跟随。等待历史补齐不能覆盖用户之后的导航。
 
-同一主窗口的 Renderer 重载与崩溃后显式重载已有真实 GUI 证据，见 [E-RECOVERY](../../clients/gui/design-system/base-evidence.md#e-recovery)。阅读检查点的所有者、存储边界与排除范围见 [Messages 阅读合同](../../clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读)。完整应用重启、未加载历史与过程展开状态不在本次范围内。既有进程内外观切片证据不能替代此项验收。
+同一主窗口的 Renderer 重载与崩溃后显式重载已有真实 GUI 证据，见 [E-RECOVERY](../archive/gui/base-evidence.md#e-recovery)。阅读检查点的所有者、存储边界与排除范围见 [Messages 阅读合同](../../clients/gui/renderer/src/Messages.md#同窗口-renderer-恢复阅读)。完整应用重启、未加载历史与过程展开状态不在本次范围内。既有进程内外观切片证据不能替代此项验收。
 
 ## 统一短时反馈与待确认状态
 

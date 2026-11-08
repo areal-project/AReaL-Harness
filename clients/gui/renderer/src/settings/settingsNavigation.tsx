@@ -111,6 +111,18 @@ export const settingsNavigationGroups = [
   },
 ] as const satisfies readonly SettingsNavigationGroup[];
 
+const settingsSubtitles = {
+  浏览器: "settings.browser.subtitle",
+  钩子: "settings.hooksSettings.runToolEventCommandsInOrderRestart",
+} as const;
+
+/** 页面说明放在标题下面，和标题算一组，不和第一个分区挤在一起。 */
+export function settingsSubtitle(name: string, t: ReturnType<typeof useI18n>["t"]) {
+  return name in settingsSubtitles
+    ? t(settingsSubtitles[name as keyof typeof settingsSubtitles])
+    : undefined;
+}
+
 export function settingsLabel(name: string, t: ReturnType<typeof useI18n>["t"]) {
   if (legacyServiceSettingsIds.includes(name)) return t("settings.service.title");
   const item = settingsNavigationGroups

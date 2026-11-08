@@ -2,7 +2,13 @@ import { browserAnnotationTitle } from "../browserAnnotations.js";
 import { imageAnnotationTitle } from "../imageAnnotations.js";
 import type { Data } from "../services.js";
 
-export function conversationCatalog(projects: Data[], library: Data) {
+// 侧栏只列用户能认出的对话：没有标题、没有用户消息的空对话（创建后没发出第一条）不进列表，
+// 当前打开的除外。判断只用摘要本身，项目未启动时与启动后结果一致。
+export function conversationCatalog(
+  projects: Data[],
+  library: Data,
+  open?: { projectId: string; threadId: string },
+) {
   const title = (owner: Data, summary: Data) =>
     library.threads?.[`${owner.id}:${summary.id}`]?.title ||
     owner.state?.threads[summary.id]?.name ||
@@ -36,7 +42,7 @@ export function conversationCatalog(projects: Data[], library: Data) {
       owner.summariesLoaded === false
         ? Array.isArray(cached)
           ? cached
-          : knownIds.map((key) => ({ id: key.slice(owner.id.length + 1), preview: "未加载的任务" }))
+          : knownIds.map((key) => ({ id: key.slice(owner.id.length + 1) }))
         : (owner.summaries ?? []);
     const map = new Map<string, Data>(navigation.map((s: Data) => [s.id, s]));
     for (const t of Object.values(owner.state?.threads ?? {}) as Data[])
@@ -44,7 +50,15 @@ export function conversationCatalog(projects: Data[], library: Data) {
     return [...map.values()]
       .filter((summary) => {
         const live = owner.state?.threads[summary.id];
+        const opened = open?.projectId === owner.id && open?.threadId === summary.id;
+        const blank =
+          !library.threads?.[`${owner.id}:${summary.id}`]?.title &&
+          !summary.name &&
+          !summary.preview &&
+          !live?.name &&
+          !live?.turns?.some((turn: Data) => turn.items?.length || turn.status === "inProgress");
         return (
+          (opened || !blank) &&
           !scheduledThreads.has(summary.id) &&
           !(
             owner.configurations?.[summary.id]?.options?.appendInstructions ??
@@ -74,7 +88,8 @@ export function conversationCatalog(projects: Data[], library: Data) {
           archived: t?.desktop?.archived || summary.desktop?.archived,
           pinned: !!library.threads?.[`${owner.id}:${summary.id}`]?.pinned,
           unread: !!library.threads?.[`${owner.id}:${summary.id}`]?.unread,
-          statePending: owner.summariesLoaded === false || owner.state?.connected === false,
+          // 未启动的项目没有在跑的东西，不画"加载中"；只有已连接但摘要还没到时才算待定。
+          statePending: owner.state?.connected === true && owner.summariesLoaded === false,
           running: owner.state?.connected && t?.turns?.some((t: Data) => t.status === "inProgress"),
           attention:
             owner.state?.connected &&

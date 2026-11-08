@@ -758,7 +758,7 @@ async function openLegacyFixture() {
     boundary:
       "Supported bridge setup creates an existing legacy task; subsequent editing and history use the real TaskCenter UI. This does not prove the removed new-task TaskDraft UI.",
   });
-  await page.getByRole("button", { name: `打开自动化 ${seed.objective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${seed.objective}`, exact: true }).click();
   await page.getByRole("main", { name: "定时任务会话", exact: true }).waitFor();
   const chat = page.getByTestId("chat-input");
   await chat.waitFor();
@@ -813,7 +813,7 @@ async function checkLegacyTargetRegression() {
   assert.ok(Array.isArray(skills.data), "Skills remain readable after opening legacy history");
   await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
   await page
-    .getByRole("button", { name: `打开自动化 ${creation.seed.objective}`, exact: true })
+    .getByRole("button", { name: `打开定时任务 ${creation.seed.objective}`, exact: true })
     .click();
   await until(() => page.getByTestId("chat-input").isEditable(), "legacy history stays responsive");
   checks.push(
@@ -831,7 +831,7 @@ async function checkLegacyTargetRegression() {
     }
     await page.getByRole("button", { name: "定时任务", exact: true }).click();
     await page
-      .getByRole("button", { name: `打开自动化 ${creation.seed.objective}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 ${creation.seed.objective}`, exact: true })
       .click();
     await until(
       () => page.getByTestId("chat-input").isEditable(),
@@ -1365,7 +1365,7 @@ async function checkCalendarRegression() {
     return t.lastTriggerDecision?.outcome.kind === "missedWindow" && t;
   }, "Core missed once decision");
   assert.equal(missedState.runs.length, 0);
-  await page.getByRole("button", { name: "打开自动化 日历错过验收 HOLD", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 日历错过验收 HOLD", exact: true }).click();
   await page.getByText("已超过允许的延迟，跳过 1 次计划执行。", { exact: true }).first().waitFor();
   await page.screenshot({ path: join(scratch, "calendar-missed-once.png") });
   if (!(await page.getByLabel("任务资源面板", { exact: true }).isVisible()))
@@ -1383,7 +1383,10 @@ async function checkCalendarRegression() {
   assert.deepEqual(manualAfterMissed.lastTriggerDecision, missedState.lastTriggerDecision);
   assert.equal(manualAfterMissed.nextRunAt, null);
   await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
-  const activeRow = page.getByRole("button", { name: "打开自动化 日历错过验收 HOLD", exact: true });
+  const activeRow = page.getByRole("button", {
+    name: "打开定时任务 日历错过验收 HOLD",
+    exact: true,
+  });
   await until(
     async () => (await activeRow.isVisible()) && (await activeRow.innerText()).includes("运行中"),
     "manual run after a missed once displays its active status",
@@ -1468,10 +1471,10 @@ async function checkCalendarRegression() {
     withheldReceipts.every((entry) => entry.requestId === unknown.params.requestId),
     "receipt fault is limited to the exact original calendar request",
   );
-  await page.getByRole("button", { name: "打开自动化 日历重试验收", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await page.screenshot({ path: join(scratch, "calendar-unknown.png") });
   await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
-  await page.getByRole("button", { name: "打开自动化 日历重试验收", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await until(
     async () =>
       !!(await snapshot()).projects
@@ -1707,7 +1710,9 @@ async function checkCreationRegression() {
     "newer ordinary preference admitted",
   );
   await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${created.objective}`, exact: true }).click();
+  await page
+    .getByRole("button", { name: `打开定时任务 ${created.objective}`, exact: true })
+    .click();
   await chat.waitFor();
   const reopened = await call("manage", {
     projectId: pid,
@@ -1906,16 +1911,16 @@ async function checkLoadingRegression() {
   await until(() => traced("project pending"), "global catalog waits on unrelated project");
   const startupPendingAt = Date.now();
   await page
-    .getByRole("button", { name: "打开自动化 READY_TASK_FIRST", exact: true })
+    .getByRole("button", { name: "打开定时任务 READY_TASK_FIRST", exact: true })
     .waitFor({ timeout: 4000 });
   for (let index = 0; index < 3; index++)
     await page
-      .getByRole("button", { name: `打开自动化 READY_TASK_OWNER_${index}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 READY_TASK_OWNER_${index}`, exact: true })
       .waitFor({ timeout: 4000 });
   await page.getByText("其余任务仍在读取…", { exact: true }).waitFor();
   assert.equal(await page.getByText("没有符合筛选条件的定时任务。", { exact: true }).count(), 0);
   assert.equal(await page.getByText("正在读取任务…", { exact: true }).count(), 0);
-  await page.getByRole("button", { name: "打开自动化 READY_TASK_FIRST", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 READY_TASK_FIRST", exact: true }).click();
   await until(() => traced("watch pending " + first.id), "first subscription receipt held");
   assert.equal(
     await page.getByTestId("chat-input").count(),
@@ -1927,7 +1932,7 @@ async function checkLoadingRegression() {
     0,
     "existing management loading has no environment banner",
   );
-  await page.getByRole("button", { name: "打开自动化 READY_TASK_SECOND", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 READY_TASK_SECOND", exact: true }).click();
   await until(() => traced("watch pending " + second.id), "second subscription receipt held");
   await rm(watchGates[0]);
   await until(
@@ -1995,13 +2000,17 @@ async function checkLoadingRegression() {
     "ready task opens and sends through Composer before unrelated catalog returns; pending and stale subscription receipts do not enable management",
   );
   assert.equal(
-    await page.getByRole("button", { name: "打开自动化 DELAYED_OWNER_TASK", exact: true }).count(),
+    await page
+      .getByRole("button", { name: "打开定时任务 DELAYED_OWNER_TASK", exact: true })
+      .count(),
     0,
   );
   await rm(loadingGate);
   const obsoleteRetry = page.getByRole("button", { name: "重试读取 slow-workspace", exact: true });
   if (await obsoleteRetry.count()) await obsoleteRetry.click();
-  await page.getByRole("button", { name: "打开自动化 DELAYED_OWNER_TASK", exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "打开定时任务 DELAYED_OWNER_TASK", exact: true })
+    .waitFor();
   await until(
     async () => (await page.getByText("其余任务仍在读取…", { exact: true }).count()) === 0,
     "catalog completes after startup readiness releases",
@@ -2121,7 +2130,9 @@ async function checkLoadingRegression() {
   await until(() => traced("catalog page fixture-second"), "second page RPC held");
   await page.getByRole("alert").filter({ hasText: "任务目录读取超时" }).waitFor({ timeout: 10000 });
   assert.equal(
-    await page.getByRole("button", { name: "打开自动化 DELAYED_OWNER_TASK", exact: true }).count(),
+    await page
+      .getByRole("button", { name: "打开定时任务 DELAYED_OWNER_TASK", exact: true })
+      .count(),
     1,
     "RPC failure retains previous complete owner rows",
   );
@@ -2129,7 +2140,7 @@ async function checkLoadingRegression() {
   await page.getByRole("button", { name: "返回对话", exact: true }).click();
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   await page
-    .getByRole("button", { name: "打开自动化 READY_TASK_FIRST", exact: true })
+    .getByRole("button", { name: "打开定时任务 READY_TASK_FIRST", exact: true })
     .waitFor({ timeout: 4000 });
   await page.getByText("其余任务仍在读取…", { exact: true }).waitFor();
   const beforeRelease = await readFile(loadingTrace, "utf8");
@@ -2139,9 +2150,11 @@ async function checkLoadingRegression() {
     "reentering and retries share the held underlying page",
   );
   await rm(loadingRpcGate);
-  await page.getByRole("button", { name: "打开自动化 DELAYED_OWNER_TASK", exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "打开定时任务 DELAYED_OWNER_TASK", exact: true })
+    .waitFor();
   assert.equal(
-    await page.getByRole("button", { name: "打开自动化 LATE_CATALOG_TASK", exact: true }).count(),
+    await page.getByRole("button", { name: "打开定时任务 LATE_CATALOG_TASK", exact: true }).count(),
     0,
     "expired page cannot publish to new view",
   );
@@ -2596,12 +2609,12 @@ async function checkInlineRegression() {
   }
   await assertRestored("completed");
   await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${inlineObjective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${inlineObjective}`, exact: true }).click();
   await assertRestored("navigation");
   await app.close();
   await launch();
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${inlineObjective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${inlineObjective}`, exact: true }).click();
   await assertRestored("reopen");
 }
 async function closeOwnedApp(quitResponse = rust ? 0 : 1, expectHost = rust) {
@@ -2720,7 +2733,7 @@ async function checkManualRegression() {
     "current Run opens authoritative Thread",
   );
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${manualObjective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${manualObjective}`, exact: true }).click();
   const fixture = await until(() => [...manualRuns.values()][0], "manual fixture stream");
   fixture.release();
   const complete = await until(async () => {
@@ -2884,7 +2897,7 @@ async function checkManualRegression() {
     "recovery never replays runNow",
   );
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${manualObjective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${manualObjective}`, exact: true }).click();
   await showResources();
   await until(() => runNow().isEnabled(), "original receipt releases saved Task controls");
   checks.push(
@@ -3245,7 +3258,7 @@ try {
       });
       assert.equal(legacyHistory.threadId, legacyStart.threadId);
       await page
-        .getByRole("button", { name: `打开自动化 ${legacy.objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${legacy.objective}`, exact: true })
         .click();
       await chat.waitFor();
       await page.getByText("旧项目目录验收，明天执行。", { exact: true }).waitFor();
@@ -3269,7 +3282,7 @@ try {
         `areal-gui:task-edit:${workspacePid}:${legacy.id}`,
       );
       await page
-        .getByRole("button", { name: `打开自动化 ${legacy.objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${legacy.objective}`, exact: true })
         .click();
       await chat.waitFor();
       await page.getByText("旧项目目录验收，明天执行。", { exact: true }).waitFor();
@@ -3329,7 +3342,7 @@ try {
       for (const entry of [once, legacy, independent])
         assert.equal(
           await page
-            .getByRole("button", { name: `打开自动化 ${entry.objective}`, exact: true })
+            .getByRole("button", { name: `打开定时任务 ${entry.objective}`, exact: true })
             .count(),
           1,
         );
@@ -3499,7 +3512,10 @@ try {
       );
       await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
       await page
-        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
+        .getByRole("button", {
+          name: `打开定时任务 ${(await task(taskId)).objective}`,
+          exact: true,
+        })
         .click();
       await page.getByText("你希望什么时候执行？", { exact: true }).waitFor();
       await chat.waitFor();
@@ -3518,7 +3534,10 @@ try {
       resources = page.getByRole("button", { name: "任务资源", exact: true });
       await page.getByRole("button", { name: "定时任务", exact: true }).click();
       await page
-        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
+        .getByRole("button", {
+          name: `打开定时任务 ${(await task(taskId)).objective}`,
+          exact: true,
+        })
         .click();
       await chat.waitFor();
       await page.getByText("你希望什么时候执行？", { exact: true }).waitFor();
@@ -3566,7 +3585,10 @@ try {
       );
       await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
       await page
-        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
+        .getByRole("button", {
+          name: `打开定时任务 ${(await task(taskId)).objective}`,
+          exact: true,
+        })
         .click();
       await chat.waitFor();
       await until(

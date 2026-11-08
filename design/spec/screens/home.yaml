@@ -1,0 +1,39 @@
+id: home
+name: 首页（新对话草稿）
+status: draft
+purpose: 打开应用或新建对话时的起点，只做一件事：写下任务。
+why: 面向普通用户，首页只留标题和输入框，高级选项收在输入框的菜单里。
+
+regions:
+  # 本界面的规格入口只渲染主区与输入框，占满视口；A/B/C 见 window 界面，本界面的标准截图不含它们。
+  - id: A
+    name: 应用导航栏
+    contains: [rail]
+  - id: B
+    name: 侧栏
+    contains: [conversation-list]
+  - id: main
+    name: 主区
+    layout: 内容水平居中，宽度不超过 reading-width（含左右各 spacing-field 内边距）；主区顶部留 spacing-section；迎宾区高 home-composer-top，这个高度已含底部两倍 spacing-section 的留白，标题底边贴在留白上沿；输入框顶部因此距主区顶部 spacing-section 加 home-composer-top；标题水平居中，字重常规，行高 line-height-title
+    contains:
+      - heading: 迎宾标题“你想让我们在 {项目名} 中构建什么？”，无项目时“你想构建什么？”；字号 text-fixed-page-title，字距 tracking-heading-tight
+      - composer:
+          variant: home
+          state: empty
+
+narrow: 侧栏收起；输入框占满主区宽度，保留左右页边距
+
+fixtures: [send-run-stop]
+
+states:
+  - empty: 输入框为空
+  - draft: 输入框有文字
+  - tooltip: 同 draft，鼠标停在“发送”上，上方出现提示“发送”和快捷键 Enter（见 tooltip）
+
+references:
+  - state: empty
+    themes: [light, dark]
+  - state: draft
+    themes: [light, dark]
+  - state: tooltip
+    themes: [light, dark]

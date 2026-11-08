@@ -1,6 +1,6 @@
 # 主会话、Side 与面板的共享交互
 
-English: [shared workspace](../../../../clients/gui/design-system/exercises/shared-workspace.en.md)。[页面合同](../../../../clients/gui/design-system/surfaces/shared-workspace.json)以 I-INPUT、I-OBSERVE、I-READ、I-RETURN 组织主会话和 Side；关联设置仍沿 P-SETTINGS 与原偏好所有者。
+English: [shared workspace](shared-workspace.en.md)。[页面合同](../../../../clients/gui/design-system/surfaces/shared-workspace.json)以 I-INPUT、I-OBSERVE、I-READ、I-RETURN 组织主会话和 Side；关联设置仍沿 P-SETTINGS 与原偏好所有者。
 
 ## 所有权与默认结构
 

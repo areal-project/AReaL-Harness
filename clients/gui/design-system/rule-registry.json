@@ -553,7 +553,7 @@
       "title": "默认的过程入口同时说明内容和展开动作",
       "owner": "clients/gui/design-system/interactions.md#对话阶段二的生产应用",
       "strength": "default",
-      "textSha256": "72f28e6e4f34d91012744bed89564342e8bb0f5b075cb95ecab1043c038f89b8"
+      "textSha256": "524f003b3c78636a3f2e6c3a99427dc0087067d0c52ecff44e68f2db5a2c27e8"
     },
     {
       "id": "R-CATALOG-001",
@@ -623,7 +623,7 @@
       "title": "这里拥有对话组合的设计决策",
       "owner": "clients/gui/design-system/patterns.md#从证据回溯到规则和组件",
       "strength": "must",
-      "textSha256": "4f529e8293f5dc4c4c9a4f543a52bd6d89656f3d8c0247a737f808169a654a71"
+      "textSha256": "69ca285c47c098073ab51d4bbd4673577e70824f7e198aa077e8de392a4e4a51"
     },
     {
       "id": "R-LAYOUT-025",
@@ -2098,14 +2098,14 @@
       "title": "E-CONVERSATION 映射本地 phased/legacy 过程与阅读题目",
       "owner": "clients/gui/renderer/src/Messages.md#证据与边界",
       "strength": "must",
-      "textSha256": "bc9fbf1cd578324772dd80105d0e27641b3f336418636d674844e7c743d27fd4"
+      "textSha256": "01bd81de6b3893dd6a2a9f0dcde503024cfe0979cc575c267aa0fd9072d4ecfb"
     },
     {
       "id": "R-LAYOUT-007",
       "title": "以下是 P-CONVERSATION 的目标合同",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "must",
-      "textSha256": "d2914040d62de48221edcf94f12ac0c7ef9338511c00ac6d9f382ace690c60fa"
+      "textSha256": "a27779aea47f54bf78f8fbd9b61bcd8c5aa3884edf2638a1cfe8deab99c5dd42"
     },
     {
       "id": "CONV-OWNER-01",
@@ -2218,7 +2218,7 @@
       "title": "减少动态效果沿同一有效偏好覆盖正文、过程箭头、侧面板和任务列表运行图标",
       "owner": "clients/gui/renderer/src/Messages.md#对话信息流",
       "strength": "default",
-      "textSha256": "6f98dae907bdac498036a86a5707c91b2161c31225f41828b4fb64c930550856"
+      "textSha256": "b92fe2a9a888e505173577dfd74d5fbb66f80197fdc888d3453e5066ada48e7d"
     },
     {
       "id": "R-CONTENT-033",
@@ -2512,7 +2512,7 @@
       "title": "Project 项目 不用项目名称暗示授权，也不将项目外聊天称为无效会话 工作台、身份与所有权",
       "owner": "design/content/terminology.md#界面术语",
       "strength": "default",
-      "textSha256": "30c29c3985a7cd8d348b397e9393a114cf8e3f780392f17149e8e6e68c44b444"
+      "textSha256": "aceae296b5d9129b399a933adc34d3b73ce69cc4aa0d4de8b9a15e45d7654610"
     },
     {
       "id": "R-TERM-003",
@@ -3402,6 +3402,105 @@
       "strength": "must",
       "textSha256": "5ab8342c8167a74c6216bbb602c8a889b381840d67c49d8b559e07094a1b24c2",
       "check": "clients/gui/scripts/design-rules.mjs"
+    },
+    {
+      "id": "R-DECISION-022",
+      "title": "1.",
+      "owner": "design/decisions/005-reproducible-spec.md#选择",
+      "strength": "default",
+      "textSha256": "8e31f463fecd9cfff26c1aa2c8cd0e0bde2ebe1c0b1b142dc9a3479c55209d7a"
+    },
+    {
+      "id": "R-DECISION-023",
+      "title": "| 文字下限 | 用户需要阅读的文字（含过程子步骤）对比度不低于 4.5:1",
+      "owner": "design/decisions/005-reproducible-spec.md#已定取舍",
+      "strength": "default",
+      "textSha256": "04a8cc03fab010dcd3bab3c08d94d8d2d522a8b6e1f08ba8526fb5161439ec26"
+    },
+    {
+      "id": "R-DECISION-024",
+      "title": "规格与代码两处维护，容易重新长成大量规则",
+      "owner": "design/decisions/005-reproducible-spec.md#代价与护栏",
+      "strength": "default",
+      "textSha256": "4b6f327ea723237f359f4a2a2b99ad943bbcdd74403d21fe50c9d2459188c42a"
+    },
+    {
+      "id": "R-DECISION-025",
+      "title": "输入框试点交接后一次通过率低于一半，或规格维护成本明显高于收益时，退回只保留分层 Token、标准截图与通用验收，不继续",
+      "owner": "design/decisions/005-reproducible-spec.md#重新评估",
+      "strength": "default",
+      "textSha256": "8520782d6952a8e7ef26bce28b37de9ede79c75ffcc01113a2cb940c7745e5d5"
+    },
+    {
+      "id": "R-SPEC-001",
+      "title": "3.",
+      "owner": "design/spec/README.md#四条规则",
+      "strength": "default",
+      "textSha256": "9eda805578e409727a85913685700a5f2007eb89a16a5d578f8ab4de4a6fda01"
+    },
+    {
+      "id": "R-SPEC-002",
+      "title": "| 平面 | 正文区、列表行、回合标题 | 不允许                   |",
+      "owner": "design/spec/README.md#token-三层",
+      "strength": "default",
+      "textSha256": "f194f78c0f2592b61c6372450ff8aa9d9d1979c6786068745c78c22494dc9eb4"
+    },
+    {
+      "id": "R-SPEC-003",
+      "title": "| 抬起 | 输入框、卡片、代码块     | 不允许，用阴影表达高度   |",
+      "owner": "design/spec/README.md#token-三层",
+      "strength": "default",
+      "textSha256": "88417ef47b9fe6a1e41f9c16244ec66a8adceba3433683bd6baec7da2905a3d9"
+    },
+    {
+      "id": "R-CHECK-024",
+      "title": "样式只引用用途层变量，不引用圆角等原料刻度",
+      "owner": "clients/gui/design-system/automation.md#仓库内-lint-规则",
+      "strength": "default",
+      "textSha256": "717ae8c8d3a63dc462f7babd4808f2101f76060a5a9e587c285f840cbba77422",
+      "check": "clients/gui/scripts/layers-lint.mjs"
+    },
+    {
+      "id": "R-QUALITY-001",
+      "title": "| 悬停不改变布局：隐藏的操作靠叠放出现，不靠挤开别的内容 | popup-anchor-lint           ",
+      "owner": "design/spec/quality.md#所有模块",
+      "strength": "default",
+      "textSha256": "f011564dcb7f63c49946df6be5b34dea03c94ce7464828003dd578f7fc6b6b74"
+    },
+    {
+      "id": "R-QUALITY-002",
+      "title": "| 页面不改组件外观，只决定组件放在哪、多大",
+      "owner": "design/spec/quality.md#所有模块",
+      "strength": "default",
+      "textSha256": "bec104e378a3448b7012d03fcdb4be38cd1de8de0a02c0f1a245c2d5e02b509b"
+    },
+    {
+      "id": "R-QUALITY-003",
+      "title": "| 同一个东西只用一个名字（如“定时任务”，不再叫“自动化”） | terms-lint                ",
+      "owner": "design/spec/quality.md#所有模块",
+      "strength": "default",
+      "textSha256": "7ae21550f5df4fe5057eb948ba901cd0501807afb92f4c05049f410798c163b4"
+    },
+    {
+      "id": "R-QUALITY-004",
+      "title": "- 一个面只有一个标题、一个关闭入口",
+      "owner": "design/spec/quality.md#页面框架",
+      "strength": "default",
+      "textSha256": "fbbdc5e34e9467d72112898854e85ba3104125be650766a76c75c2ed1ce0997b"
+    },
+    {
+      "id": "R-QUALITY-005",
+      "title": "| 对话回合 | 过程默认收起，最终回答直接可读",
+      "owner": "design/spec/quality.md#模块",
+      "strength": "default",
+      "textSha256": "13dc6bc4fbc91b3efafdbf13915e3fc5a9d2eab33f9f9cd6ffe058f3471151c7"
+    },
+    {
+      "id": "R-QUALITY-006",
+      "title": "- 浏览器标签（含标注）和终端标签需要一个假的浏览器、终端宿主才能在规格入口里打开，暂未接入",
+      "owner": "design/spec/quality.md#还没覆盖",
+      "strength": "default",
+      "textSha256": "73a0310c8fa25dd628e7cc583dfff9fe7b138b2ad8c6d503957df29ef476ad24"
     }
   ]
 }

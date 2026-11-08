@@ -4,7 +4,7 @@
 
 ## 固定输入
 
-- Base 为 `0.2.0`，状态为 `frozen-beta`，实际输入提交为 `c98af14e00faad1b28164f660629b57c4bccea6e`。该提交包含合同、入口与[固定任务](../../components/reuse-exercise.md)。原生产实现来源为 `b648e33127c09a3e2bade90c56bce29f1a0c9845`；[Base](../../../clients/gui/design-system/base.md)继续维护当前版本，历史来源以固定提交为准。
+- Base 为 `0.2.0`，状态为 `frozen-beta`，实际输入提交为 `c98af14e00faad1b28164f660629b57c4bccea6e`。该提交包含合同、入口与[固定任务](reuse-exercise.md)。原生产实现来源为 `b648e33127c09a3e2bade90c56bce29f1a0c9845`；[Base](../../../clients/gui/design-system/base.md)继续维护当前版本，历史来源以固定提交为准。
 - 题目 SHA256 为 `3f85849dbddea7660228995d671658e8652d7289aef48f53bc7de1ebcf3c320d`。题目、语义与私有评分条件先于实现固定。
 - 实现者使用独立上下文，只读取冻结题目、Base、入口、就近合同与所需类型。没有读取评分材料、旧题目实现或参考截图。实现为 [ArtifactReviewExercise.tsx](../../../clients/gui/renderer/src/design-system/ArtifactReviewExercise.tsx)。
 - 消费者源码 SHA256 为 `3f029f4074a8bbeee71f918d834c3dcb8e26803d4468d2038c70c6a4223ddfba`。运行期间冻结 Base 文件未改变。
@@ -33,7 +33,7 @@
 
 初次运行发现的是评估器缺陷。同名宿主与生产设置区域导致定位歧义；评估器还错误要求选择按钮内部承载整行类型和状态，而公开题目允许列表行承载这些内容。受控时钟也必须推进现有选择器的挂载时间。这些修订仅进入评估器，未放宽对象归属、状态、焦点、长名称或复用要求；消费者与冻结输入保持不变。
 
-按归因后的保留检查，真实 GUI 资源路径运行 `areal-gui-pUBwym` 通过 4 项检查，源码 HEAD 为 `c98af14e`，固定 Core 来源见[证据索引](../../../clients/gui/design-system/base-evidence.md)。真实文件回执、历史轮次 Diff、键盘关闭返回、草稿和阅读、缺失文件恢复及新任务不重放通过，所持 Desktop/Core 已清理。该路径使用本地确定性模型事件，不能扩大为真实供应商或安装包验证。退出时已有通知拒绝日志保留，未宣称无后台告警。
+按归因后的保留检查，真实 GUI 资源路径运行 `areal-gui-pUBwym` 通过 4 项检查，源码 HEAD 为 `c98af14e`，固定 Core 来源见[证据索引](base-evidence.md)。真实文件回执、历史轮次 Diff、键盘关闭返回、草稿和阅读、缺失文件恢复及新任务不重放通过，所持 Desktop/Core 已清理。该路径使用本地确定性模型事件，不能扩大为真实供应商或安装包验证。退出时已有通知拒绝日志保留，未宣称无后台告警。
 
 ## 后续边界
 
@@ -44,13 +44,13 @@
 
 插件资源路径扩展后，既有消费者只将可见版本改为来自宿主的 Base 版本，没有新增组件、Token、页面样式或业务动作。实际输入为 `ca03dcd37a7aab647335f331e769b14cf5b5f6a3`，保留原输入 `c98af14e00faad1b28164f660629b57c4bccea6e`。当前复验器要求 Base 合同、目录和导出均已提交，再记录承载这些文件的精确提交；此运行明确标为迁移回归，不重复宣称独立盲试。
 
-运行 `areal-design-system-2n898T` 的 5 组行为和复用来源检查通过，无页面错误或外部请求。明亮 14 宽、深色 18 窄、减少动画以及原状态归属、失败与未知核对继续通过。迁移原图已保存，未追加独立视觉评价；原 0.2 的视觉判断仅属于原始结果。该浏览器回归不代替插件真实 GUI 验收，后者见 [E-PLUGINS](../../../clients/gui/design-system/base-evidence.md#e-plugins)。
+运行 `areal-design-system-2n898T` 的 5 组行为和复用来源检查通过，无页面错误或外部请求。明亮 14 宽、深色 18 窄、减少动画以及原状态归属、失败与未知核对继续通过。迁移原图已保存，未追加独立视觉评价；原 0.2 的视觉判断仅属于原始结果。该浏览器回归不代替插件真实 GUI 验收，后者见 [E-PLUGINS](base-evidence.md#e-plugins)。
 
 
 ## 0.4.0 迁移回归
 
 同窗口 Renderer 阅读恢复扩展后，既有消费者未改动。实际冻结输入为 `2b7df5e3304e1a644b7bf2805bdbff1f35421a8e`，生产实现来源为 `68530d8703a19baf023ff64b1026925545fb3151`。原 0.2 独立题与 0.3 迁移结果保留。
 
-运行 `areal-design-system-N3GFLT` 通过原 5 组行为与复用来源检查，无页面错误或外部请求。固定题目摘要不变，构建 SHA256 为 `94afc7a81f6738b7a06e030f3a614bc762b44100eaa9268557add3dfb9169e9f`。明亮 14 宽、深色 18 窄、减少动画、键盘、对象归属、失败和 UNKNOWN 显式核对继续通过。迁移截图已保存，未追加独立视觉评价。该同题回归不属于新盲试，也不代替真实桌面阅读恢复验收，后者见 [E-RECOVERY](../../../clients/gui/design-system/base-evidence.md#e-recovery)。
+运行 `areal-design-system-N3GFLT` 通过原 5 组行为与复用来源检查，无页面错误或外部请求。固定题目摘要不变，构建 SHA256 为 `94afc7a81f6738b7a06e030f3a614bc762b44100eaa9268557add3dfb9169e9f`。明亮 14 宽、深色 18 窄、减少动画、键盘、对象归属、失败和 UNKNOWN 显式核对继续通过。迁移截图已保存，未追加独立视觉评价。该同题回归不属于新盲试，也不代替真实桌面阅读恢复验收，后者见 [E-RECOVERY](base-evidence.md#e-recovery)。
 
 同一构建的生产组件与设置组合运行 `areal-design-system-V3XlLV` 通过 18 组检查；文档入口运行 `areal-design-system-FToTMy` 通过 3 组检查，均无页面错误或外部请求。它们提供浏览器范围内的保留证据，不扩大原生平台或安装包结论。

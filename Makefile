@@ -131,6 +131,7 @@ ci-gui-health: ## 无依赖安装的 GUI 健康合同与基线检查
 	mkdir -p target/ci/gui; \
 	node --test clients/gui/scripts/gui-health.test.mjs clients/gui/scripts/design-system-maturity.test.mjs; \
 	node clients/gui/scripts/copy-budget.mjs; \
+	node clients/gui/scripts/ui-honesty-lint.mjs; \
 	if git cat-file -e "$$base:clients/gui/health-baseline.json" 2>/dev/null; then \
 		node clients/gui/scripts/gui-health.mjs --check --base="$$base"; \
 	else \

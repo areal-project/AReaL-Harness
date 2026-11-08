@@ -1,0 +1,94 @@
+id: decision-card
+name: 待决卡片（审批与提问）
+status: draft
+purpose: Agent 运行中需要用户拍板时出现在输入框正上方：审批一次工具调用，或回答一个问题。处理完卡片消失，回合继续运行。
+why: 决定只在一个地方做，并且紧贴输入框，视线不用离开写字的位置；卡片与输入框同宽，像是输入框临时换了内容。
+
+layout:
+  place: 输入框正上方，与输入框同宽；卡片下沿到输入框上沿 spacing-inline
+  composer: 有待决卡片时输入框改用 decision 布局（见 composer.yaml），草稿保留
+  turn: 回合不显示状态行；审批等待时，回合过程标题改为“等待你批准”，提问等待时仍是“本轮过程”
+  one-at-a-time: 同时只显示一张；多条待决按到达顺序排队
+
+anatomy:
+  - part: header
+    role: 一行。左侧来源图标加来源名（审批写工具来源，如“终端”；提问写“问题”）；右侧放卡片自己的操作（提问卡有收起按钮）
+  - part: body
+    role: 标题一行（审批写 Agent 给出的理由，提问写问题本身），下面是该类卡片的内容
+  - part: details
+    optional: true
+    role: 仅审批卡。一行“查看完整请求”加右侧“展开”，默认收起，展开后列出理由与完整参数
+  - part: footer
+    role: 一行按钮，靠右；主操作在最右
+
+parts:
+  card:
+    surface: color-composer-catalog
+    border: border-width-default 的 color-border
+    radius: radius-card
+    padding: composer-inset
+    text: text-ui-base，行高 line-height-ui
+    material: flat
+  header:
+    height: line-height-ui
+    gap-below: spacing-inline 的一半
+    label: 图标 icon-size-control，与文字间隔 spacing-inline；颜色 foreground-subtle
+  title:
+    weight: font-weight-medium
+    gap-below: spacing-inline
+    clamp: 审批标题最多三行，超出省略
+  approval:
+    target: 工作目录，text-ui-sm，foreground-subtle，单行省略；下方 spacing-inline
+    command: 命令预览块。等宽字体 text-ui-caption、行高 line-height-ui；内边距 spacing-inline；底色 color-surface；文字 foreground-subtle；圆角 radius-inset；最多两行
+    details: 与命令块相隔 spacing-inline 的一半；标题行上下 spacing-inline，文字 text-ui-caption；右侧“展开”按钮：text-ui-sm、行高 line-height-ui，上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-button，底色 color-button-surface，文字 foreground，悬停底色 color-button-hover；展开后文字为“收起”
+  question:
+    options: 竖排，间隔 spacing-inline。每项：内边距 spacing-inline，最小高 spacing-control，圆角 radius-control，文字 font-weight-medium；左侧序号方块（边长 line-height-ui，border-width-default 的 color-border 描边，底色 color-hover，圆角 radius-inline，序号 text-ui-sm、foreground-subtle、等宽数字，上方留 spacing-inline 的四分之一外边距，这段外边距占位，所以每项内容高为 line-height-ui 加这段外边距），序号与文字间隔 spacing-inline
+    option-selected: 选中、悬停或键盘聚焦的选项底色 color-hover
+    footer-gap: 提问卡的按钮行与上方相隔 spacing-field（审批卡为 spacing-inline）
+  footer:
+    gap: spacing-inline
+    button: 高 spacing-control，左右 spacing-inline，胶囊圆角 radius-pill，text-ui-base；带 border-width-default 描边（计入尺寸）；次要按钮描边 color-border、底色透明，主按钮描边透明
+    primary: 底色 color-primary，文字 color-primary-foreground；不可用时底色 foreground-subtle，再整体 opacity-disabled
+    shortcut: 按钮文字后的快捷键标记：高 line-height-ui-sm，左右 spacing-inline 的一半，圆角 radius-micro，底色 color-surface-tertiary，文字 text-ui-sm、foreground-subtle；与按钮文字间隔 spacing-inline 的一半
+
+variants:
+  approval:
+    footer: 拒绝（带 Esc 标记）、允许一次（主按钮，带回车标记）
+    remember: 允许记住授权时，主按钮右侧连着一个向下箭头，展开“允许一次 / 本任务允许此操作 / 本项目允许此操作”
+  question:
+    header-action: 右侧一个收起按钮（关闭图标）
+    footer: 稍后回答、发送（主按钮）；没选答案时发送不可用；这两个按钮不带快捷键标记
+    free-text: 问题允许自由回答，或没有选项时，按钮行左侧出现一个单行文本框
+
+states:
+  - pending: 刚出现；提问卡的标题获得焦点（不画焦点环），审批卡整体可用 Esc 拒绝
+  - submitting: 按钮不可用，主按钮文字为“提交中…”
+  - submitted: 卡片消失，回合过程末尾追加 Agent 的下一步
+  - deferred: 提问卡收起成输入框上方一个描边按钮“问题等待回答 展开”；点它恢复卡片，已选答案保留
+  - error: 卡片内一行反馈说明原因，可重试；已选答案保留
+
+keyboard:
+  - 审批卡：Esc 拒绝，回车允许一次
+  - 提问卡：数字键选择对应选项；回车发送；Esc 收起
+  - 中文输入法组合期间按键不触发
+
+accessible-names:
+  approval-region: 工具审批
+  question-region: 需要你的回答
+  deny: 以“拒绝”开头
+  allow-once: 以“允许一次”开头
+  more-scopes: 更多授权范围
+  details: 查看完整请求
+  command: 命令预览
+  answer-later: 稍后回答
+  collapse: 收起问题
+  expand-deferred: 展开待回答问题
+  send: 发送
+
+icons:
+  source: 见 icons/ 目录
+  used: [terminal, question, close, enter-key]
+
+references:
+  - state: thread.approval
+  - state: thread.question

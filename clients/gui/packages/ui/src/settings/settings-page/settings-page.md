@@ -68,7 +68,7 @@ related: ["settings-section", "settings-group-card"]
 
 - 按[设置与管理](../../../../../../../design/patterns/settings.md#值动作与生效范围)说明实际影响；GUI 使用所属确认或管理面板呈现。
 
-[设置迁移题](../../../../../design-system/exercises/settings-reflow.md)固定内容和反证，用于探索这两条规则；题目不自行创建新设计值。
+[设置迁移题](../../../../../../../design/archive/gui/exercises/settings-reflow.md)固定内容和反证，用于探索这两条规则；题目不自行创建新设计值。
 
 ## 生产上下文
 

@@ -44,9 +44,9 @@ export function ProjectlessDirectorySetting({
         label={t("settings.projectlessDirectorySetting.folderForTasksOutsideProjects")}
         description={t("settings.projectlessDirectorySetting.newTasksOutsideProjectsAreSavedIn")}
         control={
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-inline">
             <TitleTooltip title={directory}>
-              <span className="max-w-60 truncate text-compact-caption">
+              <span className="max-w-[calc(var(--reading-width)*5/16)] truncate text-ui-sm/(--line-height-ui-sm)">
                 {directory ?? t("settings.projectlessDirectorySetting.disconnected")}
               </span>
             </TitleTooltip>

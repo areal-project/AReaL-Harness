@@ -1,0 +1,43 @@
+id: task-search
+name: 搜索任务
+status: draft
+purpose: 按标题或项目名找到任意项目里的对话并打开。
+why: 侧栏只显示每个项目最近五条；搜索面向全部对话，结果带项目名，同名对话也分得清。
+
+layout:
+  backdrop: 盖住整个窗口，叠在包括输入框在内的所有内容之上，color-dialog-backdrop；点空白处关闭
+  dialog: 水平居中，上沿距窗口顶部 spacing-section 的五倍；宽为 reading-width 的六分之五（窗口太窄时不超过窗口宽的九成）
+  material: overlay
+
+parts:
+  dialog:
+    surface: color-popover
+    border: border-width-default 的 color-border
+    radius: radius-panel
+    shadow: shadow-large-overlay
+  search-row:
+    padding: spacing-field
+    gap: spacing-inline
+    icon: search-large，颜色 foreground-subtle
+    input: 占满中间；text-ui-base，行高 line-height-ui，文字 foreground-subtle，占位文字“搜索任务”，颜色 foreground-subtle 的一半不透明度；打开时自动获得焦点；输入框本身不画焦点框
+    close: spacing-control 见方的关闭按钮，图标 dismiss，颜色 foreground-subtle
+  results:
+    divider: 上方一道 border-width-default 的 color-border 线
+    padding: spacing-inline
+    max-height: reading-width 的一半加 spacing-field，超出在内部滚动
+    row: 内边距 spacing-inline，间隔 spacing-inline，圆角 radius-compact，行高 line-height-ui；左侧留 icon-size-control 见方的空位；标题 text-ui-base、foreground，单行省略；右侧项目名 text-ui-xs、foreground-subtle（独立任务不写）
+    hover: 底色 color-hover
+    empty: 没有结果时一行“没有匹配的任务”，foreground-subtle
+
+order:
+  - 结果按最近更新排在前，不分项目
+
+accessible-names:
+  dialog: 搜索任务
+  input: 搜索任务
+  close: 关闭搜索
+
+behavior:
+  - 输入时结果与侧栏列表同步过滤：标题或项目名包含关键词即保留，不区分大小写
+  - 点一条结果：关闭搜索、清空关键词并打开该对话
+  - 点关闭按钮或背景：关闭搜索并清空关键词

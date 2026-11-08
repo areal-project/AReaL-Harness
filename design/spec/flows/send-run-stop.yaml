@@ -1,0 +1,75 @@
+id: send-run-stop
+name: 发送、运行、停止
+status: draft
+screens: [home, thread]
+components: [composer]
+
+initial: home.empty
+
+states:
+  home.empty:
+    see: 首页标题与空输入框；主按钮“发送”不可用
+  home.draft:
+    see: 输入框有文字；主按钮“发送”可用
+  thread.sending:
+    see: 已进入对话界面；用户消息以待确认样式出现在信息流；受理后输入框清空，失败时草稿留在输入框
+  thread.running:
+    see: 回合末尾一行状态文字在变化；草稿为空时主按钮为“停止”（普通对话为“暂停执行”）
+  thread.queued:
+    see: 输入框上方出现“待发送消息”列表，每条可立即发送或删除；当前回合继续运行
+  thread.stopping:
+    see: 主按钮暂时不可用；状态行显示正在停止
+  thread.done:
+    see: 过程收起为一行标题；最终回答完整可见；主按钮回到“发送”
+  thread.stopped:
+    see: 回合末尾一行“你暂停了本轮执行”；已产生的内容和排队消息保留；主按钮回到“发送”，草稿为空时不可用
+  thread.error:
+    see: 输入框正上方一行反馈说明原因，可关闭；草稿保留在输入框；主按钮回到“发送”
+
+transitions:
+  - from: home.empty
+    on: type-text
+    to: home.draft
+  - from: home.draft
+    on: clear-text
+    to: home.empty
+  - from: home.draft
+    on: [click 发送, press Enter]
+    to: thread.sending
+    motion: motion-normal + ease-enter；输入框从首页位置移到底部
+  - from: thread.sending
+    on: accepted
+    to: thread.running
+  - from: thread.sending
+    on: rejected
+    to: thread.error
+  - from: thread.running
+    on: [type-text then click 发送]
+    to: thread.queued
+  - from: thread.queued
+    on: turn-finished
+    to: thread.running
+    note: 队首消息自动开始下一回合
+  - from: [thread.running, thread.queued]
+    on: click 停止
+    to: thread.stopping
+  - from: thread.stopping
+    on: stopped
+    to: thread.stopped
+  - from: thread.running
+    on: turn-finished
+    to: thread.done
+
+invariants:
+  - 任何状态下草稿不因失败或切换而丢失
+  - 主按钮只有一个，文字随状态变化，位置不变
+  - 运行中输入框上方不加状态栏
+
+# 可执行的验收在 conformance/send-run-stop.mjs，下面是它们的编号与含义。
+conformance:
+  home-empty-cannot-send: 首页空输入框时“发送”不可用
+  home-send-starts-running: 首页输入文字并按回车，信息流出现该用户消息和第一步，主按钮变为“停止”或“暂停执行”
+  running-send-queues: 运行中再发送一条，“待发送消息”出现该条，当前回合不中断
+  stop-keeps-content: 运行中点击“停止”（或“暂停执行”），主按钮回到“发送”，已产生的内容仍在
+  rejected-keeps-draft: 提交被拒绝时，输入框上方出现原因，输入框里仍是原文字
+  queued-state-renders: 排队状态直接渲染时，排队消息与停止按钮都在

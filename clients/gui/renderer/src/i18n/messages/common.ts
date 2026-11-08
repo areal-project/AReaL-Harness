@@ -149,6 +149,14 @@ export const commonMessages = {
   "common.review.branch": { "zh-CN": "分支比较", en: "Branch comparison" },
   "common.review.task": { "zh-CN": "任务工作区更改", en: "Task workspace changes" },
   "common.review.lastTurn": { "zh-CN": "上一轮", en: "Last turn" },
+  "common.review.unmodifiedLines": {
+    "zh-CN": "{count} 行未改动",
+    en: "{count, plural, one {# unmodified line} other {# unmodified lines}}",
+  },
+  "common.review.moreContext": {
+    "zh-CN": "可能还有未改动的上下文",
+    en: "More unchanged context may be available",
+  },
   "common.browser.manualFrame": {
     "zh-CN": "· 仅人工操作，iframe 使用区域标注",
     en: "· Manual control only; use region annotations for iframes",
@@ -490,9 +498,9 @@ export const commonMessages = {
   "startup.quit": { "zh-CN": "退出界面", en: "Quit interface" },
   "startup.back": { "zh-CN": "返回加载界面", en: "Back to loading" },
   "startup.connectingProject": { "zh-CN": "正在连接项目…", en: "Connecting to project…" },
-  "startup.projectStopped": {
-    "zh-CN": "项目已停止，可选择其他项目继续。",
-    en: "Project stopped. Select another project to continue.",
+  "startup.projectStartFailed": {
+    "zh-CN": "项目没有启动成功，可以重试。",
+    en: "The project didn't start. Try again.",
   },
   "startup.readingConversation": { "zh-CN": "正在读取对话…", en: "Reading conversation…" },
   "common.conversation.newInProject": {

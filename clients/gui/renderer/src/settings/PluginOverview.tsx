@@ -2,7 +2,7 @@ import type { PluginPresentation } from "./pluginPresentation.js";
 import { useI18n, type MessageId } from "../i18n/IntlProvider.js";
 import { Button } from "../components/ui/button.js";
 
-const states: Record<PluginPresentation["state"], MessageId> = {
+export const pluginStateMessages: Record<PluginPresentation["state"], MessageId> = {
   unknown: "settings.pluginCenter.operationResultUnconfirmed",
   working: "settings.pluginCenter.processing",
   notInstalled: "settings.pluginCenter.notInstalled",
@@ -40,7 +40,7 @@ export function PluginOverview({
   const action = actions[presentation.nextAction];
   return (
     <section className="plugin-status-panel" aria-label={t("settings.pluginCenter.pluginOverview")}>
-      <h2>{t(states[presentation.state])}</h2>
+      <h2>{t(pluginStateMessages[presentation.state])}</h2>
       <p className="plugin-status-description">
         {t(
           presentation.state === "notObserved"

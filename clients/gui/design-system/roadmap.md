@@ -4,16 +4,16 @@
 
 ## 当前进展
 
-[Base beta](base.md)的 0.2 冻结输入已完成[交付物核对独立题](../../../design/components/reuse-result.md)，复用已有组件和 Token，无页面 CSS。0.4.0 在插件资源有限路径上增加同窗口 Renderer 阅读恢复，共 20 个成员、3 个模式；既有独立题在精确冻结输入上的迁移回归已通过，不作为新的盲试。成员、合同、兼容边界与运行证据仍由 Base 及其证据索引维护。
+[Base beta](base.md)的 0.2 冻结输入已完成[交付物核对独立题](../../../design/archive/gui/reuse-result.md)，复用已有组件和 Token，无页面 CSS。0.4.0 在插件资源有限路径上增加同窗口 Renderer 阅读恢复，共 20 个成员、3 个模式；既有独立题在精确冻结输入上的迁移回归已通过，不作为新的盲试。成员、合同、兼容边界与运行证据仍由 Base 及其证据索引维护。
 
 ## 当前基础与缺口
 
 | 能力 | 当前基础 | 仍需完成 |
 | --- | --- | --- |
-| 产品设计语言 | [共享原则](../../../design/principles/README.md)、[表达角色](../../../design/foundations/roles.md)、[完整工作台候选](../../../design/products/workbench/candidate.md)沿既有角色形成整体 | 用户评价文字层级、表面、密度、形状、状态和动效，并收敛下一轮选择 |
+| 产品设计语言 | [共享原则](../../../design/principles/README.md)、[表达角色](../../../design/foundations/roles.md)、[完整工作台候选](workbench-candidate.md)沿既有角色形成整体 | 用户评价文字层级、表面、密度、形状、状态和动效，并收敛下一轮选择 |
 | 内容与文案 | [术语](../../../design/content/terminology.md)、[界面文案](../../../design/content/interface-copy.md)已区分用词建议与执行事实 | 随真实入口采用并核对翻译、范围和反馈，不做脱离功能的全局替换 |
 | 组件合同 | [组件选择与职责](../../../design/components/README.md)连接首批就近合同、生产消费者引用与类型导出检查；[分层与成熟度](../../../design/components/README.md#成熟度)由审计按生产使用自动核对 | 后续成员按真实需求准入，Props 仍由类型提供 |
-| 用户任务与组合 | [共享模式](../../../design/patterns/README.md)、[完整候选](../../../design/products/workbench/candidate.md)串联任务、过程、审批、资源与设置；五条切片均有真实 GUI 自动化证据 | 后三条切片待用户评价；完整资源管理、插件安装/认证/连接和其他异常恢复按真实需求单独验收 |
+| 用户任务与组合 | [共享模式](../../../design/patterns/README.md)、[完整候选](workbench-candidate.md)串联任务、过程、审批、资源与设置；五条切片均有真实 GUI 自动化证据 | 后三条切片待用户评价；完整资源管理、插件安装/认证/连接和其他异常恢复按真实需求单独验收 |
 
 `R-PLAN-007` 当前文案是采用建议，工作台包含设计要求、源码映射与本地可操作候选，就近合同也不等于生产行为验收。文档入口和已有示例形成首条阅读路径，首条任务切片已沿真实 Electron、Core 和 Runtime 验证，模型事件由本地确定性服务提供。其他路径、真实供应商和安装包仍需分别验证。GUI 的 [Base beta](base.md)当前按 0.4.0 有限冻结；P-RESOURCES 仅准入列明的插件目录、详情、当前项目启停与回执返回，完整插件安装/认证/连接、P-CONVERSATION、SidePane、列明同窗口 Renderer 恢复以外的生命周期与跨平台仍未完成。现有目录主要检查引用与声明，不能证明实际 JSX 采用了对应组件，也不能代替视觉或平台验收。
 

@@ -1,14 +1,9 @@
 @import "@areal/ui/settings.css";
 @import "@areal/ui/workbench.css";
-/* 2. Right Content Column */
-.settings-workspace .settings-page.model-settings-page {
-  max-width: 1080px;
-}
-
 .settings-sections section:not(.settings-section) {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .settings-sections section:not(.settings-section) > h2 {
   font-size: var(--text-ui-base);
@@ -21,7 +16,7 @@
 .appearance-theme-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-field);
 }
 .appearance-theme-content .theme-diff {
   margin-top: 0;
@@ -32,12 +27,12 @@
   height: var(--spacing-control);
   min-height: var(--spacing-control);
   max-width: 100%;
-  padding: 0 28px 0 12px;
+  padding: 0 calc(var(--spacing-inline) * 7 / 2) 0 calc(var(--spacing-inline) * 3 / 2);
   font-size: var(--text-ui-caption);
   font-weight: 430;
   line-height: calc(var(--ui-font-size) + 4px);
   border-radius: var(--radius-navigation);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   background-color: var(--color-hover);
   color: var(--color-foreground);
   appearance: none;
@@ -65,20 +60,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 24px;
-  height: 22px;
-  padding: 0 6px;
+  min-width: var(--spacing-control-sm);
+  height: var(--spacing-control-sm);
+  padding: 0 calc(var(--spacing-inline) * 3 / 4);
   font-size: var(--text-ui-xs);
   font-family: var(--font-mono, monospace);
   border-radius: var(--radius-compact);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   color: var(--color-foreground);
   box-shadow: var(--shadow-inset-control);
 }
 .settings-card-empty {
   margin: 0;
-  padding: 16px;
+  padding: var(--spacing-field);
   color: var(--color-settings-secondary);
   font-size: var(--text-ui-caption);
 }
@@ -86,9 +81,10 @@
 .theme-diff {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  margin-top: 12px;
+  margin-top: calc(var(--spacing-inline) * 3 / 2);
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  border: var(--border-width-default) solid
+    color-mix(in srgb, var(--color-foreground) 8%, transparent);
   border-radius: var(--radius-choice);
   background: var(--color-card);
   color: var(--color-foreground);
@@ -110,12 +106,12 @@
 .theme-diff-code {
   display: flex;
   flex-direction: column;
-  padding: 8px 0;
+  padding: var(--spacing-inline) 0;
 }
 
 .theme-diff-gutter > span,
 .theme-diff-line {
-  height: 22px;
+  height: var(--spacing-control-sm);
   white-space: pre;
 }
 
@@ -123,7 +119,7 @@
   position: relative;
   box-sizing: border-box;
   text-align: right;
-  padding-right: 12px;
+  padding-right: calc(var(--spacing-inline) * 3 / 2);
   color: #5c5c5c;
 }
 
@@ -135,7 +131,7 @@
 .theme-diff-gutter .theme-diff-marker {
   position: absolute;
   inset-inline-end: 0;
-  width: 12px;
+  width: calc(var(--spacing-inline) * 3 / 2);
   margin: 0;
   text-align: center;
 }
@@ -227,8 +223,8 @@
   align-items: center;
   justify-content: center;
   height: var(--spacing-control);
-  padding: 0 8px;
-  border: 1px solid transparent;
+  padding: 0 var(--spacing-inline);
+  border: var(--border-width-default) solid transparent;
   border-radius: var(--radius-navigation);
   font-size: var(--text-ui-caption);
   font-weight: 430;
@@ -248,7 +244,7 @@
   width: var(--spacing-control);
   height: var(--spacing-control);
   flex-shrink: 0;
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-hover);
   font-size: var(--text-ui-sm);
@@ -262,10 +258,10 @@
 .theme-color-field {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   height: var(--spacing-control);
-  padding: 0 8px;
-  border: 1px solid var(--color-border);
+  padding: 0 var(--spacing-inline);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-foreground);
@@ -273,11 +269,11 @@
 }
 
 .theme-color-field input[type="color"] {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   padding: 0;
   border-radius: 50%;
-  border: 1px solid currentColor;
+  border: var(--border-width-default) solid currentColor;
   cursor: var(--interactive-cursor, pointer);
   background: none;
 }
@@ -307,7 +303,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--spacing-inline);
 }
 
 .provider-navigation-top h2 {
@@ -321,21 +317,21 @@
 .settings-form {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--spacing-section);
 }
 
 .settings-form-actions {
   display: flex;
   justify-content: flex-end;
-  padding-top: 8px;
+  padding-top: var(--spacing-inline);
 }
 
 .settings-form textarea {
   width: 100%;
   min-height: 80px;
-  padding: 8px 12px;
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
   border-radius: var(--radius-inset);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   background: var(--color-background);
   color: var(--color-foreground);
   font-size: var(--text-ui-sm);
@@ -351,17 +347,17 @@
 
 .settings-choice-field {
   display: grid;
-  gap: 8px;
+  gap: var(--spacing-inline);
   min-width: 0;
 }
 
 /* Task-named settings details share the existing disclosure recipe. */
 
-.appearance-reading-preview {
+.settings-page .appearance-reading-preview {
   margin: 0;
   padding: var(--spacing-field);
   font-family: var(--font-content, var(--font-sans));
-  font-size: var(--content-font-size);
-  line-height: 1.6;
+  font-size: var(--text-conversation);
+  line-height: var(--conversation-line);
   color: var(--color-foreground);
 }

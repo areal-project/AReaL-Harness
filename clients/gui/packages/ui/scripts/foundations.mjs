@@ -10,8 +10,15 @@ const extension = (token) => token.$extensions?.["build.areal.ui"] ?? {};
 const banner =
   "/* Generated from @areal/ui/tokens.json. Run pnpm --dir clients/gui --filter @areal/ui generate. */\n";
 const scalar = String;
+// 三层：原料刻度带 scale（乘全局倍率），用途写成 "{原料名}" 引用，组件只引用用途。
+const ALIAS = /^\{([a-z][a-z0-9-]*)\}$/;
 function serialize(token, name) {
   const value = token.$value;
+  if (typeof value === "string" && ALIAS.test(value)) return `var(--${value.match(ALIAS)[1]})`;
+  if (extension(token).scale) {
+    const { scale, ...rest } = extension(token);
+    return `calc(${serialize({ ...token, $extensions: { "build.areal.ui": rest } }, name)} * var(--${scale}))`;
+  }
   if (extension(token).css) {
     assert.equal(typeof value, "string");
     return value;
@@ -64,6 +71,12 @@ export function renderFoundations(tokens) {
     mappings = [],
     dark = [];
   for (const [key, token] of Object.entries(tokens.foundation)) {
+    const target = typeof token.$value === "string" && token.$value.match(ALIAS)?.[1];
+    if (target)
+      assert.ok(
+        extension(tokens.foundation[target] ?? {}).scale,
+        `purpose token ${key} must reference a primitive scale step, not ${target}`,
+      );
     const name = extension(token).name ?? key;
     assert.ok(/^[a-z][a-z0-9-]+$/.test(name), `invalid name: ${name}`);
     assert.ok(!seen.has(name), `duplicate CSS role: ${name}`);
@@ -199,13 +212,19 @@ export async function writeOrCheck(path, output, check) {
 export function verifyThemeSource(source) {
   assert.ok(!/#[\da-f]{3,8}\b/i.test(source), "theme.ts color literal belongs in tokens.json");
   const tree = ts.createSourceFile("theme.ts", source, ts.ScriptTarget.Latest, true);
-  // 仅允许十六进制解码、WCAG亮度与对比度算法中的已知常量。
+  // 仅允许十六进制解码、WCAG亮度与对比度算法、百分比混色与半点步进中的已知常量。
   const algorithmConstants = new Set([
-    1, 16, 255, 0.04045, 12.92, 0.055, 1.055, 2.4, 0.2126, 0.7152, 0.0722, 0.05, 1.05,
+    1, 2, 16, 100, 255, 0.04045, 12.92, 0.055, 1.055, 2.4, 0.2126, 0.7152, 0.0722, 0.05, 1.05,
   ]);
   const inspect = (node, algorithm) => {
     const insideAlgorithm = ts.isFunctionDeclaration(node)
-      ? ["readableForeground", "relativeLuminance", "colorContrastRatio"].includes(node.name?.text)
+      ? [
+          "readableForeground",
+          "relativeLuminance",
+          "colorContrastRatio",
+          "minimumPercent",
+          "mixHex",
+        ].includes(node.name?.text)
       : algorithm;
     if (ts.isNumericLiteral(node)) {
       assert.ok(insideAlgorithm, "theme.ts numeric parameter belongs in tokens.json");

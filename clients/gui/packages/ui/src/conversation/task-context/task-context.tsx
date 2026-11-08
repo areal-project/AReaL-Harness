@@ -18,6 +18,8 @@ export type TaskContextProps = {
   headingRef?: Ref<HTMLHeadingElement>;
   actions?: ReactNode;
   onBack?: () => void;
+  /** Inside a popover that already draws the frame. */
+  embedded?: boolean;
   children: ReactNode;
 };
 function TaskContextRoot({
@@ -28,6 +30,7 @@ function TaskContextRoot({
   headingRef,
   actions,
   onBack,
+  embedded = false,
   children,
 }: TaskContextProps) {
   return (
@@ -36,6 +39,7 @@ function TaskContextRoot({
       hidden={hidden}
       onKeyDown={onKeyDown}
       className="areal-task-context"
+      data-embedded={embedded || undefined}
       aria-label="任务上下文"
     >
       <header className="areal-context-top">

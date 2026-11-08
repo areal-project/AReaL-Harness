@@ -58,7 +58,7 @@ try {
   assert.equal(await page.getByRole("button", { name: "重新加载任务", exact: true }).count(), 0);
   await page.screenshot({ path: join(evidence, "00-legacy-catalog.png") });
   await page.evaluate(() => window.publishContract(true));
-  await page.getByRole("button", { name: "打开自动化 每日进展", exact: true }).waitFor();
+  await page.getByRole("button", { name: "打开定时任务 每日进展", exact: true }).waitFor();
   await page.evaluate(() => window.publishContract(false));
   await page.getByText("后台版本过旧，无法读取任务目录。", { exact: false }).waitFor();
   const readsBeforeFocus = (await page.evaluate(() => window.calls)).filter(
@@ -70,22 +70,22 @@ try {
     readsBeforeFocus,
   );
   assert.equal(
-    await page.getByRole("button", { name: "打开自动化 每日进展", exact: true }).count(),
+    await page.getByRole("button", { name: "打开定时任务 每日进展", exact: true }).count(),
     1,
     "loaded tasks survive an incompatible backend",
   );
   await page.goto(url);
-  await page.getByRole("button", { name: "打开自动化 每日进展", exact: true }).waitFor();
+  await page.getByRole("button", { name: "打开定时任务 每日进展", exact: true }).waitFor();
   assert.equal(await page.getByRole("combobox", { name: "运行位置筛选" }).count(), 0);
   assert.equal(await page.getByLabel("筛选任务", { exact: true }).count(), 0);
   assert.equal(await page.getByText("项目加载状态", { exact: true }).count(), 0);
   await page
     .getByRole("group", { name: "已开启", exact: true })
-    .getByRole("button", { name: "打开自动化 每日进展" })
+    .getByRole("button", { name: "打开定时任务 每日进展" })
     .waitFor();
   await page
     .getByRole("group", { name: "已暂停", exact: true })
-    .getByRole("button", { name: "打开自动化 每周回顾" })
+    .getByRole("button", { name: "打开定时任务 每周回顾" })
     .waitFor();
   assert.equal(
     await page.locator(".scheduled-workspace").evaluate((el) => getComputedStyle(el).display),
@@ -97,8 +97,8 @@ try {
   await page.screenshot({ path: join(evidence, "01-groups.png") });
   await page.getByRole("button", { name: "搜索定时任务", exact: true }).click();
   await page.getByRole("textbox", { name: "搜索定时任务", exact: true }).fill("每周");
-  assert.equal(await page.getByRole("button", { name: "打开自动化 每日进展" }).count(), 0);
-  await page.getByRole("button", { name: "打开自动化 每周回顾" }).click();
+  assert.equal(await page.getByRole("button", { name: "打开定时任务 每日进展" }).count(), 0);
+  await page.getByRole("button", { name: "打开定时任务 每周回顾" }).click();
   await page.getByRole("heading", { name: "每周回顾", exact: true }).waitFor();
   await page.setViewportSize({ width: 480, height: 800 });
   await page.getByTestId("task-center-list").waitFor({ state: "hidden" });
@@ -144,7 +144,7 @@ try {
   assert.equal(await page.getByText("尚无定时任务", { exact: true }).count(), 0);
   await page.evaluate(() => (window.fail = false));
   await page.getByRole("button", { name: "重新加载任务", exact: true }).click();
-  await page.getByRole("button", { name: "打开自动化 每日进展" }).waitFor();
+  await page.getByRole("button", { name: "打开定时任务 每日进展" }).waitFor();
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.goto(url + "?empty");
   await page.getByRole("button", { name: "整理每日计划", exact: false }).click();

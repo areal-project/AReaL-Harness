@@ -697,8 +697,12 @@ export function GitPane({
       enableLineSelection: !disabled,
       enableGutterUtility: !disabled,
       lineHoverHighlight: "both",
+      unmodifiedLinesLabel: (count) =>
+        count === undefined
+          ? t("common.review.moreContext")
+          : t("common.review.unmodifiedLines", { count }),
     }),
-    [disabled],
+    [disabled, t],
   );
   const optionsByPath = useMemo(
     () =>

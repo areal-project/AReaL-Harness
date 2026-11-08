@@ -12,6 +12,10 @@ test("raw errors catch protocol codes and Host wording", () => {
   assert.deepEqual(rawErrors("设置读取失败：Host command failed"), ["Host command failed"]);
   assert.deepEqual(rawErrors("失败（COMMAND_FAILED）"), ["COMMAND_FAILED"]);
   assert.deepEqual(rawErrors("API Key 未填写"), []);
+  assert.deepEqual(rawErrors("读取范围 用户 · revision 0 · 11/7/2026, 9:55:41 AM"), [
+    "revision 0",
+    "11/7/2026, 9:55:41 AM",
+  ]);
 });
 
 test("mixed language flags English chrome words only as whole words", () => {

@@ -426,7 +426,9 @@ try {
   }, "approval run Thread");
   await call("open", { projectId: pid, threadId: approvalRun.threadId });
   // 用户明确打开运行会话，审批复用普通 Conversation UI。
-  await page.getByRole("button", { name: `打开自动化 ${approval.objective}`, exact: true }).click();
+  await page
+    .getByRole("button", { name: `打开定时任务 ${approval.objective}`, exact: true })
+    .click();
   const approvalRow = page.locator(`[data-task-run-id="${approvalRun.id}"]`);
   await approvalRow.getByRole("button", { name: "允许一次", exact: true }).waitFor();
   await page.screenshot({ path: join(scratch, "schedule-approval.png") });

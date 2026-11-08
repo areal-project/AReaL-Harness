@@ -1,0 +1,1017 @@
+{
+  "$comment": "输入框试点的示例数据。界面不连后台，按 screen 与 state 渲染；agent 段描述示例后台对操作的回应。暗色主题由根元素上的 dark 类选择；标准截图的生成环境里 system-ui 解析为 Inter，中文回退到 WenQuanYi Zen Hei，等宽为 Liberation Mono；换环境要重新生成基线。",
+  "project": {
+    "name": "示例项目",
+    "model": "示例模型",
+    "context": {
+      "usedTokens": 18000,
+      "windowTokens": 200000
+    },
+    "permission": {
+      "home": "帮我审批",
+      "thread": "自动执行"
+    },
+    "effort": "默认"
+  },
+  "conversations": {
+    "thread-idle": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "completed",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": ["读取 src/math.ts", "修改 src/math.ts", "运行测试"],
+          "answer": "已在 `src/math.ts` 加了 `clamp(value, min, max)`，并补了三条边界测试，全部通过。"
+        }
+      ]
+    },
+    "thread-running": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "running",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": ["读取 src/math.ts"]
+        }
+      ]
+    },
+    "thread-stopped": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "stopped",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": ["读取 src/math.ts"]
+        }
+      ]
+    },
+    "thread-approval": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "running",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": ["读取 src/math.ts", "修改 src/math.ts"]
+        }
+      ],
+      "decision": {
+        "kind": "approval",
+        "source": "终端",
+        "title": "运行测试确认修改",
+        "target": "/示例项目",
+        "command": "pnpm test"
+      }
+    },
+    "thread-question": {
+      "title": "给数学工具加 clamp",
+      "turns": [
+        {
+          "status": "running",
+          "user": "给 src/math.ts 加一个 clamp 函数，并补上边界测试。",
+          "process": ["读取 src/math.ts"]
+        }
+      ],
+      "decision": {
+        "kind": "question",
+        "title": "clamp 放在哪个文件？",
+        "options": ["放进 src/math.ts", "新建 src/clamp.ts"]
+      }
+    }
+  },
+  "states": {
+    "home.empty": {
+      "screen": "home",
+      "draft": ""
+    },
+    "home.draft": {
+      "screen": "home",
+      "draft": "给 src/math.ts 加一个 clamp 函数"
+    },
+    "home.tooltip": {
+      "screen": "home",
+      "draft": "给 src/math.ts 加一个 clamp 函数",
+      "overlay": "send-tooltip"
+    },
+    "thread.idle": {
+      "screen": "thread",
+      "conversation": "thread-idle",
+      "draft": ""
+    },
+    "thread.running": {
+      "screen": "thread",
+      "conversation": "thread-running",
+      "draft": ""
+    },
+    "thread.queued": {
+      "screen": "thread",
+      "conversation": "thread-running",
+      "draft": "",
+      "queue": ["顺便把 README 里的用法也更新一下"]
+    },
+    "thread.stopped": {
+      "screen": "thread",
+      "conversation": "thread-stopped",
+      "draft": ""
+    },
+    "thread.approval": {
+      "screen": "thread",
+      "conversation": "thread-approval",
+      "draft": ""
+    },
+    "thread.question": {
+      "screen": "thread",
+      "conversation": "thread-question",
+      "draft": ""
+    },
+    "window.sidebar": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": ""
+    },
+    "window.collapsed": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "collapsed": ["docs-project"]
+    },
+    "window.search": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "search": ""
+    },
+    "window.search-query": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "search": "README"
+    },
+    "window.rail": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "rail": true
+    },
+    "window.task-menu": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "overlay": "task-menu"
+    },
+    "window.organize-menu": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "overlay": "organize-menu"
+    },
+    "window.rename": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "overlay": "rename"
+    },
+    "window.settings": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "常规"
+    },
+    "window.settings-appearance": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "外观"
+    },
+    "window.settings-search": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "常规",
+      "settingsSearch": "字号"
+    },
+    "window.settings-select": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "外观",
+      "overlay": "theme-select"
+    },
+    "window.settings-usage": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "用量"
+    },
+    "window.settings-snapshots": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "SnapShots"
+    },
+    "window.settings-browser": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "浏览器"
+    },
+    "window.settings-cloud": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "Cloud"
+    },
+    "window.settings-computer": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "电脑控制"
+    },
+    "window.settings-worktrees": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "Worktrees"
+    },
+    "window.settings-hooks": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "钩子"
+    },
+    "window.settings-models": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "模型服务"
+    },
+    "window.settings-mobile": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "手机连接"
+    },
+    "window.settings-flywheel": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "settings": "数据飞轮"
+    },
+    "window.panel": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": [],
+        "active": "功能"
+      }
+    },
+    "window.panel-tabs": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动", "文件"],
+        "active": "文件"
+      }
+    },
+    "window.panel-full": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动", "文件"],
+        "active": "改动",
+        "view": "panel"
+      }
+    },
+    "window.panel-add-menu": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动", "文件"],
+        "active": "文件"
+      },
+      "overlay": "panel-add-menu"
+    },
+    "window.review": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动"],
+        "active": "改动"
+      }
+    },
+    "window.review-scope-menu": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动"],
+        "active": "改动"
+      },
+      "overlay": "review-scope-menu"
+    },
+    "window.review-files": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["改动"],
+        "active": "改动"
+      },
+      "overlay": "review-files"
+    },
+    "window.files": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["文件"],
+        "active": "文件"
+      }
+    },
+    "window.files-open": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["文件", "file:src/math.ts"],
+        "active": "file:src/math.ts"
+      }
+    },
+    "window.side-chat": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "panel": {
+        "tabs": ["旁路讨论"],
+        "active": "旁路讨论"
+      }
+    },
+    "window.tasks": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "surface": "tasks"
+    },
+    "window.tasks-new": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "surface": "tasks",
+      "overlay": "tasks-new"
+    },
+    "window.plugins": {
+      "screen": "window",
+      "conversation": "thread-idle",
+      "draft": "",
+      "surface": "plugins"
+    }
+  },
+  "agent": {
+    "accepts": "除 rejects 列出的文字外，提交都会被受理：用户消息进入信息流，回合开始运行并停在第一步，直到用户停止。",
+    "firstStep": "读取相关文件",
+    "rejects": {
+      "这条会被拒绝": "示例后台拒绝了这次提交，草稿已保留。"
+    },
+    "decisions": {
+      "$comment": "用户处理完待决卡片后，卡片消失，回合继续运行，过程末尾追加一步；{answer} 换成用户的回答。",
+      "allow": "运行 pnpm test",
+      "deny": "未获批准，跳过运行测试",
+      "answer": "按你的选择继续：{answer}"
+    }
+  },
+  "navigation": {
+    "$comment": "侧栏示例数据。updatedAt 为相对 thread-idle 回合时间的分钟数，越大越新；侧栏按最近更新排序。current 是当前打开的对话，主区显示 thread-idle。",
+    "workspace": "AReaL Harness",
+    "projects": [
+      {
+        "id": "spec-project",
+        "name": "示例项目",
+        "threads": [
+          {
+            "id": "spec-thread",
+            "title": "给 src/math.ts 加一个 clamp 函数",
+            "updatedAt": 50,
+            "current": true
+          },
+          {
+            "id": "t-lint",
+            "title": "修复 lint 报错",
+            "updatedAt": 40,
+            "running": true
+          },
+          {
+            "id": "t-release",
+            "title": "整理发布说明",
+            "updatedAt": 30,
+            "attention": true
+          },
+          {
+            "id": "t-readme",
+            "title": "更新 README 用法",
+            "updatedAt": 20,
+            "unread": true
+          },
+          {
+            "id": "t-ci",
+            "title": "排查 CI 超时",
+            "updatedAt": 10
+          }
+        ]
+      },
+      {
+        "id": "docs-project",
+        "name": "文档站",
+        "threads": [
+          {
+            "id": "t-nav",
+            "title": "调整目录结构",
+            "updatedAt": 45
+          },
+          {
+            "id": "t-search",
+            "title": "接入站内搜索",
+            "updatedAt": 35
+          }
+        ]
+      }
+    ],
+    "pinned": [
+      {
+        "project": "spec-project",
+        "thread": "t-ci"
+      }
+    ],
+    "chats": [
+      {
+        "id": "t-weekly",
+        "title": "写本周周报",
+        "updatedAt": 25
+      }
+    ]
+  },
+  "settings": {
+    "$comment": "设置页：导航分组与常规、外观两页的内容；其余页只有标题。keywords 用“、”分隔，供搜索命中页内条目。",
+    "groups": [
+      {
+        "label": "个人",
+        "items": [
+          {
+            "label": "常规",
+            "icon": "settings-general",
+            "keywords": "语言、文件与打开、窗口、终端、网络、代理、图形、电源、编辑器、通知、软件更新、Beta、诊断"
+          },
+          {
+            "label": "外观",
+            "icon": "settings-appearance",
+            "keywords": "主题、深色、浅色、字号、字体、阅读、动效"
+          },
+          {
+            "label": "使用情况",
+            "icon": "settings-usage",
+            "keywords": "使用活跃度、Skills 排行、用量"
+          }
+        ]
+      },
+      {
+        "label": "集成",
+        "items": [
+          {
+            "label": "插件",
+            "icon": "settings-plugins",
+            "keywords": "插件、Skills、技能、MCP、连接器"
+          },
+          {
+            "label": "SnapShots",
+            "icon": "settings-snapshots"
+          },
+          {
+            "label": "浏览器",
+            "icon": "settings-browser",
+            "keywords": "浏览器登录与数据、Cookie"
+          },
+          {
+            "label": "电脑控制",
+            "icon": "settings-computer",
+            "keywords": "系统授权、控制进程、辅助功能、屏幕录制"
+          }
+        ]
+      },
+      {
+        "label": "编码",
+        "items": [
+          {
+            "label": "工作树",
+            "icon": "settings-worktrees",
+            "keywords": "工作树、Worktree、创建与清理"
+          },
+          {
+            "label": "钩子",
+            "icon": "settings-hooks",
+            "keywords": "工具钩子、Hook、配置生效"
+          },
+          {
+            "label": "模型设置",
+            "icon": "settings-models",
+            "keywords": "模型、供应商、API Key、密钥、Base URL、API 格式、ChatGPT 订阅、默认模型"
+          },
+          {
+            "label": "会话配置",
+            "icon": "settings-session",
+            "keywords": "新会话、默认模型、会话模型、权限、安全、指令、会话技能、模型参数、温度"
+          },
+          {
+            "label": "云端",
+            "icon": "settings-cloud",
+            "keywords": "云端连接、后端地址、Token"
+          },
+          {
+            "label": "数据飞轮",
+            "icon": "settings-trajectory",
+            "keywords": "回答评价、轨迹上传、队列与失败、耗时、上传记录"
+          },
+          {
+            "label": "手机连接",
+            "icon": "settings-mobile",
+            "keywords": "手机、配对、Relay、中继、设备"
+          }
+        ]
+      }
+    ],
+    "pages": {
+      "常规": [
+        {
+          "title": "语言",
+          "rows": [
+            {
+              "label": "语言",
+              "description": "选择设置界面的显示语言",
+              "kind": "segmented",
+              "options": ["简体中文", "English"],
+              "value": "简体中文"
+            }
+          ]
+        },
+        {
+          "title": "文件与打开",
+          "rows": [
+            {
+              "label": "无项目任务文件夹",
+              "description": "新项目外任务各自保存到此文件夹中的独立目录；已有任务保留原位置。",
+              "kind": "value-action",
+              "value": "~/AReaL",
+              "action": "更改"
+            },
+            {
+              "label": "默认文件打开位置",
+              "kind": "select",
+              "value": "系统默认应用"
+            }
+          ]
+        },
+        {
+          "title": "窗口与终端",
+          "rows": [
+            {
+              "label": "在菜单栏中显示",
+              "description": "关闭主窗口后，仍可从 macOS 菜单栏返回应用",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "底部面板",
+              "description": "在应用标题栏中显示底部面板控件",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "默认终端位置",
+              "description": "新终端标签页的默认位置",
+              "kind": "segmented",
+              "options": ["底部", "右侧"],
+              "value": "右侧"
+            }
+          ]
+        },
+        {
+          "title": "终端",
+          "rows": [
+            {
+              "label": "继承系统终端 Profile",
+              "description": "新终端沿用系统终端的字体、字号和配色。",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "终端字体",
+              "description": "填写字体名称以覆盖系统字体，留空自动选择。新终端生效。",
+              "kind": "text",
+              "value": "~/AReaL",
+              "action": "保存",
+              "placeholder": "例如 MesloLGS NF, monospace"
+            }
+          ]
+        },
+        {
+          "title": "网络",
+          "rows": [
+            {
+              "label": "HTTP 代理",
+              "description": "模型、MCP、联网命令和应用浏览器使用此代理。留空使用系统代理，重启后生效。",
+              "kind": "text",
+              "value": "~/AReaL",
+              "action": "保存",
+              "placeholder": "例如 http://127.0.0.1:7890"
+            },
+            {
+              "label": "不使用代理的地址",
+              "description": "匹配的主机直接连接，用英文逗号分隔，支持域名、IP 和 CIDR。重启后生效。",
+              "kind": "text",
+              "value": "~/AReaL",
+              "action": "保存",
+              "placeholder": "例如 localhost,127.0.0.1,::1,.example.com"
+            },
+            {
+              "label": "自定义证书",
+              "description": "填写 PEM 根证书文件的绝对路径以增加信任，留空移除。重启后生效。",
+              "kind": "text",
+              "value": "~/AReaL",
+              "action": "保存",
+              "placeholder": "例如 /absolute/certs/root-ca.pem"
+            }
+          ]
+        },
+        {
+          "title": "图形",
+          "rows": [
+            {
+              "label": "Chromium 硬件加速",
+              "description": "关闭可缓解部分显卡导致的白屏或闪退。重启后生效。",
+              "kind": "switch",
+              "on": true
+            }
+          ]
+        },
+        {
+          "title": "电源",
+          "rows": [
+            {
+              "label": "运行时防止系统休眠",
+              "description": "任务运行时保持唤醒；仍可手动睡眠或合盖。",
+              "kind": "switch",
+              "on": true
+            }
+          ]
+        },
+        {
+          "title": "编辑器",
+          "rows": [
+            {
+              "label": "预测下一条提示词",
+              "description": "回复完成后预测下一条提示词，按 Tab 接受。会额外产生模型用量。",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "发送快捷键",
+              "description": "Shift+Enter 始终换行。",
+              "kind": "segmented",
+              "options": ["Enter 发送", "⌘/Ctrl+Enter 发送"],
+              "value": "Enter 发送"
+            },
+            {
+              "label": "交互行为",
+              "description": "加入队列：等本轮结束再发送；调整方向：中断当前输出并继续。",
+              "kind": "segmented",
+              "options": ["加入队列", "调整方向"],
+              "value": "加入队列"
+            }
+          ]
+        },
+        {
+          "title": "通知",
+          "rows": [
+            {
+              "label": "任务通知",
+              "description": "任务完成、需要审批或提问时发送系统通知。",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "轮次完成通知",
+              "description": "设置任务完成后何时提醒",
+              "kind": "select",
+              "value": "仅在未聚焦时"
+            },
+            {
+              "label": "启用权限通知",
+              "description": "需要你批准工具操作时显示提醒",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "启用问题通知",
+              "description": "需要输入才能继续时显示提醒",
+              "kind": "switch",
+              "on": true
+            },
+            {
+              "label": "通知声音",
+              "description": "任务完成、权限请求和提问时播放的声音",
+              "kind": "segmented",
+              "options": ["默认", "无"],
+              "value": "默认"
+            }
+          ]
+        }
+      ],
+      "外观": [
+        {
+          "title": "界面",
+          "rows": [
+            {
+              "label": "界面主题",
+              "kind": "select",
+              "value": "跟随系统"
+            },
+            {
+              "label": "界面字体",
+              "kind": "select",
+              "value": "系统默认"
+            },
+            {
+              "label": "界面字号",
+              "description": "调整导航、设置和控件的基础字号",
+              "kind": "number",
+              "value": 13,
+              "unit": "px"
+            }
+          ]
+        },
+        {
+          "title": "阅读",
+          "rows": [
+            {
+              "label": "内容字体大小",
+              "description": "调整正文使用的基础字号",
+              "kind": "number",
+              "value": 14,
+              "unit": "px"
+            },
+            {
+              "kind": "preview",
+              "text": "阅读样例。调整内容字号后，对话正文会立即变化。"
+            }
+          ]
+        },
+        {
+          "title": "交互与动效",
+          "rows": [
+            {
+              "label": "减少动态效果",
+              "description": "减少动画效果，或跟随系统偏好",
+              "kind": "select",
+              "value": "跟随系统"
+            },
+            {
+              "label": "使用指针光标",
+              "description": "悬停交互元素时切换为指针光标",
+              "kind": "switch",
+              "on": false
+            },
+            {
+              "label": "字体平滑",
+              "description": "使用 macOS 原生字体抗锯齿",
+              "kind": "switch",
+              "on": true
+            }
+          ]
+        },
+        {
+          "title": "阅读与代码",
+          "collapsed": true
+        },
+        {
+          "title": "配色微调",
+          "collapsed": true
+        }
+      ]
+    },
+    "select-options": {
+      "界面主题": ["跟随系统", "浅色", "深色"]
+    }
+  },
+  "review": {
+    "turn": "thread-idle",
+    "files": [
+      {
+        "path": "src/math.ts",
+        "status": "modified",
+        "before": "export function sum(values: number[]): number {\n  return values.reduce((total, value) => total + value, 0);\n}\n",
+        "after": "export function sum(values: number[]): number {\n  return values.reduce((total, value) => total + value, 0);\n}\n\nexport function clamp(value: number, min: number, max: number): number {\n  if (min > max) throw new RangeError(\"min must not exceed max\");\n  return Math.min(Math.max(value, min), max);\n}\n"
+      },
+      {
+        "path": "src/math.test.ts",
+        "status": "added",
+        "before": "",
+        "after": "import { describe, expect, it } from \"vitest\";\nimport { clamp } from \"./math\";\n\ndescribe(\"clamp\", () => {\n  it(\"keeps values inside the range\", () => {\n    expect(clamp(5, 0, 10)).toBe(5);\n  });\n  it(\"raises values below min\", () => {\n    expect(clamp(-3, 0, 10)).toBe(0);\n  });\n  it(\"lowers values above max\", () => {\n    expect(clamp(42, 0, 10)).toBe(10);\n  });\n});\n"
+      }
+    ]
+  },
+  "tasks": {
+    "$comment": "定时任务示例数据。nextRunAt 为秒级时间戳；scheduleV2.rule 同 Core 的日历规则。",
+    "projects": [
+      {
+        "id": "spec-project",
+        "name": "示例项目",
+        "root": "/示例项目"
+      }
+    ],
+    "rows": [
+      {
+        "id": "daily",
+        "projectId": "spec-project",
+        "objective": "每天早上汇总昨天的提交和未关闭的问题",
+        "paused": false,
+        "sourceThreadId": "daily-thread",
+        "nextRunAt": 2000000000,
+        "scheduleV2": {
+          "rule": {
+            "kind": "calendar",
+            "frequency": "daily",
+            "localTime": "09:00"
+          }
+        }
+      },
+      {
+        "id": "weekly",
+        "projectId": "spec-project",
+        "objective": "每周五整理本周发布说明",
+        "paused": true,
+        "sourceThreadId": "weekly-thread",
+        "nextRunAt": 2000300000,
+        "scheduleV2": {
+          "rule": {
+            "kind": "calendar",
+            "frequency": "weekly",
+            "weekdays": [5],
+            "localTime": "17:00"
+          }
+        }
+      }
+    ]
+  },
+  "plugins": {
+    "$comment": "插件中心示例数据：installed 为已安装；components 为插件带的能力。",
+    "marketplace": "official",
+    "sourceUrl": "https://github.com/openai/plugins",
+    "list": [
+      {
+        "id": "github@official",
+        "name": "github",
+        "displayName": "GitHub",
+        "description": "在对话中查看仓库、议题和拉取请求。",
+        "developer": "GitHub",
+        "installed": true,
+        "components": ["mcp"]
+      },
+      {
+        "id": "linear@official",
+        "name": "linear",
+        "displayName": "Linear",
+        "description": "把对话里的待办同步成 Linear 议题。",
+        "developer": "Linear",
+        "installed": false,
+        "components": ["mcp"]
+      },
+      {
+        "id": "review-kit@official",
+        "name": "review-kit",
+        "displayName": "代码审查工具包",
+        "description": "提供审查清单和常用审查技能。",
+        "developer": "示例团队",
+        "installed": true,
+        "components": ["skills"]
+      },
+      {
+        "id": "figma@official",
+        "name": "figma",
+        "displayName": "Figma",
+        "description": "读取设计稿并对照实现。",
+        "developer": "Figma",
+        "installed": false,
+        "components": ["mcp"]
+      }
+    ]
+  },
+  "settingsBackend": {
+    "$comment": "设置各页的示例后台数据：today 固定，截图不随真实日期变化。",
+    "today": "2026-11-07",
+    "usage": {
+      "days": [
+        180000, 240000, 0, 320000, 410000, 150000, 260000, 380000, 90000, 300000, 450000, 220000,
+        340000, 280000
+      ],
+      "skills": [
+        {
+          "name": "代码审查",
+          "calls": 42
+        },
+        {
+          "name": "写测试",
+          "calls": 31
+        },
+        {
+          "name": "整理提交",
+          "calls": 18
+        }
+      ]
+    },
+    "trajectory": [
+      {
+        "status": "uploaded",
+        "bytes": 184320,
+        "ms": 2140
+      },
+      {
+        "status": "uploaded",
+        "bytes": 96256,
+        "ms": 1380
+      },
+      {
+        "status": "pending",
+        "bytes": 51200,
+        "ms": 980
+      },
+      {
+        "status": "failed",
+        "bytes": 40960,
+        "ms": 1720,
+        "error": "上传超时"
+      }
+    ],
+    "providers": [
+      {
+        "id": "example",
+        "name": "示例服务",
+        "baseUrl": "https://api.example.com/v1",
+        "models": ["示例模型", "示例模型-mini"]
+      }
+    ],
+    "cloud": {
+      "baseURL": "https://cloud.example.com"
+    },
+    "computer": {
+      "accessibility": "granted",
+      "screenRecording": "denied"
+    },
+    "mobile": {
+      "relay": "https://relay.example.com",
+      "devices": [
+        {
+          "name": "我的 iPhone",
+          "online": true
+        }
+      ]
+    },
+    "hooks": [
+      {
+        "name": "提交前检查",
+        "event": "PreToolUse",
+        "matcher": "Bash",
+        "argv": ["./scripts/check.sh"],
+        "timeoutMs": 10000
+      }
+    ],
+    "worktrees": {
+      "settings": {
+        "worktreeRoot": "~/.areal/worktrees",
+        "branchPrefix": "areal/",
+        "fetchBeforeCreate": true,
+        "autoCleanup": true,
+        "keepCount": 10
+      },
+      "list": [
+        {
+          "id": "wt-1",
+          "requestId": "wt-1",
+          "projectId": "spec-project",
+          "name": "修复 lint 报错",
+          "branch": "areal/fix-lint",
+          "directory": "~/.areal/worktrees/fix-lint"
+        }
+      ]
+    }
+  },
+  "workspace": {
+    "$comment": "文件面板的示例工作区：这里的文件加上 review.files 里改动后的文件；review.files 的状态即文件树的改动标记。",
+    "files": {
+      "README.md": "# 示例项目\n\n一个用来演示 AReaL Harness 界面的小项目。\n\n## 开始\n\n```sh\npnpm install\npnpm test\n```\n",
+      "package.json": "{\n  \"name\": \"example\",\n  \"private\": true,\n  \"scripts\": {\n    \"test\": \"vitest run\"\n  }\n}\n",
+      "src/index.ts": "export { clamp, sum } from \"./math\";\n"
+    }
+  }
+}

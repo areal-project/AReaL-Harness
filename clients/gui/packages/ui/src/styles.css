@@ -1,5 +1,6 @@
 @import "./generated/foundation.css";
 @import "./generated/tailwind.css";
+@import "./materials.css";
 @import "./components/disclosure/disclosure.css";
 @import "./components/skeleton/skeleton.css";
 @source "./**/*.js";
@@ -10,7 +11,7 @@
 }
 /* 与 observeVisibleAnimation 配合：未登记或屏外时暂停。 */
 .areal-visible-spin {
-  animation: areal-visible-spin 1s linear var(--motion-loop);
+  animation: areal-visible-spin var(--motion-cycle) linear var(--motion-loop);
   animation-play-state: var(--visible-animation-state, paused);
 }
 @keyframes areal-visible-spin {
@@ -29,3 +30,8 @@
 @import "./settings/settings-dialog/settings-dialog.css";
 @import "./components/popover/popup.css";
 @import "./components/hover-actions/hover-actions.css";
+
+/* Tailwind 自带的 animate-spin 写死 1s 和 infinite，改走动效变量，减少动效时随之停住。 */
+@theme {
+  --animate-spin: spin var(--motion-cycle) linear var(--motion-loop);
+}

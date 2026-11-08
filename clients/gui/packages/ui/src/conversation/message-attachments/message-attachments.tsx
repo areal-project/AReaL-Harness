@@ -459,7 +459,7 @@ export const AttachmentRemove = ({
     return (
       <span
         className={cn(
-          "pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center transition-opacity duration-150 ease-out",
+          "pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center transition-opacity duration-(--motion-normal) ease-(--ease-standard)",
           alwaysVisible
             ? "opacity-100"
             : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",

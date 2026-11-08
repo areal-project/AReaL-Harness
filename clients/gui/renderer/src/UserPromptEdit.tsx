@@ -135,6 +135,7 @@ export function UserPromptEdit({
       {open && (
         <section role="region" aria-label="编辑用户消息" className="user-prompt-edit w-full">
           <ChatPromptEditor
+            surfacePlacement="inline"
             workspacePath={project.root}
             taskId={thread.id}
             initialValue={text}

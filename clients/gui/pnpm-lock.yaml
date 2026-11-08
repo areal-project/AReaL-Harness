@@ -35,7 +35,7 @@ packageExtensionsChecksum: sha256-fr6f2C5O5Fq2CHyXY+DzAl644NjYthV7Iu7e/rnVvrw=
 patchedDependencies:
   '@chainsafe/libp2p-noise@17.0.0': 841879fcdebfd0b261887a7f322b30ff03c264d644ac8acafd7ec95a43db9e4d
   '@electron/asar@3.4.1': 0088af14998a8e46fd44ceb50c03df2103abb2c33d52b9a28569f12b823a1763
-  '@pierre/diffs@1.4.3': 91e9a21f88013ffc1524479868940ff3838e4ee68f3f3220ed95d8da0a74df45
+  '@pierre/diffs@1.4.3': a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a
   app-builder-lib@26.15.3: 5a5d9484824c78b1949e9c9e9c8129515a84416daa6a992e70fe042520ec8c12
   dir-compare@4.2.0: b273e70a8999f3344e54e3c0f4cd99f1d2b74e8e7f1cdacd803d30f662984c1e
   electron-updater@6.8.9: a9461757ba817cd32de6e6c8e3e2204cef79abca0e02c0cdd6a9073752489707
@@ -342,7 +342,7 @@ importers:
         version: 1.8.0(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@pierre/diffs':
         specifier: 1.4.3
-        version: 1.4.3(patch_hash=91e9a21f88013ffc1524479868940ff3838e4ee68f3f3220ed95d8da0a74df45)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.4.3(patch_hash=a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -478,7 +478,7 @@ importers:
         version: 2.0.3(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)
       '@pierre/diffs':
         specifier: 1.4.3
-        version: 1.4.3(patch_hash=91e9a21f88013ffc1524479868940ff3838e4ee68f3f3220ed95d8da0a74df45)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.4.3(patch_hash=a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@streamdown/cjk':
         specifier: 1.0.3
         version: 1.0.3(@types/mdast@4.0.4)(micromark-util-types@2.0.3)(micromark@4.0.3)(react@19.2.8)(unified@11.0.5)
@@ -7559,7 +7559,7 @@ snapshots:
       tslib: 2.8.1
       webcrypto-core: 1.9.2
 
-  '@pierre/diffs@1.4.3(patch_hash=91e9a21f88013ffc1524479868940ff3838e4ee68f3f3220ed95d8da0a74df45)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@pierre/diffs@1.4.3(patch_hash=a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@pierre/theme': 2.0.0
       '@pierre/theming': 1.0.1(@pierre/theme@2.0.0)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.3)

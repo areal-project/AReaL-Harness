@@ -1,0 +1,88 @@
+id: menu
+name: 菜单
+status: draft
+purpose: 点一个按钮后列出可做的事，选一项就执行并收起。
+why: 低频操作收进菜单，平时不占位置；全部菜单用同一种浮层、同一种行，用户学一次到处都会用。
+
+layout:
+  material: overlay
+  layer: layer-popover
+  position: 默认在触发按钮下方、与按钮左缘对齐，间隔 spacing-inline 的四分之一；靠近窗口边缘时自动翻到另一侧，离窗口边缘至少 spacing-inline
+  submenu: 子菜单出现在子菜单项右侧，左缘距该项右缘 spacing-inline 的四分之一，子菜单浮层的顶边（不是它的第一项）与该项顶边对齐
+
+anatomy:
+  - part: popup
+    role: 浮层本身，竖排菜单项
+  - part: item
+    role: 一项操作
+  - part: separator
+    role: 分组之间的一道线
+  - part: sub-trigger
+    optional: true
+    role: 打开子菜单的一项，右端一个朝右箭头
+  - part: radio-item
+    optional: true
+    role: 子菜单里的单选项，当前选中的一项右端打勾
+
+parts:
+  popup:
+    surface: color-menu（半透明），模糊用浮层材质
+    shadow: shadow-menu（已含一圈细描边，不另画边框）
+    radius: radius-overlay
+    padding: spacing-inline 的一半
+    gap: 各项之间 spacing-inline 的四分之一
+    width: 按最宽一项撑开，至少 reading-width 的六分之一
+    text: foreground
+  item:
+    height: 最小 spacing-control
+    padding: 上下 spacing-inline 的一半，左右 spacing-inline
+    radius: radius-inset
+    text: text-ui-base，行高 line-height-ui，foreground，单行
+    icon: 有图标时 icon-size-control，与文字间隔 spacing-inline；同一个菜单里要么每项都有图标，要么都没有
+    highlighted: 鼠标悬停或键盘移到的那一项底色 color-menu-hover
+    disabled: 文字 foreground-subtlest，不响应悬停与点击
+    destructive: 文字 color-destructive；高亮时底色 color-destructive，文字 color-destructive-foreground
+  separator:
+    line: 高 border-width-default，color-border
+    margin: 上下 spacing-inline 的一半；左右伸到浮层边缘（抵消浮层内边距）
+  sub-trigger:
+    base: 同 item
+    chevron: 文字右端靠右放 submenu-chevron，icon-size-control，foreground-subtle
+    open: 子菜单打开期间保持高亮
+  radio-item:
+    base: 同 item，右侧内边距为 icon-size-control 加两倍 spacing-inline，给勾留位
+    check: 选中项右端距右缘 spacing-inline 放 menu-check，icon-size-control，foreground-subtle
+
+icons:
+  source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+  used: [submenu-chevron, menu-check]
+
+accessible-names:
+  popup: 角色为菜单
+  item: 角色为菜单项，名称即文字
+  sub-trigger: 角色为菜单项，带子菜单
+  radio-item: 角色为单选菜单项，选中项标为已选
+
+keyboard:
+  - 打开后上下方向键在可用项之间移动高亮，跳过不可用项
+  - 回车或空格执行高亮项
+  - 在子菜单项上按右方向键打开子菜单并高亮其第一项；在子菜单里按左方向键收起子菜单
+  - Esc 收起菜单，焦点回到触发按钮（触发按钮平时隐藏的，获得焦点时也要可见；隐藏只能用透明度，不能让它失去获得焦点的能力）
+
+behavior:
+  - 点触发按钮打开；再点一次、点菜单外或选中一项后收起
+  - 用鼠标打开时没有高亮项；用键盘打开时高亮第一项
+  - 菜单打开期间触发按钮保持可见（例如侧栏行的悬停按钮不随鼠标离开而消失）
+
+instances:
+  task-menu:
+    trigger: 侧栏对话行的“任务操作 {标题}”
+    items: [重命名, 置顶（已置顶时为 取消置顶）, 标为未读（未读时为 标为已读）, 上移, 下移, 分隔线, 归档]
+    rules: 每项都不带图标；上移、下移只在该分组按“手动排序”时可用，并且到顶或到底时不可用
+  project-menu:
+    trigger: 项目行的“项目操作 {项目名}”
+    items: [重命名, 在默认应用中打开, 在文件管理器中显示, 置顶项目（已置顶时为 取消置顶项目）, 上移, 下移, 从侧栏移除（不删除文件，再次打开即恢复）]
+  organize-menu:
+    trigger: 项目分组标题右侧的“侧栏整理”
+    items: [新建项目, 分隔线, 独立任务排序 ▸, 项目内任务排序 ▸, 置顶项排序 ▸, 分隔线, 全部标为已读]
+    submenu: 三个排序子菜单都是单选：最近更新、优先处理、手动排序；默认最近更新

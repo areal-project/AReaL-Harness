@@ -35,19 +35,19 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 20px 0 12px;
+  margin: calc(var(--spacing-inline) * 5 / 2) 0 calc(var(--spacing-inline) * 3 / 2);
 }
 .remote-project-heading h2 {
   font-size: 21px;
   font-weight: 600;
 }
 .remote-project-group {
-  margin: 12px 0;
+  margin: calc(var(--spacing-inline) * 3 / 2) 0;
 }
 .remote-project-header {
   display: flex;
   align-items: center;
-  padding-right: 8px;
+  padding-right: var(--spacing-inline);
   border-radius: var(--radius-navigation);
 }
 .remote-project-header:hover,
@@ -62,8 +62,8 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   min-width: 0;
   background: transparent !important;
   justify-content: flex-start;
-  gap: 12px;
-  min-height: 48px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
+  min-height: calc(var(--spacing-field) * 3);
   font-size: 17px;
 }
 .remote-project-row span {
@@ -72,13 +72,13 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   white-space: nowrap;
 }
 .remote-session-list {
-  padding-left: 36px;
+  padding-left: calc(var(--spacing-field) * 2);
 }
 .remote-session-row {
   display: flex;
   width: 100%;
   justify-content: flex-start;
-  min-height: 46px;
+  min-height: calc(var(--spacing-field) * 3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -88,7 +88,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   display: flex;
   width: 100%;
   justify-content: flex-start;
-  padding: 5px 8px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   text-align: left;
   color: var(--color-foreground-subtle);
 }
@@ -105,7 +105,7 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
   flex-shrink: 0;
 }
 .remote-chat-heading span {
@@ -118,20 +118,21 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
 }
 .remote-chat-title {
   font-size: var(--text-fixed-section-title);
-  margin: 16px 8px 0;
+  margin: var(--spacing-field) var(--spacing-inline) 0;
   flex-shrink: 0;
 }
 .remote-gui-composer {
-  padding: 12px 4px 4px;
+  padding: calc(var(--spacing-inline) * 3 / 2) calc(var(--spacing-inline) / 2)
+    calc(var(--spacing-inline) / 2);
   flex-shrink: 0;
   overflow: visible;
 }
 .remote-gui-composer > p {
   font-size: var(--text-fixed-label);
-  margin: 8px 4px;
+  margin: var(--spacing-inline) calc(var(--spacing-inline) / 2);
 }
 #remote-session-ui .message-column {
-  padding: 24px 12px;
+  padding: var(--spacing-section) calc(var(--spacing-inline) * 3 / 2);
 }
 #remote-session-ui .composer-toolbar {
   gap: 0;
@@ -139,14 +140,14 @@ body[data-connection="connected"][data-detail="open"] .remote-header {
 main {
   max-width: 780px;
   margin: auto;
-  padding: 28px 24px;
+  padding: calc(var(--spacing-inline) * 7 / 2) var(--spacing-section);
 }
 @media (max-width: 560px) {
   main {
-    padding: 20px 14px;
+    padding: calc(var(--spacing-inline) * 5 / 2) calc(var(--spacing-inline) * 3 / 2);
   }
   #session {
-    height: calc(100dvh - 40px);
+    height: calc(100dvh - calc(var(--spacing-inline) * 5));
   }
 }
 
