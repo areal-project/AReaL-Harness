@@ -91,15 +91,17 @@
   min-width: 680px;
 }
 .usage-weekdays {
-  width: var(--icon-size-control);
   flex: none;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding-top: var(--spacing-section);
+  display: grid;
+  grid-template-rows: calc(var(--spacing-inline) * 5 / 2 + var(--border-width-default)) repeat(7, calc(var(--spacing-inline) * 3 / 2));
+  gap: var(--border-width-default);
   font-size: var(--text-fixed-metadata);
+  line-height: calc(var(--spacing-inline) * 3 / 2);
+  white-space: nowrap;
   color: var(--color-foreground-subtle);
 }
+.usage-weekdays span { grid-row-end: span 2; }
+.usage-weekdays span:first-child { grid-row-start: 2; }
 .usage-weeks {
   display: flex;
   gap: calc(var(--spacing-inline) / 4);
@@ -119,7 +121,7 @@
   font-size: var(--text-fixed-metadata);
   white-space: nowrap;
   color: var(--color-foreground-subtle);
-  width: calc(var(--spacing-inline) * 3 / 2);
+  width: 0;
 }
 .usage-cell {
   display: block;

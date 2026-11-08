@@ -41,19 +41,19 @@ parts:
         actions: 之后是“复制路径”“切换文件差异对比”两个隐藏操作和常显的“文件操作”（more 图标）；按钮都是 spacing-control-xs 见方，圆角 radius-pill，透明底，图标 foreground-subtle，悬停 foreground；两个隐藏操作在文件头悬停或其中有键盘焦点时才出现，平时透明但仍占位
         narrow: 差异列表窄于 reading-width 的三十二分之十五时，隐藏操作不再占位，而是叠放在路径末端之上（底色 color-background），路径与文件名不被挤掉
         body: 展开时文件头下面是差异正文；正文底色 color-background；等宽字体 font-mono，代码字号 text-fixed-caption（用户可在设置里改代码字号，示例为默认值），行高为代码字号的一点八倍；行号列最少四个字宽；改动前后各保留一行未改动的上下文，其余未改动行折成 unchanged；宽度足够且一个文件同时有增删时并排显示，否则上下合并显示
-        diff-colors: 先取“改动基色”：新增在浅色下是 color-success、深色下是 color-content-diff-added；删除在浅色下是 color-destructive、深色下是 color-content-diff-removed。改动行的正文底色是 color-background 混入改动基色：浅色百分之十二、深色百分之二十；改动行的行号格底色是纯白混入百分之九的改动基色（浅色）、纯黑混入百分之十五（深色）；改动行的行号与差异标记取改动基色本身；悬停时正文底色加深到浅色百分之二十、深色新增百分之三十与删除百分之二十五；以上混色都在 CIE Lab 空间（color-mix in lab）里做，不是 sRGB 或 oklab，否则深色行号格会偏亮
+        diff-colors: 先取“改动基色”：新增在浅色下是 color-success、深色下是 color-content-diff-added；删除在浅色下是 color-destructive、深色下是 color-content-diff-removed。混色的底不是 color-background，而是代码主题自己的底色：浅色纯白，深色是比 color-background 更深的近黑（约 rgb(17,17,17)）（来自代码主题，和语法配色一样没有进 Token 源，计入已知缺口）。改动行的正文底色是代码主题底色混入改动基色：浅色百分之十二、深色百分之二十（深色新增行约为 rgb(31,49,36)）；改动行的行号格底色是纯白混入百分之九的改动基色（浅色）、纯黑混入百分之十五（深色）；改动行的行号与差异标记取改动基色本身；悬停时正文底色加深到浅色百分之二十、深色新增百分之三十与删除百分之二十五；以上混色都在 CIE Lab 空间（color-mix in lab）里做，不是 sRGB 或 oklab，否则深色行号格会偏亮
         syntax: 代码的语法着色来自代码主题“AReaL Light / AReaL Dark”（用户可在设置里换主题）；主题颜色没有进 Token 源，复现时只要求未改动行的正文是 foreground-subtle 一级的灰，语法色差异计入已知缺口
         menu: “文件操作”菜单与文件头的右键菜单内容相同：打开文件、在默认应用中打开、在文件管理器中显示；分隔线；复制绝对路径、在文件树中显示
     unchanged:
         row: 差异正文里连续的未改动行折成一行，高 spacing-control-lg：左边是“展开下方未改动行”的箭头按钮（与行号列同宽），右边写“N 行未改动”（中文说明，不只写数字，文字取行号色）；行号列位置与正文对齐
-        fill: 整行底色是 color-background 混入 foreground：浅色百分之四、深色百分之十五，同样在 CIE Lab 空间混色；文字段左右各留 spacing-inline，右端两角 radius-inset
+        fill: 整行底色是代码主题底色（同 diff-colors）混入百分之八的黑（浅色，约为 rgb(243,243,243)）或百分之八的白（深色），同样在 CIE Lab 空间混色；文字段左右各留 spacing-inline，右端两角 radius-inset
         width: 这一行只铺满差异正文的可见宽度：正文出现竖向滚动条时，它的右端停在滚动条左边，不伸到滚动条下面；上下合并显示时它分两格（行号列宽的箭头格加文字段），并排显示时横跨左右两栏，所以面板里与铺满时看起来宽度不同，规则相同
     file-list:
         pane: 并排在差异列表右边，左缘 border-width-default 的 color-border；默认宽度 250 像素（约为 reading-width 的三分之一；它是可拖动的记住值，写在实现状态里，不是变量），最窄 200，最多占审查内容宽的百分之六十（不少于 200）；拖动过的宽度记住；左缘骑着一条宽度把手，同右侧面板的 resize
         filter: 顶部一个筛选框：高 spacing-control，边框 border-width-default 的 color-border，圆角 radius-navigation，底色 color-viewer-control；内含 search 图标（icon-size-control，foreground 的一半不透明度，距左缘 spacing-inline）与输入，输入文字 text-ui-base，行高 line-height-ui-sm，占位“筛选文件…”同图标颜色；有内容时右端出现“清除文件筛选”按钮；文件列表自身左右内边距 spacing-inline 的一半，筛选框外再留 spacing-inline 的一半，所以筛选框距列表左右边缘共 spacing-inline、上方 spacing-inline 的一半、下方只留 border-width-default
         order: 文件按“新增的在前，其余按路径字母序（不分大小写）”排；范围为“上一轮”或某一轮时保持那一轮里的原始顺序
         tree: 文件树按目录分层：目录行是向右箭头（展开时转向下，icon-size-control，foreground-subtle），文件行是文件类型图标；每深一层缩进 icon-size-control 的四分之三
-        row: 高 navigation-row-height，圆角 radius-compact，内边距左右 spacing-inline 的一半，元素间隔 spacing-inline 的一半；文字 text-ui-caption，常规字重，行高 line-height-ui-sm，foreground；文件行右端是“+新增 -删除”，颜色同 stats；悬停底色 color-surface-hover，当前文件底色 color-selected；键盘焦点为 border-width-default 的 color-input-border-focused 内描边
+        row: 高 navigation-row-height，圆角 radius-compact；行本身左右再各缩进 spacing-inline 的一半（加上列表的内边距，行距列表左右边缘共 spacing-inline），内边距左右 spacing-inline 的一半，元素间隔 spacing-inline 的一半；文字 text-ui-caption，常规字重，行高 line-height-ui-sm，foreground；文件行右端是“+新增 -删除”，颜色同 stats；悬停底色 color-surface-hover，当前文件底色 color-selected；键盘焦点为 border-width-default 的 color-input-border-focused 内描边
         guides: 每一层画一条竖线，颜色 color-review-tree-guide-ink 的四分之一浓度；平时隐藏，悬停在树上时显出四分之三，当前文件的各级上级目录的竖线常显
     empty:
         content: 竖直居中：一幅空状态插画，下面标题“暂无文件改动”（text-ui-lg，font-weight-medium，行高一倍半，foreground）与说明“此项目中的改动将显示在这里。”（text-ui-caption，foreground 的六成五不透明度），标题与说明间隔 spacing-inline

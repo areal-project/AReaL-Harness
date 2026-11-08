@@ -23,7 +23,7 @@ parts:
         rows: 行高 spacing-control，行高与文字行高相同；占满宽度，不留外边距；每深一层左缩进 spacing-inline，最外层缩进 spacing-inline 的四分之一；圆角 radius-compact；文字 text-ui-caption，foreground，单行省略
         row-parts: 目录行先是一个 icon-size-control 见方的折叠箭头（foreground-subtle，展开时转向下）再是名称；文件行先是按文件类型的图标（icon-size-control：TypeScript 取 tree-file-typescript，JSON 取 tree-file-json，Markdown 取 tree-file-markdown，深色下 Markdown 换 tree-file-markdown-dark；认不出的类型用通用文件图标，颜色 foreground-subtle（示例数据里没有））再是名称，图标与名称间隔 spacing-inline 的四分之三
         states: 悬停底色 color-surface-hover；当前文件底色 color-selected；键盘焦点为 border-width-default 的 color-input-border-focused 内描边
-        marks: 改过的文件右端一个等宽粗体字母，text-ui-base：A 新增与 U 未跟踪取 color-success，M 已修改取 color-warning，D 已删除取 color-destructive，R 已重命名取 color-change-renamed，C 冲突取 color-warning；目录里有改动时（收起和展开都一样），目录行右端是一个同色圆点，颜色取目录下第一个改动文件的记号色。记号与审查面板的增删一致
+        marks: 改过的文件右端一个等宽粗体字母，text-ui-base：A 新增与 U 未跟踪取 color-success，M 已修改取 color-warning，D 已删除取 color-destructive，R 已重命名取 color-change-renamed，C 冲突取 color-warning；目录里有改动时（收起和展开都一样），目录行右端是一个同色圆点，颜色取目录下第一个改动文件的记号色；“第一个”按改动列表（git 状态，即示例数据里改动的先后）的顺序，不是树里的显示顺序。记号与审查面板的增删一致
         empty: 搜索没有结果时写“没有匹配的文件”，空目录写“此文件夹为空”，结果被截断时写“结果较多，已显示部分项目。请缩小搜索范围。”
     toolbar:
         height: spacing-inline 的五倍；左右内边距 spacing-inline，元素间隔 spacing-inline 的四分之三；不画下沿线
