@@ -92,7 +92,7 @@ export const worktreeMessages = {
     en: "Deleting environment…",
   },
   "worktree.settings.setupDescription": {
-    "zh-CN": "在新工作树的项目根目录运行。成功后才发送首条消息。保存不会执行脚本。",
+    "zh-CN": "在新工作树的项目根目录运行，成功后才发送首条消息。保存不执行脚本。",
     en: "Runs at the new worktree's project root before the first message is sent. Saving does not run the script.",
   },
   "worktree.settings.cleanupDescription": {
