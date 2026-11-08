@@ -89,6 +89,12 @@
   --color-muted: var(--color-surface);
   --color-muted-foreground: var(--color-foreground-subtle);
   --color-success: #1e8a3e;
+  --color-activity: #47a582;
+  --color-activity-1: #c8e5d6;
+  --color-activity-2: #83c7a6;
+  --color-activity-3: #42a57c;
+  --color-activity-4: #227454;
+  --color-change-renamed: #0b7fff;
   --radius-compact: var(--radius-sm);
   --radius-micro: var(--radius-xs);
   --radius-compact-row: var(--radius-sm);
@@ -178,6 +184,11 @@
   --color-warning: #ff8a30;
   --color-foreground-inverse: #000000;
   --color-success: #46bf72;
+  --color-activity-1: #24483c;
+  --color-activity-2: #306e54;
+  --color-activity-3: #4a9d73;
+  --color-activity-4: #8bcfa3;
+  --color-change-renamed: #4099ff;
 }
 :root[data-reduced-motion="true"] { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-emphasis: 0ms; --motion-reveal: 0ms; --motion-cycle: 0ms; --motion-cycle-slow: 0ms; --motion-loop: 0; }
 @media (prefers-reduced-motion: reduce) { :root:not([data-reduced-motion="false"]) { --motion-fast: 0ms; --motion-normal: 0ms; --motion-slow: 0ms; --motion-emphasis: 0ms; --motion-reveal: 0ms; --motion-cycle: 0ms; --motion-cycle-slow: 0ms; --motion-loop: 0; } }

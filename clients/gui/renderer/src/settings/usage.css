@@ -25,7 +25,7 @@
 .usage-local > span {
   width: calc(var(--spacing-inline) * 3 / 4);
   height: calc(var(--spacing-inline) * 3 / 4);
-  background: #47a582;
+  background: var(--color-activity);
   border-radius: 50%;
 }
 .usage-metrics {
@@ -53,7 +53,7 @@
 }
 .usage-metric strong {
   font-size: calc(var(--text-fixed-section-title) * 1.15);
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
@@ -107,8 +107,10 @@
 }
 .usage-week {
   display: grid;
-  grid-template-rows: 20px repeat(7, 11px);
-  gap: calc(var(--spacing-inline) / 4);
+  grid-template-rows:
+    calc(var(--spacing-inline) * 5 / 2 + var(--border-width-default))
+    repeat(7, calc(var(--spacing-inline) * 3 / 2));
+  gap: var(--border-width-default);
   flex: 1;
   min-width: var(--spacing-inline);
   position: relative;
@@ -140,28 +142,16 @@ button.usage-cell:focus-visible {
   background: var(--color-hover);
 }
 .usage-level-1 {
-  background: #c8e5d6;
+  background: var(--color-activity-1);
 }
 .usage-level-2 {
-  background: #83c7a6;
+  background: var(--color-activity-2);
 }
 .usage-level-3 {
-  background: #42a57c;
+  background: var(--color-activity-3);
 }
 .usage-level-4 {
-  background: #227454;
-}
-.dark .usage-level-1 {
-  background: #24483c;
-}
-.dark .usage-level-2 {
-  background: #306e54;
-}
-.dark .usage-level-3 {
-  background: #4a9d73;
-}
-.dark .usage-level-4 {
-  background: #8bcfa3;
+  background: var(--color-activity-4);
 }
 .usage-legend {
   display: flex;
@@ -189,7 +179,7 @@ button.usage-cell:focus-visible {
 }
 .usage-day strong {
   font-size: var(--text-ui-caption);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .usage-day small {
   font-size: var(--text-ui-xs);
@@ -223,7 +213,7 @@ button.usage-cell:focus-visible {
 }
 .usage-skill-name strong {
   font-size: var(--text-ui-caption);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   overflow-wrap: anywhere;
 }
 .usage-rank-track {
@@ -237,7 +227,7 @@ button.usage-cell:focus-visible {
 .usage-rank-track span {
   display: block;
   height: 100%;
-  background: #47a582;
+  background: var(--color-activity);
   border-radius: 3px;
 }
 .usage-ranking li > span:last-child {
@@ -257,7 +247,7 @@ button.usage-cell:focus-visible {
 }
 .usage-empty strong {
   font-size: var(--text-ui-base);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .usage-empty p {
   margin: 0;

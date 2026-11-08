@@ -9,7 +9,7 @@ layout:
     scroll: 整个主区一起竖向滚动；右侧始终给滚动条留位，内容不因出现滚动条而左右移动
     padding: 上下 spacing-field 的四倍，左右 spacing-field 的两倍
     column: 内容一列，最宽 reading-width，在留位后的宽度里水平居中
-    gap: 页标题、各分区之间 spacing-field 的两倍半
+    gap: 页标题、各分区之间 spacing-field 的两倍半；两个例外：手机连接页的分区之间是 spacing-section；工作树页标题与下方“常规 / 环境”分段之间只隔 spacing-inline（分段算作标题的一部分），其后各分区之间是 spacing-section
 
 anatomy:
     - part: header
@@ -136,12 +136,12 @@ rules:
 
 pages:
     使用情况:
-        status: 标题下一行，左为“本机记录 · 所有工作区”（text-ui-sm，color-settings-secondary），右为“同步历史”（button 的 compact，outline）
-        metrics: 六张数字卡，三列等宽、两行，间隔 spacing-inline 的一倍半；每张卡 color-settings-card、radius-overlay、border-width-default 的 color-border-subtle，内边距上下 spacing-field、左右 spacing-inline 的二倍半，卡内各行间隔 spacing-inline；第一行是图标（icon-size-control 减一级，即图标文件的尺寸）加名称，间隔 spacing-inline 的四分之三（text-ui-sm，color-settings-secondary）；中间是大数字（text-fixed-section-title 的 1.15 倍，font-weight-strong，行高为字号的 1.4 倍，foreground）；最后一行是补充（text-ui-xs，color-settings-secondary）
+        status: 标题下一行，左为“本机记录 · 所有工作区”（text-ui-sm，color-settings-secondary），右为“同步历史”（button 的 secondary，sm 尺寸，高 spacing-control-xs）
+        metrics: 六张数字卡，三列等宽、两行，间隔 spacing-inline 的一倍半；每张卡 color-settings-card、radius-overlay、border-width-default 的 color-border（使用情况页的卡比通用设置卡的 color-border-subtle 深一级），内边距上下 spacing-field、左右 spacing-inline 的二倍半，卡内各行间隔 spacing-inline；第一行是图标（icon-size-control 减一级，即图标文件的尺寸）加名称，间隔 spacing-inline 的四分之三（text-ui-sm，color-settings-secondary）；中间是大数字（text-fixed-section-title 的 1.15 倍，font-weight-strong，行高为字号的 1.4 倍，foreground）；最后一行是补充（text-ui-xs，color-settings-secondary）
         metric-names: 累计使用（usage-time，补充“N 个活跃日”）、连续使用（usage-streak，“最长连续 N 天”）、累计 Token（usage-tokens，“N 轮已报告用量”）、今日 Token（usage-today，补充为今天日期）、昨日 Token（usage-today，昨天日期）、Skills 调用（usage-skills，“N 个技能”）
         derivation: 示例后台由 usage.days 推出各数：每天的使用时长（分钟）＝当天 Token ÷ 1000；累计使用为各天之和，写成“X 小时 Y 分”；活跃日与连续天数都等于 days 的天数；已报告轮数＝天数 × 6；Skills 调用为 usage.skills 各项次数之和，技能数为项数；今日、昨日取 days 最后两天；数字按千分位分组
-        activity: 一张卡（同 metrics 的卡面，内边距 spacing-section）：标题“使用活跃度”（text-ui-base，二级标题）与说明“颜色越深，当天使用时间越长”（text-ui-caption，color-settings-secondary），右上为年份下拉（组合框“统计年份”，当前“2026年”）；下方按周排列的整年日历，左侧行名周一、周三、周五、周日，上方月份 1月…12月（text-fixed-metadata，color-settings-secondary）；每天一个小方格（radius-micro），按当天使用时长分五级颜色，最浅一级 color-hover；右下“少 … 多”图例；日历下方一行当天详情：日期、使用时间、Token、Skills 调用四栏，名称 text-ui-xs、数值 text-ui-caption 的 foreground
-        ranking: 第二张卡：标题“Skills 排行”与说明“累计成功调用 · 按次数排序”，右上为搜索框（文本框“搜索 Skills 排行”，占位“搜索技能…”）；下方有序列表，每项为名次（text-ui-sm，color-settings-secondary）、技能名（text-ui-caption，font-weight-medium）、靠右的次数“N 次”（text-ui-base）
+        activity: 一张卡（同 metrics 的卡面，内边距 spacing-section）：标题“使用活跃度”（text-ui-base，二级标题）与说明“颜色越深，当天使用时间越长”（text-ui-caption，color-settings-secondary），右上为年份下拉（组合框“统计年份”，当前“2026年”）；下方按周排列的整年日历，左侧行名周一、周三、周五、周日，上方月份 1月…12月（text-fixed-metadata，color-settings-secondary）；每天一个小方格（radius-micro，高 spacing-inline 的一倍半，宽为按周均分的列宽）：周列之间间隔 spacing-inline 的四分之一，列内顶部月份行高 spacing-inline 的二倍半加 border-width-default，之后七行每行 spacing-inline 的一倍半、行间 border-width-default；按当天使用时长分五级颜色：0 分钟取 color-hover，不到 30 分钟 color-activity-1，30 到 60 分钟 color-activity-2，60 到 120 分钟 color-activity-3，120 分钟及以上 color-activity-4（深色由变量自己换值，不另写规则）；今天以后的日子与当年之外的空位留空，不画方格也不可点；右下“少 … 多”图例；日历下方一行当天详情：日期、使用时间、Token、Skills 调用四栏，名称 text-ui-xs、数值 text-ui-caption 的 foreground
+        ranking: 第二张卡：标题“Skills 排行”与说明“累计成功调用 · 按次数排序”，右上为搜索框（文本框“搜索 Skills 排行”，占位“搜索技能…”）；下方有序列表，每项为名次（text-ui-sm，color-settings-secondary）、技能名（text-ui-caption，font-weight-medium）、靠右的次数“N 次”（text-ui-base）；名次与技能名下方一条细进度条，填充色 color-activity；页标题下状态行左侧的圆点也取 color-activity
         disclosure: 最后一个收起的分区“统计口径与数据范围”
     SnapShots:
         unsupported: 当前环境不支持时，标题下先一行 status“此环境尚不支持 SnapShots。”；下面仍列出分区“SnapShots”和一行开关，名称“SnapShots”，说明两行：“捕获窗口并添加到当前草稿。”“正在检查截图…”；开关不可用
@@ -157,7 +157,7 @@ pages:
         process: 分区“控制进程”，说明“权限修改后可以重新检查或重启 Helper。停止操作会撤销当前控制和观察引用。”；一行，名称为状态“电脑控制已关闭”，控件列横排三个 outline 按钮：刷新权限状态、重启控制 Helper、停止电脑操作（三个按钮放得下，留在控件列，不折行）
     工作树:
         description: 管理工作树的创建、清理和项目环境。
-        tabs: 页标题行最右为“刷新工作树”图标按钮（refresh 的同类图标，spacing-control 见方）；header 下方第一项是 segmented 两项：常规、环境
+        tabs: 页标题行最右为“刷新工作树”图标按钮（refresh 的同类图标，spacing-control 见方，贴页标题区上内边距与右缘；标题文字右侧让出 spacing-control-lg）；header 下方第一项是 segmented 两项：常规、环境
         general: 分区“创建与清理”四行：工作树根目录（“留空使用默认位置，仅影响之后创建的工作树。”，文字输入在控件列，宽 reading-width 的三分之一）、创建前获取远程分支（“创建工作树前从远程更新引用。”，开关）、自动清理（“自动清理符合条件的旧工作树。活动或有未提交改动的工作区会保留。”，开关）、保留工作树数量（“固定、活动或受保护的目录可能超过此数量。”，number）；随后收起的“高级创建选项”
         list: 分区“已有工作树”：按项目分组，组头一行为 folder 图标加项目名（text-ui-sm，color-settings-secondary）；组内每个工作树一行（list-row），左为展开箭头与分支名，右为删除图标按钮（trash，读屏“删除 <分支名>”）；没有工作树时整块换成一行说明“尚未创建工作树”
     钩子:
@@ -167,13 +167,13 @@ pages:
         apply: 分区“配置生效”不用卡片：分区标题与说明“保存不会中断执行；应用时需重启共享后台。”，标题右侧“重启后台并应用”（outline，compact）；最后收起的“配置详情”
     模型设置:
         layout: 内容列内左右两栏：左栏“供应商目录”宽为 reading-width 的七分之二，右栏为当前供应商的编辑区；两栏间隔 spacing-panel，右栏左缘一道 border-width-default 的 color-border 竖线，线内再留 spacing-panel
-        catalog: 左栏标题“供应商”（text-ui-base，font-weight-medium）加刷新图标按钮；下面搜索框“搜索供应商”（高 spacing-control-sm 加 spacing-inline）；列表按“已启用 / 未启用”分组（组名 text-ui-sm，color-settings-secondary），每项是一个按钮，上下内边距 spacing-inline，圆角 radius-control，圆点表示状态，当前项底色 color-selected；底部“添加供应商”（button 的 outline，占满栏宽）
+        catalog: 左栏标题“供应商”（text-ui-base，font-weight-strong）加刷新图标按钮；下面搜索框“搜索供应商”（高 spacing-control-sm 加 spacing-inline）；列表按“已启用 / 未启用”分组（组名 text-ui-sm，color-settings-secondary），每项是一个按钮，上下内边距 spacing-inline，圆角 radius-control，圆点表示状态，当前项底色 color-selected；“已启用”“未启用”两组之间一道 border-width-default 的 color-border 横线，线上下各留 spacing-field；底部“添加供应商”（button 的 outline，占满栏宽）
         editor: 右栏顶部 status“已保存并应用。”；之后为供应商名（text-ui-lg，font-weight-strong）与状态“可用”（text-ui-caption，color-settings-secondary）在左、“启用”加开关在右，与下方表单隔 spacing-field
         fields: 表单是竖排的字段，不用卡片行：每个字段先一行字段名，下方 spacing-inline 的一半处是控件；字段之间 spacing-section；字段名 text-ui-base、color-settings-secondary（“供应商名称”一项用 text-ui-caption，与输入框隔 spacing-inline）；输入框高 spacing-control-sm 加 spacing-inline，text-ui-base
         order: API 格式（segmented：Chat Completions / Responses）、供应商名称（输入框，右侧移除供应商图标按钮 trash）、Base URL、认证方式（segmented：API Key / 无需认证）、连接卡（border-width-default 的 color-border，radius-panel，内边距 spacing-field：“连接已配置”加 outline 的“测试连接”）、模型列表
-        models: “模型 · 数量”（text-ui-base，foreground-subtle）右侧“获取模型”“添加模型”两个 secondary 按钮并排；搜索框“搜索模型名称或 ID”；每个模型一行（最小高 spacing-control-form，内边距 spacing-field，行间一道 color-border 线）：名称（font-weight-strong）、标签（如“备用默认”，text-ui-sm，强调色）、小号启用开关、更多操作按钮；最后收起的“高级参数”
-        footer: 编辑区底部靠右“取消修改”（outline）“保存”（primary），无改动时都不可用；页底一行“新会话默认模型”（segmented）加“前往会话配置”（secondary，text-ui-sm），与上方隔 spacing-section
-        buttons: 目前次要按钮混用 outline（添加供应商、测试连接、取消修改）与 secondary（获取模型、添加模型、前往会话配置），见 quality.md“还没覆盖”；统一前以此处为准
+        models: “模型 · 数量”（text-ui-base，foreground-subtle）右侧“获取模型”“添加模型”两个 secondary 按钮并排，间隔 spacing-inline；搜索框“搜索模型名称或 ID”；每个模型一行（最小高 spacing-control-form，内边距 spacing-field，行间一道 color-border 线）：名称（font-weight-strong）、标签（如“备用默认”，text-ui-sm，强调色）、小号启用开关、更多操作按钮；最后收起的“高级参数”
+        footer: 编辑区底部靠右“取消修改”（outline）“保存”（primary），无改动时都不可用；页底一行“新会话默认模型”（segmented）加“前往会话配置”（button 的 link，无左右内边距，字号跟随这一行的 text-ui-sm），与上方隔 spacing-section
+        buttons: 本页所有文字按钮都是默认尺寸（高 spacing-control），不用 compact；次要按钮混用 outline（添加供应商、测试连接、取消修改）与 secondary（获取模型、添加模型），见 quality.md“还没覆盖”；统一前以此处为准
     手机连接:
         description: 用 iPhone 或其他浏览器继续电脑上的工作。
         status: 第一张卡：左为状态圆点块（spacing-control-lg 见方，圆角 radius-control，底色 color-surface，中间 spacing-inline 见方的圆点为 color-success），名称“手机可以连接”（text-ui-base，font-weight-medium）与摘要“通过中继 relay.example.com · 已连接”（text-ui-sm，color-settings-secondary），右为主按钮“添加设备”（button 的 primary）；卡内下方一行“已登记中继 relay.example.com，注册码已使用，无需再次填写。”（text-ui-base，color-settings-secondary）

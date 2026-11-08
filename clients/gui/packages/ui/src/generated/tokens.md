@@ -147,6 +147,12 @@
 | `--color-muted` | `var(--color-surface)` | 弱化区域底色 |
 | `--color-muted-foreground` | `var(--color-foreground-subtle)` | 弱化区域文字 |
 | `--color-success` | `#1e8a3e（暗色 #46bf72）` | 成功反馈；AReaL 明暗主题值 |
+| `--color-activity` | `#47a582` | 活动量强调色：本地记录标记点与排行条；明暗相同 |
+| `--color-activity-1` | `#c8e5d6（暗色 #24483c）` | 活动热力图第一档（当天活跃不到三十分钟） |
+| `--color-activity-2` | `#83c7a6（暗色 #306e54）` | 活动热力图第二档（三十分钟到一小时） |
+| `--color-activity-3` | `#42a57c（暗色 #4a9d73）` | 活动热力图第三档（一到两小时） |
+| `--color-activity-4` | `#227454（暗色 #8bcfa3）` | 活动热力图第四档（两小时以上） |
+| `--color-change-renamed` | `#0b7fff（暗色 #4099ff）` | 文件改动标记：已重命名；与审查面板、文件树一致 |
 
 ## 动效与层级
 
