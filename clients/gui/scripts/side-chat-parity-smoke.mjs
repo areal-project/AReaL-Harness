@@ -336,7 +336,7 @@ const mainComposer = () =>
     .first();
 const sidePane = () =>
   baseline
-    ? page.getByRole("region", { name: "旁路讨论", exact: true })
+    ? page.getByRole("region", { name: "侧边聊天", exact: true })
     : page.getByTestId("side-chat-pane").filter({ visible: true });
 const sideInput = () =>
   sidePane().getByRole("textbox", { name: "描述要做的事，@ 引用文件，/ 查看命令", exact: true });
@@ -725,7 +725,7 @@ async function addReference(body, text, target = "main", keyboard = false) {
     "selection actions finished their open transition",
   );
   const action = actions.getByRole("button", {
-    name: target === "main" ? "添加到聊天" : "在旁路中询问所选内容",
+    name: target === "main" ? "添加到聊天" : "在侧边聊天中询问所选内容",
     exact: true,
   });
   if (keyboard) await shot("P4-keyboard-selection");

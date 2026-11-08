@@ -456,7 +456,7 @@ try {
     "Unrelated retained creation must not disable new-chat workspace settings",
   );
   await workspaceSettings.click();
-  const worktreeToggle = page.getByRole("switch", { name: "在新 Worktree 中工作", exact: true });
+  const worktreeToggle = page.getByRole("switch", { name: "在新工作树中工作", exact: true });
   await worktreeToggle.waitFor();
   assert.equal(await worktreeToggle.isChecked(), false, "Opening settings keeps worktree opt-in");
   await page.keyboard.press("Escape");

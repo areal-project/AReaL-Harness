@@ -893,7 +893,7 @@ export const commonMessages = {
   "chat.image.fit": { "zh-CN": "适应窗口", en: "Fit to window" },
   "chat.side.title": { "zh-CN": "侧边聊天", en: "Side Chat" },
   "chat.side.numbered": { "zh-CN": "侧边聊天 {ordinal}", en: "Side Chat {ordinal}" },
-  "chat.side.history": { "zh-CN": "历史旁路讨论", en: "Previous side discussions" },
+  "chat.side.history": { "zh-CN": "历史侧边聊天", en: "Previous side chats" },
   "chat.side.btw": { "zh-CN": "顺便问一句", en: "Ask a side question" },
   "chat.side.newDescription": {
     "zh-CN": "在右侧新建聊天",
@@ -968,7 +968,7 @@ export const commonMessages = {
     en: "User quote. Source is unverified.",
   },
   "chat.selection.askInSideChat": {
-    "zh-CN": "在旁路中询问所选内容",
+    "zh-CN": "在侧边聊天中询问所选内容",
     en: "Ask about selection in side chat",
   },
   "chat.selection.inspectSource": { "zh-CN": "核查来源", en: "Inspect source" },

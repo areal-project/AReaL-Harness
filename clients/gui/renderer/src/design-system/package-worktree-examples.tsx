@@ -48,12 +48,12 @@ function PickerExample() {
     requestAnimationFrame(() => trigger.current?.focus());
   };
   return (
-    <section className="library-worktree-example" aria-label="Worktree选择器样例">
-      <h2>Worktree配置</h2>
+    <section className="library-worktree-example" aria-label="工作树选择器样例">
+      <h2>工作树配置</h2>
       <label>
         选项状态
         <select
-          aria-label="Worktree选项状态"
+          aria-label="工作树选项状态"
           value={mode}
           onChange={(event) => setMode(event.target.value)}
         >
@@ -69,11 +69,11 @@ function PickerExample() {
               <p className="worktree-picker-heading">配置本地环境</p>
               <WorktreePicker.Row
                 icon={<GitFork />}
-                label="新Worktree"
+                label="新工作树"
                 control={
                   <input
                     type="checkbox"
-                    aria-label="在示例Worktree中工作"
+                    aria-label="在示例工作树中工作"
                     checked={enabled}
                     disabled={busy}
                     onChange={(event) => setEnabled(event.target.checked)}
@@ -173,14 +173,14 @@ function StatusExample() {
   const [action, setAction] = useState("");
   const running = state === "settingUp";
   const label =
-    state === "unknown" ? "准备结果待核对" : state === "failed" ? "准备失败" : "Worktree 已创建";
+    state === "unknown" ? "准备结果待核对" : state === "failed" ? "准备失败" : "工作树已创建";
   return (
-    <section className="library-worktree-example" aria-label="Worktree准备样例">
+    <section className="library-worktree-example" aria-label="工作树准备样例">
       <h2>准备过程</h2>
       <label>
         准备状态
         <select
-          aria-label="Worktree准备状态"
+          aria-label="工作树准备状态"
           value={state}
           onChange={(event) => setState(event.target.value)}
         >

@@ -65,7 +65,7 @@ export function UiLibraryPreview({ dark, fontSize }: { dark: boolean; fontSize: 
                   : component.layer === "settings"
                     ? "设置组合"
                     : component.layer === "worktree"
-                      ? "Worktree组合"
+                      ? "工作树组合"
                       : component.layer === "workbench"
                         ? "工作台组合"
                         : "基础控件"}{" "}

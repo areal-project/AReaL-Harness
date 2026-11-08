@@ -295,7 +295,7 @@ export async function runUiLibrary(page, scratch, checks) {
       );
       await options.getByRole("option").last().press("Enter");
       await live.getByRole("status").filter({ hasText: "所选分支：feature/" }).waitFor();
-      await live.getByLabel("Worktree选项状态", { exact: true }).selectOption("error");
+      await live.getByLabel("工作树选项状态", { exact: true }).selectOption("error");
       await live.getByRole("alert").filter({ hasText: "无法读取示例选项" }).waitFor();
       assert.equal(
         await live.getByRole("button", { name: /^选择起始分支 分支 / }).isEnabled(),
@@ -310,12 +310,12 @@ export async function runUiLibrary(page, scratch, checks) {
     if (id === "worktree-status") {
       await live.getByRole("button", { name: "查看创建详情", exact: true }).click();
       await live.getByRole("log", { name: "示例准备输出", exact: true }).waitFor();
-      await live.getByLabel("Worktree准备状态", { exact: true }).selectOption("unknown");
+      await live.getByLabel("工作树准备状态", { exact: true }).selectOption("unknown");
       await live.getByRole("status").filter({ hasText: "准备结果待核对" }).waitFor();
       await live.getByRole("button", { name: "收起创建详情", exact: true }).click();
       await live.getByRole("status").filter({ hasText: "准备结果待核对" }).waitFor();
       assert.equal(await live.getByRole("log", { name: "示例准备输出", exact: true }).count(), 0);
-      await live.getByLabel("Worktree准备状态", { exact: true }).selectOption("ready");
+      await live.getByLabel("工作树准备状态", { exact: true }).selectOption("ready");
       assert.equal(
         await live.getByRole("button", { name: "取消准备样例", exact: true }).count(),
         0,

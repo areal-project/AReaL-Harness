@@ -476,7 +476,7 @@ try {
     "native publication, copied offline D3, literal HTML, sandbox, state-only save, reload/restart, typed and confirmed main context, preserved draft, stale and tool rejection",
   );
   await page.getByRole("button", { name: "任务操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "旁路讨论", exact: true }).click();
+  await page.getByRole("menuitem", { name: "侧边聊天", exact: true }).click();
   await page.getByTestId("side-chat-input").waitFor();
   await send("CREATE_GEN_UI_SIDE", true, null);
   let sideId;

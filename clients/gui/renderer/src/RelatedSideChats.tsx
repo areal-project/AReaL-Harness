@@ -140,7 +140,7 @@ export function RelatedSideChats({
       </div>
       {error && <p role="alert">{error}</p>}
       {items.length === 0 && !busy && (
-        <p className="text-foreground-subtle">暂无已发送的旁路讨论</p>
+        <p className="text-foreground-subtle">暂无已发送的侧边聊天</p>
       )}
       {items.map((item) => (
         <div key={item.id} className="utility-actions">
@@ -151,7 +151,7 @@ export function RelatedSideChats({
             aria-current={selectedId === item.id ? "true" : undefined}
             onClick={() => onSelect(item.id)}
           >
-            {item.preview || "旁路讨论"}
+            {item.preview || "侧边聊天"}
             {item.desktop?.archived ? " · 已归档" : ""}
           </Button>
           <Button

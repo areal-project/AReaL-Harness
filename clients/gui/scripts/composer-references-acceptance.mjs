@@ -52,7 +52,7 @@ export async function runComposerReferencesAcceptance({ page, pid, call, state, 
   await page.reload();
   await page.getByTestId("areal-workbench").waitFor();
   await button("新会话工作区").click();
-  assert.equal(await page.getByRole("switch", { name: "在新 Worktree 中工作", exact: true }).isChecked(), false, "legacy Worktree preference cannot authorize a new checkout");
+  assert.equal(await page.getByRole("switch", { name: "在新工作树中工作", exact: true }).isChecked(), false, "legacy Worktree preference cannot authorize a new checkout");
   await page.keyboard.press("Escape");
   await send("REF_SOURCE_SECRET_木星_9482");
   const sourceId = await activeId();

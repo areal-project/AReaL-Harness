@@ -303,7 +303,7 @@ try {
         window.fixtureHoldOptions = true;
       });
       await trigger().click();
-      await page.getByRole("status").filter({ hasText: "正在读取 Worktree 与分支…" }).waitFor();
+      await page.getByRole("status").filter({ hasText: "正在读取工作树与分支…" }).waitFor();
       assert.equal(await branch().isDisabled(), true);
       await capture("picker-loading-" + phase);
       const loadingBox = await page.getByRole("dialog").boundingBox();
@@ -334,7 +334,7 @@ try {
       "environment is disabled while worktree is off",
     );
     await capture("picker-off");
-    await page.getByRole("switch", { name: "在新 Worktree 中工作", exact: true }).click();
+    await page.getByRole("switch", { name: "在新工作树中工作", exact: true }).click();
     await capture("picker-on");
     const anchor = await page.getByRole("dialog").boundingBox();
     await branch().click();
@@ -463,7 +463,7 @@ try {
         await page.getByRole("button", { name: "收起创建详情", exact: true }).click();
       }
       if (state === "ready") {
-        await page.getByText("Worktree 已创建", { exact: true }).waitFor();
+        await page.getByText("工作树已创建", { exact: true }).waitFor();
         assert.equal(
           await page.getByText("/fixture/new-trees/task-proof", { exact: true }).isVisible(),
           false,
@@ -508,7 +508,7 @@ try {
     );
     await page.goto(base + "?settings=1");
     const settings = page.getByTestId("worktrees-settings");
-    await settings.locator('input[aria-label="Worktree 根目录"]').waitFor();
+    await settings.locator('input[aria-label="工作树根目录"]').waitFor();
     await settings
       .getByRole("button", { name: /^删除 / })
       .first()
@@ -722,12 +722,12 @@ try {
       "light/dark, 14/18 UI font, wide/narrow and reduced-motion representative combinations retain readable controls and no horizontal page overflow",
     );
     await page.goto(base + "?actions=empty");
-    await page.getByRole("button", { name: "Worktree 分支 areal/gui-proof", exact: true }).click();
+    await page.getByRole("button", { name: "工作树分支 areal/gui-proof", exact: true }).click();
     await page.getByText("/fixture/new-trees/task-proof", { exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Build", exact: true }).count(), 0);
     await capture("workspace-actions-empty");
     await page.goto(base + "?actions=full");
-    await page.getByRole("button", { name: "Worktree 分支 areal/gui-proof", exact: true }).click();
+    await page.getByRole("button", { name: "工作树分支 areal/gui-proof", exact: true }).click();
     await page.getByRole("button", { name: "Build", exact: true }).waitFor();
     await capture("workspace-actions-full");
     for (const result of ["succeeded", "failed", "unknown"]) {
