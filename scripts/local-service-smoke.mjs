@@ -246,6 +246,29 @@ async function discardControlResponse(s, request) {
 let current;
 try {
   await mkdir(workspace);
+  setPhase("managed-model-reconnect");
+  const managedWorkspace = join(root, "managed-workspace");
+  const managedConfig = join(root, "managed-config.toml");
+  await mkdir(managedWorkspace);
+  const managedModel = (name) =>
+    `schema_version = 1\n[model]\ncatalog_version = 1\nprovider = "fixture"\nname = "${name}"\n[model.providers.fixture]\nprotocol = "chat-completions"\nendpoint = "http://127.0.0.1:${model.address().port}"\nmodels = [{id="first",enabled=true},{id="second",enabled=true}]\n`;
+  await writeFile(managedConfig, managedModel("first"));
+  const managedArgs = ["--workspace", managedWorkspace, "--config", managedConfig];
+  const managed = await cli(["service", "ensure", "--json", ...managedArgs]);
+  await writeFile(managedConfig, managedModel("second"));
+  const reconnected = await cli([
+    "service",
+    "ensure",
+    "--json",
+    ...managedArgs,
+    "--no-auto-restart",
+  ]);
+  assert.equal(
+    reconnected.generation,
+    managed.generation,
+    "托管模型目录尚未应用时，重新连接必须保留现有 Core",
+  );
+  await stop(managed);
   await writeFile(
     config,
     `schema_version = 1\n[model]\nname = "fixture"\n[model.providers.default]\nprotocol = "chat-completions"\nendpoint = "http://127.0.0.1:${model.address().port}"\n`,
