@@ -1,0 +1,120 @@
+id: scheduled-tasks
+name: 定时任务
+status: draft
+purpose: 让 Agent 按计划反复做一件事：列出已有的定时任务，新建任务，打开某个任务看它的运行记录。
+why: 持续性的工作不该靠人记着去问；入口放在应用导航栏，列表和对话侧栏长得一样，用户不用学新的布局。
+layout:
+    place: 点应用导航栏“定时任务”打开：侧栏的导航内容与主区一起换成定时任务中心；应用导航栏照旧在左，“定时任务”成为当前入口（底色 color-selected）；点“首页”回到原样
+    surface: 定时任务中心占纸面全部（应用导航栏以右），底色 color-background，四角 radius-overlay；列表与右侧内容之间一道 border-width-default 的 color-border 竖线
+    top-bar: 顶栏右段（应用导航栏以右）属于定时任务中心，高 height-toolbar；左右内边距 spacing-field，元素间隔 spacing-inline；放“前进”（总是不可用）与“切换任务侧栏”两个按钮，外形同 navigation-sidebar 的 window-controls
+    order: 纸面内左边任务列表、右边内容区；没有选中任务时内容区是欢迎页
+anatomy:
+    - part: list
+      role: 左侧任务列表：标题、新建、目录、分组
+    - part: search
+      optional: true
+      role: 标题旁搜索按钮打开的搜索框
+    - part: group
+      role: 一组任务（已开启、已暂停、已结束），组内没有任务时整组不显示
+    - part: item
+      role: 一个定时任务
+    - part: welcome
+      role: 没有选中任务时的欢迎页与六个示例
+    - part: template
+      role: 欢迎页里的一个示例，点了用它的说明新建
+    - part: detail
+      optional: true
+      role: 选中任务后右侧的任务会话
+    - part: new-dialog
+      optional: true
+      role: 新建定时任务弹窗
+parts:
+    list:
+        width: 固定 spacing-inline 的三十一倍，不随窗口变化
+        surface: 底色 color-sidebar；右缘竖线见 surface
+        padding: 左右 spacing-inline，下 spacing-inline，上不留
+        header: 高 rail-width，与对话侧栏的标题区同高；左 spacing-inline、右 spacing-inline 的一半；标题“定时任务”text-ui-xl，font-weight-strong，行高 line-height-title，foreground；最右一个搜索按钮，四周 spacing-inline 的一半内边距，图标 search（icon-size-control），foreground-subtle
+        new: 标题下一行“新建任务”，高 navigation-row-height，左右内边距 spacing-inline，图标与文字间隔 spacing-inline，圆角 radius-navigation；图标 add，比 icon-size-control 大 spacing-inline 的四分之一；text-ui-base，foreground；悬停底色 color-hover
+        catalog: 再下一行“任务目录”，高 navigation-row-height，上方留 spacing-field，左右内边距 spacing-inline，text-ui-base，foreground-subtle
+        scroll: 目录以下在列表内纵向滚动
+    search:
+        place: 在标题区与“新建任务”之间；左右 spacing-inline，下 spacing-inline
+        box: border-width-default 的 color-border，圆角 radius-inset；内边距上下 spacing-inline 的四分之三、左右 spacing-inline；占位文字“搜索定时任务”
+    group:
+        spacing: 每组上下各留 spacing-section
+        label: 组名 text-ui-sm，ui-font-weight，foreground-subtle，四周 spacing-inline 内边距
+        order: 已开启、已暂停、已结束
+    item:
+        box: 占满列表宽，四周 spacing-inline 内边距，圆角 radius-control，靠左对齐
+        title: 任务说明，text-ui-base，行高为字号的一倍半，foreground，单行省略
+        description: 第二行 text-ui-sm，行高为字号的一倍半，foreground-subtle，单行省略；已开启写“下次运行的月日与时分 · 规则”（如“5月18日 03:33 · 每天 09:00”），已暂停写“已暂停”
+        hover: 底色 color-hover
+        current: 选中的任务底色 color-selected，标为按下
+        focus: 键盘聚焦时内侧画两倍 border-width-default 的 color-input-border-focused 描边
+    welcome:
+        place: 内容区，纵向滚动；上内边距为视口高的百分之十二，但不少于 spacing-field 的两倍、不多于 spacing-field 的八倍；左右与下 spacing-section
+        intro: 居中，最宽 reading-width 的三分之二；顶部图标 schedule-welcome（icon-size-control 的两倍），foreground-subtle，下方留 spacing-section；标题“安排任务”text-ui-lg，font-weight-medium，foreground；说明“让 AReaL 按计划处理持续性任务。”在标题下 spacing-inline，text-ui-base，foreground-subtle
+        templates: 说明下方 spacing-section，两列等宽，行列间隔 spacing-inline，居中，最宽 reading-width 的四分之三；内容区窄于 reading-width 的八分之七时改为一列
+    template:
+        box: 横排图标与文字，间隔 spacing-inline，四周 spacing-inline 内边距，圆角 radius-control，靠左对齐；悬停底色 color-hover；键盘聚焦同 item
+        icon: icon-size-control 加 spacing-inline 的四分之一，foreground-subtle，向下错开 spacing-inline 的十分之三与标题对齐
+        title: text-ui-base，font-weight-medium，foreground
+        description: 标题下 spacing-inline 的一半，text-ui-sm，行高为字号的一倍半，foreground-subtle，可换行
+        entries:
+            - 检查仓库进展：检查我指定仓库的公开提交与 PR，整理进展和待处理事项。（图标 template-repository）
+            - 整理每日计划：回顾我提供的计划，整理当天待办和需要关注的事项。（图标 template-checklist）
+            - 跟踪行业动态：整理最近的 AI 行业动态，附上原始来源。（图标 template-news）
+            - 整理研究线索：回顾研究资料，整理关键发现和待验证的问题。（图标 template-research）
+            - 每周知识回顾：回顾我提供的本周记录，总结结论与下一步。（图标 template-review）
+            - 跟踪产品变化：检查我指定产品的公开更新，列出需要关注的变化。（图标 template-activity）
+    detail:
+        header: 内容区顶部一行，上下 spacing-inline、左右 spacing-inline 的两倍半，元素间隔 spacing-inline；任务说明 text-ui-base，单行省略；最右“关闭任务详情”
+        body: 任务的运行对话，外观见对话回合规格
+    new-dialog:
+        base: 同 dialog 组件；宽 reading-width 的十二分之七
+        title: 新建定时任务
+        instruction: 多行输入框，读屏名“指令”，占位“要做什么…”；最小高 spacing-field 的四倍，内边距 spacing-inline，圆角 radius-button，底色 color-input 的两成不透明度，边框同 dialog 的 input；打开时获得焦点
+        schedule: 输入框下一个分组框：border-width-default 的 color-border，圆角 radius-control，内边距 spacing-inline，行间隔 spacing-inline；每行左边标签（text-ui-sm）、右边控件，两端对齐
+        rows: 重复（下拉：间隔、每天、每周、一次，默认每天）；每周时多一行“星期”，周一到周日七个小按钮，选中的标为按下；每天和每周时“时间”一行，下方是占满宽的时间输入；间隔时“每”一行，数字加单位（分钟、小时）；一次时“日期”一行
+        advanced: 分组框下一个“高级”文字按钮（无边框），展开后出现第二个同样外观的分组框：模型（下拉，默认“跟随当前默认”）、思考强度（选了模型后出现）、每次运行新开对话（开关）
+        footer: 取消（无边框文字按钮）、创建（主要按钮）；指令去掉首尾空白后为空时“创建”不可用
+icons:
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+    used:
+        [
+            rail-schedule,
+            nav-forward,
+            sidebar-toggle,
+            search,
+            add,
+            schedule-welcome,
+            template-repository,
+            template-checklist,
+            template-news,
+            template-research,
+            template-review,
+            template-activity,
+            dialog-dismiss,
+        ]
+content: 示例数据 tasks.rows 是两个任务（一个已开启、一个已暂停）；tasks.projects 是任务所属项目
+accessible-names:
+    center: 区域“定时任务中心”
+    forward: 前进（不可用）
+    toggle: 切换任务侧栏（按钮，标为展开或收起）
+    title: 一级标题“定时任务”
+    search: 搜索定时任务（按钮；搜索框同名）
+    new: 新建定时任务（按钮，可见文字“新建任务”）
+    group: 每组是一组，名称即组名，组名同时是二级标题
+    item: 打开定时任务 <任务说明>（按钮，选中时标为按下）
+    welcome: 二级标题“安排任务”；每个示例是按钮，名称为标题加说明
+    detail: 区域“定时任务会话”，二级标题为任务说明；关闭按钮“关闭任务详情”
+    dialog: 对话框“新建定时任务”；指令、重复、时间、星期、模型、每次运行新开对话按上文读屏名
+keyboard:
+    - 搜索框里按 Esc 关闭搜索并清空
+    - 弹窗按 dialog 组件：焦点落在指令，Tab 只在弹窗内循环，Esc 关闭
+behavior:
+    - 搜索按任务说明过滤；没有命中的分组整组隐藏
+    - 点一个任务：它标为按下，内容区换成该任务的会话；点“关闭任务详情”回到欢迎页
+    - 点“新建任务”打开空白的新建弹窗；点示例打开新建弹窗，指令预填该示例的说明
+    - 点“切换任务侧栏”收起或展开任务列表；收起后内容区占满纸面
+    - 弹窗里点取消、关闭或按 Esc 都不新建任何任务

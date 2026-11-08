@@ -491,7 +491,6 @@ export function SpecFixture() {
             action={action}
             dark={dark}
             onPanel={show}
-            onReturn={hide}
           />
         ) : null
       }

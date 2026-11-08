@@ -592,7 +592,6 @@ function Preview() {
               action={action}
               dark={dark}
               executionBlocked={false}
-              onReturn={() => setMessage("关闭入口仅作预览。")}
               onPanel={() => setMessage("面板入口仅作预览。")}
             />
           </section>

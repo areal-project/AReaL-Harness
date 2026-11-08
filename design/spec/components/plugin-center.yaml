@@ -1,0 +1,78 @@
+id: plugin-center
+name: 插件中心
+status: draft
+purpose: 找到、安装和管理插件与 Skills：左边导航，右边是插件市场或某个插件的详情。
+why: 扩展能力集中在一处；左边导航与设置导航同一种节奏，主区与对话同底色，进出插件中心时窗口不像换了一个应用。
+layout:
+    place: 点应用导航栏“插件”打开：侧栏的导航内容与主区一起换成插件中心；“插件”成为当前入口（底色 color-selected）；点“首页”回到原样
+    top-bar: 顶栏右段（应用导航栏以右）是空的会话标题栏，不放按钮
+    surface: 插件中心占纸面全部，底色 color-background；左边插件导航，右边内容区纵向滚动
+anatomy:
+    - part: navigation
+      role: 左侧插件导航：标题、扩展组、已安装组、底部“管理已安装”
+    - part: header
+      role: 内容区顶部：管理范围、页面标题与说明、工具条
+    - part: scope
+      role: 市场范围切换（公共、个人）
+    - part: catalog
+      role: 一组插件，两列排开
+    - part: row
+      role: 一个插件
+    - part: detail
+      optional: true
+      role: 打开某个插件后的详情页
+parts:
+    navigation:
+        width: 固定 spacing-inline 的二十六又四分之一倍
+        surface: 底色 color-navigation-background；右缘 border-width-default 的 color-border 竖线
+        padding: 上 spacing-field，左右与下 spacing-inline
+        gap: 各项之间 spacing-inline 的四分之一
+        title: 产品名“AReaL Harness”，外观同 settings-navigation 的 header.title（text-ui-xl，font-weight-strong，行高 line-height-title，字距 tracking-heading-tight）；左右 spacing-inline，下 spacing-inline 的一倍半
+        group-label: 外观同 settings-navigation 的 group.label；“扩展”紧跟标题，“已安装”上方多留 spacing-field
+        item: 外观同 settings-navigation 的 item（navigation-row-height、radius-navigation、图标 icon-size-control、悬停 color-sidebar-item、当前页 color-navigation-selected）
+        entries: 扩展组为“插件市场”（rail-plugins 图标）、“Skills”（plugin-package 图标）；已安装组列出每个已安装插件（plugin-package 图标），超出高度时组内滚动
+        manage: 最底一项“管理已安装”，上方留 spacing-field，外观同 item
+    content:
+        width: 居中，最宽 spacing-inline 的一百二十五倍
+        padding: 上与左右 spacing-inline 的五倍，下 spacing-field 的四倍
+    header:
+        layout: 左边文字、右边工具条，垂直居中，间隔 spacing-section；下方留 spacing-inline 的三倍半
+        context: 第一行“管理项目 · <项目名>”，text-ui-caption，foreground-subtle，下方 spacing-inline
+        title: 一级标题，text-ui-section，font-weight-strong，foreground，下方 spacing-inline
+        description: text-ui-sm，foreground-subtle
+        narrow: 内容区窄时文字与工具条改为上下排，间隔 spacing-field，工具条占满宽、搜索框伸长
+        toolbar: 横排，间隔 spacing-inline；搜索框宽 spacing-inline 的二十五倍、高 spacing-control-lg、圆角 radius-control、底色 color-input、border-width-default 的 color-input-border，左侧 search 图标，占位“搜索插件…”；“刷新市场”图标按钮（refresh，无边框）；“添加”次要按钮（border-width-default 的 color-border，text-ui-sm）；按钮都高 spacing-control-lg
+    scope:
+        layout: 两个胶囊标签横排，间隔 spacing-inline 的四分之一，圆角 radius-full
+        tab: 内边距上下 spacing-inline 的四分之一、左右 spacing-inline；text-ui-caption，font-weight-toolbar；未选中 foreground-subtle、透明底；选中 foreground、底色 color-surface-tertiary
+    catalog:
+        spacing: 范围标签下方 spacing-section，组与组之间 spacing-field 的两倍
+        label: 组名“插件”，text-ui-base，font-weight-strong，下方 spacing-inline 的一倍半
+        grid: 两列等宽，行间隔 spacing-inline、列间隔 spacing-section；内容区窄时改为一列
+    row:
+        box: 最小高 spacing-inline 的九倍，上下内边距 spacing-inline 的一倍半，左右不留；下缘 border-width-default 的 color-border；横排，间隔 spacing-inline 的一倍半，垂直居中
+        main: 左边一个按钮占满剩余宽，上下内边距 spacing-inline 的四分之一，图标块与文字间隔 spacing-inline 的一倍半；图标块 spacing-inline 的五倍见方，圆角 radius-control，底色 color-sidebar-item，plugin-package 图标（icon-size-control 加 spacing-inline 的四分之一）foreground；名称 text-ui-sm，font-weight-medium，行高为字号的一倍半，foreground，悬停时加下划线；说明在名称下，text-ui-caption，foreground-subtle，单行省略
+        action: 右端按钮最小 spacing-control-lg 见方，内边距 spacing-inline 的四分之三，圆角 radius-compact，text-ui-caption，foreground-subtle，悬停底色 color-sidebar-item；已安装的写“已添加”，未安装的只有 add 图标
+    detail:
+        breadcrumb: 内容区顶部面包屑：“返回插件列表”按钮（文字为来源页名）加插件名
+        body: 插件名一级标题、来源、安装或卸载、状态与下一步、组件与连接说明；详情内容不在本规格内
+icons:
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+    used: [rail-plugins, plugin-package, search, refresh, add]
+content: 示例数据 plugins.list 是四个插件，其中 GitHub 与代码审查工具包已安装
+accessible-names:
+    navigation: 侧栏区域“插件导航”；每项是按钮，当前页标为当前页
+    title: 一级标题为当前页名（插件市场、Skills）
+    search: 搜索框“搜索插件包”
+    refresh: 刷新市场
+    add: 添加资源（可见文字“添加”）
+    scope: 选项卡列表“市场范围”，两个选项卡“公共”“个人”，当前标为已选
+    row: 每个插件是文章“<名称> · 插件 <标识>”；主体按钮“查看插件 <标识>”；右端“管理插件 <标识>”或“添加插件 <标识>”
+    breadcrumb: 导航“面包屑”，返回按钮“返回插件列表”
+keyboard:
+    - 市场范围选项卡之间左右方向键移动
+behavior:
+    - 搜索按名称与说明过滤插件
+    - 切到“个人”且还没有个人市场时，列表换成一句说明和“添加插件市场”按钮
+    - 点导航里的页面：它成为当前页，内容区换成那一页；点已安装的插件打开它的详情
+    - 点插件主体、“添加插件”或“管理插件”打开该插件详情；面包屑“返回插件列表”回到来源页
