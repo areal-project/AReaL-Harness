@@ -100,6 +100,9 @@ async fn ensure_inner(
         );
         gui_owner::check(spec.owner.as_ref(), service.owner.as_ref())?;
         if restart.is_none() && check_compatible(spec, &service, &directory).is_ok() {
+            if spec.model_catalog_managed {
+                return Ok(service);
+            }
             // 优先等待热更新；超时后只为有效配置走既有的空闲重启流程。
             let deadline = Instant::now() + Duration::from_secs(3);
             loop {

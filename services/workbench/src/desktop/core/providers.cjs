@@ -1731,12 +1731,14 @@ class AppProviders {
               });
               return;
             }
+            const otherStarting =
+              this.backend.starting.size > (this.backend.starting.has?.(project.id) ? 1 : 0);
             if (
               this.saving ||
               this.backend.providerUpdating ||
               this.backend.resourcesUpdating ||
               this.backend.activeCommands ||
-              this.backend.starting.size
+              otherStarting
             ) {
               project.providerError = null;
               return;
@@ -1753,7 +1755,7 @@ class AppProviders {
               this.backend.providerUpdating ||
               this.backend.resourcesUpdating ||
               this.backend.activeCommands ||
-              this.backend.starting.size
+              this.backend.starting.size > (this.backend.starting.has?.(project.id) ? 1 : 0)
             ) {
               project.providerError = null;
               return;

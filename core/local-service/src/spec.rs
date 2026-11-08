@@ -192,6 +192,8 @@ pub struct LaunchSpec {
     pub launch_cwd: PathBuf,
     pub service_id: String,
     pub fingerprint: String,
+    #[serde(default)]
+    pub model_catalog_managed: bool,
     pub components: BTreeMap<String, String>,
 }
 
@@ -434,6 +436,7 @@ impl LaunchSpec {
             launch_cwd,
             service_id,
             fingerprint,
+            model_catalog_managed: config.model_catalog_managed,
             components,
         })
     }
@@ -495,6 +498,7 @@ mod tests {
             launch_cwd: "/repo".into(),
             service_id: String::new(),
             fingerprint: String::new(),
+            model_catalog_managed: false,
             components: BTreeMap::new(),
         };
         assert_eq!(
