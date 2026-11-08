@@ -13,19 +13,24 @@ impl Fixture {
         Self::open_with_providers(None).await
     }
     async fn open_with_providers(providers: Option<Value>) -> Self {
+        Self::open_with_file(providers, true).await
+    }
+    async fn open_with_file(providers: Option<Value>, existing_file: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut inputs = ConfigInputs {
             cwd: directory.path().into(),
             homedir: Some(directory.path().into()),
             ..Default::default()
         };
-        inputs.config_file = Some(directory.path().join("config.toml"));
         inputs.overrides.data_dir = Some(directory.path().join("data"));
-        std::fs::write(
-            inputs.config_file.as_ref().unwrap(),
-            "schema_version = 2\n[model]\ncatalog_version = 1\n",
-        )
-        .unwrap();
+        if existing_file {
+            inputs.config_file = Some(directory.path().join("config.toml"));
+            std::fs::write(
+                inputs.config_file.as_ref().unwrap(),
+                "schema_version = 2\n[model]\ncatalog_version = 1\n",
+            )
+            .unwrap();
+        }
         if let Some(data) = providers {
             let current = areal_config::models::read(&inputs, &[]).unwrap();
             let update = serde_json::from_value(
@@ -142,6 +147,53 @@ async fn model_display_names_follow_applied_configuration_and_provider_identity(
         Some(json!("Second model"))
     )));
     assert!(names(&after).contains(&((json!("second"), json!("unnamed")), None)));
+    fixture.control.engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn first_default_model_file_applies_without_restarting_but_permissions_still_require_restart()
+{
+    let fixture = Fixture::open_with_file(None, false).await;
+    let path = areal_config::models::read(&fixture.inputs, &[])
+        .unwrap()
+        .path;
+    assert!(!path.exists());
+    let revision = fixture.write("AREAL_CREDENTIAL_first");
+    assert!(path.is_file());
+    let result = fixture
+        .control
+        .clone()
+        .apply(fixture.intent("first-save", revision.clone()))
+        .await
+        .unwrap();
+    assert_eq!(
+        result["applied"],
+        json!({"revision": revision, "sequence": 1})
+    );
+    assert_eq!(result["credentialStates"]["fixture"], "available");
+    assert_eq!(
+        fixture.read("first-save").await["operation"]["state"],
+        "applied"
+    );
+
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str("\n[permissions]\nmode = \"ASK_PERMISSIONS\"\n");
+    std::fs::write(path, text).unwrap();
+    let changed = areal_config::models::read(&fixture.inputs, &[]).unwrap();
+    let error = fixture
+        .control
+        .clone()
+        .apply(fixture.intent("permissions-change", changed.revision))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.data.unwrap()["reason"],
+        "DEPLOYMENT_CHANGE_REQUIRES_RESTART"
+    );
+    assert_eq!(
+        fixture.control.engine.model_configuration_status()["applied"],
+        result["applied"]
+    );
     fixture.control.engine.shutdown().await;
 }
 
