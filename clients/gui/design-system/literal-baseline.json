@@ -1,9 +1,9 @@
 {
   "$description": "生产 UI 字面量存量上限，由 scripts/design-system-baseline.mjs --write 生成；只允许减少。",
   "total": {
-    "color": 60,
+    "color": 49,
     "radius": 3,
-    "typography": 4
+    "typography": 3
   },
   "files": {
     "renderer/src/AnnotationNoteEditor.css": {
@@ -32,8 +32,6 @@
       "color": 8
     },
     "renderer/src/settings/usage.css": {
-      "color": 10,
-      "typography": 1,
       "radius": 2
     },
     "packages/ui/src/components/tabs/tabs.tsx": {
@@ -385,83 +383,6 @@
       "occurrence": 1,
       "reason": "记录开关的启用和停用分别使用完整底色、文字、描边配对。已有 success/warning 单色角色不等价。",
       "exitCondition": "开关反馈组件定义成组的状态表面与文字角色后等价迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #47a582",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal typography: font-size: 23px",
-      "occurrence": 1,
-      "reason": "保留该具体内容或标题的局部字号关系。当前通用 text-ui/content 角色没有完全相同的固定值或相对关系。",
-      "exitCondition": "该组件在 D2 采用统一排版合同后复核，不能只为减少计数改变字号。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #c8e5d6",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #83c7a6",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #42a57c",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #227454",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #24483c",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #306e54",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #4a9d73",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #8bcfa3",
-      "occurrence": 1,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
-    },
-    {
-      "file": "renderer/src/settings/usage.css",
-      "finding": "literal color: background: #47a582",
-      "occurrence": 2,
-      "reason": "这是用量图表的连续强度色阶或系列色，属于数据编码，不是通用成功状态。",
-      "exitCondition": "图表配色所有者建立连续数据色阶 Token 后逐项迁移。"
     },
     {
       "file": "renderer/src/settings/usage.css",
