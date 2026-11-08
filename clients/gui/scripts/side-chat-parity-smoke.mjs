@@ -1580,7 +1580,7 @@ try {
         tabs.map((tab) => tab.getAttribute("data-side-pane-tab-id")?.slice(5)).filter(Boolean),
       );
       for (const id of childIds) await closeTab(id).catch(() => {});
-      const oldReturn = sidePane().getByRole("button", { name: "返回主会话", exact: true });
+      const oldReturn = sidePane().getByRole("button", { name: "关闭面板", exact: true });
       if (await oldReturn.isVisible()) await oldReturn.click();
     }
   }

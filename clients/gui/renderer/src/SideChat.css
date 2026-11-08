@@ -10,18 +10,11 @@
 .side-chat-toolbar {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: calc(var(--spacing-inline) / 2);
   padding: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) * 3 / 2);
   border-bottom: var(--border-width-default) solid var(--color-border);
   flex-shrink: 0;
-}
-.side-chat-heading {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--spacing-inline) * 3 / 4);
-  font-size: var(--text-ui-sm);
-  margin-right: auto;
-  color: var(--color-foreground-subtle);
 }
 .side-chat-related {
   width: 340px;
@@ -74,12 +67,9 @@
 }
 .side-chat-empty h2 {
   color: var(--color-foreground);
-  font-size: var(--text-ui-lg);
+  font-size: var(--text-ui-sm);
   margin: calc(var(--spacing-inline) * 3 / 2) 0 var(--spacing-inline);
   font-weight: 500;
-}
-.side-chat-empty p {
-  font-size: var(--text-ui-sm);
 }
 .side-chat-empty small {
   display: block;

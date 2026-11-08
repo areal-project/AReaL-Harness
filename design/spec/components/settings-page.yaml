@@ -5,104 +5,175 @@ purpose: 一页设置：按分区列出可调的项，每项一行，左边说�
 why: 所有设置页共用同一种分区、卡片和行，用户换页不用重新学；控件只有几种，同类选择永远长一个样。
 
 layout:
-  place: 打开设置后占满主区（顶栏以下的纸面右段，底色 color-background）；会话标题栏这时只剩一条空的顶栏
-  scroll: 整个主区一起竖向滚动；右侧始终给滚动条留位，内容不因出现滚动条而左右移动
-  padding: 上下 spacing-field 的四倍，左右 spacing-field 的两倍
-  column: 内容一列，最宽 reading-width，在留位后的宽度里水平居中
-  gap: 页标题、各分区之间 spacing-field 的两倍半
+    place: 打开设置后占满主区（顶栏以下的纸面右段，底色 color-background）；会话标题栏这时只剩一条空的顶栏
+    scroll: 整个主区一起竖向滚动；右侧始终给滚动条留位，内容不因出现滚动条而左右移动
+    padding: 上下 spacing-field 的四倍，左右 spacing-field 的两倍
+    column: 内容一列，最宽 reading-width，在留位后的宽度里水平居中
+    gap: 页标题、各分区之间 spacing-field 的两倍半
 
 anatomy:
-  - part: header
-    role: 页标题
-  - part: section
-    role: 分区：分区标题加一张卡片
-  - part: card
-    role: 卡片，竖排若干行
-  - part: row
-    role: 一项设置
-  - part: disclosure
-    optional: true
-    role: 平时收起的高级分区，只有一行标题和“展开”
+    - part: header
+      role: 页标题
+    - part: section
+      role: 分区：分区标题加一张卡片
+    - part: card
+      role: 卡片，竖排若干行
+    - part: row
+      role: 一项设置
+    - part: disclosure
+      optional: true
+      role: 平时收起的高级分区，只有一行标题和“展开”
 
 parts:
-  header:
-    padding: 上下 spacing-inline 的一倍半
-    title: text-fixed-page-title，font-weight-medium，行高 line-height-title，字距 tracking-heading-tight，foreground
-  section:
-    gap: 标题与卡片之间 spacing-inline
-    heading: 最小高 spacing-control-sm，文字贴底；text-ui-base，font-weight-medium，行高 line-height-ui，foreground
-  card:
-    surface: color-settings-card
-    border: border-width-default 的 color-border-subtle
-    radius: radius-panel
-  row:
-    padding: 上下 spacing-inline 的一倍半，左右 spacing-field
-    min-height: spacing-control-sm 加 spacing-section
-    layout: 左为文字列、右为控件列，两列间隔 spacing-section，垂直居中；控件列按内容撑开，最宽 reading-width 的八分之三，控件靠右，多个控件间隔 spacing-inline
-    label: text-ui-caption，font-weight-medium，行高 line-height-ui-sm，foreground
-    description: 名称下方 spacing-inline 的四分之一；text-ui-sm，font-weight-toolbar，行高 line-height-ui-sm，color-settings-secondary
-    divider: 同一卡片里相邻两行之间一道线，高 border-width-default 的一半，color-border-subtle，左右各缩进 spacing-field
-    detail: 需要整行宽的控件（例如文字输入框）放在文字与控件列下方，上方留 spacing-inline 的一倍半，占满行内宽度
-  disclosure:
-    summary: 不在卡片里，左右没有内边距，与分区标题左对齐；一行，上下 spacing-inline；左为分区标题（text-ui-base，font-weight-medium，行高 line-height-toolbar，foreground），右为“展开”
-    action: 内边距上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-button，底色 color-button-surface，text-ui-sm，foreground；悬停整行时底色 color-button-hover
-    open: 点整行展开，“展开”换成“收起”；展开后的内容不在本规格内
+    header:
+        padding: 上下 spacing-inline 的一倍半
+        title: text-fixed-page-title，font-weight-medium，行高 line-height-title，字距 tracking-heading-tight，foreground
+    section:
+        gap: 标题与卡片之间 spacing-inline
+        heading: 最小高 spacing-control-sm，文字贴底；text-ui-base，font-weight-medium，行高 line-height-ui，foreground
+    card:
+        surface: color-settings-card
+        border: border-width-default 的 color-border-subtle
+        radius: radius-panel
+    row:
+        padding: 上下 spacing-inline 的一倍半，左右 spacing-field
+        min-height: spacing-control-sm 加 spacing-section
+        layout: 左为文字列、右为控件列，两列间隔 spacing-section，垂直居中；控件列按内容撑开，最宽 reading-width 的八分之三，控件靠右，多个控件间隔 spacing-inline
+        label: text-ui-caption，font-weight-medium，行高 line-height-ui-sm，foreground
+        description: 名称下方 spacing-inline 的四分之一；text-ui-sm，font-weight-toolbar，行高 line-height-ui-sm，color-settings-secondary
+        divider: 同一卡片里相邻两行之间一道线，高 border-width-default 的一半，color-border-subtle，左右各缩进 spacing-field
+        detail: 需要整行宽的控件（例如文字输入框）放在文字与控件列下方，上方留 spacing-inline 的一倍半，占满行内宽度
+    description:
+        place: 页标题下方，与标题算一组：紧跟标题，不放进第一个分区之前的空隙；text-ui-caption，行高 line-height-ui-sm，color-settings-secondary
+        when: 只有需要一句话说明整页作用的页才有（浏览器、钩子、工作树、手机连接）；其余页不写
+    status:
+        place: 分区标题下或卡片第一行，说明当前状态的一句话；带读屏“状态”角色，内容变化时播报
+        text: text-ui-sm，行高 line-height-ui-sm，color-settings-secondary；出错时换 color-destructive
+    list-row:
+        note: 卡片里一行代表一个对象（钩子、工作树、设备、上传记录），左为名称与一行摘要，右为对该对象的操作按钮；结构与间距同 row
+        name: text-ui-caption，font-weight-medium，foreground
+        summary: 名称下方，text-ui-sm，color-settings-secondary，单行省略
+        actions: 图标按钮 spacing-control 见方，圆角 radius-button，图标 icon-size-control，颜色 foreground-subtle，悬停底色 color-hover；文字按钮用 button 的 secondary
+    disclosure:
+        summary: 不在卡片里，左右没有内边距，与分区标题左对齐；一行，上下 spacing-inline；左为分区标题（text-ui-base，font-weight-medium，行高 line-height-toolbar，foreground），右为“展开”
+        action: 内边距上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-button，底色 color-button-surface，text-ui-sm，foreground；悬停整行时底色 color-button-hover
+        open: 点整行展开，“展开”换成“收起”；展开后的内容不在本规格内
 
 controls:
-  switch:
-    size: 宽 spacing-control-lg，高 line-height-ui，圆角 radius-full，内边距 spacing-inline 的四分之一
-    track: 开时 color-brand，关时 foreground 的一成不透明度
-    thumb: icon-size-control 见方的圆，color-control-thumb；关时在左，开时在右
-    disabled: 整体 opacity-disabled
-  select:
-    trigger: 高 spacing-control-sm，左内边距 spacing-inline，右内边距 spacing-inline 的四分之三，圆角 radius-button；border-width-default 的 color-border，底色 color-button-surface；text-ui-caption，行高 line-height-relaxed，foreground；当前值后隔 spacing-inline 的四分之三放 select-chevron（foreground-subtle）
-    hover: 底色 color-button-hover；打开期间保持
-    popup: 外观与条目同 menu 组件的浮层与单选项（当前值打勾），对齐触发按钮右缘，在其下方间隔 spacing-inline 的四分之一；最窄为触发按钮宽与 reading-width 的六分之一两者取大
-    two-options: 只有两个选项时不用下拉，改用 segmented
-  segmented:
-    list: 选项横排，间隔 spacing-inline 的四分之一，无底色
-    option: 高 spacing-control-sm，内边距上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-full，border-width-default 的透明描边；text-ui-caption，font-weight-toolbar，行高 line-height-ui-sm，color-settings-secondary，底色透明
-    selected: 底色 color-surface-tertiary，文字 foreground
-    hover: 未选中项文字 foreground，底色 color-surface-elevated
-  number:
-    input: 高 spacing-control，宽 spacing-control-lg 的两倍，圆角 radius-compact；border-width-default 的 color-input-border，底色 color-input；text-ui-caption，font-weight-toolbar，行高 line-height-ui-sm，foreground，文字居中；左右内边距 spacing-inline
-    unit: 输入框右侧隔 spacing-inline 的四分之三写单位，text-ui-sm，foreground-subtle
-    focus: 描边 color-input-border-focused，底色 color-input-focused，不另画焦点环
-  text:
-    input: 放在行的 detail 位置，占满宽；高 spacing-control，圆角 radius-control，左右内边距 spacing-inline；border-width-default 的 color-input-border，底色 color-input；text-ui-base，行高 line-height-relaxed，foreground；占位文字 foreground-subtlest
-    action: 控件列里一个“保存”按钮（button 的 secondary）；输入内容与已保存值相同时不可用
-  value-action:
-    value: 当前值，text-ui-sm，行高 line-height-ui-sm，foreground，单行省略，最宽 reading-width 的十六分之五
-    action: 值右侧隔 spacing-inline 一个按钮（button 的 outline）
-  button:
-    size: 高 spacing-control-sm，左右内边距 spacing-inline，圆角 radius-button，border-width-default 描边；text-ui-caption，行高 line-height-relaxed
-    secondary: 底色 color-button-surface，描边透明，文字 foreground；悬停底色 color-button-hover
-    outline: 底色透明，描边 color-border，文字 foreground；悬停描边 color-border-hover、底色 color-input 的一半不透明度
-    disabled: 整体 opacity-disabled
-  preview:
-    text: 卡片里一段示例文字，四周 spacing-field；字号 text-conversation，行高 conversation-line，foreground
+    switch:
+        size: 宽 spacing-control-lg，高 line-height-ui，圆角 radius-full，内边距 spacing-inline 的四分之一
+        track: 开时 color-brand，关时 foreground 的一成不透明度
+        thumb: icon-size-control 见方的圆，color-control-thumb；关时在左，开时在右
+        disabled: 整体 opacity-disabled
+    select:
+        trigger: 高 spacing-control-sm，左内边距 spacing-inline，右内边距 spacing-inline 的四分之三，圆角 radius-button；border-width-default 的 color-border，底色 color-button-surface；text-ui-caption，行高 line-height-relaxed，foreground；当前值后隔 spacing-inline 的四分之三放 select-chevron（foreground-subtle）
+        hover: 底色 color-button-hover；打开期间保持
+        popup: 外观与条目同 menu 组件的浮层与单选项（当前值打勾），对齐触发按钮右缘，在其下方间隔 spacing-inline 的四分之一；最窄为触发按钮宽与 reading-width 的六分之一两者取大
+        two-options: 只有两个选项时不用下拉，改用 segmented
+    segmented:
+        list: 选项横排，间隔 spacing-inline 的四分之一，无底色
+        option: 高 spacing-control-sm，内边距上下 spacing-inline 的四分之一、左右 spacing-inline，圆角 radius-full，border-width-default 的透明描边；text-ui-caption，font-weight-toolbar，行高 line-height-ui-sm，color-settings-secondary，底色透明
+        selected: 底色 color-surface-tertiary，文字 foreground
+        hover: 未选中项文字 foreground，底色 color-surface-elevated
+    number:
+        input: 高 spacing-control，宽 spacing-control-lg 的两倍，圆角 radius-compact；border-width-default 的 color-input-border，底色 color-input；text-ui-caption，font-weight-toolbar，行高 line-height-ui-sm，foreground，文字居中；左右内边距 spacing-inline
+        unit: 输入框右侧隔 spacing-inline 的四分之三写单位，text-ui-sm，foreground-subtle
+        focus: 描边 color-input-border-focused，底色 color-input-focused，不另画焦点环
+    text:
+        input: 放在行的 detail 位置，占满宽；高 spacing-control，圆角 radius-control，左右内边距 spacing-inline；border-width-default 的 color-input-border，底色 color-input；text-ui-base，行高 line-height-relaxed，foreground；占位文字 foreground-subtlest
+        action: 控件列里一个“保存”按钮（button 的 secondary）；输入内容与已保存值相同时不可用
+    value-action:
+        value: 当前值，text-ui-sm，行高 line-height-ui-sm，foreground，单行省略，最宽 reading-width 的十六分之五
+        action: 值右侧隔 spacing-inline 一个按钮（button 的 outline）
+    button:
+        size: 高 spacing-control-sm，左右内边距 spacing-inline，圆角 radius-button，border-width-default 描边；text-ui-caption，行高 line-height-relaxed
+        secondary: 底色 color-button-surface，描边透明，文字 foreground；悬停底色 color-button-hover
+        primary: 底色 foreground，描边透明，文字 color-foreground-inverse；只给推进当前状态的主操作（如“添加设备”“开启内网连接”）
+        outline: 底色透明，描边 color-border，文字 foreground；悬停描边 color-border-hover、底色 color-input 的一半不透明度
+        disabled: 整体 opacity-disabled
+    preview:
+        text: 卡片里一段示例文字，四周 spacing-field；字号 text-conversation，行高 conversation-line，foreground
 
 icons:
-  source: 见 icons/ 目录，按名称引用，颜色取 currentColor
-  used: [select-chevron, menu-check]
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+    used: [select-chevron, menu-check]
 
-content: 常规、外观两页的分区、行与控件当前值见示例数据 settings.pages；kind 指 controls 里的控件；其余设置页只有页标题
+content: 常规、外观两页的分区、行与控件当前值见示例数据 settings.pages；kind 指 controls 里的控件；其余十页的内容见下面 pages，数据取示例数据 settingsBackend（日期以其中 today 为准）
 
 accessible-names:
-  page: 区域，名称取页标题；页标题是一级标题
-  section-title: 二级标题
-  switch: 开关，名称即该行名称
-  select: 组合框，名称即该行名称
-  segmented: 选项卡列表，名称即该行名称；每个选项是选项卡，当前项标为已选
-  number: 数字输入框，名称即该行名称
-  text: 文本输入框，名称即该行名称
-  disclosure: 摘要按钮，标为展开或收起
+    page: 区域，名称取页标题；页标题是一级标题
+    section-title: 二级标题
+    switch: 开关，名称即该行名称
+    select: 组合框，名称即该行名称
+    segmented: 选项卡列表，名称即该行名称；每个选项是选项卡，当前项标为已选
+    number: 数字输入框，名称即该行名称
+    text: 文本输入框，名称即该行名称
+    disclosure: 摘要按钮，标为展开或收起
+
+rules:
+    - 十二页同宽：内容列都用 reading-width，任何一页不单独收窄或放宽（模型设置的两栏也在这个宽度以内）
+    - 控件列最多占行宽的一半；一行里并排的按钮不折行，放不下时把按钮移到行的 detail 位置
+    - 页面只有一层底色 color-background；卡片用 color-settings-card，卡片内不再铺第二种底色
+    - 列表为空时不留只剩边框的空卡片：整张卡片换成一行说明文字（同 status）
+    - 名称统一：工作树、侧边聊天、定时任务；不出现英文占位或内部名词
+
+pages:
+    使用情况:
+        status: 标题下一行，左为圆点（与上传正常同色）加“本机记录 · 所有工作区”，右为“同步历史”（button 的 secondary）
+        metrics: 六张数字卡，三列等宽、两行，间隔 spacing-inline 的一倍半；每张卡 color-settings-card、radius-overlay、border-width-default 的 color-border-subtle，内边距上下 spacing-field、左右 spacing-inline 的二倍半；第一行是图标加名称（text-ui-sm，color-settings-secondary），中间是大数字（foreground，font-weight-strong），最后一行是补充（text-ui-xs，color-settings-secondary）
+        metric-names: 累计使用、连续使用、累计 Token、今日 Token、昨日 Token、Skills 调用
+        activity: 一张卡（同 metrics 的卡面，内边距 spacing-section）：标题“使用活跃度”（二级标题）与说明“颜色越深，当天使用时间越长”，右上为年份下拉（组合框“统计年份”）；下方按周排列的日历，每天一个小方格（radius-micro），按当天使用时长分五级颜色，最浅一级 color-hover；右下“少 … 多”图例；悬停或聚焦一天时在日历下方显示当天日期、使用时间、Token、Skills 调用
+        ranking: 第二张卡：标题“Skills 排行”与说明“累计成功调用 · 按次数排序”，右上为搜索框（文本框“搜索 Skills 排行”）；下方有序列表，每项为名次、技能名、次数
+        disclosure: 最后一个收起的分区“统计口径与数据范围”
+    SnapShots:
+        unsupported: 当前环境不支持时，标题下先一行 status“此环境尚不支持 SnapShots。”；下面仍列出分区“SnapShots”和一行开关（说明“捕获窗口并添加到当前草稿。”），开关不可用
+    浏览器:
+        description: 管理链接打开方式和地址栏显示。
+        general: 分区“常规”三行：“网页 URL 和链接打开位置”“本地 URL 打开位置”两行用 segmented（应用内 / 默认浏览器），“显示完整网址”一行开关
+        data: 分区“浏览器登录与数据”，分区标题下一段说明；三行各带一个 secondary 按钮：从 Chrome 导入、清除缓存、清除全部浏览数据
+    云端:
+        form: 一个表单分区“Cloud 连接”，标题下一段说明；两行文字输入：后端地址（已填）、Token（占位“已保存，留空保留”，在本机安全存储）；行尾一个“保存”按钮（button 的 secondary）
+    电脑控制:
+        mode: 第一张卡三行：控制方式（segmented：内置 / 外部 CUA）、启用电脑控制（开关）、在输入框显示电脑操作按钮（开关）
+        permissions: 分区“系统授权”，每项权限一行：名称加用途说明，右侧“授权”与“打开系统设置”两个按钮并排不折行，状态（已授权 / 未授权）写在名称下方的说明里
+        process: 分区“控制进程”，一行状态（电脑控制已关闭）加三个按钮：刷新权限状态、重启控制 Helper、停止电脑操作；按钮放在行的 detail 位置，横排不折行
+    工作树:
+        description: 管理工作树的创建、清理和项目环境。
+        tabs: 标题右侧为“刷新工作树”图标按钮；说明下方 segmented 两项：常规、环境
+        general: 分区“创建与清理”四行：工作树根目录（文字输入，占位为默认位置）、创建前获取远程分支（开关）、自动清理（开关）、保留工作树数量（number）；随后收起的“高级创建选项”
+        list: 分区“已有工作树”：按项目分组，组头一行为文件夹图标加项目名；组内每个工作树一行（list-row），左为展开箭头与分支名，右为删除图标按钮；没有工作树时整块换成一行说明“尚未创建工作树”
+    钩子:
+        description: 按顺序运行工具事件命令，修改后重启后台生效。
+        hooks: 分区“工具钩子”，标题右侧“刷新钩子”与“添加钩子”；每个钩子一行（list-row）：名称（如“提交前检查”）、摘要为事件 · 工具 · 超时；右侧上移、下移、编辑三个图标按钮，首个不能上移、末个不能下移时按钮不可用
+        project: 只有存在项目级钩子时才出现“项目钩子”分区；没有时不留空卡片
+        apply: 分区“配置生效”：一句说明，加“重启后台并应用”按钮；最后收起的“配置详情”
+    模型设置:
+        layout: 内容列内左右两栏：左栏“供应商目录”宽为 reading-width 的十分之三，右栏为当前供应商的编辑区，两栏之间一道 border-width-default 的 color-border 竖线，间隔 spacing-panel
+        catalog: 左栏标题“供应商”加刷新图标按钮；下面搜索框“搜索供应商”；列表按“已启用 / 未启用”分组，每项是一个按钮，圆点表示状态，当前项底色 color-selected；底部“添加供应商”（button 的 outline，占满栏宽）
+        editor: 右栏顶部 status“已保存并应用。”；供应商名与可用状态在左、启用开关在右；之后依次为 API 格式（segmented）、供应商名称、Base URL、认证方式（segmented）、连接卡（“连接已配置”加“测试连接”）、模型列表
+        models: “模型 · 数量”标题右侧“获取模型”“添加模型”两个 secondary 按钮并排；搜索框“搜索模型名称或 ID”；每个模型一行：名称、标签（如“备用默认”）、启用开关、更多操作按钮；最后收起的“高级参数”
+        footer: 编辑区底部“取消修改”“保存”两个按钮，无改动时都不可用；页底一行“新会话默认模型”（segmented）加“前往会话配置”
+        buttons: 同一页的次要按钮只用一种外观（secondary）
+    手机连接:
+        description: 用 iPhone 或其他浏览器继续电脑上的工作。
+        status: 第一张卡：左为状态圆点（已连接时同“使用情况”的正常色），名称“手机可以连接”与摘要“通过中继 <地址> · 已连接”，右为主按钮“添加设备”（button 的 primary）；卡内下方一行 status 说明中继登记情况
+        relay: 分区“Relay 服务”，标题下说明；卡内“本机 Relay”名称与说明，下方主按钮“开启内网连接”（button 的 primary）；再两个收起的子项：部署到 Linux 服务器、使用已有外部服务
+        devices: 分区“设备”，标题右侧写“N 台可用”；每台设备一行（list-row）：设备图标、名称、摘要为类型 · 项目数 · 在线 · 推送；右侧权限（如“仅查看”）与更多操作按钮；没有设备时一行说明
+        disclosure: 最后收起的“高级网络设置”
+    数据飞轮:
+        feedback: 分区“回答评价”一行开关“显示点赞和点踩”
+        upload: 分区“轨迹上传”，标题右侧“刷新上传状态”，下方 status“上次读取：时间”；卡内依次为：数据飞轮开关（开关，右侧文字“已开启”）、配置状态（就绪）、上传进程（运行中）、上传地址
+        queue: 分区“队列与失败”，标题右侧“重试上传”；卡内五行数值：待上传 / 上传中 / 失败、已上传（带最近成功时间）、队列占用、已淘汰 / 内存丢弃 / 过大丢弃、最近失败原因；数值靠右，用 text-ui-sm 的 foreground
+        latency: 分区“模型调用耗时”，没有数据时一行说明，不画空图表
+        records: 分区“最近上传记录”：上下各一条分页导航（“上传记录分页”，状态写“第 a–b 条，共 n 条”，上一页 / 下一页）；每条记录一行：编号、模型、耗时、创建时间 · 大小 · 尝试次数，右侧状态（已上传 / 待上传 / 上传失败），失败时名称下多一行原因
+        disclosure: 最后收起的“上传配置与限制”
 
 keyboard:
-  - 开关按空格切换
-  - 下拉打开后上下方向键移动，回车选中并收起，Esc 收起不改
-  - 分段选择用左右方向键移动，回车或空格选中
+    - 开关按空格切换
+    - 下拉打开后上下方向键移动，回车选中并收起，Esc 收起不改
+    - 分段选择用左右方向键移动，回车或空格选中
 
 behavior:
-  - 改动立即生效，不需要另点保存（文字输入行除外，按“保存”或回车生效）
-  - 选择后控件立即显示新值
+    - 从设置导航点任一页，主区换成该页，标题即导航项名称，导航项标为当前页
+    - 改动立即生效，不需要另点保存（文字输入行除外，按“保存”或回车生效）
+    - 选择后控件立即显示新值

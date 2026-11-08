@@ -34,7 +34,6 @@ export function SideChatPane({
   executionBlocked,
   action,
   dark,
-  onReturn,
   onPanel,
 }: {
   project: Data;
@@ -42,7 +41,6 @@ export function SideChatPane({
   executionBlocked: boolean;
   action: Action;
   dark: boolean;
-  onReturn: () => void;
   onPanel: (name: string) => void;
 }) {
   const workspace = useMemo(
@@ -81,10 +79,6 @@ export function SideChatPane({
   return (
     <section className="side-chat-pane" aria-label="侧边聊天">
       <div className="side-chat-toolbar">
-        <span className="side-chat-heading">
-          <SideChatIcon />
-          侧边聊天
-        </span>
         <Button
           type="button"
           variant="ghost"
@@ -148,16 +142,6 @@ export function SideChatPane({
               ))}
           </PopoverContent>
         </Popover>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="返回主会话"
-          title="关闭侧边聊天"
-          onClick={onReturn}
-        >
-          <CloseIcon />
-        </Button>
       </div>
       <SideChatEditor
         key={`${workspace.owner(selected)}:${project.core?.connectionGeneration ?? 0}`}
@@ -830,8 +814,7 @@ function SideChatEditor({
         {!sideId && (
           <div className="side-chat-empty">
             <SideChatIcon size={30} />
-            <h2>侧边聊天</h2>
-            <p>岔开一个问题，主聊天留在原处。</p>
+            <h2>岔开一个问题，主聊天留在原处。</h2>
             <small>讨论会保留，可从相关讨论中恢复。</small>
           </div>
         )}

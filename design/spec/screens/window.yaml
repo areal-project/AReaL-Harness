@@ -35,6 +35,13 @@ regions:
     - id: search
       name: 搜索任务
       contains: [task-search]
+    - id: panel
+      name: 右侧面板
+      contains: [side-panel, review-panel, files-panel, side-chat]
+    - id: surfaces
+      name: 定时任务与插件中心
+      layout: 点应用导航栏“定时任务”或“插件”时，B 与主区一起换成对应界面
+      contains: [scheduled-tasks, plugin-center]
     - id: overlays
       name: 浮层
       contains: [menu.task-menu, menu.organize-menu, dialog.rename]
@@ -76,15 +83,15 @@ states:
     - panel-tabs: 面板打开，标签“审查”“文件”，“文件”为当前标签
     - panel-add-menu: 同 panel-tabs，新增标签菜单用鼠标刚打开，没有高亮项
     - panel-full: 同 panel-tabs 但“审查”为当前标签，面板铺满主区；审查内容见 review
-    - review: 面板只开“审查”标签，显示示例数据 review 的两个文件改动（审查面板规格待写，暂只作防回归截图）
-    - review-scope-menu: 同 review，“改动范围”菜单用鼠标刚打开
-    - review-files: 同 review，文件列表已显示
-    - files: 面板只开着“文件”标签：文件树占满面板，改动过的文件带 A/M 标记
-    - files-open: 打开了改动过的那个源文件：左边代码、右边文件树，当前文件在树里选中
-    - side-chat: 面板只开着侧边聊天：还没有讨论时的空状态和底部输入框
-    - tasks: 点应用导航栏“定时任务”，列出示例数据 tasks 的两个任务，未选中任务（规格待写，暂只作防回归截图）
+    - review: 面板只开“审查”标签，范围“上一轮”，显示示例数据 review 的两个文件改动，都展开；内容见 review-panel
+    - review-scope-menu: 同 review，“改动范围”菜单用鼠标刚打开，“上一轮”打勾
+    - review-files: 同 review，文件列表已显示，第一个改动文件在树里选中，差异列表变窄、文件头操作叠放在路径末端
+    - files: 面板只开着“文件”标签：文件树占满面板，源码目录收起并带改动圆点；内容见 files-panel
+    - files-open: 打开了被修改的那个源文件：左边代码、右边文件树，当前文件在树里选中，改动文件带 A/M 标记
+    - side-chat: 面板只开着侧边聊天：还没有讨论时的空状态和底部输入框；内容见 side-chat
+    - tasks: 点应用导航栏“定时任务”，列出示例数据 tasks 的两个任务，未选中任务；外观见 scheduled-tasks
     - tasks-new: 同 tasks，“新建定时任务”弹窗刚打开
-    - plugins: 点应用导航栏“插件”，插件市场列出示例数据 plugins 的四个插件（规格待写，暂只作防回归截图）
+    - plugins: 点应用导航栏“插件”，插件市场列出示例数据 plugins 的四个插件；外观见 plugin-center
 
 references:
     - state: sidebar

@@ -1363,7 +1363,6 @@ try {
           return {
             card: style(".decision-card"),
             feedback: style(".ui-feedback"),
-            sideHeading: style(".side-chat-heading"),
             sideInfo: style(".side-chat-information"),
             composer: style(".composer-editor [contenteditable]"),
             response: style(".assistant-message"),
@@ -1378,7 +1377,6 @@ try {
         assert.equal(measured.card.radius, "20px");
         assert.equal(measured.feedback.fontSize, `${sample.font}px`);
         if (!baseline) {
-          assert.equal(measured.sideHeading.fontSize, `${Math.max(12, Number(sample.font) - 2)}px`);
           assert.equal(measured.sideInfo.fontSize, `${Math.max(11, Number(sample.font) - 3)}px`);
         }
         assert.equal(

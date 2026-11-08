@@ -1,0 +1,67 @@
+id: side-chat
+name: 侧边聊天
+status: draft
+purpose: 右侧面板里的一个标签：岔开问一个问题，主聊天留在原处；讨论会保留，可以回到以前的讨论。
+why: 临时问题不打断主对话的上下文；放在面板标签里，和主对话并排看，问完关掉标签即可回到原处。
+
+layout:
+    place: 右侧面板（side-panel）里的一个标签，标签名“侧边聊天”，图标 side-chat；从面板入口、新增菜单或选中正文后的“在侧边聊天中询问所选内容”打开
+    column: 竖排三段：工具行、内容区（占满剩余高度，自己竖向滚动）、底部输入框
+    surface: 与面板内容区同底色 color-background，不铺第二种底色
+
+anatomy:
+    - part: toolbar
+      role: 一行操作：新讨论、相关讨论
+    - part: empty
+      role: 还没有讨论时的说明
+    - part: transcript
+      role: 讨论的消息，外观同对话回合
+    - part: related
+      optional: true
+      role: 相关讨论菜单，列出以前的侧边聊天
+    - part: composer
+      role: 底部输入框
+
+parts:
+    toolbar:
+        padding: 上下 spacing-inline 的四分之三，左右 spacing-inline 的一倍半
+        gap: 各按钮间隔 spacing-inline 的一半
+        border: 下缘 border-width-default 的 color-border
+        buttons: 靠右；新讨论（图标 add）、相关讨论（图标 more）两个图标按钮，spacing-control 见方，圆角 radius-button，图标 icon-size-control，颜色 foreground-subtle，悬停底色 color-hover
+        single-title: 标签已经写了“侧边聊天”，工具行不再写标题，也不另放关闭按钮；关闭用标签上的关闭按钮或面板的关闭
+    empty:
+        place: 内容区内水平、垂直居中；内边距上下 spacing-inline 的三倍半，左右 spacing-inline 的二倍半；文字居中
+        icon: side-chat，icon-size-control 的两倍，foreground-subtle
+        lead: 图标下方 spacing-inline 的一倍半；“岔开一个问题，主聊天留在原处。”作为空状态的标题，text-ui-sm，font-weight-medium，foreground
+        note: 下方 spacing-inline；“讨论会保留，可从相关讨论中恢复。”text-ui-xs，foreground-subtle
+    transcript:
+        note: 用户消息、过程与回答的外观同 conversation-turn；正文列宽跟随面板宽度
+    related:
+        surface: 同 menu 组件，对齐相关讨论按钮右缘，在其下方间隔 spacing-inline 的四分之一
+        items: 每项是一段以前讨论的首句（单行省略）；当前讨论标为当前项，底色 color-selected；没有已发送的讨论时只有一行说明“暂无已发送的侧边聊天”
+    composer:
+        place: 内容区下方，贴面板底边；左右与上方的留白同主对话底部的输入框
+        note: 外观与行为同 composer 组件；不显示权限菜单（侧边聊天只读）
+
+icons:
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+    used: [side-chat, add, more]
+
+content: 示例数据 states 里 window.side-chat 打开面板，只开侧边聊天一个标签，还没有讨论
+
+accessible-names:
+    pane: 区域“侧边聊天”
+    new: 新讨论（按钮）
+    related: 相关侧边讨论（按钮，打开菜单）
+    composer: 文本框与按钮同 composer 组件
+    ask-selection: 正文选区浮层上的按钮“在侧边聊天中询问所选内容”
+
+keyboard:
+    - 打开后焦点进入底部输入框
+    - 输入框里 Enter 发送，Shift+Enter 换行
+
+behavior:
+    - 发出第一条消息后，空状态换成讨论内容；主对话不受影响，也不出现这条消息
+    - 新讨论清空内容区回到空状态；旧讨论保留在相关讨论里
+    - 关闭标签不丢讨论，下次从相关讨论恢复
+    - 从正文选区打开时，所选内容作为引用放在输入框上方

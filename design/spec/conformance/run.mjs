@@ -7,8 +7,27 @@ import { checks as overlays } from "./overlays.mjs";
 import { checks as sendRunStop } from "./send-run-stop.mjs";
 import { checks as settings } from "./settings.mjs";
 import { checks as panel } from "./panel.mjs";
+import { checks as review } from "./review.mjs";
+import { checks as files } from "./files.mjs";
+import { checks as settingsPages } from "./settings-pages.mjs";
+import { checks as sideChat } from "./side-chat.mjs";
+import { checks as tasks } from "./tasks.mjs";
+import { checks as plugins } from "./plugins.mjs";
 
-const checks = [...sendRunStop, ...decide, ...navigate, ...overlays, ...settings, ...panel];
+const checks = [
+  ...sendRunStop,
+  ...decide,
+  ...navigate,
+  ...overlays,
+  ...settings,
+  ...panel,
+  ...review,
+  ...files,
+  ...settingsPages,
+  ...sideChat,
+  ...tasks,
+  ...plugins,
+];
 
 const arg = (name) => process.argv[process.argv.indexOf(name) + 1];
 const url = process.argv.includes("--url") ? arg("--url") : undefined;
@@ -44,10 +63,13 @@ const expect = (locator) => ({
   toBeDisabled: () => until(`${locator} disabled`, () => locator.first().isDisabled()),
   toBeHidden: () => until(`${locator} hidden`, async () => !(await locator.first().isVisible())),
   toBeFocused: () =>
-    until(`${locator} focused`, () => locator.first().evaluate((node) => node === document.activeElement)),
+    until(`${locator} focused`, () =>
+      locator.first().evaluate((node) => node === document.activeElement),
+    ),
   toHaveAttribute: (name, value) =>
-    until(`${locator} [${name}="${value}"]`, async () =>
-      (await locator.first().getAttribute(name)) === value,
+    until(
+      `${locator} [${name}="${value}"]`,
+      async () => (await locator.first().getAttribute(name)) === value,
     ),
   toHaveCount: (count) =>
     until(`${locator} count ${count}`, async () => (await locator.count()) === count),
