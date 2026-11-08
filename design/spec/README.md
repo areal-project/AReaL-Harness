@@ -18,7 +18,7 @@
 | `fixtures/*.json`   | 示例数据：界面不连后台也能渲染各个状态                                   | JSON            |
 | `icons/*.svg`       | 图标，按文件宽高渲染，取 currentColor                                    | SVG             |
 | `references/`       | 标准截图，按界面、状态、亮暗生成                                         | PNG，生成产物   |
-| `conformance/`      | 验收：只用角色、可读名称和文字操作与断言，任何实现都能运行；另含截图对比 | Playwright 脚本 |
+| `conformance/`      | 验收：只用角色、可读名称和文字操作与断言，任何实现都能运行；规格与截图有争议的间距和颜色用 `layout.mjs` 按数值断言；另含截图对比 | Playwright 脚本 |
 
 实现提供入口页，接受 `?state=<流程状态>&theme=light|dark` 并用示例数据渲染（本仓库：设计系统页加 `?spec`）。运行 `conformance/run.mjs --url <入口>` 和 `conformance/references.mjs --url <入口>`。
 

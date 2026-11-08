@@ -910,6 +910,7 @@
   "settingsBackend": {
     "$comment": "设置各页的示例后台数据：today 固定，截图不随真实日期变化。",
     "today": "2026-11-07",
+    "feedback": { "enabled": true, "connected": true, "opted_in": true },
     "usage": {
       "days": [
         180000, 240000, 0, 320000, 410000, 150000, 260000, 380000, 90000, 300000, 450000, 220000,

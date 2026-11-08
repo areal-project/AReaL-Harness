@@ -7,7 +7,7 @@
   min-height: 0;
   align-items: start;
   gap: var(--spacing-panel);
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: calc(var(--reading-width) * 2 / 7) minmax(0, 1fr);
 }
 .model-settings .provider-navigation {
   position: sticky;
@@ -21,7 +21,7 @@
 .model-settings .provider-model-section h3 {
   margin: 0;
   font-size: var(--text-ui-base);
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
 }
 .model-settings .provider-navigation > .relative {
   margin-bottom: 0;
@@ -79,7 +79,7 @@
   min-width: 0;
   margin: 0;
   font-size: var(--text-ui-base);
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
   line-height: var(--line-height-ui);
   overflow-wrap: anywhere;
 }
@@ -106,12 +106,12 @@
 }
 .model-settings .provider-method-copy strong {
   font-size: var(--text-ui-base);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: var(--line-height-ui);
 }
 .model-settings .provider-method-copy small {
   font-size: var(--text-ui-sm);
-  font-weight: 400;
+  font-weight: var(--ui-font-weight);
   line-height: var(--line-height-ui-sm);
   color: var(--color-foreground-subtle);
 }
@@ -124,7 +124,7 @@
 }
 .model-settings .provider-detail-heading h2 {
   font-size: var(--text-ui-lg);
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
   margin: 0 0 var(--spacing-inline);
   overflow-wrap: anywhere;
 }
@@ -208,7 +208,7 @@
 }
 .model-settings .provider-model-label strong {
   font-size: var(--text-ui-base);
-  font-weight: 550;
+  font-weight: var(--font-weight-strong);
   white-space: normal;
 }
 .model-settings .provider-save-actions {

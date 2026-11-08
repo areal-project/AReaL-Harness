@@ -7,11 +7,6 @@
   color: var(--remote-muted);
   line-height: 1.5;
 }
-.remote-settings .remote-intro {
-  margin: calc(var(--spacing-field) * -1) 0 0;
-  color: var(--remote-muted);
-  font-size: var(--text-ui-base);
-}
 .remote-field-label {
   margin: 0 0 var(--spacing-inline);
   color: var(--remote-muted);

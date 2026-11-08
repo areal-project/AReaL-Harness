@@ -1,58 +1,107 @@
-import { getResolvedOrResolveTheme, registerCustomTheme, type HighlighterTypes } from "@pierre/diffs";
+import {
+  getResolvedOrResolveTheme,
+  registerCustomTheme,
+  type HighlighterTypes,
+} from "@pierre/diffs";
 import type { WorkerInitializationRenderOptions } from "@pierre/diffs/react";
 import type { CodePreviewTheme } from "./code-preview-settings.js";
+import { SYNTAX_COLORS } from "../generated/syntax.js";
 
-// 复用 @pierre/diffs 的 Pierre TextMate 范围（Apache-2.0），只适配实机观察的
-// Codex 26.924.22138 色值；不复制参考主题实现，不覆盖用户保存的其它预设。
+// 复用 @pierre/diffs 的 Pierre TextMate 范围（Apache-2.0），把它的色值按用途换成
+// tokens.json 的 color-syntax-*；不复制参考主题实现，不覆盖用户保存的其它预设。
 // File 与 Diff 都经过本模块注册，保持原 WASM 引擎与公共主题加载接口。
-const palette = {
+type SyntaxRole = keyof (typeof SYNTAX_COLORS)["light"];
+const pierreRoles: Record<"light" | "dark", Record<string, SyntaxRole>> = {
   dark: {
-    "#fafafa": "#fcfcfc", "#0a0a0a": "#111111", "#737373": "#999999",
-    "#5ecc71": "#85df7b", "#68cdf2": "#6dcbf4", "#ffd452": "#fa994c",
-    "#ffab16": "#fa994c", "#ff678d": "#f67576", "#ffa359": "#fa994c",
-    "#a3a3a3": "#999999", "#9d6afb": "#b06dff", "#d568ea": "#b06dff",
-    "#636363": "#999999", "#08c0ef": "#6dcbf4", "#ff855e": "#f67576",
-    "#60d199": "#6dcbf4", "#64d1db": "#3d8dff", "#61d5c0": "#6dcbf4",
+    "#0a0a0a": "background",
+    "#fafafa": "foreground",
+    "#737373": "muted",
+    "#a3a3a3": "muted",
+    "#636363": "muted",
+    "#5ecc71": "string",
+    "#68cdf2": "literal",
+    "#08c0ef": "literal",
+    "#60d199": "literal",
+    "#61d5c0": "literal",
+    "#ffd452": "variable",
+    "#ffab16": "variable",
+    "#ffa359": "variable",
+    "#ff678d": "keyword",
+    "#ff855e": "keyword",
+    "#9d6afb": "function",
+    "#d568ea": "function",
+    "#64d1db": "regexp",
+    "#69b1ff": "decorator",
   },
   light: {
-    "#0a0a0a": "#0d0d0d", "#737373": "#666666", "#199f43": "#008809",
-    "#1ca1c7": "#0071ea", "#d5a910": "#bd5800", "#d5901c": "#bd5800",
-    "#d32a61": "#d53538", "#d47628": "#bd5800", "#636363": "#666666",
-    "#693acf": "#751ed9", "#a631be": "#751ed9", "#08c0ef": "#0071ea",
-    "#d5512f": "#d53538", "#18a46c": "#0071ea", "#17a5af": "#001bcb",
-    "#16a994": "#0071ea",
+    "#ffffff": "background",
+    "#0a0a0a": "foreground",
+    "#737373": "muted",
+    "#636363": "muted",
+    "#199f43": "string",
+    "#1ca1c7": "literal",
+    "#08c0ef": "literal",
+    "#18a46c": "literal",
+    "#16a994": "literal",
+    "#d5a910": "variable",
+    "#d5901c": "variable",
+    "#d47628": "variable",
+    "#d32a61": "keyword",
+    "#d5512f": "keyword",
+    "#693acf": "function",
+    "#a631be": "function",
+    "#17a5af": "regexp",
+    "#1a85d4": "decorator",
   },
-} satisfies Record<"light" | "dark", Record<string, string>>;
-
-const scopeForeground: Record<string, string> = {
-  "invalid.illegal.non-null-typehinted.php": "#f44747",
-  "token.error-token": "#f44747",
-  "constant.other.color.rgb-value.xi": "#ffffff",
-  "invalid.illegal": "#ffffff", "invalid.broken": "#ffffff",
-  "invalid.deprecated": "#ffffff", "invalid.unimplemented": "#ffffff",
 };
+
+const errorScopes = ["invalid.illegal.non-null-typehinted.php", "token.error-token"];
+const whiteScopes = [
+  "constant.other.color.rgb-value.xi",
+  "invalid.illegal",
+  "invalid.broken",
+  "invalid.deprecated",
+  "invalid.unimplemented",
+];
 
 for (const mode of ["light", "dark"] as const) {
   registerCustomTheme(`areal-${mode}`, async () => {
     const base = await getResolvedOrResolveTheme(`pierre-${mode}`);
-    const colors: Record<string, string> = palette[mode];
-    const recolor = (color: string) => colors[color.toLowerCase()] ?? color;
+    const syntax = SYNTAX_COLORS[mode];
+    const roles = pierreRoles[mode];
+    const recolor = (color: string) => {
+      const role = roles[color.toLowerCase()];
+      return role ? syntax[role] : color;
+    };
+    const scopeForeground = (scope: string) =>
+      errorScopes.includes(scope)
+        ? syntax.error
+        : whiteScopes.includes(scope)
+          ? "#ffffff"
+          : undefined;
     return {
       ...base,
       name: `areal-${mode}`,
       displayName: `AReaL ${mode === "dark" ? "Dark" : "Light"}`,
       fg: recolor(base.fg),
       bg: recolor(base.bg),
-      colors: Object.fromEntries(Object.entries(base.colors ?? {}).map(([key, color]) => [key, recolor(color)])),
-      settings: base.settings.map(rule => {
+      colors: Object.fromEntries(
+        Object.entries(base.colors ?? {}).map(([key, color]) => [key, recolor(color)]),
+      ),
+      settings: base.settings.map((rule) => {
         const scopes = Array.isArray(rule.scope) ? rule.scope : [rule.scope];
-        const foreground = scopes.map(scope => scope == null ? undefined : scopeForeground[scope]).find(color => color != null);
+        const foreground = scopes
+          .map((scope) => (scope == null ? undefined : scopeForeground(scope)))
+          .find((color) => color != null);
         return {
           ...rule,
           settings: {
             ...rule.settings,
-            foreground: foreground ?? (rule.settings.foreground == null ? undefined : recolor(rule.settings.foreground)),
-            background: rule.settings.background == null ? undefined : recolor(rule.settings.background),
+            foreground:
+              foreground ??
+              (rule.settings.foreground == null ? undefined : recolor(rule.settings.foreground)),
+            background:
+              rule.settings.background == null ? undefined : recolor(rule.settings.background),
           },
         };
       }),

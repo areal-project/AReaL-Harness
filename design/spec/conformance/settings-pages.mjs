@@ -1,4 +1,6 @@
 // 设置其余十页的行为验收：只用角色、读屏名称和文字。约定同 send-run-stop.mjs。
+import { besideGap, gap, height, near } from "./layout.mjs";
+
 const nav = (page) => page.getByRole("navigation", { name: "设置导航" });
 const item = (page, name) => nav(page).getByRole("button", { name, exact: true });
 const pageRegion = (page, name) => page.getByRole("region", { name, exact: true });
@@ -143,6 +145,90 @@ export const checks = [
       await expect(local.getByRole("tab", { name: "应用内" })).toHaveAttribute(
         "aria-selected",
         "true",
+      );
+    },
+  },
+  {
+    id: "settings-mobile-spacing",
+    flow: "window.settings-mobile",
+    async run({ open, expect }) {
+      const page = await open("window.settings-mobile");
+      const region = pageRegion(page, "手机连接");
+      const title = region.getByRole("heading", { level: 1, name: "手机连接" });
+      const add = region.getByRole("button", { name: "添加设备" });
+      const relay = region.getByRole("heading", { level: 2, name: "Relay 服务" });
+      const devices = region.getByRole("heading", { level: 2, name: "设备" });
+      await expect(devices).toBeVisible();
+      near("标题块→状态卡（spacing-field×2.5）", await gap(title, add), 40);
+      near("状态卡→Relay 服务（spacing-section）", await gap(add, relay), 24);
+      near("Relay 服务→设备（spacing-section）", await gap(relay, devices), 24);
+      near(
+        "设备标题→设备卡（spacing-inline）",
+        await gap(devices, region.getByText("我的 iPhone")),
+        8,
+      );
+      near("添加设备按钮高（spacing-control）", await height(add), 28);
+      near(
+        "开启内网连接按钮高（spacing-control）",
+        await height(region.getByRole("button", { name: "开启内网连接" })),
+        28,
+      );
+    },
+  },
+  {
+    id: "settings-models-catalog-separator",
+    flow: "window.settings-models",
+    async run({ open, expect }) {
+      const page = await open("window.settings-models");
+      const catalog = page.getByRole("complementary", { name: "供应商目录" });
+      const enabled = catalog.getByRole("button", { name: "示例服务" });
+      const disabled = catalog.getByText("未启用", { exact: true });
+      await expect(disabled).toBeVisible();
+      // 线在下一组的块顶边：按钮下缘到线 spacing-field；线（border-width-default）到组名行框顶 spacing-field。
+      near("上一组按钮→分隔线（spacing-field）", await gap(enabled, disabled), 16);
+      const above = await enabled.boundingBox();
+      const below = await disabled.boundingBox();
+      near(
+        "按钮下缘→组名行框（spacing-field + 线 + spacing-field）",
+        below.y - (above.y + above.height),
+        33,
+      );
+    },
+  },
+  {
+    id: "settings-cloud-fields-match",
+    flow: "window.settings-cloud",
+    async run({ open, expect }) {
+      const page = await open("window.settings-cloud");
+      const region = pageRegion(page, "云端");
+      const address = region.getByRole("textbox", { name: "Cloud 后端地址" });
+      const token = region.getByLabel("Cloud token");
+      await expect(token).toBeVisible();
+      const style = (field) =>
+        field.evaluate((node) => {
+          const css = getComputedStyle(node);
+          return [css.fontSize, css.height, css.borderTopWidth, css.borderRadius].join(" ");
+        });
+      const [a, b] = [await style(address), await style(token)];
+      if (a !== b) throw new Error(`Token 框（${b}）应与地址框（${a}）外观一致`);
+    },
+  },
+  {
+    id: "settings-usage-calendar-spacing",
+    flow: "window.settings-usage",
+    async run({ open, expect }) {
+      const page = await open("window.settings-usage");
+      const region = pageRegion(page, "使用情况");
+      const monday = region.getByText("周一", { exact: true });
+      const january = region.getByText("1月", { exact: true });
+      const less = region.getByText("少", { exact: true });
+      await expect(monday).toBeVisible();
+      near("行名列→周列（spacing-inline）", await besideGap(monday, january), 8);
+      near("日历→图例（spacing-inline×1.5）", await gap(monday, less), 12);
+      near(
+        "图例→当天详情（spacing-inline×2.5）",
+        await gap(less, region.getByText("使用时间", { exact: true })),
+        20,
       );
     },
   },

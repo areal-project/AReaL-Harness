@@ -820,7 +820,7 @@ export function GitPane({
                 </span>
                 <ChevronDown />
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="min-w-[200px]">
+              <DropdownMenuContent className="min-w-[calc(var(--spacing-field)*12.5)]">
                 {availableScopes.map(({ value, label }) => (
                   <DropdownMenuGroup key={value}>
                     {["uncommitted", "commit", "task"].includes(value) && <DropdownMenuSeparator />}

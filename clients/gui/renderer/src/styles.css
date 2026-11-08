@@ -384,7 +384,7 @@ body {
   --color-git-modified: #e07b00;
   --color-git-added: #1e8a3e;
   --color-git-deleted: #e03131;
-  --color-git-renamed: #0b7fff;
+  --color-git-renamed: var(--color-change-renamed);
   --color-git-untracked: #1e8a3e;
   --color-git-ignored: var(--color-foreground-subtlest);
   --color-git-descendant: #e07b00;
@@ -487,7 +487,7 @@ body {
   --color-git-modified: #ff8a30;
   --color-git-added: #46bf72;
   --color-git-deleted: #ff5c5c;
-  --color-git-renamed: #4099ff;
+  --color-git-renamed: var(--color-change-renamed);
   --color-git-untracked: #46bf72;
   --color-git-ignored: var(--color-foreground-subtlest);
   --color-git-descendant: #ff8a30;

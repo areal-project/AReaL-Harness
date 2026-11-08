@@ -1,4 +1,6 @@
 // 审查面板的行为验收。约定同 send-run-stop.mjs。
+import { fill, near } from "./layout.mjs";
+
 const scope = (page) => page.getByRole("button", { name: "改动范围" });
 const fileList = (page) => page.getByRole("complementary", { name: "文件列表" });
 const tree = (page) => page.getByRole("tree", { name: "审查改动文件" });
@@ -96,6 +98,22 @@ export const checks = [
       await expect(node(page, "src/math.test.ts")).toBeVisible();
       await page.getByRole("button", { name: "清除文件筛选" }).click();
       await expect(node(page, "src/math.ts")).toBeVisible();
+    },
+  },
+  {
+    id: "review-unchanged-fill",
+    flow: "window.review（浅色与深色）",
+    async run({ open, expect }) {
+      // 正文底色 #ffffff / #181818 在 lab 里混入百分之四的黑 / 百分之十五的白。
+      for (const [theme, expected] of [
+        ["light", 243],
+        ["dark", 53],
+      ]) {
+        const page = await open("window.review", theme);
+        const label = page.getByText(/^\d+ 行未改动$/);
+        await expect(label).toBeVisible();
+        near(`未改动行底色（${theme}）`, await fill(label), [expected, expected, expected], 2);
+      }
     },
   },
 ];

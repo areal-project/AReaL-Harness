@@ -147,6 +147,23 @@
 | `--color-muted` | `var(--color-surface)` | 弱化区域底色 |
 | `--color-muted-foreground` | `var(--color-foreground-subtle)` | 弱化区域文字 |
 | `--color-success` | `#1e8a3e（暗色 #46bf72）` | 成功反馈；AReaL 明暗主题值 |
+| `--color-activity` | `#47a582` | 活动量强调色：本地记录标记点与排行条；明暗相同 |
+| `--color-activity-1` | `#c8e5d6（暗色 #24483c）` | 活动热力图第一档（当天活跃不到三十分钟） |
+| `--color-activity-2` | `#83c7a6（暗色 #306e54）` | 活动热力图第二档（三十分钟到一小时） |
+| `--color-activity-3` | `#42a57c（暗色 #4a9d73）` | 活动热力图第三档（一到两小时） |
+| `--color-activity-4` | `#227454（暗色 #8bcfa3）` | 活动热力图第四档（两小时以上） |
+| `--color-change-renamed` | `#0b7fff（暗色 #4099ff）` | 文件改动标记：已重命名；与审查面板、文件树一致 |
+| `--color-syntax-background` | `#ffffff（暗色 #111111）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：代码区底色：语法高亮主题的背景；审查差异的增删行在它上面混色 |
+| `--color-syntax-foreground` | `#0d0d0d（暗色 #fcfcfc）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：代码正文与未归类的标识符 |
+| `--color-syntax-muted` | `#666666（暗色 #999999）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：注释、标点、运算符与函数参数 |
+| `--color-syntax-string` | `#008809（暗色 #85df7b）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：字符串与符号字面量 |
+| `--color-syntax-literal` | `#0071ea（暗色 #6dcbf4）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：数字、布尔等语言常量、逻辑与算术运算符、属性名、转义字符 |
+| `--color-syntax-variable` | `#bd5800（暗色 #fa994c）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：变量、常量与命名空间 |
+| `--color-syntax-keyword` | `#d53538（暗色 #f67576）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：关键字、存储修饰与语言内置变量 |
+| `--color-syntax-function` | `#751ed9（暗色 #b06dff）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：函数名、类型名与类名 |
+| `--color-syntax-regexp` | `#001bcb（暗色 #3d8dff）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：正则表达式 |
+| `--color-syntax-decorator` | `#1a85d4（暗色 #69b1ff）` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：装饰器 |
+| `--color-syntax-error` | `#f44747` | 代码语法配色（AReaL Light / AReaL Dark 代码主题）：语法错误与非法记号；明暗相同 |
 
 ## 动效与层级
 
