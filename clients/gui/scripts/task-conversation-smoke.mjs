@@ -811,7 +811,7 @@ async function checkLegacyTargetRegression() {
     threadId: history.threadId,
   });
   assert.ok(Array.isArray(skills.data), "Skills remain readable after opening legacy history");
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page
     .getByRole("button", { name: `打开定时任务 ${creation.seed.objective}`, exact: true })
     .click();
@@ -1239,7 +1239,7 @@ async function checkDailyStartRegression() {
       .waitFor();
     await page.screenshot({ path: join(scratch, "daily-" + results.length + ".png") });
     checks.push("daily start " + entry.name + " saves " + entry.expected);
-    await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+    await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   }
   assert.deepEqual(errors, []);
 }
@@ -1334,7 +1334,7 @@ async function checkCalendarRegression() {
     "visible month-end preview agrees with literal dates",
   );
   await page.screenshot({ path: join(scratch, "calendar-month-end.png") });
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByText("日历验收 SCHEDULE_FIXTURE_COMPLETE", { exact: true }).first().click();
   await page.getByLabel("后续执行预览", { exact: true }).waitFor();
   assert.equal(
@@ -1342,7 +1342,7 @@ async function checkCalendarRegression() {
       .threadId,
     history.threadId,
   );
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   const context = await call("manage", {
     projectId: pid,
     operation: "taskScheduleContext",
@@ -1382,7 +1382,7 @@ async function checkCalendarRegression() {
   assert.equal(manualAfterMissed.runs.at(-1).trigger, "manual");
   assert.deepEqual(manualAfterMissed.lastTriggerDecision, missedState.lastTriggerDecision);
   assert.equal(manualAfterMissed.nextRunAt, null);
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   const activeRow = page.getByRole("button", {
     name: "打开定时任务 日历错过验收 HOLD",
     exact: true,
@@ -1473,7 +1473,7 @@ async function checkCalendarRegression() {
   );
   await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await page.screenshot({ path: join(scratch, "calendar-unknown.png") });
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await until(
     async () =>
@@ -1709,7 +1709,7 @@ async function checkCreationRegression() {
       "gpt-6-sol",
     "newer ordinary preference admitted",
   );
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page
     .getByRole("button", { name: `打开定时任务 ${created.objective}`, exact: true })
     .click();
@@ -1728,7 +1728,7 @@ async function checkCreationRegression() {
   checks.push(
     "reopened management keeps its model and effort after a newer ordinary model admission",
   );
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByRole("button", { name: "新建定时任务", exact: true }).click();
   const next = await assertGlobalCreation();
   assert.equal(next.draft.thread.desktop.configuration.model.modelId, "gpt-6-sol");
@@ -2192,7 +2192,7 @@ async function checkLoadingRegression() {
   checks.push(
     "structured renderer evidence ties healthy response to visible commit and uniquely terminates catalog batches",
   );
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   const retainedId = randomUUID(),
     retainedText = "保留初始化失败前的任务描述";
   await page.evaluate(
@@ -2608,7 +2608,7 @@ async function checkInlineRegression() {
     );
   }
   await assertRestored("completed");
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByRole("button", { name: `打开定时任务 ${inlineObjective}`, exact: true }).click();
   await assertRestored("navigation");
   await app.close();
@@ -3190,7 +3190,7 @@ try {
       checks.push(
         "explicit one-time edit clears the interval without treating omitted frequency as a change",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       const rejected = await page.evaluate(
         ({ projectId, cwd, draftId }) =>
           window.arealDesktop.command("manage", {
@@ -3275,7 +3275,7 @@ try {
       checks.push(
         "existing project-bound task opens its original management Thread, cwd and history",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       await rmdir(taskDirectory);
       await page.evaluate(
         (key) => localStorage.removeItem(key),
@@ -3299,7 +3299,7 @@ try {
       checks.push(
         "legacy management history remains available when its bound directory is missing",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       const next = await openLegacyFixture();
       await chat.fill("独立目录验收，定时执行。");
       await page.getByTestId("chat-send-button").click();
@@ -3510,7 +3510,7 @@ try {
       checks.push(
         "shared Messages and Composer; no task textarea/dialog; legacy clarification, schedule and description update, failed proposal, pause/resume; same management Thread; light/dark",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       await page
         .getByRole("button", {
           name: `打开定时任务 ${(await task(taskId)).objective}`,
@@ -3583,7 +3583,7 @@ try {
       checks.push(
         "scheduled execution Threads retain the task independent directory after navigation and restart",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       await page
         .getByRole("button", {
           name: `打开定时任务 ${(await task(taskId)).objective}`,

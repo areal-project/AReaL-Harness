@@ -58,12 +58,6 @@ export function TaskWorkspace({
       action={action}
       onOpenThread={(pid, id) => void onOpenThread(pid, id)}
       onOpenModelSettings={() => onPanel("设置")}
-      onReveal={
-        fileOpen
-          ? (projectId, path) =>
-              void fileOpen({ operation: "reveal", projectId, path }).catch(() => {})
-          : undefined
-      }
       renderConversation={(owner, managementThread, beforeTurns, options) => (
         <>
           <Messages

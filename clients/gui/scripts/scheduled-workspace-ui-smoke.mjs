@@ -102,7 +102,7 @@ try {
   await page.getByRole("heading", { name: "每周回顾", exact: true }).waitFor();
   await page.setViewportSize({ width: 480, height: 800 });
   await page.getByTestId("task-center-list").waitFor({ state: "hidden" });
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByTestId("task-center-list").waitFor();
   await page.goto(url + "?empty");
   await page.getByText("尚无定时任务", { exact: true }).waitFor();

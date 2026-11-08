@@ -494,7 +494,8 @@ export const operationMessages = {
     en: "Task status is unconfirmed. Retry the update.",
   },
   "operations.schedules.finishedGroup": { "zh-CN": "已结束", en: "Finished" },
-  "operations.schedules.closeDetails": { "zh-CN": "关闭任务详情", en: "Close task details" },
+  "operations.schedules.backToList": { "zh-CN": "返回任务列表", en: "Back to task list" },
+  "operations.schedules.pinnedSummary": { "zh-CN": "定时安排摘要", en: "Schedule summary" },
   "operations.schedules.location": {
     "zh-CN": "工作目录与来源",
     en: "Working directory and source",

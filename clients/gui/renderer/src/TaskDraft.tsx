@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CalendarClock, X } from "lucide-react";
+import { NavigationBackIcon } from "./interfaceIcons.js";
 import { Button } from "./components/ui/button.js";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
@@ -494,16 +495,23 @@ export function TaskDraft({
   return (
     <main className="task-conversation" aria-label={task ? "定时任务会话" : "新建定时任务"}>
       <header>
+        {task && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t("operations.schedules.backToList")}
+            onClick={onClose}
+          >
+            <NavigationBackIcon />
+          </Button>
+        )}
         <h2>{task?.objective ?? "新建任务"}</h2>
         {task && project && thread && renderResources?.(project, thread)}
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label={task ? "关闭任务详情" : "关闭创建对话"}
-          onClick={onClose}
-        >
-          <X size={16} />
-        </Button>
+        {!task && (
+          <Button size="icon-sm" variant="ghost" aria-label="关闭创建对话" onClick={onClose}>
+            <X size={16} />
+          </Button>
+        )}
       </header>
       {(error || readError || view?.error) && (
         <p role="alert" className="task-plan-note task-draft-error">

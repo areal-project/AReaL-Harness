@@ -38,6 +38,7 @@ import {
   Activity,
 } from "lucide-react";
 import { SidebarToggleIcon } from "./homeChromeIcons.js";
+import { NavigationBackIcon } from "./interfaceIcons.js";
 import { TaskDraft, triggerExplanation, type TaskConversationRenderer } from "./TaskDraft.js";
 import {
   modelParameters,
@@ -635,9 +636,7 @@ export function TaskCenter({
   target,
   renderConversation,
   renderResources,
-  onReveal,
 }: Props & {
-  onReveal?: (projectId: string, path: string) => void;
   navigation: ReactNode;
   renderConversation: TaskConversationRenderer;
   renderResources: (project: Data, thread: Data, task: Data, revealKey?: string) => ReactNode;
@@ -2155,12 +2154,17 @@ export function TaskCenter({
             data-task-id={task.id}
           >
             <header>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("operations.schedules.backToList")}
+                onClick={closeDetails}
+              >
+                <NavigationBackIcon />
+              </Button>
               <TitleTooltip title={task.objective}>
                 <h2>{scheduledTaskName(task)}</h2>
               </TitleTooltip>
-              <Button size="sm" variant="ghost" onClick={closeDetails}>
-                {t("operations.schedules.closeDetails")}
-              </Button>
             </header>
             <p role="status" className="task-plan-note">
               {t(
@@ -2196,7 +2200,6 @@ export function TaskCenter({
               project={project}
               action={action}
               disabled={disabled}
-              onReveal={onReveal}
               history={runHistory}
               onClose={closeDetails}
               onOpenThread={onOpenThread}
