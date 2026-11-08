@@ -158,7 +158,7 @@ export function recoverySettings(failure: RecoveryFailure): RecoveryNotice["sett
 }
 
 export function isTechnicalErrorMessage(message: string) {
-  return /Error invoking remote method|\bIPC\b|\b(?:ENOENT|ECONNREFUSED|ECONNRESET|EACCES)\b|control\.sock|service socket path|\n\s*at /i.test(
+  return /Error invoking remote method|\bIPC\b|\b(?:ENOENT|ECONNREFUSED|ECONNRESET|EACCES)\b|control\.sock|service socket path|service requires explicit lifecycle restart|Host disconnected|Project Core unavailable|\n\s*at /i.test(
     message,
   );
 }
