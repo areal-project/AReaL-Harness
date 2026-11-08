@@ -286,7 +286,7 @@ async function selectEnvironment(name, branch = "release/acceptance") {
   await trigger.press("Enter");
   const picker = page.locator('.worktree-picker[aria-label="新会话工作区"]');
   await picker.waitFor();
-  const toggle = picker.getByRole("switch", { name: "在新 Worktree 中工作", exact: true });
+  const toggle = picker.getByRole("switch", { name: "在新工作树中工作", exact: true });
   await toggle.waitFor();
   await until(async () => !(await toggle.isDisabled()), "worktree options loaded");
   if ((await toggle.getAttribute("aria-checked")) !== "true") {
@@ -650,7 +650,7 @@ try {
   await sendDraft(sourceDraft);
   const retainedPath = await markerPath("original-started.txt");
   await page.locator('[data-worktree-state="settingUp"]').waitFor();
-  await button("不使用 Worktree").click();
+  await button("不使用工作树").click();
   await until(
     () => requests.some((request) => request.prompt.includes("WORKTREE_ACCEPTANCE_SOURCE")),
     "explicit source prompt after cancellation",

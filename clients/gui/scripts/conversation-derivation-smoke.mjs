@@ -1148,7 +1148,7 @@ try {
       unicodeExcerpt,
     );
   await selectSideExcerpt();
-  let sideTrigger = page.getByRole("button", { name: "在旁路中询问所选内容", exact: true });
+  let sideTrigger = page.getByRole("button", { name: "在侧边聊天中询问所选内容", exact: true });
   const selectionActions = page.getByTestId("transcript-selection-actions");
   const addToChat = selectionActions.getByRole("button", { name: "添加到聊天", exact: true });
   await selectionActions.waitFor();
@@ -1157,7 +1157,7 @@ try {
   assert.equal(
     await page
       .locator(".message-actions")
-      .getByRole("button", { name: "在旁路中询问所选内容", exact: true })
+      .getByRole("button", { name: "在侧边聊天中询问所选内容", exact: true })
       .count(),
     0,
   );

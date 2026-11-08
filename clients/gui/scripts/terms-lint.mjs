@@ -5,7 +5,13 @@ import { fileURLToPath } from "node:url";
 // 同一个东西只用一个名字：界面文案里出现弃用的叫法即失败。新增一条前先和产品确认用哪个词。
 const gui = fileURLToPath(new URL("../", import.meta.url));
 const MESSAGES = "renderer/src/i18n/messages";
-export const TERMS = [{ use: "定时任务", avoid: ["自动化"] }];
+export const TERMS = [
+  { use: "定时任务", avoid: ["自动化"] },
+  { use: "工作树", avoid: ["Worktree"] },
+  { use: "侧边聊天", avoid: ["旁路"] },
+];
+// 搜索关键词保留旧叫法，方便按旧名找到设置。
+const ALIASES = /^settings\.search\./;
 
 /** 从消息目录源码里取出每条中文文案。 */
 export function chineseMessages(source) {
@@ -16,7 +22,7 @@ export function chineseMessages(source) {
 
 export function lintTerms(path, source, terms = TERMS) {
   const problems = [];
-  for (const message of chineseMessages(source))
+  for (const message of chineseMessages(source).filter((item) => !ALIASES.test(item.id)))
     for (const term of terms)
       for (const word of term.avoid)
         if (message.text.includes(word))

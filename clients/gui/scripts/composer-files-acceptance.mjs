@@ -882,7 +882,7 @@ export async function runComposerFilesAcceptance({
     await createProjectConversation(page, "workspace");
     await button("新会话工作区").click();
     const worktreeToggle = page.getByRole("switch", {
-      name: "在新 Worktree 中工作",
+      name: "在新工作树中工作",
       exact: true,
     });
     await until(async () => !(await worktreeToggle.isDisabled()), "upload worktree options ready");

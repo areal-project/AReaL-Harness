@@ -3476,10 +3476,10 @@
     },
     {
       "id": "R-QUALITY-003",
-      "title": "| 同一个东西只用一个名字（如“定时任务”，不再叫“自动化”） | terms-lint                ",
+      "title": "| 同一个东西只用一个名字：定时任务、工作树、侧边聊天 | terms-lint                    ",
       "owner": "design/spec/quality.md#所有模块",
       "strength": "default",
-      "textSha256": "7ae21550f5df4fe5057eb948ba901cd0501807afb92f4c05049f410798c163b4"
+      "textSha256": "9914a23b118c022f0b7d6e8c7e775bee9152cc45747d3db613d64a90905f88ff"
     },
     {
       "id": "R-QUALITY-004",

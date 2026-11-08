@@ -701,7 +701,7 @@ async function worktree() {
       .click();
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "新会话工作区", exact: true }).click();
-    const toggle = page.getByRole("switch", { name: "在新 Worktree 中工作", exact: true });
+    const toggle = page.getByRole("switch", { name: "在新工作树中工作", exact: true });
     await until(async () => await toggle.isEnabled(), "Worktree options load");
     if ((await toggle.getAttribute("aria-checked")) !== "true") await toggle.click();
     assert.equal(
