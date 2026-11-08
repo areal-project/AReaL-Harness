@@ -34,7 +34,7 @@ parts:
     code:
         surface: 与面板同底色 color-background，深浅两种主题都不铺第二种底色；内容不满一屏时下方仍是同一种颜色
         body: 左侧行号列，右侧代码；等宽字体 font-mono，代码字号 text-fixed-caption（设置里可改，示例为默认值），行高为代码字号加 spacing-inline；行号 foreground-subtle 一级的灰；长行默认不换行，可横向滚动
-        syntax: 语法着色来自代码主题“AReaL Light / AReaL Dark”，颜色没有进 Token 源（已知缺口）
+        syntax: 语法着色同 review-panel 的 syntax：AReaL Light / AReaL Dark 的颜色取 color-syntax-* 用途变量
 icons:
     source: 见 icons/ 目录，按名称引用，颜色取 currentColor；tree-file-* 自带文件类型的颜色（写在图标文件里），不随主题变，Markdown 另有深色版
     used:
@@ -71,4 +71,4 @@ behavior:
     - 在搜索框里输入文字，树改为平铺显示路径含这段文字的文件；点一个结果后清空搜索、回到层级树并选中它
     - 在树里右键一行：复制绝对路径、复制相对路径、添加到对话；也可以把行拖进输入框引用它
 known-gaps:
-    - 文件类型图标与语法着色的颜色来自图标集与代码主题，没有进 Token 源
+    - 文件类型图标的颜色来自图标集，没有进 Token 源

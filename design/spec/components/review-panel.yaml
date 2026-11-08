@@ -41,8 +41,8 @@ parts:
         actions: 之后是“复制路径”“切换文件差异对比”两个隐藏操作和常显的“文件操作”（more 图标）；按钮都是 spacing-control-xs 见方，圆角 radius-pill，透明底，图标 foreground-subtle，悬停 foreground；两个隐藏操作在文件头悬停或其中有键盘焦点时才出现，平时透明但仍占位
         narrow: 差异列表窄于 reading-width 的三十二分之十五时，隐藏操作不再占位，而是叠放在路径末端之上（底色 color-background），路径与文件名不被挤掉
         body: 展开时文件头下面是差异正文；正文底色 color-background；等宽字体 font-mono，代码字号 text-fixed-caption（用户可在设置里改代码字号，示例为默认值），行高为代码字号的一点八倍；行号列最少四个字宽；改动前后各保留一行未改动的上下文，其余未改动行折成 unchanged；宽度足够且一个文件同时有增删时并排显示，否则上下合并显示
-        diff-colors: 先取“改动基色”：新增在浅色下是 color-success、深色下是 color-content-diff-added；删除在浅色下是 color-destructive、深色下是 color-content-diff-removed。混色的底不是 color-background，而是代码主题自己的两种底色（来自代码主题，和语法配色一样没有进 Token 源，计入已知缺口）：差异正文与未改动行铺的是主题底色，浅色纯白、深色约 rgb(24,24,24)（两者恰与 color-background 同值）；改动行混色用的是主题的明暗基色，浅色纯白、深色约 rgb(17,17,17)（比正文底色还深一级）。改动行的正文底色是代码主题底色混入改动基色：浅色百分之十二、深色百分之二十（深色新增行约为 rgb(31,49,36)）；改动行的行号格底色是纯白混入百分之九的改动基色（浅色）、纯黑混入百分之十五（深色）；改动行的行号与差异标记取改动基色本身；悬停时正文底色加深到浅色百分之二十、深色新增百分之三十与删除百分之二十五；以上混色都在 CIE Lab 空间（color-mix in lab）里做，不是 sRGB 或 oklab，否则深色行号格会偏亮
-        syntax: 代码的语法着色来自代码主题“AReaL Light / AReaL Dark”（用户可在设置里换主题）；主题颜色没有进 Token 源，复现时只要求未改动行的正文是 foreground-subtle 一级的灰，语法色差异计入已知缺口
+        diff-colors: 先取“改动基色”：新增在浅色下是 color-success、深色下是 color-content-diff-added；删除在浅色下是 color-destructive、深色下是 color-content-diff-removed。混色的底不是 color-background，而是代码主题自己的两种底色（即 color-syntax-background）：差异正文与未改动行铺的是主题底色，浅色纯白、深色约 rgb(24,24,24)（两者恰与 color-background 同值）；改动行混色用的是主题的明暗基色，浅色纯白、深色约 rgb(17,17,17)（比正文底色还深一级）。改动行的正文底色是代码主题底色混入改动基色：浅色百分之十二、深色百分之二十（深色新增行约为 rgb(31,49,36)）；改动行的行号格底色是纯白混入百分之九的改动基色（浅色）、纯黑混入百分之十五（深色）；改动行的行号与差异标记取改动基色本身；悬停时正文底色加深到浅色百分之二十、深色新增百分之三十与删除百分之二十五；以上混色都在 CIE Lab 空间（color-mix in lab）里做，不是 sRGB 或 oklab，否则深色行号格会偏亮
+        syntax: 代码的语法着色来自代码主题“AReaL Light / AReaL Dark”（用户可在设置里换成其它主题）；这两个主题的颜色全部取 color-syntax-* 用途变量：正文 foreground、注释与标点 muted、字符串 string、数字与常量 literal、变量 variable、关键字 keyword、函数与类型 function、正则 regexp、装饰器 decorator、错误 error，代码区底色 background；其余主题的颜色来自主题本身
         menu: “文件操作”菜单与文件头的右键菜单内容相同：打开文件、在默认应用中打开、在文件管理器中显示；分隔线；复制绝对路径、在文件树中显示
     unchanged:
         row: 差异正文里连续的未改动行折成一行，高 spacing-control-lg：左边是“展开下方未改动行”的箭头按钮（与行号列同宽），右边写“N 行未改动”（中文说明，不只写数字，文字取行号色）；行号列位置与正文对齐
@@ -98,4 +98,4 @@ behavior:
     - 换改动范围后重新读取，读取中写“正在读取…”，失败时显示原因
     - “跳转到文件”在文件面板里打开当前文件
 known-gaps:
-    - 语法着色、文件类型图标的颜色来自代码主题与图标集，没有进 Token 源
+    - 文件类型图标的颜色来自图标集，没有进 Token 源

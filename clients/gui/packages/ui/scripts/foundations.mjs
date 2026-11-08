@@ -256,6 +256,21 @@ export async function loadPaletteVariables() {
   );
   return paletteVariables;
 }
+// 代码高亮主题在 JS 里注册（含 diff worker），读不到 CSS 变量，所以另出一份色值表。
+export function renderSyntax(tokens) {
+  const modes = { light: {}, dark: {} };
+  for (const [name, token] of Object.entries(tokens.foundation)) {
+    const role = name.match(/^color-syntax-([a-z-]+)$/)?.[1];
+    if (!role) continue;
+    modes.light[role] = token.$value;
+    modes.dark[role] = extension(token).dark ?? token.$value;
+  }
+  return (
+    "// Generated from tokens.json (color-syntax-*). Do not edit.\nexport const SYNTAX_COLORS = " +
+    JSON.stringify(modes, null, 2) +
+    " as const;\n"
+  );
+}
 export async function generateFoundations(check = false) {
   const tokens = JSON.parse(await readFile(resolve(root, "tokens.json"), "utf8"));
   const result = renderFoundations(tokens);
@@ -287,6 +302,7 @@ export async function generateFoundations(check = false) {
     "tailwind.css": result.tailwind,
     "themes.css": themeCSS,
     "tokens.md": renderTokenReference(tokens, result.themes, paletteVariables),
+    "syntax.ts": renderSyntax(tokens),
     "theme-defaults.ts":
       "// Generated from tokens.json.\nexport const DEFAULT_THEME_INPUTS = " +
       JSON.stringify(result.themes, null, 2) +

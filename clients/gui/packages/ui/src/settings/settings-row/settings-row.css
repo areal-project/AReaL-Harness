@@ -146,8 +146,9 @@
   }
 }
 
-.settings-field-row .settings-field-control input[type="number"],
-.settings-field-row .settings-field-control input[type="text"] {
+.settings-field-row
+  .settings-field-control
+  input:is([type="number"], [type="text"], [type="password"]) {
   height: var(--spacing-control);
   border-radius: var(--radius-compact);
   border: var(--border-width-default) solid var(--color-input-border);
@@ -163,8 +164,9 @@
     box-shadow var(--motion-fast) var(--ease-standard);
 }
 
-.settings-field-row .settings-field-control input[type="number"]:focus-visible,
-.settings-field-row .settings-field-control input[type="text"]:focus-visible {
+.settings-field-row
+  .settings-field-control
+  input:is([type="number"], [type="text"], [type="password"]):focus-visible {
   outline: none;
   border-color: var(--color-input-border-focused);
   background-color: var(--color-input-focused);

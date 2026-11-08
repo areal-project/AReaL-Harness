@@ -196,6 +196,24 @@ export const checks = [
     },
   },
   {
+    id: "settings-cloud-fields-match",
+    flow: "window.settings-cloud",
+    async run({ open, expect }) {
+      const page = await open("window.settings-cloud");
+      const region = pageRegion(page, "云端");
+      const address = region.getByRole("textbox", { name: "Cloud 后端地址" });
+      const token = region.getByLabel("Cloud token");
+      await expect(token).toBeVisible();
+      const style = (field) =>
+        field.evaluate((node) => {
+          const css = getComputedStyle(node);
+          return [css.fontSize, css.height, css.borderTopWidth, css.borderRadius].join(" ");
+        });
+      const [a, b] = [await style(address), await style(token)];
+      if (a !== b) throw new Error(`Token 框（${b}）应与地址框（${a}）外观一致`);
+    },
+  },
+  {
     id: "settings-usage-calendar-spacing",
     flow: "window.settings-usage",
     async run({ open, expect }) {
