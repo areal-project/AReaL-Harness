@@ -789,6 +789,9 @@ export function DraftComposer({
           inputApiRef={api}
           inputTestId="chat-input"
           submitTestId="chat-send-button"
+          hasDraftContent={
+            !outgoing && (!!files.length || !!comments.length || !!skills.selected.length)
+          }
           placeholder={
             activeCreation?.worktree && busy
               ? t("worktree.waitSetup")

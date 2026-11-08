@@ -61,7 +61,9 @@ fn validate_process_admission(
             .as_ref()
             .is_some_and(|p| p.allow_connection_processes)
     {
-        return Err(invalid("profile does not authorize connection resources"));
+        return Err(Error::Rejected(Box::new(invalid(
+            "profile does not authorize connection resources",
+        ))));
     }
     if matches!(request.lifetime.as_str(), "thread" | "connection")
         && !config.read_only

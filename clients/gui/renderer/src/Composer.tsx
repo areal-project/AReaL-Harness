@@ -900,7 +900,7 @@ export function Composer({
               disabled ||
               desktopUnsupported ||
               !!input.text.trim() ||
-              !!input.files.length ||
+              !!files.length ||
               !!comments.length
             }
             aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
@@ -1034,6 +1034,15 @@ export function Composer({
           inputApiRef={api}
           inputTestId={inputTestId}
           submitTestId={submitTestId}
+          hasDraftContent={
+            !outgoing &&
+            (!!files.length ||
+              !!comments.length ||
+              !!skills.selected.length ||
+              !!mcpDraft.length ||
+              !!references.length ||
+              !!queueEditor.edit?.attachments.length)
+          }
           placeholder={
             archived
               ? "已归档任务只读"

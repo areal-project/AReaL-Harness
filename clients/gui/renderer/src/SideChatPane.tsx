@@ -1034,6 +1034,7 @@ function SideChatEditor({
             placeholder={t("chat.composer.placeholder")}
             disabled={editorDisabled}
             submitDisabled={disabled || !!active || (!text.trim() && !selection)}
+            hasDraftContent={!!selection && !sideId}
             allowSubmitWhenEmpty={!!selection && !sideId}
             submitting={busy}
             submitLabel="发送"

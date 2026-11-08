@@ -63,6 +63,7 @@ export function ChatPromptEditor({
   nextPrompt,
   syncInitialValueOnMount = true,
   placeholder,
+  hasDraftContent = false,
   disabled = false,
   disabledReason,
   submitting = false,
@@ -127,6 +128,7 @@ export function ChatPromptEditor({
   initialValue?: string;
   syncInitialValueOnMount?: boolean;
   placeholder?: string;
+  hasDraftContent?: boolean;
   disabled?: boolean;
   disabledReason?: string;
   submitting?: boolean;
@@ -596,6 +598,7 @@ export function ChatPromptEditor({
           <LexicalChatInput
             touchInput={touchInput}
             placeholder={placeholder}
+            hidePlaceholder={hasDraftContent}
             nextPrompt={nextPrompt}
             disabled={disabled}
             submitDisabled={submitDisabled || pendingReferences > 0}

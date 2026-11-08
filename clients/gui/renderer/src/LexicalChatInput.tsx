@@ -1293,6 +1293,7 @@ function PromptPredictionPlugin({ text, disabled }: { text?: string; disabled: b
 interface LexicalChatInputProps {
   nextPrompt?: string;
   placeholder?: string;
+  hidePlaceholder?: boolean;
   disabled?: boolean;
   submitDisabled?: boolean;
   allowSubmitWhenEmpty?: boolean;
@@ -1330,6 +1331,7 @@ const EDITOR_THEME = {
 
 export function LexicalChatInput({
   placeholder,
+  hidePlaceholder = false,
   nextPrompt,
   disabled = false,
   submitDisabled = false,
@@ -1374,7 +1376,7 @@ export function LexicalChatInput({
     ? {
         "aria-placeholder": placeholder,
         placeholder: () =>
-          nextPrompt ? null : (
+          nextPrompt || hidePlaceholder ? null : (
             <div
               className={`pointer-events-none absolute left-0 top-0 ${compactPlaceholder ? "line-clamp-2" : ""} ${touchInput ? "text-ui-xl" : "text-ui-base"} leading-5 text-foreground-subtle`}
             >
