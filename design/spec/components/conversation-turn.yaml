@@ -5,129 +5,131 @@ purpose: 一个回合 = 用户一条消息 + Agent 的过程 + 最终回答（�
 why: 正文与过程同一字号、同一行高、同一块间距，层级只靠颜色深浅与位置，不靠字号和底色，读起来是一条连续的文字流。
 
 typography:
-  agent-text: 过程文字与最终回答（含行内代码）加字距 tracking-conversation
-  plain-text: 用户气泡、过程标题、状态行、暂停分隔线、操作行不加字距
+    agent-text: 过程文字与最终回答（含行内代码）加字距 tracking-conversation
+    plain-text: 用户气泡、过程标题、状态行、暂停分隔线、操作行不加字距
 
 layout:
-  column: 内容在阅读列内水平居中，列宽不超过 reading-width，左右留白 spacing-field，上下留白 message-reading-inset
-  rhythm: 回合内相邻块之间只有一个 conversation-gap，不叠加；用户消息（气泡连同下方占位的操作行）、过程标题块、段落、过程行、状态行各算一块；唯一例外是过程标题到展开的过程体，见 turn-process
-  between-turns: 相邻回合之间 spacing-section
+    column: 内容在阅读列内水平居中，列宽不超过 reading-width，左右留白 spacing-field，上下留白 message-reading-inset
+    rhythm: 回合内相邻块之间只有一个 conversation-gap，不叠加；用户消息（气泡连同下方占位的操作行）、过程标题块、段落、过程行、状态行各算一块；唯一例外是过程标题到展开的过程体，见 turn-process
+    between-turns: 相邻回合之间 spacing-section
 
 anatomy:
-  - part: user-message
-    role: 用户消息，靠右的气泡；下方一行是悬停才出现的操作行
-  - part: turn-process
-    role: 回合过程。标题行“本轮过程”可点击展开或收起；标题下一条细分隔线；展开后逐条列出过程文字
-  - part: final-answer
-    optional: true
-    role: 最终回答，正文颜色，不在收起范围内
-  - part: action-row
-    role: 回合末尾的一行图标按钮（复制等）与用量入口；运行中不出现
-  - part: status-line
-    optional: true
-    role: 回合末尾唯一的实时状态，一行文字（运行中为“正在生成回复…”）
-  - part: paused-divider
-    optional: true
-    role: 暂停后的回合末尾，一条横贯阅读列的细线，中间断开放一句“你暂停了本轮执行”
-  - part: turn-navigation
-    role: 页面左缘垂直居中的一列短横标记，每个回合一个，点击跳到该回合
+    - part: user-message
+      role: 用户消息，靠右的气泡；下方一行是悬停才出现的操作行
+    - part: turn-process
+      role: 回合过程。标题行“本轮过程”可点击展开或收起；标题下一条细分隔线；展开后逐条列出过程文字
+    - part: final-answer
+      optional: true
+      role: 最终回答，正文颜色，不在收起范围内
+    - part: action-row
+      role: 回合末尾的一行图标按钮（复制等）与用量入口；运行中不出现
+    - part: status-line
+      optional: true
+      role: 回合末尾唯一的实时状态，一行文字（运行中为“正在生成回复…”）
+    - part: paused-divider
+      optional: true
+      role: 暂停后的回合末尾，一条横贯阅读列的细线，中间断开放一句“你暂停了本轮执行”
+    - part: turn-navigation
+      role: 页面左缘垂直居中的一列短横标记，每个回合一个，点击跳到该回合
 
 parts:
-  user-message:
-    actions-row: 高 spacing-control，隐藏时仍占位，紧贴气泡下方
-    bubble:
-      surface: color-user-message
-      text: color-user-message-text
-      radius: radius-message
-      padding: 上下 spacing-inline，左右 spacing-field
-      max-width: message-bubble-max
-      text-size: text-conversation
-      line: conversation-line
-    actions: 复制、发送时间、编辑；鼠标悬停或键盘聚焦到这条消息时才出现，出现与消失不改变布局
-  turn-process:
-    heading:
-      text: 本轮过程；等待审批时写“等待你批准”；早于回合机制的历史消息写“早前消息与活动”
-      text-size: text-conversation
-      color: status-settled，悬停时 foreground
-      icon: disclosure-chevron，收起时朝右，展开时朝下
-      padding: 上下各为 spacing-inline 的一半
-      chevron-gap: 文字与箭头之间 spacing-inline
-      material: flat（吸顶时同样不加模糊，底色为 color-background）
-      divider: 标题文字下方隔 spacing-inline 的一半画一条 border-width-default 的 color-border-subtle 线；线属于标题块，线下面还有标题块自己的下内边距（spacing-inline 的一半）
-    body:
-      gap-from-heading: 从标题块下沿（线下方那段内边距的底边）量起；收起时到最终回答一个 conversation-gap；展开时到第一条过程文字两倍 conversation-gap（过程体自身再留一个，标出过程与标题的分组）
-      item-text: 过程文字与正文同字号，颜色 foreground
-      default: 已完成的回合默认收起；运行中与暂停后默认展开
-  final-answer:
-    text-size: text-conversation
-    line: conversation-line
-    color: foreground
-    inline-code:
-      font: font-mono
-      text-size: text-ui-sm
-      surface: color-markdown-inline-code
-      margin: 左右各为 spacing-inline 的四分之一
-      radius: radius-button
-      padding: 左右为 spacing-inline 的四分之三，上下为 spacing-inline 的四分之一
-  action-row:
-    gap-from-content: spacing-inline 的四分之三
-    offset: 整行向左外伸 spacing-inline 的一半，超出阅读列左缘
-    gap: spacing-inline 的四分之一
-    button:
-      size: spacing-control（正方形）
-      icon: 图标按文件自带宽高（复制、编辑比 icon-size-control 小），在按钮内居中
-      radius: radius-control
-      color: foreground 一半不透明度；悬停时 foreground
-    usage: 用量入口是文字按钮，text-ui-sm，等宽数字；没有可信数据时不显示，不写占位破折号
-    latest-only: 只有最新回合的操作行常显；更早回合的操作行降低不透明度，悬停时恢复
-  status-line:
-    text-size: text-conversation
-    color: foreground-subtle
-    rule: 状态变化只换文字，不改高度
-  paused-divider:
-    text: 你暂停了本轮执行
-    text-size: text-ui-xs
-    line: conversation-line
-    color: foreground-subtle
-    rule-line: border-width-default 的 color-menu-border，左右各一段，最短 spacing-field
-    gap: 文字与两侧线之间 spacing-inline
-    margin: 上下 spacing-field
-    max-text-width: 阅读列宽的八成
-  turn-navigation:
-    marker:
-      length: turn-marker-length
-      thickness: turn-marker-thickness
-      radius: radius-turn-marker
-      color: foreground-subtle；当前回合为 foreground 且不透明
-      inset: 标记距左缘 spacing-inline
-      current-dot: 当前回合的标记左侧另有一个 turn-marker-thickness 见方的圆点，圆心距左缘 spacing-inline 的一半，颜色 foreground
-    column:
-      position: 贴信息流区域（输入框与队列以上）左缘、在该区域内垂直居中，过高时在内部滚动且不显示滚动条
-      opacity: 平时 opacity-resting，鼠标进入对话区时加深，悬停或聚焦本列时完全不透明；触屏设备上始终不透明
+    user-message:
+        actions-row: 高 spacing-control，隐藏时仍占位，紧贴气泡下方
+        bubble:
+            surface: color-user-message
+            text: color-user-message-text
+            radius: radius-message
+            padding: 上下 spacing-inline，左右 spacing-field
+            max-width: message-bubble-max
+            text-size: text-conversation
+            line: conversation-line
+        actions: 复制、发送时间、编辑；鼠标悬停或键盘聚焦到这条消息时才出现，出现与消失不改变布局
+    turn-process:
+        heading:
+            text: 本轮过程；等待审批时写“等待你批准”；早于回合机制的历史消息写“早前消息与活动”
+            text-size: text-conversation
+            color: status-settled，悬停时 foreground
+            icon: disclosure-chevron，收起时朝右，展开时朝下
+            padding: 上下各为 spacing-inline 的一半
+            chevron-gap: 文字与箭头之间 spacing-inline
+            material: flat（吸顶时同样不加模糊，底色为 color-background）
+            divider: 标题文字下方隔 spacing-inline 的一半画一条 border-width-default 的 color-border-subtle 线；线属于标题块，线下面还有标题块自己的下内边距（spacing-inline 的一半）
+        body:
+            gap-from-heading: 从标题块下沿（线下方那段内边距的底边）量起；收起时到最终回答一个 conversation-gap；展开时到第一条过程文字两倍 conversation-gap（过程体自身再留一个，标出过程与标题的分组）
+            item-text: 过程文字与正文同字号，颜色 foreground
+            default: 已完成的回合默认收起；运行中与暂停后默认展开
+    final-answer:
+        text-size: text-conversation
+        line: conversation-line
+        color: foreground
+        inline-code:
+            font: font-mono
+            text-size: text-ui-sm
+            surface: color-markdown-inline-code
+            margin: 左右各为 spacing-inline 的四分之一
+            radius: radius-button
+            padding: 左右为 spacing-inline 的四分之三，上下为 spacing-inline 的四分之一
+    action-row:
+        gap-from-content: spacing-inline 的四分之三
+        offset: 整行向左外伸 spacing-inline 的一半，超出阅读列左缘
+        gap: spacing-inline 的四分之一
+        button:
+            size: spacing-control（正方形）
+            icon: 图标按文件自带宽高（复制、编辑比 icon-size-control 小），在按钮内居中
+            radius: radius-control
+            color: foreground 一半不透明度；悬停时 foreground
+        feedback: 复制之后是点赞、点踩两个按钮（图标 thumbs-up、thumbs-down，外观同上）；只在宿主开启评价、已连接且用户同意时出现（示例数据 settingsBackend.feedback 全为开启），侧边聊天里不出现
+        usage: 用量入口是文字按钮，text-ui-sm，等宽数字；没有可信数据时不显示，不写占位破折号
+        latest-only: 只有最新回合的操作行常显；更早回合的操作行降低不透明度，悬停时恢复
+    status-line:
+        text-size: text-conversation
+        color: foreground-subtle
+        rule: 状态变化只换文字，不改高度
+    paused-divider:
+        text: 你暂停了本轮执行
+        text-size: text-ui-xs
+        line: conversation-line
+        color: foreground-subtle
+        rule-line: border-width-default 的 color-menu-border，左右各一段，最短 spacing-field
+        gap: 文字与两侧线之间 spacing-inline
+        margin: 上下 spacing-field
+        max-text-width: 阅读列宽的八成
+    turn-navigation:
+        marker:
+            length: turn-marker-length
+            thickness: turn-marker-thickness
+            radius: radius-turn-marker
+            color: foreground-subtle；当前回合为 foreground 且不透明
+            inset: 标记距左缘 spacing-inline
+            current-dot: 当前回合的标记左侧另有一个 turn-marker-thickness 见方的圆点，圆心距左缘 spacing-inline 的一半，颜色 foreground
+        column:
+            position: 贴信息流区域（输入框与队列以上）左缘、在该区域内垂直居中，过高时在内部滚动且不显示滚动条
+            opacity: 平时 opacity-resting，鼠标进入对话区时加深，悬停或聚焦本列时完全不透明；触屏设备上始终不透明
 
 states:
-  - running: 过程展开，末尾为 status-line，没有 action-row
-  - done: 过程收起，最终回答完整可见，末尾为 action-row
-  - stopped: 过程展开，末尾为 action-row，随后是 paused-divider
-  - failed: 末尾一行写明失败原因，草稿与已产生内容都保留
+    - running: 过程展开，末尾为 status-line，没有 action-row
+    - done: 过程收起，最终回答完整可见，末尾为 action-row
+    - stopped: 过程展开，末尾为 action-row，随后是 paused-divider
+    - failed: 末尾一行写明失败原因，草稿与已产生内容都保留
 
 accessible-names:
-  user-actions:
-    copy: 复制消息
-    edit: 编辑消息
-    time: 消息时间 {完整日期时间}
-  process-toggle: 执行过程：{标题文字}
-  turn-actions:
-    copy: 复制消息
-    usage: 查看 Token 用量
-  turn-navigation: 对话轮次
+    user-actions:
+        copy: 复制消息
+        edit: 编辑消息
+        time: 消息时间 {完整日期时间}
+    process-toggle: 执行过程：{标题文字}
+    turn-actions:
+        copy: 复制消息
+        feedback: 点赞 / 点踩（按钮，标为按下或未按下）
+        usage: 查看 Token 用量
+    turn-navigation: 对话轮次
 
 icons:
-  source: 见 icons/ 目录，按名称引用，颜色取 currentColor
-  used: [copy, edit, disclosure-chevron]
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+    used: [copy, edit, disclosure-chevron, thumbs-up, thumbs-down]
 
 behavior:
-  - 展开或收起过程只改变过程体高度，标题位置不动；减少动态效果偏好下不播放过渡
-  - 读者向上阅读后，新内容不抢走阅读位置
-  - 复制得到这一回合最后一段 Agent 文字的纯文本；Agent 文字包括过程文字与最终回答（暂停后只有过程文字时复制按钮照常出现）；这一回合一条 Agent 文字都没有时复制按钮不出现
-  - 回合没有钩子运行记录时，不显示钩子统计入口
+    - 展开或收起过程只改变过程体高度，标题位置不动；减少动态效果偏好下不播放过渡
+    - 读者向上阅读后，新内容不抢走阅读位置
+    - 复制得到这一回合最后一段 Agent 文字的纯文本；Agent 文字包括过程文字与最终回答（暂停后只有过程文字时复制按钮照常出现）；这一回合一条 Agent 文字都没有时复制按钮不出现
+    - 回合没有钩子运行记录时，不显示钩子统计入口

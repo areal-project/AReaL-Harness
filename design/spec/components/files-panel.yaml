@@ -6,7 +6,7 @@ why: 读代码时不离开对话；改动标记与审查面板一致，看改了
 layout:
     place: 右侧面板的标签内容区，从面板顶栏下沿到底；底色 color-background，只有这一层底色
     tree-tab: “文件”标签里文件树占满整个内容区，没有工具行
-    file-tab: 打开文件后新增一个以文件名命名的标签并成为当前标签：上面是工具行，下面左边是代码，右边并排文件树
+    file-tab: 打开文件后新增一个以文件名命名的标签并成为当前标签（标签图标 file-tab，颜色同其他标签图标）：上面是工具行，下面左边是代码，右边并排文件树
     narrow: 面板窄于 reading-width 的八分之五时，打开的文件仍保留代码区，文件树改为浮在右侧的同宽一栏，不挤掉代码
 anatomy:
     - part: tree
@@ -21,9 +21,9 @@ parts:
         search: 顶部一行，四周留 spacing-inline（左右 spacing-inline 的一半，下方 border-width-default）；搜索框外观同审查面板 file-list 的筛选框，占位“搜索文件…”；框内右端有“文件树更多”按钮（more 图标，spacing-control-xs 见方，距右缘 spacing-inline 的四分之一），有输入时其前面多一个“清除搜索”按钮
         more-menu: 文件树更多菜单：复制路径；仅显示更改 / 显示全部文件（项目有版本记录时才有）；刷新文件；关闭文件列表。打开“仅显示更改”时搜索框描边换成 color-input-border-focused，占位改为“搜索更改…”，树变成改动文件的平铺列表
         rows: 行高 spacing-control，行高与文字行高相同；占满宽度，不留外边距；每深一层左缩进 spacing-inline，最外层缩进 spacing-inline 的四分之一；圆角 radius-compact；文字 text-ui-caption，foreground，单行省略
-        row-parts: 目录行先是一个 icon-size-control 见方的折叠箭头（foreground-subtle，展开时转向下）再是名称；文件行先是按文件类型的图标再是名称，图标与名称间隔 spacing-inline 的四分之三
+        row-parts: 目录行先是一个 icon-size-control 见方的折叠箭头（foreground-subtle，展开时转向下）再是名称；文件行先是按文件类型的图标（icon-size-control：TypeScript 取 tree-file-typescript，JSON 取 tree-file-json，Markdown 取 tree-file-markdown，深色下 Markdown 换 tree-file-markdown-dark；认不出的类型用通用文件图标，颜色 foreground-subtle（示例数据里没有））再是名称，图标与名称间隔 spacing-inline 的四分之三
         states: 悬停底色 color-surface-hover；当前文件底色 color-selected；键盘焦点为 border-width-default 的 color-input-border-focused 内描边
-        marks: 改过的文件右端一个等宽粗体字母，text-ui-base：A 新增与 U 未跟踪取 color-git-added，M 已修改取 color-git-modified，D 已删除取 color-git-deleted，R 已重命名取 color-git-renamed，C 冲突取 color-warning；收起的目录里有改动时，右端改为一个同色圆点。记号与审查面板的增删一致
+        marks: 改过的文件右端一个等宽粗体字母，text-ui-base：A 新增与 U 未跟踪取 color-success，M 已修改取 color-warning，D 已删除取 color-destructive，R 已重命名取蓝色（Token 源还没有对应的用途变量，见 known-gaps），C 冲突取 color-warning；收起的目录里有改动时，右端改为一个同色圆点。记号与审查面板的增删一致
         empty: 搜索没有结果时写“没有匹配的文件”，空目录写“此文件夹为空”，结果被截断时写“结果较多，已显示部分项目。请缩小搜索范围。”
     toolbar:
         height: spacing-inline 的五倍；左右内边距 spacing-inline，元素间隔 spacing-inline 的四分之三；不画下沿线
@@ -33,11 +33,17 @@ parts:
         file-menu: 文件更多菜单：在默认应用中打开（或各个可选应用）；分隔线；在文件管理器中显示、另存为…；分隔线；自动换行（可勾选）、编辑代码 / 阅读代码；分隔线；复制绝对路径、复制相对路径、重新读取文件
     code:
         surface: 与面板同底色 color-background，深浅两种主题都不铺第二种底色；内容不满一屏时下方仍是同一种颜色
-        body: 左侧行号列，右侧代码，等宽字体与语法着色取代码查看器的用途变量；长行默认不换行，可横向滚动
+        body: 左侧行号列，右侧代码；等宽字体 font-mono，代码字号 text-fixed-caption（设置里可改，示例为默认值），行高为代码字号加 spacing-inline；行号 foreground-subtle 一级的灰；长行默认不换行，可横向滚动
+        syntax: 语法着色来自代码主题“AReaL Light / AReaL Dark”，颜色没有进 Token 源（已知缺口）
 icons:
-    source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor；tree-file-* 自带文件类型的颜色（写在图标文件里），不随主题变，Markdown 另有深色版
     used:
         [
+            file-tab,
+            tree-file-typescript,
+            tree-file-json,
+            tree-file-markdown,
+            tree-file-markdown-dark,
             search,
             search-clear,
             more,
@@ -64,3 +70,6 @@ behavior:
     - “切换文件树”收起或显示右栏文件树，代码区随之加宽或变窄，路径与按钮位置不变
     - 在搜索框里输入文字，树改为平铺显示路径含这段文字的文件；点一个结果后清空搜索、回到层级树并选中它
     - 在树里右键一行：复制绝对路径、复制相对路径、添加到对话；也可以把行拖进输入框引用它
+known-gaps:
+    - 文件类型图标与语法着色的颜色来自图标集与代码主题，没有进 Token 源
+    - 已重命名的标记色在实现里是宿主主题自带的蓝，Token 源没有对应的用途变量；示例数据里没有重命名，不影响标准截图

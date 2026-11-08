@@ -52,7 +52,7 @@
   color: var(--color-foreground-subtle);
 }
 .usage-metric strong {
-  font-size: 23px;
+  font-size: calc(var(--text-fixed-section-title) * 1.15);
   font-weight: 600;
   line-height: 1.4;
   overflow-wrap: anywhere;

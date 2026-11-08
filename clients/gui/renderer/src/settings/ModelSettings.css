@@ -1,6 +1,6 @@
 /* Provider and model editors share one draft and Core save/apply owner. */
 .model-settings { container-type: inline-size; }
-.model-settings .provider-settings { height: auto; min-height: 0; align-items: start; gap: var(--spacing-panel); grid-template-columns: 220px minmax(0, 1fr); }
+.model-settings .provider-settings { height: auto; min-height: 0; align-items: start; gap: var(--spacing-panel); grid-template-columns: calc(var(--reading-width) * 2 / 7) minmax(0, 1fr); }
 .model-settings .provider-navigation { position: sticky; top: 0; max-height: calc(100dvh - 180px); }
 .model-settings .provider-navigation-top { margin: 0; }
 .model-settings .provider-navigation-top h2,

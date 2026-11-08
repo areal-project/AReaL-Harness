@@ -6,7 +6,7 @@ why: 持续性的工作不该靠人记着去问；入口放在应用导航栏，
 layout:
     place: 点应用导航栏“定时任务”打开：侧栏的导航内容与主区一起换成定时任务中心；应用导航栏照旧在左，“定时任务”成为当前入口（底色 color-selected）；点“首页”回到原样
     surface: 定时任务中心占纸面全部（应用导航栏以右），底色 color-background，四角 radius-overlay；列表与右侧内容之间一道 border-width-default 的 color-border 竖线
-    top-bar: 顶栏右段（应用导航栏以右）属于定时任务中心，高 height-toolbar；左右内边距 spacing-field，元素间隔 spacing-inline；放“前进”（总是不可用）与“切换任务侧栏”两个按钮，外形同 navigation-sidebar 的 window-controls
+    top-bar: 顶栏右段（应用导航栏以右）属于定时任务中心，高 height-toolbar；左右内边距 spacing-field，元素间隔 spacing-inline；放“前进”（总是不可用）与“切换任务侧栏”两个按钮，外形同 navigation-sidebar 的 window-controls；顶栏左段同 navigation-sidebar 的 rail-only：缩成 rail-width 宽、不放按钮，右缘竖线（border-width-default 的 color-border）仍在
     order: 纸面内左边任务列表、右边内容区；没有选中任务时内容区是欢迎页
 anatomy:
     - part: list
@@ -58,7 +58,7 @@ parts:
     template:
         box: 横排图标与文字，间隔 spacing-inline，四周 spacing-inline 内边距，圆角 radius-control，靠左对齐；悬停底色 color-hover；键盘聚焦同 item
         icon: icon-size-control 加 spacing-inline 的四分之一，foreground-subtle，向下错开 spacing-inline 的十分之三与标题对齐
-        title: text-ui-base，font-weight-medium，foreground
+        title: text-ui-base，font-weight-medium，行高为字号的一倍半，foreground
         description: 标题下 spacing-inline 的一半，text-ui-sm，行高为字号的一倍半，foreground-subtle，可换行
         entries:
             - 检查仓库进展：检查我指定仓库的公开提交与 PR，整理进展和待处理事项。（图标 template-repository）

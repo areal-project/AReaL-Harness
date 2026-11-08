@@ -25,24 +25,29 @@ anatomy:
 parts:
     toolbar:
         height: spacing-control-lg 加 spacing-field；四周内边距 spacing-inline，两组之间间隔 spacing-inline；下沿不画线，差异列表的上沿画 border-width-default 的 color-border
-        source: 来源组靠左，可收缩；高 spacing-control-lg，内边距 spacing-inline 的四分之一，元素间隔 spacing-inline 的四分之一；看“上一轮”或某一轮时来源组本身透明，只有改动范围按钮带 color-viewer-control 底；看工作区或分支时整组是一块 color-viewer-control 的胶囊（radius-pill），带 shadow-menu-double-stroke 与浮层材质
+        source: 来源组靠左，可收缩；高 spacing-control-lg，内边距 spacing-inline 的四分之一，元素间隔 spacing-inline 的四分之一；看历史回合（“上一轮”或某一轮，“上一轮”也算）时来源组本身透明，只有改动范围按钮带 color-viewer-control 底；看工作区或分支时整组是一块 color-viewer-control 的胶囊（radius-pill），带 shadow-menu-double-stroke 与浮层材质
+        tooltip: 鼠标停在来源组上时出现提示（同 tooltip 组件），写审查工作区的完整路径，示例数据里是“/示例项目”；改动范围菜单刚用鼠标打开时指针仍在来源组上，所以这个提示也在
         project: 项目名只在审查的工作区与当前对话的项目不同时显示：text-ui-caption，行高 line-height-ui，foreground-subtle，单行省略；相同时只给读屏
-        scope: 改动范围按钮高 spacing-control（看某一轮时高 spacing-control-lg），胶囊形 radius-pill；左内边距 spacing-inline 的一倍半，右内边距 spacing-inline 的四分之三，文字与向下箭头间隔 spacing-inline 的一半；text-ui-caption，行高 line-height-ui；箭头 icon-size-control 的四分之三；文字单行省略，可收缩
-        totals: 合计的“+新增”“-删除”两段，间隔 spacing-inline 的一半，右边留 spacing-inline 的一半（看某一轮时左边也留 spacing-inline 的一半）；text-ui-base，行高与字号相同，等宽数字；新增色、删除色同 file-card 的 stats
-        actions: 操作组靠右、不收缩；外观同工作区来源组的胶囊；三个按钮“变更选项”（more 图标）、“跳转到文件”、“显示文件 / 隐藏文件”（panel-files 图标），间隔 spacing-inline 的一半，每个 spacing-control 见方，圆角 radius-pill，图标 icon-size-control、foreground-subtle；文件列表打开时“显示文件”标为按下
+        scope: 改动范围按钮高 spacing-control（看历史回合时高 spacing-control-lg，底色 color-viewer-control），胶囊形 radius-pill；左内边距 spacing-inline 的一倍半，右内边距 spacing-inline 的四分之三，文字与向下箭头间隔 spacing-inline 的一半；text-ui-caption，行高 line-height-ui；箭头 icon-size-control 的四分之三；文字单行省略，可收缩
+        totals: 合计的“+新增”“-删除”两段，间隔 spacing-inline 的一半，右边留 spacing-inline 的一半（看历史回合时左边也留 spacing-inline 的一半）；text-ui-base，行高与字号相同，等宽数字；新增色、删除色同 file-card 的 stats；字距收紧为字号的百分之二点五
+        actions: 操作组靠右、不收缩；外观同工作区来源组的胶囊；三个按钮“变更选项”（more 图标）、“跳转到文件”（jump-to-file 图标）、“显示文件 / 隐藏文件”（panel-files 图标），间隔 spacing-inline 的一半，每个 spacing-control 见方，圆角 radius-pill，图标 icon-size-control、foreground-subtle；文件列表打开时“显示文件”标为按下
     scope-menu:
-        surface: 同 menu 组件，左缘对齐改动范围按钮，最窄 reading-width 的四分之一左右
+        surface: 同 menu 组件，左缘对齐改动范围按钮，最窄 spacing-field 的十二倍半（内容更宽时随内容变宽）
         items: 依次为 上一轮；分隔线；未提交的更改、未暂存的更改、已暂存的更改；分隔线；已提交的更改（右侧箭头，展开最近的提交列表与“输入提交…”）、分支比较；分隔线；任务工作区更改。当前范围右端打勾；没有可看的上一轮时“上一轮”不可选
     file-card:
-        header: 粘在差异列表顶部，底色 color-background；内边距上下右 spacing-inline、左 spacing-inline 的一倍半，下沿 border-width-default 的 color-border；文字 text-ui-base，行高一倍半
-        identity: 文件头左段是一个按钮，点它折叠或展开本文件：文件类型图标 icon-size-control，与路径间隔 spacing-inline；路径单行，放不下时从前面省略，文件名永远留在可见的末尾；目录部分 foreground-subtle，文件名 foreground
-        stats: 文件头右段先是“+新增 -删除”，间隔 spacing-inline 的四分之一，左右各留 spacing-inline 的四分之一；行高与字号相同，等宽数字；浅色下新增 color-diff-added、删除 color-diff-removed，各自与 foreground 混入少许以保证对比度；深色下新增 color-content-diff-added、删除 color-content-diff-removed
+        header: 粘在差异列表顶部，底色 color-background；内边距上下右 spacing-inline、左 spacing-inline 的一倍半，下沿 border-width-default 的 color-border；文字 text-ui-base，行高一倍半；左段折叠按钮自身左右再有 spacing-inline 的一半内边距，所以文件类型图标距文件头左缘正好 spacing-inline 的两倍
+        identity: 文件头左段是一个按钮，点它折叠或展开本文件：文件类型图标 icon-size-control（全彩图标，按扩展名取 review-file-typescript、review-file-json、review-file-readme，认不出的类型取 review-file-document），与路径间隔 spacing-inline；路径单行，放不下时从前面省略，文件名永远留在可见的末尾；目录部分 foreground-subtle，文件名 foreground
+        stats: 文件头右段先是“+新增 -删除”，间隔 spacing-inline 的四分之一，左右各留 spacing-inline 的四分之一；行高与字号相同，等宽数字；浅色下新增是 color-success 与 foreground 按八十八比十二混合、删除是 color-destructive 与 foreground 按八十八比十二混合；深色下新增 color-content-diff-added、删除 color-content-diff-removed，不混
         actions: 之后是“复制路径”“切换文件差异对比”两个隐藏操作和常显的“文件操作”（more 图标）；按钮都是 spacing-control-xs 见方，圆角 radius-pill，透明底，图标 foreground-subtle，悬停 foreground；两个隐藏操作在文件头悬停或其中有键盘焦点时才出现，平时透明但仍占位
         narrow: 差异列表窄于 reading-width 的三十二分之十五时，隐藏操作不再占位，而是叠放在路径末端之上（底色 color-background），路径与文件名不被挤掉
-        body: 展开时文件头下面是差异正文；正文底色 color-background；行号列最少四个字宽；行高为代码字号的一点八倍；新增行与删除行的标记色在浅色下取 color-success 与 color-destructive，深色下取 color-content-diff-added 与 color-content-diff-removed；宽度足够且一个文件同时有增删时并排显示，否则上下合并显示
+        body: 展开时文件头下面是差异正文；正文底色 color-background；等宽字体 font-mono，代码字号 text-fixed-caption（用户可在设置里改代码字号，示例为默认值），行高为代码字号的一点八倍；行号列最少四个字宽；改动前后各保留一行未改动的上下文，其余未改动行折成 unchanged；宽度足够且一个文件同时有增删时并排显示，否则上下合并显示
+        diff-colors: 先取“改动基色”：新增在浅色下是 color-success、深色下是 color-content-diff-added；删除在浅色下是 color-destructive、深色下是 color-content-diff-removed。改动行的正文底色是 color-background 混入改动基色：浅色百分之十二、深色百分之二十；改动行的行号格底色是纯白混入百分之九的改动基色（浅色）、纯黑混入百分之十五（深色）；改动行的行号与差异标记取改动基色本身；悬停时正文底色加深到浅色百分之二十、深色新增百分之三十与删除百分之二十五
+        syntax: 代码的语法着色来自代码主题“AReaL Light / AReaL Dark”（用户可在设置里换主题）；主题颜色没有进 Token 源，复现时只要求未改动行的正文是 foreground-subtle 一级的灰，语法色差异计入已知缺口
         menu: “文件操作”菜单与文件头的右键菜单内容相同：打开文件、在默认应用中打开、在文件管理器中显示；分隔线；复制绝对路径、在文件树中显示
     unchanged:
-        row: 差异正文里连续的未改动行折成一行：左边是“展开下方未改动行”的箭头按钮，右边写“N 行未改动”（中文说明，不只写数字）；行号列位置与正文对齐
+        row: 差异正文里连续的未改动行折成一行，高 spacing-control-lg：左边是“展开下方未改动行”的箭头按钮（与行号列同宽），右边写“N 行未改动”（中文说明，不只写数字，文字取行号色）；行号列位置与正文对齐
+        fill: 整行底色是 color-background 混入 foreground：浅色百分之四、深色百分之十五；文字段左右各留 spacing-inline，右端两角 radius-inset
+        width: 这一行只铺满差异正文的可见宽度：正文出现竖向滚动条时，它的右端停在滚动条左边，不伸到滚动条下面
     file-list:
         pane: 并排在差异列表右边，左缘 border-width-default 的 color-border；默认宽度约为 reading-width 的三分之一，最多占审查内容宽的百分之六十；左缘骑着一条宽度把手，同右侧面板的 resize
         filter: 顶部一个筛选框：高 spacing-control，边框 border-width-default 的 color-border，圆角 radius-navigation，底色 color-viewer-control；内含 search 图标（icon-size-control，foreground 的一半不透明度，距左缘 spacing-inline）与输入，输入文字 text-ui-base，行高 line-height-ui-sm，占位“筛选文件…”同图标颜色；有内容时右端出现“清除文件筛选”按钮；筛选框四周留 spacing-inline 的一半（下方只留 border-width-default）
@@ -53,10 +58,15 @@ parts:
         content: 竖直居中：一幅空状态插画，下面标题“暂无文件改动”（text-ui-lg，font-weight-medium，行高一倍半，foreground）与说明“此项目中的改动将显示在这里。”（text-ui-caption，foreground 的六成五不透明度），标题与说明间隔 spacing-inline
         staged: 范围为“已暂存的更改”且为空时，改为“没有已暂存的更改 / 暂存文件后可在这里审查”和一个次要按钮“查看分支差异”
 icons:
-    source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor；review-file-* 是全彩文件类型图标，自带颜色，不随主题变
     used:
         [
             more,
+            jump-to-file,
+            review-file-typescript,
+            review-file-json,
+            review-file-readme,
+            review-file-document,
             panel-files,
             search,
             search-clear,
@@ -86,3 +96,6 @@ behavior:
     - 在筛选框里输入文字，树和差异列表都只留路径含这段文字的文件；没有匹配时写“没有匹配的文件”
     - 换改动范围后重新读取，读取中写“正在读取…”，失败时显示原因
     - “跳转到文件”在文件面板里打开当前文件
+known-gaps:
+    - 语法着色、文件类型图标的颜色来自代码主题与图标集，没有进 Token 源
+    - 改动范围菜单的最小宽度是写死的值，暂按 spacing-field 的倍数描述

@@ -113,6 +113,8 @@ export const settingsNavigationGroups = [
 
 const settingsSubtitles = {
   浏览器: "settings.browser.subtitle",
+  Worktrees: "worktree.settings.description",
+  手机连接: "settings.mobileConnect.intro",
   钩子: "settings.hooksSettings.runToolEventCommandsInOrderRestart",
 } as const;
 

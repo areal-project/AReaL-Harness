@@ -126,14 +126,7 @@ export function settingsAction(name: string, request: Data): Data | undefined {
   if (name === "analytics" && operation === "read") return usage();
   if (name === "trajectory" && operation === "status") return trajectory();
   if (name === "feedback" && operation === "status")
-    return {
-      enabled: true,
-      connected: true,
-      installation: null,
-      account: null,
-      destination: null,
-      opted_in: true,
-    };
+    return { ...sample.feedback, installation: null, account: null, destination: null };
   if (name === "cloud" && operation === "status")
     return { baseURL: sample.cloud.baseURL, tokenConfigured: true };
   if (name === "computerControl" && operation === "status")

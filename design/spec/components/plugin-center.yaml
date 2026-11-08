@@ -5,7 +5,7 @@ purpose: 找到、安装和管理插件与 Skills：左边导航，右边是插�
 why: 扩展能力集中在一处；左边导航与设置导航同一种节奏，主区与对话同底色，进出插件中心时窗口不像换了一个应用。
 layout:
     place: 点应用导航栏“插件”打开：侧栏的导航内容与主区一起换成插件中心；“插件”成为当前入口（底色 color-selected）；点“首页”回到原样
-    top-bar: 顶栏右段（应用导航栏以右）是空的会话标题栏，不放按钮
+    top-bar: 顶栏右段（应用导航栏以右）是空的会话标题栏，不放按钮；顶栏左段同 navigation-sidebar 的 rail-only：缩成 rail-width 宽，右缘竖线（border-width-default 的 color-border）仍在
     surface: 插件中心占纸面全部，底色 color-background；左边插件导航，右边内容区纵向滚动
 anatomy:
     - part: navigation
@@ -38,8 +38,8 @@ parts:
     header:
         layout: 左边文字、右边工具条，垂直居中，间隔 spacing-section；下方留 spacing-inline 的三倍半
         context: 第一行“管理项目 · <项目名>”，text-ui-caption，foreground-subtle，下方 spacing-inline
-        title: 一级标题，text-ui-section，font-weight-strong，foreground，下方 spacing-inline
-        description: text-ui-sm，foreground-subtle
+        title: 一级标题，text-ui-section，font-weight-strong，行高为字号的一点三倍，字距为字号的负百分之二点五，foreground，下方 spacing-inline
+        description: text-ui-sm，行高为字号的一点六倍，foreground-subtle；插件市场页写“发现并安装插件，扩展 AReaL Harness 的能力。”，Skills 页写“为不同任务添加可复用的专业能力。”
         narrow: 内容区窄时文字与工具条改为上下排，间隔 spacing-field，工具条占满宽、搜索框伸长
         toolbar: 横排，间隔 spacing-inline；搜索框宽 spacing-inline 的二十五倍、高 spacing-control-lg、圆角 radius-control、底色 color-input、border-width-default 的 color-input-border，左侧 search 图标，占位“搜索插件…”；“刷新市场”图标按钮（refresh，无边框）；“添加”次要按钮（border-width-default 的 color-border，text-ui-sm）；按钮都高 spacing-control-lg
     scope:
@@ -47,11 +47,11 @@ parts:
         tab: 内边距上下 spacing-inline 的四分之一、左右 spacing-inline；text-ui-caption，font-weight-toolbar；未选中 foreground-subtle、透明底；选中 foreground、底色 color-surface-tertiary
     catalog:
         spacing: 范围标签下方 spacing-section，组与组之间 spacing-field 的两倍
-        label: 组名“插件”，text-ui-base，font-weight-strong，下方 spacing-inline 的一倍半
+        label: 组名“插件”，text-ui-base，font-weight-strong，行高为字号的一倍半，下方 spacing-inline 的一倍半
         grid: 两列等宽，行间隔 spacing-inline、列间隔 spacing-section；内容区窄时改为一列
     row:
         box: 最小高 spacing-inline 的九倍，上下内边距 spacing-inline 的一倍半，左右不留；下缘 border-width-default 的 color-border；横排，间隔 spacing-inline 的一倍半，垂直居中
-        main: 左边一个按钮占满剩余宽，上下内边距 spacing-inline 的四分之一，图标块与文字间隔 spacing-inline 的一倍半；图标块 spacing-inline 的五倍见方，圆角 radius-control，底色 color-sidebar-item，plugin-package 图标（icon-size-control 加 spacing-inline 的四分之一）foreground；名称 text-ui-sm，font-weight-medium，行高为字号的一倍半，foreground，悬停时加下划线；说明在名称下，text-ui-caption，foreground-subtle，单行省略
+        main: 左边一个按钮占满剩余宽，上下内边距 spacing-inline 的四分之一，图标块与文字间隔 spacing-inline 的一倍半；图标块 spacing-inline 的五倍见方，圆角 radius-control，底色 color-sidebar-item，plugin-package 图标（icon-size-control 加 spacing-inline 的四分之一）foreground；名称 text-ui-sm，font-weight-medium，行高为字号的一倍半，foreground，悬停时加下划线；说明在名称下，text-ui-caption，行高为字号的一点五五倍，foreground-subtle，单行省略
         action: 右端按钮最小 spacing-control-lg 见方，内边距 spacing-inline 的四分之三，圆角 radius-compact，text-ui-caption，foreground-subtle，悬停底色 color-sidebar-item；已安装的写“已添加”，未安装的只有 add 图标
     detail:
         breadcrumb: 内容区顶部面包屑：“返回插件列表”按钮（文字为来源页名）加插件名
