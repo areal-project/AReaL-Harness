@@ -200,7 +200,7 @@ async function taskCreate(backend, project, request) {
 /** @param {Backend} backend @param {Project} project @param {Record<string,unknown>} rawRequest */
 async function manageTask(backend, project, rawRequest) {
   const request = readTaskRequest(rawRequest);
-  if (backend.rustDomains.includes("tasks-rust") && backend.hostCall) {
+  if (backend.rustDomains?.includes("tasks-rust") && backend.hostCall) {
     if (taskDraftOperations.has(request.operation)) return manageTaskDraft(backend, project, request);
     /** @type {Record<string,unknown>} */
     const payload = { ...request, executionProjectId: project.id };

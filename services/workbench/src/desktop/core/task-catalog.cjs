@@ -154,7 +154,7 @@ class OwnerTasks {
   /** @param {Project} project @param {Client} client @param {(facts:Fact[])=>void} facts @param {(rows:Task[],baseline:boolean)=>Promise<void>} rows @param {(error:unknown)=>void} report */
   attach(project, client, facts, rows, report) {
     this.observations.get(project.id)?.stop();
-    const observation = this.backend.rustDomains.includes("tasks-rust") && this.backend.hostCall
+    const observation = this.backend.rustDomains?.includes("tasks-rust") && this.backend.hostCall
       ? new HostOwnerObservation(this, project, client, facts, rows, report)
       : new OwnerObservation(this, project, client, facts, rows, report);
     this.observations.set(project.id, observation);
@@ -612,7 +612,7 @@ async function inboxRows(observation, limit) {
 
 /** @param {Backend} backend @param {Record<string,unknown>} rawRequest */
 async function taskCatalog(backend, rawRequest) {
-  if (backend.rustDomains.includes("tasks-rust") && backend.hostCall)
+  if (backend.rustDomains?.includes("tasks-rust") && backend.hostCall)
     return backend.hostCall("tasks.read", rawRequest);
   if (!catalogContract.isRequest("tasks", rawRequest)) throw new Error("无效任务列表请求");
   const request = rawRequest;
