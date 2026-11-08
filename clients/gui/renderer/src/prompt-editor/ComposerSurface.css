@@ -124,6 +124,37 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.composer-model-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-field);
+}
+.composer-model-unavailable-groups {
+  width: 100%;
+  max-height: min(360px, 60dvh);
+  overflow-y: auto;
+}
+.composer-model-unavailable-group + .composer-model-unavailable-group {
+  margin-top: var(--spacing-field);
+}
+.composer-model-unavailable-provider {
+  font-weight: var(--font-weight-toolbar);
+  overflow-wrap: anywhere;
+}
+.composer-model-unavailable-group p {
+  margin: 0;
+}
+.composer-model-unavailable-group ul {
+  list-style: none;
+  margin: var(--spacing-inline) 0 0;
+  padding: 0;
+}
+.composer-model-unavailable-group li {
+  padding: calc(var(--spacing-inline) / 2) 0;
+  overflow-wrap: anywhere;
+  color: var(--color-foreground-subtle);
+}
 @media (max-width: 1100px) {
   .composer-model-trigger {
     max-width: 120px;

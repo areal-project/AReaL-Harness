@@ -79,6 +79,13 @@ export function ComposerModelMenu({
     group.push(option);
     providers.set(providerId, group);
   }
+  const unavailableGroups = new Map<string, ComposerModelOption[]>();
+  for (const option of unavailableOptions) {
+    const key = JSON.stringify([option.providerId, option.providerName, option.unavailableReason]);
+    const group = unavailableGroups.get(key) ?? [];
+    group.push(option);
+    unavailableGroups.set(key, group);
+  }
   const model = options.find((option) => option.value === value);
   const label = model?.label ?? t("chat.composer.chooseModel");
   const identityLabel = model?.providerId
@@ -253,16 +260,24 @@ export function ComposerModelMenu({
               ))}
             </Tabs>
           ) : unavailableOptions.length ? (
-            <div>
-              {unavailableOptions.map((option) => (
-                <div key={option.value} aria-disabled="true">
-                  <span>{option.label}</span>
-                  {" · "}
-                  <span>{option.providerName || option.providerId}</span>
-                  {" · "}
-                  <span>{option.unavailableReason}</span>
-                </div>
-              ))}
+            <div className="composer-model-unavailable">
+              <div className="composer-model-unavailable-groups">
+                {[...unavailableGroups].map(([key, models]) => (
+                  <section key={key} className="composer-model-unavailable-group">
+                    <div className="composer-model-unavailable-provider">
+                      {models[0].providerName || models[0].providerId}
+                    </div>
+                    <p className="composer-model-source">{models[0].unavailableReason}</p>
+                    <ul>
+                      {models.map((option) => (
+                        <li key={option.value} aria-disabled="true">
+                          {option.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
               {openSettings && (
                 <Button
                   type="button"

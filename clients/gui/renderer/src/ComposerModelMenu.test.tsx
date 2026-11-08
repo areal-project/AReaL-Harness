@@ -223,6 +223,13 @@ describe("unavailable model guidance", () => {
         credentialState: "unavailable",
       }),
       composerModelOption({
+        providerId: "a",
+        providerName: "Provider A",
+        modelId: "alpha-2",
+        available: false,
+        credentialState: "unavailable",
+      }),
+      composerModelOption({
         providerId: "b",
         providerName: "Provider B",
         modelId: "beta",
@@ -238,7 +245,7 @@ describe("unavailable model guidance", () => {
           { value: openSettings },
           createElement(ComposerModelMenu, {
             options,
-            value: options[0].value,
+            value: "",
             onChange: vi.fn(),
             onClose: vi.fn(),
           }),
@@ -253,6 +260,8 @@ describe("unavailable model guidance", () => {
         "钥匙串访问受限，请重新保存密钥",
       ])
         expect(markup).toContain(text);
+      expect(markup).toContain("alpha-2");
+      expect(markup.match(/缺少 API Key/g)).toHaveLength(1);
       expect(markup).not.toContain('type="radio"');
       menu.actions.get("chat.composer.configureModels")?.();
       expect(openSettings).toHaveBeenCalledWith("模型服务");
