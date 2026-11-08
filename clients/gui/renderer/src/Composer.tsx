@@ -900,7 +900,7 @@ export function Composer({
               disabled ||
               desktopUnsupported ||
               !!input.text.trim() ||
-              !!files.length ||
+              !!input.files.length ||
               !!comments.length
             }
             aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
