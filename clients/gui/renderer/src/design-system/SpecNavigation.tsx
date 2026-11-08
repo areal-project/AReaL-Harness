@@ -18,7 +18,7 @@ import { createNavigationWorkspace } from "../state/navigationWorkspace.js";
 import { ConversationNavigation } from "../views/ConversationNavigation.js";
 import { WorkspaceNavigation } from "../views/WorkbenchChrome.js";
 import { Button } from "../components/ui/button.js";
-import { SpecSettingsPage } from "./SpecSettings.js";
+import { SpecSettingsPage } from "./SpecSettingsPage.js";
 import { SettingsNavigation } from "../settings/SettingsWorkspace.js";
 import { settingsNavigationGroups } from "../settings/settingsNavigation.js";
 import { UnsavedChangesProvider } from "../settings/UnsavedChanges.js";
