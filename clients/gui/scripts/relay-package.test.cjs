@@ -1,7 +1,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { createHash } = require("node:crypto");
-const { mkdtemp, readFile, realpath, rm } = require("node:fs/promises");
+const { mkdtemp, readFile, realpath, rm, access } = require("node:fs/promises");
 const { createRequire } = require("node:module");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
@@ -9,6 +9,7 @@ const { pathToFileURL } = require("node:url");
 const { runInNewContext } = require("node:vm");
 const {
   buildRelayResources,
+  prepareRelayResources,
 } = require("@areal/workbench-service/desktop/core/relay-resources.cjs");
 const requireFromApp = createRequire(resolve(__dirname, "../app/package.json"));
 const requireFromBuilder = createRequire(requireFromApp.resolve("electron-builder"));
@@ -30,9 +31,12 @@ test("packaged Relay resources retain every manifest file and load their own ws"
     join,
     gui,
     relayBundle,
+    workbenchBundle: { bundleDir: join(home, "workbench") },
     bundle: join(home, "core"),
     release: false,
-  }).filter(({ to }) => to === "areal-relay" || to.startsWith("areal-relay/"));
+  }).filter(
+    ({ to }) => to === "areal-gui" || to === "areal-relay" || to.startsWith("areal-relay/"),
+  );
   assert.ok(extraResources.length > 0, "package.mjs must include Relay resources");
   const destination = join(home, "Resources");
   const matchers = getFileMatchers({ extraResources }, "extraResources", destination, {
@@ -47,8 +51,21 @@ test("packaged Relay resources retain every manifest file and load their own ws"
   assert.equal(manifest.version, relayBundle.version);
   assert.ok(manifest.files.some(({ path }) => path === "node_modules/ws/package.json"));
   assert.ok(manifest.files.some(({ path }) => path === "src/host-runner.mjs"));
+  await assert.rejects(access(join(packaged, "assets/remote.html")), { code: "ENOENT" });
+  await assert.rejects(access(join(destination, "areal-gui/bundle-analysis.json")), {
+    code: "ENOENT",
+  });
+  const previousResourcesPath = process.resourcesPath;
+  process.resourcesPath = destination;
+  let prepared;
+  try {
+    prepared = await prepareRelayResources({ home });
+  } finally {
+    process.resourcesPath = previousResourcesPath;
+  }
+  assert.equal(prepared.version, manifest.version);
   for (const file of manifest.files) {
-    const bytes = await readFile(join(packaged, file.path));
+    const bytes = await readFile(join(prepared.bundleDir, file.path));
     assert.equal(createHash("sha256").update(bytes).digest("hex"), file.sha256, file.path);
   }
   const requireFromPackage = createRequire(join(packaged, "package.json"));
