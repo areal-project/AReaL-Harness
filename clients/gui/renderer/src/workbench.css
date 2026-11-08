@@ -318,18 +318,15 @@ kbd {
 .conversation-pane.draft-pane {
   padding: var(--spacing-section) var(--spacing-field) 0;
 }
-/* The home greeting and input share the available space with a zero flex basis.
-   The greeting's bottom gap belongs to its half; growing input only changes the
-   split when its intrinsic height needs more room in a short window. */
 .draft-greeting {
-  flex: 0 1 var(--home-composer-top, 38vh);
+  flex: 1 0 auto;
   min-height: fit-content;
   width: 100%;
   max-width: calc(var(--reading-width) - var(--spacing-control-lg));
   margin: 0 auto;
-  padding-bottom: calc(2 * var(--spacing-section));
+  padding: var(--spacing-section) 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
 }
 .draft-task-prompt {
@@ -349,15 +346,13 @@ kbd {
   overflow-wrap: anywhere;
 }
 .draft-composer {
-  flex: 1 0 0;
+  flex: 0 0 auto;
   min-height: fit-content;
   width: 100%;
   max-width: calc(var(--reading-width) - 32px);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  /* 输入框顶部停在 --home-composer-top，不贴窗口底部（design/spec/screens/home.yaml）。 */
-  justify-content: flex-start;
   position: relative;
 }
 .draft-pane > .draft-composer:first-child {
