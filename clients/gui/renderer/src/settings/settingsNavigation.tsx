@@ -3,7 +3,6 @@ import type { useI18n } from "../i18n/IntlProvider.js";
 import {
   SettingsAppearanceIcon,
   SettingsBrowserIcon,
-  SettingsConfigurationIcon,
   SettingsGeneralIcon,
   SettingsHooksIcon,
   SettingsPluginIcon,
@@ -82,12 +81,6 @@ export const settingsNavigationGroups = [
         keywords: "settings.search.models",
         label: "settings.models.title",
         icon: <Cpu strokeWidth={1.5} />,
-      },
-      {
-        id: "会话配置",
-        keywords: "settings.search.session",
-        label: "settings.session.title",
-        icon: <SettingsConfigurationIcon />,
       },
       {
         id: "Cloud",

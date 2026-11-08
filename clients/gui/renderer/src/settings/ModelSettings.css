@@ -221,19 +221,7 @@
 .model-settings .provider-save-actions > span {
   flex: 1;
 }
-.model-settings .provider-default-link {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-inline);
-  margin-top: var(--spacing-section);
-  font-size: var(--text-ui-sm);
-  color: var(--color-foreground-subtle);
-}
-.model-settings .provider-default-link button {
-  font-size: inherit;
-  padding-inline: 0;
-}
+
 .model-settings .subscription-settings {
   gap: var(--spacing-field);
 }

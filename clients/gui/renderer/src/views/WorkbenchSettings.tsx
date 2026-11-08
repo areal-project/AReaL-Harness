@@ -155,11 +155,7 @@ export function WorkbenchSettings({
           onConnect={reconnectService}
         />
       ) : settingsTab === "模型服务" ? (
-        <ModelSettings
-          action={action}
-          subscription={snapshot.subscription}
-          onOpenSessionSettings={() => setSettingsTab("会话配置")}
-        />
+        <ModelSettings action={action} subscription={snapshot.subscription} />
       ) : settingsTab === "会话配置" ? (
         <SessionSettings
           key={`${project?.id}:${thread?.id}`}

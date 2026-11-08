@@ -6,7 +6,6 @@ import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { useSettingsOperation } from "./useSettingsOperation.js";
 import { useDraftBlocker, useGuardedNavigation } from "./UnsavedChanges.js";
 import { ModelEditor } from "./ModelEditor.js";
-import { NewSessionModelSetting } from "./NewSessionModelSetting.js";
 import { ChatGPTSubscription, subscriptionStatusLabel } from "./ChatGPTSubscription.js";
 import { useEffect, useState } from "react";
 import {
@@ -47,15 +46,7 @@ import "./ModelSettings.css";
 import type { Action, CommandParams, Data } from "../services.js";
 
 const CHATGPT = "chatgpt";
-export function ModelSettings({
-  action,
-  subscription,
-  onOpenSessionSettings,
-}: {
-  action: Action;
-  subscription?: Data;
-  onOpenSessionSettings: () => void;
-}) {
+export function ModelSettings({ action, subscription }: { action: Action; subscription?: Data }) {
   const { t } = useI18n();
   const navigate = useGuardedNavigation();
   const api = <P extends CommandParams<"providers">>(request: P) => action("providers", request);
@@ -1028,12 +1019,6 @@ export function ModelSettings({
                 : t("settings.modelSettings.selectAProviderOnTheLeftOr")}
             </EmptySettings>
           )}
-          <footer className="provider-default-link">
-            <NewSessionModelSetting action={action} disabled={busy || dirty} compact />
-            <Button variant="link" disabled={busy} onClick={onOpenSessionSettings}>
-              {t("settings.modelSettings.openSessionSettings")}
-            </Button>
-          </footer>
         </div>
       </div>
       {modelDraft && provider && (

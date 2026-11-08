@@ -66,7 +66,7 @@ export function SpecSettingsPage({
       ) : tab === "钩子" ? (
         <HooksSettings action={action} connected onConnect={async () => {}} />
       ) : tab === "模型服务" ? (
-        <ModelSettings action={action} onOpenSessionSettings={() => {}} />
+        <ModelSettings action={action} />
       ) : tab === "会话配置" ? (
         <SessionSettings project={project} action={action} />
       ) : tab === "手机连接" ? (

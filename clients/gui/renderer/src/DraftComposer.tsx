@@ -815,7 +815,10 @@ export function DraftComposer({
           submitDisabledReason={
             desktopUnsupported && !goalMode
               ? t("backend.updateRequired")
-              : (!modelSelectionDisabled && models.missing && t(models.missing)) || undefined
+              : (!modelSelectionDisabled &&
+                  models.missing === "chat.composer.chooseModelReason" &&
+                  t(models.missing)) ||
+                undefined
           }
           submitting={busy}
           submitLabel={goalMode ? "开始目标" : "发送"}

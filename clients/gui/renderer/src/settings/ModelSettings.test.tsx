@@ -63,9 +63,7 @@ import { ModelSettings } from "./ModelSettings.js";
 
 describe("locked provider credential", () => {
   it("shows the recovery status in the provider and API key area", () => {
-    const markup = renderToStaticMarkup(
-      createElement(ModelSettings, { action: vi.fn(), onOpenSessionSettings: vi.fn() }),
-    );
+    const markup = renderToStaticMarkup(createElement(ModelSettings, { action: vi.fn() }));
     expect(markup.match(/settings\.modelSettings\.keychainLocked/g)).toHaveLength(2);
     expect(markup).not.toContain("settings.modelSettings.missingCredentials");
   });
