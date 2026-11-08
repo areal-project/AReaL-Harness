@@ -50,7 +50,7 @@ export const checks = [
       await expect(item(page, DAILY)).toHaveAttribute("aria-pressed", "false");
       const detail = page.getByRole("main", { name: "定时任务会话" });
       await expect(detail.getByRole("heading", { name: WEEKLY })).toBeVisible();
-      await page.getByRole("button", { name: "关闭任务详情" }).click();
+      await page.getByRole("button", { name: "返回任务列表" }).click();
       await expect(page.getByRole("heading", { name: "安排任务" })).toBeVisible();
     },
   },
