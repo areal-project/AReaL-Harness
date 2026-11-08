@@ -737,6 +737,20 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                         reader=None;
                         notify(&mut socket,event).await?;
                     }
+                if let Some(active)=shell.as_mut() {
+                    let refreshed = active.refresh(&host).await;
+                    ensure!(host.loopback.current(device_id.as_deref()), "authentication failed");
+                    match refreshed {
+                        Ok(Some(event))=>notify(&mut socket,event).await?,
+                        Ok(None)=>{},
+                        Err(error)=>{
+                            let mut event=active.invalidated();
+                            event["error"]=read_error(&error);
+                            shell=None;
+                            notify(&mut socket,event).await?;
+                        }
+                    }
+                }
             }
         }
     }

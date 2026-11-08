@@ -530,6 +530,22 @@ impl Connections {
                             .set(session.workbench_claim_sequence.get() + 1);
                     }
                 }
+                if matches!(
+                    method,
+                    "areal/thread/archive"
+                        | "areal/conversation/unarchive"
+                        | "areal/thread/configure"
+                        | "thread/start"
+                        | "areal/thread/start"
+                        | "areal/thread/fork"
+                        | "thread/fork"
+                ) {
+                    session.shell_revision.set(session.shell_revision.get() + 1);
+                    if let Some(shared) = self.sessions.borrow().get(id) {
+                        shared.shell_revision.set(shared.shell_revision.get() + 1);
+                    }
+                    host.changed();
+                }
                 Ok(json!({"result":result.value,"sequence":result.sequence}))
             }
             Err(error) => match error.downcast_ref::<RpcFailure>() {

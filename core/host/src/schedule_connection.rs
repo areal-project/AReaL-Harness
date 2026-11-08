@@ -363,6 +363,17 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
         connection
             .shell_revision
             .set(connection.shell_revision.get() + 1);
+        if connection.terminal
+            && let Some(shared) = host
+                .schedules
+                .connections
+                .sessions
+                .borrow()
+                .get(&connection.project_id)
+        {
+            shared.shell_revision.set(shared.shell_revision.get() + 1);
+        }
+        host.changed();
     }
     let sequence = connection.event_sequence.get() + 1;
     connection.event_sequence.set(sequence);
@@ -1365,6 +1376,7 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
                 .borrow_mut()
                 .insert(id.clone(), session.clone());
             host.schedules.connections.changed.notify_waiters();
+            host.changed();
             task_connection_ready(&host, &session);
             let mut changes = host.changes.subscribe();
             loop {
@@ -1399,13 +1411,13 @@ async fn project(host: Rc<Host>, id: String) -> Result<()> {
         session.require_current(&host)?;
         session.ready.set(true);
         host.schedules.preparation_result(&id, Ok(()))?;
-        host.changed();
         host.schedules
             .connections
             .sessions
             .borrow_mut()
             .insert(id.clone(), session.clone());
         host.schedules.connections.changed.notify_waiters();
+        host.changed();
         task_connection_ready(&host, &session);
         let mut changes = host.changes.subscribe();
         loop {
@@ -1468,6 +1480,7 @@ pub(super) async fn run(host: Rc<Host>) {
                     retry.insert(id.clone(), std::time::Instant::now() + Duration::from_secs(5));
                     host.schedules.connections.sessions.borrow_mut().remove(&id);
                     host.schedules.connections.changed.notify_waiters();
+                    host.changed();
                     let _ = host.schedules.preparation_result(&id, result);
                     host.schedules.wake.notify_one();
                 }

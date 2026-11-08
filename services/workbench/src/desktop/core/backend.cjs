@@ -724,7 +724,7 @@ class CoreBackend {
       }
       if (
         observeForeign &&
-        binding.sourceId !== this.host.sourceId &&
+        (binding.sourceId !== this.host.sourceId || !project.client?.ready) &&
         !this.lifecycleOperations.schedulingSuppressed(project.id)
       )
         this.scheduleReconnect(project);
