@@ -9,7 +9,11 @@ import type {
 } from "./index.js";
 
 /** Host 只给代码时界面显示的原因；Host 自己写的说明原样显示。 */
-const GENERIC_ERRORS = new Set(["Host command failed", "Host read failed"]);
+const GENERIC_ERRORS = new Set([
+  "Host command failed",
+  "Host read failed",
+  "Host read request failed",
+]);
 const ERROR_TEXT: Record<string, string> = {
   FORBIDDEN: "没有权限执行此操作。请在桌面应用的手机与网页设置里重新批准这个浏览器。",
   CAPABILITY_UNAVAILABLE: "桌面后台未运行，此功能暂不可用。",
