@@ -9,6 +9,7 @@ import { useConversationHistory } from "./ConversationHistory.js";
 import { draftModelOptions, draftModelSelection } from "./lib/draftModelSelection.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
 import { recoveredOutcome } from "./recoveryPresentation.js";
+import { ProjectMigrationNotice } from "./views/ProjectMigrationNotice.js";
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 const connection = {
   hostId: "host",
@@ -161,6 +162,67 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
   };
 }
 describe("Host renderer read authority", () => {
+  it("shows migration recovery only for the pending project and clears it after Host publication", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    const blocked = {
+      ...project,
+      projectId: "blocked",
+      alias: { sourceId: "source", projectId: "blocked-alias" },
+      workspace: "/blocked",
+      state: "legacyPending" as const,
+      serviceGeneration: "",
+      summaries: { state: "unknown" as const, items: [] },
+    };
+    const wire = transport(observation, undefined, {
+      projects: [project, blocked],
+      navigation: [
+        {
+          ...navigation,
+          bindings: [
+            ...navigation.bindings,
+            { projectId: "blocked", alias: "blocked-alias", projectless: false },
+          ],
+        },
+      ],
+    });
+    const services = createHostReadServices(undefined, options(wire.factory));
+    const notice = (owner: Snapshot["projects"][number]) =>
+      renderToStaticMarkup(
+        createElement(ProjectMigrationNotice, { hostState: owner.state.hostState }),
+      );
+    try {
+      await until(services);
+      const before = await services.snapshot();
+      const pending = before.projects.find((owner) => owner.id === "blocked-alias")!;
+      expect(pending.state.connected).toBe(false);
+      expect(notice(pending)).toContain('role="status"');
+      expect(notice(before.projects.find((owner) => owner.id === "alias")!)).toBe("");
+      wire.send({
+        event: "shell.updated",
+        ...connection,
+        subscriptionId: "shell",
+        sequence: 1,
+        delta: {
+          projects: {
+            upsert: [{ ...blocked, state: "ready", serviceGeneration: "published-gen" }],
+            remove: [],
+          },
+          navigation: { upsert: [], remove: [] },
+        },
+      });
+      const restored = (await services.snapshot()).projects.find(
+        (owner) => owner.id === "blocked-alias",
+      )!;
+      expect(restored.state.connected).toBe(true);
+      expect(notice(restored)).toBe("");
+      expect(wire.requests.map((request) => request.method)).toEqual(["shell.subscribe"]);
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("preserves a stopped project's terminal state without opening or waking it", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);

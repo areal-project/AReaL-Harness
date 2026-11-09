@@ -49,6 +49,7 @@ import {
   type SidebarNavigationProps,
 } from "../state/useSidebarNavigation.js";
 import { MemoTaskItem } from "../TaskListItem.js";
+import { ProjectMigrationNotice } from "./ProjectMigrationNotice.js";
 
 const SidebarContext = createContext<ReturnType<typeof useSidebarNavigation> | null>(null);
 function useSidebarContext() {
@@ -406,6 +407,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
           </HoverActions>
         )}
       </SidebarDragSurface>
+      <ProjectMigrationNotice hostState={owner.state?.hostState} />
       <div id={`project-threads-${owner.id}`} hidden={collapsed}>
         <ul>
           {rows.slice(0, visibleCount).map((row) => (

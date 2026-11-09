@@ -196,6 +196,14 @@ export const commonMessages = {
     "zh-CN": "项目操作 {project}",
     en: "Actions for project {project}",
   },
+  "common.navigation.migrationPending": {
+    "zh-CN": "迁移暂未完成，其他项目可继续使用。",
+    en: "Migration is pending. Other projects remain available.",
+  },
+  "common.navigation.migrationRecovery": {
+    "zh-CN": "请确认旧版本的任务已停止并退出旧版本，再重新打开此项目以检查迁移状态。",
+    en: "Confirm that tasks in the previous version have stopped, then quit it. Reopen this project to check migration progress.",
+  },
   "common.navigation.moveUp": { "zh-CN": "上移", en: "Move up" },
   "common.navigation.moveDown": { "zh-CN": "下移", en: "Move down" },
   "common.navigation.rename": { "zh-CN": "重命名", en: "Rename" },
