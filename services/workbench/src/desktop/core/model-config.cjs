@@ -34,8 +34,8 @@ class ModelConfiguration {
   constructor(backend, hostVault) {
     this.backend = backend;
     this.hostVault = hostVault;
-    /** @type {{keys:Record<string,string>,migrated:string[],locked:Set<string>}} */
-    this.vault = { keys: {}, migrated: [], locked: new Set() };
+    /** @type {{keys:Record<string,string>,migrated:string[],locked:Set<string>,pending:Set<string>}} */
+    this.vault = { keys: {}, migrated: [], locked: new Set(), pending: new Set() };
     /** @type {Set<string>} */ this.references = new Set();
     /** @type {{data:Array<{id:string,name:string,baseUrl:string,protocol:string,enabled:boolean,models:import('./provider-contract.cjs').ModelConfig[],parameters:import('./provider-contract.cjs').ModelParameters,apiKeyEnv?:string}>,retired?:string[]}|undefined} */
     this.legacy = undefined;
@@ -74,6 +74,7 @@ class ModelConfiguration {
     const names = references ?? source.state.credentials.references;
     if (!strings(names)) throw new Error("Host 凭据来源元数据无效");
     const locked = new Set();
+    const pending = new Set();
     const keys = Object.fromEntries(
       await Promise.all(
         names.map(async (reference) => {
@@ -85,8 +86,9 @@ class ModelConfiguration {
             );
           } catch (error) {
             const code = record(error) ? error.code : undefined;
-            if (code !== "storageLocked" && code !== "storageMissing") throw error;
+            if (code !== "storageLocked" && code !== "storageMissing" && code !== "migrationPending") throw error;
             if (code === "storageLocked") locked.add(reference);
+            if (code === "migrationPending") pending.add(reference);
             diagnostics.record({
               type: "operation",
               name: "model-configuration",
@@ -102,6 +104,7 @@ class ModelConfiguration {
       ),
     );
     this.vault.locked = locked;
+    this.vault.pending = pending;
     this.references = new Set(names);
     this.vault.keys = Object.fromEntries(
       Object.entries(keys).filter(([, value]) => value !== null),
@@ -249,8 +252,8 @@ class ModelConfiguration {
       ...value,
       credentialErrors: Object.fromEntries(
         value.data
-          .filter((item) => item.apiKeyEnv && this.vault.locked.has(item.apiKeyEnv))
-          .map((item) => [item.id, "storageLocked"]),
+          .filter((item) => item.apiKeyEnv && (this.vault.locked.has(item.apiKeyEnv) || this.vault.pending.has(item.apiKeyEnv)))
+          .map((item) => [item.id, this.vault.pending.has(item.apiKeyEnv ?? "") ? "migrationPending" : "storageLocked"]),
       ),
       data: value.data.map((item) => ({
         ...item,

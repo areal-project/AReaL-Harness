@@ -75,7 +75,7 @@ function snapshotProject(backend, project, taskHistoryOwners) {
     summariesLoaded: live?.summariesLoaded === true,
     observationErrors: live?.observationErrors ?? {},
     refreshErrors: live?.refreshErrors ?? {},
-    error: live?.error ?? null,
+    error: live?.error ?? backend.host.migrationError(project.id),
   };
 }
 module.exports = { snapshotProject };

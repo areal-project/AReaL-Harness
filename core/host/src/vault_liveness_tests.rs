@@ -230,6 +230,157 @@ async fn project_preparation_defers_only_proven_optional_subscription_and_recove
     assert!(restored.credential_names.contains(&openai.to_owned()));
 }
 
+#[tokio::test(flavor = "current_thread")]
+async fn project_preparation_isolates_pending_migration_credentials_without_losing_them() {
+    let root = tempfile::tempdir().unwrap();
+    let base = root.path().canonicalize().unwrap();
+    let mut host = schedules::tests::fixture(&base);
+    let mut migration = crate::migration::Migration::new(&host.home).unwrap();
+    migration.vault = crate::vault::Vault::isolated_files(&host.home);
+    let core = base.join("core");
+    let profile = base.join("profile");
+    storage::private_dir(&core).unwrap();
+    storage::private_dir(&profile).unwrap();
+    storage::write(&core.join("projects.json"), &json!([])).unwrap();
+    storage::write(
+        &core.join("provider-credentials.json"),
+        &json!({"keys":{"AREAL_CREDENTIAL_arena":"cipher-a","AREAL_CREDENTIAL_other":"cipher-b"}}),
+    )
+    .unwrap();
+    storage::write(
+        &core.join("subscription-transport.json"),
+        &json!({"token":"cipher-c","port":1234}),
+    )
+    .unwrap();
+    let source = crate::migration::Source {
+        profile,
+        core_home: core,
+        legacy_service_home: base.join("legacy"),
+    };
+    migration.attach(source.clone(), "fixture", None).unwrap();
+    let request = uuid::Uuid::new_v4().to_string();
+    let imported = migration.import(serde_json::from_value(json!({"requestId":request,"expectedGeneration":host.identity.generation,"source":source})).unwrap(), "fixture", &[], &host.journal).unwrap();
+    assert_eq!(imported["sourcePublished"], true);
+    let secrets = imported["pendingSecrets"].as_array().unwrap();
+    let import = |secret: &Value, value: Value| {
+        serde_json::from_value(json!({"requestId":secret["requestId"],"expectedGeneration":host.identity.generation,"migrationId":request,"slot":secret["slot"],"sourceDigest":secret["sourceDigest"],"value":value})).unwrap()
+    };
+    let arena_secret = secrets
+        .iter()
+        .find(|v| v["slot"]["reference"] == "AREAL_CREDENTIAL_arena")
+        .unwrap();
+    migration
+        .import_secret_async(import(arena_secret, json!("synthetic-arena")), "fixture")
+        .await
+        .unwrap();
+    let deferred = ["AREAL_CREDENTIAL_other", "AREAL_CREDENTIAL_areal_openai"];
+    std::fs::write(host.home.join("config.toml"), "schema_version=2\n[model]\nname='fixture'\n[model.providers.default]\nendpoint='http://127.0.0.1:1/v1/chat/completions'\napi_key_env='AREAL_CREDENTIAL_arena'\n").unwrap();
+    storage::private_dir(&host.bin).unwrap();
+    for name in [
+        "areal",
+        "areal-runtime",
+        "areal-runtime-fs",
+        "areal-runtime-reaper",
+    ] {
+        std::fs::write(host.bin.join(name), "fixture").unwrap();
+    }
+    host.migration = migration.into();
+    for name in deferred {
+        let mut slots = host.slots.borrow_mut();
+        let slot = slots.get_mut("project").unwrap();
+        slot.credentials
+            .insert(name.into(), "do-not-use-cached-token".into());
+        slot.imported_credentials.insert(name.into());
+    }
+    let arena = Ensure {
+        request_id: uuid::Uuid::new_v4().to_string(),
+        expected_generation: host.identity.generation.clone(),
+        project_id: "project".into(),
+        no_auto_restart: false,
+        resume_scheduling: false,
+        launch_inputs: Some(LaunchInputs {
+            workspace: base.join("workspace"),
+            cwd: base.join("workspace"),
+            config_home: host.home.clone(),
+            homedir: Some(base.join("isolated-home")),
+            config_path: None,
+            deployment_path: None,
+            schedule_preparation: None,
+            environment: BTreeMap::new(),
+            credential_names: vec![
+                "AREAL_CREDENTIAL_arena".into(),
+                deferred[0].into(),
+                deferred[1].into(),
+            ],
+            options: areal_local_service::LocalArgs {
+                model: Some("fixture".into()),
+                ..Default::default()
+            },
+        }),
+        credentials: BTreeMap::new(),
+    };
+    let prepared = host.ensure_inner(&arena).await.unwrap_err();
+    assert!(
+        prepared.to_string().contains("missing activation receipt"),
+        "safe Arena launch failed: {prepared:#}"
+    );
+    let saved_path = host
+        .home
+        .join("host/launch")
+        .join(storage::digest(b"project"))
+        .join("inputs.json");
+    let projected: LaunchInputs = storage::read(&saved_path).unwrap();
+    for name in deferred {
+        assert!(!projected.credential_names.contains(&name.to_owned()));
+        assert_eq!(
+            host.slots.borrow()["project"].credentials[name],
+            "do-not-use-cached-token"
+        );
+    }
+    for selected in [deferred[0], deferred[1], "UNRESOLVED_CREDENTIAL"] {
+        let mut explicit = arena.clone();
+        explicit.launch_inputs.as_mut().unwrap().options.api_key_env = Some(selected.into());
+        let failure = host.ensure_inner(&explicit).await.unwrap_err();
+        assert!(
+            failure.to_string().contains("migrationPending"),
+            "{failure:#}"
+        );
+    }
+    assert_eq!(
+        host.migration.operation(&request).unwrap().unwrap()["state"],
+        "acceptedPending"
+    );
+    for secret in secrets
+        .iter()
+        .filter(|v| v["slot"]["reference"] != "AREAL_CREDENTIAL_arena")
+    {
+        let value = if secret["slot"]["kind"] == "subscriptionTransport" {
+            json!({"token":"synthetic-restored","port":1234})
+        } else {
+            json!("synthetic-restored")
+        };
+        host.migration
+            .import_secret_async(import(secret, value), "fixture")
+            .await
+            .unwrap();
+    }
+    for selected in deferred {
+        let mut explicit = arena.clone();
+        explicit.launch_inputs.as_mut().unwrap().options.api_key_env = Some(selected.into());
+        assert!(
+            host.ensure_inner(&explicit)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("missing activation receipt")
+        );
+        assert_eq!(
+            host.slots.borrow()["project"].credentials[selected],
+            "synthetic-restored"
+        );
+    }
+}
+
 async fn blocked_write(handoff: bool) {
     let root = tempfile::tempdir().unwrap();
     let root_path = root.path().to_owned();
@@ -458,4 +609,77 @@ async fn blocked_write(handoff: bool) {
         status_progress && operation_progress,
         "Keychain 写屏障阻塞了其他已认证连接的状态和原回执读取"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn source_imports_on_one_authenticated_connection_progress_by_slot() {
+    tokio::task::LocalSet::new().run_until(async {
+        let root = tempfile::tempdir().unwrap();
+        let base = root.path().canonicalize().unwrap();
+        let mut host = schedules::tests::fixture(&base);
+        let mut migration = crate::migration::Migration::new(&host.home).unwrap();
+        migration.vault = crate::vault::Vault::isolated_files(&host.home);
+        let core = base.join("import-core");
+        let profile = base.join("import-profile");
+        storage::private_dir(&core).unwrap();
+        storage::private_dir(&profile).unwrap();
+        storage::write(&core.join("projects.json"), &json!([])).unwrap();
+        let keys: BTreeMap<_,_> = (0..17).map(|index| (format!("AREAL_CREDENTIAL_{index:02}"), "cipher")).collect();
+        storage::write(&core.join("provider-credentials.json"), &json!({"keys":keys})).unwrap();
+        let source = json!({"profile":profile,"coreHome":core,"legacyServiceHome":base.join("legacy")});
+        let gate = Arc::new(WriteGate::default());
+        let release = ReleaseOnDrop(gate.clone());
+        let (entered, mut observed) = tokio::sync::mpsc::unbounded_channel();
+        let writes = Arc::new(AtomicUsize::new(0));
+        let counted = writes.clone();
+        migration.vault.before_write = Some(Arc::new(move || {
+            if counted.fetch_add(1,Ordering::SeqCst) < 16 {
+                entered.send(()).unwrap();
+                gate.wait();
+            }
+        }));
+        host.migration = migration.into();
+        let generation = host.identity.generation.clone();
+        let host = Rc::new(host);
+        let (server, client) = std::os::unix::net::UnixStream::pair().unwrap();
+        server.set_nonblocking(true).unwrap();
+        let owned = host.clone();
+        let server = tokio::task::spawn_local(async move { connection_loop(owned,UnixStream::from_std(server).unwrap()).await });
+        let mut client = authenticate(client).await;
+        send(&mut client,"gui.attachSource",json!({"source":source})).await;
+        assert!(wire::read(&mut client).await.unwrap().unwrap().get("error").is_none());
+        let migration_id = uuid::Uuid::new_v4().to_string();
+        send(&mut client,"gui.import",json!({"requestId":migration_id,"expectedGeneration":generation,"source":source})).await;
+        let imported = wire::read(&mut client).await.unwrap().unwrap();
+        assert_eq!(imported["result"]["sourcePublished"],true);
+        let secrets = imported["result"]["pendingSecrets"].as_array().unwrap();
+        let params = |secret:&Value| json!({"requestId":secret["requestId"],"expectedGeneration":generation,"migrationId":migration_id,"slot":secret["slot"],"sourceDigest":secret["sourceDigest"],"value":"synthetic"});
+        for (index,secret) in secrets.iter().take(16).enumerate() {
+            wire::write(client.get_mut(), &json!({"version":1,"id":format!("slow-{index}"),"method":"gui.importSecret","params":params(secret)})).await.unwrap();
+            tokio::time::timeout(Duration::from_secs(3),observed.recv()).await.unwrap().unwrap();
+        }
+        for _ in 0..32 {
+            send(&mut client,"gui.importSecret",params(&secrets[0])).await;
+            let duplicate=tokio::time::timeout(Duration::from_secs(3),wire::read(&mut client)).await.unwrap().unwrap().unwrap();
+            assert_eq!(duplicate["result"]["state"],"acceptedPending");
+            assert_eq!(duplicate["result"]["requestId"],secrets[0]["requestId"]);
+            assert_eq!(writes.load(Ordering::SeqCst),16);
+        }
+        wire::write(client.get_mut(), &json!({"version":1,"id":"fast","method":"gui.importSecret","params":params(&secrets[16])})).await.unwrap();
+        let fast = tokio::time::timeout(Duration::from_secs(3),wire::read(&mut client)).await.expect("independent slot waited behind slow import").unwrap().unwrap();
+        assert_eq!(fast["id"],"fast");
+        assert_eq!(fast["result"]["state"],"completed");
+        send(&mut client,"host.operation",json!({"requestId":secrets[0]["requestId"]})).await;
+        let pending = wire::read(&mut client).await.unwrap().unwrap();
+        assert_eq!(pending["result"]["operation"]["state"],"acceptedPending");
+        drop(release);
+        for _ in 0..16 {
+            let slow = wire::read(&mut client).await.unwrap().unwrap();
+            assert!(slow["id"].as_str().unwrap().starts_with("slow-"));
+            assert_eq!(slow["result"]["state"],"completed");
+        }
+        assert_eq!(writes.load(Ordering::SeqCst),17);
+        drop(client);
+        server.await.unwrap().unwrap();
+    }).await;
 }

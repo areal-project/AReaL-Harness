@@ -433,10 +433,10 @@ class HostClient {
   retirementStatus(migrationId) {
     return this.request("gui.retirementStatus", { migrationId });
   }
-  /** @param {string} migrationId @param {{slot:unknown,sourceDigest:string}} secret @param {unknown} value */
+  /** @param {string} migrationId @param {{slot:unknown,sourceDigest:string,requestId?:string}} secret @param {unknown} value */
   importSecret(migrationId, secret, value) {
     return this.request("gui.importSecret", {
-      requestId: randomUUID(),
+      requestId: secret.requestId ?? randomUUID(),
       expectedGeneration: this.generation,
       migrationId,
       slot: secret.slot,

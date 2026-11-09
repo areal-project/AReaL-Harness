@@ -533,7 +533,12 @@ test("foreign Host projects retain their own model and subscription authorities"
 
 const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 test("credential failures isolate a provider and a later refresh restores it", async (t) => {
-  const names = ["AREAL_CREDENTIAL_locked", "AREAL_CREDENTIAL_missing", "AREAL_CREDENTIAL_ok"];
+  const names = [
+    "AREAL_CREDENTIAL_locked",
+    "AREAL_CREDENTIAL_missing",
+    "AREAL_CREDENTIAL_ok",
+    "AREAL_CREDENTIAL_pending",
+  ];
   const state = { sourceId: "source", credentials: { references: names } };
   const backend = {
     host: { sourceId: "source", source: {}, state, client: { sourceState: async () => state } },
@@ -545,7 +550,12 @@ test("credential failures isolate a provider and a later refresh restores it", a
       calls.push({ slot, options });
       if (!available && slot.reference !== names[2])
         throw Object.assign(new Error("sensitive detail"), {
-          code: slot.reference === names[0] ? "storageLocked" : "storageMissing",
+          code:
+            slot.reference === names[0]
+              ? "storageLocked"
+              : slot.reference === names[3]
+                ? "migrationPending"
+                : "storageMissing",
         });
       return { value: `value-${slot.reference}` };
     },
@@ -568,13 +578,22 @@ test("credential failures isolate a provider and a later refresh restores it", a
   assert.deepEqual(model.environment(), { [names[2]]: `value-${names[2]}` });
   assert.equal(model.key({ apiKeyEnv: names[0] }), "");
   assert.equal(model.key({ apiKeyEnv: names[1] }), "");
-  assert.deepEqual(events.map((event) => event.code).sort(), ["storageLocked", "storageMissing"]);
+  assert.equal(model.key({ apiKeyEnv: names[3] }), "");
+  assert.equal(model.vault.pending.has(names[3]), true);
+  assert.equal(model.vault.locked.has(names[3]), false);
+  assert.deepEqual(events.map((event) => event.code).sort(), [
+    "migrationPending",
+    "storageLocked",
+    "storageMissing",
+  ]);
   assert(!JSON.stringify(events).includes("sensitive detail"));
   assert(calls.every(({ options }) => options.interactionAllowed === false));
   available = true;
   await model.refreshCredentials();
   assert.equal(model.key({ apiKeyEnv: names[0] }), `value-${names[0]}`);
   assert.equal(model.key({ apiKeyEnv: names[1] }), `value-${names[1]}`);
+  assert.equal(model.key({ apiKeyEnv: names[3] }), `value-${names[3]}`);
+  assert.equal(model.vault.pending.size, 0);
 });
 
 test("transport and invalid credential errors propagate", async () => {

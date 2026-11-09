@@ -262,22 +262,18 @@ pub(super) fn config_inputs(
     }
 }
 
-pub(super) fn subscription_is_optional(home: &Path, inputs: &LaunchInputs) -> bool {
-    // 只依据启动所用的同一规范解析确认独立供应商；缺省、歧义和解析失败都等待原订阅操作。
-    areal_config::load_management_config(&config_inputs(home, inputs, &BTreeMap::new()))
-        .ok()
-        .is_some_and(|config| {
-            !config.model.name.is_empty()
-                && !config.model.endpoint.is_empty()
-                && config
-                    .model
-                    .api_key_env
-                    .as_deref()
-                    .is_some_and(|reference| {
-                        reference.starts_with("AREAL_CREDENTIAL_")
-                            && reference != "AREAL_CREDENTIAL_areal_openai"
-                    })
-        })
+pub(super) fn selected_credential(home: &Path, inputs: &LaunchInputs) -> Option<String> {
+    // 只依据启动所用的同一规范解析确认依赖；缺省、歧义和解析失败都保守等待。
+    let config =
+        areal_config::load_management_config(&config_inputs(home, inputs, &BTreeMap::new()))
+            .ok()?;
+    if config.model.name.is_empty() || config.model.endpoint.is_empty() {
+        return None;
+    }
+    config
+        .model
+        .api_key_env
+        .filter(|reference| reference.starts_with("AREAL_CREDENTIAL_"))
 }
 
 pub(crate) fn prepare(

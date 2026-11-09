@@ -78,7 +78,16 @@ class NativeRemote {
         ? resolve(__dirname, "../../../../../clients/gui/renderer/dist")
         : join(process.resourcesPath, "areal-gui"),
     );
-    this.config = await this.storage.init();
+    try {
+      this.config = await this.storage.init();
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "migrationPending")) throw error;
+      this.view.migrationError = "手机连接身份尚未恢复，请在凭据可用后重新打开应用。";
+      this.view.directError = this.view.migrationError;
+      this.view.relayError = this.view.migrationError;
+      await this.close();
+      return;
+    }
     try {
       const saved = JSON.parse(
         await readFile(join(this.backend.home, "host-remote-gateway-operation.json"), "utf8"),
@@ -261,6 +270,8 @@ class NativeRemote {
   /** @param {unknown} request */
   control(request) {
     if (!isRemoteRequest(request)) throw new Error("无效手机设置参数");
+    if (this.closed && request.operation === "status" && this.view.migrationError)
+      return Promise.resolve(this.view);
     if (this.closed) throw new Error("Host Remote 连接已关闭");
     const task = (this.writes ?? Promise.resolve())
       .catch(() => {})

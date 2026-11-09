@@ -534,6 +534,7 @@ class CoreBackend {
         : startupTrace("core.start_project", { projectId: id });
     trace?.advance("journal");
     try {
+      await this.host.resumeMigration(id);
       const project = await this.loadProjectJournal(id);
       if (project.client?.ready && !project.resourceInitializing) {
         if (resumeScheduling) await this.launch(project, { resumeScheduling: true });

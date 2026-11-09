@@ -839,7 +839,7 @@ class SharedCoreBackend {
     });
     try {
       if (recover) await source.client.connect(options.hostHome);
-      else await source.init();
+      else await source.init({ deferCredentials: true });
       const owner = await source.client.request("backend.ensure", {
         profile: options.guiProfile,
         options: {

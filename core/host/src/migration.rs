@@ -18,6 +18,7 @@ use std::{
 };
 
 mod prior_boot;
+mod progressive;
 pub(crate) mod retirement;
 
 pub(crate) const FENCE: &str = "AREAL_HOST_MIGRATED\n";
@@ -127,11 +128,15 @@ struct Record {
     source_id: String,
     source: Source,
     phase: Phase,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    progressive: bool,
     manifest_digest: String,
     bindings: Vec<Binding>,
     originals: Vec<OriginalFile>,
     secrets: Vec<Secret>,
     vault_receipts: Vec<vault::Receipt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    verified_remote_entry: Option<String>,
     fences: Vec<String>,
     blockers: Vec<Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -328,12 +333,24 @@ impl Migration {
                 !r.vault_receipts.iter().any(|receipt| {
                     receipt.slot == s.slot
                         && receipt.source_digest == s.source_digest
-                        && receipt.state == "completed"
+                        && Self::secret_ready(r, receipt)
                 })
+            })
+            .map(|secret| {
+                let mut value = serde_json::to_value(secret).expect("serializable secret manifest");
+                value["requestId"] = json!(
+                    r.vault_receipts
+                        .iter()
+                        .find(|receipt| receipt.slot == secret.slot
+                            && receipt.source_digest == secret.source_digest)
+                        .map(|receipt| receipt.request_id.as_str())
+                        .unwrap_or(&secret.entry_id)
+                );
+                value
             })
             .collect();
         Ok(
-            json!({"kind":if r.phase==Phase::LegacyPending {"legacyPending"}else{"blocked"},"requestId":r.request_id,"migrationId":r.request_id,"sourceId":r.source_id,"phase":r.phase,"blockers":r.blockers,"pendingSecrets":secrets,"bindings":r.bindings,"manifestDigest":r.manifest_digest}),
+            json!({"kind":if r.blockers.iter().any(|blocker| blocker["code"] == "legacyPending") {"legacyPending"}else{"blocked"},"requestId":r.request_id,"migrationId":r.request_id,"sourceId":r.source_id,"phase":r.phase,"blockers":r.blockers,"pendingSecrets":secrets,"bindings":r.bindings,"manifestDigest":r.manifest_digest,"sourcePublished":self.source_ready(r)?}),
         )
     }
     fn committed(&self, r: &Record) -> Result<Option<Commit>> {
@@ -357,16 +374,32 @@ impl Migration {
     pub fn published(&self) -> Result<Vec<ProjectRegistration>> {
         let mut output = Vec::new();
         for r in self.records()? {
-            if self.committed(&r)?.is_some() {
-                output.extend(r.bindings.into_iter().map(|b| b.registration));
+            for binding in &r.bindings {
+                if self.project_ready(&r, binding)? {
+                    output.push(binding.registration.clone());
+                }
             }
         }
         Ok(output)
     }
+    pub(crate) fn pending_projects(&self) -> Result<Vec<(ProjectRegistration, String)>> {
+        let mut projects = Vec::new();
+        for record in self.records()? {
+            if !self.source_ready(&record)? {
+                continue;
+            }
+            for binding in &record.bindings {
+                if !self.project_ready(&record, binding)? {
+                    projects.push((binding.registration.clone(), record.request_id.clone()));
+                }
+            }
+        }
+        Ok(projects)
+    }
     fn profile_source(&self, profile: &Path) -> Result<Record> {
         let mut selected = None;
         for record in self.records()? {
-            if record.source.profile != profile || self.committed(&record)?.is_none() {
+            if record.source.profile != profile || !self.source_ready(&record)? {
                 continue;
             }
             if selected.is_some() {
@@ -384,7 +417,7 @@ impl Migration {
         let mut selected = None;
         let mut matching_profiles = 0;
         for record in self.records()? {
-            if record.source.profile == source.profile && self.committed(&record)?.is_some() {
+            if record.source.profile == source.profile && self.source_ready(&record)? {
                 matching_profiles += 1;
                 if record.source == source {
                     selected = Some(record);
@@ -401,6 +434,16 @@ impl Migration {
             ));
         }
         let credentials = self.credential_metadata(&record)?;
+        let pending_projects = record
+            .bindings
+            .iter()
+            .filter_map(|binding| match self.project_ready(&record, binding) {
+                Ok(false) => Some(Ok(binding.project_id.clone())),
+                Ok(true) => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let progress = json!({"state":if self.committed(&record)?.is_some(){"completed"}else{"pending"},"pendingProjects":pending_projects});
         let mut bindings = record.bindings;
         for binding in &mut bindings {
             if let Some(registration) = current.iter().find(|r| r.project_id == binding.project_id)
@@ -449,7 +492,7 @@ impl Migration {
             });
         }
         Ok(
-            json!({"sourceId":record.source_id,"migrationId":record.request_id,"source":source,"bindings":bindings,"credentials":credentials}),
+            json!({"sourceId":record.source_id,"migrationId":record.request_id,"source":source,"bindings":bindings,"credentials":credentials,"migration":progress}),
         )
     }
     pub fn validate_registration(
@@ -506,8 +549,8 @@ impl Migration {
     }
     pub fn unpublished_reserved(&self, project: &str) -> Result<bool> {
         for record in self.records()? {
-            if record.bindings.iter().any(|b| b.project_id == project)
-                && self.committed(&record)?.is_none()
+            if let Some(binding) = record.bindings.iter().find(|b| b.project_id == project)
+                && !self.project_ready(&record, binding)?
             {
                 return Ok(true);
             }
@@ -522,7 +565,7 @@ impl Migration {
         }))
     }
     pub fn operation(&self, id: &str) -> Result<Option<Value>> {
-        for mut r in self.records()? {
+        for r in self.records()? {
             if let Some(operation) = self.retirement_operation(&r, id)? {
                 return Ok(Some(operation));
             }
@@ -532,15 +575,6 @@ impl Migration {
                 ));
             }
             if let Some(index) = r.vault_receipts.iter().position(|v| v.request_id == id) {
-                if r.vault_receipts[index].state != "completed"
-                    && self
-                        .vault
-                        .read(&r.vault_receipts[index].entry_id)?
-                        .is_some()
-                {
-                    r.vault_receipts[index].state = "completed".into();
-                    self.save(&r)?;
-                }
                 let receipt = &r.vault_receipts[index];
                 return Ok(Some(
                     json!({"requestId":id,"method":"gui.importSecret","state":receipt.state,"result":receipt}),
@@ -548,6 +582,44 @@ impl Migration {
             }
         }
         Ok(None)
+    }
+    pub async fn operation_async(&self, id: &str) -> Result<Option<Value>> {
+        for record in self.records()? {
+            let Some(receipt) = record
+                .vault_receipts
+                .iter()
+                .find(|receipt| receipt.request_id == id && receipt.state != "completed")
+            else {
+                continue;
+            };
+            if self.vault.slot_in_flight(&receipt.slot) {
+                return self.operation(id);
+            }
+            let entry = receipt.entry_id.clone();
+            let value = self
+                .vault
+                .run(
+                    json!({"slot":receipt.slot,"entryId":entry}),
+                    move |worker| worker.read(&entry),
+                )
+                .await?;
+            if let Some(value) = value {
+                if receipt.slot == vault::Slot::RemoteIdentity {
+                    self.check_remote_owner(&record)?;
+                    crate::remote_state::validate(
+                        &value,
+                        &record
+                            .bindings
+                            .iter()
+                            .map(|binding| binding.alias.legacy_project_id.clone())
+                            .collect::<Vec<_>>(),
+                    )?;
+                }
+                self.complete_secret(&record.request_id, receipt.clone())?;
+            }
+            break;
+        }
+        self.operation(id)
     }
     pub fn import(
         &self,
@@ -605,11 +677,13 @@ impl Migration {
                 source_id: uuid::Uuid::new_v4().to_string(),
                 source,
                 phase: Phase::AwaitingSource,
+                progressive: false,
                 manifest_digest: String::new(),
                 bindings: Vec::new(),
                 originals: Vec::new(),
                 secrets: Vec::new(),
                 vault_receipts: Vec::new(),
+                verified_remote_entry: None,
                 fences: Vec::new(),
                 blockers: Vec::new(),
                 prior_boot_adoptions: Vec::new(),
@@ -620,7 +694,7 @@ impl Migration {
         if self.committed(&record)?.is_some() {
             return self.result(&record);
         }
-        if !self.guarded(&record, connection) {
+        if !self.guarded(&record, connection) && !self.source_ready(&record)? {
             record.blockers = vec![
                 json!({"code":"sourceGuardRequired","message":"Attach from the adapter holding the original singleton after freezing and flushing writers"}),
             ];
@@ -633,6 +707,7 @@ impl Migration {
                 record.bindings.clear();
                 record.secrets.clear();
                 record.vault_receipts.clear();
+                record.verified_remote_entry = None;
                 record.manifest_digest.clear();
                 record.prior_boot_adoptions.clear();
             }
@@ -640,126 +715,9 @@ impl Migration {
                 self.snapshot(&mut record, existing)?;
                 self.save(&record)?;
             }
-            if record.secrets.iter().any(|s| {
-                !record.vault_receipts.iter().any(|v| {
-                    v.slot == s.slot && v.source_digest == s.source_digest && v.state == "completed"
-                })
-            }) {
-                record.phase = Phase::SecretsPending;
-                record.blockers = vec![
-                    json!({"code":"credentialsRequired","message":"Import all manifest credential slots before handing off writers"}),
-                ];
-                self.save(&record)?;
-                return self.result(&record);
-            }
         }
-        let (locks, adoptions) = match self.legacy_locks(&record) {
-            Ok(evidence) => evidence,
-            Err(e) => {
-                record.blockers = vec![json!({"code":"legacyPending","message":e.to_string()})];
-                if record.phase != Phase::Fencing {
-                    record.phase = Phase::LegacyPending;
-                }
-                self.save(&record)?;
-                return self.result(&record);
-            }
-        };
-        record.prior_boot_adoptions = adoptions;
-        self.save(&record)?;
-        self.validate_bindings(&record, existing)?;
-        self.check_remote(&record)?;
-        if !self.guarded(&record, connection) {
-            return Err(error("sourceGuardRequired", "source guard was released"));
-        }
-        self.verify_sources(&record)?;
-        for path in [
-            directory.join("backups"),
-            directory.clone(),
-            self.home.join("host/imports"),
-            self.home.join("host"),
-            self.home.clone(),
-        ] {
-            File::open(path)?.sync_all()?;
-        }
-        record.phase = Phase::Fencing;
-        record.blockers.clear();
-        self.save(&record)?;
-        for name in std::iter::once("provider-credentials.json".to_owned())
-            .chain(record.bindings.iter().flat_map(|b| {
-                [
-                    format!("{}-pending.json", b.alias.legacy_project_id),
-                    format!("{}-outcomes.json", b.alias.legacy_project_id),
-                ]
-            }))
-            .collect::<Vec<_>>()
-        {
-            if !self.guarded(&record, connection) {
-                return Err(error(
-                    "sourceGuardRequired",
-                    "source connection closed during fencing",
-                ));
-            }
-            let original = record
-                .originals
-                .iter()
-                .find(|f| f.relative_name == name)
-                .context("fence absent from manifest")?;
-            let bytes = self.fence_bytes(&record, original)?;
-            let path = record.source.core_home.join(&name);
-            if read_bytes(&path)?.as_deref() != Some(bytes.as_slice()) {
-                atomic_bytes(&path, &bytes)?;
-            }
-            if !record.fences.contains(&name) {
-                record.fences.push(name);
-                self.save(&record)?;
-            }
-        }
-        self.verify_sources(&record)?;
-        for binding in &record.bindings {
-            let pending = self
-                .original_json(
-                    &record,
-                    &format!("{}-pending.json", binding.alias.legacy_project_id),
-                )?
-                .unwrap_or_else(|| json!([]));
-            let outcomes = self
-                .original_json(
-                    &record,
-                    &format!("{}-outcomes.json", binding.alias.legacy_project_id),
-                )?
-                .unwrap_or_else(|| json!({}));
-            ensure!(
-                pending.is_array() && outcomes.is_object(),
-                "invalid original journal shape"
-            );
-            journal.initialize(
-                &binding.project_id,
-                json!({"version":1,"pending":pending,"outcomes":outcomes}),
-            )?;
-        }
-        if !self.guarded(&record, connection) {
-            return Err(error(
-                "sourceGuardRequired",
-                "source connection closed before publication",
-            ));
-        }
-        self.validate_bindings(&record, existing)?;
-        for adoption in &record.prior_boot_adoptions {
-            prior_boot::revalidate(&self.home, &record, adoption)?;
-        }
-        let mut receipt = json!({"requestId":record.request_id,"migrationId":record.request_id,"sourceId":record.source_id,"source":record.source,"manifestDigest":record.manifest_digest,"bindings":record.bindings,"vaultReceipts":record.vault_receipts,"fences":record.fences,"state":"completed","retirement":"pending","retainedClientData":["cloud.json"]});
-        if !record.prior_boot_adoptions.is_empty() {
-            receipt["priorBootAdoptions"] = serde_json::to_value(&record.prior_boot_adoptions)?;
-        }
-        let commit = Commit {
-            bundle_digest: self.bundle_digest(&record)?,
-            receipt,
-        };
-        storage::write(&directory.join("committed.json"), &commit)?;
-        record.phase = Phase::Committed;
-        self.save(&record)?;
-        drop(locks);
-        self.result(&record)
+        // 包括旧版 Fencing：复用原快照、fence 和锁逐项恢复，不重新快照或读取凭据。
+        self.import_progressive(&mut record, connection, existing, journal)
     }
     fn validate_bindings(&self, record: &Record, existing: &[ProjectRegistration]) -> Result<()> {
         let reserved = self
@@ -1180,7 +1138,7 @@ impl Migration {
             }
         }
     }
-    pub fn import_secret(&self, input: ImportSecret, connection: &str) -> Result<Value> {
+    fn prepare_secret(&self, input: &ImportSecret, connection: &str) -> Result<vault::Receipt> {
         wire::request_id(&input.request_id)?;
         let mut r = self.read(&input.migration_id)?;
         if !self.guarded(&r, connection) {
@@ -1212,6 +1170,16 @@ impl Migration {
                 "requestId already belongs to another import operation",
             ));
         }
+        if input.slot == vault::Slot::RemoteIdentity {
+            self.check_remote_owner(&r)?;
+            crate::remote_state::validate(
+                &input.value,
+                &r.bindings
+                    .iter()
+                    .map(|binding| binding.alias.legacy_project_id.clone())
+                    .collect::<Vec<_>>(),
+            )?;
+        }
         match &input.slot {
             vault::Slot::ProviderCredential { .. } => ensure!(
                 input.value.as_str().is_some_and(|s| !s.is_empty()),
@@ -1222,29 +1190,29 @@ impl Migration {
                 "credential slot requires the complete object payload"
             ),
         }
-        for receipt in r.vault_receipts.iter().filter(|v| v.slot == input.slot) {
-            if let Some(value) = self.vault.read(&receipt.entry_id)?
-                && value != input.value
-            {
-                return Err(error(
-                    "migrationConflict",
-                    "same source credential reference contains different values",
-                ));
-            }
-        }
-        let mut receipt = r
+        let receipt = r
             .vault_receipts
             .iter()
             .find(|v| v.slot == input.slot && v.source_digest == input.source_digest)
             .cloned()
             .unwrap_or_else(|| vault::Receipt {
-                request_id: input.request_id,
-                slot: input.slot,
+                request_id: input.request_id.clone(),
+                slot: input.slot.clone(),
                 revision: 1,
                 entry_id: secret.entry_id,
-                source_digest: input.source_digest,
+                source_digest: input.source_digest.clone(),
                 state: "acceptedPending".into(),
             });
+        if self.vault.slot_in_flight(&input.slot) {
+            let intent = json!({"slot":input.slot,"entryId":receipt.entry_id,"requestId":receipt.request_id,"value":input.value});
+            ensure!(
+                self.vault.import_in_flight(&intent)?,
+                error(
+                    "storageBusy",
+                    "another credential transaction owns this slot"
+                )
+            );
+        }
         if !r
             .vault_receipts
             .iter()
@@ -1253,14 +1221,84 @@ impl Migration {
             r.vault_receipts.push(receipt.clone());
             self.save(&r)?;
         }
-        self.vault.write(&receipt.entry_id, &input.value)?;
+        Ok(receipt)
+    }
+    fn secret_ready(record: &Record, receipt: &vault::Receipt) -> bool {
+        receipt.state == "completed"
+            && (receipt.slot != vault::Slot::RemoteIdentity
+                || record.verified_remote_entry.as_deref() == Some(receipt.entry_id.as_str()))
+    }
+    fn complete_secret(&self, migration_id: &str, mut receipt: vault::Receipt) -> Result<Value> {
+        // 另一槽可在 I/O 期间完成；回到 Host 事件循环后合并最新记录。
+        let mut r = self.read(migration_id)?;
         receipt.state = "completed".into();
+        if receipt.slot == vault::Slot::RemoteIdentity {
+            r.verified_remote_entry = Some(receipt.entry_id.clone());
+        }
         *r.vault_receipts
             .iter_mut()
-            .find(|v| v.request_id == receipt.request_id)
+            .find(|entry| entry.request_id == receipt.request_id)
             .context("missing prepared vault receipt")? = receipt.clone();
         self.save(&r)?;
         Ok(serde_json::to_value(receipt)?)
+    }
+    pub async fn import_secret_async(
+        &self,
+        input: ImportSecret,
+        connection: &str,
+    ) -> Result<Value> {
+        let receipt = self.prepare_secret(&input, connection)?;
+        let intent = json!({"slot":input.slot,"entryId":receipt.entry_id,"requestId":receipt.request_id,"value":input.value});
+        if self.vault.import_in_flight(&intent)? {
+            return Ok(serde_json::to_value(receipt)?);
+        }
+        let related = self
+            .read(&input.migration_id)?
+            .vault_receipts
+            .into_iter()
+            .filter(|entry| entry.slot == input.slot)
+            .map(|entry| entry.entry_id)
+            .collect::<Vec<_>>();
+        let entry = receipt.entry_id.clone();
+        self.vault
+            .run(intent, move |worker| {
+                for previous in related {
+                    if let Some(value) = worker.read(&previous)? {
+                        ensure!(
+                            value == input.value,
+                            error(
+                                "migrationConflict",
+                                "same source credential reference contains different values"
+                            )
+                        );
+                    }
+                }
+                worker.write(&entry, &input.value)
+            })
+            .await?;
+        self.complete_secret(&input.migration_id, receipt)
+    }
+    #[cfg(test)]
+    pub fn import_secret(&self, input: ImportSecret, connection: &str) -> Result<Value> {
+        let receipt = self.prepare_secret(&input, connection)?;
+        for previous in self
+            .read(&input.migration_id)?
+            .vault_receipts
+            .iter()
+            .filter(|entry| entry.slot == input.slot)
+        {
+            if let Some(value) = self.vault.read(&previous.entry_id)? {
+                ensure!(
+                    value == input.value,
+                    error(
+                        "migrationConflict",
+                        "same source credential reference contains different values"
+                    )
+                );
+            }
+        }
+        self.vault.write(&receipt.entry_id, &input.value)?;
+        self.complete_secret(&input.migration_id, receipt)
     }
     fn legacy_locks(&self, r: &Record) -> Result<(Vec<File>, Vec<prior_boot::Adoption>)> {
         let mut locks = Vec::new();
@@ -1357,62 +1395,36 @@ impl Migration {
         }
         Ok((locks, adoptions))
     }
-    fn check_remote(&self, r: &Record) -> Result<()> {
-        let current = r
-            .vault_receipts
-            .iter()
-            .find(|v| v.slot == vault::Slot::RemoteIdentity);
-        let Some(current) = current else {
-            return Ok(());
-        };
-        if crate::remote_state::RemoteState::selected_source(&self.home)?
-            .is_some_and(|source| source != r.source_id)
-        {
-            return Err(error(
+    fn check_remote_owner(&self, r: &Record) -> Result<()> {
+        ensure!(
+            crate::remote_state::RemoteState::selected_source(&self.home)?
+                .is_none_or(|source| source == r.source_id),
+            error(
                 "migrationConflict",
-                "Remote configuration belongs to another source",
-            ));
-        }
-        let value = self
-            .vault
-            .read(&current.entry_id)?
-            .context("missing imported Remote vault entry")?;
-        crate::remote_state::validate(
-            &value,
-            &r.bindings
+                "Remote configuration belongs to another source"
+            )
+        );
+        ensure!(
+            !self
+                .records()?
                 .iter()
-                .map(|b| b.alias.legacy_project_id.clone())
-                .collect::<Vec<_>>(),
-        )?;
-        for other in self
-            .records()?
-            .iter()
-            .filter(|other| other.request_id != r.request_id)
-        {
-            if let Some(receipt) = other
-                .vault_receipts
-                .iter()
-                .find(|v| v.slot == vault::Slot::RemoteIdentity)
-            {
-                let previous = self
-                    .vault
-                    .read(&receipt.entry_id)?
-                    .context("missing existing Remote vault entry")?;
-                if previous["identity"] != value["identity"] || other.source_id != r.source_id {
-                    return Err(error(
-                        "migrationConflict",
-                        "Remote identity or authorization source differs from the selected source",
-                    ));
-                }
-            }
-        }
+                .any(|other| other.source_id != r.source_id
+                    && other
+                        .vault_receipts
+                        .iter()
+                        .any(|receipt| receipt.slot == vault::Slot::RemoteIdentity)),
+            error(
+                "migrationConflict",
+                "Remote credential import already belongs to another source"
+            )
+        );
         Ok(())
     }
     pub(crate) fn subscription_retired(&self, source_id: &str, migration_id: &str) -> Result<()> {
         wire::request_id(source_id)?;
         let record = self.read(migration_id)?;
         ensure!(
-            record.source_id == source_id && self.committed(&record)?.is_some(),
+            record.source_id == source_id && self.source_ready(&record)?,
             error(
                 "sourceNotFound",
                 "subscription source does not match committed migration"
@@ -1442,7 +1454,7 @@ impl Migration {
     ) -> Result<Vec<(String, String)>> {
         let mut selected = None;
         for record in self.records()? {
-            if record.source_id == source_id && self.committed(&record)?.is_some() {
+            if record.source_id == source_id && self.source_ready(&record)? {
                 selected = Some(record);
                 break;
             }
@@ -1506,7 +1518,7 @@ impl Migration {
             .find(|p| p.project_id == project)
             .context("Remote journal project is unavailable")?;
         for record in self.records()? {
-            if record.source_id != source || self.committed(&record)?.is_none() {
+            if record.source_id != source || !self.source_ready(&record)? {
                 continue;
             }
             if let Some(binding) = record.bindings.iter().find(|b| b.project_id == project) {
@@ -1526,12 +1538,31 @@ impl Migration {
         anyhow::bail!("Remote journal source is unavailable")
     }
     pub fn remote_seed(&self) -> Result<Option<(String, String, Vec<String>)>> {
+        let selected = crate::remote_state::RemoteState::selected_source(&self.home)?;
+        let mut pending = false;
         for r in self.records()? {
-            if self.committed(&r)?.is_some()
-                && let Some(receipt) = r
-                    .vault_receipts
+            if selected
+                .as_ref()
+                .is_some_and(|source| *source != r.source_id)
+            {
+                continue;
+            }
+            let committed = self.committed(&r)?.is_some();
+            if self.source_ready(&r)?
+                && r.secrets
                     .iter()
-                    .find(|v| v.slot == vault::Slot::RemoteIdentity)
+                    .any(|secret| secret.slot == vault::Slot::RemoteIdentity)
+            {
+                pending |= !r.vault_receipts.iter().any(|receipt| {
+                    receipt.slot == vault::Slot::RemoteIdentity
+                        && (committed || Self::secret_ready(&r, receipt))
+                });
+            }
+            if self.source_ready(&r)?
+                && let Some(receipt) = r.vault_receipts.iter().find(|v| {
+                    v.slot == vault::Slot::RemoteIdentity
+                        && (committed || Self::secret_ready(&r, v))
+                })
             {
                 return Ok(Some((
                     r.source_id,
@@ -1543,16 +1574,35 @@ impl Migration {
                 )));
             }
         }
+        ensure!(
+            !pending,
+            error(
+                "migrationPending",
+                "Remote identity migration is not complete"
+            )
+        );
         Ok(None)
     }
     pub fn vault_seed(&self, slot: &vault::Slot) -> Result<Option<vault::Receipt>> {
         let source = slot.source_id()?;
         for record in self.records()? {
-            if record.source_id == source && self.committed(&record)?.is_some() {
-                return Ok(record
+            if record.source_id == source && self.source_ready(&record)? {
+                let receipt = record
                     .vault_receipts
-                    .into_iter()
-                    .find(|receipt| receipt.slot == *slot && receipt.state == "completed"));
+                    .iter()
+                    .find(|receipt| receipt.slot == *slot && receipt.state == "completed")
+                    .cloned();
+                ensure!(
+                    !record.secrets.iter().any(|secret| secret.slot == *slot
+                        && !record.vault_receipts.iter().any(|entry| entry.slot == *slot
+                            && entry.source_digest == secret.source_digest
+                            && entry.state == "completed")),
+                    error(
+                        "migrationPending",
+                        "credential slot migration is not complete"
+                    )
+                );
+                return Ok(receipt);
             }
         }
         Err(error("sourceNotFound", "vault source is not published"))
@@ -1563,7 +1613,7 @@ impl Migration {
     ) -> Result<Option<(PathBuf, String)>> {
         let mut owner = None;
         for record in self.records()? {
-            if self.committed(&record)?.is_none() {
+            if !self.source_ready(&record)? {
                 continue;
             }
             if let Some(binding) = record
@@ -1638,7 +1688,7 @@ impl Migration {
     ) -> Result<Vec<SchedulingImport>> {
         let mut sources = Vec::new();
         for record in self.records()? {
-            if imported.contains(&record.source_id) || self.committed(&record)?.is_none() {
+            if imported.contains(&record.source_id) || !self.source_ready(&record)? {
                 continue;
             }
             let mut source_projects = record
@@ -1744,7 +1794,7 @@ impl Migration {
     }
     pub fn credential_source(&self, project: &ProjectRegistration) -> Result<Option<String>> {
         for r in self.records()? {
-            if self.committed(&r)?.is_some()
+            if self.source_ready(&r)?
                 && r.bindings
                     .iter()
                     .any(|b| b.project_id == project.project_id)
@@ -1770,7 +1820,7 @@ impl Migration {
         }
         let mut sources = BTreeSet::new();
         for record in self.records()? {
-            if self.committed(&record)?.is_some() {
+            if self.source_ready(&record)? {
                 sources.insert(record.source_id);
             }
         }
@@ -1790,7 +1840,7 @@ impl Migration {
         let mut homes = BTreeSet::new();
         let mut source_ids = BTreeSet::new();
         for record in self.records()? {
-            if self.committed(&record)?.is_none() {
+            if !self.source_ready(&record)? {
                 continue;
             }
             ensure!(
@@ -1864,7 +1914,7 @@ impl Migration {
     pub fn power_sources(&self) -> Result<BTreeMap<String, PathBuf>> {
         let mut sources = BTreeMap::new();
         for record in self.records()? {
-            if self.committed(&record)?.is_some() {
+            if self.source_ready(&record)? {
                 sources.insert(record.source_id, record.source.core_home);
             }
         }
@@ -1873,7 +1923,7 @@ impl Migration {
     pub(crate) fn source_profile(&self, source: &str) -> Result<PathBuf> {
         let mut selected = None;
         for record in self.records()? {
-            if record.source_id != source || self.committed(&record)?.is_none() {
+            if record.source_id != source || !self.source_ready(&record)? {
                 continue;
             }
             ensure!(
@@ -1887,7 +1937,7 @@ impl Migration {
     pub(crate) fn navigation_source_id(&self, profile: &Path) -> Result<Option<String>> {
         let mut selected = None;
         for record in self.records()? {
-            if record.source.profile == profile && self.committed(&record)?.is_some() {
+            if record.source.profile == profile && self.source_ready(&record)? {
                 ensure!(
                     selected.is_none(),
                     "sourceConflict: GUI profile has multiple navigation sources"
@@ -1899,7 +1949,7 @@ impl Migration {
     }
     pub(crate) fn local_relay_home(&self, source: &str) -> Result<Option<PathBuf>> {
         for record in self.records()? {
-            if record.source_id != source || self.committed(&record)?.is_none() {
+            if record.source_id != source || !self.source_ready(&record)? {
                 continue;
             }
             let store = record.source.core_home.join("relay-service/local");
@@ -1909,6 +1959,13 @@ impl Migration {
                     .iter()
                     .find(|receipt| receipt.slot == vault::Slot::RemoteIdentity)
                 {
+                    ensure!(
+                        self.committed(&record)?.is_some() || Self::secret_ready(&record, receipt),
+                        error(
+                            "migrationPending",
+                            "Remote identity verification is incomplete"
+                        )
+                    );
                     let original = self
                         .vault
                         .read(&receipt.entry_id)?
@@ -2127,6 +2184,465 @@ mod tests {
         }
     }
     #[test]
+    fn independent_project_is_available_while_sibling_cleanup_is_pending() {
+        let f = Fixture::new();
+        let workspace = f._root.path().join("independent");
+        std::fs::create_dir(&workspace).unwrap();
+        let mut projects: Value = storage::read(&f.source.core_home.join("projects.json")).unwrap();
+        projects[1] = json!({"id":f.ids[1],"root":workspace});
+        storage::write(&f.source.core_home.join("projects.json"), &projects).unwrap();
+        let data = f.source.core_home.join(&f.ids[0]).join("state");
+        storage::private_dir(&data).unwrap();
+        let lock = storage::open_private(&data.join("owner.lock"), true).unwrap();
+        lock.try_lock_exclusive().unwrap();
+        f.attach();
+        let result = f.import().unwrap();
+        assert_eq!(result["sourcePublished"], true);
+        assert_eq!(
+            f.migration
+                .published()
+                .unwrap()
+                .iter()
+                .map(|p| p.project_id.clone())
+                .collect::<Vec<_>>(),
+            vec![f.ids[1].clone()]
+        );
+        assert!(f.migration.unpublished_reserved(&f.ids[0]).unwrap());
+        assert!(!f.migration.unpublished_reserved(&f.ids[1]).unwrap());
+        assert_eq!(
+            f.migration.operation(&f.request).unwrap().unwrap()["state"],
+            "acceptedPending"
+        );
+        assert_eq!(
+            std::fs::read(
+                f.source
+                    .core_home
+                    .join(format!("{}-pending.json", f.ids[0]))
+            )
+            .unwrap(),
+            f.original
+        );
+        let restarted = Migration::new(&f.migration.home).unwrap();
+        assert_eq!(restarted.published().unwrap().len(), 1);
+        assert!(restarted.source(f.source.clone(), &[]).unwrap().is_object());
+        storage::write(
+            &f.source.core_home.join("library.json"),
+            &json!({"settings":{"theme":"dark"}}),
+        )
+        .unwrap();
+        let retirement_id = uuid::Uuid::new_v4().to_string();
+        let prepare = || retirement::Prepare {
+            request_id: retirement_id.clone(),
+            migration_id: f.request.clone(),
+            expected_generation: "fixture".into(),
+        };
+        let retired = f
+            .migration
+            .retirement_prepare(prepare(), "connection")
+            .unwrap();
+        assert_eq!(retired["state"], "completed");
+        let source_id = f.migration.read(&f.request).unwrap().source_id;
+        f.migration
+            .subscription_retired(&source_id, &f.request)
+            .unwrap();
+        drop(lock);
+        f.migration.disconnect("connection");
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        assert_eq!(f.migration.published().unwrap().len(), 2);
+        assert_eq!(
+            f.migration
+                .retirement_prepare(prepare(), "connection")
+                .unwrap(),
+            retired
+        );
+        assert_eq!(
+            f.migration.operation(&f.request).unwrap().unwrap()["state"],
+            "completed"
+        );
+    }
+    #[tokio::test]
+    async fn completed_legacy_remote_slot_requires_durable_validation_without_blocking_projects() {
+        for fencing in [false, true] {
+            let f = Fixture::new();
+            storage::write(
+                &f.source.core_home.join("remote.json"),
+                &json!({"encrypted":"synthetic-cipher"}),
+            )
+            .unwrap();
+            f.import().unwrap();
+            let mut record = f.migration.read(&f.request).unwrap();
+            f.migration.snapshot(&mut record, &[]).unwrap();
+            record.phase = if fencing {
+                Phase::Fencing
+            } else {
+                Phase::SecretsPending
+            };
+            let secret = record
+                .secrets
+                .iter()
+                .find(|s| s.slot == vault::Slot::RemoteIdentity)
+                .unwrap()
+                .clone();
+            let request = uuid::Uuid::new_v4().to_string();
+            let value =
+                json!({"enabled":false,"identity":"synthetic","devices":[{"projects":[f.ids[0]]}]});
+            f.migration.vault.write(&secret.entry_id, &value).unwrap();
+            record.vault_receipts.push(vault::Receipt {
+                request_id: request.clone(),
+                slot: secret.slot.clone(),
+                revision: 1,
+                entry_id: secret.entry_id.clone(),
+                source_digest: secret.source_digest.clone(),
+                state: "completed".into(),
+            });
+            f.migration.save(&record).unwrap();
+            if fencing {
+                f.migration
+                    .fence_file(&mut record, "provider-credentials.json")
+                    .unwrap();
+            }
+            f.attach();
+            let original_receipt = f.migration.operation(&request).unwrap().unwrap();
+            f.migration.vault.locked.set(true);
+            let published = f
+                .import()
+                .expect("unverified completed Remote slot must not hold projects");
+            assert_eq!(published["sourcePublished"], true);
+            assert_eq!(published["pendingSecrets"][0]["requestId"], request);
+            assert_eq!(f.migration.published().unwrap().len(), 2);
+            assert!(
+                f.migration
+                    .remote_seed()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("migrationPending")
+            );
+            assert_eq!(
+                f.migration.operation(&request).unwrap().unwrap(),
+                original_receipt
+            );
+            let restarted = Migration::new(&f.migration.home).unwrap();
+            assert!(restarted.remote_seed().is_err());
+            f.migration.vault.locked.set(false);
+            f.migration
+                .import_secret_async(
+                    ImportSecret {
+                        request_id: request.clone(),
+                        expected_generation: "fixture".into(),
+                        migration_id: f.request.clone(),
+                        slot: secret.slot,
+                        source_digest: secret.source_digest,
+                        value,
+                    },
+                    "connection",
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                f.migration.operation(&request).unwrap().unwrap(),
+                original_receipt
+            );
+            assert_eq!(
+                Migration::new(&f.migration.home)
+                    .unwrap()
+                    .remote_seed()
+                    .unwrap()
+                    .unwrap()
+                    .1,
+                secret.entry_id
+            );
+            assert_eq!(f.import().unwrap()["kind"], "ready");
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupted_remote_import_keeps_projects_available_and_identity_pending() {
+        for invalid_entry in [false, true] {
+            let f = Fixture::new();
+            storage::write(
+                &f.source.core_home.join("remote.json"),
+                &json!({"encrypted":"synthetic-cipher"}),
+            )
+            .unwrap();
+            f.import().unwrap();
+            let mut record = f.migration.read(&f.request).unwrap();
+            f.migration.snapshot(&mut record, &[]).unwrap();
+            record.phase = Phase::SecretsPending;
+            let secret = record
+                .secrets
+                .iter()
+                .find(|secret| secret.slot == vault::Slot::RemoteIdentity)
+                .unwrap()
+                .clone();
+            let request = uuid::Uuid::new_v4().to_string();
+            record.vault_receipts.push(vault::Receipt {
+                request_id: request.clone(),
+                slot: secret.slot.clone(),
+                revision: 1,
+                entry_id: secret.entry_id.clone(),
+                source_digest: secret.source_digest.clone(),
+                state: "acceptedPending".into(),
+            });
+            f.migration.save(&record).unwrap();
+            f.attach();
+            let before = f.migration.operation(&request).unwrap().unwrap();
+            f.migration.vault.locked.set(true);
+            let published = f
+                .import()
+                .expect("pending Remote credential must not hold source publication");
+            assert_eq!(published["sourcePublished"], true);
+            assert_eq!(f.migration.published().unwrap().len(), 2);
+            assert!(
+                f.migration
+                    .remote_seed()
+                    .unwrap_err()
+                    .to_string()
+                    .contains("migrationPending")
+            );
+            assert_eq!(f.migration.operation(&request).unwrap().unwrap(), before);
+            assert!(f.migration.operation_async(&request).await.is_err());
+            assert_eq!(f.migration.operation(&request).unwrap().unwrap(), before);
+            f.migration.vault.locked.set(false);
+            assert_eq!(
+                f.migration
+                    .operation_async(&request)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+                before
+            );
+            if invalid_entry {
+                f.migration
+                    .vault
+                    .write(
+                        &secret.entry_id,
+                        &json!({"devices":[{"projects":["foreign-project"]}]}),
+                    )
+                    .unwrap();
+                assert!(
+                    f.migration
+                        .operation_async(&request)
+                        .await
+                        .unwrap_err()
+                        .to_string()
+                        .contains("migrationConflict")
+                );
+                assert_eq!(f.migration.operation(&request).unwrap().unwrap(), before);
+                assert!(f.migration.remote_seed().is_err());
+            } else {
+                f.migration
+                    .import_secret_async(
+                        ImportSecret {
+                            request_id: request.clone(),
+                            expected_generation: "fixture".into(),
+                            migration_id: f.request.clone(),
+                            slot: secret.slot,
+                            source_digest: secret.source_digest,
+                            value: json!({"enabled":false,"identity":"synthetic"}),
+                        },
+                        "connection",
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    f.migration.operation(&request).unwrap().unwrap()["state"],
+                    "completed"
+                );
+                assert_eq!(
+                    f.migration.remote_seed().unwrap().unwrap().1,
+                    secret.entry_id
+                );
+                assert_eq!(f.import().unwrap()["kind"], "ready");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn pending_credential_does_not_block_source_projects_or_other_slots() {
+        let f = Fixture::new();
+        storage::write(&f.source.core_home.join("provider-credentials.json"), &json!({"keys":{"AREAL_CREDENTIAL_ready":"cipher-a","AREAL_CREDENTIAL_pending":"cipher-b"}})).unwrap();
+        f.attach();
+        let result = f.import().unwrap();
+        assert_eq!(result["sourcePublished"], true);
+        assert_eq!(f.migration.published().unwrap().len(), 2);
+        let r = f.migration.read(&f.request).unwrap();
+        let ready = r.secrets.iter().find(|secret| matches!(&secret.slot, vault::Slot::ProviderCredential {reference,..} if reference.ends_with("ready"))).unwrap();
+        let pending = r
+            .secrets
+            .iter()
+            .find(|secret| secret.slot != ready.slot)
+            .unwrap();
+        assert!(
+            f.migration
+                .vault_seed(&ready.slot)
+                .unwrap_err()
+                .to_string()
+                .contains("migrationPending")
+        );
+        let request = uuid::Uuid::new_v4().to_string();
+        f.migration
+            .import_secret_async(
+                ImportSecret {
+                    request_id: request.clone(),
+                    expected_generation: "fixture".into(),
+                    migration_id: f.request.clone(),
+                    slot: ready.slot.clone(),
+                    source_digest: ready.source_digest.clone(),
+                    value: json!("synthetic"),
+                },
+                "connection",
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            f.migration
+                .credential_for_source_async(&r.source_id, "AREAL_CREDENTIAL_ready")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("synthetic")
+        );
+        assert!(
+            f.migration
+                .vault_seed(&pending.slot)
+                .unwrap_err()
+                .to_string()
+                .contains("migrationPending")
+        );
+        assert_eq!(
+            f.migration.operation(&request).unwrap().unwrap()["state"],
+            "completed"
+        );
+        assert_eq!(
+            f.migration.operation(&f.request).unwrap().unwrap()["state"],
+            "acceptedPending"
+        );
+        let restarted = Migration::new(&f.migration.home).unwrap();
+        assert!(restarted.vault_seed(&ready.slot).unwrap().is_some());
+        assert!(restarted.vault_seed(&pending.slot).is_err());
+        f.migration
+            .import_secret_async(
+                ImportSecret {
+                    request_id: uuid::Uuid::new_v4().to_string(),
+                    expected_generation: "fixture".into(),
+                    migration_id: f.request.clone(),
+                    slot: pending.slot.clone(),
+                    source_digest: pending.source_digest.clone(),
+                    value: json!("other-synthetic"),
+                },
+                "connection",
+            )
+            .await
+            .unwrap();
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+        assert_eq!(
+            f.migration
+                .vault_seed(&ready.slot)
+                .unwrap()
+                .unwrap()
+                .request_id,
+            request
+        );
+    }
+    #[tokio::test]
+    async fn delayed_import_keeps_other_slot_live_and_original_receipt_pending() {
+        use std::sync::{Arc, Condvar, Mutex};
+        struct Release(Arc<(Mutex<bool>, Condvar)>);
+        impl Drop for Release {
+            fn drop(&mut self) {
+                *self.0.0.lock().unwrap() = true;
+                self.0.1.notify_all();
+            }
+        }
+        let mut f = Fixture::new();
+        storage::write(&f.source.core_home.join("provider-credentials.json"), &json!({"keys":{"AREAL_CREDENTIAL_ready":"cipher-a","AREAL_CREDENTIAL_pending":"cipher-b"}})).unwrap();
+        f.attach();
+        f.import().unwrap();
+        let record = f.migration.read(&f.request).unwrap();
+        let first = record.secrets[0].clone();
+        let second = record.secrets[1].clone();
+        let make = |secret: &Secret, request_id: String| ImportSecret {
+            request_id,
+            expected_generation: "fixture".into(),
+            migration_id: f.request.clone(),
+            slot: secret.slot.clone(),
+            source_digest: secret.source_digest.clone(),
+            value: json!("synthetic"),
+        };
+        f.migration
+            .import_secret_async(make(&first, uuid::Uuid::new_v4().to_string()), "connection")
+            .await
+            .unwrap();
+        let barrier = Arc::new((Mutex::new(false), Condvar::new()));
+        let release = Release(barrier.clone());
+        let (started, mut observed) = tokio::sync::mpsc::unbounded_channel();
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = calls.clone();
+        f.migration.vault.before_write = Some(Arc::new(move || {
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            started.send(()).unwrap();
+            let mut done = barrier.0.lock().unwrap();
+            while !*done {
+                done = barrier.1.wait(done).unwrap();
+            }
+        }));
+        let request = uuid::Uuid::new_v4().to_string();
+        let mut pending = Box::pin(
+            f.migration
+                .import_secret_async(make(&second, request.clone()), "connection"),
+        );
+        tokio::select! { _ = observed.recv() => {}, result = &mut pending => panic!("write ended before barrier: {result:?}") }
+        assert_eq!(
+            f.migration.operation(&request).unwrap().unwrap()["state"],
+            "acceptedPending"
+        );
+        let again = f
+            .migration
+            .import_secret_async(make(&second, request.clone()), "connection")
+            .await
+            .unwrap();
+        assert_eq!(again["requestId"], request);
+        assert_eq!(again["state"], "acceptedPending");
+        let mut changed = make(&second, request.clone());
+        changed.value = json!("different");
+        assert!(
+            f.migration
+                .import_secret_async(changed, "connection")
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("requestConflict")
+        );
+        let read = f
+            .migration
+            .vault
+            .dispatch_async(
+                "vault.read",
+                json!({"slot":first.slot}),
+                "fixture",
+                &f.migration,
+            )
+            .await
+            .unwrap();
+        assert_eq!(read["value"], "synthetic");
+        assert!(
+            f.migration
+                .vault_seed(&second.slot)
+                .unwrap_err()
+                .to_string()
+                .contains("migrationPending")
+        );
+        f.migration.disconnect("connection");
+        drop(release);
+        assert_eq!(pending.await.unwrap()["state"], "completed");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(
+            f.migration.operation(&request).unwrap().unwrap()["state"],
+            "completed"
+        );
+        assert_eq!(f.import().unwrap()["kind"], "ready");
+    }
+    #[test]
     fn local_relay_requires_committed_source_and_exact_current_fence() {
         let f = Fixture::new();
         storage::private_dir(&f.source.core_home.join("relay-service/local")).unwrap();
@@ -2162,7 +2678,7 @@ mod tests {
             )
             .unwrap();
             f.attach();
-            assert_eq!(f.import().unwrap()["phase"], "secretsPending");
+            assert_eq!(f.import().unwrap()["sourcePublished"], true);
             let record = f.migration.read(&f.request).unwrap();
             let secret = record
                 .secrets
@@ -2539,9 +3055,12 @@ mod tests {
             &json!({"keys":{"AREAL_CREDENTIAL_key":"cipher"}}),
         )
         .unwrap();
-        f.attach();
         f.import().unwrap();
-        let r = f.migration.read(&f.request).unwrap();
+        let mut r = f.migration.read(&f.request).unwrap();
+        f.migration.snapshot(&mut r, &[]).unwrap();
+        r.phase = Phase::SecretsPending;
+        f.migration.save(&r).unwrap();
+        f.attach();
         assert!(r.bindings[0].default_binding);
         let secret = &r.secrets[0];
         f.migration
@@ -2649,13 +3168,13 @@ mod tests {
         assert_eq!(restarted.status(&f.request).unwrap(), result);
     }
     #[test]
-    fn secrets_require_guard_and_durable_receipt_before_fence() {
+    fn secrets_require_guard_and_durable_receipt_before_slot_publication() {
         let f = Fixture::new();
         storage::write(&f.source.core_home.join("provider-credentials.json"),&json!({"keys":{"AREAL_CREDENTIAL_disabled":"dummy-ciphertext"},"migrated":["unchanged"]})).unwrap();
         f.attach();
         let pending = f.import().unwrap();
-        assert_eq!(pending["phase"], "secretsPending");
-        assert!(f.migration.published().unwrap().is_empty());
+        assert_eq!(pending["sourcePublished"], true);
+        assert_eq!(f.migration.published().unwrap().len(), 2);
         let r = f.migration.read(&f.request).unwrap();
         let secret = r.secrets.first().unwrap();
         let request = uuid::Uuid::new_v4().to_string();
@@ -2702,11 +3221,13 @@ mod tests {
             source_id: uuid::Uuid::new_v4().to_string(),
             source: f.source.clone(),
             phase: Phase::AwaitingSource,
+            progressive: false,
             manifest_digest: String::new(),
             bindings: vec![],
             originals: vec![],
             secrets: vec![],
             vault_receipts: vec![],
+            verified_remote_entry: None,
             fences: vec![],
             blockers: vec![],
             prior_boot_adoptions: vec![],
@@ -2739,9 +3260,11 @@ mod tests {
             &json!({"keys":{"AREAL_CREDENTIAL_key":"cipher"}}),
         )
         .unwrap();
-        f.attach();
         f.import().unwrap();
-        f.migration.disconnect("connection");
+        let mut record = f.migration.read(&f.request).unwrap();
+        f.migration.snapshot(&mut record, &[]).unwrap();
+        record.phase = Phase::SecretsPending;
+        f.migration.save(&record).unwrap();
         let newer=b"[{\"requestId\":\"new-original\",\"method\":\"areal/thread/create\",\"params\":{},\"operation\":\"create\",\"createdAt\":2}]";
         std::fs::write(
             f.source
@@ -2760,15 +3283,7 @@ mod tests {
                 .unwrap()[0]["requestId"],
             "new-original"
         );
-        assert_eq!(
-            std::fs::read(
-                f.source
-                    .core_home
-                    .join(format!("{}-pending.json", f.ids[0]))
-            )
-            .unwrap(),
-            newer
-        );
+        assert!(f.migration.project_ready(&r, &r.bindings[0]).unwrap());
     }
     #[test]
     fn locks_and_missing_original_cleanup_proof_prevent_publication() {
@@ -2780,11 +3295,12 @@ mod tests {
         f.attach();
         assert_eq!(f.import().unwrap()["kind"], "legacyPending");
         assert!(
-            !f.source
+            f.source
                 .core_home
                 .join("provider-credentials.json")
                 .exists()
         );
+        assert!(f.migration.published().unwrap().is_empty());
         drop(lock);
         storage::write(
             &data.join("existing-thread.json"),
@@ -2865,8 +3381,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn lost_vault_receipt_is_recovered_from_the_stable_entry() {
+    #[tokio::test]
+    async fn lost_vault_receipt_is_recovered_from_the_stable_entry() {
         let f = Fixture::new();
         storage::write(
             &f.source.core_home.join("provider-credentials.json"),
@@ -2906,7 +3422,7 @@ mod tests {
         );
         assert_eq!(std::fs::read(&record_path).unwrap(), before);
         assert_eq!(
-            f.migration.operation(&id).unwrap().unwrap()["state"],
+            f.migration.operation_async(&id).await.unwrap().unwrap()["state"],
             "completed"
         );
         assert_eq!(f.import().unwrap()["kind"], "ready");
@@ -2930,7 +3446,7 @@ mod tests {
                 .dispatch("vault.read", json!({"slot":slot}), "fixture", &f.migration)
                 .unwrap_err()
                 .to_string()
-                .contains("sourceNotFound")
+                .contains("migrationPending")
         );
         f.migration
             .import_secret(
@@ -2949,8 +3465,8 @@ mod tests {
             f.migration
                 .vault
                 .dispatch("vault.read", json!({"slot":slot}), "fixture", &f.migration)
-                .is_err(),
-            "secret receipt alone does not publish the source"
+                .is_ok(),
+            "completed slot is available in the published source"
         );
         assert_eq!(f.import().unwrap()["kind"], "ready");
         assert_eq!(

@@ -97,6 +97,12 @@ class RemoteControl {
       this.config = await this.storage.init();
     } catch (error) {
       this.close();
+      if (error instanceof Error && "code" in error && error.code === "migrationPending") {
+        this.migrationError = "手机连接身份尚未恢复，请在凭据可用后重新打开应用。";
+        this.directError = this.migrationError;
+        this.relayError = this.migrationError;
+        return;
+      }
       if (
         error instanceof Error &&
         "code" in error &&

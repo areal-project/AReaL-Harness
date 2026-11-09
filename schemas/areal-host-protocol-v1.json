@@ -645,6 +645,9 @@
         },
         "entryId": {
           "type": "string"
+        },
+        "requestId": {
+          "type": "string"
         }
       },
       "required": [
@@ -809,6 +812,9 @@
               "items": {
                 "$ref": "#/$defs/ImportBinding"
               }
+            },
+            "sourcePublished": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -2722,6 +2728,29 @@
           "required": [
             "references",
             "migratedConfigPaths"
+          ],
+          "additionalProperties": false
+        },
+        "migration": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "completed"
+              ]
+            },
+            "pendingProjects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "state",
+            "pendingProjects"
           ],
           "additionalProperties": false
         }
@@ -24648,7 +24677,8 @@
           "additionalProperties": {
             "type": "string",
             "enum": [
-              "storageLocked"
+              "storageLocked",
+              "migrationPending"
             ]
           },
           "description": "Optional provider-ID map of unavailable secure-storage slots; contains no credential values or raw diagnostics."

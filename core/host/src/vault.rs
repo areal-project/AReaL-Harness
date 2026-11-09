@@ -170,6 +170,23 @@ impl Vault {
     pub(crate) fn recovery_blocked(&self, slot: &Slot) -> bool {
         !self.worker && self.slot_in_flight(slot)
     }
+    pub(crate) fn import_in_flight(&self, intent: &Value) -> Result<bool> {
+        let flight = self.flight.lock().unwrap();
+        let Some(active) = flight
+            .values()
+            .find(|active| active["entryId"] == intent["entryId"])
+        else {
+            return Ok(false);
+        };
+        ensure!(
+            active == intent,
+            error(
+                "requestConflict",
+                "credential import is already in progress with different parameters"
+            )
+        );
+        Ok(true)
+    }
     pub(crate) fn slot_in_flight(&self, slot: &Slot) -> bool {
         let slot = serde_json::to_value(slot).expect("serializable vault slot");
         self.flight.lock().unwrap().values().any(|active| {

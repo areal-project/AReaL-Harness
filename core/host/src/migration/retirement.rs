@@ -324,8 +324,32 @@ impl Migration {
     ) -> Result<Option<Value>> {
         Ok(self.retirement_plan(&record.request_id)?.filter(|plan| plan.request_id == request).map(|plan| json!({"requestId":request,"method":"gui.retirementPrepare","state":if plan.completed {"completed"} else {"acceptedPending"},"result":plan.progress(false)})))
     }
+    fn retirement_commit(&self, record: &Record) -> Result<Option<Commit>> {
+        let committed = self.committed(record)?;
+        if !record.progressive {
+            return Ok(committed);
+        }
+        if !self.source_ready(record)?
+            || record.secrets.iter().any(|secret| {
+                !record.vault_receipts.iter().any(|receipt| {
+                    receipt.slot == secret.slot
+                        && receipt.source_digest == secret.source_digest
+                        && (committed.is_some() || Self::secret_ready(record, receipt))
+                })
+            })
+        {
+            return Ok(None);
+        }
+        // 项目清理可晚于凭据交接；后续项目发布不能改绑已受理的清理计划。
+        Ok(Some(Commit {
+            bundle_digest: storage::digest(&serde_json::to_vec(
+                &json!({"sourcePublication":self.source_digest(record)?,"vaultReceipts":record.vault_receipts}),
+            )?),
+            receipt: Value::Null,
+        }))
+    }
     fn retirement_guard(&self, record: &Record, connection: &str) -> Result<Commit> {
-        let commit = self.committed(record)?.ok_or_else(|| {
+        let commit = self.retirement_commit(record)?.ok_or_else(|| {
             error(
                 "migrationNotCommitted",
                 "retirement requires the original committed import",
@@ -502,8 +526,8 @@ impl Migration {
         let record = self.read(&input.migration_id)?;
         if let Some(mut plan) = self.retirement_plan(&input.migration_id)? {
             let commit = self
-                .committed(&record)?
-                .context("retirement import is not committed")?;
+                .retirement_commit(&record)?
+                .context("retirement credentials are not committed")?;
             self.retirement_binding(&record, &commit, &plan, &input.request_id)?;
             if plan.completed {
                 return Ok(plan.progress(false));
@@ -618,8 +642,8 @@ impl Migration {
             .retirement_plan(&input.migration_id)?
             .ok_or_else(|| error("retirementNotFound", "retirement plan is missing"))?;
         let commit = self
-            .committed(&record)?
-            .context("retirement import is not committed")?;
+            .retirement_commit(&record)?
+            .context("retirement credentials are not committed")?;
         self.retirement_binding(&record, &commit, &plan, &input.request_id)?;
         if plan.plan_id != input.plan_id {
             return Err(error("requestConflict", "retirement planId changed"));

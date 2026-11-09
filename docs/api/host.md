@@ -180,15 +180,15 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 | `remote.acquire`   | `{sourceId}`                                                                  | `{leaseId,sourceId}`。执行租约绑定当前连接，断连释放。                            |
 | `remote.replace`   | `{requestId,expectedGeneration,expectedRevision,sourceId,config}`             | 持久替换回执，以 revision 校验写入冲突。执行租约不限制本机配置写入。              |
 
-导入先保存固定 manifest 和原字节备份，再保存秘密与回执，核验旧服务清理证明和锁。旧版原停止回执在 `cleanupConfirmed:true` 时可能仍保存 `acceptedPending`；只有服务与 Store 两把锁均已独占，且回执版本、服务身份、owner 和代际精确匹配时，才沿原只读查询语义将其作为已完成清理证明，不改写旧回执。清理未确认、停止受理结果 UNKNOWN 或身份不符默认仍阻塞迁移；下述受限跨启动接管仅解除当前所有权交接，不结算旧停止结果。Host 随后安装非 JSON 来源启动哨兵及每项目 journal 哨兵，最后发布 committed marker。未发布来源占用的项目不能激活或访问 journal，包括复用的 CLI 登记。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。
+导入先保存固定 manifest 和原字节备份，在原来源保护下安装根启动哨兵并发布来源；项目和凭据分别确认。每个项目仍核验旧服务清理证明和锁。旧版原停止回执在 `cleanupConfirmed:true` 时可能仍保存 `acceptedPending`；只有服务与 Store 两把锁均已独占，且回执版本、服务身份、owner 和代际精确匹配时，才沿原只读查询语义将其作为已完成清理证明，不改写旧回执。清理未确认、停止受理结果 UNKNOWN 或身份不符默认仍阻塞迁移；下述受限跨启动接管仅解除当前所有权交接，不结算旧停止结果。Host 为通过核验的项目安装 journal 哨兵并独立发布；受阻项目不能激活或访问 journal，包括复用的 CLI 登记，其余项目可继续使用。全部项目和凭据完成后才发布整体 committed marker，原导入操作在此之前保持 acceptedPending。已发布来源可使用原 migrationId 继续核对项目，不再要求已退出的来源连接；未完成凭据仍要求原单实例适配器。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。 Remote 身份还必须具有绑定不可变凭据条目的授权核验证据；旧未提交迁移中的 completed 写入回执本身不构成该证据。缺证时仅 Remote 保持 migrationPending，后台适配器用原 ID 和来源摘要核验，原写入回执保持不变。旧 committed 沿用原提交证明。
 
 macOS 旧 GUI 的原服务若为 `stopped` 或 `unavailable`，且只有历史清理证明缺失，导入可使用受限的跨系统启动接管依据。Host 在原服务与 Store 双锁下核对当前内核 boot session、启动时间、原描述符精确身份及其 birth/mtime/ctime，并扫描原 Store 的完整文件与目录元数据。描述符和 Store 必须均未在本次系统启动内修改；路径、属主、原来源单实例保护与同 Store 服务映射须一致，重试重新核查。该策略限于可信旧 GUI/service-host 来源，依赖可信本机时钟和未被外部回滚的私有状态，不构成任意独立 app-server 或外部进程的清理证明。当前启动内故障、锁占用、来源变化或证据不完整仍阻塞。迁移回执的 `priorBootAdoptions` 独立保留原代际、描述符摘要、元数据清单摘要与 boot 依据，并参与提交摘要。它只允许原 Store 的新 owner 接管，不结算旧请求或外部副作用；旧 stop/cleanup 记录不改写，UNKNOWN 按原身份导入且不重发。没有该字段的旧提交保持原摘要语义。
 
-`gui.source` 按规范化的完整 `GuiSource` 查询，仅返回已提交来源。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
+`gui.source` 按规范化的完整 `GuiSource` 查询，返回已发布来源。可选 `migration` 包含整体 state 与尚未发布的 pendingProjects，旧 committed 来源等价于全部完成。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
 
 GUI 初始化或重连 Host 后，为 `ready` 的外来项目建立只观察连接并加载会话目录。发现项目不启动已停止的 Core，也不覆盖 CLI 的配置。同代际重发现保留正在建立的观察连接。历史配置解码接受 Core 的 `automaticSessionName` 字段；GUI 创建命令的输入字段限制不因此扩展。
 
-`credentials` 仅含非秘密迁移元数据。`references` 合并原 provider 引用与该来源后续创建的 vault 槽，保留已撤销引用；值仍由 `vault.read` 决定。`migratedConfigPaths` 保留原配置迁移标记。`legacyProviders` 去除密文，仅对原 providers manifest 中有秘密的条目附加 `apiKeyEnv`。读取会核对原备份摘要或退役计划的派生摘要，不读取已封存的凭据源文件。
+`credentials` 仅含非秘密迁移元数据。manifest 槽的全部原秘密回执未完成时，`vault.read`/写入返回 `migrationPending`，不能把它当作缺失或从环境变量替代；其他已确认槽独立可用。pendingSecrets 中的 requestId 固定原凭据操作身份，重复连接不得换 ID。凭据 I/O 通过按槽 worker 执行，在途查询保持 acceptedPending，断连不取消已受理写入。`references` 合并原 provider 引用与该来源后续创建的 vault 槽，保留已撤销引用；值仍由 `vault.read` 决定。`migratedConfigPaths` 保留原配置迁移标记。`legacyProviders` 去除密文，仅对原 providers manifest 中有秘密的条目附加 `apiKeyEnv`。读取会核对原备份摘要或退役计划的派生摘要，不读取已封存的凭据源文件。
 
 ### 旧秘密退役
 
@@ -196,7 +196,7 @@ Host 在 `retirement.json` 保存独立计划与回执，不改原 manifest、�
 
 进度为 `{requestId,migrationId,planId,state,next}`，`state` 为 `applying` 或 `completed`。只有 prepare 返回下一个目标 `{site,relativeName,backupId,beforeDigest,afterDigest,byteLength}`。`site` 为 `source` 或 `backup`。status、confirm 和操作回执的 `next` 均为 null，不返回文件内容。Host 将派生内容保存在固定私有文件 `host/imports/<migrationId>/retirement/<planId>/<backupId>.bytes`，避免控制帧限制截断大文件。adapter 校验文件所有者、权限、类型、长度和摘要后，使用临时文件、fsync、rename 及目录 fsync 替换目标。备份路径沿用 `host/imports/<migrationId>/backups/<backupId>.bytes`。
 
-prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每项秘密都有 completed 回执和可读的原 vault entry。缺失或锁定 entry 阻止后续替换。退役不使用当前凭据版本补种旧值，因此后续撤销不会复活旧账户。每个文件替换前重新 prepare，替换后 confirm。Host 独立读取并核验目标，只接受原摘要或计划中的派生摘要。完成前还会核验原启动及 journal 哨兵。
+prepare 要求来源已发布、来源 guard 有效，且原 manifest 的每项秘密都有 completed 回执和可读的原 vault entry。分批导入按来源发布摘要和全部凭据回执绑定清理计划，后续项目提交不改计划身份；旧 committed 导入保留原 bundle 摘要。缺失或锁定 entry 阻止后续替换。退役不使用当前凭据版本补种旧值，因此后续撤销不会复活旧账户。每个文件替换前重新 prepare，替换后 confirm。Host 独立读取并核验目标，只接受原摘要或计划中的派生摘要。完成前还会核验原启动及 journal 哨兵。
 
 macOS 退役预检读取原 vault entry 时禁止弹出 Keychain 交互；需要交互授权时返回 `storageLocked`，保留原计划与来源文件。普通凭据读取的交互策略不变。GUI 将已提交来源的项目加载与旧秘密退役分别结算：退役未确认时仍可进入客户端，使用可用的普通模型与项目；清理问题保留原请求身份并记录为局部诊断。重连或显式订阅操作可恢复原退役请求，同一 GUI 内的并发恢复共用一个执行。此适配不把退役标成完成，也不重发 UNKNOWN 订阅交接。退役未完成时，GUI 在任何 `subscription.read`、订阅槽读取、网络配置或 handoff 前停止订阅初始化，并显示该订阅不可用；协议或网络错误保留独立诊断，不归为 Keychain 锁定。
 

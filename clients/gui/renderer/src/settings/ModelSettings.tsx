@@ -190,11 +190,13 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
       ? t("settings.modelSettings.unsaved")
       : !item.enabled
         ? t("settings.modelSettings.disabled")
-        : credentialErrors?.[item.id] === "storageLocked"
-          ? t("settings.modelSettings.keychainLocked")
-          : state.value?.credentialStates?.[item.id] === "unavailable"
-            ? t("settings.modelSettings.missingCredentials")
-            : t("settings.modelSettings.available");
+        : credentialErrors?.[item.id] === "migrationPending"
+          ? t("settings.modelSettings.credentialMigrating")
+          : credentialErrors?.[item.id] === "storageLocked"
+            ? t("settings.modelSettings.keychainLocked")
+            : state.value?.credentialStates?.[item.id] === "unavailable"
+              ? t("settings.modelSettings.missingCredentials")
+              : t("settings.modelSettings.available");
   const dirty =
     key !== undefined ||
     (draft !== null &&
@@ -650,6 +652,11 @@ export function ModelSettings({ action, subscription }: { action: Action; subscr
                 </div>
                 {authentication === "apiKey" && (
                   <div>
+                    {provider.id &&
+                      credentialErrors?.[provider.id] === "migrationPending" &&
+                      !key && (
+                        <p role="status">{t("settings.modelSettings.credentialMigrating")}</p>
+                      )}
                     {provider.id && credentialErrors?.[provider.id] === "storageLocked" && !key && (
                       <p role="status">{t("settings.modelSettings.keychainLocked")}</p>
                     )}

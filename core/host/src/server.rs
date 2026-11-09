@@ -487,11 +487,49 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     let mut gateway_subscription: Option<(String, String, u64, Value)> = None;
     let mut frontend_events: Option<tokio::sync::mpsc::Receiver<Value>> = None;
     let mut frame_bytes = Vec::new();
+    let (credential_results, mut credential_responses) =
+        tokio::sync::mpsc::unbounded_channel::<Value>();
+    let mut credential_requests = 0usize;
     loop {
         tokio::select! {
+            response=credential_responses.recv(), if credential_requests > 0 => {
+                credential_requests -= 1;
+                write_local_frame(&mut writer,&response.context("credential response task ended")?,frame_limit).await?;
+            },
             value=wire::read_buffered_limit(&mut reader,&mut frame_bytes,frame_limit)=> {
                 let Some(value)=value? else {return Ok(());};
                 let request:wire::Request=serde_json::from_value(value)?;
+                if request.version == VERSION && !request.id.is_empty() && request.method == "gui.importSecret" {
+                    let admitted = (|| -> Result<crate::migration::ImportSecret> {
+                        host.validate_client_state(&request.method, &request.params)?;
+                        let input: crate::migration::ImportSecret = serde_json::from_value(request.params)?;
+                        host.generation(&input.expected_generation)?;
+                        Ok(input)
+                    })();
+                    match admitted {
+                        Ok(input) => {
+                            let owned = host.clone();
+                            let connection_id = connection.id.clone();
+                            let mut task = Box::pin(async move {
+                                let result = owned.migration.import_secret_async(input, &connection_id).await;
+                                owned.changed();
+                                match result { Ok(value) => json!({"version":VERSION,"id":request.id,"result":value}), Err(error) => json!({"version":VERSION,"id":request.id,"error":local_command_error(&error)}) }
+                            });
+                            // 先完成槽准入再读取下一帧；重复请求直接返回原 pending，不积累等待任务。
+                            match futures_util::poll!(task.as_mut()) {
+                                std::task::Poll::Ready(response) => write_local_frame(&mut writer,&response,frame_limit).await?,
+                                std::task::Poll::Pending => {
+                                    credential_requests += 1;
+                                    let responses = credential_results.clone();
+                                    // 断连不取消已受理的独立槽；Host 持有原回执直到结算。
+                                    tokio::task::spawn_local(async move { let _ = responses.send(task.await); });
+                                }
+                            }
+                        }
+                        Err(error) => write_local_frame(&mut writer,&json!({"version":VERSION,"id":request.id,"error":local_command_error(&error)}),frame_limit).await?,
+                    }
+                    continue;
+                }
                 let result=if request.version!=VERSION {Err(error("unsupportedVersion","Host requires version 1"))} else if request.id.is_empty() {Err(error("invalidRequest","id must be nonempty"))} else if request.method=="host.subscribe" {serde_json::from_value::<Empty>(request.params).map_err(anyhow::Error::from)?;let id=uuid::Uuid::new_v4().to_string();subscription=Some((id.clone(),0));let status=host.status().await;previous=serde_json::to_value(&status)?;Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"status":status}))} else if request.method=="remote.gateway.subscribe" {
                     #[derive(Deserialize)]
                     #[serde(rename_all="camelCase",deny_unknown_fields)]
@@ -712,6 +750,7 @@ impl Host {
                 self.migration
                     .status(&serde_json::from_value::<Query>(params)?.migration_id)
             }
+            #[cfg(test)]
             "gui.importSecret" => {
                 let input: crate::migration::ImportSecret = serde_json::from_value(params)?;
                 self.generation(&input.expected_generation)?;
@@ -940,6 +979,23 @@ impl Host {
         let mut projects = Vec::new();
         for id in ids {
             projects.push(self.project_status(&id).await);
+        }
+        for (registration, migration_id) in self.migration.pending_projects().unwrap_or_default() {
+            if projects
+                .iter()
+                .any(|p| p.registration.project_id == registration.project_id)
+            {
+                continue;
+            }
+            projects.push(ProjectStatus {
+                registration,
+                state: "legacyPending".into(),
+                service: None,
+                uses_shared_model_config: true,
+                schedule_activation_suppressed: true,
+                schedule_activation_error: Some("migrationPending".into()),
+                migration: Some(json!({"phase":"legacyPending","migrationId":migration_id})),
+            });
         }
         let stop = self.stop.borrow();
         HostStatus {
@@ -1250,6 +1306,17 @@ impl Host {
             }
             return Ok(result);
         }
+        if method == "gui.importSecret" {
+            self.validate_client_state(method, &params)?;
+            let input: crate::migration::ImportSecret = serde_json::from_value(params)?;
+            self.generation(&input.expected_generation)?;
+            let result = self
+                .migration
+                .import_secret_async(input, &connection.id)
+                .await?;
+            self.changed();
+            return Ok(result);
+        }
         if method == "vault.read" || method == "vault.replace" {
             self.validate_client_state(method, &params)?;
             return self
@@ -1302,6 +1369,9 @@ impl Host {
                     return Ok(
                         json!({"operation":self.reconcile_update(&query.request_id).await?}),
                     );
+                }
+                if let Some(operation) = self.migration.operation_async(&query.request_id).await? {
+                    return Ok(json!({"operation":operation}));
                 }
                 Ok(
                     json!({"operation":match self.migration.vault.operation_async(&query.request_id, &self.migration).await? {
@@ -1694,21 +1764,27 @@ impl Host {
             "invalidRequest: credentials must be named by launch inputs"
         );
 
-        let subscription_optional = launch::subscription_is_optional(&self.home, &inputs);
+        let selected_credential = launch::selected_credential(&self.home, &inputs);
         let mut deferred_credentials = BTreeSet::new();
         let mut imported_credentials = BTreeMap::new();
         for name in &inputs.credential_names {
             if let Some(source) = &credential_source
                 && name.starts_with("AREAL_CREDENTIAL_")
             {
-                if subscription_optional
-                    && name == "AREAL_CREDENTIAL_areal_openai"
-                    && self.migration.vault.slot_in_flight(
-                        &crate::vault::Slot::SubscriptionTransport {
-                            source_id: source.clone(),
-                        },
-                    )
-                {
+                let optional = selected_credential
+                    .as_ref()
+                    .is_some_and(|selected| selected != name);
+                let credential_slot = if name == "AREAL_CREDENTIAL_areal_openai" {
+                    crate::vault::Slot::SubscriptionTransport {
+                        source_id: source.clone(),
+                    }
+                } else {
+                    crate::vault::Slot::ProviderCredential {
+                        source_id: source.clone(),
+                        reference: name.clone(),
+                    }
+                };
+                if optional && self.migration.vault.slot_in_flight(&credential_slot) {
                     deferred_credentials.insert(name.clone());
                     continue;
                 }
@@ -1718,6 +1794,15 @@ impl Host {
                     .await
                 {
                     Ok(value) => value,
+                    Err(cause)
+                        if optional
+                            && cause
+                                .downcast_ref::<wire::Error>()
+                                .is_some_and(|error| error.code == "migrationPending") =>
+                    {
+                        deferred_credentials.insert(name.clone());
+                        continue;
+                    }
                     Err(cause)
                         if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
                             matches!(error.code, "storageLocked" | "storageMissing")
@@ -1762,7 +1847,7 @@ impl Host {
                 .map(|(name, value)| (name.clone(), value.clone()))
                 .collect()
         };
-        // 在途订阅只从本次启动投影暂缓，不清除权威凭据或缓存，也不改写原回执。
+        // 未依赖的在途或迁移中凭据只从本次启动投影暂缓，不清除缓存或改写原回执。
         inputs
             .credential_names
             .retain(|name| !deferred_credentials.contains(name));

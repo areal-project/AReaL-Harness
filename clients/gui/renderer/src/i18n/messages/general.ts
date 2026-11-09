@@ -711,6 +711,10 @@ export const generalMessages = {
     "zh-CN": "钥匙串访问受限，请重新输入并保存密钥",
     en: "Keychain access restricted; re-enter and save API key",
   },
+  "settings.modelSettings.credentialMigrating": {
+    "zh-CN": "正在恢复凭据",
+    en: "Restoring credentials",
+  },
   "settings.modelSettings.missingCredentials": {
     "zh-CN": "缺少凭据",
     en: "Missing credentials",

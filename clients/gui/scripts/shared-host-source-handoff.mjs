@@ -7,6 +7,12 @@ import { createServer } from "node:net";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { legacySendModel, directLegacyPhone } from "./shared-host-legacy-send-fixture.mjs";
+import {
+  cleanIsolatedKeychainEntry,
+  isolatedElectronIdentity,
+  isolatedElectronBootstrapPrefix,
+  prepareIsolatedElectron,
+} from "./isolated-electron-identity.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -468,58 +474,20 @@ async function integration() {
     AREAL_GUI_OWNER: JSON.stringify({ kind: "gui", appRunId: randomUUID(), profile }),
     AREAL_GUI_DESKTOP_LIFETIME_FD: "3",
   };
-  const runId = randomUUID();
-  const appName = `AReaL H2 SafeStorage Test ${runId}`;
-  const identity = {
-    runId,
-    appName,
-    service: appName + " Safe Storage",
-    account: appName + " Key",
-    hostService: "org.areal.host.v1." + sha(hostHome),
-    electronVersion: require("electron/package.json").version,
-    nativeHome: env.HOME,
-    coreUserHome: env.AREAL_CORE_USER_HOME,
-  };
+  const identity = isolatedElectronIdentity(
+    hostHome,
+    env.HOME,
+    env.AREAL_CORE_USER_HOME,
+    require("electron/package.json").version,
+  );
+  const { runId, appName } = identity;
   const identityPath = join(root, "keychain-identity.json");
   await save(identityPath, identity);
   const bootstrap = join(root, "identity-bootstrap.cjs");
   await writeFile(
     bootstrap,
     `
-const assert = require("node:assert/strict");
-const { appendFileSync, writeFileSync } = require("node:fs");
-const { app, safeStorage } = require("electron");
-const identity = require(${JSON.stringify(identityPath)});
-const target = JSON.parse(process.env.AREAL_H2_TEST_ENTRY);
-assert.equal(app.isReady(), false, "identity must be set synchronously before ready");
-assert.equal(app.getName(), identity.appName, "native startup name before override");
-const nativeSetName = app.setName.bind(app);
-nativeSetName(identity.appName);
-app.setName = (name) => {
-  assert(["AReaL Harness GUI", identity.appName].includes(name), "unexpected application name");
-  nativeSetName(identity.appName);
-};
-const original = {
-  object: safeStorage,
-  encrypt: safeStorage.encryptString,
-  decrypt: safeStorage.decryptString,
-  available: safeStorage.isEncryptionAvailable,
-};
-function check(phase) {
-  assert.equal(app.getName(), identity.appName, "native application identity");
-  assert.equal(require("electron").safeStorage, original.object);
-  assert.equal(safeStorage.encryptString, original.encrypt);
-  assert.equal(safeStorage.decryptString, original.decrypt);
-  assert.equal(safeStorage.isEncryptionAvailable, original.available);
-  appendFileSync(target.evidence, JSON.stringify({
-    phase, pid: process.pid, appName: app.getName(),
-    service: identity.service, account: identity.account,
-    realSafeStorageReferences: true,
-  }) + "\\n", { mode: 0o600 });
-}
-check("before-load");
-app.once("will-finish-launching", () => check("will-finish-launching"));
-app.once("ready", () => check("ready"));
+${isolatedElectronBootstrapPrefix(identityPath)}
 if (target.hook?.kind === "legacy-response-loss") {
   const WebSocket = require(require.resolve("ws", { paths: [target.appPath] }));
   const send = WebSocket.prototype.send;
@@ -622,31 +590,17 @@ check("after-load");
     processes.push({ name, process });
     return process;
   }
-  const electronBundle = join(root, "Electron.app");
-  const installedBundle = resolve(installedElectron, "../../..");
-  const electron = join(electronBundle, "Contents/MacOS/Electron");
-  const plist = join(electronBundle, "Contents/Info.plist");
   const remoteAssets = { sourceRoot: await realpath(join(gui, "renderer/dist")), files: {} };
-  for (const [name, executable, args] of [
-    ["electron-copy", "/usr/bin/ditto", [installedBundle, electronBundle]],
-    ["electron-name", "/usr/libexec/PlistBuddy", ["-c", `Set :CFBundleName ${appName}`, plist]],
-    [
-      "electron-display-name",
-      "/usr/libexec/PlistBuddy",
-      ["-c", `Set :CFBundleDisplayName ${appName}`, plist],
-    ],
-    [
-      "electron-id",
-      "/usr/libexec/PlistBuddy",
-      ["-c", `Set :CFBundleIdentifier org.areal.h2.${runId}`, plist],
-    ],
-    ["electron-sign", "/usr/bin/codesign", ["--force", "--sign", "-", electronBundle]],
-    ["electron-verify", "/usr/bin/codesign", ["--verify", "--strict", electronBundle]],
-    ["electron-signature", "/usr/bin/codesign", ["-dvv", electronBundle]],
-  ]) {
-    const process = start(executable, args, env, name);
-    assert.equal((await process.finish()).code, 0, `${name} succeeds`);
-    if (name === "electron-copy") {
+  const {
+    bundle: electronBundle,
+    executable: electron,
+    plist,
+  } = await prepareIsolatedElectron({
+    root,
+    installedElectron,
+    identity,
+    run: async (name, executable, args) => start(executable, args, env, name).finish(),
+    afterCopy: async (electronBundle) => {
       const appDirectory = join(electronBundle, "Contents/Resources/app");
       await mkdir(appDirectory, { recursive: true });
       await writeFile(
@@ -681,8 +635,8 @@ check("after-load");
       await writeFile(join(destination, "remote-assets.json"), descriptorBytes);
       remoteAssets.files["remote-assets.json"] = sha(descriptorBytes);
       await save(join(root, "legacy-direct-assets.json"), remoteAssets);
-    }
-  }
+    },
+  });
   identity.electronBundle = electronBundle;
   identity.electronExecutableSha256 = sha(await readFile(electron));
   identity.electronPlistSha256 = sha(await readFile(plist));
@@ -719,42 +673,14 @@ check("after-load");
     return result.code === 44 && result.stderr.includes("could not be found");
   }
   async function cleanEntry(service, account, expectedKeychain) {
-    const item = { service, account, state: "pending" };
-    cleanup.entries.push(item);
-    await save(cleanupPath, cleanup);
-    if (cleanup.unsettledHostHomes?.length) {
-      item.state = "retained";
-      item.reason = "Original Host stop remains unconfirmed; preserve synthetic recovery entries";
-      await save(cleanupPath, cleanup);
-      return;
-    }
-    const found = await security(["find-generic-password", "-s", service, "-a", account]);
-    item.findExit = found.code;
-    if (missing(found)) {
-      item.state = "absent";
-      return;
-    }
-    assert.equal(found.code, 0, `exact Keychain lookup failed for ${service}/${account}`);
-    const keychain = /^keychain: "([^"\n]+)"/m.exec(found.stdout)?.[1];
-    assert(keychain?.startsWith("/"), "exact Keychain metadata must identify its database");
-    if (expectedKeychain)
-      assert.equal(keychain, expectedKeychain, "cleanup exact original database");
-    item.keychain = keychain;
-    await save(cleanupPath, cleanup);
-    const deleted = await security([
-      "delete-generic-password",
-      "-s",
+    await cleanIsolatedKeychainEntry({
       service,
-      "-a",
       account,
-      keychain,
-    ]);
-    item.deleteExit = deleted.code;
-    assert.equal(deleted.code, 0, `exact test Keychain deletion failed for ${service}/${account}`);
-    const after = await security(["find-generic-password", "-s", service, "-a", account, keychain]);
-    item.verifyExit = after.code;
-    assert(missing(after), "test Keychain item must be absent after exact deletion");
-    item.state = "removed";
+      expectedKeychain,
+      security,
+      cleanup,
+      save: () => save(cleanupPath, cleanup),
+    });
   }
   const requestId = randomUUID();
   const cleanupPath = join(root, "keychain-cleanup.json");

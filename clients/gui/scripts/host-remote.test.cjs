@@ -12,6 +12,7 @@ let directStartup;
 directModule.startDirect = (...args) =>
   directStartup ? directStartup(...args) : originalStartDirect(...args);
 const { RemoteControl } = require("@areal/workbench-service/desktop/core/remote.cjs");
+const { NativeRemote } = require("@areal/workbench-service/desktop/core/native-remote.cjs");
 after(() => {
   directModule.startDirect = originalStartDirect;
 });
@@ -529,6 +530,39 @@ for (const method of ["hello", "remote.acquire", "remote.read"]) {
     assert.equal(desktop.remote, remote);
   });
 }
+
+test("pending Remote identity keeps Remote closed without blocking initialization", async (t) => {
+  const f = await fixture(t);
+  const remote = new RemoteControl(f.service);
+  remote.storage.init = async () => {
+    throw Object.assign(new Error("pending"), { code: "migrationPending" });
+  };
+  await remote.init();
+  assert.equal(remote.config.enabled, false);
+  assert.match(remote.directError, /恢复/);
+  assert.equal(
+    f.requests.some((request) => request.method === "remote.replace"),
+    false,
+  );
+  await remote.close();
+});
+
+test("pending native Remote identity leaves the workbench usable and reports recovery", async (t) => {
+  const f = await fixture(t);
+  const remote = new NativeRemote(f.service);
+  remote.storage.init = async () => {
+    throw Object.assign(new Error("pending"), { code: "migrationPending" });
+  };
+  await remote.init();
+  const status = await remote.control({ operation: "status" });
+  assert.equal(status.enabled, false);
+  assert.match(status.migrationError, /恢复/);
+  assert.equal(
+    f.requests.some((request) => request.method === "remote.replace"),
+    false,
+  );
+  await remote.close();
+});
 
 test("closing Remote before initialization cannot create a late Host connection", async (t) => {
   const f = await fixture(t);
