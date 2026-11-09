@@ -35,7 +35,7 @@ Implement A0 → A4 in order and continuously, without waiting for H4 acceptance
 
 Merging takes two PRs:
 
-1. **Integration PR**: A0–A3 plus A4 item 1 (the shared UI). Every new path sits behind a flag that defaults to off, so an installed build behaves as the released one does. It merges when CI is green without loosening any gate (line caps, IPC freeze, protocol checks, renderer boundary); it does not require packaged acceptance.
+1. **Integration PR**: A0–A3 plus A4 item 1 (the shared UI). The original integration put new paths behind disabled flags. GUI backend ownership now defaults to Host; Renderer read routing and Rust domain implementations remain separate choices. It merges when CI is green without loosening any gate (line caps, IPC freeze, protocol checks, renderer boundary); it does not require packaged acceptance.
 2. **Retirement PR**: A4 items 2–4, which delete the old pages, old IPC and the flags and move TUI/CLI onto the Host. Open it only after release acceptance passes (real-data upgrade, old pairing upgrade, login autostart and reboot, unchanged identity after upgrade, a signed and notarized package, and OP-01 to OP-08), and ask the maintainer before deleting.
 
 - Use high reasoning effort throughout. The A3 workbench service design note goes into the commit and may be implemented directly; stop only for "Stop and ask" items.
@@ -156,7 +156,7 @@ The GUI reads its project list and session details from the Host; a browser open
 ### Constraints
 
 - No write paths change; writes still use the old IPC.
-- The flag is off by default until the maintainer accepts it.
+- The Renderer read flag remains off by default. Backend ownership defaults to Host and cannot fall back to a Main writer through renderer domain preferences.
 
 ### Stop and ask
 

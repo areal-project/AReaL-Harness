@@ -291,7 +291,11 @@ async fn run_relay(host: Rc<Host>) {
             terminal_transport = None;
             host.gateway.push_supported.set(false);
         }
-        let snapshot = host.remote.snapshot(&host.migration);
+        let snapshot = if host.remote.native_owner().ok().flatten().is_some() {
+            host.remote.snapshot_async(&host.migration).await
+        } else {
+            Ok(Value::Null)
+        };
         let desired = snapshot
             .as_ref()
             .ok()
@@ -505,11 +509,11 @@ async fn run_direct(host: Rc<Host>) {
     let mut running: Option<DirectRunning> = None;
     let mut attempted = None;
     loop {
-        let snapshot = host
-            .remote
-            .snapshot(&host.migration)
-            .ok()
-            .filter(|_| host.remote.native_owner().ok().flatten().is_some());
+        let snapshot = if host.remote.native_owner().ok().flatten().is_some() {
+            host.remote.snapshot_async(&host.migration).await.ok()
+        } else {
+            None
+        };
         let desired = snapshot
             .as_ref()
             .filter(|snapshot| snapshot["config"]["directEnabled"] == true);
@@ -589,7 +593,7 @@ async fn run_local_relay(host: Rc<Host>) {
         let _ = host.gateway.local_relay.poll().await;
         if host.admission().is_ok()
             && host.remote.native_owner().ok().flatten().is_some()
-            && let Ok(snapshot) = host.remote.snapshot(&host.migration)
+            && let Ok(snapshot) = host.remote.snapshot_async(&host.migration).await
         {
             if snapshot["config"]["relayLocal"]["enabled"] == true {
                 match host.local_relay_source(snapshot["sourceId"].as_str().unwrap_or_default()) {

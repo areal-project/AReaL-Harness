@@ -18,6 +18,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { once } from "node:events";
+import { enableHostLibrary } from "../app/src/ipc/host-library.ts";
 import { createServer as createNetServer } from "node:net";
 
 const require = createRequire(import.meta.url);
@@ -32,6 +33,73 @@ const {
 const { serviceIdentity } = require("../app/src/core/service-config.cjs");
 const { WebSocketServer } = require("../app/node_modules/ws");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("default GUI selects Host before initializing any in-process writer", async (t) => {
+  const f = await startupOwnerFixture(t);
+  let starts = 0;
+  f.backend.initializeHostBackend = async () => {
+    starts++;
+  };
+  f.backend.prerequisiteCheck = async () => assert.fail("must not initialize Main backend");
+  await f.backend.initialize();
+  assert.equal(starts, 1);
+  assert.equal(f.backend.mainDesktop, undefined);
+});
+
+test("Host startup failure never falls back to a Main writer", async (t) => {
+  const f = await startupOwnerFixture(t);
+  const failure = new Error("fixture Host owner unavailable");
+  f.backend.initializeHostBackend = async () => {
+    throw failure;
+  };
+  f.backend.prerequisiteCheck = async () => assert.fail("must not initialize Main backend");
+  await assert.rejects(f.backend.initialize(), (error) => error === failure);
+  assert.equal(f.backend.mainDesktop, undefined);
+});
+
+test("live in-process owner cannot be switched to Host", async (t) => {
+  const f = await startupOwnerFixture(t);
+  f.backend.mainDesktop = { closed: false, close: async () => {} };
+  f.backend.prerequisiteCheck = async () => assert.fail("must reject before starting Host");
+  await assert.rejects(f.backend.initialize(), /不能同时运行两个写入者/);
+});
+
+test("renderer flags cannot turn off Host ownership or enable unrelated Rust domains", async (t) => {
+  const f = await startupOwnerFixture(t);
+  f.backend.setOneProtocol({ library: false, backend: false, rustDomains: ["tasks-rust"] });
+  assert.equal(f.backend.oneProtocol.backend, true);
+  assert.deepEqual(f.backend.oneProtocol.rustDomains, ["tasks-rust"]);
+});
+
+test("missing renderer preferences retain Host ownership and explicit Rust domains", async (t) => {
+  const f = await startupOwnerFixture(t);
+  await enableHostLibrary(null, f.backend);
+  assert.equal(f.backend.oneProtocol.backend, true);
+  f.backend.setOneProtocol({ library: false, rustDomains: ["tasks-rust"] });
+  t.mock.method(console, "error", () => {});
+  await enableHostLibrary(
+    {
+      webContents: {
+        executeJavaScript: async () => {
+          throw new Error("renderer unavailable");
+        },
+      },
+    },
+    f.backend,
+  );
+  assert.equal(f.backend.oneProtocol.backend, true);
+  assert.deepEqual(f.backend.oneProtocol.rustDomains, ["tasks-rust"]);
+});
+
+async function startupOwnerFixture(t) {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "areal-startup-owner-")));
+  const backend = new SharedCoreBackend({ app: { getPath: () => home }, home });
+  t.after(async () => {
+    await backend.shutdown();
+    await rm(home, { recursive: true, force: true });
+  });
+  return { home, backend };
+}
 
 for (const fails of [false, true]) {
   test(`concurrent initialization shares control read and ${fails ? "failure" : "connection"}`, async (t) => {
@@ -544,6 +612,8 @@ async function fixture(
     });
   });
   const backend = new SharedCoreBackend({ app: { getPath: () => home }, home });
+  // 保留旧后台恢复合同的夹具，不通过产品开关重新启用旧写者。
+  backend.oneProtocol = null;
   let mainFailure;
   const hostCapabilityChecks = [];
   const connectMain = async () => {
@@ -1501,6 +1571,7 @@ for (const automatic of [false, true]) {
     const before = await readFile(journal);
     await f.backend.shutdown();
     const reopened = new SharedCoreBackend({ app: { getPath: () => f.home }, home: f.home });
+    reopened.oneProtocol = null;
     t.after(() => reopened.shutdown());
     let starts = 0;
     reopened.initialize = async () => {
@@ -1549,6 +1620,7 @@ for (const scenario of [
     }
     await f.backend.shutdown();
     const reopened = new SharedCoreBackend({ app: { getPath: () => f.home }, home: f.home });
+    reopened.oneProtocol = null;
     t.after(() => reopened.shutdown());
     let starts = 0;
     reopened.initialize = async () => {

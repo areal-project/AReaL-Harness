@@ -10,7 +10,7 @@ Worktree、资料库、任务目录等共用项目连接、会话生命周期、
 
 公共客户端只连接 Host。后台保留已认证的私有 attach 监听供 Main 连接，它不是浏览器或手机的业务入口。项目连接与监督统一归 Host，后台经有限的 `core.request` 白名单读写 Core。Main 的领域回退也使用绑定原附件的 Host 连接；观察与终端使用独立租约，断开不会关闭其它客户端的项目连接。Core 与 Runtime 的权威和清理责任保持不变。
 
-`areal.oneProtocol.domains` 含 `backend` 时启用 Host 后台，切换需重开应用。Main 在初始化后台前读取开关；关闭时仍走原进程内路径。数据目录保持原 GUI 目录，Host 核对已登记的导航来源和 Core 路径，不搬数据。一个 Host 当前只接管一个后台配置；配置不一致拒绝复用，不静默切换来源。
+GUI 默认由 Host 监督后台，所有者在读取界面偏好之前确定；`areal.oneProtocol.domains` 不再控制后台所有权。现有 GUI 须正常退出后重开，不热切换活跃写者；Host 启动失败时保留错误和原回执，不回退到 Main 新建后台。原单实例锁与未退役后台身份检查继续阻止接管。数据目录保持原 GUI 目录，Host 核对已登记的导航来源和 Core 路径，不搬数据。一个 Host 当前只接管一个后台配置；配置不一致拒绝复用，不静默切换来源。
 
 `CoreBackend`、`DesktopService` 与运行时依赖闭包位于 `services/workbench/src/desktop`；轨迹与反馈位于 `src/domains`，资料库暂存写入器从 `src/host-library-store.ts` 构建为 CommonJS。后台通过 `@areal/workbench-service` 加载，Host 接管与 Main 回退共用唯一实现。Main 保留应用配置、连接客户端和原生生命周期客户端；部署身份包含服务源码、拆分协议与生成的写入器。服务包是 GUI 的显式 workspace 依赖，由现有依赖分发器连同资源和依赖闭包装入 `app.asar`，不依赖 `Resources/areal-workbench` 向兄弟归档隐式解析模块。
 
@@ -53,7 +53,7 @@ Electron 的进程命令保留 Main 原生连接适配，即使启用 `manage` �
 
 ## Rust 领域实现与回退
 
-桌面后台启动参数 `rustDomains` 来自 `areal.oneProtocol.domains`，接受 `library-rust`、`execution-rust`、`tasks-rust`、`worktree-rust`。这些选项用于选择领域实现，改变后需要重启后台；原 `backend` 接管开关与原领域入口保留。关闭某领域的 Rust 选项使用原路径，不重放该路径上已有的 UNKNOWN 请求。新路径仍需完成对应环境验收，不能仅以编译通过视为退役条件。
+桌面后台启动参数 `rustDomains` 来自 `areal.oneProtocol.domains`，接受 `library-rust`、`execution-rust`、`tasks-rust`、`worktree-rust`。这些选项用于选择领域实现，改变后需要重启后台；领域入口开关保留，但不改变 Host 的后台所有权。关闭某领域的 Rust 选项使用原路径，不重放该路径上已有的 UNKNOWN 请求。新路径仍需完成对应环境验收，不能仅以编译通过视为退役条件。
 
 本表描述启用 Rust 领域时的所有权。旧 JS 领域实现保留供关闭开关时回退；Core 连接与进程监督不随领域开关回退。
 

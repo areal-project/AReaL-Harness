@@ -2,8 +2,15 @@ use super::*;
 use serde_json::json;
 
 impl SourceSubscription {
-    pub(crate) fn stored_accounts(migration: &Migration, source: &str) -> Result<Value> {
-        Ok(SourceAccounts::read(&migration.vault, source, migration)?.public())
+    pub(crate) async fn stored_accounts_async(
+        migration: &Migration,
+        source: &str,
+    ) -> Result<Value> {
+        Ok(
+            SourceAccounts::read_async(&migration.vault, source, migration)
+                .await?
+                .public(),
+        )
     }
     pub(crate) fn source_id(&self) -> &str {
         &self.source
@@ -12,7 +19,18 @@ impl SourceSubscription {
         self.state.borrow().epoch
     }
     pub(crate) fn snapshot(&self) -> network::Result<Value> {
-        let accounts = self.accounts()?;
+        self.snapshot_accounts(self.accounts()?)
+    }
+    pub(crate) async fn snapshot_async(&self) -> network::Result<Value> {
+        let epoch = self.account_epoch();
+        let accounts =
+            SourceAccounts::read_async(&self.migration.vault, &self.source, &self.migration)
+                .await
+                .map_err(Failure::storage)?;
+        self.check_epoch(epoch)?;
+        self.snapshot_accounts(accounts)
+    }
+    fn snapshot_accounts(&self, accounts: SourceAccounts) -> network::Result<Value> {
         let runtime = self.state.borrow();
         let selected = accounts.directory.as_ref().map(AccountDirectory::active);
         let authenticated = selected.is_some_and(|record| record.authenticated());

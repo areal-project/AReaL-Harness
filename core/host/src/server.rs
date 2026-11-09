@@ -4,6 +4,9 @@ pub(crate) mod conversation_media;
 mod conversation_read;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
+#[cfg(test)]
+#[path = "vault_liveness_tests.rs"]
+mod vault_liveness_tests;
 pub(crate) use gateway_owner::error_code;
 #[path = "library_commands.rs"]
 mod library_commands;
@@ -238,7 +241,7 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
 }
 async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> {
     let home = storage::prepare_host_home(&options.home)?;
-    let lock = storage::open_private(&home.join("host.lock"), true)?;
+    let lock = Arc::new(storage::open_private(&home.join("host.lock"), true)?);
     match lock.try_lock_exclusive() {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -307,7 +310,8 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
             );
         }
     }
-    let migration = crate::migration::Migration::new(&home)?;
+    let mut migration = crate::migration::Migration::new(&home)?;
+    migration.vault.hold_owner(lock.clone(), &identity, &token);
     for registration in migration.published()? {
         if slots
             .get(&registration.project_id)
@@ -370,7 +374,10 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
             )?;
         }
     }
-    host.restore_subscriptions().await?;
+    host.subscriptions.restoring.set(true);
+    let restoring_subscriptions = host.restore_subscriptions();
+    tokio::pin!(restoring_subscriptions);
+    let mut restoring = true;
     let mut loopback = loopback::bind(
         host.clone(),
         std::env::var_os("AREAL_HOST_WEBSOCKET").is_none_or(|value| value != "0"),
@@ -391,6 +398,11 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     loop {
         tokio::select! {
             _=host.exit.notified()=>break,
+            result=&mut restoring_subscriptions, if restoring=> {
+                result?;
+                restoring = false;
+                host.subscriptions.restoring.set(false);
+            },
             result=loopback.run()=>{result?;unreachable!("loopback listener lives with Host")},
             _=&mut scheduler=>unreachable!("scheduler lifetime is the Host lifetime"),
             _=&mut connections=>unreachable!("schedule connections live with the Host"),
@@ -405,6 +417,8 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     host.gateway.workbench.stop().await;
     host.close_subscriptions().await;
     host.power.close().await;
+    // 系统凭据调用可能仍在等待用户；不能先释放 Host 锁而允许第二写者启动。
+    host.migration.vault.close().await;
     std::fs::remove_file(socket)?;
     std::fs::remove_file(directory.join("host.json"))?;
     crate::service_run::ServiceRun::finish(&host.home)?;
@@ -574,20 +588,16 @@ impl Host {
         if let Some(receipt) = self.journal.operation(id)? {
             return Ok(Some(receipt));
         }
-        if let Some(receipt) = self.migration.vault.operation(id, &self.migration)? {
+        if let Some(receipt) = crate::vault::Vault::operation_offline(&self.home, id)? {
             return Ok(Some(receipt));
         }
-        if let Some(receipt) = self.remote.operation(id, &self.migration)? {
+        if let Some(receipt) = crate::remote_state::RemoteState::operation_offline(&self.home, id)?
+        {
             return Ok(Some(receipt));
         }
         self.subscription_operation(id)
     }
-    fn client_state(
-        &self,
-        method: &str,
-        params: Value,
-        connection: &ConnectionGuard,
-    ) -> Result<Value> {
+    fn validate_client_state(&self, method: &str, params: &Value) -> Result<()> {
         if let Some(id) = params.get("requestId").and_then(Value::as_str) {
             wire::request_id(id)?;
             self.admission()?;
@@ -618,6 +628,15 @@ impl Host {
                 }
             }
         }
+        Ok(())
+    }
+    fn client_state(
+        &self,
+        method: &str,
+        params: Value,
+        connection: &ConnectionGuard,
+    ) -> Result<Value> {
+        self.validate_client_state(method, &params)?;
         match method {
             "gui.source" => {
                 #[derive(Deserialize)]
@@ -1185,6 +1204,60 @@ impl Host {
         if method.starts_with("subscription.") {
             return self.subscription_dispatch(method, params, connection).await;
         }
+        if matches!(
+            method,
+            "remote.read"
+                | "remote.replace"
+                | "remote.gateway.replace"
+                | "remote.acquire"
+                | "remote.gateway.handoff"
+        ) {
+            self.validate_client_state(method, &params)?;
+            if method == "remote.gateway.handoff" {
+                return self
+                    .remote
+                    .handoff_async(params, &self.identity, &self.migration)
+                    .await;
+            }
+            let projects = if method == "remote.read" {
+                Vec::new()
+            } else {
+                let source = params["sourceId"]
+                    .as_str()
+                    .ok_or_else(|| error("invalidRequest", "sourceId is required"))?;
+                let current: Vec<_> = self
+                    .slots
+                    .borrow()
+                    .values()
+                    .map(|slot| slot.registration.clone())
+                    .collect();
+                self.migration.remote_projects(source, &current)?
+            };
+            let result = self
+                .remote
+                .dispatch_async(
+                    method,
+                    params,
+                    &connection.id,
+                    &self.identity.generation,
+                    &self.migration,
+                    &projects,
+                )
+                .await?;
+            if method == "remote.gateway.replace" {
+                let snapshot = self.remote.snapshot_async(&self.migration).await?;
+                self.gateway.refresh_config(&snapshot["config"]);
+            }
+            return Ok(result);
+        }
+        if method == "vault.read" || method == "vault.replace" {
+            self.validate_client_state(method, &params)?;
+            return self
+                .migration
+                .vault
+                .dispatch_async(method, params, &self.identity.generation, &self.migration)
+                .await;
+        }
         if method.starts_with("gui.")
             || method.starts_with("journal.")
             || method.starts_with("vault.")
@@ -1231,7 +1304,13 @@ impl Host {
                     );
                 }
                 Ok(
-                    json!({"operation":match self.client_operation(&query.request_id)? { Some(receipt) => Some(receipt), None => self.reconcile(&query.request_id).await? }}),
+                    json!({"operation":match self.migration.vault.operation_async(&query.request_id, &self.migration).await? {
+                        Some(receipt) => Some(receipt),
+                        None => match self.remote.operation_async(&query.request_id, &self.migration).await? {
+                            Some(receipt) => Some(receipt),
+                            None => match self.client_operation(&query.request_id)? { Some(receipt) => Some(receipt), None => self.reconcile(&query.request_id).await? }
+                        }
+                    }}),
                 )
             }
             "host.updateStatus" => {
@@ -1615,12 +1694,29 @@ impl Host {
             "invalidRequest: credentials must be named by launch inputs"
         );
 
+        let subscription_optional = launch::subscription_is_optional(&self.home, &inputs);
+        let mut deferred_credentials = BTreeSet::new();
         let mut imported_credentials = BTreeMap::new();
         for name in &inputs.credential_names {
             if let Some(source) = &credential_source
                 && name.starts_with("AREAL_CREDENTIAL_")
             {
-                let credential = match self.migration.credential_for_source(source, name) {
+                if subscription_optional
+                    && name == "AREAL_CREDENTIAL_areal_openai"
+                    && self.migration.vault.slot_in_flight(
+                        &crate::vault::Slot::SubscriptionTransport {
+                            source_id: source.clone(),
+                        },
+                    )
+                {
+                    deferred_credentials.insert(name.clone());
+                    continue;
+                }
+                let credential = match self
+                    .migration
+                    .credential_for_source_async(source, name)
+                    .await
+                {
                     Ok(value) => value,
                     Err(cause)
                         if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
@@ -1639,9 +1735,19 @@ impl Host {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();
             for name in std::mem::take(&mut slot.imported_credentials) {
-                slot.credentials.remove(&name);
+                if deferred_credentials.contains(&name) {
+                    slot.imported_credentials.insert(name);
+                } else {
+                    slot.credentials.remove(&name);
+                }
             }
-            slot.credentials.extend(input.credentials.clone());
+            slot.credentials.extend(
+                input
+                    .credentials
+                    .iter()
+                    .filter(|(name, _)| !deferred_credentials.contains(*name))
+                    .map(|(name, value)| (name.clone(), value.clone())),
+            );
             for (name, value) in imported_credentials {
                 if let Some(value) = value {
                     slot.imported_credentials.insert(name.clone());
@@ -1650,8 +1756,16 @@ impl Host {
                     slot.credentials.remove(&name);
                 }
             }
-            slot.credentials.clone()
+            slot.credentials
+                .iter()
+                .filter(|(name, _)| !deferred_credentials.contains(*name))
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect()
         };
+        // 在途订阅只从本次启动投影暂缓，不清除权威凭据或缓存，也不改写原回执。
+        inputs
+            .credential_names
+            .retain(|name| !deferred_credentials.contains(name));
         let (mut spec, _) =
             launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;
         let mut journal = self

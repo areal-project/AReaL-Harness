@@ -222,6 +222,64 @@ pub(crate) fn validate(inputs: &LaunchInputs, registration: &ProjectRegistration
     }
     Ok(())
 }
+pub(super) fn config_inputs(
+    home: &Path,
+    inputs: &LaunchInputs,
+    credentials: &BTreeMap<String, String>,
+) -> areal_config::ConfigInputs {
+    let mut env: BTreeMap<std::ffi::OsString, std::ffi::OsString> = inputs
+        .environment
+        .iter()
+        .map(|(k, v)| (k.into(), v.into()))
+        .collect();
+    env.insert(
+        "AREAL_HARNESS_HOME".into(),
+        inputs.config_home.as_os_str().into(),
+    );
+    env.insert("AREAL_HARNESS_SERVICE_HOME".into(), home.as_os_str().into());
+    if let Some(home) = &inputs.homedir {
+        env.insert("HOME".into(), home.as_os_str().into());
+    }
+    for name in &inputs.credential_names {
+        if let Some(value) = credentials.get(name) {
+            env.insert(name.into(), value.into());
+        }
+    }
+    let args = &inputs.options;
+    areal_config::ConfigInputs {
+        cwd: inputs.cwd.clone(),
+        homedir: inputs.homedir.clone(),
+        env,
+        config_file: inputs.config_path.clone(),
+        overrides: areal_config::ConfigOverrides {
+            api_key_env: args.api_key_env.clone(),
+            model: args.model.clone(),
+            model_provider: args.model_provider.clone(),
+            model_endpoint: args.model_endpoint.clone(),
+            model_protocol: args.model_protocol.clone(),
+            ..Default::default()
+        },
+    }
+}
+
+pub(super) fn subscription_is_optional(home: &Path, inputs: &LaunchInputs) -> bool {
+    // 只依据启动所用的同一规范解析确认独立供应商；缺省、歧义和解析失败都等待原订阅操作。
+    areal_config::load_management_config(&config_inputs(home, inputs, &BTreeMap::new()))
+        .ok()
+        .is_some_and(|config| {
+            !config.model.name.is_empty()
+                && !config.model.endpoint.is_empty()
+                && config
+                    .model
+                    .api_key_env
+                    .as_deref()
+                    .is_some_and(|reference| {
+                        reference.starts_with("AREAL_CREDENTIAL_")
+                            && reference != "AREAL_CREDENTIAL_areal_openai"
+                    })
+        })
+}
+
 pub(crate) fn prepare(
     home: &Path,
     bin: &Path,
@@ -289,44 +347,14 @@ pub(crate) fn prepare(
     args.config = saved.config_path.clone();
     args.desktop_config = saved.deployment_path.clone();
     saved.options = args.clone();
-    let mut environment: BTreeMap<std::ffi::OsString, std::ffi::OsString> = saved
-        .environment
-        .iter()
-        .map(|(k, v)| (k.into(), v.into()))
-        .collect();
-    environment.insert(
-        "AREAL_HARNESS_HOME".into(),
-        saved.config_home.as_os_str().into(),
-    );
-    environment.insert("AREAL_HARNESS_SERVICE_HOME".into(), home.as_os_str().into());
-    if let Some(homedir) = &saved.homedir {
-        environment.insert("HOME".into(), homedir.as_os_str().into());
-    }
-    for name in &saved.credential_names {
-        if let Some(value) = credentials.get(name) {
-            environment.insert(name.into(), value.as_str().into());
-        }
-    }
+    let config_inputs = config_inputs(home, &saved, credentials);
+    let config = areal_config::load_management_config(&config_inputs)?;
     let context = LaunchContext {
         cwd: saved.cwd.clone(),
         homedir: saved.homedir.clone(),
         home: home.to_path_buf(),
-        environment,
+        environment: config_inputs.env,
     };
-    let config = areal_config::load_management_config(&areal_config::ConfigInputs {
-        cwd: context.cwd.clone(),
-        homedir: context.homedir.clone(),
-        env: context.environment.clone(),
-        config_file: args.config.clone(),
-        overrides: areal_config::ConfigOverrides {
-            api_key_env: args.api_key_env.clone(),
-            model: args.model.clone(),
-            model_provider: args.model_provider.clone(),
-            model_endpoint: args.model_endpoint.clone(),
-            model_protocol: args.model_protocol.clone(),
-            ..Default::default()
-        },
-    })?;
     // Core 管理入口用不可用模型保留历史读取；非模型执行凭据仍须完整提供。
     let model_credentials: std::collections::BTreeSet<_> = config
         .model

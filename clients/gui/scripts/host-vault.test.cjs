@@ -37,6 +37,54 @@ test("background vault reads require capability and never fall back to interacti
   assert.deepEqual(calls, [{ method: "vault.read", params: { slot, interactionAllowed: false } }]);
 });
 
+test("pending subscription handoff does not block ordinary provider startup", async (t) => {
+  const f = await fixture(t);
+  f.backend.onChange = () => {};
+  let release, entered;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const pending = new Promise((_, reject) => {
+    release = () => reject(Object.assign(new Error("fixture locked"), { code: "storageLocked" }));
+  });
+  t.mock.method(NativeSubscription, "connect", () => {
+    entered();
+    return pending;
+  });
+  const app = new AppProviders(f.backend);
+  f.backend.providers = app;
+  let explicit;
+  try {
+    let initialized = false;
+    const initialization = app.init().then(() => {
+      initialized = true;
+    });
+    await started;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(initialized, true, "provider startup must not wait for subscription handoff");
+    await initialization;
+    let prepared = false;
+    const preparation = app.prepare().then(() => {
+      prepared = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(prepared, true, "ordinary project startup must not wait for subscription handoff");
+    await preparation;
+    assert.equal(app.subscription.availability, "checking");
+    explicit = app.openai();
+    assert.equal(
+      NativeSubscription.connect.mock.callCount(),
+      1,
+      "explicit use joins the original handoff",
+    );
+  } finally {
+    release();
+    await explicit?.catch(() => {});
+    await app.openaiPromise?.catch(() => {});
+  }
+  assert.equal(app.subscription.state, "storage_locked");
+});
+
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "areal-host-credentials-"));
   t.after(() => rm(home, { recursive: true, force: true }));
@@ -51,6 +99,7 @@ async function fixture(t) {
   };
   const backend = {
     home,
+    onChange() {},
     projects: new Map(),
     hooks: { environment: () => ({}) },
     async save(name, value) {
@@ -259,6 +308,7 @@ test("subscription initialization reports network failures separately and keeps 
   };
   const app = new AppProviders(f.backend);
   await assert.doesNotReject(app.init());
+  await app.openaiPromise?.catch(() => {});
   assert.equal(app.subscription.state, "temporarily_unavailable");
   assert.equal(app.subscription.diagnostic.code, "ECONNRESET");
   assert.equal(app.subscription.diagnostic.phase, "initialize");

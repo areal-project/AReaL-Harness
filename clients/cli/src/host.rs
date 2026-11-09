@@ -48,6 +48,14 @@ pub enum WebCommand {
 }
 #[derive(Subcommand)]
 pub enum HostCommand {
+    #[cfg(target_os = "macos")]
+    #[command(hide = true)]
+    CredentialIo {
+        #[arg(long)]
+        channel_fd: i32,
+        #[arg(long, allow_hyphen_values = true)]
+        owner_fd: i32,
+    },
     Web {
         #[command(subcommand)]
         action: WebCommand,
@@ -109,6 +117,11 @@ pub enum HostCommand {
 }
 pub async fn execute(command: HostCommand) -> Result<()> {
     let value = match command {
+        #[cfg(target_os = "macos")]
+        HostCommand::CredentialIo {
+            channel_fd,
+            owner_fd,
+        } => return areal_host::run_credential_io(channel_fd, owner_fd),
         HostCommand::Web {
             action: WebCommand::Approve { request_id, scopes },
         } => serde_json::to_value(

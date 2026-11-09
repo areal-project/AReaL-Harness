@@ -91,6 +91,7 @@ class AppProviders {
     /** @type {InstanceType<typeof import('./subscription.cjs').SubscriptionStore>|undefined} */ this.openaiStore =
       undefined;
     this.subscriptionInitialized = false;
+    this.subscriptionStarting = false;
     /** @type {InstanceType<typeof import("./native-subscription.cjs").NativeSubscription>|undefined} */ this.nativeService =
       undefined;
     this.closed = false;
@@ -108,11 +109,26 @@ class AppProviders {
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    try {
-      await this.openai();
-    } catch (error) {
-      this.subscriptionUnavailable(error);
-    }
+    // 订阅交接可能等待系统凭据；普通供应商和任务不依赖其完成。
+    this.subscription = {
+      ...this.subscription,
+      state: "checking",
+      availability: "checking",
+      refreshing: true,
+    };
+    this.subscriptionStarting = true;
+    void this.openai()
+      .then(() => {
+        this.subscriptionStarting = false;
+        return this.closed ? undefined : this.prepare();
+      })
+      .catch((error) => {
+        this.subscriptionStarting = false;
+        this.subscriptionUnavailable(error);
+      })
+      .finally(() => {
+        if (!this.closed) this.backend.onChange();
+      });
   }
 
   get value() {
@@ -209,6 +225,7 @@ class AppProviders {
 
   async prepare() {
     if (
+      this.subscriptionStarting ||
       this.subscriptionInitializationError ||
       (this.backend.host.retirement && this.backend.host.retirement.state !== "completed")
     )

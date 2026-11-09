@@ -6,7 +6,14 @@ use anyhow::{Result, ensure};
 use areal_local_service::storage;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex, Weak,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
@@ -95,14 +102,328 @@ impl Slot {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Vault {
+    flight: Arc<Mutex<BTreeMap<String, Value>>>,
+    worker: bool,
+    closing: Arc<AtomicBool>,
+    idle_notice: Arc<tokio::sync::Notify>,
+    gates: Arc<Mutex<BTreeMap<String, Weak<tokio::sync::Mutex<()>>>>>,
+    interaction_allowed: bool,
     home: PathBuf,
+    owner: Arc<Mutex<Option<Arc<std::fs::File>>>>,
+    #[cfg(target_os = "macos")]
+    authority: Arc<Mutex<Option<crate::credential_io::Authority>>>,
     #[cfg(test)]
     isolated_files: bool,
     #[cfg(test)]
     pub(crate) locked: std::cell::Cell<bool>,
+    #[cfg(test)]
+    pub(crate) before_write: Option<std::sync::Arc<dyn Fn() + Send + Sync>>,
 }
+struct FlightGuard {
+    flight: Arc<Mutex<BTreeMap<String, Value>>>,
+    notice: Arc<tokio::sync::Notify>,
+    id: String,
+    _leases: Vec<tokio::sync::OwnedMutexGuard<()>>,
+}
+impl Drop for FlightGuard {
+    fn drop(&mut self) {
+        self.flight.lock().unwrap().remove(&self.id);
+        self.notice.notify_one();
+    }
+}
+
 impl Vault {
+    pub(crate) fn hold_owner(
+        &mut self,
+        owner: Arc<std::fs::File>,
+        _identity: &crate::HostIdentity,
+        _token: &str,
+    ) {
+        #[cfg(target_os = "macos")]
+        {
+            *self.authority.lock().unwrap() =
+                Some(crate::credential_io::Authority::new(_identity, _token));
+        }
+        // 异常退出或取消 Host future 时，尚未结束的系统调用仍持有同一把进程锁。
+        *self.owner.lock().unwrap() = Some(owner);
+    }
+    pub(crate) fn idle(&self) -> Result<()> {
+        if !self.worker
+            && (self.closing.load(Ordering::Acquire) || !self.flight.lock().unwrap().is_empty())
+        {
+            return Err(error(
+                "storageBusy",
+                "Host credential operation is still in progress",
+            ));
+        }
+        Ok(())
+    }
+    fn slot_key(value: &Value) -> Result<String> {
+        let slot: Slot = serde_json::from_value(value.clone())?;
+        Ok(format!(
+            "slot:{}",
+            storage::digest(&serde_json::to_vec(&slot)?)
+        ))
+    }
+    pub(crate) fn recovery_blocked(&self, slot: &Slot) -> bool {
+        !self.worker && self.slot_in_flight(slot)
+    }
+    pub(crate) fn slot_in_flight(&self, slot: &Slot) -> bool {
+        let slot = serde_json::to_value(slot).expect("serializable vault slot");
+        self.flight.lock().unwrap().values().any(|active| {
+            active["slot"] == slot
+                || active["slots"]
+                    .as_array()
+                    .is_some_and(|slots| slots.contains(&slot))
+        })
+    }
+    pub(crate) async fn run<T: Send + 'static>(
+        &self,
+        intent: Value,
+        work: impl FnOnce(Self) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let mut keys = Vec::new();
+        if !intent["slot"].is_null() {
+            keys.push(Self::slot_key(&intent["slot"])?);
+        }
+        if let Some(slots) = intent["slots"].as_array() {
+            keys.extend(
+                slots
+                    .iter()
+                    .map(Self::slot_key)
+                    .collect::<Result<Vec<_>>>()?,
+            );
+        }
+        if let Some(id) = intent["requestId"].as_str() {
+            keys.push(format!("request:{id}"));
+        }
+        if let Some(entry) = intent["entryId"].as_str() {
+            keys.push(format!("entry:{entry}"));
+        }
+        keys.sort();
+        keys.dedup();
+        let gates: Vec<_> = {
+            let mut gates = self.gates.lock().unwrap();
+            gates.retain(|_, gate| gate.strong_count() > 0);
+            keys.into_iter()
+                .map(|key| {
+                    let gate = gates
+                        .get(&key)
+                        .and_then(Weak::upgrade)
+                        .unwrap_or_else(|| Arc::new(tokio::sync::Mutex::new(())));
+                    gates.insert(key, Arc::downgrade(&gate));
+                    gate
+                })
+                .collect()
+        };
+        let mut leases = Vec::new();
+        for gate in gates {
+            leases.push(gate.lock_owned().await);
+        }
+        let guard = {
+            let mut flight = self.flight.lock().unwrap();
+            ensure!(
+                !self.closing.load(Ordering::Acquire),
+                error(
+                    "storageBusy",
+                    "Host credential operation is still in progress"
+                )
+            );
+            let id = uuid::Uuid::new_v4().to_string();
+            flight.insert(id.clone(), intent);
+            FlightGuard {
+                flight: self.flight.clone(),
+                notice: self.idle_notice.clone(),
+                id,
+                _leases: leases,
+            }
+        };
+        let mut worker = self.clone();
+        worker.worker = true;
+        // 生命周期归 Host 凭据事务；丢弃连接的等待者不会取消线程或提前释放准入。
+        tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            work(worker)
+        })
+        .await?
+    }
+    pub(crate) async fn close(&self) {
+        self.closing.store(true, Ordering::Release);
+        while !self.flight.lock().unwrap().is_empty() {
+            self.idle_notice.notified().await;
+        }
+        self.owner.lock().unwrap().take();
+    }
+    pub(crate) async fn dispatch_async(
+        &self,
+        method: &str,
+        params: Value,
+        generation: &str,
+        migration: &Migration,
+    ) -> Result<Value> {
+        if method == "vault.replace" {
+            let input: Replace = serde_json::from_value(params.clone())?;
+            wire::request_id(&input.request_id)?;
+            ensure!(
+                input.expected_generation == generation,
+                error("generationMismatch", "Host generation changed")
+            );
+            let flight = self.flight.lock().unwrap();
+            if let Some(active) = flight
+                .values()
+                .find(|active| active["requestId"] == input.request_id)
+            {
+                ensure!(
+                    *active == params,
+                    error(
+                        "requestConflict",
+                        "vault requestId binds different parameters"
+                    )
+                );
+                return Self::operation_offline(&self.home, &input.request_id)?.ok_or_else(|| {
+                    error(
+                        "storageBusy",
+                        "Host credential admission is still in progress",
+                    )
+                });
+            }
+        }
+        let slot: Slot = serde_json::from_value(params["slot"].clone())?;
+        let seed = migration.vault_seed(&slot)?;
+        let method = method.to_owned();
+        let generation = generation.to_owned();
+        self.run(params.clone(), move |worker| {
+            worker.dispatch_seed(&method, params, &generation, seed)
+        })
+        .await
+    }
+    pub(crate) async fn subscription_slot_async(
+        &self,
+        slot: Slot,
+        migration: &Migration,
+    ) -> Result<(u64, Value)> {
+        let result = self
+            .dispatch_async("vault.read", json!({"slot":slot}), "", migration)
+            .await?;
+        Ok((
+            result["revision"].as_u64().unwrap(),
+            result["value"].clone(),
+        ))
+    }
+    pub(crate) async fn replace_subscription_transport_async(
+        &self,
+        source: &str,
+        request_id: &str,
+        expected_revision: u64,
+        value: Value,
+        migration: &Migration,
+    ) -> Result<Value> {
+        wire::request_id(request_id)?;
+        let input = Replace {
+            request_id: request_id.to_owned(),
+            expected_generation: String::new(),
+            slot: Slot::SubscriptionTransport {
+                source_id: source.to_owned(),
+            },
+            expected_revision,
+            value,
+        };
+        let seed = migration.vault_seed(&input.slot)?;
+        let intent = json!({"requestId":request_id,"slot":input.slot,"expectedRevision":expected_revision,"value":input.value});
+        self.run(intent, move |worker| worker.replace_seed(input, seed, true))
+            .await
+    }
+    pub(crate) async fn read_async(&self, entry: &str) -> Result<Option<Value>> {
+        let entry = entry.to_owned();
+        self.run(json!({"entryId":entry}), move |worker| worker.read(&entry))
+            .await
+    }
+    pub(crate) async fn operation_async(
+        &self,
+        id: &str,
+        migration: &Migration,
+    ) -> Result<Option<Value>> {
+        let Some(receipt) = Self::operation_offline(&self.home, id)? else {
+            return Ok(None);
+        };
+        if receipt["state"] != "acceptedPending"
+            || self.flight.lock().unwrap().values().any(|active| {
+                active["slot"] == receipt["slot"]
+                    || active["slots"]
+                        .as_array()
+                        .is_some_and(|slots| slots.contains(&receipt["slot"]))
+            })
+        {
+            return Ok(Some(receipt));
+        }
+        let slot: Slot = serde_json::from_value(receipt["slot"].clone())?;
+        let seed = migration.vault_seed(&slot)?;
+        let id = id.to_owned();
+        self.run(json!({"slot":slot}), move |worker| {
+            let mut state = worker.state_seed(&slot, seed)?;
+            worker.recover(&mut state)?;
+            Self::operation_offline(&worker.home, &id)
+        })
+        .await
+    }
+    pub(crate) async fn subscription_transport_is_current_async(
+        &self,
+        source: &str,
+        revision: u64,
+        entry: &str,
+        migration: &Migration,
+    ) -> Result<bool> {
+        let slot = Slot::SubscriptionTransport {
+            source_id: source.to_owned(),
+        };
+        let seed = migration.vault_seed(&slot)?;
+        let entry = entry.to_owned();
+        self.run(json!({"slot":slot}), move |worker| {
+            let mut state = worker.state_seed(&slot, seed)?;
+            worker.recover(&mut state)?;
+            Ok(state.revision == revision && state.entry_id.as_deref() == Some(&entry))
+        })
+        .await
+    }
+    pub(crate) async fn claim_subscription_async(
+        &self,
+        source: &str,
+        request: &str,
+        account_revision: u64,
+        transport_revision: u64,
+        transport_entry: &str,
+        migration: &Migration,
+    ) -> Result<()> {
+        wire::request_id(source)?;
+        wire::request_id(request)?;
+        let account = Slot::SubscriptionAccount {
+            source_id: source.to_owned(),
+            provider_id: "openai".into(),
+        };
+        let transport = Slot::SubscriptionTransport {
+            source_id: source.to_owned(),
+        };
+        let account_seed = migration.vault_seed(&account)?;
+        let transport_seed = migration.vault_seed(&transport)?;
+        let source = source.to_owned();
+        let request = request.to_owned();
+        let transport_entry = transport_entry.to_owned();
+        self.run(json!({"slots":[account,transport]}), move |worker| {
+            let mut account = worker.state_seed(&account, account_seed)?;
+            let mut transport = worker.state_seed(&transport, transport_seed)?;
+            worker.recover(&mut account)?;
+            worker.recover(&mut transport)?;
+            ensure!(account.revision == account_revision && transport.revision == transport_revision
+                && transport.entry_id.as_deref() == Some(&transport_entry)
+                && worker.subscription_owner(&source)?.is_none(),
+                error("revisionConflict", "subscription changed during handoff"));
+            storage::private_dir(&worker.home.join("host/subscription-owners"))?;
+            storage::write(&worker.home.join("host/subscription-owners").join(format!("{source}.json")),
+                &json!({"owner":"nativeV1","sourceId":source,"requestId":request,"accountRevision":account_revision,"transportRevision":transport_revision}))
+        }).await
+    }
     pub(crate) fn provider_references(
         &self,
         source: &str,
@@ -152,7 +473,10 @@ impl Vault {
         )))
     }
     fn state(&self, slot: &Slot, migration: &Migration) -> Result<SlotState> {
-        let seed = migration.vault_seed(slot)?;
+        self.idle()?;
+        self.state_seed(slot, migration.vault_seed(slot)?)
+    }
+    fn state_seed(&self, slot: &Slot, seed: Option<Receipt>) -> Result<SlotState> {
         if let Some(state) = crate::migration::read_optional::<SlotState>(&self.state_path(slot)?)?
         {
             ensure!(state.slot == *slot, "vault slot metadata mismatch");
@@ -187,6 +511,7 @@ impl Vault {
             .join(format!("{id}.json"))
     }
     fn recover(&self, state: &mut SlotState) -> Result<()> {
+        self.idle()?;
         if let Some(receipt) = &state.receipt {
             let id = receipt["requestId"]
                 .as_str()
@@ -241,6 +566,9 @@ impl Vault {
     }
     pub fn operation(&self, id: &str, migration: &Migration) -> Result<Option<Value>> {
         wire::request_id(id)?;
+        if !self.worker && !self.flight.lock().unwrap().is_empty() {
+            return Self::operation_offline(&self.home, id);
+        }
         let receipt = crate::migration::read_optional::<Value>(&self.operation_path(id))?;
         if receipt.is_none() {
             let directory = self.home.join("host/vault-slots");
@@ -273,6 +601,17 @@ impl Vault {
         generation: &str,
         migration: &Migration,
     ) -> Result<Value> {
+        self.idle()?;
+        let slot: Slot = serde_json::from_value(params["slot"].clone())?;
+        self.dispatch_seed(method, params, generation, migration.vault_seed(&slot)?)
+    }
+    fn dispatch_seed(
+        &self,
+        method: &str,
+        params: Value,
+        generation: &str,
+        seed: Option<Receipt>,
+    ) -> Result<Value> {
         if method == "vault.read" {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -281,11 +620,11 @@ impl Vault {
                 interaction_allowed: Option<bool>,
             }
             let input: Read = serde_json::from_value(params)?;
-            let read = || {
-                let mut state = self.state(&input.slot, migration)?;
-                self.recover(&mut state)?;
+            let read = |vault: &Self| {
+                let mut state = vault.state_seed(&input.slot, seed)?;
+                vault.recover(&mut state)?;
                 let value = match state.entry_id {
-                    Some(id) => self
+                    Some(id) => vault
                         .read(&id)?
                         .ok_or_else(|| error("storageMissing", "current vault entry is missing"))?,
                     None => Value::Null,
@@ -295,7 +634,7 @@ impl Vault {
             return if input.interaction_allowed == Some(false) {
                 self.without_interaction(read)
             } else {
-                read()
+                read(self)
             };
         }
         if method != "vault.replace" {
@@ -306,7 +645,7 @@ impl Vault {
         if input.expected_generation != generation {
             return Err(error("generationMismatch", "Host generation changed"));
         }
-        self.replace(input, migration, false)
+        self.replace_seed(input, seed, false)
     }
     fn replace(
         &self,
@@ -314,9 +653,19 @@ impl Vault {
         migration: &Migration,
         native_subscription: bool,
     ) -> Result<Value> {
-        let mut state = self.state(&input.slot, migration)?;
+        self.idle()?;
+        let seed = migration.vault_seed(&input.slot)?;
+        self.replace_seed(input, seed, native_subscription)
+    }
+    fn replace_seed(
+        &self,
+        input: Replace,
+        seed: Option<Receipt>,
+        native_subscription: bool,
+    ) -> Result<Value> {
+        let mut state = self.state_seed(&input.slot, seed)?;
         self.recover(&mut state)?;
-        if let Some(previous) = self.operation(&input.request_id, migration)? {
+        if let Some(previous) = Self::operation_offline(&self.home, &input.request_id)? {
             if previous["slot"] != serde_json::to_value(&input.slot)?
                 || previous["previousRevision"] != input.expected_revision
             {
@@ -429,20 +778,7 @@ impl Vault {
             migration,
         )
     }
-    pub(crate) fn subscription_transport_is_current(
-        &self,
-        source: &str,
-        revision: u64,
-        entry: &str,
-        migration: &Migration,
-    ) -> Result<bool> {
-        let slot = Slot::SubscriptionTransport {
-            source_id: source.to_owned(),
-        };
-        let mut state = self.state(&slot, migration)?;
-        self.recover(&mut state)?;
-        Ok(state.revision == revision && state.entry_id.as_deref() == Some(entry))
-    }
+    #[cfg(test)]
     pub(crate) fn replace_subscription_transport(
         &self,
         source: &str,
@@ -499,51 +835,47 @@ impl Vault {
                 .join(format!("{source}.json")),
         )
     }
-    pub(crate) fn claim_subscription(
-        &self,
-        source: &str,
-        request_id: &str,
-        account_revision: u64,
-        transport_revision: u64,
-        migration: &Migration,
-    ) -> Result<()> {
-        wire::request_id(source)?;
-        wire::request_id(request_id)?;
-        let (current_account, _) = self.subscription_account(source, migration)?;
-        let (current_transport, _) = self.subscription_transport(source, migration)?;
-        if current_account != account_revision || current_transport != transport_revision {
-            return Err(error(
-                "revisionConflict",
-                "subscription changed during handoff",
-            ));
-        }
-        storage::private_dir(&self.home.join("host/subscription-owners"))?;
-        storage::write(
-            &self
-                .home
-                .join("host/subscription-owners")
-                .join(format!("{source}.json")),
-            &json!({"owner":"nativeV1","sourceId":source,"requestId":request_id,"accountRevision":account_revision,"transportRevision":transport_revision}),
-        )
-    }
     pub fn new(home: &Path) -> Self {
         Self {
             home: home.to_owned(),
+            owner: Arc::new(Mutex::new(None)),
+            #[cfg(target_os = "macos")]
+            authority: Arc::new(Mutex::new(None)),
+            flight: Arc::new(Mutex::new(BTreeMap::new())),
+            worker: false,
+            closing: Arc::new(AtomicBool::new(false)),
+            idle_notice: Arc::new(tokio::sync::Notify::new()),
+            gates: Arc::new(Mutex::new(BTreeMap::new())),
+            interaction_allowed: true,
             #[cfg(test)]
             isolated_files: false,
             #[cfg(test)]
             locked: std::cell::Cell::new(false),
+            #[cfg(test)]
+            before_write: None,
         }
     }
     #[cfg(test)]
     pub fn isolated_files(home: &Path) -> Self {
         Self {
             home: home.to_owned(),
+            owner: Arc::new(Mutex::new(None)),
+            #[cfg(target_os = "macos")]
+            authority: Arc::new(Mutex::new(None)),
+            flight: Arc::new(Mutex::new(BTreeMap::new())),
+            worker: false,
+            closing: Arc::new(AtomicBool::new(false)),
+            idle_notice: Arc::new(tokio::sync::Notify::new()),
+            gates: Arc::new(Mutex::new(BTreeMap::new())),
+            interaction_allowed: true,
             isolated_files: true,
             locked: std::cell::Cell::new(false),
+            #[cfg(test)]
+            before_write: None,
         }
     }
     pub fn write(&self, entry: &str, value: &Value) -> Result<()> {
+        self.idle()?;
         crate::wire::request_id(entry)?;
         if let Some(current) = self.read(entry)? {
             if current != *value {
@@ -554,17 +886,29 @@ impl Vault {
             }
             return Ok(());
         }
-        let bytes = serde_json::to_vec(value)?;
+        #[cfg(test)]
+        if let Some(before_write) = &self.before_write {
+            before_write();
+        }
         #[cfg(test)]
         if self.isolated_files {
             return self.write_file(entry, value);
         }
         #[cfg(target_os = "macos")]
-        security_framework::passwords::set_generic_password(&self.service(), entry, &bytes)
-            .map_err(|_| error("storageLocked", "Host Keychain write failed"))?;
+        {
+            let owner = self.owner.lock().unwrap().clone();
+            let authority = self.authority.lock().unwrap().clone();
+            crate::credential_io::execute(
+                owner.as_deref(),
+                authority.as_ref(),
+                crate::credential_io::Request::Write {
+                    entry: entry.to_owned(),
+                    value: value.clone(),
+                },
+            )?;
+        }
         #[cfg(not(target_os = "macos"))]
         {
-            let _ = bytes;
             self.write_file(entry, value)?;
         }
         ensure!(
@@ -574,33 +918,16 @@ impl Vault {
         Ok(())
     }
     pub(crate) fn read_without_interaction(&self, entry: &str) -> Result<Option<Value>> {
-        self.without_interaction(|| self.read(entry))
+        self.without_interaction(|vault| vault.read(entry))
     }
-    fn without_interaction<T>(&self, read: impl FnOnce() -> Result<T>) -> Result<T> {
-        #[cfg(test)]
-        if self.isolated_files {
-            return read();
-        }
-        // 旧登录钥匙串也受此开关约束；同步检查结束即恢复，避免清理等待阻塞 Host。
-        #[cfg(target_os = "macos")]
-        let _interaction = {
-            use security_framework::os::macos::keychain::SecKeychain;
-            if SecKeychain::user_interaction_allowed()
-                .map_err(|_| error("storageLocked", "Host Keychain interaction status failed"))?
-            {
-                Some(SecKeychain::disable_user_interaction().map_err(|_| {
-                    error(
-                        "storageLocked",
-                        "Host Keychain noninteractive read unavailable",
-                    )
-                })?)
-            } else {
-                None
-            }
-        };
-        read()
+    fn without_interaction<T>(&self, read: impl FnOnce(&Self) -> Result<T>) -> Result<T> {
+        self.idle()?;
+        let mut noninteractive = self.clone();
+        noninteractive.interaction_allowed = false;
+        read(&noninteractive)
     }
     pub fn read(&self, entry: &str) -> Result<Option<Value>> {
+        self.idle()?;
         crate::wire::request_id(entry)?;
         #[cfg(test)]
         if self.locked.get() {
@@ -612,16 +939,21 @@ impl Vault {
         }
         #[cfg(target_os = "macos")]
         {
-            match security_framework::passwords::get_generic_password(&self.service(), entry) {
-                Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
-                Err(e) if e.code() == -25300 => Ok(None),
-                Err(_) => Err(error("storageLocked", "Host Keychain read failed")),
-            }
+            let owner = self.owner.lock().unwrap().clone();
+            let authority = self.authority.lock().unwrap().clone();
+            crate::credential_io::execute(
+                owner.as_deref(),
+                authority.as_ref(),
+                crate::credential_io::Request::Read {
+                    entry: entry.to_owned(),
+                    interaction_allowed: self.interaction_allowed,
+                },
+            )
         }
         #[cfg(not(target_os = "macos"))]
         crate::migration::read_optional(&self.path(entry))
     }
-    #[cfg(target_os = "macos")]
+    #[cfg(all(test, target_os = "macos"))]
     fn service(&self) -> String {
         format!(
             "org.areal.host.v1.{}",
@@ -657,11 +989,33 @@ mod tests {
     #[test]
     #[ignore = "creates and removes one synthetic login Keychain item"]
     fn noninteractive_retirement_read_preserves_keychain_interaction_state() {
+        use fs2::FileExt;
         use security_framework::os::macos::keychain::SecKeychain;
         let root = tempfile::tempdir().unwrap();
-        let vault = Vault::new(root.path());
+        let home = storage::prepare_host_home(root.path()).unwrap();
+        storage::private_dir(&home.join("host/vault-operations")).unwrap();
+        let owner = Arc::new(storage::open_private(&home.join("host.lock"), true).unwrap());
+        owner.try_lock_exclusive().unwrap();
+        let identity = crate::HostIdentity {
+            version: crate::VERSION,
+            host_id: uuid::Uuid::new_v4().to_string(),
+            generation: uuid::Uuid::new_v4().to_string(),
+            socket_path: home.join("socket"),
+            auth_file: home.join("host/auth.json"),
+            pid: std::process::id(),
+            executable_version: "fixture".into(),
+        };
+        storage::write(&home.join("host/host.json"), &identity).unwrap();
+        storage::write(&identity.auth_file, &"synthetic-auth").unwrap();
+        let mut vault = Vault::new(&home);
+        vault.hold_owner(owner, &identity, "synthetic-auth");
         let service = vault.service();
         let entry = uuid::Uuid::new_v4().to_string();
+        storage::write(
+            &home.join("host/vault-operations/fixture.json"),
+            &json!({"entryId":entry,"state":"acceptedPending"}),
+        )
+        .unwrap();
         let before = SecKeychain::user_interaction_allowed().unwrap();
         let created = std::process::Command::new("/usr/bin/security")
             .args([
@@ -751,6 +1105,265 @@ mod tests {
                 &self.migration,
             )
         }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn blocked_subscription_write_does_not_block_another_provider_slot() {
+        use std::time::Duration;
+        let mut f = Fixture::new();
+        let provider = Slot::ProviderCredential {
+            source_id: f.slot.source_id().unwrap().into(),
+            reference: "AREAL_CREDENTIAL_synthetic".into(),
+        };
+        f.migration.vault.dispatch("vault.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":provider,"expectedRevision":0,"value":"synthetic"}), "generation", &f.migration).unwrap();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let barrier = Mutex::new(Some((entered_tx, release_rx)));
+        f.migration.vault.before_write = Some(Arc::new(move || {
+            if let Some((entered, release)) = barrier.lock().unwrap().take() {
+                let _ = entered.send(());
+                let _ = release.recv();
+            }
+        }));
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut writing = Box::pin(f.migration.vault.dispatch_async("vault.replace", json!({"requestId":id,"expectedGeneration":"generation","slot":f.slot,"expectedRevision":0,"value":{"synthetic":true}}), "generation", &f.migration));
+        tokio::select! {
+            result=entered_rx=>result.unwrap(),
+            result=&mut writing=>panic!("write ended before barrier: {result:?}"),
+        }
+        let other = tokio::time::timeout(
+            Duration::from_secs(1),
+            f.migration.vault.dispatch_async(
+                "vault.read",
+                json!({"slot":provider,"interactionAllowed":false}),
+                "generation",
+                &f.migration,
+            ),
+        )
+        .await;
+        let pending = f
+            .migration
+            .vault
+            .operation_async(&id, &f.migration)
+            .await
+            .unwrap()
+            .unwrap();
+        release_tx.send(()).unwrap();
+        let done = writing.await.unwrap();
+        assert_eq!(pending["state"], "acceptedPending");
+        assert_eq!(done["revision"], 1);
+        assert_eq!(
+            other
+                .expect("subscription credential blocked an unrelated provider slot")
+                .unwrap()["value"],
+            "synthetic"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn remote_initialization_does_not_conflict_with_subscription_io() {
+        let f = Fixture::new();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let vault = f.migration.vault.clone();
+        let source = f.slot.source_id().unwrap().to_owned();
+        let mut writing = Box::pin(vault.run(
+            json!({"slot":{"kind":"subscriptionTransport","sourceId":source}}),
+            move |_| {
+                let _ = entered_tx.send(());
+                release_rx.recv()?;
+                Ok(())
+            },
+        ));
+        tokio::select! {
+            result = entered_rx => result.unwrap(),
+            result = &mut writing => panic!("subscription ended before barrier: {result:?}"),
+        }
+        let remote = crate::remote_state::RemoteState::new(&f.migration.vault.home);
+        let request = uuid::Uuid::new_v4().to_string();
+        use base64::Engine;
+        let noise = base64::engine::general_purpose::STANDARD.encode(
+            libp2p_identity::Keypair::ed25519_from_bytes([7u8; 32])
+                .unwrap()
+                .to_protobuf_encoding()
+                .unwrap(),
+        );
+        let identity = crate::HostIdentity {
+            version: crate::VERSION,
+            host_id: uuid::Uuid::new_v4().to_string(),
+            generation: "generation".into(),
+            pid: std::process::id(),
+            socket_path: f.migration.vault.home.join("socket"),
+            auth_file: f.migration.vault.home.join("auth"),
+            executable_version: "fixture".into(),
+        };
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let receipt = remote.dispatch_async("remote.replace", json!({"requestId":request,"expectedGeneration":"generation","expectedRevision":0,"sourceId":f.slot.source_id().unwrap(),"config":{"identity":noise,"devices":[]}}), "fixture", "generation", &f.migration, &[]).await?;
+            let snapshot = remote.snapshot_async(&f.migration).await?;
+            ensure!(snapshot["revision"] == 1 && receipt["state"] == "completed", "Remote write did not settle");
+            remote.handoff_async(json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","sourceId":f.slot.source_id().unwrap(),"expectedRevision":1}), &identity, &f.migration).await
+        }).await;
+        release_tx.send(()).unwrap();
+        writing.await.unwrap();
+        assert_eq!(
+            result.unwrap().unwrap()["owner"],
+            "native",
+            "订阅 I/O 不能阻止 Remote 初始化与 handoff"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn remote_write_survives_waiter_cancel_without_premature_recovery() {
+        let mut f = Fixture::new();
+        let provider_slot = Slot::ProviderCredential {
+            source_id: f.slot.source_id().unwrap().into(),
+            reference: "AREAL_CREDENTIAL_synthetic".into(),
+        };
+        f.migration.vault.dispatch("vault.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","slot":provider_slot,"expectedRevision":0,"value":"synthetic-provider"}), "generation", &f.migration).unwrap();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let entered_tx = Mutex::new(Some(entered_tx));
+        let release_rx = Mutex::new(release_rx);
+        f.migration.vault.before_write = Some(Arc::new(move || {
+            if let Some(entered) = entered_tx.lock().unwrap().take() {
+                let _ = entered.send(());
+                release_rx.lock().unwrap().recv().unwrap();
+            }
+        }));
+        let remote = crate::remote_state::RemoteState::new(&f.migration.vault.home);
+        let request = uuid::Uuid::new_v4().to_string();
+        let params = json!({"requestId":request,"expectedGeneration":"generation","expectedRevision":0,"sourceId":f.slot.source_id().unwrap(),"config":{"identity":"synthetic-noise","devices":[]}});
+        let mut writing = Box::pin(remote.dispatch_async(
+            "remote.replace",
+            params.clone(),
+            "fixture",
+            "generation",
+            &f.migration,
+            &[],
+        ));
+        tokio::select! {
+            result = entered_rx => result.unwrap(),
+            result = &mut writing => panic!("Remote write ended before barrier: {result:?}"),
+        }
+        drop(writing);
+        let pending = remote.operation_async(&request, &f.migration).await;
+        let sync_pending = remote.operation(&request, &f.migration);
+        let provider = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            f.migration.vault.dispatch_async(
+                "vault.read",
+                json!({"slot":provider_slot}),
+                "generation",
+                &f.migration,
+            ),
+        )
+        .await;
+        release_tx.send(()).unwrap();
+        while f.migration.vault.slot_in_flight(&Slot::RemoteIdentity) {
+            f.migration.vault.idle_notice.notified().await;
+        }
+        let done = remote
+            .operation_async(&request, &f.migration)
+            .await
+            .unwrap()
+            .unwrap();
+        let repeated = remote
+            .dispatch_async(
+                "remote.replace",
+                params,
+                "fixture",
+                "generation",
+                &f.migration,
+                &[],
+            )
+            .await
+            .unwrap();
+        assert_eq!(pending.unwrap().unwrap()["state"], "acceptedPending");
+        assert_eq!(sync_pending.unwrap().unwrap()["state"], "acceptedPending");
+        assert_eq!(provider.unwrap().unwrap()["value"], "synthetic-provider");
+        assert_eq!(done["state"], "completed");
+        assert_eq!(done["revision"], 1);
+        assert_eq!(repeated, done);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancelled_waiter_keeps_host_lock_and_close_waits_for_credential_io() {
+        use fs2::FileExt;
+        use std::{future::Future, task::Poll, time::Duration};
+        let root = tempfile::tempdir().unwrap();
+        let owner_path = root.path().join("host.lock");
+        let owner = Arc::new(storage::open_private(&owner_path, true).unwrap());
+        owner.try_lock_exclusive().unwrap();
+        let mut vault = Vault::isolated_files(root.path());
+        vault.hold_owner(
+            owner.clone(),
+            &crate::HostIdentity {
+                version: crate::VERSION,
+                host_id: uuid::Uuid::new_v4().to_string(),
+                generation: uuid::Uuid::new_v4().to_string(),
+                socket_path: root.path().join("socket"),
+                auth_file: root.path().join("auth"),
+                pid: std::process::id(),
+                executable_version: "fixture".into(),
+            },
+            "fixture",
+        );
+        let idle_notice = vault.idle_notice.clone();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let entry = uuid::Uuid::new_v4().to_string();
+        let entry_path = vault.path(&entry);
+        let mut work = Box::pin(vault.run(Value::Null, move |worker| {
+            let _ = entered_tx.send(());
+            release_rx.recv()?;
+            worker.write(&entry, &json!({"synthetic":true}))
+        }));
+        tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::select! {
+                result=entered_rx=>result.unwrap(),
+                result=&mut work=>panic!("worker ended before its barrier: {result:?}"),
+            }
+        })
+        .await
+        .unwrap();
+        let mut closing = Box::pin(vault.close());
+        let pending = std::future::poll_fn(|context| {
+            Poll::Ready(closing.as_mut().poll(context).is_pending())
+        })
+        .await;
+        assert!(pending, "关闭不能提前释放仍在执行的凭据事务");
+        drop(closing);
+        assert!(vault.idle().is_err(), "关闭开始后不能准入另一写者");
+        drop(work);
+        drop(vault);
+        drop(owner);
+        let contender = storage::open_private(&owner_path, false).unwrap();
+        assert_eq!(
+            contender.try_lock_exclusive().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(5), idle_notice.notified())
+            .await
+            .unwrap();
+        // 其他并行测试的 fork→exec 窗口会短暂保留 CLOEXEC fd，等待实际释放。
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match contender.try_lock_exclusive() {
+                    Ok(()) => break,
+                    Err(cause) if cause.kind() == std::io::ErrorKind::WouldBlock => {
+                        tokio::task::yield_now().await;
+                    }
+                    Err(cause) => panic!("owner lock probe failed: {cause}"),
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            storage::read::<Value>(&entry_path).unwrap(),
+            json!({"synthetic":true})
+        );
     }
 
     #[test]

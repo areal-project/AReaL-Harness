@@ -239,13 +239,13 @@ class SharedCoreBackend {
       },
       flush: async () => {},
     };
-    /** 一套协议过渡开关；后台重连后重发。 @type {{library:boolean,backend?:boolean,rustDomains?:string[]}|null} */
-    this.oneProtocol = null;
+    /** 后台所有者在界面加载前固定；领域选择仍独立，重连后重发。 @type {{library:boolean,backend:boolean,rustDomains?:string[]}} */
+    this.oneProtocol = { library: false, backend: true, rustDomains: [] };
   }
   /** @param {{library:boolean,backend?:boolean,rustDomains?:string[]}} flags */
   setOneProtocol(flags) {
-    this.oneProtocol = flags;
-    if (this.status.connected) void this.connection?.request("oneProtocol", flags).catch(() => {});
+    const next = (this.oneProtocol = { ...flags, backend: true });
+    if (this.status.connected) void this.connection?.request("oneProtocol", next).catch(() => {});
   }
   /** @param {import("@areal/workbench-service/desktop/core/gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
   genUiScope(project, threadId) {

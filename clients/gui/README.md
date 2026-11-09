@@ -31,7 +31,7 @@ GUI 工程化与设计系统的 P0/P1 整改任务拆分为可交接的 [整改 
 
 ## 实验性 Host 读路径
 
-GUI 默认继续使用原有读路径。验收时可在开发者工具中设置 `localStorage.setItem("areal.oneProtocol.reads", "1")` 并重新加载，项目导航与会话详情改从 Host 订阅；删除此键并重新加载即可回退。写操作仍由原有适配器提供。`areal web` 打开 Host 发布的同一 Renderer，浏览器首次使用需在本机批准，当前只读。授权与撤销命令见[Host 契约](../../docs/api/host.md#回环-websocket-与共享读路径)。验收必须使用安装包与隔离的真实数据副本，不对原数据启动服务。
+GUI 后台默认由 Host 监督，启动失败不会另起 Main 写者；已有 GUI 需退出重开，工作区与配置沿用原目录。Renderer 默认继续使用原有读适配器连接同一后台。验收时可在开发者工具中设置 `localStorage.setItem("areal.oneProtocol.reads", "1")` 并重新加载，项目导航与会话详情改从 Host 订阅；删除此键并重新加载即可回退。写操作仍由原有适配器提供。`areal web` 打开 Host 发布的同一 Renderer，浏览器首次使用需在本机批准；查看、提交与管理按已授予范围开放，不自动扩大旧授权。授权与撤销命令见[Host 契约](../../docs/api/host.md#回环-websocket-与共享读路径)。验收必须使用安装包与隔离的真实数据副本，不对原数据启动服务。
 
 ## 开发
 

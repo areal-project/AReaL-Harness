@@ -1957,6 +1957,42 @@ impl Migration {
         };
         self.credential_for_source(&source_id, reference)
     }
+    pub async fn credential_for_source_async(
+        &self,
+        source_id: &str,
+        reference: &str,
+    ) -> Result<Option<String>> {
+        if !reference.starts_with("AREAL_CREDENTIAL_") {
+            return Ok(None);
+        }
+        let subscription = reference == "AREAL_CREDENTIAL_areal_openai";
+        let slot = if subscription {
+            vault::Slot::SubscriptionTransport {
+                source_id: source_id.to_owned(),
+            }
+        } else {
+            vault::Slot::ProviderCredential {
+                source_id: source_id.to_owned(),
+                reference: reference.to_owned(),
+            }
+        };
+        let result = self
+            .vault
+            .dispatch_async(
+                "vault.read",
+                json!({"slot":slot,"interactionAllowed":false}),
+                "",
+                self,
+            )
+            .await?;
+        let value = if subscription {
+            &result["value"]["token"]
+        } else {
+            &result["value"]
+        };
+        Ok(value.as_str().map(str::to_owned))
+    }
+    #[cfg(test)]
     pub fn credential_for_source(
         &self,
         source_id: &str,

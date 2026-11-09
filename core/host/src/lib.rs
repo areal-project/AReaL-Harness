@@ -2,6 +2,10 @@
 mod activity;
 mod browser_auth;
 mod client;
+#[cfg(target_os = "macos")]
+mod credential_io;
+#[cfg(target_os = "macos")]
+pub use credential_io::run as run_credential_io;
 mod gateway;
 mod journal;
 mod launch;
