@@ -1,0 +1,48 @@
+docs/guides/programmatic-tools.md
+  s_bf83cab8355b2b::t_169dea0b16dc36 59
+tests/perf/tool_contract_lab.py
+  s_bf83cab8355b2b::t_35aa3a0f117b33 1-20,22-34,38-41,144-150,160-164,172-175,189-190,202-223,229-237,242-243,247-254,262-285,291-295,310-319,328-329,350-352,364-367,378-381,396-397,412-413,421-432,447-458,462,464-477,481,494-495,500-507,509-512,517,519-528
+  s_bf83cab8355b2b::t_655726c9c9c63b 21,296-297,303-309,390-393,395,463
+  s_bf83cab8355b2b::t_315f3b15aebb73 35-37,42-143,151-159,165-171,177-186,191-201,224-228,238-241,244-246,255-261,286-290,298-302,320-327,330-349,353-363,368-377,382-389,394,398-411,414-420,433-446,459-461,478-480,482-493,496-499,508,513-516,518
+  s_bf83cab8355b2b::t_368b8b10935d5d 176,187-188
+core/engine/src/tools/program.rs
+  s_bf83cab8355b2b::t_169dea0b16dc36 23
+docs/benchmarks/README.md
+  s_bf83cab8355b2b::t_47259b91e9f7ed 9
+  s_bf83cab8355b2b::t_74cc993edc7546 10
+core/engine/src/tools.rs
+  s_bf83cab8355b2b::t_169dea0b16dc36 372
+core/engine/tests/operation_composition.rs
+  s_bf83cab8355b2b::t_169dea0b16dc36 378,421-438,440-460,462-472,477,480,483-496
+docs/guides/programmatic-tools.en.md
+  s_bf83cab8355b2b::t_169dea0b16dc36 59
+core/engine/src/desktop/tools.rs
+  s_bf83cab8355b2b::t_169dea0b16dc36 21
+docs/api/core.en.md
+  s_bf83cab8355b2b::t_169dea0b16dc36 578
+docs/benchmarks/README.en.md
+  s_bf83cab8355b2b::t_74cc993edc7546 10
+  s_bf83cab8355b2b::t_47259b91e9f7ed 9
+core/engine/src/desktop/mcp_tools.rs
+  s_bf83cab8355b2b::t_169dea0b16dc36 20-29,40,46-52,82-85,97,100-107,117-125,136-142,155,188-192,221
+docs/api/core.md
+  s_bf83cab8355b2b::t_169dea0b16dc36 587
+tests/perf/test_tool_contract_lab.py
+  s_bf83cab8355b2b::t_47259b91e9f7ed 1-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4ad2dff99dced914e4dd3cb78f2144e01dd0aa85",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
