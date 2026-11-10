@@ -769,6 +769,13 @@ try {
   };
   const evidence = join(scratch, "manifest.json");
   await writeFile(evidence, JSON.stringify(report, null, 2), { mode: 0o600 });
-  console.log(JSON.stringify({ passed: report.passed, evidence }));
+  // 证据文件留在临时目录，CI 上拿不到；失败时把原因直接打出来。
+  console.log(
+    JSON.stringify({
+      passed: report.passed,
+      evidence,
+      ...(report.passed ? {} : { failure: failure?.message, cleanupErrors: cleanup.errors }),
+    }),
+  );
   process.exitCode = report.passed ? 0 : 1;
 }
