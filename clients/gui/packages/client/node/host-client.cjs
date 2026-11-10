@@ -163,9 +163,14 @@ class HostClient {
     const child = spawn(binary, ["host", "run"], {
       env: {
         ...Object.fromEntries(
-          ["HOME", "PATH", "TMPDIR", "LANG", "AREAL_HOST_WEBSOCKET"].flatMap((key) =>
-            process.env[key] ? [[key, process.env[key]]] : [],
-          ),
+          [
+            "HOME",
+            "PATH",
+            "TMPDIR",
+            "LANG",
+            "AREAL_HOST_WEBSOCKET",
+            "AREAL_SPACES_TEST_ROOT",
+          ].flatMap((key) => (process.env[key] ? [[key, process.env[key]]] : [])),
         ),
         AREAL_HARNESS_HOME: home,
         AREAL_HARNESS_SERVICE_HOME: home,

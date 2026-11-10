@@ -66,11 +66,43 @@ result.pids.oldHost = old.pid;
 const host = new HostClient();
 let first, next, browser, manifest;
 let initialStderr = "";
-let modelCalls = 0;
+result.modelRequests = [];
 const model = createServer((request, response) => {
-  request.resume();
+  let body = "";
+  request.setEncoding("utf8");
+  request.on("data", (chunk) => {
+    body += chunk;
+  });
   request.on("end", () => {
-    modelCalls++;
+    try {
+      const parsed = JSON.parse(body);
+      const messages = Array.isArray(parsed.messages) ? parsed.messages : [];
+      const title = messages.some(
+        (message) =>
+          message.role === "system" &&
+          JSON.stringify(message.content)?.includes("Generate a concise semantic session title"),
+      );
+      const prediction = messages.some(
+        (message) =>
+          message.role === "system" &&
+          JSON.stringify(message.content)?.includes("Predict the next user prompt"),
+      );
+      const conversation = messages.some((message) =>
+        JSON.stringify(message.content)?.includes("Say the fixture marker."),
+      );
+      result.modelRequests.push({
+        category: title
+          ? "title"
+          : prediction
+            ? "prediction"
+            : conversation
+              ? "conversation"
+              : "unknown",
+        roles: messages.map((message) => message.role),
+      });
+    } catch {
+      result.modelRequests.push({ category: "unknown", roles: [] });
+    }
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.write(
       `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant", content: "ISOLATED_UPGRADE_OK" }, finish_reason: null }] })}\n\n`,
@@ -251,13 +283,54 @@ try {
         .find((item) => item.url().startsWith("areal-ui://")),
     "GUI page",
   );
-  await page.getByRole("dialog").getByRole("button", { name: "创建空工作区" }).click();
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push({ name: error.name }));
+  page.on("console", (message) => {
+    if (message.type() === "error") pageErrors.push({ name: "console-error" });
+  });
+  try {
+    await page.getByRole("dialog").getByRole("button", { name: "创建空工作区" }).click();
+  } catch (error) {
+    result.guideDiagnostic = await page.evaluate(async () => {
+      const snapshot = await window.arealDesktop.snapshot();
+      let recovery;
+      try {
+        const response = await window.arealDesktop.command("recovery", { operation: "inspect" });
+        recovery = response.ok
+          ? { ok: true, kind: response.value?.kind }
+          : { ok: false, code: response.error?.code };
+      } catch (failure) {
+        recovery = { threw: true, code: failure?.code };
+      }
+      return {
+        connectionState: snapshot.connection?.state,
+        recovery,
+        dialogCount: document.querySelectorAll('[role="dialog"]').length,
+        readyRetryVisible: document.body.innerText.includes("准备暂未完成"),
+      };
+    });
+    result.guideDiagnostic.pageErrors = pageErrors;
+    await save();
+    throw error;
+  }
   await page.getByText("空工作区已准备好。", { exact: true }).waitFor();
   await page.getByRole("button", { name: "进入新版", exact: true }).click();
   await page.waitForFunction(async () => {
     const snapshot = await window.arealDesktop.snapshot();
     return snapshot.connection?.state === "ready";
   });
+  await page.getByRole("button", { name: "查看旧历史", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Old fixture · Old fixture history", exact: true })
+    .click();
+  await page.getByText("HISTORY_TERMINAL_INTERRUPTED", { exact: false }).waitFor();
+  const historyPanel = page.locator('section[aria-label="查看旧历史"]');
+  assert.equal(await historyPanel.locator('textarea, input, [contenteditable="true"]').count(), 0);
+  assert.equal(await historyPanel.getByRole("button", { name: "发送", exact: true }).count(), 0);
+  assert.equal(sha(await readFile(join(oldHome, "host/stop.json"))), originalDigest);
+  result.checks.push("native-upgrade-guide-empty-workspace-and-readonly-history");
+  await save();
+  await page.keyboard.press("Escape");
   result.providerOperations = [];
   const providers = async (params) => {
     const attempt = {
@@ -315,6 +388,15 @@ try {
   });
   const candidates = saved.data.filter((provider) => provider.name === "Isolated upgrade fixture");
   assert.equal(candidates.length, 1, "saved provider identity must be unique");
+  const settleDeadline = Date.now() + 60000;
+  let settled = saved;
+  while (settled.pendingApply) {
+    assert.ok(Date.now() < settleDeadline, "model configuration did not settle");
+    await new Promise((done) => setTimeout(done, 100));
+    settled = await providers({ operation: "list" });
+    assert.equal(settled.revision, saved.revision, "model configuration revision changed");
+    assert.notEqual(settled.application?.kind, "failed", "model configuration apply failed");
+  }
   const selected = { providerId: candidates[0].id, modelId: "fixture" };
   const applied = await providers({
     operation: "defaultAndApply",
@@ -324,22 +406,22 @@ try {
   assert.deepEqual(applied.defaultModel, selected);
   assert.equal(applied.pendingApply, false, "model configuration not settled");
   result.checks.push("fixture-provider-configured-through-workbench");
-  await page.getByRole("button", { name: /在项目 .* 中新建对话/ }).click();
+  const newConversation = page.getByRole("button", { name: /在项目 .* 中新建对话/ });
+  await newConversation
+    .locator(
+      "xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' project-row ')]",
+    )
+    .hover();
+  await newConversation.click();
   await page.getByTestId("chat-input").fill("Say the fixture marker.");
   await page.getByRole("button", { name: "发送", exact: true }).click();
-  await page.getByText("ISOLATED_UPGRADE_OK", { exact: false }).waitFor();
-  assert.equal(modelCalls, 1, "new session must use exactly one local fixture request");
+  await page.getByTestId("chat-view").getByText("ISOLATED_UPGRADE_OK", { exact: false }).waitFor();
+  assert.equal(
+    result.modelRequests.filter((request) => request.category === "conversation").length,
+    1,
+    "new session must use exactly one local fixture conversation request",
+  );
   result.checks.push("new-workspace-session-local-model");
-  await page.getByRole("button", { name: "查看旧历史", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Old fixture · Old fixture history", exact: true })
-    .click();
-  await page.getByText("HISTORY_TERMINAL_INTERRUPTED", { exact: false }).waitFor();
-  const historyPanel = page.locator('section[aria-label="查看旧历史"]');
-  assert.equal(await historyPanel.locator('textarea, input, [contenteditable="true"]').count(), 0);
-  assert.equal(await historyPanel.getByRole("button", { name: "发送", exact: true }).count(), 0);
-  assert.equal(sha(await readFile(join(oldHome, "host/stop.json"))), originalDigest);
-  result.checks.push("native-upgrade-guide-empty-workspace-and-readonly-history");
   await save();
 } catch (error) {
   result.error = { message: error.message, code: error.code };

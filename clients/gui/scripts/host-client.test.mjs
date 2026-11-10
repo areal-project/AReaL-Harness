@@ -1041,7 +1041,11 @@ test("desktop writes negotiate gui-write-v1, carry the Gateway context and never
   t.after(() => client.close());
   client.retry();
   await waitReads(client, (state) => state.shell.state === "fresh");
-  assert.deepEqual(frames[0].params.capabilities, ["gui-read-v1", "gui-write-v1"]);
+  assert.deepEqual(frames[0].params.capabilities, [
+    "gui-read-v1",
+    "gui-write-v1",
+    "persistedHistoryV1",
+  ]);
   assert.equal(client.writable("session.send"), true);
   assert.equal(client.writable("session.create"), false);
   const accepted = await client.command(
@@ -1132,6 +1136,6 @@ test("browser clients never offer gui-write-v1", async (t) => {
   t.after(() => client.close());
   client.retry();
   await waitState(client, (state) => state.connection === "offline");
-  assert.deepEqual(hello.params.capabilities, ["gui-read-v1"]);
+  assert.deepEqual(hello.params.capabilities, ["gui-read-v1", "persistedHistoryV1"]);
   assert.equal(client.writable("session.send"), false);
 });
