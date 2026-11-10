@@ -312,6 +312,8 @@ async function start({ input, output }) {
           return { cloudThreads, pendingProjects };
         }
         if (request.method === "creation.catalog") {
+          // Host 比工作台先看到 Core 就绪；连接进行中时等它读完配置档，免得界面拿到空目录。
+          await desktop.backend.starting.get(request.params.projectId)?.catch(() => {});
           const project = desktop.backend.projects.get(request.params.projectId);
           if (!project?.client) throw Error("Creation catalog unavailable");
           const pick = (value, fields) =>
