@@ -536,6 +536,9 @@ async fn old_thread_and_profile_read_current_files_after_skill_root_replacement(
         id: profile.id.clone(),
         revision: profile.revision.clone(),
     };
+    let listing = engine.profile_skills(&profile).unwrap();
+    assert!(listing["data"].is_array());
+    assert!(listing.as_object().unwrap()["loaded"].is_null());
     let old_root = resources.path().join("old-skill");
     fs::rename(&root, &old_root).unwrap();
     fs::create_dir(&root).unwrap();
