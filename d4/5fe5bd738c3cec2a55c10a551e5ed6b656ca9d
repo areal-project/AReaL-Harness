@@ -1,0 +1,40 @@
+docs/benchmarks/reports/raw-program-transport.md
+  s_bf83cab8355b2b::t_ebccd7b4ef4ef1 1-48
+docs/benchmarks/reports/README.md
+  s_bf83cab8355b2b::t_ebccd7b4ef4ef1 9-10
+tests/perf/tests/test_raw_program_transport.py
+  s_bf83cab8355b2b::t_5001683fb60521 11-15,20-27,37-41,50-65,78-81,117-123,127-131,157-159,175-182,196-208
+  s_bf83cab8355b2b::t_202a2def1f6a03 1-10,16-19,28-36,42-49,66-77,82-116,124-126,132-156,160-174,183-195,209-285
+docs/benchmarks/reports/README.en.md
+  s_bf83cab8355b2b::t_ebccd7b4ef4ef1 9-10
+docs/benchmarks/reports/raw-program-transport.en.md
+  s_bf83cab8355b2b::t_ebccd7b4ef4ef1 1-48
+tests/perf/raw_program_transport.py
+  s_bf83cab8355b2b::t_049b7e58d7eca7 1-68,75-80,85-185,191-193,195-206
+  s_bf83cab8355b2b::t_5001683fb60521 69-74,186-190,194
+  s_bf83cab8355b2b::t_202a2def1f6a03 81-84
+docs/benchmarks/reports/raw-program-transport.json
+  s_bf83cab8355b2b::t_ebccd7b4ef4ef1 1-607
+docs/benchmarks/reports/main-f08-regression-review.en.md
+  s_bf83cab8355b2b::t_f96e4b426c6784 1-109
+docs/benchmarks/reports/main-f08-regression-review.json
+  s_bf83cab8355b2b::t_b883addde44c09 1-1104
+docs/benchmarks/reports/main-f08-regression-review.md
+  s_bf83cab8355b2b::t_1666c862ae2e5d 1-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d45fe5bd738c3cec2a55c10a551e5ed6b656ca9d",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
