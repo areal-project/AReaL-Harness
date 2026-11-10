@@ -22,34 +22,65 @@ function record(value) {
 
 /** @param {ServiceReader} backend */
 function requireHost(backend) {
-  if (!backend.host) throw Object.assign(new Error("原 Host 登记不可用，无法证明历史 Core 状态；不会启动或替换原实例。"), { code: "LIFECYCLE_INCOMPLETE", submissionUnknown: true });
+  if (!backend.host)
+    throw Object.assign(
+      new Error("原 Host 登记不可用，无法证明历史 Core 状态；不会启动或替换原实例。"),
+      { code: "LIFECYCLE_INCOMPLETE", submissionUnknown: true },
+    );
   return backend.host;
 }
 /** @template T @param {ServiceReader} backend @param {(client:InstanceType<typeof import('@areal/client/node').HostClient>)=>Promise<T>} use */
 async function withOriginalHost(backend, use) {
   if (backend.host) return use(backend.host.client);
   const registry = backend.hostRegistry ?? backend.hooks.environment().AREAL_HARNESS_SERVICE_HOME;
-  if (!registry) throw Object.assign(new Error("原 Host 登记目录不可用"), { code: "LIFECYCLE_INCOMPLETE", submissionUnknown: true });
+  if (!registry)
+    throw Object.assign(new Error("原 Host 登记目录不可用"), {
+      code: "LIFECYCLE_INCOMPLETE",
+      submissionUnknown: true,
+    });
   const { HostClient } = require("@areal/client/node");
   const client = new HostClient();
-  try { await client.connect(registry); return await use(client); }
-  finally { client.close(); }
+  try {
+    await client.connect(registry);
+    return await use(client);
+  } finally {
+    client.close();
+  }
 }
 /** @param {ServiceReader} backend @param {string[]} args @returns {Promise<unknown>} */
 async function request(backend, args) {
-  const at = (/** @type {string} */ name) => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
-  const instance = at("--instance"), generation = at("--expected-generation");
+  const at = (/** @type {string} */ name) => {
+    const index = args.indexOf(name);
+    return index < 0 ? undefined : args[index + 1];
+  };
+  const instance = at("--instance"),
+    generation = at("--expected-generation");
   return withOriginalHost(backend, async (client) => {
     if (args[0] === "operation") {
-      const id=at("--request-id"); if (!id) throw new Error("缺少原停止请求标识");
+      const id = at("--request-id");
+      if (!id) throw new Error("缺少原停止请求标识");
       return client.operation(id);
     }
     const status = await client.status();
-    const selected = status.projects.filter((/** @type {HostProjectStatus} */ row) => row.service?.serviceId === instance && (!generation || row.service?.generation === generation));
-    if (selected.length !== 1) throw Object.assign(new Error("原 Core 代际无法核对"), { code: "CONFIRMATION_STALE", submissionUnknown: true });
+    const selected = status.projects.filter(
+      (/** @type {HostProjectStatus} */ row) =>
+        row.service?.serviceId === instance &&
+        (!generation || row.service?.generation === generation),
+    );
+    if (selected.length !== 1)
+      throw Object.assign(new Error("原 Core 代际无法核对"), {
+        code: "CONFIRMATION_STALE",
+        submissionUnknown: true,
+      });
     const row = selected[0];
     if (args[0] === "status") return row.service;
-    if (args[0] === "stop") return client.stopProject(at("--request-id") || require("node:crypto").randomUUID(), row.registration.projectId, generation || row.service.generation, args.includes("--cancel") ? "cancel" : "ifIdle");
+    if (args[0] === "stop")
+      return client.stopProject(
+        at("--request-id") || require("node:crypto").randomUUID(),
+        row.registration.projectId,
+        generation || row.service.generation,
+        args.includes("--cancel") ? "cancel" : "ifIdle",
+      );
     throw new Error("此服务操作必须经 Host 受理");
   });
 }
@@ -100,9 +131,6 @@ async function readServiceConnection(descriptor, workspace, dataDir, owner) {
   return { descriptor, token: "" };
 }
 
-
-
-
 /** @param {ServiceReader} backend @param {StopTarget} target */
 async function readStop(backend, target) {
   if (backend.host)
@@ -111,7 +139,9 @@ async function readStop(backend, target) {
       target,
       backend.host.resolve(target.projectId).projectId,
     );
-  return withOriginalHost(backend, async (client) => hostStopOperation((await client.operation(target.requestId)).operation, target));
+  return withOriginalHost(backend, async (client) =>
+    hostStopOperation((await client.operation(target.requestId)).operation, target),
+  );
 }
 
 /** @param {ServiceHost} backend @param {ServiceReference & {projectId:string}} target */
@@ -229,18 +259,34 @@ async function readOriginalTurn(backend, target, threadId, turnId) {
   const host = requireHost(backend);
   const { descriptor } = await host.observe(target.projectId);
   if (descriptor.serviceId !== target.serviceId || descriptor.generation !== target.generation)
-    throw Object.assign(new Error("原 Core 代际已变化，不能用新实例代替核查"), { code: "CONFIRMATION_STALE" });
+    throw Object.assign(new Error("原 Core 代际已变化，不能用新实例代替核查"), {
+      code: "CONFIRMATION_STALE",
+    });
   const call = backend.hostCall;
-  if (!call) throw Object.assign(new Error("原 Host 核查通道不可用"), { code: "LIFECYCLE_INCOMPLETE", submissionUnknown: true });
+  if (!call)
+    throw Object.assign(new Error("原 Host 核查通道不可用"), {
+      code: "LIFECYCLE_INCOMPLETE",
+      submissionUnknown: true,
+    });
   const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-  const client = new HostCoreClient({ host: call, sourceId: host.sourceId, projectId: host.resolve(target.projectId).projectId, scope: "observer" });
+  const client = new HostCoreClient({
+    host: call,
+    sourceId: host.sourceId,
+    projectId: host.resolve(target.projectId).projectId,
+    scope: "observer",
+  });
   try {
     await client.connect();
     const identity = client.identity();
-    if (identity?.coreInstanceId !== target.serviceId || identity?.coreGeneration !== target.generation)
+    if (
+      identity?.coreInstanceId !== target.serviceId ||
+      identity?.coreGeneration !== target.generation
+    )
       throw Object.assign(new Error("原 Core 代际已变化"), { code: "CONFIRMATION_STALE" });
     return await readTurnMetadata(client, threadId, turnId);
-  } finally { client.close(); }
+  } finally {
+    client.close();
+  }
 }
 
 /** @param {ServiceReader} backend @param {ServiceReference & {projectId:string,root:string}} target @returns {Promise<{descriptor:Record<string,unknown>,cleanupConfirmed:boolean,status?:unknown}>} */
@@ -248,8 +294,16 @@ async function inspectOriginalService(backend, target) {
   const host = requireHost(backend);
   const state = await host.status(target.projectId);
   const descriptor = state.service;
-  if (!record(descriptor) || descriptor.serviceId !== target.serviceId || descriptor.generation !== target.generation || descriptor.workspace !== await realpath(target.root))
-    throw Object.assign(new Error("原 Core 身份或代际无法核对"), { code: "CONFIRMATION_STALE", submissionUnknown: true });
+  if (
+    !record(descriptor) ||
+    descriptor.serviceId !== target.serviceId ||
+    descriptor.generation !== target.generation ||
+    descriptor.workspace !== (await realpath(target.root))
+  )
+    throw Object.assign(new Error("原 Core 身份或代际无法核对"), {
+      code: "CONFIRMATION_STALE",
+      submissionUnknown: true,
+    });
   // 普通状态不等于清理证明；历史缺回执继续 UNKNOWN，不根据进程消失放行。
   return { descriptor, cleanupConfirmed: false };
 }

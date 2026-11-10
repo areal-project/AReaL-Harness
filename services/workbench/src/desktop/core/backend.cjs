@@ -203,9 +203,15 @@ class CoreBackend {
         get analytics() {
           return backend.analytics;
         },
-        get hostCall() { return backend.hostCall; },
-        get hostCoreClients() { return backend.hostCoreClients; },
-        get host() { return backend.host; },
+        get hostCall() {
+          return backend.hostCall;
+        },
+        get hostCoreClients() {
+          return backend.hostCoreClients;
+        },
+        get host() {
+          return backend.host;
+        },
         get applicationOwner() {
           return backend.applicationOwner;
         },
@@ -405,9 +411,10 @@ class CoreBackend {
     if (!enabled) return this.library.useStore(null);
     /** @type {typeof import("@areal/workbench-service/host-library-store")} */
     const { createHostLibraryStore } = require("@areal/workbench-service/host-library-store");
-    return this.library.useStore(
-      { ...createHostLibraryStore({ ...this.hostLibrary, binary: this.binary, library: this.home }), required },
-    );
+    return this.library.useStore({
+      ...createHostLibraryStore({ ...this.hostLibrary, binary: this.binary, library: this.home }),
+      required,
+    });
   }
   /** @param {string} name @param {unknown} value */
   save(name, value) {
@@ -1498,14 +1505,21 @@ class CoreBackend {
     }
     if (this.closing) throw new Error("应用正在退出");
     if (name === "recovery") {
-      if (!this.hostCall) throw Object.assign(new Error("Recovery Host unavailable"), { code: "CAPABILITY_UNAVAILABLE" });
+      if (!this.hostCall)
+        throw Object.assign(new Error("Recovery Host unavailable"), {
+          code: "CAPABILITY_UNAVAILABLE",
+        });
       if (["history", "importProvider"].includes(request.operation)) {
         const { operation, ...query } = request;
         return this.hostCall(`recovery.${operation}`, query);
       }
-      const catalog = await this.hostCall("recovery.inspect", request.spaceId === undefined ? {} : { spaceId: request.spaceId });
+      const catalog = await this.hostCall(
+        "recovery.inspect",
+        request.spaceId === undefined ? {} : { spaceId: request.spaceId },
+      );
       if (request.operation === "inspect") return catalog;
-      if (!modelRecord(catalog) || typeof catalog.workspace !== "string") throw new Error("Invalid recovery workspace");
+      if (!modelRecord(catalog) || typeof catalog.workspace !== "string")
+        throw new Error("Invalid recovery workspace");
       return { projectId: await this.addProject(catalog.workspace) };
     }
     if (name === "analytics") return this.analytics.command(request);
@@ -1627,22 +1641,20 @@ class CoreBackend {
         ...(request.model ? { model: request.model } : {}),
         ...(profile ? { agentProfile: profile } : {}),
       },
-      current: () => this.currentConnection(project, client) &&
+      current: () =>
+        this.currentConnection(project, client) &&
         (!tools.length || this.connections.currentDesktopToolHost(project, client, owner)),
     };
   }
-
 
   /** @param {Project} project @param {Fields} request */
   async createThreadInProject(project, request) {
     const prepared = await this.prepareThreadInProject(project, request);
     const { thread } = readThreadAdmission(
-      await this.submit(
-        project,
-        "areal/thread/start",
-        prepared.params,
-        { requestId: prepared.requestId, preDispatch: prepared.current },
-      ),
+      await this.submit(project, "areal/thread/start", prepared.params, {
+        requestId: prepared.requestId,
+        preDispatch: prepared.current,
+      }),
     );
     await this.refreshAfterAdmission(
       project,

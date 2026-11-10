@@ -100,10 +100,7 @@ class GuiHostProjects {
     await this.list();
     for (const project of this.metadata) {
       if (!this.bindings.has(project.id))
-        await this.register(
-          requestIdFor(`${this.sourceId}:register:${project.id}`),
-          project,
-        );
+        await this.register(requestIdFor(`${this.sourceId}:register:${project.id}`), project);
     }
     if (deferCredentials && this.options.singletonHeld) this.continueMigration();
     else await this.retire();
@@ -206,7 +203,8 @@ class GuiHostProjects {
     this.client.requireCapability("scheduledPreparation");
     const state = await this.client.sourceState(this.source);
     if (!state || state.sourceId !== this.sourceId) throw new Error("Host GUI source changed");
-    if (this.options.singletonHeld && state.migration?.state === "pending") this.continueMigration();
+    if (this.options.singletonHeld && state.migration?.state === "pending")
+      this.continueMigration();
     else await this.retire();
     return this.list();
   }

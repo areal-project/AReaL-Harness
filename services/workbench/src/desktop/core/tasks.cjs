@@ -81,9 +81,31 @@ async function manageTask(backend, project, rawRequest) {
     for (const key of ["text", "attachments", "mcpContent", "conversationQuotes"])
       delete payload[key];
   }
-  const reading = reads[request.operation] || ["taskDraftRead", "taskDraftHistory", "taskHistoryCapabilities", "taskWatch", "taskUnwatch"].includes(request.operation);
+  const reading =
+    reads[request.operation] ||
+    [
+      "taskDraftRead",
+      "taskDraftHistory",
+      "taskHistoryCapabilities",
+      "taskWatch",
+      "taskUnwatch",
+    ].includes(request.operation);
   const value = await backend.hostCall(reading ? "tasks.read" : "tasks.command", payload);
-  if (["task", "taskWatch", "taskCreate", "taskUpdate", "taskPause", "taskResume", "taskCancel", "taskDelete", "taskStopRun", "taskResumeRun", "taskDraftConfirm"].includes(request.operation))
+  if (
+    [
+      "task",
+      "taskWatch",
+      "taskCreate",
+      "taskUpdate",
+      "taskPause",
+      "taskResume",
+      "taskCancel",
+      "taskDelete",
+      "taskStopRun",
+      "taskResumeRun",
+      "taskDraftConfirm",
+    ].includes(request.operation)
+  )
     project.model.setTask(readTask(value));
   return value;
 }

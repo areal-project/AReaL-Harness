@@ -268,7 +268,7 @@ class UsageAnalytics {
       this.error = "使用统计保存失败，当前数据尚未持久化。";
     }
   }
-    summary() {
+  summary() {
     const days = Object.fromEntries(
       Object.entries(this.value.days).map(([date, activeMs]) => [
         date,

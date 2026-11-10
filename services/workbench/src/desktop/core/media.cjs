@@ -75,23 +75,56 @@ async function executeMediaCommand(project, request, backend) {
     }
   }
   const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-  if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core transport unavailable");
+  if (!(project.client instanceof HostCoreClient))
+    throw new Error("Host Core transport unavailable");
   if (request.operation === "read") {
-    if (typeof request.uri !== "string" || !/^areal:\/\/blob\/[a-f0-9]{64}$/.test(request.uri)) throw new Error("无效附件引用");
-    const result=await project.client.blob({operation:"read",threadId:request.threadId,uri:request.uri});
-    if(typeof result.base64!=="string" || typeof result.mime!=="string") throw new Error("附件读取回执无效");
-    return {bytes:new Uint8Array(Buffer.from(result.base64,"base64")),mime:result.mime};
+    if (typeof request.uri !== "string" || !/^areal:\/\/blob\/[a-f0-9]{64}$/.test(request.uri))
+      throw new Error("无效附件引用");
+    const result = await project.client.blob({
+      operation: "read",
+      threadId: request.threadId,
+      uri: request.uri,
+    });
+    if (typeof result.base64 !== "string" || typeof result.mime !== "string")
+      throw new Error("附件读取回执无效");
+    return { bytes: new Uint8Array(Buffer.from(result.base64, "base64")), mime: result.mime };
   }
-  if (request.operation !== "upload" || thread.desktop?.archived) throw new Error("会话不可上传附件");
-  if (!(request.bytes instanceof Uint8Array) || !request.bytes.length || request.bytes.length>MAX_BYTES) throw new Error("附件必须为 1 B–16 MiB");
-  if (typeof request.mime!=="string" || !/^[\w.+-]+\/[\w.+-]+$/.test(request.mime)) throw new Error("无效附件类型");
+  if (request.operation !== "upload" || thread.desktop?.archived)
+    throw new Error("会话不可上传附件");
+  if (
+    !(request.bytes instanceof Uint8Array) ||
+    !request.bytes.length ||
+    request.bytes.length > MAX_BYTES
+  )
+    throw new Error("附件必须为 1 B–16 MiB");
+  if (typeof request.mime !== "string" || !/^[\w.+-]+\/[\w.+-]+$/.test(request.mime))
+    throw new Error("无效附件类型");
   try {
-    const receipt=await project.client.blob({operation:"upload",threadId:request.threadId,mime:request.mime,base64:Buffer.from(request.bytes).toString("base64")});
-    if(typeof receipt.uri!=="string" || typeof receipt.mimeType!=="string" || receipt.sizeBytes!==request.bytes.length) throw new Error("上传回执不完整");
+    const receipt = await project.client.blob({
+      operation: "upload",
+      threadId: request.threadId,
+      mime: request.mime,
+      base64: Buffer.from(request.bytes).toString("base64"),
+    });
+    if (
+      typeof receipt.uri !== "string" ||
+      typeof receipt.mimeType !== "string" ||
+      receipt.sizeBytes !== request.bytes.length
+    )
+      throw new Error("上传回执不完整");
     return receipt;
-  } catch(cause) {
-    const definite=modelRecord(cause) && ["INVALID_PARAMS","LIMIT_EXCEEDED","RESOURCE_UNAVAILABLE","FORBIDDEN"].includes(String(cause.code));
-    throw Object.assign(new Error(`附件上传结果待核对：${cause instanceof Error?cause.message:String(cause)}。不会自动重发。`),{submissionUnknown:!definite});
+  } catch (cause) {
+    const definite =
+      modelRecord(cause) &&
+      ["INVALID_PARAMS", "LIMIT_EXCEEDED", "RESOURCE_UNAVAILABLE", "FORBIDDEN"].includes(
+        String(cause.code),
+      );
+    throw Object.assign(
+      new Error(
+        `附件上传结果待核对：${cause instanceof Error ? cause.message : String(cause)}。不会自动重发。`,
+      ),
+      { submissionUnknown: !definite },
+    );
   }
 }
 /** @param {InputHost} backend @param {Record<string,unknown>} request @returns {MessageInput[]} */

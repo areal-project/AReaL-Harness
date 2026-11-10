@@ -1,7 +1,13 @@
 // @ts-check
 "use strict";
 const { createHash } = require("node:crypto");
-const { existsSync, readFileSync, readdirSync, realpathSync, createReadStream } = require("node:fs");
+const {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  createReadStream,
+} = require("node:fs");
 const { join, dirname, basename, resolve } = require("node:path");
 const { homedir } = require("node:os");
 const { executables } = require("./bundle.cjs");

@@ -25,7 +25,12 @@ async function fixture(core = {}) {
     host: async (call, params) => {
       calls.push([call, params]);
       if (call === "projects.list")
-        return { projects: [{ projectId: "p", ready: true }, { projectId: "cold", ready: false }] };
+        return {
+          projects: [
+            { projectId: "p", ready: true },
+            { projectId: "cold", ready: false },
+          ],
+        };
       const answer = core[params.method]?.(params.params);
       if (answer === undefined) throw Object.assign(new Error("NOT_FOUND"), { code: "NOT_FOUND" });
       return answer;
@@ -43,12 +48,21 @@ test("sync pages every thread of ready projects through Host and keeps live date
     b: { id: "b", turns: [{ id: "t2", usage: usage(5), items: [] }] },
     c: {
       id: "c",
-      turns: [{ id: "t3", usage: usage(2), items: [], startedAt: new Date("2026-11-03T09:00:00").getTime() / 1000 }],
+      turns: [
+        {
+          id: "t3",
+          usage: usage(2),
+          items: [],
+          startedAt: new Date("2026-11-03T09:00:00").getTime() / 1000,
+        },
+      ],
     },
   };
   const { analytics, calls } = await fixture({
     "thread/list": ({ cursor }) =>
-      cursor ? { data: [{ id: "b" }, { id: "c" }], nextCursor: null } : { data: [{ id: "a" }], nextCursor: "1" },
+      cursor
+        ? { data: [{ id: "b" }, { id: "c" }], nextCursor: null }
+        : { data: [{ id: "a" }], nextCursor: "1" },
     "thread/read": ({ threadId }) => ({ thread: threads[threadId] }),
   });
   analytics.observe("p", "turn/completed", { threadId: "a", turn: { id: "t1" } });

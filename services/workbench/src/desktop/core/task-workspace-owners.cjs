@@ -22,13 +22,24 @@ class TaskWorkspaceOwners {
   /** @param {string} logicalId @param {string} taskId @param {{execution?:boolean}} [options] */
   async target(logicalId, taskId, options = {}) {
     if (!this.backend.hostCall) throw unavailable("Host 任务归属不可用");
-    const value = await this.backend.hostCall("tasks.owner.read", { projectId: logicalId, taskId, execution: options.execution === true });
-    if (!modelRecord(value) || !identifier(value.projectId) ||
-        (value.threadId !== undefined && !identifier(value.threadId)) ||
-        (value.mode !== undefined && !["foreground","background","scheduled"].includes(String(value.mode))))
+    const value = await this.backend.hostCall("tasks.owner.read", {
+      projectId: logicalId,
+      taskId,
+      execution: options.execution === true,
+    });
+    if (
+      !modelRecord(value) ||
+      !identifier(value.projectId) ||
+      (value.threadId !== undefined && !identifier(value.threadId)) ||
+      (value.mode !== undefined &&
+        !["foreground", "background", "scheduled"].includes(String(value.mode)))
+    )
       throw unavailable("Host 任务执行归属无效");
-    return { projectId: value.projectId, ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
-      ...(typeof value.mode === "string" ? { mode: value.mode } : {}) };
+    return {
+      projectId: value.projectId,
+      ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
+      ...(typeof value.mode === "string" ? { mode: value.mode } : {}),
+    };
   }
   /** @param {string} logicalId @param {string} taskId */
   async resolve(logicalId, taskId) {

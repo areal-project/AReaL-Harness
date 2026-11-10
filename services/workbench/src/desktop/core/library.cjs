@@ -182,18 +182,35 @@ class CoreLibrary {
         try {
           for (let attempt = 0; ; attempt++) {
             const patches = [];
-            for (const key of new Set([...Object.keys(this.value.settings), ...Object.keys(next.settings)])) {
+            for (const key of new Set([
+              ...Object.keys(this.value.settings),
+              ...Object.keys(next.settings),
+            ])) {
               if (JSON.stringify(this.value.settings[key]) !== JSON.stringify(next.settings[key]))
-                patches.push({ path: ["settings", key], before: this.value.settings[key] ?? null, after: next.settings[key] ?? null });
+                patches.push({
+                  path: ["settings", key],
+                  before: this.value.settings[key] ?? null,
+                  after: next.settings[key] ?? null,
+                });
             }
             for (const [id, value] of Object.entries(next.projects)) {
-              for (const key of /** @type {const} */ (["worktreeEnvironments", "worktreeEnvironmentRevision"])) {
+              for (const key of /** @type {const} */ ([
+                "worktreeEnvironments",
+                "worktreeEnvironmentRevision",
+              ])) {
                 if (JSON.stringify(this.value.projects[id]?.[key]) !== JSON.stringify(value[key]))
-                  patches.push({ path: ["projects", id, key], before: this.value.projects[id]?.[key] ?? null, after: value[key] ?? null });
+                  patches.push({
+                    path: ["projects", id, key],
+                    before: this.value.projects[id]?.[key] ?? null,
+                    after: value[key] ?? null,
+                  });
               }
             }
             try {
-              next = readLibraryState(await this.backend.hostCall("library.patch", { patches }), this.value);
+              next = readLibraryState(
+                await this.backend.hostCall("library.patch", { patches }),
+                this.value,
+              );
               break;
             } catch (error) {
               if (attempt >= 2 || !modelRecord(error) || error.code !== "conflict") throw error;
@@ -223,7 +240,16 @@ class CoreLibrary {
   /** @param {unknown} input */
   async command(input) {
     const request = readLibraryRequest(input);
-    const navigation = request.operation !== "settings" || ["sidebarSort", "sidebarSortChats", "sidebarSortProjects", "sidebarSortPinned", "showPinned", "showCompleted"].includes(request.key ?? "");
+    const navigation =
+      request.operation !== "settings" ||
+      [
+        "sidebarSort",
+        "sidebarSortChats",
+        "sidebarSortProjects",
+        "sidebarSortPinned",
+        "showPinned",
+        "showCompleted",
+      ].includes(request.key ?? "");
     if (navigation) {
       const result = await this.backend.hostCall("library.command", request);
       this.value = readLibraryState(result, this.value);

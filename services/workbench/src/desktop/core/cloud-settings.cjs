@@ -99,7 +99,13 @@ class CloudSettings {
       throw new Error("无法解密 Cloud token，请重新保存");
     }
     if (!this.backend.hostCall) throw new Error("Host Cloud transport unavailable");
-    return new CloudClient({ baseURL: record.baseURL, token, host:this.backend.hostCall, sourceId:this.backend.host.sourceId, clients:this.backend.hostCoreClients });
+    return new CloudClient({
+      baseURL: record.baseURL,
+      token,
+      host: this.backend.hostCall,
+      sourceId: this.backend.host.sourceId,
+      clients: this.backend.hostCoreClients,
+    });
   }
 }
 

@@ -178,7 +178,6 @@ class UsageAnalytics {
     // 主连接关闭必须覆盖模块加载与握手等待，只释放本次统计读取连接。
     const removeClose = primary?.onClose(() => {
       primaryClosed = true;
-
     });
     const task = (async () => {
       try {
@@ -205,7 +204,6 @@ class UsageAnalytics {
         if (ownsIdentity()) this.syncErrors.set(project.id, "部分历史尚未同步，连接工作区后重试。");
       } finally {
         removeClose?.();
-
       }
       await this.flush();
     })().finally(() => this.syncing.delete(project.id));

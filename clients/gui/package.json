@@ -156,6 +156,7 @@
     "check": "node scripts/check.mjs",
     "check:all": "vp check --deny-warnings",
     "fmt": "vp fmt",
+    "fmt:workbench": "cd ../../services/workbench && vp fmt src test",
     "lint": "vp lint",
     "test:design-rules": "node --test scripts/design-rules.test.mjs",
     "test:copy-budget": "node scripts/copy-budget.mjs",

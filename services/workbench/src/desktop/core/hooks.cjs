@@ -33,9 +33,12 @@ class AppHooks {
     try {
       const backend = this.backend;
       if (!backend.hostCall) throw new Error("Host 配置校验能力不可用");
-      return await backend.hostCall("workbench.utility", operation === "show"
-        ? { operation: "configShow" }
-        : { operation: "configValidate", document: path ? await readFile(path, "utf8") : "{}" });
+      return await backend.hostCall(
+        "workbench.utility",
+        operation === "show"
+          ? { operation: "configShow" }
+          : { operation: "configValidate", document: path ? await readFile(path, "utf8") : "{}" },
+      );
     } catch (error) {
       const details = error instanceof Error ? error : new Error(String(error));
       const stderr =

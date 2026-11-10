@@ -69,34 +69,34 @@ function readServicePacket(packet, metadata) {
 /** @typedef {{projects:(import('@areal/workbench-service/desktop/core/gen-ui-state.cjs').GenUiProject & {outcomes?:unknown})[],library:{projects:Record<string,unknown>}}} PageSnapshot */
 /** @param {PageSnapshot} snapshot @param {string} projectId @param {string} threadId */
 function ownsThread(snapshot, projectId, threadId) {
-    const project = snapshot.library.projects[projectId];
-    if (record(project) && project.hidden) return false;
-    const state = snapshot.projects.find((p) => p.id === projectId)?.state;
-    const thread = record(state) && record(state.threads) ? state.threads[threadId] : undefined;
-    return record(thread) && !(record(thread.desktop) && thread.desktop.archived);
-  }
+  const project = snapshot.library.projects[projectId];
+  if (record(project) && project.hidden) return false;
+  const state = snapshot.projects.find((p) => p.id === projectId)?.state;
+  const thread = record(state) && record(state.threads) ? state.threads[threadId] : undefined;
+  return record(thread) && !(record(thread.desktop) && thread.desktop.archived);
+}
 /** @param {PageSnapshot} snapshot @param {string} projectId @param {string} threadId */
 function retainsThreadResources(snapshot, projectId, threadId) {
-    const project = snapshot.projects.find((project) => project.id === projectId);
-    const state = project?.state;
-    const thread = record(state) && record(state.threads) ? state.threads[threadId] : undefined;
-    if (
-      !record(thread) ||
-      !record(thread.conversation) ||
-      !record(thread.conversation.policy) ||
-      thread.conversation.policy.kind !== "sideExecutableV2" ||
-      !record(thread.desktop) ||
-      thread.desktop.archived !== true
-    )
-      return false;
-    return !Object.values(record(project?.outcomes) ? project.outcomes : {}).some(
-      (outcome) =>
-        record(outcome) &&
-        outcome.method === "areal/side/close" &&
-        outcome.threadId === threadId &&
-        outcome.accepted === true &&
-        outcome.cleanupConfirmed === true,
-    );
-  }
+  const project = snapshot.projects.find((project) => project.id === projectId);
+  const state = project?.state;
+  const thread = record(state) && record(state.threads) ? state.threads[threadId] : undefined;
+  if (
+    !record(thread) ||
+    !record(thread.conversation) ||
+    !record(thread.conversation.policy) ||
+    thread.conversation.policy.kind !== "sideExecutableV2" ||
+    !record(thread.desktop) ||
+    thread.desktop.archived !== true
+  )
+    return false;
+  return !Object.values(record(project?.outcomes) ? project.outcomes : {}).some(
+    (outcome) =>
+      record(outcome) &&
+      outcome.method === "areal/side/close" &&
+      outcome.threadId === threadId &&
+      outcome.accepted === true &&
+      outcome.cleanupConfirmed === true,
+  );
+}
 
 module.exports = { validateServicePacket, readServicePacket, ownsThread, retainsThreadResources };

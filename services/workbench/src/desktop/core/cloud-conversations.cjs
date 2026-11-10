@@ -126,7 +126,13 @@ class CloudConversations {
         bound.pathname.startsWith(service.baseURL.pathname) &&
         /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(suffix)
       )
-        platform = new CloudClient({ baseURL: bound.href, token: service.token, host:service.host, sourceId:service.sourceId, clients:service.clients });
+        platform = new CloudClient({
+          baseURL: bound.href,
+          token: service.token,
+          host: service.host,
+          sourceId: service.sourceId,
+          clients: service.clients,
+        });
     }
     if (record.binding.baseURL !== platform.baseURL.href)
       throw new Error("此会话属于另一个 Cloud 后端，请恢复原后端配置");

@@ -23,7 +23,9 @@ function backendURL(value) {
 class CloudClient {
   /** @param {{baseURL:string,token:string,host:(method:string,params:unknown)=>Promise<unknown>,sourceId:string,clients:Map<string,import('@areal/workbench-service/host-core-client').HostCoreClient>}} options */
   constructor({ baseURL, token, host, sourceId, clients }) {
-    this.host = host; this.sourceId = sourceId; this.clients = clients;
+    this.host = host;
+    this.sourceId = sourceId;
+    this.clients = clients;
     this.baseURL = backendURL(baseURL);
     if (typeof token !== "string" || !token.trim() || /[\r\n]/.test(token))
       throw new Error("Cloud token 无效");
@@ -35,14 +37,27 @@ class CloudClient {
       throw new Error("Cloud Session ID 无效");
     const url = new URL(this.baseURL);
     url.pathname += encodeURIComponent(sessionId) + "/";
-    return new CloudClient({ baseURL: url.href, token: this.token, host:this.host, sourceId:this.sourceId, clients:this.clients });
+    return new CloudClient({
+      baseURL: url.href,
+      token: this.token,
+      host: this.host,
+      sourceId: this.sourceId,
+      clients: this.clients,
+    });
   }
   /** @param {{onNotification?:(method:string,params:unknown)=>void,onClose?:()=>void}} [options] */
   async connect({ onNotification = () => {}, onClose = () => {} } = {}) {
-    const client = new HostCoreClient({ host:this.host, sourceId:this.sourceId, projectId:"", cloud:{baseURL:this.baseURL.href,token:this.token} });
-    const key=`cloud:${randomUUID()}`;
-    this.clients.set(key,client);
-    client.onClose(() => { if (this.clients.get(key)===client) this.clients.delete(key); });
+    const client = new HostCoreClient({
+      host: this.host,
+      sourceId: this.sourceId,
+      projectId: "",
+      cloud: { baseURL: this.baseURL.href, token: this.token },
+    });
+    const key = `cloud:${randomUUID()}`;
+    this.clients.set(key, client);
+    client.onClose(() => {
+      if (this.clients.get(key) === client) this.clients.delete(key);
+    });
     client.onNotification(onNotification);
     client.onClose(onClose);
     try {

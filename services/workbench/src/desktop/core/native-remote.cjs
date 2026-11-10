@@ -81,7 +81,8 @@ class NativeRemote {
     try {
       this.config = await this.storage.init();
     } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "migrationPending")) throw error;
+      if (!(error instanceof Error && "code" in error && error.code === "migrationPending"))
+        throw error;
       this.view.migrationError = "手机连接身份尚未恢复，请在凭据可用后重新打开应用。";
       this.view.directError = this.view.migrationError;
       this.view.relayError = this.view.migrationError;

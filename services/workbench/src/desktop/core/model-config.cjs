@@ -86,7 +86,12 @@ class ModelConfiguration {
             );
           } catch (error) {
             const code = record(error) ? error.code : undefined;
-            if (code !== "storageLocked" && code !== "storageMissing" && code !== "migrationPending") throw error;
+            if (
+              code !== "storageLocked" &&
+              code !== "storageMissing" &&
+              code !== "migrationPending"
+            )
+              throw error;
             if (code === "storageLocked") locked.add(reference);
             if (code === "migrationPending") pending.add(reference);
             diagnostics.record({
@@ -252,8 +257,15 @@ class ModelConfiguration {
       ...value,
       credentialErrors: Object.fromEntries(
         value.data
-          .filter((item) => item.apiKeyEnv && (this.vault.locked.has(item.apiKeyEnv) || this.vault.pending.has(item.apiKeyEnv)))
-          .map((item) => [item.id, this.vault.pending.has(item.apiKeyEnv ?? "") ? "migrationPending" : "storageLocked"]),
+          .filter(
+            (item) =>
+              item.apiKeyEnv &&
+              (this.vault.locked.has(item.apiKeyEnv) || this.vault.pending.has(item.apiKeyEnv)),
+          )
+          .map((item) => [
+            item.id,
+            this.vault.pending.has(item.apiKeyEnv ?? "") ? "migrationPending" : "storageLocked",
+          ]),
       ),
       data: value.data.map((item) => ({
         ...item,

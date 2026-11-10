@@ -219,7 +219,9 @@ class ProjectConnections {
       project.client?.ready
     )
       return;
-    const delay = project.reconnectAttempt ? Math.min(500 * 2 ** Math.min(project.reconnectAttempt, 6), 30000) : 0;
+    const delay = project.reconnectAttempt
+      ? Math.min(500 * 2 ** Math.min(project.reconnectAttempt, 6), 30000)
+      : 0;
     project.reconnectTimer = setTimeout(() => {
       project.reconnectTimer = null;
       if (
@@ -432,8 +434,12 @@ class ProjectConnections {
       },
     };
     const canonical = this.host.host.resolve(project.id).projectId;
-    const client = new (require("@areal/workbench-service/host-core-client").HostCoreClient)({ host: this.host.hostCall, sourceId: this.host.host.sourceId,
-      projectId: canonical, onServerRequest: connectionOptions.onServerRequest });
+    const client = new (require("@areal/workbench-service/host-core-client").HostCoreClient)({
+      host: this.host.hostCall,
+      sourceId: this.host.host.sourceId,
+      projectId: canonical,
+      onServerRequest: connectionOptions.onServerRequest,
+    });
     this.host.hostCoreClients.set(canonical, client);
     if (owner) this.desktopOwners.set(client, owner);
     project.client = client;
@@ -451,7 +457,8 @@ class ProjectConnections {
           this.host.observeNotification(project, client, method, params);
       });
       client.onClose((failure) => {
-        if (this.host.hostCoreClients.get(canonical) === client) this.host.hostCoreClients.delete(canonical);
+        if (this.host.hostCoreClients.get(canonical) === client)
+          this.host.hostCoreClients.delete(canonical);
         if (cuaHostGeneration)
           void Promise.resolve(
             this.host.cuaRead?.({

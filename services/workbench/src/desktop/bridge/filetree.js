@@ -111,7 +111,8 @@ export async function listDirectory(root, rel, options = {}) {
 
 /** Bounded workspace search. Reuses the same realpath boundary as lazy listing. */
 export async function searchFiles(root, query) {
-  if (typeof query !== "string" || !query.trim() || query.length > 256) throw new Error("无效文件搜索");
+  if (typeof query !== "string" || !query.trim() || query.length > 256)
+    throw new Error("无效文件搜索");
   const needle = query.trim().toLocaleLowerCase();
   const queue = [""];
   const visited = new Set();
@@ -129,7 +130,10 @@ export async function searchFiles(root, query) {
       const path = rel ? `${rel}/${item.name}` : item.name;
       if (path.toLocaleLowerCase().includes(needle)) entries.push({ path, dir: item.dir });
       if (item.dir) queue.push(path);
-      if (entries.length >= 500) { truncated = true; break; }
+      if (entries.length >= 500) {
+        truncated = true;
+        break;
+      }
     }
   }
   return { entries, truncated: truncated || queue.length > 0 };

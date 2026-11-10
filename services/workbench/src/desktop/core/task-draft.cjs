@@ -310,21 +310,34 @@ function displayThread(thread, project) {
 /** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management-tasks").TaskRequest} request @returns {Promise<unknown>} */
 async function manageTaskDraft(backend, project, request) {
   /** @type {Record<string,unknown>} */
-  const payload = { ...request, projectId: project.logicalProjectId ?? project.id, executionProjectId: project.id };
+  const payload = {
+    ...request,
+    projectId: project.logicalProjectId ?? project.id,
+    executionProjectId: project.id,
+  };
   delete payload.logicalProjectId;
   let modelNotice;
   if (request.operation === "taskDraftStart") {
-    const selection = resolveNewConversationModel(backend.providers.catalog(project.models ?? [], project), backend.providers.lastAcceptedModel, true);
+    const selection = resolveNewConversationModel(
+      backend.providers.catalog(project.models ?? [], project),
+      backend.providers.lastAcceptedModel,
+      true,
+    );
     const model = selection.candidate;
     modelNotice = selection.notice;
     if (model?.providerId === "areal_openai") await backend.providers.ensureSubscription(project);
     if (model?.providerId) payload.model = { providerId: model.providerId, modelId: model.modelId };
-    payload.parameters = { ...model?.parameters,
-      ...(selection.rememberedEffort != null ? { reasoningEffort: selection.rememberedEffort } : {}) };
+    payload.parameters = {
+      ...model?.parameters,
+      ...(selection.rememberedEffort != null
+        ? { reasoningEffort: selection.rememberedEffort }
+        : {}),
+    };
   }
   if (request.operation === "taskDraftSend") {
     payload.input = messageInput(backend, request);
-    for (const key of ["text", "attachments", "mcpContent", "conversationQuotes"]) delete payload[key];
+    for (const key of ["text", "attachments", "mcpContent", "conversationQuotes"])
+      delete payload[key];
   }
   const reading = request.operation === "taskDraftRead" || request.operation === "taskDraftHistory";
   const value = await backend.hostCall(reading ? "tasks.read" : "tasks.command", payload);

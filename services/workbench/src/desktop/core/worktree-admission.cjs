@@ -510,11 +510,18 @@ class WorktreeAdmission {
     try {
       await project.client.admit(name, request);
       if (name === "respond" && typeof request.threadId === "string") {
-        const interactions = await project.client.request("areal/interaction/list", { threadId: request.threadId });
-        project.model.setInteractions(request.threadId, require("./history-contract.cjs").readHistoryInteractions(interactions));
+        const interactions = await project.client.request("areal/interaction/list", {
+          threadId: request.threadId,
+        });
+        project.model.setInteractions(
+          request.threadId,
+          require("./history-contract.cjs").readHistoryInteractions(interactions),
+        );
       }
       return;
-    } catch (cause) { throw Object.assign(reject("Host 无法确认目录作者或后台状态"), { cause }); }
+    } catch (cause) {
+      throw Object.assign(reject("Host 无法确认目录作者或后台状态"), { cause });
+    }
   }
 }
 /** @param {unknown} value @returns {{thread:AdmissionThread}} */

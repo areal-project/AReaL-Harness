@@ -163,8 +163,7 @@ class DesktopService {
     this.inflight = 0;
     /** @type {number|null} */ this.idleSince = Date.now();
     this.closed = false;
-    /** @type {InstanceType<typeof NativeRemote>|undefined} */ this.remote =
-      undefined;
+    /** @type {InstanceType<typeof NativeRemote>|undefined} */ this.remote = undefined;
     /** @type {ServiceSocket|null|undefined} */ this.computerSocket = undefined;
     backend.desktopToolOwner = () =>
       !this.closed && connected(this.computerSocket) ? this.computerSocket : null;
@@ -1048,8 +1047,10 @@ class DesktopService {
       }
       if (!this.clients.has(socket)) throw new Error("请先完成后台服务握手");
       if (method === "encryptionResult") {
-        const pending = typeof params.requestId === "number"
-          ? this.encryptionPending?.get(params.requestId) : undefined;
+        const pending =
+          typeof params.requestId === "number"
+            ? this.encryptionPending?.get(params.requestId)
+            : undefined;
         if (!pending || pending.socket !== socket) throw new Error("无效的安全存储回复");
         this.encryptionPending.delete(/** @type {number} */ (params.requestId));
         clearTimeout(pending.timer);
@@ -1389,7 +1390,8 @@ class DesktopService {
         let result;
         try {
           const terminalClient = guiTerminalCommand
-            ? await this.hostTerminalClient(socket, request.projectId) : undefined;
+            ? await this.hostTerminalClient(socket, request.projectId)
+            : undefined;
           result =
             method === "command" && name === "history"
               ? await this.historyCommand(socket, request)
@@ -1400,7 +1402,7 @@ class DesktopService {
                           ...(terminalClient ? { guiTerminalClient: terminalClient } : {}),
                           guiTerminalRequest: (method, params) => {
                             if (!terminalClient) throw new Error("Host terminal unavailable");
-                            return terminalClient.request(method,params);
+                            return terminalClient.request(method, params);
                           },
                         }
                       : {}),
@@ -1470,25 +1472,54 @@ class DesktopService {
   }
   /** @param {ServiceSocket} socket @param {unknown} projectId */
   async hostTerminalClient(socket, projectId) {
-    if (!connected(socket) || !this.clients.has(socket) || this.closed || typeof projectId !== "string" || !this.backend.hostCall)
+    if (
+      !connected(socket) ||
+      !this.clients.has(socket) ||
+      this.closed ||
+      typeof projectId !== "string" ||
+      !this.backend.hostCall
+    )
       throw new Error("GUI terminal owner is unavailable");
     const canonical = this.backend.host.resolve(projectId).projectId;
     let terminals = this.hostTerminals.get(socket);
-    if (!terminals) { terminals = new Map(); this.hostTerminals.set(socket, terminals); }
+    if (!terminals) {
+      terminals = new Map();
+      this.hostTerminals.set(socket, terminals);
+    }
     let entry = terminals.get(canonical);
-    if (entry?.client.closed) { terminals.delete(canonical); this.backend.hostCoreClients.delete(entry.key); entry = undefined; }
+    if (entry?.client.closed) {
+      terminals.delete(canonical);
+      this.backend.hostCoreClients.delete(entry.key);
+      entry = undefined;
+    }
     if (!entry) {
       const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-      const client = new HostCoreClient({ host: this.backend.hostCall, sourceId: this.backend.host.sourceId, projectId: canonical, scope: "terminal" });
+      const client = new HostCoreClient({
+        host: this.backend.hostCall,
+        sourceId: this.backend.host.sourceId,
+        projectId: canonical,
+        scope: "terminal",
+      });
       const key = `terminal:${randomUUID()}`;
       entry = { client, ready: client.connect(), key };
       terminals.set(canonical, entry);
       this.backend.hostCoreClients.set(key, client);
     }
-    try { await entry.ready; }
-    catch (error) { entry.client.close(); terminals.delete(canonical); this.backend.hostCoreClients.delete(entry.key); throw error; }
-    if (!connected(socket) || this.hostTerminals.get(socket) !== terminals || terminals.get(canonical) !== entry) {
-      entry.client.close(); throw new Error("GUI terminal owner disconnected during attachment");
+    try {
+      await entry.ready;
+    } catch (error) {
+      entry.client.close();
+      terminals.delete(canonical);
+      this.backend.hostCoreClients.delete(entry.key);
+      throw error;
+    }
+    if (
+      !connected(socket) ||
+      this.hostTerminals.get(socket) !== terminals ||
+      terminals.get(canonical) !== entry
+    ) {
+      entry.client.close();
+      throw new Error("GUI terminal owner disconnected during attachment");
     }
     return entry.client;
   }
@@ -1605,9 +1636,19 @@ class DesktopService {
     const { projectId, coreInstanceId, coreGeneration } = request;
     if (!record(request.call)) throw new Error("Invalid Host execution call");
     const { method } = request.call;
-    if (typeof projectId !== "string" || typeof method !== "string" ||
-        !["workbench/thread/create", "areal/thread/start", "areal/turn/start", "areal/turn/enqueue", "turn/steer"].includes(method) ||
-        !record(request.call.params)) throw new Error("Invalid Host execution");
+    if (
+      typeof projectId !== "string" ||
+      typeof method !== "string" ||
+      ![
+        "workbench/thread/create",
+        "areal/thread/start",
+        "areal/turn/start",
+        "areal/turn/enqueue",
+        "turn/steer",
+      ].includes(method) ||
+      !record(request.call.params)
+    )
+      throw new Error("Invalid Host execution");
     const params = structuredClone(request.call.params);
     const creating = method === "areal/thread/start" || method === "workbench/thread/create";
     if (method === "workbench/thread/create") {
@@ -1615,25 +1656,35 @@ class DesktopService {
       desktopContract.readCommandInvocation("create", params);
     }
     const threadId = params.threadId;
-    const project = creating ? this.backend.projects.get(projectId)
-      : typeof threadId === "string" ? this.projectForThread(projectId, threadId) : undefined;
+    const project = creating
+      ? this.backend.projects.get(projectId)
+      : typeof threadId === "string"
+        ? this.projectForThread(projectId, threadId)
+        : undefined;
     const client = project?.client;
     if (!project || !client) throw new Error("Host execution project unavailable");
     const owner = this.hostConnections.get(connection) ?? {};
     this.hostConnections.set(connection, owner);
     const socket = this.computerSocket;
-    const current = () => !this.closed && !this.recovering &&
-      this.hostConnections.get(connection) === owner && this.computerSocket === socket &&
+    const current = () =>
+      !this.closed &&
+      !this.recovering &&
+      this.hostConnections.get(connection) === owner &&
+      this.computerSocket === socket &&
       this.backend.currentConnection(project, client) &&
-      project.service?.serviceId === coreInstanceId && project.service?.generation === coreGeneration &&
-      (creating ? this.backend.projects.get(projectId) === project :
-        typeof threadId === "string" && this.projectForThread(projectId, threadId) === project);
+      project.service?.serviceId === coreInstanceId &&
+      project.service?.generation === coreGeneration &&
+      (creating
+        ? this.backend.projects.get(projectId) === project
+        : typeof threadId === "string" && this.projectForThread(projectId, threadId) === project);
     if (!current()) throw new Error("Host execution owner changed");
     let ready = current;
     if (method === "areal/thread/start") {
       const prepared = await this.backend.prepareThreadInProject(project, {
-        options: params.options, profile: params.agentProfile, parameters: params.parameters,
-        ...(params.model ? {model: params.model} : {}),
+        options: params.options,
+        profile: params.agentProfile,
+        parameters: params.parameters,
+        ...(params.model ? { model: params.model } : {}),
       });
       Object.assign(params, prepared.params);
       ready = () => current() && prepared.current();
@@ -1642,12 +1693,28 @@ class DesktopService {
     }
     if (!ready()) throw new Error("Host execution owner changed");
     const key = browserKey(projectId, threadId);
-    const entry = !creating && method !== "turn/steer" && connected(socket)
-      ? this.beginBrowserEntrypoint(socket, {projectId, threadId}, connection) : null;
+    const entry =
+      !creating && method !== "turn/steer" && connected(socket)
+        ? this.beginBrowserEntrypoint(socket, { projectId, threadId }, connection)
+        : null;
     const handle = randomUUID();
     const timer = setTimeout(() => this.cancelHostExecution(handle, connection), 30000);
-    this.hostExecutions.set(handle, {connection, method, params, project, client, current:ready, key, entry, timer});
-    return {handle, call:{method, params}, ...(method !== "workbench/thread/create" ? {hostDispatch:true} : {})};
+    this.hostExecutions.set(handle, {
+      connection,
+      method,
+      params,
+      project,
+      client,
+      current: ready,
+      key,
+      entry,
+      timer,
+    });
+    return {
+      handle,
+      call: { method, params },
+      ...(method !== "workbench/thread/create" ? { hostDispatch: true } : {}),
+    };
   }
 
   /** @param {string} handle @param {string} connection */
@@ -1672,7 +1739,8 @@ class DesktopService {
     for (const [key, claim] of this.browserClaims)
       if (claim.hostConnection === connection) this.browserClaims.delete(key);
     for (const pending of this.browserPending.values())
-      if (pending.hostConnection === connection) pending.reject(new Error("Host execution owner disconnected; outcome unknown"));
+      if (pending.hostConnection === connection)
+        pending.reject(new Error("Host execution owner disconnected; outcome unknown"));
   }
 
   /** Rust 已完成 Core 调用；这里只结算原页面宿主租约，不再发送 Core 请求。
@@ -1688,9 +1756,9 @@ class DesktopService {
       if (!pending.current() || outcome.error !== undefined)
         this.forgetBrowserEntrypoint(pending.key, pending.entry);
       else if (record(result) && typeof result.queueItemId === "string")
-        pending.entry.resolve({queueItemId:result.queueItemId});
+        pending.entry.resolve({ queueItemId: result.queueItemId });
       else if (record(result) && record(result.turn) && typeof result.turn.id === "string")
-        pending.entry.resolve({turnId:result.turn.id});
+        pending.entry.resolve({ turnId: result.turn.id });
       else this.forgetBrowserEntrypoint(pending.key, pending.entry);
     }
     return { completed: true };
@@ -1701,7 +1769,13 @@ class DesktopService {
     const pending = this.hostExecutions.get(handle);
     if (!pending || pending.connection !== connection || !pending.current()) {
       this.cancelHostExecution(handle, connection);
-      return {error:{code:-32602,message:"Host execution owner changed",data:{outcome:{kind:"noMutation"}}}};
+      return {
+        error: {
+          code: -32602,
+          message: "Host execution owner changed",
+          data: { outcome: { kind: "noMutation" } },
+        },
+      };
     }
     // 先消费句柄；Core 结果未知时原句柄也不能重放。
     this.hostExecutions.delete(handle);
@@ -1709,29 +1783,42 @@ class DesktopService {
     try {
       if (pending.method === "workbench/thread/create") {
         await this.backend.command("create", pending.params);
-        return {result:this.backend.worktrees.readThreadCreation(pending.project.id, pending.params)};
+        return {
+          result: this.backend.worktrees.readThreadCreation(pending.project.id, pending.params),
+        };
       }
       const result = await pending.client.request(pending.method, pending.params);
       if (pending.entry) {
         if (!pending.current()) this.forgetBrowserEntrypoint(pending.key, pending.entry);
-        else if (record(result) && typeof result.queueItemId === "string") pending.entry.resolve({queueItemId:result.queueItemId});
-        else if (record(result) && record(result.turn) && typeof result.turn.id === "string") pending.entry.resolve({turnId:result.turn.id});
+        else if (record(result) && typeof result.queueItemId === "string")
+          pending.entry.resolve({ queueItemId: result.queueItemId });
+        else if (record(result) && record(result.turn) && typeof result.turn.id === "string")
+          pending.entry.resolve({ turnId: result.turn.id });
         else this.forgetBrowserEntrypoint(pending.key, pending.entry);
       }
-      return {result};
+      return { result };
     } catch (error) {
       if (pending.entry) this.forgetBrowserEntrypoint(pending.key, pending.entry);
-      return {error:record(error) && typeof error.code === "number"
-        ? {code:error.code,message:error instanceof Error ? error.message : "Core execution failed",data:error.data}
-        : {code:-32603,message:"Core execution outcome unknown"}};
+      return {
+        error:
+          record(error) && typeof error.code === "number"
+            ? {
+                code: error.code,
+                message: error instanceof Error ? error.message : "Core execution failed",
+                data: error.data,
+              }
+            : { code: -32603, message: "Core execution outcome unknown" },
+      };
     }
   }
 
   /** @param {ServiceSocket} socket @param {Fields} request @param {string} [hostConnection] */
   beginBrowserEntrypoint(socket, request, hostConnection) {
     const entryKey = browserKey(request.projectId, request.threadId);
-    const entryProject = typeof request.projectId === "string" && typeof request.threadId === "string"
-      ? this.projectForThread(request.projectId, request.threadId) : undefined;
+    const entryProject =
+      typeof request.projectId === "string" && typeof request.threadId === "string"
+        ? this.projectForThread(request.projectId, request.threadId)
+        : undefined;
     const thread =
       entryProject && typeof request.threadId === "string"
         ? entryProject.model.state.threads[request.threadId]
@@ -1739,8 +1826,7 @@ class DesktopService {
     if (entryProject && thread) {
       const entries = this.browserEntrypoints.get(entryKey) ?? new Set();
       const activeTurns = new Set(
-        thread.turns?.filter((turn) => turn.status === "inProgress").map((turn) => turn.id) ??
-          [],
+        thread.turns?.filter((turn) => turn.status === "inProgress").map((turn) => turn.id) ?? [],
       );
       for (const previous of entries)
         if (previous.accepted?.turnId && !activeTurns.has(previous.accepted.turnId))
@@ -1881,7 +1967,14 @@ class DesktopService {
     const entry = await this.browserEntrypoint(request, key);
     if (!entry || !this.browserEntrypoints.get(key)?.has(entry)) return;
     this.forgetBrowserEntrypoint(key, entry);
-    await this.dispatchBrowserDiscovery(request, key, entry.socket, "execute", undefined, entry.hostConnection);
+    await this.dispatchBrowserDiscovery(
+      request,
+      key,
+      entry.socket,
+      "execute",
+      undefined,
+      entry.hostConnection,
+    );
   }
 
   /** @param {ToolRequest} request @param {string} key @param {BrowserClaim|undefined} claim */
@@ -1905,7 +1998,14 @@ class DesktopService {
       this.projectForThread(request.projectId, request.threadId)?.service?.generation ===
         request.coreGeneration;
     if (!socket || !current()) return { error: "human_control", dispatch: "not_sent" };
-    const result = await this.dispatchBrowserDiscovery(request, key, socket, "prepare", undefined, entry?.hostConnection ?? claim?.hostConnection);
+    const result = await this.dispatchBrowserDiscovery(
+      request,
+      key,
+      socket,
+      "prepare",
+      undefined,
+      entry?.hostConnection ?? claim?.hostConnection,
+    );
     if (!current()) return { error: "human_control", dispatch: "not_sent" };
     if (!record(result)) throw new Error("Invalid browser discovery response");
     if (result.error) {
@@ -2002,9 +2102,17 @@ class DesktopService {
       typeof request.toolHostGeneration !== "string"
     )
       throw new Error("Desktop image owner changed");
-    const {HostCoreClient}=require("@areal/workbench-service/host-core-client");
-    if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core transport unavailable");
-    const media=await project.client.blob({operation:"upload",threadId:request.threadId,mime:image.mimeType,base64:bytes.toString("base64"),callId:request.callId,hostGeneration:request.toolHostGeneration});
+    const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+    if (!(project.client instanceof HostCoreClient))
+      throw new Error("Host Core transport unavailable");
+    const media = await project.client.blob({
+      operation: "upload",
+      threadId: request.threadId,
+      mime: image.mimeType,
+      base64: bytes.toString("base64"),
+      callId: request.callId,
+      hostGeneration: request.toolHostGeneration,
+    });
     if (
       !current() ||
       request.signal?.aborted ||
@@ -2285,12 +2393,19 @@ class DesktopService {
     let claim = this.browserClaims.get(key);
     const origin = await this.browserEntrypoint(request, key);
     if (origin?.hostConnection && claim && !claim.hostConnection) {
-      claim = {...claim, hostConnection: origin.hostConnection};
+      claim = { ...claim, hostConnection: origin.hostConnection };
       this.browserClaims.set(key, claim);
     }
-    if (claim?.hostConnection && (!this.hostConnections.has(claim.hostConnection) ||
-        (origin?.hostConnection && origin.hostConnection !== claim.hostConnection)) && input.operation !== "describe")
-      return browserFailure("human_control", "Browser session owner changed; request discovery again");
+    if (
+      claim?.hostConnection &&
+      (!this.hostConnections.has(claim.hostConnection) ||
+        (origin?.hostConnection && origin.hostConnection !== claim.hostConnection)) &&
+      input.operation !== "describe"
+    )
+      return browserFailure(
+        "human_control",
+        "Browser session owner changed; request discovery again",
+      );
     if (input.operation === "describe" && phase === "prepare")
       return this.prepareBrowserDiscovery(request, key, claim);
     /** @type {Fields|undefined} */ let discoveryResult;
@@ -2723,9 +2838,17 @@ class DesktopService {
       )
         throw new Error("Invalid browser image");
       const project = this.projectForThread(projectId, threadId);
-      const {HostCoreClient}=require("@areal/workbench-service/host-core-client");
-      if (!(project?.client instanceof HostCoreClient)) throw new Error("Host Core transport unavailable");
-      const media=await project.client.blob({operation:"upload",threadId,mime:"image/png",base64:bytes.toString("base64"),callId,hostGeneration:toolHostGeneration});
+      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+      if (!(project?.client instanceof HostCoreClient))
+        throw new Error("Host Core transport unavailable");
+      const media = await project.client.blob({
+        operation: "upload",
+        threadId,
+        mime: "image/png",
+        base64: bytes.toString("base64"),
+        callId,
+        hostGeneration: toolHostGeneration,
+      });
       if (
         signal?.aborted ||
         this.browserClaims.get(key) !== claim ||

@@ -28,11 +28,13 @@ async function readFileBefore(project, threadId, reference) {
     reference.sizeBytes > MAX_FILE_BEFORE_BYTES
   )
     throw new Error("历史文件前像引用无效");
-  const {HostCoreClient}=require("@areal/workbench-service/host-core-client");
-  if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core transport unavailable");
-  const value=await project.client.blob({operation:"read",threadId,uri:reference.uri});
-  if(typeof value.base64!=="string") throw new Error("历史文件前像响应不完整");
-  const bytes=Buffer.from(value.base64,"base64"),size=bytes.length;
+  const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+  if (!(project.client instanceof HostCoreClient))
+    throw new Error("Host Core transport unavailable");
+  const value = await project.client.blob({ operation: "read", threadId, uri: reference.uri });
+  if (typeof value.base64 !== "string") throw new Error("历史文件前像响应不完整");
+  const bytes = Buffer.from(value.base64, "base64"),
+    size = bytes.length;
   if (size !== reference.sizeBytes || createHash("sha256").update(bytes).digest("hex") !== digest)
     throw new Error("历史文件前像与记录的大小或哈希不一致");
   return bytes;
@@ -43,8 +45,10 @@ async function readFileBefore(project, threadId, reference) {
 async function executeWorkspaceCommand(backend, request) {
   if (typeof request.operation === "string" && request.operation.startsWith("worktree")) {
     const reading = ["worktreeList", "worktreeOptions", "worktreeRead"].includes(request.operation);
-    const result = await backend.hostCall(reading ? "worktree.read" : "worktree.command",
-      reading ? request : { commandId: require("node:crypto").randomUUID(), request });
+    const result = await backend.hostCall(
+      reading ? "worktree.read" : "worktree.command",
+      reading ? request : { commandId: require("node:crypto").randomUUID(), request },
+    );
     backend.saved = await backend.host.list();
     await backend.library.reload();
     await backend.worktrees.reloadNative();

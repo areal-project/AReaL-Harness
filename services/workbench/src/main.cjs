@@ -56,7 +56,11 @@ async function start({ input, output, data }) {
     host: (call) => (host = call),
     onEvent: (frame) => {
       if (frame.event === "core.event" && typeof frame.projectId === "string")
-        analytics.observe(frame.projectId, String(frame.method), /** @type {any} */ (frame.params) ?? {});
+        analytics.observe(
+          frame.projectId,
+          String(frame.method),
+          /** @type {any} */ (frame.params) ?? {},
+        );
     },
   });
   clearInterval(flush);

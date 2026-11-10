@@ -284,43 +284,75 @@ class CoreWorktrees {
   readThreadCreation(projectId, request) {
     const requestId = requireId(request.requestId);
     try {
-      const value = readOperation(JSON.parse(require("node:fs").readFileSync(join(this.backend.home, this.key(requestId)), "utf8")));
+      const value = readOperation(
+        JSON.parse(
+          require("node:fs").readFileSync(join(this.backend.home, this.key(requestId)), "utf8"),
+        ),
+      );
       this.records.set(value.requestId, value);
     } catch (error) {
       if (!modelRecord(error) || error.code !== "ENOENT") throw error;
     }
     const value = this.records.get(requestId);
-    if (!value || value.kind !== "thread" || value.projectId !== projectId ||
-        !isDeepStrictEqual(value.parameters, signature(request))) return {state:"unknown"};
+    if (
+      !value ||
+      value.kind !== "thread" ||
+      value.projectId !== projectId ||
+      !isDeepStrictEqual(value.parameters, signature(request))
+    )
+      return { state: "unknown" };
     if (value.state === "ready" && value.threadId && value.executionProjectId)
-      return {state:"ready", requestId, threadId:value.threadId, executionProjectId:value.executionProjectId};
+      return {
+        state: "ready",
+        requestId,
+        threadId: value.threadId,
+        executionProjectId: value.executionProjectId,
+      };
     if (["failed", "cancelled"].includes(value.state))
-      return {state:"rejected", requestId, message:value.message ?? "Creation rejected"};
-    return {state:"unknown"};
+      return { state: "rejected", requestId, message: value.message ?? "Creation rejected" };
+    return { state: "unknown" };
   }
   /** @param {SavedProject} project @param {WorktreeRequest} request */
   async createThread(project, request) {
-    const target = await this.backend.hostCall("worktree.thread.prepare", { projectId: project.id, request });
-    if (!modelRecord(target) || typeof target.alias !== "string" || typeof target.projectId !== "string")
+    const target = await this.backend.hostCall("worktree.thread.prepare", {
+      projectId: project.id,
+      request,
+    });
+    if (
+      !modelRecord(target) ||
+      typeof target.alias !== "string" ||
+      typeof target.projectId !== "string"
+    )
       throw unavailable("Host 工作树执行归属尚未确认");
-    if (typeof target.threadId === "string") return { threadId: target.threadId, requestId: request.requestId };
+    if (typeof target.threadId === "string")
+      return { threadId: target.threadId, requestId: request.requestId };
     // Host 已冻结执行 Core；这里只观察并认证原服务，不能重算部署再 ensure。
     await this.backend.refreshHostProjects();
     await this.reloadNative();
     const binding = this.backend.host.resolve(target.alias);
     const execution = await this.backend.loadProjectJournal(target.alias);
-    if (binding.projectId !== target.projectId || execution.root !== target.root || !execution.service)
+    if (
+      binding.projectId !== target.projectId ||
+      execution.root !== target.root ||
+      !execution.service
+    )
       throw unavailable("Host 工作树执行归属已变化");
     if (!execution.client?.ready)
       await this.backend.connections.reconnectProjectObserved(execution);
     if (typeof target.resourceFingerprint !== "string")
       throw unavailable("Host 工作树资源准备证明缺失");
     execution.resourceFingerprint = target.resourceFingerprint;
-    execution.resourceProfile = /** @type {import('@areal/workbench/desktop-contract').ResourceRef|undefined} */ (target.resourceProfile);
-    const prepared = await this.backend.prepareThreadInProject(execution, request, { preparedCore: true });
+    execution.resourceProfile =
+      /** @type {import('@areal/workbench/desktop-contract').ResourceRef|undefined} */ (
+        target.resourceProfile
+      );
+    const prepared = await this.backend.prepareThreadInProject(execution, request, {
+      preparedCore: true,
+    });
     if (!prepared.current()) throw unavailable("原 Core 执行归属已变化");
     const result = await this.backend.hostCall("worktree.thread.bind", {
-      projectId: project.id, requestId: request.requestId,
+      projectId: project.id,
+      requestId: request.requestId,
       executionProjectId: target.projectId,
       coreInstanceId: execution.service?.serviceId,
       coreGeneration: execution.service?.generation,
@@ -330,10 +362,15 @@ class CoreWorktrees {
       throw unavailable("Host 工作树会话回执尚未确认");
     if (result.state === "failed" || result.state === "cancelled")
       throw Object.assign(
-        new Error(typeof result.message === "string" ? result.message : "原工作树创建失败，请使用新请求"),
+        new Error(
+          typeof result.message === "string" ? result.message : "原工作树创建失败，请使用新请求",
+        ),
         { requestId: request.requestId, submissionUnknown: false },
       );
-    if (typeof result.threadId !== "string" || (result.state !== undefined && result.state !== "ready"))
+    if (
+      typeof result.threadId !== "string" ||
+      (result.state !== undefined && result.state !== "ready")
+    )
       throw Object.assign(unavailable("Host 工作树创建结果尚未确认"), {
         requestId: request.requestId,
       });
