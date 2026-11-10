@@ -232,8 +232,7 @@ export function PluginCenter({
     });
   };
   const writes = usePluginSubmission();
-  const { error, setError, message, setMessage, submission, setSubmission, activity, active } =
-    writes;
+  const { error, setError, message, setMessage, submission, activity, active } = writes;
   const [setupThreadId, setSetupThreadId] = useState<string | null>(null);
   const [checkingProjectOperation, setCheckingProjectOperation] = useState(false);
   const [projectCheckMessages, setProjectCheckMessages] = useState<
