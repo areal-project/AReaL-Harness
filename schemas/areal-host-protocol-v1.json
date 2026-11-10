@@ -26795,6 +26795,68 @@
               "type": "null"
             }
           ]
+        },
+        "status": {
+          "description": "Card state computed by the Host from registration facts; project connection state is reported separately.",
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "notInstalled",
+                "disabled",
+                "blocked",
+                "configure",
+                "available"
+              ]
+            },
+            "nextAction": {
+              "type": "string",
+              "enum": [
+                "install",
+                "review",
+                "enable",
+                "components",
+                "configure",
+                "none"
+              ]
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "state",
+            "nextAction",
+            "reason"
+          ],
+          "additionalProperties": false
+        },
+        "connectorServers": {
+          "description": "Connector ID to the remote MCP server resolved from the marketplace connectors.json at install time.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "service": {
+                "type": "string"
+              },
+              "server": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "service",
+              "server"
+            ]
+          }
         }
       },
       "required": [
@@ -65496,7 +65558,7 @@
     },
     "WorkbenchPluginsCommandParams": {
       "type": "object",
-      "description": "Plugin store writes owned by the Host. Installation is user level; projectId on pluginConfigure sets the project override. mcpSave stores a directly added MCP server as a single-server plugin.",
+      "description": "Plugin store writes owned by the Host. Installation is user level; projectId on pluginConfigure sets the project override. mcpSave stores a directly added MCP server as a single-server plugin. marketplaceSyncDefault registers the built-in default marketplace once (unless the user removed it) and refreshes it at most hourly; a failed fetch keeps the last snapshot.",
       "properties": {
         "operation": {
           "type": "string",
@@ -65509,6 +65571,7 @@
             "marketplaceAddGit",
             "marketplaceRemove",
             "marketplaceUpdate",
+            "marketplaceSyncDefault",
             "mcpSave",
             "mcpRemove"
           ]

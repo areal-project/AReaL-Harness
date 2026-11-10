@@ -3,6 +3,9 @@ mod archive;
 mod components;
 mod configuration;
 mod connectors;
+mod default_market;
+mod status;
+pub use status::PluginStatus;
 mod development;
 pub use development::{DevelopmentLink, DevelopmentRefresh};
 pub mod hook_sources;
@@ -170,6 +173,9 @@ pub struct PluginDetail {
     /// 安装时按市场 connectors.json 解析：连接器 ID → {service, server}。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub connector_servers: BTreeMap<String, serde_json::Value>,
+    /// 后端算出的卡片状态，只在列表与详情读取时填。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<PluginStatus>,
 }
 impl PluginDetail {
     pub fn review_digest(&self) -> &str {
@@ -701,6 +707,7 @@ impl Store {
                 d.enabled = self.enabled(&s, &d.id);
                 d.component_choices = self.component_choices(&s, &d.id);
                 d.development_link = s.development_links.get(&d.id).cloned();
+                d.status = Some(status::status(&d));
                 d
             })
             .collect();

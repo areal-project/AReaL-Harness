@@ -24,6 +24,8 @@ fn user_home() -> Option<PathBuf> {
     std::env::home_dir()
 }
 
+/// 内置默认市场，Host 在用户打开插件市场时登记并定期拉新。
+const DEFAULT_MARKETPLACE: &str = "https://github.com/Sailfishc/areal-plugin.git";
 const READS: &[&str] = &["plugins", "plugin", "mcp"];
 const WRITES: &[&str] = &[
     "pluginInstall",
@@ -34,6 +36,7 @@ const WRITES: &[&str] = &[
     "marketplaceAddGit",
     "marketplaceRemove",
     "marketplaceUpdate",
+    "marketplaceSyncDefault",
     "mcpSave",
     "mcpRemove",
 ];
@@ -47,7 +50,7 @@ fn fields(operation: &str) -> Option<&'static [&'static str]> {
         "pluginConfigure" => &["id", "projectId", "enabled", "expectedRevision"],
         "marketplaceAdd" | "marketplaceRemove" => &["root", "expectedRevision"],
         "marketplaceAddGit" => &["url", "refName", "sparsePaths", "expectedRevision"],
-        "marketplaceUpdate" => &["expectedRevision"],
+        "marketplaceUpdate" | "marketplaceSyncDefault" => &["expectedRevision"],
         "mcpSave" => &["name", "server", "expectedRevision"],
         "mcpRemove" => &["name", "expectedRevision"],
         _ => return None,
@@ -200,6 +203,16 @@ fn execute(store: &areal_plugins::Store, operation: &str, p: &Value) -> Result<V
             )?)?
         }
         "marketplaceUpdate" => serde_json::to_value(store.update_marketplaces(revision(p)?)?)?,
+        "marketplaceSyncDefault" => {
+            // 开发与隔离测试可用 AREAL_DEFAULT_MARKETPLACE 换地址，填 off 关闭。
+            let url = std::env::var("AREAL_DEFAULT_MARKETPLACE")
+                .unwrap_or_else(|_| DEFAULT_MARKETPLACE.into());
+            if url == "off" {
+                serde_json::to_value(store.list()?)?
+            } else {
+                serde_json::to_value(store.sync_default_marketplace(&url, "main", revision(p)?)?)?
+            }
+        }
         "mcpSave" => {
             ensure!(p["server"].is_object(), "INVALID_PARAMS");
             serde_json::to_value(store.save_local_mcp(

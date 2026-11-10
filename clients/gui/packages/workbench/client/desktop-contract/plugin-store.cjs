@@ -13,6 +13,7 @@ const { modelRecord } = require("../core-model-contract.js");
  * marketplaceRemove:Base&{operation:'marketplaceRemove',root:string},
  * marketplaceAddGit:Base&{operation:'marketplaceAddGit',url:string,refName?:string,sparsePaths?:string[]},
  * marketplaceUpdate:Base&{operation:'marketplaceUpdate'},
+ * marketplaceSyncDefault:Base&{operation:'marketplaceSyncDefault'},
  * mcp:{operation:'mcp',projectId?:string},
  * mcpSave:{operation:'mcpSave',name:string,server:Record<string,unknown>,expectedRevision:number},
  * mcpRemove:{operation:'mcpRemove',name:string,expectedRevision:number}
@@ -21,7 +22,7 @@ const { modelRecord } = require("../core-model-contract.js");
 /** @typedef {{
  * pluginInstall:ProtocolResponseMap['plugin'],pluginResolve:ProtocolResponseMap['plugin'],pluginConfigure:ProtocolResponseMap['plugin'],
  * pluginUninstall:ProtocolResponseMap['plugins'],marketplaceAdd:ProtocolResponseMap['plugins'],marketplaceRemove:ProtocolResponseMap['plugins'],
- * marketplaceAddGit:ProtocolResponseMap['plugins'],marketplaceUpdate:ProtocolResponseMap['plugins'],
+ * marketplaceAddGit:ProtocolResponseMap['plugins'],marketplaceUpdate:ProtocolResponseMap['plugins'],marketplaceSyncDefault:ProtocolResponseMap['plugins'],
  * mcp:{revision:number,data:LocalMcp[]},mcpSave:ProtocolResponseMap['plugin'],mcpRemove:ProtocolResponseMap['plugins']
  * }} PluginStoreResponseMap */
 /** @typedef {keyof PluginStoreRequestMap} PluginStoreOperation */
@@ -37,6 +38,7 @@ const results = Object.freeze({
   marketplaceRemove: "list",
   marketplaceAddGit: "list",
   marketplaceUpdate: "list",
+  marketplaceSyncDefault: "list",
   mcpRemove: "list",
   mcp: "mcp",
 });
@@ -94,6 +96,7 @@ function isPluginStoreRequest(value) {
             value.sparsePaths.every((item) => typeof item === "string")))
       );
     case "marketplaceUpdate":
+    case "marketplaceSyncDefault":
       return base(value);
   }
 }

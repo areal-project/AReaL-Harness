@@ -57732,6 +57732,30 @@
           ],
           "type": "object"
         },
+        "PluginStatus": {
+          "properties": {
+            "nextAction": {
+              "description": "install | review | enable | components | configure | none",
+              "type": "string"
+            },
+            "reason": {
+              "description": "机器可读原因，界面按错误码文案表展示。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "notInstalled | disabled | blocked | configure | available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "nextAction"
+          ],
+          "type": "object"
+        },
         "PublicConfigValue": {
           "anyOf": [
             {
@@ -58021,6 +58045,17 @@
             "string",
             "null"
           ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PluginStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "后端算出的卡片状态，只在列表与详情读取时填。"
         },
         "userConfiguration": {
           "$ref": "#/$defs/PluginConfigurationView",
@@ -59038,6 +59073,17 @@
                 "null"
               ]
             },
+            "status": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PluginStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "后端算出的卡片状态，只在列表与详情读取时填。"
+            },
             "userConfiguration": {
               "$ref": "#/$defs/PluginConfigurationView",
               "default": {
@@ -59066,6 +59112,30 @@
             "components",
             "diagnostics",
             "skills"
+          ],
+          "type": "object"
+        },
+        "PluginStatus": {
+          "properties": {
+            "nextAction": {
+              "description": "install | review | enable | components | configure | none",
+              "type": "string"
+            },
+            "reason": {
+              "description": "机器可读原因，界面按错误码文案表展示。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "notInstalled | disabled | blocked | configure | available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "nextAction"
           ],
           "type": "object"
         },
@@ -59715,6 +59785,17 @@
                 "null"
               ]
             },
+            "status": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PluginStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "后端算出的卡片状态，只在列表与详情读取时填。"
+            },
             "userConfiguration": {
               "$ref": "#/$defs/PluginConfigurationView",
               "default": {
@@ -59743,6 +59824,30 @@
             "components",
             "diagnostics",
             "skills"
+          ],
+          "type": "object"
+        },
+        "PluginStatus": {
+          "properties": {
+            "nextAction": {
+              "description": "install | review | enable | components | configure | none",
+              "type": "string"
+            },
+            "reason": {
+              "description": "机器可读原因，界面按错误码文案表展示。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "notInstalled | disabled | blocked | configure | available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "nextAction"
           ],
           "type": "object"
         },
@@ -60383,6 +60488,30 @@
           ],
           "type": "object"
         },
+        "PluginStatus": {
+          "properties": {
+            "nextAction": {
+              "description": "install | review | enable | components | configure | none",
+              "type": "string"
+            },
+            "reason": {
+              "description": "机器可读原因，界面按错误码文案表展示。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "notInstalled | disabled | blocked | configure | available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "nextAction"
+          ],
+          "type": "object"
+        },
         "PublicConfigValue": {
           "anyOf": [
             {
@@ -60672,6 +60801,17 @@
             "string",
             "null"
           ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PluginStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "后端算出的卡片状态，只在列表与详情读取时填。"
         },
         "userConfiguration": {
           "$ref": "#/$defs/PluginConfigurationView",
@@ -61223,6 +61363,17 @@
                 "null"
               ]
             },
+            "status": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PluginStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "后端算出的卡片状态，只在列表与详情读取时填。"
+            },
             "userConfiguration": {
               "$ref": "#/$defs/PluginConfigurationView",
               "default": {
@@ -61251,6 +61402,30 @@
             "components",
             "diagnostics",
             "skills"
+          ],
+          "type": "object"
+        },
+        "PluginStatus": {
+          "properties": {
+            "nextAction": {
+              "description": "install | review | enable | components | configure | none",
+              "type": "string"
+            },
+            "reason": {
+              "description": "机器可读原因，界面按错误码文案表展示。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "notInstalled | disabled | blocked | configure | available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "nextAction"
           ],
           "type": "object"
         },
@@ -61991,6 +62166,30 @@
           ],
           "type": "object"
         },
+        "PluginStatus": {
+          "properties": {
+            "nextAction": {
+              "description": "install | review | enable | components | configure | none",
+              "type": "string"
+            },
+            "reason": {
+              "description": "机器可读原因，界面按错误码文案表展示。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "notInstalled | disabled | blocked | configure | available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "nextAction"
+          ],
+          "type": "object"
+        },
         "PublicConfigValue": {
           "anyOf": [
             {
@@ -62280,6 +62479,17 @@
             "string",
             "null"
           ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PluginStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "后端算出的卡片状态，只在列表与详情读取时填。"
         },
         "userConfiguration": {
           "$ref": "#/$defs/PluginConfigurationView",
@@ -68541,6 +68751,17 @@
                 "null"
               ]
             },
+            "status": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PluginStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "后端算出的卡片状态，只在列表与详情读取时填。"
+            },
             "userConfiguration": {
               "$ref": "#/$defs/PluginConfigurationView",
               "default": {
@@ -68569,6 +68790,30 @@
             "components",
             "diagnostics",
             "skills"
+          ],
+          "type": "object"
+        },
+        "PluginStatus": {
+          "properties": {
+            "nextAction": {
+              "description": "install | review | enable | components | configure | none",
+              "type": "string"
+            },
+            "reason": {
+              "description": "机器可读原因，界面按错误码文案表展示。",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "state": {
+              "description": "notInstalled | disabled | blocked | configure | available",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "nextAction"
           ],
           "type": "object"
         },

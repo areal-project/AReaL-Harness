@@ -224,5 +224,12 @@ pub(crate) fn catalog_interface(mut interface: Option<Value>, entry: &Value) -> 
         interface.get_or_insert_with(|| Value::Object(Map::new()))["category"] =
             Value::String(category.into());
     }
+    // 市场条目 tags 含 featured 时在市场首页“推荐”里展示。
+    if entry["tags"]
+        .as_array()
+        .is_some_and(|tags| tags.iter().any(|tag| tag == "featured"))
+    {
+        interface.get_or_insert_with(|| Value::Object(Map::new()))["featured"] = Value::Bool(true);
+    }
     interface
 }

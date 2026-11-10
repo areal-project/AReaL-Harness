@@ -110,6 +110,7 @@ pub(crate) fn preview(
         required_tools: vec![],
         onboarding_skill: None,
         connector_servers: Default::default(),
+        status: None,
     })
 }
 fn http(url: &str) -> Result<Vec<u8>> {
@@ -718,7 +719,9 @@ impl Store {
                 "marketplace registration not found"
             );
             state.marketplaces.retain(|registered| registered != &root);
-            state.git_marketplaces.remove(&root);
+            if let Some(pin) = state.git_marketplaces.remove(&root) {
+                self.remember_default_removed(&pin.url)?;
+            }
             Ok(())
         })?;
         self.list()

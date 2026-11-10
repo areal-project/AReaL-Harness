@@ -24,6 +24,8 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 目录 source 的相对路径和 `directory` 类型均受市场根边界约束。`github` 来源归一到固定 Git 来源，再沿原有显式解析和审阅步骤安装。HTTP JSON 市场、marketplace archive source、command source 与 pip 不在本批范围。手工 ZIP 导入是独立入口，不能用它证明对应市场 source 已支持。相同字段名按所属格式解释，不把 Git URL 自动当成 JSON catalog。
 
+产品内置默认市场 [Sailfishc/areal-plugin](https://github.com/Sailfishc/areal-plugin)：第一次打开插件市场时自动登记，之后打开时最多每小时拉新一次，拉不到就继续用上次的快照；在来源管理里移除后不会再自动加回。市场条目的 `category` 用来分组，`tags` 含 `featured` 的放在“推荐”里。卡片上的“添加”按后端给出的状态走：本地来源直接装好，还要填配置、登录或核对远程来源的进详情页。
+
 项目范围选择按项目身份记录：同一仓库的主工作区与它的各个 worktree 共享“在此项目启用”的选择，不同仓库互不影响。
 
 `sourceDigest` 始终描述当前候选的原包字节。消费市场条目定义的候选另有 `admissionDigest`。安装时 `expectedDigest` 使用 `admissionDigest ?? sourceDigest`，界面与 CLI 自动选择正确身份。`installedDigest` 描述有效安装快照，`installedSourceDigest` 单独描述已安装原包。市场条目只改组件选择、来源或执行前提，也会要求重新审阅。安装后读取、重启及历史引用使用固定定义，不重新读取可变市场。旧无上下文包保留原摘要和收据行为。旧客户端只提交原包摘要时不能安装需要新审阅身份的候选。

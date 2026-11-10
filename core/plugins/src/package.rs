@@ -721,6 +721,7 @@ pub(crate) fn parse_context(
         required_tools: vec![],
         onboarding_skill: None,
         connector_servers: Default::default(),
+        status: None,
     };
     if portable && let Some(value) = manifest.pointer("/extensions/org.areal/hostRequirements") {
         #[derive(serde::Deserialize)]

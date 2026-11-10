@@ -347,6 +347,10 @@ export const pluginMessages = {
     "zh-CN": "插件市场",
     en: "Plugin marketplace",
   },
+  "settings.pluginCenter.featured": {
+    "zh-CN": "推荐",
+    en: "Featured",
+  },
   "settings.pluginCenter.plugins": {
     "zh-CN": "插件",
     en: "Plugins",

@@ -172,8 +172,13 @@ export type PluginCenterProps = ScopedProps & {
   onRunCommand?: (command: import("../services.js").PluginCommandRef) => Promise<void>;
   onReturnToTask?: () => void;
 };
+const FEATURED = "\u0000featured";
+const featured = (item: PluginDetail) =>
+  (item.interface as { featured?: unknown } | null | undefined)?.featured === true;
+// 官方市场：内置默认市场与 OpenAI 示例市场。
 const officialMarket = (url?: string | null) =>
-  !!url && /^https:\/\/github\.com\/openai\/plugins(?:\.git)?\/?$/i.test(url);
+  !!url &&
+  /^https:\/\/github\.com\/(?:openai\/plugins|sailfishc\/areal-plugin)(?:\.git)?\/?$/i.test(url);
 export function PluginCenter({
   project: selectedProject,
   projects,
@@ -825,6 +830,37 @@ export function PluginCenter({
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const defaultMarketSynced = useRef(false);
+  // 打开官方市场时让 Host 登记或拉新内置默认市场；失败沿用上次快照，不打扰用户。
+  useEffect(() => {
+    if (
+      defaultMarketSynced.current ||
+      !panelActive ||
+      !connected ||
+      !projectId ||
+      !catalog ||
+      listRoute.kind !== "market" ||
+      audience !== "public"
+    )
+      return;
+    defaultMarketSynced.current = true;
+    void api({ operation: "marketplaceSyncDefault", projectId, expectedRevision: catalog.revision })
+      .then(() => window.dispatchEvent(new Event("areal-plugins-changed")))
+      .catch(() => {});
+  }, [panelActive, connected, projectId, catalog, listRoute.kind, audience, api]);
+  // 卡片“添加”：后端判定可直接安装的一键装好；还要配置、核对或登录的进详情页。
+  const quickAdd = async (item: PluginDetail) => {
+    if (item.status?.nextAction !== "install") return setSelected(item.id);
+    const result = await mutate({
+      operation: "pluginInstall",
+      id: item.id,
+      source: item.source,
+      expectedDigest: reviewDigest(item),
+      expectedRevision: item.revision,
+    });
+    const installed = result as PluginDetail | undefined;
+    if (installed?.status?.nextAction !== "none") setSelected(item.id);
+  };
   const openSkill = (skill: CenterSkill) =>
     navigateRoute({ kind: "skill", skill, returnTo: listRoute });
   const createSkill = async () => {
@@ -1322,6 +1358,7 @@ export function PluginCenter({
               {(listRoute.kind === "installed"
                 ? [{ key: "installed", value: null, label: t("settings.pluginCenter.installed") }]
                 : [
+                    ...(audience === "public" && items.some(featured) ? [FEATURED] : []),
                     ...new Set(
                       items.map((item) =>
                         audience === "personal"
@@ -1333,23 +1370,27 @@ export function PluginCenter({
                     key: JSON.stringify([audience, value]),
                     value,
                     label:
-                      value ||
-                      t(
-                        audience === "personal"
-                          ? "settings.pluginCenter.importedPluginPackage"
-                          : "settings.pluginCenter.plugins",
-                      ),
+                      value === FEATURED
+                        ? t("settings.pluginCenter.featured")
+                        : value ||
+                          t(
+                            audience === "personal"
+                              ? "settings.pluginCenter.importedPluginPackage"
+                              : "settings.pluginCenter.plugins",
+                          ),
                   }))
               ).map((group) => {
                 const rows =
                   listRoute.kind === "installed"
                     ? items
-                    : items.filter(
-                        (item) =>
-                          (audience === "personal"
-                            ? marketFor(item)?.name || null
-                            : pluginInterface(item.interface).category || null) === group.value,
-                      );
+                    : group.value === FEATURED
+                      ? items.filter(featured)
+                      : items.filter(
+                          (item) =>
+                            (audience === "personal"
+                              ? marketFor(item)?.name || null
+                              : pluginInterface(item.interface).category || null) === group.value,
+                        );
                 return (
                   <section className="plugin-market-group" key={group.key}>
                     <h2>{group.label}</h2>
@@ -1426,8 +1467,10 @@ export function PluginCenter({
                                   : t("settings.pluginCenter.add"),
                                 value1: item.id,
                               })}
-                              disabled={busy}
-                              onClick={() => setSelected(item.id)}
+                              disabled={busy || (!item.installed && disabled)}
+                              onClick={() =>
+                                item.installed ? setSelected(item.id) : void quickAdd(item)
+                              }
                             >
                               {item.installed ? (
                                 t("settings.pluginCenter.added")
@@ -1466,7 +1509,9 @@ export function PluginCenter({
                       onClick={() => {
                         setAddKind(audience === "public" ? "git" : "local");
                         setRoot(
-                          audience === "public" ? "https://github.com/openai/plugins.git" : "",
+                          audience === "public"
+                            ? "https://github.com/Sailfishc/areal-plugin.git"
+                            : "",
                         );
                         setAdding(true);
                       }}

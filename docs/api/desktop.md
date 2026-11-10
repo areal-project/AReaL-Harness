@@ -438,7 +438,7 @@ MCP 清理失败保持 cleanupFailed，并持久保存 cleanupUnconfirmed。无�
 
 ## 插件包管理
 
-插件登记（市场来源、解析、安装、启用、卸载、直接添加的 MCP）归 Host：客户端调用 Host 的 `plugins.read`（`plugins`、`plugin`、`mcp`）与 `plugins.command`（`pluginInstall`、`pluginUninstall`、`pluginResolve`、`pluginConfigure`、`marketplaceAdd/AddGit/Remove/Update`、`mcpSave`、`mcpRemove`），需本机 GUI 写授权和 `manage`。Host 写插件库后通知在线 Core 重新读取。以下 Core 方法要求无限制的 `manage` 身份；限制到 Thread 的身份不能调用。客户端不得自行改写安装文件。固定格式和阶段边界见[插件指南](../guides/plugins.md)与[实施计划](../development/codex-plugins-plan.md)。
+插件登记（市场来源、解析、安装、启用、卸载、直接添加的 MCP）归 Host：客户端调用 Host 的 `plugins.read`（`plugins`、`plugin`、`mcp`）与 `plugins.command`（`pluginInstall`、`pluginUninstall`、`pluginResolve`、`pluginConfigure`、`marketplaceAdd/AddGit/Remove/Update/SyncDefault`、`mcpSave`、`mcpRemove`），需本机 GUI 写授权和 `manage`。Host 写插件库后通知在线 Core 重新读取。以下 Core 方法要求无限制的 `manage` 身份；限制到 Thread 的身份不能调用。客户端不得自行改写安装文件。固定格式和阶段边界见[插件指南](../guides/plugins.md)与[实施计划](../development/codex-plugins-plan.md)。
 
 | 方法 | 参数 | 结果/约束 |
 |---|---|---|
@@ -456,7 +456,7 @@ MCP 清理失败保持 cleanupFailed，并持久保存 cleanupUnconfirmed。无�
 
 写操作复用现有部署管理提交账本。同身份、同 `requestId`、同方法和参数返回原结果，异参数拒绝；结果未知通过 `areal/request/read {requestId}` 查询对应 `method` 的 completed `response`，不带 `threadId`，不重放。setup 另通过普通 Turn 准入固定权威 Skill 引用；包正文不能制造其他显式 Skill 选择。未支持组件只报告能力诊断，安装不启动 MCP/hooks/apps。AReaL 管理方法与已实现的实验 Codex 管理 wire adapter 共用 Store/Engine；两者保留各自的 wire 契约。
 
-Host `plugins.command` 返回已受理回执，`receipt` 是插件目录或包详情；安装用户级一份，`pluginConfigure` 带 `scope:"project"` 与 `projectId` 时只改该项目的选择，项目按项目身份识别，同仓库 worktree 共享。
+Host `plugins.command` 返回已受理回执，`receipt` 是插件目录或包详情；`marketplaceSyncDefault` 在没登记过时登记内置默认市场（用户移除过则不再加回），已登记时最多每小时拉新一次，拉取失败沿用上次快照。目录与详情每行带后端算出的 `status`（`state`、`nextAction`、`reason`），界面按它决定卡片主按钮；安装用户级一份，`pluginConfigure` 带 `scope:"project"` 与 `projectId` 时只改该项目的选择，项目按项目身份识别，同仓库 worktree 共享。
 
 ### 组件支持报告
 
