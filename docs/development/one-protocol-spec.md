@@ -336,7 +336,7 @@ Main 中其余业务迁入 Host 监督的 Node 工作台服务或 Core，经协�
 
 ## Rust 收口验收边界
 
-资料库、执行与连接、定时任务、Worktree 四组实现可以并行开发，完整集成后统一验收。先登记协议与递减预算，再迁移权威行为；执行迁移必须先列逐函数等价实现与差异处置。功能实现、编译、真实服务、页面旅程和 CLI-only 环境分别给出证据。旧路径删除单独确认，回退不能重放 UNKNOWN。Worktree 删除日志沿用桌面生命周期回执形状，私有 `lifecycle.dependencies.lifecycleGeneration` 只读提供回退模式下的原生命周期代次。创建 Worktree 的页面准备必须复用 Host 已冻结的 Core 与资源 revision；输入准备不能通过隐式重启绕过原绑定。所有权与开关见[工作台服务](../design/workbench-service.md#rust-领域实现与回退)。
+资料库、执行与连接、定时任务、Worktree 四组实现可以并行开发，完整集成后统一验收。先登记协议与递减预算，再迁移权威行为；执行迁移必须先列逐函数等价实现与差异处置。功能实现、编译、真实服务、页面旅程和 CLI-only 环境分别给出证据。旧路径删除单独确认，回退不能重放 UNKNOWN。Worktree 删除日志沿用桌面生命周期回执形状，私有 `lifecycle.dependencies.lifecycleGeneration` 只读提供回退模式下的原生命周期代次。创建 Worktree 的页面准备必须复用 Host 已冻结的 Core 与资源 revision；输入准备不能通过隐式重启绕过原绑定。所有权与开关见[工作台服务](../design/workbench-service.md#rust-领域实现)。
 
 定时任务的独立目录预约必须先于 Core 发布任务。新 Core 与 Host 通过 `taskPrepareCreate` 和原连接的 `prepareCreate` 显式协商，由 Core 的创建入口回调 Host 预约；配置草稿、Agent 工具与直接创建共用该边界，不能在成功响应后才补记录。固定共享 Scratch 的每个任务使用真实直接子目录，原 Core 登记根保持不变；省略 `cwd` 按原创建 requestId 生成稳定目录名。预约和恢复绑定原请求摘要、锚点及唯一 Core 创建回执，兄弟目录活动须经完整有界归属检查，不可用全局计数豁免代替。
 

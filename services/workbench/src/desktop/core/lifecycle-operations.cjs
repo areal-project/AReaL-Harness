@@ -2,17 +2,9 @@
 "use strict";
 
 const { randomUUID } = require("node:crypto");
-const { mkdir, open, readFile, readdir, rename, rm } = require("node:fs/promises");
-const { join, isAbsolute, resolve } = require("node:path");
-const { isDeepStrictEqual } = require("node:util");
-const {
-  lifecycleCapabilities,
-  requestStop,
-  readStop,
-  detachStoppedProject,
-  readOriginalTurn,
-  readTurnMetadata,
-} = require("./local-service.cjs");
+const { readFile } = require("node:fs/promises");
+const { join, isAbsolute } = require("node:path");
+const { readStop, detachStoppedProject, readOriginalTurn } = require("./local-service.cjs");
 
 /** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleKind} LifecycleKind */
 /** @typedef {import('@areal/workbench/desktop-contract/shared').LifecycleMode} LifecycleMode */
@@ -50,8 +42,6 @@ const identities = (targets) =>
 /** @param {string} message @param {string} code @param {Record<string,unknown>} [extra] */
 const failure = (message, code, extra = {}) =>
   Object.assign(new Error(message), { code, ...extra });
-/** @param {number} ms */
-const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /** @param {LifecycleTarget} target */
 const unresolved = (target) =>
   ["acceptedPending", "admissionUnconfirmed", "settlementIncomplete"].includes(target.phase);
@@ -273,16 +263,6 @@ async function reconcileLifecycleReceipt(
   });
 }
 
-/** @param {string} path */
-async function syncDirectory(path) {
-  if (process.platform === "win32") return;
-  const directory = await open(path, "r");
-  try {
-    await directory.sync();
-  } finally {
-    await directory.close();
-  }
-}
 
 class LifecycleOperations {
   /** @param {Backend} backend */
@@ -308,7 +288,6 @@ class LifecycleOperations {
     this.ready = undefined;
   }
 
-  rustOwner() { return !!this.backend.hostCall && this.backend.rustDomains.includes("execution-rust"); }
   /** @param {unknown} value */
   acceptHostRecord(value) {
     if (value === null) return null;
@@ -368,28 +347,14 @@ class LifecycleOperations {
       ...(typeof requestId === "string" ? { requestId } : {}) });
   }
   init() {
-    if (this.rustOwner()) {
-      this.ready ??= this.hostRead("snapshot").then((value) => {
-        if (!object(value) || typeof value.desktopGeneration !== "string" || !Array.isArray(value.records))
-          throw failure("Host 生命周期快照损坏", "LIFECYCLE_RECEIPT_INVALID");
-        this.generation = value.desktopGeneration;
-        this.hostOwnedRequests = new Set(Array.isArray(value.ownedRequestIds)
-          ? value.ownedRequestIds.filter((id) => typeof id === "string") : []);
-        for (const record of value.records) this.acceptHostRecord(record);
-      });
-      return this.ready;
-    }
-    this.ready ??= (async () => {
-      await mkdir(this.directory, { recursive: true, mode: 0o700 });
-      await syncDirectory(this.backend.home);
-      for (const name of await readdir(this.directory)) {
-        if (!name.endsWith(".json")) continue;
-        const record = await readLifecycleReceipt(this.backend.home, {
-          requestId: name.slice(0, -5),
-        });
-        if (record) this.records.set(record.requestId, record);
-      }
-    })();
+    this.ready ??= this.hostRead("snapshot").then((value) => {
+      if (!object(value) || typeof value.desktopGeneration !== "string" || !Array.isArray(value.records))
+        throw failure("Host 生命周期快照损坏", "LIFECYCLE_RECEIPT_INVALID");
+      this.generation = value.desktopGeneration;
+      this.hostOwnedRequests = new Set(Array.isArray(value.ownedRequestIds)
+        ? value.ownedRequestIds.filter((id) => typeof id === "string") : []);
+      for (const record of value.records) this.acceptHostRecord(record);
+    });
     return this.ready;
   }
 
@@ -429,7 +394,7 @@ class LifecycleOperations {
       activeRequestId: this.activeRequestId,
       blockedProjectIds: [
         ...new Set(
-          [...this.records.values()].filter((record) => !this.rustOwner() || this.hostOwnedRequests.has(record.requestId)).flatMap((record) =>
+          [...this.records.values()].filter((record) => this.hostOwnedRequests.has(record.requestId)).flatMap((record) =>
             record.targets
               .filter((target) =>
                 ["acceptedPending", "admissionUnconfirmed", "settlementIncomplete"].includes(
@@ -463,7 +428,7 @@ class LifecycleOperations {
   /** @param {string|undefined} projectId @param {string} [_threadId] */
   blocking(projectId, _threadId) {
     for (const record of this.records.values()) {
-      if (this.rustOwner() && !this.hostOwnedRequests.has(record.requestId)) continue;
+      if (!this.hostOwnedRequests.has(record.requestId)) continue;
       if (
         record.targets.some(
           (target) =>
@@ -566,392 +531,54 @@ class LifecycleOperations {
     };
   }
 
-  /** @param {LifecycleReceipt} record */
-  async store(record) {
-    const previous = this.records.get(record.requestId);
-    if (previous && isDeepStrictEqual(previous, record)) return;
-    const path = join(this.directory, `${record.requestId}.json`);
-    const temporary = `${path}.${randomUUID()}.tmp`;
-    try {
-      const file = await open(temporary, "wx", 0o600);
-      try {
-        await file.writeFile(JSON.stringify(record));
-        await file.sync();
-      } finally {
-        await file.close();
-      }
-      await rename(temporary, path);
-      await syncDirectory(this.directory);
-      this.records.set(record.requestId, structuredClone(record));
-      this.backend.onChange?.();
-    } catch (error) {
-      await rm(temporary, { force: true }).catch(() => {});
-      throw failure(
-        `后台生命周期回执未能保存：${require("@areal/workbench/desktop-contract").desktopError(error).message}`,
-        "LIFECYCLE_RECEIPT_WRITE_FAILED",
-        { requestId: record.requestId },
-      );
-    }
-  }
 
   /** @param {unknown} requestId */
   async read(requestId) {
-    if (this.rustOwner()) return this.projectHostRecord(await this.hostRead("read", requestId));
-    if (!uuid(requestId)) throw failure("无效的后台请求身份", "LIFECYCLE_INVALID_REQUEST");
-    await this.init();
-    return structuredClone(this.records.get(requestId) ?? null);
+    return this.projectHostRecord(await this.hostRead("read", requestId));
   }
 
   /** @param {unknown} input */
   request(input) {
-    if (this.rustOwner()) {
-      const request = this.normalize(input);
-      const task = this.tail.catch(() => {}).then(async () => {
-        this.activeRequestId = desktopKind(request.kind) ? request.requestId : null;
-        for (const target of request.targets) this.activeTargets.add(target.projectId);
-        try {
-          if (!this.backend.hostCall) throw failure("Host 生命周期不可用", "LIFECYCLE_UNSUPPORTED");
-          this.hostOwnedRequests.add(request.requestId);
-          const receipt = await this.projectHostRecord(await this.backend.hostCall("lifecycle.command", {
-            sourceId: this.backend.host.sourceId,
-            request: { requestId: request.requestId, kind: request.kind, mode: request.mode,
-              expectedDesktopGeneration: request.desktopGeneration, expectedTargets: request.targets,
-              ...(request.threadId ? { threadId: request.threadId } : {}),
-              ...(request.turnId ? { turnId: request.turnId } : {}) },
-          }));
-          if (!receipt) throw failure("Host 生命周期请求没有回执", "LIFECYCLE_RECEIPT_INVALID");
-          return receipt;
-        } finally {
-          this.activeRequestId = null;
-          for (const target of request.targets) this.activeTargets.delete(target.projectId);
-        }
-      });
-      this.tail = task.catch(() => {});
-      return task;
-    }
     const request = this.normalize(input);
-    const task = this.tail.catch(() => {}).then(() => this.execute(request));
+    const task = this.tail.catch(() => {}).then(async () => {
+      this.activeRequestId = desktopKind(request.kind) ? request.requestId : null;
+      for (const target of request.targets) this.activeTargets.add(target.projectId);
+      try {
+        if (!this.backend.hostCall) throw failure("Host 生命周期不可用", "LIFECYCLE_UNSUPPORTED");
+        this.hostOwnedRequests.add(request.requestId);
+        const receipt = await this.projectHostRecord(await this.backend.hostCall("lifecycle.command", {
+          sourceId: this.backend.host.sourceId,
+          request: { requestId: request.requestId, kind: request.kind, mode: request.mode,
+            expectedDesktopGeneration: request.desktopGeneration, expectedTargets: request.targets,
+            ...(request.threadId ? { threadId: request.threadId } : {}),
+            ...(request.turnId ? { turnId: request.turnId } : {}) },
+        }));
+        if (!receipt) throw failure("Host 生命周期请求没有回执", "LIFECYCLE_RECEIPT_INVALID");
+        return receipt;
+      } finally {
+        this.activeRequestId = null;
+        for (const target of request.targets) this.activeTargets.delete(target.projectId);
+      }
+    });
     this.tail = task.catch(() => {});
     return task;
   }
 
-  /** @param {LifecycleRequest} request */
-  async execute(request) {
-    await this.init();
-    const existing = this.records.get(request.requestId);
-    if (existing) {
-      const original = {
-        requestId: existing.requestId,
-        kind: existing.kind,
-        mode: existing.mode,
-        desktopGeneration: existing.desktopGeneration,
-        targets: identities(existing.targets),
-        ...(existing.kind === "interruptTurn"
-          ? { threadId: existing.threadId, turnId: existing.turnId }
-          : {}),
-      };
-      if (!isDeepStrictEqual(request, original))
-        throw failure("请求身份已绑定其他生命周期意图", "LIFECYCLE_REQUEST_CONFLICT");
-      return structuredClone(existing);
-    }
-    this.assertNotExiting();
-    const current = this.targets();
-    if (
-      request.desktopGeneration !== this.generation ||
-      !isDeepStrictEqual(
-        request.targets,
-        desktopKind(request.kind)
-          ? current
-          : current.filter((target) =>
-              request.targets.some((expected) => expected.projectId === target.projectId),
-            ),
-      )
-    ) {
-      throw failure("后台实例或项目范围已变化，请重新确认", "CONFIRMATION_STALE");
-    }
-    for (const target of request.targets) {
-      const prior = [...this.records.values()].find((record) =>
-        record.targets.some(
-          (value) =>
-            value.projectId === target.projectId &&
-            ["admissionUnconfirmed", "acceptedPending"].includes(value.phase),
-        ),
-      );
-      if (prior)
-        throw failure("原后台操作受理或退出尚未确认，请先检查原请求", "LIFECYCLE_INCOMPLETE", {
-          requestId: prior.requestId,
-          lifecycle: prior,
-        });
-    }
-    if (desktopKind(request.kind)) {
-      const { desktopBlockers, blockerMessage } = require("./lifecycle.cjs");
-      const blockers = desktopBlockers(
-        {
-          clients: this.service?.clients.size ?? 0,
-          activeCommands: Math.max(this.service?.inflight ?? 0, this.backend.activeCommands ?? 0),
-          providerUpdating: this.backend.providerUpdating || this.backend.resourcesUpdating,
-          starting: this.backend.starting.size,
-        },
-        request.kind === "updateDesktop",
-      );
-      if (blockers.length) throw failure(blockerMessage(blockers), "LIFECYCLE_BLOCKED");
-      this.activeRequestId = request.requestId;
-    }
-    /** @type {LifecycleReceipt} */
-    const record = {
-      version: 1,
-      ...request,
-      harnessHome: resolve(this.backend.host.home),
-      sharedHost: true,
-      targets: request.targets.map((target) => ({
-        ...target,
-        dataDir: this.backend.host.resolve(target.projectId).dataDir,
-        requestId: randomUUID(),
-        phase: "notAttempted",
-      })),
-      phase: "acceptedPending",
-      desktopExit: "notRequested",
-    };
-    let admitted = false;
-    try {
-      for (const target of record.targets) this.activeTargets.add(target.projectId);
-      await this.store(record);
-      admitted = true;
-      for (const target of record.targets) {
-        if (record.kind === "interruptTurn") await this.interrupt(record, target);
-        else await this.stopTarget(record, target);
-        deriveReceipt(record);
-        await this.store(record);
-      }
-      if (
-        desktopKind(record.kind) &&
-        record.targets.every((target) => target.phase === "completed")
-      ) {
-        try {
-          await this.backend.library?.writes;
-          await Promise.all(this.backend.saves?.values() ?? []);
-          record.desktopExit = "requested";
-        } catch (error) {
-          record.desktopError = this.error(error);
-        }
-      }
-      deriveReceipt(record);
-      await this.store(record);
-      return structuredClone(record);
-    } catch (error) {
-      if (!admitted)
-        throw failure(
-          `后台生命周期请求未受理，原后台保持运行：${require("@areal/workbench/desktop-contract").desktopError(error).message}`,
-          "LIFECYCLE_ADMISSION_FAILED",
-          { requestId: record.requestId, submissionUnknown: false, cause: error },
-        );
-      if (!object(error)) throw error;
-      error.requestId = record.requestId;
-      error.submissionUnknown = true;
-      throw error;
-    } finally {
-      for (const target of record.targets) this.activeTargets.delete(target.projectId);
-      if (this.activeRequestId === request.requestId) this.activeRequestId = null;
-      this.backend.onChange?.();
-    }
-  }
 
   /** @param {unknown} error */
   error(error) {
     return receiptError(error, (value) => this.backend.providers.redact(value));
   }
 
-  /** @param {LifecycleIdentity} target */
-  currentTarget(target) {
-    const project = this.backend.projects.get(target.projectId);
-    if (
-      project?.service?.serviceId !== target.serviceId ||
-      project.service.generation !== target.generation
-    )
-      throw failure("原 Core 实例或代际已变化", "CONFIRMATION_STALE");
-    return project;
-  }
 
-  /** @param {LifecycleReceipt} record @param {LifecycleTarget} target @param {unknown} operation */
-  applyHost(record, target, operation) {
-    applyHostReceipt(record, target, operation);
-    if (target.phase === "completed") detachStoppedProject(this.backend, target);
-  }
 
-  /** @param {LifecycleReceipt} record @param {LifecycleTarget} target */
-  async stopTarget(record, target) {
-    try {
-      this.currentTarget(target);
-      await lifecycleCapabilities(this.backend, target);
-      this.currentTarget(target);
-    } catch (error) {
-      target.phase = "blocked";
-      target.error = this.error(error);
-      return;
-    }
-    target.phase = "acceptedPending";
-    await this.store(record);
-    try {
-      this.applyHost(
-        record,
-        target,
-        await requestStop(
-          this.backend,
-          target,
-          record.mode === "cancel",
-          record.kind === "stopProject",
-        ),
-      );
-      const deadline = Date.now() + 15000;
-      while (target.phase === "acceptedPending" && Date.now() < deadline) {
-        await pause(50);
-        const operation = await readStop(this.backend, target);
-        if (!operation) break;
-        this.applyHost(record, target, operation);
-      }
-    } catch (error) {
-      try {
-        const operation = await readStop(this.backend, target);
-        if (operation) {
-          this.applyHost(record, target, operation);
-          return;
-        }
-      } catch {
-        /* 原回执不可读时，不得授权重发。 */
-      }
-      target.phase = "admissionUnconfirmed";
-      target.error = this.error(error);
-    }
-  }
 
-  /** @param {Project} project @param {LifecycleTarget} target @param {unknown} threadId @param {unknown} turnId */
-  readLiveTurn(project, target, threadId, turnId) {
-    const client = project.client;
-    if (
-      !client ||
-      typeof threadId !== "string" ||
-      typeof turnId !== "string" ||
-      !threadId ||
-      !turnId
-    )
-      throw failure("原轮次身份或连接不完整", "LIFECYCLE_RECEIPT_INVALID");
-    const assertCurrent = () => {
-      if (this.currentTarget(target) !== project)
-        throw failure("原工作区归属已变化", "CONFIRMATION_STALE");
-      /** @type {(project:Project,client:CoreClient|null|undefined)=>void} */
-      const requireConnection = this.backend.requireConnection;
-      requireConnection.call(this.backend, project, client);
-    };
-    return readTurnMetadata(client, threadId, turnId, {
-      assertCurrent,
-      observe: () =>
-        this.backend.readObservation(project, threadId, {
-          client,
-          current: () => {
-            assertCurrent();
-            return true;
-          },
-        }),
-    });
-  }
 
-  /** @param {LifecycleReceipt} record @param {LifecycleTarget} target */
-  async interrupt(record, target) {
-    /** @type {Project} */
-    let project;
-    /** @type {CoreClient} */
-    let client;
-    try {
-      project = this.currentTarget(target);
-      if (
-        !project.client?.ready ||
-        !project.client.capabilities?.methods?.includes("turn/interrupt")
-      )
-        throw failure("当前 Core 不支持精确轮次中断", "LIFECYCLE_UNSUPPORTED");
-      client = project.client;
-      const turn = await this.readLiveTurn(project, target, record.threadId, record.turnId);
-      if (turn?.status !== "inProgress")
-        throw failure("原轮次已结束，请刷新聊天状态", "TURN_NOT_ACTIVE");
-    } catch (error) {
-      target.phase = "blocked";
-      target.error = this.error(error);
-      return;
-    }
-    target.phase = "acceptedPending";
-    await this.store(record);
-    try {
-      this.currentTarget(target);
-      /** @type {(project:Project,client:CoreClient|null|undefined)=>void} */
-      const requireConnection = this.backend.requireConnection;
-      requireConnection.call(this.backend, project, client);
-      await client.request("turn/interrupt", { threadId: record.threadId, turnId: record.turnId });
-      const deadline = Date.now() + 10000;
-      do {
-        if ((await this.inspectInterrupt(record, target)) === "completed") break;
-        await pause(50);
-      } while (Date.now() < deadline);
-    } catch (error) {
-      target.phase = "admissionUnconfirmed";
-      target.error = this.error(error);
-      await this.inspectInterrupt(record, target).catch(() => {});
-    }
-  }
 
-  /** @param {LifecycleReceipt} record @param {LifecycleTarget} target */
-  async inspectInterrupt(record, target) {
-    const project = this.backend.projects.get(target.projectId);
-    let turn;
-    if (
-      project?.client?.ready &&
-      project.service?.serviceId === target.serviceId &&
-      project.service.generation === target.generation
-    ) {
-      turn = await this.readLiveTurn(project, target, record.threadId, record.turnId);
-    } else {
-      if (
-        typeof record.threadId !== "string" ||
-        typeof record.turnId !== "string" ||
-        !record.threadId ||
-        !record.turnId
-      )
-        throw failure("原轮次身份不完整", "LIFECYCLE_RECEIPT_INVALID");
-      turn = await readOriginalTurn(this.backend, target, record.threadId, record.turnId);
-    }
-    applyTurnReceipt(record, target, turn);
-    return target.phase;
-  }
 
   /** @param {unknown} requestId */
   reconcile(requestId) {
-    if (this.rustOwner()) return this.hostRead("reconcile", requestId).then((value) => this.projectHostRecord(value));
-    const task = this.tail
-      .catch(() => {})
-      .then(async () => {
-        const record = await this.read(requestId);
-        if (!record) return null;
-        if (!record.sharedHost && this.backend.host) {
-          const legacy = await reconcileLifecycleReceipt(this.backend.home, {
-            requestId: record.requestId,
-            binary: this.backend.binary,
-            harnessHome: record.harnessHome,
-            redact: (value) => this.backend.providers.redact(value),
-          });
-          if (legacy) await this.store(legacy);
-          return legacy;
-        }
-        await reconcileReceipt(record, {
-          readHost: (target) => readStop(this.backend, target),
-          inspectTurn: async (receipt, target) => {
-            await this.inspectInterrupt(receipt, target);
-          },
-          completed: (target) => detachStoppedProject(this.backend, target),
-          redact: (value) => this.backend.providers.redact(value),
-        });
-        await this.store(record);
-        return record;
-      });
-    this.tail = task.catch(() => {});
-    return task;
+    return this.hostRead("reconcile", requestId).then((value) => this.projectHostRecord(value));
   }
 }
 

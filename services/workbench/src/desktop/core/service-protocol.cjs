@@ -107,8 +107,6 @@ class DesktopService {
   /** @type {Map<number,{socket:ServiceSocket,timer:NodeJS.Timeout,resolve:(value:string)=>void,reject:(error:Error)=>void}>} */
   encryptionPending = new Map();
   encryptionSequence = 0;
-  hostManaged = false;
-  rustExecution = false;
   /** 只向当前原生外壳取安全存储能力；断开后不重放。 @param {'encrypt'|'decrypt'} operation @param {string} value */
   encryptionRequest(operation, value) {
     const socket = this.computerSocket;
@@ -1649,7 +1647,7 @@ class DesktopService {
     const handle = randomUUID();
     const timer = setTimeout(() => this.cancelHostExecution(handle, connection), 30000);
     this.hostExecutions.set(handle, {connection, method, params, project, client, current:ready, key, entry, timer});
-    return {handle, call:{method, params}, ...(this.rustExecution && method !== "workbench/thread/create" ? {hostDispatch:true} : {})};
+    return {handle, call:{method, params}, ...(method !== "workbench/thread/create" ? {hostDispatch:true} : {})};
   }
 
   /** @param {string} handle @param {string} connection */

@@ -108,26 +108,10 @@ node --test clients/gui/scripts/worktree-git.test.cjs clients/gui/scripts/worktr
 
 生产组件交互由 `node clients/gui/scripts/worktree-ui-smoke.mjs` 验证。它使用 Chromium 和确定性桌面动作 fixture，不代表原生 Electron、安装包或 macOS 验收。
 
-构建真实 Core 后，在支持原生执行边界的环境运行：
+创建、环境准备、删除和定时任务归属由 Rust Host 实现，由 `cargo test --locked -p areal-host` 覆盖。隔离 Electron 的环境专项验证设置、首条 Prompt、Action、失败、取消及原目录选择；文件选择器和外部模型使用 fixture。
 
 ```sh
-make build
-AREAL_CORE_BIN="$PWD/target/debug/areal" node clients/gui/scripts/worktree-integration.mjs
-```
-
-环境专项在固定可信 Core 路径上运行。第一项验证真实受管脚本、40 秒准备和取消、cleanup 与删除。第二项验证隔离 Electron 设置、首条 Prompt、Action、失败、取消及原目录选择。文件选择器和外部模型使用 fixture，其余经过真实桌面与 Core 路径。
-
-```sh
-AREAL_CORE_BIN=/absolute/path/to/areal pnpm --dir clients/gui test:worktree-environment
 AREAL_CORE_BIN=/absolute/path/to/areal pnpm --dir clients/gui test:worktree-environment-ui
 ```
-
-真实 Core 的定时任务交互协议可另行复验：
-
-```sh
-AREAL_CORE_BIN="$PWD/target/debug/areal" node clients/gui/scripts/worktree-schedule-interactions.mjs
-```
-
-也可从 `clients/gui` 运行 `node scripts/worktree-schedule-interactions.mjs`，默认使用仓库构建的 Core。该脚本使用确定性本地模型边界和真实 CoreBackend/Core，覆盖问题回答、错误身份与旧请求拒绝、审批拒绝、allowOnce、管理器重连及同 Run 恢复。它保存原始日志和 manifest，分别报告协议结果与 payload 结果。协议通过不等于文件工具成功：allowOnce 获准后仍可能在 Runtime reaper 启动处失败，目标文件未写入。它不运行 Electron，也不代表 macOS 或真实 provider 验收。
 
 Linux 需要可用的 Bubblewrap namespaces 和 Runtime reaper 可读取的 `/proc/self/task/<pid>/children`。能力不足或清理证据缺失时保留失败，不关闭保护。GUI 业务结果、跨平台行为和实际工具写入分别验证。完整宿主字段见[桌面宿主契约](../api/desktop.md#桌面宿主-worktree-契约)。

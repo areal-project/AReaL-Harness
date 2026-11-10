@@ -505,117 +505,16 @@ class WorktreeAdmission {
         ["taskDraftStart", "taskDraftConfirm", "taskCreate"].includes(input.operation));
     if (!special && !this.needsAdmission(name, input)) return;
     const request = readWorktreeRequest(input);
-    if (this.backend.rustDomains.includes("execution-rust") && this.backend.hostCall) {
-      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-      if (!(project.client instanceof HostCoreClient)) throw reject("Host Core 投影尚未就绪");
-      try {
-        await project.client.admit(name, request);
-        if (name === "respond" && typeof request.threadId === "string") {
-          const interactions = await project.client.request("areal/interaction/list", { threadId: request.threadId });
-          project.model.setInteractions(request.threadId, require("./history-contract.cjs").readHistoryInteractions(interactions));
-        }
-        return;
-      } catch (cause) { throw Object.assign(reject("Host 无法确认目录作者或后台状态"), { cause }); }
-    }
-    if (name === "manage" && request.operation === "taskDraftStart") return;
-    // 专用调度门禁在创建任何执行会话前保留 Task 家族作者；不误认只读管理会话。
-    if (
-      name === "manage" &&
-      (request.operation === "taskDraftConfirm" ||
-        (request.operation === "taskCreate" && request.mode === "scheduled"))
-    ) {
-      if (
-        typeof this.backend.scheduleAdmission?.reserveDraft !== "function" ||
-        typeof this.backend.scheduleAdmission?.reserveCreate !== "function"
-      )
-        throw reject("专用定时任务执行目录准入尚不可用");
-      return;
-    }
-    if (name === "manage" && taskActivations.has(request.operation ?? "") && request.taskId) {
-      try {
-        if (!project.client) throw reject("原执行后台尚未连接");
-        const task = await project.client.request(
-          "areal/task/read",
-          {
-            taskId: request.taskId,
-          },
-          { decode: readTask },
-        );
-        if (
-          task?.id !== request.taskId ||
-          typeof task.mode !== "string" ||
-          !["scheduled", "background", "foreground"].includes(task.mode)
-        )
-          throw reject("任务执行身份尚未确认");
-        if (task.mode === "scheduled") {
-          if (typeof this.backend.scheduleAdmission?.admitTask !== "function")
-            throw reject("专用定时任务执行目录准入尚不可用");
-          await this.backend.scheduleAdmission.admitTask(project, task.id, request.operation);
-          return;
-        }
-      } catch (error) {
-        if (modelRecord(error) && error.code === "WORKTREE_REQUIRED") throw error;
-        throw Object.assign(reject("无法确认定时任务的执行目录准入"), { cause: error });
-      }
-    }
-    if (!this.needsAdmission(name, request)) return;
-    const previous = this.queues.get(project.id) ?? Promise.resolve();
-    const task = previous
-      .catch(() => {})
-      .then(async () => {
-        if (!project.client?.ready) throw reject("原执行后台尚未连接");
-        const { threads, sessionId, readOnlySide, readOnlyTaskDraft } = await this.session(
-          project,
-          request,
-        );
-        if (
-          readOnlyTaskDraft &&
-          (name === "send" || (name === "manage" && request.operation === "taskDraftSend"))
-        )
-          return;
-        // Legacy Side retention is Core-owned history management, not workspace authorship.
-        if (
-          name === "manage" &&
-          ["archive", "unarchive"].includes(request.operation ?? "") &&
-          threads.some(
-            (thread) =>
-              thread.id === request.threadId &&
-              thread.conversation?.kind === "side" &&
-              thread.conversation.policy?.kind === "sideReadOnlyV1",
-          )
-        )
-          return;
-        if (readOnlySide) throw reject("旁路讨论不能作为工作区作者执行写入");
-        if (typeof this.backend.scheduleAdmission?.authorForSession === "function") {
-          const verified = await this.backend.scheduleAdmission.authorForSession(project, {
-            name,
-            request,
-            threads,
-            sessionId,
-          });
-          if (typeof verified !== "string" && verified?.kind === "sourceSchedule") {
-            await this.shared(project, sessionId);
-            return;
-          }
-          if (verified !== null) {
-            if (typeof verified !== "string" || !/^schedule:[a-f0-9]{64}$/.test(verified))
-              throw reject("调度执行作者映射尚未确认");
-            await this.claim(project, verified);
-            return;
-          }
-        }
-        await this.shared(project, sessionId);
-      });
-    this.queues.set(project.id, task);
+    const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+    if (!(project.client instanceof HostCoreClient)) throw reject("Host Core 投影尚未就绪");
     try {
-      await task;
-    } catch (error) {
-      if (modelRecord(error) && error.code === "WORKTREE_REQUIRED") throw error;
-      // 资格检查失败尚未启动用户操作，不能把它当作未知提交而在来源目录重试。
-      throw Object.assign(reject("无法确认目录作者或后台状态"), { cause: error });
-    } finally {
-      if (this.queues.get(project.id) === task) this.queues.delete(project.id);
-    }
+      await project.client.admit(name, request);
+      if (name === "respond" && typeof request.threadId === "string") {
+        const interactions = await project.client.request("areal/interaction/list", { threadId: request.threadId });
+        project.model.setInteractions(request.threadId, require("./history-contract.cjs").readHistoryInteractions(interactions));
+      }
+      return;
+    } catch (cause) { throw Object.assign(reject("Host 无法确认目录作者或后台状态"), { cause }); }
   }
 }
 /** @param {unknown} value @returns {{thread:AdmissionThread}} */

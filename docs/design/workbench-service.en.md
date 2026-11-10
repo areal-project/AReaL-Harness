@@ -53,11 +53,11 @@ Electron process commands retain the Main connection adapter even with the `mana
 
 Resources travel over the authenticated WebSocket in chunks of at most 192 KiB, with an 8 MiB limit per resource. Public `/host/pages/proxy` contains only fixed proxy code. Outer and inner frames are sandboxed without same-origin permission; page HTML and resources have no public HTTP route. Gen-UI bundled resources are read through the original allowlist and inlined, while the page retains its original CSP. This phase supports only local loopback connections with `gui-write-v1` and manage; manual MCP App opening and page JSON-RPC requests additionally require submit. This conservative authorization does not yet support ordinary submit-only devices or remote Noise. Native file selection and opening remain shell capabilities.
 
-## Rust domain implementations and rollback
+## Rust domain implementations
 
 The library, execution, task, and worktree domains are always implemented by Host in Rust, with no switch. The workbench backend only serves the remaining domains (providers, plugins, page hosting, feedback, trajectories, and similar).
 
-This table describes ownership with a Rust domain enabled. Previous JavaScript domain implementations remain available when their selector is disabled. Core connection and process ownership always stays with Host.
+This table describes ownership per domain. The previous JavaScript implementations of the four domains have been removed and there is no rollback path; the JavaScript column lists what the backend still does.
 
 | Domain | Rust authority | Remaining JavaScript responsibility |
 | --- | --- | --- |

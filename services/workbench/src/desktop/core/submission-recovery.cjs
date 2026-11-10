@@ -11,11 +11,10 @@ const {
   isPendingSubmission,
   isRemoteRecord,
 } = require("./project-state.cjs");
-const { desktopError } = require("@areal/workbench/desktop-contract");
 const { managementMethods } = require("./management.cjs");
 const { readWorkgroup, readProcesses, submissionError } = require("./submission-results.cjs");
 const { readThreadMetadata } = require("./history-contract.cjs");
-const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contract");
+const { modelRecord } = require("@areal/workbench/core-model-contract");
 const { taskMutationMethods } = require("./tasks.cjs");
 
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
@@ -30,7 +29,7 @@ const { taskMutationMethods } = require("./tasks.cjs");
 /** @typedef {{version:1,pending:Pending[],outcomes:Record<string,Outcome>}} JournalSnapshot */
 /** @typedef {(method:string,params:Params,options?:{timeoutMs?:number})=>Promise<unknown>} CoreRequest */
 /** @typedef {{client?:Client|null,generation?:number,deadline?:number,observeOnly?:boolean}} ReconcileOptions */
-/** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'worktrees'|'lifecycleOperations'|'providers'|'rustDomains'> & {
+/** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'worktrees'|'lifecycleOperations'|'providers'> & {
  * host:Pick<InstanceType<typeof import("@areal/client/node").HostClient>,"journal">,closing:boolean,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,Project>,awaitingResponses:Set<string>,onChange:()=>void,
  * currentConnection:(project:Project,client:Client|null|undefined)=>client is Client,
  * requireConnection:(project:Project,client:Client|null|undefined)=>void,openThread:(project:Project,threadId:string)=>Promise<unknown>,
@@ -53,7 +52,6 @@ const {
   operationOf,
   explicitRejection,
   readReceipts,
-  matchingReceipt,
   reconcileReceipt,
   receiptStatus,
   receiptResult,
@@ -188,42 +186,12 @@ class SubmissionRecovery {
   /** @param {Project} project @param {string} requestId */
   async recoverWorkgroupSubmission(project, requestId) {
     await this.refreshProjectJournal(project);
-    if (this.host.rustDomains.includes("execution-rust")) {
-      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-      const entry = project.pending.find((item) => item.params.requestId === requestId && workgroupMutationMethods.has(item.method));
-      if (entry && project.client instanceof HostCoreClient && !isAwaitingResponse(this.host.awaitingResponses, project.id, entry))
-        await project.client.reconcile(entry.method, entry.params);
-      await this.refreshProjectJournal(project);
-      return project.outcomes[requestId]?.workgroupId ? project.outcomes[requestId] : null;
-    }
-    const entry = project.pending.find(
-      (item) => item.params.requestId === requestId && workgroupMutationMethods.has(item.method),
-    );
-    if (entry && isAwaitingResponse(this.host.awaitingResponses, project.id, entry)) return null;
-    let receipt = project.outcomes?.[requestId];
-    if (!receipt?.workgroupId && entry?.method === "areal/workgroup/revise") {
-      if (!project.client) throw new Error("Core 连接尚未就绪");
-      const value = readWorkgroup(
-        await project.client.request("areal/workgroup/read", { id: entry.params.id }),
-      );
-      const revision = value.record.revisions?.[requestId];
-      if (
-        revision &&
-        entry.params.expectedRevision !== undefined &&
-        revision.planRevision === entry.params.expectedRevision + 1
-      ) {
-        await this.rememberWorkgroupOutcome(project, entry, value, revision.planRevision);
-        receipt = project.outcomes[requestId];
-      }
-    }
-    // Creation has no public Core receipt lookup. An absent record is unknown,
-    // never a reason to retry a mutation or identify a similar-looking group.
-    if (!receipt?.workgroupId || !workgroupMutationMethods.has(receipt.method ?? "")) return null;
-    if (entry && !this.host.rustDomains.includes("execution-rust"))
-      await this.changePending(project, (pending) =>
-        pending.filter((item) => !sameSubmission(project.id, item, entry)),
-      );
-    return receipt;
+    const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+    const entry = project.pending.find((item) => item.params.requestId === requestId && workgroupMutationMethods.has(item.method));
+    if (entry && project.client instanceof HostCoreClient && !isAwaitingResponse(this.host.awaitingResponses, project.id, entry))
+      await project.client.reconcile(entry.method, entry.params);
+    await this.refreshProjectJournal(project);
+    return project.outcomes[requestId]?.workgroupId ? project.outcomes[requestId] : null;
   }
 
   /** @param {Project} project @param {string} threadId @param {string} requestId @param {CoreRequest} [requestCore] */
@@ -244,14 +212,7 @@ class SubmissionRecovery {
       return null;
     const client = project.client;
     if (!client || !requestCore) throw new Error("Core 连接尚未就绪");
-    const native = this.host.rustDomains.includes("execution-rust");
-    const value = native ? { data: [await this.readReceipt(project, entry ?? { method: "areal/process/start", params: { threadId, requestId } }, client)].filter((receipt) => receipt !== undefined) }
-      : readReceipts(await requestCore("areal/request/read", { threadId, requestId }));
-    const receipt = native ? value.data[0] : matchingReceipt(
-      entry ?? { method: "areal/process/start", params: { threadId, requestId } },
-      value.data,
-      threadId,
-    );
+    const receipt = await this.readReceipt(project, entry ?? { method: "areal/process/start", params: { threadId, requestId } }, client);
     const result = modelRecord(receipt?.result) ? receipt.result : undefined;
     if (typeof result?.id !== "string") return null;
     if (!project.client) throw new Error("Core 连接尚未就绪");
@@ -266,11 +227,7 @@ class SubmissionRecovery {
       if (!project.client) throw new Error("Core 连接尚未就绪");
       await requestCore("areal/process/get", { threadId, id: process.id });
     }
-    if (entry && !this.host.rustDomains.includes("execution-rust"))
-      await this.changePending(project, (pending) =>
-        pending.filter((item) => !sameSubmission(project.id, item, entry)),
-      );
-    if (native && entry) {
+    if (entry) {
       const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
       if (client instanceof HostCoreClient) await client.reconcile(entry.method, entry.params);
       await this.refreshProjectJournal(project);
@@ -304,10 +261,6 @@ class SubmissionRecovery {
       typeof receipt.turnId !== "string"
     )
       return null;
-    if (entry && !this.host.rustDomains.includes("execution-rust"))
-      await this.changePending(project, (pending) =>
-        pending.filter((item) => !sameSubmission(project.id, item, entry)),
-      );
     return receipt;
   }
 
@@ -650,158 +603,22 @@ class SubmissionRecovery {
       if (!dispatch) throw new Error("Remote 提交入口缺失");
       return this.submitRemote(project, method, boundParameters, remote, dispatch);
     }
-    if (this.host.rustDomains.includes("execution-rust")) {
-      this.assertConfigurationReady(project, method, parameters);
-      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-      const client = submissionClient ?? project.client;
-      if (!(client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
-      if (requestId !== undefined && (typeof requestId !== "string" || !/^[0-9a-f-]{36}$/.test(requestId)))
-        throw new Error("无效请求标识");
-      if (preDispatch && !preDispatch())
-        throw Object.assign(new Error("订阅模型同步目标已变化"), { submissionUnknown: false });
-      const params = { ...boundParameters, requestId: requestId ?? randomUUID() };
-      const entry = { method, params, operation: operationOf(method, params) };
-      const key = submissionKey(project.id, entry);
-      if (!key || this.host.awaitingResponses.has(key)) throw new Error("请求标识已使用，请核对原提交；不会重复执行。");
-      this.host.awaitingResponses.add(key);
-      try {
-        const result = await client.submit(method, params, requestId !== undefined || ["areal/turn/submit", "areal/agent/spawn"].includes(method));
-        await this.refreshProjectJournal(project);
-        await this.acceptModelSelection(project, result, entry);
-        return result;
-      } finally {
-        this.host.awaitingResponses.delete(key);
-        this.scheduleReconciliation(project);
-        this.host.onChange();
-      }
-    }
-    const semantics = project.client?.capabilities?.methodSemantics?.[method];
-    if (semantics && semantics.effect !== "mutation") throw new Error("此方法不是业务写入");
-    if (
-      requestId !== undefined &&
-      (typeof requestId !== "string" || !/^[0-9a-f-]{36}$/.test(requestId))
-    )
+    this.assertConfigurationReady(project, method, parameters);
+    const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+    const client = submissionClient ?? project.client;
+    if (!(client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
+    if (requestId !== undefined && (typeof requestId !== "string" || !/^[0-9a-f-]{36}$/.test(requestId)))
       throw new Error("无效请求标识");
+    if (preDispatch && !preDispatch())
+      throw Object.assign(new Error("订阅模型同步目标已变化"), { submissionUnknown: false });
     const params = { ...boundParameters, requestId: requestId ?? randomUUID() };
-
-    const entry = {
-      method,
-      params,
-      operation: operationOf(method, params),
-      createdAt: new Date().toISOString(),
-    };
-    // 活跃请求仅保存在内存；重启后仍在恢复日志中的请求应显示为结果未知。
+    const entry = { method, params, operation: operationOf(method, params) };
     const key = submissionKey(project.id, entry);
-    if (key === null) throw new Error("原请求标识缺失");
-    if (this.host.awaitingResponses.has(key))
-      throw new Error("请求标识已使用，请核对原提交；不会重复执行。");
+    if (!key || this.host.awaitingResponses.has(key)) throw new Error("请求标识已使用，请核对原提交；不会重复执行。");
     this.host.awaitingResponses.add(key);
     try {
-      // 检查与持久化在同一队列中，两个同时到达的发送不能穿透阻塞。
-      await this.changePending(project, (pending, outcomes) => {
-        if (
-          outcomes[params.requestId] ||
-          pending.some((value) => value.params.requestId === params.requestId)
-        )
-          throw new Error("请求标识已使用，请核对原提交；不会重复执行。");
-        this.assertConfigurationReady(project, method, parameters);
-        const conflicting = ["areal/thread/fork", "areal/side/start", "areal/side/create"].includes(
-          method,
-        )
-          ? pending.find(
-              (value) =>
-                value.method === method &&
-                value.params.sourceThreadId === parameters.sourceThreadId,
-            )
-          : pending.find(
-              (value) =>
-                !isRemoteControl(value) &&
-                (parameters.taskId
-                  ? value.params.taskId === parameters.taskId
-                  : parameters.threadId
-                    ? value.params.threadId === parameters.threadId
-                    : false) &&
-                !(value.remote && value.operationId && outcomes[value.operationId]?.remote),
-            );
-        if (conflicting) {
-          const awaiting = isAwaitingResponse(this.host.awaitingResponses, project.id, conflicting);
-          throw Object.assign(
-            new Error(
-              awaiting
-                ? "当前操作正在等待响应，请稍后再试"
-                : "上一次提交结果未知，请先查询受理结果",
-            ),
-            awaiting
-              ? {}
-              : {
-                  submissionUnknown: true,
-                  requestId: conflicting.params.requestId,
-                  outcome: {
-                    kind: "unconfirmed",
-                    operation:
-                      conflicting.operation ?? operationOf(conflicting.method, conflicting.params),
-                  },
-                  recovery: { kind: "queryOriginal" },
-                },
-          );
-        }
-        return [...pending, entry];
-      });
-      let result,
-        dispatchStarted = false;
-      try {
-        if (this.host.closing) throw new Error("应用正在退出");
-        if (preDispatch && !preDispatch())
-          throw Object.assign(new Error("订阅模型同步目标已变化"), { submissionUnknown: false });
-        dispatchStarted = true;
-        result = await this.requestSubmission(project, method, params, requestCore);
-      } catch (cause) {
-        const error = submissionError(cause);
-        if (!dispatchStarted || explicitRejection(error)) {
-          try {
-            await this.changePending(project, (pending) =>
-              pending.filter((value) => !sameSubmission(project.id, value, entry)),
-            );
-          } catch {
-            throw Object.assign(new Error("原请求结果已知，但恢复日志更新失败；请检查本机存储"), {
-              submissionUnknown: true,
-              requestId: params.requestId,
-              outcome: { kind: "unconfirmed", operation: entry.operation },
-              recovery: { kind: "queryOriginal" },
-            });
-          }
-        }
-        if (dispatchStarted && !explicitRejection(error))
-          Object.assign(error, {
-            submissionUnknown: true,
-            outcome: error.outcome ?? { kind: "unconfirmed", operation: entry.operation },
-            recovery: error.recovery ?? { kind: "queryOriginal" },
-          });
-        error.requestId = params.requestId;
-        throw error;
-      }
-      try {
-        if (workgroupMutationMethods.has(method))
-          await this.rememberWorkgroupOutcome(project, entry, result);
-        else if (
-          requestId !== undefined ||
-          ["areal/turn/submit", "areal/agent/spawn"].includes(method)
-        )
-          await this.rememberOutcome(project, entry, { status: "completed", result });
-        await this.changePending(project, (pending) =>
-          pending.filter((value) => !sameSubmission(project.id, value, entry)),
-        );
-      } catch {
-        project.refreshErrors ??= {};
-        project.refreshErrors[params.requestId] = {
-          id: randomUUID(),
-          projectId: project.id,
-          connectionGeneration: project.connectionGeneration,
-          operation: entry.operation,
-          message: "Core 已受理，本机恢复记录尚未更新。",
-          refreshPending: true,
-        };
-      }
+      const result = await client.submit(method, params, requestId !== undefined || ["areal/turn/submit", "areal/agent/spawn"].includes(method));
+      await this.refreshProjectJournal(project);
       await this.acceptModelSelection(project, result, entry);
       return result;
     } finally {
@@ -975,8 +792,7 @@ class SubmissionRecovery {
         : !managementMethods.has(entry.method) && !taskMutationMethods.has(entry.method))
         ? entry.params.threadId
         : undefined;
-    const nativeReconciliation = this.host.rustDomains.includes("execution-rust") &&
-      client.capabilities?.features?.submissionReceiptReconciliation === true;
+    const nativeReconciliation = client.capabilities?.features?.submissionReceiptReconciliation === true;
     const response = await requestCore(
       "areal/request/read",
       {
@@ -1003,60 +819,12 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {string} method @param {Params & {requestId:string}} params */
   async readSubmission(project, method, params) {
-    if (this.host.rustDomains.includes("execution-rust")) {
-      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-      const client = project.client;
-      if (!(client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
-      const result = await client.reconcile(method, params);
-      await this.refreshProjectJournal(project);
-      return result;
-    }
+    const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+    const client = project.client;
+    if (!(client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
+    const result = await client.reconcile(method, params);
     await this.refreshProjectJournal(project);
-    const client = project.client,
-      generation = project.connectionGeneration;
-    const pending = project.pending.find(
-      (entry) => entry.method === method && entry.params.requestId === params.requestId,
-    );
-    if (
-      pending &&
-      ["threadId", "sourceThreadId", "taskId"].some(
-        (key) => params[key] !== undefined && params[key] !== pending.params[key],
-      )
-    )
-      throw new Error("恢复请求与原操作身份不匹配");
-    if (pending && isAwaitingResponse(this.host.awaitingResponses, project.id, pending))
-      return { confirmed: false, state: "admitted" };
-    const known = project.outcomes?.[params.requestId];
-    const entry = pending ?? {
-      method,
-      params,
-      ...(known?.method === method && known.operation ? { operation: known.operation } : {}),
-    };
-    const receipt = await this.readReceipt(project, entry, client);
-    const current = () =>
-      this.host.currentConnection(project, client) && project.connectionGeneration === generation;
-    if (!current()) throw Object.assign(new Error("连接已换代"), { code: "STALE_CONNECTION" });
-    const status = receipt && receiptStatus(receipt);
-    if (!receipt || !["completed", "failed"].includes(status ?? ""))
-      return { confirmed: false, state: status ?? "unconfirmed" };
-    if (pending) {
-      await this.rememberOutcome(project, entry, receipt, current);
-      if (current())
-        await this.changePending(project, (entries) =>
-          current()
-            ? entries.filter((value) => !sameSubmission(project.id, value, pending))
-            : entries,
-        );
-    }
-    const failure = receipt.error ?? receipt.response?.error;
-    const error = failure ? desktopError(failure) : undefined;
-    return {
-      confirmed: true,
-      accepted: receipt.accepted !== false,
-      status,
-      operation: receipt.operation ?? entry.operation,
-      ...(error ? { error, message: error.message } : { result: receiptResult(receipt) }),
-    };
+    return result;
   }
 
   /** @param {Project} project @param {Pending} entry @param {Receipt} receipt @param {()=>boolean} [current] */
@@ -1209,185 +977,35 @@ class SubmissionRecovery {
 
   /** @param {Project} project @param {ReconcileOptions} options @returns {Promise<void>} */
   async reconcileEntries(project, { client, generation, deadline = Date.now() + 30000 }) {
-    if (this.host.rustDomains.includes("execution-rust")) {
-      const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-      if (!(client instanceof HostCoreClient)) return;
-      await this.refreshProjectJournal(project);
-      for (const entry of [...project.pending]) {
-        if (!this.reconciliationCurrent(project, client, generation) || Date.now() >= deadline) break;
-        if (!modelRecord(entry) || entry.rustOwner !== true || isAwaitingResponse(this.host.awaitingResponses, project.id, entry)) continue;
-        try {
-          const result = await client.reconcile(entry.method, entry.params);
-          if (!this.reconciliationCurrent(project, client, generation)) break;
-          if (result.confirmed === true && entry.params.requestId) {
-            delete project.refreshErrors?.[entry.params.requestId];
-            await this.refreshProjectJournal(project);
-            const outcome = project.outcomes[entry.params.requestId];
-            if (outcome?.status === "completed")
-              await this.host.refreshAfterAdmission(project, outcome.threadId, outcome.operation ?? entry.operation);
-          }
-        } catch (error) {
-          if (!this.reconciliationCurrent(project, client, generation)) break;
-          project.refreshErrors ??= {};
-          project.refreshErrors[entry.params.requestId ?? `legacy:${entry.params.threadId}`] = {
-            id: randomUUID(), projectId: project.id, connectionGeneration: generation,
-            operation: entry.operation, message: this.host.providers.redact(error instanceof Error ? error.message : String(error)),
-            refreshPending: true,
-          };
-          this.host.onChange();
-        }
-      }
-      await this.refreshProjectJournal(project);
-      return;
-    }
+    const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+    if (!(client instanceof HostCoreClient)) return;
     await this.refreshProjectJournal(project);
-    const current = () => this.reconciliationCurrent(project, client, generation);
-    for (const entry of Array.from(project.pending)) {
-      if (!current() || !client || Date.now() >= deadline) break;
-      if (isAwaitingResponse(this.host.awaitingResponses, project.id, entry)) continue;
+    for (const entry of [...project.pending]) {
+      if (!this.reconciliationCurrent(project, client, generation) || Date.now() >= deadline) break;
+      if (!modelRecord(entry) || entry.rustOwner !== true || isAwaitingResponse(this.host.awaitingResponses, project.id, entry)) continue;
       try {
-        if (isRemoteRecord(entry)) {
-          await this.recoverRemoteSubmission(project, entry);
-          continue;
-        }
-        if (workgroupMutationMethods.has(entry.method)) {
-          if (!entry.params.requestId) throw new Error("工作组请求标识缺失");
-          await this.recoverWorkgroupSubmission(project, entry.params.requestId);
-          continue;
-        }
-        if (entry.method === "areal/agent/spawn") {
-          if (!entry.params.parentThreadId || !entry.params.requestId)
-            throw new Error("子任务请求关联缺失");
-          await this.recoverAgentSubmission(
-            project,
-            entry.params.parentThreadId,
-            entry.params.requestId,
-          );
-          continue;
-        }
-        if (
-          entry.method === "turn/steer" &&
-          !client.capabilities?.methods?.includes("areal/plugin/hooks/list") &&
-          !client.capabilities?.features?.operationOutcomes
-        ) {
-          const threadId = entry.params.threadId,
-            previousItems = entry.params.previousItems;
-          if (!threadId || !previousItems) throw new Error("原引导提交的会话关联缺失");
-          await this.host.openThread(project, threadId);
-          if (!current()) break;
-          const turn = project.model.state.threads[threadId]?.turns?.find(
-            (item) => item.id === entry.params.expectedTurnId,
-          );
-          /** @param {unknown} input */
-          const normalize = (input) => {
-            if (!Array.isArray(input) || !input.every(modelRecord))
-              throw new Error("原引导提交内容结构无效");
-            return input.map((part) =>
-              part.type === "text"
-                ? { type: "text", text: part.text }
-                : { type: part.type, url: part.url },
-            );
-          };
-          const accepted = turn?.items?.some(
-            (item) =>
-              item.type === "userMessage" &&
-              !previousItems.includes(item.id) &&
-              JSON.stringify(normalize(item.content)) ===
-                JSON.stringify(normalize(entry.params.input)),
-          );
-          if (accepted && turn) {
-            await this.rememberOutcome(
-              project,
-              entry,
-              { status: "completed", result: { turnId: turn.id } },
-              current,
-            );
-            if (current())
-              await this.changePending(project, (pending) =>
-                current()
-                  ? pending.filter((value) => !sameSubmission(project.id, value, entry))
-                  : pending,
-              );
-          }
-          continue;
-        }
-        if (entry.localOnly) {
-          if (!entry.params.threadId) throw new Error("配置恢复会话关联缺失");
-          await this.host.refreshConfiguration(project, entry.params.threadId);
-          continue;
-        }
-        let receipt = await this.readReceipt(
-          project,
-          entry,
-          client,
-          Math.min(2500, Math.max(1, deadline - Date.now())),
-        );
-        if (
-          !current() ||
-          isAwaitingResponse(this.host.awaitingResponses, project.id, entry) ||
-          !project.pending.some((value) => sameSubmission(project.id, value, entry)) ||
-          !receipt
-        )
-          continue;
-        if (!["completed", "failed"].includes(receiptStatus(receipt))) continue;
-        if (processControls.has(entry.method) && receiptStatus(receipt) === "completed") {
-          try {
-            await this.processControlOutcome(project, entry.params, receiptResult(receipt));
-          } catch (error) {
-            if (!modelRecord(error) || !error.executionFailed) throw error;
-            receipt = {
-              ...receipt,
-              status: "failed",
-              error: { message: error instanceof Error ? error.message : String(error) },
-            };
-          }
-        }
-        if (!current()) break;
-        const outcome = await this.rememberOutcome(project, entry, receipt, current);
-        if (!current()) break;
-        await this.changePending(project, (pending) =>
-          current()
-            ? pending.filter((value) => !sameSubmission(project.id, value, entry))
-            : pending,
-        );
-        if (!current()) break;
-        if (entry.params.requestId) delete project.refreshErrors?.[entry.params.requestId];
-        if (outcome.status === "completed") {
-          if (entry.method === "areal/thread/configure" && entry.params.threadId)
-            project.configurations[entry.params.threadId] =
-              require("./thread-configuration.cjs").readConfigured(outcome.result);
-          if (
-            taskMutationMethods.has(entry.method) &&
-            !["areal/channel/reply", "areal/task/runNow"].includes(entry.method)
-          ) {
-            if (!isCoreTask(outcome.result)) throw new Error("任务结果结构无效，请刷新任务状态");
-            project.model.setTask(outcome.result);
-          }
-          await this.host.providers
-            .acceptModelSelection(
-              modelRecord(outcome.result) ? outcome.result.lastAcceptedModel : undefined,
-            )
-            .catch(() => {});
-          void this.host
-            .refreshAfterAdmission(project, outcome.threadId, receipt.operation ?? entry.operation)
-            .catch(() => {});
+        const result = await client.reconcile(entry.method, entry.params);
+        if (!this.reconciliationCurrent(project, client, generation)) break;
+        if (result.confirmed === true && entry.params.requestId) {
+          delete project.refreshErrors?.[entry.params.requestId];
+          await this.refreshProjectJournal(project);
+          const outcome = project.outcomes[entry.params.requestId];
+          if (outcome?.status === "completed")
+            await this.host.refreshAfterAdmission(project, outcome.threadId, outcome.operation ?? entry.operation);
         }
       } catch (error) {
-        if (!current()) break;
+        if (!this.reconciliationCurrent(project, client, generation)) break;
         project.refreshErrors ??= {};
         project.refreshErrors[entry.params.requestId ?? `legacy:${entry.params.threadId}`] = {
-          id: randomUUID(),
-          projectId: project.id,
-          connectionGeneration: generation,
-          operation: entry.operation,
-          message: this.host.providers.redact(
-            error instanceof Error ? error.message : String(error),
-          ),
+          id: randomUUID(), projectId: project.id, connectionGeneration: generation,
+          operation: entry.operation, message: this.host.providers.redact(error instanceof Error ? error.message : String(error)),
           refreshPending: true,
         };
         this.host.onChange();
       }
     }
+    await this.refreshProjectJournal(project);
+    return;
   }
 }
 

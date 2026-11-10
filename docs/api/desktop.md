@@ -61,7 +61,7 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 | pending 时 Host 断开 | Run 暂停为 hostUnavailable；拒绝旧 requestId，恢复后回答新问题。 |
 | 取消、已完成、错误 Session/锚点或过期交互 | 拒绝，不消费另一个有效 pending 交互。 |
 
-`node clients/gui/scripts/worktree-schedule-interactions.mjs` 从仓库根验证真实 Core 协议，使用本地确定性模型而不启动 Electron。manifest 区分协议验证和 Runtime payload；原生文件执行未成功时不能据协议通过宣称写入已验证。目录、分支、旧快照兼容性、并发和隔离边界见[Worktree 指南](../guides/worktrees.md)。
+目录、分支、旧快照兼容性、并发和隔离边界见[Worktree 指南](../guides/worktrees.md)。
 
 ## 认证与连接
 

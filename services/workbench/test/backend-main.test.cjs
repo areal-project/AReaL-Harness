@@ -19,9 +19,9 @@ async function fixture(t, retired, projectionFixture = false) {
   await writeFile(join(appRoot, "node_modules/@areal/workbench-service/src/desktop/core/service-main.cjs"), `
     const fs = require('node:fs/promises');
     exports.createMainDesktop = async (options, lifetime) => {
-      if (lifetime.hostManaged !== true) throw Error("Host ownership must precede backend initialization");
+      if (typeof lifetime.hostCall !== "function") throw Error("Host ownership must precede backend initialization");
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
-      const backend = { home: options.home, rustDomains: ['worktree-rust'], host: { sourceId: 'fixture-source' }, cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path };
+      const backend = { home: options.home, hostCall: lifetime.hostCall, host: { sourceId: 'fixture-source' }, cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path };
       if (options.projectionFixture) {
         const { CoreWorktrees } = require(${JSON.stringify(require.resolve('../src/desktop/core/worktrees.cjs'))});
         backend.worktrees = new CoreWorktrees(backend);

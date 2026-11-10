@@ -178,7 +178,6 @@ const binaryHash = sha256(await readFile(binary));
 const sourceFiles = [
   "scripts/worktree-environment-smoke.mjs",
   "../../services/workbench/src/desktop/core/worktrees.cjs",
-  "../../services/workbench/src/desktop/core/worktree-environment.cjs",
   "packages/workspace-git/worktrees.js",
   "renderer/src/WorktreeStarter.tsx",
   "renderer/src/WorktreeStatus.tsx",

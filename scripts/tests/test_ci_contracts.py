@@ -172,11 +172,9 @@ class CiContracts(unittest.TestCase):
             "smoke:test:composer-files",
             "mobile-types",
             "mobile-relay-install",
-            "mobile-browser",
         }
         items = {item["id"]: item for item in plan["items"]}
         self.assertTrue(required <= items.keys(), required - items.keys())
-        self.assertEqual(items["mobile-browser"]["dependsOn"], ["mobile-relay-install"])
         self.assertEqual(scope.CI_PLATFORMS["mobile"], "linux")
         self.assertEqual(scope.JOB_GROUPS["gui"]["mobile"], {"mobile"})
         for name in required:
@@ -202,7 +200,6 @@ class CiContracts(unittest.TestCase):
             "macos:renderer",
             "macos:bundle",
             "computer-helper",
-            "mobile-browser",
             "smoke:test:composer-files",
         }
         self.assertTrue(expensive <= full)

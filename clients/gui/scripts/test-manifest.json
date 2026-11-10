@@ -62,32 +62,11 @@
     "requires": ["browser", "git", "gui-build"]
   },
   {
-    "script": "test:worktree-core",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
-  },
-  {
-    "script": "test:worktree-environment",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
-  },
-  {
     "script": "test:worktree-environment-ui",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["worktree", "git"],
     "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:worktree-schedule-interactions",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
   },
   {
     "script": "test:macos-dmg",
@@ -919,13 +898,6 @@
     "layer": "contract",
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["conversation", "desktop"],
-    "requires": []
-  },
-  {
-    "script": "test:library-store",
-    "layer": "unit",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["desktop"],
     "requires": []
   },
   {

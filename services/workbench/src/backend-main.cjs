@@ -107,7 +107,7 @@ async function start({ input, output }) {
       encryptString: async (value) => Buffer.from(await desktop.adapter.encryptionRequest("encrypt", value), "base64"),
       decryptString: (value) => desktop.adapter.encryptionRequest("decrypt", value.toString("base64")),
     };
-    desktop = await createMainDesktop({ ...options, applicationOwner: undefined, sourceSingletonHeld: false }, { onClose: () => lines.close(), hostManaged: true, hostCall });
+    desktop = await createMainDesktop({ ...options, applicationOwner: undefined, sourceSingletonHeld: false }, { onClose: () => lines.close(), hostCall });
     desktop.backend.cloud.encryption = encryption;
     metadata = await desktop.adapter.listen({ initialized: true });
     await writeFile(path, JSON.stringify(metadata), { mode: 0o600 });

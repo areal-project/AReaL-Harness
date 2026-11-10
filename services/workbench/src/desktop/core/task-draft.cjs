@@ -1,24 +1,16 @@
 // @ts-check
 "use strict";
 const { createHash } = require("node:crypto");
-const { realpath, stat } = require("node:fs/promises");
-const { isAbsolute, relative, sep } = require("node:path");
 const { messageInput } = require("./media.cjs");
 const { resolveNewConversationModel } = require("@areal/workbench/model-selection");
 
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const {
-  readTask,
-  readTaskAdmission,
-} = require("@areal/workbench/desktop-contract/management-tasks");
-const { readTaskDraftTarget, taskDraftTarget } = require("./task-draft-target.cjs");
-const { readReceipts, receiptResult } = require("./receipt-contract.cjs");
-const { readObservationResult, readThreadMetadata } = require("./history-contract.cjs");
-const { readAdmission, readThreadAdmission } = require("./submission-results.cjs");
+const { readTask } = require("@areal/workbench/desktop-contract/management-tasks");
+const { readTaskDraftTarget } = require("./task-draft-target.cjs");
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
 /** @typedef {import('@areal/workbench/core-model-contract').CoreThread} Thread */
 /** @typedef {import('@areal/workbench/core-model-contract').CoreTurn} Turn */
-/** @typedef {ReturnType<typeof taskDraftTarget>} Target */
+/** @typedef {ReturnType<typeof import('./task-draft-target.cjs').taskDraftTarget>} Target */
 /** @typedef {Record<string,unknown> & {action?:string,taskId?:string,expectedRevision?:number,objective?:string,scheduleV2?:Record<string,unknown>,mode?:string,threadId?:string}} Proposal */
 const marker = "AREAL_TASK_DRAFT_V1";
 const operations = new Set([
@@ -36,16 +28,6 @@ const key = (threadId, purpose) => {
   const hex = hash(`${marker}:${threadId}:${purpose}`);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 };
-/** @param {string} zone @param {boolean} [editing] */
-const instructions = (
-  zone,
-  editing = false,
-) => `You help the user ${editing ? "edit the selected scheduled task" : "configure a task"}. Do not execute its objective or claim it is saved. Return exactly one JSON object in the user's language.
-If the objective or execution time is missing, return {"kind":"question","message":"one concise question"}.
-A complete proposal is {"kind":"proposal","message":"...","objective":"execution instructions","scheduleV2":{"version":1,"rule":RULE,"misfire":{"kind":"skip","maxLatenessSeconds":300},"overlap":"skip"},"interactionMode":"interactive"}.
-RULE is one of {"kind":"onceLocal","timeZone":"${zone}","localTime":"HH:mm","date":{"kind":"date","date":"YYYY-MM-DD"}}, {"kind":"intervalLocal","timeZone":"${zone}","localTime":"HH:mm","date":{"kind":"next"},"intervalSeconds":3600}, or {"kind":"calendar","timeZone":"${zone}","frequency":"daily|weekly|monthly","interval":1,"localTime":"HH:mm","anchorDate":"YYYY-MM-DD","weekdays":[1,2,3,4,5]}.
-Use Core current civil context below. For onceLocal/intervalLocal, date may be {"kind":"relative","days":0} for today, days:1 for tomorrow, or {"kind":"next"} for the next occurrence. Never calculate Unix seconds. Calendar anchorDate may be omitted to start today. Daily has no selectors, weekly requires ISO weekdays 1=Monday to 7=Sunday, monthly requires monthDays:[1..31 or "last"] and no weekdays. Missing dates and nonexistent DST times are skipped; repeated DST times run only once at the earlier instant. Weekdays mean calendar weekly [1,2,3,4,5], monthly/month-end means monthly; never approximate these as seconds. Every24hours is an interval; daily at a local time is calendar. Preserve stated start-date requirements across clarification turns. A date in objective content is not a start date. Default misfire skips after 300 seconds; each run opens a new desktop conversation. No cloud or condition triggers.
-Only explicit user limits may add limits:{tokenBudget,maxTurns,maxActiveSeconds} and limitSources with exact user quotes. Never invent budgets. A complete proposal is saved automatically without another confirmation. ${editing ? 'EDIT MODE: Return only changed objective and/or scheduleV2. Preserve unchanged frequency, selectors and time zone. For pause/resume/cancel use {kind:"control",action,message}. Cancel preserves history. Immediate execution uses the saved Task button 立即运行. Budgets, permissions and project binding cannot be changed here.' : ""}`;
 
 const targetPrefix = "Current scheduled task: ";
 /** @param {Thread} thread @param {Project} [project] @returns {Target|null} */
@@ -71,16 +53,6 @@ function text(value, label, max = 4000) {
   if (typeof value !== "string" || !value.trim() || [...value].length > max)
     throw new Error(`${label}需要 1–${max} 个字符`);
   return value.trim();
-}
-/** @param {unknown} input */
-function timeZone(input) {
-  const value = text(input, "时区", 128);
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: value }).format();
-  } catch {
-    throw new Error("时区无效，请重新打开创建入口");
-  }
-  return value;
 }
 /** @param {Record<string,unknown>} value @param {unknown} zone @param {Target|null} current @param {string[]} users */
 function scheduleIntent(value, zone, current, users) {
@@ -138,20 +110,6 @@ function scheduleIntent(value, zone, current, users) {
     overlap: intent.overlap ?? "skip",
   };
 }
-/** @param {Project} project @param {unknown} [cwd] */
-async function taskDirectory(project, cwd = project.root) {
-  if (typeof cwd !== "string" || !isAbsolute(cwd) || cwd.split(/[\\/]/).includes(".."))
-    throw new Error("请选择项目根目录内的绝对工作目录");
-  const [root, directory] = await Promise.all([realpath(project.root), realpath(cwd)]);
-  const path = relative(root, directory);
-  if (path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path))
-    throw new Error("工作目录必须位于所选项目根目录内");
-  if (!(await stat(directory)).isDirectory()) throw new Error("工作目录必须是现有文件夹");
-  return directory;
-}
-/** @param {Project} project @param {unknown} cwd */
-const workspaceContext = (project, cwd) =>
-  `Workspace context: ${JSON.stringify({ projectRoot: project.root, cwd, projectless: project.projectless === true })}\n${project.projectless ? "This is an independent task workspace. It is not associated with a normal saved project." : "This task belongs to the selected project."} Each execution uses this exact working directory; projectRoot is the containment boundary, not a replacement cwd.`;
 /** @param {Record<string,unknown>} value @param {string[]} userMessages @param {Target|null} target @returns {Proposal} */
 function proposal(value, userMessages, target) {
   if (target) {
@@ -230,26 +188,6 @@ const isTaskDraftConfiguration = (configuration) =>
   modelRecord(configuration.options) &&
   typeof configuration.options.appendInstructions === "string" &&
   configuration.options.appendInstructions.startsWith(`${marker}\n`);
-/** @param {Project} project @param {unknown} threadId */
-async function inspect(project, threadId) {
-  const client = project.client;
-  if (!client) throw new Error("Core 未连接");
-  text(threadId, "配置会话", 128);
-  const { thread } = await client.request(
-    "thread/read",
-    { threadId, includeTurns: true },
-    { decode: readObservationResult },
-  );
-  const options = thread.desktop?.configuration?.options;
-  if (
-    !isTaskDraftConfiguration(thread?.desktop?.configuration) ||
-    options?.readOnly !== true ||
-    !Array.isArray(options?.toolAllowlist) ||
-    options.toolAllowlist.length !== 0
-  )
-    throw new Error("这不是有效的任务配置会话，请重新创建。");
-  return thread;
-}
 /** @param {Turn} turn */
 const userText = (turn) =>
   (turn.items ?? [])
@@ -269,52 +207,6 @@ function receiptFor(project, threadId, turnId) {
       value.turnId === turnId &&
       value.taskId,
   );
-}
-/** @param {string} method @param {import("@areal/workbench/desktop-contract/management-tasks").Task} task @param {string} fallbackZone */
-function savedMessage(method, task, fallbackZone) {
-  /** @type {Record<string,string>} */
-  const statuses = {
-    "areal/task/create": "已创建任务。",
-    "areal/task/update": "已保存修改。",
-    "areal/task/pause": "已暂停任务。",
-    "areal/task/resume": "已恢复任务。",
-    "areal/task/cancel": "已取消任务。",
-  };
-  const status = statuses[method] ?? "已保存安排。";
-  const rule = task.scheduleV2?.rule;
-  const schedule = rule ?? task.schedule;
-  if (!schedule) return `${status}\n任务目标：${task.objective}`;
-  if (task.scheduleV2 && rule?.kind === "calendar")
-    return `${status}\n任务目标：${task.objective}\n频率：${rule.frequency === "daily" ? "每天" : rule.frequency === "weekly" ? "每周" : "每月"} ${rule.localTime} · ${rule.timeZone}\n${task.scheduleV2.misfire.kind === "skip" ? `错过 ${task.scheduleV2.misfire.maxLatenessSeconds} 秒后跳过` : "错过时合并执行一次"}`;
-  const interval = "intervalSeconds" in schedule ? schedule.intervalSeconds : undefined;
-  const frequency = !interval
-    ? "一次性"
-    : interval === 86400
-      ? "每天"
-      : interval % 86400 === 0
-        ? `每 ${interval / 86400} 天`
-        : interval % 3600 === 0
-          ? `每 ${interval / 3600} 小时`
-          : interval % 60 === 0
-            ? `每 ${interval / 60} 分钟`
-            : `每 ${interval} 秒`;
-  const at = new Date(
-    (task.nextRunAt ??
-      ("at" in schedule ? schedule.at : undefined) ??
-      (rule && "anchorAt" in rule ? rule.anchorAt : NaN)) * 1000,
-  );
-  const zone = ("timeZone" in schedule ? schedule.timeZone : undefined) ?? fallbackZone;
-  let when;
-  try {
-    when = new Intl.DateTimeFormat("zh-CN", {
-      timeZone: zone,
-      dateStyle: "full",
-      timeStyle: "long",
-    }).format(at);
-  } catch {
-    when = at.toLocaleString("zh-CN", { timeZone: "UTC" });
-  }
-  return `${status}\n任务目标：${task.objective}\n执行时间：${when}\n频率：${frequency}`;
 }
 /** @param {Thread} thread @param {Turn} turn @param {Project} project @param {string[]} users @param {Target|null} target @param {string} zone */
 function turnProjection(thread, turn, project, users, target, zone) {
@@ -414,455 +306,32 @@ function displayThread(thread, project) {
     }),
   };
 }
-/** @template T @param {Project} project @param {string} id @param {()=>Promise<T>} work */
-async function serial(project, id, work) {
-  project.taskDraftWrites ??= new Map();
-  const previous = project.taskDraftWrites.get(id) ?? Promise.resolve();
-  const next = previous.catch(() => {}).then(work);
-  project.taskDraftWrites.set(id, next);
-  try {
-    return await next;
-  } finally {
-    if (project.taskDraftWrites.get(id) === next) project.taskDraftWrites.delete(id);
-  }
-}
-/** @param {Project} project @param {unknown} threadId @param {string|undefined} turnId */
-async function committed(project, threadId, turnId) {
-  const client = project.client;
-  if (!client) throw new Error("Core 未连接");
-  const receipt = receiptFor(project, threadId, turnId);
-  return receipt
-    ? client.request("areal/task/read", { taskId: receipt.taskId }, { decode: readTask })
-    : null;
-}
 
 /** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {Project} project @param {import("@areal/workbench/desktop-contract/management-tasks").TaskRequest} request @returns {Promise<unknown>} */
 async function manageTaskDraft(backend, project, request) {
-  if (backend.rustDomains.includes("tasks-rust") && backend.hostCall) {
-    /** @type {Record<string,unknown>} */
-    const payload = { ...request, projectId: project.logicalProjectId ?? project.id, executionProjectId: project.id };
-    delete payload.logicalProjectId;
-    let modelNotice;
-    if (request.operation === "taskDraftStart") {
-      const selection = resolveNewConversationModel(backend.providers.catalog(project.models ?? [], project), backend.providers.lastAcceptedModel, true);
-      const model = selection.candidate;
-      modelNotice = selection.notice;
-      if (model?.providerId === "areal_openai") await backend.providers.ensureSubscription(project);
-      if (model?.providerId) payload.model = { providerId: model.providerId, modelId: model.modelId };
-      payload.parameters = { ...model?.parameters,
-        ...(selection.rememberedEffort != null ? { reasoningEffort: selection.rememberedEffort } : {}) };
-    }
-    if (request.operation === "taskDraftSend") {
-      payload.input = messageInput(backend, request);
-      for (const key of ["text", "attachments", "mcpContent", "conversationQuotes"]) delete payload[key];
-    }
-    const reading = request.operation === "taskDraftRead" || request.operation === "taskDraftHistory";
-    const value = await backend.hostCall(reading ? "tasks.read" : "tasks.command", payload);
-    if (request.operation === "taskDraftConfirm") project.model.setTask(readTask(value));
-    if (modelRecord(value) && typeof value.threadId === "string" && !reading)
-      await backend.refreshAfterAdmission(project, value.threadId);
-    return modelNotice && modelRecord(value) ? { ...value, modelNotice } : value;
+  /** @type {Record<string,unknown>} */
+  const payload = { ...request, projectId: project.logicalProjectId ?? project.id, executionProjectId: project.id };
+  delete payload.logicalProjectId;
+  let modelNotice;
+  if (request.operation === "taskDraftStart") {
+    const selection = resolveNewConversationModel(backend.providers.catalog(project.models ?? [], project), backend.providers.lastAcceptedModel, true);
+    const model = selection.candidate;
+    modelNotice = selection.notice;
+    if (model?.providerId === "areal_openai") await backend.providers.ensureSubscription(project);
+    if (model?.providerId) payload.model = { providerId: model.providerId, modelId: model.modelId };
+    payload.parameters = { ...model?.parameters,
+      ...(selection.rememberedEffort != null ? { reasoningEffort: selection.rememberedEffort } : {}) };
   }
-  const client = project.client;
-  if (!client) throw new Error("Core 未连接");
-  const { operation, threadId } = request;
-  if (operation === "taskDraftStart") {
-    if (typeof request.draftId !== "string" || !/^[0-9a-f-]{36}$/.test(request.draftId))
-      throw new Error("缺少配置草稿标识");
-    const zone = timeZone(request.timeZone);
-    const draftId = request.draftId;
-    return serial(project, draftId, async () => {
-      const client = project.client;
-      if (!client) throw new Error("Core 未连接");
-      const task = request.taskId
-        ? await client.request(
-            "areal/task/read",
-            { taskId: text(request.taskId, "任务", 128) },
-            { decode: readTask },
-          )
-        : null;
-      if (task && task.mode !== "scheduled") throw new Error("只有定时任务具有管理会话。");
-      if (task && !client.capabilities?.methods.includes("areal/task/update"))
-        throw new Error("当前 Core 尚不支持修改计划，请更新本机 Core 后重试。");
-      const receipts = Object.values(project.outcomes ?? {}).filter(
-        (value) => value.accepted === true && value.taskId === task?.id && value.draftThreadId,
-      );
-      // Reuse the original management conversation, including older edit history.
-      const original =
-        task && (receipts.find((value) => value.method === "areal/task/create") ?? receipts.at(-1));
-      if (original) {
-        const thread = await inspect(project, original.draftThreadId);
-        if (!targetOf(thread)) {
-          if (thread.turns.some((turn) => turn.status === "inProgress"))
-            throw new Error("正在整理任务，请等待回复完成。");
-          await backend.configureThread(project, thread.id, {
-            options: {
-              readOnly: true,
-              toolAllowlist: [],
-              maxModelRounds: 1,
-              systemPrompt: instructions(zone, true),
-              appendInstructions: `${marker}\nTime zone: ${zone}\n${workspaceContext(project, thread.cwd)}\n${targetPrefix}${JSON.stringify(taskDraftTarget(task))}`,
-            },
-          });
-        }
-        await backend.refreshAfterAdmission(project, thread.id);
-        return { threadId: thread.id, requestId: request.draftId };
-      }
-      if (task?.cancelled) throw new Error("此任务已取消，且没有可恢复的管理会话。");
-      const anchor = task
-        ? (
-            await client.request(
-              "thread/read",
-              { threadId: task.threadId, includeTurns: false },
-              { decode: readThreadMetadata },
-            )
-          ).thread
-        : null;
-      const cwd = await taskDirectory(project, anchor?.cwd ?? request.cwd);
-      let started = project.outcomes?.[draftId];
-      if (!started?.accepted || !started.threadId) {
-        const receipts = await client.request(
-          "areal/request/read",
-          { requestId: request.draftId },
-          { decode: readReceipts },
-        );
-        const receipt = receipts.data.find(
-          (value) =>
-            value.method === "areal/thread/start" &&
-            (value.threadId ||
-              (modelRecord(value.result) &&
-                modelRecord(value.result.thread) &&
-                typeof value.result.thread.id === "string")),
-        );
-        if (receipt)
-          started = {
-            accepted: true,
-            threadId: receipt.threadId ?? readThreadAdmission(receiptResult(receipt)).thread.id,
-          };
-      }
-      /** @type {Thread} */
-      let thread;
-      let modelNotice;
-      if (started?.accepted && started.threadId) {
-        ({ thread } = await client.request(
-          "thread/read",
-          { threadId: started.threadId, includeTurns: true },
-          { decode: readObservationResult },
-        ));
-        if ((await taskDirectory(project, thread.cwd)) !== cwd)
-          throw new Error("配置草稿已绑定其他工作目录，请恢复原目录或创建新草稿");
-      } else {
-        if (project.pending.some((entry) => entry.params.requestId === request.draftId))
-          throw Object.assign(new Error("原配置会话创建结果尚未确认；不会重复创建。"), {
-            submissionUnknown: true,
-          });
-        await backend.resources.beforeCreate(project);
-        const selection = resolveNewConversationModel(
-          backend.providers.catalog(project.models ?? [], project),
-          backend.providers.lastAcceptedModel,
-          true,
-        );
-        const model = selection.candidate;
-        modelNotice = selection.notice;
-        if (model?.providerId === "areal_openai")
-          await backend.providers.ensureSubscription(project);
-        const admitted = await backend.submit(
-          project,
-          "areal/thread/start",
-          {
-            cwd,
-            ...(model?.providerId
-              ? { model: { providerId: model.providerId, modelId: model.modelId } }
-              : {}),
-            parameters: {
-              ...model?.parameters,
-              ...(selection.rememberedEffort != null
-                ? { reasoningEffort: selection.rememberedEffort }
-                : {}),
-            },
-          },
-          { requestId: request.draftId },
-        );
-        try {
-          ({ thread } = readObservationResult(admitted));
-        } catch (cause) {
-          throw Object.assign(cause instanceof Error ? cause : new Error(String(cause)), {
-            code: "ADMISSION_RESULT_INVALID",
-            submissionUnknown: true,
-            outcome: { kind: "unconfirmed" },
-            recovery: { kind: "queryOriginal" },
-          });
-        }
-      }
-      try {
-        await backend.changeOutcomes(project, (outcomes) => ({
-          ...outcomes,
-          [draftId]: { accepted: true, method: "areal/thread/start", threadId: thread.id },
-        }));
-      } catch {
-        throw Object.assign(new Error("配置会话已创建，但本机确认记录未保存；请先核对。"), {
-          submissionUnknown: true,
-        });
-      }
-      if (!isTaskDraftConfiguration(thread.desktop?.configuration)) {
-        // 此限制由 Core 配置强制执行，不能只依赖提示词要求模型不调用工具。
-        await backend.configureThread(project, thread.id, {
-          options: {
-            readOnly: true,
-            toolAllowlist: [],
-            maxModelRounds: 1,
-            systemPrompt: instructions(zone, !!task),
-            appendInstructions: `${marker}\nTime zone: ${zone}\n${workspaceContext(project, cwd)}${task ? `\n${targetPrefix}${JSON.stringify(taskDraftTarget(task))}` : ""}`,
-          },
-        });
-      } else await inspect(project, thread.id);
-      await backend.refreshAfterAdmission(project, thread.id);
-      return {
-        threadId: thread.id,
-        requestId: request.draftId,
-        ...(modelNotice ? { modelNotice } : {}),
-      };
-    });
+  if (request.operation === "taskDraftSend") {
+    payload.input = messageInput(backend, request);
+    for (const key of ["text", "attachments", "mcpContent", "conversationQuotes"]) delete payload[key];
   }
-  if (operation === "taskDraftHistory") {
-    const taskId = text(request.taskId, "任务", 128);
-    await client.request("areal/task/read", { taskId });
-    // Creation receipts link immutable configuration history to the execution Task.
-    // Older tasks without a receipt have no invented creation transcript.
-    const receipt = Object.values(project.outcomes ?? {}).find(
-      (value) =>
-        value.accepted === true &&
-        value.method === "areal/task/create" &&
-        value.taskId === taskId &&
-        value.draftThreadId,
-    );
-    if (!receipt) return { messages: [] };
-    const history = view(await inspect(project, receipt.draftThreadId), project);
-    return { threadId: history.threadId, messages: history.messages, timeZone: history.timeZone };
-  }
-  if (operation === "taskDraftRead") {
-    const thread = await inspect(project, threadId),
-      task = await committed(project, threadId, (thread.turns ?? []).at(-1)?.id);
-    const { projections: _projections, ...draft } = view(thread, project);
-    let preview;
-    const schedule = task?.scheduleV2 ?? draft.proposal?.scheduleV2;
-    if (schedule) {
-      try {
-        preview = await client.request("areal/task/schedule/preview", { schedule, count: 5 });
-      } catch (cause) {
-        return {
-          ...draft,
-          proposal: null,
-          error: cause instanceof Error ? cause.message : String(cause),
-          thread: displayThread(thread, project),
-        };
-      }
-    }
-    return {
-      ...draft,
-      preview,
-      thread: displayThread(thread, project),
-      ...(task ? { task, proposal: null, digest: null, error: "" } : {}),
-    };
-  }
-  const selectedThreadId = text(threadId, "配置会话", 128);
-  return serial(project, selectedThreadId, async () => {
-    const client = project.client;
-    if (!client) throw new Error("Core 未连接");
-    const threadId = selectedThreadId;
-    const thread = await inspect(project, threadId),
-      target = targetOf(thread);
-    const task = await committed(project, threadId, (thread.turns ?? []).at(-1)?.id);
-    if (task) {
-      if (operation === "taskDraftConfirm") return task;
-      if (!target) throw new Error("此安排已经创建，请从列表查看任务或开始新的安排。");
-    }
-    if (thread.turns.some((turn) => turn.status === "inProgress"))
-      throw new Error("正在整理任务，请等待当前回复完成。");
-    if (operation === "taskDraftSend") {
-      const input = messageInput(backend, request);
-      if (!input.length) throw new Error("消息不能为空");
-      const zone = timeZone(request.timeZone);
-      const now = await client.request(
-        "areal/task/schedule/context",
-        { timeZone: zone },
-        { decode: readCivilContext },
-      );
-      const currentTask = target
-        ? await client.request("areal/task/read", { taskId: target.taskId }, { decode: readTask })
-        : null;
-      if (currentTask?.cancelled) throw new Error("此任务已取消，不能继续修改。");
-      await backend.configureThread(project, threadId, {
-        ...(request.model !== undefined
-          ? {
-              model: request.model
-                ? { providerId: request.model.providerId, modelId: request.model.modelId }
-                : null,
-            }
-          : {}),
-        ...(request.effort ? { parameters: { reasoningEffort: request.effort } } : {}),
-        options: {
-          readOnly: true,
-          toolAllowlist: [],
-          maxModelRounds: 1,
-          systemPrompt: instructions(zone, !!target),
-          appendInstructions: `${marker}\nTime zone: ${zone}\n${workspaceContext(project, thread.cwd)}\nCore current civil time: ${now.localDate}T${now.localTime} in ${now.timeZone}. Use structured civil rules; Core resolves and saves the original intent.${currentTask ? `\n${targetPrefix}${JSON.stringify(taskDraftTarget(currentTask))}` : ""}`,
-        },
-      });
-      const result = readAdmission(
-        await backend.submit(
-          project,
-          "areal/turn/start",
-          { threadId, input },
-          { requestId: request.requestId },
-        ),
-      );
-      return { threadId, turnId: result.turn?.id ?? result.turnId };
-    }
-    if (operation !== "taskDraftConfirm") throw new Error("不支持的任务配置操作");
-    const draft = view(thread, project);
-    if (
-      !draft.proposal ||
-      !draft.turnId ||
-      draft.turnId !== request.turnId ||
-      draft.digest !== request.digest
-    )
-      throw new Error(draft.error || "安排已经变化，请确认最新摘要。");
-    const confirmedTurnId = draft.turnId;
-    try {
-      if (target) {
-        const currentTask = await client.request(
-          "areal/task/read",
-          { taskId: target.taskId },
-          { decode: readTask },
-        );
-        if (currentTask.revision !== target.expectedRevision)
-          throw new Error("任务已经变化，本次修改未保存。请重新发送修改要求，以最新安排为准。");
-        const { action, ...patch } = draft.proposal;
-        const method = action ? `areal/task/${action}` : "areal/task/update";
-        const requestId = key(threadId, `edit:${draft.turnId}`);
-        if (!(action && ["pause", "cancel"].includes(action)))
-          await backend.scheduleAdmission.admitTask(project, target.taskId, action ?? "update");
-        const updated = readTaskAdmission(
-          await backend.submit(project, method, patch, { requestId }),
-        );
-        project.model.setTask(updated);
-        try {
-          await backend.changeOutcomes(project, (outcomes) => ({
-            ...outcomes,
-            [requestId]: {
-              method,
-              accepted: true,
-              draftThreadId: threadId,
-              turnId: confirmedTurnId,
-              taskId: updated.id,
-              taskDraftMessage: savedMessage(method, updated, draft.timeZone),
-            },
-          }));
-        } catch {
-          throw Object.assign(new Error("修改已被受理，但本机确认记录未保存；请核对当前安排。"), {
-            submissionUnknown: true,
-          });
-        }
-        return updated;
-      }
-      // 任何未知提交仍由共享日志阻止重放；稳定键仅用于明确失败后的
-      // 用户重试复用空执行会话，以及成功响应后的重复确认去重。
-      if (
-        project.pending.some(
-          (entry) =>
-            entry.params.threadId === threadId ||
-            entry.params.requestId === key(threadId, "execution") ||
-            entry.params.requestId === key(threadId, "confirm"),
-        )
-      )
-        throw new Error("原提交结果尚未确认，请先核对任务列表；不会重复创建。");
-      const values = { ...draft.proposal };
-      if (values.scheduleV2)
-        await client.request("areal/task/schedule/preview", {
-          schedule: values.scheduleV2,
-          count: 5,
-        });
-      if (values.mode === "scheduled") {
-        await backend.scheduleAdmission.reserveDraft(
-          project,
-          threadId,
-          await taskDirectory(project, thread.cwd),
-          {
-            executionRequestId: key(threadId, "execution"),
-            taskRequestId: key(threadId, "confirm"),
-          },
-        );
-        await backend.resources.beforeCreate(project);
-        const execution = readThreadAdmission(
-          await backend.submit(
-            project,
-            "areal/thread/start",
-            { cwd: thread.cwd },
-            { requestId: key(threadId, "execution") },
-          ),
-        );
-        values.threadId = execution.thread.id;
-        await backend.scheduleAdmission.setAnchor(project, values.threadId);
-      }
-      const created = readTaskAdmission(
-        await backend.submit(project, "areal/task/create", values, {
-          requestId: key(threadId, "confirm"),
-        }),
-      );
-      project.model.setTask(created);
-      try {
-        if (created.mode === "scheduled") await backend.scheduleAdmission.bind(project, created);
-        await backend.taskWorkspaceOwners?.observe(project, created);
-        await backend.changeOutcomes(project, (outcomes) => ({
-          ...outcomes,
-          [key(threadId, "confirm")]: {
-            method: "areal/task/create",
-            accepted: true,
-            draftThreadId: threadId,
-            turnId: confirmedTurnId,
-            taskId: created.id,
-            taskDraftMessage: savedMessage("areal/task/create", created, draft.timeZone),
-          },
-        }));
-      } catch {
-        throw Object.assign(new Error("任务已被受理，但本机确认记录未保存；请核对任务列表。"), {
-          submissionUnknown: true,
-        });
-      }
-      return created;
-    } catch (error) {
-      const failure = error instanceof Error ? error.message : String(error);
-      const message =
-        modelRecord(error) && error.submissionUnknown
-          ? "保存结果尚未确认，请核对任务列表；不会重复保存。"
-          : `这次安排未保存。${failure}`;
-      try {
-        await backend.changeOutcomes(project, (outcomes) => ({
-          ...outcomes,
-          [key(threadId, `failed:${draft.turnId}`)]: {
-            accepted: false,
-            draftThreadId: threadId,
-            turnId: confirmedTurnId,
-            taskDraftMessage: message,
-            taskDraftError: failure,
-          },
-        }));
-      } catch {}
-      throw error;
-    }
-  });
-}
-/** @param {unknown} value */
-function readCivilContext(value) {
-  if (
-    !modelRecord(value) ||
-    typeof value.localDate !== "string" ||
-    typeof value.localTime !== "string" ||
-    typeof value.timeZone !== "string"
-  )
-    throw new Error("Core 当前民用时间结构无效");
-  return { localDate: value.localDate, localTime: value.localTime, timeZone: value.timeZone };
+  const reading = request.operation === "taskDraftRead" || request.operation === "taskDraftHistory";
+  const value = await backend.hostCall(reading ? "tasks.read" : "tasks.command", payload);
+  if (request.operation === "taskDraftConfirm") project.model.setTask(readTask(value));
+  if (modelRecord(value) && typeof value.threadId === "string" && !reading)
+    await backend.refreshAfterAdmission(project, value.threadId);
+  return modelNotice && modelRecord(value) ? { ...value, modelNotice } : value;
 }
 module.exports = {
   manageTaskDraft,

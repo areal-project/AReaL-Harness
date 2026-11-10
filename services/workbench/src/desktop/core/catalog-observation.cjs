@@ -134,7 +134,6 @@ class CatalogObservation {
                 (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
             );
           }
-          if (current()) await this.host.library.recordThreadSummaries(project.id, data);
           if (current()) {
             project.summaries = data;
             project.summariesLoaded = true;

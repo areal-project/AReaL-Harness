@@ -61,7 +61,7 @@ Desktop `manage.taskCreate` in `scheduled` mode and `manage.taskDraftConfirm` us
 | Host disconnect while pending | Run pauses as hostUnavailable; old requestId is rejected. Answer the new question after resume. |
 | Cancelled, completed, wrong Session/anchor, or expired interaction | Reject without consuming another valid pending interaction. |
 
-From the repository root, `node clients/gui/scripts/worktree-schedule-interactions.mjs` verifies the real Core protocol with a deterministic local model and no Electron. Its manifest separates protocol validation from Runtime payload results. A protocol pass cannot establish verified writes when native file execution did not succeed. See the [worktree guide](../guides/worktrees.en.md) for directory and branch rules, old snapshot compatibility, concurrency, and isolation limits.
+See the [worktree guide](../guides/worktrees.en.md) for directory and branch rules, old snapshot compatibility, concurrency, and isolation limits.
 
 ## Authentication and connection
 

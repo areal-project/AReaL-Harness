@@ -8,7 +8,7 @@ const {
 const { startupTrace } = require("./startup-timing.cjs");
 const diagnostics = require("./diagnostics.cjs");
 
-const { GuiHostProjects, requestIdFor } = require("./gui-host-projects.cjs");
+const { GuiHostProjects } = require("./gui-host-projects.cjs");
 const { LifecycleOperations } = require("./lifecycle-operations.cjs");
 const { randomUUID, createHash } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
@@ -59,7 +59,7 @@ const { SubmissionRecovery, operationOf, isRemoteControl } = require("./submissi
 /** @typedef {import('./project-state.cjs').CoreProject} Project */
 /** @typedef {import('@areal/runtime-client/core').CoreClient} Client */
 /** @typedef {Record<string,unknown>} Fields */
-/** @typedef {{binary:string,home:string,hostHome?:string,guiProfile?:string,sourceSingletonHeld?:boolean,configHome?:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,harnessHome?:string,config?:string,desktopConfig?:string,userHome?:string,toolExtensions?:string,workgroupPolicy?:string,workgroupToolchain?:string,sandboxProfile?:string,desktopProcesses?:boolean,defaultProfile?:import('@areal/workbench/desktop-contract').ResourceRef,encryption?:import('electron').SafeStorage,proxyEnvironment?:NodeJS.ProcessEnv,onChange?:()=>void,rustDomains?:string[]}} CoreBackendOptions */
+/** @typedef {{binary:string,home:string,hostHome?:string,guiProfile?:string,sourceSingletonHeld?:boolean,configHome?:string,applicationOwner?:import('./application-owner.cjs').ApplicationOwner,harnessHome?:string,config?:string,desktopConfig?:string,userHome?:string,toolExtensions?:string,workgroupPolicy?:string,workgroupToolchain?:string,sandboxProfile?:string,desktopProcesses?:boolean,defaultProfile?:import('@areal/workbench/desktop-contract').ResourceRef,encryption?:import('electron').SafeStorage,proxyEnvironment?:NodeJS.ProcessEnv,onChange?:()=>void}} CoreBackendOptions */
 /** 每个项目连接公开的共享 Core 服务；这里只保留可重建投影与客户端受理回执。 */
 class CoreBackend {
   /** @param {CoreBackendOptions} options */
@@ -88,10 +88,10 @@ class CoreBackend {
     if (!binary || !isAbsolute(binary))
       throw new Error("请设置 AREAL_CORE_BIN 为 areal 可执行文件的绝对路径");
     this.binary = binary;
-    /** @type {((call:string,params:unknown)=>Promise<unknown>)|undefined} */
-    this.hostCall = undefined;
-    /** @type {string[]} */
-    this.rustDomains = [];
+    /** 工作台启动时由 Host 管道替换。 @type {(call:string,params:unknown)=>Promise<unknown>} */
+    this.hostCall = async () => {
+      throw Object.assign(new Error("Host 管道尚未就绪"), { code: "CAPABILITY_UNAVAILABLE" });
+    };
     /** @type {Map<string,import('../../host-core-client').HostCoreClient>} */
     this.hostCoreClients = new Map();
     this.applicationOwner = applicationOwner;
@@ -205,7 +205,6 @@ class CoreBackend {
         },
         get hostCall() { return backend.hostCall; },
         get hostCoreClients() { return backend.hostCoreClients; },
-        get rustDomains() { return backend.rustDomains; },
         get host() { return backend.host; },
         get applicationOwner() {
           return backend.applicationOwner;
@@ -319,7 +318,6 @@ class CoreBackend {
     if (!this._submissions) {
       const backend = this;
       this._submissions = new SubmissionRecovery({
-        get rustDomains() { return backend.rustDomains; },
         get awaitingResponses() {
           return backend.awaitingResponses;
         },
@@ -373,7 +371,6 @@ class CoreBackend {
       await this.library.init();
       await this.cloudConversations.init();
       await this.worktrees.init();
-      await this.taskWorkspaceOwners.init();
       trace.advance("projectless");
       await this.projectless.init();
       trace.advance("analytics");
@@ -388,7 +385,6 @@ class CoreBackend {
       await this.resources.init();
       await this.lifecycleOperations.reconcileLoaded();
       await this.refreshHostProjects({ observeForeign: true });
-      void this.worktrees.autoCleanup().catch(() => {});
       trace.finish("ok");
     } catch (error) {
       trace.finish("error", error);
@@ -451,33 +447,14 @@ class CoreBackend {
     const registration = (this.projectWrites ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        if (this.rustDomains.includes("worktree-rust") && this.hostCall) {
-          const registered = await this.hostCall("worktree.project.add", {
-            root,
-            ...(worktreeResources ? { worktreeResources } : {}),
-            ...(projectlessRequestId ? { projectlessRequestId } : {}),
-          });
-          if (!modelRecord(registered) || registered.projectId !== id)
-            throw new Error("Host 项目登记回执与目录不匹配");
-          this.saved = await this.host.list();
-          return;
-        }
-        if (this.saved.some((project) => project.id === id)) return;
-        const saved = [
-          ...this.saved,
-          {
-            id,
-            root,
-            ...(worktreeResources ? { worktreeResources } : {}),
-            ...(projectlessRequestId ? { projectless: true, projectlessRequestId } : {}),
-          },
-        ];
-        await this.save("projects.json", saved);
-        await this.host.register(
-          requestIdFor(`${this.host.sourceId}:register:${id}`),
-          saved[saved.length - 1],
-        );
-        this.saved = saved;
+        const registered = await this.hostCall("worktree.project.add", {
+          root,
+          ...(worktreeResources ? { worktreeResources } : {}),
+          ...(projectlessRequestId ? { projectlessRequestId } : {}),
+        });
+        if (!modelRecord(registered) || registered.projectId !== id)
+          throw new Error("Host 项目登记回执与目录不匹配");
+        this.saved = await this.host.list();
       });
     this.projectWrites = registration.catch(() => {});
     await registration;
@@ -488,18 +465,13 @@ class CoreBackend {
   }
 
   snapshot() {
-    const taskHistoryOwners = new Set(
-      this.saved
-        .filter((project) => this.taskWorkspaceOwners.hosts.get(project.id)?.size)
-        .map((project) => project.logicalProjectId ?? project.id),
-    );
     return {
       library: this.library.value,
       subscription: this.providers.subscription,
       projectless: this.projectless.snapshot(),
       power: this.power ?? null,
       projects: this.worktrees.aggregate(
-        this.saved.map((project) => snapshotProject(this, project, taskHistoryOwners)),
+        this.saved.map((project) => snapshotProject(this, project)),
       ),
     };
   }
@@ -1212,16 +1184,6 @@ class CoreBackend {
     if (project.configurationChanges.has(threadId)) throw new Error("会话配置正在更新，请稍后重试");
     project.configurationChanges.set(threadId, token);
     try {
-      if (!this.rustDomains.includes("execution-rust")) {
-      await this.changePending(project, (pending) => {
-        if (
-          pending.some((value) => !isRemoteControl(value) && value.params.threadId === threadId)
-        ) {
-          throw new Error("该会话有未结算的请求结果，请先处理后再修改配置");
-        }
-        return pending;
-      });
-      }
       if (
         request.model === undefined &&
         request.profile === undefined &&
@@ -1670,6 +1632,7 @@ class CoreBackend {
     };
   }
 
+
   /** @param {Project} project @param {Fields} request */
   async createThreadInProject(project, request) {
     const prepared = await this.prepareThreadInProject(project, request);
@@ -1795,18 +1758,10 @@ class CoreBackend {
       case "dismissRecovery": {
         const requestId = request.requestId;
         if (typeof requestId !== "string") throw new Error("缺少原请求标识");
-        if (this.rustDomains.includes("execution-rust")) {
-          const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
-          if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
-          await project.client.dismiss(requestId);
-          await this.submissions.refreshProjectJournal(project);
-        } else {
-        await this.changeOutcomes(project, (previous) => {
-          const outcomes = { ...previous };
-          if (!outcomes[requestId]?.remote) delete outcomes[requestId];
-          return outcomes;
-        });
-        }
+        const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+        if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
+        await project.client.dismiss(requestId);
+        await this.submissions.refreshProjectJournal(project);
         break;
       }
       case "media":

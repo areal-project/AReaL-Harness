@@ -2,7 +2,7 @@
 "use strict";
 
 const { realpath } = require("node:fs/promises");
-const { isAbsolute, join } = require("node:path");
+const { isAbsolute } = require("node:path");
 const { desktopError } = require("@areal/workbench/desktop-contract");
 /** @typedef {import('./project-index.cjs').SavedProject} SavedProject */
 /** @typedef {import('@areal/runtime-client/core').CoreClient} CoreClient */
@@ -100,40 +100,8 @@ async function readServiceConnection(descriptor, workspace, dataDir, owner) {
   return { descriptor, token: "" };
 }
 
-/** @param {ServiceReference} target */
-const targetArguments = (target) => [
-  "--instance",
-  target.serviceId,
-  "--expected-generation",
-  target.generation,
-];
 
-/** @param {ServiceReader} backend @param {ServiceReference} target */
-async function lifecycleCapabilities(backend, target) {
-  if (backend.host) {
-    backend.host.client.requireCapability("stopOperations");
-    return { version: 1, stopOperations: 1 };
-  }
-  return withOriginalHost(backend, async (client) => { client.requireCapability("stopOperations"); return { version: 1, stopOperations: 1 }; });
-}
 
-/** @param {ServiceReader} backend @param {StopTarget} target @param {boolean} cancel @param {boolean} [suppressScheduling] */
-async function requestStop(backend, target, cancel, suppressScheduling = true) {
-  if (backend.host)
-    return hostStopOperation(
-      await backend.host.stop(
-        target.requestId,
-        target.projectId,
-        target.generation,
-        cancel ? "cancel" : "ifIdle",
-        suppressScheduling,
-      ),
-      target,
-      backend.host.resolve(target.projectId).projectId,
-    );
-  const result = await request(backend, ["stop", "--instance",target.serviceId,"--expected-generation",target.generation,"--request-id",target.requestId,...(cancel?["--cancel"]:[])]);
-  return hostStopOperation(result,target);
-}
 
 /** @param {ServiceReader} backend @param {StopTarget} target */
 async function readStop(backend, target) {
@@ -305,12 +273,9 @@ function serviceDescriptor(value) {
 module.exports = {
   authenticateService,
   connectService,
-  lifecycleCapabilities,
-  requestStop,
   readStop,
   detachStoppedProject,
   readOriginalTurn,
-  readTurnMetadata,
   inspectOriginalService,
   serviceRequest: request,
 };

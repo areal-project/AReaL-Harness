@@ -110,13 +110,6 @@ class HistoryObservation {
       return;
     }
     project.model.event(method, params);
-    if (params?.task)
-      void this.host.taskWorkspaceOwners.observeProject(project).catch(
-        /** @param {unknown} error */ (error) => {
-          project.error = error instanceof Error ? error.message : String(error);
-          this.host.onChange();
-        },
-      );
     if (method === "areal/context/compacted" && params?.threadId) {
       void this.openThread(project, params.threadId).catch(() => {});
     }
@@ -127,15 +120,6 @@ class HistoryObservation {
         params,
         this.host.library.value,
       );
-    if (method === "thread/started" || method === "turn/started" || method === "turn/completed") {
-      void this.host.library
-        .recordThreadActivity(
-          project.id,
-          params.threadId ?? params.thread?.id,
-          method === "turn/completed" ? (params.turn?.id ?? params.turnId) : undefined,
-        )
-        .catch(() => {});
-    }
     // 生命周期通知不带完整时间戳；仅回读目标摘要，并合并同一连接的重叠刷新。
     if (
       [
@@ -220,25 +204,6 @@ class HistoryObservation {
         ) {
           await this.listThreads(project);
           this.host.requireConnection(project, client);
-        }
-        for (const run of completed.values()) {
-          if (
-            !run.threadId ||
-            this.host.library.value.threads[
-              `${project.logicalProjectId ?? project.id}:${run.threadId}`
-            ]?.scheduledCompletionId === run.id
-          )
-            continue;
-          const { thread } = this.supportsBoundedHistory(client)
-            ? await this.readObservation(project, run.threadId, { client, install: false })
-            : await client.request(
-                "thread/read",
-                { threadId: run.threadId, includeTurns: true },
-                { decode: readObservationResult },
-              );
-          this.host.requireConnection(project, client);
-          const completionId = thread.turns?.findLast((turn) => turn.status === "completed")?.id;
-          await this.host.library.recordScheduledCompletion(project.id, run, completionId);
         }
       },
     );
@@ -559,17 +524,6 @@ class HistoryObservation {
       );
       if (window.views.size && !previous?.invalidated)
         void this.hydrateLatest(project, window).catch(() => {});
-    }
-    for (const turn of thread.turns ?? []) {
-      if (
-        turn.id &&
-        ["completed", "failed", "interrupted"].includes(turn.status ?? "") &&
-        previousThread?.turns?.some(
-          (previous) => previous.id === turn.id && previous.status === "inProgress",
-        )
-      ) {
-        void this.host.library.recordThreadActivity(project.id, thread.id, turn.id).catch(() => {});
-      }
     }
   }
 
