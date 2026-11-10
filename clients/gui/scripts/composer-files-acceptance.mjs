@@ -136,6 +136,23 @@ export async function runComposerFilesAcceptance({
   const assertInlineFileHover = async (identifier, absolutePath, screenshot) => {
     await identifier.waitFor();
     const hovered = await identifier.elementHandle();
+    // 悬停提示遇到任何滚动都会收起；记下悬停后的滚动，超时时一并报出。
+    await page.evaluate(() => {
+      const start = performance.now();
+      const scrolls = (window.__hoverScrolls = []);
+      document.addEventListener(
+        "scroll",
+        (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          if (scrolls.length < 8)
+            scrolls.push({
+              ms: Math.round(performance.now() - start),
+              target: target ? `${target.tagName}.${target.className}`.slice(0, 120) : "document",
+            });
+        },
+        { capture: true, passive: true },
+      );
+    });
     await identifier.hover();
     const tooltip = page.getByRole("tooltip").filter({ hasText: absolutePath });
     await tooltip.waitFor().catch(async (error) => {
@@ -145,8 +162,9 @@ export async function runComposerFilesAcceptance({
         connected: element.isConnected,
         hover: element.matches(":hover"),
       }));
+      const scrolls = await page.evaluate(() => window.__hoverScrolls);
       throw new Error(
-        `expected path tooltip ${absolutePath}, shown ${JSON.stringify(shown)}, target ${JSON.stringify(target)}`,
+        `expected path tooltip ${absolutePath}, shown ${JSON.stringify(shown)}, target ${JSON.stringify(target)}, scrolls ${JSON.stringify(scrolls)}`,
         { cause: error },
       );
     });

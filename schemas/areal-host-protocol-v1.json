@@ -65859,6 +65859,72 @@
         "data"
       ],
       "additionalProperties": false
+    },
+    "WorkbenchPrivatePluginsReadRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "call": {
+          "type": "string",
+          "const": "plugins.read"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchPluginsReadParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchPrivatePluginsCommandRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "call": {
+          "type": "string",
+          "const": "plugins.command"
+        },
+        "params": {
+          "$ref": "#/$defs/WorkbenchPluginsCommandParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchPrivatePluginsCommandResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorkbenchManagedPluginsResult"
+        },
+        {
+          "$ref": "#/$defs/WorkbenchManagedPluginDetail"
+        }
+      ]
     }
   },
   "x-current": {
@@ -66894,6 +66960,20 @@
         "recovery.importProvider": {
           "request": "#/$defs/WorkbenchPrivateRecoveryProviderImportRequest",
           "result": "#/$defs/RecoveryProviderImportResult",
+          "direction": "workbenchToHost",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
+        },
+        "plugins.read": {
+          "request": "#/$defs/WorkbenchPrivatePluginsReadRequest",
+          "result": "#/$defs/WorkbenchPluginsReadResult",
+          "direction": "workbenchToHost",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
+        },
+        "plugins.command": {
+          "request": "#/$defs/WorkbenchPrivatePluginsCommandRequest",
+          "result": "#/$defs/WorkbenchPrivatePluginsCommandResult",
           "direction": "workbenchToHost",
           "x-owner": "host",
           "source": "core/host/src/workbench_route.rs"
