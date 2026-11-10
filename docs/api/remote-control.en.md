@@ -251,7 +251,7 @@ Allow only signature-checked PNG/JPEG/GIF/WebP, maximum 16 MiB per artifact with
 
 Deployments may tighten limits. Increasing them requires backpressure tests. Protect pre-business HTTP/WS/Noise processing as well as final messages. Apply the current message limit (256 KiB before authorization, 8 MiB after authorization) in length-prefixed decoding before body allocation and JSON parsing, not after retaining the old 24 MiB decoder limit. Bound outer/base64 frames before decoding as well. Report effective limits in ready. Slow consumers must not slow the desktop or other devices.
 
-Errors have id and error containing code, redacted message, optional coreCode/commandId/observedState and submissionUnknown. Clients act on code, never message text. Codes include PROTOCOL_UNSUPPORTED, FORBIDDEN, GRANT_CHANGED, AUTH_REVOKED, PAIRING_EXPIRED, PAIRING_USED, CORE_UNAVAILABLE, CORE_INCOMPATIBLE, TURN_BUSY, TASK_CONTROL_REQUIRED, TARGET_CHANGED, INTERACTION_EXPIRED, COMMAND_CONFLICT, SUBMISSION_UNKNOWN, INVALID_PARAMS, LIMIT_EXCEEDED, CAPACITY_EXCEEDED, RESOURCE_UNAVAILABLE and RESYNC_REQUIRED.
+Errors have id and error containing code, redacted message, optional coreCode/commandId/observedState and submissionUnknown. Clients act on code, never message text. Codes include PROTOCOL_UNSUPPORTED, FORBIDDEN, GRANT_CHANGED, AUTH_REVOKED, PAIRING_EXPIRED, PAIRING_USED, CORE_UNAVAILABLE, CORE_INCOMPATIBLE, TURN_BUSY, TASK_CONTROL_REQUIRED, TARGET_CHANGED, INTERACTION_EXPIRED, COMMAND_CONFLICT, SUBMISSION_UNKNOWN, INVALID_PARAMS, ATTACHMENT_UNSUPPORTED, LIMIT_EXCEEDED, CAPACITY_EXCEEDED, RESOURCE_UNAVAILABLE and RESYNC_REQUIRED.
 
 ## C10. Recovery
 
