@@ -13,8 +13,8 @@ import { runWithIsolatedCA, until } from "./remote-native-push-fixture.mjs";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 import { createRemoteWire } from "../packages/remote/src/wire.mjs";
 
-const require = createRequire(new URL("../../../package.json", import.meta.url));
-const Ajv2020 = require("ajv/dist/2020.js").default;
+const require = createRequire(new URL("../app/package.json", import.meta.url));
+const Ajv2020 = createRequire(import.meta.url)("ajv/dist/2020.js").default;
 const WebSocket = require("ws");
 const schema = JSON.parse(
   await readFile(new URL("../../../schemas/areal-host-protocol-v1.json", import.meta.url), "utf8"),
