@@ -1483,6 +1483,10 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
             let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
             match call.as_str() {
                 "recovery.importProvider" => host.import_provider(serde_json::from_value(params)?),
+                // 桌面命令通道里的插件库操作与网关同一个入口。
+                "plugins.read" | "plugins.command" => {
+                    super::plugins::request(&host, &call, &params).await
+                }
                 "recovery.history" => {
                     crate::space::history::for_host(&host.home, serde_json::from_value(params)?)
                         .await

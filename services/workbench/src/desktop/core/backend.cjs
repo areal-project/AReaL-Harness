@@ -1680,6 +1680,20 @@ class CoreBackend {
       (request.operation === "pluginStoreSnapshot" || request.operation === "pluginStoreDoctor")
     )
       return require("./plugin-store-reader.cjs").readPluginStore(this, request);
+    if (name === "manage") {
+      // 插件库登记归 Host：桌面命令通道与界面走同一个 Host 方法，不再经各项目 Core。
+      const store = require("@areal/workbench/desktop-contract/plugin-store");
+      const operation = request.operation;
+      const read = operation === "plugins" || operation === "plugin" || operation === "mcp";
+      if (read || store.pluginStoreOperation(operation)) {
+        // logicalProjectId 是桌面通道内部的路由字段，Host 不认。
+        const { logicalProjectId: _logical, ...plain } = request;
+        return this.hostCall(
+          read ? "plugins.read" : "plugins.command",
+          store.hostPluginStoreParams(plain),
+        );
+      }
+    }
     if (name === "trajectory") return this.trajectory.command(request);
     if (name === "feedback") return this.feedback.command(request);
     if (name === "tasks") return taskCatalog(this, request);
