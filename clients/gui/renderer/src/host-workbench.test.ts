@@ -8,6 +8,7 @@ import {
   openingAuthorization,
 } from "./host-workbench.js";
 import { hostCommandError } from "./desktop-response.js";
+import { refreshModelCatalogs } from "./host-auxiliary-reads.js";
 import type { PlatformServices } from "./services.js";
 
 function setup(answer: (method: string, params: unknown) => unknown) {
@@ -721,6 +722,28 @@ describe("local web desktop commands", () => {
     expect(capabilities?.settings).toContain("模型服务");
     expect(capabilities?.settings).not.toContain("电脑控制");
     expect(hostPlatformCapabilities(client, undefined, undefined)?.mutations).toBe(false);
+  });
+
+  it("re-reads model catalogs after a successful model service write only", async () => {
+    let fail = false;
+    const client = {
+      writable: () => true,
+      snapshot: () => ({ connection: "connecting" }),
+      workbench: async () => {
+        if (fail) throw Object.assign(new Error("refused"), { code: "x" });
+        return {};
+      },
+    } as unknown as HostClient;
+    const command = hostDesktopCommand(client, hostCommandError);
+    let wakes = 0;
+    refreshModelCatalogs(client, [], new Map(), () => wakes++);
+    await command("providers", { operation: "list" } as never);
+    fail = true;
+    await command("providers", { operation: "saveAndApply" } as never);
+    expect(wakes).toBe(0);
+    fail = false;
+    await command("providers", { operation: "saveAndApply" } as never);
+    expect(wakes).toBe(1);
   });
 
   it("preserves a migration block for read-only history recovery", async () => {

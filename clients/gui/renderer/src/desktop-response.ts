@@ -176,6 +176,15 @@ export function readFileOpenResult(
 
 export { isLibraryState } from "@areal/workbench/desktop-contract/library-media";
 
+/** 命令是否会改动后台状态；认不出的命令按会改动处理。 */
+export function commandWrites(name: string, params: Record<string, unknown>) {
+  try {
+    return commandSemantics(name, params).effect !== "read";
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Host 命令通道的失败与桌面原通道同一份错误形状：保留错误码、受理结果与恢复方式。
  * 没有错误码说明回复丢了，写操作按“不确定是否受理”处理。
@@ -183,11 +192,7 @@ export { isLibraryState } from "@areal/workbench/desktop-contract/library-media"
 export function hostCommandError(name: string, params: Record<string, unknown>, error: unknown) {
   const shaped = desktopError(error);
   if (shaped.code !== undefined) return shaped;
-  let write = true;
-  try {
-    write = commandSemantics(name, params).effect !== "read";
-  } catch {}
-  return write
+  return commandWrites(name, params)
     ? {
         ...shaped,
         submissionUnknown: true,

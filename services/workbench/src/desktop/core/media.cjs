@@ -116,13 +116,13 @@ async function executeMediaCommand(project, request, backend) {
   } catch (cause) {
     const code = modelRecord(cause) ? String(cause.code) : "";
     const definite =
-      /^(INVALID_PARAMS|ATTACHMENT_UNSUPPORTED|LIMIT_EXCEEDED|RESOURCE_UNAVAILABLE|FORBIDDEN)$/.test(code);
+      /^(INVALID_PARAMS|ATTACHMENT_UNSUPPORTED|LIMIT_EXCEEDED|RESOURCE_UNAVAILABLE|FORBIDDEN)$/;
     throw Object.assign(
       new Error(
         `附件上传结果待核对：${cause instanceof Error ? cause.message : String(cause)}。不会自动重发。`,
       ),
       // 明确被拒时带回错误码，界面按文案表说明原因。
-      { submissionUnknown: !definite, ...(definite ? { code } : {}) },
+      definite.test(code) ? { submissionUnknown: false, code } : { submissionUnknown: true },
     );
   }
 }
