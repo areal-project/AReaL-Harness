@@ -268,19 +268,34 @@ impl Local {
             no_deployment_mcp: args.strict_mcp_config,
             ..Default::default()
         };
-        let mut input = areal_host::ResolveProject::from_local_args(&options)?;
-        for (name, value) in env {
-            if let Some(old) = input.credentials.insert(name.clone(), value.clone()) {
-                ensure!(old == value, "conflicting model and MCP environment");
+        let resolve = || -> Result<areal_host::ResolveProject> {
+            let mut input = areal_host::ResolveProject::from_local_args(&options)?;
+            for (name, value) in &env {
+                if let Some(old) = input.credentials.insert(name.clone(), value.clone()) {
+                    ensure!(&old == value, "conflicting model and MCP environment");
+                }
+                if !input.launch_inputs.credential_names.contains(name) {
+                    input.launch_inputs.credential_names.push(name.clone());
+                }
             }
-            if !input.launch_inputs.credential_names.contains(&name) {
-                input.launch_inputs.credential_names.push(name);
+            Ok(input)
+        };
+        // 启动参数先校验，无效时不拉起 Host。
+        let input = resolve()?;
+        let client = areal_host::Client::connect_or_start().await?;
+        let opened = match client.open(input).await {
+            // 续接时本进程独占这个会话（client.lock）；权限等启动参数变了，由它显式重启空闲的会话服务。
+            Err(error)
+                if args.resume.is_some()
+                    && format!("{error:#}")
+                        .contains(areal_local_service::CONFIGURATION_CONFLICT) =>
+            {
+                client
+                    .restart(resolve()?, areal_host::StopStrategy::IfIdle)
+                    .await?
             }
-        }
-        let opened = areal_host::Client::connect_or_start()
-            .await?
-            .open(input)
-            .await?;
+            opened => opened?,
+        };
         let service = opened.service()?;
         let profile = args
             .agent
