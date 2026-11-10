@@ -69,7 +69,8 @@ function pluginMutation(value) {
 /** @param {unknown} value @returns {value is ManagementRequest} */
 function isManagementRequest(value) {
   if (!modelRecord(value) || typeof value.operation !== "string") return false;
-  if (pluginStore.pluginStoreOperation(value.operation)) return pluginStore.isPluginStoreRequest(value);
+  if (pluginStore.pluginStoreOperation(value.operation))
+    return pluginStore.isPluginStoreRequest(value);
   if (["pluginStoreSnapshot", "pluginStoreDoctor"].includes(value.operation))
     return (
       (value.projectId === undefined ||

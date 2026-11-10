@@ -1,12 +1,6 @@
 import { TitleTooltip } from "@areal/ui";
 import type { ManagementRequest } from "../services.js";
-import {
-  useI18n,
-  UiMessageError,
-  type UiMessage,
-  type MessageId,
-  formatUiMessage,
-} from "../i18n/IntlProvider.js";
+import { useI18n, UiMessageError, type UiMessage, formatUiMessage } from "../i18n/IntlProvider.js";
 import { useSettingsOperation } from "./useSettingsOperation.js";
 import { useDraftBlocker, useGuardedNavigation } from "./UnsavedChanges.js";
 import { useEffect, useRef, useState } from "react";
@@ -90,7 +84,9 @@ export function McpSettings({
       });
     }
     if (!server || Array.isArray(server) || typeof server !== "object")
-      throw new UiMessageError({ id: "settings.resourceSettings.theMCPConfigurationIsNotValidJSON" });
+      throw new UiMessageError({
+        id: "settings.resourceSettings.theMCPConfigurationIsNotValidJSON",
+      });
     if (typeof server.url !== "string" && !String(server.command ?? "").trim())
       throw new UiMessageError({ id: "settings.resourceSettings.commandCannotBeEmpty" });
     if (typeof server.url === "string") {
@@ -124,7 +120,6 @@ export function McpSettings({
     setConfig(text);
     setError("");
   };
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- 外部“新增”入口以计数请求打开编辑器
   useEffect(() => {
     if (addRequest) edit();
   }, [addRequest]);
@@ -143,8 +138,7 @@ export function McpSettings({
       !item.owner.pluginId.endsWith(LOCAL_MCP) &&
       matches(`${item.serverId} ${pluginSourceLabel(item.owner, t)}`),
   );
-  const localState = (id: string) =>
-    pluginServers.find((item) => item.owner.pluginId === id);
+  const localState = (id: string) => pluginServers.find((item) => item.owner.pluginId === id);
   return (
     <div className="resource-settings">
       {!draft && (
@@ -195,7 +189,9 @@ export function McpSettings({
                     {live && <SettingsBadge>{pluginMcpStateLabel(live.state, t)}</SettingsBadge>}
                     <Button
                       variant="ghost"
-                      aria-label={t("settings.resourceSettings.editMCPValue", { value0: item.name })}
+                      aria-label={t("settings.resourceSettings.editMCPValue", {
+                        value0: item.name,
+                      })}
                       disabled={disabled}
                       onClick={() => edit(item)}
                     >

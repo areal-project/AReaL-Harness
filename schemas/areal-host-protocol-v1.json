@@ -14502,7 +14502,21 @@
         "params",
         "context"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "session.openPersisted",
+          "params": {
+            "threadId": "thread",
+            "view": "conversation"
+          },
+          "context": {
+            "projectId": "project"
+          }
+        }
+      ]
     },
     "LoopbackSessionOpenRequest": {
       "type": "object",
@@ -64906,6 +64920,11 @@
         {
           "$ref": "#/$defs/RecoverySpaceInspectResult"
         }
+      ],
+      "examples": [
+        {
+          "kind": "none"
+        }
       ]
     },
     "LocalRecoveryInspectRequest": {
@@ -65040,7 +65059,19 @@
         "attachments",
         "page"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "projectId": "project",
+          "threadId": "thread",
+          "snapshotId": "snapshot",
+          "serviceGeneration": "generation",
+          "capturedAt": 0,
+          "readOnly": true,
+          "attachments": "unavailable",
+          "page": {}
+        }
+      ]
     },
     "LocalRecoveryHistoryRequest": {
       "type": "object",
@@ -65074,7 +65105,9 @@
           "id": "example",
           "method": "recovery.history",
           "params": {
-            "spaceId": "00000000-0000-4000-8000-000000000000"
+            "spaceId": "00000000-0000-4000-8000-000000000000",
+            "projectId": "project",
+            "threadId": "thread"
           }
         }
       ]
@@ -65470,7 +65503,15 @@
         "state",
         "templateDigest"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "requestId": "00000000-0000-4000-8000-000000000000",
+          "providerId": "provider",
+          "state": "completed",
+          "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
     },
     "LocalRecoveryProviderImportRequest": {
       "type": "object",
@@ -65497,7 +65538,20 @@
         "method",
         "params"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "recovery.importProvider",
+          "params": {
+            "requestId": "00000000-0000-4000-8000-000000000000",
+            "spaceId": "00000000-0000-4000-8000-000000000000",
+            "providerId": "provider",
+            "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ]
     },
     "WorkbenchPrivateRecoveryProviderImportRequest": {
       "type": "object",
@@ -65666,6 +65720,29 @@
         },
         {
           "$ref": "#/$defs/WorkbenchManagedPluginDetail"
+        },
+        {
+          "$ref": "#/$defs/WorkbenchLocalMcpList"
+        }
+      ],
+      "examples": [
+        {
+          "revision": 0,
+          "data": [],
+          "marketplaces": [],
+          "errors": []
+        },
+        {
+          "revision": 0,
+          "data": [
+            {
+              "name": "docs",
+              "id": "docs@local-mcp",
+              "server": {
+                "url": "https://mcp.example.test/mcp"
+              }
+            }
+          ]
         }
       ]
     },
@@ -65755,6 +65832,46 @@
           "submissionUnknown": false
         }
       ]
+    },
+    "WorkbenchLocalMcpList": {
+      "type": "object",
+      "description": "Directly added MCP servers, each stored as a single-server plugin.",
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "server": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "name",
+              "id",
+              "server"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "revision",
+        "data"
+      ],
+      "additionalProperties": false
     }
   },
   "x-current": {

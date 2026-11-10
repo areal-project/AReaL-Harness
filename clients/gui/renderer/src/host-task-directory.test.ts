@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HostClient, ShellProject } from "@areal/client";
 import { refreshTaskDirectory, type TaskDirectoryState } from "./host-task-directory.js";
 

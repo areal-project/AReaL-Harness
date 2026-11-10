@@ -1,7 +1,6 @@
 import { useRef, useState, type RefObject } from "react";
 import { currentErrorText } from "../errors/currentErrorText.js";
-import type { ManagementResponseMap } from "../services.js";
-import { pluginStoreOperation } from "@areal/workbench/desktop-contract/plugin-store";
+import { pluginStoreOperation, type ManagementResponseMap } from "../services.js";
 import type {
   PluginCommand,
   PluginMutationRequest,
@@ -99,7 +98,8 @@ export function usePluginSubmission() {
         const error = failure(cause);
         const originalFailure = { ...original, requestId: error.requestId ?? requestId };
         // 登记写入没有可查的项目回执：随后重读的登记就是结果，不进入“核对原提交”。
-        const checkable = values.operation !== "pluginAuth" && !pluginStoreOperation(values.operation);
+        const checkable =
+          values.operation !== "pluginAuth" && !pluginStoreOperation(values.operation);
         if (error.submissionUnknown && checkable) setSubmission(originalFailure);
         setError({
           ...error,

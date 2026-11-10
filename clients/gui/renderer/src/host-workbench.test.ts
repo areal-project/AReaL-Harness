@@ -355,7 +355,13 @@ describe("plugin store Host routing", () => {
       workbench: async (method: string, params: unknown, commandId?: string) => {
         requests.push({ method, params, commandId });
         return commandId
-          ? { commandId, method, admissionState: "accepted", submissionUnknown: false, receipt: { ok: 1 } }
+          ? {
+              commandId,
+              method,
+              admissionState: "accepted",
+              submissionUnknown: false,
+              receipt: { ok: 1 },
+            }
           : { revision: 1, data: [] };
       },
     } as unknown as HostClient;
@@ -404,7 +410,12 @@ describe("plugin store Host routing", () => {
       ],
       [
         "plugins.command",
-        { operation: "pluginConfigure", id: "web-search@areal-official", enabled: false, expectedRevision: 2 },
+        {
+          operation: "pluginConfigure",
+          id: "web-search@areal-official",
+          enabled: false,
+          expectedRevision: 2,
+        },
       ],
       [
         "plugins.command",

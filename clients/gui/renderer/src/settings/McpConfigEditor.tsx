@@ -172,7 +172,9 @@ export function McpConfigEditor({
                   type="number"
                   min={1}
                   placeholder="120000"
-                  value={config.tool_timeout_sec === undefined ? "" : config.tool_timeout_sec * 1000}
+                  value={
+                    config.tool_timeout_sec === undefined ? "" : config.tool_timeout_sec * 1000
+                  }
                   onChange={(e) =>
                     update({
                       tool_timeout_sec: e.target.value ? Number(e.target.value) / 1000 : undefined,

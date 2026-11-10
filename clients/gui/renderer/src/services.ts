@@ -57,6 +57,7 @@ export {
   isSnapShotSource,
   modelRecord,
   modelUsage,
+  pluginStoreOperation,
   readLibraryRequest,
   readSnapShotSettings,
   sideAnchor,
