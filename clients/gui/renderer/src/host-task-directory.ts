@@ -32,7 +32,6 @@ function taskDirectory(rows: unknown[]) {
 export function refreshTaskDirectory(
   client: HostClient,
   projects: readonly ShellProject[],
-  sourceId: string,
   ids: ReadonlyMap<string, string>,
   { tasks, reads: taskReads }: TaskDirectoryState,
   publish: () => void,
@@ -56,7 +55,6 @@ export function refreshTaskDirectory(
   const hostIds = new Map([...ids].map(([hostId, alias]) => [alias, hostId]));
   void client
     .workbench("tasks.read", {
-      sourceId,
       operation: "observe",
       limit: 1024,
     } as Parameters<HostClient["workbench"]>[1])

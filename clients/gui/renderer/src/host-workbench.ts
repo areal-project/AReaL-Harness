@@ -130,18 +130,14 @@ const DESKTOP_ONLY_SETTINGS = new Set(["电脑控制"]);
 /** 本机网页的桌面命令通道；返回 undefined 表示该命令只能在桌面窗口里执行。 */
 export function hostDesktopCommand(
   client: HostClient,
-  source: () => string | undefined,
   failure: (name: string, params: Record<string, unknown>, error: unknown) => unknown,
   onSnapshot?: (snapshot: Record<string, unknown>) => void,
 ): PlatformServices["command"] {
   return async (name, params) => {
     if (!DESKTOP_COMMANDS.has(name) || !client.writable("desktop.command"))
       throw new Error("此功能需要桌面应用");
-    const sourceId = source();
-    if (!sourceId) throw new Error("请先选择资料库来源");
     try {
       const value = await client.workbench("desktop.command", {
-        sourceId,
         command: name,
         request: params as Parameters<HostClient["workbench"]>[1],
       });
@@ -202,7 +198,6 @@ export function openingAuthorization(run: Run, open: (url: string) => Promise<vo
  */
 export function desktopKeepsCommand(name: string, params: Record<string, unknown>) {
   const operation = String(params.operation ?? "");
-  if (name === "remoteControl") return true;
   if (name === "library")
     return (
       operation === "settings" &&
@@ -261,6 +256,13 @@ export function createWorkbenchRoutes(
   document: Document | undefined,
   source: () => string | undefined,
 ): NonNullable<PlatformServices["workbench"]> {
+  // 写操作不再带来源，但 Host 还没认定工作台后台时先挡住，免得落成“结果未确认”。
+  const backendReady = () => {
+    if (!source())
+      throw Object.assign(new Error("工作台后台尚未就绪，请稍后再试"), {
+        submissionUnknown: false,
+      });
+  };
   let lastInput = Date.now();
   for (const name of ["pointerdown", "pointermove", "keydown", "wheel"])
     events?.addEventListener(name, () => (lastInput = Date.now()), { passive: true });
@@ -290,12 +292,11 @@ export function createWorkbenchRoutes(
         };
       }
       if (name === "tasks" && client.writable("tasks.read")) {
-        const sourceId = source();
-        if (!sourceId) throw new Error("请先选择任务目录来源");
         return {
-          value: await client.workbench("tasks.read", { ...params, sourceId } as Parameters<
-            HostClient["workbench"]
-          >[1]),
+          value: await client.workbench(
+            "tasks.read",
+            params as Parameters<HostClient["workbench"]>[1],
+          ),
         };
       }
 
@@ -343,11 +344,9 @@ export function createWorkbenchRoutes(
         if (!read && !write) return undefined;
         const method = `${domain}.${read ? "read" : "command"}`;
         if (!client.writable(method)) return undefined;
-        const sourceId = source();
-        if (!sourceId)
-          throw Object.assign(new Error("请先选择资料库来源"), { submissionUnknown: false });
-        const payload = { ...params, sourceId } as Parameters<HostClient["workbench"]>[1];
+        const payload = params as Parameters<HostClient["workbench"]>[1];
         if (read) return { value: await client.workbench(method, payload) };
+        backendReady();
         // 保留领域请求 ID；Host commandId 管跨端派发，后台原 journal 管领域生命周期。
         const commandId = crypto.randomUUID();
         try {
@@ -388,15 +387,13 @@ export function createWorkbenchRoutes(
           (params.operation === "settings" && LIBRARY_SETTINGS.has(String(params.key)))) &&
         client.writable("library.command")
       ) {
-        const sourceId = source();
-        if (!sourceId)
-          throw Object.assign(new Error("请先选择资料库来源"), { submissionUnknown: false });
+        backendReady();
         const commandId = crypto.randomUUID();
         // 已派发的写操作不能退回 Main 再做一次；丢失回复保留原 commandId 供查询。
         try {
           const result = (await client.workbench(
             "library.command",
-            { ...params, sourceId } as Parameters<HostClient["workbench"]>[1],
+            params as Parameters<HostClient["workbench"]>[1],
             commandId,
           )) as {
             commandId?: string;

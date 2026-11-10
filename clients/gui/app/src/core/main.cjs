@@ -1527,8 +1527,6 @@ function startDesktop() {
                   ok: true,
                   value: await pluginArchives.command(params, () => trusted(event)),
                 };
-              if (name === "remoteControl")
-                return { ok: true, value: await serviceBackend.remoteControl(params) };
               if (name === "serviceLifecycle") {
                 if (params.operation === "quitInterface")
                   return { ok: true, value: await requestQuit() };

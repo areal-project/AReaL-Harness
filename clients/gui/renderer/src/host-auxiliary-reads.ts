@@ -37,7 +37,6 @@ export function refreshModelCatalogs(
 /** 会话配置不带解析后的模型名；网页经后台 inspect 补上，与桌面一致。 */
 export function refreshInspections(
   client: HostClient,
-  sourceId: string,
   projects: readonly ReadProject[],
   inspections: Cache,
   publish: () => void,
@@ -53,7 +52,6 @@ export function refreshInspections(
       inspections.set(key, entry);
       void client
         .workbench("desktop.command", {
-          sourceId,
           command: "manage",
           request: { projectId: project.id, threadId, operation: "inspect" },
         })
@@ -73,12 +71,11 @@ export function refreshInspections(
 }
 
 /** 浏览器拿不到本机文件夹选择框；本机网页让用户填路径，登记仍由桌面后台完成。 */
-export async function chooseHostProject(client: HostClient, sourceId: string | undefined) {
-  if (!sourceId || !client.writable("desktop.command")) throw new Error("此功能需要桌面应用");
+export async function chooseHostProject(client: HostClient) {
+  if (!client.writable("desktop.command")) throw new Error("此功能需要桌面应用");
   const path = globalThis.prompt("输入项目文件夹的完整路径")?.trim();
   if (!path) return null;
   const id = await client.workbench("desktop.command", {
-    sourceId,
     command: "addProject",
     request: { path },
   });

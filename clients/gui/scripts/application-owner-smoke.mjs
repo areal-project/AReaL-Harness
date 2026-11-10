@@ -198,7 +198,7 @@ sys.exit(p.wait())
     assert.equal((await value.serviceStatus()).connected, true);
     for (const write of [
       () => value.resources({ operation: "terminate", projectId: pending.project.id }),
-      () => value.remoteControl({ operation: "disable" }),
+      () => value.command("remoteControl", { operation: "disable" }),
       () => value.stopService(),
       () => value.command("manage", { operation: "server", projectId: pending.project.id }),
       () =>

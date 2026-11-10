@@ -1142,23 +1142,23 @@ impl Session {
                 self.authorize(None, capability)?;
             }
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
-            if matches!(
-                method,
-                "worktree.read"
-                    | "tasks.read"
-                    | "trajectory.read"
-                    | "feedback.read"
-                    | "manage.read"
-                    | "providers.read"
-            ) {
+            // 客户端不再指定工作台来源：省略时用 Host 当前工作台后台的来源。
+            let mut request = request.clone();
+            if request["params"].is_object() && request["params"].get("sourceId").is_none() {
+                let workbench = &self.host.gateway.workbench;
+                workbench.resume_backend(&self.host).await?;
+                let source = workbench.active_source();
+                request["params"]["sourceId"] = json!(source.context("CAPABILITY_UNAVAILABLE")?);
+            }
+            if method.ends_with(".read") {
                 ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
                 return crate::server::workbench_route::backend_read(
-                    &self.host, &self.peer, request,
+                    &self.host, &self.peer, &request,
                 )
                 .await;
             }
             return crate::server::workbench_route::backend_command(
-                &self.host, &self.peer, request,
+                &self.host, &self.peer, &request,
             )
             .await;
         }

@@ -17129,8 +17129,7 @@
         }
       },
       "required": [
-        "operation",
-        "sourceId"
+        "operation"
       ],
       "additionalProperties": false
     },
@@ -17430,7 +17429,6 @@
         }
       },
       "required": [
-        "sourceId",
         "operation"
       ],
       "additionalProperties": false
@@ -17513,7 +17511,6 @@
         }
       },
       "required": [
-        "sourceId",
         "operation"
       ],
       "additionalProperties": false
@@ -17874,7 +17871,6 @@
         }
       },
       "required": [
-        "sourceId",
         "operation"
       ],
       "additionalProperties": false
@@ -19616,7 +19612,6 @@
         }
       },
       "required": [
-        "sourceId",
         "operation"
       ],
       "additionalProperties": false
@@ -19638,7 +19633,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation"
           ],
           "additionalProperties": false
@@ -19665,7 +19659,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "enabled",
             "expectedRevision"
@@ -19691,7 +19684,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation"
           ],
           "additionalProperties": false
@@ -19726,7 +19718,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "id",
             "projectId",
@@ -19756,7 +19747,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "enabled"
           ],
@@ -19800,7 +19790,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "projectId",
             "threadId",
@@ -19840,7 +19829,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "id",
             "projectId",
@@ -19895,7 +19883,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "id",
             "projectId",
@@ -19952,7 +19939,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "id",
             "projectId",
@@ -21362,7 +21348,6 @@
           },
           "required": [
             "taskId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21389,7 +21374,6 @@
           },
           "required": [
             "timeZone",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21435,7 +21419,6 @@
           "required": [
             "schedule",
             "count",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21459,7 +21442,6 @@
           },
           "type": "object",
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -21489,7 +21471,6 @@
           "required": [
             "id",
             "revision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21516,7 +21497,6 @@
           },
           "required": [
             "threadId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21572,7 +21552,6 @@
           "required": [
             "threadId",
             "skill",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21596,7 +21575,6 @@
           },
           "type": "object",
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -21622,7 +21600,6 @@
           },
           "required": [
             "id",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21649,7 +21626,6 @@
           },
           "required": [
             "id",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21673,7 +21649,6 @@
             }
           },
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -21696,7 +21671,6 @@
             }
           },
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -21722,7 +21696,6 @@
           },
           "required": [
             "threadId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21753,7 +21726,6 @@
           "required": [
             "threadId",
             "id",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21790,7 +21762,6 @@
             "threadId",
             "id",
             "timeoutMs",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21841,7 +21812,6 @@
           "required": [
             "threadId",
             "id",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21877,7 +21847,6 @@
           },
           "required": [
             "parentThreadId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21912,7 +21881,6 @@
           "required": [
             "parentThreadId",
             "executionId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21948,7 +21916,6 @@
           "required": [
             "parentThreadId",
             "executionId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -21988,7 +21955,6 @@
           },
           "required": [
             "threadId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22012,7 +21978,6 @@
           },
           "type": "object",
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -22035,7 +22000,6 @@
           },
           "type": "object",
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -22061,7 +22025,6 @@
           },
           "required": [
             "id",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22099,7 +22062,6 @@
             "id",
             "afterRevision",
             "timeoutMs",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22123,7 +22085,6 @@
           },
           "type": "object",
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -22153,7 +22114,6 @@
           "required": [
             "id",
             "revision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22200,7 +22160,6 @@
           },
           "type": "object",
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -22246,7 +22205,6 @@
           },
           "type": "object",
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -22297,7 +22255,6 @@
           },
           "required": [
             "taskId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22328,7 +22285,6 @@
           "required": [
             "taskId",
             "runId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22378,7 +22334,6 @@
           "required": [
             "taskId",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22414,7 +22369,6 @@
           "required": [
             "taskId",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22511,7 +22465,6 @@
           "required": [
             "taskId",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22547,7 +22500,6 @@
           "required": [
             "taskId",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22583,7 +22535,6 @@
           "required": [
             "taskId",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22617,7 +22568,6 @@
           },
           "required": [
             "threadId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22651,7 +22601,6 @@
           },
           "required": [
             "threadId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22699,7 +22648,6 @@
             "threadId",
             "expectedRevision",
             "steps",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22735,7 +22683,6 @@
           "required": [
             "threadId",
             "project",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22769,7 +22716,6 @@
           },
           "required": [
             "threadId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22797,7 +22743,6 @@
             }
           },
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22826,7 +22771,6 @@
           },
           "type": "object",
           "required": [
-            "sourceId",
             "projectId",
             "operation"
           ]
@@ -22861,7 +22805,6 @@
           "required": [
             "parentThreadId",
             "executionId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22904,7 +22847,6 @@
           "required": [
             "parentThreadId",
             "executionId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22936,7 +22878,6 @@
           },
           "required": [
             "id",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -22985,7 +22926,6 @@
             "scope",
             "enabled",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23070,7 +23010,6 @@
             "enabled",
             "expectedRevision",
             "expectedDigest",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23123,7 +23062,6 @@
             "definitionDigest",
             "enabled",
             "trusted",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23160,7 +23098,6 @@
           "required": [
             "id",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23216,7 +23153,6 @@
             "expectedRevision",
             "source",
             "expectedDigest",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23253,7 +23189,6 @@
           "required": [
             "id",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23295,7 +23230,6 @@
             "id",
             "expectedRevision",
             "expectedDigest",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23333,7 +23267,6 @@
           "required": [
             "id",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23372,7 +23305,6 @@
           "required": [
             "root",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23423,7 +23355,6 @@
           "required": [
             "url",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23462,7 +23393,6 @@
           "required": [
             "root",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23495,7 +23425,6 @@
           },
           "required": [
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23593,7 +23522,6 @@
           "required": [
             "threadId",
             "argv",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23635,7 +23563,6 @@
             "threadId",
             "id",
             "dataBase64",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23683,7 +23610,6 @@
             "id",
             "cols",
             "rows",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23719,7 +23645,6 @@
           "required": [
             "threadId",
             "id",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23755,7 +23680,6 @@
           "required": [
             "threadId",
             "id",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23789,7 +23713,6 @@
           },
           "required": [
             "threadId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23831,7 +23754,6 @@
             "taskId",
             "expectedRevision",
             "expectedRunId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23867,7 +23789,6 @@
           "required": [
             "taskId",
             "expectedRevision",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -23909,7 +23830,6 @@
             "taskId",
             "expectedRevision",
             "expectedRunId",
-            "sourceId",
             "projectId",
             "operation"
           ],
@@ -24931,7 +24851,6 @@
         }
       },
       "required": [
-        "sourceId",
         "operation"
       ],
       "additionalProperties": false
@@ -24956,7 +24875,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "expectedRevision"
           ],
@@ -24984,7 +24902,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "id",
             "expectedRevision"
@@ -25020,7 +24937,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "expectedRevision"
           ],
@@ -25063,7 +24979,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "expectedRevision",
             "provider"
@@ -25091,7 +25006,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "id",
             "model"
@@ -25116,7 +25030,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "id"
           ],
@@ -25140,7 +25053,6 @@
             }
           },
           "required": [
-            "sourceId",
             "operation",
             "connection"
           ],

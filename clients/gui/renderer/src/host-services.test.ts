@@ -860,7 +860,7 @@ describe("Host renderer read authority", () => {
       expect(snapshot.projects[0].state.tasks.task.runs).toEqual([taskRow.latestRun]);
       expect(reads[0]).toMatchObject({
         method: "tasks.read",
-        params: { operation: "observe", sourceId: "source" },
+        params: { operation: "observe" },
       });
       // 任务运行对话按任务目录定位到所在项目，打开时走同一 Host 会话。
       await services.reads!.selectSession({ projectId: "alias", threadId: "run-thread" });

@@ -41,7 +41,9 @@ Host serves the same packaged Renderer as Electron. `areal web` opens the public
 
 `pages.command/resource` expose MCP Apps/Gen-UI sessions bound to an authenticated local connection, requiring `gui-write-v1` and manage; the `catalog` operation only reads the directory, while manual MCP App opening and page JSON-RPC requests additionally require submit. Host supplies the owner, and `pages.event` carries `connectionId` and `gatewayGeneration`. Resource chunks are returned only to that owner; disconnect revokes instances and page-tool leases. Public `/host/pages/proxy` contains no user HTML. Page requests do not enter the generic journal and must not be replayed after disconnection. Remote Noise and submit-only devices are not yet supported.
 
-`providers.read` reads the original backend public provider configuration. `providers.command` accepts save, apply, default selection, removal, discovery, and probe operations, requiring local browser manage authorization and a matching `sourceId`. Commands are queried by their original `commandId`; draft credentials are never stored in journal parameters, and browsers cannot call `revealKey`.
+`providers.read` reads the original backend public provider configuration. `providers.command` accepts save, apply, default selection, removal, discovery, and probe operations, requiring local browser manage authorization. Commands are queried by their original `commandId`; draft credentials are never stored in journal parameters, and browsers cannot call `revealKey`.
+
+Workbench domain reads and writes (`library`, `worktree`, `tasks`, `trajectory`, `feedback`, `manage`, `providers`) and `desktop.command` no longer need a client-supplied `sourceId`: when omitted, Host uses the source of the current workbench backend and returns `CAPABILITY_UNAVAILABLE` if that backend is not running; an explicit mismatching value returns `FORBIDDEN`.
 
 ## Envelope and common types
 

@@ -1354,6 +1354,8 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
                 Some("CAPABILITY_UNAVAILABLE")
             );
+            let unsourced = json!({"id":"providers","method":"providers.read","params":{"operation":"list"}});
+            assert_eq!(local.request(&unsourced).await.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
             f.grant("a", |grant| grant["projectIds"] = json!([]));
             let mut denied = f.session("a");
             denied.gui_read = true;

@@ -249,22 +249,9 @@ export function createHostReadServices(
     if (client.writable("project.models"))
       refreshModelCatalogs(client, shell?.snapshot.projects ?? [], catalogs, publish);
     if (librarySourceId && client.writable("tasks.read"))
-      refreshTaskDirectory(
-        client,
-        shell?.snapshot.projects ?? [],
-        librarySourceId,
-        ids,
-        taskState,
-        publish,
-      );
+      refreshTaskDirectory(client, shell?.snapshot.projects ?? [], ids, taskState, publish);
     if (librarySourceId && client.writable("desktop.command"))
-      refreshInspections(
-        client,
-        librarySourceId,
-        snapshot.projects as ReadProject[],
-        inspections,
-        publish,
-      );
+      refreshInspections(client, snapshot.projects as ReadProject[], inspections, publish);
   }
   async function history(options: Parameters<PlatformReadServices["history"]>[0]) {
     return readInheritedHistoryPage(await client.history(options));
@@ -778,15 +765,10 @@ export function createHostReadServices(
   const unavailable = async () => {
     throw new Error("此功能需要桌面应用");
   };
-  const hostCommand = hostDesktopCommand(
-    client,
-    () => librarySourceId,
-    hostCommandError,
-    (next) => {
-      snapshot = next as unknown as Snapshot;
-      publish();
-    },
-  );
+  const hostCommand = hostDesktopCommand(client, hostCommandError, (next) => {
+    snapshot = next as unknown as Snapshot;
+    publish();
+  });
   type Run = (
     name: string,
     params: Record<string, unknown>,
@@ -816,7 +798,7 @@ export function createHostReadServices(
   const command = openingAuthorization(routed, openExternal) as PlatformServices["command"];
   return {
     ...(desktop ?? {
-      chooseProject: () => chooseHostProject(client, librarySourceId),
+      chooseProject: () => chooseHostProject(client),
       theme: async () => ({
         dark: matchMedia("(prefers-color-scheme: dark)").matches,
         id: "system",

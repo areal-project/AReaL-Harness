@@ -203,7 +203,7 @@ describe("Worktree Host routing", () => {
         expectedRevision: 3,
       }),
     ).toEqual(settings);
-    expect(calls[0].params).toMatchObject({ sourceId: "source", expectedRevision: 3 });
+    expect(calls[0].params).toMatchObject({ expectedRevision: 3 });
     expect(calls[0].commandId).toMatch(/^[a-f0-9-]{36}$/);
     expect(await routes.call("workspace", { operation: "gitPush" })).toBeUndefined();
     expect(calls).toHaveLength(1);
@@ -226,9 +226,7 @@ describe("Worktree Host routing", () => {
         requestId: "original",
       }),
     ).rejects.toMatchObject({ submissionUnknown: true });
-    expect(calls).toEqual([
-      { sourceId: "source", operation: "worktreeCreate", projectId: "p", requestId: "original" },
-    ]);
+    expect(calls).toEqual([{ operation: "worktreeCreate", projectId: "p", requestId: "original" }]);
   });
 });
 
@@ -277,7 +275,7 @@ describe("task directory Host routing", () => {
     expect(await call({ workbench: routes } as PlatformServices, "tasks", params)).toEqual(
       response,
     );
-    expect(requests).toEqual([["tasks.read", { ...params, sourceId: "source" }]]);
+    expect(requests).toEqual([["tasks.read", params]]);
     response = {
       ...(response as object),
       owners: [{ projectId: "project", status: "unobserved" }],
@@ -287,7 +285,7 @@ describe("task directory Host routing", () => {
     ).rejects.toThrow();
   });
 
-  it("does not dispatch without negotiated permission or a selected source", async () => {
+  it("does not dispatch without negotiated permission, nor writes before the backend is ready", async () => {
     let allowed = false;
     const client = {
       writable: () => allowed,
@@ -298,9 +296,10 @@ describe("task directory Host routing", () => {
     const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => undefined)!;
     expect(await routes.call("tasks", { operation: "preview" })).toBeUndefined();
     allowed = true;
-    await expect(routes.call("tasks", { operation: "preview" })).rejects.toThrow(
-      "请先选择任务目录来源",
-    );
+    await expect(routes.call("trajectory", { operation: "retry" })).rejects.toMatchObject({
+      message: "工作台后台尚未就绪，请稍后再试",
+      submissionUnknown: false,
+    });
   });
 });
 
@@ -344,9 +343,7 @@ describe("trajectory and feedback Host routing", () => {
       "feedback.read",
       "trajectory.command",
     ]);
-    expect(
-      calls.every((entry) => (entry.params as { sourceId: string }).sourceId === "source"),
-    ).toBe(true);
+    expect(calls.some((entry) => "sourceId" in (entry.params as object))).toBe(false);
   });
 });
 
@@ -395,7 +392,7 @@ describe("task management Host routing", () => {
       });
       expect(requests.at(-1)).toEqual({
         method: "manage.read",
-        params: { operation, projectId: "project", sourceId: "source" },
+        params: { operation, projectId: "project" },
         commandId: undefined,
       });
     }
@@ -440,7 +437,7 @@ describe("task management Host routing", () => {
       expect(requests).toHaveLength(1);
       expect(requests[0]).toMatchObject({
         method: "manage.command",
-        params: { ...input, sourceId: "source" },
+        params: input,
       });
       expect(requests[0].commandId).toMatch(/^[a-f0-9-]{36}$/);
       expect(requests[0].commandId).not.toBe(input.requestId);
@@ -497,7 +494,7 @@ describe("task management Host routing", () => {
         expectedRevision: 2,
       }),
     ).toMatchObject({ paused: false });
-    expect(requests[0].params).toMatchObject({ requestId, sourceId: "source" });
+    expect(requests[0].params).toMatchObject({ requestId });
     expect(
       requests.every((request) => request.method === "manage.command" && request.commandId),
     ).toBe(true);
@@ -533,7 +530,7 @@ describe("provider Host routing", () => {
     expect(await routes.call("providers", request)).toEqual({ value: { models: ["fixture"] } });
     expect(calls[0]).toMatchObject({
       method: "providers.command",
-      params: { ...request, sourceId: "source" },
+      params: request,
     });
     expect(calls[0].commandId).toBeTruthy();
     expect(
@@ -612,7 +609,7 @@ describe("local web desktop commands", () => {
         return { done: true };
       },
     } as unknown as HostClient;
-    const command = hostDesktopCommand(client, () => "source", hostCommandError);
+    const command = hostDesktopCommand(client, hostCommandError);
     expect(await command("list", { projectId: "p" })).toEqual({ ok: true, value: { done: true } });
     expect(await command("recovery", { operation: "inspect" })).toEqual({
       ok: true,
@@ -623,13 +620,10 @@ describe("local web desktop commands", () => {
       error: { code: "x", message: "Core refused" },
     });
     await expect(command("computerControl", {} as never)).rejects.toThrow("需要桌面应用");
-    expect(calls[0]).toEqual([
-      "desktop.command",
-      { sourceId: "source", command: "list", request: { projectId: "p" } },
-    ]);
+    expect(calls[0]).toEqual(["desktop.command", { command: "list", request: { projectId: "p" } }]);
     expect(calls[1]).toEqual([
       "desktop.command",
-      { sourceId: "source", command: "recovery", request: { operation: "inspect" } },
+      { command: "recovery", request: { operation: "inspect" } },
     ]);
     const capabilities = hostPlatformCapabilities(client, undefined, "source");
     expect(capabilities?.mutations).toBe(true);
@@ -646,11 +640,7 @@ describe("local web desktop commands", () => {
       },
     } as unknown as HostClient;
     expect(
-      await hostDesktopCommand(
-        client,
-        () => "source",
-        hostCommandError,
-      )("connect", { projectId: "p" }),
+      await hostDesktopCommand(client, hostCommandError)("connect", { projectId: "p" }),
     ).toEqual({
       ok: false,
       error: { code: "MIGRATION_PENDING", message: "blocked" },
