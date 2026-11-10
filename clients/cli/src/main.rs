@@ -314,7 +314,7 @@ async fn execute(args: Cli) {
     let code = match result {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("AReaL: {error}");
+            eprintln!("AReaL: {error:#}");
             if args.output_format != "text" {
                 let value = serde_json::json!({"type":"result","subtype":"error_during_execution","is_error":true,"session_id":args.resume.as_deref().unwrap_or(""),"errors":[error.to_string()],"duration_ms":started.elapsed().as_millis(),"num_turns":0,"stop_reason":null,"uuid":key()});
                 let _ = run::emit(&value);

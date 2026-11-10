@@ -504,6 +504,9 @@ pub async fn reconnect(spec: &LaunchSpec) -> Result<Service> {
     ensure_inner(spec, None, true, true, None, || Ok(())).await
 }
 
+/// 运行中的服务与本次启动参数不一致时的报错前缀；独占会话的客户端据此改走显式重启。
+pub const CONFIGURATION_CONFLICT: &str = "service configuration conflict";
+
 fn check_compatible(spec: &LaunchSpec, service: &Service, directory: &Path) -> Result<()> {
     gui_owner::check(spec.owner.as_ref(), service.owner.as_ref())?;
     ensure!(
@@ -527,7 +530,7 @@ fn check_compatible(spec: &LaunchSpec, service: &Service, directory: &Path) -> R
             .map(|(k, _)| k.as_str())
             .collect();
         bail!(
-            "service configuration conflict ({}) for instance {}; run `{}` using the same binary and environment as this client, or use another --data-dir",
+            "{CONFIGURATION_CONFLICT} ({}) for instance {}; run `{}` using the same binary and environment as this client, or use another --data-dir",
             changed.join(", "),
             spec.service_id,
             spec.restart_command()
