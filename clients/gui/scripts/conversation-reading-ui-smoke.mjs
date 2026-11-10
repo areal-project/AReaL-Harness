@@ -168,8 +168,16 @@ try {
     );
   });
   const checkDisclosures = async () => {
-    for (const control of [disclosure(), reasoning(), activity(), tool()])
-      assert.equal(await control.getAttribute("aria-expanded"), "true");
+    const controls = { disclosure, reasoning, activity, tool };
+    const expanded = {};
+    for (const [name, control] of Object.entries(controls))
+      expanded[name] = await control().getAttribute("aria-expanded");
+    assert.deepEqual(expanded, {
+      disclosure: "true",
+      reasoning: "true",
+      activity: "true",
+      tool: "true",
+    });
   };
   await checkDisclosures();
   await messages.focus();
