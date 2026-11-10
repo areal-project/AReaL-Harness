@@ -2453,10 +2453,11 @@
     },
     {
       "id": "R-COPY-002",
-      "title": "同一反馈先说明发生了什么，再说明用户可做什么",
+      "title": "错误提示只有一个来源：后台给错误码，用户看到的句子登记在错误文案表，每条说发生了什么、工作是否受影响、现在能做什么，并带",
       "owner": "design/content/interface-copy.md#反馈先说已知事实",
       "strength": "default",
-      "textSha256": "2c62260145682a3ca6cf3b41f343838aab39f766a4aa056938014bfa815457ad"
+      "textSha256": "4019eb8c131859515cad754d074a0778ff2253bec50fae074a71987976528e08",
+      "check": "clients/gui/scripts/ui-honesty-lint.mjs"
     },
     {
       "id": "R-COPY-003",
@@ -2467,10 +2468,11 @@
     },
     {
       "id": "R-COPY-005",
-      "title": "正在执行 运行中 来自当前对象的执行状态，不从动画或最后回复推测",
+      "title": "项目、对话、任务对用户只呈现用户可见状态里的几种状态",
       "owner": "design/content/interface-copy.md#反馈先说已知事实",
       "strength": "default",
-      "textSha256": "53e9bd17a1fa88becefd238e83ab08c5922609b5a69e0046588955ec44cb1160"
+      "textSha256": "55f5097c517e7cddda8fc8c31ea1bd7ec88fb82bf8057940653dac7c24100b88",
+      "check": "clients/gui/renderer/src/state/userStates.ts"
     },
     {
       "id": "R-COPY-007",
@@ -2481,10 +2483,10 @@
     },
     {
       "id": "R-COPY-008",
-      "title": "结果未知 结果待核对",
+      "title": "| 结果未知 | 还不确定是否完成",
       "owner": "design/content/interface-copy.md#反馈先说已知事实",
       "strength": "must",
-      "textSha256": "a25fc8be5613d96b107d9c70ff7551690b525a78c30c5d5acbd8719c70de54a5"
+      "textSha256": "d6cb4ef8da16bb167f4efa8c0a210aa5bb96afbac663bc5c42d121991eaa80d2"
     },
     {
       "id": "R-COPY-009",
@@ -2712,17 +2714,19 @@
     },
     {
       "id": "R-RECOVERY-004",
-      "title": "失败 明确原因及可行恢复，保留输入",
+      "title": "| 失败 | 明确原因及可行恢复，保留输入",
       "owner": "design/patterns/feedback-and-recovery.md#状态必须先于样式决定",
       "strength": "default",
-      "textSha256": "48378abca4423f193d27b4570b0ea2b2899650ea4dffa0086c94d04cc00f9875"
+      "textSha256": "40f708b13bd9de413c1f64909f51cfe1eff4a2dd1dcf0941d9449fbeed5f339b",
+      "check": "clients/gui/renderer/src/errors/errorCopy.ts"
     },
     {
       "id": "R-RECOVERY-005",
-      "title": "待确认 / UNKNOWN 与失败、成功分开",
+      "title": "| 待确认 / UNKNOWN | 与失败、成功分开",
       "owner": "design/patterns/feedback-and-recovery.md#状态必须先于样式决定",
       "strength": "default",
-      "textSha256": "000607cee5ab8ab0c30347789585fc0422f1efb729036803f919bc348f87a09e"
+      "textSha256": "a5617efa7d8615f24939fee476bad1bf41cd55e07f920f43472f85c499873cc2",
+      "check": "clients/gui/renderer/src/errors/errorCopy.ts"
     },
     {
       "id": "R-RECOVERY-006",

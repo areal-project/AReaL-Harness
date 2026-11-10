@@ -1,6 +1,6 @@
 import type { MessageId } from "../i18n/messages.js";
 
-// 用户能看到的状态只有下面几种。视图从这里取状态和文字，不直接读 Host/Core/Run 的内部字段。
+// R-COPY-005 用户能看到的状态只有下面几种。视图从这里取状态和文字，不直接读 Host/Core/Run 的内部字段。
 // 新的内部状态先决定落到哪一种用户状态，再改这里；不要在视图里加分支。
 
 type Data = Record<string, any>;

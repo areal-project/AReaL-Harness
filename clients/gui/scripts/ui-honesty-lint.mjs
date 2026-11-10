@@ -35,7 +35,7 @@ const LOCALE_DATE = /\.(?:toLocaleString|toLocaleDateString|toLocaleTimeString)\
 // 视图只读呈现器给出的用户状态，不直接读 Host/Core 的连接与加载字段。
 const INTERNAL_STATE =
   /\b(?:hostState|summariesLoaded|summariesFreshness)\b|\bstate\??\.connected\b/g;
-// 错误对象的原始文字只能经 renderer/src/errors/errorCopy.ts 进“查看详情”。
+// R-COPY-002 错误对象的原始文字只能经 renderer/src/errors/errorCopy.ts 进“查看详情”。
 const RAW_ERROR =
   /\b\w*(?:[eE]rror|[cC]ause|[fF]ailure)\??\.message\b|\b(?:err|e)\.message\b|\bString\(\s*(?:\w*[eE]rror|\w*[cC]ause|err|e|reason)\s*\)|\bJSON\.stringify\(\s*[\w.?]*(?:[eE]rror|[cC]ause)\b/g;
 // Host 源码里作为错误抛出或返回的码。
