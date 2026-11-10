@@ -6,6 +6,8 @@ import {
   sameRecoveryOwner,
   type RecoveryOperation,
 } from "../recoveryPresentation.js";
+import { catalogs } from "../i18n/messages.js";
+import type { Translate } from "../i18n/uiMessage.js";
 
 const operation: RecoveryOperation = {
   requestId: "request-1",
@@ -61,6 +63,18 @@ test("connection generations belong to recovery identity and unknown results nev
   );
   expect(isTechnicalErrorMessage("Error invoking remote method: IPC failed")).toBe(true);
   expect(isTechnicalErrorMessage("请先保存当前文件")).toBe(false);
+});
+
+test("with copy available, operation failures use the error table instead of backend text", () => {
+  const zh: Translate = (id) => catalogs["zh-CN"][id];
+  const busy = { code: "TURN_BUSY", message: "命令未受理，请刷新状态后检查草稿" };
+  expect(recoveryMessage(busy, "operation", zh)).toBe(catalogs["zh-CN"]["errors.TURN_BUSY"]);
+  expect(recoveryMessage({ message: "Project Core unavailable" }, "operation", zh)).toBe(
+    catalogs["zh-CN"]["errors.generic"],
+  );
+  expect(recoveryMessage({ message: "x", submissionUnknown: true }, "operation", zh)).toBe(
+    "操作结果待确认。",
+  );
 });
 
 test("an outcome without the original operation cannot release an unknown submission", () => {

@@ -30,7 +30,8 @@ import { composerDraftStorage, flushComposerDrafts } from "./composerDraftStorag
 import { composerPending } from "./composerPending.js";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { stripGenUiModelContext } from "@areal/gen-ui/contract";
-import { useI18n } from "./i18n/IntlProvider.js";
+import { UiMessageError, useI18n } from "./i18n/IntlProvider.js";
+import { errorText, presentError, rawText, type PresentedError } from "./errors/errorCopy.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
 import { useToolInspection } from "./UnknownToolInspection.js";
 import { CircleAlert } from "lucide-react";
@@ -242,9 +243,26 @@ export function Composer({
   const [unknown, setUnknown] = useState<string | null>(() =>
     composerDraftStorage.getItem(`${key}:pending`),
   );
-  const [deliveryError, setDeliveryError] = useState("");
+  const [deliveryNotice, setDeliveryNotice] = useState<Pick<
+    PresentedError,
+    "message" | "detail"
+  > | null>(null);
+  // 已有专门说明的失败（待确认、需要设置等）用 recoveryMessage，原始文字只进详情。
+  const showDeliveryNotice = (cause: unknown) =>
+    setDeliveryNotice({
+      message: recoveryMessage(cause as RecoveryFailure, "operation", t),
+      detail: presentError(t, cause).detail,
+    });
   const inspection = useToolInspection(project, thread, action, () => api.current?.focus());
-  const [returnError, setReturnError] = useState("");
+  // 附件失败以“文件名: 原因”标出是哪个附件；原因同样取自错误文案表。
+  const admissionText = (cause: unknown) => {
+    const message = rawText(cause) ?? "";
+    const file = input.files.find((file) => message.startsWith(`${file.name}:`));
+    return file
+      ? `${file.name}: ${errorText(t, cause)}`
+      : recoveryMessage(cause as RecoveryFailure, "operation", t);
+  };
+  const [returnNotice, setReturnNotice] = useState<PresentedError | null>(null);
   const [returning, setReturning] = useState(false);
   const running = thread.turns?.find((t: Data) => t.status === "inProgress");
   useEffect(() => {
@@ -297,8 +315,8 @@ export function Composer({
   const stop = () => {
     if (executionBlocked) return;
     if (running)
-      void stopConversationTurn(action, project, thread).catch((cause: Error) =>
-        setDeliveryError(cause.message),
+      void stopConversationTurn(action, project, thread).catch((cause: unknown) =>
+        setDeliveryNotice(presentError(t, cause)),
       );
   };
   const saveQueueEdit = async () => {
@@ -469,10 +487,13 @@ export function Composer({
     const wasConfigure = composerDraftStorage.getItem(`${key}:pending-configure`) === unknown;
     composerDraftStorage.removeItem(`${key}:pending-configure`);
     if (outcome.status === "failed")
-      setDeliveryError(outcome.message || "消息已受理，但执行失败，请检查对话结果。");
+      setDeliveryNotice({ message: t("errors.turnFailed"), detail: outcome.message || undefined });
     else if (outcome.accepted === false)
-      setDeliveryError(outcome.message || "原轮次已结束，内容已保留，请检查后发送。");
-    else if (wasContinue || wasConfigure) setDeliveryError("");
+      setDeliveryNotice({
+        message: t("errors.turnRejected"),
+        detail: outcome.message || undefined,
+      });
+    else if (wasContinue || wasConfigure) setDeliveryNotice(null);
     else if (wasGoal) {
       clearText();
       changeGoalMode(false);
@@ -514,7 +535,7 @@ export function Composer({
     setAdmissionError("");
     markSending(key, true);
     setGoalError("");
-    setDeliveryError("");
+    setDeliveryNotice(null);
     let configurationRequestId: string | undefined;
     let sendStarted = false;
     const sideCommand = parseSideSlashCommand(
@@ -603,9 +624,9 @@ export function Composer({
       else if (!(error.submissionUnknown && error.requestId)) {
         if (files.length > 0) {
           setAdmissionAttempt((attempt) => attempt + 1);
-          setAdmissionError(error.message);
-        } else if (!error.submissionUnknown) setDeliveryError(recoveryMessage(error));
-        else setAdmissionError(error.message);
+          setAdmissionError(admissionText(error));
+        } else if (!error.submissionUnknown) showDeliveryNotice(error);
+        else setAdmissionError(recoveryMessage(error, "operation", t));
       }
       if (error.submissionUnknown && error.requestId) {
         const failure = error as RecoveryFailure;
@@ -628,7 +649,7 @@ export function Composer({
     if (desktopUnsupported || !canContinue || disabled || sending.has(key)) return;
     if (inspection.request()) return;
     markSending(key, true);
-    setDeliveryError("");
+    setDeliveryNotice(null);
     try {
       await action("continue", {
         projectId: project.id,
@@ -638,7 +659,7 @@ export function Composer({
       });
     } catch (cause) {
       const error = cause as Error & { submissionUnknown?: boolean; requestId?: string };
-      if (!error.submissionUnknown) setDeliveryError(recoveryMessage(error));
+      if (!error.submissionUnknown) showDeliveryNotice(error);
       if (error.submissionUnknown && error.requestId) {
         composerDraftStorage.setItem(`${key}:pending`, error.requestId);
         composerDraftStorage.setItem(`${key}:pending-continue`, error.requestId);
@@ -674,7 +695,7 @@ export function Composer({
             `${key}:pending-operation`,
             JSON.stringify(outcome.operation),
           );
-      } else setAdmissionError(recoveryMessage(failure));
+      } else setAdmissionError(recoveryMessage(failure, "operation", t));
     } finally {
       markSending(key, false);
     }
@@ -705,7 +726,7 @@ export function Composer({
               try {
                 await onSide("");
               } catch (cause) {
-                setDeliveryError(recoveryMessage(cause as Error));
+                showDeliveryNotice(cause);
                 throw cause;
               }
             },
@@ -723,7 +744,9 @@ export function Composer({
           },
         ]
       : []),
-    ...snapShotCommandEntries(snapshotCapture, t, setDeliveryError),
+    ...snapShotCommandEntries(snapshotCapture, t, (message) =>
+      setDeliveryNotice(message ? { message } : null),
+    ),
     ...composerFeatureEntries(t, {
       upload: { run: () => upload.current?.click() },
       mcp: { run: () => setMcpOpen(true) },
@@ -766,15 +789,14 @@ export function Composer({
   const returnToRun = async () => {
     if (returning) return;
     setReturning(true);
-    setReturnError("");
+    setReturnNotice(null);
     try {
       const listed = await action("tasks", {
         operation: "observe",
         projectId: project.id,
         limit: 1024,
       });
-      if (listed.errors.length)
-        throw new Error(listed.errors.map((error) => error.message).join("\n"));
+      if (listed.errors.length) throw listed.errors[0];
       const candidates = [...listed.data].sort(
         (a, b) =>
           Number(
@@ -801,9 +823,9 @@ export function Composer({
         onOpenTask({ projectId: project.id, taskId: task.id, runId: run.id });
         return;
       }
-      throw new Error("找不到此 worker 所属的原运行。");
+      throw new UiMessageError({ id: "errors.workerRunMissing" });
     } catch (cause) {
-      setReturnError((cause as Error).message);
+      setReturnNotice(presentError(t, cause));
     } finally {
       setReturning(false);
     }
@@ -814,8 +836,13 @@ export function Composer({
         <p role="status" className="px-3 pt-3 text-ui-sm text-foreground-subtle">
           此 worker 由原 TaskRun 管理。打开历史不会重新执行已结束的工作。
         </p>
-        {returnError && (
-          <FeedbackNotice tone="error" message={returnError} onDismiss={() => setReturnError("")} />
+        {returnNotice && (
+          <FeedbackNotice
+            tone="error"
+            message={returnNotice.message}
+            detail={returnNotice.detail}
+            onDismiss={() => setReturnNotice(null)}
+          />
         )}
         <div className="px-3 py-3">
           <Button
@@ -862,11 +889,12 @@ export function Composer({
           e.currentTarget.value = "";
         }}
       />
-      {deliveryError && (
+      {deliveryNotice && (
         <FeedbackNotice
           tone="error"
-          message={deliveryError}
-          onDismiss={() => setDeliveryError("")}
+          message={deliveryNotice.message}
+          detail={deliveryNotice.detail}
+          onDismiss={() => setDeliveryNotice(null)}
         />
       )}
       {inspection.notice}
@@ -1235,7 +1263,7 @@ export function Composer({
                       );
                     } catch (cause) {
                       setAdmissionAttempt((attempt) => attempt + 1);
-                      setAdmissionError((cause as Error).message);
+                      setAdmissionError(admissionText(cause));
                     }
                   }}
                   onAnnotate={

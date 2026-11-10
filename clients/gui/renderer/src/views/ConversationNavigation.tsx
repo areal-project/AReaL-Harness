@@ -4,6 +4,7 @@ import {
   useConversationCreateReadOnly,
 } from "../PlatformReadContext.js";
 import { useI18n } from "../i18n/IntlProvider.js";
+import { errorText } from "../errors/errorCopy.js";
 import { Input } from "../components/ui/input.js";
 import {
   Dialog,
@@ -312,7 +313,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
                         projectId: owner.id,
                         path: ".",
                       })
-                      .catch((cause) => setError(cause.message))
+                      .catch((cause) => setError(errorText(t, cause)))
                   }
                 >
                   {t("common.navigation.openDefault")}
@@ -326,7 +327,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
                         projectId: owner.id,
                         path: ".",
                       })
-                      .catch((cause) => setError(cause.message))
+                      .catch((cause) => setError(errorText(t, cause)))
                   }
                 >
                   {t("common.navigation.reveal")}

@@ -25,6 +25,13 @@ const ERROR_TEXT: Record<string, string> = {
   RESOURCE_UNAVAILABLE: "目标已不存在或不可用。",
 };
 
+/**
+ * 传输层失败带 clientCode 供界面选文案（renderer/src/errors/errorCopy.ts）。
+ * 不用 code：带字符串 code 的错误表示 Host 明确拒绝，传输失败是“不知道是否受理”。
+ */
+const clientError = (clientCode: "DISCONNECTED" | "TIMEOUT", message: string) =>
+  Object.assign(new Error(message), { clientCode });
+
 type Pending = {
   resolve(value: unknown): void;
   reject(error: Error): void;
@@ -51,7 +58,7 @@ export async function connectWebSocket(
   const close = () => {
     for (const entry of pending.values()) {
       clearTimeout(entry.timer);
-      entry.reject(new Error("Host disconnected"));
+      entry.reject(clientError("DISCONNECTED", "Host disconnected"));
     }
     pending.clear();
     socket.close();
@@ -59,11 +66,11 @@ export async function connectWebSocket(
   const request = (method: string, params: JsonObject, context?: ReadContext) =>
     new Promise<unknown>((resolve, reject) => {
       if (!current() || socket.readyState !== WebSocket.OPEN)
-        return reject(new Error("Connection unavailable"));
+        return reject(clientError("DISCONNECTED", "Connection unavailable"));
       const id = String(++sequence);
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error("Host read timed out"));
+        reject(clientError("TIMEOUT", "Host read timed out"));
         if (method === "session.open" || method === "session.openPersisted") close();
       }, 15_000);
       pending.set(id, { resolve, reject, timer });
@@ -87,7 +94,7 @@ export async function connectWebSocket(
       } catch {
         clearTimeout(timer);
         pending.delete(id);
-        reject(new Error("Host send failed"));
+        reject(clientError("DISCONNECTED", "Host send failed"));
       }
     });
   // 写请求超时不关闭连接、不重发；调用方按 commandId 查回执。
@@ -99,11 +106,11 @@ export async function connectWebSocket(
   ) =>
     new Promise<unknown>((resolve, reject) => {
       if (!current() || socket.readyState !== WebSocket.OPEN)
-        return reject(new Error("Connection unavailable"));
+        return reject(clientError("DISCONNECTED", "Connection unavailable"));
       const id = String(++sequence);
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error("Host command timed out"));
+        reject(clientError("TIMEOUT", "Host command timed out"));
       }, 30_000);
       pending.set(id, { resolve, reject, timer });
       try {
@@ -133,7 +140,7 @@ export async function connectWebSocket(
       } catch {
         clearTimeout(timer);
         pending.delete(id);
-        reject(new Error("Host send failed"));
+        reject(clientError("DISCONNECTED", "Host send failed"));
       }
     });
   signal.addEventListener("abort", close, { once: true });
@@ -142,13 +149,13 @@ export async function connectWebSocket(
   let connectionIdentity: ReadConnectionIdentity | undefined;
   await new Promise<void>((resolve, reject) => {
     const deadline = setTimeout(() => {
-      reject(new Error("Host connection timed out"));
+      reject(clientError("TIMEOUT", "Host connection timed out"));
       close();
     }, 15_000);
     socket.onerror = () => {
       clearTimeout(deadline);
       bootstrap = undefined;
-      reject(new Error("Host unavailable"));
+      reject(clientError("DISCONNECTED", "Host unavailable"));
     };
     socket.onclose = () => {
       signal.removeEventListener("abort", close);
@@ -156,10 +163,10 @@ export async function connectWebSocket(
       bootstrap = undefined;
       for (const entry of pending.values()) {
         clearTimeout(entry.timer);
-        entry.reject(new Error("Host disconnected"));
+        entry.reject(clientError("DISCONNECTED", "Host disconnected"));
       }
       pending.clear();
-      reject(new Error("Host disconnected"));
+      reject(clientError("DISCONNECTED", "Host disconnected"));
       if (connected && current()) onClose();
     };
     socket.onopen = () => {

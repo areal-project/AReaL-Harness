@@ -1140,10 +1140,28 @@
     "fingerprint": "5469101ca6572dde91c799bdf8eab216663dd3b5842072fe6b442fabe787160e"
   },
   {
+    "file": "renderer/src/AgentsPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "3cfb45e7f770cebfb5009346e64572f183194caaf8913bc27525396fc514e2e8"
+  },
+  {
+    "file": "renderer/src/AgentsPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "15c2aea1bb78cea5eea34c5c18763362e03eea0a8c20bd4592a1a1650e0ac7eb"
+  },
+  {
     "file": "renderer/src/App.tsx",
     "kind": "cjk-identifier",
     "snippet": "高级诊断",
     "fingerprint": "fa75e6703ff2f141061813639852d0ba27c69dda61ec0b09d354465c508c07a0"
+  },
+  {
+    "file": "renderer/src/App.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "模型服务",
+    "fingerprint": "d93f2386cc203274796f9474ca2fc37bdcdd230a5e4f065a041674b9649ee755"
   },
   {
     "file": "renderer/src/App.tsx",
@@ -1162,6 +1180,36 @@
     "kind": "unlocalized-date",
     "snippet": ".toLocaleString()",
     "fingerprint": "7d3d47e6930e046cd464e64e96144517d2826750cf15bcd1a4a5a8971a161efc"
+  },
+  {
+    "file": "renderer/src/BugReportDialog.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "6820ac073a674d4eedf446f17e66a7987c976f586bdb0e23d00f96eb4576200b"
+  },
+  {
+    "file": "renderer/src/CloudComposer.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "73a5603eab939154bab4002dc6141900821570bc5afd3ed377ea255f0738be4c"
+  },
+  {
+    "file": "renderer/src/CloudComposer.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "1b37526c23c7b395b537c8250814c81bd395b06e09405aa1071be1217ce01d7d"
+  },
+  {
+    "file": "renderer/src/CloudComposer.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "b144fb09444bb6f5901ad09569184a12783527e44fb19b4875a242270fb9bdaa"
+  },
+  {
+    "file": "renderer/src/CommandDetails.tsx",
+    "kind": "raw-error-text",
+    "snippet": "JSON.stringify(output.error",
+    "fingerprint": "62beff4041f4cc1ea5af74afc5ca7c515e61f771f35af5670e63356854b7c394"
   },
   {
     "file": "renderer/src/Composer.tsx",
@@ -1186,6 +1234,54 @@
     "kind": "cjk-identifier",
     "snippet": "会话",
     "fingerprint": "2e52c30b97b498746eea4d11456e93da3b4cb9b591b92dc92db866fb4062a5c0"
+  },
+  {
+    "file": "renderer/src/ComposerMcp.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "66742d51815e99a5a1647e268c588d079c32ed5cb1b028f67b25068d383b45f2"
+  },
+  {
+    "file": "renderer/src/ComposerQueue.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "c64fc1f9edb363b031380d92c3b7c6a26374e39c98902d5d615bb31567f44b10"
+  },
+  {
+    "file": "renderer/src/ComposerQueueAttachment.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "037726989392417da0e5ef97e1cd87f743125883b7d088b826707f57fa8a0158"
+  },
+  {
+    "file": "renderer/src/ComposerSkills.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "3291213294cc788cb538d8f4a28ba21dfa0712d196bf8408f13c916abc52a05f"
+  },
+  {
+    "file": "renderer/src/ComposerSkills.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "5d6dd115010cef213367542555e0e3385d11f04583276ddadf0618072be072cd"
+  },
+  {
+    "file": "renderer/src/ComposerSubmission.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "35534298467ef4ec48fb696df1429645323dd295cbb16d3582aaa9dd59a23fba"
+  },
+  {
+    "file": "renderer/src/ComposerUploads.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "5931af06e8b332eacdfb27b4e4411ecd39a551461188e89b097bd2afa6bdbbd6"
+  },
+  {
+    "file": "renderer/src/ComposerUploads.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "8c9d6eaee6cc139ff1517f4e7823ffd4143a618217e9609ee9f04252ed367515"
   },
   {
     "file": "renderer/src/ContextPane.tsx",
@@ -1224,6 +1320,12 @@
     "fingerprint": "7a0de0a8725ed145bdc5b1c1dd19e5d5467f6d9dd87d90b585bbb3427aaa31b5"
   },
   {
+    "file": "renderer/src/ConversationStatusCard.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "4d481651a3b9abf2b3422d54a222d2e007ddcf19483a4b71e7ed4fe9a56dd1f7"
+  },
+  {
     "file": "renderer/src/DraftComposer.tsx",
     "kind": "cjk-identifier",
     "snippet": "会话配置",
@@ -1234,6 +1336,12 @@
     "kind": "cjk-identifier",
     "snippet": "文件",
     "fingerprint": "cf58fa417ed334e32a08ce6caab8403c55cb9cdb21ba9308a4e338a36751a995"
+  },
+  {
+    "file": "renderer/src/DraftComposer.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "5e5d3dbd331cf39e590753db6f3225b0e3d15501220f066a5051aec92f7d625e"
   },
   {
     "file": "renderer/src/ExecutableSideChatPane.tsx",
@@ -1278,6 +1386,84 @@
     "fingerprint": "1e254e3fb878dbe1568107af664c47711d7711ef2a9bc9318e489a4d31c6c7b7"
   },
   {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "2ff2bf1d70bc52f1dc03ecb4d2bd4c64615cedad6da5731ae83eecb5af57f4ed"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "f9ff8a06a4764135dd06ae31774a6aed4871b748f4eb06b21bfc87aef4e08d46"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "69c3de141fa0d54d3da21739275d98015fd10f49018fd59036d1b3d71e080814"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "bb7d8f2a37db62b5b1cf229450db1f3a2c87a9a26a1bd88a3bfd30b0efb60b79"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "fcae862f3ae02535bf8b8449db6c0279b8af64a44c7d083ec88059cf71907041"
+  },
+  {
+    "file": "renderer/src/ForkHistory.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "74bc786c5e2ec7b4aba45fb15828946093c5065be9f9fc0fa2bf80dfa331f443"
+  },
+  {
+    "file": "renderer/src/ForkTargetDialog.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "523a898ba25e367f9fc6acb172ea901b3c84fd32bca5f109867725ec075f3e40"
+  },
+  {
+    "file": "renderer/src/ForkTargetDialog.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "c8d8bdfc2982cd97d6c3f00b258de9870afed666ad3c0c6ccad32c743c821555"
+  },
+  {
+    "file": "renderer/src/ForkTargetDialog.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "ddf34306e0440665e3df66d45e57e2586a0fb4e5dc49d62a01125815742b7127"
+  },
+  {
+    "file": "renderer/src/ForkTargetDialog.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "d485b864dae6a0f3fcdd9a85b969e1519263e800acffcc36f41a4a55cabf26a7"
+  },
+  {
+    "file": "renderer/src/GenUiWorkspace.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "f71eb3fea8a315d5d532fe4755296337127a6d1b10f2ef210ecdebcae1cc908b"
+  },
+  {
+    "file": "renderer/src/GitPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "593eb4ea48a01f86f4ee515f3db882f150f9f5df5b1dde5484db96e608687be4"
+  },
+  {
+    "file": "renderer/src/GitPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "60ebcfb72fae21b0ed15b8ca4a5e3b8b31358d7c0893f8c03e8cab31e2330645"
+  },
+  {
     "file": "renderer/src/GitPaneChangeCard.tsx",
     "kind": "cjk-identifier",
     "snippet": "在默认应用中打开",
@@ -1314,16 +1500,382 @@
     "fingerprint": "a574242b8d89172321ecf6f223d958aa79203ff870238b634eaea9ff2ec9b25d"
   },
   {
+    "file": "renderer/src/Inbox.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "7fac951bacc73c1dd78f6f1aa6a0ab0ac3d1b4e81ebe1bf04eee97c180ce8576"
+  },
+  {
+    "file": "renderer/src/McpAppForm.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "39380f7b9808777be776414be9e64c8ea0088df21550b831bd3945a21edf75e8"
+  },
+  {
+    "file": "renderer/src/McpAppHost.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "8720e4af73f395f7e222b0a3cf71e6ecdb0ca30160bc9ba29af16c7ede413f8a"
+  },
+  {
+    "file": "renderer/src/McpAppsWorkspace.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "c418051e7942ac92c7b8de45dc63ce7ee0d22984daa353afc8d3068192654112"
+  },
+  {
+    "file": "renderer/src/McpAppsWorkspace.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "9a8ce583920f3befac065f90a68d590446f10f6fe701fb3aac2a32fee366876a"
+  },
+  {
+    "file": "renderer/src/McpAppsWorkspace.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "620a927cd08efc96a1628c6c1fa35b67ca905e5ee27e44c745439011045eb1b3"
+  },
+  {
+    "file": "renderer/src/McpAppsWorkspace.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "231fb8fe3f374b34163a9e92ac9a78c3aa64ac83b781c00e4a9522fc36d9e721"
+  },
+  {
+    "file": "renderer/src/McpAppsWorkspace.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "46bd9f01e42a0d1c7845200049f66acb3a82ec7d5cdb508a9dba317110e62fb5"
+  },
+  {
+    "file": "renderer/src/McpAppsWorkspace.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "272347583ecfb8cd421381a00fa4d6fc0868b00684380ad9408f7ac98e40b0d1"
+  },
+  {
+    "file": "renderer/src/MessageAttachment.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "b048c489c58903c0abb374d1d7fdaa244e8c5686e5cf290f1eddfd20789dbe9c"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "8bed1b7cff35e328ba8b83f372159986209341f26ef5a712bd47003201efb880"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "raw-error-text",
+    "snippet": "forkError?.message",
+    "fingerprint": "5047eb6c1f07f6a7013368fa82c5b27bfcf20425413057f54f777433edf24150"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "5d7b9bb0c585e07b206bfff056ce233bc61e0a3e7bae790391405836e77e54e4"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure?.message",
+    "fingerprint": "76c4a43580a0f4aee692ea8d21807d39b3821ca35f569282955f8644401cf02e"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure?.message",
+    "fingerprint": "2c6ddda22c83467daa5357d1d38d7107f22d848b695f2ced8a8a53212b00847a"
+  },
+  {
+    "file": "renderer/src/Messages.tsx",
+    "kind": "raw-error-text",
+    "snippet": "forkError?.message",
+    "fingerprint": "c43c20f243f22e17030426934a2ea9cf7990ff63a9659f5dfedfbfea7c49e268"
+  },
+  {
+    "file": "renderer/src/ModelTrajectoryPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "JSON.stringify(turn.error",
+    "fingerprint": "4d9cd44b743675760ea01f4bd004bf6d63cf05abb0015b90a400da6a204b570d"
+  },
+  {
+    "file": "renderer/src/PlanPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "7d044c9e6ceaa7d9ac597aacd377f9ef0b7704bba13eb9d4c422f3f53dcc62b7"
+  },
+  {
+    "file": "renderer/src/Preview.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(e)",
+    "fingerprint": "b134fb2cf84a30906c1aec5b750a1d4864b4c4f938ebd39d738c89f2aa2bd775"
+  },
+  {
+    "file": "renderer/src/Preview.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "62afbcf57a8e0b6c141a4ea8bf55f4ca7056393d3817b73ac8bb74bfe6e6d668"
+  },
+  {
+    "file": "renderer/src/Preview.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(e)",
+    "fingerprint": "5772f5356309bb2e51382c41f6b397e99a637a1dc8e0434db8cc98d200097a7c"
+  },
+  {
+    "file": "renderer/src/Preview.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "ace647325e0f0c3a235358683cc73d0fd2a9bd86ea2ceb46a3d3ee70933b3c41"
+  },
+  {
+    "file": "renderer/src/ProcessesPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "4f6637c45408d4dc199802fab27c00079f4093a8de27bf6e2a4c05736f97a410"
+  },
+  {
+    "file": "renderer/src/ProcessesPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "c3d7770fc514f82f54796969e722c05262526a0abab11a52fadee3d7751b8577"
+  },
+  {
+    "file": "renderer/src/ProjectlessDraft.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "0edd4410bddef18e32a9ae874cc879a771c616aef71d479697029152f5f62574"
+  },
+  {
+    "file": "renderer/src/ProjectlessDraft.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "da3603ac7a78c1f3b68230bb3061e07411c2ec7ebb1964f6c4b4d29044f652b6"
+  },
+  {
+    "file": "renderer/src/Queue.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "cb4f4d54e1960e1088cd838a95d5b9775d073d19f8ce416cd09a5d3b1b71801f"
+  },
+  {
+    "file": "renderer/src/RelatedSideChats.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "62bef70a9cccaabc12c104ac859a7835cc1e1eadcf2b4b959070466c3cfe9cd2"
+  },
+  {
+    "file": "renderer/src/ScheduledTaskConversation.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "1382641dffba13d9edc1e72ae6c60a5bbe5c514e486256267242168043cc8c67"
+  },
+  {
+    "file": "renderer/src/ScheduledTasks.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "498a30aec3fc0ab7cfddd36262556701b26c89a841003385f401cea3ad1e87ba"
+  },
+  {
+    "file": "renderer/src/SideChatPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "6545185fd447ad3557ae7b33ecdac575563445e9ce2d0dc48bc7f773c54e143a"
+  },
+  {
+    "file": "renderer/src/SideChatPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "446627ce912b08bbddba108c675136029beb688843c85d8a74036fe6554bf25d"
+  },
+  {
+    "file": "renderer/src/SideChatPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "dd03497f4e225eb3f7ecfc00fe9575e8adb7722fae3da9f0058778a0e93265ca"
+  },
+  {
     "file": "renderer/src/TaskCenter.tsx",
     "kind": "unlocalized-date",
     "snippet": ".toLocaleString()",
     "fingerprint": "2b5085ad00a3d3a617994936ec4381f63d94fe764d0b5028a287ba2d69c62ee1"
   },
   {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "ddd147b4107cd7c3c615bae44db6a6ada844de06dde8d47d42e00461209053c7"
+  },
+  {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "f4e002c7b57b38c32915db44a7fb4b3ff764f2674a8b7cf1182acf75dfd8cce9"
+  },
+  {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "cb68c09b7ea982c592efb7f046bb4dc78ccc81f789488f4bd3c1f9be82d2a484"
+  },
+  {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "711ed20fcd8242aaf0b6277b521c7ad1c33311188c23c15d3c7c42d0816f03a0"
+  },
+  {
+    "file": "renderer/src/TaskDraft.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "0fcac4c93343a902972f8667e24990df80dee28077ddb489c11e10fe485732a5"
+  },
+  {
+    "file": "renderer/src/TaskDraft.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "810f0488d1539ff05f252cbaa7c8d229bec22d4ebd36938af9c2ba7a10a30891"
+  },
+  {
+    "file": "renderer/src/TaskDraft.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "c8b678a5f220a7c094e26ed418967014dce6cb9c0836177856251fdecc7d80eb"
+  },
+  {
+    "file": "renderer/src/TaskRunConversations.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "8431a7fd906b44dcaa800dff2c4f4c2e8dd1dcd76c0b0030208cb97a1ef3701f"
+  },
+  {
+    "file": "renderer/src/TaskRunConversations.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "328f47f228ca5713ff208c9304072d992abea0ae8f808d6ae10543f7cb575e5c"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "5ec3fe03e26aea7a82c5e244271636f6d91705329469dcaa346c26b4cf886dde"
+  },
+  {
+    "file": "renderer/src/ToolEvent.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "1d87648b7c36829edf719beb3d6a4f6da28dfc63ba47ff724151eb138c3fb89a"
+  },
+  {
     "file": "renderer/src/TurnExecution.tsx",
     "kind": "cjk-identifier",
     "snippet": "结果待确认",
     "fingerprint": "fde73a516d689531fd68fb8188e81f20daaf1b4df2316ee5c7eb60759e1ac05d"
+  },
+  {
+    "file": "renderer/src/TurnFileSummary.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "9a0f3755723394e01347304519480ccea1bf0caa2d87704c33117addaa1abdb7"
+  },
+  {
+    "file": "renderer/src/TurnFileSummary.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "a08b9ad68e041d27271f58466f0bf47da049419526a4f23656043b1e1a0b4c2b"
+  },
+  {
+    "file": "renderer/src/UserFeedback.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "b70d3d62b9832ccc61c268a5d1c47aa7c977917f7917bbc44d32be8d4c2fcb27"
+  },
+  {
+    "file": "renderer/src/UserFeedback.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "8dd7c26878ddf1e532799d3e175d84b572660f6f2332610aae6662551a6d2b6a"
+  },
+  {
+    "file": "renderer/src/UserPromptEdit.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "06e3a5293083991d9fddeed4508f0399b8e1045e3731a9562636fb280c4e5543"
+  },
+  {
+    "file": "renderer/src/UserPromptEdit.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "515b43641b600687e40f2dc9dfd4e221094b77e490a2a75c537be5fb51c24569"
+  },
+  {
+    "file": "renderer/src/WorkgroupsPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "eb8c3a3596f8e785c2442c01ba21620151110813ee862e4b3e7e9cb4efc139dc"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "624598e91af67c008de0a62a7f1c41578381968084983677c5ba673ed681cd3b"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "34f7021d018f022a7e5aa6c6af869c802e92958a2ff76eb652a4fc984f622bc5"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "adb49fbf62559244c5453a0f8d09ac7e265b8bb194045dde385f0297037028f6"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "3fdfdb1ec039a1330fd8ff1b01aa55953fe23de0a8f03307d6e43a84ca4a9508"
+  },
+  {
+    "file": "renderer/src/WorkspaceFilePane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "cf80295f52892b251728b07be9cbfd276f2b41b60c194177afa9ef9fbfdf78f9"
+  },
+  {
+    "file": "renderer/src/WorkspaceMedia.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "d4fa1086cb367f47a43e13af5169671cd891a621a570ff0dce9f65450bf35f4f"
+  },
+  {
+    "file": "renderer/src/WorkspaceMedia.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "54eeef304ea1427594ad73a47c5eea9df8c6f549f60fced3d0ff74080cf41e23"
+  },
+  {
+    "file": "renderer/src/WorkspacePdfPreview.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "30abbe6d1e107882475ab9a0ff8d334989349b9b64895f6e5e6c1ad8bbf709db"
+  },
+  {
+    "file": "renderer/src/WorkspacePdfPreview.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "efdae85ef8b4e865f74b16aa737927784e47e67d37c0c1dfee7622e631cec61f"
+  },
+  {
+    "file": "renderer/src/WorktreeStatus.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "cdeddd31a74a5c320dfc5829f05eff1a5da8c4e53d0b3ced6fa13f90ea21373e"
   },
   {
     "file": "renderer/src/app-shell/SidePane.tsx",
@@ -1336,6 +1888,24 @@
     "kind": "cjk-identifier",
     "snippet": "功能",
     "fingerprint": "d6e62048bf5dbbc79373b2cb21a06152f8ccd0fe7c9f8e5e1ca196f38596ed6e"
+  },
+  {
+    "file": "renderer/src/browserPreview.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "ecde1ed8a3c52f9bed942d1ada680768d937c8e6154bc22ad622dd1b5817ea72"
+  },
+  {
+    "file": "renderer/src/browserPreview.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "1df2d898679acc55dba9ccb6ad8cf938d4ee5b08011279e218ffc5adc44e0830"
+  },
+  {
+    "file": "renderer/src/contextUsage.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "3bc719fb07ff823c0d7f17277268d692f7d03f2f450cea3f0779de28afaf8555"
   },
   {
     "file": "renderer/src/conversationPresentation.ts",
@@ -1386,10 +1956,82 @@
     "fingerprint": "e427288558ec438d5cf88415c1b58df3f892b21da779d5f95a599fa47d89fa46"
   },
   {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "raw-error-text",
+    "snippet": "error?.message",
+    "fingerprint": "547fa27f51c82a048be406f1473fb9b84f5824414684e45328f3659dcdfb1b9c"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "raw-error-text",
+    "snippet": "JSON.stringify(turn.error",
+    "fingerprint": "cc3999a610840905fa9c4492d3573692977b93115e35572d29b541d63a213bc2"
+  },
+  {
+    "file": "renderer/src/desktop-response.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "2897dd2f73382682df7af62fc90997657e3511f7f6bb02f4fed7c09342aedab8"
+  },
+  {
+    "file": "renderer/src/desktop-response.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "21e5d31a2ceab5b5f739e107323d9324191ddb3f054eb5a14989f731d827b67b"
+  },
+  {
+    "file": "renderer/src/desktop-response.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "45621f15b42600c0da4a9b18a183dd0f20320e39e3ba2dca3c240de8f6b4e0da"
+  },
+  {
+    "file": "renderer/src/host-workbench.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "9a24a98495e4be8c31cdd1bf933d3b48dc90e93cb5a82c7140d1aede298e774b"
+  },
+  {
+    "file": "renderer/src/mcp-app-response.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "44cad96899a4e5efd6eb875f17f231cc0d4ac3f499fc93be4075b6e1fa9ce560"
+  },
+  {
+    "file": "renderer/src/mobile-probe.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "8362e0a3c786f69c3c813e78db73d0abdffd78aee127f9e3830237c602217ae9"
+  },
+  {
     "file": "renderer/src/mobile/product-driver.ts",
     "kind": "cjk-identifier",
     "snippet": "高",
     "fingerprint": "7ffb1c8daa3f17c9281b49fadbc5db919dd06f376ac611918359d11bf96ce561"
+  },
+  {
+    "file": "renderer/src/mobile/product-driver.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "4605b9544b3d813f4b4cda75336ed607e6968f28b28134e2101afc594a015d33"
+  },
+  {
+    "file": "renderer/src/mobile/product-driver.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "982477c36d74b23e4c6aadc0707d0eb366b74878b065b41a0722bdd935434b78"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ChatPromptEditor.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "203a13c5c3220af630b91af510bc5f0e9b050274137a2a4f19d4af52e6c32d1e"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ChatPromptEditor.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "ddba673f2780f28fabb434c81222ccf59e5988d9d26b570bfe72eb4085d2e067"
   },
   {
     "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
@@ -1434,10 +2076,76 @@
     "fingerprint": "73a25a9f574b2218a0950db9c85025424e5b07a2dff61ca93c8359d93b3d652d"
   },
   {
+    "file": "renderer/src/recoveryPresentation.ts",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "fbb9b88cbb7ca31f43f5e2759fd3e81c54696bbdf339dde5ca68cb6ec9ea1654"
+  },
+  {
+    "file": "renderer/src/recoveryPresentation.ts",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "bae319dd497c19469f6555901295762d76d9f787ad2d57fa6701ab507fc781a3"
+  },
+  {
+    "file": "renderer/src/recoveryPresentation.ts",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "9fbbff1267557b877827d676a9b097bbe80e5ac3ad3aab035333d18e15977308"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error?.message",
+    "fingerprint": "3bb922579ba3a3fd0989c36367d323c8ad801fcef6096728d2175331bac47b52"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "b14941a9b12725a5505e1eec94621b57e3ef4cab896e9f5a268204bcbaa1b04d"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "f0cf03154ded8104c434a9bb1d47973250229cd2666ce0fedb58d8315c705cbc"
+  },
+  {
     "file": "renderer/src/reviewComments.ts",
     "kind": "cjk-identifier",
     "snippet": "新版",
     "fingerprint": "36b907a332b99a53d644b445e41ab42ae70530760d7332dcc2984026ef3d3824"
+  },
+  {
+    "file": "renderer/src/schedule-editor-loader.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "cfd853ae30a7c06ffd536dfb57f165de6de184ff9d771b6bfa8dfe1bc8e08b07"
+  },
+  {
+    "file": "renderer/src/schedule-editor-loader.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "6cec9ce4d4d9499906f2f636d4799b2237f755b54aa1ddbbe424594380d78113"
+  },
+  {
+    "file": "renderer/src/services.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "306dfcfcee73e1f349562ccb3a8f7a6f77fe5ce45d8988bb6f98d3e62980ced4"
+  },
+  {
+    "file": "renderer/src/settings/BetaUpdateSetting.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "641f3c4596f57f0ae372c5be3ea47fddd8695699f17d4fd45e07cc760a3749ed"
+  },
+  {
+    "file": "renderer/src/settings/CloudSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "bdf24397c0722a30722f1345de147878afa976a1fa1bc2c9a71a4ccd93fd7707"
   },
   {
     "file": "renderer/src/settings/CoreCapabilitiesSettings.tsx",
@@ -1446,10 +2154,46 @@
     "fingerprint": "e4221278e954c0f838080cbb8ce6481f01dceb6570a225327e36359fd5a904be"
   },
   {
+    "file": "renderer/src/settings/DesktopEnvironmentSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "a83aab9dc4af894da6523197a00ece239bc68999ea671c7b4b40053c3c5b26ec"
+  },
+  {
+    "file": "renderer/src/settings/DisplaySettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "007d3d6eb4a49878e6a8f32708b7717efe5ab8c530522002e663c0dea6dc679c"
+  },
+  {
+    "file": "renderer/src/settings/FileOpenSetting.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "aa519f97b2620d65dca584d991212ec97aa8c99134d916d4ff60394f8fb77b1f"
+  },
+  {
+    "file": "renderer/src/settings/MenuBarSetting.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "e68cee018d1cc807d4600631d7e1cd66ade217daeff11c49fab161da7d266c10"
+  },
+  {
     "file": "renderer/src/settings/MobileAdvancedNetwork.tsx",
     "kind": "internal-state-in-view",
     "snippet": "state.connected",
     "fingerprint": "613a586b07f3d00cbe74a73a5baf8424f95c15b73a4010e5608defe09302e7b9"
+  },
+  {
+    "file": "renderer/src/settings/MobileSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "38315735ea063344a40a8d386f6255e387db1eba6d1c78aff2e593b033586483"
+  },
+  {
+    "file": "renderer/src/settings/MobileSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "34735d66b4d09b37b8fae7195a8abfb244097c4eedd1bfd5479e137b33c0673e"
   },
   {
     "file": "renderer/src/settings/MobileSettings.tsx",
@@ -1464,10 +2208,58 @@
     "fingerprint": "0b8be403043cf9aa21ebc3a19544b82ba74f60eda4d595d929ccc881b50e1ee6"
   },
   {
+    "file": "renderer/src/settings/NotificationSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "5b45f72001ba7ceddd40f07de275b6685adaebd318ce4c8ae34186ae7644e71a"
+  },
+  {
+    "file": "renderer/src/settings/PluginAuthConfiguration.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "a3cbe1166f7aa65337994039cb7cde1d45d8cc6bcb4edc8913df737e9e3e7d1f"
+  },
+  {
+    "file": "renderer/src/settings/PluginAuthConfiguration.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error?.message",
+    "fingerprint": "c61d6ba91ef7030eaf4bcb80e73ec759633c46dc83e0dcc19530fa10415887e3"
+  },
+  {
+    "file": "renderer/src/settings/PluginCenter.tsx",
+    "kind": "raw-error-text",
+    "snippet": "displayedError?.message",
+    "fingerprint": "c6dd520c3581c5e8829aa6c52c7ff0e6db1a92217a15a5bf90674428f8a8db8d"
+  },
+  {
     "file": "renderer/src/settings/PluginCenter.tsx",
     "kind": "internal-state-in-view",
     "snippet": "state?.connected",
     "fingerprint": "bfbd331760d8faae5fb29f6944935716ca5b73c4d190cfb531337cff871fec3e"
+  },
+  {
+    "file": "renderer/src/settings/PluginDoctorSummary.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "2bed273796eb47b09b42af376848f2fb73dec104a147ad5fc751987abe3c8ab0"
+  },
+  {
+    "file": "renderer/src/settings/PluginHookSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "45dd3697689f8bbc8e74580349623c9540694ecc88bf33760338f5e99ab145c2"
+  },
+  {
+    "file": "renderer/src/settings/PluginHookSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "97c6e2f06b6e95025d43bbcd7241e64b3831ad1ef00eb2eb15e44540dd0ae590"
+  },
+  {
+    "file": "renderer/src/settings/PluginSkillsPage.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "6469244f9912fc9adb523aaa6f93505e9514874330902533e94db6b0b5e99e75"
   },
   {
     "file": "renderer/src/settings/PluginSkillsPage.tsx",
@@ -1488,10 +2280,184 @@
     "fingerprint": "9b3fb9641480d174907b3248a59dc26054365c774dcc715a89d8c1b07617cc84"
   },
   {
+    "file": "renderer/src/settings/PluginTemplateActions.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "930a8ebf6fd415a9ea8bb7ff8c082f1688e5b9c51397533a3360d2797efa8405"
+  },
+  {
+    "file": "renderer/src/settings/ProjectlessDirectorySetting.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "c27a31fe42f8015e4e03bcb6e4eca7f78912820c20a6416d7ab707e93206bc2f"
+  },
+  {
     "file": "renderer/src/settings/ResourceSettings.tsx",
     "kind": "internal-state-in-view",
     "snippet": "state?.connected",
     "fingerprint": "a354417d6dc33baf37641955983286ea74e79437ead1a407fdc693381c11336b"
+  },
+  {
+    "file": "renderer/src/settings/SessionSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "d818bb92eacb22331ca8ce440b4d39ccf88873ba2b5487c1d7ca395727e41c73"
+  },
+  {
+    "file": "renderer/src/settings/SessionSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "2ed66f293c2a8ae1d9a027a215796280f455bc8bee685b00ebd1084d3d4f873b"
+  },
+  {
+    "file": "renderer/src/settings/SpaceReclamation.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "59d99382c2b28b6320163134324e1563e0469a6e0676818078e27955459cda27"
+  },
+  {
+    "file": "renderer/src/settings/TrajectorySettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "3f9a713ac8bd5682bc84e9bf737517cbe0fca4dde9e9cdb149d362325da0d5e9"
+  },
+  {
+    "file": "renderer/src/settings/UnsavedChanges.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "d5582809532ac2c0b6f2233ad9b55e6a1d1a73f02d8b5c2f6e8e4fd4a8bf25c1"
+  },
+  {
+    "file": "renderer/src/settings/UsageDashboard.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "89d9f0c7d406cbdd6076c26cecb723bed2b1c950662812fcafc31bfd07cb8e6f"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "ea2a72d81c25c34e593d68eb4a8d1c531e1e56b54144daf6222405ae87017657"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "3b4f0c36a79566efa31a458b15a0706059cbb61fedfe3bf2cbc5591d0ba82922"
+  },
+  {
+    "file": "renderer/src/settings/WorktreesSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "a05daae07970e0dcc1a5370f40836fd8a249d0e47ffb665c666f25ef60a328ca"
+  },
+  {
+    "file": "renderer/src/settings/pluginResources.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "0efbaa22897102abedcf1ef9a1d56edbfb6835ece1f2321553bd0d950b532157"
+  },
+  {
+    "file": "renderer/src/settings/pluginResources.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "6275708a345399845edc77ae77b9d1e7b558a5a94007812f17ba5d1185d5631b"
+  },
+  {
+    "file": "renderer/src/settings/usePluginCenter.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "9359088f64c946f17085f47a34c86a369dbcfc2ed8f483dd5362c5a11f9de8f9"
+  },
+  {
+    "file": "renderer/src/settings/usePluginSubmission.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "464a18704daef876bd45ad80f85dd7783703db69809cfa0931dbe664529dd8d2"
+  },
+  {
+    "file": "renderer/src/settings/usePluginSubmission.ts",
+    "kind": "raw-error-text",
+    "snippet": "error?.message",
+    "fingerprint": "284e51ebd2cc2a6b591499492b5d064f850cab1021ececfc89f2aa3dc048225c"
+  },
+  {
+    "file": "renderer/src/settings/useSettingsOperation.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "592949341feca45c9e948d12200798c1a5d4e6bf60933d3e0ece4608b0540729"
+  },
+  {
+    "file": "renderer/src/side-restore.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "3ee4245fec7677162c45f94dc42b16912813ecea2a22db1fd4c97f51a2d00066"
+  },
+  {
+    "file": "renderer/src/side-restore.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "e6876c6fee6a61a96f09190eedbc27156d9594fab2cf53972b610f9312a0260f"
+  },
+  {
+    "file": "renderer/src/snapshots/SnapShotCoordinator.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "5695d407c4b476cf6b2c83c6f96d2e8bb8962237d0264b29e8d579bb8a2bf2b4"
+  },
+  {
+    "file": "renderer/src/snapshots/SnapShotCoordinator.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "4069ac8e6034f05862792fe3424eb04dbd4cd4361bccbdeb1208e3755320a8b8"
+  },
+  {
+    "file": "renderer/src/snapshots/SnapShotSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "dff0f938c07c9997a329f8b9e8b414e51dff0a0d13a57c1dd6232794c80257f6"
+  },
+  {
+    "file": "renderer/src/snapshots/SnapShotSettings.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "a30ace20868b166d599865f5389fbb9344f10e96f64e652d9a2834ccab955d96"
+  },
+  {
+    "file": "renderer/src/snapshots/drafts.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "11f2d5b1015d5be2065888f206c7eba572fbd4f64c9553f0925f75fe52ac96e9"
+  },
+  {
+    "file": "renderer/src/snapshots/drafts.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "d617b5bf6f87098cc88c999cc054a07ccfbd853e2b29a606dec686456a5724bc"
+  },
+  {
+    "file": "renderer/src/snapshots/shortcut.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "9d23c42066c723d136cbda8b9ba13cd520203fea5ed5e6973c1271e1bd6c68c8"
+  },
+  {
+    "file": "renderer/src/state/useComposerWorkspace.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "d3ec4791e2cb9e90f512af2ffe9633b3710b6761b1a15d4731ea2b9819c399b1"
+  },
+  {
+    "file": "renderer/src/state/useConversationFork.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "17be3c13c602b187feaebfe8e96bfb5b3e7e84dbd214f199e8545c3d6afe152f"
+  },
+  {
+    "file": "renderer/src/state/useConversationFork.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "b205ec38c8876798f3c15933b57c38107aab3a03d8eaa713402a779f51e7b8cf"
   },
   {
     "file": "renderer/src/state/usePanelNavigation.ts",
@@ -1626,6 +2592,42 @@
     "fingerprint": "d2da2b84d22cbea310fd1d61d0bc8bdc60a3cdd7f109bc35e4ae6a54a1b1b91b"
   },
   {
+    "file": "renderer/src/state/useRecoveryNotices.ts",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "2499ef846deb3ad4ea46851aa5d3aed4c3f84bfddd55431601700203d616a66a"
+  },
+  {
+    "file": "renderer/src/state/useSessionNavigation.ts",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "93960843197e84b1962213fa29c11bfe9415c5bfd7c46b539837affee2592375"
+  },
+  {
+    "file": "renderer/src/state/useSessionNavigation.ts",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "601372b0694500a6645bd919d75949d78960c0ba52b0a196fd072e44a20868ed"
+  },
+  {
+    "file": "renderer/src/state/useSideConversations.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "72854827322404badd4fcc216280523040188a9f42080ebeccf16a91b7edcb85"
+  },
+  {
+    "file": "renderer/src/state/useStartupRecovery.ts",
+    "kind": "raw-error-text",
+    "snippet": "viewFailure.message",
+    "fingerprint": "29deff291ed73793b813d9245c8fef2afe497f7fc5c981d7901748689617e813"
+  },
+  {
+    "file": "renderer/src/state/useWorkbenchAppearance.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "886067636d654b46e82ec01729fb6e16e7c3b26775d740d4760b8b23841504fc"
+  },
+  {
     "file": "renderer/src/state/useWorkspacePanels.ts",
     "kind": "cjk-identifier",
     "snippet": "文件",
@@ -1680,6 +2682,150 @@
     "fingerprint": "9e6b49417e7c84681a58fe5c5590ca1ff8206b30140e9057af747f0ff5868675"
   },
   {
+    "file": "renderer/src/state/useWorkspacePreview.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "b5cfa0eacdd4bec305da60146b388bb10ccf3dff67a4ad0b38c828911db3578b"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "59c2f6eb8e92f2fa7344fe62a98d7778bc2f0213766786f61d7739bac137f819"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalPane.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "1d851be6e09e006d66c9b19c9dff6f174cc5061f82c19a9c3ef92149edbaaa7d"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalSession.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "b943e585687df619df8deb47886be61ff9e799f2d1584c7bec02471b43726d6a"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalSession.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "318f1a7c6d8c0501b1f62648e94e8a3bdd7fd1b74f064d23dc70cae3a0d90c5b"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalSession.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "226c7ffd2739c96022580d504be04998f2279d6b3b1ca3e8a177c67b3d6379b1"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalSession.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "c649c384a1b50d63da8a00a92c8ed49dc415a8a51102b94869335d502bbc30b3"
+  },
+  {
+    "file": "renderer/src/terminal/coreTerminalService.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "5cf0de94f800a28f1dab8e6f834a9b001971dbf82e65e4df026d28afd6e759bb"
+  },
+  {
+    "file": "renderer/src/terminal/coreTerminalService.ts",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "9ea09b178f07834ba4f9438f50009d9dedc232d9820f41f64a005ec77be93001"
+  },
+  {
+    "file": "renderer/src/terminal/coreTerminalService.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(e)",
+    "fingerprint": "03604825e226fa2eb7d5ae9a9fb73984872759ece20d63253c252487ea7931fd"
+  },
+  {
+    "file": "renderer/src/terminal/terminalWorkspace.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "c4a1c62bbc0db5c7fde01db1a8c0d3ba346bd882718624f27c380e39e71371a2"
+  },
+  {
+    "file": "renderer/src/terminal/terminalWorkspace.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "a4797a409ef8855141963dc85a96c61f8d0bdc72bd8a1639686151cf1cad5e0d"
+  },
+  {
+    "file": "renderer/src/toolInspection.ts",
+    "kind": "raw-error-text",
+    "snippet": "error?.message",
+    "fingerprint": "15bb360f53e84db21dd9ce242f122ed50336c10178f0c9ef2661bcfb40bd8f68"
+  },
+  {
+    "file": "renderer/src/trajectory-inspection.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "d6227b50fc0b28f7232177a75851a5c72161f5a6a8f1f4a173de743438402497"
+  },
+  {
+    "file": "renderer/src/trajectory-inspection.ts",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "455f3aa2d93016d08440875a09085d481958a01788f0c8e022acf1c6a6673b73"
+  },
+  {
+    "file": "renderer/src/trajectory-inspection.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "96256cbe671c8f5bf21708eae80eb5fdad59d11983139ac54a0a513d884e3a32"
+  },
+  {
+    "file": "renderer/src/trajectory-inspection.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "356bf97138b8a13e132628a35ed59a2549177d439a3c9f9d452a29d34bfd8549"
+  },
+  {
+    "file": "renderer/src/trajectory-inspection.ts",
+    "kind": "raw-error-text",
+    "snippet": "String(cause)",
+    "fingerprint": "cb92792bac76dfee344baeabbeed677607476e81c38c00846a3268b90744a938"
+  },
+  {
+    "file": "renderer/src/useComposerQueueEdit.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "8981b4fc92a402df793381e42369d069d2870702eaf9b33662bec98fbd62cf44"
+  },
+  {
+    "file": "renderer/src/useComposerQueueEdit.ts",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "c91b87659acb9b2529804fc7747996448bb6ac9ad2506481838efafcaa2eae5e"
+  },
+  {
+    "file": "renderer/src/useConversationEscape.ts",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "bfb15413335df187d2de228f69d52d81a0b83d9b53a653349229e12918cb8f48"
+  },
+  {
+    "file": "renderer/src/useSideChatTabs.ts",
+    "kind": "raw-error-text",
+    "snippet": "failure.message",
+    "fingerprint": "a1656dff4bbc8f96fca4166b5ff35c3da680edab2d531e1500744cc9ed38a65a"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "internal-state-in-view",
+    "snippet": "hostState",
+    "fingerprint": "6aa8e202c03712da727eeec49777c39261cb27e737d04d1d9804ae104eaff580"
+  },
+  {
+    "file": "renderer/src/views/ConversationNavigation.tsx",
+    "kind": "internal-state-in-view",
+    "snippet": "hostState",
+    "fingerprint": "667ffdc131c2a5e739b21ae5068d29452f2456f3b04d64a740fcd35cefe15fab"
+  },
+  {
     "file": "renderer/src/views/ConversationWorkspace.tsx",
     "kind": "cjk-identifier",
     "snippet": "改动",
@@ -1692,10 +2838,46 @@
     "fingerprint": "5efeb08af7fbd3c604c1f1488e8b50a22486dd53dce89084fb245b73c4ef40ce"
   },
   {
+    "file": "renderer/src/views/ProjectMigrationNotice.tsx",
+    "kind": "internal-state-in-view",
+    "snippet": "hostState",
+    "fingerprint": "ae34cb0f6d1df4904390e6cc69e65efcff931c9f944032b015e49c9ff7bbc198"
+  },
+  {
+    "file": "renderer/src/views/ProjectMigrationNotice.tsx",
+    "kind": "internal-state-in-view",
+    "snippet": "hostState",
+    "fingerprint": "14e6df2f6379a939421ae63d5d8720c2a444d8451bbb654e10ce17d320d27ca4"
+  },
+  {
+    "file": "renderer/src/views/ProjectMigrationNotice.tsx",
+    "kind": "internal-state-in-view",
+    "snippet": "hostState",
+    "fingerprint": "9023251eb56ae1c024791c61ad2a37d34d526b88b96b610736746d93f39ea3fa"
+  },
+  {
     "file": "renderer/src/views/RecoveryNotices.tsx",
     "kind": "cjk-identifier",
     "snippet": "模型服务",
     "fingerprint": "7135b995c4cd9b87ab0e7dee8c41aa40c7b211a15b7a63ece26624b75837a93a"
+  },
+  {
+    "file": "renderer/src/views/RecoveryNotices.tsx",
+    "kind": "raw-error-text",
+    "snippet": "viewFailure.message",
+    "fingerprint": "10da3bf601e09108a6d0ba3f07f039977c4010461172a2f4370a21a71c623df1"
+  },
+  {
+    "file": "renderer/src/views/RecoveryNotices.tsx",
+    "kind": "raw-error-text",
+    "snippet": "viewFailure.message",
+    "fingerprint": "9cac5c273dbe25a81f00e29bfbc8d84a395d65cc1618d7357786168eed2d70e7"
+  },
+  {
+    "file": "renderer/src/views/StartupScreen.tsx",
+    "kind": "raw-error-text",
+    "snippet": "failure?.message",
+    "fingerprint": "344f8d3df2d472a796c8743349acfd7f5343421fa57f2096d7a9a12e405f6a61"
   },
   {
     "file": "renderer/src/views/TaskResourcesPopover.tsx",
@@ -1754,12 +2936,6 @@
   {
     "file": "renderer/src/views/WorkbenchSettings.tsx",
     "kind": "cjk-identifier",
-    "snippet": "会话配置",
-    "fingerprint": "d5abddedb1d57c871e3ea1881afb7a49b6141bcf93dd83db175f46c28715f78d"
-  },
-  {
-    "file": "renderer/src/views/WorkbenchSettings.tsx",
-    "kind": "cjk-identifier",
     "snippet": "常规",
     "fingerprint": "1d7c380f63911d92799f1a1f702e799086d10a5e4151a97bbd0f76de37695dfc"
   },
@@ -1768,12 +2944,6 @@
     "kind": "cjk-identifier",
     "snippet": "模型服务",
     "fingerprint": "63cfb69e73c2b79ea3f39f19ebf7b1179babd6f241a2c47a023e0a95993698a3"
-  },
-  {
-    "file": "renderer/src/views/WorkbenchSettings.tsx",
-    "kind": "cjk-identifier",
-    "snippet": "浏览器",
-    "fingerprint": "c823e316a15c1c4e560d92995a2adef382c1f92ded14ca72c36deb4fa69a4abb"
   },
   {
     "file": "renderer/src/views/WorkbenchSettings.tsx",
@@ -1791,7 +2961,7 @@
     "file": "renderer/src/views/WorkbenchSettings.tsx",
     "kind": "cjk-identifier",
     "snippet": "浏览器",
-    "fingerprint": "beba47c5073da5e8c038cbc9d7b1368b79fee6acc3fe068ebaed2595bac12bb8"
+    "fingerprint": "c823e316a15c1c4e560d92995a2adef382c1f92ded14ca72c36deb4fa69a4abb"
   },
   {
     "file": "renderer/src/views/WorkbenchSettings.tsx",
@@ -1815,7 +2985,7 @@
     "file": "renderer/src/views/WorkbenchSettings.tsx",
     "kind": "cjk-identifier",
     "snippet": "会话配置",
-    "fingerprint": "f085f5fe58b79c18da3e670dca56ffacc7f2fd16e1b79eff01706df32285e3f1"
+    "fingerprint": "d5abddedb1d57c871e3ea1881afb7a49b6141bcf93dd83db175f46c28715f78d"
   },
   {
     "file": "renderer/src/views/WorkbenchSettings.tsx",
@@ -1951,6 +3121,12 @@
   },
   {
     "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "0603fb76e1634b6eca0e342ad79cbae441c38993d1c36cc0f55aff0af0a5d8f5"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
     "kind": "internal-state-in-view",
     "snippet": "state?.connected",
     "fingerprint": "ce7864f6a1dd65f241017308575cad23651fc7c3c63096bb3e9574d818395b48"
@@ -2005,9 +3181,45 @@
   },
   {
     "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "e44784fc22a57c13ff09b521fbb5c4aeb8c4722f0925e7d1b423a184ad044573"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "raw-error-text",
+    "snippet": "cause.message",
+    "fingerprint": "13e3a271ab890e249faba17d9c152fd3b05f4661ec3f0f3fa77e64690a37c97a"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
     "kind": "internal-state-in-view",
     "snippet": "state?.connected",
     "fingerprint": "8717b6482910dbeb643e5373bd76f66bd819e3a6bb07d7bc8b7496bc319fd888"
+  },
+  {
+    "file": "renderer/src/workspace-file-tree/WorkspaceFileTree.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "9d39d014529ea2bd1e08e77b32128bba091a0ef1cfa00901a4c06a6db1658e35"
+  },
+  {
+    "file": "renderer/src/workspace-file-tree/WorkspaceFileTree.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "9d9977dad9e20d4e19acf7ad1b0b104575afb7fab2743ee0e47acfaccec46100"
+  },
+  {
+    "file": "renderer/src/workspace-file-tree/WorkspaceFileTree.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "1031291b0e4b8ff623f562163e310c432efcdf92e24b540e78530b4f9090258c"
+  },
+  {
+    "file": "renderer/src/workspace-file-tree/WorkspaceFileTreeRowView.tsx",
+    "kind": "raw-error-text",
+    "snippet": "e.message",
+    "fingerprint": "531ba2cf5f8dbf1f4dab5b9eeff8b0755ece79b065c20ebc5d90cc32e1ae94e3"
   },
   {
     "file": "scripts/conversation-derivation-smoke.mjs",

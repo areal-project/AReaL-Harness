@@ -35,6 +35,12 @@ const LOCALE_DATE = /\.(?:toLocaleString|toLocaleDateString|toLocaleTimeString)\
 // 视图只读呈现器给出的用户状态，不直接读 Host/Core 的连接与加载字段。
 const INTERNAL_STATE =
   /\b(?:hostState|summariesLoaded|summariesFreshness)\b|\bstate\??\.connected\b/g;
+// 错误对象的原始文字只能经 renderer/src/errors/errorCopy.ts 进“查看详情”。
+const RAW_ERROR =
+  /\b\w*(?:[eE]rror|[cC]ause|[fF]ailure)\??\.message\b|\b(?:err|e)\.message\b|\bString\(\s*(?:\w*[eE]rror|\w*[cC]ause|err|e|reason)\s*\)|\bJSON\.stringify\(\s*[\w.?]*(?:[eE]rror|[cC]ause)\b/g;
+// Host 源码里作为错误抛出或返回的码。
+const HOST_CODE =
+  /(?:bail!|anyhow!|\.context)\(\s*"([A-Z][A-Z0-9_]{3,})"|\bensure!\([^;]*?,\s*"([A-Z][A-Z0-9_]{3,})"\s*,?\s*\)|"code"\s*:\s*"([A-Z][A-Z0-9_]{3,})"/g;
 const TEXT_ASSERTION = /getByText\(\s*["'`]([^"'`]*\p{Script=Han}[^"'`]*)["'`]/gu;
 
 function fingerprint(seen, file, kind, snippet) {
@@ -95,10 +101,25 @@ export async function collectUiHonesty() {
     for (const [, id] of source.matchAll(ID_CALLS)) add(file, "cjk-identifier", id);
     for (const [, id] of source.matchAll(ID_COMPARE)) add(file, "cjk-identifier", id);
     for (const match of source.matchAll(LOCALE_DATE)) add(file, "unlocalized-date", match[0]);
+    if (!file.startsWith("renderer/src/errors/"))
+      for (const match of source.matchAll(RAW_ERROR)) add(file, "raw-error-text", match[0]);
     if (/\/(?:views|settings)\/[^/]+\.tsx$/.test(path))
       for (const match of source.matchAll(INTERNAL_STATE))
         add(file, "internal-state-in-view", match[0]);
   }
+  // 每个 Host 错误码都要在错误文案表里登记，否则界面只能显示通用句子。
+  const registry = await readFile(resolve(root, "renderer/src/errors/errorCopy.ts"), "utf8");
+  const registered = new Set([...registry.matchAll(/^ {2}(\w+): \{/gm)].map((match) => match[1]));
+  const hostCodes = new Set();
+  for (const path of await files(resolve(root, "../../core/host/src"), (p) => p.endsWith(".rs")))
+    if (!/_tests?\.rs$|\/tests?\//.test(path))
+      for (const match of (await readFile(path, "utf8"))
+        .split("#[cfg(test)]")[0]
+        .matchAll(HOST_CODE))
+        hostCodes.add(match[1] ?? match[2] ?? match[3]);
+  for (const hostCode of [...hostCodes].sort())
+    if (!registered.has(hostCode))
+      add("renderer/src/errors/errorCopy.ts", "unregistered-error-code", hostCode);
   // 后台与原生外壳的文案同样会上屏。
   for (const dir of ["../../services/workbench/src", "app/src"])
     for (const path of await files(resolve(root, dir), (p) => /\.(?:c?js|ts)$/.test(p)))
