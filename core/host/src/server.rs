@@ -18,6 +18,8 @@ mod library_service;
 mod library_store;
 #[path = "loopback.rs"]
 mod loopback;
+#[path = "plugins.rs"]
+mod plugins;
 #[path = "power.rs"]
 mod power;
 #[path = "schedule_connection.rs"]
@@ -353,15 +355,9 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         read_models: Default::default(),
         loopback: loopback::Loopback::default(),
     });
-    host.schedules.import(
-        &host.migration,
-        &host
-            .slots
-            .borrow()
-            .values()
-            .map(|slot| slot.registration.clone())
-            .collect::<Vec<_>>(),
-    )?;
+    let registrations = host.registrations();
+    host.schedules.import(&host.migration, &registrations)?;
+    plugins::import(&host, &registrations);
     for entry in std::fs::read_dir(directory.join("operations"))? {
         let path = entry?.path();
         if path.extension().is_none_or(|extension| extension != "json") {
@@ -597,6 +593,14 @@ fn local_command_error(error: &anyhow::Error) -> Value {
     json!({"code":code,"message":error.to_string()})
 }
 impl Host {
+    fn registrations(&self) -> Vec<ProjectRegistration> {
+        self.slots
+            .borrow()
+            .values()
+            .map(|slot| slot.registration.clone())
+            .collect()
+    }
+
     fn intent_digest(
         &self,
         method: &str,
@@ -685,12 +689,7 @@ impl Host {
                     source: crate::migration::Source,
                 }
                 let input: Query = serde_json::from_value(params)?;
-                let registrations = self
-                    .slots
-                    .borrow()
-                    .values()
-                    .map(|slot| slot.registration.clone())
-                    .collect::<Vec<_>>();
+                let registrations = self.registrations();
                 self.migration.source(input.source, &registrations)
             }
             "gui.attachSource" => {
@@ -706,12 +705,7 @@ impl Host {
             "gui.import" => {
                 let input: crate::migration::Import = serde_json::from_value(params)?;
                 self.generation(&input.expected_generation)?;
-                let existing = self
-                    .slots
-                    .borrow()
-                    .values()
-                    .map(|s| s.registration.clone())
-                    .collect::<Vec<_>>();
+                let existing = self.registrations();
                 let result =
                     self.migration
                         .import(input, &connection.id, &existing, &self.journal)?;
@@ -730,15 +724,8 @@ impl Host {
                         .entry(registration.project_id.clone())
                         .or_insert_with(|| Slot::imported(registration));
                 }
-                self.schedules.import(
-                    &self.migration,
-                    &self
-                        .slots
-                        .borrow()
-                        .values()
-                        .map(|slot| slot.registration.clone())
-                        .collect::<Vec<_>>(),
-                )?;
+                self.schedules
+                    .import(&self.migration, &self.registrations())?;
                 self.schedules.wake.notify_one();
                 self.changed();
                 Ok(result)
@@ -832,12 +819,7 @@ impl Host {
                     let source = params["sourceId"]
                         .as_str()
                         .ok_or_else(|| error("invalidRequest", "sourceId is required"))?;
-                    let current: Vec<_> = self
-                        .slots
-                        .borrow()
-                        .values()
-                        .map(|slot| slot.registration.clone())
-                        .collect();
+                    let current = self.registrations();
                     self.migration.remote_projects(source, &current)?
                 };
                 let result = self.remote.dispatch(
@@ -1283,12 +1265,7 @@ impl Host {
                 let source = params["sourceId"]
                     .as_str()
                     .ok_or_else(|| error("invalidRequest", "sourceId is required"))?;
-                let current: Vec<_> = self
-                    .slots
-                    .borrow()
-                    .values()
-                    .map(|slot| slot.registration.clone())
-                    .collect();
+                let current = self.registrations();
                 self.migration.remote_projects(source, &current)?
             };
             let result = self
@@ -1429,15 +1406,8 @@ impl Host {
             "invalidRequest: state must be outside workspace"
         );
         crate::space::validate_workspace(&self.home, &r.workspace)?;
-        self.migration.validate_registration(
-            r,
-            &self
-                .slots
-                .borrow()
-                .values()
-                .map(|slot| slot.registration.clone())
-                .collect::<Vec<_>>(),
-        )?;
+        self.migration
+            .validate_registration(r, &self.registrations())?;
         ensure!(
             !input.bind_existing || input.registration.default_binding,
             "invalidRequest: bindExisting requires defaultBinding"

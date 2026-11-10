@@ -848,10 +848,11 @@ impl Engine {
                 let thread = self.read(id, false).await?;
                 self.managed_registry(&thread, false).map_err(invalid)?
             } else {
-                let mut tools = self.desktop.mcp.tools();
-                if config.allow_plugin_skills && !config.read_only {
-                    tools.extend(self.desktop.plugin_mcp.tools());
-                }
+                let tools = if config.allow_plugin_skills && !config.read_only {
+                    self.desktop.plugin_mcp.tools()
+                } else {
+                    Vec::new()
+                };
                 self.registry.clone().with_mcp(tools).map_err(invalid)?
             };
             self.check_plugin_skill_tools(&skill, &config, &registry)?;

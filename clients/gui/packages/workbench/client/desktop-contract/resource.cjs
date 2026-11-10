@@ -1,14 +1,10 @@
 // @ts-check
 "use strict";
 /** @typedef {Record<string,unknown>} Fields */
-/** @typedef {{type:'stdio',command:string,args:string[],cwd:string|null,envVars:string[]}|{type:'streamableHttp',url:string,bearerTokenEnv:string|null}} McpTransport */
-/** @typedef {{transport:McpTransport,startupTimeoutMs:number,callTimeoutMs:number|null,enabledTools:string[]|null}} McpConfig */
-/** @typedef {{id:string,runtimeId:string,config:McpConfig}} UserMcp */
-/** @typedef {{revision:number,skills:Record<string,Record<string,boolean>>,mcp:UserMcp[]}} ResourceState */
+/** @typedef {{revision:number,skills:Record<string,Record<string,boolean>>}} ResourceState */
 /** @typedef {{id:string,scope:string,managed:boolean,enabled:boolean,root:string,name:string,description:string,revision:string,error?:undefined}} AvailableSkill */
 /** @typedef {AvailableSkill|{id:string,scope:string,managed:boolean,enabled:false,name:string,root?:string,error:string}} Skill */
 /** @typedef {{id:string,revision:string,root:string,metadata:{name:string,description:string}}} DeployedSkill */
-/** @typedef {Fields & {id:string,revision:number,state:string,config:McpConfig}} McpServer */
 /** @typedef {Fields & {pluginId:string,installedDigest:string,trusted:boolean,state:string}} PluginConnection */
 /** @param {unknown} value @returns {value is Fields} */
 function record(value) {
@@ -25,8 +21,7 @@ function resources(value) {
     typeof value.revision !== "number" ||
     !Number.isSafeInteger(value.revision) ||
     value.revision < 0 ||
-    !record(value.skills) ||
-    !Array.isArray(value.mcp)
+    !record(value.skills)
   )
     throw new Error("资源配置记录无效");
   const skills = Object.fromEntries(
@@ -43,12 +38,7 @@ function resources(value) {
       ];
     }),
   );
-  const mcp = value.mcp.map((item) => {
-    if (!record(item) || typeof item.id !== "string" || typeof item.runtimeId !== "string")
-      throw new Error("MCP 配置记录无效");
-    return { id: item.id, runtimeId: item.runtimeId, config: normalizeMcp(item.config) };
-  });
-  return { revision: value.revision, skills, mcp };
+  return { revision: value.revision, skills };
 }
 /** @param {unknown} value @returns {DeployedSkill[]} */
 function deployedSkills(value) {
@@ -82,29 +72,6 @@ function deployment(value) {
     return { ...item, id: item.id, revision: item.revision };
   });
   return { ...value, profiles };
-}
-/** @param {unknown} value @returns {{data:McpServer[]}} */
-function mcpServers(value) {
-  if (!record(value) || !Array.isArray(value.data)) throw new Error("Core MCP 目录无效");
-  const data = value.data.map((item) => {
-    if (
-      !record(item) ||
-      typeof item.id !== "string" ||
-      typeof item.revision !== "number" ||
-      !Number.isSafeInteger(item.revision) ||
-      typeof item.state !== "string" ||
-      !mcpConfig(item.config)
-    )
-      throw new Error("Core MCP 记录无效");
-    return {
-      ...item,
-      id: item.id,
-      revision: item.revision,
-      state: item.state,
-      config: item.config,
-    };
-  });
-  return { data };
 }
 /** @param {unknown} value @returns {{data:PluginConnection[]}} */
 function pluginConnections(value) {
@@ -143,105 +110,16 @@ function availableSkills(value) {
   });
   return { data };
 }
-/** @param {unknown} raw @returns {McpConfig} */
-function normalizeMcp(raw) {
-  if (!record(raw)) throw new Error("无效 MCP 配置");
-  const t = raw.transport;
-  /** @param {unknown} v @returns {v is string} */
-  const env = (v) => typeof v === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(v);
-  /** @param {Fields} object @param {string[]} allowed */
-  const keys = (object, allowed) => {
-    if (Object.keys(object).some((k) => !allowed.includes(k)))
-      throw new Error("MCP 配置包含不支持的字段");
-  };
-  keys(raw, ["transport", "startupTimeoutMs", "callTimeoutMs", "enabledTools"]);
-  if (!record(t)) throw new Error("请配置 MCP transport");
-  /** @type {McpTransport} */ let transport;
-  if (t.type === "stdio") {
-    keys(t, ["type", "command", "args", "cwd", "envVars"]);
-    const args = t.args ?? [];
-    const envVars = t.envVars ?? [];
-    if (
-      typeof t.command !== "string" ||
-      !t.command.trim() ||
-      t.command.includes("\0") ||
-      !strings(args) ||
-      args.length > 256 ||
-      args.some((a) => a.includes("\0")) ||
-      !strings(envVars) ||
-      envVars.length > 64 ||
-      envVars.some((e) => !env(e)) ||
-      (t.cwd != null && (typeof t.cwd !== "string" || !t.cwd))
-    )
-      throw new Error("MCP 命令、参数或环境变量名称无效");
-    transport = {
-      type: t.type,
-      command: t.command,
-      args,
-      cwd: t.cwd ?? null,
-      envVars,
-    };
-  } else if (t.type === "streamableHttp") {
-    keys(t, ["type", "url", "bearerTokenEnv"]);
-    if (typeof t.url !== "string") throw new Error("MCP URL 无效");
-    let url;
-    try {
-      url = new URL(t.url);
-    } catch {
-      throw new Error("MCP URL 无效");
-    }
-    if (
-      !["http:", "https:"].includes(url.protocol) ||
-      url.username ||
-      url.password ||
-      url.hash ||
-      (t.bearerTokenEnv != null && !env(t.bearerTokenEnv))
-    )
-      throw new Error("MCP URL 或认证环境变量名称无效");
-    transport = {
-      type: t.type,
-      url: t.url,
-      bearerTokenEnv: t.bearerTokenEnv ?? null,
-    };
-  } else throw new Error("不支持的 MCP transport");
-  const startupTimeoutMs = raw.startupTimeoutMs ?? 30000,
-    callTimeoutMs = raw.callTimeoutMs === undefined ? 120000 : raw.callTimeoutMs;
-  if (
-    typeof startupTimeoutMs !== "number" ||
-    !Number.isSafeInteger(startupTimeoutMs) ||
-    startupTimeoutMs <= 0 ||
-    (callTimeoutMs !== null &&
-      (typeof callTimeoutMs !== "number" ||
-        !Number.isSafeInteger(callTimeoutMs) ||
-        callTimeoutMs <= 0))
-  )
-    throw new Error("MCP 超时必须为正整数");
-  const enabledTools = raw.enabledTools ?? null;
-  if (
-    enabledTools !== null &&
-    (!strings(enabledTools) ||
-      enabledTools.length > 128 ||
-      enabledTools.some((v) => typeof v !== "string" || !v || v.length > 256))
-  )
-    throw new Error("无效工具列表");
-  const result = { transport, startupTimeoutMs, callTimeoutMs, enabledTools };
-  if (new TextEncoder().encode(JSON.stringify(result)).byteLength > 65536)
-    throw new Error("MCP 配置过大");
-  return result;
-}
 
 /** @typedef {{scope:'user',projectId?:string}|{scope:'project',projectId:string}} Scope */
 /** @typedef {{name:string,event:'PreToolUse'|'PostToolUse'|'PostToolUseFailure',matcher:string,argv:string[],timeoutMs:number}} Hook */
-/** @typedef {{transport:{type:'stdio',command:string,args?:string[]|null,cwd?:string|null,envVars?:string[]|null}|{type:'streamableHttp',url:string,bearerTokenEnv?:string|null},startupTimeoutMs?:number|null,callTimeoutMs?:number|null,enabledTools?:string[]|null}} McpInput */
-/** @typedef {{operation:'hooks'}|{operation:'hooksSave',expectedRevision:string,hooks:Hook[]}|{operation:'builtinSkill',id:'openai-skill-creator'}| (Scope & ({operation:'skills'|'mcp'}|{operation:'skillRead',id:string}|{operation:'skillToggle',id:string,enabled:boolean,expectedRevision:number}|{operation:'skillSave',id:string,name?:string|null,description?:string|null,content:string,expectedRevision:number}|{operation:'mcpSave',id:string,config:McpInput,expectedRevision:number}|{operation:'mcpConnect'|'mcpDisconnect',id:string,projectId:string,expectedRevision?:number}))} ResourceRequest */
+/** @typedef {{operation:'hooks'}|{operation:'hooksSave',expectedRevision:string,hooks:Hook[]}|{operation:'builtinSkill',id:'openai-skill-creator'}| (Scope & ({operation:'skills'}|{operation:'skillRead',id:string}|{operation:'skillToggle',id:string,enabled:boolean,expectedRevision:number}|{operation:'skillSave',id:string,name?:string|null,description?:string|null,content:string,expectedRevision:number}))} ResourceRequest */
 /** @typedef {{path:string,external:boolean,revision:string,hooks:Hook[],projects:Array<{projectId:string,root:string,connected:boolean,applied:boolean}>}} HooksStatus */
 /** @typedef {{skill:{id:string,revision:string,name:string,description:string},provenance:{upstream:string,revision:string,contentDigest:string}}} BuiltinSkill */
 /** @typedef {{revision:number,data:Array<Skill & {overridden:boolean}>,customDeployment:boolean}} SkillsStatus */
-/** @typedef {{id:string,state:string,scope:'project',revision:number,config:McpConfig}|{id:string,runtimeId:string,state:string,scope:'user',revision?:number,liveRevision:number,config:McpConfig}} ScopedMcp */
-/** @typedef {{revision:number,data:ScopedMcp[]}} McpStatus */
 /** @typedef {{revision:number,warning:string|null}} ResourceSaved */
 /** @template {string} N @typedef {N extends 'resources' ? ResourceRequest : never} Request */
-/** @template {string} N @template P @typedef {N extends 'resources' ? P extends {operation:'hooks'|'hooksSave'} ? HooksStatus : P extends {operation:'builtinSkill'} ? BuiltinSkill : P extends {operation:'skills'} ? SkillsStatus : P extends {operation:'skillRead'} ? {content:string,truncated:boolean} : P extends {operation:'mcp'|'mcpConnect'|'mcpDisconnect'} ? McpStatus : P extends {operation:'mcpSave'} ? P extends {scope:'project'} ? McpStatus : P extends {scope:'user'} ? ResourceSaved : McpStatus|ResourceSaved : P extends {operation:'skillToggle'|'skillSave'} ? ResourceSaved : never : never} Response */
+/** @template {string} N @template P @typedef {N extends 'resources' ? P extends {operation:'hooks'|'hooksSave'} ? HooksStatus : P extends {operation:'builtinSkill'} ? BuiltinSkill : P extends {operation:'skills'} ? SkillsStatus : P extends {operation:'skillRead'} ? {content:string,truncated:boolean} : P extends {operation:'skillToggle'|'skillSave'} ? ResourceSaved : never : never} Response */
 /** @param {unknown} value @returns {value is string} */
 function text(value) {
   return typeof value === "string";
@@ -261,24 +139,6 @@ function hook(value) {
     integer(value.timeoutMs)
   );
 }
-/** @param {unknown} value @returns {value is McpConfig} */
-function mcpConfig(value) {
-  if (
-    !record(value) ||
-    !record(value.transport) ||
-    !integer(value.startupTimeoutMs) ||
-    value.startupTimeoutMs < 1 ||
-    !(value.callTimeoutMs === null || (integer(value.callTimeoutMs) && value.callTimeoutMs > 0)) ||
-    !(value.enabledTools === null || strings(value.enabledTools))
-  )
-    return false;
-  const t = value.transport;
-  return t.type === "stdio"
-    ? text(t.command) && strings(t.args) && (t.cwd === null || text(t.cwd)) && strings(t.envVars)
-    : t.type === "streamableHttp" &&
-        text(t.url) &&
-        (t.bearerTokenEnv === null || text(t.bearerTokenEnv));
-}
 /** @template {string} N @param {N} name @param {unknown} value @returns {value is Request<N>} */
 function isRequest(name, value) {
   if (name !== "resources" || !record(value)) return false;
@@ -296,29 +156,17 @@ function isRequest(name, value) {
     (value.scope === "project" && !text(value.projectId))
   )
     return false;
-  if (value.operation === "skills" || value.operation === "mcp") return true;
+  if (value.operation === "skills") return true;
   if (!text(value.id)) return false;
   if (value.operation === "skillRead") return true;
-  if (value.operation === "mcpConnect" || value.operation === "mcpDisconnect")
-    return (
-      text(value.projectId) &&
-      (value.expectedRevision === undefined || integer(value.expectedRevision))
-    );
   if (!integer(value.expectedRevision)) return false;
   if (value.operation === "skillToggle") return typeof value.enabled === "boolean";
-  if (value.operation === "skillSave")
-    return (
-      text(value.content) &&
-      (value.name == null || text(value.name)) &&
-      (value.description == null || text(value.description))
-    );
-  if (value.operation !== "mcpSave") return false;
-  try {
-    normalizeMcp(value.config);
-    return true;
-  } catch {
-    return false;
-  }
+  return (
+    value.operation === "skillSave" &&
+    text(value.content) &&
+    (value.name == null || text(value.name)) &&
+    (value.description == null || text(value.description))
+  );
 }
 /** @param {unknown} value @returns {value is BuiltinSkill} */
 function builtin(value) {
@@ -348,26 +196,6 @@ function skill(value) {
       : text(value.error) &&
         value.enabled === false &&
         (value.root === undefined || text(value.root)))
-  );
-}
-/** @param {unknown} value @returns {value is McpStatus} */
-function mcpStatus(value) {
-  return (
-    record(value) &&
-    integer(value.revision) &&
-    Array.isArray(value.data) &&
-    value.data.every(
-      (item) =>
-        record(item) &&
-        text(item.id) &&
-        text(item.state) &&
-        mcpConfig(item.config) &&
-        (item.scope === "user"
-          ? text(item.runtimeId) &&
-            integer(item.liveRevision) &&
-            (item.revision === undefined || integer(item.revision))
-          : item.scope === "project" && integer(item.revision)),
-    )
   );
 }
 /** @param {unknown} value @returns {value is ResourceSaved} */
@@ -408,10 +236,6 @@ function isResponse(name, request, value) {
     );
   if (request.operation === "skillRead")
     return text(value.content) && typeof value.truncated === "boolean";
-  if (["mcp", "mcpConnect", "mcpDisconnect"].some((entry) => entry === request.operation))
-    return mcpStatus(value);
-  if (request.operation === "mcpSave")
-    return request.scope === "project" ? mcpStatus(value) : saved(value);
   return ["skillSave", "skillToggle"].some((entry) => entry === request.operation) && saved(value);
 }
 /** @param {unknown} value @returns {Hook[]} */
@@ -425,13 +249,10 @@ module.exports = {
   resources,
   deployedSkills,
   deployment,
-  mcpServers,
   pluginConnections,
   availableSkills,
-  normalizeMcp,
   isRequest,
   isResponse,
-  mcpConfig,
   hook,
   builtin,
 };

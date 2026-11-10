@@ -11,6 +11,7 @@ anyhow.workspace = true
 areal-config.workspace = true
 areal-engine.workspace = true
 areal-plugins.workspace = true
+areal-mcp.workspace = true
 areal-local-service.workspace = true
 areal-protocol.workspace = true
 fs2.workspace = true

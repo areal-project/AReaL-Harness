@@ -1607,10 +1607,6 @@ export const pluginMessages = {
     "zh-CN": "MCP 配置不是有效的 JSON。",
     en: "The MCP configuration is not valid JSON.",
   },
-  "settings.resourceSettings.provideAnMCPConfigurationContainingTransport": {
-    "zh-CN": "请提供包含 transport 的 MCP 配置。",
-    en: "Provide an MCP configuration containing transport.",
-  },
   "settings.resourceSettings.commandCannotBeEmpty": {
     "zh-CN": "命令不能为空。",
     en: "Command cannot be empty.",
@@ -1627,18 +1623,6 @@ export const pluginMessages = {
     "zh-CN": "MCP 配置",
     en: "MCP configuration",
   },
-  "settings.resourceSettings.user": {
-    "zh-CN": "用户",
-    en: "User",
-  },
-  "settings.resourceSettings.currentProject": {
-    "zh-CN": "当前项目",
-    en: "Current project",
-  },
-  "settings.resourceSettings.standaloneResourcesValue": {
-    "zh-CN": "独立资源 · {value0}",
-    en: "Standalone resources · {value0}",
-  },
   "settings.resourceSettings.clearSearch": {
     "zh-CN": "清除搜索",
     en: "Clear search",
@@ -1651,61 +1635,29 @@ export const pluginMessages = {
     "zh-CN": "搜索 MCP 服务器",
     en: "Search MCP servers",
   },
-  "settings.resourceSettings.reusableAcrossAllProjectsTheConnectionToggle": {
-    "zh-CN": "供所有项目复用；连接开关仅影响当前项目。",
-    en: "Reusable across all projects. The connection toggle affects only the current project.",
+  "settings.resourceSettings.directMcpIsAPlugin": {
+    "zh-CN": "直接添加的 MCP 会作为插件保存，在插件页里按项目启用和连接。",
+    en: "MCP servers you add directly are saved as plugins. Enable and connect them per project from the plugin page.",
   },
-  "settings.resourceSettings.onlyForTheCurrentProject": {
-    "zh-CN": "仅用于当前项目。",
-    en: "Only for the current project.",
+  "settings.resourceSettings.addedDirectly": {
+    "zh-CN": "直接添加",
+    en: "Added directly",
+  },
+  "settings.resourceSettings.removeMCPValue": {
+    "zh-CN": "删除 MCP {value0}",
+    en: "Remove MCP {value0}",
+  },
+  "settings.resourceSettings.mcpRemoved": {
+    "zh-CN": "已删除 {value0}",
+    en: "Removed {value0}",
   },
   "settings.resourceSettings.addMCP": {
     "zh-CN": "新增 MCP",
     en: "Add MCP",
   },
-  "settings.resourceSettings.notApplied": {
-    "zh-CN": "未应用",
-    en: "Not applied",
-  },
-  "settings.resourceSettings.connected": {
-    "zh-CN": "已连接",
-    en: "Connected",
-  },
-  "settings.resourceSettings.disconnected": {
-    "zh-CN": "未连接",
-    en: "Disconnected",
-  },
-  "settings.resourceSettings.connectionFailed": {
-    "zh-CN": "连接失败",
-    en: "Connection failed",
-  },
-  "settings.resourceSettings.toolCatalogExpired": {
-    "zh-CN": "工具目录已过期",
-    en: "Tool catalog expired",
-  },
-  "settings.resourceSettings.connecting": {
-    "zh-CN": "连接中",
-    en: "Connecting",
-  },
   "settings.resourceSettings.editMCPValue": {
     "zh-CN": "编辑 MCP {value0}",
     en: "Edit MCP {value0}",
-  },
-  "settings.resourceSettings.connectValue": {
-    "zh-CN": "连接 {value0}",
-    en: "Connect {value0}",
-  },
-  "settings.resourceSettings.disconnectValue": {
-    "zh-CN": "断开 {value0}",
-    en: "Disconnect {value0}",
-  },
-  "settings.resourceSettings.connectionStatusRefreshedForValue": {
-    "zh-CN": "{value0} 连接状态已刷新",
-    en: "Connection status refreshed for {value0}",
-  },
-  "settings.resourceSettings.noToolsAvailableYetConnectAndRefresh": {
-    "zh-CN": "尚无可用工具，连接成功后刷新查看。",
-    en: "No tools available yet. Connect and refresh to view them.",
   },
   "settings.resourceSettings.enabledInCurrentProject": {
     "zh-CN": "当前项目已启用",
@@ -1732,8 +1684,8 @@ export const pluginMessages = {
     en: "Add MCP server",
   },
   "settings.resourceSettings.configureALocalCommandOrHTTPService": {
-    "zh-CN": "配置本地命令或 HTTP 服务。保存后点击列表开关连接，查看服务器提供的工具。",
-    en: "Configure a local command or HTTP service. After saving, use the list toggle to connect and view the server's tools.",
+    "zh-CN": "填写本地命令或 HTTP 地址，保存后到插件页连接。",
+    en: "Enter a local command or HTTP URL, then connect it from the plugin page.",
   },
   "settings.resourceSettings.serverID": {
     "zh-CN": "服务 ID",
@@ -2385,10 +2337,6 @@ export const pluginMessages = {
   "settings.pluginHookSettings.windowsCommandValue": {
     "zh-CN": "Windows 命令：{command}",
     en: "Windows command: {command}",
-  },
-  "settings.resourceSettings.toolCount": {
-    "zh-CN": "工具 · {count, number}",
-    en: "Tools · {count, number}",
   },
   "settings.pluginCenter.installPlugin": {
     "zh-CN": "安装",

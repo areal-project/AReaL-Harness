@@ -440,18 +440,14 @@ MCP cleanup failure remains cleanupFailed with persistent cleanupUnconfirmed. Re
 
 ## Plugin package management
 
-These deployment-level methods require unrestricted `manage` authority; Thread-scoped principals cannot call them. Core owns workspace paths, installation and scoped selection. Clients must not edit installation state directly. See the [plugin guide](../guides/plugins.en.md) and [implementation plan](../development/codex-plugins-plan.en.md) for pinned formats and stage boundaries.
+Host owns plugin registration (marketplace sources, resolution, installation, enable choices, uninstall, and directly added MCP). Clients call Host `plugins.read` (`plugins`, `plugin`, `mcp`) and `plugins.command` (`pluginInstall`, `pluginUninstall`, `pluginResolve`, `pluginConfigure`, `marketplaceAdd/AddGit/Remove/Update`, `mcpSave`, `mcpRemove`), which require local GUI write access and `manage`. After writing the plugin store, Host tells online Cores to re-read it. The Core methods below require unrestricted `manage` authority; Thread-scoped principals cannot call them. Clients must not edit installation state directly. See the [plugin guide](../guides/plugins.en.md) and [implementation plan](../development/codex-plugins-plan.en.md) for pinned formats and stage boundaries.
 
 | Method | Parameters | Result/constraint |
 |---|---|---|
 | `areal/plugin/list` | `{}` | `revision/data/marketplaces/errors`; entry failures isolated |
 | `areal/plugin/read` | `id` | Package details; candidate and installed versions/digests/Skills separate |
-| `areal/marketplace/add` | `root, expectedRevision, requestId` | Add local catalog root and advance directory revision |
 | `areal/plugin/importArchive` | `path, expectedRevision, requestId` | Import a local ZIP as a candidate source; return package detail without installation or execution |
-| `areal/plugin/install` | `id, scope, expectedRevision, source, expectedDigest, requestId` | `scope=user/project`; digest binds the selected source snapshot |
-| `areal/plugin/configure` | `id, scope, enabled, expectedRevision, requestId` | Explicit project choice overrides user default; disabling revokes subsequent reads |
 | `areal/plugin/component/configure` | `id, component, enabled, expectedRevision, expectedDigest, requestId` | Independent Skill/MCP choice for the current project; installed digest and revision CAS; return package detail |
-| `areal/plugin/uninstall` | `id, expectedRevision, requestId` | Revoke access; retain historical cache |
 | `areal/plugin/setup` | `id, threadId?, requestId` | `{thread,turn,requestId}`; ordinary session only; explicitly select installed onboarding Skill |
 
 Entry `version/sourceDigest/admissionDigest/skills/onboardingSkill` fields describe the current candidate. `installedVersion/installedDigest/installedSourceDigest/installedSkills/installedOnboardingSkill` describe the persisted snapshot. `sourceDigest` and `installedSourceDigest` identify original package bytes. Nullable `admissionDigest` binds consumed marketplace definitions and package bytes. The review identity is `admissionDigest ?? sourceDigest`; `installedDigest` is the installed effective identity. Installation requires selected `source` and the 64-character hexadecimal review identity as `expectedDigest`. Context candidates reject an old client that supplies only the package digest rather than downgrading review. Changes use directory `revision` for CAS. Re-read after conflicts or source drift; never retry writes implicitly.
@@ -462,7 +458,7 @@ Entry `version/sourceDigest/admissionDigest/skills/onboardingSkill` fields descr
 
 Writes reuse the deployment management submission ledger. The same identity, `requestId`, method and parameters return the original result; different parameters conflict. Query UNKNOWN through `areal/request/read {requestId}` and the matching method's completed `response`, without `threadId` or replay. Setup separately freezes the authoritative Skill reference through ordinary Turn admission; package text cannot manufacture other explicit Skill selections. Unsupported components produce diagnostics, and installation does not launch MCP/hooks/apps. AReaL management methods and the implemented experimental Codex adapter share Store/Engine owners while retaining separate wire contracts.
 
-`areal/marketplace/add`, `areal/marketplace/addGit`, `areal/marketplace/remove`, `areal/marketplace/update`, and `areal/plugin/uninstall` return the original complete catalog when the full `{"result":catalog}` receipt fits within 256 KiB. Oversized success returns `{"revision":N,"catalogRefreshRequired":true}`, confirming completion at catalog revision N. Identical requests and receipt queries retain this original result after later catalog changes or Core restart. A separate `areal/plugin/list` reads the complete current catalog, whose revision may be later than N. That read does not replace the historical receipt. Failures retain their original errors.
+Host `plugins.command` returns an accepted receipt whose `receipt` is the plugin catalog or package detail. Installation is a single user-level copy. `pluginConfigure` with `scope:"project"` and `projectId` changes only that project's choice; projects are identified by project identity, so worktrees of one repository share it.
 
 ### Component support reports
 
@@ -492,7 +488,7 @@ Generated pages share MCP Apps tokens, the proxy, and the eight-page limit per w
 
 ## Plugin sources, MCP and desktop Apps
 
-New routes retain unrestricted `manage` authorization; generated schemas own parameter types. Source mutations use catalog CAS and management receipts: `areal/plugin/resolve {id,expectedRevision,requestId}`, `areal/marketplace/addGit {url,refName?,sparsePaths?,expectedRevision,requestId}`, `areal/marketplace/remove {root,expectedRevision,requestId}` and `areal/marketplace/update {expectedRevision,requestId}`.
+New routes retain unrestricted `manage` authorization; generated schemas own parameter types. Source resolution and marketplace mutations go through Host `plugins.command` with catalog CAS.
 
 `areal/plugin/connection {id,expectedDigest,connect,requestId}` explicitly trusts/disconnects the installed version. `areal/plugin/mcp/list` distinguishes connection, authentication, optional failure and cleanup states. `areal/plugin/auth {id,server,operation}` supports transient `start/status/cancel` results without management receipts. `areal/plugin/connector/configure {id,connectorId,provider,credentialRef,expectedDigest,requestId}` supports explicit GitHub mappings; only trusted launchers inject credential values.
 

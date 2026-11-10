@@ -267,7 +267,6 @@ fn desktop_schema() -> Value {
         "areal/provider/list",
         "areal/server/status",
         "areal/server/gc",
-        "areal/mcp/list",
         "areal/plugin/list",
         "areal/workflow/list",
     ] {
@@ -303,24 +302,9 @@ fn desktop_schema() -> Value {
             vec!["threadId"],
         ),
     );
-    for method in ["areal/provider/read", "areal/mcp/read", "areal/plugin/read"] {
+    for method in ["areal/provider/read", "areal/plugin/read"] {
         methods.insert(method.into(), object(json!({"id":string}), vec!["id"]));
     }
-    let scope = json!({"enum":["user","project"]});
-    methods.insert(
-        "areal/marketplace/add".into(),
-        object(
-            json!({"root":string,"expectedRevision":integer,"requestId":string}),
-            vec!["root", "expectedRevision", "requestId"],
-        ),
-    );
-    methods.insert(
-        "areal/plugin/resolve".into(),
-        object(
-            json!({"id":string,"expectedRevision":integer,"requestId":string}),
-            vec!["id", "expectedRevision", "requestId"],
-        ),
-    );
     methods.insert(
         "areal/plugin/importArchive".into(),
         object(
@@ -328,55 +312,9 @@ fn desktop_schema() -> Value {
             vec!["path", "expectedRevision", "requestId"],
         ),
     );
-    methods.insert(
-        "areal/marketplace/addGit".into(),
-        object(
-            json!({"url":string,"refName":string,"sparsePaths":{"type":"array","items":string},"expectedRevision":integer,"requestId":string}),
-            vec!["url", "expectedRevision", "requestId"],
-        ),
-    );
-    methods.insert(
-        "areal/marketplace/remove".into(),
-        object(
-            json!({"root":string,"expectedRevision":integer,"requestId":string}),
-            vec!["root", "expectedRevision", "requestId"],
-        ),
-    );
-    methods.insert(
-        "areal/marketplace/update".into(),
-        object(
-            json!({"expectedRevision":integer,"requestId":string}),
-            vec!["expectedRevision", "requestId"],
-        ),
-    );
-    methods.insert(
-        "areal/plugin/install".into(),
-        object(
-            json!({"id":string,"scope":scope,"expectedRevision":integer,"source":string,
-            "expectedDigest":{"type":"string","pattern":"^[0-9a-f]{64}$"},"requestId":string}),
-            vec![
-                "id",
-                "scope",
-                "expectedRevision",
-                "source",
-                "expectedDigest",
-                "requestId",
-            ],
-        ),
-    );
-    methods.insert("areal/plugin/configure".into(), object(
-        json!({"id":string,"scope":scope,"enabled":{"type":"boolean"},"expectedRevision":integer,"requestId":string}),
-        vec!["id","scope","enabled","expectedRevision","requestId"]));
     methods.insert("areal/plugin/component/configure".into(), object(
         json!({"id":string,"component":schemars::schema_for!(areal_plugins::PluginComponentId),"enabled":{"type":"boolean"},"expectedRevision":integer,"expectedDigest":{"type":"string","pattern":"^[0-9a-f]{64}$"},"requestId":string}),
         vec!["id","component","enabled","expectedRevision","expectedDigest","requestId"]));
-    methods.insert(
-        "areal/plugin/uninstall".into(),
-        object(
-            json!({"id":string,"expectedRevision":integer,"requestId":string}),
-            vec!["id", "expectedRevision", "requestId"],
-        ),
-    );
     methods.insert(
         "areal/plugin/setup".into(),
         object(
@@ -384,19 +322,13 @@ fn desktop_schema() -> Value {
             vec!["id", "requestId"],
         ),
     );
-    for method in [
-        "areal/provider/remove",
-        "areal/mcp/connect",
-        "areal/mcp/disconnect",
-    ] {
-        methods.insert(
-            method.into(),
-            object(
-                json!({"id":string,"expectedRevision":integer}),
-                vec!["id", "expectedRevision"],
-            ),
-        );
-    }
+    methods.insert(
+        "areal/provider/remove".into(),
+        object(
+            json!({"id":string,"expectedRevision":integer}),
+            vec!["id", "expectedRevision"],
+        ),
+    );
     methods.insert(
         "areal/provider/upsert".into(),
         object(
@@ -512,7 +444,6 @@ fn desktop_schema() -> Value {
         object(json!({"id":string,"model":string}), vec!["id"]),
     );
     methods.insert("areal/process/acknowledgeCleanup".into(),object(json!({"threadId":string,"id":string,"note":{"type":"string","minLength":1,"maxLength":4096}}),vec!["threadId","id","note"]));
-    methods.insert("areal/mcp/configure".into(),object(json!({"id":string,"expectedRevision":integer,"config":schemars::schema_for!(areal_mcp::ServerConfig)}),vec!["id","expectedRevision","config"]));
     methods.insert("areal/workflow/start".into(),object(json!({"workflow":schemars::schema_for!(VersionRef),"requestId":string,"workers":integer,"admission":schemars::schema_for!(areal_engine::workgroup::Admission)}),vec!["workflow","requestId"]));
     for method in ["areal/workgroup/list", "areal/workgroup/policy"] {
         methods.insert(method.into(), empty.clone());
@@ -585,9 +516,6 @@ fn desktop_schema() -> Value {
                 | "areal/plan/update"
                 | "areal/provider/upsert"
                 | "areal/provider/remove"
-                | "areal/mcp/configure"
-                | "areal/mcp/connect"
-                | "areal/mcp/disconnect"
                 | "areal/queue/update"
                 | "areal/queue/remove"
                 | "areal/queue/reorder"

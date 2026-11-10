@@ -54,21 +54,8 @@ pub fn projections(responses: &mut Map<String, Value>, notifications: &mut Map<S
     );
     insert(
         &[
-            "marketplace/add",
-            "marketplace/addGit",
-            "marketplace/remove",
-            "marketplace/update",
-            "plugin/uninstall",
-        ],
-        json!({"oneOf":[catalog,object(json!({"revision":number,"catalogRefreshRequired":{"const":true}}))]}),
-    );
-    insert(
-        &[
             "plugin/read",
             "plugin/importArchive",
-            "plugin/resolve",
-            "plugin/install",
-            "plugin/configure",
             "plugin/component/configure",
         ],
         schema::<areal_plugins::PluginDetail>(),

@@ -2,6 +2,10 @@ import type { HostClient } from "@areal/client";
 import type { PlatformServices } from "./services.js";
 import { isLibraryState } from "./services.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
+import {
+  hostPluginStoreParams,
+  pluginStoreOperation,
+} from "@areal/workbench/desktop-contract/plugin-store";
 
 const WORKTREE_READS = new Set(["worktreeList", "worktreeOptions", "worktreeRead"]);
 const WORKTREE_WRITES = new Set([
@@ -23,8 +27,6 @@ const MANAGE_READS = new Set([
   "profile",
   "skills",
   "skill",
-  "plugins",
-  "plugin",
   "pluginComponents",
   "pluginHooks",
   "pluginMcp",
@@ -64,18 +66,10 @@ const MANAGE_WRITES = new Set([
   "executionApply",
   "executionCancel",
   "workgroupCancel",
-  "pluginConfigure",
   "pluginComponentConfigure",
   "pluginHooksConfigure",
-  "pluginResolve",
-  "pluginInstall",
-  "pluginUninstall",
   "pluginDevelopmentLink",
   "pluginDevelopmentUnlink",
-  "marketplaceAdd",
-  "marketplaceAddGit",
-  "marketplaceRemove",
-  "marketplaceUpdate",
   "processStart",
   "processWrite",
   "processResize",
@@ -245,6 +239,45 @@ function declined(error: unknown) {
   );
 }
 
+/** 插件库写入由 Host 直接完成；没有回执时界面重读登记核对，不重放。 */
+async function acceptedCommand(client: HostClient, method: string, payload: unknown) {
+  const commandId = crypto.randomUUID();
+  try {
+    const result = (await client.workbench(
+      method,
+      payload as Parameters<HostClient["workbench"]>[1],
+      commandId,
+    )) as {
+      commandId?: string;
+      method?: string;
+      admissionState?: string;
+      submissionUnknown?: boolean;
+      receipt?: unknown;
+    } | null;
+    if (
+      !result ||
+      result.commandId !== commandId ||
+      result.method !== method ||
+      result.admissionState !== "accepted" ||
+      result.submissionUnknown !== false ||
+      !("receipt" in result)
+    )
+      throw new Error("操作结果尚未确认，请刷新后核对");
+    return result.receipt;
+  } catch (error) {
+    const unknown = !(
+      error &&
+      typeof error === "object" &&
+      "submissionUnknown" in error &&
+      error.submissionUnknown === false
+    );
+    throw Object.assign(error instanceof Error ? error : new Error("操作结果尚未确认"), {
+      commandId,
+      submissionUnknown: unknown,
+    });
+  }
+}
+
 /**
  * 使用统计切到 Host 的工作台服务：读与同步走 Host；本窗口每 5 秒上报前台与空闲状态，
  * 服务对所有客户端取并集；首次连上时把桌面原有的每日活跃时间合并过去。
@@ -290,6 +323,17 @@ export function createWorkbenchRoutes(
             ...(params.threadId ? { threadId: params.threadId } : {}),
           } as Parameters<HostClient["workbench"]>[1]),
         };
+      }
+      if (name === "manage") {
+        const operation = String(params.operation);
+        const read = operation === "plugins" || operation === "plugin" || operation === "mcp";
+        if (read || pluginStoreOperation(operation)) {
+          const method = read ? "plugins.read" : "plugins.command";
+          if (!client.writable(method)) return undefined;
+          const payload = hostPluginStoreParams(params) as Parameters<HostClient["workbench"]>[1];
+          if (read) return { value: await client.workbench(method, payload) };
+          return { value: await acceptedCommand(client, method, payload) };
+        }
       }
       if (name === "tasks" && client.writable("tasks.read")) {
         return {

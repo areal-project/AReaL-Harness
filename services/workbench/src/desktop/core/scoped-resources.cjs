@@ -4,12 +4,11 @@ const { readFile, readdir, realpath, open, mkdir, writeFile } = require("node:fs
 const { constants } = require("node:fs");
 const { join, relative, isAbsolute } = require("node:path");
 const { homedir } = require("node:os");
-const { createHash, randomUUID } = require("node:crypto");
+const { createHash } = require("node:crypto");
 const YAML = require("yaml");
 const { builtinSkill, BUILTIN_SKILL_ID } = require("./builtin-skills.cjs");
 const { WorktreeResources } = require("./worktree-resources.cjs");
 const resourceContract = require("./resource-contract.cjs");
-const { normalizeMcp } = resourceContract;
 const { serverStatus } = require("./provider-contract.cjs");
 /** @typedef {import('./project-state.cjs').CoreProject} CoreProject */
 /** @typedef {Record<string,unknown> & {operation?:string,scope?:string,projectId?:string,id?:string,expectedRevision?:number,enabled?:boolean,content?:unknown,name?:unknown,description?:unknown,config?:unknown}} ResourceRequest */
@@ -65,7 +64,7 @@ class ScopedResources {
   constructor(backend) {
     this.backend = backend;
     /** @type {import('./resource-contract.cjs').ResourceState} */
-    this.value = { revision: 0, skills: {}, mcp: [] };
+    this.value = { revision: 0, skills: {} };
     this.worktrees = new WorktreeResources(this);
   }
   async init() {
@@ -283,11 +282,6 @@ class ScopedResources {
           .restartSafe
       )
         throw new Error("技能配置已保存，请在当前任务和终端结束后创建新任务");
-      const connected = (
-        await project.client.request("areal/mcp/list", {}, { decode: resourceContract.mcpServers })
-      ).data
-        .filter((m) => ["connected", "stale"].includes(m.state))
-        .map((m) => m.id);
       const connectedPlugins = ["areal/plugin/mcp/list", "areal/plugin/connection"].every(
         (method) => requireClient(project).capabilities?.methods?.includes(method),
       )
@@ -311,17 +305,6 @@ class ScopedResources {
       );
       if (!result.restartSafe) throw new Error("Core 尚未就绪，技能将在下次创建任务时应用");
       await this.backend.restartProject(project);
-      const current = (
-        await project.client.request("areal/mcp/list", {}, { decode: resourceContract.mcpServers })
-      ).data;
-      for (const id of connected) {
-        const m = current.find((m) => m.id === id);
-        if (m)
-          await this.backend.submit(project, "areal/mcp/connect", {
-            id,
-            expectedRevision: m.revision,
-          });
-      }
       for (const plugin of connectedPlugins) {
         const restored = resourceContract.pluginConnections(
           await this.backend.submit(project, "areal/plugin/connection", {
@@ -383,61 +366,6 @@ class ScopedResources {
     this.backend.onChange();
     return { projectId: project.id, profile, skill, provenance };
   }
-  /** @param {ResourceRequest} request */
-  async mcpList(request) {
-    const scope = this.scope(request);
-    const project = request.projectId
-      ? await this.backend.start(this.project(request.projectId).id)
-      : null;
-    const live = project
-      ? (
-          await requireClient(project).request(
-            "areal/mcp/list",
-            {},
-            { decode: resourceContract.mcpServers },
-          )
-        ).data
-      : [];
-    if (scope === "user")
-      return {
-        revision: this.value.revision,
-        data: this.value.mcp.map((m) => ({
-          ...m,
-          ...live.find((x) => x.id === m.runtimeId),
-          id: m.id,
-          runtimeId: m.runtimeId,
-          config: m.config,
-          liveRevision: live.find((x) => x.id === m.runtimeId)?.revision ?? 0,
-          scope: "user",
-          state: live.find((x) => x.id === m.runtimeId)?.state ?? "notApplied",
-        })),
-      };
-    return {
-      revision: this.value.revision,
-      data: live
-        .filter((m) => !this.value.mcp.some((u) => u.runtimeId === m.id))
-        .map((m) => ({ ...m, scope: "project" })),
-    };
-  }
-  /** @param {CoreProject} project */
-  async syncMcp(project) {
-    if (!this.value.mcp.length || project.pending.length) return; // 同步前先核对未知回执。
-    const client = requireClient(project);
-    const live = (
-      await client.request("areal/mcp/list", {}, { decode: resourceContract.mcpServers })
-    ).data;
-    for (const m of this.value.mcp) {
-      const current = live.find((s) => s.id === m.runtimeId);
-      if (current && digest(normalizeMcp(current.config)) === digest(m.config)) continue;
-      if (current && !["disconnected", "failed"].includes(current.state))
-        throw new Error(`请先断开 ${m.id}，再应用用户配置`);
-      await this.backend.submit(project, "areal/mcp/configure", {
-        id: m.runtimeId,
-        expectedRevision: current?.revision ?? 0,
-        config: m.config,
-      });
-    }
-  }
   /** @param {unknown} request */
   async command(request) {
     if (!isResourceRequest(request)) throw new Error("资源操作参数无效");
@@ -452,14 +380,6 @@ class ScopedResources {
       return { skill, provenance };
     }
     if (operation === "skills") return this.skills(request);
-    if (operation === "mcp") {
-      this.backend.activeCommands++;
-      try {
-        return await this.mcpList(request);
-      } finally {
-        this.backend.activeCommands--;
-      }
-    }
     if (operation === "skillRead") {
       const item = (await this.scan(this.scope(request))).find((s) => s.id === request.id);
       if (!item || item.error || !item.root) throw new Error("技能不可读");
@@ -479,36 +399,7 @@ class ScopedResources {
     this.backend.resourcesUpdating = true;
     try {
       const scope = this.scope(request);
-      if (["mcpConnect", "mcpDisconnect"].includes(operation)) {
-        /** @type {CoreProject} */
-        const project = await this.backend.start(this.project(request.projectId).id);
-        if (!project.client) throw new Error("Core 尚未连接");
-        if (project.pending.length) throw new Error("请先核对项目中未确认的操作");
-        const item = scope === "user" ? this.value.mcp.find((m) => m.id === request.id) : null;
-        if (scope === "user" && !item) throw new Error("服务器已不存在");
-        await this.syncMcp(project);
-        const id = item?.runtimeId ?? request.id;
-        const live = (
-          await project.client.request(
-            "areal/mcp/list",
-            {},
-            { decode: resourceContract.mcpServers },
-          )
-        ).data.find((m) => m.id === id);
-        if (!live) throw new Error("服务器已不存在");
-        if (scope !== "user" && request.expectedRevision !== live.revision)
-          throw new Error("配置已变化，请刷新");
-        await this.backend.submit(
-          project,
-          operation === "mcpConnect" ? "areal/mcp/connect" : "areal/mcp/disconnect",
-          { id, expectedRevision: live.revision },
-        );
-        return this.mcpList(request);
-      }
-      if (
-        request.expectedRevision !== this.value.revision &&
-        !(operation === "mcpSave" && scope !== "user")
-      )
+      if (request.expectedRevision !== this.value.revision)
         throw new Error("配置已变化，请刷新后重试");
       const next = structuredClone(this.value);
       if (operation === "skillToggle") {
@@ -539,63 +430,12 @@ class ScopedResources {
           `---\n${YAML.stringify(meta)}---\n${request.content.trim()}\n`,
           { flag: "wx", mode: 0o600 },
         );
-      } else if (operation === "mcpSave") {
-        if (typeof request.id !== "string" || !/^[a-zA-Z0-9_-]{1,32}$/.test(request.id))
-          throw new Error("服务 ID 仅支持 1–32 位字母、数字、下划线或连字符");
-        const config = normalizeMcp(request.config);
-        if (scope !== "user") {
-          if (this.value.mcp.some((m) => m.runtimeId === request.id))
-            throw new Error("请在用户范围编辑此配置");
-          /** @type {CoreProject} */
-          const project = await this.backend.start(this.project(request.projectId).id);
-          if (!project.client) throw new Error("Core 尚未连接");
-          if (project.pending.length) throw new Error("请先核对项目中未确认的操作");
-          await this.backend.submit(project, "areal/mcp/configure", {
-            id: request.id,
-            expectedRevision: request.expectedRevision,
-            config,
-          });
-          return this.mcpList(request);
-        }
-        const old = next.mcp.find((m) => m.id === request.id);
-        if (!old && next.mcp.length >= 16) throw new Error("最多配置 16 个用户 MCP");
-        for (const p of this.backend.projects.values()) {
-          if (p.pending.length || (old && p.service && !p.client?.ready))
-            throw new Error("请先恢复所有项目连接并核对未确认操作");
-          if (old && p.client?.ready) {
-            const m = (
-              await p.client.request("areal/mcp/list", {}, { decode: resourceContract.mcpServers })
-            ).data.find((m) => m.id === old.runtimeId);
-            if (m && !["disconnected", "failed"].includes(m.state))
-              throw new Error(`请先在 ${p.root} 断开 ${request.id}`);
-          }
-        }
-        /** @type {import('./resource-contract.cjs').UserMcp} */
-        const item = {
-          id: request.id,
-          runtimeId: old?.runtimeId ?? `user_${randomUUID().replaceAll("-", "").slice(0, 24)}`,
-          config,
-        };
-        next.mcp = old ? next.mcp.map((m) => (m.id === item.id ? item : m)) : [...next.mcp, item];
       } else throw new Error("不支持的资源操作");
       next.revision++;
       await this.backend.save("resources.json", next);
       this.value = next;
-      const failures = [];
-      if (operation === "mcpSave")
-        for (const p of this.backend.projects.values())
-          if (p.client?.ready) {
-            try {
-              await this.syncMcp(p);
-            } catch (e) {
-              failures.push(`${p.root}: ${e instanceof Error ? e.message : String(e)}`);
-            }
-          }
       this.backend.onChange();
-      return {
-        revision: next.revision,
-        warning: failures.length ? `配置已保存，部分项目未同步：${failures.join("；")}` : null,
-      };
+      return { revision: next.revision, warning: null };
     } finally {
       this.backend.resourcesUpdating = false;
     }
@@ -610,4 +450,4 @@ function requireClient(project) {
 function isResourceRequest(value) {
   return resourceContract.isRequest("resources", value);
 }
-module.exports = { ScopedResources, metadata, normalizeMcp };
+module.exports = { ScopedResources, metadata };

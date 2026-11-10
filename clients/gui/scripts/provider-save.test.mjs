@@ -906,11 +906,6 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
     stopReconciliation() {},
     scheduleReconciliation() {},
     listThreads: async () => {},
-    resources: {
-      syncMcp: async () => {
-        f.calls.push(["mcp-sync"]);
-      },
-    },
     analytics: { syncProject: async () => {} },
     // This provider fixture has no task rows or pending lifecycle operations.
     ownerTasks: { attach: () => ({ start: async () => {}, stop() {} }) },
@@ -970,14 +965,13 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
   return { ...f, connected, releaseSubscription, subscriptionRefresh: () => subscriptionRefresh };
 }
 
-test("connect publishes local models after retirement and MCP before background subscription models", async (t) => {
+test("connect publishes local models after retirement and before background subscription models", async (t) => {
   const f = await connectFixture(t);
   await f.backend.connect(f.project);
   assert.deepEqual(f.project.models, [{ id: "old-model" }]);
   assert.deepEqual(f.connected, [true]);
   const methods = f.calls.map(([method]) => method);
   assert.equal(methods.filter((method) => method === "areal/model/list").length, 1);
-  assert.ok(methods.indexOf("areal/model/list") > methods.indexOf("mcp-sync"));
   f.releaseSubscription();
   await f.subscriptionRefresh();
   assert.deepEqual(f.project.models, [{ id: "old-model" }, { id: "subscription-model" }]);
@@ -991,7 +985,6 @@ test("connect refuses readiness when the final catalog fails", async (t) => {
   await assert.rejects(f.backend.connect(f.project), /final catalog unavailable/);
   assert.deepEqual(f.connected, []);
   assert.deepEqual(f.project.models, [{ id: "old-model" }]);
-  assert.ok(f.calls.some(([method]) => method === "mcp-sync"));
   assert.equal(f.project.providerRevision, "old");
   assert.equal(f.service.applicationState(f.project).kind, "applied");
 });

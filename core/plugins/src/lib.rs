@@ -6,7 +6,11 @@ mod development;
 pub use development::{DevelopmentLink, DevelopmentRefresh};
 pub mod hook_sources;
 pub mod hooks;
+mod local_mcp;
 mod metadata;
+mod project;
+pub use local_mcp::LOCAL_MCP_MARKETPLACE;
+pub use project::project_key;
 mod package;
 mod remote;
 mod snapshot;
@@ -210,8 +214,12 @@ impl fmt::Display for StoreError {
     }
 }
 impl std::error::Error for StoreError {}
+/// 存储格式版本。旧版（无版本号）按工作区路径记录项目选择，需由 Host 停机导入一次。
+const STATE_VERSION: u32 = 2;
 #[derive(Default, Serialize, Deserialize)]
 struct State {
+    #[serde(default)]
+    version: u32,
     revision: u64,
     #[serde(default)]
     user_configuration: BTreeMap<String, PluginUserConfiguration>,
@@ -233,6 +241,7 @@ struct State {
     git_marketplaces: BTreeMap<PathBuf, remote::GitPin>,
     #[serde(default)]
     user: BTreeMap<String, bool>,
+    /// 键是 [`project_key`]，不是执行工作区路径。
     #[serde(default)]
     projects: BTreeMap<String, BTreeMap<String, bool>>,
     #[serde(default)]
@@ -246,10 +255,87 @@ pub struct Store {
     component_reads: std::sync::atomic::AtomicUsize,
     root: PathBuf,
     workspace: PathBuf,
+    /// 项目选择的键；没有项目上下文的用户级视图为空。
+    project: String,
     user_home: Option<PathBuf>,
     discovery_workspaces: Option<Vec<PathBuf>>,
 }
 impl Store {
+    /// 不带项目上下文的用户级视图：安装、市场来源与用户默认启用都在这里写。
+    pub fn open_user(root: PathBuf, user_home: Option<PathBuf>) -> Result<Self> {
+        fs::create_dir_all(&root)?;
+        let root = root.canonicalize()?;
+        for name in ["cache", "staging", "data"] {
+            fs::create_dir_all(root.join(name))?;
+        }
+        Ok(Self {
+            component_cache: Default::default(),
+            #[cfg(test)]
+            component_reads: Default::default(),
+            workspace: root.clone(),
+            root,
+            project: String::new(),
+            user_home,
+            discovery_workspaces: Some(Vec::new()),
+        })
+    }
+    /// 过渡：到 0.2.0 删。停机导入：把旧版按工作区路径记录的项目选择改按项目身份记录。已是当前版本时不做事。
+    ///
+    /// 同一项目的多个旧路径合并时，主工作区自己的选择优先，其余路径只补缺。
+    pub fn import_path_keyed_state(root: &Path) -> Result<bool> {
+        let path = root.join("state.json");
+        if !path.exists() {
+            return Ok(false);
+        }
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(root.join("state.lock"))?;
+        lock.lock_exclusive()?;
+        let mut state: serde_json::Value = serde_json::from_slice(&fs::read(&path)?)
+            .context("invalid plugin state; refusing to import")?;
+        if state["version"].as_u64() == Some(u64::from(STATE_VERSION)) {
+            return Ok(false);
+        }
+        for field in ["projects", "component_choices"] {
+            let Some(old) = state.get(field).and_then(|v| v.as_object()).cloned() else {
+                continue;
+            };
+            let mut keyed: Vec<_> = old
+                .into_iter()
+                .map(|(key, value)| {
+                    let project = project_key(Path::new(&key)).to_string_lossy().into_owned();
+                    (key != project, project, value)
+                })
+                .collect();
+            // false（主工作区自身）排在前面，先写入的胜出。
+            keyed.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+            let mut merged = serde_json::Map::new();
+            for (_, project, value) in keyed {
+                let target = merged
+                    .entry(project)
+                    .or_insert_with(|| serde_json::Value::Object(Default::default()));
+                if let (Some(target), Some(value)) = (target.as_object_mut(), value.as_object()) {
+                    for (plugin, choice) in value {
+                        target
+                            .entry(plugin.clone())
+                            .or_insert_with(|| choice.clone());
+                    }
+                }
+            }
+            state[field] = serde_json::Value::Object(merged);
+        }
+        state["version"] = STATE_VERSION.into();
+        state["revision"] = (state["revision"].as_u64().unwrap_or(0) + 1).into();
+        let mut tmp = tempfile::NamedTempFile::new_in(root)?;
+        tmp.write_all(&serde_json::to_vec_pretty(&state)?)?;
+        tmp.as_file().sync_all()?;
+        tmp.persist(&path)?;
+        File::open(root)?.sync_all()?;
+        Ok(true)
+    }
     pub fn open(root: PathBuf, workspace: PathBuf, user_home: Option<PathBuf>) -> Result<Self> {
         fs::create_dir_all(&root)?;
         let root = root.canonicalize()?;
@@ -262,6 +348,7 @@ impl Store {
             #[cfg(test)]
             component_reads: Default::default(),
             root,
+            project: project_key(&workspace).to_string_lossy().into_owned(),
             workspace,
             user_home,
             discovery_workspaces: None,
@@ -283,11 +370,23 @@ impl Store {
         Ok(revisions)
     }
     fn state(&self) -> Result<State> {
-        match fs::read(self.root.join("state.json")) {
-            Ok(b) => serde_json::from_slice(&b).context("invalid plugin state; refusing to reset"),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(State::default()),
-            Err(e) => Err(e.into()),
-        }
+        let state = match fs::read(self.root.join("state.json")) {
+            Ok(b) => serde_json::from_slice::<State>(&b)
+                .context("invalid plugin state; refusing to reset")?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(State {
+                    version: STATE_VERSION,
+                    ..Default::default()
+                });
+            }
+            Err(e) => return Err(e.into()),
+        };
+        ensure!(
+            state.version == STATE_VERSION,
+            "PLUGIN_STORE_IMPORT_REQUIRED: plugin store version {} needs the Host import",
+            state.version
+        );
+        Ok(state)
     }
     fn transact<T>(
         &self,
@@ -310,6 +409,7 @@ impl Store {
             .into());
         }
         let result = operation(&mut state)?;
+        state.version = STATE_VERSION;
         state.revision = state
             .revision
             .checked_add(1)
@@ -325,7 +425,7 @@ impl Store {
         let user = s.user.get(id).copied();
         let project = s
             .projects
-            .get(&self.workspace.to_string_lossy().into_owned())
+            .get(&self.project)
             .and_then(|p| p.get(id))
             .copied();
         s.installed.contains_key(id) && project.or(user).unwrap_or(false)
@@ -344,7 +444,7 @@ impl Store {
     fn component_choices(&self, state: &State, id: &str) -> ComponentChoices {
         state
             .component_choices
-            .get(&self.workspace.to_string_lossy().into_owned())
+            .get(&self.project)
             .and_then(|plugins| plugins.get(id))
             .cloned()
             .unwrap_or_default()
@@ -402,8 +502,9 @@ impl Store {
                 s.user.insert(id.into(), enabled);
             }
             "project" => {
+                ensure!(!self.project.is_empty(), "project scope requires a project");
                 s.projects
-                    .entry(self.workspace.to_string_lossy().into_owned())
+                    .entry(self.project.clone())
                     .or_default()
                     .insert(id.into(), enabled);
             }
@@ -421,6 +522,7 @@ impl Store {
         if let Some(home) = &self.user_home {
             roots.push(home.clone());
         }
+        roots.push(self.local_mcp_root());
         roots.sort();
         roots.dedup();
         let mut markets = Vec::new();
@@ -622,6 +724,7 @@ impl Store {
             #[cfg(test)]
             component_reads: Default::default(),
             root: self.root.clone(),
+            project: self.project.clone(),
             workspace: workspaces
                 .first()
                 .cloned()
@@ -886,9 +989,13 @@ impl Store {
                     "plugin skill not found"
                 );
             }
+            ensure!(
+                !self.project.is_empty(),
+                "component choices require a project"
+            );
             let choices = state
                 .component_choices
-                .entry(self.workspace.to_string_lossy().into_owned())
+                .entry(self.project.clone())
                 .or_default()
                 .entry(id.into())
                 .or_default();

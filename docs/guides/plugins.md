@@ -2,7 +2,7 @@
 
 # 插件包兼容
 
-AReaL 的插件包由共享 Core 管理；GUI 与 CLI 读取同一安装与启用状态。支持本地/Git marketplace、Git 与 npm 来源、兼容 manifest 中的 Skills，以及显式 onboarding；插件 MCP、Apps 和 GitHub Connector 通过现有 Core 执行边界接入。固定格式基线见 [upstream/pins.json](../../upstream/pins.json)，完整实施与验收见[任务计划](../development/codex-plugins-plan.md)。
+AReaL 的插件登记（市场来源、安装与启用选择）由 Host 管理，GUI、网页与 CLI 读写同一份登记；连接、认证与执行由各项目 Core 负责。支持本地/Git marketplace、Git 与 npm 来源、兼容 manifest 中的 Skills，以及显式 onboarding；插件 MCP、Apps 和 GitHub Connector 通过现有 Core 执行边界接入。固定格式基线见 [upstream/pins.json](../../upstream/pins.json)，完整实施与验收见[任务计划](../development/codex-plugins-plan.md)。
 
 ## 查看组件支持
 
@@ -24,7 +24,7 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 目录 source 的相对路径和 `directory` 类型均受市场根边界约束。`github` 来源归一到固定 Git 来源，再沿原有显式解析和审阅步骤安装。HTTP JSON 市场、marketplace archive source、command source 与 pip 不在本批范围。手工 ZIP 导入是独立入口，不能用它证明对应市场 source 已支持。相同字段名按所属格式解释，不把 Git URL 自动当成 JSON catalog。
 
-项目范围选择按实际执行工作区路径隔离。原工作区的项目范围选择不会自动启用于另一个 worktree；应单独核对新执行目录中的插件范围。
+项目范围选择按项目身份记录：同一仓库的主工作区与它的各个 worktree 共享“在此项目启用”的选择，不同仓库互不影响。
 
 `sourceDigest` 始终描述当前候选的原包字节。消费市场条目定义的候选另有 `admissionDigest`。安装时 `expectedDigest` 使用 `admissionDigest ?? sourceDigest`，界面与 CLI 自动选择正确身份。`installedDigest` 描述有效安装快照，`installedSourceDigest` 单独描述已安装原包。市场条目只改组件选择、来源或执行前提，也会要求重新审阅。安装后读取、重启及历史引用使用固定定义，不重新读取可变市场。旧无上下文包保留原摘要和收据行为。旧客户端只提交原包摘要时不能安装需要新审阅身份的候选。
 
@@ -32,7 +32,7 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 仓库提供 [本地市场示例](../../examples/plugin-marketplace/README.zh-CN.md)，包含调用现有工具的 AReaL 浏览器和电脑适配 Skill，以及固定版本的官方 Heptabase 来源。浏览器和电脑包是 AReaL 适配包，不宣称原始 ZCode JavaScript SDK 可以原样执行。创建技能继续使用既有 **Create Skill** 和固定官方 Creator，市场发现、创建产物和发布分别处理。
 
-要安装官方 Heptabase，在示例市场选择 **Heptabase**，或将 `https://github.com/heptameta/heptabase-agent-plugins.git` 作为 Git 市场添加，ref 使用 `7cae4b5988bb4a2875e7ba9ea3f9eec12c644826`。解析来源、预览并核对摘要后安装到当前项目。示例目录固定 `plugins/heptabase` 原包的 `0.2.0` 版本，保留便携 manifest、MCP、Skills、许可证与 Codex overlay 的 `.app.json` 注册。安装验证覆盖原包导入与安装。当前 Heptabase App ID 缺少 AReaL Connector 映射，包内 MCP 也未显式声明 OAuth，因此账号连接与真实工具调用尚未打通。
+要安装官方 Heptabase，在示例市场选择 **Heptabase**，或将 `https://github.com/heptameta/heptabase-agent-plugins.git` 作为 Git 市场添加，ref 使用 `7cae4b5988bb4a2875e7ba9ea3f9eec12c644826`。解析来源、预览并核对摘要后安装。示例目录固定 `plugins/heptabase` 原包的 `0.2.0` 版本，保留便携 manifest、MCP、Skills、许可证与 Codex overlay 的 `.app.json` 注册。安装验证覆盖原包导入与安装。当前 Heptabase App ID 缺少 AReaL Connector 映射，包内 MCP 也未显式声明 OAuth，因此账号连接与真实工具调用尚未打通。
 
 ## 插件、Skills 与 MCP
 
@@ -42,9 +42,9 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 插件沿用 OpenAI 的包结构。便携包使用根目录 `plugin.json`、`skills/` 和 `mcp.json`，OpenAI 专用设置位于 `extensions.com.openai`；兼容 manifest 仍按既有规则解析。安装、启用、认证与连接状态由 AReaL 的原有所有者管理，不写回包声明。
 
-新增用户范围的独立 MCP 时，其他项目的连接未就绪不会阻止保存。配置立即持久化并同步到就绪项目，未就绪项目在后续显式启动或连接 MCP 时同步。存在未确认操作时仍需先核对。编辑已有用户 MCP 前，已启动项目必须恢复连接，并断开该 MCP 的活动连接。
+直接添加的 MCP 会保存为只含这一个服务的插件（来源显示“直接添加”），与其他插件一样按项目启用、连接和认证。编辑器接受插件 `.mcp.json` 中 `mcpServers` 的单个服务写法，例如 `{"command":"npx","args":["-y","some-mcp"]}` 或 `{"url":"https://example.com/mcp"}`；密钥写成环境变量引用（`env_vars`、`bearer_token_env_var`），不写进配置。保存后在插件页连接。升级到这一版本时，原来的用户级与项目级 MCP 会在 Host 启动时一次性转成这种插件，保留原来的启用范围。
 
-独立技能支持内容页和范围启停；“创建 Skill”先核对所选项目当前部署的任务配置，再进入该项目的普通聊天草稿并加载产品内固定版本的官方 Skill Creator。旧任务保留原配置；产品默认部署下保存的基础配置会使用当前资源版本，自定义受限配置不会获得额外权限。用户发送需求后，Agent 按 Creator 流程在该项目的 `.agents/skills/<skill-name>/` 中创建并校验技能。该资源保留上游版本、许可证与内容摘要，不读取其他 Agent 应用的本机配置。独立 MCP 保留配置编辑与连接入口。范围选择只筛选独立资源。包内组件显示当前项目的选择；详情页“管理”打开同一插件的设置，保留整包范围、摘要信任、认证和提交核对流程。每个 Skill 与 MCP 服务都有当前项目开关。关闭选择跨更新保留，卸载清除；包声明和会话 Profile 继续限制实际准入。包内组件不通过独立资源接口修改，目录展示不扩大当前聊天的有效技能或工具范围。
+独立技能支持内容页和范围启停；“创建 Skill”先核对所选项目当前部署的任务配置，再进入该项目的普通聊天草稿并加载产品内固定版本的官方 Skill Creator。旧任务保留原配置；产品默认部署下保存的基础配置会使用当前资源版本，自定义受限配置不会获得额外权限。用户发送需求后，Agent 按 Creator 流程在该项目的 `.agents/skills/<skill-name>/` 中创建并校验技能。该资源保留上游版本、许可证与内容摘要，不读取其他 Agent 应用的本机配置。范围选择只筛选独立技能。包内组件显示当前项目的选择；详情页“管理”打开同一插件的设置，保留整包范围、摘要信任、认证和提交核对流程。每个 Skill 与 MCP 服务都有当前项目开关。关闭选择跨更新保留，卸载清除；包声明和会话 Profile 继续限制实际准入。包内组件不通过独立资源接口修改，目录展示不扩大当前聊天的有效技能或工具范围。
 
 官方 Creator 的初始化和校验脚本需要 Python 3 与 PyYAML。选择 Skill 本身不扩大 Runtime 文件权限。受限任务通过 `skill_read` 分页读取脚本，再由 Runtime 将返回的原始字节写入授权工作区的临时目录后执行；不会直接执行 Desktop 私有缓存中的文件。`clients/gui/scripts/plugin-concepts-smoke.mjs --creator-only` 验证空项目普通首轮中的资源读取、项目内创建和官方校验，可用 `AREAL_TEST_PYTHON` 指定解释器；该解释器须在隔离 HOME、禁用用户 site-packages 的环境中仍能导入 `yaml`。
 
@@ -85,7 +85,7 @@ areal plugin --workspace /absolute/workspace marketplace-add /absolute/marketpla
 areal plugin --workspace /absolute/workspace marketplace-add-git https://github.com/TEAM/catalog.git --ref-name main
 areal plugin --workspace /absolute/workspace resolve review-helper@team-tools
 areal plugin --workspace /absolute/workspace read review-helper@team-tools
-areal plugin --workspace /absolute/workspace install review-helper@team-tools --scope project
+areal plugin --workspace /absolute/workspace install review-helper@team-tools
 areal plugin --workspace /absolute/workspace setup review-helper@team-tools
 areal plugin --workspace /absolute/workspace connect review-helper@team-tools --expected-digest REVIEWED_INSTALLED_DIGEST
 areal plugin --workspace /absolute/workspace mcp-list
@@ -93,7 +93,7 @@ areal plugin --workspace /absolute/workspace disconnect review-helper@team-tools
 areal plugin --workspace /absolute/workspace disable review-helper@team-tools --scope project
 ```
 
-用户选择作为默认值，项目的明确选择覆盖用户默认；它们不代表更高权限的强制要求。产品生成的普通标准 Profile 明确启用 `allowPluginSkills`，因此可选择已启用插件的 Skills。其他显式 Profile 未声明该权限时，不会自动获得插件 Skills。MCP 必须明确核对已安装摘要后连接；Connector 必须映射原始 ID 并配置账户。未支持的 hook handler、认证机制、命令执行语义或依赖显示诊断。“已安装”不代表服务器已经连接。
+安装只有用户级一份；`enable`/`disable` 加 `--scope project` 只改当前项目的选择。登记命令（市场、解析、安装、启用、卸载）直接写插件登记，不需要项目服务在运行。用户选择作为默认值，项目的明确选择覆盖用户默认；它们不代表更高权限的强制要求。产品生成的普通标准 Profile 明确启用 `allowPluginSkills`，因此可选择已启用插件的 Skills。其他显式 Profile 未声明该权限时，不会自动获得插件 Skills。MCP 必须明确核对已安装摘要后连接；Connector 必须映射原始 ID 并配置账户。未支持的 hook handler、认证机制、命令执行语义或依赖显示诊断。“已安装”不代表服务器已经连接。
 
 ## Skills 与设置流程
 
@@ -107,7 +107,7 @@ Rust 嵌入式调用通过 `Engine::install_plugin_store` 接入插件。未配�
 
 安装副本按内容摘要保留，源目录编辑不改变已经安装的资源。活动 Turn 固定插件技能引用；后续 Turn 使用当前可用版本。停用和卸载立即阻止后续资源读取，保留旧包用于历史，不默认删除可写数据。活动 Turn 的工具 schema 和调用对象一起固定；升级为后续 Turn 建立新连接，旧连接等待已有调用和 App 排空。停用、卸载和显式断开撤销调用。清理未确认显示 UNKNOWN 并阻止重连；显式断开也清除自动重连信任。
 
-新会话应用独立技能配置时可能重启 Core。桌面恢复此前已连接的独立 MCP 和已信任的插件 MCP；插件恢复仍须匹配原安装摘要，失败不重放工具调用。交互应用在创建会话后重新读取同一插件版本的当前连接，再执行首次打开。
+新会话应用独立技能配置时可能重启 Core。桌面恢复此前已连接且已信任的插件 MCP；插件恢复仍须匹配原安装摘要，失败不重放工具调用。交互应用在创建会话后重新读取同一插件版本的当前连接，再执行首次打开。
 
 普通会话的消息和受理回执先由 Core 保存，可信插件的自动重连随后准备首轮模型工具。插件认证或初始化仍在等待时，已受理的消息可见，模型尚未开始请求。取消本轮不会丢弃共享连接的清理；准备尚未结束时，后台生命周期仍报告资源未结算。重连只使用本轮受理时允许的已信任插件摘要，不扩大受限 Profile 的权限。
 

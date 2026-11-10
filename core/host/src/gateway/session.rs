@@ -1162,17 +1162,16 @@ impl Session {
             )
             .await;
         }
-        if method == "desktop.command" {
+        if method == "desktop.command" || method.starts_with("plugins.") {
             ensure!(self.local && self.gui_write, "FORBIDDEN");
             self.authorize(None, "manage")?;
-            ensure!(
-                request.get("context").is_none() && request.get("commandId").is_none(),
-                "INVALID_PARAMS"
-            );
-            return crate::server::workbench_route::desktop_command(
-                &self.host, &self.peer, request,
-            )
-            .await;
+            ensure!(request.get("context").is_none(), "INVALID_PARAMS");
+            let (host, peer) = (&self.host, &self.peer);
+            if method == "desktop.command" {
+                ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
+                return crate::server::workbench_route::desktop_command(host, peer, request).await;
+            }
+            return crate::server::plugins::gateway(host, method, request).await;
         }
         if method == "command.read" && self.local && request.get("context").is_none() {
             ensure!(exact(params, &["commandId"]), "INVALID_PARAMS");

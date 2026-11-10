@@ -293,6 +293,25 @@ impl Connections {
         let (value, sequence) = observation.snapshot(host).await?;
         Ok((value, sequence, observation))
     }
+    /// 插件登记由 Host 写入后，让在线的项目 Core 立即重读：撤销已卸载或停用插件的连接与技能。
+    /// 不在线的 Core 下次启动或下一轮开始时自己会读到，这里尽力而为。
+    pub(super) async fn refresh_plugins(&self, host: &Host) {
+        let sessions: Vec<_> = self
+            .sessions
+            .borrow()
+            .values()
+            .filter(|session| session.shared_current(host))
+            .cloned()
+            .collect();
+        for session in sessions {
+            if let Err(error) = session.request("areal/plugin/list", json!({})).await {
+                eprintln!(
+                    "plugin refresh skipped for project {}: {error:#}",
+                    session.project_id
+                );
+            }
+        }
+    }
     pub async fn ready(&self, host: &Host, id: &str, generation: &str) -> Result<()> {
         tokio::time::timeout(Duration::from_secs(15), async {
             loop {
@@ -1112,7 +1131,6 @@ struct Refresh {
     drained: bool,
     submitted: std::collections::BTreeSet<String>,
     inputs: LaunchInputs,
-    mcp: Vec<String>,
     plugins: Vec<Value>,
 }
 pub(super) fn refresh_path(host: &Host, id: &str) -> PathBuf {
@@ -1144,7 +1162,6 @@ async fn capture_refresh(host: &Host, session: &CoreSession) -> Result<Refresh> 
         session.request("areal/server/status", json!({})).await?["restartSafe"] == true,
         unavailable()
     );
-    let connected = session.request("areal/mcp/list", json!({})).await?;
     let plugins = session.request("areal/plugin/mcp/list", json!({})).await?;
     session.require_current(host)?;
     inputs.deployment_path = Some(deployment_path);
@@ -1155,18 +1172,6 @@ async fn capture_refresh(host: &Host, session: &CoreSession) -> Result<Refresh> 
         drained: false,
         submitted: Default::default(),
         inputs,
-        mcp: connected["data"]
-            .as_array()
-            .context("invalid MCP snapshot")?
-            .iter()
-            .filter(|row| matches!(row["state"].as_str(), Some("connected" | "stale")))
-            .map(|row| {
-                row["id"]
-                    .as_str()
-                    .context("invalid MCP identity")
-                    .map(str::to_owned)
-            })
-            .collect::<Result<_>>()?,
         plugins: plugins["data"]
             .as_array()
             .context("invalid plugin snapshot")?
@@ -1334,23 +1339,6 @@ async fn restore(host: &Host, session: &CoreSession, refresh: &mut Refresh) -> R
             )
         );
         session.require_current(host)?;
-    }
-    let current = session.request("areal/mcp/list", json!({})).await?;
-    for (index, id) in refresh.mcp.clone().iter().enumerate() {
-        let row = current["data"]
-            .as_array()
-            .and_then(|rows| rows.iter().find(|row| row["id"] == *id))
-            .context("scheduled MCP configuration missing after restart")?;
-        restore_mutation(host, session, refresh, "areal/mcp/connect", json!({"requestId":format!("{}-{}-mcp-{index}", refresh.request_id, session.service.identity.generation),"id":id,"expectedRevision":row["revision"]})).await?;
-        let restored = session.request("areal/mcp/list", json!({})).await?;
-        session.require_current(host)?;
-        ensure!(
-            restored["data"]
-                .as_array()
-                .is_some_and(|rows| rows.iter().any(|row| row["id"] == *id
-                    && matches!(row["state"].as_str(), Some("connected" | "stale")))),
-            error("scheduleRestoreFailed", "MCP connection did not restore")
-        );
     }
     for (index, plugin) in refresh.plugins.clone().iter().enumerate() {
         restore_mutation(host, session, refresh, "areal/plugin/connection", json!({"requestId":format!("{}-{}-plugin-{index}", refresh.request_id, session.service.identity.generation),"id":plugin["pluginId"],"expectedDigest":plugin["installedDigest"],"connect":true})).await?;

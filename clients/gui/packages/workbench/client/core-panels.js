@@ -51,28 +51,6 @@ export function createCorePanels(React) {
       h('button', { disabled, type: 'submit' }, '保存模型服务'), h('button', { type: 'button', disabled, onClick: () => { setDraft(blank); setModels(''); } }, '新建')),
       message ? h('p', { role: 'status' }, message) : null);
   }
-  function Mcp({ project, action }) {
-    const api = (operation, values = {}) => action('manage', { projectId: project.id, operation, ...values });
-    const [state, refresh] = useResource(() => api('mcp'), project.id);
-    const [id, setId] = React.useState(''), [revision, setRevision] = React.useState(0);
-    const [config, setConfig] = React.useState('{\n  "transport": { "type": "stdio", "command": "", "args": [] }\n}');
-    const [busy, setBusy] = React.useState(false), [message, setMessage] = React.useState('');
-    const run = async task => { setBusy(true); setMessage(''); try { await task(); refresh(); } catch (e) { setMessage(e.message); } finally { setBusy(false); } };
-    const disabled = busy || project.pending.length > 0;
-    return h('section', { className: 'areal-core-settings' }, h('h3', null, 'MCP 服务'), h(Notice, { state }),
-      h('p', null, '保存配置不会自动启动服务。连接后由 Core 提供工具目录；部署文件定义的服务只读。'),
-      ...(state.value?.data ?? []).map(item => h('article', { key: item.id }, h('strong', null, `${item.id} · ${item.state}`), item.error ? h('p', { role: 'alert' }, item.error) : null,
-        h('p', null, `工具：${(item.tools ?? []).map(tool => tool.name ?? tool).join(', ') || '无'}`),
-        h('button', { disabled, onClick: () => { setId(item.id); setRevision(item.revision); setConfig(JSON.stringify(item.config, null, 2)); } }, `编辑 MCP ${item.id}`),
-        h('button', { disabled, onClick: () => run(() => api('mcpConnect', { id: item.id, expectedRevision: item.revision })) }, `连接 ${item.id}`),
-        h('button', { disabled, onClick: () => run(() => api('mcpDisconnect', { id: item.id, expectedRevision: item.revision })) }, `断开 ${item.id}`))),
-      h('form', { onSubmit: e => { e.preventDefault(); void run(async () => { await api('mcpSave', { id, expectedRevision: revision, config: JSON.parse(config) }); setMessage('配置已保存'); }); } },
-        h('label', null, '服务 ID', h('input', { required: true, value: id, disabled: revision > 0, onChange: e => setId(e.target.value) })),
-        h('label', null, 'MCP 配置 JSON', h('textarea', { rows: 10, value: config, onChange: e => setConfig(e.target.value) })),
-        h('button', { type: 'submit', disabled }, '保存 MCP 配置'),
-        h('button', { type: 'button', disabled, onClick: () => { setId(''); setRevision(0); } }, '新增 MCP')),
-      message ? h('p', { role: 'status' }, message) : null);
-  }
   function Configuration({ project, thread, action, configuration }) {
     const [options, setOptions] = React.useState(configuration?.options ?? {});
     const [parameters, setParameters] = React.useState(configuration?.parameters ?? {});
@@ -175,6 +153,6 @@ export function createCorePanels(React) {
         h('pre', { className: 'areal-core-json' }, (file.hunks ?? []).map(hunk => (hunk.lines ?? []).map(line => `${line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}${line.content ?? line.text ?? ''}`).join('\n')).join('\n')))),
         h('details', null, h('summary', null, '完整 Diff'), h('pre', { className: 'areal-core-json' }, state.value.diff))) : null);
   }
-  return { Providers, Mcp, Configuration, Profiles, Inspect, Trace, Files, Review };
+  return { Providers, Configuration, Profiles, Inspect, Trace, Files, Review };
 
 }

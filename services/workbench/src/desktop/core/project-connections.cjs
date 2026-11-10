@@ -510,9 +510,6 @@ class ProjectConnections {
         trace.advance("providers");
         await this.host.providers.syncLocal(project);
         this.requireConnection(project, client);
-        trace.advance("mcp");
-        if (this.host.providers.manages(project)) await this.host.resources.syncMcp(project);
-        this.requireConnection(project, client);
       }
       trace.advance("catalogs");
       const modelsTrace = startupTrace("core.model_list", correlation);

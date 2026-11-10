@@ -2,7 +2,9 @@
 "use strict";
 const { modelRecord } = require("../core-model-contract.js");
 const { protocolFor } = require("./generated/management-protocol.cjs");
-/** @typedef {'pluginArchiveImport'|'marketplaceAdd'|'marketplaceAddGit'|'marketplaceRemove'|'marketplaceUpdate'|'pluginResolve'|'pluginConnection'|'pluginHooksConfigure'|'hookAcknowledge'|'pluginAuthConfigure'|'connectorConfigure'|'pluginInstall'|'pluginConfigure'|'pluginComponentConfigure'|'pluginUninstall'|'pluginSetup'|'pluginUserConfigSave'|'pluginDevelopmentLink'|'pluginDevelopmentUnlink'} PluginMutation */
+const pluginStore = require("./plugin-store.cjs");
+/** @typedef {'pluginArchiveImport'|'pluginConnection'|'pluginHooksConfigure'|'hookAcknowledge'|'pluginAuthConfigure'|'connectorConfigure'|'pluginComponentConfigure'|'pluginSetup'|'pluginUserConfigSave'|'pluginDevelopmentLink'|'pluginDevelopmentUnlink'} PluginMutation */
+/** @typedef {import('./plugin-store.cjs').PluginStoreOperation} PluginStoreOperation */
 /** @typedef {import('./generated/management-protocol.cjs').RequestMap} ProtocolRequestMap */
 /** @typedef {import('./generated/management-protocol.cjs').ResponseMap} ProtocolResponseMap */
 /** @typedef {{projectId:string,operation:'workgroupArtifactStatus'|'workgroupApplyArtifact',id:string,path:string,head:string}} ArtifactRequest */
@@ -40,8 +42,8 @@ const { protocolFor } = require("./generated/management-protocol.cjs");
  * pluginStoreSnapshot:PluginStoreSnapshot,pluginStoreDoctor:PluginDoctorReport,
  * pluginArchivePick:{canceled:true}|{selectionToken:string,fileName:string}
  * }} LocalResponseMap */
-/** @typedef {Omit<ProtocolRequestMap,'pluginUserConfigSave'>&LocalRequestMap&import('./management-tasks.cjs').LocalTaskRequestMap} ManagementRequestMap */
-/** @typedef {ProtocolResponseMap&LocalResponseMap&import('./management-tasks.cjs').LocalTaskResponseMap} ManagementResponseMap */
+/** @typedef {Omit<ProtocolRequestMap,'pluginUserConfigSave'>&LocalRequestMap&import('./plugin-store.cjs').PluginStoreRequestMap&import('./management-tasks.cjs').LocalTaskRequestMap} ManagementRequestMap */
+/** @typedef {ProtocolResponseMap&LocalResponseMap&import('./plugin-store.cjs').PluginStoreResponseMap&import('./management-tasks.cjs').LocalTaskResponseMap} ManagementResponseMap */
 /** @typedef {ManagementRequestMap[keyof ManagementRequestMap]} ManagementRequest */
 /** @template {ManagementRequest} P @typedef {P extends {operation:'processStart',terminal:true} ? ProtocolResponseMap['processStart']&TerminalPresentation : P extends {operation:'pluginSubmission',mutation:infer M extends PluginMutation} ? SubmissionRead<ProtocolResponseMap[M]> : ManagementResponseMap[P['operation']]} ManagementResponse */
 /** @param {unknown} value @returns {value is string[]} */
@@ -49,20 +51,12 @@ const strings = (value) => Array.isArray(value) && value.every((item) => typeof 
 /** @type {Readonly<Record<PluginMutation,true>>} */
 const pluginMutations = Object.freeze({
   pluginArchiveImport: true,
-  marketplaceAdd: true,
-  marketplaceAddGit: true,
-  marketplaceRemove: true,
-  marketplaceUpdate: true,
-  pluginResolve: true,
   pluginConnection: true,
   pluginHooksConfigure: true,
   hookAcknowledge: true,
   pluginAuthConfigure: true,
   connectorConfigure: true,
-  pluginInstall: true,
-  pluginConfigure: true,
   pluginComponentConfigure: true,
-  pluginUninstall: true,
   pluginSetup: true,
   pluginUserConfigSave: true,
   pluginDevelopmentLink: true,
@@ -75,6 +69,7 @@ function pluginMutation(value) {
 /** @param {unknown} value @returns {value is ManagementRequest} */
 function isManagementRequest(value) {
   if (!modelRecord(value) || typeof value.operation !== "string") return false;
+  if (pluginStore.pluginStoreOperation(value.operation)) return pluginStore.isPluginStoreRequest(value);
   if (["pluginStoreSnapshot", "pluginStoreDoctor"].includes(value.operation))
     return (
       (value.projectId === undefined ||
@@ -221,6 +216,11 @@ function submissionRead(value, operation) {
 /** @param {ManagementRequest} request @param {unknown} value */
 function validateManagementResponse(request, value) {
   const operation = request.operation;
+  if (pluginStore.pluginStoreOperation(operation)) {
+    if (!pluginStore.isPluginStoreResponse(operation, value, protocolResponse))
+      throw new Error("插件库响应结构无效");
+    return;
+  }
   if (protocolFor(operation)) {
     if (
       !protocolResponse(operation, value) ||

@@ -730,7 +730,6 @@ async fn refresh_records_drain_and_original_maintenance_stop_before_activation()
                 for method in [
                     "initialize",
                     "areal/server/status",
-                    "areal/mcp/list",
                     "areal/plugin/mcp/list",
                     "areal/server/drain",
                 ] {
@@ -738,7 +737,7 @@ async fn refresh_records_drain_and_original_maintenance_stop_before_activation()
                     assert_eq!(request["method"], method);
                     let result = match method {
                         "areal/server/status" => json!({"restartSafe":true}),
-                        "areal/mcp/list" | "areal/plugin/mcp/list" => json!({"data":[]}),
+                        "areal/plugin/mcp/list" => json!({"data":[]}),
                         "areal/server/drain" => {
                             assert_eq!(
                                 request["params"],
@@ -835,7 +834,6 @@ async fn cold_slot_refresh_requires_exact_stopped_generation_cleanup_before_orig
         previous_generation: original.identity.generation.clone(),
         drained: false,
         submitted: Default::default(),
-        mcp: vec![],
         plugins: vec![],
         inputs: LaunchInputs {
             workspace: registration.workspace.clone(),
@@ -912,10 +910,10 @@ async fn restore_reconciles_old_generation_receipt_but_requires_current_live_con
         let registration = host.slots.borrow()["project"].registration.clone();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let service = service(&host, format!("ws://{}/", listener.local_addr().unwrap()));
-        let old_request = "refresh-old-mcp-0".to_owned();
+        let old_request = "refresh-old-plugin-0".to_owned();
         let mut refresh = Refresh {
             request_id: "refresh".into(), stop_request_id: "stop".into(), previous_generation: "old".into(), drained: true,
-            submitted: [old_request.clone()].into(), mcp: vec!["fixture".into()], plugins: vec![],
+            submitted: [old_request.clone()].into(), plugins: vec![json!({"pluginId":"fixture@local","installedDigest":"digest"})],
             inputs: LaunchInputs { workspace: registration.workspace.clone(), cwd: registration.workspace, config_home: host.home.clone(), homedir: None, config_path: None, deployment_path: None, schedule_preparation: None, environment: BTreeMap::new(), credential_names: vec![], options: Default::default() },
         };
         storage::private_dir(refresh_path(&host, "project").parent().unwrap()).unwrap();
@@ -928,26 +926,23 @@ async fn restore_reconciles_old_generation_receipt_but_requires_current_live_con
             assert_eq!(old["method"], "areal/request/read");
             assert_eq!(old["params"]["requestId"], old_request);
             send(&mut socket, json!({"id":old["id"],"result":{"data":[{"status":"completed"}]}})).await;
-            let listing = receive(&mut socket).await;
-            assert_eq!(listing["method"], "areal/mcp/list");
-            send(&mut socket, json!({"id":listing["id"],"result":{"data":[{"id":"fixture","revision":1,"state":"disconnected"}]}})).await;
             let lookup = receive(&mut socket).await;
             assert_eq!(lookup["method"], "areal/request/read");
-            assert_eq!(lookup["params"]["requestId"], "refresh-first-mcp-0");
+            assert_eq!(lookup["params"]["requestId"], "refresh-first-plugin-0");
             send(&mut socket, json!({"id":lookup["id"],"result":{"data":[]}})).await;
             let mutation = receive(&mut socket).await;
-            assert_eq!(mutation["method"], "areal/mcp/connect");
-            assert_eq!(mutation["params"]["requestId"], "refresh-first-mcp-0");
-            send(&mut socket, json!({"id":mutation["id"],"result":{"data":[{"id":"fixture","state":"connected"}]}})).await;
+            assert_eq!(mutation["method"], "areal/plugin/connection");
+            assert_eq!(mutation["params"]["requestId"], "refresh-first-plugin-0");
+            send(&mut socket, json!({"id":mutation["id"],"result":{}})).await;
             let current = receive(&mut socket).await;
-            assert_eq!(current["method"], "areal/mcp/list");
-            send(&mut socket, json!({"id":current["id"],"result":{"data":[{"id":"fixture","state":"disconnected"}]}})).await;
+            assert_eq!(current["method"], "areal/plugin/mcp/list");
+            send(&mut socket, json!({"id":current["id"],"result":{"data":[{"pluginId":"fixture@local","installedDigest":"digest","trusted":true,"state":"disconnected"}]}})).await;
             let _ = socket.next().await;
         });
         let session = connect(host.clone(), "project", service).await.unwrap();
         assert!(restore(&host, &session, &mut refresh).await.is_err());
-        assert!(refresh.submitted.contains("refresh-old-mcp-0"));
-        assert!(refresh.submitted.contains("refresh-first-mcp-0"));
+        assert!(refresh.submitted.contains("refresh-old-plugin-0"));
+        assert!(refresh.submitted.contains("refresh-first-plugin-0"));
         assert!(refresh_path(&host, "project").exists());
         session.close();
         server.await.unwrap();

@@ -73,6 +73,7 @@ export type {
   ManagementResponse,
   ManagementResponseMap,
   PluginMutation,
+  PluginStoreOperation,
 } from "@areal/workbench/desktop-contract/management";
 export { generationStats, modelUsage } from "@areal/workbench/desktop-contract/management-context";
 export {
@@ -86,7 +87,6 @@ export type {
   ModelParameters,
 } from "@areal/workbench/desktop-contract/provider";
 export type { Hook, ResourceRequest, Scope } from "@areal/workbench/desktop-contract/resource";
-export { normalizeMcp } from "@areal/workbench/desktop-contract/resource";
 export { modelRecord } from "@areal/workbench/desktop-contract/shared";
 export type {
   DesktopSnapShot,

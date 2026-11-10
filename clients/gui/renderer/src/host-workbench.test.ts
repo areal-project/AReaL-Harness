@@ -347,6 +347,79 @@ describe("trajectory and feedback Host routing", () => {
   });
 });
 
+describe("plugin store Host routing", () => {
+  it("reads and writes the plugin store through Host with only the fields Host owns", async () => {
+    const requests: Array<{ method: string; params: unknown; commandId?: string }> = [];
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: unknown, commandId?: string) => {
+        requests.push({ method, params, commandId });
+        return commandId
+          ? { commandId, method, admissionState: "accepted", submissionUnknown: false, receipt: { ok: 1 } }
+          : { revision: 1, data: [] };
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    await routes.call("manage", { operation: "plugins", projectId: "project" });
+    const install = await routes.call("manage", {
+      operation: "pluginInstall",
+      projectId: "project",
+      requestId: "r",
+      scope: "project",
+      id: "web-search@areal-official",
+      expectedRevision: 1,
+      source: "/market/web-search",
+      expectedDigest: "a".repeat(64),
+    });
+    await routes.call("manage", {
+      operation: "pluginConfigure",
+      projectId: "project",
+      requestId: "r",
+      scope: "user",
+      id: "web-search@areal-official",
+      enabled: false,
+      expectedRevision: 2,
+    });
+    await routes.call("manage", {
+      operation: "pluginConfigure",
+      projectId: "project",
+      requestId: "r",
+      scope: "project",
+      id: "web-search@areal-official",
+      enabled: true,
+      expectedRevision: 3,
+    });
+    expect(install).toEqual({ value: { ok: 1 } });
+    expect(requests.map(({ method, params }) => [method, params])).toEqual([
+      ["plugins.read", { operation: "plugins", projectId: "project" }],
+      [
+        "plugins.command",
+        {
+          operation: "pluginInstall",
+          id: "web-search@areal-official",
+          expectedRevision: 1,
+          source: "/market/web-search",
+          expectedDigest: "a".repeat(64),
+        },
+      ],
+      [
+        "plugins.command",
+        { operation: "pluginConfigure", id: "web-search@areal-official", enabled: false, expectedRevision: 2 },
+      ],
+      [
+        "plugins.command",
+        {
+          operation: "pluginConfigure",
+          id: "web-search@areal-official",
+          enabled: true,
+          expectedRevision: 3,
+          projectId: "project",
+        },
+      ],
+    ]);
+  });
+});
+
 describe("task management Host routing", () => {
   it("routes management reads without admitting picker or task submission operations", async () => {
     const requests: Array<{ method: string; params: unknown; commandId?: string }> = [];
@@ -363,8 +436,6 @@ describe("task management Host routing", () => {
       "profile",
       "skills",
       "skill",
-      "plugins",
-      "plugin",
       "pluginComponents",
       "pluginHooks",
       "pluginMcp",

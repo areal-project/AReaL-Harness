@@ -64,6 +64,8 @@ pub struct ResolveProject {
     pub registration: ProjectRegistration,
     pub launch_inputs: LaunchInputs,
     pub credentials: BTreeMap<String, String>,
+    /// 解析后的工具扩展文件；CLI 用它把单次运行的 MCP 合并成临时扩展文件。
+    pub tool_extensions_file: Option<std::path::PathBuf>,
 }
 impl ResolveProject {
     pub fn from_local_args(args: &LocalArgs) -> Result<Self> {
@@ -142,6 +144,7 @@ impl ResolveProject {
                 options: spec.args,
             },
             credentials,
+            tool_extensions_file: config.tool_extensions_file.clone(),
         })
     }
 }

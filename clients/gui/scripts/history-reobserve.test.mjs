@@ -320,11 +320,6 @@ test(
         async refreshSubscription() {},
         redact: (value) => value,
       },
-      resources: {
-        async syncMcp() {
-          calls.push("mcp");
-        },
-      },
       analytics: { async syncProject() {} },
       library: { async recordThreadActivity() {}, async recordThreadSummaries() {} },
       onChange() {},
@@ -354,7 +349,6 @@ test(
     assert.deepEqual(first.interactions.selected, { revision: 1, data: [] });
     assert.equal(calls.filter((method) => method === "areal/thread/observe").length, 1);
     assert.ok(calls.indexOf("areal/thread/observe") < calls.indexOf("provider"));
-    assert.ok(calls.indexOf("mcp") < calls.indexOf("areal/task/tools/ready"));
     assert.ok(calls.indexOf("areal/task/tools/ready") < calls.indexOf("thread/list"));
     assert.equal(calls.includes("areal/task/host/ready"), false);
     for (const finish of held) finish();

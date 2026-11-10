@@ -638,6 +638,7 @@ mod tests {
             },
             registration,
             credentials: BTreeMap::new(),
+            tool_extensions_file: None,
         }
     }
     #[test]

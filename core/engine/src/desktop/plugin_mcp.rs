@@ -272,14 +272,7 @@ impl Engine {
                 return Ok(tool.clone());
             }
         }
-        self.desktop
-            .mcp
-            .tools()
-            .into_iter()
-            .find(|tool| {
-                tool.server_name() == server && tool.original_name() == name && !tool.is_stale()
-            })
-            .ok_or_else(|| anyhow::anyhow!("hook MCP target unavailable; no reconnect"))
+        anyhow::bail!("hook MCP target unavailable; no reconnect")
     }
     pub async fn plugin_component_summary(&self, id: String) -> Result<Value> {
         self.refresh_plugins().await?;
@@ -883,12 +876,12 @@ impl Engine {
         // while admitted Turns and Apps retain the previous generation until drain.
         let (configs, configuration_diagnostics) =
             self.component_configuration(&component, true)?;
-        if configs.keys().any(|name| {
-            self.extensions.mcp_servers.contains_key(name)
-                || self.desktop.mcp.contains_definition(name)
-        }) {
+        if configs
+            .keys()
+            .any(|name| self.extensions.mcp_servers.contains_key(name))
+        {
             return Err(invalid(
-                "plugin MCP server ID is owned by deployment or manual configuration",
+                "plugin MCP server ID is owned by deployment configuration",
             ));
         }
         if configs.is_empty() {
@@ -1136,14 +1129,13 @@ impl Engine {
             return Err(Error::Conflict);
         }
         let tools = connection.tools();
-        let mut combined = self.desktop.mcp.tools();
-        combined.extend(
-            self.desktop
-                .plugin_mcp
-                .tools()
-                .into_iter()
-                .filter(|t| !configs.contains_key(t.server_name())),
-        );
+        let mut combined: Vec<_> = self
+            .desktop
+            .plugin_mcp
+            .tools()
+            .into_iter()
+            .filter(|t| !configs.contains_key(t.server_name()))
+            .collect();
         combined.extend(tools.clone());
         if self.registry.clone().with_mcp(combined).is_err() {
             if connection.shutdown().await.is_err() {

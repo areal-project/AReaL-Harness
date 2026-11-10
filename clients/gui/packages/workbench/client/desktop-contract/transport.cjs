@@ -81,11 +81,11 @@ const commandDefinitions = Object.freeze({
       ...operations(subscription, "taskWatch taskUnwatch"),
       ...operations(
         recoverable,
-        "pluginUserConfigSave pluginDevelopmentLink pluginDevelopmentUnlink pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate pluginResolve pluginAuthConfigure pluginConnection connectorConfigure connectorCredential pluginInstall pluginConfigure pluginComponentConfigure pluginUninstall pluginSetup providerSave providerRemove mcpSave mcpConnect mcpDisconnect archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend",
+        "pluginUserConfigSave pluginDevelopmentLink pluginDevelopmentUnlink pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge pluginAuthConfigure pluginConnection connectorConfigure connectorCredential pluginComponentConfigure pluginSetup providerSave providerRemove archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend",
       ),
       ...operations(
         mutation,
-        "pluginCredentialsReload pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
+        "pluginInstall pluginUninstall pluginResolve pluginConfigure marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate mcpSave mcpRemove pluginCredentialsReload pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
       ),
       taskDraftStart: { effect: "mutation", requestId: "draftId" },
     },
@@ -133,8 +133,8 @@ const commandDefinitions = Object.freeze({
     "service",
     "app",
     {
-      ...operations(read, "hooks builtinSkill skills mcp skillRead"),
-      ...operations(mutation, "hooksSave skillToggle skillSave mcpSave mcpConnect mcpDisconnect"),
+      ...operations(read, "hooks builtinSkill skills skillRead"),
+      ...operations(mutation, "hooksSave skillToggle skillSave"),
     },
   ],
   projectless: [

@@ -1058,9 +1058,6 @@ impl Engine {
         if let Err(error) = self.desktop.plugin_mcp.shutdown().await {
             tracing::warn!(%error, "plugin MCP cleanup remains unconfirmed");
         }
-        if let Err(error) = self.desktop.mcp.shutdown(&self.store).await {
-            tracing::error!(%error, "managed MCP cleanup failed");
-        }
         let cells: Vec<_> = self.threads.read().await.values().cloned().collect();
         for cell in cells {
             if let Err(error) = self.close_managed(&cell, None).await {

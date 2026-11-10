@@ -2396,9 +2396,8 @@ mod tests {
         }
         // 只读、目录、插件与配置管理不额外索取提交或中断能力。
         for operation in [
-            "pluginConfigure",
-            "pluginInstall",
-            "marketplaceAddGit",
+            "pluginComponentConfigure",
+            "pluginHooksConfigure",
             "taskPause",
             "planUpdate",
             "serverDrain",

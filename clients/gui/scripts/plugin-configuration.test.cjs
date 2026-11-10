@@ -351,7 +351,7 @@ test("every typed plugin mutation can reach original-receipt observation through
 test("plugin recovery rejects unrelated mutations before reaching the receipt owner", async () => {
   for (const mutation of [
     "providerSave",
-    "mcpSave",
+    "pluginInstall",
     "pluginCredentialsReload",
     "unknownMutation",
   ]) {

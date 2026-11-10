@@ -132,7 +132,7 @@ async fn slow_derivation_does_not_starve_same_connection_control() {
     socket.send(Wire::Text(json!({"id":200,"method":"areal/conversation/history","params":{"threadId":source.id,"view":"inherited"}}).to_string().into())).await.unwrap();
     socket
         .send(Wire::Text(
-            json!({"id":201,"method":"areal/mcp/list","params":{}})
+            json!({"id":201,"method":"areal/host/status","params":{}})
                 .to_string()
                 .into(),
         ))
@@ -179,7 +179,7 @@ async fn slow_derivation_does_not_starve_same_connection_control() {
     release.notify_waiters();
     let replies = replies.expect("reserved MCP control was starved by derivation saturation");
     assert!(replies[&200]["error"].is_object());
-    assert!(replies[&201]["result"].is_object());
+    assert!(replies[&201].get("result").is_some(), "{}", replies[&201]);
     for id in 202..=204 {
         assert!(
             !replies[&id]["error"]["message"]
@@ -620,12 +620,12 @@ async fn check_real_lock(stage: &str) {
         } else {
             None
         };
-        // history/interrupt 都带 threadId；后接无 threadId 的 MCP 控制必须被接收。
+        // history/interrupt 都带 threadId；后接无 threadId 的管理读取必须被接收。
         socket.send(Wire::Text(json!({"id":20,"method":"areal/conversation/history","params":{"threadId":source.id,"view":"inherited"}}).to_string().into())).await.unwrap();
         socket.send(Wire::Text(json!({"id":21,"method":"turn/interrupt","params":{"threadId":source.id,"turnId":"not-running"}}).to_string().into())).await.unwrap();
         socket
             .send(Wire::Text(
-                json!({"id":22,"method":"areal/mcp/list","params":{}})
+                json!({"id":22,"method":"areal/host/status","params":{}})
                     .to_string()
                     .into(),
             ))

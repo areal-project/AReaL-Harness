@@ -453,6 +453,17 @@ fn candidate_metadata_matches_selected_digest() {
     assert!(candidate.installed_skills.iter().any(|s| s.name == "One"));
 }
 
+fn git(cwd: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .status()
+        .unwrap();
+    assert!(status.success(), "git {args:?}");
+}
+
 #[test]
 fn project_enable_overrides_user_default() {
     let t = fixture();
@@ -465,6 +476,154 @@ fn project_enable_overrides_user_default() {
             .unwrap()
             .enabled
     );
+    // 项目选择按项目身份记录：同仓库的新 worktree 沿用，另一个项目仍用用户默认。
+    git(t.path(), &["init", "-q", "-b", "main"]);
+    git(
+        t.path(),
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "init",
+        ],
+    );
+    let feature = t.path().with_extension("feature");
+    git(
+        t.path(),
+        &[
+            "worktree",
+            "add",
+            "-q",
+            feature.to_str().unwrap(),
+            "-b",
+            "feature",
+        ],
+    );
+    let worktree = Store::open(t.path().join("state"), feature.clone(), None).unwrap();
+    assert!(worktree.read("sample@local").unwrap().enabled);
+    let other = tempfile::tempdir().unwrap();
+    let other = Store::open(t.path().join("state"), other.path().into(), None).unwrap();
+    assert!(!other.read("sample@local").unwrap().enabled);
+    worktree
+        .configure("sample@local", "project", false, 3)
+        .unwrap();
+    assert!(!store.read("sample@local").unwrap().enabled);
+    fs::remove_dir_all(feature).unwrap();
+}
+
+#[test]
+fn legacy_path_choices_import_once_by_project() {
+    let t = tempfile::tempdir().unwrap();
+    let main = t.path().join("main");
+    fs::create_dir(&main).unwrap();
+    git(&main, &["init", "-q", "-b", "main"]);
+    git(
+        &main,
+        &[
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "init",
+        ],
+    );
+    git(
+        &main,
+        &["worktree", "add", "-q", "../feature", "-b", "feature"],
+    );
+    let (main, feature) = (
+        main.canonicalize().unwrap(),
+        t.path().join("feature").canonicalize().unwrap(),
+    );
+    let root = t.path().join("state");
+    fs::create_dir(&root).unwrap();
+    let legacy = json!({"revision":4,"projects":{
+        feature.to_str().unwrap():{"a@m":true,"b@m":true},
+        main.to_str().unwrap():{"a@m":false}
+    },"component_choices":{feature.to_str().unwrap():{"a@m":{"disabled_skills":["s"]}}}});
+    fs::write(root.join("state.json"), legacy.to_string()).unwrap();
+    let error = Store::open(root.clone(), main.clone(), None)
+        .unwrap()
+        .list()
+        .unwrap_err();
+    assert!(error.to_string().contains("PLUGIN_STORE_IMPORT_REQUIRED"));
+    assert!(Store::import_path_keyed_state(&root).unwrap());
+    assert!(!Store::import_path_keyed_state(&root).unwrap());
+    let state: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.join("state.json")).unwrap()).unwrap();
+    let key = main.to_str().unwrap();
+    assert_eq!(state["version"], 2);
+    assert_eq!(state["revision"], 5);
+    assert_eq!(state["projects"], json!({key:{"a@m":false,"b@m":true}}));
+    assert_eq!(
+        state["component_choices"],
+        json!({key:{"a@m":{"disabled_skills":["s"]}}})
+    );
+    assert_eq!(
+        Store::open(root, feature, None)
+            .unwrap()
+            .list()
+            .unwrap()
+            .revision,
+        5
+    );
+}
+
+#[test]
+fn local_mcp_is_a_single_server_plugin() {
+    let t = tempfile::tempdir().unwrap();
+    let store = Store::open_user(t.path().join("state"), None).unwrap();
+    let server = json!({"url":"https://mcp.example.test/mcp","auth":"oauth"});
+    let detail = store.save_local_mcp("docs", &server, 0).unwrap();
+    assert_eq!(detail.id, "docs@local-mcp");
+    assert!(detail.installed && detail.enabled);
+    let component = store.enabled_component("docs@local-mcp").unwrap();
+    let outcome = component.mcp_documents[0]
+        .declaration
+        .normalize(&component.root, &component.data_root)
+        .unwrap();
+    assert!(outcome.servers["docs"].auth_policy().is_some());
+    // 修改同名服务替换安装版本；项目视图同样看到它。
+    let edited = store
+        .save_local_mcp(
+            "docs",
+            &json!({"command":"docs-mcp","args":["--stdio"]}),
+            detail.revision,
+        )
+        .unwrap();
+    assert_ne!(edited.installed_digest, detail.installed_digest);
+    assert_eq!(
+        store.local_mcp_servers().unwrap(),
+        vec![(
+            "docs".to_owned(),
+            json!({"command":"docs-mcp","args":["--stdio"]})
+        )]
+    );
+    let project = tempfile::tempdir().unwrap();
+    let in_project = Store::open(t.path().join("state"), project.path().into(), None).unwrap();
+    assert!(in_project.read("docs@local-mcp").unwrap().enabled);
+    assert!(
+        store
+            .save_local_mcp("bad name", &server, edited.revision)
+            .is_err()
+    );
+    assert!(
+        store
+            .save_local_mcp("x", &json!({"url":"ftp://x"}), edited.revision)
+            .is_err()
+    );
+    let list = store.remove_local_mcp("docs", edited.revision).unwrap();
+    assert!(!list.data.iter().any(|d| d.id == "docs@local-mcp"));
+    assert!(store.local_mcp_servers().unwrap().is_empty());
 }
 
 #[test]

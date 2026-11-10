@@ -2,8 +2,8 @@
 "use strict";
 const { cp, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } = require("node:fs/promises");
 const { join } = require("node:path");
-const { record, mcpServers, normalizeMcp } = require("./resource-contract.cjs");
-/** @typedef {{sourceId:string,sourceRoot:string,targetRoot:string,preferences:Record<string,boolean>,mcp:Array<{id:string,config:import('./resource-contract.cjs').McpConfig}>}} ResourcePlan */
+const { record } = require("./resource-contract.cjs");
+/** @typedef {{sourceId:string,sourceRoot:string,targetRoot:string,preferences:Record<string,boolean>}} ResourcePlan */
 
 // One-time Desktop resource import. Git owns repository files; Core owns MCP
 // revisions and connections. A durable snapshot precedes project registration,
@@ -80,9 +80,6 @@ class WorktreeResources {
       const live = await b.start(source.id);
       if (live.pending.length) throw new Error("源项目有待核对的提交，请先恢复后再继承资源");
       if (!live.client) throw new Error("Core 连接不可用");
-      const mcp = (await live.client.request("areal/mcp/list", {}, { decode: mcpServers })).data
-        .filter((item) => !this.resources.value.mcp.some((user) => user.runtimeId === item.id))
-        .map((item) => ({ id: item.id, config: normalizeMcp(item.config) }));
       await mkdir(join(b.home, "worktree-resource-imports"), { recursive: true, mode: 0o700 });
       staging = await mkdtemp(directory + ".staging-");
       const managed = join(b.home, "resources", source.id, "skills");
@@ -100,7 +97,6 @@ class WorktreeResources {
         sourceRoot: source.root,
         targetRoot,
         preferences: structuredClone(this.resources.value.skills[source.id] ?? {}),
-        mcp,
       };
       await writeFile(join(staging, "plan.json"), JSON.stringify(plan), {
         mode: 0o600,
@@ -174,20 +170,6 @@ class WorktreeResources {
     if (!pending) return;
     if (project.pending.length) throw new Error("工作树资源提交尚未确认，请先核对后重新打开");
     if (!project.client || !project.worktreeResources) throw new Error("Core 工作树资源归属不可用");
-    const live = (await project.client.request("areal/mcp/list", {}, { decode: mcpServers })).data;
-    for (const item of pending.plan.mcp) {
-      const existing = live.find((server) => server.id === item.id);
-      if (existing) {
-        if (JSON.stringify(normalizeMcp(existing.config)) !== JSON.stringify(item.config))
-          throw new Error(`工作树 MCP ${item.id} 已有不同配置，未覆盖`);
-        continue;
-      }
-      await this.backend.submit(project, "areal/mcp/configure", {
-        id: item.id,
-        config: item.config,
-        expectedRevision: 0,
-      });
-    }
     await this.backend.save(
       join("worktree-resource-imports", project.worktreeResources, "complete.json"),
       { projectId: project.id },
@@ -201,8 +183,7 @@ function readPlan(value) {
     typeof value.sourceId !== "string" ||
     typeof value.sourceRoot !== "string" ||
     typeof value.targetRoot !== "string" ||
-    !record(value.preferences) ||
-    !Array.isArray(value.mcp)
+    !record(value.preferences)
   )
     throw new Error("工作树资源快照无效");
   const preferences = Object.fromEntries(
@@ -211,17 +192,12 @@ function readPlan(value) {
       return [id, enabled];
     }),
   );
-  const mcp = value.mcp.map((/** @type {unknown} */ item) => {
-    if (!record(item) || typeof item.id !== "string") throw new Error("工作树 MCP 快照无效");
-    return { id: item.id, config: normalizeMcp(item.config) };
-  });
   return {
     ...value,
     sourceId: value.sourceId,
     sourceRoot: value.sourceRoot,
     targetRoot: value.targetRoot,
     preferences,
-    mcp,
   };
 }
 module.exports = { WorktreeResources };

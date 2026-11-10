@@ -367,7 +367,7 @@
     "packages/ui/src/worktree/worktree-workspace/worktree-workspace.tsx": 9,
     "packages/workbench/client/core-model-contract.js": 126,
     "packages/workbench/client/core-model.js": 300,
-    "packages/workbench/client/core-panels.js": 180,
+    "packages/workbench/client/core-panels.js": 158,
     "packages/workbench/client/desktop-contract.cjs": 516,
     "packages/workbench/client/desktop-contract.js": 46,
     "packages/workbench/client/desktop-contract/catalog.cjs": 256,

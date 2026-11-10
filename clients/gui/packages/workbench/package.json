@@ -17,6 +17,10 @@
       "types": "./client/desktop-contract/mcp-page.cjs",
       "default": "./client/desktop-contract/mcp-page.cjs"
     },
+    "./desktop-contract/plugin-store": {
+      "types": "./client/desktop-contract/plugin-store.cjs",
+      "default": "./client/desktop-contract/plugin-store.cjs"
+    },
     "./model-selection": {
       "import": "./client/model-selection.js",
       "require": "./client/model-selection.cjs"

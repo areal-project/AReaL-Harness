@@ -79,6 +79,8 @@ const WRITE_METHODS: &[&str] = &[
     "manage.command",
     "providers.read",
     "providers.command",
+    "plugins.read",
+    "plugins.command",
     "worktree.command",
     "pages.command",
     "pages.resource",
@@ -258,9 +260,8 @@ impl Loopback {
             "library.command" | "analytics.import" | "worktree.read" | "worktree.command"
             | "tasks.read" | "trajectory.read" | "trajectory.command" | "feedback.read"
             | "feedback.command" | "manage.read" | "manage.command" | "providers.read"
-            | "providers.command" | "pages.command" | "pages.resource" | "desktop.command" => {
-                "manage"
-            }
+            | "providers.command" | "plugins.read" | "plugins.command" | "pages.command"
+            | "pages.resource" | "desktop.command" => "manage",
             _ if WRITE_METHODS.contains(&method) => "observe",
             _ => return false,
         };
@@ -876,6 +877,7 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
                 | "feedback.command"
                 | "manage.command"
                 | "providers.command"
+                | "plugins.command"
                 | "analytics.import"
         )
     ) {

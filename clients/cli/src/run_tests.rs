@@ -40,7 +40,7 @@ async fn configure_requests(
                         "desktop":{"configuration":{"revision":3,"options":options}}}})
                 }
                 "areal/thread/inspect" => json!({"tools":[]}),
-                "areal/mcp/list" | "areal/profile/list" => json!({"data":[]}),
+                "areal/profile/list" => json!({"data":[]}),
                 "areal/thread/configure" => {
                     // 在读取 stdin/提交 Turn 之前结束夹具，检验真实 RPC 请求而非重复拼装逻辑。
                     socket

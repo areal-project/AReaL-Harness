@@ -67,9 +67,6 @@ pub fn projections() -> (Value, Value) {
         json!({"id":string,"record":record,"historyCount":number,"verificationCount":number,"recordPath":string,"candidatePath":string}),
     );
     group["properties"]["elapsedMs"] = nullable(number.clone());
-    let mcp = object(
-        json!({"id":string,"revision":number,"directoryRevision":number,"config":schema::<areal_mcp::ServerConfig>(),"state":{"enum":["disconnected","connecting","connected","failed","stale","cleanupFailed"]},"error":nullable(string.clone()),"tools":nullable(array(schema::<ToolDefinition>()))}),
-    );
     let resource = json!({"anyOf":[
         object(json!({"threadId":string,"id":string,"state":string,"epoch":string})),
         object(json!({"kind":{"const":"runtime"},"state":string,"epoch":string})),
@@ -363,11 +360,6 @@ pub fn projections() -> (Value, Value) {
             json!({"cleanupConfirmed":boolean,"source":{"const":"operatorAttestation"},"executionOutcomeUnchanged":boolean}),
         ),
     );
-    insert(
-        &["mcp/list", "mcp/configure", "mcp/connect", "mcp/disconnect"],
-        data(mcp.clone()),
-    );
-    insert(&["mcp/read"], mcp);
     insert(&["server/status", "server/drain"], status);
     insert(&["host/status"], nullable(schema::<HostUpdateStatus>()));
     let model_configuration_proof = object(json!({

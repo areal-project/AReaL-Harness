@@ -571,7 +571,6 @@ async fn connection(
             && params["decision"] == "allowProject")
             || method.starts_with("areal/permissions/")
             || method.starts_with("areal/plugin/")
-            || method.starts_with("areal/marketplace/")
             || codex_plugins::METHODS.contains(&method)
             || plugin_runtime::METHODS.contains(&method);
         if (method.starts_with("areal/mcp/app/tools/")
@@ -641,7 +640,6 @@ async fn connection(
                 || codex_plugins::METHODS.contains(&method)
                 || plugin_runtime::METHODS.contains(&method)
                 || method.starts_with("areal/plugin/")
-                || method.starts_with("areal/marketplace/")
                 || method.starts_with("areal/mcp/")
                 || method.starts_with("areal/server/")
                 || method == "areal/host/status"
@@ -680,9 +678,6 @@ async fn connection(
                     | "areal/server/status"
                     | "areal/host/status"
                     | "areal/server/modelConfiguration/read"
-                    | "areal/mcp/list"
-                    | "areal/mcp/read"
-                    | "areal/mcp/disconnect"
                     | "turn/interrupt"
                     | "areal/side/close"
                     | "areal/mcp/forms/list"

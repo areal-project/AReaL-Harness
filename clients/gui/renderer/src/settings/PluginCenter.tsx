@@ -62,16 +62,8 @@ import type {
 export type { PluginDetail, PluginCommand, PluginMutate } from "./pluginTypes.js";
 const pluginMethods: Record<string, PluginOperation["mutation"]> = {
   "areal/plugin/importArchive": "pluginArchiveImport",
-  "areal/marketplace/add": "marketplaceAdd",
-  "areal/plugin/install": "pluginInstall",
-  "areal/plugin/configure": "pluginConfigure",
   "areal/plugin/component/configure": "pluginComponentConfigure",
-  "areal/plugin/uninstall": "pluginUninstall",
   "areal/plugin/setup": "pluginSetup",
-  "areal/plugin/resolve": "pluginResolve",
-  "areal/marketplace/addGit": "marketplaceAddGit",
-  "areal/marketplace/remove": "marketplaceRemove",
-  "areal/marketplace/update": "marketplaceUpdate",
   "areal/plugin/connection": "pluginConnection",
   "areal/plugin/hooks/configure": "pluginHooksConfigure",
   "areal/plugin/auth": "pluginAuth",
@@ -264,7 +256,6 @@ export function PluginCenter({
   const [sparsePaths, setSparsePaths] = useState("");
   const [archive, setArchive] = useState<{ selectionToken: string; fileName: string } | null>(null);
   const [mcpAddRequest, setMcpAddRequest] = useState(0);
-  const [mcpScope, setMcpScope] = useState("user");
   useEffect(() => {
     if (route.kind !== "installed" || route.tab !== "mcp") setMcpAddRequest(0);
   }, [route]);
@@ -1558,8 +1549,6 @@ export function PluginCenter({
               project={project}
               thread={thread}
               action={action}
-              scope={mcpScope}
-              onScopeChange={setMcpScope}
               pluginServers={pluginServers}
               onManagePlugin={setSelected}
               onRefreshPlugins={refresh}

@@ -12,7 +12,6 @@ pub struct Local {
     pub endpoint: String,
     pub token: String,
     pub profile: Option<Value>,
-    pub mcp: Vec<(String, Value)>,
     mapping: Option<PathBuf>,
     run_dir: Option<PathBuf>,
     _lock: Option<File>,
@@ -61,7 +60,6 @@ impl Local {
                     .map(areal_local_service::parse_agent_profile)
                     .transpose()?
                     .map(|profile| json!(profile)),
-                mcp: vec![],
                 mapping: None,
                 run_dir: None,
                 _lock: None,
@@ -248,7 +246,10 @@ impl Local {
                     }
                     json!({"type":"streamableHttp","url":c["url"],"bearerTokenEnv":bearer})
                 };
-                mcp.push((id.clone(), json!({"transport":transport})));
+                mcp.push((
+                    id.clone(),
+                    json!({"transport":transport,"startupTimeoutMs":30000}),
+                ));
             }
         }
         let options = areal_local_service::LocalArgs {
@@ -265,10 +266,41 @@ impl Local {
             allow_write: args.allow_write,
             allow_network: args.allow_network,
             allow_concurrent_writes: args.allow_concurrent_writes,
-            no_deployment_mcp: args.strict_mcp_config,
+            no_deployment_mcp: args.strict_mcp_config && mcp.is_empty(),
             ..Default::default()
         };
         let mut input = areal_host::ResolveProject::from_local_args(&options)?;
+        if !mcp.is_empty() {
+            // 单次运行的 MCP 合并进本次临时工具扩展文件，作为部署声明的服务，不写进用户插件库。
+            let mut extensions = match &input.tool_extensions_file {
+                Some(path) => serde_json::from_slice(&std::fs::read(path)?)
+                    .context("invalid tool extensions JSON")?,
+                None => json!({}),
+            };
+            let fields = extensions
+                .as_object_mut()
+                .context("tool extensions must be an object")?;
+            if args.strict_mcp_config {
+                fields.remove("mcpServers");
+            }
+            let servers = fields
+                .entry("mcpServers")
+                .or_insert_with(|| json!({}))
+                .as_object_mut()
+                .context("tool extensions mcpServers must be an object")?;
+            for (id, config) in std::mem::take(&mut mcp) {
+                ensure!(
+                    servers.insert(id, config).is_none(),
+                    "--mcp-config server duplicates a configured MCP server"
+                );
+            }
+            let path = temporary.path().join("tool-extensions.json");
+            protected(&path, &serde_json::to_vec(&extensions)?)?;
+            input.launch_inputs.environment.insert(
+                "AREAL_HARNESS_TOOL_EXTENSIONS".into(),
+                path.to_string_lossy().into_owned(),
+            );
+        }
         for (name, value) in env {
             if let Some(old) = input.credentials.insert(name.clone(), value.clone()) {
                 ensure!(old == value, "conflicting model and MCP environment");
@@ -294,7 +326,6 @@ impl Local {
             endpoint: service.endpoint.clone(),
             token: token(&service.auth_file)?,
             profile,
-            mcp,
             mapping: Some(root.join("sessions")),
             run_dir: Some(run_dir),
             _lock: Some(lock),

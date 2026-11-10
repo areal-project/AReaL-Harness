@@ -1,12 +1,14 @@
 import { useRef, useState, type RefObject } from "react";
 import { currentErrorText } from "../errors/currentErrorText.js";
-import type { ManagementResponseMap, PluginMutation } from "../services.js";
+import type { ManagementResponseMap } from "../services.js";
+import { pluginStoreOperation } from "@areal/workbench/desktop-contract/plugin-store";
 import type {
   PluginCommand,
   PluginMutationRequest,
   PluginOperation,
   PluginActivity,
   PluginReceipt,
+  PluginWrite,
 } from "./pluginTypes.js";
 import {
   UiMessageError,
@@ -43,7 +45,7 @@ export function failureText(error: PluginFailure | null, t: Translate) {
     .join(" ");
 }
 
-type Result = ManagementResponseMap[PluginMutation | "pluginAuth"];
+type Result = ManagementResponseMap[PluginWrite];
 type Context = {
   projectId?: string;
   connected: boolean;
@@ -96,11 +98,12 @@ export function usePluginSubmission() {
       if (context.mounted.current) {
         const error = failure(cause);
         const originalFailure = { ...original, requestId: error.requestId ?? requestId };
-        if (error.submissionUnknown && values.operation !== "pluginAuth")
-          setSubmission(originalFailure);
+        // 登记写入没有可查的项目回执：随后重读的登记就是结果，不进入“核对原提交”。
+        const checkable = values.operation !== "pluginAuth" && !pluginStoreOperation(values.operation);
+        if (error.submissionUnknown && checkable) setSubmission(originalFailure);
         setError({
           ...error,
-          ...(values.operation === "pluginAuth" ? { submissionUnknown: false } : {}),
+          ...(checkable ? {} : { submissionUnknown: false }),
           ...(error.submissionUnknown ? { requestId: originalFailure.requestId } : {}),
           operation: originalFailure,
         });
@@ -111,7 +114,13 @@ export function usePluginSubmission() {
     }
   };
   const recover = async (original: PluginOperation, context: Context) => {
-    if (original.mutation === "pluginAuth" || active.current || !context.connected) return;
+    if (
+      original.mutation === "pluginAuth" ||
+      pluginStoreOperation(original.mutation) ||
+      active.current ||
+      !context.connected
+    )
+      return;
     active.current = true;
     setActivity({ ...original, kind: "check" });
     setMessage("");

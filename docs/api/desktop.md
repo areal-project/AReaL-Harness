@@ -438,18 +438,14 @@ MCP 清理失败保持 cleanupFailed，并持久保存 cleanupUnconfirmed。无�
 
 ## 插件包管理
 
-以下部署级方法要求无限制的 `manage` 身份；限制到 Thread 的身份不能调用。Core 持有工作区、安装状态和范围选择，客户端不得自行改写安装文件。固定格式和阶段边界见[插件指南](../guides/plugins.md)与[实施计划](../development/codex-plugins-plan.md)。
+插件登记（市场来源、解析、安装、启用、卸载、直接添加的 MCP）归 Host：客户端调用 Host 的 `plugins.read`（`plugins`、`plugin`、`mcp`）与 `plugins.command`（`pluginInstall`、`pluginUninstall`、`pluginResolve`、`pluginConfigure`、`marketplaceAdd/AddGit/Remove/Update`、`mcpSave`、`mcpRemove`），需本机 GUI 写授权和 `manage`。Host 写插件库后通知在线 Core 重新读取。以下 Core 方法要求无限制的 `manage` 身份；限制到 Thread 的身份不能调用。客户端不得自行改写安装文件。固定格式和阶段边界见[插件指南](../guides/plugins.md)与[实施计划](../development/codex-plugins-plan.md)。
 
 | 方法 | 参数 | 结果/约束 |
 |---|---|---|
 | `areal/plugin/list` | `{}` | `revision/data/marketplaces/errors`；条目错误隔离 |
 | `areal/plugin/read` | `id` | 包详情；候选版本/摘要与已安装版本/摘要/Skills 分开 |
-| `areal/marketplace/add` | `root, expectedRevision, requestId` | 添加本地目录，更新安装目录版本 |
 | `areal/plugin/importArchive` | `path, expectedRevision, requestId` | 导入本机 ZIP 为候选来源；返回包详情，不安装或执行 |
-| `areal/plugin/install` | `id, scope, expectedRevision, source, expectedDigest, requestId` | `scope=user/project`；摘要必须匹配用户选中的来源快照 |
-| `areal/plugin/configure` | `id, scope, enabled, expectedRevision, requestId` | 项目明确选择覆盖用户默认；停用撤销后续读取 |
 | `areal/plugin/component/configure` | `id, component, enabled, expectedRevision, expectedDigest, requestId` | 当前项目的独立 Skill/MCP 选择；摘要绑定已安装副本，版本 CAS；返回包详情 |
-| `areal/plugin/uninstall` | `id, expectedRevision, requestId` | 撤权；保留历史缓存 |
 | `areal/plugin/setup` | `id, threadId?, requestId` | `{thread,turn,requestId}`；仅普通会话；显式选择已安装 onboarding Skill |
 
 目录条目的 `version/sourceDigest/admissionDigest/skills/onboardingSkill` 描述当前候选；`installedVersion/installedDigest/installedSourceDigest/installedSkills/installedOnboardingSkill` 描述持久安装副本。`sourceDigest` 与 `installedSourceDigest` 是原包字节摘要。可空 `admissionDigest` 绑定已消费的市场条目定义和原包；候选审阅身份取 `admissionDigest ?? sourceDigest`。`installedDigest` 是已安装有效定义身份。安装必须同时提交选中 `source` 和审阅身份作为 64 位十六进制 `expectedDigest`。上下文候选拒绝仅提交原包摘要的旧客户端，不降级审阅。范围变更采用目录 `revision` 的 CAS；冲突或来源变化后重新读取，不隐式重试写入。
@@ -460,7 +456,7 @@ MCP 清理失败保持 cleanupFailed，并持久保存 cleanupUnconfirmed。无�
 
 写操作复用现有部署管理提交账本。同身份、同 `requestId`、同方法和参数返回原结果，异参数拒绝；结果未知通过 `areal/request/read {requestId}` 查询对应 `method` 的 completed `response`，不带 `threadId`，不重放。setup 另通过普通 Turn 准入固定权威 Skill 引用；包正文不能制造其他显式 Skill 选择。未支持组件只报告能力诊断，安装不启动 MCP/hooks/apps。AReaL 管理方法与已实现的实验 Codex 管理 wire adapter 共用 Store/Engine；两者保留各自的 wire 契约。
 
-`areal/marketplace/add`、`areal/marketplace/addGit`、`areal/marketplace/remove`、`areal/marketplace/update` 和 `areal/plugin/uninstall` 在完整 `{"result":catalog}` 回执不超过 256 KiB 时返回原完整目录。超限的成功返回 `{"revision":N,"catalogRefreshRequired":true}`，表示变更已在目录版本 N 完成。相同请求重试和回执查询保留这个原始结果，即使目录随后变化或 Core 重启。`areal/plugin/list` 另行读取完整当前目录，版本可能晚于 N；它不替换历史回执。失败仍返回原错误。
+Host `plugins.command` 返回已受理回执，`receipt` 是插件目录或包详情；安装用户级一份，`pluginConfigure` 带 `scope:"project"` 与 `projectId` 时只改该项目的选择，项目按项目身份识别，同仓库 worktree 共享。
 
 ### 组件支持报告
 
@@ -490,7 +486,7 @@ Desktop 在同一配置目录内保存 `{modelContent,privateContent}`，按真�
 
 ## 插件来源、MCP 与桌面 Apps
 
-新增方法保留无限制 `manage` 授权要求，参数类型见生成 schema。来源变更使用目录 CAS 与管理回执：`areal/plugin/resolve {id,expectedRevision,requestId}`；`areal/marketplace/addGit {url,refName?,sparsePaths?,expectedRevision,requestId}`；`areal/marketplace/remove {root,expectedRevision,requestId}`；`areal/marketplace/update {expectedRevision,requestId}`。
+新增方法保留无限制 `manage` 授权要求，参数类型见生成 schema。来源解析与市场变更走 Host `plugins.command`，使用目录 CAS。
 
 `areal/plugin/connection {id,expectedDigest,connect,requestId}` 明确信任/断开已安装版本；`areal/plugin/mcp/list` 区分连接、认证、可选失败与清理状态。`areal/plugin/auth {id,server,operation}` 的操作为 `start/status/cancel`，返回瞬时认证状态，不是管理回执。`areal/plugin/connector/configure {id,connectorId,provider,credentialRef,expectedDigest,requestId}` 仅支持显式 GitHub 映射；凭据值只由可信启动器注入。
 
