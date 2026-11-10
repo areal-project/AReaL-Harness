@@ -1,6 +1,6 @@
 import type { PluginCommand, PluginMutate } from "./pluginTypes.js";
 import { useI18n, type UiMessage } from "../i18n/IntlProvider.js";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../components/ui/button.js";
 import { Feedback } from "./common.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
