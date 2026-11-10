@@ -30,6 +30,10 @@ make baseline-diff BASE=... CMD='pnpm --dir clients/gui exec vp test run' PREPAR
 
 `make check-transitional`（`make check-changed` 已包含）要求产品代码里名字带 legacy / compat 的地方，前后三行内写一条“过渡：到 <版本> 删”的注释；注释里的版本不大于当前版本就报到期。存量未写期限的按文件登记在 `scripts/check-transitional-baseline.json`，每个文件只减不增。fallback 与 migration 不在检查内：前者多是普通默认值，后者包含 Store 的正式迁移。
 
+## 体积
+
+`make check-rust-size`（`make check-changed` 已包含）要求 Rust 产品代码单文件不超过 1500 行；存量超限的 27 个文件登记在 `scripts/check-rust-size-baseline.json`，不得超过登记行数，拆分后运行 `python3 scripts/check-rust-size.py --write` 收紧。GUI 各区域的行数预算由 `gui-health` 检查。
+
 ## 验证分层
 
 | 层 | 在哪跑 | 命令 |

@@ -21,7 +21,7 @@ endif
 	cordis-pin update-cordis sdk-test harness harness-smoke verify-harness \
 	setup setup-node sdk-build script-test launcher-test workgroup-smoke unified-execution-smoke delegation-permissions-smoke capacity-workgroup local-service-smoke upgrade-smoke tui-upgrade-smoke \
 	verify-native integration-boundaries ci-preflight ci-gui-static ci-gui-health \
-	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional
+	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size
 
 help: ## 显示常用操作（默认目标）
 	@printf '%s\n' '用法：make <target> [ARGS="..."]' ''
@@ -129,7 +129,10 @@ check-refs: ## 脚本、测试清单、CI、文档之间的名字一致性；无
 check-transitional: ## 名字带 legacy/compat 的代码要写“过渡：到 <版本> 删”，到期报错；存量只减不增
 	python3 scripts/check-transitional.py
 
-check-changed: check-refs check-transitional ## 受影响快检加失败专项；显式 CI_BASE，ARGS=--plan 仅输出计划
+check-rust-size: ## Rust 单文件不超过 1500 行；存量超限文件不超过登记行数
+	python3 scripts/check-rust-size.py
+
+check-changed: check-refs check-transitional check-rust-size ## 受影响快检加失败专项；显式 CI_BASE，ARGS=--plan 仅输出计划
 	python3 scripts/check-changed.py --base "$(CI_BASE)" $(ARGS)
 
 ci-gui-static: ## 共享计划的 GUI 提交前静态、类型、生产构建与预算检查

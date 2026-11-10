@@ -30,6 +30,10 @@ Runs the same command on the base commit and the working tree and lists only cas
 
 `make check-transitional` (part of `make check-changed`) requires product code whose names contain legacy / compat to have a "过渡：到 <version> 删" comment within three lines; once that version is not above the current version, the check reports it as expired. Existing unmarked code is recorded per file in `scripts/check-transitional-baseline.json` and may only shrink. fallback and migration are excluded: the former is usually an ordinary default, the latter includes permanent Store migrations.
 
+## Size
+
+`make check-rust-size` (part of `make check-changed`) caps Rust product files at 1500 lines. The 27 files already over it are recorded in `scripts/check-rust-size-baseline.json` and may not grow past the recorded size; after splitting, run `python3 scripts/check-rust-size.py --write`. GUI line budgets are checked by `gui-health`.
+
 ## Verification layers
 
 | Layer | Where | Command |
