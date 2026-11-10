@@ -1354,6 +1354,8 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
                 Some("CAPABILITY_UNAVAILABLE")
             );
+            // 元数据图片是页面入口的合法操作，不能被参数校验挡在 Host。
+            serde_json::from_value::<areal_protocol::host::WorkbenchPageCommandParams>(json!({"operation":"metadataImage","source":"https://example.invalid/icon.png","projectId":"project"})).unwrap();
             let unsourced = json!({"id":"providers","method":"providers.read","params":{"operation":"list"}});
             assert_eq!(local.request(&unsourced).await.unwrap_err().to_string(), "CAPABILITY_UNAVAILABLE");
             f.grant("a", |grant| grant["projectIds"] = json!([]));

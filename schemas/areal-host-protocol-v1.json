@@ -33965,6 +33965,34 @@
             "projectId"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "const": "metadataImage"
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "projectId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "threadId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "operation",
+            "source",
+            "projectId"
+          ],
+          "additionalProperties": false
         }
       ]
     },
