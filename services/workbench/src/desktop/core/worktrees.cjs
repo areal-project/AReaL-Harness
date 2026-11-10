@@ -360,13 +360,13 @@ class CoreWorktrees {
     });
     if (!modelRecord(result) || result.requestId !== request.requestId)
       throw unavailable("Host 工作树会话回执尚未确认");
-    if (result.state === "failed" || result.state === "cancelled")
+    if (result.state === "failed" || result.state === "cancelled") {
+      const message = result.message ?? (modelRecord(result.error) && result.error.message);
       throw Object.assign(
-        new Error(
-          typeof result.message === "string" ? result.message : "原工作树创建失败，请使用新请求",
-        ),
+        new Error(typeof message === "string" ? message : "原工作树创建失败，请使用新请求"),
         { requestId: request.requestId, submissionUnknown: false },
       );
+    }
     if (
       typeof result.threadId !== "string" ||
       (result.state !== undefined && result.state !== "ready")
