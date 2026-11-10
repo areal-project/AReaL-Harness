@@ -16,7 +16,6 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 
 模型计量观察器的非干扰测试在磁盘写入仍被阻塞时等待 `drained` 结算信号，再在观察器锁内检查内存账本。客户端收到 HTTP EOF 不代表服务端 `finally` 已完成；不能用延长 sleep 或提前释放磁盘阻塞替代这个先后关系。
 
-
 发行验收的本地模型将辅助会话标题与求解请求分开处理。主任务退出可取消尚未完成的命名请求，此时命名回包的 BrokenPipe/ConnectionReset 不应把成功的读写验收改判失败；求解回包中断、命名携带工具或其他协议错误仍失败。`scripts/fixture_session_title.py` 仅用于本地 fixture，不改变生产重试、超时或模型消费。
 
 依赖安装见[开发指南](README.md)。常规测试使用临时目录、动态 loopback 端口和确定性模型，无需真实模型凭据。
@@ -71,7 +70,6 @@ Linux 宿主常规检查使用 `make verify CARGO_TEST_ARGS='--exclude areal-run
 在 Cargo 测试进程内嵌入 Runtime 的集成用例，需要同版本 reaper 位于测试宿主旁的 `target/<profile>/deps/`。`runtime-tests` 镜像单独安装并检查该产物，保留前层测试编译缓存。离线 CI 合同执行真实安装命令，验证位置、字节和可执行权限；编译器与包管理器使用边界 fixture，此检查不替代 Linux 原生容器验收。
 
 原生 Side 验收还在运行时通过 `CARGO_MANIFEST_DIR` 启动 MCP fixture。镜像必须复制该文件到对应源码路径；离线合同从测试源码提取路径并核对镜像的 COPY 映射，Docker 构建再检查文件可读性。编译通过不能证明运行时 fixture 已随镜像交付。
-
 
 截图 IPC 的注册与窗口归属复核由 `app/src/core/snapshots/host.cjs` 负责；健康检查只统计受控源码，不重复统计其 `snapshots/build/` 生成包。GUI 类型检查先生成截图原生模块，支持干净 checkout。Cloud 上传回归打包真实 Composer 上传与状态模块，保留部分批次失败后复用已接收回执的断言。
 
@@ -260,8 +258,6 @@ macOS 登录会话中的 Keychain 权限边界另用 `python3 scripts/git-keycha
 
 追加的 `catalog_cooperative_concurrency_performance_comparison` 让两种后端在每次读取后主动让出调度，诊断闭环 fixture 的写锁重叠差异。它也是显式 `--ignored --nocapture` 用例，需各后端独立交替 5 次；保留原始非协作结果，不能把单线程 fixture 的读延迟差距直接写成生产退化。
 
-
-
 `memory-lazy`、`sqlite-lazy` 复用同一套目录回归，`catalog_observation` 同时覆盖四种模式及恢复后继续执行、原工具不重放。`cargo test --locked -p areal-engine --lib store::lazy --jobs 3 -- --test-threads=4` 覆盖首次加载并发/取消、目录与工作概览、事实字节、同长度离线编辑、成员增删、限制收紧、错误/未知版本缓存及执行前核对。完整 Engine/config/app-server 回归可分别设置测试专用 `AREAL_TEST_SESSION_CATALOG=memory-lazy`、`sqlite-lazy`；仅编译 `test-support` 时生效，生产默认不读取该变量。显式 `Limits.session_catalog` 优先，避免覆盖用于对照的 eager 实例。
 
 GUI 刷新回归随 `test:regressions` 执行，保留共享列表/元数据解码与后端断连读取屏障；畸形响应不能覆盖最后一份完整缓存。生命周期回归区分普通 shutdown 与显式 drain，核对重启后的队列暂停和完整历史，并记录缓存重新校验的边界。 四模式另对照时钟回拨下的空闲回收判断，覆盖归档恢复及缓存复用，同时确认冷历史不被展开。
@@ -350,7 +346,6 @@ python3 scripts/native-agents-smoke.py --bin-dir target/debug --sandbox-profile 
 原生工具/Agent smoke 使用本地固定响应 HTTP 模型、统一 launcher 与临时工作区，无需外部模型。覆盖文件 CAS、搜索、验证 receipt、图像，以及不委派、单 Worker、同步等待、预算失败、父取消和默认异步；异步用例要求三个 Worker 请求结束前父任务继续推进，并检查主/子采样参数。流测试覆盖 length 同帧/尾帧 usage、EOF/取消、不重放 UNKNOWN、压缩后句柄与跨 Turn 边界。
 
 本地 HTTP fixture 必须将 `127.0.0.1,localhost,::1` 加入测试进程的 `NO_PROXY` 与 `no_proxy`，并保留原有条目，避免代理改写断流或引入等待。真实 HTTP 用例检查参数、历史及终态；只有参数增量时，握手门闩要求先收到 Activity 才释放终态。150 ms 空闲边界在冻结时钟下分别检查 40 ms 活动续期、宿主停顿与 220 ms 真正静默；静默只重试未完成响应，已确认工具执行一次。只服务解题的 fixture 按 `RequestPurpose` 拒绝辅助请求，自动命名的额度与生命周期由独立用例验证。不得通过放宽生产时限、SSE 上限或预算消除测试失败。
-
 
 请求预算测试覆盖 Chat Completions 与 Responses 在最后一轮返回工具时的 `MAX_MODEL_ROUNDS` 分类，并检查零工具执行、无重试和原始预算审计；普通工具调用预算耗尽及非法 `index` 不应被误分类。桌面 CLI 验收同时检查对应的 `error_max_turns` 结果。Goal HTTP 回归同时验证输出 token 上限与工具数量/缓冲预算经过共享池后仍生效，失败请求的未知消费阻止后续重试和工具执行。
 
@@ -501,15 +496,9 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal AREAL_SCHEDULE_GUI_ROOT=/absolute/source/clients/gui AREAL_SCHEDULE_MODE=accept node clients/gui/scripts/schedule-reliability-lifecycle-smoke.mjs` 运行真实源码 Electron/Main/Host 调度生命周期回归。夹具使用独立应用身份和已构建的 Renderer 资源，通过公开 bridge 创建任务；不验证任务创建对话框。原断言覆盖未打开项目到期一次、GUI 退出后触发、显式停止期间不准入及显式重连后的 misfire。生命周期身份取认证 Host 描述及原停止回执，不依赖旧 Desktop 的 `core/service.json`。停止未确认时保留隔离凭据和现场，清理只核查原请求。结果、trace、截图与清理在 `.scratch/schedule-reliability-lifecycle-*/manifest.json`；该路径不覆盖真实供应商、真机或系统登录。
 
-`AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal node --test clients/gui/scripts/remote-task-native.test.mjs` 让旧 JS 生产者与 Rust Gateway 执行同一 Task 问答/暂停场景，使用真实 Core/Runtime、确定性本地模型与本地 Relay，核对原 Run、答案及 UTF-8 预算、暂停和 worker 结算，以及旧丢回复请求的只读恢复。同一环境下分别运行 `node clients/gui/scripts/remote-task-question-contract.mjs` 和 `node clients/gui/scripts/remote-task-pause-contract.mjs`：原 JS 断言通过真实 Host journal CAS 与模拟 Core 执行。存储失败场景仅临时将本案确切 transfer 目录设为只读，随后恢复原权限；实际失败为 EACCES，“disk full”保留为历史注入错误标签。证据与清理保存在各 `native-remote-host-*/` 目录；不代表真机、真实供应商或 GUI 验收。
-
-`AREAL_REMOTE_OWNER=rust AREAL_REMOTE_NATIVE_ALLOWED=1 AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal RC05_PREFLIGHT_ONLY=1 node clients/gui/scripts/remote-session-commands-e2e.mjs` 将原命令 E2E 的 worker 切到生产 Rust Host，保留原模型、配对和业务断言。将 `RC05_PREFLIGHT_ONLY=1` 换为 `RC06_SETTLEMENT_ONLY=1` 运行原 T24。T21 用原 Host operation、typed 摘要与真实 Core 拒绝核对 Workflow 配置；T24 绑定原 Tool 和 Runtime 身份，确定退出时核对真实终止结果，缺确定结果时仍要求 UNKNOWN。原回执、持久关联与单次 Runtime 效果替换 JS 私有观察，不证明物理派发次数。Node 只生产配置及读取原 Core，Host 拥有 Gateway。默认入口仍是旧 JS 对照；Rust 模式遇到尚未迁入的私有 fault 控制会明确失败，不能作为全套通过。结果与原请求、正常停止及合成凭据清理保存在该次 `rc05-native-*/manifest.json` 和 `evidence.json`。
-
 将上述选择变量换为 `RC05_PUBLIC_COMMANDS_ONLY=1`，并分别设置 `AREAL_REMOTE_TRANSPORT=direct` 与 `relay`，运行真实 Rust Host 的公开命令子集。它核对重复发送复用原 operation/Turn、不同设备使用同一 commandId 各自隔离、改变语义返回冲突及每个 Runtime 文件副作用恰好一次。一次合法 create 在本案 journal 目录只读期间必须返回带原 commandId 的 `CORE_UNAVAILABLE`，恢复原权限后核对 journal 字节、Core Thread 集合不变和原命令 `notFound`。迟到的旧 Turn 停止请求必须返回 `TARGET_CHANGED`，当前 held Turn 继续并正常完成。此选择保留 `acceptance=false`，不覆盖受理后崩溃、丢失 Core 回应、outcome 写入失败、已准入 interrupt 屏障或 100 次竞态验收。
 
 使用 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal node --test clients/gui/scripts/remote-relay-system-ca.test.mjs` 运行 Rust Host 的原 CA 契约。测试以隔离 `SSL_CERT_FILE` 输入两个团队及组合根，真实执行 HTTPS 登记、WSS 和保存登记后的新隔离 Host 恢复；错误根、域名和过期证书检查实际握手失败、配置不变与原操作拒绝回执。操作目录观察只解析已发布的 `.json` 回执，排除原子写入期间的临时文件。此输入不修改系统信任，也不证明 macOS 钥匙串根枚举；独立 Node probe 仅标识测试证书类别，不替代 Rust 验证。证据与精确合成凭据清理保存在 `native-remote-host-*/evidence.json`。
-
-Relay 的原实际重启、替换与不可用预算场景可在同一固定产物上选择运行。先从仓库根用 `node --input-type=module -e 'import { certificates } from "./clients/gui/scripts/remote-relay-fixture.mjs"; console.log(await certificates())'` 生成隔离 CA；将打印目录分别填入 `RC12_TLS_HOME=/printed/path` 和 `NODE_EXTRA_CA_CERTS=/printed/path/ca.pem`，保留上述 Core/Keychain 环境，然后运行 `node --test --test-concurrency=1 --test-name-pattern='Relay restart and Host restart|Host replacement|Host fails closed' clients/gui/scripts/remote-relay-transport-contract.mjs`。原同 home Host 重启必须使用原完成停止回执与自然退出后显式启动，不能用重建 facade 代替。报告仅计所选三场景；其余原传输用例仍单列。所有本案进程收尾后仅清理本次打印的测试 CA 目录。
 
 同一 CA 和产物环境下，将上述选择条件换为 `pin mismatch|Direct and Relay share device limits|noncanonical base64|unfinished Direct and Relay handshakes|foreign channel injection|paced orderly close`，运行六个原连接与安全场景。它们使用真实 Rust Host、Direct/Relay 和 Noise 客户端，核对邀请、设备与未完成握手预算、授权收缩、攻击连接隔离及健康读取。关闭验证使用原类型化拒绝、实际 socket 关闭和应用流结束，替代 JS 私有缓存计数；不声称测得内部缓存或物理发送次数，也不代表整个传输套件已迁入。
 
@@ -523,15 +512,7 @@ Relay 的原实际重启、替换与不可用预算场景可在同一固定产�
 
 同一环境下，选择 `failed durable save` 保留原 JS 存储故障 reference，再运行真实 Rust Host 的生产配置入口。夹具仅将本案已有的 Gateway operation 文件设为只读，必须实际收到 `EACCES`，最后恢复原权限；原请求 ID 的公开查询必须不存在，Remote 配置与原文件字节在内存中完整比较，公开状态保持禁用及断开。随后 250ms 的有界观察要求没有 TLS 连接或 Host 登记，不将这段观察单独当作无限期无登记的证明。证据只保存配置摘要、原请求身份和错误类型，测试使用本次合成钥匙串项。
 
-同一固定产物环境下，`node --test --test-concurrency=1 clients/gui/scripts/remote-client-kind-host.test.mjs clients/gui/scripts/remote-device-management-host.test.mjs` 运行原设备类型与管理套件的 Rust Host 路径，保留元数据、授权拒绝、配对与连接连续性断言。原保存次数/连接对象观察改为真实配置、原完成回执与认证连接；不计物理写入次数。`node --test clients/gui/scripts/mobile-workspace.test.mjs` 保留原六个 JS 状态用例，并追加真实 MobileClient/Rust Host/Core 的分页历史和事件路径；证据区分这两个层级，Node 客户端不代表真机或 GUI。
-
 同一已验证产物环境下，`node --test clients/gui/scripts/remote-artifact-native.test.mjs` 通过 Rust `review.read`/`artifact.read` 读取原生 Task 图片，核对分片拼接、媒体归属与精确清理；`node --test clients/gui/scripts/remote-project-models-native.test.mjs` 从真实 Core 读取有界六字段模型目录及已配置显示名。这两条原生路径单列证据，不外推为原 Remote 套件全部通过。
-
-`AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal node clients/gui/scripts/remote-review-transport-contract.mjs` 保留原 JS transport/前端断言，并在同入口追加真实 Rust Host/Core/Runtime 审阅路径。它创建原生文件修改后另行编辑工作区，核对重建的历史 hunks、原部分结果和图片分片；后继 Task 活动时审阅不改变原目标或 journal。同一配对连接还核对在线/断开后的 `lastSeenAt`。报告保留各层来源，原 JS 否定用例不能据此声称全部在 Rust owner 下运行；真实路径证据与精确清理位于该次 `native-remote-host-*/native-review-transport.json` 和 `evidence.json`。
-
-`AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal node clients/gui/scripts/remote-review-contract.mjs` 保留原 JS 审阅契约，并在同入口追加真实 Rust Host/Core 的否定路径。新增来源核对跨连接 artifact 引用、继续生成后旧游标失效、原生坏图片字节、公开编辑移除旧 Turn、撤权及只观察 grant；每次 Remote 读取前后核对完整项目 journal 和 Thread 身份集合。该部分使用确定性本地模型、生产加密连接和本地 Relay，证据为 `native-remote-host-*/native-review-negatives.json`。外层 CA 包装不另计业务用例；原 fetch/HTTP 故障及精确帧边界断言仍属 JS reference，不能把新增子集说成全部原断言均已 Rust 化。
-
-同一产物与合成 Keychain 环境下运行 `node clients/gui/scripts/remote-interaction-contract.mjs`，先执行原 17 组 JS Gateway reference（持久化使用真实 Host journal CAS），再执行真实 Rust Gateway/Core 的九组交互路径。后者覆盖原审批审阅和分页、目标与摘要拒绝、UTF-8 问答、超过 4 MiB 的权威交互历史仍可拒绝原审批，以及同一真实 wire 连续投递 17 个详情读取后原订阅和连接持续可读。`AREAL_REMOTE_OWNER=reference` 或 `rust` 可分别选择这两层；原异步丢回复、撤权和身份屏障另由 `cargo test --locked -p areal-host --lib interaction_tests` 使用真实 owner 与认证模拟 Core 验证。真实路径证据 `native-interaction-contract.json` 保留 `ownerRemaining` 和整体 `complete`，仅将九组的 `subsetComplete` 作为该路径通过条件。原 reference 的第 17 个读取立即限流断言来自直接并发调用私有观察 owner；两种生产 wire 均串行 await 请求，Rust 使用每连接单个活动请求、容量 1 的入站队列和总会话上限维持有界处理。真实 wire 证据核对读取完成、订阅连续性和 journal 不变，不推定私有队列或物理调用次数。
 
 双设备并发场景使用两个独立 Noise 设备，分别完成同一审批的审阅后并发提交不同 command。要求一条 accepted、一条 rejected，败方为 TARGET_CHANGED，operation 与设备归属独立，跨设备查询为 notFound；原 Core 交互为 answered，原 Turn 仅有一条成功 Runtime 写入结果。公开 wire 并发不证明两条请求同时通过内部预检，也不测量底层物理派发次数。
 
@@ -586,10 +567,6 @@ TUI 与共享服务 PTY 检查共用终端画面解析器，处理增量重绘�
 ## Remote Rust wire 对照
 
 先运行 `cargo build --locked -p areal-host --example remote-wire-fixture`，再运行 `cargo test --locked -p areal-host gateway::` 和 `node --test clients/gui/scripts/remote-rust-noise.test.mjs`。测试专用 runner 从 stdin 读取非敏感测试身份，复用 `core/host/src/gateway/` 源码，验证原 Ed25519 protobuf/PeerId、Relay codec 差分、双向 Noise、拆分字节、消息限额、pin、prologue 及损坏数据。`AREAL_REMOTE_RUST_WIRE_BINARY` 可指定同一 example 的已构建路径；缺少 runner 或异常退出会失败。
-
-`AREAL_REMOTE_WIRE=rust node --test clients/gui/scripts/remote-relay-transport-contract.mjs` 在原测试 helper 中仅替换 Host 的 secureChannel。客户端、Relay 服务、Gateway 业务和原断言均沿用现有实现。该对照覆盖真实隔离 HTTPS/WSS、配对、授权、关闭、撤权、代际和流量预算，证明 Rust wire 与现有 JS Gateway 互通。该 wire 模块尚未在生产 Host 启用；测试桥不证明 Rust Gateway 已接管，也不替代 GUI 退出、真实供应商、真机或安装包验收。
-
-`cargo build --locked -p areal-host --example remote-relay-fixture` 后运行 `node --test clients/gui/scripts/remote-rust-relay.test.mjs`，验证 Rust 自行连接真实隔离 Relay WSS，使用同一 Noise/framing 与原 JS 客户端完成仅限测试的 echo/read。它检查真实根证书、主机名和过期验证，包含自动 pong 的滑动窗口帧数与字节数、持续大响应时另一台设备读取、排空关闭、撤销丢弃队列、重连代际、服务恢复和 Host 替换，以及进程退出和监听端口清理。`AREAL_REMOTE_RUST_RELAY_BINARY` 可指定同一 example 的已构建路径；缺少 runner 或异常退出会失败。Rust 单测补充本机 Relay authority、推送授权重新检查和背压中的停止。该原生传输尚未在生产 Host 启用，echo/read 夹具不证明 Gateway 授权、观察或命令业务已迁移。
 
 ## Remote GUI 退出连续性
 
@@ -651,7 +628,6 @@ GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 C
 Verify 汇总要求 host、container 和独立依赖审计全部成功。GUI gate / Release gate 对每个 PR 运行：Release gate 检查本地打包契约，完整打包及发布由本地发行流程执行；GUI 路径判定明确不适用时才允许对应任务 skipped；失败、取消、意外 skip 均失败。建议将这三个汇总检查设为 required，取消把条件矩阵名称设为 required；需维护者另行确认并配置，本仓库不修改分支保护。
 
 依赖审计独立扫描 Cargo、三个 npm 和 GUI pnpm 锁文件，区分漏洞命中与扫描错误，两者均失败。RustSec revision 与扫描报告保存 7 天；npm 实时数据库无不可变 revision。每周轻量独立审计从冷 cargo-audit 工具缓存安装；不运行每日完整 macOS/GUI。工具版本和锁文件指纹不包含凭据或环境变量。
-
 
 ## Codex 插件 P0
 
