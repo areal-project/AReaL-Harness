@@ -66,7 +66,7 @@ async fn summaries(host: &Host, project: &str) -> Result<Vec<Value>> {
 
 pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Result<Value> {
     ensure!(
-        host.gateway.workbench.rust_domain("library-rust", source),
+        host.gateway.workbench.backend_has_source(source),
         "CAPABILITY_UNAVAILABLE"
     );
     let home = library_store::source_home(host, source)?;
@@ -203,7 +203,7 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Res
         }
     }
     ensure!(
-        host.gateway.workbench.rust_domain("library-rust", source),
+        host.gateway.workbench.backend_has_source(source),
         "RESYNC_REQUIRED"
     );
     let value = library_store::change(host, source, |state| {
@@ -240,7 +240,7 @@ pub(super) fn record_summaries(
 
 pub(super) fn core_event(host: &Rc<Host>, project: &str, event: &Value) -> Result<()> {
     if event["method"] == "areal/task/updated" {
-        if host.gateway.workbench.rust_source("library-rust").is_none() {
+        if host.gateway.workbench.active_source().is_none() {
             return Ok(());
         }
         let host = host.clone();
@@ -291,7 +291,7 @@ pub(super) fn record_thread_activity(
     thread: &str,
     completion: Option<&str>,
 ) -> Result<()> {
-    let Some(source) = host.gateway.workbench.rust_source("library-rust") else {
+    let Some(source) = host.gateway.workbench.active_source() else {
         return Ok(());
     };
     let aliases = bindings(host, &source)?;
@@ -348,7 +348,7 @@ pub(super) fn record_thread_activity(
             )
             .await?;
             ensure!(
-                host.gateway.workbench.rust_domain("library-rust", &source),
+                host.gateway.workbench.backend_has_source(&source),
                 "RESYNC_REQUIRED"
             );
             let current = library_store::read_source(&host, &source)?;
@@ -375,7 +375,7 @@ pub(super) async fn record_scheduled_baseline(
     project: &str,
     rows: &[Value],
 ) -> Result<()> {
-    if host.gateway.workbench.rust_source("library-rust").is_none() {
+    if host.gateway.workbench.active_source().is_none() {
         return Ok(());
     }
     for row in rows.iter().filter(|row| row["mode"] == "scheduled") {
@@ -395,7 +395,7 @@ async fn record_scheduled(host: &Rc<Host>, project: &str, task: &Value) -> Resul
     if task["mode"] != "scheduled" {
         return Ok(());
     }
-    let Some(source) = host.gateway.workbench.rust_source("library-rust") else {
+    let Some(source) = host.gateway.workbench.active_source() else {
         return Ok(());
     };
     let aliases = bindings(host, &source)?;
@@ -442,7 +442,7 @@ async fn record_scheduled(host: &Rc<Host>, project: &str, task: &Value) -> Resul
             continue;
         };
         ensure!(
-            host.gateway.workbench.rust_domain("library-rust", &source),
+            host.gateway.workbench.backend_has_source(&source),
             "RESYNC_REQUIRED"
         );
         library_store::change(host, &source, |state| {

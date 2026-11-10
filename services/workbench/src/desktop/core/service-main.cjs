@@ -8,6 +8,9 @@ const { readLibraryStartupSettings } = require("./library.cjs");
 const { SharedPowerMonitor } = require("./power.cjs");
 const { join } = require("node:path");
 
+/** 资料库、执行、任务、工作树由 Host 的 Rust 实现负责；工作台只保留其余领域。 */
+const RUST_DOMAINS = Object.freeze(["library-rust", "execution-rust", "tasks-rust", "worktree-rust"]);
+
 /** @param {import('./backend.cjs').CoreBackendOptions} options @param {{onClose?:()=>void,hostManaged?:boolean,hostCall?:(call:string,params:unknown)=>Promise<unknown>}} [lifetime] */
 async function createMainDesktop(options, { onClose = () => {}, hostManaged = false, hostCall } = {}) {
   const network = await resolveDesktopNetwork(
@@ -34,7 +37,7 @@ async function createMainDesktop(options, { onClose = () => {}, hostManaged = fa
       throw error;
     }), (error) => { if (nativeTransport === pending) nativeTransport = undefined; throw error; });
   });
-  backend.rustDomains = Array.isArray(options.rustDomains) ? options.rustDomains : [];
+  backend.rustDomains = hostManaged ? [...RUST_DOMAINS] : [];
   /** @type {InstanceType<typeof DesktopService>|undefined} */ let adapter;
   /** @type {Promise<void>|undefined} */ let closing;
   let closed = false;

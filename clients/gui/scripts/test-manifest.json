@@ -1055,36 +1055,6 @@
     "requires": []
   },
   {
-    "script": "test:mobile-workspace",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode, iOS Simulator and the fixed native Core/Runtime bundle.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator", "core-binary"]
-  },
-  {
-    "script": "test:mobile-workspace-state",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote", "mobile"],
-    "requires": []
-  },
-  {
-    "script": "test:mobile-command",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode, iOS Simulator and the fixed native Core/Runtime bundle.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator", "core-binary"]
-  },
-  {
-    "script": "test:mobile-commands",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote", "mobile"],
-    "requires": []
-  },
-  {
     "script": "test:html-document",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],

@@ -16697,20 +16697,6 @@
             "revision"
           ],
           "additionalProperties": false
-        },
-        "rustDomains": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": [
-              "library-rust",
-              "execution-rust",
-              "tasks-rust",
-              "worktree-rust"
-            ]
-          },
-          "maxItems": 4,
-          "uniqueItems": true
         }
       },
       "required": [

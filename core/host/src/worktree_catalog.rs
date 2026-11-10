@@ -1057,7 +1057,7 @@ async fn deletion_generation(host: &Rc<Host>, source: &str) -> Result<String> {
     if source == "host" {
         return Ok(host.identity.generation.clone());
     }
-    if host.gateway.workbench.rust_domain("execution-rust", source) {
+    if host.gateway.workbench.backend_has_source(source) {
         return super::workbench_lifecycle::current_generation(source)
             .context("CAPABILITY_UNAVAILABLE");
     }

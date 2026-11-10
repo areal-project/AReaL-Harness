@@ -320,7 +320,7 @@ fn unavailable() -> anyhow::Error {
 }
 
 fn task_connection_ready(host: &Rc<Host>, session: &Rc<CoreSession>) {
-    if host.gateway.workbench.rust_source("library-rust").is_some() {
+    if host.gateway.workbench.active_source().is_some() {
         let host = host.clone();
         let project = session.project_id.clone();
         let connection = session.connection_id.clone();
@@ -644,7 +644,7 @@ impl CoreSession {
             unavailable()
         );
         ensure!(snapshot["thread"]["id"] == thread, "INVALID_RESPONSE");
-        if let Some(source) = host.gateway.workbench.rust_source("library-rust") {
+        if let Some(source) = host.gateway.workbench.active_source() {
             super::library_store::source_home(host, &source)?;
         }
         for turn in snapshot["thread"]["turns"].as_array().into_iter().flatten() {
@@ -1659,7 +1659,7 @@ mod tests {
                 }
             });
             if snapshot_only {
-                host.gateway.workbench.test_rust_domains(&source_id, &["library-rust"]);
+                host.gateway.workbench.test_source(&source_id);
                 let completion = |thread: &str, turn: &str, status: &str| json!({"thread":{"id":thread,"turns":[{"id":turn,"status":status}]}});
                 let initial = super::super::library_store::read_source(&host, &source_id).unwrap();
                 session.snapshot_progress(&host, "history", &completion("history", "past", "completed"), None).unwrap();
@@ -1676,9 +1676,9 @@ mod tests {
                 *session.workbench_lease.borrow_mut() = Some("replacement-lease".into());
                 assert!(session.snapshot_progress(&host, "guarded", &completion("guarded", "guard-turn", "completed"), None).is_err(), "原租约过期响应不能先写投影");
                 session.workbench_lease.borrow_mut().take();
-                host.gateway.workbench.test_rust_domains("unbound-source", &["library-rust"]);
+                host.gateway.workbench.test_source("unbound-source");
                 assert!(session.snapshot_progress(&host, "guarded", &completion("guarded", "guard-turn", "completed"), None).is_err(), "未知source不能写当前资料库");
-                host.gateway.workbench.test_rust_domains(&source_id, &["library-rust"]);
+                host.gateway.workbench.test_source(&source_id);
                 assert_eq!(super::super::library_store::read_source(&host, &source_id).unwrap(), initial);
                 session.observed_progress.borrow_mut().remove("guarded");
             }

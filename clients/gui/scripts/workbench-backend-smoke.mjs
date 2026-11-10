@@ -13,9 +13,6 @@ const require = createRequire(import.meta.url);
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const WebSocket = require("../app/node_modules/ws");
-const rustDomains = process.argv.includes("--rust")
-  ? ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"]
-  : [];
 const domains = new Set(
   process.argv
     .slice(2)
@@ -59,7 +56,6 @@ await writeFile(
 console.log(JSON.stringify({ evidence: root, binary }));
 const projects = new GuiHostProjects({ binary, home, source, singletonHeld: true });
 const options = {
-  rustDomains,
   binary,
   home: source.coreHome,
   guiProfile: source.profile,
@@ -73,7 +69,6 @@ const backend = new SharedCoreBackend({
   ...options,
   app: { getPath: (name) => (name === "userData" ? source.profile : user) },
 });
-backend.setOneProtocol({ library: true, backend: true, rustDomains });
 const checks = [];
 const ownedProcesses = [];
 async function recordProcesses(service) {
@@ -563,27 +558,6 @@ try {
     );
     checks.push("Task view subscribes through Host and releases the original view without replay");
 
-    if (!rustDomains.some((domain) => domain === "tasks-rust" || domain === "execution-rust")) {
-      const task = await backend.command("manage", {
-        operation: "task",
-        projectId,
-        taskId: scheduled.id,
-      });
-      assert.equal(task.id, scheduled.id);
-      const indexPath = join(source.coreHome, "task-owners", `${projectId}.json`);
-      const before = await stat(indexPath, { bigint: true });
-      const observed = await projects.client.request("tasks.read", {
-        operation: "list",
-        sourceId: change.sourceId,
-        projectId,
-        limit: 30,
-      });
-      assert.ok(observed.data.some((task) => task.id === scheduled.id));
-      const after = await stat(indexPath, { bigint: true });
-      assert.equal(after.ino, before.ino, "Native reads must not replace the JS-owned task index");
-      assert.equal(after.mtimeNs, before.mtimeNs);
-      checks.push("Native task reads preserve the flag-off JS index writer");
-    }
     const stopped = await projects.stop(
       randomUUID(),
       projectId,

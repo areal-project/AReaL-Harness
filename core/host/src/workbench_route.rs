@@ -97,7 +97,6 @@ pub(super) struct Backend {
     /// 已启动后台的项目 profile 与服务身份（不含票据），供 Main 核对所有权。
     ownership: RefCell<Option<(String, Value)>>,
     source: RefCell<Option<String>>,
-    rust_domains: RefCell<Vec<String>>,
     utility_options: RefCell<Option<Value>>,
     events: RefCell<Vec<Value>>,
     worktree_cleaning: Cell<bool>,
@@ -271,7 +270,7 @@ impl Drop for PreparedExecution {
 
 impl Supervisor {
     pub(super) fn tasks_event(&self, host: &Host, canonical: &str, mut body: Value) {
-        let Some(source) = self.rust_source("tasks-rust") else {
+        let Some(source) = self.active_source() else {
             return;
         };
         let Ok(alias) = backend_project_alias(host, &source, canonical) else {
@@ -353,7 +352,7 @@ impl Supervisor {
     }
     // 沿用原后台 init/finishSetup 的清理触发，不在每次目录读取时启动清理。
     pub(super) fn schedule_worktree_cleanup(&self, host: &Rc<Host>, source: &str) {
-        if (source != "host" && !self.rust_domain("worktree-rust", source))
+        if (source != "host" && !self.backend_has_source(source))
             || self.backend.worktree_cleaning.replace(true)
         {
             return;
@@ -368,7 +367,7 @@ impl Supervisor {
         let task: futures_util::future::LocalBoxFuture<'static, ()> = Box::pin(async move {
             if let Some(host) = weak.upgrade() {
                 let current = source == "host"
-                    || (host.gateway.workbench.rust_domain("worktree-rust", &source)
+                    || (host.gateway.workbench.backend_has_source(&source)
                         && host.gateway.workbench.worktree_backend_identity(&source) == owner);
                 if current && host.admission().is_ok() {
                     let _ = super::worktree_catalog::auto_cleanup(&host, &source).await;
@@ -380,29 +379,13 @@ impl Supervisor {
     }
 
     #[cfg(test)]
-    pub(super) fn test_rust_domains(&self, source: &str, domains: &[&str]) {
+    pub(super) fn test_source(&self, source: &str) {
         *self.backend.source.borrow_mut() = Some(source.into());
-        *self.backend.rust_domains.borrow_mut() =
-            domains.iter().map(|domain| (*domain).into()).collect();
     }
 
-    pub(super) fn rust_domain(&self, domain: &str, source: &str) -> bool {
-        self.backend_has_source(source)
-            && self
-                .backend
-                .rust_domains
-                .borrow()
-                .iter()
-                .any(|d| d == domain)
-    }
-    pub(super) fn rust_source(&self, domain: &str) -> Option<String> {
-        self.backend
-            .rust_domains
-            .borrow()
-            .iter()
-            .any(|d| d == domain)
-            .then(|| self.backend.source.borrow().clone())
-            .flatten()
+    /// 已启动后台所属的来源；资料库、执行、任务与工作树均由 Host 的 Rust 实现负责。
+    pub(super) fn active_source(&self) -> Option<String> {
+        self.backend.source.borrow().clone()
     }
     pub(super) fn utility_options(&self, source: &str) -> Result<Value> {
         ensure!(
@@ -587,7 +570,7 @@ impl Supervisor {
         );
         let alias = backend_project_alias(host, source, project)?;
         ensure!(params["projectId"] == alias, "RESYNC_REQUIRED");
-        if self.rust_domain("worktree-rust", source) {
+        if self.backend_has_source(source) {
             let mut result =
                 super::worktree_catalog::read_thread_target(host, source, &alias, params.clone())
                     .await?;
@@ -1008,12 +991,6 @@ pub(super) async fn backend_command(
             "FORBIDDEN"
         );
     }
-    if method == "worktree.command" && params.get("agentProfile").is_some() {
-        ensure!(
-            native || host.gateway.workbench.rust_domain("worktree-rust", &source),
-            "CAPABILITY_UNAVAILABLE"
-        );
-    }
     let scope = format!(
         "workbench-{}",
         areal_local_service::storage::digest(principal.as_bytes())
@@ -1035,16 +1012,12 @@ pub(super) async fn backend_command(
     if method == "manage.command" && payload.get("requestId").is_none() {
         payload["requestId"] = json!(command);
     }
+    // 资料库、工作树与任务变更由 Host 执行，其余领域交给工作台后台。
     let native_task = method == "manage.command"
-        && host.gateway.workbench.rust_domain("tasks-rust", &source)
         && super::task_catalog::mutation(payload["operation"].as_str().unwrap_or("")).is_some();
-    let result = if method == "library.command"
-        && host.gateway.workbench.rust_domain("library-rust", &source)
-    {
+    let result = if method == "library.command" {
         super::library_service::command(host, &source, payload).await
-    } else if method == "worktree.command"
-        && (native || host.gateway.workbench.rust_domain("worktree-rust", &source))
-    {
+    } else if method == "worktree.command" {
         super::worktree_catalog::command(host, &source, payload).await
     } else if native_task {
         payload["sourceId"] = json!(source);
@@ -1182,18 +1155,18 @@ pub(super) async fn backend_read(
         .as_str()
         .context("INVALID_PARAMS")?
         .to_owned();
-    if method == "tasks.read" && host.gateway.workbench.rust_domain("tasks-rust", &source) {
+    if method == "tasks.read" && host.gateway.workbench.backend_has_source(&source) {
         return super::task_catalog::read(host, &params).await;
     }
     if method == "manage.read"
-        && host.gateway.workbench.rust_domain("tasks-rust", &source)
+        && host.gateway.workbench.backend_has_source(&source)
         && params["operation"]
             .as_str()
             .is_some_and(|op| op.starts_with("task") || op == "inboxList")
     {
         return super::task_catalog::manage_read(host, &params).await;
     }
-    if method == "worktree.read" && host.gateway.workbench.rust_domain("worktree-rust", &source) {
+    if method == "worktree.read" && host.gateway.workbench.backend_has_source(&source) {
         return super::worktree_catalog::read(host, &source, params).await;
     }
     params.as_object_mut().unwrap().remove("sourceId");
@@ -1269,22 +1242,13 @@ impl Backend {
         }
         let source = launch.source_id.clone();
         let record = input.clone();
-        let rust_domains: Vec<String> = serde_json::from_value(
-            input
-                .options
-                .get("rustDomains")
-                .cloned()
-                .unwrap_or_else(|| json!([])),
-        )?;
         *self.source.borrow_mut() = source.clone();
-        *self.rust_domains.borrow_mut() = rust_domains.clone();
         *self.utility_options.borrow_mut() = Some(launch.options.clone());
         match self.start(host, launch).await {
             Ok((workbench, ownership)) => {
                 // 记不下来只影响下次网页自动拉起，不影响这次启动。
                 let _ = areal_local_service::storage::write(&launch_record(host), &record);
                 *self.source.borrow_mut() = source;
-                *self.rust_domains.borrow_mut() = rust_domains;
                 let workbench = Rc::new(workbench);
                 *self.running.borrow_mut() = Some(workbench.clone());
                 let watched = workbench.clone();
@@ -1307,7 +1271,7 @@ impl Backend {
                 ensure!(!self.stopped.get(), "RESYNC_REQUIRED");
                 *self.ownership.borrow_mut() = Some((key, ownership.clone()));
                 if let Some(source) = self.source.borrow().clone() {
-                    if host.gateway.workbench.rust_domain("library-rust", &source) {
+                    if host.gateway.workbench.backend_has_source(&source) {
                         host.gateway.workbench.library_changed().await;
                     }
                 }
@@ -1321,7 +1285,6 @@ impl Backend {
             Err(error) => {
                 host.schedules.connections.workbench_close_terminals();
                 self.source.borrow_mut().take();
-                self.rust_domains.borrow_mut().clear();
                 self.utility_options.borrow_mut().take();
                 self.failures.borrow_mut().push(Instant::now());
                 Err(error)
@@ -1557,7 +1520,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("library-rust")
+                        .active_source()
                         .context("FORBIDDEN")?;
                     let result = super::library_service::patch(&host, &source, &params)?;
                     host.gateway.workbench.library_changed().await;
@@ -1567,7 +1530,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("library-rust")
+                        .active_source()
                         .context("FORBIDDEN")?;
                     super::library_service::command(&host, &source, params).await
                 }
@@ -1575,7 +1538,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("execution-rust")
+                        .active_source()
                         .context("FORBIDDEN")?;
                     ensure!(params["sourceId"] == source, "FORBIDDEN");
                     if call == "lifecycle.command" {
@@ -1612,8 +1575,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("execution-rust")
-                        .or_else(|| host.gateway.workbench.rust_source("tasks-rust"))
+                        .active_source()
                         .context("FORBIDDEN")?;
                     let mut params = params;
                     params["sourceId"] = json!(source);
@@ -1623,7 +1585,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("tasks-rust")
+                        .active_source()
                         .context("FORBIDDEN")?;
                     let mut params = params;
                     params["sourceId"] = json!(source);
@@ -1633,7 +1595,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("tasks-rust")
+                        .active_source()
                         .context("FORBIDDEN")?;
                     let mut params = params;
                     params["sourceId"] = json!(source);
@@ -1647,7 +1609,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("worktree-rust")
+                        .active_source()
                         .context("FORBIDDEN")?;
                     super::worktree_catalog::add_project(&host, &source, params).await
                 }
@@ -1655,7 +1617,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("worktree-rust")
+                        .active_source()
                         .context("FORBIDDEN")?;
                     let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
                     if call == "worktree.thread.prepare" {
@@ -1682,7 +1644,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = host
                         .gateway
                         .workbench
-                        .rust_source("worktree-rust")
+                        .active_source()
                         .context("FORBIDDEN")?;
                     if call == "worktree.read" {
                         super::worktree_catalog::read(&host, &source, params).await
@@ -1705,7 +1667,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
                     let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
                     ensure!(
-                        host.gateway.workbench.rust_domain("execution-rust", source),
+                        host.gateway.workbench.backend_has_source(source),
                         "FORBIDDEN"
                     );
                     backend_project_alias(&host, source, project)?;
@@ -1724,7 +1686,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
                     let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
                     ensure!(
-                        host.gateway.workbench.rust_domain("execution-rust", source),
+                        host.gateway.workbench.backend_has_source(source),
                         "FORBIDDEN"
                     );
                     backend_project_alias(&host, source, project)?;
@@ -1749,7 +1711,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
                     let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
                     ensure!(
-                        host.gateway.workbench.rust_domain("execution-rust", source),
+                        host.gateway.workbench.backend_has_source(source),
                         "FORBIDDEN"
                     );
                     backend_project_alias(&host, source, project)?;
@@ -1903,7 +1865,7 @@ mod tests {
             host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
                 crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
             host.gateway.workbench.ensure_backend(&host, input).await.unwrap();
-            host.gateway.workbench.test_rust_domains(&source, &["tasks-rust"]);
+            host.gateway.workbench.test_source(&source);
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let registration = host.slots.borrow()["project"].registration.clone();
             let service = areal_protocol::service::Service {
@@ -1974,9 +1936,9 @@ mod tests {
                 const frame = JSON.parse(line);
                 if (frame.method === 'backend.start') {
                     out({event:'ready',methods:['providers.read','pages.command'],service:{pid:process.pid,identity:String(process.pid)}});
-                } else if (frame.params.crash) {
+                } else if (frame.params?.crash) {
                     process.exit(1);
-                } else {
+                } else if (frame.id !== undefined) {
                     out({id:frame.id,result:frame.method === 'providers.read' ? {models:[]} : {pid:process.pid}});
                 }
             });
@@ -2190,7 +2152,7 @@ mod tests {
             host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
                 crate::ProjectSource::Gui { profile:input.profile.clone(), legacy_project_id:"logical".into() };
             host.gateway.workbench.ensure_backend(&host,input).await.unwrap();
-            host.gateway.workbench.test_rust_domains(&source,&["worktree-rust"]);
+            host.gateway.workbench.test_source(&source);
             let home=super::super::library_store::source_home(&host,&source).unwrap();
             let creation=uuid::Uuid::new_v4().to_string();
             areal_local_service::storage::private_dir(&home.join("worktree-requests")).unwrap();
@@ -2215,11 +2177,6 @@ mod tests {
             assert_eq!(backend_command(&host,"local",&foreign).await.unwrap_err().to_string(),"FORBIDDEN");
             assert!(backend_receipt(&host,"local",foreign["commandId"].as_str().unwrap()).unwrap().is_none());
             assert_eq!(backend_command(&host,"web:fixture",&request).await.unwrap_err().to_string(),"INVALID_PARAMS");
-            host.gateway.workbench.test_rust_domains(&source,&[]);
-            let mut fallback=request.clone();
-            fallback["commandId"]=json!(uuid::Uuid::new_v4().to_string());
-            assert_eq!(backend_command(&host,"local",&fallback).await.unwrap_err().to_string(),"CAPABILITY_UNAVAILABLE");
-            assert!(backend_receipt(&host,"local",fallback["commandId"].as_str().unwrap()).unwrap().is_none());
             host.gateway.workbench.stop_backend().await;
         }).await;
     }
@@ -2234,7 +2191,7 @@ mod tests {
             let runner = root.path().join("lost-reply.cjs");
             std::fs::write(&runner, r#"
                 const fs = require('node:fs');
-                console.log(JSON.stringify({version:1,event:'ready',methods:['library.command']}));
+                console.log(JSON.stringify({version:1,event:'ready',methods:['feedback.command']}));
                 require('node:readline').createInterface({input:process.stdin}).on('line', () => {
                   fs.appendFileSync(process.env.AREAL_WORKBENCH_DATA + '/effects', 'once\n');
                   process.exit(0);
@@ -2245,13 +2202,13 @@ mod tests {
             *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
             *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
             let command = uuid::Uuid::new_v4().to_string();
-            let request = json!({"method":"library.command","commandId":command,"params":{"sourceId":"fixture","operation":"createSection","title":"fixture"}});
+            let request = json!({"method":"feedback.command","commandId":command,"params":{"sourceId":"fixture","operation":"preference","enabled":true}});
             let first = backend_command(&host, "local", &request).await.unwrap();
             assert_eq!(first["submissionUnknown"], true);
             assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
             assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
             let mut conflict = request.clone();
-            conflict["params"]["title"] = json!("changed");
+            conflict["params"]["enabled"] = json!(false);
             assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
             assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
             let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});

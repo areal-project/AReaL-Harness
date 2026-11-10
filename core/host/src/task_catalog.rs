@@ -203,8 +203,8 @@ fn owner_records(home: &std::path::Path) -> Result<BTreeMap<String, Vec<Value>>>
 fn remember_owner(host: &Host, params: &Value, project: &str, tasks: &[Value]) -> Result<()> {
     let source = params["sourceId"].as_str().unwrap_or("host");
     if source != "host"
-        && !host.gateway.workbench.rust_domain("tasks-rust", source)
-        && !host.gateway.workbench.rust_domain("execution-rust", source)
+        && !host.gateway.workbench.backend_has_source(source)
+        && !host.gateway.workbench.backend_has_source(source)
     {
         // 读取仍可用，归属索引只交给当前领域开关指定的唯一写者。
         return Ok(());

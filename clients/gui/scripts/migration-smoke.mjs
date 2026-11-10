@@ -489,23 +489,6 @@ try {
       (snapshot) => snapshot.connection?.state === "ready",
       "bootstrap desktop",
     );
-    await page.evaluate(() => {
-      localStorage.setItem("areal.oneProtocol.reads", "1");
-      localStorage.setItem(
-        "areal.oneProtocol.domains",
-        [
-          "backend",
-          "library",
-          "tasks",
-          "worktree",
-          "manage",
-          "library-rust",
-          "execution-rust",
-          "tasks-rust",
-          "worktree-rust",
-        ].join(","),
-      );
-    });
     const { HostClient } = require("@areal/client/node");
     const bootstrap = new HostClient();
     await bootstrap.connect(env.AREAL_HARNESS_SERVICE_HOME);

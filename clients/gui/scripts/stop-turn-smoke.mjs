@@ -30,7 +30,6 @@ assert.ok(binary && isAbsolute(binary), "Set AREAL_CORE_BIN to an absolute fixed
 const scratch = await makeTempDir("stop-turn-");
 const rust = process.argv.includes("--rust");
 if (snapshotCompletion) assert.ok(rust, "Snapshot completion requires --rust");
-const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
 if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const workspace = join(scratch, "workspace");
 await mkdir(workspace);
@@ -215,13 +214,6 @@ try {
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
   if (rust) {
-    await page.evaluate((domains) => {
-      localStorage.setItem("areal.oneProtocol.reads", "1");
-      localStorage.setItem(
-        "areal.oneProtocol.domains",
-        ["backend", "library", "tasks", "worktree", ...domains].join(","),
-      );
-    }, rustDomains);
     const stop = JSON.parse(
       execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
         env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
@@ -257,8 +249,8 @@ try {
       )
         .then(JSON.parse)
         .catch(() => null);
-      return rustDomains.every((domain) => record?.options?.rustDomains?.includes(domain));
-    }, "Rust backend launch domains");
+      return record !== null;
+    }, "Host backend launch record");
   }
   if (snapshotCompletion) {
     await page.addInitScript(() => {

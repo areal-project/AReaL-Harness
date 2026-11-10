@@ -10,7 +10,7 @@ Worktrees, the library and task catalog share project connections, session lifec
 
 Public clients connect only to Host. The backend retains an authenticated private attach listener for Main; browsers and phones do not use it as a business entry point. Host owns project connections and supervision. The backend accesses Core through the finite `core.request` allowlist. Main domain fallbacks also use Host connections bound to their original attachment. Observers and terminals have separate leases, so detaching them does not close another client's project connection. Core/Runtime authority and cleanup responsibilities remain unchanged.
 
-GUI uses the Host-supervised backend by default, selecting its owner before reading renderer preferences. `areal.oneProtocol.domains` no longer selects backend ownership. An existing GUI must exit normally and reopen; active writers are never switched in place. Host startup failure retains the error and original receipts instead of starting a Main fallback. The original singleton and unretired backend identity checks continue to prevent takeover. Data remains in the original GUI directory. Host checks the registered navigation source and Core executable paths. One Host currently owns one backend configuration; a different configuration is rejected rather than silently switching sources.
+GUI always uses the Host-supervised backend; there is no renderer switch. An existing GUI must exit normally and reopen; active writers are never switched in place. Host startup failure retains the error and original receipts instead of starting a Main fallback. The original singleton and unretired backend identity checks continue to prevent takeover. Data remains in the original GUI directory. Host checks the registered navigation source and Core executable paths. One Host currently owns one backend configuration; a different configuration is rejected rather than silently switching sources.
 
 GUI upgrades await source and safe-project publication before starting the backend. The native credential adapter continues the original slot imports and retirement on its own connection without holding backend readiness. Pending projects or slots retain their migration state while confirmed resources remain usable. Reopening GUI after unlocking rechecks the original migration; reconnecting a project advances only its original handoff, never reviving legacy writers or replaying UNKNOWN. Project launch resolves model dependencies through the same canonical configuration: unrelated in-flight or migrating slots are deferred only for this launch without clearing cached credentials; selected or unproven dependencies still wait for the original operation.
 
@@ -55,7 +55,7 @@ Resources travel over the authenticated WebSocket in chunks of at most 192 KiB, 
 
 ## Rust domain implementations and rollback
 
-The desktop backend receives `rustDomains` from `areal.oneProtocol.domains`: `library-rust`, `execution-rust`, `tasks-rust`, and `worktree-rust`. Restart the backend after changing these implementation selectors. Domain entry switches remain available without changing Host backend ownership. Disabling a Rust domain selects the previous path without replaying unresolved commands. Environment acceptance is still required before retiring a previous implementation; compilation alone does not establish acceptance.
+The library, execution, task, and worktree domains are always implemented by Host in Rust, with no switch. The workbench backend only serves the remaining domains (providers, plugins, page hosting, feedback, trajectories, and similar).
 
 This table describes ownership with a Rust domain enabled. Previous JavaScript domain implementations remain available when their selector is disabled. Core connection and process ownership always stays with Host.
 
@@ -84,7 +84,7 @@ The decreasing `workbenchConvergeLines` budget covers the library, submission re
 
 ## Library and analytics
 
-A Host-managed backend always uses Host as the sole writer of `library.json` at its original location. With `library-rust` disabled, the backend stages a document beside it, then calls `library.write` for digest-checked replacement; conflicts trigger reread and recomputation. When enabled, navigation changes execute directly in a Host transaction without backend staging. Main cannot restore a second writer by disabling the `library` switch. Without backend takeover, the original `library` switch still controls this transition.
+Host is the sole writer of `library.json`; navigation changes execute directly in a Host transaction. When the backend changes settings it submits patches through `library.patch` and rereads and recomputes on conflict.
 
 Analytics exposes `analytics.read`, `analytics.sync`, `analytics.activity` and `analytics.import`. Sync reads allowlisted `thread/list` and `thread/read` through Host's shared Core connections. Host forwards turn events without starting the service solely for an event. Clients report activity every five seconds and the service takes the union; legacy Main activity merges by daily maximum. Disabled domains retain their old analytics path.
 

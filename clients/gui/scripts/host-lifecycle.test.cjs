@@ -254,8 +254,7 @@ test("Host activity is passive and whole-Host stop is durable before one dispatc
   assert.equal(f.backend.snapshot().connection.recovery, "reconnect");
   assert.equal(f.backend.canReconnect(), false);
   assert.equal(isLifecycleProjection(f.backend.lifecycleProjection()), true);
-  f.backend.initialize = async (_automatic, options) => {
-    assert.equal(options.reconnectHost, true);
+  f.backend.initialize = async () => {
     f.backend.status.connected = true;
     f.backend.connectionState = { state: "ready" };
   };
@@ -735,8 +734,7 @@ test("failed explicit reconnect keeps the original Host reference durable", asyn
     strategy: "cancel",
   });
   await f.backend.persistReferences();
-  f.backend.initialize = async (_automatic, options) => {
-    assert.equal(options.reconnectHost, true);
+  f.backend.initialize = async () => {
     throw new Error("explicit reconnect failed");
   };
   await assert.rejects(f.backend.init(), /explicit reconnect failed/);

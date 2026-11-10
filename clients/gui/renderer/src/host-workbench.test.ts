@@ -26,14 +26,7 @@ function setup(answer: (method: string, params: unknown) => unknown) {
       },
     }),
   } as unknown as PlatformServices;
-  const routes = createWorkbenchRoutes(
-    client,
-    desktop,
-    new Set(["analytics"]),
-    undefined,
-    undefined,
-    () => "fixture",
-  )!;
+  const routes = createWorkbenchRoutes(client, desktop, undefined, undefined, () => "fixture")!;
   return { routes, calls };
 }
 
@@ -48,7 +41,6 @@ describe("workbench routes", () => {
     const routes = createWorkbenchRoutes(
       client,
       {} as PlatformServices,
-      new Set(["manage"]),
       undefined,
       undefined,
       () => "fixture",
@@ -75,15 +67,10 @@ describe("workbench routes", () => {
     }
   });
 
-  it("reads analytics through Host after merging the desktop's active days", async () => {
+  it("reads analytics through Host without importing desktop history", async () => {
     const { routes, calls } = setup((method) => (method === "analytics.read" ? { tokens: 1 } : {}));
     expect(await routes.call("analytics", { operation: "read" })).toEqual({ value: { tokens: 1 } });
-    expect(await routes.call("tasks", { operation: "list" })).toBeUndefined();
-    expect(calls[0]).toEqual([
-      "analytics.import",
-      { state: { version: 1, since: 7, days: { "2026-11-04": 60000 }, turns: {}, skills: {} } },
-    ]);
-    expect(calls.filter(([method]) => method === "analytics.import")).toHaveLength(1);
+    expect(calls.map(([method]) => method)).toEqual(["analytics.read"]);
   });
 
   it("falls back to the desktop path when the service is unavailable", async () => {
@@ -117,14 +104,7 @@ describe("library routes without a desktop adapter", () => {
     } as unknown as HostClient;
     return {
       commands,
-      routes: createWorkbenchRoutes(
-        client,
-        undefined,
-        new Set(["library"]),
-        undefined,
-        undefined,
-        () => "fixture",
-      )!,
+      routes: createWorkbenchRoutes(client, undefined, undefined, undefined, () => "fixture")!,
     };
   }
 
@@ -212,14 +192,7 @@ describe("Worktree Host routing", () => {
         };
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["worktree"]),
-      undefined,
-      undefined,
-      () => "source",
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     expect(
       await call({ workbench: routes } as PlatformServices, "workspace", {
         operation: "worktreeSettings",
@@ -243,14 +216,7 @@ describe("Worktree Host routing", () => {
         throw new Error("Connection lost");
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["worktree"]),
-      undefined,
-      undefined,
-      () => "source",
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     await expect(
       routes.call("workspace", {
         operation: "worktreeCreate",
@@ -292,14 +258,7 @@ describe("task directory Host routing", () => {
         return response;
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["tasks"]),
-      undefined,
-      undefined,
-      () => "source",
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     const params = {
       operation: "preview" as const,
       projectId: "project",
@@ -334,14 +293,7 @@ describe("task directory Host routing", () => {
         throw new Error("must not dispatch");
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["tasks"]),
-      undefined,
-      undefined,
-      () => undefined,
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => undefined)!;
     expect(await routes.call("tasks", { operation: "preview" })).toBeUndefined();
     allowed = true;
     await expect(routes.call("tasks", { operation: "preview" })).rejects.toThrow(
@@ -376,14 +328,7 @@ describe("trajectory and feedback Host routing", () => {
         };
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["trajectory", "feedback"]),
-      undefined,
-      undefined,
-      () => "source",
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     const services = { workbench: routes } as PlatformServices;
     expect(await call(services, "feedback", { operation: "preference", enabled: false })).toEqual(
       status,
@@ -400,7 +345,6 @@ describe("trajectory and feedback Host routing", () => {
     expect(
       calls.every((entry) => (entry.params as { sourceId: string }).sourceId === "source"),
     ).toBe(true);
-    expect(await routes.call("analytics", { operation: "read" })).toBeUndefined();
   });
 });
 
@@ -414,14 +358,7 @@ describe("task management Host routing", () => {
         return { fixture: true };
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["manage"]),
-      undefined,
-      undefined,
-      () => "source",
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     for (const operation of [
       "server",
       "profile",
@@ -481,7 +418,6 @@ describe("task management Host routing", () => {
       const routes = createWorkbenchRoutes(
         client,
         undefined,
-        new Set(["manage"]),
         undefined,
         undefined,
         () => "source",
@@ -539,14 +475,7 @@ describe("task management Host routing", () => {
         };
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["manage"]),
-      undefined,
-      undefined,
-      () => "source",
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     const services = { workbench: routes } as PlatformServices;
     const requestId = crypto.randomUUID();
     expect(
@@ -590,14 +519,7 @@ describe("provider Host routing", () => {
         };
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["providers"]),
-      undefined,
-      undefined,
-      () => "source",
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
     const request = {
       operation: "discover",
       connection: {
@@ -634,14 +556,7 @@ describe("MCP Apps catalog without a desktop adapter", () => {
         return catalog;
       },
     } as unknown as HostClient;
-    const routes = createWorkbenchRoutes(
-      client,
-      undefined,
-      new Set(["pages"]),
-      undefined,
-      undefined,
-      () => undefined,
-    )!;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => undefined)!;
     expect(
       await routes.call("manage", {
         operation: "mcpApps",
@@ -688,13 +603,11 @@ describe("local web desktop commands", () => {
       "desktop.command",
       { sourceId: "source", command: "recovery", request: { operation: "inspect" } },
     ]);
-    const capabilities = hostPlatformCapabilities(client, undefined, new Set(), "source");
+    const capabilities = hostPlatformCapabilities(client, undefined, "source");
     expect(capabilities?.mutations).toBe(true);
     expect(capabilities?.settings).toContain("模型服务");
     expect(capabilities?.settings).not.toContain("电脑控制");
-    expect(hostPlatformCapabilities(client, undefined, new Set(), undefined)?.mutations).toBe(
-      false,
-    );
+    expect(hostPlatformCapabilities(client, undefined, undefined)?.mutations).toBe(false);
   });
 
   it("preserves a migration block for read-only history recovery", async () => {

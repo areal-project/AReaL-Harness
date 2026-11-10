@@ -3,7 +3,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { HostClientOptions, ShellProject, SourceNavigation } from "@areal/client";
 import { createHostReadServices } from "./host-services.js";
-import { createDesktopHistoryRecoveryServices } from "./desktop-history-recovery.js";
 import type { Action, PlatformServices, Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
@@ -363,7 +362,6 @@ describe("Host renderer read authority", () => {
       };
       const services = createHostReadServices(undefined, {
         ...options(factory),
-        domains: new Set(["library", "tasks", "manage", "providers", "pages"]),
         events: page as Window,
       });
       try {
@@ -1186,7 +1184,7 @@ describe("Host renderer read authority", () => {
         },
       };
     };
-    const services = createHostReadServices(undefined, { ...options(factory), writes: true });
+    const services = createHostReadServices(undefined, options(factory));
     await until(services);
     await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
     const { call } = await import("./services.js");
@@ -1338,7 +1336,7 @@ describe("Host renderer read authority", () => {
       onTheme: () => () => {},
       preview: async () => ({}),
     };
-    const services = createHostReadServices(desktop, { ...options(factory), writes: true });
+    const services = createHostReadServices(desktop, options(factory));
     await until(services);
     await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
     const { call } = await import("./services.js");
@@ -1380,118 +1378,4 @@ describe("Host renderer read authority", () => {
     expect(writes.filter((entry) => entry.method === "attention.read")).toHaveLength(2);
     expect(native_).toHaveBeenCalledTimes(1);
   });
-});
-
-it("default desktop lazily overlays only persisted history and restores desktop reads on close", async () => {
-  const events = new EventTarget();
-  vi.stubGlobal("window", events);
-  const stopped = { ...project, state: "stopped" as const, serviceGeneration: undefined };
-  const wire = transport(observation, undefined, { projects: [stopped], navigation: [navigation] });
-  let connections = 0;
-  let persistedReads = 0;
-  let blockedRead: Promise<void> | undefined;
-  const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
-    connections++;
-    const base = await wire.factory(lifecycle);
-    return {
-      ...base,
-      identity: { ...base.identity, persistedHistory: true },
-      transport: {
-        ...base.transport,
-        async request(method, params, context) {
-          if (method === "session.openPersisted") {
-            persistedReads++;
-            await blockedRead;
-            return {
-              ...identity,
-              ...context,
-              serviceGeneration: "old-gen",
-              threadId: params.threadId,
-              snapshot: observation,
-              access: { kind: "persisted", readOnly: true, snapshotId: "fixed" },
-            };
-          }
-          const result = await base.transport.request(method, params, context);
-          return method === "session.history"
-            ? { ...(result as Record<string, unknown>), serviceGeneration: "old-gen" }
-            : result;
-        },
-      },
-    };
-  };
-  let legacy: Snapshot = {
-    projects: [
-      {
-        id: "alias",
-        root: "/legacy",
-        core: { connectionGeneration: 7 },
-        outcomes: { original: { state: "unknown" } },
-        state: { connected: false, threads: {} },
-        summaries: [{ id: "thread" }],
-      },
-      { id: "other", state: { connected: true, threads: {} } },
-    ],
-    connection: { state: "ready" },
-    library: { settings: { theme: "dark" } },
-  };
-  let desktopUpdate: (snapshot: Snapshot) => void = () => {};
-  const command = vi.fn(async () => ({ ok: true as const, value: {} }));
-  const desktop = {
-    snapshot: async () => legacy,
-    onState: (listener: (snapshot: Snapshot) => void) => {
-      const previous = desktopUpdate;
-      desktopUpdate = (value) => {
-        previous(value);
-        listener(value);
-      };
-      return () => {};
-    },
-    command,
-  } as unknown as PlatformServices;
-  const services = createDesktopHistoryRecoveryServices(desktop, options(factory));
-  try {
-    expect(await services.snapshot()).toBe(legacy);
-    expect(connections).toBe(0);
-    expect(services.reads).toBeUndefined();
-    expect(services.command).toBe(desktop.command);
-    await services.recoverPersistedHistory!({ projectId: "alias", threadId: "thread" });
-    const recovered = await services.snapshot();
-    expect(connections).toBe(1);
-    expect(persistedReads).toBe(1);
-    expect(recovered.projects[0].state.threads.thread.persistedHistory).toBe(true);
-    expect(recovered.projects[0].state.connected).toBe(false);
-    expect(recovered.projects[0].core).toBe(legacy.projects[0].core);
-    expect(recovered.projects[0].outcomes).toBe(legacy.projects[0].outcomes);
-    expect(recovered.projects[1]).toBe(legacy.projects[1]);
-    expect(recovered.library).toBe(legacy.library);
-    expect(services.reads).toBeDefined();
-    const older = await services.reads!.loadOlder();
-    expect(older).toBeUndefined();
-    expect(
-      (await services.snapshot()).projects[0].state.threads.thread.turns.length,
-    ).toBeGreaterThan(0);
-    legacy = { ...legacy, revision: 2 };
-    desktopUpdate(legacy);
-    expect((await services.snapshot()).revision).toBe(2);
-    await services.recoverPersistedHistory!(null);
-    expect(services.reads).toBeUndefined();
-    expect(await services.snapshot()).toBe(legacy);
-    expect(wire.requests.some((request) => request.method === "subscription.close")).toBe(true);
-    expect(command).not.toHaveBeenCalled();
-    let release!: () => void;
-    blockedRead = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const late = services.recoverPersistedHistory!({ projectId: "alias", threadId: "thread" });
-    const rejectedLate = expect(late).rejects.toThrow("cancelled");
-    await vi.waitFor(() => expect(persistedReads).toBe(2));
-    await services.recoverPersistedHistory!(null);
-    release();
-    await rejectedLate;
-    expect(services.reads).toBeUndefined();
-    expect(await services.snapshot()).toBe(legacy);
-  } finally {
-    events.dispatchEvent(new Event("pagehide"));
-    vi.unstubAllGlobals();
-  }
 });

@@ -1802,10 +1802,6 @@ function startDesktop() {
             trace.advance("initialize");
             try {
               await windowLoaded;
-              await require("../ipc/generated/host-library.cjs").enableHostLibrary(
-                window,
-                serviceBackend,
-              );
               await serviceBackend.init({ automatic: true });
               trace.advance("initial_project");
               if (serviceBackend.status.connected && process.env.AREAL_CORE_WORKSPACE)

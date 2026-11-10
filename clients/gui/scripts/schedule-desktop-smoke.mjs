@@ -22,7 +22,6 @@ const binarySha256 = createHash("sha256")
   .digest("hex");
 const scratch = await makeTempDir("areal-schedule-desktop-");
 const rust = process.argv.includes("--rust");
-const rustDomains = ["library-rust", "execution-rust", "tasks-rust", "worktree-rust"];
 if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
@@ -251,13 +250,6 @@ try {
   await launch();
   if (rust) {
     await until(async () => (await call("serviceStatus", {})).connected, "bootstrap backend ready");
-    await page.evaluate((domains) => {
-      localStorage.setItem("areal.oneProtocol.reads", "1");
-      localStorage.setItem(
-        "areal.oneProtocol.domains",
-        ["backend", "library", "tasks", "worktree", ...domains].join(","),
-      );
-    }, rustDomains);
     const stop = JSON.parse(
       execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
         env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
@@ -280,8 +272,8 @@ try {
       )
         .then(JSON.parse)
         .catch(() => null);
-      return rustDomains.every((domain) => record?.options?.rustDomains?.includes(domain));
-    }, "Rust backend launch domains");
+      return record !== null;
+    }, "Host backend launch record");
   }
   await app.evaluate(({ dialog, BrowserWindow }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });

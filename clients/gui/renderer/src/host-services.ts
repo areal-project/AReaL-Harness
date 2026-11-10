@@ -47,15 +47,12 @@ export type PageRecord = { id: string; cursor: string; items: ReturnType<typeof 
 
 export function createHostReadServices(
   desktop: PlatformServices | undefined,
-  options: HostClientOptions & {
+  options: Omit<HostClientOptions, "writes"> & {
     preferredSourceId?: string;
-    domains?: Set<string>;
   },
 ): PlatformServices {
-  const domains = options.domains ?? new Set<string>();
-  // 领域切换也要用 gui-write-v1 连接；停止、审批等写仍只看 writes 开关。
-  const client = new HostClient({ ...options, writes: options.writes || domains.size > 0 });
-  const pages = domains.has("pages") ? createHostPages(client) : undefined;
+  const client = new HostClient({ ...options, writes: true });
+  const pages = createHostPages(client);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let legacy: Snapshot | undefined;
   let librarySourceId: string | undefined;
@@ -225,7 +222,7 @@ export function createHostReadServices(
     snapshot = projection.snapshot;
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
-    if ((!desktop || legacy) && options.writes && client.writable("project.models"))
+    if ((!desktop || legacy) && client.writable("project.models"))
       refreshModelCatalogs(
         client,
         shell?.snapshot.projects ?? [],
@@ -533,7 +530,7 @@ export function createHostReadServices(
   }
   const writes: NonNullable<PlatformServices["writes"]> = {
     async route(name, params) {
-      if (!options.writes || client.snapshot().connection !== "ready") return undefined;
+      if (client.snapshot().connection !== "ready") return undefined;
       const project = snapshot.projects.find((value) => value.id === params.projectId) as
         | ReadProject
         | undefined;
@@ -754,7 +751,6 @@ export function createHostReadServices(
   const workbench = createWorkbenchRoutes(
     client,
     desktop,
-    domains,
     options.events,
     globalThis.document,
     () => librarySourceId,
@@ -781,12 +777,13 @@ export function createHostReadServices(
       preview: unavailable,
     }),
     get capabilities() {
-      return hostPlatformCapabilities(client, desktop, domains, librarySourceId, options.writes);
+      return hostPlatformCapabilities(client, desktop, librarySourceId);
     },
     reads,
-    ...(options.writes && { writes }),
-    ...(workbench && { workbench }),
-    ...(pages && { mcpApp: pages.mcpApp, onMcpAppEvent: pages.onMcpAppEvent }),
+    writes,
+    workbench,
+    mcpApp: pages.mcpApp,
+    onMcpAppEvent: pages.onMcpAppEvent,
     snapshot: async () => snapshot,
     onState(listener) {
       listeners.add(listener);

@@ -138,7 +138,6 @@ try {
     ...options,
     app: { getPath: (name) => (name === "userData" ? source.profile : user) },
   });
-  backend.setOneProtocol({ library: true, backend: true, rustDomains: [] });
   backendOwner = await client.request("backend.ensure", { profile: source.profile, options });
   evidence.pids.backend = backendOwner.pid;
   assert.equal(await backend.attach({ expectedIdentity: backendOwner.identity }), true);

@@ -1329,13 +1329,6 @@ class DesktopService {
         response = await this.mcpPageTools(socket, params);
         return response;
       }
-      if (method === "oneProtocol") {
-        this.backend.rustDomains = this.hostManaged && Array.isArray(params?.rustDomains) ? params.rustDomains : [];
-        this.rustExecution = this.hostManaged && this.backend.rustDomains.includes("execution-rust");
-        await this.backend.useHostLibrary(this.hostManaged || params?.library === true, this.hostManaged);
-        response = null;
-        return response;
-      }
       if (method === "snapshot") {
         const packet = this.packet();
         response = packet;

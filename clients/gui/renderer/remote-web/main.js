@@ -1,5 +1,4 @@
 import { createRemoteWorkbench } from "../src/remote/RemoteWorkbench.tsx";
-import { sharedUiEnabled } from "../src/shared-ui-flag.ts";
 import {
   SessionBodyReader,
   CommandState,
@@ -323,8 +322,8 @@ function scheduleReconnect() {
     void connectHost(true);
   }, delay);
 }
-// A4 共享界面：开关打开时，连上后改由与桌面同一份界面经这条连接读写，旧页面只负责配对与重连。
-const sharedUi = sharedUiEnabled();
+// 连上后由与桌面同一份界面经这条连接读写，本页只负责配对与重连。
+const sharedUi = true;
 const paired = {
   state: { kind: "connecting" },
   /** @type {any} */ connection: null,

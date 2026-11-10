@@ -324,7 +324,10 @@ async function readLifecycle(reference, reconcile = true) {
       desktopExit: "notRequested",
       ...(reference.threadId ? { threadId: reference.threadId, turnId: reference.turnId } : {}),
       phase: "admissionUnconfirmed",
-      targets: reference.targets.map((target) => ({ ...target, phase: "admissionUnconfirmed" })),
+      targets: reference.targets.map((target) => ({
+        ...target,
+        phase: "admissionUnconfirmed",
+      })),
     };
   return this.acceptLifecycleReceipt(reference, receipt);
 }
@@ -343,31 +346,22 @@ async function acceptLifecycleReceipt(reference, value) {
     receipt.targets.every((target) => target.phase === "completed")
   ) {
     let exited = false;
-    const local =
-      this.metadata?.local === true &&
-      reference.desktop.pid === process.pid &&
-      this.mainDesktop?.adapter.lifecycle?.generation === reference.desktopGeneration;
-    if (local && receipt.desktopExit === "requested") {
-      await this.mainDesktop?.close();
-      exited = this.mainDesktop?.closed === true;
-    } else {
+    try {
+      process.kill(reference.desktop.pid, 0);
+    } catch (error) {
+      if (desktopError(error).code === "ESRCH") exited = true;
+      else throw error;
+    }
+    if (!exited && receipt.desktopExit === "requested") {
       try {
-        process.kill(reference.desktop.pid, 0);
+        await require("./service-client.cjs").waitForProcessExit(reference.desktop.pid);
+        exited = true;
       } catch (error) {
-        if (desktopError(error).code === "ESRCH") exited = true;
-        else throw error;
-      }
-      if (!exited && receipt.desktopExit === "requested") {
-        try {
-          await require("./service-client.cjs").waitForProcessExit(reference.desktop.pid);
-          exited = true;
-        } catch (error) {
-          operation = {
-            ...receipt,
-            phase: "acceptedPending",
-            message: desktopError(error).message,
-          };
-        }
+        operation = {
+          ...receipt,
+          phase: "acceptedPending",
+          message: desktopError(error).message,
+        };
       }
     }
     if (exited) {
