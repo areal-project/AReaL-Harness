@@ -916,7 +916,7 @@ impl Engine {
                 "resources":null,
                 "resourceRoot":skill.map(|s| format!("areal://skill/{}/{}",s.location.id,s.location.revision))})
         }).collect();
-        Ok(json!({"data":data}))
+        Ok(json!({"data":data,"loaded":null}))
     }
     pub async fn skills(&self, thread_id: &str) -> Result<Value> {
         self.skills_for_turn(thread_id, None).await
