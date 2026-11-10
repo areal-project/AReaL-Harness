@@ -18,6 +18,10 @@ test("Cloud 凭据状态不回显token，地址变更不能沿用旧凭据", asy
   const backend = {
     home,
     save: (name, value) => writeFile(join(home, name), JSON.stringify(value), { mode: 0o600 }),
+    // Cloud 连接经 Host 拨号；这里只验证凭据保存与读取。
+    hostCall: async () => {},
+    host: { sourceId: "fixture" },
+    hostCoreClients: new Map(),
   };
   const settings = new CloudSettings(backend, encryption);
   assert.deepEqual(await settings.status(), { baseURL: "", tokenConfigured: false });
@@ -85,7 +89,13 @@ test("异步外壳加解密保留旧密文格式，断开失败不覆盖原凭�
     },
   };
   const settings = new CloudSettings(
-    { home, save: (name, value) => writeFile(join(home, name), JSON.stringify(value)) },
+    {
+      home,
+      save: (name, value) => writeFile(join(home, name), JSON.stringify(value)),
+      hostCall: async () => {},
+      host: { sourceId: "fixture" },
+      hostCoreClients: new Map(),
+    },
     storage,
   );
   assert.equal((await settings.client()).token, "old");

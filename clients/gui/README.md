@@ -273,7 +273,7 @@ Composer 的圆环打开上下文分类与组成占比，面板在整组输入�
 
 设置中的“数据飞轮”页通过 `areal trajectory status/retry/set-enabled` 读取当前配置、上传进程、积压与最近上传记录，页面可见且连接正常时每 2.5 秒刷新，也可手动刷新和重试。记录分别显示 Turn、模型、Harness 版本、模型调用耗时、Agent 执行耗时与事件/创建/上传时间，汇总范围仅为最近 100 条记录；模型调用耗时包含网络与内部重试。会话可见时另以 15 秒间隔检查，在设置入口标记读取失败或导出异常，恢复后清除。轮询共享一个在途请求，隐藏、离开或断线后停止相应轮询并忽略过期响应，上传信息不进入聊天内容。状态读取不启动 Core 或上传器，也不解密 GUI 凭据；手动重试可能启动上传器，继承 Core 启动的凭据环境。编辑本页显示的配置文件中的 `[trajectory]`，通过 `areal trajectory sync-config` 应用本地上传控制；本页提供启停开关，就绪开启浅绿，关闭或待处理浅橙；只修改 enabled，保留其它配置。已有 Core 的采集参数在空闲后自动安全应用，不取消任务；其它配置变化或失败可在高级诊断中核查并安全应用，本页不编辑地址或凭据。边界与耗时语义见[配置指南](../../docs/guides/configuration.md#持久轨迹导出)。
 
-`pnpm --dir clients/gui run test:trajectory` 验证命令边界、凭据环境、状态投影，以及轮询时序、单一在途请求、可见性和过期结果隔离。`test:trajectory-config` 使用已构建 CLI，在隔离目录验证配置身份及跨项目一致性，不启动 Core 或上传器。构建 renderer 后，`test:trajectory-ui` 使用本机 Chrome 和隔离桌面服务 fixture 验证真实设置交互、自动刷新、耗时及异常恢复；`AREAL_GUI_TEST_BROWSER` 可指定浏览器。上述检查不替代 Electron/Core 集成验收。 `test:trajectory-native` 使用真实桌面后端、Core、Runtime 和本地模型/接收器，验证关闭启动、运行中启用、空闲安全重启、停用保留与失败副本自动补传，不替代正式远端或 Electron IPC 验收。
+`pnpm --dir clients/gui run test:trajectory` 验证命令边界、凭据环境、状态投影，以及轮询时序、单一在途请求、可见性和过期结果隔离。`test:trajectory-config` 使用已构建 CLI，在隔离目录验证配置身份及跨项目一致性，不启动 Core 或上传器。构建 renderer 后，`test:trajectory-ui` 使用本机 Chrome 和隔离桌面服务 fixture 验证真实设置交互、自动刷新、耗时及异常恢复；`AREAL_GUI_TEST_BROWSER` 可指定浏览器。上述检查不替代 Electron/Core 集成验收。
 
 macOS 桌面适配器通过系统 `/usr/bin/python3` 保留可信 Core 命令的父进程，与 Runtime 的原生启动方式一致。命令参数、环境和标准输入输出保持原样；超时、取消和强杀作用于真实 Core 子进程，适配器或桥退出时清理其仍运行的直接子进程。该路径不重放写入，也不终止 Core 已建立的持久服务。`pnpm --dir clients/gui run test:core-process` 验证信号退出、超时升级、取消、输出上限及进程清理。
 
@@ -427,7 +427,7 @@ Core 构建完成后再启动使用该二进制的桌面 smoke，验收期间不
 
 `pnpm --dir clients/gui run test:conversation-derivation` 验证 Fork、主聊选区及当前可执行 Side Chat 入口，核对显式发送、来源身份与配置隔离。`test:side-chat-parity` 覆盖当前 Side 的权限、历史、多标签、引用、Composer 和停止归属。旧只读旁路的授权、历史恢复与 UNKNOWN 契约由 Core 的 `side_access`、`side_history_recovery` 保留；`side_workspace_read` 在 macOS native 与 Linux 受控容器显式运行，验证真实沙箱下的只读文件访问。生产 GUI 回归不再寻找已移除的历史旁路菜单。
 
-`pnpm --dir clients/gui run test:connection` 验证真实 Core 断线恢复、并发操作、旧连接消息隔离及显式关闭；`pnpm --dir clients/gui run test:architecture` 通过真实 Electron IPC 验证契约拒绝、错误码透传及原生预览的驱逐、崩溃重建和归属释放。两者使用隔离目录并输出证据，不替代安装包验收。
+`pnpm --dir clients/gui run test:architecture` 通过真实 Electron IPC 验证契约拒绝、错误码透传及原生预览的驱逐、崩溃重建和归属释放。它使用隔离目录并输出证据，不替代安装包验收。
 
 第三方归属见 [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md)。运行时图标沿用源仓库版本；不迁入采集档案、开发 Skills/AGENTS 或来源 Git 历史。
 

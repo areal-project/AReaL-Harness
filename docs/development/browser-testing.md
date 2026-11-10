@@ -149,7 +149,7 @@ node clients/gui/scripts/browser-evidence.mjs B-04.same-page,B-05.forged-receipt
 
 `pnpm --dir clients/gui run test:browser-contracts` 执行现有读取、网络与诊断契约检查，以及证据分类和启动探针检查；已接入 GUI CI，无需启动桌面窗口。这不替代 milestone 收尾时在冻结候选上的真实 Core/Native/GUI 验收。开发期间运行必要局部检查，因果修复只重跑受影响场景并保留先前失败。
 
-现有可用入口包括 `make gui-smoke`、`pnpm --dir clients/gui run test:connection`、`pnpm --dir clients/gui run test:architecture`、`pnpm --dir clients/gui run test:composer`、GUI typecheck与verify；详见GUI指南。Browser 专用脚本见本页所列入口；不得假设存在未公布的 `test:browser` 命令。
+现有可用入口包括 `make gui-smoke`、`pnpm --dir clients/gui run test:architecture`、`pnpm --dir clients/gui run test:composer`、GUI typecheck与verify；详见GUI指南。Browser 专用脚本见本页所列入口；不得假设存在未公布的 `test:browser` 命令。
 
 `pnpm --dir clients/gui run test:browser-annotations` 验证可信 GUI 人工批注：冻结同一原生页面，点选两个元素，确认后以独立 Composer 附件保留正文，跨聊天隔离与恢复，空白说明阻止发送，上传拒绝保留后显式重试，以及重载 Renderer 后从 Core 历史重建消息。比较 Composer 裁图与模型收到的 PNG 字节哈希，证明图片与说明均经过既有 Core 通道。合成输入法 Enter 事件仅覆盖组合态保护，不替代真人中文输入；本地模型与可信 GUI 的站点导航不构成真实供应商或物理焦点验收；可设置 `AREAL_GUI_EXECUTABLE` 使用隔离安装包。跨源截图隐私边界另运行 `node clients/gui/scripts/browser-frame-origin-smoke.mjs oopif`。
 

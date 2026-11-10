@@ -260,10 +260,10 @@ fn outcome(entry: &Value, receipt: &Value) -> Value {
         if let Some(id) = thread {
             operation["target"] = json!({"kind":"thread","threadId":id});
         }
-    } else if entry["method"] == "areal/task/create" {
-        if let Some(id) = task {
-            operation["target"] = json!({"kind":"task","taskId":id});
-        }
+    } else if entry["method"] == "areal/task/create"
+        && let Some(id) = task
+    {
+        operation["target"] = json!({"kind":"task","taskId":id});
     }
     let mut value = json!({"accepted":receipt["accepted"]!=false,"status":if failed(receipt){"failed"}else{"completed"},"operation":operation,
         "method":entry["method"],"rustOwner":true,"rustSemantic":entry["rustSemantic"],"coreScope":entry["coreScope"]});
@@ -284,10 +284,10 @@ fn outcome(entry: &Value, receipt: &Value) -> Value {
             value[field] = id.clone();
         }
     }
-    if entry["method"] == "turn/steer" {
-        if let Some(input) = entry["params"].get("input") {
-            value["input"] = input.clone();
-        }
+    if entry["method"] == "turn/steer"
+        && let Some(input) = entry["params"].get("input")
+    {
+        value["input"] = input.clone();
     }
     if entry["method"] == "areal/side/close" {
         value["cleanupConfirmed"] = json!(result["cleanupConfirmed"] == true);
@@ -373,16 +373,14 @@ async fn original_receipt(
                 .as_str()
                 .context("INVALID_PARAMS")?]["planRevision"]
             .as_u64()
-        {
-            if entry["params"]["expectedRevision"]
+            && entry["params"]["expectedRevision"]
                 .as_u64()
                 .and_then(|value| value.checked_add(1))
                 == Some(revision)
-            {
-                return Ok(Some(
-                    json!({"accepted":true,"status":"completed","planRevision":revision,"result":response["result"]}),
-                ));
-            }
+        {
+            return Ok(Some(
+                json!({"accepted":true,"status":"completed","planRevision":revision,"result":response["result"]}),
+            ));
         }
         return Ok(None);
     }
@@ -675,18 +673,17 @@ pub(super) async fn submit(
     let response = match response {
         Ok(response) => response,
         Err(error) => {
-            if let Ok(Some(receipt)) = original_receipt(host, project, lease, &entry, &caps).await {
-                if matches!(receipt["status"].as_str(), Some("completed" | "failed"))
-                    || receipt.get("result").is_some()
-                {
-                    let settled = outcome(&entry, &receipt);
-                    host.journal.native_finish(project, &entry, Some(settled))?;
-                    return Ok(if failed(&receipt) {
-                        json!({"error":error_from_receipt(&receipt,&entry["operation"]),"sequence":0})
-                    } else {
-                        json!({"result":result_of(&receipt),"sequence":0})
-                    });
-                }
+            if let Ok(Some(receipt)) = original_receipt(host, project, lease, &entry, &caps).await
+                && (matches!(receipt["status"].as_str(), Some("completed" | "failed"))
+                    || receipt.get("result").is_some())
+            {
+                let settled = outcome(&entry, &receipt);
+                host.journal.native_finish(project, &entry, Some(settled))?;
+                return Ok(if failed(&receipt) {
+                    json!({"error":error_from_receipt(&receipt,&entry["operation"]),"sequence":0})
+                } else {
+                    json!({"result":result_of(&receipt),"sequence":0})
+                });
             }
             return Err(error);
         }

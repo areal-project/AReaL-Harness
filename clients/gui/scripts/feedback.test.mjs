@@ -10,33 +10,20 @@ const { UserFeedback } = require("@areal/workbench-service/feedback");
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
 
-test("feedback CLI refreshes Host credentials and does not launch after refresh fails", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "areal-feedback-credentials-"));
-  t.after(() => rm(home, { recursive: true, force: true }));
-  const binary = join(home, "fixture.cjs");
-  await writeFile(
-    binary,
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({credential:process.env.AREAL_CREDENTIAL_fixture}));
-`,
-    { mode: 0o700 },
-  );
+test("feedback refreshes Host credentials first and does not call Host after refresh fails", async () => {
   let credential = "stale-fixture",
-    environments = 0;
+    calls = 0;
   const backend = {
-    binary,
-    hooks: { environment: () => ({ PATH: process.env.PATH, HOME: home }) },
+    hostCall: async () => {
+      calls++;
+      return { credential };
+    },
     providers: {
       config: {
         refreshCredentials: async () => {
           credential = "rotated-fixture";
         },
       },
-      environment: () => {
-        environments++;
-        return { AREAL_CREDENTIAL_fixture: credential };
-      },
-      redact: (value) => value,
     },
   };
   const feedback = new UserFeedback(backend);
@@ -45,7 +32,7 @@ process.stdout.write(JSON.stringify({credential:process.env.AREAL_CREDENTIAL_fix
     throw new Error("Host unavailable");
   };
   await assert.rejects(feedback.cli("feedback-status"), /Host unavailable/);
-  assert.equal(environments, 1);
+  assert.equal(calls, 1);
 });
 
 const thread = () => ({

@@ -687,7 +687,9 @@ class ChangedChecks(unittest.TestCase):
             check=True,
         )
         selected = json.loads(result.stdout)
-        self.assertIn("test:feedback-native", {item["script"] for item in selected["unexecuted"]})
+        self.assertIn(
+            "test:shared-host-consumers", {item["script"] for item in selected["unexecuted"]}
+        )
         self.assertIn("test:composer", selected["deferred"])
 
 

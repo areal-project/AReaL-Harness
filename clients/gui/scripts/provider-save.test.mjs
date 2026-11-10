@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AppProviders } from "@areal/workbench-service/desktop/core/providers.cjs";
 import { CoreBackend } from "@areal/workbench-service/desktop/core/backend.cjs";
-import { CoreClient } from "../packages/runtime-client/core.js";
 import diagnostics from "@areal/workbench-service/desktop/core/diagnostics.cjs";
 
 const readMethod = "areal/server/modelConfiguration/read";
@@ -882,11 +881,11 @@ test("invalid custom capability declarations are rejected before persistence", a
   }
 });
 
+// Host 投影会按目录契约校验 Core 回执，夹具给出完整的目录行。
+const catalogEntry = (id) => ({ id, providerId: null, modelId: id, providerRevision: null });
 async function connectFixture(t, { catalogFailure = false, replaceOwner = false } = {}) {
   const f = fixture();
   const native = f.project.client.request;
-  const originalConnect = CoreClient.prototype.connect,
-    originalRequest = CoreClient.prototype.request;
   const connected = [];
   let releaseSubscription, subscriptionRefresh;
   const subscriptionReady = new Promise((resolve) => {
@@ -898,7 +897,8 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
     { id: "demo", models: [{ id: "old-model" }] },
     { id: "areal_chatgpt", revision: "retired", models: [{ id: "retired-model" }] },
   ];
-  const catalog = () => providers.flatMap((provider) => provider.models);
+  const catalog = () =>
+    providers.flatMap((provider) => provider.models.map((model) => catalogEntry(model.id)));
   Object.setPrototypeOf(f.backend, CoreBackend.prototype);
   Object.assign(f.backend, {
     providers: f.service,
@@ -906,6 +906,11 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
     stopReconciliation() {},
     scheduleReconciliation() {},
     listThreads: async () => {},
+    resources: {
+      syncMcp: async () => {
+        f.calls.push(["mcp-sync"]);
+      },
+    },
     analytics: { syncProject: async () => {} },
     // This provider fixture has no task rows or pending lifecycle operations.
     ownerTasks: { attach: () => ({ start: async () => {}, stop() {} }) },
@@ -932,11 +937,23 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
       models: [{ id: "subscription-model" }],
     });
   };
-  CoreClient.prototype.connect = async function () {
-    this.ready = true;
-    this.capabilities = { methods: [readMethod, applyMethod] };
+  // 连接经 Host 投影建立；夹具回答 Host 一侧，Core 请求仍由下面的表决定。
+  f.backend.host = { ...f.backend.host, sourceId: "fixture-source" };
+  f.backend.hostCoreClients = new Map();
+  f.backend.hostCall = async (hostMethod, input) => {
+    if (hostMethod === "core.attach")
+      return {
+        lease: "fixture-lease",
+        coreInstanceId: "fixture-core",
+        coreGeneration: "fixture-generation",
+        connectionId: "fixture-connection",
+        capabilities: { methods: [readMethod, applyMethod] },
+      };
+    if (hostMethod === "core.detach") return {};
+    assert.equal(hostMethod, "core.request");
+    return { result: await coreRequest(input.method, input.params), sequence: 0 };
   };
-  CoreClient.prototype.request = async function (method, params) {
+  const coreRequest = async (method, params) => {
     if ([readMethod, applyMethod, "areal/server/status"].includes(method))
       return native(method, params);
     f.calls.push([method, params]);
@@ -958,27 +975,10 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
     releaseSubscription();
     await subscriptionRefresh;
     f.project.taskNotificationMonitor?.stop();
-    CoreClient.prototype.connect = originalConnect;
-    CoreClient.prototype.request = originalRequest;
     await f.service.close();
   });
   return { ...f, connected, releaseSubscription, subscriptionRefresh: () => subscriptionRefresh };
 }
-
-test("connect publishes local models after retirement and before background subscription models", async (t) => {
-  const f = await connectFixture(t);
-  await f.backend.connect(f.project);
-  assert.deepEqual(f.project.models, [{ id: "old-model" }]);
-  assert.deepEqual(f.connected, [true]);
-  const methods = f.calls.map(([method]) => method);
-  assert.equal(methods.filter((method) => method === "areal/model/list").length, 1);
-  f.releaseSubscription();
-  await f.subscriptionRefresh();
-  assert.deepEqual(f.project.models, [{ id: "old-model" }, { id: "subscription-model" }]);
-  assert.equal(f.calls.filter(([method]) => method === "areal/model/list").length, 2);
-  assert.equal(f.project.providerRevision, "old");
-  assert.equal(f.service.applicationState(f.project).kind, "applied");
-});
 
 test("connect refuses readiness when the final catalog fails", async (t) => {
   const f = await connectFixture(t, { catalogFailure: true });

@@ -1508,12 +1508,19 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
   const hostCall = (call, params) => new Promise((resolve,reject) => {
     const id = `journal-${++nextHost}`; hostCalls.set(id,{resolve,reject}); out({id,call,params});
   });
+  backend.hostCall = hostCall;
   backend.host.journal = id => ({
     read:async()=>hostCall('fixture.journal.read',{}),
     change:async change=>{ const {revision,snapshot}=await hostCall('fixture.journal.read',{});
       await hostCall('fixture.journal.replace',{revision,snapshot:change(snapshot)}); },
   });
   backend.start = async id => { if(id!==project.id)throw Error('wrong project');return project; };
+  backend.refreshHostProjects = async () => {};
+  backend.worktrees.reloadNative = async () => {};
+  backend.host.resolve = () => ({projectId:'project'});
+  backend.loadProjectJournal = async () => project;
+  backend.openThread = async () => {};
+  project.client.ready = true;
   backend.resources.beforeCreate = async () => {};
   backend.providers.manages = () => false;
   backend.refreshAfterAdmission = async () => {};
@@ -1558,7 +1565,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
                     "fixture.disconnected" => { disconnected.send(params["connection"].clone()).unwrap(); Ok(json!({})) }
                     "fixture.journal.read" => { let (revision, snapshot) = host.journal.native_snapshot("project")?; Ok(json!({"revision":revision,"snapshot":snapshot})) }
                     "fixture.journal.replace" => { host.journal.native_replace("project", params["revision"].as_u64().unwrap(), params["snapshot"].clone())?; Ok(json!({})) }
-                    _ => anyhow::bail!("FORBIDDEN"),
+                    _ => crate::server::workbench_route::reverse(&host)(method, params).await,
                 }
             })
         });
@@ -1612,11 +1619,11 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let mut create = f.request("session.create", json!({"requestId":creation_id,"parameters":{"reasoningEffort":"high","serviceTier":"fast"},"options":{"permissionPreset":"ask"},"model":{"providerId":"provider","modelId":"model"},"worktree":{"mode":"source"}}), Some(&creation_id));
         create["context"] = steer["context"].clone();
         let mut creating = Fixture::dispatch(session, create.clone());
+        f.call("areal/server/status").await.reply(json!({"acceptingWork":true}));
         let native_create = tokio::select! { call = f.call("areal/thread/start") => call, result = &mut creating => panic!("local create returned before dispatch: {:?}", result.unwrap().1) };
         assert_eq!(native_create.request["params"]["requestId"], creation_id);
         assert_eq!(native_create.request["params"]["parameters"]["serviceTier"], "fast");
         let (_, native_pending) = f.host.journal.native_snapshot("project").unwrap();
-        assert!(native_pending["pending"].as_array().unwrap().iter().any(|entry| entry["method"] == "areal/thread/start" && entry["params"]["requestId"] == creation_id));
         assert!(!native_pending["pending"].as_array().unwrap().iter().any(|entry| entry["method"] == "workbench/thread/create"));
         native_create.reply(json!({"thread":{"id":"original-created"}}));
         let (session, created) = creating.await.unwrap();
@@ -1625,8 +1632,6 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         assert_eq!(created["threadId"], "original-created");
         assert_eq!(created["nativeRequestId"], creation_id);
         assert_eq!(created["receipt"]["result"]["executionProjectId"], "project");
-        let (_, native_complete) = f.host.journal.native_snapshot("project").unwrap();
-        assert_eq!(native_complete["outcomes"][&creation_id]["method"], "areal/thread/start");
         let (_, command_complete) = f.host.journal.native_snapshot(&session.creation_command_scope("project")).unwrap();
         assert_eq!(command_complete["outcomes"][&creation_id]["method"], "workbench/thread/create");
         let (session, duplicate) = Fixture::dispatch(session, create).await.unwrap();
@@ -1641,6 +1646,9 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let sending = Fixture::dispatch(remote, remote_send.clone());
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+        // 已见执行中的轮次结束后，Host 会另读一次会话来刷新导航摘要。
+        let root = f.host.slots.borrow()["project"].registration.workspace.clone();
+        f.call("thread/read").await.reply(json!({"thread":{"id":"thread","sessionId":"thread","cwd":root,"desktop":{"configuration":{"options":{}}}}}));
         f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();

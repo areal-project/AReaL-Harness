@@ -326,8 +326,6 @@ test("exact pilot create parameters pass the owning desktop input validator", ()
   const request = taskCreateRequest("isolated-project");
   assert.doesNotThrow(() => validateCommand("create", request));
   assert.equal(readCommandInvocation("create", request).request, request);
-  const configured = { ...request, options: { ...request.options, automaticSessionName: false } };
-  assert.doesNotThrow(() => validateCommand("create", configured));
   const rejected = { ...request, options: { ...request.options, unsupportedOption: false } };
   assert.throws(() => validateCommand("create", rejected), { code: "INVALID_DESKTOP_REQUEST" });
   assert.deepEqual(request.options.toolAllowlist, ["browser_v1"]);

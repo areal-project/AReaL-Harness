@@ -6,7 +6,7 @@ export const errorMessages = {
     en: "That didn't work. Please try again.",
   },
   "errors.FORBIDDEN": {
-    "zh-CN": "这台设备没有这个权限。请在桌面应用的“手机与网页”里重新允许。",
+    "zh-CN": "这台设备没有权限做这个操作。请在桌面应用“手机与网页”设置里允许它。",
     en: "This device isn't allowed to do that. Allow it again in the desktop app under Mobile & Web.",
   },
   "errors.GRANT_CHANGED": {
@@ -66,7 +66,7 @@ export const errorMessages = {
     en: "We couldn't find this. It may have been deleted.",
   },
   "errors.TARGET_CHANGED": {
-    "zh-CN": "对话刚有新变化，本次没有执行，输入已保留。请看最新内容后再试。",
+    "zh-CN": "对话刚有新变化，这次操作没有执行，输入已保留。请看过最新内容后再试。",
     en: "The conversation just changed, so nothing was done and your input is kept. Check the latest and try again.",
   },
   "errors.TURN_BUSY": {
@@ -110,7 +110,7 @@ export const errorMessages = {
     en: "History can't be opened right now. Nothing is lost; try again in a moment.",
   },
   "errors.MIGRATION_PENDING": {
-    "zh-CN": "上次运行还没确认停止，项目暂时打不开。历史和草稿已保留。",
+    "zh-CN": "上次运行还没确认停止，暂时打不开。历史和草稿已保留，请先确认已停止。",
     en: "The project's last run hasn't confirmed it stopped, so it can't open yet. History and drafts are kept. Make sure the original task has stopped.",
   },
   "errors.UNSUPPORTED_PROFILE": {

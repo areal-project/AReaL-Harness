@@ -148,14 +148,12 @@ pub(super) fn providers(manifest: &Manifest) -> (Vec<Value>, &'static str) {
                     serde_json::from_value::<areal_config::models::Parameters>(
                         row.get("parameters").cloned().unwrap_or(json!({})),
                     ),
-                ) {
-                    if let Some(candidate) =
-                        template(&name, base, protocol, json!(models), json!(parameters))
-                    {
-                        value["templateDigest"] =
-                            json!(storage::digest(&serde_json::to_vec(&candidate).unwrap()));
-                        value["template"] = candidate;
-                    }
+                ) && let Some(candidate) =
+                    template(&name, base, protocol, json!(models), json!(parameters))
+                {
+                    value["templateDigest"] =
+                        json!(storage::digest(&serde_json::to_vec(&candidate).unwrap()));
+                    value["template"] = candidate;
                 }
                 public.push(value);
             }

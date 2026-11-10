@@ -152,7 +152,11 @@ test("Phone connection settings keep the main path short and the network consent
     assert.deepEqual(fingerprintGroups("12D3KooWAbCdEfGh"), ["12D3", "KooW", "AbCd", "EfGh"]);
     assert.match(review, /<span>12D3<\/span><span>KooW<\/span>/);
     assert.match(review, /aria-label="确认设备 12D3KooWAbCdEfGh"/);
-    assert.match(review, /type="checkbox" checked=""/, "the only project is preselected");
+    assert.match(
+      review,
+      /type="checkbox"[^>]*checked=""[^>]*\/>workspace/,
+      "the only project is preselected",
+    );
     assert.match(review, />允许连接</);
     assert.match(review, />拒绝</);
   } finally {
@@ -252,7 +256,10 @@ test("relay enrollment retains failed input and invitations render QR images in 
     await page.getByRole("button", { name: "正在登记中继…" }).waitFor();
     assert.equal(await code.inputValue(), "test-enrollment-code");
     await page.evaluate(() => window.finishEnrollment());
-    await page.getByRole("alert").filter({ hasText: "Enrollment rejected" }).waitFor();
+    // 界面只显示错误文案表里的用户文案，不透出后台原文。
+    const failure = page.getByRole("alert").first();
+    await failure.waitFor();
+    assert.doesNotMatch(await failure.innerText(), /Enrollment rejected/);
     assert.equal(await code.inputValue(), "test-enrollment-code");
     assert.equal(await origin.inputValue(), "https://relay.example.org");
     assert.equal(await consent.isChecked(), true);

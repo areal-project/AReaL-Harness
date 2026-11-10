@@ -447,34 +447,32 @@ pub(super) async fn read(host: &Rc<Host>, source: &str, mut params: Value) -> Re
                     json!({"operation":"worktreeRead","requestId":id}),
                 )
                 .await
+                    && ((git_unknown && observed["state"] == "created")
+                        || observed["deleted"] == true)
                 {
-                    if (git_unknown && observed["state"] == "created")
-                        || observed["deleted"] == true
-                    {
-                        for key in [
-                            "state",
-                            "record",
-                            "message",
-                            "events",
-                            "deleted",
-                            "deletedAt",
-                        ] {
-                            if let Some(field) = observed.get(key) {
-                                value[key] = field.clone();
-                            }
+                    for key in [
+                        "state",
+                        "record",
+                        "message",
+                        "events",
+                        "deleted",
+                        "deletedAt",
+                    ] {
+                        if let Some(field) = observed.get(key) {
+                            value[key] = field.clone();
                         }
-                        if let Some(fields) = observed["deletion"].as_object() {
-                            if !value["deletion"].is_object() {
-                                value["deletion"] = json!({});
-                            }
-                            value["deletion"]
-                                .as_object_mut()
-                                .unwrap()
-                                .extend(fields.clone());
-                        }
-                        persist_and_notify(host, source, &home, &mut value).await?;
-                        host.changed();
                     }
+                    if let Some(fields) = observed["deletion"].as_object() {
+                        if !value["deletion"].is_object() {
+                            value["deletion"] = json!({});
+                        }
+                        value["deletion"]
+                            .as_object_mut()
+                            .unwrap()
+                            .extend(fields.clone());
+                    }
+                    persist_and_notify(host, source, &home, &mut value).await?;
+                    host.changed();
                 }
             }
             Ok(value)
@@ -551,10 +549,10 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                     parameters[key] = value.clone();
                 }
             }
-            if params["source"] == "branch" {
-                if let Some(value) = params.get("ref") {
-                    parameters["ref"] = value.clone();
-                }
+            if params["source"] == "branch"
+                && let Some(value) = params.get("ref")
+            {
+                parameters["ref"] = value.clone();
             }
             if let Ok(original) = record(&home, &id, &alias) {
                 ensure!(original["parameters"] == parameters, "COMMAND_CONFLICT");
@@ -638,23 +636,23 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
             if !begin_cancel(&mut value) {
                 return Ok(value);
             }
-            if value["setup"]["status"] == "running" || value["setup"]["status"] == "unknown" {
-                if let (Some(execution), Some(thread), Some(process)) = (
+            if (value["setup"]["status"] == "running" || value["setup"]["status"] == "unknown")
+                && let (Some(execution), Some(thread), Some(process)) = (
                     value["executionProjectId"].as_str().map(str::to_owned),
                     value["threadId"].as_str().map(str::to_owned),
                     value["setup"]["processId"].as_str().map(str::to_owned),
-                ) {
-                    let target = project(host, source, &execution)?;
-                    value["setup"]["terminateRequestId"] = json!(id);
-                    persist_and_notify(host, source, &home, &mut value).await?;
-                    let _ = request(
-                        host,
-                        &target.project_id,
-                        "areal/process/terminate",
-                        json!({"requestId":id,"threadId":thread,"id":process}),
-                    )
-                    .await;
-                }
+                )
+            {
+                let target = project(host, source, &execution)?;
+                value["setup"]["terminateRequestId"] = json!(id);
+                persist_and_notify(host, source, &home, &mut value).await?;
+                let _ = request(
+                    host,
+                    &target.project_id,
+                    "areal/process/terminate",
+                    json!({"requestId":id,"threadId":thread,"id":process}),
+                )
+                .await;
             }
             persist_and_notify(host, source, &home, &mut value).await?;
             host.changed();
@@ -700,12 +698,11 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, mut params: Value) ->
                 value["usesSource"] != true && value["executionProjectId"] != value["projectId"],
                 "cannot delete source workspace"
             );
-            if let Some(original) = value.get("deletion") {
-                if original["requestId"] == id
-                    || matches!(original["status"].as_str(), Some("running" | "unknown"))
-                {
-                    return Ok(value);
-                }
+            if let Some(original) = value.get("deletion")
+                && (original["requestId"] == id
+                    || matches!(original["status"].as_str(), Some("running" | "unknown")))
+            {
+                return Ok(value);
             }
             value["deletion"] = json!({"requestId":id,"status":"running","blockers":[],"stopRequestId":stable_id(&format!("{id}:stop"))});
             persist_and_notify(host, source, &home, &mut value).await?;
@@ -1123,6 +1120,7 @@ fn attempt_slot<'a>(value: &'a mut Value, slot: &str, id: &str) -> &'a mut Value
         &mut value[slot]
     }
 }
+#[allow(clippy::too_many_arguments)]
 async fn environment_attempt(
     host: &Rc<Host>,
     source: &str,
@@ -1199,12 +1197,12 @@ async fn environment_attempt(
             json!({"threadId":thread,"requestId":id}),
         )
         .await?;
-        if let Some(receipt) = receipt_result(&receipts, id, "areal/process/start", Some(&thread)) {
-            if receipt["id"].is_string() {
-                attempt["processId"] = receipt["id"].clone();
-                attempt["receipt"] = receipt;
-                attempt["status"] = json!("running");
-            }
+        if let Some(receipt) = receipt_result(&receipts, id, "areal/process/start", Some(&thread))
+            && receipt["id"].is_string()
+        {
+            attempt["processId"] = receipt["id"].clone();
+            attempt["receipt"] = receipt;
+            attempt["status"] = json!("running");
         }
     }
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(615000);
@@ -1335,304 +1333,6 @@ async fn environment_attempt(
         }
     }
     Ok(attempt)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn thread_checkout_empty_options_match_legacy_defaults() {
-        let empty = json!({"mode":"worktree","sourceRoot":"","ref":"","branch":"","worktreeRoot":"","environmentId":""});
-        assert_eq!(
-            thread_checkout_params("project", "request", &empty).unwrap(),
-            json!({"operation":"worktreeCreate","projectId":"project","requestId":"request","source":"head"})
-        );
-        let mut selected = empty;
-        selected["ref"] = json!("release/acceptance");
-        selected["environmentId"] = json!("acceptance");
-        let params = thread_checkout_params("project", "request", &selected).unwrap();
-        assert_eq!(params["source"], "branch");
-        assert_eq!(params["ref"], "release/acceptance");
-        assert_eq!(params["environmentId"], "acceptance");
-        assert!(
-            params.get("branch").is_none(),
-            "UI空分支必须让Core使用配置前缀生成原request分支"
-        );
-        assert!(params.get("worktreeRoot").is_none());
-        selected["branch"] = json!("feature/explicit");
-        selected["worktreeRoot"] = json!("/isolated/trees");
-        let params = thread_checkout_params("project", "request", &selected).unwrap();
-        assert_eq!(params["branch"], "feature/explicit");
-        assert_eq!(params["worktreeRoot"], "/isolated/trees");
-        selected["branch"] = json!(" ");
-        assert_eq!(
-            thread_checkout_params("project", "request", &selected).unwrap()["branch"],
-            " ",
-            "不修正或放宽显式无效分支"
-        );
-        selected["branch"] = json!(42);
-        assert!(thread_checkout_params("project", "request", &selected).is_err());
-    }
-    #[test]
-    fn checkout_receipt_keeps_legacy_fields_and_cleanup_order() {
-        let mut checkout = json!({"kind":"checkout","requestId":"checkout","projectId":"source","parameters":{},"state":"created","createdAt":"2030-01-01T00:00:00.000Z","record":{"createdAt":"2030-01-01T00:00:00.000Z","target":"/source","directory":"/checkout"},"events":[{"id":"checkout:0","state":"created","time":"2030-01-01T00:00:00.000Z"}],"recordRevision":1});
-        initial_checkout(&mut checkout);
-        assert!(checkout.get("createdAt").is_none());
-        assert_eq!(checkout["record"]["createdAt"], "2030-01-01T00:00:00.000Z");
-        assert_eq!(checkout["recordRevision"], 1);
-        let mut retained = vec![
-            json!({"requestId":"thread","createdAt":"2020-01-01T00:00:00.000Z"}),
-            checkout.clone(),
-        ];
-        retained.sort_by(|a, b| a["createdAt"].as_str().cmp(&b["createdAt"].as_str()));
-        assert_eq!(
-            retained[0]["requestId"], "checkout",
-            "旧 checkout 缺省时间不能变成比现有 thread 更新"
-        );
-        cancel_transition(&mut checkout);
-        assert_eq!(checkout["message"], "创建已取消，目录保留");
-        assert_eq!(checkout["events"][1]["message"], checkout["message"]);
-        assert_eq!(checkout["events"][0]["state"], "created");
-        open_record(&mut checkout, "execution");
-        assert_eq!(checkout["sourceRoot"], "/source");
-        assert_ne!(checkout["sourceRoot"], checkout["record"]["directory"]);
-        assert_eq!(checkout["kind"], "thread");
-        assert_eq!(checkout["executionProjectId"], "execution");
-        let mut thread = json!({"kind":"thread","createdAt":"2020-01-01T00:00:00.000Z"});
-        initial_checkout(&mut thread);
-        assert_eq!(thread["createdAt"], "2020-01-01T00:00:00.000Z");
-    }
-    #[test]
-    fn cancellation_terminal_states_match_legacy_oracle() {
-        for state in ["created", "failed"] {
-            let original = json!({"state":state,"requestId":"request","recordRevision":7,"events":[{"state":state,"id":"request:0","time":"original"}]});
-            let mut value = original.clone();
-            assert!(begin_cancel(&mut value));
-            assert_eq!(value["state"], "cancelled");
-            assert_eq!(value["intent"], "cancel");
-            assert_eq!(value["message"], "创建已取消，目录保留");
-            assert_eq!(value["events"][0], original["events"][0]);
-            assert_eq!(value["events"][1]["message"], value["message"]);
-            assert_eq!(value["recordRevision"], 7);
-        }
-        let original = json!({"state":"ready","intent":"continue","recordRevision":7,"events":[]});
-        let mut ready = original.clone();
-        assert!(!begin_cancel(&mut ready));
-        ready.as_object_mut().unwrap().remove("cancelResult");
-        assert_eq!(ready, original, "太晚取消不得持久修改 intent 或日志");
-        let mut ready = original;
-        assert!(!begin_cancel(&mut ready));
-        assert_eq!(ready["cancelResult"], "tooLate");
-        let original =
-            json!({"state":"cancelled","intent":"cancel","recordRevision":7,"events":[]});
-        let mut cancelled = original.clone();
-        assert!(!begin_cancel(&mut cancelled));
-        assert_eq!(cancelled, original);
-        let mut active = json!({"state":"failed","setup":{"status":"running"},"events":[]});
-        assert!(begin_cancel(&mut active));
-        assert_eq!(active["state"], "failed", "活动 setup 仍须走原进程终止确认");
-        assert_eq!(active["events"], json!([]));
-    }
-    #[test]
-    fn deletion_receipt_survives_desktop_restart_and_keeps_unknown_phase() {
-        let request = "11111111-1111-4111-8111-111111111111";
-        let node = std::env::var_os("AREAL_GUI_NODE_BIN").unwrap_or_else(|| "node".into());
-        for (state, phase) in [
-            ("completed", "completed"),
-            ("admissionUnknown", "admissionUnconfirmed"),
-        ] {
-            let home = tempfile::tempdir().unwrap();
-            let operation = json!({"version":1,"projectId":"canonical","requestId":request,"serviceId":"core","serviceGeneration":"generation","strategy":"ifIdle","state":state});
-            let mut target = json!({"projectId":"execution-alias","requestId":request,"serviceId":"core","generation":"generation","dataDir":home.path().join("execution/state")});
-            super::super::workbench_lifecycle::host_receipt(&mut target, &operation, false)
-                .unwrap();
-            let receipt =
-                deletion_stop_receipt(request, "desktop-owner", home.path(), target).unwrap();
-            assert_eq!(receipt["phase"], phase);
-            assert_eq!(
-                receipt["targets"][0]["dataDir"],
-                json!(home.path().join("execution/state"))
-            );
-            assert_eq!(receipt["targets"][0]["hostReceipt"]["requestId"], request);
-            assert_eq!(
-                receipt["targets"][0]["hostReceipt"]["serviceGeneration"],
-                "generation"
-            );
-            let mut value = json!({"kind":"thread","requestId":request,"projectId":"logical","parameters":{},"state":"ready","deletion":{"requestId":request,"status":if state=="completed"{"succeeded"}else{"unknown"},"stopRequestId":request,"stopReceipt":receipt}});
-            persist(home.path(), &mut value).unwrap();
-            let path = home
-                .path()
-                .join("worktree-requests")
-                .join(format!("{request}.json"));
-            assert_eq!(
-                record(home.path(), request, "logical").unwrap()["deletion"]["stopReceipt"]["phase"],
-                phase
-            );
-            let result = std::process::Command::new(&node).current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-                .arg("-e").arg("const fs=require('node:fs');const {readOperation}=require('./clients/gui/packages/workbench/client/desktop-contract/workspace-worktrees.cjs');readOperation(JSON.parse(fs.readFileSync(process.argv[1],'utf8')));").arg(path).output();
-            match result {
-                Ok(output) => assert!(
-                    output.status.success(),
-                    "desktop decoder rejected persisted {phase}: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => eprintln!(
-                    "desktop decoder not run: Node unavailable; Rust receipt schema/persistence checked"
-                ),
-                Err(error) => panic!("desktop decoder failed: {error}"),
-            }
-            let mut changed = operation;
-            changed["serviceGeneration"] = json!("different");
-            let mut target = json!({"projectId":"execution-alias","requestId":request,"serviceId":"core","generation":"generation"});
-            assert!(
-                super::super::workbench_lifecycle::host_receipt(&mut target, &changed, false)
-                    .is_err()
-            );
-        }
-    }
-    #[test]
-    fn worktree_target_keeps_host_connection_preparation_and_rebinds_managed_resources() {
-        let fixture = tempfile::tempdir().unwrap();
-        let home = fixture.path().join("gui");
-        let root = fixture.path().join("checkout");
-        let data = home.join("execution/state");
-        let profile = json!({"id":"fixture","revision":"v1"});
-        let template = LaunchInputs {
-            workspace: fixture.path().join("source"),
-            cwd: fixture.path().join("source"),
-            config_home: home.clone(),
-            homedir: None,
-            config_path: None,
-            deployment_path: None,
-            schedule_preparation: Some(crate::SchedulePreparation::External {
-                default_profile: Some(profile.clone()),
-            }),
-            environment: BTreeMap::new(),
-            credential_names: vec![],
-            options: Default::default(),
-        };
-        assert_eq!(
-            prepared_resources(&template).unwrap(),
-            json!({"profile":profile,"fingerprint":"external"})
-        );
-        let target =
-            target_launch_inputs(template.clone(), &root, &data, &home, "execution").unwrap();
-        assert!(
-            matches!(target.schedule_preparation, Some(crate::SchedulePreparation::External { default_profile: Some(value) }) if value == profile)
-        );
-        assert_eq!(target.workspace, root);
-        assert_eq!(target.options.data_dir.as_deref(), Some(data.as_path()));
-        assert!(target.options.scratch.unwrap().is_dir());
-        let mut managed = template;
-        managed.schedule_preparation = Some(crate::SchedulePreparation::Managed {
-            resource_state_path: home.join("resource-state.json"),
-            user_managed_skills_root: home.join("user-skills"),
-            project_managed_skills_root: home.join("resources/source/skills"),
-            project_resource_scope: "source".into(),
-            default_profile: profile.clone(),
-        });
-        let deployment = fixture.path().join("prepared-deployment.json");
-        let revision = "resources-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-        storage::write(&deployment, &json!({"profiles":[{"id":"fixture","revision":"v1"},{"id":"fixture","revision":revision,"allowPluginSkills":true}]})).unwrap();
-        managed.deployment_path = Some(deployment);
-        assert_eq!(
-            prepared_resources(&managed).unwrap(),
-            json!({"profile":{"id":"fixture","revision":revision},"fingerprint":revision})
-        );
-        let target = target_launch_inputs(managed, &root, &data, &home, "execution").unwrap();
-        let Some(crate::SchedulePreparation::Managed {
-            resource_state_path,
-            user_managed_skills_root,
-            project_managed_skills_root,
-            project_resource_scope,
-            default_profile,
-        }) = target.schedule_preparation
-        else {
-            panic!("GUI preparation must remain configured")
-        };
-        assert_eq!(resource_state_path, home.join("resource-state.json"));
-        assert_eq!(user_managed_skills_root, home.join("user-skills"));
-        assert_eq!(
-            project_managed_skills_root,
-            home.join("resources/execution/skills")
-        );
-        assert_eq!(project_resource_scope, "execution");
-        assert_eq!(default_profile, profile);
-    }
-    #[test]
-    fn project_metadata_add_merges_current_owners_and_keeps_unknown_fields() {
-        let home = tempfile::tempdir().unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-        let original = json!({"id":"worktree","root":"/tree","logicalProjectId":"source","worktreeRequestId":"creation","futureField":{"keep":true}});
-        std::fs::write(
-            home.path().join("projects.json"),
-            serde_json::to_vec(&json!([original])).unwrap(),
-        )
-        .unwrap();
-        merge_project_metadata(home.path(), json!({"id":"ordinary","root":"/new","projectless":true,"projectlessRequestId":"new-request"})).unwrap();
-        let rows = saved_projects(home.path()).unwrap();
-        assert_eq!(
-            rows,
-            vec![
-                original.clone(),
-                json!({"id":"ordinary","root":"/new","projectless":true,"projectlessRequestId":"new-request"})
-            ]
-        );
-        assert_eq!(
-            merge_project_metadata(home.path(), json!({"id":"worktree","root":"/tree"})).unwrap(),
-            original
-        );
-        assert!(
-            merge_project_metadata(home.path(), json!({"id":"worktree","root":"/other"})).is_err()
-        );
-        assert_eq!(saved_projects(home.path()).unwrap(), rows);
-    }
-    #[test]
-    fn owners_preserve_logical_grouping_without_a_backend_process() {
-        let home = tempfile::tempdir().unwrap();
-        std::fs::write(home.path().join("projects.json"),serde_json::to_vec(&json!([
-            {"id":"logical","root":"/repository"},
-            {"id":"execution","root":"/worktree","logicalProjectId":"logical","worktreeRequestId":"creation"},
-            {"id":"other","root":"/other"}
-        ])).unwrap()).unwrap();
-        let rows = owners(home.path(), "logical").unwrap();
-        assert_eq!(rows.len(), 2);
-        assert_eq!(rows[0]["id"], "logical");
-        assert_eq!(rows[1]["id"], "execution");
-        assert_eq!(owners(home.path(), "execution").unwrap().len(), 1);
-    }
-    #[test]
-    fn stale_lifecycle_snapshot_cannot_overwrite_a_cancel_intent() {
-        let home = tempfile::tempdir().unwrap();
-        let id = uuid::Uuid::new_v4().to_string();
-        let mut current = json!({"kind":"checkout","requestId":id,"projectId":"p","parameters":{},"state":"created","events":[]});
-        persist(home.path(), &mut current).unwrap();
-        let mut stale = current.clone();
-        current["intent"] = json!("cancel");
-        persist(home.path(), &mut current).unwrap();
-        stale["state"] = json!("ready");
-        assert!(persist(home.path(), &mut stale).is_err());
-        let observed = record(home.path(), &id, "p").unwrap();
-        assert_eq!(observed["intent"], "cancel");
-        assert_eq!(observed["state"], "created");
-        assert_eq!(observed["recordRevision"], 2);
-    }
-    #[test]
-    fn worktree_preferences_keep_unrelated_desktop_settings_and_use_revisions() {
-        let mut state = json!({"projects":{},"settings":{"httpProxy":"preserve","hardwareAcceleration":false,"worktreeRevision":3}});
-        preference_change(&mut state,&json!({"operation":"worktreeSettings","worktreeRoot":"/isolated/trees","branchPrefix":"fixture","expectedRevision":3})).unwrap();
-        assert_eq!(state["settings"]["httpProxy"], "preserve");
-        assert_eq!(state["settings"]["hardwareAcceleration"], false);
-        assert_eq!(state["settings"]["worktreeRevision"], 4);
-        assert!(preference_change(&mut state,&json!({"operation":"worktreeSettings","worktreeRoot":"/isolated/trees","branchPrefix":"fixture","expectedRevision":3})).is_err());
-        preference_change(&mut state,&json!({"operation":"worktreeEnvironmentSave","projectId":"p","expectedRevision":0,"environment":{"id":"env","name":"Environment","setup":{"default":"echo setup"},"cleanup":{"default":""},"actions":[]}})).unwrap();
-        assert_eq!(state["projects"]["p"]["worktreeEnvironmentRevision"], 1);
-        assert_eq!(
-            state["projects"]["p"]["worktreeEnvironments"][0]["id"],
-            "env"
-        );
-    }
 }
 
 async fn register_target(
@@ -2164,11 +1864,11 @@ pub(super) async fn read_thread_target(
     if value["kind"] != "thread" || value["parameters"] != thread_signature(&input) {
         return Ok(json!({"state":"unknown"}));
     }
-    if matches!(value["state"].as_str(), Some("binding" | "settingUp")) {
-        if let Some(params) = value.get("bindingParams").cloned() {
-            let _ = bind_thread_target(host, source, logical, &id, params).await;
-            value = record(&home, &id, logical)?;
-        }
+    if matches!(value["state"].as_str(), Some("binding" | "settingUp"))
+        && let Some(params) = value.get("bindingParams").cloned()
+    {
+        let _ = bind_thread_target(host, source, logical, &id, params).await;
+        value = record(&home, &id, logical)?;
     }
     Ok(
         if value["state"] == "ready"
@@ -2245,4 +1945,302 @@ fn safe_parents(path: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn thread_checkout_empty_options_match_legacy_defaults() {
+        let empty = json!({"mode":"worktree","sourceRoot":"","ref":"","branch":"","worktreeRoot":"","environmentId":""});
+        assert_eq!(
+            thread_checkout_params("project", "request", &empty).unwrap(),
+            json!({"operation":"worktreeCreate","projectId":"project","requestId":"request","source":"head"})
+        );
+        let mut selected = empty;
+        selected["ref"] = json!("release/acceptance");
+        selected["environmentId"] = json!("acceptance");
+        let params = thread_checkout_params("project", "request", &selected).unwrap();
+        assert_eq!(params["source"], "branch");
+        assert_eq!(params["ref"], "release/acceptance");
+        assert_eq!(params["environmentId"], "acceptance");
+        assert!(
+            params.get("branch").is_none(),
+            "UI空分支必须让Core使用配置前缀生成原request分支"
+        );
+        assert!(params.get("worktreeRoot").is_none());
+        selected["branch"] = json!("feature/explicit");
+        selected["worktreeRoot"] = json!("/isolated/trees");
+        let params = thread_checkout_params("project", "request", &selected).unwrap();
+        assert_eq!(params["branch"], "feature/explicit");
+        assert_eq!(params["worktreeRoot"], "/isolated/trees");
+        selected["branch"] = json!(" ");
+        assert_eq!(
+            thread_checkout_params("project", "request", &selected).unwrap()["branch"],
+            " ",
+            "不修正或放宽显式无效分支"
+        );
+        selected["branch"] = json!(42);
+        assert!(thread_checkout_params("project", "request", &selected).is_err());
+    }
+    #[test]
+    fn checkout_receipt_keeps_legacy_fields_and_cleanup_order() {
+        let mut checkout = json!({"kind":"checkout","requestId":"checkout","projectId":"source","parameters":{},"state":"created","createdAt":"2030-01-01T00:00:00.000Z","record":{"createdAt":"2030-01-01T00:00:00.000Z","target":"/source","directory":"/checkout"},"events":[{"id":"checkout:0","state":"created","time":"2030-01-01T00:00:00.000Z"}],"recordRevision":1});
+        initial_checkout(&mut checkout);
+        assert!(checkout.get("createdAt").is_none());
+        assert_eq!(checkout["record"]["createdAt"], "2030-01-01T00:00:00.000Z");
+        assert_eq!(checkout["recordRevision"], 1);
+        let mut retained = [
+            json!({"requestId":"thread","createdAt":"2020-01-01T00:00:00.000Z"}),
+            checkout.clone(),
+        ];
+        retained.sort_by(|a, b| a["createdAt"].as_str().cmp(&b["createdAt"].as_str()));
+        assert_eq!(
+            retained[0]["requestId"], "checkout",
+            "旧 checkout 缺省时间不能变成比现有 thread 更新"
+        );
+        cancel_transition(&mut checkout);
+        assert_eq!(checkout["message"], "创建已取消，目录保留");
+        assert_eq!(checkout["events"][1]["message"], checkout["message"]);
+        assert_eq!(checkout["events"][0]["state"], "created");
+        open_record(&mut checkout, "execution");
+        assert_eq!(checkout["sourceRoot"], "/source");
+        assert_ne!(checkout["sourceRoot"], checkout["record"]["directory"]);
+        assert_eq!(checkout["kind"], "thread");
+        assert_eq!(checkout["executionProjectId"], "execution");
+        let mut thread = json!({"kind":"thread","createdAt":"2020-01-01T00:00:00.000Z"});
+        initial_checkout(&mut thread);
+        assert_eq!(thread["createdAt"], "2020-01-01T00:00:00.000Z");
+    }
+    #[test]
+    fn cancellation_terminal_states_match_legacy_oracle() {
+        for state in ["created", "failed"] {
+            let original = json!({"state":state,"requestId":"request","recordRevision":7,"events":[{"state":state,"id":"request:0","time":"original"}]});
+            let mut value = original.clone();
+            assert!(begin_cancel(&mut value));
+            assert_eq!(value["state"], "cancelled");
+            assert_eq!(value["intent"], "cancel");
+            assert_eq!(value["message"], "创建已取消，目录保留");
+            assert_eq!(value["events"][0], original["events"][0]);
+            assert_eq!(value["events"][1]["message"], value["message"]);
+            assert_eq!(value["recordRevision"], 7);
+        }
+        let original = json!({"state":"ready","intent":"continue","recordRevision":7,"events":[]});
+        let mut ready = original.clone();
+        assert!(!begin_cancel(&mut ready));
+        ready.as_object_mut().unwrap().remove("cancelResult");
+        assert_eq!(ready, original, "太晚取消不得持久修改 intent 或日志");
+        let mut ready = original;
+        assert!(!begin_cancel(&mut ready));
+        assert_eq!(ready["cancelResult"], "tooLate");
+        let original =
+            json!({"state":"cancelled","intent":"cancel","recordRevision":7,"events":[]});
+        let mut cancelled = original.clone();
+        assert!(!begin_cancel(&mut cancelled));
+        assert_eq!(cancelled, original);
+        let mut active = json!({"state":"failed","setup":{"status":"running"},"events":[]});
+        assert!(begin_cancel(&mut active));
+        assert_eq!(active["state"], "failed", "活动 setup 仍须走原进程终止确认");
+        assert_eq!(active["events"], json!([]));
+    }
+    #[test]
+    fn deletion_receipt_survives_desktop_restart_and_keeps_unknown_phase() {
+        let request = "11111111-1111-4111-8111-111111111111";
+        let node = std::env::var_os("AREAL_GUI_NODE_BIN").unwrap_or_else(|| "node".into());
+        for (state, phase) in [
+            ("completed", "completed"),
+            ("admissionUnknown", "admissionUnconfirmed"),
+        ] {
+            let home = tempfile::tempdir().unwrap();
+            let operation = json!({"version":1,"projectId":"canonical","requestId":request,"serviceId":"core","serviceGeneration":"generation","strategy":"ifIdle","state":state});
+            let mut target = json!({"projectId":"execution-alias","requestId":request,"serviceId":"core","generation":"generation","dataDir":home.path().join("execution/state")});
+            super::super::workbench_lifecycle::host_receipt(&mut target, &operation, false)
+                .unwrap();
+            let receipt =
+                deletion_stop_receipt(request, "desktop-owner", home.path(), target).unwrap();
+            assert_eq!(receipt["phase"], phase);
+            assert_eq!(
+                receipt["targets"][0]["dataDir"],
+                json!(home.path().join("execution/state"))
+            );
+            assert_eq!(receipt["targets"][0]["hostReceipt"]["requestId"], request);
+            assert_eq!(
+                receipt["targets"][0]["hostReceipt"]["serviceGeneration"],
+                "generation"
+            );
+            let mut value = json!({"kind":"thread","requestId":request,"projectId":"logical","parameters":{},"state":"ready","deletion":{"requestId":request,"status":if state=="completed"{"succeeded"}else{"unknown"},"stopRequestId":request,"stopReceipt":receipt}});
+            persist(home.path(), &mut value).unwrap();
+            let path = home
+                .path()
+                .join("worktree-requests")
+                .join(format!("{request}.json"));
+            assert_eq!(
+                record(home.path(), request, "logical").unwrap()["deletion"]["stopReceipt"]["phase"],
+                phase
+            );
+            let result = std::process::Command::new(&node).current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+                .arg("-e").arg("const fs=require('node:fs');const {readOperation}=require('./clients/gui/packages/workbench/client/desktop-contract/workspace-worktrees.cjs');readOperation(JSON.parse(fs.readFileSync(process.argv[1],'utf8')));").arg(path).output();
+            match result {
+                Ok(output) => assert!(
+                    output.status.success(),
+                    "desktop decoder rejected persisted {phase}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => eprintln!(
+                    "desktop decoder not run: Node unavailable; Rust receipt schema/persistence checked"
+                ),
+                Err(error) => panic!("desktop decoder failed: {error}"),
+            }
+            let mut changed = operation;
+            changed["serviceGeneration"] = json!("different");
+            let mut target = json!({"projectId":"execution-alias","requestId":request,"serviceId":"core","generation":"generation"});
+            assert!(
+                super::super::workbench_lifecycle::host_receipt(&mut target, &changed, false)
+                    .is_err()
+            );
+        }
+    }
+    #[test]
+    fn worktree_target_keeps_host_connection_preparation_and_rebinds_managed_resources() {
+        let fixture = tempfile::tempdir().unwrap();
+        let home = fixture.path().join("gui");
+        let root = fixture.path().join("checkout");
+        let data = home.join("execution/state");
+        let profile = json!({"id":"fixture","revision":"v1"});
+        let template = LaunchInputs {
+            workspace: fixture.path().join("source"),
+            cwd: fixture.path().join("source"),
+            config_home: home.clone(),
+            homedir: None,
+            config_path: None,
+            deployment_path: None,
+            schedule_preparation: Some(crate::SchedulePreparation::External {
+                default_profile: Some(profile.clone()),
+            }),
+            environment: BTreeMap::new(),
+            credential_names: vec![],
+            options: Default::default(),
+        };
+        assert_eq!(
+            prepared_resources(&template).unwrap(),
+            json!({"profile":profile,"fingerprint":"external"})
+        );
+        let target =
+            target_launch_inputs(template.clone(), &root, &data, &home, "execution").unwrap();
+        assert!(
+            matches!(target.schedule_preparation, Some(crate::SchedulePreparation::External { default_profile: Some(value) }) if value == profile)
+        );
+        assert_eq!(target.workspace, root);
+        assert_eq!(target.options.data_dir.as_deref(), Some(data.as_path()));
+        assert!(target.options.scratch.unwrap().is_dir());
+        let mut managed = template;
+        managed.schedule_preparation = Some(crate::SchedulePreparation::Managed {
+            resource_state_path: home.join("resource-state.json"),
+            user_managed_skills_root: home.join("user-skills"),
+            project_managed_skills_root: home.join("resources/source/skills"),
+            project_resource_scope: "source".into(),
+            default_profile: profile.clone(),
+        });
+        let deployment = fixture.path().join("prepared-deployment.json");
+        let revision = "resources-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        storage::write(&deployment, &json!({"profiles":[{"id":"fixture","revision":"v1"},{"id":"fixture","revision":revision,"allowPluginSkills":true}]})).unwrap();
+        managed.deployment_path = Some(deployment);
+        assert_eq!(
+            prepared_resources(&managed).unwrap(),
+            json!({"profile":{"id":"fixture","revision":revision},"fingerprint":revision})
+        );
+        let target = target_launch_inputs(managed, &root, &data, &home, "execution").unwrap();
+        let Some(crate::SchedulePreparation::Managed {
+            resource_state_path,
+            user_managed_skills_root,
+            project_managed_skills_root,
+            project_resource_scope,
+            default_profile,
+        }) = target.schedule_preparation
+        else {
+            panic!("GUI preparation must remain configured")
+        };
+        assert_eq!(resource_state_path, home.join("resource-state.json"));
+        assert_eq!(user_managed_skills_root, home.join("user-skills"));
+        assert_eq!(
+            project_managed_skills_root,
+            home.join("resources/execution/skills")
+        );
+        assert_eq!(project_resource_scope, "execution");
+        assert_eq!(default_profile, profile);
+    }
+    #[test]
+    fn project_metadata_add_merges_current_owners_and_keeps_unknown_fields() {
+        let home = tempfile::tempdir().unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let original = json!({"id":"worktree","root":"/tree","logicalProjectId":"source","worktreeRequestId":"creation","futureField":{"keep":true}});
+        std::fs::write(
+            home.path().join("projects.json"),
+            serde_json::to_vec(&json!([original])).unwrap(),
+        )
+        .unwrap();
+        merge_project_metadata(home.path(), json!({"id":"ordinary","root":"/new","projectless":true,"projectlessRequestId":"new-request"})).unwrap();
+        let rows = saved_projects(home.path()).unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                original.clone(),
+                json!({"id":"ordinary","root":"/new","projectless":true,"projectlessRequestId":"new-request"})
+            ]
+        );
+        assert_eq!(
+            merge_project_metadata(home.path(), json!({"id":"worktree","root":"/tree"})).unwrap(),
+            original
+        );
+        assert!(
+            merge_project_metadata(home.path(), json!({"id":"worktree","root":"/other"})).is_err()
+        );
+        assert_eq!(saved_projects(home.path()).unwrap(), rows);
+    }
+    #[test]
+    fn owners_preserve_logical_grouping_without_a_backend_process() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::write(home.path().join("projects.json"),serde_json::to_vec(&json!([
+            {"id":"logical","root":"/repository"},
+            {"id":"execution","root":"/worktree","logicalProjectId":"logical","worktreeRequestId":"creation"},
+            {"id":"other","root":"/other"}
+        ])).unwrap()).unwrap();
+        let rows = owners(home.path(), "logical").unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["id"], "logical");
+        assert_eq!(rows[1]["id"], "execution");
+        assert_eq!(owners(home.path(), "execution").unwrap().len(), 1);
+    }
+    #[test]
+    fn stale_lifecycle_snapshot_cannot_overwrite_a_cancel_intent() {
+        let home = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut current = json!({"kind":"checkout","requestId":id,"projectId":"p","parameters":{},"state":"created","events":[]});
+        persist(home.path(), &mut current).unwrap();
+        let mut stale = current.clone();
+        current["intent"] = json!("cancel");
+        persist(home.path(), &mut current).unwrap();
+        stale["state"] = json!("ready");
+        assert!(persist(home.path(), &mut stale).is_err());
+        let observed = record(home.path(), &id, "p").unwrap();
+        assert_eq!(observed["intent"], "cancel");
+        assert_eq!(observed["state"], "created");
+        assert_eq!(observed["recordRevision"], 2);
+    }
+    #[test]
+    fn worktree_preferences_keep_unrelated_desktop_settings_and_use_revisions() {
+        let mut state = json!({"projects":{},"settings":{"httpProxy":"preserve","hardwareAcceleration":false,"worktreeRevision":3}});
+        preference_change(&mut state,&json!({"operation":"worktreeSettings","worktreeRoot":"/isolated/trees","branchPrefix":"fixture","expectedRevision":3})).unwrap();
+        assert_eq!(state["settings"]["httpProxy"], "preserve");
+        assert_eq!(state["settings"]["hardwareAcceleration"], false);
+        assert_eq!(state["settings"]["worktreeRevision"], 4);
+        assert!(preference_change(&mut state,&json!({"operation":"worktreeSettings","worktreeRoot":"/isolated/trees","branchPrefix":"fixture","expectedRevision":3})).is_err());
+        preference_change(&mut state,&json!({"operation":"worktreeEnvironmentSave","projectId":"p","expectedRevision":0,"environment":{"id":"env","name":"Environment","setup":{"default":"echo setup"},"cleanup":{"default":""},"actions":[]}})).unwrap();
+        assert_eq!(state["projects"]["p"]["worktreeEnvironmentRevision"], 1);
+        assert_eq!(
+            state["projects"]["p"]["worktreeEnvironments"][0]["id"],
+            "env"
+        );
+    }
 }
