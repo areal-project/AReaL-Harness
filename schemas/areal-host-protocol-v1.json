@@ -14506,14 +14506,15 @@
       "examples": [
         {
           "version": 1,
-          "id": "example",
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
           "method": "session.openPersisted",
           "params": {
             "threadId": "thread",
             "view": "conversation"
           },
           "context": {
-            "projectId": "project"
+            "projectId": "project",
+            "serviceGeneration": "core-generation"
           }
         }
       ]
@@ -21498,6 +21499,26 @@
             "threadId": {
               "type": "string"
             },
+            "agentProfile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-maxUtf8Bytes": 128
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-maxUtf8Bytes": 128
+                }
+              },
+              "required": [
+                "id",
+                "revision"
+              ],
+              "additionalProperties": false
+            },
             "sourceId": {
               "type": "string",
               "minLength": 1
@@ -21512,7 +21533,6 @@
             }
           },
           "required": [
-            "threadId",
             "projectId",
             "operation"
           ],
@@ -21552,6 +21572,26 @@
             "threadId": {
               "type": "string"
             },
+            "agentProfile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-maxUtf8Bytes": 128
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-maxUtf8Bytes": 128
+                }
+              },
+              "required": [
+                "id",
+                "revision"
+              ],
+              "additionalProperties": false
+            },
             "sourceId": {
               "type": "string",
               "minLength": 1
@@ -21566,7 +21606,6 @@
             }
           },
           "required": [
-            "threadId",
             "skill",
             "projectId",
             "operation"
@@ -65014,7 +65053,7 @@
           "projectId": "project",
           "threadId": "thread",
           "snapshotId": "snapshot",
-          "serviceGeneration": "generation",
+          "serviceGeneration": "core-generation",
           "capturedAt": 0,
           "readOnly": true,
           "attachments": "unavailable",
@@ -65054,7 +65093,6 @@
           "id": "example",
           "method": "recovery.history",
           "params": {
-            "spaceId": "00000000-0000-4000-8000-000000000000",
             "projectId": "project",
             "threadId": "thread"
           }
@@ -65455,7 +65493,7 @@
       "additionalProperties": false,
       "examples": [
         {
-          "requestId": "00000000-0000-4000-8000-000000000000",
+          "requestId": "01234567-89ab-cdef-0123-456789abcdef",
           "providerId": "provider",
           "state": "completed",
           "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -65491,11 +65529,10 @@
       "examples": [
         {
           "version": 1,
-          "id": "example",
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
           "method": "recovery.importProvider",
           "params": {
-            "requestId": "00000000-0000-4000-8000-000000000000",
-            "spaceId": "00000000-0000-4000-8000-000000000000",
+            "requestId": "01234567-89ab-cdef-0123-456789abcdef",
             "providerId": "provider",
             "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
           }
