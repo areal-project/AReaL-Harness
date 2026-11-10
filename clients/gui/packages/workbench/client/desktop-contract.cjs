@@ -309,7 +309,6 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     case "bugReport":
     case "exportDiagnostics":
     case "connectService":
-    case "export":
     case "remoteControl":
       if (!desktopControl.isRequest(name, params)) invalid();
       return;
@@ -654,7 +653,6 @@ function validateCommandResponse(name, params, value) {
     case "bugReport":
     case "exportDiagnostics":
     case "connectService":
-    case "export":
     case "remoteControl":
       validateDesktopControlResponse(invocation.name, invocation.request, value);
       return;

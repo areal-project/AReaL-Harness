@@ -35548,7 +35548,8 @@
       "properties": {
         "sourceId": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "调用方认定的工作台来源，只作核对；省略时用 Host 当前工作台后台的来源（新装桌面登记来源前也能执行）。"
         },
         "command": {
           "type": "string",
@@ -35595,7 +35596,6 @@
         }
       },
       "required": [
-        "sourceId",
         "command",
         "request"
       ],

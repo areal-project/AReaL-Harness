@@ -178,6 +178,46 @@ export type ShellSnapshot = Partial<Pick<Snapshot, (typeof SHELL_SNAPSHOT_KEYS)[
   settings?: Record<string, unknown>;
 };
 
+export function shellSnapshot(value: Snapshot): ShellSnapshot {
+  const settings: Record<string, unknown> = value.library?.settings ?? {};
+  return {
+    ...Object.fromEntries(
+      SHELL_SNAPSHOT_KEYS.flatMap((key) => (key in value ? [[key, value[key]]] : [])),
+    ),
+    settings: Object.fromEntries(
+      SHELL_SETTING_KEYS.flatMap((key) => (key in settings ? [[key, settings[key]]] : [])),
+    ),
+  };
+}
+
+type WatchedRead = { value?: { projectId: string; snapshot: unknown }; previous?: unknown };
+/** 按读结果对象缓存解析，同一份附加会话不重复解析，投影缓存才能按引用命中。 */
+export function createWatchedThreads(
+  reads: () => Iterable<WatchedRead>,
+  parse: (snapshot: unknown) => Observation["thread"],
+) {
+  const parsed = new WeakMap<object, Observation["thread"] | null>();
+  return () => {
+    const byProject = new Map<string, Observation["thread"][]>();
+    for (const read of reads()) {
+      const value = (read.value ?? read.previous) as WatchedRead["value"];
+      if (!value) continue;
+      let thread = parsed.get(value);
+      if (thread === undefined) {
+        try {
+          thread = parse(value.snapshot);
+        } catch {
+          thread = null;
+        }
+        parsed.set(value, thread);
+      }
+      if (thread)
+        byProject.set(value.projectId, [...(byProject.get(value.projectId) ?? []), thread]);
+    }
+    return byProject;
+  };
+}
+
 export function configurationIdentity(configuration: unknown) {
   const value = configuration as { revision?: unknown; defaultModelRevision?: unknown } | null;
   return JSON.stringify([value?.revision ?? null, value?.defaultModelRevision ?? null]);
@@ -250,7 +290,8 @@ export function createHostSnapshotProjector(
       : sources.length === 1
         ? sources[0]
         : undefined;
-    const sourceId = navigation?.sourceId;
+    // 新装时资料库还没有导航条目，命令通道仍按本连接的首选来源走。
+    const sourceId = navigation?.sourceId ?? preferredSourceId;
     for (const project of shell?.snapshot.projects ?? [])
       ids.set(
         project.projectId,

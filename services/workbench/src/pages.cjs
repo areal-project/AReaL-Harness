@@ -16,6 +16,10 @@ async function createPageSession({ appRequire, desktop, notify }) {
   const { genUiScope } = appRequire("@areal/workbench-service/desktop/core/gen-ui-state.cjs");
   /** @type {typeof import('@areal/workbench-service/desktop/core/service-protocol.cjs')} */
   const { PROTOCOL } = appRequire("@areal/workbench-service/desktop/core/service-protocol.cjs");
+  /** @type {typeof import('@areal/workbench-service/desktop/core/mcp-metadata-images.cjs')} */
+  const { loadMetadataImage } = appRequire(
+    "@areal/workbench-service/desktop/core/mcp-metadata-images.cjs",
+  );
   const backend = desktop.backend;
   let closed = false;
   /** @type {InstanceType<typeof import('@areal/workbench-service/desktop/core/mcp-apps.cjs').McpAppsHost>|undefined} */
@@ -95,6 +99,13 @@ async function createPageSession({ appRequire, desktop, notify }) {
         return pages.openGenUi(request, 1);
       case "genUiVisibility":
         return pages.genUiVisibility(request, 1);
+      case "metadataImage":
+        return loadMetadataImage(
+          (name, params) => connection.request("command", { name, request: params }),
+          request,
+        ).catch(() => {
+          throw Error("Metadata image unavailable");
+        });
     }
     if (typeof request.token !== "string") throw Error("Invalid page token");
     switch (request.operation) {

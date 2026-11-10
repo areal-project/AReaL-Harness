@@ -1,8 +1,8 @@
 import { refreshTaskDirectory, type TaskDirectoryState } from "./host-task-directory.js";
 import {
   createHostSnapshotProjector,
-  SHELL_SETTING_KEYS,
-  SHELL_SNAPSHOT_KEYS,
+  createWatchedThreads,
+  shellSnapshot,
   type ShellSnapshot,
   windowIdentity,
   hostCommandOutcome,
@@ -30,7 +30,7 @@ import {
   readInheritedHistoryPage,
 } from "@areal/workbench/desktop-contract/conversation-history";
 import { pageTopology } from "@areal/workbench/history-projection";
-import { commandSemantics, desktopError } from "@areal/workbench/desktop-contract/transport";
+import { hostCommandError } from "./desktop-response.js";
 import {
   createWorkbenchRoutes,
   DESKTOP_COMMANDS,
@@ -44,6 +44,7 @@ import { createHostPages } from "./host-pages.js";
 import {
   chooseHostProject,
   refreshInspections,
+  reviewToken,
   refreshModelCatalogs,
 } from "./host-auxiliary-reads.js";
 import type { PlatformServices, PlatformReadServices, Snapshot } from "./services.js";
@@ -53,27 +54,6 @@ export type HostHistoryPage = ReturnType<typeof readInheritedHistoryPage>;
 export type HistoryEntry = ReturnType<typeof readHistoryEntry>;
 export type HistoryPage = ReturnType<typeof readHistoryPage> & { pageId: string; cursor: string };
 export type PageRecord = { id: string; cursor: string; items: ReturnType<typeof pageTopology> };
-
-/**
- * Host 命令通道的失败与桌面原通道同一份错误形状：保留错误码、受理结果与恢复方式。
- * 没有错误码说明回复丢了，写操作按“不确定是否受理”处理。
- */
-export function hostCommandError(name: string, params: Record<string, unknown>, error: unknown) {
-  const shaped = desktopError(error);
-  if (shaped.code !== undefined) return shaped;
-  let write = true;
-  try {
-    write = commandSemantics(name, params).effect !== "read";
-  } catch {}
-  return write
-    ? {
-        ...shaped,
-        submissionUnknown: true,
-        outcome: { kind: "unconfirmed" },
-        recovery: { kind: "queryOriginal" },
-      }
-    : { ...shaped, code: "COMMAND_FAILED" };
-}
 
 export function createHostReadServices(
   desktop: PlatformServices | undefined,
@@ -85,27 +65,10 @@ export function createHostReadServices(
   const pages = createHostPages(client);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
-  // 按读结果对象缓存解析，同一份附加会话不重复解析，投影缓存才能按引用命中。
-  const watchedParsed = new WeakMap<object, Observation["thread"] | null>();
-  const watchedThreads = () => {
-    const byProject = new Map<string, Observation["thread"][]>();
-    for (const read of client.watchedSnapshot().values()) {
-      const value = "value" in read ? read.value : read.previous;
-      if (!value) continue;
-      let thread = watchedParsed.get(value);
-      if (thread === undefined) {
-        try {
-          thread = readObservationResult(value.snapshot).thread;
-        } catch {
-          thread = null;
-        }
-        watchedParsed.set(value, thread);
-      }
-      if (thread)
-        byProject.set(value.projectId, [...(byProject.get(value.projectId) ?? []), thread]);
-    }
-    return byProject;
-  };
+  const watchedThreads = createWatchedThreads(
+    () => client.watchedSnapshot().values(),
+    (value) => readObservationResult(value).thread,
+  );
   let librarySourceId: string | undefined;
   let snapshot: Snapshot = { projects: [], connection: { state: "connecting" } };
   let session: SessionRead | undefined;
@@ -548,15 +511,7 @@ export function createHostReadServices(
   if (desktop) {
     // 外壳只提供窗口、电源、菜单栏、生命周期和代理设置；项目、会话、任务与其余设置都从 Host 读。
     const accept = (value: Snapshot) => {
-      const settings: Record<string, unknown> = value.library?.settings ?? {};
-      shellExtras = {
-        ...Object.fromEntries(
-          SHELL_SNAPSHOT_KEYS.flatMap((key) => (key in value ? [[key, value[key]]] : [])),
-        ),
-        settings: Object.fromEntries(
-          SHELL_SETTING_KEYS.flatMap((key) => (key in settings ? [[key, settings[key]]] : [])),
-        ),
-      };
+      shellExtras = shellSnapshot(value);
       publish();
     };
     desktop.onState(accept);
@@ -592,19 +547,6 @@ export function createHostReadServices(
   function jsonObject(value: Record<string, unknown>): JsonObject {
     // 桌面契约已经验证请求；JSON 往返仅移除 UI 可选字段中的 undefined。
     return JSON.parse(JSON.stringify(value));
-  }
-  async function reviewToken(hostProjectId: string, target: Record<string, string>) {
-    let cursor: string | undefined;
-    for (let page = 0; page < 64; page++) {
-      const value = (await client.query("attention.read", hostProjectId, {
-        ...target,
-        ...(cursor && { cursor }),
-      })) as Record<string, unknown>;
-      if (typeof value.reviewToken === "string") return value;
-      if (typeof value.nextCursor !== "string") break;
-      cursor = value.nextCursor;
-    }
-    throw new Error("审批详情未读完");
   }
   const writes: NonNullable<PlatformServices["writes"]> = {
     async route(name, params) {
@@ -797,7 +739,7 @@ export function createHostReadServices(
           const answer =
             params.decision === "deny"
               ? { decision: "deny", argumentsDigest: item.argumentsDigest }
-              : await reviewToken(target.hostProjectId, ids).then((review) =>
+              : await reviewToken(client, target.hostProjectId, ids).then((review) =>
                   params.answers
                     ? { answers: params.answers, reviewToken: review.reviewToken }
                     : {

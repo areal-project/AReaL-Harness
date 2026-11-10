@@ -912,10 +912,10 @@ describe("Host renderer read authority", () => {
       });
       await vi.waitFor(() => expect(changed).toEqual(["alias"]));
       expect(reads.filter((read) => read.method === "tasks.read")).toHaveLength(2);
-      // Main 加了本机行为的命令和主进程命令仍走桌面通道。
-      await expect(services.command("open", { projectId: "alias" } as never)).rejects.toThrow(
-        "Native write invoked",
-      );
+      // 只有登记为桌面专属的操作（系统文件框选插件包等）仍走桌面通道。
+      await expect(
+        services.command("manage", { projectId: "alias", operation: "pluginArchivePick" } as never),
+      ).rejects.toThrow("Native write invoked");
     } finally {
       page.dispatchEvent(new Event("pagehide"));
       vi.unstubAllGlobals();

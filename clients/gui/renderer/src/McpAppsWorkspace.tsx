@@ -79,8 +79,17 @@ export function useMcpAppsWorkspace({
   const hostSupported = !!mcpApp && !!onMcpAppEvent && services.capabilities?.pages !== false;
   const desktopSupported = hostSupported && project?.desktopCapabilities?.currentCommands !== false;
   const loadMetadataImage = useMemo<McpMetadataImageLoader | undefined>(
-    () => (mcpApp ? (source) => mcpApp({ operation: "metadataImage", source }) : undefined),
-    [mcpApp],
+    () =>
+      mcpApp && project
+        ? (source) =>
+            mcpApp({
+              operation: "metadataImage",
+              source,
+              projectId: project.id,
+              ...(threadId ? { threadId } : {}),
+            })
+        : undefined,
+    [mcpApp, project?.id, threadId],
   );
   const [servers, setServers] = useState<McpWorkspaceServer[]>([]),
     [loading, setLoading] = useState(false),

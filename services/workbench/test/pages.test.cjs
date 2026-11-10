@@ -474,3 +474,27 @@ test("工作台创建账本与原生提交分离，原 worktree 创建保留同�
     }
   }
 });
+
+test("元数据图片只取 Core 当前声明过的公网 https 地址", async () => {
+  const { loadMetadataImage } = appRequire(
+    "@areal/workbench-service/desktop/core/mcp-metadata-images.cjs",
+  );
+  const advertised = "https://127.0.0.1/icon.png";
+  const calls = [];
+  const command = async (_name, request) => {
+    calls.push(request.operation);
+    if (request.operation === "mcpForms")
+      return { data: [{ serverId: "s", generation: 1, icons: [{ src: advertised }] }] };
+    return { data: [{ serverId: "s", generation: 1, icons: [] }] };
+  };
+  await assert.rejects(
+    loadMetadataImage(command, { source: advertised, projectId: "p" }),
+    /not advertised/,
+  );
+  assert.deepEqual(calls, ["mcpApps"]);
+  await assert.rejects(
+    loadMetadataImage(command, { source: advertised, projectId: "p", threadId: "t" }),
+    /Private image origin/,
+  );
+  assert.deepEqual(calls, ["mcpApps", "mcpApps", "mcpForms"]);
+});

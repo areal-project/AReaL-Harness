@@ -197,12 +197,12 @@ export function openingAuthorization(run: Run, open: (url: string) => Promise<vo
 }
 
 /**
- * 桌面窗口里这些命令仍走 Main：Main 在后台调用前后加了本机行为（确认框、选文件、打开浏览器、
- * 记下 MCP 元数据图片、电脑控制准入、导航落盘）。迁走这些行为后从这里删掉。
+ * 桌面窗口里这些后台操作仍走 Main：要系统文件框、系统权限或桌面持有的终端会话（desktopOperations），
+ * 以及还由 Main 处理的过渡命令（mainCommands）。两份清单都在 shell-capabilities.cjs，由测试对齐。
  */
 export function desktopKeepsCommand(name: string, params: Record<string, unknown>) {
   const operation = String(params.operation ?? "");
-  if (name === "open" || name === "remoteControl") return true;
+  if (name === "remoteControl") return true;
   if (name === "library")
     return (
       operation === "settings" &&
@@ -213,13 +213,7 @@ export function desktopKeepsCommand(name: string, params: Record<string, unknown
   if (name === "manage")
     return (
       operation.startsWith("process") ||
-      [
-        "pluginArchivePick",
-        "pluginArchiveImport",
-        "mcpApps",
-        "mcpForms",
-        "mcpExtensionCall",
-      ].includes(operation)
+      ["pluginArchivePick", "pluginArchiveImport"].includes(operation)
     );
   return false;
 }

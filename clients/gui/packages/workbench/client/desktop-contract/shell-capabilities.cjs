@@ -62,10 +62,32 @@ const mainCommands = {
   recoverResources: { kind: "transitional", reason: "后台恢复；应由 Host 统一处理" },
   connectService: { kind: "transitional", reason: "连接后台；界面全走 Host 后不再需要" },
   remoteControl: { kind: "transitional", reason: "远程控制配置属于业务" },
-  export: { kind: "transitional", reason: "读对话靠旧快照；保存对话框本身是壳能力" },
+};
+
+/**
+ * 走后台命令表、但只能在桌面窗口执行的操作（renderer/src/host-workbench.ts 的 desktopKeepsCommand）。
+ * 键为“命令.操作”或“命令.settings:设置项”，`*` 表示同前缀的一组操作。
+ * @type {Record<string, Capability>}
+ */
+const desktopOperations = {
+  "manage.pluginArchivePick": { kind: "shell", reason: "系统文件选择框选插件包" },
+  "manage.pluginArchiveImport": { kind: "shell", reason: "导入刚在系统文件框里选中的插件包" },
+  "manage.process*": { kind: "shell", reason: "本机终端进程绑定桌面窗口持有的终端会话" },
+  "library.settings:computerControlEnabled": {
+    kind: "shell",
+    reason: "电脑控制要系统辅助功能权限，改设置前先停掉本机控制进程",
+  },
+  "library.settings:computerControlProvider": {
+    kind: "shell",
+    reason: "电脑控制要系统辅助功能权限，改设置前先停掉本机控制进程",
+  },
+  "library.settings:computerControlExecutable": {
+    kind: "shell",
+    reason: "电脑控制要系统辅助功能权限，改设置前先停掉本机控制进程",
+  },
 };
 
 /** 业务仍走 IPC 的上限：迁走一项就把对应数字减一，不允许加回去。 */
-const transitionalLimit = { bridge: 8, mainCommands: 5 };
+const transitionalLimit = { bridge: 8, mainCommands: 4 };
 
-module.exports = { bridge, mainCommands, transitionalLimit };
+module.exports = { bridge, mainCommands, desktopOperations, transitionalLimit };

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { desktopError } from "@areal/workbench/desktop-contract/transport";
+import { commandSemantics, desktopError } from "@areal/workbench/desktop-contract/transport";
 import type { DesktopResult } from "@areal/workbench/desktop-contract";
 import type { FileOpenTargets, Snapshot, UpdateState, WorkspaceImage } from "./services.js";
 
@@ -175,3 +175,24 @@ export function readFileOpenResult(
 }
 
 export { isLibraryState } from "@areal/workbench/desktop-contract/library-media";
+
+/**
+ * Host 命令通道的失败与桌面原通道同一份错误形状：保留错误码、受理结果与恢复方式。
+ * 没有错误码说明回复丢了，写操作按“不确定是否受理”处理。
+ */
+export function hostCommandError(name: string, params: Record<string, unknown>, error: unknown) {
+  const shaped = desktopError(error);
+  if (shaped.code !== undefined) return shaped;
+  let write = true;
+  try {
+    write = commandSemantics(name, params).effect !== "read";
+  } catch {}
+  return write
+    ? {
+        ...shaped,
+        submissionUnknown: true,
+        outcome: { kind: "unconfirmed" },
+        recovery: { kind: "queryOriginal" },
+      }
+    : { ...shaped, code: "COMMAND_FAILED" };
+}

@@ -5,7 +5,9 @@ const { readFileSync } = require("node:fs");
 const { join } = require("node:path");
 const test = require("node:test");
 const gui = join(__dirname, "..");
-const capabilities = require(join(gui, "packages/workbench/client/desktop-contract/shell-capabilities.cjs"));
+const capabilities = require(
+  join(gui, "packages/workbench/client/desktop-contract/shell-capabilities.cjs"),
+);
 const { commandDefinitions } = require(
   join(gui, "packages/workbench/client/desktop-contract/transport.cjs"),
 );
@@ -44,4 +46,28 @@ test("业务走 IPC 的入口只减不增", () => {
     capabilities.transitionalLimit.mainCommands,
     "迁走后把上限一起调低",
   );
+});
+
+test("只能在桌面窗口执行的后台操作与 desktopKeepsCommand 一致", () => {
+  const source = readFileSync(join(gui, "renderer/src/host-workbench.ts"), "utf8");
+  const body = source.slice(
+    source.indexOf("export function desktopKeepsCommand"),
+    source.indexOf("\n}\n", source.indexOf("export function desktopKeepsCommand")),
+  );
+  const named = new Set(
+    [...body.matchAll(/"([A-Za-z]+)"/g)]
+      .map((match) => match[1])
+      .filter(
+        (name) =>
+          !["manage", "library", "settings"].includes(name) && !(name in capabilities.mainCommands),
+      ),
+  );
+  const registered = new Set(
+    Object.keys(capabilities.desktopOperations).map((key) =>
+      key.split(/[.:]/).at(-1).replace("*", ""),
+    ),
+  );
+  assert.deepEqual([...named].sort(), [...registered].sort());
+  for (const item of Object.values(capabilities.desktopOperations))
+    assert.equal(item.kind, "shell");
 });

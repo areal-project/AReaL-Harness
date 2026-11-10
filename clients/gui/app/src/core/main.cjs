@@ -27,7 +27,7 @@ const {
   desktopDialogs,
   registerDesktopShell,
 } = require("./desktop-ipc.cjs");
-const { realpath, stat, writeFile } = require("node:fs/promises");
+const { realpath, stat } = require("node:fs/promises");
 const { join, resolve } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
@@ -46,7 +46,6 @@ const {
   McpAppsHost,
   parseDeepLink,
 } = require("@areal/workbench-service/desktop/core/mcp-apps.cjs");
-const { McpMetadataImages } = require("./mcp-apps-images.cjs");
 const { readCommandInvocation, desktopError } = require("@areal/workbench/desktop-contract");
 /** @type {typeof import("@areal/workbench/desktop-contract").validatePreview} */
 const validatePreview = require("@areal/workbench/desktop-contract").validatePreview;
@@ -1103,7 +1102,6 @@ function startDesktop() {
             trusted(event);
             if (mcpAppDeepLink?.id === id) mcpAppDeepLink = null;
           });
-          const mcpMetadataImages = new McpMetadataImages(serviceBackend);
           const mcpFormResources = new McpFormResources({
             backend: serviceBackend,
             choose: (options) => showOpenDialog(options),
@@ -1125,10 +1123,6 @@ function startDesktop() {
           handleDesktopIpc("areal-core:mcp-app", async (event, request) => {
             trusted(event);
             if (!modelRecord(request)) throw new Error("Invalid app request");
-            if (request.operation === "metadataImage")
-              return mcpMetadataImages.load(request.source).catch(() => {
-                throw new Error("Metadata image unavailable");
-              });
             if (request.operation === "openGenUi")
               return mcpHost.openGenUi(request, event.sender.id);
             if (request.operation === "genUiVisibility")
@@ -1579,50 +1573,8 @@ function startDesktop() {
                 await serviceBackend.init();
                 return { ok: true, value: null };
               }
-              if (name === "export") {
-                await serviceBackend.command("open", params);
-                const project = serviceBackend
-                  .snapshot()
-                  .projects.find((item) => item.id === params.projectId);
-                const thread = project?.state?.threads[params.threadId];
-                if (!thread) throw new Error(nativeText("export.selectConversation"));
-                const result = await showSaveDialog({
-                  title: nativeText("export.title"),
-                  defaultPath: `areal-${thread.id}.json`,
-                  filters: [{ name: "JSON", extensions: ["json"] }],
-                });
-                if (result.canceled || !result.filePath)
-                  return { ok: true, value: { canceled: true } };
-                await writeFile(
-                  result.filePath,
-                  JSON.stringify(
-                    {
-                      format: "areal-harness-thread-v1",
-                      exportedAt: new Date().toISOString(),
-                      project: { id: project.id, root: project.root },
-                      thread,
-                      queue: project.state?.queues?.[thread.id],
-                    },
-                    null,
-                    2,
-                  ),
-                  { mode: 0o600 },
-                );
-                return { ok: true, value: { path: result.filePath } };
-              }
               trusted(event);
               const value = await serviceBackend.command(name, params);
-              // Renderer records the selected conversation before requesting its
-              // authoritative snapshot. Checkpoint that existing DOMStorage after the
-              // open succeeds so a forced GUI exit can retain the accepted navigation.
-              if (
-                name === "open" &&
-                window &&
-                !window.isDestroyed() &&
-                event.sender === window.webContents
-              )
-                event.sender.session.flushStorageData();
-              if (name === "manage") mcpMetadataImages.remember(params, value);
               return { ok: true, value };
             } catch (error) {
               succeeded = false;

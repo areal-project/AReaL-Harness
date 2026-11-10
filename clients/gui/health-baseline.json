@@ -122,7 +122,6 @@
     "app/src/core/legacy-service-cancel.cjs": 543,
     "app/src/core/lifecycle.cjs": 364,
     "app/src/core/main.cjs": 1908,
-    "app/src/core/mcp-apps-images.cjs": 198,
     "app/src/core/mcp-form-resources.cjs": 245,
     "app/src/core/menu-bar.cjs": 68,
     "app/src/core/plugin-archives.cjs": 62,

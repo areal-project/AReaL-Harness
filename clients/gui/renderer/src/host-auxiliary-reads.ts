@@ -86,3 +86,21 @@ export async function chooseHostProject(client: HostClient, sourceId: string | u
   client.refreshShell();
   return id;
 }
+
+export async function reviewToken(
+  client: HostClient,
+  hostProjectId: string,
+  target: Record<string, string>,
+) {
+  let cursor: string | undefined;
+  for (let page = 0; page < 64; page++) {
+    const value = (await client.query("attention.read", hostProjectId, {
+      ...target,
+      ...(cursor && { cursor }),
+    })) as Record<string, unknown>;
+    if (typeof value.reviewToken === "string") return value;
+    if (typeof value.nextCursor !== "string") break;
+    cursor = value.nextCursor;
+  }
+  throw new Error("审批详情未读完");
+}

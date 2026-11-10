@@ -1347,6 +1347,13 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                 error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
                 Some("CAPABILITY_UNAVAILABLE")
             );
+            // 来源可省略（新装桌面登记来源前），由 Host 按当前后台认定，同样先要求后台在运行。
+            let unsourced = json!({"id":"desktop","method":"desktop.command","params":{"command":"list","request":{}}});
+            let error = local.request(&unsourced).await.unwrap_err();
+            assert_eq!(
+                error.downcast_ref::<crate::wire::Error>().map(|error| error.code),
+                Some("CAPABILITY_UNAVAILABLE")
+            );
             f.grant("a", |grant| grant["projectIds"] = json!([]));
             let mut denied = f.session("a");
             denied.gui_read = true;

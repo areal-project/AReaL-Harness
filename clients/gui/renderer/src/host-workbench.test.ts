@@ -7,7 +7,7 @@ import {
   hostPlatformCapabilities,
   openingAuthorization,
 } from "./host-workbench.js";
-import { hostCommandError } from "./host-services.js";
+import { hostCommandError } from "./desktop-response.js";
 import type { PlatformServices } from "./services.js";
 
 function setup(answer: (method: string, params: unknown) => unknown) {

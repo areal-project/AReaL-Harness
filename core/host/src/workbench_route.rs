@@ -1073,7 +1073,7 @@ pub(super) async fn desktop_command(
     principal: &str,
     request: &Value,
 ) -> Result<Value> {
-    let params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
+    let mut params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
         request["params"].clone(),
     )
     .context("INVALID_PARAMS")?;
@@ -1087,9 +1087,9 @@ pub(super) async fn desktop_command(
             "桌面后台未运行，请先打开一次桌面应用"
         )
     );
-    ensure!(source.as_deref() == Some(&*params.source_id), "FORBIDDEN");
-    let mut params = serde_json::to_value(params)?;
-    params.as_object_mut().unwrap().remove("sourceId");
+    let matched = params.source_id.take().is_none_or(|id| source == Some(id));
+    ensure!(matched, "FORBIDDEN");
+    let params = serde_json::to_value(params)?;
     host.gateway
         .workbench
         .request(

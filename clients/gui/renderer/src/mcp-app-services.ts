@@ -73,7 +73,10 @@ export type McpMetadataImageLoader = (source: string) => Promise<string>;
 export type McpAppOperations = {
   openGenUi: { request: GenUiSource; response: GenUiDescriptor };
   genUiVisibility: { request: { token: string; visible: boolean }; response: unknown };
-  metadataImage: { request: { source: string }; response: string };
+  metadataImage: {
+    request: { source: string; projectId: string; threadId?: string };
+    response: string;
+  };
   open: {
     request: {
       projectId: string;

@@ -190,14 +190,6 @@ const nativeMessages = {
     en: "Choose projectless task folder",
   },
   "picker.existingDirectory": { "zh-CN": "请选择现有文件夹", en: "Select an existing folder." },
-  "export.selectConversation": {
-    "zh-CN": "请选择需要导出的会话",
-    en: "Select a conversation to export.",
-  },
-  "export.title": {
-    "zh-CN": "导出会话记录与执行轨迹",
-    en: "Export conversation and execution trace",
-  },
   "auth.unsupportedUrl": { "zh-CN": "不支持的认证 URL", en: "Unsupported authentication URL" },
   "auth.openFailed": {
     "zh-CN": "无法打开认证页面，请核对认证状态后重试",
