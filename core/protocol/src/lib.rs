@@ -805,3 +805,20 @@ mod turn_outcome_tests {
         assert_eq!(serde_json::to_value(decoded).unwrap(), value);
     }
 }
+
+#[cfg(test)]
+mod host_manage_read_tests {
+    use serde_json::json;
+    #[test]
+    fn skills_reads_accept_a_thread_or_an_agent_profile() {
+        for params in [
+            json!({"projectId":"p","operation":"skills","threadId":"t"}),
+            json!({"projectId":"p","operation":"skills","agentProfile":{"id":"standard","revision":"v1"}}),
+            json!({"projectId":"p","operation":"skill","skill":{"id":"s","revision":"r"},"agentProfile":{"id":"standard","revision":"v1"}}),
+        ] {
+            let decoded: crate::host::WorkbenchManageReadParams =
+                serde_json::from_value(params.clone()).unwrap();
+            assert_eq!(serde_json::to_value(decoded).unwrap(), params);
+        }
+    }
+}
