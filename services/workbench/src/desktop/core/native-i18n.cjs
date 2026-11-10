@@ -190,13 +190,6 @@ const nativeMessages = {
     en: "Choose projectless task folder",
   },
   "picker.existingDirectory": { "zh-CN": "请选择现有文件夹", en: "Select an existing folder." },
-  "archive.question": { "zh-CN": "归档此会话？", en: "Archive this conversation?" },
-  "archive.detail": {
-    "zh-CN":
-      "历史仍可查看。当前 Core 不支持取消归档，归档后无法继续发送消息；该会话的浏览页面将关闭，共享登录数据保留。",
-    en: "History remains available. Core currently does not support unarchiving, so no further messages can be sent after archiving. Browser pages for this conversation close; shared login data is retained.",
-  },
-  "archive.confirm": { "zh-CN": "归档会话", en: "Archive conversation" },
   "export.selectConversation": {
     "zh-CN": "请选择需要导出的会话",
     en: "Select a conversation to export.",

@@ -2,6 +2,7 @@ import { Button, Input } from "@areal/ui";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useRef, useState } from "react";
 import type { Action, Data } from "./services.js";
+import { useArchiveConfirm } from "./ArchiveConfirm.js";
 
 export function RelatedSideChats({
   project,
@@ -18,6 +19,7 @@ export function RelatedSideChats({
   action: Action;
   showNew?: boolean;
 }) {
+  const archive = useArchiveConfirm();
   const [archived, setArchived] = useState(false);
   const [items, setItems] = useState<Data[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -95,6 +97,7 @@ export function RelatedSideChats({
     }
   };
   const changeArchive = async (item: Data) => {
+    if (!item.desktop?.archived && !(await archive.confirm())) return;
     setBusy(true);
     setError("");
     try {
@@ -177,6 +180,7 @@ export function RelatedSideChats({
           加载更多
         </Button>
       )}
+      {archive.dialog}
     </section>
   );
 }

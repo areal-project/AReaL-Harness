@@ -51,8 +51,10 @@ import {
 } from "../state/useSidebarNavigation.js";
 import { MemoTaskItem } from "../TaskListItem.js";
 import { ProjectMigrationNotice } from "./ProjectMigrationNotice.js";
+import { useArchiveConfirm } from "../ArchiveConfirm.js";
 
 const SidebarContext = createContext<ReturnType<typeof useSidebarNavigation> | null>(null);
+const ArchiveConfirmContext = createContext<() => Promise<boolean>>(async () => false);
 function useSidebarContext() {
   const context = useContext(SidebarContext);
   if (!context) throw new Error("Sidebar context is missing");
@@ -61,11 +63,15 @@ function useSidebarContext() {
 
 export function ConversationNavigation(props: SidebarNavigationProps) {
   const model = useSidebarNavigation(props);
+  const archive = useArchiveConfirm();
   return (
     <SidebarContext.Provider value={model}>
-      {props.visible && <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />}
-      <SidebarSearch />
-      <SidebarRename />
+      <ArchiveConfirmContext.Provider value={archive.confirm}>
+        {props.visible && <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />}
+        <SidebarSearch />
+        <SidebarRename />
+        {archive.dialog}
+      </ArchiveConfirmContext.Provider>
     </SidebarContext.Provider>
   );
 }
@@ -89,6 +95,7 @@ function SidebarTaskRow({ row }: { row: Data }) {
     visibleRows,
     startRename,
   } = useSidebarContext();
+  const confirmArchive = useContext(ArchiveConfirmContext);
   return (
     <MemoTaskItem
       key={`${row.owner.id}:${row.summary.id}`}
@@ -197,11 +204,14 @@ function SidebarTaskRow({ row }: { row: Data }) {
         }).catch(() => {})
       }
       onArchive={() =>
-        void action("manage", {
-          projectId: row.owner.id,
-          threadId: row.summary.id,
-          operation: "archive",
-        }).catch(() => {})
+        void (async () => {
+          if (!(await confirmArchive())) return;
+          await action("manage", {
+            projectId: row.owner.id,
+            threadId: row.summary.id,
+            operation: "archive",
+          });
+        })().catch(() => {})
       }
     />
   );

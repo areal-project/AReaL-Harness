@@ -1390,6 +1390,20 @@ function startDesktop() {
               path: result.filePaths[0],
             });
           });
+          // 登录授权页等外部链接只交给系统浏览器；只放行 https 与本机回环 http。
+          handleDesktopIpc("areal-core:open-external", async (event, url) => {
+            trusted(event);
+            const target = new URL(String(url));
+            if (
+              target.protocol !== "https:" &&
+              !(
+                target.protocol === "http:" &&
+                ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname)
+              )
+            )
+              throw new Error(nativeText("auth.unsupportedUrl"));
+            await shell.openExternal(target.href);
+          });
           handleDesktopIpc("areal-core:file-open", async (event, request) => {
             trusted(event);
             return fileOpen(
@@ -1565,17 +1579,6 @@ function startDesktop() {
                 await serviceBackend.init();
                 return { ok: true, value: null };
               }
-              if (name === "manage" && params.operation === "archive") {
-                const answer = await showMessageBox({
-                  type: "question",
-                  message: nativeText("archive.question"),
-                  detail: nativeText("archive.detail"),
-                  buttons: [nativeText("common.cancel"), nativeText("archive.confirm")],
-                  defaultId: 0,
-                  cancelId: 0,
-                });
-                if (answer.response !== 1) return { ok: true, value: { canceled: true } };
-              }
               if (name === "export") {
                 await serviceBackend.command("open", params);
                 const project = serviceBackend
@@ -1620,43 +1623,6 @@ function startDesktop() {
               )
                 event.sender.session.flushStorageData();
               if (name === "manage") mcpMetadataImages.remember(params, value);
-              if (
-                name === "manage" &&
-                params.operation === "pluginAuth" &&
-                params.authOperation === "start" &&
-                modelRecord(value) &&
-                value.status === "pending"
-              ) {
-                if (typeof value.authorizationUrl !== "string")
-                  throw new Error(nativeText("auth.unsupportedUrl"));
-                const authUrl = new URL(value.authorizationUrl);
-                if (
-                  authUrl.protocol !== "https:" &&
-                  !(
-                    authUrl.protocol === "http:" &&
-                    ["localhost", "127.0.0.1", "[::1]"].includes(authUrl.hostname)
-                  )
-                )
-                  throw new Error(nativeText("auth.unsupportedUrl"));
-                try {
-                  await shell.openExternal(authUrl.href);
-                } catch {
-                  throw new Error(nativeText("auth.openFailed"));
-                }
-              }
-              if (name === "chatgpt" && params.operation === "login") {
-                try {
-                  if (!modelRecord(value) || typeof value.authUrl !== "string")
-                    throw new Error("Invalid authentication URL");
-                  await shell.openExternal(value.authUrl);
-                } catch {
-                  await serviceBackend.command("chatgpt", {
-                    operation: "cancel",
-                    provider: params.provider,
-                  });
-                  throw new Error(nativeText("auth.chatgptOpenFailed"));
-                }
-              }
               return { ok: true, value };
             } catch (error) {
               succeeded = false;

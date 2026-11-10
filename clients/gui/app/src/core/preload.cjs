@@ -191,6 +191,8 @@ const desktopBridge = {
   chooseProjectlessDirectory: () => invokeDesktop("areal-core:choose-projectless-directory"),
   /** @param {unknown} request @returns {Promise<unknown>} */
   fileOpen: (request) => invokeDesktop("areal-core:file-open", request),
+  /** @param {unknown} url @returns {Promise<unknown>} */
+  openExternal: (url) => invokeDesktop("areal-core:open-external", url),
   /** @param {unknown} name @param {unknown} params @returns {Promise<unknown>} */
   command: (name, params) => invokeDesktop("areal-core:command", name, params),
   /** @param {unknown} id @returns {Promise<unknown>} */

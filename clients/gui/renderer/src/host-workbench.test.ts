@@ -5,6 +5,7 @@ import {
   createWorkbenchRoutes,
   hostDesktopCommand,
   hostPlatformCapabilities,
+  openingAuthorization,
 } from "./host-workbench.js";
 import { hostCommandError } from "./host-services.js";
 import type { PlatformServices } from "./services.js";
@@ -571,6 +572,32 @@ describe("MCP Apps catalog without a desktop adapter", () => {
     expect(
       await routes.call("manage", { operation: "mcpForms", projectId: "project" }),
     ).toBeUndefined();
+  });
+});
+
+describe("authorization pages", () => {
+  it("opens plugin and ChatGPT authorization pages and cancels a login it cannot open", async () => {
+    const calls: unknown[] = [];
+    const run = async (name: string, params: Record<string, unknown>) => {
+      calls.push([name, params.operation]);
+      if (name === "manage")
+        return { ok: true as const, value: { status: "pending", authorizationUrl: "https://a" } };
+      if (params.operation === "login")
+        return { ok: true as const, value: { authUrl: "https://b" } };
+      return { ok: true as const, value: null };
+    };
+    const opened: string[] = [];
+    const command = openingAuthorization(run, async (url) => {
+      opened.push(url);
+      if (url === "https://b") throw new Error("blocked");
+    });
+    await command("manage", { operation: "pluginAuth", authOperation: "start" });
+    await command("manage", { operation: "pluginAuth", authOperation: "status" });
+    await expect(command("chatgpt", { operation: "login", provider: "p" })).rejects.toThrow(
+      "blocked",
+    );
+    expect(opened).toEqual(["https://a", "https://b"]);
+    expect(calls.at(-1)).toEqual(["chatgpt", "cancel"]);
   });
 });
 

@@ -300,6 +300,15 @@ export const commonMessages = {
   "common.navigation.moveUp": { "zh-CN": "上移", en: "Move up" },
   "common.navigation.moveDown": { "zh-CN": "下移", en: "Move down" },
   "common.navigation.rename": { "zh-CN": "重命名", en: "Rename" },
+  "common.navigation.archiveQuestion": {
+    "zh-CN": "归档此会话？",
+    en: "Archive this conversation?",
+  },
+  "common.navigation.archiveDetail": {
+    "zh-CN": "归档后不能再发送消息，历史仍可查看。",
+    en: "You can't send more messages after archiving. History stays available.",
+  },
+  "common.navigation.archiveConfirm": { "zh-CN": "归档", en: "Archive" },
   "common.navigation.openDefault": {
     "zh-CN": "在默认应用中打开",
     en: "Open in default application",

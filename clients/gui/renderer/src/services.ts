@@ -231,6 +231,8 @@ export interface PlatformServices {
   chooseProject(): Promise<string | null>;
   chooseTaskDirectory?(): Promise<{ cwd: string } | null>;
   chooseProjectlessDirectory?(): Promise<{ directory: string } | null>;
+  /** 用系统浏览器打开外部链接（登录授权页等）。 */
+  openExternal?(url: string): Promise<void>;
   fileOpen?(
     request: FileOpenRequest,
   ): Promise<FileOpenTargets | { saved: boolean } | WorkspaceImage | Record<string, never>>;

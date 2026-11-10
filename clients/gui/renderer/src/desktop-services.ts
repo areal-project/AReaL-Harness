@@ -280,6 +280,11 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     chooseProjectlessDirectory: async () =>
       readProjectlessDirectory(await bridge.chooseProjectlessDirectory()),
     fileOpen: async (request) => readFileOpenResult(await bridge.fileOpen(request)),
+    ...(bridge.openExternal && {
+      openExternal: async (url: string) => {
+        await bridge.openExternal!(url);
+      },
+    }),
     command: async (name, params) => {
       const value = await bridge.command(name, params);
       try {

@@ -32,6 +32,7 @@ add("shell", "系统深链接", "onMcpAppDeepLink");
 add("shell", "内嵌预览窗口", "preview onPreviewEvent");
 add("shell", "系统目录选择框", "chooseTaskDirectory chooseProjectlessDirectory");
 add("shell", "用系统应用打开文件", "fileOpen");
+add("shell", "用系统浏览器打开授权页等外部链接", "openExternal");
 add("shell", "窗口外观主题", "theme onTheme");
 add("shell", "系统通知点击", "onNotificationOpen");
 

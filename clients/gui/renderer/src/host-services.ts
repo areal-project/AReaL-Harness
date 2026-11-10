@@ -34,6 +34,7 @@ import {
   desktopKeepsCommand,
   hostDesktopCommand,
   hostPlatformCapabilities,
+  openingAuthorization,
 } from "./host-workbench.js";
 import { createHostPages } from "./host-pages.js";
 import {
@@ -792,25 +793,19 @@ export function createHostReadServices(
       publish();
     },
   );
-  return {
-    ...(desktop ?? {
-      chooseProject: () => chooseHostProject(client, librarySourceId),
-      command: hostCommand,
-      theme: async () => ({
-        dark: matchMedia("(prefers-color-scheme: dark)").matches,
-        id: "system",
-      }),
-      onTheme: () => () => {},
-      preview: unavailable,
-    }),
-    ...(desktop && {
-      // 桌面与网页同走 Host 的后台命令；只有 Main 加了本机行为的、或资料库来源未就绪时仍走 Main。
-      // 过渡：到 0.2.0 删（来源去掉、Main 附加行为迁走后整条走 Host）
-      command: (async (name: string, params: Record<string, unknown>) => {
-        type Run = (
-          name: string,
-          params: Record<string, unknown>,
-        ) => ReturnType<PlatformServices["command"]>;
+  type Run = (
+    name: string,
+    params: Record<string, unknown>,
+  ) => ReturnType<PlatformServices["command"]>;
+  const openExternal =
+    desktop?.openExternal ??
+    (async (url: string) => {
+      if (!window.open(url, "_blank", "noopener,noreferrer")) throw new Error("浏览器拦截了新窗口");
+    });
+  // 桌面与网页同走 Host 的后台命令；只有 Main 加了本机行为的、或资料库来源未就绪时仍走 Main。
+  // 过渡：到 0.2.0 删（来源去掉、Main 附加行为迁走后整条走 Host）
+  const routed: Run = desktop
+    ? async (name, params) => {
         const native = desktop.command as Run;
         if (
           !DESKTOP_COMMANDS.has(name) ||
@@ -822,8 +817,21 @@ export function createHostReadServices(
         const result = await (hostCommand as Run)(name, params);
         // 窗口刚打开时 Main 可能还没把后台交给 Host；Host 明确拒绝（未受理）时走 Main，Main 会等后台就绪。
         return !result.ok && declinedCode(result.error.code) ? native(name, params) : result;
-      }) as PlatformServices["command"],
+      }
+    : (hostCommand as Run);
+  const command = openingAuthorization(routed, openExternal) as PlatformServices["command"];
+  return {
+    ...(desktop ?? {
+      chooseProject: () => chooseHostProject(client, librarySourceId),
+      theme: async () => ({
+        dark: matchMedia("(prefers-color-scheme: dark)").matches,
+        id: "system",
+      }),
+      onTheme: () => () => {},
+      preview: unavailable,
     }),
+    command,
+    openExternal,
     get capabilities() {
       return hostPlatformCapabilities(client, desktop, librarySourceId);
     },

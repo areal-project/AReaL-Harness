@@ -163,6 +163,39 @@ export function hostDesktopCommand(
   };
 }
 
+type Run = (
+  name: string,
+  params: Record<string, unknown>,
+) => ReturnType<PlatformServices["command"]>;
+
+/**
+ * 插件授权和 ChatGPT 登录返回授权页地址，由界面交给系统浏览器打开；桌面与网页同一处理。
+ * 打不开 ChatGPT 登录页时取消这次登录，避免后台一直等回调。
+ */
+export function openingAuthorization(run: Run, open: (url: string) => Promise<void>): Run {
+  return async (name, params) => {
+    const result = await run(name, params);
+    if (!result.ok) return result;
+    const value = result.value as Record<string, unknown> | null;
+    if (
+      name === "manage" &&
+      params.operation === "pluginAuth" &&
+      params.authOperation === "start" &&
+      value?.status === "pending" &&
+      typeof value.authorizationUrl === "string"
+    )
+      await open(value.authorizationUrl);
+    if (name === "chatgpt" && params.operation === "login" && typeof value?.authUrl === "string")
+      try {
+        await open(value.authUrl);
+      } catch (error) {
+        await run("chatgpt", { operation: "cancel", provider: params.provider });
+        throw error;
+      }
+    return result;
+  };
+}
+
 /**
  * 桌面窗口里这些命令仍走 Main：Main 在后台调用前后加了本机行为（确认框、选文件、打开浏览器、
  * 记下 MCP 元数据图片、电脑控制准入、导航落盘）。迁走这些行为后从这里删掉。
@@ -170,7 +203,6 @@ export function hostDesktopCommand(
 export function desktopKeepsCommand(name: string, params: Record<string, unknown>) {
   const operation = String(params.operation ?? "");
   if (name === "open" || name === "remoteControl") return true;
-  if (name === "chatgpt") return operation === "login";
   if (name === "library")
     return (
       operation === "settings" &&
@@ -182,10 +214,8 @@ export function desktopKeepsCommand(name: string, params: Record<string, unknown
     return (
       operation.startsWith("process") ||
       [
-        "archive",
         "pluginArchivePick",
         "pluginArchiveImport",
-        "pluginAuth",
         "mcpApps",
         "mcpForms",
         "mcpExtensionCall",
@@ -252,12 +282,8 @@ export function createWorkbenchRoutes(
   for (const name of ["focus", "blur"]) events?.addEventListener(name, report);
   return {
     async call(name, params) {
-      // 原生进程的连接租约与归档确认弹窗归 Main；其薄适配仍经 Host 访问 Core。
-      if (
-        desktop &&
-        name === "manage" &&
-        (String(params.operation).startsWith("process") || params.operation === "archive")
-      )
+      // 原生进程的连接租约归 Main；其薄适配仍经 Host 访问 Core。
+      if (desktop && name === "manage" && String(params.operation).startsWith("process"))
         return undefined;
       if (name === "manage" && params.operation === "mcpApps") {
         if (!client.writable("pages.command")) return undefined;

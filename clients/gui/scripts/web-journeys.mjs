@@ -1,4 +1,4 @@
-// 网页业务旅程：真实 Host、后台和 Core，外部模型是本地假模型，界面在 Chromium 里打开 Host 的本机网页。
+// 网页业务旅程（W0–W5）：真实 Host、后台和 Core，外部模型是本地假模型，界面在 Chromium 里打开 Host 的本机网页。
 // 网页与桌面是同一份界面、同一套 Host 协议，所以这里通过的业务旅程不必再在 Mac 上逐项点一遍。
 // 桌面窗口只用来做一次引导：网页需要桌面先登记资料库来源，引导后立即关闭。
 // 先构建 Core（make build）和界面（pnpm --dir clients/gui build），再运行：
@@ -124,6 +124,32 @@ try {
   await page.reload();
   await page.getByText("已添加 clamp").first().waitFor({ timeout: 60_000 });
   record(await inspectPage(page, "W3 刷新后对话仍在"));
+
+  // 旅程 W5：归档不可撤销，先确认；取消不归档，确认后会话移出列表。运行中的会话不能归档，先拒绝排队消息触发的审批。
+  const pendingApproval = page.locator('.decision-card[data-interaction="approval"]');
+  await pendingApproval
+    .getByRole("button", { name: /拒绝/ })
+    .first()
+    .click();
+  await pendingApproval.waitFor({ state: "detached", timeout: 60_000 });
+  await page
+    .locator('[role="img"][aria-label="运行中"]')
+    .waitFor({ state: "detached", timeout: 60_000 });
+  const archiveButton = page.locator('button[aria-label^="归档 "]').first();
+  const archiveTitle = (await archiveButton.getAttribute("aria-label")).slice(3);
+  const confirmDialog = page.getByRole("dialog").filter({ hasText: "归档此会话？" });
+  await archiveButton.click({ force: true });
+  await confirmDialog.waitFor();
+  await shot("archive-confirm");
+  await confirmDialog.getByRole("button", { name: "取消" }).click();
+  await confirmDialog.waitFor({ state: "hidden" });
+  assert.equal(await archiveButton.count(), 1, "取消后会话仍在");
+  await archiveButton.click({ force: true });
+  await confirmDialog.getByRole("button", { name: "归档", exact: true }).click();
+  await page
+    .locator(`button[aria-label="归档 ${archiveTitle}"]`)
+    .waitFor({ state: "detached", timeout: 60_000 });
+  record(await inspectPage(page, "W5 归档先确认"));
 
   // 旅程 W4：设置页能打开模型设置。
   await page.locator('button[aria-label*="设置"]').first().click();
