@@ -1,0 +1,84 @@
+core/server/src/workgroup.rs
+  s_bf83cab8355b2b::t_38488f92510b77 182
+docs/benchmarks/reports/chat-continuation.md
+  s_bf83cab8355b2b::t_8d43e9bc847c71 1-35
+docs/benchmarks/reports/chat-continuation.en.md
+  s_bf83cab8355b2b::t_8d43e9bc847c71 1-35
+core/server/src/lib.rs
+  s_bf83cab8355b2b::t_38488f92510b77 739
+core/engine/tests/http_model.rs
+  s_bf83cab8355b2b::t_14c7626eb4b965 2036-2038,2040-2071,2078-2182
+  s_bf83cab8355b2b::t_4b411844c30be2 2039
+  s_bf83cab8355b2b::t_ead04b768223db 2073-2077
+  s_bf83cab8355b2b::t_38488f92510b77 2072
+core/engine/src/desktop/catalog.rs
+  s_bf83cab8355b2b::t_38488f92510b77 56,524
+  s_bf83cab8355b2b::t_ead04b768223db 525-530
+core/engine/src/model/decoder.rs
+  s_bf83cab8355b2b::t_38488f92510b77 124,137-141,157,251-253,311-313,1328
+  s_bf83cab8355b2b::t_14c7626eb4b965 125-126,158-164,1351-1352,1354-1361
+  s_bf83cab8355b2b::t_ead04b768223db 1366-1395
+  s_bf83cab8355b2b::t_ef052aff4785e7 1365
+docs/benchmarks/reports/README.md
+  s_bf83cab8355b2b::t_8d43e9bc847c71 9
+docs/api/core.en.md
+  s_bf83cab8355b2b::t_ead04b768223db 177
+  s_bf83cab8355b2b::t_4b411844c30be2 159
+core/config/tests/loading.rs
+  s_bf83cab8355b2b::t_ead04b768223db 1655-1682
+core/engine/src/desktop/media.rs
+  s_bf83cab8355b2b::t_4b411844c30be2 420
+core/engine/src/model/terminal_integrity_tests.rs
+  s_bf83cab8355b2b::t_ead04b768223db 383-387,407-428
+  s_bf83cab8355b2b::t_14c7626eb4b965 367-382,388-406,429
+docs/benchmarks/reports/README.en.md
+  s_bf83cab8355b2b::t_8d43e9bc847c71 9
+core/engine/src/context.rs
+  s_bf83cab8355b2b::t_14c7626eb4b965 291-295,323-326,1861-1870
+  s_bf83cab8355b2b::t_d3ff539c25f3f2 1871-1872
+docs/api/core.md
+  s_bf83cab8355b2b::t_ead04b768223db 172
+  s_bf83cab8355b2b::t_4b411844c30be2 154
+core/config/src/file.rs
+  s_bf83cab8355b2b::t_38488f92510b77 435
+core/config/src/resolve.rs
+  s_bf83cab8355b2b::t_38488f92510b77 471,729,1251
+  s_bf83cab8355b2b::t_ead04b768223db 12-15,1065-1068,1242-1250
+  s_bf83cab8355b2b::t_f4e0e1d0a0f8f3 11
+docs/guides/configuration.md
+  s_bf83cab8355b2b::t_4b411844c30be2 185-186
+core/engine/src/history.rs
+  s_bf83cab8355b2b::t_14c7626eb4b965 639-642,671-685
+core/config/src/lib.rs
+  s_bf83cab8355b2b::t_38488f92510b77 262-263,412
+docs/guides/configuration.en.md
+  s_bf83cab8355b2b::t_4b411844c30be2 185-186
+core/engine/src/model.rs
+  s_bf83cab8355b2b::t_14c7626eb4b965 475-478,482,496-502,1108-1111,1142-1148,1907-1910
+  s_bf83cab8355b2b::t_38488f92510b77 848-849,876,1083-1086,1737,1739
+  s_bf83cab8355b2b::t_ead04b768223db 1114-1118,1738
+core/engine/src/context_usage.rs
+  s_bf83cab8355b2b::t_14c7626eb4b965 285-288
+core/engine/src/generation.rs
+  s_bf83cab8355b2b::t_14c7626eb4b965 845,1574-1581,1604-1608,1647
+core/engine/src/model/request_budget.rs
+  s_bf83cab8355b2b::t_14c7626eb4b965 133
+core/server/src/reload.rs
+  s_bf83cab8355b2b::t_38488f92510b77 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "128895f616408569d936824ce220bcfdd0df17a0",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
