@@ -269,50 +269,65 @@ impl Local {
             no_deployment_mcp: args.strict_mcp_config && mcp.is_empty(),
             ..Default::default()
         };
-        let mut input = areal_host::ResolveProject::from_local_args(&options)?;
-        if !mcp.is_empty() {
-            // 单次运行的 MCP 合并进本次临时工具扩展文件，作为部署声明的服务，不写进用户插件库。
-            let mut extensions = match &input.tool_extensions_file {
-                Some(path) => serde_json::from_slice(&std::fs::read(path)?)
-                    .context("invalid tool extensions JSON")?,
-                None => json!({}),
-            };
-            let fields = extensions
-                .as_object_mut()
-                .context("tool extensions must be an object")?;
-            if args.strict_mcp_config {
-                fields.remove("mcpServers");
-            }
-            let servers = fields
-                .entry("mcpServers")
-                .or_insert_with(|| json!({}))
-                .as_object_mut()
-                .context("tool extensions mcpServers must be an object")?;
-            for (id, config) in std::mem::take(&mut mcp) {
-                ensure!(
-                    servers.insert(id, config).is_none(),
-                    "--mcp-config server duplicates a configured MCP server"
+        let resolve = || -> Result<areal_host::ResolveProject> {
+            let mut input = areal_host::ResolveProject::from_local_args(&options)?;
+            if !mcp.is_empty() {
+                // 单次运行的 MCP 合并进本次临时工具扩展文件，作为部署声明的服务，不写进用户插件库。
+                let mut extensions = match &input.tool_extensions_file {
+                    Some(path) => serde_json::from_slice(&std::fs::read(path)?)
+                        .context("invalid tool extensions JSON")?,
+                    None => json!({}),
+                };
+                let fields = extensions
+                    .as_object_mut()
+                    .context("tool extensions must be an object")?;
+                if args.strict_mcp_config {
+                    fields.remove("mcpServers");
+                }
+                let servers = fields
+                    .entry("mcpServers")
+                    .or_insert_with(|| json!({}))
+                    .as_object_mut()
+                    .context("tool extensions mcpServers must be an object")?;
+                for (id, config) in &mcp {
+                    ensure!(
+                        servers.insert(id.clone(), config.clone()).is_none(),
+                        "--mcp-config server duplicates a configured MCP server"
+                    );
+                }
+                let path = temporary.path().join("tool-extensions.json");
+                protected(&path, &serde_json::to_vec(&extensions)?)?;
+                input.launch_inputs.environment.insert(
+                    "AREAL_HARNESS_TOOL_EXTENSIONS".into(),
+                    path.to_string_lossy().into_owned(),
                 );
             }
-            let path = temporary.path().join("tool-extensions.json");
-            protected(&path, &serde_json::to_vec(&extensions)?)?;
-            input.launch_inputs.environment.insert(
-                "AREAL_HARNESS_TOOL_EXTENSIONS".into(),
-                path.to_string_lossy().into_owned(),
-            );
-        }
-        for (name, value) in env {
-            if let Some(old) = input.credentials.insert(name.clone(), value.clone()) {
-                ensure!(old == value, "conflicting model and MCP environment");
+            for (name, value) in &env {
+                if let Some(old) = input.credentials.insert(name.clone(), value.clone()) {
+                    ensure!(&old == value, "conflicting model and MCP environment");
+                }
+                if !input.launch_inputs.credential_names.contains(name) {
+                    input.launch_inputs.credential_names.push(name.clone());
+                }
             }
-            if !input.launch_inputs.credential_names.contains(&name) {
-                input.launch_inputs.credential_names.push(name);
+            Ok(input)
+        };
+        // 启动参数先校验，无效时不拉起 Host。
+        let input = resolve()?;
+        let client = areal_host::Client::connect_or_start().await?;
+        let opened = match client.open(input).await {
+            // 续接时本进程独占这个会话（client.lock）；权限等启动参数变了，由它显式重启空闲的会话服务。
+            Err(error)
+                if args.resume.is_some()
+                    && format!("{error:#}")
+                        .contains(areal_local_service::CONFIGURATION_CONFLICT) =>
+            {
+                client
+                    .restart(resolve()?, areal_host::StopStrategy::IfIdle)
+                    .await?
             }
-        }
-        let opened = areal_host::Client::connect_or_start()
-            .await?
-            .open(input)
-            .await?;
+            opened => opened?,
+        };
         let service = opened.service()?;
         let profile = args
             .agent

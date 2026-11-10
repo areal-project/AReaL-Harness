@@ -1817,6 +1817,8 @@ async function runFullModelSelection() {
       .every((m) => m.credentialState === "unavailable"),
   );
   assert.equal(await button("发送").isDisabled(), true, "an empty draft cannot enable sending");
+  // 界面的模型目录经 Host 另读，比后台快照晚到；等按钮出现再数。
+  await button("选择模型").waitFor();
   assert.equal(
     await button("选择模型").count(),
     1,
