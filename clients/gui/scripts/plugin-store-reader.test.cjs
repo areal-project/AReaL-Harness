@@ -27,6 +27,18 @@ test("offline requests allow a projectless read and reject caller supplied files
       assert.throws(() => validateCommand("manage", { ...request, [field]: "/untrusted" }));
   }
   assert.throws(() => validateCommand("manage", { operation: "plugins" }));
+  // 直接添加的 MCP 是用户级插件：没有选中项目时也能读、存、删。
+  for (const request of [
+    { operation: "mcp" },
+    {
+      operation: "mcpSave",
+      name: "docs",
+      server: { url: "https://mcp.example.test" },
+      expectedRevision: 0,
+    },
+    { operation: "mcpRemove", name: "docs", expectedRevision: 1 },
+  ])
+    assert.doesNotThrow(() => validateCommand("manage", request));
 });
 test("offline plugin reads use Host utility and do not start a project", async () => {
   const calls = [];

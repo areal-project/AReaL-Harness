@@ -85,7 +85,7 @@ const commandDefinitions = Object.freeze({
       ),
       ...operations(
         mutation,
-        "pluginInstall pluginUninstall pluginResolve pluginConfigure marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate mcpSave mcpRemove pluginCredentialsReload pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
+        "pluginInstall pluginUninstall pluginResolve pluginConfigure marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate mcpSave pluginCredentialsReload pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
       ),
       taskDraftStart: { effect: "mutation", requestId: "draftId" },
     },

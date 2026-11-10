@@ -222,7 +222,10 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     scope !== "app" &&
     !(
       name === "manage" &&
-      ["pluginStoreSnapshot", "pluginStoreDoctor"].includes(String(params.operation))
+      // 直接添加的 MCP 是用户级插件，不属于某个项目。
+      ["pluginStoreSnapshot", "pluginStoreDoctor", "mcp", "mcpSave", "mcpRemove"].includes(
+        String(params.operation),
+      )
     ) &&
     !(
       name === "workspace" &&
