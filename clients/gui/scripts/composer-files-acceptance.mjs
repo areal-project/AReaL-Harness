@@ -137,7 +137,13 @@ export async function runComposerFilesAcceptance({
     await identifier.waitFor();
     await identifier.hover();
     const tooltip = page.getByRole("tooltip").filter({ hasText: absolutePath });
-    await tooltip.waitFor();
+    await tooltip.waitFor().catch(async (error) => {
+      // 超时时带上当时实际显示的提示，区分“没弹出”和“路径不对”。
+      const shown = await page.getByRole("tooltip").allTextContents();
+      throw new Error(`expected path tooltip ${absolutePath}, shown ${JSON.stringify(shown)}`, {
+        cause: error,
+      });
+    });
     assert.equal(
       await tooltip.textContent(),
       absolutePath,
