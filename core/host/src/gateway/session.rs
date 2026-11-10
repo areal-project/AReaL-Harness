@@ -65,6 +65,8 @@ const METHODS: &[&str] = &[
     "subscription.close",
     "work.list",
     "attention.list",
+    "plugins.read",
+    "plugins.command",
 ];
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1168,7 +1170,6 @@ impl Session {
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
             let (host, peer) = (&self.host, &self.peer);
             if method == "desktop.command" {
-                ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
                 return crate::server::workbench_route::desktop_command(host, peer, request).await;
             }
             return crate::server::plugins::gateway(host, method, request).await;

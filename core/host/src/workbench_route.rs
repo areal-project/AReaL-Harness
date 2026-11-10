@@ -1073,6 +1073,7 @@ pub(super) async fn desktop_command(
     principal: &str,
     request: &Value,
 ) -> Result<Value> {
+    ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
     let mut params = serde_json::from_value::<areal_protocol::host::DesktopCommandParams>(
         request["params"].clone(),
     )

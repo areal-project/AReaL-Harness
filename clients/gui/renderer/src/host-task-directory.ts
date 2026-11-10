@@ -3,7 +3,10 @@ import type { HostClient, ShellProject } from "@areal/client";
 export type TaskDirectoryState = {
   tasks: Map<string, Record<string, unknown>>;
   reads: Map<string, string>;
+  /** 读失败后的退避截止时间；界面每次重绘都会走到这里，不能失败一次就立刻再读。 */
+  retryAt?: number;
 };
+const RETRY_MS = 5000;
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -33,9 +36,11 @@ export function refreshTaskDirectory(
   client: HostClient,
   projects: readonly ShellProject[],
   ids: ReadonlyMap<string, string>,
-  { tasks, reads: taskReads }: TaskDirectoryState,
+  state: TaskDirectoryState,
   publish: () => void,
 ) {
+  const { tasks, reads: taskReads } = state;
+  if (state.retryAt !== undefined && Date.now() < state.retryAt) return;
   const ready = projects.filter((project) => project.state === "ready" && project.taskRevision);
   const revisions = new Map(ready.map((project) => [project.projectId, project.taskRevision!]));
   const changed = ready.filter(
@@ -80,6 +85,9 @@ export function refreshTaskDirectory(
           );
     })
     .catch(() => {
-      if (current()) taskReads.clear();
+      if (!current()) return;
+      taskReads.clear();
+      state.retryAt = Date.now() + RETRY_MS;
+      setTimeout(publish, RETRY_MS);
     });
 }

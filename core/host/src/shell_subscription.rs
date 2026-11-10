@@ -356,6 +356,8 @@ fn restrict(
     view.navigation
         .retain(|navigation| navigation.source_id == *source);
     for navigation in &mut view.navigation {
+        // 应用偏好只给本机不限范围的连接；按范围收窄的远程视图不带。
+        navigation.settings.clear();
         navigation
             .bindings
             .retain(|binding| projects.contains(&binding.project_id));
@@ -533,7 +535,8 @@ mod tests {
                 "projects":{"alias":{"title":"Visible","sectionId":"public"},"hidden":{"title":"Private"}},
                 "threads":{"alias:thread":{"title":"Visible thread","sectionId":"public"},"hidden:thread":{"title":"Private thread"}},
                 "projectOrder":["alias","hidden"],"sidebarThreadOrder":["alias:thread","hidden:thread"],
-                "sections":[{"id":"public","title":"Visible"},{"id":"private","title":"Private"}]
+                "sections":[{"id":"public","title":"Visible"},{"id":"private","title":"Private"}],
+                "settings":{"fileOpenTarget":"/Applications/Private.app"}
             })).unwrap();
         }
         let sources: Vec<_> = [("selected", source), ("other", other)]
@@ -562,6 +565,11 @@ mod tests {
         assert_eq!(scoped["projects"].as_array().unwrap().len(), 1);
         assert_eq!(scoped["navigation"].as_array().unwrap().len(), 1);
         assert_eq!(scoped["navigation"][0]["sourceId"], "selected");
+        assert_eq!(
+            serde_json::to_value(&view).unwrap()["navigation"][0]["settings"]["fileOpenTarget"],
+            "/Applications/Private.app"
+        );
+        assert_eq!(scoped["navigation"][0]["settings"], json!({}));
         assert_eq!(
             scoped["navigation"][0]["sections"],
             json!([{"id":"public","title":"Visible"}])
