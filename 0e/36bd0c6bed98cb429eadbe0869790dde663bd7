@@ -1,0 +1,23 @@
+docs/benchmarks/reports/main-f08-regression-review.md
+  s_bf83cab8355b2b::t_3a4d9fab532861 85-104,107
+docs/benchmarks/reports/main-f08-regression-review.en.md
+  s_bf83cab8355b2b::t_f816037903bcf0 85-104,107
+docs/benchmarks/reports/main-f08-regression-review.json
+  s_bf83cab8355b2b::t_aa26a94576167a 3,755-762,897-1102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0e36bd0c6bed98cb429eadbe0869790dde663bd7",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
