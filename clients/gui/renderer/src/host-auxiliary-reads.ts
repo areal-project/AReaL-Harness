@@ -1,12 +1,26 @@
 import type { HostClient } from "@areal/client";
 import { configurationIdentity, type ReadProject } from "./host-snapshot.js";
 
-type Cache = Map<string, { identity: string; value?: Record<string, unknown> }>;
+type Cache = Map<string, { identity: string; scope?: string; value?: Record<string, unknown> }>;
 type ShellProject = { projectId: string; state: string; serviceGeneration?: unknown };
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const RETRY_MS = 5000;
+
+// 每个连接一份：模型服务设置写入后加一，同一代 Core 的目录重读，重读期间继续显示旧目录。
+const stalenessByClient = new WeakMap<HostClient, { epoch: number; wake?: () => void }>();
+function staleness(client: HostClient) {
+  let entry = stalenessByClient.get(client);
+  if (!entry) stalenessByClient.set(client, (entry = { epoch: 0 }));
+  return entry;
+}
+/** 模型服务设置（密钥、模型、默认项）已写入：让各项目的模型目录重读。 */
+export function modelCatalogsChanged(client: HostClient) {
+  const entry = staleness(client);
+  entry.epoch++;
+  entry.wake?.();
+}
 
 /** 模型、配置档与 Core 能力都由 Host 的 project.models 提供，桌面与网页同一来源。 */
 export function refreshModelCatalogs(
@@ -15,13 +29,21 @@ export function refreshModelCatalogs(
   catalogs: Cache,
   publish: () => void,
 ) {
+  const stale = staleness(client);
+  stale.wake = publish;
   const connection = client.snapshot();
   if (connection.connection !== "ready") return;
   for (const project of projects) {
     if (project.state !== "ready") continue;
-    const identity = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
-    if (catalogs.get(project.projectId)?.identity === identity) continue;
-    const entry: { identity: string; value?: Record<string, unknown> } = { identity };
+    const scope = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
+    const identity = `${scope}#${stale.epoch}`;
+    const previous = catalogs.get(project.projectId);
+    if (previous?.identity === identity) continue;
+    const entry: NonNullable<ReturnType<Cache["get"]>> = {
+      identity,
+      scope,
+      ...(previous?.scope === scope && previous.value ? { value: previous.value } : {}),
+    };
     catalogs.set(project.projectId, entry);
     void client
       .query("project.models", project.projectId, {})
