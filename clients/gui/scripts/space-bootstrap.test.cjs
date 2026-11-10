@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { mkdtemp, mkdir, writeFile, chmod, readFile, realpath, rm } = require("node:fs/promises");
 const { join } = require("node:path");
 const { tmpdir } = require("node:os");
-const { prepareUpgrade, selectActiveSpace } = require("../src/desktop/core/space-bootstrap.cjs");
+const { prepareUpgrade, selectActiveSpace } = require("../app/src/core/space-bootstrap.cjs");
 
 test("upgrade choice reuses the same space request and never starts the old Host", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "areal-bootstrap-"));

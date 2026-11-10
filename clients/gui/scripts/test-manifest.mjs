@@ -32,11 +32,6 @@ export async function readTestManifest(root = gui) {
       if (key !== "requires" && !entry[key].length)
         throw new Error(`${entry.script} requires ${key}`);
     }
-    if (
-      ["test:feedback-native", "test:trajectory-native"].includes(entry.script) &&
-      (!entry.requires.includes("native-runtime") || !entry.requires.includes("core-binary"))
-    )
-      throw new Error(`${entry.script} must declare real Core and native Runtime capabilities`);
     if (!entry.platforms.every((platform) => platforms.includes(platform)))
       throw new Error(`${entry.script} has invalid platforms`);
     for (const key of ["platformReason", "ciSmoke", "qualificationJourney"]) {

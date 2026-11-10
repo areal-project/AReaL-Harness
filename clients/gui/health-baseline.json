@@ -2,7 +2,7 @@
   "$schemaVersion": 1,
   "$revision": "6d50f24d4c5db74dd005cafc693b6d2ea8d942c5",
   "mainSourceLines": {
-    "value": 24070,
+    "value": 24288,
     "direction": "down",
     "owner": "app/src"
   },
@@ -840,7 +840,7 @@
     "app/src/update/package-users.cjs": "Electron application update installation, Squirrel readiness and package occupancy"
   },
   "mainBusinessLines": {
-    "value": 7409,
+    "value": 7627,
     "direction": "down",
     "owner": "app/src"
   },
@@ -941,7 +941,7 @@
     "../../services/workbench/src/pages.cjs"
   ],
   "workbenchConvergeLines": {
-    "value": 7865,
+    "value": 7647,
     "direction": "down",
     "owner": "services/workbench/src"
   }

@@ -199,8 +199,9 @@ pub(super) struct PreparedExecution {
     pub params: Value,
     pub source: String,
     dispatched: bool,
-    host_dispatch: Option<(Weak<Host>, String, String, (String, String, String))>,
+    host_dispatch: Option<HostDispatch>,
 }
+type HostDispatch = (Weak<Host>, String, String, (String, String, String));
 impl PreparedExecution {
     pub(super) async fn dispatch(&mut self) -> Result<Value> {
         ensure!(!self.dispatched, "SUBMISSION_UNKNOWN");
@@ -335,12 +336,12 @@ impl Supervisor {
 
     pub(super) fn worktree_backend_identity(&self, source: &str) -> Option<Value> {
         if !self.backend_has_source(source)
-            || !self
+            || self
                 .backend
                 .running
                 .borrow()
                 .as_ref()
-                .is_some_and(|backend| !backend.closed())
+                .is_none_or(|backend| backend.closed())
         {
             return None;
         }
@@ -687,9 +688,9 @@ impl Supervisor {
         ensure!(result.text.len() <= 512 * 1024, "LIMIT_EXCEEDED");
         Ok(result.text)
     }
-
     #[cfg(test)]
     pub(crate) fn bind_test_backend(&self, backend: Workbench, source: &str) {
+        *self.backend.ownership.borrow_mut() = Some(("test".into(), json!({"serviceId":"test"})));
         *self.backend.running.borrow_mut() = Some(Rc::new(backend));
         *self.backend.source.borrow_mut() = Some(source.into());
     }
@@ -1271,12 +1272,11 @@ impl Backend {
                 }
                 ensure!(!self.stopped.get(), "RESYNC_REQUIRED");
                 *self.ownership.borrow_mut() = Some((key, ownership.clone()));
-                if let Some(source) = self.source.borrow().clone() {
+                let source = self.source.borrow().clone();
+                if let Some(source) = source {
                     if host.gateway.workbench.backend_has_source(&source) {
                         host.gateway.workbench.library_changed().await;
                     }
-                }
-                if let Some(source) = self.source.borrow().clone() {
                     host.gateway
                         .workbench
                         .schedule_worktree_cleanup(host, &source);
@@ -1849,6 +1849,13 @@ async fn core_request(host: &Host, params: &Value) -> Result<Value> {
             body,
         )
         .await
+}
+
+pub(super) fn frontend_options(host: &Host, source: &str, options: Value) -> Result<Value> {
+    let profile = host.migration.source_profile(source)?;
+    let (_, launch) = launch(host, Ensure { profile, options })?;
+    ensure!(launch.source_id.as_deref() == Some(source), "FORBIDDEN");
+    Ok(launch.options)
 }
 
 #[cfg(test)]
@@ -2470,11 +2477,4 @@ mod tests {
             vec![Instant::now() - FAILURE_WINDOW - Duration::from_secs(1); 5];
         assert!(supervisor.admit().is_ok());
     }
-}
-
-pub(super) fn frontend_options(host: &Host, source: &str, options: Value) -> Result<Value> {
-    let profile = host.migration.source_profile(source)?;
-    let (_, launch) = launch(host, Ensure { profile, options })?;
-    ensure!(launch.source_id.as_deref() == Some(source), "FORBIDDEN");
-    Ok(launch.options)
 }

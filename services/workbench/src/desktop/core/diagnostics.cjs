@@ -777,7 +777,8 @@ function start({ role, root, appRunId, version, packaged }) {
         arch: process.arch,
         electron: process.versions.electron,
         node: process.versions.node,
-        osRelease: os.release(),
+        // Linux 内核版本带发行后缀，只留数字前缀，否则会被校验丢弃。
+        osRelease: os.release().match(/^\d{1,4}(?:\.\d{1,4}){1,3}/)?.[0],
         locale: Intl.DateTimeFormat().resolvedOptions().locale,
         packaged,
         cpuCount: os.availableParallelism(),

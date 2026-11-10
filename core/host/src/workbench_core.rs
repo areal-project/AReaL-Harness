@@ -375,9 +375,8 @@ impl Connections {
         } else {
             self.ready(host, id, &service.identity.generation)
                 .await
-                .map_err(|cause| {
+                .inspect_err(|_cause| {
                     eprintln!("Host Core attach unavailable: projectId={id} stage=sharedReady");
-                    cause
                 })?;
             self.sessions
                 .borrow()
@@ -393,9 +392,8 @@ impl Connections {
         let capabilities = session
             .request("areal/capabilities", json!({"apiVersion":"areal.core.v1"}))
             .await
-            .map_err(|cause| {
+            .inspect_err(|_cause| {
                 eprintln!("Host Core attach unavailable: projectId={id} stage=capabilities");
-                cause
             })?;
         ensure!(session.shared_current(host), unavailable());
         if scope.is_some() || desktop {
@@ -467,26 +465,24 @@ impl Connections {
                         claim = Some((thread.to_owned(), sequence));
                     }
                 }
-            } else if method == "areal/subscription/remove" {
-                if let Ok(request) = serde_json::from_value::<
+            } else if method == "areal/subscription/remove"
+                && let Ok(request) = serde_json::from_value::<
                     areal_protocol::desktop::RemoveSubscriptions,
                 >(params.clone())
-                {
-                    if request.thread_ids.len() <= areal_protocol::desktop::MAX_SUBSCRIPTIONS {
-                        let mut owned = session.workbench_observed.borrow_mut();
-                        let observed = session.observed.borrow();
-                        let mut removable = Vec::new();
-                        for thread in request.thread_ids {
-                            if owned.get(&thread).is_some_and(|(owner, _)| owner == lease) {
-                                owned.remove(&thread);
-                                if !observed.contains_key(&thread) {
-                                    removable.push(thread);
-                                }
-                            }
+                && request.thread_ids.len() <= areal_protocol::desktop::MAX_SUBSCRIPTIONS
+            {
+                let mut owned = session.workbench_observed.borrow_mut();
+                let observed = session.observed.borrow();
+                let mut removable = Vec::new();
+                for thread in request.thread_ids {
+                    if owned.get(&thread).is_some_and(|(owner, _)| owner == lease) {
+                        owned.remove(&thread);
+                        if !observed.contains_key(&thread) {
+                            removable.push(thread);
                         }
-                        params["threadIds"] = json!(session.defer_removals(removable));
                     }
                 }
+                params["threadIds"] = json!(session.defer_removals(removable));
             }
         }
         let _creation =
@@ -507,16 +503,17 @@ impl Connections {
         // Core 的原始错误保留回执/准入事实；传输失败仍然是未知，不能伪装成确定拒绝。
         match result {
             Ok(result) => {
-                if !session.terminal && matches!(method, "thread/start" | "areal/thread/start") {
-                    if let Some(thread) = result.value["thread"]["id"].as_str() {
-                        session.workbench_observed.borrow_mut().insert(
-                            thread.into(),
-                            (lease.into(), session.workbench_claim_sequence.get() + 1),
-                        );
-                        session
-                            .workbench_claim_sequence
-                            .set(session.workbench_claim_sequence.get() + 1);
-                    }
+                if !session.terminal
+                    && matches!(method, "thread/start" | "areal/thread/start")
+                    && let Some(thread) = result.value["thread"]["id"].as_str()
+                {
+                    session.workbench_observed.borrow_mut().insert(
+                        thread.into(),
+                        (lease.into(), session.workbench_claim_sequence.get() + 1),
+                    );
+                    session
+                        .workbench_claim_sequence
+                        .set(session.workbench_claim_sequence.get() + 1);
                 }
                 if matches!(
                     method,
@@ -538,17 +535,19 @@ impl Connections {
             }
             Err(error) => match error.downcast_ref::<RpcFailure>() {
                 Some(error) => {
-                    if invalid_observation_budget && error.0["code"] == -32602 {
-                        if let Some((thread, sequence)) = claim {
-                            let mut owned = session.workbench_observed.borrow_mut();
-                            if owned.get(&thread).is_some_and(|(owner, current)| {
-                                owner == lease && *current == sequence
-                            }) {
-                                owned.remove(&thread);
-                                drop(owned);
-                                if !session.observed.borrow().contains_key(&thread) {
-                                    session.remove_subscriptions(vec![thread]);
-                                }
+                    if invalid_observation_budget
+                        && error.0["code"] == -32602
+                        && let Some((thread, sequence)) = claim
+                    {
+                        let mut owned = session.workbench_observed.borrow_mut();
+                        if owned
+                            .get(&thread)
+                            .is_some_and(|(owner, current)| owner == lease && *current == sequence)
+                        {
+                            owned.remove(&thread);
+                            drop(owned);
+                            if !session.observed.borrow().contains_key(&thread) {
+                                session.remove_subscriptions(vec![thread]);
                             }
                         }
                     }
@@ -610,9 +609,8 @@ impl AdmissionRpc for CommandAdmission<'_> {
             self.connection
                 .request(method, params)
                 .await
-                .map_err(|cause| {
-                    admission_diagnostic(id, method, &cause);
-                    cause
+                .inspect_err(|cause| {
+                    admission_diagnostic(id, method, cause);
                 })?
         } else {
             let scope = self
@@ -646,10 +644,10 @@ impl Connections {
         params: &Value,
     ) -> Result<Value> {
         let session = if let Some(lease) = lease {
-            self.workbench_session(host, id, lease).map_err(|cause| {
-                admission_diagnostic(id, "lease", &cause);
-                cause
-            })?
+            self.workbench_session(host, id, lease)
+                .inspect_err(|cause| {
+                    admission_diagnostic(id, "lease", cause);
+                })?
         } else {
             self.sessions
                 .borrow()
@@ -687,13 +685,12 @@ impl Connections {
             },
         )
         .await
-        .map_err(|cause| {
+        .inspect_err(|cause| {
             eprintln!(
                 "Host workspace admission connection: projectId={id} coreGeneration={} connectionId={}",
                 session.service.identity.generation, session.connection_id
             );
-            admission_diagnostic(id, "policy", &cause);
-            cause
+            admission_diagnostic(id, "policy", cause);
         })?;
         ensure!(session.shared_current(host), unavailable());
         Ok(json!({"admitted":true}))

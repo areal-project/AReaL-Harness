@@ -97,7 +97,7 @@
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["recovery", "lifecycle"],
-    "requires": ["core-binary"]
+    "requires": []
   },
   {
     "script": "test:creation-recovery",
@@ -358,13 +358,6 @@
     "areas": ["history", "lifecycle"],
     "requires": [],
     "notes": "Exercises the history runner cleanup with owned child processes; service inventory is a separate boundary, and full Electron/Core cleanup requires history-compat."
-  },
-  {
-    "script": "test:connection",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["service"],
-    "requires": ["core-binary"]
   },
   {
     "script": "test:history-navigation-ui",
@@ -665,7 +658,8 @@
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["remote"],
-    "requires": ["gui-build"]
+    "requires": ["core-binary", "gui-build"],
+    "notes": "Host fixtures start the real Core binary named by AREAL_CORE_BIN."
   },
   {
     "script": "test:design",
@@ -772,20 +766,6 @@
     "notes": "Mixed command; classified by highest browser or Electron boundary."
   },
   {
-    "script": "test:feedback-native",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["feedback"],
-    "requires": ["core-binary", "native-runtime"]
-  },
-  {
-    "script": "test:trajectory-native",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["trajectory"],
-    "requires": ["core-binary", "native-runtime"]
-  },
-  {
     "script": "test:i18n",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -798,13 +778,6 @@
     "platforms": ["darwin", "linux"],
     "areas": ["i18n"],
     "requires": ["electron", "core-binary", "git", "macos-tools", "gui-build"]
-  },
-  {
-    "script": "test:core-crash-recovery",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["core", "lifecycle"],
-    "requires": ["core-binary"]
   },
   {
     "script": "test:recovery-electron",

@@ -6,16 +6,8 @@ import {
 import { useI18n } from "../i18n/IntlProvider.js";
 import { errorText } from "../errors/errorCopy.js";
 import { Input } from "../components/ui/input.js";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../components/ui/dialog.js";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
-import { createContext, useContext } from "react";
+import { useContext } from "react";
 import {
   SidebarSectionToggle,
   SidebarWorkspaceHeader,
@@ -51,28 +43,18 @@ import {
 } from "../state/useSidebarNavigation.js";
 import { MemoTaskItem } from "../TaskListItem.js";
 import { ProjectMigrationNotice } from "./ProjectMigrationNotice.js";
+import { ArchiveConfirmContext, SidebarScope, useSidebarContext } from "./SidebarScope.js";
 import { useArchiveConfirm } from "../ArchiveConfirm.js";
-
-const SidebarContext = createContext<ReturnType<typeof useSidebarNavigation> | null>(null);
-const ArchiveConfirmContext = createContext<() => Promise<boolean>>(async () => false);
-function useSidebarContext() {
-  const context = useContext(SidebarContext);
-  if (!context) throw new Error("Sidebar context is missing");
-  return context;
-}
 
 export function ConversationNavigation(props: SidebarNavigationProps) {
   const model = useSidebarNavigation(props);
   const archive = useArchiveConfirm();
   return (
-    <SidebarContext.Provider value={model}>
-      <ArchiveConfirmContext.Provider value={archive.confirm}>
-        {props.visible && <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />}
-        <SidebarSearch />
-        <SidebarRename />
-        {archive.dialog}
-      </ArchiveConfirmContext.Provider>
-    </SidebarContext.Provider>
+    <SidebarScope model={model} confirmArchive={archive.confirm}>
+      {props.visible && <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />}
+      <SidebarSearch />
+      {archive.dialog}
+    </SidebarScope>
   );
 }
 function SidebarTaskRow({ row }: { row: Data }) {
@@ -757,45 +739,5 @@ function SidebarSearch() {
         </div>
       )}
     </>
-  );
-}
-function SidebarRename() {
-  const { t } = useI18n();
-  const { action, rename, setRename, renameText, setRenameText } = useSidebarContext();
-  return (
-    <Dialog open={!!rename} onOpenChange={(open) => !open && setRename(null)}>
-      <DialogContent className="max-w-[min(calc(var(--reading-width)/2),calc(100%-var(--spacing-field)*2))]">
-        <form
-          className="contents"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!rename || !renameText.trim()) return;
-            void action("library", { ...rename, title: renameText.trim() })
-              .then(() => setRename(null))
-              .catch(() => {});
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>{t("common.navigation.rename")}</DialogTitle>
-          </DialogHeader>
-          <Input
-            autoFocus
-            onFocus={(e) => e.currentTarget.select()}
-            aria-label={t("common.navigation.name")}
-            maxLength={200}
-            value={renameText}
-            onChange={(e) => setRenameText(e.target.value)}
-          />
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>
-              {t("common.navigation.cancel")}
-            </DialogClose>
-            <Button type="submit" disabled={!renameText.trim()}>
-              {t("common.navigation.save")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

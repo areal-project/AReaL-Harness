@@ -857,10 +857,10 @@ async fn existing_effects<R: AdmissionRpc>(
                 task.thread_id
                     .ok_or_else(|| reject("Scratch 活动任务锚点不可用"))?
             };
-            if queue > 0 {
-                if let Some(previous) = queues.insert(thread_id.clone(), queue) {
-                    ensure!(previous == queue, reject("Scratch 队列快照不一致"));
-                }
+            if queue > 0
+                && let Some(previous) = queues.insert(thread_id.clone(), queue)
+            {
+                ensure!(previous == queue, reject("Scratch 队列快照不一致"));
             }
             let thread = read_thread(rpc, project, &thread_id).await?;
             let cwd = thread.cwd.canonicalize()?;
@@ -1214,7 +1214,7 @@ async fn task_workspace_inner<R: AdmissionRpc>(
     }
     let workspace = match reservation(project)? {
         None => {
-            let (workspace, session) = source_workspace(rpc, project, &task).await?;
+            let (workspace, session) = source_workspace(rpc, project, task).await?;
             directory_admission(rpc, project, peers, &session, false).await?;
             workspace
         }
@@ -1298,14 +1298,13 @@ pub(crate) async fn command<R: AdmissionRpc>(
             operation,
             "taskRunNow" | "taskResume" | "taskResumeRun" | "taskReply" | "taskUpdate"
         )
+        && let Some(id) = params["taskId"].as_str().filter(|id| identifier(id))
     {
-        if let Some(id) = params["taskId"].as_str().filter(|id| identifier(id)) {
-            let task: Task = request(rpc, project, "areal/task/read", json!({"taskId":id})).await?;
-            ensure!(task.id == id, reject("任务执行身份尚未确认"));
-            if task.mode == TaskMode::Scheduled {
-                task_workspace(rpc, project, peers, &task).await?;
-                return Ok(());
-            }
+        let task: Task = request(rpc, project, "areal/task/read", json!({"taskId":id})).await?;
+        ensure!(task.id == id, reject("任务执行身份尚未确认"));
+        if task.mode == TaskMode::Scheduled {
+            task_workspace(rpc, project, peers, &task).await?;
+            return Ok(());
         }
     }
     let targets = ["threadId", "parentThreadId", "sourceThreadId"]
@@ -1836,7 +1835,7 @@ async fn prepare_create<R: AdmissionRpc>(
         candidate
     };
     directory_admission(rpc, project, peers, &chosen.token, true).await?;
-    if chosen.extra.get("creationDigest").is_none() {
+    if !chosen.extra.contains_key("creationDigest") {
         chosen.extra.insert("creationDigest".into(), json!(digest));
         storage::write(&reservation_file(project)?, &chosen)?;
     }
@@ -2205,7 +2204,7 @@ mod tests {
         assert!(
             prepare(
                 &other,
-                &[project.clone()],
+                std::slice::from_ref(&project),
                 &json!({"intent":"create","requestDigest":"a".repeat(64),"requestId":"second","threadId":"anchor"}),
                 &rpc
             )

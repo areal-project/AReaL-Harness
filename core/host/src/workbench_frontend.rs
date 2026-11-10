@@ -400,10 +400,10 @@ impl Connections {
                 .borrow()
                 .get(&session.project_id)
                 .map(|slot| slot.registration.clone());
-            if let Some(registration) = registration {
-                if host.migration.credential_source(&registration)?.as_deref() == Some(source) {
-                    leases.push((lease.clone(), session.project_id.clone()));
-                }
+            if let Some(registration) = registration
+                && host.migration.credential_source(&registration)?.as_deref() == Some(source)
+            {
+                leases.push((lease.clone(), session.project_id.clone()));
             }
         }
         let closed = !leases.is_empty();

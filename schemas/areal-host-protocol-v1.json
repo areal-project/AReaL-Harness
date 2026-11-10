@@ -66064,6 +66064,16 @@
         "includesDelimiter": true
       },
       "events": {
+        "host.statusChanged": {
+          "schema": "#/$defs/LocalStatusChanged",
+          "direction": "hostToClient",
+          "x-owner": "host"
+        },
+        "remote.gateway.stateChanged": {
+          "schema": "#/$defs/LocalGatewayStateChanged",
+          "direction": "hostToClient",
+          "x-owner": "host"
+        },
         "desktop.core.event": {
           "schema": "#/$defs/LocalDesktopCoreEvent",
           "direction": "hostToClient",

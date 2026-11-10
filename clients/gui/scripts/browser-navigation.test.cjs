@@ -191,13 +191,19 @@ for (const change of ["timeout", "takeover", "deployment"]) {
       hasWork: () => false,
       providers: { redact: (value) => value },
       bindBrowserHostForClaim: async () => {},
+      connections: { revokeDesktopToolHost() {} },
       currentConnection: (current, client) => current.client === client && !client.closed,
     };
     service = new DesktopService(backend, "unknown-fixture");
     const receive = (method, params) =>
       service.receive(owner, Buffer.from(JSON.stringify({ id: ++sequence, method, params })));
     try {
-      await receive("hello", { protocol: PROTOCOL, identity: "unknown-fixture" });
+      // 只有登记为桌面工具宿主的连接才能认领浏览页面。
+      await receive("hello", {
+        protocol: PROTOCOL,
+        identity: "unknown-fixture",
+        capabilities: { computerHost: 1 },
+      });
       await receive("browserClaim", {
         protocol: "areal.browser.host.v1",
         operations: [

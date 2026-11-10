@@ -130,13 +130,13 @@ fn reply(raw: &str) -> Result<Value> {
     Ok(value)
 }
 fn proposal(answer: &Value, users: &[String], target: Option<&Value>, zone: &str) -> Result<Value> {
-    if answer["kind"] == "control" && target.is_some() {
+    if let Some(target) = target.filter(|_| answer["kind"] == "control") {
         let action = answer["action"]
             .as_str()
             .filter(|action| matches!(*action, "pause" | "resume" | "cancel"))
             .ok_or_else(|| invalid("当前只能暂停／恢复／取消任务。"))?;
         return Ok(
-            json!({"taskId":target.unwrap()["taskId"],"expectedRevision":target.unwrap()["expectedRevision"],"action":action}),
+            json!({"taskId":target["taskId"],"expectedRevision":target["expectedRevision"],"action":action}),
         );
     }
     if answer["kind"] != "proposal" {
@@ -367,10 +367,9 @@ impl Engine {
                             .as_array()
                             .into_iter()
                             .flatten()
-                            .filter(|item| {
+                            .rfind(|item| {
                                 item["type"] == "agentMessage" && item["phase"] != "commentary"
                             })
-                            .last()
                             .and_then(|item| item["text"].as_str())
                             .unwrap_or_default();
                         let answer = reply(raw)?;
@@ -663,14 +662,14 @@ impl Engine {
                     *target = super::draft::target(&task);
                 }
                 let mut input = request.input;
-                if input.is_empty() {
-                    if let Some(text) = request.text.filter(|text| !text.trim().is_empty()) {
-                        input.push(Input::Text {
-                            text,
-                            text_elements: vec![],
-                            mcp_content: None,
-                        });
-                    }
+                if input.is_empty()
+                    && let Some(text) = request.text.filter(|text| !text.trim().is_empty())
+                {
+                    input.push(Input::Text {
+                        text,
+                        text_elements: vec![],
+                        mcp_content: None,
+                    });
                 }
                 if input.is_empty() {
                     return Err(invalid("消息不能为空"));
