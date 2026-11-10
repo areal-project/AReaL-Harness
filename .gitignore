@@ -28,7 +28,8 @@ __pycache__/
 /.loopx/
 /.local/
 out
-.claude
+.claude/*
+!.claude/skills
 
 /services/workbench/node_modules/
 
