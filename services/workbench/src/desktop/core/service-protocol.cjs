@@ -4,7 +4,6 @@ const { randomBytes, randomUUID, timingSafeEqual } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
 const { appendFileSync } = require("node:fs");
 const { WebSocketServer } = require("ws");
-const { RemoteControl } = require("./remote.cjs");
 const { NativeRemote } = require("./native-remote.cjs");
 const {
   desktopError,
@@ -166,7 +165,7 @@ class DesktopService {
     this.inflight = 0;
     /** @type {number|null} */ this.idleSince = Date.now();
     this.closed = false;
-    /** @type {InstanceType<typeof RemoteControl>|InstanceType<typeof NativeRemote>|undefined} */ this.remote =
+    /** @type {InstanceType<typeof NativeRemote>|undefined} */ this.remote =
       undefined;
     /** @type {ServiceSocket|null|undefined} */ this.computerSocket = undefined;
     backend.desktopToolOwner = () =>
@@ -1497,15 +1496,11 @@ class DesktopService {
   }
 
   async initRemote() {
-    if (this.remote instanceof NativeRemote)
-      this.backend.host.client.requireCapability("remoteGatewayV1");
+    this.backend.host.client.requireCapability("remoteGatewayV1");
     await this.remote?.close();
     if (this.closed || this.exitRequested || this.backend.closing)
       throw new Error("Desktop is closing");
-    const Remote = this.backend.host?.client?.capabilities?.includes("remoteGatewayV1")
-      ? NativeRemote
-      : RemoteControl;
-    const remote = new Remote(this);
+    const remote = new NativeRemote(this);
     this.remote = remote;
     try {
       await remote.init();

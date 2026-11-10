@@ -1,16 +1,14 @@
-import { attachRemoteHostFixture } from "./remote-host-fixture.cjs";
 import { mkdtemp, writeFile, readFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer as tlsServer } from "node:tls";
 import { createServer as netServer, connect } from "node:net";
-import { randomBytes, randomUUID, createCipheriv, createDecipheriv } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { CoreClient } from "../packages/runtime-client/core.js";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
-import { RemoteControl } from "@areal/workbench-service/desktop/core/remote.cjs";
 
 export async function certificates(commonName = "RC12 isolated test CA") {
   const home = await mkdtemp(join(tmpdir(), "rc12-tls-"));
@@ -315,127 +313,6 @@ export async function nativeRelayHostFixture(t, options = {}) {
   const projectAlias = randomUUID().replaceAll("-", "").slice(0, 24);
   await fixture.source.register(randomUUID(), { id: projectAlias, root: workspace });
   return { ...fixture, projectAlias };
-}
-
-export async function hostFixture(t, { config, commands = false } = {}) {
-  const home = await mkdtemp(join(tmpdir(), "rc12-host-"));
-  const key = randomBytes(32);
-  let rejectSave = false;
-  const savedWrites = [];
-  const encryption = {
-    isEncryptionAvailable: () => true,
-    getSelectedStorageBackend: () => "fixture-aes-gcm",
-    encryptString(value) {
-      const iv = randomBytes(12),
-        cipher = createCipheriv("aes-256-gcm", key, iv);
-      const data = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-      return Buffer.concat([iv, cipher.getAuthTag(), data]);
-    },
-    decryptString(value) {
-      const cipher = createDecipheriv("aes-256-gcm", key, value.subarray(0, 12));
-      cipher.setAuthTag(value.subarray(12, 28));
-      return Buffer.concat([cipher.update(value.subarray(28)), cipher.final()]).toString();
-    },
-  };
-  const service = {
-    schedule() {},
-    backend: {
-      home,
-      saved: [{ id: "project", root: "/fixture/Project" }],
-      projects: new Map(),
-      async save(name, value) {
-        if (rejectSave) throw new Error("fixture storage unavailable");
-        savedWrites.push(name);
-        await writeFile(join(home, name), JSON.stringify(value));
-      },
-    },
-  };
-  if (commands) {
-    const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
-    const backend = new CoreBackend({ home, binary: "/unused-source-fixture" });
-    backend.saved = service.backend.saved;
-    const save = backend.save.bind(backend);
-    backend.save = (name, value) => {
-      if (rejectSave) return Promise.reject(new Error("fixture storage unavailable"));
-      savedWrites.push(name);
-      return save(name, value);
-    };
-    // native-shaped Core 夹具的日志边界仍写原测试文件，保留持久化和写入失败断言。
-    backend.host.journal = (id) => {
-      const read = async () => {
-        const field = async (name, empty) => {
-          try {
-            return JSON.parse(await readFile(join(home, `${id}-${name}.json`), "utf8"));
-          } catch (error) {
-            if (error.code === "ENOENT") return empty;
-            throw error;
-          }
-        };
-        return {
-          snapshot: {
-            version: 1,
-            pending: await field("pending", []),
-            outcomes: await field("outcomes", {}),
-          },
-        };
-      };
-      return {
-        read,
-        async change(mutate) {
-          const snapshot = await mutate((await read()).snapshot);
-          await backend.save(`${id}-pending.json`, snapshot.pending);
-          await backend.save(`${id}-outcomes.json`, snapshot.outcomes);
-          return { state: "completed" };
-        },
-      };
-    };
-    backend.start =
-      backend.launch =
-      backend.connect =
-      backend.openThread =
-        () => {
-          throw new Error("forbidden source-fixture lifecycle effect");
-        };
-    service.backend = backend;
-  }
-  if (config)
-    await service.backend.save("remote-host-fixture.json", {
-      encrypted: encryption.encryptString(JSON.stringify(config)).toString("base64"),
-    });
-  const instances = [];
-  const make = async () => {
-    const remote = new RemoteControl(service);
-    instances.push(remote);
-    attachRemoteHostFixture(remote, encryption);
-    await remote.init();
-    return remote;
-  };
-  t.after(async () => {
-    await Promise.all(instances.map((remote) => remote.close()));
-    if (commands)
-      for (const project of service.backend.projects.values())
-        service.backend.stopReconciliation(project);
-    await rm(home, { recursive: true, force: true });
-  });
-  return {
-    remote: await make(),
-    make,
-    home,
-    service,
-    savedWrites,
-    rejectSave: (value) => {
-      rejectSave = value;
-    },
-    persisted: async () =>
-      JSON.parse(
-        encryption.decryptString(
-          Buffer.from(
-            JSON.parse(await readFile(join(home, "remote-host-fixture.json"), "utf8")).encrypted,
-            "base64",
-          ),
-        ),
-      ),
-  };
 }
 
 // Native-shaped RPC 边界夹具；真实 CoreClient 连接，可选命令回应，绝不启动原生 Core。
