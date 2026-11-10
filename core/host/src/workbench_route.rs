@@ -1491,19 +1491,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                     crate::space::history::for_host(&host.home, serde_json::from_value(params)?)
                         .await
                 }
-                "recovery.inspect" => {
-                    ensure!(
-                        params
-                            .as_object()
-                            .is_some_and(|o| o.keys().all(|key| key == "spaceId")),
-                        "INVALID_PARAMS"
-                    );
-                    let space_id = params
-                        .get("spaceId")
-                        .map(|value| value.as_str().context("INVALID_PARAMS"))
-                        .transpose()?;
-                    crate::space::inspect_for_host(&host.home, space_id)
-                }
+                "recovery.inspect" => crate::space::inspect_params_for_host(&host.home, &params),
                 "workbench.utility" => {
                     let source = host
                         .gateway

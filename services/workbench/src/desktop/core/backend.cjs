@@ -1689,6 +1689,9 @@ class CoreBackend {
         // logicalProjectId 是桌面通道内部的路由字段，Host 不认。
         const plain = /** @type {Record<string, unknown>} */ ({ ...request });
         delete plain.logicalProjectId;
+        // 桌面项目 id 是本地别名，Host 按登记的项目 id 找工作区。
+        if (typeof plain.projectId === "string")
+          plain.projectId = this.host.resolve(plain.projectId).projectId;
         return this.hostCall(
           read ? "plugins.read" : "plugins.command",
           store.hostPluginStoreParams(plain),
