@@ -17,6 +17,7 @@
 | `test:mobile-storage`、Host schema 生成检查 | 通过；不替代设备或协议一致性验收。旧 `test:mobile-workspace-state` 命令在当前 package 中不存在。 |
 | `test:service-connection` | 合并后补齐依赖及生成产物仍失败，包括 `Host Core 投影尚未就绪` 和恢复断言失败；未确定根因。 |
 | Worktree 界面冒烟 | Chromium 路径通过前六项后，断言期待英文 `Worktree`，实际可访问名称为中文“工作树分支 … · 工作树已就绪”；Electron 路径后台报 `CAPABILITY_UNAVAILABLE`，等待项目连接超时，未完成检查。清单与截图见 `native/chromium-retry/`、`native/electron-retry/`。Electron 清单记录隔离服务已停止，已核实该 Electron PID 退出；runner 写完清单后仍挂起，按本次进程身份终止。默认 Electron runner 并非 `--rust` 路径。 |
+| 文档检查 | `check-docs.py` 首次通过，打包后再次运行报告 `content-system.md` 和 `conversation-design-research.md` 各一处锚点不存在；原因未确定。提交 hook 的格式检查通过，生成的影响计划没有执行。 |
 
 已构建当前源码的本地 ad-hoc 候选 `package/AReaL-Harness-GUI-mac-arm64.zip`，SHA-256 为 `56a1c26dd1bab084e5bb16da6c2fa78f872daa185bc2b1030347a1f5b86b889d`。独立解压后核对包内 Core revision 为 `5cf3d2e6`、release profile，三个核心二进制哈希与清单一致，深度签名校验通过。构建时工作树含本 handoff 的未提交文档修改，标记 workingTree=true；包未做 Developer ID 签名或公证。当前受控 runner 固定源码 Electron 或依赖旧 Desktop 退出契约，不能证明包内 Shared Host detach，因此未启动包或声称后台生命周期通过；见 `native/package/status.md`。
 
