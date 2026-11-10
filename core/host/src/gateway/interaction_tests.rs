@@ -666,14 +666,13 @@ async fn lost_outcome_write_stays_unknown_after_same_home_owner_reconstruction()
                 .await
                 .reply(json!({"data":[Fixture::item("pending")]}));
             let held = f.call("areal/interaction/respond").await;
-            let directory = f.host.home.join("host/journals/records");
             let (revision, pending) = f.host.journal.native_snapshot("project").unwrap();
             assert_eq!(pending["pending"].as_array().unwrap().len(), 1);
             let operation = pending["pending"][0]["operationId"].clone();
-            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+            crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(true));
             held.reply(json!({"answered":true,"requestId":"interaction"}));
             let (_, result) = answering.await.unwrap();
-            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+            crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(false));
             assert!(result.is_err());
             assert_eq!(
                 f.host.journal.native_snapshot("project").unwrap(),
@@ -735,12 +734,11 @@ async fn create_pending_write_failure_prevents_core_mutation() {
         let command = uuid::Uuid::new_v4().to_string();
         let creating = Fixture::dispatch(f.session("a"), f.request("session.create", json!({}), Some(&command)));
         let caps = f.call("areal/capabilities").await;
-        let directory = f.host.home.join("host/journals/records");
         let before = f.host.journal.native_snapshot("project").unwrap();
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+        crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(true));
         caps.reply(json!({"features":{"threadStartAdmissionGuard":true,"permissionPresets":true,"threadCreationJournal":{"binding":{"identity":"store","journalEpoch":"epoch","coreInstanceId":"instance"}}},"methods":["areal/thread/start","areal/request/read"]}));
         let (_, result) = creating.await.unwrap();
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(false));
         assert!(result.unwrap_err().chain().any(|error| error.downcast_ref::<std::io::Error>().is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)));
         assert_eq!(f.host.journal.native_snapshot("project").unwrap(), before);
         assert!(f.calls.try_recv().is_err());
@@ -764,11 +762,10 @@ async fn create_lost_outcome_recovers_original_receipt_after_owner_reconstructio
         let operation = record["operationId"].clone();
         assert_eq!(held.request["params"]["requestId"], operation);
         let digest = record["nativeDigest"].clone();
-        let directory = f.host.home.join("host/journals/records");
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+        crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(true));
         held.reply(json!({"thread":{"id":"created-thread"}}));
         let (_, result) = creating.await.unwrap();
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(false));
         let unknown = result.unwrap();
         assert_eq!(unknown["commandId"], command);
         assert_eq!(unknown["operationId"], operation);

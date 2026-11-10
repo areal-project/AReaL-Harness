@@ -14,11 +14,10 @@ async fn creation_outcome_failure_never_projects_changed_pending_as_original_unk
         snapshot["pending"][0]["nativeDigest"] = json!("changed-pending-digest");
         f.host.journal.native_replace("project", revision, snapshot).unwrap();
         let before = f.host.journal.native_snapshot("project").unwrap();
-        let directory = f.host.home.join("host/journals/records");
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+        crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(true));
         held.reply(json!({"thread":{"id":"created-thread"}}));
         let (_, result) = creating.await.unwrap();
-        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+        crate::journal::FAIL_RECORD_WRITES.with(|fail| fail.set(false));
         assert!(result.unwrap_err().downcast_ref::<std::io::Error>().is_some_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied));
         assert_eq!(f.host.journal.native_snapshot("project").unwrap(), before);
         assert!(f.calls.try_recv().is_err());

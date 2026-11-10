@@ -150,6 +150,20 @@ fn reclaim(record: &mut Record, now: u64) {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// 测试注入：项目记录写入失败，替代改目录权限（root 下改权限不生效）。
+    pub(crate) static FAIL_RECORD_WRITES: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn write_record<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    #[cfg(test)]
+    if FAIL_RECORD_WRITES.with(std::cell::Cell::get) {
+        return Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied).into());
+    }
+    storage::write(path, value)
+}
+
 pub(crate) struct Journal {
     root: PathBuf,
     epoch: String,
@@ -265,7 +279,7 @@ impl Journal {
             );
             return Ok(());
         }
-        storage::write(
+        write_record(
             &path,
             &Record {
                 project_id: project_id.into(),
@@ -315,7 +329,7 @@ impl Journal {
             .checked_add(1)
             .context("journal revision exhausted")?;
         reclaim(&mut record, now_secs());
-        storage::write(&self.record_path(project_id)?, &record)
+        write_record(&self.record_path(project_id)?, &record)
     }
 
     /// 准入与结算共用同一快照事务；调用方只负责授权与方法特有的权威前置条件。
@@ -650,7 +664,7 @@ impl Journal {
             ..record
         };
         reclaim(&mut next, now_secs());
-        storage::write(&self.record_path(&operation.project_id)?, &next)?;
+        write_record(&self.record_path(&operation.project_id)?, &next)?;
         storage::write(&self.operation_path(&operation.request_id), &operation)?;
         remove_transfer(&operation.write_path)?;
         Ok(operation.receipt)
