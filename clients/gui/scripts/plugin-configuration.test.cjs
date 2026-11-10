@@ -236,7 +236,10 @@ test("unresolved public snapshots keep original request identity and omit privat
     projects: new Map([["p", live]]),
     binary: "/trusted/areal",
     ownerTasks: { revision: () => 0 },
-    host: { scheduling: () => ({ suppressed: false, activationError: null }) },
+    host: {
+      scheduling: () => ({ suppressed: false, activationError: null }),
+      migrationError: () => undefined,
+    },
     cloudConversations: {
       mergeSnapshot: (_id, value) => value,
       projection: () => ({ summaries: [] }),
