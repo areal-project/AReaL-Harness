@@ -16,7 +16,7 @@
     "test:ux-checks": "node --test scripts/ux-checks.test.mjs",
     "test:ux-journeys": "node scripts/ux-journeys.mjs",
     "test:web-journeys": "node scripts/web-journeys.mjs",
-    "test:script-units": "node --test scripts/task-catalog.test.cjs scripts/isolated-electron-identity.test.mjs scripts/package-users.test.cjs scripts/development-service-routing.test.mjs scripts/support/performance-fixture.test.mjs",
+    "test:script-units": "node --test scripts/update.test.cjs scripts/task-catalog.test.cjs scripts/isolated-electron-identity.test.mjs scripts/package-users.test.cjs scripts/development-service-routing.test.mjs scripts/support/performance-fixture.test.mjs",
     "test:manifest": "node --test scripts/test-manifest.test.mjs scripts/test-selection.test.mjs scripts/test-repeat.test.mjs",
     "test:unit": "vp test run",
     "test:content-reading": "node scripts/conversation-content-reading-smoke.mjs",
