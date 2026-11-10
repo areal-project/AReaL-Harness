@@ -75,6 +75,13 @@ test("with copy available, operation failures use the error table instead of bac
   expect(recoveryMessage({ message: "x", submissionUnknown: true }, "operation", zh)).toBe(
     "操作结果待确认。",
   );
+  // Host 命令通道只带回错误码和 Core 原文，原因码在原文开头。
+  const credential = {
+    code: "COMMAND_FAILED",
+    message: "CREDENTIAL_UNAVAILABLE: configure credentials for provider 'theta' in Core",
+  };
+  expect(recoveryMessage(credential)).toMatch(/凭据/);
+  expect(recoveryMessage(credential, "operation", zh)).toMatch(/凭据/);
 });
 
 test("an outcome without the original operation cannot release an unknown submission", () => {

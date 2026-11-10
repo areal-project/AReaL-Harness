@@ -24,6 +24,7 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
   let bindState;
   let bindThread = true;
   let bindRequestId = requestId;
+  let bindError;
   let opened = 0;
   const backend = {
     home,
@@ -83,6 +84,7 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
         ...(bindThread ? { threadId: "thread" } : {}),
         requestId: bindRequestId,
         ...(bindState ? { state: bindState } : {}),
+        ...(bindError ? { error: bindError } : {}),
       };
     },
   };
@@ -105,6 +107,17 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
     owner.createThread(source, { requestId }),
     (error) => error.requestId === requestId && error.submissionUnknown === false,
   );
+  bindError = {
+    code: -32602,
+    message: "CREDENTIAL_UNAVAILABLE: configure credentials",
+    data: { reason: "CREDENTIAL_UNAVAILABLE", outcome: { kind: "rejected" } },
+  };
+  await assert.rejects(
+    owner.createThread(source, { requestId }),
+    (error) => /^CREDENTIAL_UNAVAILABLE:/.test(error.message) && error.submissionUnknown === false,
+    "Core 的拒绝原文要带到界面，才能提示检查凭据",
+  );
+  bindError = undefined;
   bindRequestId = randomUUID();
   await assert.rejects(
     owner.createThread(source, { requestId }),

@@ -22,6 +22,7 @@ const vite = await createServer({
       "management",
       "management-context",
       "mcp-page",
+      "plugin-store",
       "provider",
       "resource",
       "shared",
