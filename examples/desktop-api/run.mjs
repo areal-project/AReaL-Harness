@@ -246,6 +246,22 @@ try {
           timeoutMs: 10000,
         },
       },
+      // 部署 MCP 是 Core 里唯一不经插件登记的 MCP 来源；用户添加的 MCP 由 Host 登记成插件。
+      mcpServers: {
+        fixture: {
+          transport: {
+            type: "stdio",
+            command: "/usr/bin/python3",
+            args: [
+              join(repo, "tests/fixtures/mcp-server.py"),
+              join(directory, "mcp.jsonl"),
+              "normal",
+            ],
+          },
+          startupTimeoutMs: 5000,
+          callTimeoutMs: 5000,
+        },
+      },
     }),
   );
   await writeFile(
@@ -452,30 +468,10 @@ try {
         ),
       );
     } else if (name === "mcp-management") {
-      await c.call("areal/mcp/configure", {
-        id: "fixture",
-        expectedRevision: 0,
-        config: {
-          transport: {
-            type: "stdio",
-            command: "/usr/bin/python3",
-            args: [
-              join(repo, "tests/fixtures/mcp-server.py"),
-              join(directory, "mcp.jsonl"),
-              "normal",
-            ],
-          },
-          startupTimeoutMs: 5000,
-          callTimeoutMs: 5000,
-        },
-      });
-      const view = await c.call("areal/mcp/connect", { id: "fixture", expectedRevision: 1 });
-      assert.equal(view.data[0].state, "connected");
-      assert.equal(view.data[0].tools.length, 2);
       const target = await startThread(c, "mcp");
       await done(c, target);
-      await c.call("areal/mcp/disconnect", { id: "fixture", expectedRevision: 1 });
-      assert.equal((await c.call("areal/mcp/read", { id: "fixture" })).state, "disconnected");
+      const calls = (await readFile(join(directory, "mcp.jsonl"), "utf8")).trim().split("\n");
+      assert(calls.some((line) => line.includes("managed")));
     } else if (name === "adaptive-agents") {
       const target = await startThread(c, "agents");
       await done(c, target);
