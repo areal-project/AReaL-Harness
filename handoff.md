@@ -1,6 +1,28 @@
 # one-protocol 本机验收交接
 
-当前结论见末尾“剩余问题修复与验收结果”。下方此前的未完成项和失败记录保留为历史证据，不代表最新状态。
+## 当前合并版本的本机复验
+
+本节记录 `5cf3d2e6`（合入 `origin/claude/project-thread-o3srq8@c8500f05`）的结果，不将下方旧版本证据当成当前版本通过。源码构建、固定槽及日志位于 `.scratch/one-protocol-current/`；Core inputHash 为 `00fb18b41dd77cb54cff84af3f4baaacbc28d0e5e85ca5a9de2d5cb209d4af60`。测试使用隔离数据和合成凭据。
+
+| 用例 | 当前结果 |
+| --- | --- |
+| 四个 Host 写失败注入 | 普通 macOS 用户分别运行，全部通过；每个过滤器实际执行一条测试。 |
+| `cargo fmt -p areal-host -- --check` | 通过。 |
+| `@areal/gen-ui` 构建 | 通过；但其后的 `local_send_and_steer_freeze_authoritative_gen_ui_context_without_private_state` 失败，`session.create` 在预期派发前返回原请求 `UNKNOWN`，见 `cargo-local_send_and_steer_freeze_authoritative_gen_ui_context_without_private_state.log`。 |
+| `test:workbench-backend` | 通过。覆盖浏览器配对写回执、任务、Worktree、后台崩溃恢复、Main detach、Host stop 和重启后的原回执；证据 `/private/tmp/areal-a3-c1ROUY/result.json`。本轮记录的 Host/后台 PID 均退出，合成 Keychain 清理回执确认测试项不存在。 |
+| `test:host-protocol-conformance` | 失败：本地 Host schema 引用无法解析；Relay 的 `RemoteReady.limits.applicationMessageBytes` 未满足 schema 常量。见 `host-protocol-fixture.log`。首次缺少合成 Keychain 夹具标记的失败也保留。 |
+| `remote-device-management-host.test.mjs` | 5 项中 3 项通过、2 项因 `storageLocked: credential helper exited without a result` 失败；见 `remote-device-fixture.log`。不能据此判定唯一原因。 |
+| `test:shared-host-consumers` | 失败，`Core connection failed`；见 `shared-host-consumers.log`。 |
+| `shared-host-smoke.mjs` | 首次缺旧版固定槽；复制既有旧产物后，旧服务已有 Host owner，不满足无 owner 的旧服务夹具，停在 `legacy-start`。该旧产物的 build-info 标记 workingTree=true，不能作为通过的迁移证据。runner 清理等待锁超时；随后对该隔离 Host 执行 stop，回执 completed，记录的 Host/Core PID 已退出，见 `legacy-cleanup-stop.json`。 |
+| `test:mobile-storage`、Host schema 生成检查 | 通过；不替代设备或协议一致性验收。旧 `test:mobile-workspace-state` 命令在当前 package 中不存在。 |
+| `test:service-connection` | 合并后补齐依赖及生成产物仍失败，包括 `Host Core 投影尚未就绪` 和恢复断言失败；未确定根因。 |
+| Worktree 界面冒烟 | Chromium 路径通过前六项后，断言期待英文 `Worktree`，实际可访问名称为中文“工作树分支 … · 工作树已就绪”；Electron 路径后台报 `CAPABILITY_UNAVAILABLE`，等待项目连接超时，未完成检查。清单与截图见 `native/chromium-retry/`、`native/electron-retry/`。Electron 清单记录隔离服务已停止，已核实该 Electron PID 退出；runner 写完清单后仍挂起，按本次进程身份终止。默认 Electron runner 并非 `--rust` 路径。 |
+
+已构建当前源码的本地 ad-hoc 候选 `package/AReaL-Harness-GUI-mac-arm64.zip`，SHA-256 为 `56a1c26dd1bab084e5bb16da6c2fa78f872daa185bc2b1030347a1f5b86b889d`。独立解压后核对包内 Core revision 为 `5cf3d2e6`、release profile，三个核心二进制哈希与清单一致，深度签名校验通过。构建时工作树含本 handoff 的未提交文档修改，标记 workingTree=true；包未做 Developer ID 签名或公证。当前受控 runner 固定源码 Electron 或依赖旧 Desktop 退出契约，不能证明包内 Shared Host detach，因此未启动包或声称后台生命周期通过；见 `native/package/status.md`。
+
+真实 safeStorage、OP-07 手机路径、本机网页与桌面对齐、iOS/PWA、停机升级演练和其余直接构造 CoreBackend 的 Electron 冒烟均未完成当前版本验收。模拟器服务连接失败、真机枚举超时；旧记录中的模拟器与 ad-hoc 包结果保留为历史，不证明当前版本。旧清单中的 `areal.oneProtocol.sharedUi` 和后台开关不再是当前源码的活动入口，不能按旧开关结果推断现行界面行为。未使用真实历史凭据、未发布、未删除旧入口。
+
+当前结论见上方“当前合并版本的本机复验”。下方此前的未完成项和失败记录保留为历史证据，不代表最新状态。
 
 本轮集成 `origin/claude/one-protocol@0aba3e33`，包含 `7f942081` 的 A4 共享界面，基线为 `4c4c529b` 的 A3 后台迁移。远端以 fast-forward 合入 `codex/one-protocol-a0`，未 push。
 
