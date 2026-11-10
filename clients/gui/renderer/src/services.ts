@@ -52,6 +52,7 @@ export type {
 } from "./desktop-services.js";
 export {
   generationStats,
+  hostPluginStoreParams,
   isModifierPairShortcut,
   isRequest,
   isSnapShotSource,

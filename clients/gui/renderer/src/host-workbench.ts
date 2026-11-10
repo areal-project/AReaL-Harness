@@ -1,11 +1,7 @@
 import type { HostClient } from "@areal/client";
 import type { PlatformServices } from "./services.js";
-import { isLibraryState } from "./services.js";
+import { hostPluginStoreParams, isLibraryState, pluginStoreOperation } from "./services.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
-import {
-  hostPluginStoreParams,
-  pluginStoreOperation,
-} from "@areal/workbench/desktop-contract/plugin-store";
 
 const WORKTREE_READS = new Set(["worktreeList", "worktreeOptions", "worktreeRead"]);
 const WORKTREE_WRITES = new Set([

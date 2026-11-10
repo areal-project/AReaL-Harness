@@ -67,7 +67,10 @@ export {
 } from "@areal/workbench/desktop-contract/conversation";
 export type { SidebarItem } from "@areal/workbench/desktop-contract/library-media";
 export { readLibraryRequest } from "@areal/workbench/desktop-contract/library-media";
-export { pluginStoreOperation } from "@areal/workbench/desktop-contract/plugin-store";
+export {
+  hostPluginStoreParams,
+  pluginStoreOperation,
+} from "@areal/workbench/desktop-contract/plugin-store";
 export type {
   ManagementRequest,
   ManagementRequestMap,
