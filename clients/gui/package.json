@@ -193,6 +193,7 @@
     "@areal/remote-client": "workspace:*",
     "@areal/workbench-service": "workspace:*",
     "@axe-core/playwright": "4.14.0",
+    "ajv": "8.20.0",
     "fake-indexeddb": "6.2.4",
     "vite-plus": "1.4.0"
   },

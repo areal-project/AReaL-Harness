@@ -261,7 +261,7 @@ test("bound client may answer a browser tool request while ordinary clients reje
 
 test("only the Main owner disconnect revokes its Core tool connection and successor drops ownerless hosts", async (t) => {
   const { once } = await import("node:events");
-  const WebSocket = require("ws");
+  const WebSocket = createRequire(new URL("../app/package.json", import.meta.url))("ws");
   const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
   const {
     ProjectConnections,
