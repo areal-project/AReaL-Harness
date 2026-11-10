@@ -37,7 +37,6 @@ cd clients/gui
 pnpm typecheck
 pnpm build
 pnpm test:feedback
-node scripts/feedback-native-smoke.mjs
 ```
 
-交互测试使用真实 Renderer 构建和隔离桌面契约；原生验收使用真实 Core/Side/CLI 与本地模型、接收器，分别验证 UI 和执行边界。平台的 SQL、API 与 Web 必须同步部署后，已安装客户端才会显示入口。这些本地验收不证明生产部署完成，也不证明分类准确率或 Harness 整体能力提高。
+交互测试使用真实 Renderer 构建和隔离桌面契约，验证 UI 边界。平台的 SQL、API 与 Web 必须同步部署后，已安装客户端才会显示入口。这些本地验收不证明生产部署完成，也不证明分类准确率或 Harness 整体能力提高。

@@ -357,10 +357,9 @@ pub(crate) fn snapshot(
             if let (Some(metadata), Some(project)) = (
                 index.iter().find(|item| item.id == binding.alias),
                 projects.get(&binding.project_id),
-            ) {
-                if read_worktree_display(source, binding, metadata, &project.workspace)?.1 {
-                    deleted_projects.insert(binding.project_id.clone());
-                }
+            ) && read_worktree_display(source, binding, metadata, &project.workspace)?.1
+            {
+                deleted_projects.insert(binding.project_id.clone());
             }
         }
         bindings.retain(|binding| !deleted_projects.contains(&binding.project_id));

@@ -670,7 +670,16 @@ test("in-place project reconnect refreshes source bindings through an existing H
   assert.equal(changes, 1);
   assert.deepEqual(
     f.calls.filter((request) => request.method !== "hello").map((request) => request.method),
-    ["gui.source", "gui.source", "projects.list", "gui.source", "projects.list", "host.status"],
+    [
+      "gui.source",
+      "gui.source",
+      "projects.list",
+      "host.status",
+      "gui.source",
+      "projects.list",
+      "host.status",
+      "host.status",
+    ],
   );
   owner.close();
 });
@@ -767,14 +776,14 @@ test("missing Core executable preserves the original explicit Host recovery inte
     };
     return true;
   };
-  await assert.rejects(f.backend.init(), /Core 程序路径不可用/);
+  await assert.rejects(f.backend.init(), /Host 后台启动配置不完整/);
   assert.equal(reconnects, 0);
   assert.equal(f.backend.hostReferences.has(requestId), true);
   assert.equal(
     JSON.parse(await readFile(f.backend.controlPath, "utf8")).references[0].requestId,
     requestId,
   );
-  await assert.rejects(f.backend.initialize(), /Core 程序路径不可用/);
+  await assert.rejects(f.backend.initialize(), /Host 后台启动配置不完整/);
   assert.equal(f.backend.hostReferences.has(requestId), true);
   assert.equal(
     JSON.parse(await readFile(f.backend.controlPath, "utf8")).references[0].requestId,

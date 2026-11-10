@@ -4,7 +4,7 @@ const { execFile, execFileSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
 const { lstatSync, readFileSync, realpathSync, statSync } = require("node:fs");
 const { isAbsolute, join, sep } = require("node:path");
-const { resolveCoreBinary } = require("./bundle.cjs");
+const { resolveCoreBinary } = require("@areal/workbench-service/desktop/core/bundle.cjs");
 const { promisify } = require("node:util");
 const execFileAsync = promisify(execFile);
 

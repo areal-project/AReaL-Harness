@@ -783,10 +783,16 @@ async fn dispatch_inner(
             .worktree_read(params)
             .await
             .map_err(|error| Error::Invalid(error.to_string())),
-        "areal/worktree/command" => engine
-            .worktree_command(params)
-            .await
-            .map_err(|error| Error::Storage(error.to_string())),
+        "areal/worktree/command" => {
+            // 参数形状错误属于调用方错误，在触达存储前拒绝。
+            if !params.is_object() {
+                return Err(RpcError::invalid("params must be an object"));
+            }
+            engine
+                .worktree_command(params)
+                .await
+                .map_err(|error| Error::Storage(error.to_string()))
+        }
         "areal/request/read" => {
             let p: RequestRead = parse(params)?;
             if p.expected_submission.as_ref().is_some_and(|expected| {

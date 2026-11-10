@@ -11,6 +11,7 @@ const { CloudClient } = require("@areal/workbench-service/desktop/core/cloud-cli
 const {
   CloudConversations,
 } = require("@areal/workbench-service/desktop/core/cloud-conversations.cjs");
+const { cloudHost } = require("./support/cloud-host-fixture.cjs");
 
 test("原生 WS 协议夹具：并发创建去重、流式投影、重启复用绑定且不重发 query", async (t) => {
   let allocations = 0,
@@ -74,6 +75,7 @@ test("原生 WS 协议夹具：并发创建去重、流式投影、重启复用�
   let platform = new CloudClient({
     baseURL: `http://127.0.0.1:${http.address().port}/api`,
     token: "token",
+    ...cloudHost(),
   });
   const backend = {
     textInput: (text) => [{ type: "text", text }],
@@ -120,6 +122,7 @@ test("原生 WS 协议夹具：并发创建去重、流式投影、重启复用�
   platform = new CloudClient({
     baseURL: "https://another.example/api",
     token: "different-token",
+    ...cloudHost(),
   });
   await assert.rejects(
     restored.command({
@@ -180,6 +183,7 @@ async function recoveryFixture(t, onObserve = (_socket, reply, thread) => reply(
   const platform = new CloudClient({
     baseURL: `http://127.0.0.1:${http.address().port}/api`,
     token: "token",
+    ...cloudHost(),
   });
   const backend = {
     home: "/unused",

@@ -625,6 +625,101 @@ pub(crate) fn raster_info(bytes: &[u8], mime: &str) -> Result<Value> {
     Ok(json!({"mime":mime,"width":width,"height":height}))
 }
 
+pub(crate) async fn read_blob(
+    service: &Service,
+    thread: &str,
+    uri: &str,
+    guard: impl Fn() -> Result<()>,
+) -> Result<Value> {
+    guard()?;
+    let (url, token) = core_blob_url(service, &format!("/areal/blobs/{}", digest(uri)?), thread)?;
+    read_blob_from(url, token, uri, guard).await
+}
+async fn read_blob_from(
+    url: url::Url,
+    token: String,
+    uri: &str,
+    guard: impl Fn() -> Result<()>,
+) -> Result<Value> {
+    let mut response = core_client()?.get(url).bearer_auth(token).send().await?;
+    ensure!(response.status().is_success(), "RESOURCE_UNAVAILABLE");
+    ensure!(
+        response
+            .content_length()
+            .is_none_or(|size| size <= MAX_BYTES as u64),
+        "LIMIT_EXCEEDED"
+    );
+    let mime = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|mime| mime.to_str().ok())
+        .unwrap_or("application/octet-stream")
+        .to_owned();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        guard()?;
+        ensure!(bytes.len() + chunk.len() <= MAX_BYTES, "LIMIT_EXCEEDED");
+        bytes.extend_from_slice(&chunk);
+    }
+    ensure!(
+        format!("{:x}", Sha256::digest(&bytes)) == digest(uri)?,
+        "RESOURCE_UNAVAILABLE"
+    );
+    guard()?;
+    Ok(json!({"base64":STANDARD.encode(bytes),"mime":mime}))
+}
+
+fn remote_blob_url(endpoint: &str, thread: &str, path: &str) -> Result<url::Url> {
+    let mut url = url::Url::parse(endpoint)?;
+    let scheme = match url.scheme() {
+        "wss" => "https",
+        "ws" => "http",
+        _ => anyhow::bail!("INVALID_PARAMS"),
+    };
+    url.set_scheme(scheme)
+        .map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
+    let path = format!("{}/areal/blobs{}", url.path().trim_end_matches('/'), path);
+    url.set_path(&path);
+    url.set_query(None);
+    url.query_pairs_mut().append_pair("threadId", thread);
+    Ok(url)
+}
+pub(crate) async fn remote_blob(
+    endpoint: &str,
+    token: &str,
+    params: &Value,
+    guard: impl Fn() -> Result<()>,
+) -> Result<Value> {
+    let thread = params["threadId"].as_str().context("INVALID_PARAMS")?;
+    guard()?;
+    if params["operation"] == "read" {
+        let uri = params["uri"].as_str().context("INVALID_PARAMS")?;
+        let url = remote_blob_url(endpoint, thread, &format!("/{}", digest(uri)?))?;
+        return read_blob_from(url, token.into(), uri, guard).await;
+    }
+    ensure!(
+        params["operation"] == "upload"
+            && params.get("callId").is_none()
+            && params.get("hostGeneration").is_none(),
+        "FORBIDDEN"
+    );
+    let encoded = params["base64"]
+        .as_str()
+        .filter(|text| text.len() <= 22_369_624)
+        .context("INVALID_PARAMS")?;
+    let bytes = STANDARD.decode(encoded)?;
+    ensure!(STANDARD.encode(&bytes) == encoded, "INVALID_PARAMS");
+    let result = upload_to(
+        remote_blob_url(endpoint, thread, "")?,
+        token.into(),
+        params["mime"].as_str().context("INVALID_PARAMS")?,
+        bytes,
+    )
+    .await?;
+    guard()?;
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -839,99 +934,4 @@ mod tests {
         assert!(digest("areal://blob/../../auth.json").is_err());
         assert!(digest(&format!("areal://blob/{}", "A".repeat(64))).is_err());
     }
-}
-
-pub(crate) async fn read_blob(
-    service: &Service,
-    thread: &str,
-    uri: &str,
-    guard: impl Fn() -> Result<()>,
-) -> Result<Value> {
-    guard()?;
-    let (url, token) = core_blob_url(service, &format!("/areal/blobs/{}", digest(uri)?), thread)?;
-    read_blob_from(url, token, uri, guard).await
-}
-async fn read_blob_from(
-    url: url::Url,
-    token: String,
-    uri: &str,
-    guard: impl Fn() -> Result<()>,
-) -> Result<Value> {
-    let mut response = core_client()?.get(url).bearer_auth(token).send().await?;
-    ensure!(response.status().is_success(), "RESOURCE_UNAVAILABLE");
-    ensure!(
-        response
-            .content_length()
-            .is_none_or(|size| size <= MAX_BYTES as u64),
-        "LIMIT_EXCEEDED"
-    );
-    let mime = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|mime| mime.to_str().ok())
-        .unwrap_or("application/octet-stream")
-        .to_owned();
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await? {
-        guard()?;
-        ensure!(bytes.len() + chunk.len() <= MAX_BYTES, "LIMIT_EXCEEDED");
-        bytes.extend_from_slice(&chunk);
-    }
-    ensure!(
-        format!("{:x}", Sha256::digest(&bytes)) == digest(uri)?,
-        "RESOURCE_UNAVAILABLE"
-    );
-    guard()?;
-    Ok(json!({"base64":STANDARD.encode(bytes),"mime":mime}))
-}
-
-fn remote_blob_url(endpoint: &str, thread: &str, path: &str) -> Result<url::Url> {
-    let mut url = url::Url::parse(endpoint)?;
-    let scheme = match url.scheme() {
-        "wss" => "https",
-        "ws" => "http",
-        _ => anyhow::bail!("INVALID_PARAMS"),
-    };
-    url.set_scheme(scheme)
-        .map_err(|_| anyhow::anyhow!("INVALID_PARAMS"))?;
-    let path = format!("{}/areal/blobs{}", url.path().trim_end_matches('/'), path);
-    url.set_path(&path);
-    url.set_query(None);
-    url.query_pairs_mut().append_pair("threadId", thread);
-    Ok(url)
-}
-pub(crate) async fn remote_blob(
-    endpoint: &str,
-    token: &str,
-    params: &Value,
-    guard: impl Fn() -> Result<()>,
-) -> Result<Value> {
-    let thread = params["threadId"].as_str().context("INVALID_PARAMS")?;
-    guard()?;
-    if params["operation"] == "read" {
-        let uri = params["uri"].as_str().context("INVALID_PARAMS")?;
-        let url = remote_blob_url(endpoint, thread, &format!("/{}", digest(uri)?))?;
-        return read_blob_from(url, token.into(), uri, guard).await;
-    }
-    ensure!(
-        params["operation"] == "upload"
-            && params.get("callId").is_none()
-            && params.get("hostGeneration").is_none(),
-        "FORBIDDEN"
-    );
-    let encoded = params["base64"]
-        .as_str()
-        .filter(|text| text.len() <= 22_369_624)
-        .context("INVALID_PARAMS")?;
-    let bytes = STANDARD.decode(encoded)?;
-    ensure!(STANDARD.encode(&bytes) == encoded, "INVALID_PARAMS");
-    let result = upload_to(
-        remote_blob_url(endpoint, thread, "")?,
-        token.into(),
-        params["mime"].as_str().context("INVALID_PARAMS")?,
-        bytes,
-    )
-    .await?;
-    guard()?;
-    Ok(result)
 }

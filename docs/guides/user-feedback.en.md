@@ -37,7 +37,6 @@ cd clients/gui
 pnpm typecheck
 pnpm build
 pnpm test:feedback
-node scripts/feedback-native-smoke.mjs
 ```
 
-Interaction tests use the real Renderer build with an isolated desktop fixture. Native tests use real Core/Side/CLI with local model and receiver fixtures. Platform SQL, API and Web must be deployed together before installed clients can show the feature. Local acceptance does not establish production deployment, classification accuracy, or overall Harness improvement.
+Interaction tests use the real Renderer build with an isolated desktop fixture and cover the UI boundary. Platform SQL, API and Web must be deployed together before installed clients can show the feature. Local acceptance does not establish production deployment, classification accuracy, or overall Harness improvement.

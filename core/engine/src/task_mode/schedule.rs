@@ -451,24 +451,6 @@ pub(super) fn preview(input: SchedulePreview, now: i64) -> Result<SchedulePrevie
     preview_in_zone(input, now, "UTC")
 }
 
-#[cfg(test)]
-mod preview_zone_tests {
-    use super::*;
-
-    #[test]
-    fn calendar_rule_zone_takes_precedence_over_draft_display_zone() {
-        let input: SchedulePreview = serde_json::from_value(json!({"schedule":{"version":1,"rule":{"kind":"calendar","timeZone":"Asia/Tokyo","frequency":"daily","interval":1,"localTime":"09:00","anchorDate":"2099-01-01"},"misfire":{"kind":"coalesce"},"overlap":"skip"},"count":1})).unwrap();
-        let result = preview_in_zone(input, 0, "Asia/Shanghai").unwrap();
-        assert_eq!(result.time_zone, "Asia/Tokyo");
-        assert_eq!(
-            result.occurrences[0].local_time,
-            "2099-01-01T09:00:00+09:00"
-        );
-        let once: SchedulePreview = serde_json::from_value(json!({"schedule":{"version":1,"rule":{"kind":"once","at":4070912400_i64},"misfire":{"kind":"coalesce"},"overlap":"skip"},"count":1})).unwrap();
-        assert_eq!(preview(once, 0).unwrap().time_zone, "UTC");
-    }
-}
-
 pub(super) fn preview_in_zone(
     input: SchedulePreview,
     now: i64,
@@ -637,5 +619,23 @@ impl Engine {
             task.runs.push(run);
         }
         self.save_tasks(&mut state, candidate, id, growth).await
+    }
+}
+
+#[cfg(test)]
+mod preview_zone_tests {
+    use super::*;
+
+    #[test]
+    fn calendar_rule_zone_takes_precedence_over_draft_display_zone() {
+        let input: SchedulePreview = serde_json::from_value(json!({"schedule":{"version":1,"rule":{"kind":"calendar","timeZone":"Asia/Tokyo","frequency":"daily","interval":1,"localTime":"09:00","anchorDate":"2099-01-01"},"misfire":{"kind":"coalesce"},"overlap":"skip"},"count":1})).unwrap();
+        let result = preview_in_zone(input, 0, "Asia/Shanghai").unwrap();
+        assert_eq!(result.time_zone, "Asia/Tokyo");
+        assert_eq!(
+            result.occurrences[0].local_time,
+            "2099-01-01T09:00:00+09:00"
+        );
+        let once: SchedulePreview = serde_json::from_value(json!({"schedule":{"version":1,"rule":{"kind":"once","at":4070912400_i64},"misfire":{"kind":"coalesce"},"overlap":"skip"},"count":1})).unwrap();
+        assert_eq!(preview(once, 0).unwrap().time_zone, "UTC");
     }
 }
