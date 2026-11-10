@@ -135,14 +135,20 @@ export async function runComposerFilesAcceptance({
   const nestedFile = () => fileOptions().filter({ hasText: "nested.ts" });
   const assertInlineFileHover = async (identifier, absolutePath, screenshot) => {
     await identifier.waitFor();
+    const hovered = await identifier.elementHandle();
     await identifier.hover();
     const tooltip = page.getByRole("tooltip").filter({ hasText: absolutePath });
     await tooltip.waitFor().catch(async (error) => {
-      // 超时时带上当时实际显示的提示，区分“没弹出”和“路径不对”。
+      // 超时时带上当时实际显示的提示和悬停目标的去向，区分“没弹出”“路径不对”和“目标被重建”。
       const shown = await page.getByRole("tooltip").allTextContents();
-      throw new Error(`expected path tooltip ${absolutePath}, shown ${JSON.stringify(shown)}`, {
-        cause: error,
-      });
+      const target = await hovered.evaluate((element) => ({
+        connected: element.isConnected,
+        hover: element.matches(":hover"),
+      }));
+      throw new Error(
+        `expected path tooltip ${absolutePath}, shown ${JSON.stringify(shown)}, target ${JSON.stringify(target)}`,
+        { cause: error },
+      );
     });
     assert.equal(
       await tooltip.textContent(),
