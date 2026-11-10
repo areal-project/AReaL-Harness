@@ -852,6 +852,14 @@
     "requires": ["git"]
   },
   {
+    "script": "test:script-units",
+    "layer": "unit",
+    "platforms": ["darwin", "linux"],
+    "areas": ["testing"],
+    "requires": [],
+    "notes": "脚本自身的单测：任务目录、隔离 Electron 身份、打包使用者、开发服务路由、性能夹具；外部命令全部注入。"
+  },
+  {
     "script": "test:manifest",
     "layer": "unit",
     "platforms": ["darwin", "linux"],

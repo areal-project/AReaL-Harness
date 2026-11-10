@@ -99,7 +99,7 @@ To test from a fixed artifact path, build and deploy Core and Runtime from the s
 
 `make integration-boundaries` checks that the product, release entry points and default Make dependency graph do not load optional platform adapters; `make script-test` includes it.
 
-See [testing](testing.en.md) for coverage. Pass arguments with `make tui ARGS='--prompt hello'`. `make release` writes to `target/release`; `make docs` generates Rust API documentation.
+See [testing](testing.en.md) for coverage, and [agent environment and verification layers](agent-environment.en.md) for what the cloud covers and what needs a Mac. Pass arguments with `make tui ARGS='--prompt hello'`. `make release` writes to `target/release`; `make docs` generates Rust API documentation.
 
 For request-projection changes, also run `cargo test --locked -p areal-engine --test runtime_context_projection --test http_model` to check chronology, counters and guidance changes, guidance restoration after compaction, original user/tool content, provider reasoning and default protocol behavior. Validate this separately from capture coverage above: a stable prefix or fewer bytes cannot replace actual returned tokens, task acceptance and source-isolated comparisons.
 

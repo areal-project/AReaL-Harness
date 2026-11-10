@@ -99,7 +99,7 @@ GUI 验收的服务清理检查复用产品的原生 Core 启动适配，并异�
 
 `make integration-boundaries` 检查产品、发行入口和默认 Make 依赖图不加载可选平台适配器；它也随 `make script-test` 执行。
 
-测试范围见[测试指南](testing.md)。附加参数使用 `make tui ARGS='--prompt hello'`。`make release` 输出至 `target/release`，`make docs` 生成 Rust API 文档。
+测试范围见[测试指南](testing.md)；云端能验证到哪一步、哪些留到 Mac，见[Agent 工作环境与验证分层](agent-environment.md)。附加参数使用 `make tui ARGS='--prompt hello'`。`make release` 输出至 `target/release`，`make docs` 生成 Rust API 文档。
 
 `make smoke` 还验证可选轨迹导出：本地接收端返回 503 时 Agent 正常返回，Core 退出后独立上传器继续补传，并验证关闭开关。测试还覆盖 401 失败记录在停用后 5 秒自动节流窗口内重新启用、worker 被强杀后的首次显式重试，以及并发重试保持单一 worker、串行发送和无重复接收。可单独运行 `node scripts/trajectory-smoke.mjs`；设置 `AREAL_TRAJECTORY_FIXTURE_OUTPUT` 可保存真实 OTLP protobuf 供接收端互通测试，内容仅为本地测试数据。设置 `AREAL_TRAJECTORY_SMOKE_OUTPUT` 可保存 JSON 验收记录，包含真实启动时间、重试时距和并发观察。
 
