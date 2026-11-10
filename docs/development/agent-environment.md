@@ -26,6 +26,10 @@ make baseline-diff BASE=... CMD='pnpm --dir clients/gui exec vp test run' PREPAR
 
 `make check-refs`（`make check-changed` 已包含）检查 package.json、Makefile、工作流里写到的文件是否存在，开发文档里反引号路径是否存在，以及 `scripts/`、`clients/gui/scripts/` 下每个脚本是否有入口。存量无入口脚本登记在 `scripts/check-references-baseline.json`，只减不增；给脚本接上入口或删除后运行 `python3 scripts/check-references.py --write`。
 
+## 过渡代码
+
+`make check-transitional`（`make check-changed` 已包含）要求产品代码里名字带 legacy / compat 的地方，前后三行内写一条“过渡：到 <版本> 删”的注释；注释里的版本不大于当前版本就报到期。存量未写期限的按文件登记在 `scripts/check-transitional-baseline.json`，每个文件只减不增。fallback 与 migration 不在检查内：前者多是普通默认值，后者包含 Store 的正式迁移。
+
 ## 验证分层
 
 | 层 | 在哪跑 | 命令 |

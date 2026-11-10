@@ -26,6 +26,10 @@ Runs the same command on the base commit and the working tree and lists only cas
 
 `make check-refs` (part of `make check-changed`) checks that files named in package.json, the Makefile and workflows exist, that backticked paths in development docs exist, and that every script under `scripts/` and `clients/gui/scripts/` has an entry point. Existing orphans are recorded in `scripts/check-references-baseline.json` and may only shrink; after wiring or deleting one, run `python3 scripts/check-references.py --write`.
 
+## Transitional code
+
+`make check-transitional` (part of `make check-changed`) requires product code whose names contain legacy / compat to have a "过渡：到 <version> 删" comment within three lines; once that version is not above the current version, the check reports it as expired. Existing unmarked code is recorded per file in `scripts/check-transitional-baseline.json` and may only shrink. fallback and migration are excluded: the former is usually an ordinary default, the latter includes permanent Store migrations.
+
 ## Verification layers
 
 | Layer | Where | Command |
