@@ -406,6 +406,7 @@ describe("plugin store Host routing", () => {
           expectedRevision: 1,
           source: "/market/web-search",
           expectedDigest: "a".repeat(64),
+          projectId: "project",
         },
       ],
       [
