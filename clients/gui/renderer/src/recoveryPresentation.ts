@@ -98,6 +98,11 @@ export function recoveredOutcome(
   if (!outcome.status && typeof outcome.accepted !== "boolean") return;
   return outcome;
 }
+// 经 Host 命令通道回来的失败只剩错误码和原文；Core 的拒绝原文以“原因码:”开头，从这里取回原因。
+function reasonAndCode(failure: RecoveryFailure) {
+  const reason = failure.reason ?? rawText(failure)?.match(/^([A-Z][A-Z_]+):/)?.[1] ?? "";
+  return `${reason} ${failure.code ?? ""}`;
+}
 /** 传入 t 时，已登记的错误码用错误文案表，未知错误不再原样显示后台文字。 */
 export function recoveryMessage(
   failure: RecoveryFailure,
@@ -118,16 +123,16 @@ export function recoveryMessage(
     return errorText(t, failure);
   if (
     /auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(
-      `${failure.reason ?? ""} ${failure.code ?? ""}`,
+      reasonAndCode(failure),
     )
   )
     return "无法完成操作，请检查模型服务的登录或凭据设置后重试。";
   if (
     failure.code === -32003 ||
-    /permission|forbidden|权限|denied/i.test(`${failure.reason ?? ""} ${failure.code ?? ""}`)
+    /permission|forbidden|权限|denied/i.test(reasonAndCode(failure))
   )
     return "当前权限不允许此操作，请检查权限设置后重试。";
-  if (/config|配置/i.test(`${failure.reason ?? ""} ${failure.code ?? ""}`))
+  if (/config|配置/i.test(reasonAndCode(failure)))
     return "当前配置不可用，请检查会话或模型配置后重试。";
   if (
     context === "view" &&
@@ -161,7 +166,7 @@ export function recoveryMessage(
 }
 
 export function recoverySettings(failure: RecoveryFailure): RecoveryNotice["settings"] {
-  const reason = `${failure.reason ?? ""} ${failure.code ?? ""}`;
+  const reason = reasonAndCode(failure);
   if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reason)) return "模型服务";
   if (failure.code === -32003 || /permission|forbidden|权限|denied|config|配置/i.test(reason))
     return "会话配置";
