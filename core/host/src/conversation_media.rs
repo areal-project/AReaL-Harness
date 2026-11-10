@@ -300,7 +300,8 @@ async fn upload_to(url: url::Url, token: String, mime: &str, bytes: Vec<u8>) -> 
             Some(-32001) => anyhow::bail!("LIMIT_EXCEEDED"),
             Some(-32004 | -32009) => anyhow::bail!("RESOURCE_UNAVAILABLE"),
             Some(-32000) => anyhow::bail!("CORE_UNAVAILABLE"),
-            _ => anyhow::bail!("INVALID_PARAMS"),
+            // 请求形状已由 Host 校验；Core 的其余 400 都是拒收这份内容（类型、签名或编码）。
+            _ => anyhow::bail!("ATTACHMENT_UNSUPPORTED"),
         },
         401 | 403 | 404 => anyhow::bail!("RESOURCE_UNAVAILABLE"),
         _ => anyhow::bail!("CORE_UNAVAILABLE"),
@@ -779,6 +780,48 @@ mod tests {
             .await
             .unwrap();
         socket.write_all(bytes).await.unwrap();
+    }
+    #[tokio::test]
+    async fn upload_reports_core_content_rejection_as_unsupported_attachment() {
+        for (core, expected) in [
+            (-32602, "ATTACHMENT_UNSUPPORTED"),
+            (-32001, "LIMIT_EXCEEDED"),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let service = service(root.path(), listener.local_addr().unwrap());
+            let upload = upload_owned(
+                &service,
+                "selected",
+                "application/typescript",
+                vec![0xff, 0xfe],
+                None,
+                None,
+            );
+            let server = async {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = Vec::new();
+                while !request.ends_with(b"\r\n\r\n\xff\xfe") {
+                    let mut byte = [0];
+                    socket.read_exact(&mut byte).await.unwrap();
+                    request.push(byte[0]);
+                    assert!(request.len() < 8192);
+                }
+                let body = json!({"error":{"code":core,"message":"private detail"}}).to_string();
+                socket
+                    .write_all(
+                        format!(
+                            "HTTP/1.1 400 Bad Request\r\nContent-Length: {}\r\n\r\n{body}",
+                            body.len()
+                        )
+                        .as_bytes(),
+                    )
+                    .await
+                    .unwrap();
+            };
+            let (result, _) = tokio::join!(upload, server);
+            assert_eq!(result.unwrap_err().to_string(), expected);
+        }
     }
     #[tokio::test]
     async fn native_media_preserves_audio_and_binary_attachments() {
