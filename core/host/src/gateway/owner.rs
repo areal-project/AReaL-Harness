@@ -8,8 +8,6 @@ use tokio::task::JoinSet;
 mod control;
 #[path = "enrollment.rs"]
 mod enrollment;
-#[path = "legacy.rs"]
-mod legacy;
 #[path = "push.rs"]
 mod push;
 #[path = "session.rs"]

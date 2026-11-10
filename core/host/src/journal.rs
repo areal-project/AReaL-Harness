@@ -100,6 +100,23 @@ fn retained_forever(outcome: &Value) -> bool {
     remote["method"] == "session.control" && remote["target"]["operation"] == "goalCreate"
 }
 
+/// 旧版 JS 远程网关写下的远程行没有 nativeDigest 与 coreScope。升级不迁移在途工作，
+/// 这些行在新版没有任何读者；目标创建回执是长期授权事实，仍然保留。
+fn legacy_remote(record: &Value) -> bool {
+    matches!(
+        record["remote"]["method"].as_str(),
+        Some("session.send" | "session.control" | "task.pause" | "task.question.reply")
+    ) && record.get("nativeDigest").is_none()
+        && record.get("coreScope").is_none()
+}
+
+fn drop_legacy_remote(snapshot: &mut Snapshot) {
+    snapshot.pending.retain(|entry| !legacy_remote(entry));
+    snapshot
+        .outcomes
+        .retain(|_, outcome| !legacy_remote(outcome) || retained_forever(outcome));
+}
+
 /// 记录新结算回执的时间，并在超过软阈值时按结算时间从旧到新回收。
 /// 仍被待决行引用、未满最短保留时间或长期授权类的回执不回收。
 fn reclaim(record: &mut Record, now: u64) {
@@ -227,6 +244,13 @@ impl Journal {
             }
         }
         Ok(journal)
+    }
+
+    /// 停机导入：只带入已结算回执。旧版待决行属于在途工作，不迁移。
+    pub(crate) fn import(&self, project_id: &str, outcomes: Value) -> Result<()> {
+        let mut snapshot = Snapshot::parse(json!({"version":1,"pending":[],"outcomes":outcomes}))?;
+        drop_legacy_remote(&mut snapshot);
+        self.initialize(project_id, serde_json::to_value(&snapshot)?)
     }
 
     pub(crate) fn initialize(&self, project_id: &str, snapshot: Value) -> Result<()> {
@@ -454,6 +478,7 @@ impl Journal {
         record.snapshot.validate()?;
         self.recover(&record)?;
         let mut record = record;
+        drop_legacy_remote(&mut record.snapshot);
         if record.settled_at.is_empty() {
             // 升级前写入的记录没有结算时间，视为已过最短保留期，满额项目升级后即可恢复。
             for id in record.snapshot.outcomes.keys() {
@@ -813,6 +838,26 @@ mod tests {
 
     fn snapshot(text: &str) -> Value {
         json!({"version":1,"pending":[{"method":"areal/thread/start","params":{"requestId":"original-core-id","input":[{"type":"text","text":text}]},"createdAt":"original-time","remote":{"opaque":"preserved"}}],"outcomes":{"old":{"accepted":true,"threadId":"old-thread"}}})
+    }
+    #[test]
+    fn import_keeps_settled_receipts_and_drops_legacy_remote_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        journal
+            .import(
+                "project",
+                json!({
+                    "local":{"accepted":true,"threadId":"thread"},
+                    "legacy-send":{"accepted":true,"remote":{"method":"session.send"}},
+                    "legacy-goal":{"accepted":true,"remote":{"method":"session.control","target":{"operation":"goalCreate"}}},
+                    "native-send":{"accepted":true,"nativeDigest":"digest","remote":{"method":"session.send"}},
+                }),
+            )
+            .unwrap();
+        let (_, snapshot) = journal.native_snapshot("project").unwrap();
+        assert_eq!(snapshot["pending"], json!([]));
+        let kept: Vec<_> = snapshot["outcomes"].as_object().unwrap().keys().collect();
+        assert_eq!(kept, ["legacy-goal", "local", "native-send"]);
     }
     #[test]
     fn native_admission_is_cas_bound_and_settlement_keeps_original_outcome() {

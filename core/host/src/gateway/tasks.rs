@@ -350,7 +350,7 @@ impl Session {
         self.authorize(Some(project), capability)?;
         if let Some(record) = self.command_record(project, &command)? {
             return self
-                .task_original(project, &record, &params, &command, &digest)
+                .task_original(project, &record, &command, &digest)
                 .await;
         }
         let mutation = Mutation {
@@ -366,7 +366,7 @@ impl Session {
             self.authorize(Some(project), capability)?;
             if let Some(record) = self.command_record(project, &command)? {
                 return self
-                    .task_original(project, &record, &mutation.params, &command, &digest)
+                    .task_original(project, &record, &command, &digest)
                     .await;
             }
         }
@@ -376,41 +376,13 @@ impl Session {
         &self,
         project: &str,
         record: &Value,
-        params: &Value,
         command: &str,
         digest: &str,
     ) -> Result<Value> {
         if record["remote"]["semanticDigest"] == digest {
             return self.command_result(project, Some(record), command).await;
         }
-        ensure!(gateway_owner::legacy::is_legacy(record), "COMMAND_CONFLICT");
-        let mut native = params.clone();
-        native["requestId"] = record["operationId"].clone();
-        let id = self.project_id(project)?;
-        let verified = gateway_owner::legacy::task_retry(
-            &self.host,
-            &self.source_id,
-            &id,
-            project,
-            record,
-            &native,
-        )
-        .await;
-        self.authorize(
-            Some(project),
-            record["remote"]["capability"]
-                .as_str()
-                .context("COMMAND_CONFLICT")?,
-        )?;
-        match verified? {
-            Some(record) => self.command_result(project, Some(&record), command).await,
-            None => {
-                let mut value = Self::command_view(Some(record), command);
-                value["admissionState"] = json!("unknown");
-                value["submissionUnknown"] = json!(true);
-                Ok(value)
-            }
-        }
+        Err(anyhow::anyhow!("COMMAND_CONFLICT"))
     }
     async fn admit_task(
         &self,
@@ -447,9 +419,7 @@ impl Session {
             self.task_state(project, generation, &read_target).await?;
         self.authorize(Some(project), capability)?;
         if let Some(record) = self.command_record(project, command)? {
-            return self
-                .task_original(project, &record, params, command, digest)
-                .await;
+            return self.task_original(project, &record, command, digest).await;
         }
         ensure!(
             self.host

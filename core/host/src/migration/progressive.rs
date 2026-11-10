@@ -166,22 +166,13 @@ impl Migration {
                     &format!("{}-{suffix}.json", binding.alias.legacy_project_id),
                 )?;
             }
-            let pending = self
-                .original_json(
-                    r,
-                    &format!("{}-pending.json", binding.alias.legacy_project_id),
-                )?
-                .unwrap_or_else(|| json!([]));
             let outcomes = self
                 .original_json(
                     r,
                     &format!("{}-outcomes.json", binding.alias.legacy_project_id),
                 )?
                 .unwrap_or_else(|| json!({}));
-            journal.initialize(
-                &binding.project_id,
-                json!({"version":1,"pending":pending,"outcomes":outcomes}),
-            )?;
+            journal.import(&binding.project_id, outcomes)?;
             for adoption in &adoptions {
                 prior_boot::revalidate(&self.home, r, adoption)?;
             }

@@ -455,10 +455,6 @@ impl Session {
     }
 }
 
-pub(crate) fn remote_control(entry: &Value) -> bool {
-    areal_protocol::submissions::remote_control(entry)
-}
-
 fn blob_url(value: &Value) -> Option<&str> {
     value.as_str().filter(|url| {
         url.strip_prefix("areal://blob/").is_some_and(|id| {
