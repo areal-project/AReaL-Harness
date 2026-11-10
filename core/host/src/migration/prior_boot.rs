@@ -483,7 +483,9 @@ pub(super) fn revalidate(home: &Path, record: &Record, adoption: &Adoption) -> R
 
 #[cfg(test)]
 thread_local! { static TEST_BOOT:RefCell<Option<Boot>> = const { RefCell::new(None) }; }
+// 仅 macOS 的测试使用。
 #[cfg(test)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn with_test_boot<T>(offset_seconds: i64, run: impl FnOnce() -> T) -> T {
     struct Reset(Option<Boot>);
     impl Drop for Reset {
@@ -510,6 +512,7 @@ pub(crate) fn with_test_boot<T>(offset_seconds: i64, run: impl FnOnce() -> T) ->
     run()
 }
 #[cfg(test)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(super) fn test_tree_digest(data: &Path) -> Result<String> {
     Ok(tree(data, &Boot::current()?)?.sha256)
 }

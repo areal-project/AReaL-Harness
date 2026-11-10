@@ -33,10 +33,11 @@ import { pageTopology } from "@areal/workbench/history-projection";
 import { hostCommandError } from "./desktop-response.js";
 import {
   createWorkbenchRoutes,
-  DESKTOP_COMMANDS,
-  declinedCode,
-  desktopKeepsCommand,
   hostDesktopCommand,
+  jsonObject,
+  object,
+  openInBrowser,
+  routeDesktopCommand,
   hostPlatformCapabilities,
   openingAuthorization,
 } from "./host-workbench.js";
@@ -528,13 +529,6 @@ export function createHostReadServices(
     const hostProjectId = threadTargets.get(`${projectId}:${threadId}`) ?? project?.hostProjectId;
     return project && hostProjectId ? { project, hostProjectId, threadId } : undefined;
   }
-  function object(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === "object" && !Array.isArray(value);
-  }
-  function jsonObject(value: Record<string, unknown>): JsonObject {
-    // 桌面契约已经验证请求；JSON 往返仅移除 UI 可选字段中的 undefined。
-    return JSON.parse(JSON.stringify(value));
-  }
   const writes: NonNullable<PlatformServices["writes"]> = {
     async route(name, params) {
       if (client.snapshot().connection !== "ready") return undefined;
@@ -769,32 +763,10 @@ export function createHostReadServices(
     snapshot = next as unknown as Snapshot;
     publish();
   });
-  type Run = (
-    name: string,
-    params: Record<string, unknown>,
-  ) => ReturnType<PlatformServices["command"]>;
-  const openExternal =
-    desktop?.openExternal ??
-    (async (url: string) => {
-      if (!window.open(url, "_blank", "noopener,noreferrer")) throw new Error("浏览器拦截了新窗口");
-    });
-  // 桌面与网页同走 Host 的后台命令；只有 Main 加了本机行为的、或资料库来源未就绪时仍走 Main。
-  // 过渡：到 0.2.0 删（来源去掉、Main 附加行为迁走后整条走 Host）
-  const routed: Run = desktop
-    ? async (name, params) => {
-        const native = desktop.command as Run;
-        if (
-          !DESKTOP_COMMANDS.has(name) ||
-          desktopKeepsCommand(name, params) ||
-          !librarySourceId ||
-          !client.writable("desktop.command")
-        )
-          return native(name, params);
-        const result = await (hostCommand as Run)(name, params);
-        // 窗口刚打开时 Main 可能还没把后台交给 Host；Host 明确拒绝（未受理）时走 Main，Main 会等后台就绪。
-        return !result.ok && declinedCode(result.error.code) ? native(name, params) : result;
-      }
-    : (hostCommand as Run);
+  const openExternal = desktop?.openExternal ?? openInBrowser;
+  const routed = routeDesktopCommand(desktop, hostCommand, () =>
+    Boolean(librarySourceId && client.writable("desktop.command")),
+  );
   const command = openingAuthorization(routed, openExternal) as PlatformServices["command"];
   return {
     ...(desktop ?? {

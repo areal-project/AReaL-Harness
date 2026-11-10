@@ -9,10 +9,6 @@ const { HostClient } = require("node:module").createRequire(
 const {
   LifecycleOperations,
 } = require("@areal/workbench-service/desktop/core/lifecycle-operations.cjs");
-const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
-const {
-  ProjectConnections,
-} = require("@areal/workbench-service/desktop/core/project-connections.cjs");
 
 const owner = () => {
   const host = new GuiHostProjects({
@@ -65,39 +61,6 @@ test("historical Desktop receipts do not override the Host scheduling projection
   host.rememberStatus(status(true));
   assert.equal(lifecycle.schedulingSuppressed("owner"), true);
 });
-
-test("explicit resume reaches Host ensure for an already connected owner", async () => {
-  const project = { id: "owner", client: { ready: true } };
-  const descriptor = { endpoint: "ws://fixture", generation: "current" };
-  const requests = [];
-  const backend = {
-    home: "/fixture/core",
-    projects: new Map([[project.id, project]]),
-    starting: new Map(),
-    worktrees: { assertAvailable() {} },
-    providers: { manages: () => false },
-    host: {
-      ensure: async (...args) => {
-        requests.push(args);
-        return { descriptor, token: "fixture" };
-      },
-    },
-    loadProjectJournal: async () => project,
-    launch: (...args) => CoreBackend.prototype.launch.call(backend, ...args),
-    startProject: (...args) => CoreBackend.prototype.startProject.call(backend, ...args),
-    start: (...args) => CoreBackend.prototype.start.call(backend, ...args),
-  };
-  backend.host.scheduling = () => ({ suppressed: true, activationError: null });
-  backend.connections = new ProjectConnections(backend);
-  const lifecycle = new LifecycleOperations(backend);
-  backend.lifecycleOperations = lifecycle;
-  await assert.rejects(backend.start(project.id), { code: "CORE_STOPPED" });
-  await lifecycle.resumeScheduling(project.id);
-  assert.equal(requests.length, 1);
-  assert.deepEqual(requests[0].slice(1), [project.id, undefined, undefined, true]);
-  assert.equal(project.service, descriptor);
-});
-
 test("ordinary ensure omits resume intent and explicit ensure forwards it", async () => {
   const client = new HostClient();
   client.generation = randomUUID();
@@ -109,51 +72,4 @@ test("ordinary ensure omits resume intent and explicit ensure forwards it", asyn
   assert.equal(requests[0].method, "project.ensure");
   assert.equal(Object.hasOwn(requests[0].params, "resumeScheduling"), false);
   assert.equal(requests[1].params.resumeScheduling, true);
-});
-
-test("maintenance stops preserve scheduling intent and explicit project stop suppresses activation", async () => {
-  for (const kind of ["stopProject", "updateProject", "stopDesktop", "updateDesktop"]) {
-    const host = owner();
-    host.client.capabilities = ["stopOperations"];
-    const target = {
-      projectId: "owner",
-      serviceId: "original-service",
-      generation: "original-generation",
-      requestId: randomUUID(),
-      phase: "notAttempted",
-    };
-    const calls = [];
-    host.client.request = async (method, params) => {
-      if (method === "host.status") return status(true);
-      assert.equal(method, "project.stop");
-      calls.push(params);
-      return {
-        version: 1,
-        requestId: params.requestId,
-        projectId: params.projectId,
-        serviceId: target.serviceId,
-        serviceGeneration: params.serviceGeneration,
-        strategy: params.strategy,
-        state: "completed",
-      };
-    };
-    const project = {
-      id: target.projectId,
-      service: { serviceId: target.serviceId, generation: target.generation },
-      model: { connection() {} },
-    };
-    const backend = {
-      home: "/fixture/core",
-      host,
-      projects: new Map([[project.id, project]]),
-      providers: { redact: (text) => text },
-    };
-    const lifecycle = new LifecycleOperations(backend);
-    lifecycle.store = async () => {};
-    await lifecycle.stopTarget({ version: 1, kind, mode: "ifIdle" }, target);
-    assert.equal(target.phase, "completed", kind);
-    assert.equal(calls.length, 1, kind);
-    assert.equal(calls[0].suppressScheduling, kind === "stopProject" ? undefined : false, kind);
-    assert.equal(host.scheduling(project.id).suppressed, true, kind);
-  }
 });

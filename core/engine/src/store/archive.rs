@@ -34,7 +34,7 @@ pub(super) fn read_segment(root: &Path, digest: &str) -> Result<Segment> {
 
 pub(super) fn decode_segment(bytes: &[u8], digest: &str) -> Result<Segment> {
     anyhow::ensure!(
-        format!("{:x}", Sha256::digest(&bytes)) == digest,
+        format!("{:x}", Sha256::digest(bytes)) == digest,
         "history segment integrity check failed"
     );
     let segment: Segment = serde_json::from_slice(bytes)?;

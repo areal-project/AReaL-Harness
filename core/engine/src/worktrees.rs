@@ -417,8 +417,7 @@ impl Engine {
                             .await?
                             .iter()
                             .any(|tree| tree["root"] == destination.to_string_lossy().as_ref())
-                    {
-                        if git(
+                        && git(
                             &root,
                             &[
                                 "show-ref",
@@ -429,17 +428,16 @@ impl Engine {
                         )
                         .await
                         .is_ok()
-                        {
-                            value["deleted"] = json!(true);
-                            value["deletedAt"] = json!(now());
-                            value["deletion"]["status"] = json!("succeeded");
-                            let mut result = json!({"requestId":value["deletion"]["requestId"],"creationId":id,"removed":true});
-                            for key in ["directory", "branch", "target"] {
-                                result[key] = value["record"][key].clone();
-                            }
-                            value["deletion"]["result"] = result;
-                            save(&path, &value, false)?;
+                    {
+                        value["deleted"] = json!(true);
+                        value["deletedAt"] = json!(now());
+                        value["deletion"]["status"] = json!("succeeded");
+                        let mut result = json!({"requestId":value["deletion"]["requestId"],"creationId":id,"removed":true});
+                        for key in ["directory", "branch", "target"] {
+                            result[key] = value["record"][key].clone();
                         }
+                        value["deletion"]["result"] = result;
+                        save(&path, &value, false)?;
                     }
                 }
                 Ok(value)

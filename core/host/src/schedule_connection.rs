@@ -404,15 +404,14 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
     let sequence = connection.event_sequence.get() + 1;
     connection.event_sequence.set(sequence);
     if connection.terminal {
-        if connection.observer.get()
+        if (connection.observer.get()
             || connection.desktop.get()
-            || connection.remote_source.is_some()
+            || connection.remote_source.is_some())
+            && let Some(lease) = connection.workbench_lease.borrow().as_deref()
         {
-            if let Some(lease) = connection.workbench_lease.borrow().as_deref() {
-                let mut event = value;
-                event["sequence"] = json!(sequence);
-                emit_workbench_event(&host, &connection.project_id, lease, &event);
-            }
+            let mut event = value;
+            event["sequence"] = json!(sequence);
+            emit_workbench_event(host, &connection.project_id, lease, &event);
         }
         return;
     }
@@ -427,37 +426,38 @@ fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
             .borrow()
             .get(&connection.project_id)
             .is_some_and(|current| Rc::ptr_eq(current, connection));
-    if current_turn && value["method"] == "turn/started" {
-        if let (Some(thread), Some(turn)) = (
+    if current_turn
+        && value["method"] == "turn/started"
+        && let (Some(thread), Some(turn)) = (
             value["params"]["threadId"].as_str(),
             value["params"]["turn"]["id"].as_str(),
-        ) {
-            connection.observe_running(thread, turn);
-        }
+        )
+    {
+        connection.observe_running(thread, turn);
     }
     if current_turn && value["method"] == "turn/completed" {
         // Core 先结算再发终态；这里只唤醒原生命周期权威重读，不把通知直接当作停止回执。
-        if let Some(thread) = value["params"]["threadId"].as_str() {
-            if let Some(progress) = connection.observed_progress.borrow_mut().get_mut(thread) {
-                if value["params"]["turn"]["id"] == progress.turn {
-                    progress.terminal_hinted = true;
-                }
-            }
+        if let Some(thread) = value["params"]["threadId"].as_str()
+            && let Some(progress) = connection.observed_progress.borrow_mut().get_mut(thread)
+            && value["params"]["turn"]["id"] == progress.turn
+        {
+            progress.terminal_hinted = true;
         }
         host.changed();
     }
     if super::library_service::core_event(host, &connection.project_id, &value).is_err() {
         eprintln!("Host library Core event update failed");
-    } else if current_turn && value["method"] == "turn/completed" {
-        if let Some(thread) = value["params"]["threadId"].as_str() {
-            let terminal = connection
-                .observed_progress
-                .borrow()
-                .get(thread)
-                .is_some_and(|progress| value["params"]["turn"]["id"] == progress.turn);
-            if terminal {
-                connection.observed_progress.borrow_mut().remove(thread);
-            }
+    } else if current_turn
+        && value["method"] == "turn/completed"
+        && let Some(thread) = value["params"]["threadId"].as_str()
+    {
+        let terminal = connection
+            .observed_progress
+            .borrow()
+            .get(thread)
+            .is_some_and(|progress| value["params"]["turn"]["id"] == progress.turn);
+        if terminal {
+            connection.observed_progress.borrow_mut().remove(thread);
         }
     }
     if let Some(body) = super::task_catalog::accept_event(
@@ -776,15 +776,15 @@ struct DriverGuard(Rc<CoreSession>, std::rc::Weak<Host>);
 impl Drop for DriverGuard {
     fn drop(&mut self) {
         self.0.invalidate();
-        if let Some(host) = self.1.upgrade() {
-            if let Some(lease) = self.0.workbench_lease.borrow().as_deref() {
-                emit_workbench_event(
-                    &host,
-                    &self.0.project_id,
-                    lease,
-                    &json!({"method":"host/connectionClosed","params":{}}),
-                );
-            }
+        if let Some(host) = self.1.upgrade()
+            && let Some(lease) = self.0.workbench_lease.borrow().as_deref()
+        {
+            emit_workbench_event(
+                &host,
+                &self.0.project_id,
+                lease,
+                &json!({"method":"host/connectionClosed","params":{}}),
+            );
         }
     }
 }

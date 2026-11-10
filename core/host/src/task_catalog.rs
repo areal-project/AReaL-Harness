@@ -71,10 +71,10 @@ async fn owners(host: &Host, params: &Value) -> Result<Vec<Owner>> {
     let mut result = Vec::new();
     for project in &view.projects {
         if source.is_some()
-            && !project
+            && project
                 .alias
                 .as_ref()
-                .is_some_and(|alias| Some(alias.source_id.as_str()) == source)
+                .is_none_or(|alias| Some(alias.source_id.as_str()) != source)
         {
             continue;
         }
@@ -549,13 +549,13 @@ pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
         }.await;
         match result {
             Ok((rows, more, state)) => {
-                if operation != "inbox" {
-                    if let Some(slot) = host.slots.borrow().get(&owner.id) {
-                        host.schedules
-                            .task_rows
-                            .borrow_mut()
-                            .insert(owner.id.clone(), (slot.registration.clone(), rows.clone()));
-                    }
+                if operation != "inbox"
+                    && let Some(slot) = host.slots.borrow().get(&owner.id)
+                {
+                    host.schedules
+                        .task_rows
+                        .borrow_mut()
+                        .insert(owner.id.clone(), (slot.registration.clone(), rows.clone()));
                 }
                 has_more |= more || rows.len() > limit;
                 data.extend(rows.into_iter().take(limit).map(|row| scoped(row, &owner)));
@@ -569,23 +569,22 @@ pub(super) async fn read(host: &Rc<Host>, params: &Value) -> Result<Value> {
             Err(error) => {
                 if operation != "inbox" {
                     let cached = host.schedules.task_rows.borrow().get(&owner.id).cloned();
-                    if let Some((registration, rows)) = cached {
-                        if host
+                    if let Some((registration, rows)) = cached
+                        && host
                             .slots
                             .borrow()
                             .get(&owner.id)
                             .is_some_and(|slot| slot.registration == registration)
-                        {
-                            data.extend(
-                                rows.into_iter()
-                                    .filter(|row| {
-                                        source_thread
-                                            .is_none_or(|thread| row["sourceThreadId"] == thread)
-                                    })
-                                    .take(limit)
-                                    .map(|row| scoped(row, &owner)),
-                            );
-                        }
+                    {
+                        data.extend(
+                            rows.into_iter()
+                                .filter(|row| {
+                                    source_thread
+                                        .is_none_or(|thread| row["sourceThreadId"] == thread)
+                                })
+                                .take(limit)
+                                .map(|row| scoped(row, &owner)),
+                        );
                     }
                 }
                 owner_states.insert(
@@ -1148,10 +1147,10 @@ pub(super) async fn native_receipt(
 }
 async fn watch_owner(host: &Host, project: &str) -> Result<Value> {
     let scope = host.schedules.connections.shared_identity(host, project)?;
-    if let Some((connection, barrier)) = host.schedules.task_watches.borrow().get(project) {
-        if connection == &scope.2 {
-            return Ok(barrier.clone());
-        }
+    if let Some((connection, barrier)) = host.schedules.task_watches.borrow().get(project)
+        && connection == &scope.2
+    {
+        return Ok(barrier.clone());
     }
     let barrier = rpc(host, project, "areal/owner/watch", json!({})).await?;
     ensure!(
@@ -1163,13 +1162,12 @@ async fn watch_owner(host: &Host, project: &str) -> Result<Value> {
         "INVALID_RESPONSE"
     );
     let mut watches = host.schedules.task_watches.borrow_mut();
-    if let Some((connection, latest)) = watches.get(project) {
-        if connection == &scope.2
-            && latest["generation"] == barrier["generation"]
-            && latest["sequence"].as_u64() > barrier["sequence"].as_u64()
-        {
-            return Ok(barrier);
-        }
+    if let Some((connection, latest)) = watches.get(project)
+        && connection == &scope.2
+        && latest["generation"] == barrier["generation"]
+        && latest["sequence"].as_u64() > barrier["sequence"].as_u64()
+    {
+        return Ok(barrier);
     }
     watches.insert(project.into(), (scope.2, barrier.clone()));
     Ok(barrier)
@@ -1402,8 +1400,9 @@ mod tests {
         let ordinary = json!({"root":root,"projectless":true,"projectlessRequestId":"ordinary"});
         assert!(task_thread_cwd(&root, &params, &[ordinary]).is_err());
         let scratch = json!({"root":root,"projectless":true,"projectlessRequestId":"00000000-0000-4000-a000-5c4a7c400001"});
+        let scratch = std::slice::from_ref(&scratch);
         assert_eq!(
-            task_thread_cwd(&root, &params, &[scratch.clone()]).unwrap(),
+            task_thread_cwd(&root, &params, scratch).unwrap(),
             (target.clone(), true)
         );
         assert!(
@@ -1412,19 +1411,17 @@ mod tests {
         );
         let request = "2dd38d32-36de-469b-951a-15caad2ed810";
         assert_eq!(
-            task_thread_cwd(&root, &json!({"requestId":request}), &[scratch.clone()]).unwrap(),
+            task_thread_cwd(&root, &json!({"requestId":request}), scratch).unwrap(),
             (root.join(request), true)
         );
-        assert!(task_thread_cwd(&root, &json!({"cwd":root}), &[scratch.clone()]).is_err());
-        assert!(
-            task_thread_cwd(&root, &json!({"requestId":"../escape"}), &[scratch.clone()]).is_err()
-        );
+        assert!(task_thread_cwd(&root, &json!({"cwd":root}), scratch).is_err());
+        assert!(task_thread_cwd(&root, &json!({"requestId":"../escape"}), scratch).is_err());
         for cwd in [
             root.join("../escape"),
             root.join("nested/child"),
             root.join(".hidden"),
         ] {
-            assert!(task_thread_cwd(&root, &json!({"cwd":cwd}), &[scratch.clone()]).is_err());
+            assert!(task_thread_cwd(&root, &json!({"cwd":cwd}), scratch).is_err());
         }
         assert_eq!(
             task_thread_cwd(&root, &json!({}), &[]).unwrap(),

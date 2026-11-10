@@ -103172,6 +103172,66 @@
                   ],
                   "type": "object"
                 },
+                "ProcessReceipt": {
+                  "description": "Turn 收尾查询原 Runtime 得到的命令终态；不证明输出已读完或任务检查通过。",
+                  "properties": {
+                    "cleanupConfirmed": {
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "exitCode": {
+                      "format": "int32",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "processId": {
+                      "type": "string"
+                    },
+                    "runtimeProcessId": {
+                      "type": "string"
+                    },
+                    "scopeId": {
+                      "type": "string"
+                    },
+                    "signal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "state": {
+                      "$ref": "#/anyOf/4/properties/thread/$defs/ProcessReceiptState"
+                    },
+                    "stopReason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "processId",
+                    "runtimeProcessId",
+                    "scopeId",
+                    "state",
+                    "cleanupConfirmed"
+                  ],
+                  "type": "object"
+                },
+                "ProcessReceiptState": {
+                  "enum": [
+                    "exited",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
                 "PromptPrediction": {
                   "oneOf": [
                     {
@@ -104000,6 +104060,13 @@
                     "items": {
                       "items": {
                         "$ref": "#/anyOf/4/properties/thread/$defs/Item"
+                      },
+                      "type": "array"
+                    },
+                    "processReceipts": {
+                      "description": "补齐工具最后一次观察尚未结束的命令；已结算工具结果保持原样。",
+                      "items": {
+                        "$ref": "#/anyOf/4/properties/thread/$defs/ProcessReceipt"
                       },
                       "type": "array"
                     },

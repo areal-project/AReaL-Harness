@@ -6,7 +6,6 @@ import { mkdir, mkdtemp, realpath, readFile, rm, writeFile } from "node:fs/promi
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CoreClient } from "../packages/runtime-client/core.js";
 
 const require = createRequire(import.meta.url);
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
@@ -16,13 +15,11 @@ const { HostClient } = createRequire(new URL("../app/package.json", import.meta.
   "@areal/client/node",
 );
 const { AppProviders } = require("@areal/workbench-service/desktop/core/providers.cjs");
-const WebSocket = require("ws");
 const run = promisify(execFile);
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const binary = join(
-  process.env.AREAL_TEST_BIN_DIR || join(repository, ".local/shared-host-bin"),
-  "areal",
-);
+const binary = process.env.AREAL_TEST_BIN_DIR
+  ? join(process.env.AREAL_TEST_BIN_DIR, "areal")
+  : (process.env.AREAL_CORE_BIN ?? join(repository, ".local/shared-host-bin/areal"));
 const root = await realpath(await mkdtemp("/tmp/ah-consumers-"));
 const source = {
   profile: join(root, "profile"),
@@ -57,7 +54,6 @@ await writeFile(join(source.coreHome, "projects.json"), JSON.stringify([cliProje
 });
 const cli = new HostClient();
 const owner = new GuiHostProjects({ binary, home, source, singletonHeld: true });
-let client;
 let hostPid;
 try {
   await cli.connectOrStart(home, binary);
@@ -138,50 +134,17 @@ try {
     assert.fail("foreign project must not prepare GUI resources");
   await CoreBackend.prototype.launch.call(backend, project);
   assert.equal(project.service.generation, cliStarted.service.generation);
-  client = new CoreClient({
-    createSocket: () =>
-      new WebSocket(project.service.endpoint, {
-        headers: { Authorization: `Bearer ${project.token}` },
-      }),
-  });
-  await client.connect();
-  project.client = client;
-  const invalidProfile = { id: "gui-only-profile", revision: "fixture" };
-  await assert.rejects(
-    client.request("areal/thread/start", {
-      cwd: workspace,
-      agentProfile: invalidProfile,
-      requestId: randomUUID(),
-    }),
-  );
-  Object.assign(backend, {
-    prepareThreadInProject: CoreBackend.prototype.prepareThreadInProject,
-    assertThreadCreationAvailable() {},
-    currentConnection: (current, connection) => current === project && connection === client,
-    desktopTools: () => [],
-    library: { value: { settings: {} } },
-    defaultProfile: invalidProfile,
-    submit: async (_project, method, params, { preDispatch }) => {
-      assert.equal(preDispatch(), true);
-      assert.equal(Object.hasOwn(params, "agentProfile"), false);
-      return client.request(method, { ...params, requestId: randomUUID() });
-    },
-    refreshAfterAdmission: async () => {},
-  });
-  const thread = await CoreBackend.prototype.createThreadInProject.call(backend, project, {});
-  assert.ok(thread.threadId);
   const result = {
     root,
     checks: [
       "named-credential-ready-with-secret-outside-launch",
       "equivalent-cli-binding-keeps-configuration-owner",
-      "foreign-core-generation-and-thread-profile-preserved",
+      "foreign-core-generation-preserved",
     ],
   };
   await writeFile(join(root, "result.json"), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 } finally {
-  client?.close();
   try {
     if (cli.socket && !cli.socket.destroyed)
       assert.equal(

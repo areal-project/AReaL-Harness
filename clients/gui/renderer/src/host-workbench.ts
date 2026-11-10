@@ -1,4 +1,4 @@
-import type { HostClient } from "@areal/client";
+import type { HostClient, JsonObject } from "@areal/client";
 import type { PlatformServices } from "./services.js";
 import { isLibraryState } from "./services.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
@@ -470,4 +470,36 @@ export function hostPlatformCapabilities(
           ],
     }),
   };
+}
+
+export async function openInBrowser(url: string) {
+  if (!window.open(url, "_blank", "noopener,noreferrer")) throw new Error("浏览器拦截了新窗口");
+}
+
+/**
+ * 桌面与网页同走 Host 的后台命令；只有 Main 加了本机行为的、或资料库来源未就绪时仍走 Main。
+ * 过渡：到 0.2.0 删（来源去掉、Main 附加行为迁走后整条走 Host）
+ */
+export function routeDesktopCommand(
+  desktop: Pick<PlatformServices, "command"> | undefined,
+  hostCommand: unknown,
+  hostReady: () => boolean,
+): Run {
+  if (!desktop) return hostCommand as Run;
+  const native = desktop.command as Run;
+  return async (name, params) => {
+    if (!DESKTOP_COMMANDS.has(name) || desktopKeepsCommand(name, params) || !hostReady())
+      return native(name, params);
+    const result = await (hostCommand as Run)(name, params);
+    // 窗口刚打开时 Main 可能还没把后台交给 Host；Host 明确拒绝（未受理）时走 Main，Main 会等后台就绪。
+    return !result.ok && declinedCode(result.error.code) ? native(name, params) : result;
+  };
+}
+
+export function object(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+/** 桌面契约已经验证请求；JSON 往返仅移除 UI 可选字段中的 undefined。 */
+export function jsonObject(value: Record<string, unknown>): JsonObject {
+  return JSON.parse(JSON.stringify(value));
 }

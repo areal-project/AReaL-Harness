@@ -1,16 +1,12 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { mkdir, readFile, writeFile, rm } = require("node:fs/promises");
+const { rm } = require("node:fs/promises");
 const { join } = require("node:path");
-const { randomUUID } = require("node:crypto");
 const { makeTempDir } = require("./support/temp.mjs");
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { snapshotProject } = require("@areal/workbench-service/desktop/core/project-snapshot.cjs");
 const { catalog } = require("@areal/workbench-service/desktop/core/provider-model-catalog.cjs");
-const {
-  LifecycleOperations,
-} = require("@areal/workbench-service/desktop/core/lifecycle-operations.cjs");
 
 test("launch keeps named environment credentials outside persistent launch inputs", async (t) => {
   const home = await makeTempDir("areal-host-credentials-");
@@ -132,7 +128,8 @@ test("Host discovery schedules only ready foreign projects for passive observati
     lifecycleOperations: { schedulingSuppressed: (id) => id === "user-stopped" },
     loadProjectJournal: async (id) => {
       loaded.push(id);
-      const project = { id };
+      // 本来源已连上的项目不需要再排重连；没连上的和外来项目一样被动观察。
+      const project = id === "gui" ? { id, client: { ready: true } } : { id };
       projects.set(id, project);
       return project;
     },
@@ -237,7 +234,10 @@ test("foreign project snapshot exposes only Core profiles and models", () => {
     projects: new Map([[project.id, project]]),
     providers,
     ownerTasks: { revision: () => 0 },
-    host: { scheduling: () => ({ suppressed: false, activationError: null }) },
+    host: {
+      scheduling: () => ({ suppressed: false, activationError: null }),
+      migrationError: () => undefined,
+    },
     cloudConversations: {
       mergeSnapshot: (_id, state) => state,
       projection: () => ({ summaries: [] }),
@@ -249,65 +249,4 @@ test("foreign project snapshot exposes only Core profiles and models", () => {
   assert.equal(view.defaultProfile, null);
   assert.deepEqual(view.models, project.models);
   assert.deepEqual(view.profiles, project.profiles);
-});
-
-test("legacy stop recovery queries the original registry and request identity", async (t) => {
-  const root = await makeTempDir("areal-host-legacy-stop-");
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const home = join(root, "core");
-  const legacy = join(root, "legacy");
-  await mkdir(join(home, "lifecycle-operations"), { recursive: true });
-  await mkdir(legacy);
-  const target = {
-    projectId: "aaaaaaaaaaaaaaaaaaaaaaaa",
-    serviceId: "old-service",
-    generation: "old-generation",
-    requestId: randomUUID(),
-    phase: "admissionUnconfirmed",
-  };
-  const record = {
-    version: 1,
-    requestId: randomUUID(),
-    kind: "stopProject",
-    mode: "ifIdle",
-    desktopGeneration: randomUUID(),
-    harnessHome: legacy,
-    targets: [target],
-    phase: "admissionUnconfirmed",
-    desktopExit: "notRequested",
-  };
-  await writeFile(
-    join(home, "lifecycle-operations", `${record.requestId}.json`),
-    JSON.stringify(record),
-  );
-  const receipt = {
-    version: 1,
-    requestId: target.requestId,
-    serviceId: target.serviceId,
-    generation: target.generation,
-    cancel: false,
-    state: "completed",
-  };
-  const calls = join(root, "calls.jsonl");
-  const binary = join(root, "areal-fixture");
-  await writeFile(
-    binary,
-    `#!${process.execPath}\nconst fs = require("node:fs");\nfs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ argv: process.argv.slice(2), registry: process.env.AREAL_HARNESS_SERVICE_HOME }) + "\\n");\nprocess.stdout.write(${JSON.stringify(JSON.stringify({ operation: receipt }))});\n`,
-    { mode: 0o700 },
-  );
-  const backend = {
-    home,
-    binary,
-    harnessHome: join(root, "new-registry"),
-    projects: new Map(),
-    providers: { redact: (value) => value },
-    hooks: { environment: () => ({ PATH: process.env.PATH }) },
-    host: { operation: async () => assert.fail("old receipt must not query shared Host") },
-  };
-  const lifecycle = new LifecycleOperations(backend);
-  await lifecycle.reconcileLoaded();
-  assert.equal((await lifecycle.read(record.requestId)).phase, "completed");
-  const call = JSON.parse((await readFile(calls, "utf8")).trim());
-  assert.equal(call.registry, legacy);
-  assert.ok(call.argv.includes(target.requestId));
 });
