@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HostClient, ShellProject } from "@areal/client";
-import { refreshModelCatalogs } from "./host-auxiliary-reads.js";
+import { modelCatalogsChanged, refreshModelCatalogs } from "./host-auxiliary-reads.js";
 
 afterEach(() => vi.useRealTimers());
 
@@ -31,5 +31,10 @@ describe("model catalog refresh", () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(calls).toBe(2);
     expect(catalogs.get("host")?.value).toMatchObject({ profiles: [{ id: "profile" }] });
+    // 模型服务设置写入后：同一代也重读，重读期间旧目录还在。
+    modelCatalogsChanged(client);
+    expect(catalogs.get("host")?.value).toMatchObject({ profiles: [{ id: "profile" }] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(3);
   });
 });
