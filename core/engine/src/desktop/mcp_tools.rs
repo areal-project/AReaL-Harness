@@ -1,7 +1,8 @@
 use super::*;
 use std::collections::BTreeSet;
 
-const EAGER_LIMIT: usize = 16;
+/// 授权 MCP 工具不超过这个数时照常全量展示；超过才改为按需检索（工具箱第四期定的阈值）。
+const EAGER_LIMIT: usize = 20;
 const CATALOG_BYTES: usize = 16 * 1024;
 
 #[derive(Default)]

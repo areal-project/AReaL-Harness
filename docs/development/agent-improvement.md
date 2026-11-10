@@ -92,7 +92,7 @@ Benchmark 用于暴露缺陷、检验机制和测量收益。优化对象是 ARe
 
 ## MCP schema 投影实验
 
-`ToolPolicy.lazyMcpSchemas` 默认为 false。显式开启后，当前 Turn 可见的 MCP 工具超过 16 个时，模型先看到有界摘要目录与 `mcp_tool_search`。搜索最多返回 8 项，查询最多 512 字节，目录最多 16 KiB。命中的完整 schema 从下一次模型请求开始投影，同一批次不能调用尚未提供 schema 的工具。新 Turn 清空加载集，搜索和目录只包含同一冻结注册表中经 Profile 权限过滤的工具。
+`ToolPolicy.lazyMcpSchemas` 默认为 false。显式开启后，当前 Turn 可见的 MCP 工具超过 20 个时，模型先看到有界摘要目录与 `mcp_tool_search`。搜索最多返回 8 项，查询最多 512 字节，目录最多 16 KiB。命中的完整 schema 从下一次模型请求开始投影，同一批次不能调用尚未提供 schema 的工具。新 Turn 清空加载集，搜索和目录只包含同一冻结注册表中经 Profile 权限过滤的工具。
 
 宿主仍完整执行 MCP `tools/list`、schema 编译和调用校验，现有发现、连接及执行预算继续生效。该实验只改变模型上下文。确定性 stdio fixture 验证搜索、同批次拒绝和 Turn 隔离，不能证明真实模型成功率或总消费改善。推广需遵循本文的同条件对照及来源隔离确认。
 
