@@ -1,8 +1,7 @@
 import type { HostClient, JsonObject } from "@areal/client";
 import type { PlatformServices } from "./services.js";
 import { isLibraryState } from "./services.js";
-import { commandWrites } from "./desktop-response.js";
-import { modelCatalogsChanged } from "./host-auxiliary-reads.js";
+import { modelServiceObserved } from "./host-auxiliary-reads.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
 
 const WORKTREE_READS = new Set(["worktreeList", "worktreeOptions", "worktreeRead"]);
@@ -158,7 +157,7 @@ export function hostDesktopCommand(
       ) {
         onSnapshot?.(value as Record<string, unknown>);
       }
-      if (name === "providers" && commandWrites(name, params)) modelCatalogsChanged(client);
+      if (name === "providers") modelServiceObserved(client, value);
       return { ok: true, value: reviveBytes(value) };
     } catch (error) {
       return {

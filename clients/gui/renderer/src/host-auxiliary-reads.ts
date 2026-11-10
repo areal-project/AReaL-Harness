@@ -8,16 +8,28 @@ const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const RETRY_MS = 5000;
 
-// 每个连接一份：模型服务设置写入后加一，同一代 Core 的目录重读，重读期间继续显示旧目录。
-const stalenessByClient = new WeakMap<HostClient, { epoch: number; wake?: () => void }>();
+// 每个连接一份：模型服务设置变化后加一，同一代 Core 的目录重读，重读期间继续显示旧目录。
+const stalenessByClient = new WeakMap<
+  HostClient,
+  { epoch: number; seen?: string; wake?: () => void }
+>();
 function staleness(client: HostClient) {
   let entry = stalenessByClient.get(client);
   if (!entry) stalenessByClient.set(client, (entry = { epoch: 0 }));
   return entry;
 }
-/** 模型服务设置（密钥、模型、默认项）已写入：让各项目的模型目录重读。 */
-export function modelCatalogsChanged(client: HostClient) {
+/**
+ * 每次拿到模型服务设置（providers 命令的结果）都对一下：保存先落盘、再逐个应用到各项目的 Core，
+ * 写入返回时目录可能还是旧的。修订号、凭据状态或任一项目的应用状态变了，就让模型目录重读。
+ */
+export function modelServiceObserved(client: HostClient, value: unknown) {
+  if (!object(value) || !Array.isArray(value.projects)) return;
   const entry = staleness(client);
+  const seen = JSON.stringify([value.revision, value.credentialStates, value.projects]);
+  const first = entry.seen === undefined;
+  if (entry.seen === seen) return;
+  entry.seen = seen;
+  if (first) return;
   entry.epoch++;
   entry.wake?.();
 }
