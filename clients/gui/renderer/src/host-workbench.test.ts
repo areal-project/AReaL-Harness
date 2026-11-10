@@ -3,12 +3,12 @@ import type { HostClient } from "@areal/client";
 import { call } from "./services.js";
 import {
   createWorkbenchRoutes,
-  afterProviderWrite,
   hostDesktopCommand,
   hostPlatformCapabilities,
   openingAuthorization,
 } from "./host-workbench.js";
 import { hostCommandError } from "./desktop-response.js";
+import { refreshModelCatalogs } from "./host-auxiliary-reads.js";
 import type { PlatformServices } from "./services.js";
 
 function setup(answer: (method: string, params: unknown) => unknown) {
@@ -642,21 +642,26 @@ describe("local web desktop commands", () => {
     expect(hostPlatformCapabilities(client, undefined, undefined)?.mutations).toBe(false);
   });
 
-  it("reports successful model service writes but not reads or failures", async () => {
-    let changes = 0;
-    let ok = true;
-    const run = afterProviderWrite(
-      async () => (ok ? { ok: true, value: {} } : { ok: false, error: { message: "x" } }) as never,
-      () => changes++,
-    );
-    await run("providers", { operation: "list" } as never);
-    await run("list", { projectId: "p" } as never);
-    expect(changes).toBe(0);
-    await run("providers", { operation: "saveAndApply" } as never);
-    expect(changes).toBe(1);
-    ok = false;
-    await run("providers", { operation: "saveAndApply" } as never);
-    expect(changes).toBe(1);
+  it("re-reads model catalogs after a successful model service write only", async () => {
+    let fail = false;
+    const client = {
+      writable: () => true,
+      snapshot: () => ({ connection: "connecting" }),
+      workbench: async () => {
+        if (fail) throw Object.assign(new Error("refused"), { code: "x" });
+        return {};
+      },
+    } as unknown as HostClient;
+    const command = hostDesktopCommand(client, hostCommandError);
+    let wakes = 0;
+    refreshModelCatalogs(client, [], new Map(), () => wakes++);
+    await command("providers", { operation: "list" } as never);
+    fail = true;
+    await command("providers", { operation: "saveAndApply" } as never);
+    expect(wakes).toBe(0);
+    fail = false;
+    await command("providers", { operation: "saveAndApply" } as never);
+    expect(wakes).toBe(1);
   });
 
   it("preserves a migration block for read-only history recovery", async () => {

@@ -39,7 +39,6 @@ import {
   openInBrowser,
   routeDesktopCommand,
   hostPlatformCapabilities,
-  afterProviderWrite,
   openingAuthorization,
 } from "./host-workbench.js";
 import { createHostPages } from "./host-pages.js";
@@ -83,7 +82,6 @@ export function createHostReadServices(
   const threadTargets = new Map<string, string>();
   const creationTargets = new Map<string, string>();
   const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
-  let modelEpoch = 0;
   const inspections = new Map<string, { identity: string; value?: Record<string, unknown> }>();
   const commandOutcomes = new Map<string, Record<string, JsonObject>>();
   const commandOwners = new Map<string, string>();
@@ -250,7 +248,7 @@ export function createHostReadServices(
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
     if (client.writable("project.models"))
-      refreshModelCatalogs(client, shell?.snapshot.projects ?? [], catalogs, publish, modelEpoch);
+      refreshModelCatalogs(client, shell?.snapshot.projects ?? [], catalogs, publish);
     if (librarySourceId && client.writable("tasks.read"))
       refreshTaskDirectory(client, shell?.snapshot.projects ?? [], ids, taskState, publish);
     if (librarySourceId && client.writable("desktop.command"))
@@ -769,11 +767,7 @@ export function createHostReadServices(
   const routed = routeDesktopCommand(desktop, hostCommand, () =>
     Boolean(librarySourceId && client.writable("desktop.command")),
   );
-  // 模型服务设置（密钥、模型、默认项）写入成功后，各项目的模型目录要重读。
-  const command = afterProviderWrite(openingAuthorization(routed, openExternal), () => {
-    modelEpoch++;
-    publish();
-  }) as PlatformServices["command"];
+  const command = openingAuthorization(routed, openExternal) as PlatformServices["command"];
   return {
     ...(desktop ?? {
       chooseProject: () => chooseHostProject(client),
