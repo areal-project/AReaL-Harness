@@ -1,0 +1,34 @@
+docs/guides/configuration.en.md
+  s_3c0bde1ee78b7e::t_c6e41c0f68f5d3 443-444
+core/engine/src/tools/input_errors.rs
+  s_3c0bde1ee78b7e::t_08248d626c9ea8 1-34,38-112
+  s_3c0bde1ee78b7e::t_77719f494e46a1 35-37
+core/engine/src/tools/registry.rs
+  s_3c0bde1ee78b7e::t_c6e41c0f68f5d3 601-610,623-631,640,648,654-655,666
+  s_3c0bde1ee78b7e::t_08248d626c9ea8 26-27,51,221,263,331,385-388,537
+  s_3c0bde1ee78b7e::t_77719f494e46a1 241-247,611-622,632-639,641-647,649-653,656-665
+core/engine/src/tools.rs
+  s_3c0bde1ee78b7e::t_c6e41c0f68f5d3 364
+docs/guides/configuration.md
+  s_3c0bde1ee78b7e::t_c6e41c0f68f5d3 443-444
+docs/api/core.md
+  s_3c0bde1ee78b7e::t_8d4b8e255164ca 562-564
+docs/api/core.en.md
+  s_3c0bde1ee78b7e::t_8d4b8e255164ca 553-555
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2b6a0a5ba3aff31f0767969d2680488a6a4b0398",
+  "prompts": {},
+  "sessions": {
+    "s_3c0bde1ee78b7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b160-5434-7080-8ff1-1f4237be48e6",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
