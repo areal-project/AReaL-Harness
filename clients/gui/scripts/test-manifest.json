@@ -1055,5 +1055,13 @@
     "areas": ["composer", "settings", "conversation"],
     "requires": ["electron", "core-binary", "git", "gui-build"],
     "notes": "High-frequency journeys (no model → settings, send and queue during approval, task summary) with five deterministic UX checks: feedback within 400ms, no raw errors, no mixed language, no overlapping layers, no running status while awaiting approval."
+  },
+  {
+    "script": "test:web-journeys",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "settings", "conversation", "provider"],
+    "requires": ["electron", "browser", "core-binary", "git", "gui-build"],
+    "notes": "Business journeys in Chromium against the real Host web endpoint: browser approval, open project by path, send, approval with queued input, completion, reload, settings. Electron only bootstraps the library source once and is closed before the web journeys run."
   }
 ]
