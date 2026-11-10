@@ -1,0 +1,33 @@
+clients/gui/design-system/rule-registry.json
+  s_6eb5a7389a677f::t_4df5660af70635 4537
+clients/gui/scripts/side-chat-parity-smoke.mjs
+  s_6eb5a7389a677f::t_4df5660af70635 676-692,703
+docs/development/testing.en.md
+  s_6eb5a7389a677f::t_4df5660af70635 22-27
+clients/gui/renderer/src/Messages.tsx
+  s_6eb5a7389a677f::t_4df5660af70635 224
+clients/gui/renderer/src/useTranscriptSelection.ts
+  s_6eb5a7389a677f::t_4df5660af70635 33,37-41,168-169
+docs/development/testing.md
+  s_6eb5a7389a677f::t_4df5660af70635 20-25
+clients/gui/renderer/src/Messages.md
+  s_6eb5a7389a677f::t_4df5660af70635 17
+.github/workflows/gui.yml
+  s_6eb5a7389a677f::t_4df5660af70635 316-317,423,526,660
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "84065be586ad1e32d5550ad475cabeacc844ab74",
+  "prompts": {},
+  "sessions": {
+    "s_6eb5a7389a677f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1c603-367d-7323-abff-0b9c62db8a4e",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
