@@ -1,4 +1,5 @@
 import React from "react";
+import { projectUserState } from "../state/userStates.js";
 import { errorText } from "../errors/errorCopy.js";
 import { AgentHistoryPane } from "../AgentHistoryPane.js";
 import { browserPageId, isBrowserTab } from "../app-shell/useBrowserWorkspace.js";
@@ -204,7 +205,7 @@ export function WorkspacePanelContent({
             reviewRequest.threadId &&
             reviewRequest.threadId !== threadId
           ) ||
-          !project.state?.connected ||
+          !projectUserState(project).canAct ||
           !!thread?.desktop?.archived ||
           !!(thread?.source === "nativeTaskAgent" && thread?.goalOwner) ||
           !!pending ||
@@ -337,7 +338,7 @@ export function WorkspacePanelContent({
         queue={queue}
         projectId={project.id}
         threadId={threadId}
-        disabled={!project.state?.connected || pending || thread.desktop?.archived}
+        disabled={!projectUserState(project).canAct || pending || thread.desktop?.archived}
         action={action}
       />
     ) : null;
@@ -354,7 +355,7 @@ export function WorkspacePanelContent({
           key={`${project.id}:${threadId}:${panel}`}
           {...threadProps}
           terminalId={panel}
-          canStart={!admitting && !pending && !!project.state?.connected}
+          canStart={!admitting && !pending && projectUserState(project).canAct}
           onError={setError}
           onLink={onLink}
         />

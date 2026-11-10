@@ -1,4 +1,5 @@
 import { DelayedVisible } from "@areal/ui";
+import { taskUserState } from "./state/userStates.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { errorText } from "./errors/errorCopy.js";
 import { TitleTooltip } from "@areal/ui";
@@ -167,34 +168,26 @@ const date = (seconds: number | null, zone?: string) => {
 };
 // Shutdown can retain a paused flag on finished tasks. Preserve the outcome;
 // a recurring schedule with another run still has a meaningful paused state.
+// 列表只显示用户状态（state/userStates.ts）；停止或暂停还在结算时如实说“正在…”。
 const taskStatus = (task: Data, t: Translate) =>
   t(
     stopping(task)
       ? task.cancelled
         ? "operations.schedules.statusCancelling"
         : "operations.schedules.statusPausing"
-      : task.cancelled
-        ? "operations.schedules.statusCancelled"
-        : missedOnce(task)
-          ? "operations.schedules.statusMissed"
-          : finished(task)
-            ? statusLabels[(task.latestRun ?? task.runs?.at(-1))?.status]
-            : task.paused
-              ? "operations.schedules.pausedGroup"
-              : (statusLabels[(task.latestRun ?? task.runs?.at(-1))?.status] ??
-                "operations.schedules.statusScheduled"),
+      : taskUserState(task).message,
   );
 const runReasons: Record<string, string> = {
   "task token budget exhausted":
     "任务总 Token 预算已用完。本次运行不能增加额度；如需更多预算，请创建新任务。",
   approvalExpired: "审批已过期，执行已受阻。继续本次运行将重新检查并申请批准。",
-  hostUnavailable: "桌面 Host 已断开，需要明确继续本次运行。",
-  stopRequested: "正在停止本次运行，等待资源结算。",
+  hostUnavailable: "桌面应用断开过，这次运行已暂停。需要你点继续才会接着运行。",
+  stopRequested: "正在停止这次运行。",
   resumeRequested: "正在准备继续本次运行。",
-  usageUnknown: "用量尚未确认，运行已受阻。",
+  usageUnknown: "还没确认这次用了多少额度，运行先停下了。",
   goalBudget: "已达到运行预算，请在执行会话中调整目标后恢复。",
   // Core 打开持久化任务时，把未结束 Run 记为 serverRestarted。这是重启事实，不能把内部代码直接给用户。
-  serverRestarted: "Core 重启后这次运行已暂停。需要明确恢复后才会继续。",
+  serverRestarted: "应用重新启动过，这次运行已暂停。需要你点继续才会接着运行。",
 };
 const scheduledTokenLimit = (task: Data, reason: string) =>
   task.mode === "scheduled" && reason === "GOAL_TOKEN_BUDGET";

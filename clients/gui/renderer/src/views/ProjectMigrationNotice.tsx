@@ -1,10 +1,14 @@
-import type { ShellProject } from "@areal/client";
 import { FeedbackNotice } from "../FeedbackNotice.js";
+import { projectUserState } from "../state/userStates.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 
-export function ProjectMigrationNotice({ hostState }: { hostState?: ShellProject["state"] }) {
+export function ProjectMigrationNotice({
+  project,
+}: {
+  project: Parameters<typeof projectUserState>[0];
+}) {
   const { t } = useI18n();
-  if (hostState !== "legacyPending") return null;
+  if (projectUserState(project).kind !== "needsUpgrade") return null;
   return (
     <FeedbackNotice
       tone="warning"

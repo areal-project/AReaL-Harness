@@ -1,4 +1,5 @@
 import { DelayedVisible } from "@areal/ui";
+import { projectUserState } from "../state/userStates.js";
 import { TitleTooltip } from "@areal/ui";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { Textarea } from "@areal/ui";
@@ -207,7 +208,7 @@ export function PluginCenter({
   const projectId = project?.id;
   const currentProject = useRef(projectId);
   currentProject.current = projectId;
-  const connected = !!project?.state?.connected;
+  const connected = projectUserState(project).canAct;
   const [route, setRoute] = useState<CenterRoute>({ kind: "market", audience: "public" });
   const listReturn = useRef<PluginListReturn | null>(null);
   const restoringList = useRef(false);

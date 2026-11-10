@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { projectUserState } from "../state/userStates.js";
 import type { ResourceRequest, Scope } from "../services.js";
 import { normalizeMcp } from "../services.js";
 import {
@@ -82,7 +83,7 @@ export function McpSettings({
   const disabled =
     busy ||
     state.loading ||
-    (scope === "project" && (!project?.state?.connected || project?.pending?.length > 0));
+    (scope === "project" && (!projectUserState(project).canAct || project?.pending?.length > 0));
   const run = (task: () => Promise<void>) =>
     operation.run(async () => {
       await task();

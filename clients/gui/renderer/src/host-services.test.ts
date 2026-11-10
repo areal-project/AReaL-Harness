@@ -234,9 +234,7 @@ describe("Host renderer read authority", () => {
     });
     const services = createHostReadServices(undefined, options(wire.factory));
     const notice = (owner: Snapshot["projects"][number]) =>
-      renderToStaticMarkup(
-        createElement(ProjectMigrationNotice, { hostState: owner.state.hostState }),
-      );
+      renderToStaticMarkup(createElement(ProjectMigrationNotice, { project: owner }));
     try {
       await until(services);
       const before = await services.snapshot();

@@ -4,6 +4,7 @@ import {
   useConversationCreateReadOnly,
 } from "../PlatformReadContext.js";
 import React from "react";
+import { projectUserState } from "../state/userStates.js";
 import { ComposerSurface } from "../prompt-editor/ComposerSurface.js";
 import { Button } from "../components/ui/button.js";
 import {
@@ -200,7 +201,7 @@ function ConversationContent() {
                 thread={thread}
                 action={action}
                 onClosed={workspacePanels.removeTerminalTab}
-                canStart={!admitting && !pending && !!project.state?.connected}
+                canStart={!admitting && !pending && projectUserState(project).canAct}
                 onError={setError}
                 onLink={onLink}
               />

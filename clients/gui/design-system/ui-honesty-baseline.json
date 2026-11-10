@@ -1464,12 +1464,6 @@
     "fingerprint": "36b907a332b99a53d644b445e41ab42ae70530760d7332dcc2984026ef3d3824"
   },
   {
-    "file": "renderer/src/settings/CoreCapabilitiesSettings.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "e4221278e954c0f838080cbb8ce6481f01dceb6570a225327e36359fd5a904be"
-  },
-  {
     "file": "renderer/src/settings/MobileAdvancedNetwork.tsx",
     "kind": "internal-state-in-view",
     "snippet": "state.connected",
@@ -1486,36 +1480,6 @@
     "kind": "internal-state-in-view",
     "snippet": "state.connected",
     "fingerprint": "0b8be403043cf9aa21ebc3a19544b82ba74f60eda4d595d929ccc881b50e1ee6"
-  },
-  {
-    "file": "renderer/src/settings/PluginCenter.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "bfbd331760d8faae5fb29f6944935716ca5b73c4d190cfb531337cff871fec3e"
-  },
-  {
-    "file": "renderer/src/settings/PluginSkillsPage.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "44eb8cab40ce4f2b78c7f2a029984aebd2c97ce81e163e2858c915376e71f0b4"
-  },
-  {
-    "file": "renderer/src/settings/PluginSkillsPage.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "e352c701f36b38af4cbc641568cb480405effe956c94a8640f6c1046fea45616"
-  },
-  {
-    "file": "renderer/src/settings/PluginSkillsPage.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "9b3fb9641480d174907b3248a59dc26054365c774dcc715a89d8c1b07617cc84"
-  },
-  {
-    "file": "renderer/src/settings/ResourceSettings.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "a354417d6dc33baf37641955983286ea74e79437ead1a407fdc693381c11336b"
   },
   {
     "file": "renderer/src/state/usePanelNavigation.ts",
@@ -1728,46 +1692,10 @@
     "fingerprint": "c649c384a1b50d63da8a00a92c8ed49dc415a8a51102b94869335d502bbc30b3"
   },
   {
-    "file": "renderer/src/views/ConversationNavigation.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "hostState",
-    "fingerprint": "6aa8e202c03712da727eeec49777c39261cb27e737d04d1d9804ae104eaff580"
-  },
-  {
-    "file": "renderer/src/views/ConversationNavigation.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "hostState",
-    "fingerprint": "667ffdc131c2a5e739b21ae5068d29452f2456f3b04d64a740fcd35cefe15fab"
-  },
-  {
     "file": "renderer/src/views/ConversationWorkspace.tsx",
     "kind": "cjk-identifier",
     "snippet": "改动",
     "fingerprint": "3488b0cb8b52e9567eec44b3b7d9564c965cf4f2b8d0d530048adb0e5b422928"
-  },
-  {
-    "file": "renderer/src/views/ConversationWorkspace.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "5efeb08af7fbd3c604c1f1488e8b50a22486dd53dce89084fb245b73c4ef40ce"
-  },
-  {
-    "file": "renderer/src/views/ProjectMigrationNotice.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "hostState",
-    "fingerprint": "ae34cb0f6d1df4904390e6cc69e65efcff931c9f944032b015e49c9ff7bbc198"
-  },
-  {
-    "file": "renderer/src/views/ProjectMigrationNotice.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "hostState",
-    "fingerprint": "14e6df2f6379a939421ae63d5d8720c2a444d8451bbb654e10ce17d320d27ca4"
-  },
-  {
-    "file": "renderer/src/views/ProjectMigrationNotice.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "hostState",
-    "fingerprint": "9023251eb56ae1c024791c61ad2a37d34d526b88b96b610736746d93f39ea3fa"
   },
   {
     "file": "renderer/src/views/RecoveryNotices.tsx",
@@ -2016,24 +1944,6 @@
     "fingerprint": "ff1b388e18777a26650c68ab5e0195ee9d2d71002b26866f1ffaedc593fb16b0"
   },
   {
-    "file": "renderer/src/views/WorkspacePanelContent.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "ce7864f6a1dd65f241017308575cad23651fc7c3c63096bb3e9574d818395b48"
-  },
-  {
-    "file": "renderer/src/views/WorkspacePanelContent.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "763ca6b78bf4c180cd07b26fa7953c2870916f6b51d92b36b53bdf361ae4efa1"
-  },
-  {
-    "file": "renderer/src/views/WorkspacePanelContent.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "e445ef45f6727f7815b62d472238449c51a1192290c4d354c04e18ae43e49ea3"
-  },
-  {
     "file": "renderer/src/views/WorkspacePanels.tsx",
     "kind": "cjk-identifier",
     "snippet": "功能",
@@ -2068,12 +1978,6 @@
     "kind": "cjk-identifier",
     "snippet": "文件",
     "fingerprint": "98f094f978cbced769c4a4973978fc6dd2d961f145cd3dd4e3485e3f14ff3ca4"
-  },
-  {
-    "file": "renderer/src/views/WorkspacePanels.tsx",
-    "kind": "internal-state-in-view",
-    "snippet": "state?.connected",
-    "fingerprint": "8717b6482910dbeb643e5373bd76f66bd819e3a6bb07d7bc8b7496bc319fd888"
   },
   {
     "file": "scripts/conversation-derivation-smoke.mjs",

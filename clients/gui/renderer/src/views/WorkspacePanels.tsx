@@ -1,4 +1,5 @@
 import React from "react";
+import { projectUserState } from "../state/userStates.js";
 import { currentErrorText } from "../errors/currentErrorText.js";
 import { agentAssignment, agentName } from "../AgentIdentity.js";
 import { SidePane } from "../app-shell/SidePane.js";
@@ -201,7 +202,7 @@ function retainedSidePanels(
           core: { ...owner.core, ...execution.executionCore },
           state: {
             ...owner.state,
-            connected: execution.executionConnected ?? owner.state?.connected,
+            connected: execution.executionConnected ?? projectUserState(owner).canAct,
           },
           error: execution.executionError ?? owner.error,
         }
