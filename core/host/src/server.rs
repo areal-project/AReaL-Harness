@@ -4,6 +4,8 @@ pub(crate) mod conversation_media;
 mod conversation_read;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
+#[path = "space/import.rs"]
+mod space_import;
 #[cfg(test)]
 #[path = "vault_liveness_tests.rs"]
 mod vault_liveness_tests;
@@ -1336,6 +1338,19 @@ impl Host {
     }
     async fn dispatch(&self, method: &str, params: Value) -> Result<Value> {
         match method {
+            "recovery.importProvider" => self.import_provider(serde_json::from_value(params)?),
+            "recovery.history" => {
+                crate::space::history::for_host(&self.home, serde_json::from_value(params)?).await
+            }
+            "recovery.inspect" => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase", deny_unknown_fields)]
+                struct Inspect {
+                    space_id: Option<String>,
+                }
+                let input: Inspect = serde_json::from_value(params)?;
+                crate::space::inspect_for_host(&self.home, input.space_id.as_deref())
+            }
             "host.status" => {
                 serde_json::from_value::<Empty>(params)?;
                 Ok(serde_json::to_value(self.status().await)?)
@@ -1413,6 +1428,7 @@ impl Host {
                 && !self.home.starts_with(&r.workspace),
             "invalidRequest: state must be outside workspace"
         );
+        crate::space::validate_workspace(&self.home, &r.workspace)?;
         self.migration.validate_registration(
             r,
             &self
@@ -1707,6 +1723,7 @@ impl Host {
             ));
         }
         let registration = self.slots.borrow()[&input.project_id].registration.clone();
+        crate::space::validate_workspace(&self.home, &registration.workspace)?;
         let saved_path = self
             .home
             .join("host/launch")
@@ -1878,12 +1895,25 @@ impl Host {
         } else {
             None
         };
+        let mut prior_boot_activation = false;
         if let Some(previous) = current.as_ref().filter(|s| {
             s.owner.as_ref() != Some(&self.owner())
                 && s.state != State::Ready
                 && s.state != State::Stopping
         }) {
-            self.cleanup_proof(previous).await?;
+            match self.cleanup_proof(previous).await {
+                Ok(()) => {}
+                Err(cause)
+                    if cause
+                        .downcast_ref::<wire::Error>()
+                        .is_some_and(|e| e.code == "migrationBlocked")
+                        && previous.state == State::Stopped
+                        && matches!(previous.owner, Some(Owner::Host { .. })) =>
+                {
+                    prior_boot_activation = true;
+                }
+                Err(cause) => return Err(cause),
+            }
         }
         if let Some(service) = current
             .as_ref()
@@ -1981,9 +2011,57 @@ impl Host {
             .get_mut(&input.project_id)
             .unwrap()
             .uncertain_start = true;
-        let result =
-            areal_local_service::ensure_with_lifetime(&spec, &lifetime, input.no_auto_restart)
-                .await;
+        let activation_checked = std::cell::Cell::new(false);
+        let before_launch = || -> Result<()> {
+            if !prior_boot_activation {
+                return Ok(());
+            }
+            let previous = previous
+                .as_ref()
+                .context("missing original service descriptor")?;
+            crate::migration::prior_boot::host_activation(
+                &self.home,
+                &registration,
+                previous,
+                &self.owner(),
+                |proof| {
+                    let mut record = self
+                        .receipt(&input.request_id)?
+                        .context("missing activation receipt")?;
+                    record.evidence["priorBootAdoption"] = proof;
+                    record.evidence["scheduleActivationSuppressed"] = json!(true);
+                    record.evidence["schedulingIntentPending"] = json!(true);
+                    storage::write(
+                        &wire::operation_path(&self.home, &input.request_id),
+                        &record,
+                    )?;
+                    self.apply_scheduling_intent(&input.request_id)
+                },
+            )
+            .map_err(|cause| {
+                error(
+                    "migrationBlocked",
+                    format!("prior-boot activation is unconfirmed: {cause:#}"),
+                )
+            })?;
+            activation_checked.set(true);
+            Ok(())
+        };
+        let result = areal_local_service::ensure_with_lifetime_checked(
+            &spec,
+            &lifetime,
+            input.no_auto_restart,
+            &before_launch,
+        )
+        .await;
+        if prior_boot_activation && !activation_checked.get() {
+            // 接管检查在任何新进程启动之前拒绝；不能把确定拒绝变为 UNKNOWN。
+            self.slots
+                .borrow_mut()
+                .get_mut(&input.project_id)
+                .unwrap()
+                .uncertain_start = false;
+        }
         if result.is_err()
             && let Ok(service) = areal_local_service::status(&self.home, &spec.service_id).await
         {
@@ -2391,6 +2469,12 @@ impl Host {
         Ok(())
     }
     async fn reconcile(&self, id: &str) -> Result<Option<Value>> {
+        if self
+            .receipt(id)?
+            .is_some_and(|r| r.receipt["method"] == "recovery.importProvider")
+        {
+            return self.reconcile_provider_import(id);
+        }
         let Some(mut record) = self.receipt(id)? else {
             return Ok(None);
         };
@@ -2688,6 +2772,128 @@ fn aggregate(receipt: &Value) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn prior_boot_host_activation_records_adoption_without_settling_history() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let host = schedules::tests::fixture(&root);
+        let registration = host.slots.borrow()["project"].registration.clone();
+        storage::private_dir(&registration.data_dir).unwrap();
+        storage::private_dir(&host.bin).unwrap();
+        for name in [
+            "areal",
+            "areal-runtime",
+            "areal-runtime-fs",
+            "areal-runtime-reaper",
+        ] {
+            std::fs::write(host.bin.join(name), "not an executable").unwrap();
+        }
+        for name in ["service.lock", "owner.lock"] {
+            storage::open_private(&registration.data_dir.join(name), true).unwrap();
+        }
+        let directory = storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+        storage::private_dir(&directory).unwrap();
+        let previous: Service = serde_json::from_value(json!({
+            "protocolVersion":1,"serviceId":Host::service_id(&registration),
+            "generation":uuid::Uuid::new_v4().to_string(),"workspace":registration.workspace,
+            "dataDir":registration.data_dir,"configFingerprint":"old",
+            "owner":{"kind":"host","hostId":host.identity.host_id,"generation":uuid::Uuid::new_v4().to_string()},
+            "endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1",
+            "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+            "hostPid":500000000,"corePid":500000001,"state":"ready"
+        })).unwrap();
+        storage::write(&directory.join("service.json"), &previous).unwrap();
+        let original_stop = storage::StopReceipt {
+            operation: StopOperation {
+                version: 1,
+                request_id: uuid::Uuid::new_v4().to_string(),
+                service_id: previous.identity.service_id.clone(),
+                generation: previous.identity.generation.clone(),
+                cancel: true,
+                state: StopOperationState::AcceptedPending,
+                message: None,
+                lifecycle: None,
+            },
+            service: previous.clone(),
+            cleanup_confirmed: false,
+        };
+        storage::write_stop_receipt(&directory, &original_stop).unwrap();
+        let original_stop_path =
+            storage::stop_receipt_path(&directory, &original_stop.operation.request_id).unwrap();
+        let original_stop_bytes = std::fs::read(&original_stop_path).unwrap();
+        let inputs = LaunchInputs {
+            workspace: registration.workspace.clone(),
+            cwd: registration.workspace.clone(),
+            config_home: root.join("config"),
+            homedir: Some(root.clone()),
+            config_path: None,
+            deployment_path: None,
+            schedule_preparation: None,
+            environment: BTreeMap::new(),
+            credential_names: vec![],
+            options: areal_local_service::LocalArgs::default(),
+        };
+        let input = Ensure {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            expected_generation: host.identity.generation.clone(),
+            project_id: "project".into(),
+            no_auto_restart: false,
+            resume_scheduling: true,
+            launch_inputs: Some(inputs),
+            credentials: BTreeMap::new(),
+        };
+        crate::migration::prior_boot::with_test_boot(-10, || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut current_boot = input.clone();
+                    current_boot.request_id = uuid::Uuid::new_v4().to_string();
+                    let failure = host.ensure(current_boot.clone()).await.unwrap_err();
+                    assert!(
+                        failure.to_string().contains("migrationBlocked"),
+                        "{failure:#}"
+                    );
+                    let record = host.receipt(&current_boot.request_id).unwrap().unwrap();
+                    assert_eq!(record.receipt["state"], "blocked");
+                    assert!(record.evidence["priorBootAdoption"].is_null());
+                });
+        });
+        crate::migration::prior_boot::with_test_boot(10, || {
+            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+                // 可执行文件故意缺失；本测试只走真实准入与接管门，不启动 Core。
+                let startup = storage::open_private(&directory.join("start.lock"), true).unwrap();
+                startup.try_lock_exclusive().unwrap();
+                let opening = host.ensure(input.clone());
+                tokio::pin!(opening);
+                assert!(futures_util::poll!(&mut opening).is_pending());
+                assert!(host.receipt(&input.request_id).unwrap().unwrap().evidence["priorBootAdoption"].is_null());
+                drop(startup);
+                let failure = opening.await.unwrap_err();
+                let record = host.receipt(&input.request_id).unwrap().unwrap();
+                assert!(record.evidence["priorBootAdoption"].is_object(), "{failure:#}");
+                assert!(host.schedules.suppressed("project"));
+                assert_eq!(record.evidence["scheduleActivationSuppressed"], true);
+                assert_eq!(std::fs::read(&original_stop_path).unwrap(), original_stop_bytes);
+                assert_eq!(areal_local_service::operation(&host.home, &previous.identity.service_id,
+                    &previous.identity.generation, &original_stop.operation.request_id).await.unwrap().unwrap().state,
+                    StopOperationState::AdmissionUnknown);
+                assert_eq!(storage::read_stop_receipt(&directory, &original_stop.operation.request_id).unwrap().unwrap().operation.state,
+                    StopOperationState::AcceptedPending);
+                assert!(!directory.join("cleanup.json").exists());
+                assert!(!directory.join("crash.json").exists());
+                let mut stopped = previous.clone(); stopped.state = State::Stopped;
+                assert!(host.cleanup_proof(&stopped).await.is_err());
+                let mut next = input.clone(); next.request_id = uuid::Uuid::new_v4().to_string();
+                // 原 ensure 启动结果未知时，即便 boot 依据充分也不能换 ID 接管。
+                assert!(host.ensure(next.clone()).await.unwrap_err().to_string().contains("admissionUnknown"));
+                assert!(host.receipt(&next.request_id).unwrap().is_none());
+                assert_eq!(host.receipt(&input.request_id).unwrap().unwrap().receipt, record.receipt);
+            });
+        });
+    }
     #[test]
     fn task_rejection_keeps_safe_core_code_and_definitive_outcome_on_local_wire() {
         let error: anyhow::Error = task_catalog::TaskRejection(

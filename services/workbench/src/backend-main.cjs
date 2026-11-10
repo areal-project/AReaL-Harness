@@ -12,7 +12,7 @@ const desktopCommands = new Set([
   "addProject", "analytics", "chatgpt", "cloud", "cloudSession", "configure", "connect", "continue", "dismissRecovery",
   "editMessage", "feedback", "fork", "history", "library", "list", "manage", "media", "open", "prediction",
   "prepareCreator", "projectless", "providers", "queue", "queueEdit", "reconcile", "remoteControl", "resources",
-  "side", "tasks", "trajectory", "workspace",
+  "side", "tasks", "trajectory", "workspace", "recovery",
 ]);
 const privateMethods = ["lifecycle.dependencies", "lifecycle.flush", "core.callback", "library.dependencies", "desktop.command", "input.prepare", "execution.prepare", "execution.dispatch", "execution.complete", "creation.read", "creation.catalog"];
 const domains = {
@@ -35,7 +35,7 @@ const businessErrorCodes = new Set([
   "INVALID_PARAMS", "FORBIDDEN", "GRANT_CHANGED", "RESYNC_REQUIRED", "REVIEW_INCOMPLETE",
   "TARGET_CHANGED", "COMMAND_CONFLICT", "CAPABILITY_UNAVAILABLE", "RESOURCE_UNAVAILABLE",
   "CORE_INCOMPATIBLE", "LIMIT_EXCEEDED", "CAPACITY_EXCEEDED", "TURN_BUSY",
-  "TASK_CONTROL_REQUIRED", "SUBMISSION_UNKNOWN", "CORE_UNAVAILABLE",
+  "TASK_CONTROL_REQUIRED", "SUBMISSION_UNKNOWN", "CORE_UNAVAILABLE", "RESOURCE_BUSY", "PERSISTED_HISTORY_UNAVAILABLE", "MIGRATION_PENDING", "migrationBlocked",
 ]);
 
 async function start({ input, output }) {
@@ -212,6 +212,21 @@ async function start({ input, output }) {
           const { command, request: params } = request.params ?? {};
           if (!desktopCommands.has(command) || !params || typeof params !== "object" || Array.isArray(params))
             throw Error("Invalid desktop command");
+          if (command === "recovery") {
+            if (["history", "importProvider"].includes(params.operation)) {
+              const contract = appRequire("@areal/workbench/desktop-contract");
+              contract.validateCommand(command, params);
+              const {operation, ...query} = params;
+              return await hostCall(`recovery.${operation}`, query);
+            }
+            if (!["inspect", "openWorkspace"].includes(params.operation) || (params.spaceId !== undefined && typeof params.spaceId !== "string") ||
+                Object.keys(params).some(key => !["operation", "spaceId"].includes(key)))
+              throw Object.assign(new Error("Invalid recovery query"), {code:"INVALID_PARAMS"});
+            const catalog = await hostCall("recovery.inspect", params.spaceId === undefined ? {} : {spaceId:params.spaceId});
+            if (params.operation === "inspect") return catalog;
+            if (typeof catalog?.workspace !== "string") throw Error("Invalid recovery workspace");
+            return {projectId: await desktop.backend.addProject(catalog.workspace)};
+          }
           // 网页没有系统文件夹选择框，由用户填写路径；之后与桌面"打开项目"走同一条登记路径。
           if (command === "addProject") {
             if (typeof params.path !== "string" || !isAbsolute(params.path) || params.path.length > 4096)
@@ -277,7 +292,9 @@ async function start({ input, output }) {
       };
       const task = execute().then(
         (result) => output.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n"),
-        (error) => output.write(JSON.stringify({ version: 1, id: request.id, error: businessErrorCodes.has(error?.code)
+        (error) => output.write(JSON.stringify({ version: 1, id: request.id, error: (error?.submissionUnknown || ["admitted", "unconfirmed"].includes(error?.outcome?.kind))
+          ? { code: "SUBMISSION_UNKNOWN" }
+          : businessErrorCodes.has(error?.code)
           ? { code: error.code }
           : request.method === "desktop.command"
             ? { code: "COMMAND_FAILED", message: String(error?.message ?? "").slice(0, 512) }

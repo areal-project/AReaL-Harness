@@ -1518,6 +1518,24 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
         Box::pin(async move {
             let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
             match call.as_str() {
+                "recovery.importProvider" => host.import_provider(serde_json::from_value(params)?),
+                "recovery.history" => {
+                    crate::space::history::for_host(&host.home, serde_json::from_value(params)?)
+                        .await
+                }
+                "recovery.inspect" => {
+                    ensure!(
+                        params
+                            .as_object()
+                            .is_some_and(|o| o.keys().all(|key| key == "spaceId")),
+                        "INVALID_PARAMS"
+                    );
+                    let space_id = params
+                        .get("spaceId")
+                        .map(|value| value.as_str().context("INVALID_PARAMS"))
+                        .transpose()?;
+                    crate::space::inspect_for_host(&host.home, space_id)
+                }
                 "workbench.utility" => {
                     let source = host
                         .gateway
@@ -2113,7 +2131,7 @@ mod tests {
             let (backend, _) = Workbench::start_with(&runtime, &runner, root.path(), reverse(&host), Some(("backend.start", json!({
                 "appRoot":app,"options":{"home":data,"userHome":root.path()},
             })))).await.unwrap();
-            for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
+            for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
                 assert_eq!(backend.request("providers.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
             }
             backend.stop().await.unwrap();

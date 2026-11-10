@@ -17,7 +17,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-mod prior_boot;
+pub(crate) mod prior_boot;
 mod progressive;
 pub(crate) mod retirement;
 

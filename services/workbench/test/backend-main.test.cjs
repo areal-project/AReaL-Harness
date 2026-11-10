@@ -30,6 +30,7 @@ async function fixture(t, retired, projectionFixture = false) {
       return { backend, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
       }), executeRemote: async (name, params) => {
+        if (params.errorCode) throw Object.assign(Error('private'), { code: params.errorCode, submissionUnknown: params.unknown });
         if (params.fail) throw Error('Core refused: ' + name);
         return { executed: name, params };
       } }, close: () => fs.writeFile(options.home + '/closed', 'closed') };
@@ -112,6 +113,10 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
     ["relative", { command: "addProject", request: { path: "demo" } }, "请填写项目文件夹的完整路径"],
     ["missing", { command: "addProject", request: { path: "/nonexistent-areal-project" } }, "找不到这个文件夹"],
   ]) assert.deepEqual((await call(id, params)).error, { code: "COMMAND_FAILED", message }, id);
+  for (const code of ["MIGRATION_PENDING", "migrationBlocked"]) {
+    assert.deepEqual((await call(code, { command: "list", request: { errorCode: code } })).error, { code });
+    assert.deepEqual((await call(code + "-unknown", { command: "list", request: { errorCode: code, unknown: true } })).error, { code: "SUBMISSION_UNKNOWN" });
+  }
   f.child.stdin.end();
   assert.deepEqual(await f.exited, [0, null]);
 });
@@ -131,4 +136,33 @@ test("Host Worktree invalidation refreshes persisted progress and rejects anothe
   assert.deepEqual(JSON.parse((await projected)[0]), {event:"projection", records:[record]});
   f.child.stdin.write(JSON.stringify({version:1,event:"worktree.changed",sourceId:"another-source"}) + "\n");
   assert.deepEqual(await f.exited, [1, null]);
+});
+
+test("恢复目录查询只接受空间身份并经 Host 读取，不传入任意来源路径", async (t) => {
+  const f = await fixture(t);
+  const ready = once(f.lines, "line"); f.start(); await ready;
+  const reply = once(f.lines, "line");
+  f.child.stdin.write(JSON.stringify({version:1,id:"inspect",method:"desktop.command",params:{command:"recovery",request:{operation:"inspect"}}})+"\n");
+  const frame=JSON.parse((await reply)[0]);
+  assert.equal(frame.call,"recovery.inspect");
+  assert.deepEqual(frame.params,{});
+  const answer=once(f.lines,"line");
+  f.child.stdin.write(JSON.stringify({version:1,id:frame.id,result:{tasks:"notImported",projects:[],providers:[]}})+"\n");
+  assert.deepEqual(JSON.parse((await answer)[0]).result,{tasks:"notImported",projects:[],providers:[]});
+  const rejected=once(f.lines,"line");
+  f.child.stdin.write(JSON.stringify({version:1,id:"invalid",method:"desktop.command",params:{command:"recovery",request:{operation:"inspect",spaceId:"space-id",sourceProfile:"/arbitrary"}}})+"\n");
+  assert.equal(JSON.parse((await rejected)[0]).error.code,"INVALID_PARAMS");
+  f.child.stdin.end();await f.exited;
+});
+
+ test("恢复工作区只登记 Host 清单的目录，不接受调用者路径", async (t) => {
+  const f=await fixture(t);const ready=once(f.lines,"line");f.start();await ready;
+  const reversed=once(f.lines,"line");
+  f.child.stdin.write(JSON.stringify({version:1,id:"open-space",method:"desktop.command",params:{command:"recovery",request:{operation:"openWorkspace"}}})+"\n");
+  const frame=JSON.parse((await reversed)[0]);assert.equal(frame.call,"recovery.inspect");assert.deepEqual(frame.params,{});
+  const reply=once(f.lines,"line");
+  f.child.stdin.write(JSON.stringify({version:1,id:frame.id,result:{workspace:"/verified-new-space"}})+"\n");
+  assert.deepEqual(JSON.parse((await reply)[0]).result,{projectId:"project:/verified-new-space"});
+  const rejected=once(f.lines,"line");f.child.stdin.write(JSON.stringify({version:1,id:"bad-open",method:"desktop.command",params:{command:"recovery",request:{operation:"openWorkspace",path:"/old-space"}}})+"\n");
+  assert.equal(JSON.parse((await rejected)[0]).error.code,"INVALID_PARAMS");f.child.stdin.end();await f.exited;
 });

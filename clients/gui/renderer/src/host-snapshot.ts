@@ -230,7 +230,8 @@ export function createHostSnapshotProjector(
       );
       const selectedSession =
         currentSession?.projectId === project.projectId &&
-        currentSession.serviceGeneration === project.serviceGeneration
+        (currentSession.serviceGeneration === project.serviceGeneration ||
+          currentSession.access?.kind === "persisted")
           ? currentSession
           : undefined;
       const cached = projectViews.get(project.projectId);
@@ -265,6 +266,8 @@ export function createHostSnapshotProjector(
         return cached.value;
       }
       let thread = selectedSession ? native?.thread : undefined;
+      if (thread && selectedSession?.access?.kind === "persisted")
+        thread = { ...thread, persistedHistory: true };
       if (thread && session && readingWindow) {
         const pages = [...readingWindow.pages].sort(
           (a, b) =>

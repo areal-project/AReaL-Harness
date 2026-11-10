@@ -143,6 +143,7 @@ const {
 /** @typedef {import("./desktop-contract/transport.cjs").CommandEffect} CommandEffect */
 /** @typedef {keyof typeof commandDefinitions} CommandName */
 /** @typedef {import('./desktop-contract/conversation.cjs').Requests & import('./desktop-contract/desktop-control.cjs').Requests & {
+ * recovery:({operation:"importProvider"}&import("../../remote-client/generated/host-protocol").RecoveryProviderImportParams)|{operation:"inspect",spaceId?:string}|{operation:"openWorkspace",spaceId?:string}|({operation:"history"}&import("../../remote-client/generated/host-protocol").RecoveryHistoryParams),
  * providers:import('./desktop-contract/provider.cjs').Request<'providers'>,
  * chatgpt:import('./desktop-contract/provider.cjs').Request<'chatgpt'>,
  * resources:import('./desktop-contract/resource.cjs').Request<'resources'>,
@@ -178,6 +179,7 @@ function isCommandInvocation(invocation, options) {
  * @typedef {N extends import('./desktop-contract/conversation.cjs').Name ? import('./desktop-contract/conversation.cjs').Response<N,P>
  * : N extends import('./desktop-contract/desktop-control.cjs').Name ? import('./desktop-contract/desktop-control.cjs').Response<N,P>
  * : N extends 'providers'|'chatgpt' ? import('./desktop-contract/provider.cjs').Response<N,P>
+ * : N extends 'recovery' ? P extends {operation:'importProvider'} ? import('../../remote-client/generated/host-protocol').RecoveryProviderImportResult : P extends {operation:'openWorkspace'} ? {projectId:string} : P extends {operation:'history'} ? import('../../remote-client/generated/host-protocol').RecoveryHistoryResult : import('../../remote-client/generated/host-protocol').RecoveryInspectResult
  * : N extends 'resources' ? import('./desktop-contract/resource.cjs').Response<N,P>
  * : N extends 'analytics'|'projectless'|'tasks' ? import('./desktop-contract/catalog.cjs').Response<N,P>
  * : N extends 'trajectory' ? import('./desktop-contract/trajectory.cjs').Response<N,P>
@@ -229,6 +231,44 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     invalid();
   if (scope === "thread" && !identifier(params.threadId)) invalid();
   switch (name) {
+    case "recovery":
+      if (params.operation === "importProvider") {
+        if (
+          ![params.requestId, params.providerId, params.templateDigest].every(identifier) ||
+          (params.spaceId !== undefined && !identifier(params.spaceId)) ||
+          Object.keys(params).some(
+            (key) =>
+              !["operation", "requestId", "providerId", "templateDigest", "spaceId"].includes(key),
+          )
+        )
+          invalid();
+        return;
+      }
+      if (params.operation === "history") {
+        if (
+          !identifier(params.projectId) ||
+          !identifier(params.threadId) ||
+          ["spaceId", "snapshotId", "cursor"].some(
+            (key) => params[key] !== undefined && !identifier(params[key]),
+          ) ||
+          (params.cursor !== undefined && params.snapshotId === undefined) ||
+          Object.keys(params).some(
+            (key) =>
+              !["operation", "spaceId", "projectId", "threadId", "snapshotId", "cursor"].includes(
+                key,
+              ),
+          )
+        )
+          invalid();
+        return;
+      }
+      if (
+        !["inspect", "openWorkspace"].includes(String(params.operation)) ||
+        (params.spaceId !== undefined && !identifier(params.spaceId)) ||
+        Object.keys(params).some((key) => !["operation", "spaceId"].includes(key))
+      )
+        invalid();
+      return;
     case "cloud":
     case "cloudSession":
       cloud.validateRequest(name, params);
@@ -491,6 +531,93 @@ const validatePreview = (request) => {
 function validateCommandResponse(name, params, value) {
   const invocation = readCommandInvocation(name, params, { serviceOnly: false });
   switch (invocation.name) {
+    case "recovery": {
+      if (invocation.request.operation === "importProvider") {
+        if (
+          !record(value) ||
+          ![value.requestId, value.providerId, value.templateDigest].every(identifier) ||
+          !["completed", "admissionUnknown"].includes(String(value.state))
+        )
+          invalid();
+        return;
+      }
+      if (invocation.request.operation === "history") {
+        if (
+          !record(value) ||
+          ![value.projectId, value.threadId, value.snapshotId, value.serviceGeneration].every(
+            identifier,
+          ) ||
+          typeof value.capturedAt !== "number" ||
+          value.readOnly !== true ||
+          value.attachments !== "unavailable" ||
+          !record(value.page)
+        )
+          invalid();
+        return;
+      }
+      if (invocation.request.operation === "openWorkspace") {
+        if (!record(value) || !identifier(value.projectId)) invalid();
+        return;
+      }
+      if (record(value) && value.kind === "none" && Object.keys(value).length === 1) return;
+      if (!record(value) || value.kind !== "space") invalid();
+      const nullable = (/** @type {unknown} */ item) => item === null || typeof item === "string";
+      if (
+        !record(value) ||
+        !identifier(value.spaceId) ||
+        !identifier(value.manifestDigest) ||
+        typeof value.workspace !== "string" ||
+        typeof value.hasExistingData !== "boolean" ||
+        !["available", "partial", "unavailable"].includes(String(value.providerCatalogState)) ||
+        !Array.isArray(value.scheduledTasks) ||
+        !value.scheduledTasks.every(
+          (row) =>
+            record(row) &&
+            [row.projectId, row.taskId, row.title].every((item) => typeof item === "string") &&
+            row.imported === false &&
+            (row.schedule === null || record(row.schedule)) &&
+            (row.scheduleV2 === null || record(row.scheduleV2)),
+        ) ||
+        !Array.isArray(value.taskCatalogUnavailable) ||
+        !value.taskCatalogUnavailable.every((item) => typeof item === "string") ||
+        typeof value.tasksTruncated !== "boolean" ||
+        typeof value.historyTruncated !== "boolean" ||
+        !Array.isArray(value.history) ||
+        !value.history.every(
+          (row) =>
+            record(row) &&
+            [row.projectId, row.threadId, row.title].every((item) => typeof item === "string"),
+        ) ||
+        value.tasks !== "notImported" ||
+        !record(value.previousHost) ||
+        ![
+          value.previousHost.hostId,
+          value.previousHost.generation,
+          value.previousHost.stopState,
+        ].every(nullable) ||
+        !Array.isArray(value.projects) ||
+        !value.projects.every(
+          (item) =>
+            record(item) &&
+            nullable(item.id) &&
+            typeof item.name === "string" &&
+            typeof item.root === "string" &&
+            item.execution === "unverified",
+        ) ||
+        !Array.isArray(value.providers) ||
+        !value.providers.every(
+          (item) =>
+            record(item) &&
+            nullable(item.id) &&
+            nullable(item.name) &&
+            item.credentials === "notImported" &&
+            Array.isArray(item.models) &&
+            item.models.every((model) => typeof model === "string"),
+        )
+      )
+        invalid();
+      return;
+    }
     case "connect":
     case "list":
     case "open":

@@ -1535,6 +1535,17 @@ class CoreBackend {
       return manage(this, project, request, context);
     }
     if (this.closing) throw new Error("应用正在退出");
+    if (name === "recovery") {
+      if (!this.hostCall) throw Object.assign(new Error("Recovery Host unavailable"), { code: "CAPABILITY_UNAVAILABLE" });
+      if (["history", "importProvider"].includes(request.operation)) {
+        const { operation, ...query } = request;
+        return this.hostCall(`recovery.${operation}`, query);
+      }
+      const catalog = await this.hostCall("recovery.inspect", request.spaceId === undefined ? {} : { spaceId: request.spaceId });
+      if (request.operation === "inspect") return catalog;
+      if (!modelRecord(catalog) || typeof catalog.workspace !== "string") throw new Error("Invalid recovery workspace");
+      return { projectId: await this.addProject(catalog.workspace) };
+    }
     if (name === "analytics") return this.analytics.command(request);
     // 后台只读状态不占任务或配置准入；参数仍由轨迹能力校验。
     if (name === "trajectory" && request?.operation === "status")

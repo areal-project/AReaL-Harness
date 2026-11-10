@@ -13120,7 +13120,8 @@
             "type": "string",
             "enum": [
               "gui-read-v1",
-              "gui-write-v1"
+              "gui-write-v1",
+              "persistedHistoryV1"
             ]
           }
         },
@@ -14010,6 +14011,29 @@
         },
         "snapshot": {
           "$ref": "#/$defs/NativeCoreObject"
+        },
+        "access": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "persisted"
+            },
+            "readOnly": {
+              "type": "boolean",
+              "const": true
+            },
+            "snapshotId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "readOnly",
+            "snapshotId"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
@@ -14389,6 +14413,37 @@
         }
       ]
     },
+    "LoopbackPersistedSessionOpenRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "session.openPersisted"
+        },
+        "params": {
+          "$ref": "#/$defs/ConversationOpenParams"
+        },
+        "context": {
+          "$ref": "#/$defs/ReadContext"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false
+    },
     "LoopbackSessionOpenRequest": {
       "type": "object",
       "properties": {
@@ -14541,6 +14596,9 @@
         },
         {
           "$ref": "#/$defs/LoopbackSessionOpenRequest"
+        },
+        {
+          "$ref": "#/$defs/LoopbackPersistedSessionOpenRequest"
         },
         {
           "$ref": "#/$defs/LoopbackSessionHistoryRequest"
@@ -35431,7 +35489,8 @@
             "side",
             "tasks",
             "trajectory",
-            "workspace"
+            "workspace",
+            "recovery"
           ],
           "description": "桌面命令里由后台执行的部分。会话创建、发送、引导、停止与回答走 Host 自己的写方法；窗口、系统与应用生命周期命令只在桌面窗口里有。"
         },
@@ -66534,6 +66593,656 @@
         "sourceId"
       ],
       "additionalProperties": false
+    },
+    "RecoveryInspectParams": {
+      "type": "object",
+      "properties": {
+        "spaceId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "RecoveryInspectResult": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/RecoverySpaceInspectResult"
+        }
+      ]
+    },
+    "LocalRecoveryInspectRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "recovery.inspect"
+        },
+        "params": {
+          "$ref": "#/$defs/RecoveryInspectParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "recovery.inspect",
+          "params": {
+            "spaceId": "00000000-0000-4000-8000-000000000000"
+          }
+        }
+      ]
+    },
+    "WorkbenchPrivateRecoveryInspectRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "call": {
+          "type": "string",
+          "const": "recovery.inspect"
+        },
+        "params": {
+          "$ref": "#/$defs/RecoveryInspectParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "RecoveryHistoryParams": {
+      "type": "object",
+      "properties": {
+        "spaceId": {
+          "type": "string"
+        },
+        "projectId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "snapshotId": {
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "projectId",
+        "threadId"
+      ],
+      "additionalProperties": false
+    },
+    "RecoveryHistoryResult": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "snapshotId": {
+          "type": "string"
+        },
+        "serviceGeneration": {
+          "type": "string"
+        },
+        "capturedAt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "readOnly": {
+          "const": true,
+          "type": "boolean"
+        },
+        "attachments": {
+          "const": "unavailable",
+          "type": "string"
+        },
+        "page": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "projectId",
+        "threadId",
+        "snapshotId",
+        "serviceGeneration",
+        "capturedAt",
+        "readOnly",
+        "attachments",
+        "page"
+      ],
+      "additionalProperties": false
+    },
+    "LocalRecoveryHistoryRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "recovery.history"
+        },
+        "params": {
+          "$ref": "#/$defs/RecoveryHistoryParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "example",
+          "method": "recovery.history",
+          "params": {
+            "spaceId": "00000000-0000-4000-8000-000000000000"
+          }
+        }
+      ]
+    },
+    "WorkbenchPrivateRecoveryHistoryRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "call": {
+          "type": "string",
+          "const": "recovery.history"
+        },
+        "params": {
+          "$ref": "#/$defs/RecoveryHistoryParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "RecoveryProviderTemplate": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "baseUrl": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": [
+            "chatCompletions",
+            "responses"
+          ]
+        },
+        "enabled": {
+          "type": "boolean",
+          "const": false
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkbenchProviderModel"
+          }
+        },
+        "parameters": {
+          "$ref": "#/$defs/WorkbenchProviderParameters"
+        }
+      },
+      "required": [
+        "name",
+        "baseUrl",
+        "protocol",
+        "enabled",
+        "models",
+        "parameters"
+      ],
+      "additionalProperties": false
+    },
+    "RecoverySpaceInspectResult": {
+      "type": "object",
+      "properties": {
+        "spaceId": {
+          "type": "string"
+        },
+        "manifestDigest": {
+          "type": "string"
+        },
+        "hasExistingData": {
+          "type": "boolean"
+        },
+        "previousHost": {
+          "type": "object",
+          "properties": {
+            "hostId": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "generation": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "stopState": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "hostId",
+            "generation",
+            "stopState"
+          ],
+          "additionalProperties": false
+        },
+        "projects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "root": {
+                "type": "string"
+              },
+              "execution": {
+                "type": "string",
+                "const": "unverified"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "root",
+              "execution"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "name": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "models": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "credentials": {
+                "type": "string",
+                "const": "notImported"
+              },
+              "template": {
+                "$ref": "#/$defs/RecoveryProviderTemplate"
+              },
+              "templateDigest": {
+                "type": "string"
+              },
+              "importOperation": {
+                "$ref": "#/$defs/RecoveryProviderImportResult"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "models",
+              "credentials"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "tasks": {
+          "type": "string",
+          "const": "notImported"
+        },
+        "workspace": {
+          "type": "string"
+        },
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "threadId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "projectId",
+              "threadId",
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "historyTruncated": {
+          "type": "boolean"
+        },
+        "providerCatalogState": {
+          "type": "string",
+          "enum": [
+            "available",
+            "partial",
+            "unavailable"
+          ]
+        },
+        "scheduledTasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "schedule": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "scheduleV2": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "imported": {
+                "type": "boolean",
+                "const": false
+              }
+            },
+            "required": [
+              "projectId",
+              "taskId",
+              "title",
+              "schedule",
+              "scheduleV2",
+              "imported"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "taskCatalogUnavailable": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tasksTruncated": {
+          "type": "boolean"
+        },
+        "kind": {
+          "type": "string",
+          "const": "space"
+        }
+      },
+      "required": [
+        "spaceId",
+        "manifestDigest",
+        "hasExistingData",
+        "previousHost",
+        "projects",
+        "providers",
+        "tasks",
+        "workspace",
+        "history",
+        "historyTruncated",
+        "providerCatalogState",
+        "scheduledTasks",
+        "taskCatalogUnavailable",
+        "tasksTruncated",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "RecoveryProviderImportParams": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "spaceId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "providerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "templateDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "requestId",
+        "providerId",
+        "templateDigest"
+      ],
+      "additionalProperties": false
+    },
+    "RecoveryProviderImportResult": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "admissionUnknown"
+          ]
+        },
+        "templateDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "requestId",
+        "providerId",
+        "state",
+        "templateDigest"
+      ],
+      "additionalProperties": false
+    },
+    "LocalRecoveryProviderImportRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "recovery.importProvider"
+        },
+        "params": {
+          "$ref": "#/$defs/RecoveryProviderImportParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "WorkbenchPrivateRecoveryProviderImportRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "call": {
+          "type": "string",
+          "const": "recovery.importProvider"
+        },
+        "params": {
+          "$ref": "#/$defs/RecoveryProviderImportParams"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "call",
+        "params"
+      ],
+      "additionalProperties": false
     }
   },
   "x-current": {
@@ -66816,6 +67525,21 @@
           "result": "#/$defs/LocalDesktopCoreTerminalsCloseResult",
           "source": "core/host/src/server.rs",
           "x-owner": "host"
+        },
+        "recovery.inspect": {
+          "request": "#/$defs/LocalRecoveryInspectRequest",
+          "result": "#/$defs/RecoveryInspectResult",
+          "source": "core/host/src/space.rs"
+        },
+        "recovery.history": {
+          "request": "#/$defs/LocalRecoveryHistoryRequest",
+          "result": "#/$defs/RecoveryHistoryResult",
+          "source": "core/host/src/space.rs"
+        },
+        "recovery.importProvider": {
+          "request": "#/$defs/LocalRecoveryProviderImportRequest",
+          "result": "#/$defs/RecoveryProviderImportResult",
+          "source": "core/host/src/space.rs"
         }
       },
       "framing": {
@@ -67190,6 +67914,11 @@
           "result": "#/$defs/ConversationOpenResult",
           "source": "core/host/src/loopback.rs"
         },
+        "session.openPersisted": {
+          "request": "#/$defs/LoopbackPersistedSessionOpenRequest",
+          "result": "#/$defs/ConversationOpenResult",
+          "source": "core/host/src/loopback.rs"
+        },
         "session.history": {
           "request": "#/$defs/LoopbackSessionHistoryRequest",
           "result": "#/$defs/ConversationHistoryResult",
@@ -67502,6 +68231,27 @@
           "direction": "workbenchToHost",
           "x-owner": "host",
           "source": "core/host/src/workbench_route.rs"
+        },
+        "recovery.inspect": {
+          "request": "#/$defs/WorkbenchPrivateRecoveryInspectRequest",
+          "result": "#/$defs/RecoveryInspectResult",
+          "direction": "workbenchToHost",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
+        },
+        "recovery.history": {
+          "request": "#/$defs/WorkbenchPrivateRecoveryHistoryRequest",
+          "result": "#/$defs/RecoveryHistoryResult",
+          "direction": "workbenchToHost",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
+        },
+        "recovery.importProvider": {
+          "request": "#/$defs/WorkbenchPrivateRecoveryProviderImportRequest",
+          "result": "#/$defs/RecoveryProviderImportResult",
+          "direction": "workbenchToHost",
+          "x-owner": "host",
+          "source": "core/host/src/workbench_route.rs"
         }
       },
       "events": {
@@ -67613,6 +68363,15 @@
     },
     {
       "$ref": "#/$defs/LocalDesktopCoreTerminalsCloseRequest"
+    },
+    {
+      "$ref": "#/$defs/LocalRecoveryInspectRequest"
+    },
+    {
+      "$ref": "#/$defs/LocalRecoveryHistoryRequest"
+    },
+    {
+      "$ref": "#/$defs/LocalRecoveryProviderImportRequest"
     }
   ],
   "x-proposals": {

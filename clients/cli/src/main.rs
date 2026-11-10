@@ -1,11 +1,13 @@
 //! 统一产品命令；子命令只装配已有入口，历史、工具循环和队列仍属于 Core。
 mod cloud;
+mod history_snapshot;
 mod host;
 mod local;
 mod plugins;
 mod rpc;
 mod run;
 mod service;
+mod space;
 mod tasks;
 mod trajectory;
 mod upgrade;
@@ -32,6 +34,8 @@ struct MultitoolCli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 创建或选择隔离空间，不导入旧任务或凭据。
+    Space(space::Options),
     /// 经 Host 管理定时任务与收件箱，无需 GUI。
     Tasks(tasks::Options),
     /// 经 Host 管理 Git 工作树，无需 GUI。
@@ -229,6 +233,7 @@ async fn main() {
             println!("{}", areal_server::build_info());
             return;
         }
+        Some(Command::Space(options)) => space::run(options).await,
         Some(Command::Cloud(options)) => cloud::run(options).await,
         Some(Command::Upgrade { check }) => upgrade::run(check).await,
         Some(Command::Plugin(options)) => plugins::run(options).await,

@@ -115,6 +115,7 @@ export const DESKTOP_COMMANDS = new Set([
   "providers",
   "queue",
   "queueEdit",
+  "recovery",
   "reconcile",
   "remoteControl",
   "resources",
@@ -155,9 +156,13 @@ export function hostDesktopCommand(
     } catch (error) {
       const message =
         error && typeof error === "object" && "message" in error ? String(error.message) : "";
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
       return {
         ok: false,
-        error: { code: "COMMAND_FAILED", message: message || "操作失败" },
+        error: {
+          code: ["migrationBlocked", "MIGRATION_PENDING"].includes(code) ? code : "COMMAND_FAILED",
+          message: message || "操作失败",
+        },
       } as Awaited<ReturnType<PlatformServices["command"]>>;
     }
   };

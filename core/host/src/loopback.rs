@@ -42,6 +42,7 @@ const METHODS: &[&str] = &[
     "shell.subscribe",
     "shell.unsubscribe",
     "session.open",
+    "session.openPersisted",
     "session.history",
     "subscription.close",
     "artifact.read",
@@ -508,6 +509,11 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         .capabilities
         .iter()
         .any(|capability| capability == "gui-read-v1");
+    let persisted_history = negotiated
+        && hello
+            .capabilities
+            .iter()
+            .any(|capability| capability == "persistedHistoryV1");
     let connection_id = uuid::Uuid::new_v4().to_string();
     let _pages = PageConnection {
         host: host.clone(),
@@ -541,7 +547,11 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
         executable_version: host.identity.executable_version.clone(),
         capabilities: Vec::new(),
         methods: if negotiated {
-            METHODS.iter().map(|method| (*method).into()).collect()
+            METHODS
+                .iter()
+                .filter(|method| **method != "session.openPersisted" || persisted_history)
+                .map(|method| (*method).into())
+                .collect()
         } else {
             vec!["host.status".into()]
         },
@@ -558,6 +568,10 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
             if writer.is_some() {
                 capabilities
                     .push(protocol::LoopbackHelloResultFieldNegotiatedCapabilitiesItem::Value2);
+            }
+            if persisted_history {
+                capabilities
+                    .push(protocol::LoopbackHelloResultFieldNegotiatedCapabilitiesItem::Value3);
             }
             capabilities
         }),
@@ -659,6 +673,14 @@ async fn connection(host: Rc<Host>, stream: TcpStream) -> Result<()> {
                                     let closed=shell.as_ref().is_some_and(|sub|sub.id()==params.subscription_id);
                                     if closed {shell=None;}
                                     Ok(json!({"closed":closed}))
+                                }
+                                "session.openPersisted" => {
+                                    ensure!(persisted_history, wire::error("methodNotFound", "persisted history was not negotiated"));
+                                    let context=input.context.context("INVALID_PARAMS")?;
+                                    let params: protocol::ConversationOpenParams=serde_json::from_value(input.params)?;
+                                    reader=None;
+                                    let (opened,value)=super::conversation_read::ConversationReader::open_persisted(&host,&context.project_id,context.service_generation.as_deref(),&params.thread_id).await?;
+                                    reader=Some(opened); Ok(keys(&host,&connection_id,value))
                                 }
                                 "session.open" => {
                                     let context=input.context.context("INVALID_PARAMS")?;
@@ -1295,6 +1317,95 @@ mod tests {
                 assert!(tokio::time::timeout(Duration::from_secs(2), wire::read(&mut stream)).await.unwrap().unwrap().is_none());
             }
             assert_eq!(fixture.client().await.status().await.unwrap().host_id, ticket.host_id);
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn persisted_history_reads_stopped_project_without_activation_or_unknown_replay() {
+        use fs2::FileExt;
+        tokio::task::LocalSet::new().run_until(async {
+            let fixture = Fixture::start().await;
+            storage::private_dir(&fixture.host.home.join("host/projects")).unwrap();
+            let client = fixture.client().await;
+            let workspace = fixture.host.home.join("workspace");
+            let data = fixture.host.home.join("persisted-data");
+            for path in [&workspace, &data, &data.join("blobs")] { storage::private_dir(path).unwrap(); }
+            let registration = crate::ProjectRegistration { project_id:"persisted".into(), workspace:workspace.clone(), data_dir:data.clone(), source:crate::ProjectSource::Cli, default_binding:false };
+            client.register(&uuid::Uuid::new_v4().to_string(), registration.clone()).await.unwrap();
+            let directory = storage::registry(&fixture.host.home, &Host::service_id(&registration)).unwrap(); storage::private_dir(&directory).unwrap();
+            for path in [directory.join("start.lock"),data.join("service.lock"),data.join("owner.lock")] { storage::open_private(&path, true).unwrap(); }
+            storage::write(&data.join("service-workspace"), &workspace).unwrap();
+            let generation = uuid::Uuid::new_v4().to_string();
+            let descriptor = json!({"protocolVersion":1,"serviceId":Host::service_id(&registration),"generation":generation,
+                "workspace":workspace,"dataDir":data,"configFingerprint":"old", "owner":{"kind":"host","hostId":fixture.host.identity.host_id,"generation":uuid::Uuid::new_v4().to_string()},
+                "endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":500000000,"corePid":500000001,"state":"ready"});
+            storage::write(&directory.join("service.json"), &descriptor).unwrap();
+            let thread = uuid::Uuid::new_v4().to_string();
+            let blob = b"synthetic persisted attachment";
+            let digest = storage::digest(blob); let uri = format!("areal://blob/{digest}");
+            std::fs::write(data.join("blobs").join(&digest), blob).unwrap();
+            let record = json!({"version":17,"thread":{"id":thread,"sessionId":thread,"parentThreadId":null,"preview":"fixture","modelProvider":"fixture","createdAt":1,"updatedAt":2,"status":{"type":"active","activeFlags":[]},"cwd":workspace,"cliVersion":"fixture","source":"cli","ephemeral":false,"turns":[{"id":"turn","status":"inProgress","items":[{"type":"userMessage","id":"user","content":[{"type":"file","url":uri}]},{"type":"agentMessage","id":"answer","text":"synthetic pending text"}]}]}});
+            storage::write(&data.join(format!("{thread}.json")), &record).unwrap();
+            let request = uuid::Uuid::new_v4().to_string();
+            let operation = super::super::Operation {digest:"fixed-original".into(),receipt:json!({"version":1,"requestId":request,"method":"project.ensure","projectId":"persisted","state":"admissionUnknown"}),evidence:Value::Null};
+            storage::write(&wire::operation_path(&fixture.host.home, &request), &operation).unwrap();
+            let original_operation = std::fs::read(wire::operation_path(&fixture.host.home, &request)).unwrap();
+            let unnegotiated_ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+            let mut unnegotiated = authenticate(&unnegotiated_ticket).await;
+            write(&mut unnegotiated,json!({"version":1,"id":"denied","method":"session.openPersisted","context":{"projectId":"persisted"},"params":{"threadId":thread,"view":"conversation"}})).await;
+            assert_eq!(read(&mut unnegotiated).await["error"]["code"],"methodNotFound");
+            drop(unnegotiated);
+            let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap(); let mut socket = connect(&ticket,ELECTRON_ORIGIN).await;
+            write(&mut socket,json!({"version":1,"id":"hello","method":"hello","params":{"protocolVersions":[1],"capabilities":["gui-read-v1","persistedHistoryV1"],"ticket":ticket.ticket,"expectedGeneration":ticket.generation}})).await;
+            let hello = read(&mut socket).await; assert!(hello["result"]["methods"].as_array().unwrap().iter().any(|method|method=="session.openPersisted"));
+            let context = json!({"projectId":"persisted","serviceGeneration":generation});
+            write(&mut socket,json!({"version":1,"id":"live","method":"session.open","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
+            assert!(read(&mut socket).await.get("error").is_some());
+            write(&mut socket,json!({"version":1,"id":"wrong-generation","method":"session.openPersisted","context":{"projectId":"persisted","serviceGeneration":"different"},"params":{"threadId":thread,"view":"conversation"}})).await;
+            assert_eq!(read(&mut socket).await["error"]["code"],"PERSISTED_HISTORY_UNAVAILABLE");
+            let held = storage::open_private(&data.join("owner.lock"), false).unwrap(); held.try_lock_exclusive().unwrap();
+            write(&mut socket,json!({"version":1,"id":"held","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
+            assert_eq!(read(&mut socket).await["error"]["code"],"RESOURCE_BUSY"); drop(held);
+            write(&mut socket,json!({"version":1,"id":"open","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
+            let reply = read(&mut socket).await; assert!(reply.get("error").is_none(),"{reply}"); let opened = &reply["result"];
+            assert_eq!(opened["access"]["kind"],"persisted"); assert_eq!(opened["access"]["readOnly"],true);
+            assert_eq!(opened["serviceGeneration"],generation); assert_eq!(opened["snapshot"]["thread"]["turns"][0]["status"],"inProgress");
+            let subscription = opened["subscriptionId"].clone();
+            write(&mut socket,json!({"version":1,"id":"media","method":"artifact.read","context":context,"params":{"view":"conversation","threadId":thread,"serviceGeneration":generation,"subscriptionId":subscription,"turnId":"turn","itemId":"user","uri":uri}})).await;
+            assert_eq!(read(&mut socket).await["result"]["totalBytes"],blob.len());
+            write(&mut socket,json!({"version":1,"id":"forged","method":"artifact.read","context":context,"params":{"view":"conversation","threadId":thread,"serviceGeneration":generation,"subscriptionId":subscription,"turnId":"turn","itemId":"wrong-item","uri":uri}})).await;
+            assert_eq!(read(&mut socket).await["error"]["code"],"RESOURCE_UNAVAILABLE");
+            write(&mut socket,json!({"version":1,"id":"page","method":"session.history","context":context,"params":{"threadId":thread,"subscriptionId":subscription,"view":"own","maxBytes":4096}})).await;
+            assert!(read(&mut socket).await["result"]["page"].is_object());
+            assert_eq!(storage::read::<Value>(&data.join(format!("{thread}.json"))).unwrap(),record);
+            assert_eq!(std::fs::read(wire::operation_path(&fixture.host.home,&request)).unwrap(),original_operation);
+            assert_eq!(storage::read::<Value>(&directory.join("service.json")).unwrap(),descriptor);
+            assert!(!directory.join("cleanup.json").exists()); assert!(!directory.join("launch.json").exists());
+            write(&mut socket,json!({"version":1,"id":"close","method":"subscription.close","context":context,"params":{"subscriptionId":subscription}})).await;
+            assert_eq!(read(&mut socket).await["result"]["closed"],true);
+            write(&mut socket,json!({"version":1,"id":"after-close","method":"session.history","context":context,"params":{"threadId":thread,"subscriptionId":subscription,"view":"own"}})).await;
+            assert_eq!(read(&mut socket).await["error"]["code"],"RESYNC_REQUIRED");
+            let mut readers = Vec::new();
+            for index in 0..3 {
+                let ticket = client.web_ticket(ELECTRON_ORIGIN).await.unwrap();
+                let mut peer = connect(&ticket, ELECTRON_ORIGIN).await;
+                write(&mut peer,json!({"version":1,"id":"hello","method":"hello","params":{"protocolVersions":[1],"capabilities":["gui-read-v1","persistedHistoryV1"],"ticket":ticket.ticket,"expectedGeneration":ticket.generation}})).await;
+                assert!(read(&mut peer).await.get("result").is_some());
+                write(&mut peer,json!({"version":1,"id":"open","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
+                let response = read(&mut peer).await;
+                if index < 2 { assert_eq!(response["result"]["access"]["readOnly"],true); }
+                else { assert_eq!(response["error"]["code"],"RESOURCE_BUSY"); }
+                readers.push((peer,response["result"]["subscriptionId"].clone()));
+            }
+            let (first, first_subscription) = &mut readers[0];
+            write(first,json!({"version":1,"id":"release","method":"subscription.close","context":context,"params":{"subscriptionId":first_subscription}})).await;
+            assert_eq!(read(first).await["result"]["closed"],true);
+            let (third, _) = &mut readers[2];
+            write(third,json!({"version":1,"id":"retry","method":"session.openPersisted","context":context,"params":{"threadId":thread,"view":"conversation"}})).await;
+            assert_eq!(read(third).await["result"]["access"]["readOnly"],true);
+            fixture.host.slots.borrow_mut().get_mut("persisted").unwrap().registration.workspace = fixture.host.home.join("rebound-workspace");
+            fixture.host.changed();
+            assert_eq!(read(third).await["method"],"session.invalidated");
         }).await;
     }
 

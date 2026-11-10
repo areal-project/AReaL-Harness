@@ -48,6 +48,15 @@ pub enum WebCommand {
 }
 #[derive(Subcommand)]
 pub enum HostCommand {
+    /// 冻结原项目的只读历史并导出离线 HTML；不启动 Host、Core 或 Runtime。
+    HistorySnapshot {
+        #[arg(long)]
+        service: std::path::PathBuf,
+        #[arg(long)]
+        thread: String,
+        #[arg(long)]
+        output: std::path::PathBuf,
+    },
     #[cfg(target_os = "macos")]
     #[command(hide = true)]
     CredentialIo {
@@ -117,6 +126,11 @@ pub enum HostCommand {
 }
 pub async fn execute(command: HostCommand) -> Result<()> {
     let value = match command {
+        HostCommand::HistorySnapshot {
+            service,
+            thread,
+            output,
+        } => crate::history_snapshot::export(&service, &thread, &output)?,
         #[cfg(target_os = "macos")]
         HostCommand::CredentialIo {
             channel_fd,

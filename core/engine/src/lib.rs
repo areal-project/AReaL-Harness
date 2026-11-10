@@ -23,6 +23,7 @@ mod request_meter;
 mod session_name;
 mod sessions;
 mod store;
+pub use store::persisted::PersistedConversation;
 mod task_mode;
 pub use areal_plugins::PluginComponentId;
 #[cfg(feature = "test-support")]

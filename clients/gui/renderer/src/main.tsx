@@ -47,6 +47,14 @@ async function start() {
       events: window,
     });
   }
+  if (desktop?.getHostTicket && !hostReadsEnabled()) {
+    const { createDesktopHistoryRecoveryServices } = await import("./desktop-history-recovery.js");
+    services = createDesktopHistoryRecoveryServices(desktop, {
+      bootstrap: desktop.getHostTicket,
+      origin: "areal-ui://app",
+      events: window,
+    });
+  }
   if (!services) throw new Error("Platform services unavailable");
   createRoot(document.getElementById("root")!).render(
     <ApplicationIntlProvider>

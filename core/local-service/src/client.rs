@@ -36,15 +36,15 @@ impl std::error::Error for ControlTransportError {
 }
 
 pub async fn ensure(spec: &LaunchSpec) -> Result<Service> {
-    ensure_inner(spec, None, false, true, None).await
+    ensure_inner(spec, None, false, true, None, || Ok(())).await
 }
 
 pub async fn ensure_without_restart(spec: &LaunchSpec) -> Result<Service> {
-    ensure_inner(spec, None, false, false, None).await
+    ensure_inner(spec, None, false, false, None, || Ok(())).await
 }
 
 pub async fn restart(spec: &LaunchSpec, cancel: bool) -> Result<Service> {
-    ensure_inner(spec, Some(cancel), false, true, None).await
+    ensure_inner(spec, Some(cancel), false, true, None, || Ok(())).await
 }
 
 pub async fn ensure_with_lifetime(
@@ -53,7 +53,29 @@ pub async fn ensure_with_lifetime(
     no_auto_restart: bool,
 ) -> Result<Service> {
     ensure!(spec.owner.is_some(), "service lifetime requires an owner");
-    ensure_inner(spec, None, false, !no_auto_restart, Some(lifetime)).await
+    ensure_inner(spec, None, false, !no_auto_restart, Some(lifetime), || {
+        Ok(())
+    })
+    .await
+}
+
+/// 在既有启动门内核对外部接管依据；回调只在需要新启动时执行。
+pub async fn ensure_with_lifetime_checked(
+    spec: &LaunchSpec,
+    lifetime: &OwnerLifetime,
+    no_auto_restart: bool,
+    before_launch: impl Fn() -> Result<()>,
+) -> Result<Service> {
+    ensure!(spec.owner.is_some(), "service lifetime requires an owner");
+    ensure_inner(
+        spec,
+        None,
+        false,
+        !no_auto_restart,
+        Some(lifetime),
+        before_launch,
+    )
+    .await
 }
 
 async fn ensure_inner(
@@ -62,6 +84,7 @@ async fn ensure_inner(
     reconnect: bool,
     allow_automatic_restart: bool,
     lifetime: Option<&OwnerLifetime>,
+    before_launch: impl Fn() -> Result<()>,
 ) -> Result<Service> {
     ensure!(
         spec.owner.is_some() == lifetime.is_some(),
@@ -173,6 +196,7 @@ async fn ensure_inner(
             bound.display()
         );
     }
+    before_launch()?;
     launch_unlocked(spec, lifetime, &directory).await
 }
 
@@ -477,7 +501,7 @@ async fn startup_guard(directory: &Path, shared: bool) -> Result<std::fs::File> 
 }
 
 pub async fn reconnect(spec: &LaunchSpec) -> Result<Service> {
-    ensure_inner(spec, None, true, true, None).await
+    ensure_inner(spec, None, true, true, None, || Ok(())).await
 }
 
 fn check_compatible(spec: &LaunchSpec, service: &Service, directory: &Path) -> Result<()> {

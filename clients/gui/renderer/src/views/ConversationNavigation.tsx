@@ -62,7 +62,7 @@ export function ConversationNavigation(props: SidebarNavigationProps) {
   const model = useSidebarNavigation(props);
   return (
     <SidebarContext.Provider value={model}>
-      {props.visible && <SidebarContent />}
+      {props.visible && <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />}
       <SidebarSearch />
       <SidebarRename />
     </SidebarContext.Provider>
@@ -433,7 +433,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
     </section>
   );
 }
-function SidebarContent() {
+function SidebarContent({ onUpgradeHistory }: { onUpgradeHistory?: () => void }) {
   const readOnly = useReadOnly();
   const conversationCreateReadOnly = useConversationCreateReadOnly();
   const libraryReadOnly = useLibraryReadOnly();
@@ -483,6 +483,13 @@ function SidebarContent() {
         {!conversationCreateReadOnly && (
           <div className="sidebar-tools">
             <NewTaskButtonGroup onCreateTask={() => void newTask()} />
+          </div>
+        )}
+        {onUpgradeHistory && (
+          <div className="sidebar-tools">
+            <Button variant="ghost" onClick={onUpgradeHistory}>
+              {t("upgrade.history")}
+            </Button>
           </div>
         )}
         {

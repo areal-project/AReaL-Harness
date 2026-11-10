@@ -64,7 +64,7 @@ export async function connectWebSocket(
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error("Host read timed out"));
-        if (method === "session.open") close();
+        if (method === "session.open" || method === "session.openPersisted") close();
       }, 15_000);
       pending.set(id, { resolve, reject, timer });
       try {
@@ -171,7 +171,9 @@ export async function connectWebSocket(
       bootstrap = undefined;
       void request("hello", {
         protocolVersions: [1],
-        capabilities: options.writes ? ["gui-read-v1", "gui-write-v1"] : ["gui-read-v1"],
+        capabilities: options.writes
+          ? ["gui-read-v1", "gui-write-v1", "persistedHistoryV1"]
+          : ["gui-read-v1", "persistedHistoryV1"],
         ticket,
         expectedGeneration: generation,
       } satisfies LoopbackHelloParams)
@@ -197,6 +199,7 @@ export async function connectWebSocket(
             connectionId: value.connectionId,
             gatewayGeneration: generation,
             preferredSourceId,
+            persistedHistory: value.negotiatedCapabilities.includes("persistedHistoryV1"),
             ...(writable
               ? {
                   writeMethods: (value.writeMethods as unknown[]).filter(

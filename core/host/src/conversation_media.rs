@@ -362,6 +362,18 @@ pub(super) async fn fetch(
             && format!("{:x}", Sha256::digest(&bytes)) == digest(&reference.uri)?,
         "RESOURCE_UNAVAILABLE"
     );
+    guard()?;
+    from_bytes(reference, bytes)
+}
+
+pub(super) fn from_bytes(reference: MediaReference, bytes: Vec<u8>) -> Result<MediaCache> {
+    ensure!(
+        bytes.len() <= MAX_BYTES
+            && reference.mime.as_deref().is_none_or(supported_mime)
+            && reference.size.is_none_or(|size| size == bytes.len())
+            && format!("{:x}", Sha256::digest(&bytes)) == digest(&reference.uri)?,
+        "RESOURCE_UNAVAILABLE"
+    );
     let detected = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         Some("image/png")
     } else if bytes.starts_with(b"\xff\xd8\xff") {
@@ -385,7 +397,6 @@ pub(super) async fn fetch(
         .unwrap_or("application/octet-stream")
         .to_owned();
     let raster = raster_info(&bytes, &mime).ok();
-    guard()?;
     Ok(MediaCache {
         reference,
         bytes,

@@ -671,6 +671,10 @@ describe("local web desktop commands", () => {
     } as unknown as HostClient;
     const command = hostDesktopCommand(client, () => "source");
     expect(await command("list", { projectId: "p" })).toEqual({ ok: true, value: { done: true } });
+    expect(await command("recovery", { operation: "inspect" })).toEqual({
+      ok: true,
+      value: { done: true },
+    });
     expect(await command("list", { fail: true } as never)).toEqual({
       ok: false,
       error: { code: "COMMAND_FAILED", message: "Core refused" },
@@ -680,12 +684,31 @@ describe("local web desktop commands", () => {
       "desktop.command",
       { sourceId: "source", command: "list", request: { projectId: "p" } },
     ]);
+    expect(calls[1]).toEqual([
+      "desktop.command",
+      { sourceId: "source", command: "recovery", request: { operation: "inspect" } },
+    ]);
     const capabilities = hostPlatformCapabilities(client, undefined, new Set(), "source");
     expect(capabilities?.mutations).toBe(true);
     expect(capabilities?.settings).toContain("模型服务");
     expect(capabilities?.settings).not.toContain("电脑控制");
     expect(hostPlatformCapabilities(client, undefined, new Set(), undefined)?.mutations).toBe(
       false,
+    );
+  });
+
+  it("preserves a migration block for read-only history recovery", async () => {
+    const client = {
+      writable: () => true,
+      workbench: async () => {
+        throw Object.assign(new Error("blocked"), { code: "MIGRATION_PENDING" });
+      },
+    } as unknown as HostClient;
+    expect(await hostDesktopCommand(client, () => "source")("connect", { projectId: "p" })).toEqual(
+      {
+        ok: false,
+        error: { code: "MIGRATION_PENDING", message: "blocked" },
+      },
     );
   });
 });

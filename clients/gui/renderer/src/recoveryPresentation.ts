@@ -107,6 +107,8 @@ export function recoveryMessage(
       failure.outcome?.kind === "unconfirmed")
   )
     return "操作结果待确认。";
+  if (["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure.code)))
+    return "旧运行状态尚未确认，暂时无法打开项目。历史和草稿已保留，请先检查原任务的停止结果。";
   if (
     /auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(
       `${failure.reason ?? ""} ${failure.code ?? ""}`,

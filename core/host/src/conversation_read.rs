@@ -4,8 +4,47 @@ use super::{
     schedule_connection::{CoreEvent, CoreObservation},
 };
 use anyhow::{Context, Result, ensure};
+use areal_local_service::storage;
+use areal_protocol::service::Service;
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::{
+    path::PathBuf,
+    sync::{Arc, OnceLock},
+};
+
+struct PersistedRead {
+    snapshot: areal_engine::PersistedConversation,
+    data_dir: PathBuf,
+    workspace: PathBuf,
+    _capacity: tokio::sync::OwnedSemaphorePermit,
+}
+
+fn persisted_capacity() -> Arc<tokio::sync::Semaphore> {
+    static CAPACITY: OnceLock<Arc<tokio::sync::Semaphore>> = OnceLock::new();
+    CAPACITY
+        .get_or_init(|| Arc::new(tokio::sync::Semaphore::new(2)))
+        .clone()
+}
+
+fn existing_lock(path: &std::path::Path) -> Result<std::fs::File> {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    ensure!(
+        metadata.is_file()
+            && metadata.uid() == unsafe { libc::geteuid() }
+            && metadata.mode() & 0o022 == 0,
+        "PERSISTED_HISTORY_UNAVAILABLE"
+    );
+    file.try_lock_exclusive()
+        .map_err(|_| super::error("RESOURCE_BUSY", "project history is currently owned"))?;
+    Ok(file)
+}
 
 pub(super) const PAGE_BYTES: usize = 128 * 1024;
 
@@ -39,7 +78,8 @@ enum HistoryView {
 
 pub(super) struct ConversationReader {
     identity: Identity,
-    observation: CoreObservation,
+    observation: Option<CoreObservation>,
+    persisted: Option<Arc<PersistedRead>>,
     barrier: u64,
     snapshot: Value,
     history_media: std::cell::RefCell<Vec<MediaReference>>,
@@ -71,7 +111,8 @@ impl ConversationReader {
                 subscription_id: uuid::Uuid::new_v4().to_string(),
                 sequence: 0,
             },
-            observation,
+            observation: Some(observation),
+            persisted: None,
             barrier,
             snapshot,
             history_media: Default::default(),
@@ -79,6 +120,128 @@ impl ConversationReader {
         };
         let mut result = reader.keys();
         result["snapshot"] = reader.snapshot.clone();
+        Ok((reader, result))
+    }
+
+    pub(super) async fn open_persisted(
+        host: &Host,
+        project: &str,
+        expected_generation: Option<&str>,
+        thread_id: &str,
+    ) -> Result<(Self, Value)> {
+        let gate = host.gate(project)?;
+        let _guard = gate.read().await;
+        ensure!(
+            !host.migration.unpublished_reserved(project)?,
+            super::error(
+                "PERSISTED_HISTORY_UNAVAILABLE",
+                "project source is not published"
+            )
+        );
+        let registration = host
+            .slots
+            .borrow()
+            .get(project)
+            .context("PERSISTED_HISTORY_UNAVAILABLE")?
+            .registration
+            .clone();
+        let capacity = persisted_capacity()
+            .try_acquire_owned()
+            .map_err(|_| super::error("RESOURCE_BUSY", "close another persisted history view"))?;
+        let home = host.home.clone();
+        let id = thread_id.to_owned();
+        let expected = expected_generation.map(str::to_owned);
+        let copied = registration.clone();
+        let (service, snapshot, mut baseline, capacity) =
+            tokio::task::spawn_blocking(move || -> Result<_> {
+                let capacity = capacity;
+                let directory = storage::registry(&home, &Host::service_id(&copied))?;
+                let _startup = existing_lock(&directory.join("start.lock"))?;
+                let _service = existing_lock(&copied.data_dir.join("service.lock"))?;
+                let _store = existing_lock(&copied.data_dir.join("owner.lock"))?;
+                let service: Service = storage::read(&directory.join("service.json"))?;
+                ensure!(
+                    service.identity.protocol_version == 1
+                        && service.identity.service_id == Host::service_id(&copied)
+                        && service.identity.data_dir == copied.data_dir
+                        && service.identity.workspace == copied.workspace
+                        && expected
+                            .as_ref()
+                            .is_none_or(|generation| generation == &service.identity.generation)
+                        && storage::read::<PathBuf>(&copied.data_dir.join("service-workspace"))?
+                            == copied.workspace,
+                    "PERSISTED_HISTORY_UNAVAILABLE"
+                );
+                let snapshot = areal_engine::PersistedConversation::read(
+                    &copied.data_dir,
+                    &copied.workspace,
+                    &id,
+                )?;
+                let baseline = snapshot.snapshot(PAGE_BYTES - 256)?;
+                ensure!(
+                    serde_json::to_value(storage::read::<Service>(
+                        &directory.join("service.json")
+                    )?)? == serde_json::to_value(&service)?,
+                    "PERSISTED_HISTORY_UNAVAILABLE"
+                );
+                for (path, file) in [
+                    (directory.join("start.lock"), &_startup),
+                    (copied.data_dir.join("service.lock"), &_service),
+                    (copied.data_dir.join("owner.lock"), &_store),
+                ] {
+                    let held = file.metadata()?;
+                    let named = std::fs::symlink_metadata(path)?;
+                    ensure!(
+                        named.is_file() && named.dev() == held.dev() && named.ino() == held.ino(),
+                        "PERSISTED_HISTORY_UNAVAILABLE"
+                    );
+                }
+                Ok((service, snapshot, baseline, capacity))
+            })
+            .await?
+            .map_err(|cause| {
+                if cause.downcast_ref::<super::wire::Error>().is_some() {
+                    cause
+                } else if cause.to_string() == "PERSISTED_HISTORY_LIMIT" {
+                    super::error(
+                        "LIMIT_EXCEEDED",
+                        "persisted history exceeds the snapshot limit",
+                    )
+                } else {
+                    super::error(
+                        "PERSISTED_HISTORY_UNAVAILABLE",
+                        format!("cannot inspect persisted history: {cause:#}"),
+                    )
+                }
+            })?;
+        let access =
+            json!({"kind":"persisted","readOnly":true,"snapshotId":snapshot.snapshot_id()});
+        baseline["access"] = access.clone();
+        check_size(&baseline)?;
+        let reader = Self {
+            identity: Identity {
+                project_id: project.into(),
+                thread_id: thread_id.into(),
+                service_generation: service.identity.generation,
+                subscription_id: uuid::Uuid::new_v4().to_string(),
+                sequence: 0,
+            },
+            observation: None,
+            persisted: Some(Arc::new(PersistedRead {
+                snapshot,
+                data_dir: registration.data_dir,
+                workspace: registration.workspace,
+                _capacity: capacity,
+            })),
+            barrier: 0,
+            snapshot: baseline,
+            history_media: Default::default(),
+            media_cache: None,
+        };
+        ensure!(reader.current(host), "RESYNC_REQUIRED");
+        let mut result = reader.keys();
+        result["snapshot"] = reader.snapshot.clone();
+        result["access"] = access;
         Ok((reader, result))
     }
 
@@ -92,7 +255,20 @@ impl ConversationReader {
         &self.identity.subscription_id
     }
     pub(super) fn current(&self, host: &Host) -> bool {
-        self.observation.current(host)
+        if let Some(observation) = &self.observation {
+            return observation.current(host);
+        }
+        let Some(persisted) = &self.persisted else {
+            return false;
+        };
+        host.slots.borrow().get(self.project()).is_some_and(|slot| {
+            slot.registration.data_dir == persisted.data_dir
+                && slot.registration.workspace == persisted.workspace
+                && slot
+                    .service
+                    .as_ref()
+                    .is_none_or(|service| service.identity.generation == self.generation())
+        })
     }
     pub(super) fn model(&self) -> Option<Value> {
         self.snapshot["thread"]["desktop"]["configuration"]
@@ -105,11 +281,10 @@ impl ConversationReader {
         value
     }
     pub(super) async fn next_event(&mut self) -> Result<CoreEvent> {
-        self.observation
-            .events
-            .recv()
-            .await
-            .context("RESYNC_REQUIRED")
+        let Some(observation) = self.observation.as_mut() else {
+            return std::future::pending().await;
+        };
+        observation.events.recv().await.context("RESYNC_REQUIRED")
     }
     pub(super) async fn event(&mut self, host: &Host, event: CoreEvent) -> Result<Option<Value>> {
         ensure!(self.current(host), "RESYNC_REQUIRED");
@@ -124,7 +299,12 @@ impl ConversationReader {
         if thread.and_then(Value::as_str) != Some(self.identity.thread_id.as_str()) {
             return Ok(None);
         }
-        let (snapshot, barrier) = self.observation.snapshot(host).await?;
+        let (snapshot, barrier) = self
+            .observation
+            .as_ref()
+            .context("RESYNC_REQUIRED")?
+            .snapshot(host)
+            .await?;
         check_size(&snapshot)?;
         let patch = difference(&self.snapshot, &snapshot)?;
         self.snapshot = snapshot;
@@ -155,15 +335,32 @@ impl ConversationReader {
         );
         ensure!(self.current(host), "RESYNC_REQUIRED");
         let view = serde_json::to_value(params.view)?;
-        let page = self
-            .observation
-            .history(
-                host,
-                view.as_str().unwrap(),
-                params.cursor.as_deref(),
-                max_bytes,
-            )
-            .await?;
+        let page = if let Some(persisted) = &self.persisted {
+            ensure!(
+                view == "own",
+                super::error(
+                    "PERSISTED_HISTORY_VIEW_UNAVAILABLE",
+                    "only own history is available in this snapshot"
+                )
+            );
+            let persisted = persisted.clone();
+            tokio::task::spawn_blocking(move || {
+                persisted.snapshot.history(params.cursor, max_bytes)
+            })
+            .await??
+        } else {
+            self.observation
+                .as_ref()
+                .context("RESYNC_REQUIRED")?
+                .history(
+                    host,
+                    view.as_str().unwrap(),
+                    params.cursor.as_deref(),
+                    max_bytes,
+                )
+                .await?
+        };
+        ensure!(self.current(host), "RESYNC_REQUIRED");
         check_size(&page)?;
         *self.history_media.borrow_mut() = conversation_media::page_references(&page);
         let mut result = self.keys();
@@ -188,27 +385,69 @@ impl ConversationReader {
         );
         ensure!(self.current(host), "RESYNC_REQUIRED");
         let requested = MediaReference::requested(&params)?;
-        let reference = conversation_media::snapshot_references(&self.snapshot)
-            .into_iter()
-            .chain(self.history_media.borrow().iter().cloned())
-            .find(|reference| reference.matches(&params))
-            .unwrap_or(requested);
+        let reference = if let Some(cache) = &self.media_cache
+            && cache.reference.matches(&params)
+        {
+            cache.reference.clone()
+        } else if let Some(persisted) = &self.persisted {
+            let persisted = persisted.clone();
+            let thread = self.identity.thread_id.clone();
+            tokio::task::spawn_blocking(move || {
+                persisted
+                    .snapshot
+                    .thread()
+                    .turns
+                    .iter()
+                    .flat_map(|turn| {
+                        turn.items.iter().flat_map(|item| {
+                            conversation_media::item_references(
+                                &thread,
+                                &turn.id,
+                                &serde_json::to_value(item).unwrap(),
+                            )
+                        })
+                    })
+                    .find(|reference| reference.matches(&params))
+                    .context("RESOURCE_UNAVAILABLE")
+            })
+            .await??
+        } else {
+            conversation_media::snapshot_references(&self.snapshot)
+                .into_iter()
+                .chain(self.history_media.borrow().iter().cloned())
+                .find(|reference| reference.matches(&params))
+                .unwrap_or(requested)
+        };
         if self
             .media_cache
             .as_ref()
             .is_none_or(|cache| cache.reference != reference)
         {
             self.media_cache = None;
-            let cache = conversation_media::fetch(
-                self.observation.service(),
-                &self.identity.thread_id,
-                reference,
-                || {
-                    ensure!(self.current(host), "RESYNC_REQUIRED");
-                    Ok(())
-                },
-            )
-            .await;
+            let cache = if let Some(persisted) = &self.persisted {
+                let persisted = persisted.clone();
+                let uri = reference.uri.clone();
+                let bytes = tokio::task::spawn_blocking(move || {
+                    persisted.snapshot.blob(&persisted.data_dir, &uri)
+                })
+                .await?
+                .map_err(|_| anyhow::anyhow!("RESOURCE_UNAVAILABLE"))?;
+                conversation_media::from_bytes(reference, bytes)
+            } else {
+                conversation_media::fetch(
+                    self.observation
+                        .as_ref()
+                        .context("RESYNC_REQUIRED")?
+                        .service(),
+                    &self.identity.thread_id,
+                    reference,
+                    || {
+                        ensure!(self.current(host), "RESYNC_REQUIRED");
+                        Ok(())
+                    },
+                )
+                .await
+            };
             ensure!(self.current(host), "RESYNC_REQUIRED");
             self.media_cache = Some(cache?);
         }

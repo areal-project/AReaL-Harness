@@ -18,6 +18,7 @@ const { GuiSourceAdapter } = require("@areal/workbench-service/desktop/core/gui-
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const { chromium } = require("playwright-core");
+const persistedMode = process.argv.includes("--persisted");
 const source = {
   profile: join(root, "profile"),
   coreHome: join(root, "core"),
@@ -106,6 +107,21 @@ try {
   const listing = await client.listProjects();
   const safeProject = listing.projects.find((p) => p.projectId === safeId);
   assert(safeProject, "safe project not published");
+  let fixtureId;
+  if (persistedMode) {
+    const fixturePath = join(
+      gui,
+      "scripts/fixtures/history-compat/111111111111111111111111/state/66666666-6666-4666-8666-666666666666.json",
+    );
+    const fixture = JSON.parse(await readFile(fixturePath, "utf8"));
+    fixture.thread.cwd = safe;
+    fixtureId = fixture.thread.id;
+    await writeFile(
+      join(source.coreHome, safeId, "state", `${fixtureId}.json`),
+      JSON.stringify(fixture),
+      { mode: 0o600 },
+    );
+  }
   projects = new GuiHostProjects({ binary, home, source, singletonHeld: true });
   await projects.init();
   const options = {
@@ -128,15 +144,36 @@ try {
   assert.equal(await backend.attach({ expectedIdentity: backendOwner.identity }), true);
   await backend.command("connect", { projectId: safeId });
   assert.equal(backend.value.projects.find((p) => p.id === safeId)?.state.connected, true);
-  const created = await backend.command("create", { projectId: safeId, requestId: randomUUID() });
+  const created = persistedMode
+    ? { threadId: fixtureId }
+    : await backend.command("create", { projectId: safeId, requestId: randomUUID() });
   assert(created.threadId);
-  await backend.command("library", {
-    projectId: safeId,
-    threadId: created.threadId,
-    operation: "renameThread",
-    title: "Synthetic readable session",
-  });
+  if (!persistedMode)
+    await backend.command("library", {
+      projectId: safeId,
+      threadId: created.threadId,
+      operation: "renameThread",
+      title: "Synthetic readable session",
+    });
   evidence.checks.push({ stage: "safe-project-workbench-connected", backendPid: backendOwner.pid });
+  let persistedDigest;
+  if (persistedMode) {
+    const project = backend.value.projects.find((p) => p.id === safeId);
+    const generation = project?.core?.serviceGeneration;
+    assert(generation, "running Core generation required");
+    const stopRequestId = randomUUID();
+    const stop = await client.stopProject(stopRequestId, safeId, generation, "ifIdle");
+    assert.equal(stop.state, "completed");
+    evidence.checks.push({
+      stage: "project-stopped",
+      requestId: stopRequestId,
+      generation,
+      state: stop.state,
+    });
+    persistedDigest = sha(
+      await readFile(join(source.coreHome, safeId, "state", `${fixtureId}.json`)),
+    );
+  }
   const endpoint = JSON.parse(await readFile(join(home, "host/endpoint.json"), "utf8"));
   assert.equal(endpoint.hostId, client.hostId);
   assert.equal(endpoint.generation, client.generation);
@@ -147,9 +184,17 @@ try {
     socket.on("framesent", ({ payload }) => {
       try {
         const p = JSON.parse(String(payload));
-        if (["hello", "shell.subscribe", "session.open"].includes(p.method)) {
+        if (
+          [
+            "hello",
+            "shell.subscribe",
+            "session.open",
+            "session.openPersisted",
+            "project.ensure",
+          ].includes(p.method)
+        ) {
           wireRequests.set(String(p.id), p.method);
-          if (p.method === "session.open")
+          if (["session.open", "session.openPersisted", "project.ensure"].includes(p.method))
             evidence.wire.push({
               direction: "request",
               method: p.method,
@@ -195,13 +240,14 @@ try {
               })),
             errorCode: p.error?.code,
           });
-        if (method === "session.open")
+        if (["session.open", "session.openPersisted", "project.ensure"].includes(method))
           evidence.wire.push({
             direction: "response",
             method,
             id: p.id,
             errorCode: p.error?.code ?? null,
             success: !!p.result,
+            access: method === "session.openPersisted" ? p.result?.access : undefined,
           });
       } catch {}
     });
@@ -233,18 +279,43 @@ try {
     (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId === id,
     created.threadId,
   );
+  if (persistedMode) {
+    await web
+      .getByText("当前为只读历史，项目运行状态尚未恢复。", { exact: true })
+      .waitFor({ timeout: 30000 });
+    await web
+      .getByText("HISTORY_TERMINAL_INTERRUPTED", { exact: false })
+      .waitFor({ timeout: 30000 });
+    assert.equal(
+      await web
+        .getByRole("button", { name: "发送", exact: true })
+        .isEnabled()
+        .catch(() => false),
+      false,
+    );
+    assert.equal(
+      sha(await readFile(join(source.coreHome, safeId, "state", `${fixtureId}.json`))),
+      persistedDigest,
+      "persisted Store changed while reading",
+    );
+    evidence.checks.push({ stage: "persisted-history-visible-and-send-unavailable" });
+  }
   const wireDeadline = Date.now() + 15000;
   const matchingOpen = () => {
     const requests = evidence.wire.filter(
-      (x) => x.method === "session.open" && x.direction === "request" && x.projectId === safeId,
+      (x) =>
+        x.method === (persistedMode ? "session.openPersisted" : "session.open") &&
+        x.direction === "request" &&
+        x.projectId === safeId,
     );
     return requests.some((request) =>
       evidence.wire.some(
         (response) =>
-          response.method === "session.open" &&
+          response.method === (persistedMode ? "session.openPersisted" : "session.open") &&
           response.direction === "response" &&
           response.id === request.id &&
-          response.success,
+          response.success &&
+          (!persistedMode || response.access?.readOnly === true),
       ),
     );
   };
@@ -267,7 +338,9 @@ try {
         x.method === "shell.subscribe" &&
         x.direction === "response" &&
         x.projects?.some(
-          (p) => p.projectId === safeId && p.state === "ready" && p.serviceGeneration,
+          (p) =>
+            p.projectId === safeId &&
+            (persistedMode ? p.state === "stopped" : p.state === "ready" && p.serviceGeneration),
         ),
     ),
   );

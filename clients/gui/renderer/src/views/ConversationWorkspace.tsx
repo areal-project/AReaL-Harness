@@ -236,7 +236,7 @@ function ActiveConversation() {
     setError,
   } = useConversationContext();
   const { project, thread, threadId, library, snapshot, resourceAction } = session;
-  const readOnly = useReadOnly();
+  const readOnly = useReadOnly() || session.readOnly;
   const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const conversationCreateReadOnly = useConversationCreateReadOnly();
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
@@ -266,6 +266,9 @@ function ActiveConversation() {
   if (!project || !thread) return null;
   return (
     <>
+      {thread && "persistedHistory" in thread && thread.persistedHistory === true && (
+        <FeedbackNotice tone="warning" message={t("common.navigation.persistedHistory")} />
+      )}
       {empty ? (
         <div className="draft-greeting">
           <ConversationDraftEmptyState
@@ -293,7 +296,11 @@ function ActiveConversation() {
           thread={thread}
           action={action}
           readOnly={readOnly}
-          interactivePages={!thread.cloud && (!readOnly || services.capabilities?.pages === true)}
+          interactivePages={
+            !session.readOnly &&
+            !thread.cloud &&
+            (!readOnly || services.capabilities?.pages === true)
+          }
           decisionShown
           onOpenResult={mcpWorkspace.openResult}
           resultStates={mcpWorkspace.resultStates}
@@ -320,7 +327,7 @@ function ActiveConversation() {
           onAgent={(id) => showPanel(`agent:${id}`)}
         />
       )}
-      {!conversationSubmitReadOnly && (!thread.cloud || !readOnly) && (
+      {!conversationSubmitReadOnly && !session.readOnly && (!thread.cloud || !readOnly) && (
         <div className={empty ? "draft-composer" : "active-composer"}>
           {empty && (
             <div className="composer-project-bar">

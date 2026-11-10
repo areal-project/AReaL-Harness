@@ -87,3 +87,19 @@ test("an outcome without the original operation cannot release an unknown submis
     ),
   ).toBeUndefined();
 });
+
+test("migration blocks explain the original stop boundary without releasing unknown operations", () => {
+  const message =
+    "旧运行状态尚未确认，暂时无法打开项目。历史和草稿已保留，请先检查原任务的停止结果。";
+  for (const code of ["migrationBlocked", "MIGRATION_PENDING"]) {
+    const failure = Object.freeze({
+      message: "internal lifecycle detail",
+      code,
+      requestId: "original",
+    });
+    expect(recoveryMessage(failure, "view")).toBe(message);
+    expect(recoveryMessage({ ...failure, submissionUnknown: true })).toBe("操作结果待确认。");
+    expect(failure.requestId).toBe("original");
+    expect(failure.message).toBe("internal lifecycle detail");
+  }
+});

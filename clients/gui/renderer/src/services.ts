@@ -155,7 +155,9 @@ export type { NotificationTarget, QuitProgress } from "./desktop-services.js";
 export interface PlatformReadServices {
   status(): import("@areal/client").HostReadState;
   subscribe(listener: () => void): () => void;
-  selectSession(target: { projectId: string; threadId: string } | null): Promise<void>;
+  selectSession(
+    target: { projectId: string; threadId: string; persisted?: boolean } | null,
+  ): Promise<void>;
   history(options: {
     view: "own" | "inherited" | "reference";
     cursor?: string;
@@ -206,6 +208,8 @@ export interface PlatformServices {
   workbench?: {
     call(name: string, params: Record<string, unknown>): Promise<{ value: unknown } | undefined>;
   };
+  /** 默认桌面的受阻历史视图；null 关闭视图，不能恢复执行或重放原请求。 */
+  recoverPersistedHistory?(target: { projectId: string; threadId: string } | null): Promise<void>;
   getHostTicket?(): Promise<unknown>;
   snapShots?: SnapShotServices;
   mcpApp?: McpAppCommand;

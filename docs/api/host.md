@@ -27,6 +27,12 @@ WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单�
 
 Remote 的新读方法和原生会话格式只在 hello 协商 `gui-read-v1` 后提供，仍受现有设备项目授权约束；旧方法表仍为 24 项。共享客户端通过 Noise 或本机 WS 使用同一读模型。具体消息、字段与边界见 `schemas/areal-host-protocol-v1.json`。
 
+本机 WebSocket 协商 `persistedHistoryV1` 后，可对已登记且未运行的项目调用 `session.openPersisted`。Host 核对旧服务身份并取得启动、服务和 Store 锁，生成有大小上限的固定只读快照，不启动 Core 或 Runtime；响应标记 `access.readOnly` 和快照摘要，不改变项目状态或旧回执。历史分页及内容寻址附件绑定该订阅；不支持的继承视图和缺失资源明确返回错误。连接关闭、订阅关闭或项目归属改变后快照失效。此能力不授予发送、任务控制或项目接管权限。
+
+Host 无法交接时，`areal host history-snapshot --service <service.json> --thread <id> --output <private-dir>/history.html` 可在取得同样的项目锁并验证服务身份后导出离线只读页面。输出目录须为当前用户拥有的私有目录；命令不连接或启动 Host、Core、Runtime，不改变原回执。页面不加载附件或引用会话，也不能发送或执行操作。
+
+旧后台状态未确认时，用户可显式创建独立空间。`areal space` 以稳定请求身份准备和选择私有 profile、Host、Core 与空工作区；不复制旧 Store、任务或凭据。新 Host 的 `recovery.inspect` 返回经过滤的旧目录和停用配置模板，`recovery.history` 持原锁读取绑定快照，`recovery.importProvider` 只按原请求导入停用模板并核查未决结果。新 Host 拒绝把旧项目或旧数据根及其祖先、后代作为工作区；原任务需手动在新空间重建。`kind:none` 表示当前 Host 不属于独立空间，不能据此推断旧后台状态。
+
 协商 `gui-write-v1` 的 Remote 连接可在模型目录、提交与回执查询等项目请求中使用共享清单的 Host projectId，也可沿用来源别名。Host 从当前配对来源解析为同一个别名后检查原设备项目授权，并使用同一回执范围；知道 Host ID 不授予项目权限。未协商的旧调用仍只接受来源别名。
 
 Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 origin，`areal web --json` 只返回不含秘密的 endpoint。浏览器在 IndexedDB 保存不可导出的 P-256 私钥，向同源 `POST /host/auth/challenge` 提交公钥。未授权返回有效 120 秒的请求；用户在本机执行 `areal host web approve REQUEST_ID`，再在浏览器检查批准状态。已授权公钥获取有效 30 秒的一次性 challenge，对 Host 身份、nonce 和 origin 签名，再向 `POST /host/auth/ticket` 换票。HTTP origin 本身不授予访问权。
@@ -183,6 +189,8 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 导入先保存固定 manifest 和原字节备份，在原来源保护下安装根启动哨兵并发布来源；项目和凭据分别确认。每个项目仍核验旧服务清理证明和锁。旧版原停止回执在 `cleanupConfirmed:true` 时可能仍保存 `acceptedPending`；只有服务与 Store 两把锁均已独占，且回执版本、服务身份、owner 和代际精确匹配时，才沿原只读查询语义将其作为已完成清理证明，不改写旧回执。清理未确认、停止受理结果 UNKNOWN 或身份不符默认仍阻塞迁移；下述受限跨启动接管仅解除当前所有权交接，不结算旧停止结果。Host 为通过核验的项目安装 journal 哨兵并独立发布；受阻项目不能激活或访问 journal，包括复用的 CLI 登记，其余项目可继续使用。全部项目和凭据完成后才发布整体 committed marker，原导入操作在此之前保持 acceptedPending。已发布来源可使用原 migrationId 继续核对项目，不再要求已退出的来源连接；未完成凭据仍要求原单实例适配器。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。 Remote 身份还必须具有绑定不可变凭据条目的授权核验证据；旧未提交迁移中的 completed 写入回执本身不构成该证据。缺证时仅 Remote 保持 migrationPending，后台适配器用原 ID 和来源摘要核验，原写入回执保持不变。旧 committed 沿用原提交证明。
 
 macOS 旧 GUI 的原服务若为 `stopped` 或 `unavailable`，且只有历史清理证明缺失，导入可使用受限的跨系统启动接管依据。Host 在原服务与 Store 双锁下核对当前内核 boot session、启动时间、原描述符精确身份及其 birth/mtime/ctime，并扫描原 Store 的完整文件与目录元数据。描述符和 Store 必须均未在本次系统启动内修改；路径、属主、原来源单实例保护与同 Store 服务映射须一致，重试重新核查。该策略限于可信旧 GUI/service-host 来源，依赖可信本机时钟和未被外部回滚的私有状态，不构成任意独立 app-server 或外部进程的清理证明。当前启动内故障、锁占用、来源变化或证据不完整仍阻塞。迁移回执的 `priorBootAdoptions` 独立保留原代际、描述符摘要、元数据清单摘要与 boot 依据，并参与提交摘要。它只允许原 Store 的新 owner 接管，不结算旧请求或外部副作用；旧 stop/cleanup 记录不改写，UNKNOWN 按原身份导入且不重发。没有该字段的旧提交保持原摘要语义。
+
+对于本 Host 的旧 Host 代次，`project.ensure` 也可在系统重启后取得独立的接管依据。它在项目服务的 `start.lock` 内独占两把现存 Store 锁，核对原描述符、同一 hostId、完整 Store 清单与当前内核 boot，并在启动前复核。新请求先持久记录 `priorBootAdoption` 和定时抑制，再沿现有项目服务启动路径交接；调用方即使本次请求恢复定时，也须在接管完成后另行明确恢复。此依据不进入 cleanup/stop 结算，不改写旧 UNKNOWN，未决 Host 生命周期请求仍阻止新激活。本策略依赖正常项目服务启动入口的锁约定；绕过项目服务直接启动独立 Core 的完整插入并退出不属于该接管证明，不能将此策略当作独立 Core 的资源清理证明。
 
 `gui.source` 按规范化的完整 `GuiSource` 查询，返回已发布来源。可选 `migration` 包含整体 state 与尚未发布的 pendingProjects，旧 committed 来源等价于全部完成。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
 

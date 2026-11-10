@@ -18,6 +18,11 @@ const operations = (semantics, names) =>
   Object.fromEntries(names.split(" ").map((name) => [name, semantics]));
 /** @satisfies {Record<keyof Requests,readonly ['main'|'service','app'|'project'|'thread',CommandEffect|Record<string,CommandEffect>]>} */
 const commandDefinitions = Object.freeze({
+  recovery: [
+    "service",
+    "app",
+    { inspect: read, history: read, openWorkspace: mutation, importProvider: recoverable },
+  ],
   cloud: ["service", "app", { status: read, save: mutation }],
   cloudSession: [
     "service",

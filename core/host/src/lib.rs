@@ -7,7 +7,9 @@ mod credential_io;
 #[cfg(target_os = "macos")]
 pub use credential_io::run as run_credential_io;
 mod gateway;
+mod history_snapshot;
 mod journal;
+pub use history_snapshot::{HistorySnapshot, read_history_snapshot};
 mod launch;
 mod local_relay;
 mod migration;
@@ -18,6 +20,11 @@ mod server;
 mod service;
 mod service_run;
 mod shell;
+mod space;
+pub use space::{
+    SpaceSource, activate_space, active_space, inspect_space, preflight_space, prepare_space,
+    resolve_space,
+};
 mod subscription;
 mod vault;
 mod wire;

@@ -45,6 +45,7 @@ export type ReadConnectionIdentity = {
   connectionId: string;
   gatewayGeneration: string;
   preferredSourceId?: string;
+  persistedHistory?: boolean;
   writeMethods?: readonly string[];
   /** 与桌面输入框一致的上限：正文、附件、引用与 MCP 内容。 */
   writeLimits?: Readonly<Record<string, number>>;
@@ -59,7 +60,7 @@ export type ReadConnection = {
   identity: ReadConnectionIdentity;
   status?: HostStatus;
 };
-export type ReadContext = import("./protocol.js").ReadContext & { serviceGeneration: string };
+export type ReadContext = import("./protocol.js").ReadContext;
 export interface ReadTransport {
   write?(
     method: string,
@@ -101,7 +102,7 @@ export class HostClient {
   #abort?: AbortController;
   #timer?: ReturnType<typeof setTimeout>;
   #attempt = 0;
-  #target?: { projectId: string; threadId: string };
+  #target?: { projectId: string; threadId: string; persisted?: boolean };
   #opening?: { key: string; selection: number; promise: Promise<void> };
   #sessionCache = new Map<string, { value: SessionRead; expires: number }>();
   #cacheTimer?: ReturnType<typeof setTimeout>;
@@ -167,7 +168,12 @@ export class HostClient {
   }
   #retainSession() {
     const session = this.#reads.session;
-    if (session.state !== "fresh" || this.#state.connection !== "ready") return;
+    if (
+      session.state !== "fresh" ||
+      session.value.access?.kind === "persisted" ||
+      this.#state.connection !== "ready"
+    )
+      return;
     const key = sessionReadKey(this.#state.identity, session.value);
     this.#sessionCache.delete(key);
     this.#sessionCache.set(key, {
@@ -294,6 +300,7 @@ export class HostClient {
       (before?.serviceGeneration === after?.serviceGeneration && before?.state === after?.state)
     )
       return;
+    if (this.#target.persisted && after?.state === "ready") this.#target.persisted = false;
     this.#publishReads({
       ...this.#reads,
       session:
@@ -415,11 +422,12 @@ export class HostClient {
   refreshShell() {
     return this.#subscribeShell(true);
   }
-  async selectSession(target: { projectId: string; threadId: string } | null) {
+  async selectSession(target: { projectId: string; threadId: string; persisted?: boolean } | null) {
     if (
       target &&
       target.projectId === this.#target?.projectId &&
-      target.threadId === this.#target.threadId
+      target.threadId === this.#target.threadId &&
+      target.persisted === this.#target.persisted
     ) {
       const session = this.#reads.session;
       if (
@@ -443,7 +451,10 @@ export class HostClient {
       (value) => value.projectId === target?.projectId,
     );
     const cached =
-      target && project?.serviceGeneration && this.#state.connection === "ready"
+      target &&
+      !target.persisted &&
+      project?.serviceGeneration &&
+      this.#state.connection === "ready"
         ? this.#sessionCache.get(
             sessionReadKey(this.#state.identity, {
               ...target,
@@ -481,17 +492,24 @@ export class HostClient {
     if (!transport || !target) return;
     const shell = previous(this.#reads.shell);
     const project = shell?.snapshot.projects.find((p) => p.projectId === target.projectId);
-    if (!project?.serviceGeneration || project.state !== "ready") {
+    const persisted =
+      target.persisted === true &&
+      this.#state.connection === "ready" &&
+      this.#state.identity.persistedHistory === true;
+    if (!project || (!persisted && (!project.serviceGeneration || project.state !== "ready"))) {
       this.#publishReads({
         ...this.#reads,
         session: { state: "unavailable", error: "Project Core unavailable" },
       });
       throw new Error("Project Core unavailable");
     }
-    const context = { projectId: target.projectId, serviceGeneration: project.serviceGeneration };
+    const context = {
+      projectId: target.projectId,
+      ...(project.serviceGeneration ? { serviceGeneration: project.serviceGeneration } : {}),
+    };
     try {
       const value = await transport.request(
-        "session.open",
+        persisted ? "session.openPersisted" : "session.open",
         { threadId: target.threadId, view: "conversation" } satisfies ConversationOpenParams,
         context,
       );
@@ -507,7 +525,16 @@ export class HostClient {
         value.sequence !== 0 ||
         value.projectId !== target.projectId ||
         value.threadId !== target.threadId ||
-        value.serviceGeneration !== context.serviceGeneration ||
+        typeof value.serviceGeneration !== "string" ||
+        !value.serviceGeneration ||
+        (context.serviceGeneration !== undefined &&
+          value.serviceGeneration !== context.serviceGeneration) ||
+        (persisted &&
+          (!record(value.access) ||
+            value.access.kind !== "persisted" ||
+            value.access.readOnly !== true ||
+            typeof value.access.snapshotId !== "string")) ||
+        (!persisted && value.access !== undefined) ||
         value.view !== "conversation" ||
         !record(value.snapshot) ||
         this.#state.connection !== "ready" ||
@@ -517,7 +544,8 @@ export class HostClient {
         throw new Error("Invalid conversation baseline");
       const session: SessionRead = {
         ...value,
-        ...context,
+        projectId: target.projectId,
+        serviceGeneration: value.serviceGeneration as string,
         threadId: target.threadId,
         view: "conversation",
         snapshot: value.snapshot,

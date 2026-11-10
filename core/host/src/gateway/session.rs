@@ -191,6 +191,8 @@ pub(crate) fn error_code(message: &str) -> &str {
         | "CAPACITY_EXCEEDED"
         | "TURN_BUSY"
         | "TASK_CONTROL_REQUIRED"
+        | "MIGRATION_PENDING"
+        | "migrationBlocked"
         | "SUBMISSION_UNKNOWN" => message,
         _ => "CORE_UNAVAILABLE",
     }

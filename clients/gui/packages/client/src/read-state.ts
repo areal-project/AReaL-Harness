@@ -37,7 +37,8 @@ export const SESSION_READ_CACHE_MS = 3 * 60 * 1000;
 export const SESSION_READ_CACHE_LIMIT = 8;
 export function sessionReadKey(
   host: { hostId: string; hostGeneration: string },
-  session: Pick<SessionRead, "projectId" | "serviceGeneration" | "threadId">,
+  session: Pick<SessionRead, "projectId" | "serviceGeneration" | "threadId"> &
+    Partial<Pick<SessionRead, "access">>,
 ): string {
   return JSON.stringify([
     host.hostId,
@@ -45,6 +46,7 @@ export function sessionReadKey(
     session.projectId,
     session.serviceGeneration,
     session.threadId,
+    session.access?.kind === "persisted" ? session.access.snapshotId : null,
   ]);
 }
 export function previous<T>(state: Fresh<T>): T | undefined {
