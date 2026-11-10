@@ -12,6 +12,7 @@ pub(super) struct Subscriptions {
     unavailable: RefCell<BTreeMap<String, String>>,
     applied: RefCell<BTreeMap<String, Value>>,
     handoff_gate: Mutex<()>,
+    pub(super) restoring: std::cell::Cell<bool>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -138,22 +139,35 @@ impl Host {
             json!({"accountEpoch":snapshot["accountEpoch"],"authenticated":snapshot["authenticated"],"availability":snapshot["availability"],"models":snapshot["models"]}),
         ))
     }
-    fn subscription_snapshot(&self, id: &str) -> Result<Value> {
+    async fn subscription_snapshot(&self, id: &str) -> Result<Value> {
         wire::request_id(id)?;
         let (account_revision, _) = self
             .migration
             .vault
-            .subscription_account(id, &self.migration)?;
+            .subscription_slot_async(
+                crate::vault::Slot::SubscriptionAccount {
+                    source_id: id.to_owned(),
+                    provider_id: "openai".into(),
+                },
+                &self.migration,
+            )
+            .await?;
         let (transport_revision, _) = self
             .migration
             .vault
-            .subscription_transport(id, &self.migration)?;
+            .subscription_slot_async(
+                crate::vault::Slot::SubscriptionTransport {
+                    source_id: id.to_owned(),
+                },
+                &self.migration,
+            )
+            .await?;
         let owner = self.migration.vault.subscription_owner(id)?;
         let source = self.subscriptions.sources.borrow().get(id).cloned();
         let mut snapshot = if let Some(source) = source {
-            source.snapshot()?
+            source.snapshot_async().await?
         } else {
-            let mut value = SourceSubscription::stored_accounts(&self.migration, id)?;
+            let mut value = SourceSubscription::stored_accounts_async(&self.migration, id).await?;
             value.as_object_mut().unwrap().extend(json!({"accountEpoch":0,"authenticated":false,"state":"storage_locked","availability":"unavailable","refreshing":false,"email":null,"planType":null,"models":[],"modelError":null,"diagnostic":null,"login":null,"error":null,"billing":"subscription","catalog":null,"endpoint":null}).as_object().unwrap().clone());
             value
         };
@@ -176,10 +190,17 @@ impl Host {
         connection: &ConnectionGuard,
     ) -> Result<Value> {
         self.admission()?;
+        ensure!(
+            !self.subscriptions.restoring.get(),
+            error(
+                "subscriptionUnavailable",
+                "Host subscription recovery is still in progress"
+            )
+        );
         match method {
             "subscription.read" => {
                 let input: Read = serde_json::from_value(params)?;
-                self.subscription_snapshot(&input.source_id)
+                self.subscription_snapshot(&input.source_id).await
             }
             "subscription.handoff" => {
                 let input: Handoff = serde_json::from_value(params.clone())?;
@@ -191,6 +212,9 @@ impl Host {
                     return Ok(receipt);
                 }
                 let _handoff = self.subscriptions.handoff_gate.lock().await;
+                if let Some(receipt) = self.subscription_original(&input.request_id, &digest)? {
+                    return Ok(receipt);
+                }
                 self.migration
                     .subscription_retired(&input.source_id, &input.migration_id)?;
                 ensure!(
@@ -206,11 +230,24 @@ impl Host {
                 let (account_revision, _) = self
                     .migration
                     .vault
-                    .subscription_account(&input.source_id, &self.migration)?;
+                    .subscription_slot_async(
+                        crate::vault::Slot::SubscriptionAccount {
+                            source_id: input.source_id.clone(),
+                            provider_id: "openai".into(),
+                        },
+                        &self.migration,
+                    )
+                    .await?;
                 let (transport_revision, mut transport) = self
                     .migration
                     .vault
-                    .subscription_transport(&input.source_id, &self.migration)?;
+                    .subscription_slot_async(
+                        crate::vault::Slot::SubscriptionTransport {
+                            source_id: input.source_id.clone(),
+                        },
+                        &self.migration,
+                    )
+                    .await?;
                 ensure!(
                     account_revision == input.expected_account_revision
                         && transport_revision == input.expected_transport_revision,
@@ -236,22 +273,27 @@ impl Host {
                     method,
                     serde_json::to_value(&context)?,
                 )?;
-                let saved = self.migration.vault.replace_subscription_transport(
-                    &input.source_id,
-                    &context.transport_request_id,
-                    transport_revision,
-                    transport,
-                    &self.migration,
-                )?;
+                let saved = self
+                    .migration
+                    .vault
+                    .replace_subscription_transport_async(
+                        &input.source_id,
+                        &context.transport_request_id,
+                        transport_revision,
+                        transport,
+                        &self.migration,
+                    )
+                    .await?;
                 ensure!(
                     saved["state"] == "completed",
                     error("storageLocked", "transport handoff write is not confirmed")
                 );
-                let source = SourceSubscription::load(
+                let source = SourceSubscription::load_async(
                     self.migration.clone(),
                     input.source_id.clone(),
                     network,
-                )?;
+                )
+                .await?;
                 if let Err(error) = source
                     .start_with_port_request(Some(&context.port_request_id))
                     .await
@@ -259,8 +301,9 @@ impl Host {
                     source.close().await;
                     return self.subscription_save_operation(&input.request_id,&digest,json!({"requestId":input.request_id,"method":method,"state":"blocked","error":{"code":"subscriptionUnavailable","message":error.to_string()}}));
                 }
-                if let Err(error) =
-                    self.subscription_claim_handoff(&input.request_id, &context, &source)
+                if let Err(error) = self
+                    .subscription_claim_handoff(&input.request_id, &context, &source)
+                    .await
                 {
                     source.close().await;
                     return Err(error);
@@ -273,7 +316,7 @@ impl Host {
                 tokio::task::spawn_local(async move {
                     let _ = work.refresh_catalog(false).await;
                 });
-                self.subscription_save_operation(&input.request_id,&digest,json!({"requestId":input.request_id,"method":method,"state":"completed","result":self.subscription_snapshot(&input.source_id)?}))
+                self.subscription_save_operation(&input.request_id,&digest,json!({"requestId":input.request_id,"method":method,"state":"completed","result":self.subscription_snapshot(&input.source_id).await?}))
             }
             "subscription.command" => {
                 let input: Command = serde_json::from_value(params.clone())?;
@@ -332,7 +375,7 @@ impl Host {
                                             if source.account_epoch() != before {
                                                 let _ = source.refresh_catalog(false).await;
                                             }
-                                            host.subscription_snapshot(&input.source_id)
+                                            host.subscription_snapshot(&input.source_id).await
                                         }
                                         Err(error) => Err(error.into()),
                                     }
@@ -454,19 +497,28 @@ impl Host {
                 let (revision, mut record) = self
                     .migration
                     .vault
-                    .subscription_transport(id, &self.migration)?;
+                    .subscription_slot_async(
+                        crate::vault::Slot::SubscriptionTransport {
+                            source_id: id.to_owned(),
+                        },
+                        &self.migration,
+                    )
+                    .await?;
                 ensure!(
                     action["expectedTransportRevision"] == revision,
                     error("revisionConflict", "subscription transport changed")
                 );
                 record["network"] = serde_json::to_value(input.clone())?;
-                self.migration.vault.replace_subscription_transport(
-                    id,
-                    &uuid::Uuid::new_v4().to_string(),
-                    revision,
-                    record,
-                    &self.migration,
-                )?;
+                self.migration
+                    .vault
+                    .replace_subscription_transport_async(
+                        id,
+                        &uuid::Uuid::new_v4().to_string(),
+                        revision,
+                        record,
+                        &self.migration,
+                    )
+                    .await?;
                 source.network_input(input)?;
             }
             _ => {
@@ -476,7 +528,7 @@ impl Host {
                 ));
             }
         }
-        self.subscription_snapshot(id)
+        self.subscription_snapshot(id).await
     }
     async fn subscription_idle(&self, source: &str) -> Result<bool> {
         for project in self.subscription_projects(source)? {
@@ -520,12 +572,16 @@ impl Host {
             )
             .collect()
     }
-    fn subscription_transport_proof(&self, context: &HandoffContext) -> Result<TransportProof> {
-        let read = |request: &str, previous: u64| -> Result<TransportProof> {
+    async fn subscription_transport_proof(
+        &self,
+        context: &HandoffContext,
+    ) -> Result<TransportProof> {
+        let read = async |request: &str, previous: u64| -> Result<TransportProof> {
             let receipt = self
                 .migration
                 .vault
-                .operation(request, &self.migration)?
+                .operation_async(request, &self.migration)
+                .await?
                 .context("original subscription transport outcome is unknown")?;
             let revision = previous
                 .checked_add(1)
@@ -546,7 +602,8 @@ impl Host {
             let record = self
                 .migration
                 .vault
-                .read(entry)?
+                .read_async(entry)
+                .await?
                 .context("missing transport entry")?;
             Ok(TransportProof {
                 revision,
@@ -557,7 +614,8 @@ impl Host {
         let first = read(
             &context.transport_request_id,
             context.expected_transport_revision,
-        )?;
+        )
+        .await?;
         if first.record["port"] != 0 {
             ensure!(
                 first.record["port"]
@@ -567,7 +625,7 @@ impl Host {
             );
             return Ok(first);
         }
-        let bound = read(&context.port_request_id, first.revision)?;
+        let bound = read(&context.port_request_id, first.revision).await?;
         let mut expected = first.record;
         expected["port"] = bound.record["port"].clone();
         ensure!(
@@ -579,7 +637,7 @@ impl Host {
         );
         Ok(bound)
     }
-    fn subscription_handoff_current(
+    async fn subscription_handoff_current(
         &self,
         context: &HandoffContext,
         proof: &TransportProof,
@@ -596,53 +654,73 @@ impl Host {
         let (account, _) = self
             .migration
             .vault
-            .subscription_account(&context.source_id, &self.migration)?;
+            .subscription_slot_async(
+                crate::vault::Slot::SubscriptionAccount {
+                    source_id: context.source_id.clone(),
+                    provider_id: "openai".into(),
+                },
+                &self.migration,
+            )
+            .await?;
         ensure!(
             account == context.expected_account_revision
-                && self.migration.vault.subscription_transport_is_current(
-                    &context.source_id,
-                    proof.revision,
-                    &proof.entry,
-                    &self.migration
-                )?,
+                && self
+                    .migration
+                    .vault
+                    .subscription_transport_is_current_async(
+                        &context.source_id,
+                        proof.revision,
+                        &proof.entry,
+                        &self.migration
+                    )
+                    .await?,
             "original subscription revisions or immutable entry changed"
         );
         Ok(())
     }
-    fn subscription_claim_handoff(
+    async fn subscription_claim_handoff(
         &self,
         request: &str,
         context: &HandoffContext,
         source: &SourceSubscription,
     ) -> Result<()> {
-        let proof = self.subscription_transport_proof(context)?;
-        self.subscription_handoff_current(context, &proof)?;
+        let proof = self.subscription_transport_proof(context).await?;
+        self.subscription_handoff_current(context, &proof).await?;
         ensure!(
             source.bound_port().map(u64::from) == proof.record["port"].as_u64(),
             "bound subscription port differs from the original receipt"
         );
-        // 同一 LocalSet actor 在最后核验和认领间不让出执行权，旧 writer 不能夹入新版本。
-        self.migration.vault.claim_subscription(
-            &context.source_id,
-            request,
-            context.expected_account_revision,
-            proof.revision,
-            &self.migration,
-        )
+        // 凭据事务在同一个 worker 所有权下重新核验并认领，旧 writer 不能夹入新版本。
+        self.migration
+            .vault
+            .claim_subscription_async(
+                &context.source_id,
+                request,
+                context.expected_account_revision,
+                proof.revision,
+                &proof.entry,
+                &self.migration,
+            )
+            .await
     }
     async fn resume_subscription_handoff(
         &self,
         request: &str,
         context: &HandoffContext,
     ) -> Result<Value> {
-        let proof = self.subscription_transport_proof(context)?;
-        self.subscription_handoff_current(context, &proof)?;
+        let proof = self.subscription_transport_proof(context).await?;
+        self.subscription_handoff_current(context, &proof).await?;
         let network = Network::new(serde_json::from_value(proof.record["network"].clone())?)?;
-        let source =
-            SourceSubscription::load(self.migration.clone(), context.source_id.clone(), network)?;
+        let source = SourceSubscription::load_async(
+            self.migration.clone(),
+            context.source_id.clone(),
+            network,
+        )
+        .await?;
         let restored = async {
             source.start().await?;
-            self.subscription_claim_handoff(request, context, &source)?;
+            self.subscription_claim_handoff(request, context, &source)
+                .await?;
             Ok::<_, anyhow::Error>(())
         }
         .await;
@@ -654,7 +732,7 @@ impl Host {
             .sources
             .borrow_mut()
             .insert(context.source_id.clone(), source);
-        self.subscription_snapshot(&context.source_id)
+        self.subscription_snapshot(&context.source_id).await
     }
     pub(super) async fn restore_subscriptions(&self) -> Result<()> {
         let directory = self.home.join("host/subscription-owners");
@@ -673,10 +751,17 @@ impl Host {
                     let (_, record) = self
                         .migration
                         .vault
-                        .subscription_transport(id, &self.migration)?;
+                        .subscription_slot_async(
+                            crate::vault::Slot::SubscriptionTransport {
+                                source_id: id.to_owned(),
+                            },
+                            &self.migration,
+                        )
+                        .await?;
                     let network = Network::new(serde_json::from_value(record["network"].clone())?)?;
                     let source =
-                        SourceSubscription::load(self.migration.clone(), id.into(), network)?;
+                        SourceSubscription::load_async(self.migration.clone(), id.into(), network)
+                            .await?;
                     source.start().await?;
                     Ok::<_, anyhow::Error>(source)
                 }
@@ -742,7 +827,7 @@ impl Host {
                         && self.subscriptions.sources.borrow().contains_key(*source)
                 }) {
                     evidence["ownerRequestId"] = json!(id);
-                    Some(self.subscription_snapshot(source)?)
+                    Some(self.subscription_snapshot(source).await?)
                 } else {
                     if let Ok(context) =
                         serde_json::from_value::<HandoffContext>(record["context"].clone())

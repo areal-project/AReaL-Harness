@@ -35,7 +35,7 @@ Implement A0 → A4 in order and continuously, without waiting for H4 acceptance
 
 Merging takes two PRs:
 
-1. **Integration PR**: A0–A3 plus A4 item 1 (the shared UI). Every new path sits behind a flag that defaults to off, so an installed build behaves as the released one does. It merges when CI is green without loosening any gate (line caps, IPC freeze, protocol checks, renderer boundary); it does not require packaged acceptance.
+1. **Integration PR**: A0–A3 plus A4 item 1 (the shared UI). The original integration put new paths behind disabled flags. GUI backend ownership now defaults to Host; Renderer read routing and Rust domain implementations remain separate choices. It merges when CI is green without loosening any gate (line caps, IPC freeze, protocol checks, renderer boundary); it does not require packaged acceptance.
 2. **Retirement PR**: A4 items 2–4, which delete the old pages, old IPC and the flags and move TUI/CLI onto the Host. Open it only after release acceptance passes (real-data upgrade, old pairing upgrade, login autostart and reboot, unchanged identity after upgrade, a signed and notarized package, and OP-01 to OP-08), and ask the maintainer before deleting.
 
 - Use high reasoning effort throughout. The A3 workbench service design note goes into the commit and may be implemented directly; stop only for "Stop and ask" items.
@@ -156,7 +156,7 @@ The GUI reads its project list and session details from the Host; a browser open
 ### Constraints
 
 - No write paths change; writes still use the old IPC.
-- The flag is off by default until the maintainer accepts it.
+- The Renderer read flag remains off by default. Backend ownership defaults to Host and cannot fall back to a Main writer through renderer domain preferences.
 
 ### Stop and ask
 
@@ -333,3 +333,13 @@ Existing methods are partial coverage, never aliases. Proposals name operation f
 | `connectService` | existing `host.subscribe`, `host.status` (partial); proposal discovery | Host service discovery and connection |
 | `export` | existing `session.history`, `session.body` (partial); proposal export | Core history and export data; shell chooses destination and saves |
 | `remoteControl` | existing `remote.read`, `remote.replace`, `remote.gateway.state`, `remote.gateway.status`, `remote.gateway.control` (partial); proposal pairing/configuration | Host remote configuration and pairing |
+
+## Rust convergence acceptance boundary
+
+The library, execution/connections, scheduled tasks, and worktree implementations may proceed in parallel, with acceptance performed after integration. Register protocols and a decreasing source budget before moving authoritative behavior. Execution migration requires a function-by-function equivalence and behavior-difference table before implementation. Report implementation, compilation, live-service, page-journey, and CLI-only evidence separately. Retiring previous paths requires explicit confirmation; rollback never replays UNKNOWN commands. Worktree deletion logs retain the desktop lifecycle receipt shape; private `lifecycle.dependencies.lifecycleGeneration` provides the original lifecycle generation read-only in fallback mode. Worktree page preparation must reuse the Core and resource revision already frozen by Host; input preparation cannot bypass the original binding through an implicit restart. See [workbench ownership and selectors](../design/workbench-service.en.md#rust-domain-implementations).
+
+Independent scheduled-task workspace reservation must precede publication by Core. New Core and Host negotiate `taskPrepareCreate` and connection-scoped `prepareCreate`; the Core creation entry calls Host to reserve the workspace. Configuration drafts, Agent tools, and direct creation share this boundary. Reservation cannot be deferred until after a successful response. Each task in the fixed shared Scratch uses a real direct child directory while retaining the original Core registration root. An omitted `cwd` derives a stable directory name from the original creation requestId. Reservation and recovery bind the original request digest, anchor, and unique Core creation receipt. Activity in sibling directories requires complete bounded ownership checks; global counts cannot simply be exempted.
+
+Combined acceptance includes field-by-field library receipt comparisons, backend smoke tests, journeys against a real-data copy created by `node clients/gui/scripts/seed-host-copy.mjs`, and CLI scheduled-task and worktree lifecycles without a GUI installation. Unexecuted platforms remain pending; unit tests do not replace them.
+
+Task writes settle as a definitive rejection only when Core explicitly returns `data.outcome.kind=rejected/noMutation`. Host persists the safe rejection facts: queries for the original ID return that rejection, while changed arguments conflict. The local protocol returns `TASK_REJECTED` with numeric `coreCode` and `coreError.data.outcome`. Transport failures retain pending/UNKNOWN and never redispatch.

@@ -21,6 +21,23 @@ pub struct Client {
     identity: HostIdentity,
 }
 impl Client {
+    pub async fn tasks_read(&self, params: Value) -> Result<Value> {
+        self.call("tasks.read", params).await
+    }
+    pub async fn tasks_command(&self, params: Value) -> Result<Value> {
+        self.call("tasks.command", params).await
+    }
+    pub async fn worktree_read(&self, params: Value) -> Result<Value> {
+        self.call("worktree.read", params).await
+    }
+    pub async fn worktree_command(&self, command_id: &str, params: Value) -> Result<Value> {
+        self.call(
+            "worktree.command",
+            json!({"commandId":command_id,"request":params}),
+        )
+        .await
+    }
+
     pub fn identity(&self) -> &HostIdentity {
         &self.identity
     }

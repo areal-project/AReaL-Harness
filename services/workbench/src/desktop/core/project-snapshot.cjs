@@ -4,8 +4,8 @@ const { isAwaitingResponse } = require("./project-state.cjs");
 const { isRemoteControl } = require("./submission-recovery.cjs");
 const { projectCoreCapabilities } = require("./core-capabilities.cjs");
 const { isTaskDraftConfiguration, displayTaskDraftThread } = require("./task-draft.cjs");
-/** @param {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'projects'|'cloudConversations'|'binary'|'ownerTasks'|'awaitingResponses'|'providers'|'defaultProfile'|'host'>} backend @param {import('./project-index.cjs').SavedProject} project @param {Set<string>} taskHistoryOwners */
-function snapshotProject(backend, project, taskHistoryOwners) {
+/** @param {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'projects'|'cloudConversations'|'binary'|'ownerTasks'|'awaitingResponses'|'providers'|'defaultProfile'|'host'>} backend @param {import('./project-index.cjs').SavedProject} project */
+function snapshotProject(backend, project) {
   const live = backend.projects.get(project.id);
   const snapshot = live?.model.getSnapshot() ?? null;
   // Management conversations remain hidden from chat navigation, but use the
@@ -26,11 +26,12 @@ function snapshotProject(backend, project, taskHistoryOwners) {
       : snapshot;
   return {
     ...project,
-    hasTaskHistory: taskHistoryOwners.has(project.logicalProjectId ?? project.id),
+    hasTaskHistory: false,
     backend: "areal",
     core: {
       ...projectCoreCapabilities(backend.binary, live?.client?.capabilities),
       instanceId: live?.service?.serviceId ?? null,
+      serviceGeneration: live?.service?.generation ?? null,
       connectionGeneration: live?.connectionGeneration ?? 0,
       taskDirectoryRevision: backend.ownerTasks.revision(project.id),
     },
@@ -74,7 +75,7 @@ function snapshotProject(backend, project, taskHistoryOwners) {
     summariesLoaded: live?.summariesLoaded === true,
     observationErrors: live?.observationErrors ?? {},
     refreshErrors: live?.refreshErrors ?? {},
-    error: live?.error ?? null,
+    error: live?.error ?? backend.host.migrationError(project.id),
   };
 }
 module.exports = { snapshotProject };

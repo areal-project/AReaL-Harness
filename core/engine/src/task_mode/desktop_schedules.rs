@@ -62,17 +62,31 @@ impl Engine {
         self: &Arc<Self>,
         host: Arc<dyn tools::DynamicToolHost>,
     ) -> Result<()> {
+        self.register_schedule_host_capabilities(host, false).await
+    }
+
+    pub async fn register_schedule_host_capabilities(
+        self: &Arc<Self>,
+        host: Arc<dyn tools::DynamicToolHost>,
+        prepare_create: bool,
+    ) -> Result<()> {
         if host.is_closed() {
             return Err(Error::Closed);
         }
         let mut hosts = self.task_modes.hosts.lock().await;
         if hosts
             .get(host.identity())
-            .is_some_and(|old| old.id() != host.id() && !old.is_closed())
+            .is_some_and(|old| old.host.id() != host.id() && !old.host.is_closed())
         {
             return Err(Error::Conflict);
         }
-        hosts.insert(host.identity().into(), host);
+        hosts.insert(
+            host.identity().into(),
+            ScheduleHost {
+                host,
+                prepare_create,
+            },
+        );
         drop(hosts);
         self.start_task_scheduler();
         self.wake_tasks();
@@ -88,8 +102,21 @@ impl Engine {
             .lock()
             .await
             .get(owner)
-            .filter(|h| !h.is_closed())
-            .cloned()
+            .filter(|h| !h.host.is_closed())
+            .map(|h| h.host.clone())
+    }
+
+    pub(super) async fn schedule_create_host(
+        &self,
+        owner: &str,
+    ) -> Option<Arc<dyn tools::DynamicToolHost>> {
+        self.task_modes
+            .hosts
+            .lock()
+            .await
+            .get(owner)
+            .filter(|h| h.prepare_create && !h.host.is_closed())
+            .map(|h| h.host.clone())
     }
 
     pub async fn host_update_status(

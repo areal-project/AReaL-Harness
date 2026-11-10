@@ -57,7 +57,7 @@ const { ComputerControl, readComputerSelection } = require("./computer-control.c
 const { ExternalCua, nativeAppElicitation } = require("./external-cua.cjs");
 const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 const { startSnapShots } = require("./snapshots/host.cjs");
-const { configureUserData, serviceOptions, serviceHome } = require("./service-config.cjs");
+const cfg = require("./service-config.cjs");
 const { readLibraryStartupSettings } = require("@areal/workbench-service/desktop/core/library.cjs");
 const {
   applyDesktopSessionNetworkPolicy,
@@ -76,18 +76,18 @@ startDesktop();
 function startDesktop() {
   startupTraceMain.advance("app_ready");
   app.setName("AReaL Harness GUI");
-  configureUserData(app);
+  cfg.configureUserData(app);
   const applicationOwner = createOwner(app.getPath("userData"));
   app.setPath("userData", applicationOwner.profile);
   /** @type {ReturnType<typeof readLibraryStartupSettings>|undefined} */
   let startupSettings;
   /** @type {unknown} */
-  let startupSettingsError;
+  let settingsError;
   try {
-    startupSettings = readLibraryStartupSettings(serviceHome(app));
+    startupSettings = readLibraryStartupSettings(cfg.serviceHome(app));
     if (startupSettings.hardwareAcceleration === false) app.disableHardwareAcceleration();
   } catch (error) {
-    startupSettingsError = error;
+    settingsError = error;
     console.error("Desktop startup settings could not be read", error);
   }
   // Acquire before loading resources or registering shutdown hooks. The userData
@@ -99,7 +99,7 @@ function startDesktop() {
     return;
   }
   if (process.argv.some((value) => value.startsWith("--areal-host-import-source="))) {
-    const options = serviceOptions(app);
+    const options = cfg.serviceOptions(app);
     void require("@areal/workbench-service/desktop/core/gui-source.cjs")
       .prepareGuiSource({
         app,
@@ -119,7 +119,7 @@ function startDesktop() {
   }
   const diagnosticsRoots = {
     mainRoot: join(applicationOwner.profile, "diagnostics", "main"),
-    desktopRoot: join(serviceHome(app), "diagnostics", "desktop"),
+    desktopRoot: join(cfg.serviceHome(app), "diagnostics", "desktop"),
   };
   diagnostics.start({
     role: "main",
@@ -432,7 +432,7 @@ function startDesktop() {
   const bugReports = new (require("./bug-reports.cjs").BugReports)({
     endpoint: process.env.AREAL_BUG_REPORT_URL,
     root: join(applicationOwner.profile, "bug-reports"),
-    collect: () => diagnostics.collect({ ...diagnosticsRoots, coreRoot: serviceOptions(app).home }),
+    collect: () => diagnostics.collect({ ...diagnosticsRoots, coreRoot: cfg.serviceHome(app) }),
     normalizeImage: (data) => normalizeNativeImage(data, nativeImage),
   });
   const exportDiagnostics = () => saveDiagnostics(app, diagnosticsRoots, showSaveDialog);
@@ -776,7 +776,7 @@ function startDesktop() {
         "startup",
         {},
         async () => {
-          if (startupSettingsError) throw startupSettingsError;
+          if (await cfg.upgrade(app, dialog, cfg.serviceOptions, settingsError)) return;
           snapShots = startSnapShots({ window: () => window ?? null, revealWindow, trusted });
           await Promise.all(
             [session.defaultSession, session.fromPartition("persist:areal-embedded-browser")].map(
@@ -785,8 +785,8 @@ function startDesktop() {
           );
           startupTraceMain.finish("ok");
           const hostConnectSource = require("../ipc/generated/host-ticket.cjs").registerHostTicket({
-            home: serviceOptions(app).hostHome,
-            binary: serviceOptions(app).binary,
+            home: cfg.serviceOptions(app).hostHome,
+            binary: cfg.serviceOptions(app).binary,
             profile: app.getPath("userData"),
             trusted,
           });
@@ -795,7 +795,7 @@ function startDesktop() {
           registerUiProtocol(guiRoot, hostConnectSource);
           const serviceBackend = new SharedCoreBackend({
             app,
-            ...serviceOptions(app),
+            ...cfg.serviceOptions(app),
             applicationOwner,
             onChange: publish,
             onNotification: (notice) =>
@@ -1802,10 +1802,6 @@ function startDesktop() {
             trace.advance("initialize");
             try {
               await windowLoaded;
-              await require("../ipc/generated/host-library.cjs").enableHostLibrary(
-                window,
-                serviceBackend,
-              );
               await serviceBackend.init({ automatic: true });
               trace.advance("initial_project");
               if (serviceBackend.status.connected && process.env.AREAL_CORE_WORKSPACE)

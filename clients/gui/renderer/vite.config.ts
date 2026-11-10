@@ -117,6 +117,18 @@ export default defineConfig(({ mode }): UserConfig => ({
   optimizeDeps: {
     include: [
       "@areal/workbench/desktop-contract",
+      // 拆分后的契约仍是 CommonJS；开发预览也要经过预打包才能使用具名导出。
+      "@areal/workbench/desktop-contract/transport",
+      "@areal/workbench/desktop-contract/library-media",
+      "@areal/workbench/desktop-contract/conversation-history",
+      "@areal/workbench/desktop-contract/conversation",
+      "@areal/workbench/desktop-contract/management",
+      "@areal/workbench/desktop-contract/management-context",
+      "@areal/workbench/desktop-contract/mcp-page",
+      "@areal/workbench/desktop-contract/provider",
+      "@areal/workbench/desktop-contract/resource",
+      "@areal/workbench/desktop-contract/shared",
+      "@areal/workbench/desktop-contract/snapshots",
       "@areal/workbench/model-selection",
       "@areal/workbench/state-projection",
       "@areal/provider-config",

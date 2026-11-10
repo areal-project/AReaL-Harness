@@ -38,8 +38,9 @@ async function serviceIdentity(options) {
     .filter((n) => /\.(js|json)$/.test(n))
     .sort())
     hash.update(name).update(readFileSync(join(subscriptionRoot, name)));
-  const { CoreClient, CoreRpcError } = await import("@areal/runtime-client/core");
-  hash.update(CoreClient.toString()).update(CoreRpcError.toString());
+  const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+  const { CoreRpcError } = require("@areal/runtime-client/errors");
+  hash.update(HostCoreClient.toString()).update(CoreRpcError.toString());
   hash.update(readFileSync(require.resolve("@areal/runtime-client/capabilities")));
   hash.update(readFileSync(require.resolve("@areal/workbench/core-model")));
   hash.update(readFileSync(require.resolve("@areal/workbench/core-model-contract")));

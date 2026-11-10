@@ -1,0 +1,83 @@
+id: dialog
+name: 弹窗
+status: draft
+purpose: 需要用户先回答一件事才能继续时，盖住窗口问清楚。
+why: 弹窗打断工作，所以只放一个问题和最少的控件；外观统一，用户一眼认出这是要先处理的东西。
+
+layout:
+    material: overlay
+    layer: layer-dialog
+    backdrop: 盖住整个窗口，color-dialog-backdrop，不模糊
+    position: 水平、垂直都居中于窗口
+    width: 每种弹窗自定；不超过窗口宽减两倍 spacing-field
+
+anatomy:
+    - part: popup
+      role: 弹窗本身，竖排标题、内容、按钮行
+    - part: title
+      role: 一行标题，说明要做什么
+    - part: body
+      role: 内容或输入控件
+    - part: footer
+      role: 按钮行
+    - part: close
+      role: 右上角关闭按钮
+
+parts:
+    popup:
+        surface: color-popover
+        border: border-width-default 的 color-border
+        radius: radius-dialog
+        shadow: shadow-dialog
+        padding: spacing-panel
+        gap: 标题、内容、按钮行之间 spacing-field
+        text: text-ui-base，行高 line-height-relaxed，foreground
+    title:
+        text: text-ui-base，font-weight-medium，foreground
+    close:
+        position: 右上角，距弹窗内缘（边框以内）上、右各 spacing-panel，压在标题行上
+        size: spacing-control-sm 见方，圆角 radius-button
+        icon: dialog-dismiss，foreground
+        hover: 底色 color-hover
+    footer:
+        layout: 按钮靠右排成一行，间隔 spacing-inline；次要按钮在左，主要按钮在右
+    button:
+        size: 高 spacing-control，左右内边距 spacing-inline，圆角 radius-button，边框 border-width-default
+        text: text-ui-caption，行高 line-height-relaxed
+        secondary: 透明底，边框 color-border，文字 foreground；悬停时边框 color-border-hover，底色 color-input 的一半不透明度
+        primary: 底色 color-primary，文字 color-primary-foreground，边框透明；悬停时底色 color-primary 的八成不透明度
+        disabled: 整体 opacity-disabled，不响应点击
+    input:
+        size: 占满宽度，高 spacing-control，上下内边距 spacing-inline 的四分之一，左右 spacing-inline，圆角 radius-control
+        surface: color-input，边框 border-width-default 的 color-input-border；悬停 color-input-border-hover；聚焦时边框 color-input-border-focused、底色 color-input-focused，不另画焦点环（多行输入见 textarea）
+        text: text-ui-base，行高 line-height-relaxed，foreground
+    textarea:
+        note: 多行输入（如新建定时任务的“指令”）用 textarea 组件，和单行输入不同：底色 color-input 的两成不透明度，最小高 spacing-field 的四倍，内边距四周 spacing-inline，随内容长高、不能拖动改大小
+        focus: 键盘聚焦时边框换 color-ring，外面再画一圈宽 border-width-default 两倍的焦点环，颜色 color-ring 的三成不透明度；单行输入框没有这圈环
+
+icons:
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+    used: [dialog-dismiss]
+
+accessible-names:
+    popup: 角色为对话框，名称取标题
+    close: 关闭弹窗
+
+keyboard:
+    - 打开时焦点进入弹窗：有输入框时落在输入框，文字全选可直接改写
+    - Tab 只在弹窗内循环
+    - Esc 关闭
+    - 在输入框里按回车等同点主要按钮
+
+behavior:
+    - 点关闭按钮、次要按钮、背景或按 Esc 都关闭且不做任何改动
+    - 主要按钮完成后关闭
+
+instances:
+    rename:
+        opened-by: 任务菜单或项目菜单里的“重命名”
+        width: reading-width 的一半
+        title: 重命名
+        body: 一个输入框，读屏名“名称”，预填当前名称，最多二百字
+        footer: [取消（次要）, 保存（主要）]
+        rules: 名称去掉首尾空白后为空时“保存”不可用；保存后侧栏这一行与会话标题栏都换成新名称

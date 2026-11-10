@@ -12,6 +12,10 @@
     "./capabilities": {
       "types": "./capabilities.js",
       "default": "./capabilities.js"
+    },
+    "./errors": {
+      "types": "./errors.d.ts",
+      "default": "./errors.js"
     }
   }
 }

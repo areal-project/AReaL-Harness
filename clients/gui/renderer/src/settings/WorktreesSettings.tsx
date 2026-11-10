@@ -490,7 +490,6 @@ export function WorktreesSettings({
         </>
       ) : (
         <div className="worktrees-overview">
-          <p className="settings-section-desc">{t("worktree.settings.description")}</p>
           <SettingsSegmentedTabs
             ariaLabel={t("settings.worktrees.title")}
             value={tab}

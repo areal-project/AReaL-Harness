@@ -37,7 +37,39 @@ function relativeLuminance(background: string) {
 }
 
 export function paletteVariables(p: Palette, dark = false): Record<string, string> {
-  return derivePaletteVariables(p, dark, readableForeground);
+  return derivePaletteVariables(p, dark, readableForeground, minimumPercent);
+}
+
+/** 前景按 percent 混入背景后，对比度不足 contrast 时把百分比推高到达标（半个百分点为一步）。 */
+export function minimumPercent(
+  foreground: string,
+  background: string,
+  percent: number,
+  contrast: number,
+) {
+  let value = percent;
+  while (
+    value < 100 &&
+    colorContrastRatio(mixHex(foreground, background, value), background) < contrast
+  )
+    value = Math.min(100, Math.floor(value * 2 + 1) / 2);
+  return value;
+}
+
+function mixHex(foreground: string, background: string, percent: number) {
+  const channels = (color: string) =>
+    color
+      .slice(1)
+      .match(/../g)!
+      .map((n) => parseInt(n, 16));
+  const [a, b] = [channels(foreground), channels(background)];
+  return `#${a
+    .map((channel, index) =>
+      Math.round((channel * percent + b[index] * (100 - percent)) / 100)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
 }
 
 /**

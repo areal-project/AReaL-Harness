@@ -50,7 +50,7 @@ const fixture = await applicationFixture(
   gui,
   join(scratch, "app"),
   `
-const coreProcess = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/core-process.cjs"))});
+const coreProcess = require(${JSON.stringify(join(gui, "scripts/support/core-process-fixture.cjs"))});
 const execute = coreProcess.executeCore;
 coreProcess.executeCore = (binary, args, options) => {
   if (args[0] === 'service' && args[1] === 'ensure' && args.includes(${JSON.stringify(rejectedWorkspace)})

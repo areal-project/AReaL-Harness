@@ -5,6 +5,7 @@ import { ContentSystemPreview } from "./ContentSystemPreview.js";
 import { ToastHost } from "../ToastHost.js";
 import { FeedbackNotice } from "../FeedbackNotice.js";
 import { ArtifactReviewExercise } from "./ArtifactReviewExercise.js";
+import { SpecFixture } from "./SpecFixture.js";
 import { SendContinuityFixture } from "./SendContinuityFixture.js";
 import { DesignDashboard } from "./DesignDashboard.js";
 import { ProductCandidate } from "./ProductCandidate.js";
@@ -591,7 +592,6 @@ function Preview() {
               action={action}
               dark={dark}
               executionBlocked={false}
-              onReturn={() => setMessage("关闭入口仅作预览。")}
               onPanel={() => setMessage("面板入口仅作预览。")}
             />
           </section>
@@ -623,7 +623,9 @@ createRoot(document.getElementById("root")!).render(
   <ApplicationIntlProvider>
     <ToastHost />
     <TooltipProvider>
-      {new URLSearchParams(window.location.search).has("send-continuity") ? (
+      {new URLSearchParams(window.location.search).has("spec") ? (
+        <SpecFixture />
+      ) : new URLSearchParams(window.location.search).has("send-continuity") ? (
         <SendContinuityFixture />
       ) : new URLSearchParams(window.location.search).has("dashboard") ? (
         <DesignDashboard />

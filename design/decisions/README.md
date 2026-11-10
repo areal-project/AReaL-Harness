@@ -9,3 +9,4 @@
 | [D-002 共享语义先于统一数值与实现](002-shared-semantics.md) |
 | [D-003 先设计完整候选，再迁移真实路径](003-whole-candidate-and-migration.md) |
 | [D-004 本地 UI 包与可运行产出链](004-local-ui-package.md) |
+| [D-005 设计规格为准，交给新 Agent 能复现](005-reproducible-spec.md) |

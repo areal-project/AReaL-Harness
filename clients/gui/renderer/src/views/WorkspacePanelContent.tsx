@@ -96,7 +96,6 @@ export function WorkspacePanelContent({
     return (
       <SideChatPane
         onPanel={showPanel}
-        onReturn={hidePanel}
         key={`${project.core?.instanceId}:${project.id}:${thread.id}:side`}
         project={project}
         source={thread}

@@ -10,7 +10,7 @@ import { TitleTooltip } from "../../components/tooltip/tooltip.js";
 import { cn } from "../../lib/utils.js";
 
 const overflowFadeClassName =
-  "[mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)] [-webkit-mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)]";
+  "[mask-image:linear-gradient(to_right,black_calc(100%_-_var(--spacing-control-sm)),transparent)] [-webkit-mask-image:linear-gradient(to_right,black_calc(100%_-_var(--spacing-control-sm)),transparent)]";
 
 type TaskTitleOverflowTextProps = ComponentPropsWithoutRef<"p"> & {
   as?: "p" | "span";

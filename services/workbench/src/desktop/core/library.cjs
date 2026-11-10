@@ -2,11 +2,10 @@
 "use strict";
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
-const { randomUUID, createHash } = require("node:crypto");
+const { createHash } = require("node:crypto");
 const { openSync, fstatSync, readSync, closeSync, constants } = require("node:fs");
 const { normalizeNetworkSetting } = require("./desktop-network.cjs");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const { readObservationResult } = require("./history-contract.cjs");
 const {
   readLibraryState,
   readLibraryRequest,
@@ -15,7 +14,7 @@ const {
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").NavigationSummary} NavigationSummary */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryMetadata} LibraryMetadata */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryState} LibraryState */
-/** @typedef {{home:string,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,import('./project-state.cjs').CoreProject>,cloudConversations?:{owns:(projectId:string,threadId:string)=>boolean},worktrees?:{owners:(id:string)=>import('./project-index.cjs').SavedProject[]},start:(id:string)=>Promise<import('./project-state.cjs').CoreProject>,save:(name:string,value:unknown)=>Promise<unknown>,onChange:()=>void}} LibraryHost */
+/** @typedef {{home:string,saved:import('./project-index.cjs').SavedProject[],projects:Map<string,import('./project-state.cjs').CoreProject>,cloudConversations?:{owns:(projectId:string,threadId:string)=>boolean},worktrees?:{owners:(id:string)=>import('./project-index.cjs').SavedProject[]},start:(id:string)=>Promise<import('./project-state.cjs').CoreProject>,save:(name:string,value:unknown)=>Promise<unknown>,onChange:()=>void,hostCall:(call:string,params:unknown)=>Promise<unknown>}} LibraryHost */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").SidebarItem} SidebarItem */
 /** @typedef {import("@areal/workbench/desktop-contract/library-media").LibraryRequest} LibraryRequest */
 const DESKTOP_SETTING_DEFAULTS = Object.freeze({
@@ -181,25 +180,27 @@ class CoreLibrary {
         };
         let next = prepare();
         try {
-          if (this.store) {
-            // 别的客户端经 Host 改过时摘要对不上：重读磁盘，在新内容上重算一次。
-            for (let attempt = 0; ; attempt++) {
-              try {
-                this.digest = await this.store.write(next, this.digest);
-                break;
-              } catch (error) {
-                // Host 没有这个 GUI 的导航来源时它不读也不写这份文件，退回 Main 自己写。
-                if (!this.store.required && modelRecord(error) && error.code === "notFound") {
-                  this.store = null;
-                  await this.backend.save("library.json", next);
-                  break;
-                }
-                if (attempt >= 2 || !modelRecord(error) || error.code !== "conflict") throw error;
-                await this.reload();
-                next = prepare();
+          for (let attempt = 0; ; attempt++) {
+            const patches = [];
+            for (const key of new Set([...Object.keys(this.value.settings), ...Object.keys(next.settings)])) {
+              if (JSON.stringify(this.value.settings[key]) !== JSON.stringify(next.settings[key]))
+                patches.push({ path: ["settings", key], before: this.value.settings[key] ?? null, after: next.settings[key] ?? null });
+            }
+            for (const [id, value] of Object.entries(next.projects)) {
+              for (const key of /** @type {const} */ (["worktreeEnvironments", "worktreeEnvironmentRevision"])) {
+                if (JSON.stringify(this.value.projects[id]?.[key]) !== JSON.stringify(value[key]))
+                  patches.push({ path: ["projects", id, key], before: this.value.projects[id]?.[key] ?? null, after: value[key] ?? null });
               }
             }
-          } else await this.backend.save("library.json", next);
+            try {
+              next = readLibraryState(await this.backend.hostCall("library.patch", { patches }), this.value);
+              break;
+            } catch (error) {
+              if (attempt >= 2 || !modelRecord(error) || error.code !== "conflict") throw error;
+              await this.reload();
+              next = prepare();
+            }
+          }
         } catch (error) {
           console.error("侧栏整理保存失败", error);
           throw Object.assign(
@@ -218,461 +219,39 @@ class CoreLibrary {
     this.writes = task.catch(() => {});
     return task;
   }
-  /** @param {string} projectId @param {string|undefined} threadId @param {string} [completionId] */
-  async recordThreadActivity(projectId, threadId, completionId) {
-    projectId =
-      this.backend.saved.find((project) => project.id === projectId)?.logicalProjectId ?? projectId;
-    if (!threadId) return;
-    // Core timestamps have second precision; retain observed order only as a tie-break.
-    return this.change((state) => {
-      const project = (state.projects[projectId] ??= {});
-      project.threadOrder = [
-        threadId,
-        ...(project.threadOrder ?? []).filter((id) => id !== threadId),
-      ];
-      if (completionId) {
-        const meta = (state.threads[`${projectId}:${threadId}`] ??= {});
-        if (meta.completionId !== completionId) {
-          meta.completionId = completionId;
-          meta.unread = true;
-        }
-      }
-    });
-  }
-  /** @param {string} projectId @param {{id:string,status:string,threadId?:string|null}} run @param {string} [completionId] */
-  async recordScheduledCompletion(projectId, run, completionId) {
-    projectId =
-      this.backend.saved.find((project) => project.id === projectId)?.logicalProjectId ?? projectId;
-    if (
-      !completionId ||
-      !run.threadId ||
-      run.status !== "completed" ||
-      this.value.threads[`${projectId}:${run.threadId}`]?.scheduledCompletionId === run.id
-    )
-      return;
-    return this.change((state) => {
-      const meta = (state.threads[`${projectId}:${run.threadId}`] ??= {});
-      if (meta.scheduledCompletionId === run.id) return;
-      meta.scheduledCompletionId = run.id;
-      // 只沿用同一最终 Turn 的阅读状态；较早一轮的已读不能遮蔽新的结果。
-      if (meta.completionId !== completionId) {
-        meta.completionId = completionId;
-        meta.unread = true;
-      }
-    });
-  }
-  /** @param {string|undefined} projectId */
-  threadSummaries(projectId) {
-    if (projectId === undefined) return [];
-    const owners =
-      this.backend.worktrees?.owners(projectId) ??
-      this.backend.saved.filter((project) => project.id === projectId);
-    const data = owners.flatMap(
-      /** @returns {Array<NavigationSummary|import('@areal/workbench/core-model-contract').CoreThread>} */ (
-        owner,
-      ) => {
-        const live = this.backend.projects.get(owner.id);
-        if (live?.summariesLoaded || live?.summaries?.length) return live.summaries;
-        const cached = this.value.projects[owner.id]?.navigationSummaries;
-        return Array.isArray(cached) ? cached : [];
-      },
-    );
-    if (data.length) return data;
-    const prefix = `${projectId}:`;
-    return Object.keys(this.value.threads)
-      .filter((key) => key.startsWith(prefix))
-      .map((key) => ({ id: key.slice(prefix.length), preview: "未加载的任务" }));
-  }
 
-  /** @param {string} projectId @param {import('@areal/workbench/core-model-contract').CoreThread[]} summaries */
-  async recordThreadSummaries(projectId, summaries) {
-    // Deliberate whitelist: thread/list also carries configuration, permissions,
-    // receipts and other execution state, none of which belongs in this cache.
-    const navigationSummaries = summaries.map((summary) => ({
-      id: summary.id,
-      ...(typeof summary.parentThreadId === "string"
-        ? { parentThreadId: summary.parentThreadId }
-        : {}),
-      ...(typeof summary.conversation?.kind === "string"
-        ? { conversation: { kind: summary.conversation.kind } }
-        : {}),
-      ...(typeof summary.name === "string" ? { name: summary.name } : {}),
-      ...(typeof summary.preview === "string" ? { preview: summary.preview } : {}),
-      ...(typeof summary.createdAt === "number" && Number.isFinite(summary.createdAt)
-        ? { createdAt: summary.createdAt }
-        : {}),
-      ...(typeof summary.updatedAt === "number" && Number.isFinite(summary.updatedAt)
-        ? { updatedAt: summary.updatedAt }
-        : {}),
-      desktop: { archived: summary.desktop?.archived === true },
-    }));
-    return this.change((state) => {
-      (state.projects[projectId] ??= {}).navigationSummaries = navigationSummaries;
-    });
-  }
   /** @param {unknown} input */
   async command(input) {
     const request = readLibraryRequest(input);
-    const { operation, projectId, threadId, title, before } = request;
-    const global = [
-      "settings",
-      "createSection",
-      "renameSection",
-      "removeSection",
-      "orderSection",
-      "markAllRead",
-      "dropSidebar",
-    ].includes(operation);
-    if (
-      !global &&
-      (typeof projectId !== "string" || !this.backend.saved.some((item) => item.id === projectId))
-    )
-      throw new Error("未知工作区");
-    if (
-      [
-        "renameThread",
-        "pinThread",
-        "orderThread",
-        "moveThread",
-        "readThread",
-        "orderSidebarThread",
-      ].includes(operation) &&
-      (typeof projectId !== "string" ||
-        typeof threadId !== "string" ||
-        (!this.threadSummaries(projectId).some((item) => item.id === threadId) &&
-          !(
-            operation === "readThread" &&
-            (this.backend.projects.get(projectId)?.model.state.threads?.[threadId] ||
-              this.backend.cloudConversations?.owns(projectId, threadId))
-          )))
-    )
-      throw new Error("未知会话");
-    if (operation === "hideProject" && request.hidden && projectId) {
-      const owners =
-        this.backend.worktrees?.owners(projectId) ??
-        this.backend.saved.filter((project) => project.id === projectId);
-      for (const owner of owners) {
-        const live = await this.backend.start(owner.id);
-        for (const summary of live.summaries) {
-          if (!live.client) throw new Error("Core 连接不可用");
-          const { thread } = await live.client.request(
-            "thread/read",
-            { threadId: summary.id, includeTurns: true },
-            { decode: readObservationResult },
-          );
-          if (
-            thread.turns?.some((turn) => turn.status === "inProgress") ||
-            thread.desktop?.queue?.items?.some(
-              (item) => modelRecord(item) && ["pending", "running"].includes(String(item.status)),
-            )
-          )
-            throw new Error("工作区仍有活动任务或排队消息，请先处理后再移出侧边栏");
-        }
-        if (
-          live.pending.length ||
-          Object.values(live.model.state.threads ?? {}).some((thread) =>
-            thread.turns?.some((turn) => turn.status === "inProgress"),
-          ) ||
-          Object.values(live.model.state.queues ?? {}).some((queue) =>
-            queue.items.some(
-              (item) => modelRecord(item) && ["pending", "running"].includes(String(item.status)),
-            ),
-          )
-        )
-          throw new Error("工作区仍有活动任务或排队消息，请先处理后再移出侧边栏");
-      }
+    const navigation = request.operation !== "settings" || ["sidebarSort", "sidebarSortChats", "sidebarSortProjects", "sidebarSortPinned", "showPinned", "showCompleted"].includes(request.key ?? "");
+    if (navigation) {
+      const result = await this.backend.hostCall("library.command", request);
+      this.value = readLibraryState(result, this.value);
+      this.backend.onChange();
+      return this.value;
     }
+    // 走到这里只剩非导航类偏好；导航与整理由 Host 的资料库负责。
     return this.change((state) => {
-      /** @type {LibraryMetadata} */
-      const project = projectId ? (state.projects[projectId] ??= {}) : {};
-      const key = `${projectId}:${threadId}`;
-      const section = state.sections.find((item) => item.id === request.sectionId);
-      if (["renameSection", "removeSection", "orderSection"].includes(operation) && !section)
-        throw new Error("分组已不存在，请刷新");
+      if (typeof request.key !== "string") throw new Error("无效偏好设置");
+      let settingValue = request.value;
       if (
-        ["moveThread", "moveProject"].includes(operation) &&
-        request.sectionId != null &&
-        !section
-      )
-        throw new Error("分组已不存在，请刷新");
-      switch (operation) {
-        case "dropSidebar":
-          this.dropSidebar(state, request);
-          break;
-        case "renameProject":
-          project.title = requireTitle(title);
-          break;
-        case "renameThread":
-          (state.threads[key] ??= {}).title = requireTitle(title);
-          break;
-        case "pinThread": {
-          const meta = (state.threads[key] ??= {});
-          meta.pinned = request.pinned === true;
-          if (meta.pinned) delete meta.sectionId;
-          break;
-        }
-        case "pinProject": {
-          project.pinned = request.pinned === true;
-          if (project.pinned) delete project.sectionId;
-          break;
-        }
-        case "createSection":
-          state.sections.push({ id: randomUUID(), title: requireTitle(title) });
-          break;
-        case "renameSection":
-          if (!section) throw new Error("分组已不存在，请刷新");
-          section.title = requireTitle(title);
-          break;
-        case "removeSection": {
-          if (!section) throw new Error("分组已不存在，请刷新");
-          state.sections = state.sections.filter((item) => item.id !== section.id);
-          for (const meta of [...Object.values(state.projects), ...Object.values(state.threads)]) {
-            if (meta.sectionId === section.id) delete meta.sectionId;
-          }
-          break;
-        }
-        case "orderSection": {
-          if (!section) throw new Error("分组已不存在，请刷新");
-          const ids = state.sections.map((item) => item.id);
-          const order = reorder(ids, ids, section.id, before);
-          state.sections.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-          break;
-        }
-        case "moveThread": {
-          const meta = (state.threads[key] ??= {});
-          meta.sectionId = request.sectionId ?? null;
-          meta.pinned = false;
-          break;
-        }
-        case "moveProject": {
-          project.sectionId = request.sectionId ?? null;
-          project.pinned = false;
-          break;
-        }
-        case "readThread": {
-          if (typeof request.read !== "boolean") throw new Error("无效已读状态");
-          if (
-            request.read &&
-            request.completionId !== undefined &&
-            request.completionId !== state.threads[key]?.completionId
-          )
-            break;
-          (state.threads[key] ??= {}).unread = !request.read;
-          break;
-        }
-        case "markAllRead":
-          for (const meta of Object.values(state.threads)) meta.unread = false;
-          break;
-        case "orderSidebarThread": {
-          // Unopened projects may not have summaries in this service lifetime.
-          // Their persisted ordering is not evidence that their Threads vanished.
-          const available = [
-            ...new Set([
-              ...state.sidebarThreadOrder,
-              ...this.backend.saved.flatMap((owner) =>
-                this.threadSummaries(owner.id).map((item) => `${owner.id}:${item.id}`),
-              ),
-            ]),
-          ];
-          /** @param {string} id */
-          const bucket = (id) => {
-            const meta = state.threads[id];
-            const owner = id.slice(0, id.lastIndexOf(":"));
-            return meta?.pinned
-              ? "pinned"
-              : this.backend.saved.find((p) => p.id === owner)?.projectless
-                ? "chats"
-                : owner;
-          };
-          if (before != null && bucket(before) !== bucket(key))
-            throw new Error("排序位置已变化，请刷新");
-          state.sidebarThreadOrder = reorder(state.sidebarThreadOrder, available, key, before);
-          const meta = state.threads[key];
-          state.settings[
-            meta?.pinned
-              ? "sidebarSortPinned"
-              : this.backend.saved.find((p) => p.id === projectId)?.projectless
-                ? "sidebarSortChats"
-                : "sidebarSortProjects"
-          ] = "manual";
-          break;
-        }
-        case "hideProject":
-          project.hidden = request.hidden === true;
-          break;
-        case "orderProject": {
-          const ids = this.backend.saved.map((item) => item.id);
-          state.projectOrder = reorder(state.projectOrder, ids, requireId(projectId), before);
-          break;
-        }
-        case "orderThread": {
-          const ids = this.threadSummaries(projectId).map((item) => item.id);
-          project.threadOrder = reorder(
-            project.threadOrder ?? [],
-            ids,
-            requireId(threadId),
-            before,
-          );
-          break;
-        }
-        case "settings": {
-          if (typeof request.key !== "string") throw new Error("无效偏好设置");
-          let settingValue = request.value;
-          if (
-            ["terminalFontFamily", "httpProxy", "httpProxyNoProxy", "httpProxyCaCertPath"].includes(
-              request.key,
-            )
-          ) {
-            if (typeof request.value !== "string") throw new Error("Invalid desktop setting");
-            settingValue = validateDesktopString(request.key, request.value);
-          } else if (request.key === "computerControlExecutable") {
-            if (
-              typeof request.value !== "string" ||
-              request.value.length > 4096 ||
-              request.value.includes("\0") ||
-              (request.value && !require("node:path").isAbsolute(request.value))
-            )
-              throw new Error("LCU executable must be an absolute path");
-          }
-          if (
-            [
-              "sidebarSort",
-              "sidebarSortChats",
-              "sidebarSortProjects",
-              "sidebarSortPinned",
-            ].includes(request.key) &&
-            request.value === "manual" &&
-            !state.sidebarThreadOrder.length
-          ) {
-            const available = this.backend.saved.flatMap((owner) =>
-              this.threadSummaries(owner.id).map((item) => `${owner.id}:${item.id}`),
-            );
-            if (
-              !Array.isArray(request.order) ||
-              request.order.some((id) => !available.includes(id)) ||
-              new Set(request.order).size !== request.order.length
-            )
-              throw new Error("排序列表已变化，请刷新");
-            state.sidebarThreadOrder = [
-              ...request.order,
-              ...available.filter((id) => !request.order?.includes(id)),
-            ];
-          }
-          Object.assign(state.settings, { [request.key]: settingValue });
-          break;
-        }
-        default:
-          throw new Error("不支持的整理操作");
-      }
-    });
-  }
-  /** @param {LibraryState} state @param {LibraryRequest} request */
-  dropSidebar(state, { source, target, anchor = null, edge, order = [], expectedSidebarRevision }) {
-    const changed = () => {
-      throw new Error("整理位置已变化，请刷新后重试");
-    };
-    if (
-      !Number.isSafeInteger(expectedSidebarRevision) ||
-      expectedSidebarRevision !== (state.sidebarRevision ?? 0)
-    )
-      return changed();
-    /** @param {string[]} ids @param {string} id @param {string} targetId */
-    const around = (ids, id, targetId) => {
-      if (!ids.includes(targetId) || id === targetId || (edge !== "before" && edge !== "after"))
-        return changed();
-      const others = ids.filter((value) => value !== id),
-        index = others.indexOf(targetId);
-      others.splice(index + (edge === "after" ? 1 : 0), 0, id);
-      return others;
-    };
-    if (source?.type === "section") {
-      const ids = state.sections.map((item) => item.id);
-      if (
-        typeof source.id !== "string" ||
-        !ids.includes(source.id) ||
-        target?.type !== "section" ||
-        typeof target.id !== "string"
-      )
-        return changed();
-      const next = around(ids, source.id, target.id);
-      state.sections.sort((a, b) => next.indexOf(a.id) - next.indexOf(b.id));
-      return;
-    }
-    if (
-      !source ||
-      (source.type !== "thread" && source.type !== "project") ||
-      typeof source.id !== "string"
-    )
-      return changed();
-    const thread = source.type === "thread";
-    const available = thread
-      ? this.backend.saved.flatMap((owner) =>
-          this.threadSummaries(owner.id).map((item) => `${owner.id}:${item.id}`),
+        ["terminalFontFamily", "httpProxy", "httpProxyNoProxy", "httpProxyCaCertPath"].includes(
+          request.key,
         )
-      : this.backend.saved.map((owner) => owner.id);
-    const key = thread ? `${source.projectId}:${source.id}` : source.id;
-    if (!available.includes(key)) return changed();
-    const metadata = thread ? state.threads : state.projects;
-    /** @param {string} id */
-    const projectless = (id) =>
-      this.backend.saved.find((p) => p.id === id.slice(0, id.lastIndexOf(":")))?.projectless ===
-      true;
-    /** @param {string} id */
-    const group = (id) =>
-      metadata[id]?.pinned
-        ? "pinned"
-        : metadata[id]?.sectionId
-          ? `section:${metadata[id].sectionId}`
-          : thread
-            ? projectless(id)
-              ? "chats"
-              : `project:${id.slice(0, id.lastIndexOf(":"))}`
-            : "projects";
-    if (group(key) !== source.group) return changed();
-    let destination;
-    if (target?.type === "section" && state.sections.some((item) => item.id === target.id))
-      destination = `section:${target.id}`;
-    else if (target?.type === "pinned") destination = "pinned";
-    else if (thread && target?.type === "chats" && projectless(key)) destination = "chats";
-    else if (
-      thread &&
-      !projectless(key) &&
-      target?.type === "project" &&
-      target.id === source.projectId
-    )
-      destination = `project:${source.projectId}`;
-    else if (!thread && target?.type === "projects") destination = "projects";
-    else return changed();
-    // Membership, anchor validation, ordering and preference are one Library
-    // transaction. A failed/stale drop cannot leave a half-completed move.
-    const meta = (metadata[key] ??= {});
-    meta.pinned = destination === "pinned";
-    meta.sectionId = target.type === "section" ? target.id : null;
-    const members = available.filter((id) => group(id) === destination);
-    if (
-      !Array.isArray(order) ||
-      new Set(order).size !== order.length ||
-      order.some((id) => !members.includes(id))
-    )
-      return changed();
-    if (anchor !== null && (!members.includes(anchor) || anchor === key)) return changed();
-    const field = thread ? "sidebarThreadOrder" : "projectOrder";
-    const existing = state[field] ?? [];
-    const seed = [
-      ...new Set([...order, ...existing.filter((id) => members.includes(id)), ...members]),
-    ];
-    const next =
-      anchor === null ? [...seed.filter((id) => id !== key), key] : around(seed, key, anchor);
-    state[field] = [...existing.filter((id) => !members.includes(id)), ...next];
-    if (thread)
-      state.settings[
-        destination === "pinned"
-          ? "sidebarSortPinned"
-          : target.type === "section" || target.type === "chats"
-            ? "sidebarSortChats"
-            : "sidebarSortProjects"
-      ] = "manual";
-    else if (destination === "pinned") state.settings.sidebarSortPinned = "manual";
+      ) {
+        if (typeof request.value !== "string") throw new Error("Invalid desktop setting");
+        settingValue = validateDesktopString(request.key, request.value);
+      } else if (request.key === "computerControlExecutable") {
+        if (
+          typeof request.value !== "string" ||
+          request.value.length > 4096 ||
+          request.value.includes("\0") ||
+          (request.value && !require("node:path").isAbsolute(request.value))
+        )
+          throw new Error("LCU executable must be an absolute path");
+      }
+      Object.assign(state.settings, { [request.key]: settingValue });
+    });
   }
 }
 /** @param {LibraryState} state */
@@ -704,27 +283,6 @@ function sidebarLayout(state) {
       "showCompleted",
     ].map((key) => state.settings[key]),
   ]);
-}
-/** @param {string[]} current @param {string[]} available @param {string} id @param {string|null|undefined} before */
-function reorder(current, available, id, before) {
-  if (before != null && !available.includes(before)) throw new Error("排序位置已变化，请刷新");
-  const ids = [...new Set([...current, ...available])].filter(
-    (value) => value !== id && available.includes(value),
-  );
-  if (before === id) return [...new Set([...current, ...available])];
-  ids.splice(before == null ? ids.length : ids.indexOf(before), 0, id);
-  return ids;
-}
-/** @param {unknown} value */
-function requireTitle(value) {
-  if (typeof value !== "string" || !value.trim() || value.length > 200)
-    throw new Error("名称需要 1–200 个字符");
-  return value.trim();
-}
-/** @param {unknown} value */
-function requireId(value) {
-  if (typeof value !== "string") throw new Error("未知工作区或会话");
-  return value;
 }
 module.exports = { CoreLibrary, readLibraryStartupSettings };
 

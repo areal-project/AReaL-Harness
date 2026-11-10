@@ -43,7 +43,7 @@ pnpm --dir clients/gui verify:design
 
 `R-CHECK-014` 页面执行[结构化 B 路线](structured-flow.md#执行顺序与每步完成条件)，准入归 [governance](governance.md#差异筛选准入)。复用[提示词](templates/video-analysis.prompt.md)、[schema](templates/video-analysis.schema.json)、[核查模板](templates/evidence-review.template.json)；尚未接入 `verify:design` 视觉判断或强制模型调用，目录检查不核实帧、误判与执行。
 
-`Q-CONVERSATION-VIDEO-AB-07` 的三段录像、误判裁决与图片缩放修复见[复合题](exercises/conversation-flow.md#视频分析辅助的双路线实验)。样本仅支持工作流程选择。
+`Q-CONVERSATION-VIDEO-AB-07` 的三段录像、误判裁决与图片缩放修复见[复合题](../../../design/archive/gui/exercises/conversation-flow.md#视频分析辅助的双路线实验)。样本仅支持工作流程选择。
 
 ## 无障碍与主题证据
 
@@ -70,3 +70,5 @@ pnpm --dir clients/gui verify:design
 `R-CHECK-022` @areal/ui 组件自己拥有外观：页面只给布局类，不传 style，CSS 不选 data-slot；外观差异做成 variant 或 slot；存量只减不增。**检查：** `clients/gui/oxlint-plugin-areal/rules/no-restyle.ts` 与 `clients/gui/scripts/restyle-lint.mjs`
 
 `R-CHECK-023` 组件合同只写需要判断的强制规则，每个包内组件合同不超过 10 条；能机器判断的写成检查，默认做法靠组件默认值表达。**检查：** `clients/gui/scripts/design-rules.mjs`
+
+`R-CHECK-024` 样式只引用用途层变量，不引用圆角等原料刻度；组件库不给已生成的 Token 写回退值；模糊只在材质定义里；页面选择器不命中组件自己渲染的类名；规格包 YAML 不写裸数值和实现名词。存量只减不增，见 [设计规格包](../../../design/spec/README.md#检查)。**检查：** `clients/gui/scripts/layers-lint.mjs`

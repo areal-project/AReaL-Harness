@@ -36,7 +36,7 @@ const { protocolFor } = require("./generated/management-protocol.cjs");
  * agentSubmission:{confirmed:false}|({confirmed:true,accepted:true,method:'areal/agent/spawn',parentThreadId:string,threadId:string,turnId:string}&import('./shared.cjs').SubmissionOutcome),
  * mcpFormResourceSubmission:SubmissionRead<ProtocolResponseMap['mcpFormResourceStage']>,
  * pluginCredentialsReload:{reloaded:true},
- * pluginUserConfigSave:ProtocolResponseMap['pluginUserConfigSave'],
+ * pluginUserConfigSave:ProtocolResponseMap['pluginUserConfigSave']&{reloadDeferred?:boolean},
  * pluginStoreSnapshot:PluginStoreSnapshot,pluginStoreDoctor:PluginDoctorReport,
  * pluginArchivePick:{canceled:true}|{selectionToken:string,fileName:string}
  * }} LocalResponseMap */
@@ -258,7 +258,10 @@ function validateManagementResponse(request, value) {
       case "pluginCredentialsReload":
         return value.reloaded === true;
       case "pluginUserConfigSave":
-        return protocolResponse("pluginUserConfigSave", value);
+        return (
+          protocolResponse("pluginUserConfigSave", value) &&
+          (value.reloadDeferred === undefined || typeof value.reloadDeferred === "boolean")
+        );
       case "pluginStoreSnapshot":
         return (
           pluginStoreMetadata(value) &&

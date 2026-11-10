@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { observeResize } from "@areal/ui/observe-resize";
 import { cn } from "@/components/lib/utils.js";
 import { Button } from "@/components/ui/button.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
@@ -80,16 +81,15 @@ export function ConversationUserInputBody({
 
     scheduleOverflowUpdate();
 
-    let observer: ResizeObserver | null = null;
+    let stopObserving: (() => void) | null = null;
     if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(scheduleOverflowUpdate);
-      observer.observe(content);
+      stopObserving = observeResize(content, scheduleOverflowUpdate);
     } else {
       window.addEventListener("resize", scheduleOverflowUpdate);
     }
 
     return () => {
-      observer?.disconnect();
+      stopObserving?.();
       window.removeEventListener("resize", scheduleOverflowUpdate);
       if (animationFrameRef.current !== null && animationFrameRef.current >= 0) {
         window.cancelAnimationFrame(animationFrameRef.current);
@@ -107,7 +107,7 @@ export function ConversationUserInputBody({
         data-v4-user-input-collapsible-content="true"
         style={{ maxHeight: resolvedMaxHeight }}
         className={cn(
-          "min-w-0 overflow-hidden whitespace-pre-wrap break-words transition-[max-height] duration-300 ease-out motion-reduce:transition-none",
+          "min-w-0 overflow-hidden whitespace-pre-wrap break-words transition-[max-height] duration-(--motion-slow) ease-(--ease-standard) motion-reduce:transition-none",
           !expanded && expandable
             ? "[mask-image:linear-gradient(to_bottom,black_0%,black_70%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,black_0%,black_70%,transparent_100%)]"
             : "",

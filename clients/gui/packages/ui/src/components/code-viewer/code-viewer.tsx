@@ -8,7 +8,12 @@ import type {
 } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Trash2Icon } from "lucide-react";
-import { RegisteredCustomLanguages, type FileContents, type LineAnnotation, type SupportedLanguages } from "@pierre/diffs";
+import {
+  RegisteredCustomLanguages,
+  type FileContents,
+  type LineAnnotation,
+  type SupportedLanguages,
+} from "@pierre/diffs";
 import { bundledLanguages } from "shiki";
 import { File, type FileOptions } from "@pierre/diffs/react";
 import type { CodePreviewTheme } from "../../lib/code-preview-settings.js";
@@ -257,11 +262,13 @@ function createCodeViewerFile(params: {
   theme?: CodePreviewTheme;
 }): FileContents {
   // Markdown fences may name arbitrary languages; unknown names still render as text.
-  const lang = params.enableSyntaxHighlighting
-    && (params.language === "ansi" || Object.hasOwn(bundledLanguages, params.language)
-      || RegisteredCustomLanguages.has(params.language))
-    ? (params.language as SupportedLanguages)
-    : "text";
+  const lang =
+    params.enableSyntaxHighlighting &&
+    (params.language === "ansi" ||
+      Object.hasOwn(bundledLanguages, params.language) ||
+      RegisteredCustomLanguages.has(params.language))
+      ? (params.language as SupportedLanguages)
+      : "text";
   const name = params.language ? `preview.${params.language}` : "preview.txt";
   const themeCacheKey = params.theme ?? "auto";
 
@@ -701,7 +708,10 @@ export function CodeViewer({
       onGutterUtilityClick: canUseCommentGutterUtility ? handleGutterUtilitySelection : undefined,
       // 内建 comment + 默认贴在行号右侧，用户拖拽时容易和代码起点混在一起。
       // 这里只调整 Shadow DOM 内 gutter utility 的位置，不接管 pointer 事件，避免破坏多行拖拽 range。
-      unsafeCSS: CODE_VIEWER_UNSAFE_CSS + markedLinesCss + (transparentBackground ? ":host,pre,code{background-color:transparent!important;}" : ""),
+      unsafeCSS:
+        CODE_VIEWER_UNSAFE_CSS +
+        markedLinesCss +
+        (transparentBackground ? ":host,pre,code{background-color:transparent!important;}" : ""),
     }),
     [
       canUseCommentGutterUtility,
@@ -769,7 +779,7 @@ export function CodeViewer({
         options={options}
         lineAnnotations={lineAnnotations}
         selectedLines={selectedLines}
-        className="min-h-full w-full"
+        className="min-h-full w-full bg-background"
         style={viewerStyle}
         renderAnnotation={(annotation) =>
           annotation.metadata.kind === "draft" ? (

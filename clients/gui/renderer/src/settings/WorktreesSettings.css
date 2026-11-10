@@ -2,7 +2,7 @@
 
 .worktrees-refresh {
   position: absolute;
-  top: 12px;
+  top: calc(var(--spacing-inline) * 3 / 2);
   right: 0;
 }
 .worktrees-variables {
@@ -22,6 +22,6 @@
   font-family: var(--font-mono);
 }
 .worktrees-variables dd {
-  margin: 4px 0 0;
+  margin: calc(var(--spacing-inline) / 2) 0 0;
   color: var(--color-foreground-subtle);
 }

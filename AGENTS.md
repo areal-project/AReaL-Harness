@@ -4,26 +4,15 @@
 
 ## GUI 设计入口
 
-改 GUI 页面、组件、样式、动效或文案前，先读 [areal-ui-guide](clients/gui/packages/ui/skills/areal-ui-guide/SKILL.md) 和所用组件旁的合同；审查界面用 [areal-ui-critique](clients/gui/packages/ui/skills/areal-ui-critique/SKILL.md)。下面八条是写 GUI 时要做的判断；第 1、2 条的新增违规已由 CI 拦截，其余靠作者和审查者：
-
-1. 用 `@areal/ui` 组件，页面只给布局类；外观差异做成组件的 variant 或 slot。
-2. 颜色、间距、字号、圆角和时长只用 Token。
-3. 一个概念只有一套实现：输入框、审批卡、消息行、列表条目复用业务组件，不复制再改。
-4. 只通知用户需要知道或能处理的事，其余在原处说明。
-5. 面向普通用户，高级功能默认收起。
-6. 文案短，用词以[术语表](design/content/terminology.md)为准。
-7. 未确认的状态不显示成确定：读不到不等于没有，已提交不等于已完成。
-8. 先在网页验证；只有桌面端才有的能力在桌面验收。
-
-能机器判断的交给 CI：交付前运行 `pnpm --dir clients/gui verify:design`，界面改动再跑 `design:build` 与 `test:design`。新增规则先考虑写成检查（见[自动化规则](clients/gui/design-system/automation.md)），写不成检查才进组件合同，每个组件合同的强制规则不超过 10 条。
+新增或修改 GUI 页面、组件、布局、样式、动效或 UI 文案时，编辑前先读 [设计系统开工顺序](clients/gui/design-system/README.md#开工顺序)，选择交互分类、既有组件和验收状态；交付按 [完成条件](clients/gui/design-system/governance.md#完成条件)说明例外与实际证据。静态审计使用 [增量检查](clients/gui/design-system/automation.md#增量设计检查)；只有目录检查通过不能代替真实交互和视觉审查。
 
 ## 开发规范
 
-- 开发前阅读相关实现与 [架构文档](docs/design/architecture.md)，遵循 Runtime、Core、Host（`services/workbench` 与共享宿主）、Clients 的分层和依赖方向。
+- 开发前阅读相关实现与 [架构文档](docs/design/architecture.md)，遵循 Runtime、Core、Clients 的分层和依赖方向。
 - 变更聚焦当前任务，避免无关重构、占位实现和没有实际用途的抽象。
 - 修改 API、SDK、协议或配置时，同步维护类型、调用方、示例及对应文档；明确兼容性变化。
-- 根据变更运行必要的格式、静态检查和行为测试，测试与冒烟使用独立临时数据目录，不读写用户真实状态目录。仅修改文档时，检查链接、示例与格式，无需新增运行时测试。
-- 代码审查统一遵循[审查说明](REVIEW.md)；提交或 PR 中说明变更目的、文档更新位置和验证结果，未执行的检查如实说明。
+- 根据变更运行必要的格式、静态检查和行为测试。仅修改文档时，检查链接、示例与格式，无需新增运行时测试。
+- 提交或 PR 中说明变更目的、文档更新位置和验证结果；未执行的检查如实说明。
 - 格式、静态检查、测试分层和依赖安装统一遵循[开发指南](docs/development/README.md)。新注释使用中文，优先解释约束与原因；已有准确英文注释无需机械翻译。
 
 ## Agent 改进目标与通用性约束
@@ -39,11 +28,10 @@
 ## 文档规范
 
 - **README.md 保持简洁**，只承担项目简介、必要的使用状态说明和文档导航（docs map）。保留简洁的 HTML + Markdown 展示，不堆放完整架构、API 定义、开发过程或重复内容。
-- **区分两套受控设计文档目录**：顶层 `design/`（及 `clients/gui/design-system/`）维护产品与交互/视觉设计系统（Token 角色、术语、协作模式、组件合同），采用单语分类清单与体积预算管理，运行 `pnpm --dir clients/gui verify:design` 检查；`docs/design/` 维护跨进程工程架构、后端状态机与系统级设计，`docs/adr/` 记录工程架构决策（ADR）。
-- README、CONTRIBUTING、SECURITY 和 `docs/` 下的 Markdown 使用同目录 `.md`（中文）与 `.en.md`（英文）配对，第一行提供双向语言切换；内容和链接同步更新，运行 `python3 scripts/check-docs.py` 检查。
+- README、CONTRIBUTING、SECURITY 和 docs 下的 Markdown 使用同目录 `.md`（中文）与 `.en.md`（英文）配对，第一行提供双向语言切换；内容和链接同步更新，运行 `python3 scripts/check-docs.py` 检查。
 - **每次开发都检查变更对文档的影响，并在同一 PR 中更新对应文档**。文档更新是开发完成条件，不留到后续补写。
 - 分层、模块职责和目录变化更新 `docs/design/architecture.md`；该文档只保留架构与分层设计、仓库目录设计，接口细节通过链接引用。
-- API、SDK 和协议契约放在 `docs/api/` 下，按边界维护 `runtime.md`、`core.md`、`host.md`、`desktop.md`、`local-service.md`、`typescript-sdk.md` 等契约文档。接口变更同步更新对应契约与示例，不在架构文档中重复定义。
+- API、SDK 和协议契约放在 `docs/api/` 下，分别维护 `runtime.md`、`typescript-sdk.md` 和 `core.md`。接口变更同步更新对应契约与示例，不在架构文档中重复定义。
 - 使用、配置和部署放入 `docs/guides/`，开发维护放入 `docs/development/`，示例放入 `docs/examples/`，评测运行与统计方法放入 `docs/benchmarks/`。优先更新已有文档；新增专题后维护 `docs/README.md` 和英文索引，避免重复描述。
 - 纯内部重构等确实不影响现有文档的变更，在 PR 中说明原因，不为满足形式要求修改无关文档。
 - 文档直接描述设计或实际行为，不写日期、对话记录、临时 review 状态和提交操作流水。区分设计接口与已实现能力，不将未验证能力写成已支持。

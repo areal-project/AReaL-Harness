@@ -191,3 +191,27 @@ test("synchronization failure reports a warning after preserving the saved confi
   );
   assert.equal(f.backend.resourcesUpdating, false);
 });
+
+test("Host-prepared creation retains its resource revision and refuses implicit restart on changes", async () => {
+  const project = {
+    client: {
+      request: async () => {
+        throw new Error("original idle check reached");
+      },
+    },
+    pending: [],
+    resourceFingerprint: "resources-original",
+  };
+  const resources = Object.create(ScopedResources.prototype);
+  resources.backend = {
+    providers: { manages: () => true },
+    starting: new Map(),
+    activeCommands: 0,
+  };
+  resources.deployment = async () => ({ fingerprint: "resources-original" });
+  assert.equal(await resources.beforeCreate(project, { allowRestart: false }), project);
+  resources.deployment = async () => ({ fingerprint: "resources-changed" });
+  await assert.rejects(resources.beforeCreate(project, { allowRestart: false }), /原请求已保留/);
+  assert.equal(project.resourceFingerprint, "resources-original");
+  await assert.rejects(resources.beforeCreate(project), /original idle check reached/);
+});

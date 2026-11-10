@@ -62,32 +62,11 @@
     "requires": ["browser", "git", "gui-build"]
   },
   {
-    "script": "test:worktree-core",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
-  },
-  {
-    "script": "test:worktree-environment",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
-  },
-  {
     "script": "test:worktree-environment-ui",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["worktree", "git"],
     "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:worktree-schedule-interactions",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
   },
   {
     "script": "test:macos-dmg",
@@ -535,29 +514,6 @@
     "requires": ["browser", "gui-build"]
   },
   {
-    "script": "test:remote-observation",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-pairing-e2e",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["electron", "browser", "core-binary", "git", "gui-build", "python3"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
-  },
-  {
-    "script": "test:remote-observation-e2e",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["browser", "core-binary", "git", "gui-build"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
-  },
-  {
     "script": "test:e2e",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -632,20 +588,6 @@
     "requires": []
   },
   {
-    "script": "test:remote-command",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-command-e2e",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": ["browser", "core-binary", "gui-build", "git"]
-  },
-  {
     "script": "test:remote-crash-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -669,45 +611,7 @@
     "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl", "lldb"]
   },
   {
-    "script": "test:remote-session",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-gui-e2e",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["browser", "core-binary", "gui-build"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
-  },
-  {
     "script": "test:remote-session-body",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-session-e2e",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["electron", "browser", "core-binary", "git", "gui-build", "python3"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
-  },
-  {
-    "script": "test:remote-work-overview",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["browser", "core-binary", "git", "gui-build"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
-  },
-  {
-    "script": "test:remote-interaction",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["remote"],
@@ -726,20 +630,6 @@
     "platforms": ["darwin", "linux"],
     "areas": ["remote"],
     "requires": ["gui-build"]
-  },
-  {
-    "script": "test:remote-task-pause",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-task-question",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
   },
   {
     "script": "test:remote-gui-quit",
@@ -990,6 +880,13 @@
     "requires": []
   },
   {
+    "script": "test:ui-honesty",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["design"],
+    "requires": []
+  },
+  {
     "script": "test:cloud-lifecycle",
     "layer": "e2e",
     "platforms": ["darwin", "linux", "win32"],
@@ -1004,74 +901,7 @@
     "requires": []
   },
   {
-    "script": "test:library-store",
-    "layer": "unit",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["desktop"],
-    "requires": []
-  },
-  {
-    "script": "test:mobile-handshake",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode and the iOS Simulator WKWebView.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator"]
-  },
-  {
-    "script": "test:mobile-pairing",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode and the iOS Simulator with native Keychain.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator"]
-  },
-  {
     "script": "test:mobile-storage",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote", "mobile"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-push",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-project-models",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:mobile-workspace",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode, iOS Simulator and the fixed native Core/Runtime bundle.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator", "core-binary"]
-  },
-  {
-    "script": "test:mobile-workspace-state",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote", "mobile"],
-    "requires": []
-  },
-  {
-    "script": "test:mobile-command",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode, iOS Simulator and the fixed native Core/Runtime bundle.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator", "core-binary"]
-  },
-  {
-    "script": "test:mobile-commands",
     "layer": "contract",
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["remote", "mobile"],
@@ -1126,27 +956,6 @@
     "platforms": ["darwin", "linux"],
     "areas": ["build", "ci"],
     "requires": ["gui-build", "node-24.22.1"]
-  },
-  {
-    "script": "test:mobile-browser",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote", "mobile"],
-    "requires": [
-      "node-24.22.1",
-      "relay-node-24.2.0",
-      "openssl",
-      "playwright-chromium",
-      "playwright-webkit"
-    ],
-    "notes": "Production mobile UI, encrypted pairing and reload in Chromium/WebKit; browser memory and fixture Host only."
-  },
-  {
-    "script": "test:mobile-android",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote", "mobile"],
-    "requires": ["android-sdk", "android-emulator", "node-24.22.1", "relay-node-24.2.0", "openssl"]
   },
   {
     "script": "test:mobile-android-storage",

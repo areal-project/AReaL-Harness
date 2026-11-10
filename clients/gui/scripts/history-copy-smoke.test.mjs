@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+  mkdir,
+  rename,
+  cp,
+  lstat,
+  realpath,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -80,10 +93,23 @@ test("history preflight rejects active, unknown, or unconfirmed process cleanup"
 
 async function finish(
   t,
-  { blocked = false, businessFailure, inventoryFailure, metadata = "valid", metadataError } = {},
+  {
+    blocked = false,
+    businessFailure,
+    inventoryFailure,
+    hostStop = "completed",
+    hostStopError,
+  } = {},
 ) {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const child = spawn(
+    process.execPath,
+    ["-e", "process.on('message', () => process.exit(0)); process.send('ready')"],
+    {
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    },
+  );
   await once(child, "spawn");
+  await once(child, "message");
   t.after(async () => {
     if (child.exitCode === null && child.signalCode === null) {
       const exited = once(child, "exit");
@@ -100,24 +126,33 @@ async function finish(
   let inventoryCalls = 0;
   const deadlines = [];
   const context = {
+    assert,
     app: {
       process: () => child,
       evaluate: async () => {},
       close: async () => {
         if (blocked) return new Promise(() => {});
         const exited = once(child, "exit");
-        child.kill("SIGTERM");
+        child.send("quit");
         await exited;
       },
     },
-    readFile: async (path, ...args) => {
-      if (path.endsWith("service.json")) {
-        if (metadataError) throw metadataError;
-        if (metadata === "missing") throw Object.assign(Error("absent"), { code: "ENOENT" });
-        return JSON.stringify(metadata === "valid" ? { pid: child.pid } : metadata);
-      }
-      return readFile(path, ...args);
+    readFile,
+    randomUUID,
+    historyOwner: {
+      client: {
+        generation: "original-generation",
+        stop: async (_requestId, generation, strategy) => {
+          assert.equal(generation, "original-generation");
+          assert.equal(strategy, "ifIdle");
+          if (hostStopError) throw Error(hostStopError);
+          return { state: hostStop };
+        },
+      },
+      close() {},
     },
+    hostPid: undefined,
+    cleanupSyntheticHostKeychain: async () => [],
     join,
     scratch: "/isolated-history-test",
     env: process.env,
@@ -178,7 +213,7 @@ test("history inventory failure is independently recorded after a successful chi
   const { report, child, inventoryCalls } = await finish(t, {
     inventoryFailure: "Core is still alive",
   });
-  assert.equal(child.signalCode, "SIGTERM");
+  assert.equal(child.exitCode, 0);
   assert.equal(inventoryCalls, 1);
   assert.equal(report.passed, false);
   assert.equal(report.cleanup.applicationStopped, false);
@@ -209,44 +244,98 @@ test("history close and inventory errors both fail an otherwise successful run",
   assert.match(report.cleanup.errors[1], /Core is still alive/);
 });
 
-for (const metadata of ["missing", {}, { pid: "unverifiable" }, { pid: 1 }]) {
-  test(`history does not confirm shutdown without valid Desktop metadata: ${JSON.stringify(metadata)}`, async (t) => {
-    const { report, child, inventoryCalls, exitCode } = await finish(t, { metadata });
-    assert.equal(child.signalCode, "SIGTERM");
-    assert.equal(inventoryCalls, 1);
-    assert.equal(report.passed, false);
-    assert.equal(exitCode, 1);
-    assert.equal(report.cleanup.applicationStopped, false);
-    assert.match(report.cleanup.errors[0], /service metadata.*Desktop.*PID/i);
-    assert.doesNotMatch(report.cleanupNote, /confirmed.*stopped/i);
-  });
-}
-
-test("history metadata read failure still closes its child and checks inventory", async (t) => {
+test("history retains pending Host stop and original business failure", async (t) => {
   const { report, child, inventoryCalls } = await finish(t, {
-    metadataError: Object.assign(Error("permission denied"), { code: "EACCES" }),
+    hostStop: "acceptedPending",
+    businessFailure: { message: "history load failed" },
   });
-  assert.equal(child.signalCode, "SIGTERM");
+  assert.equal(child.exitCode, 0);
   assert.equal(inventoryCalls, 1);
   assert.equal(report.passed, false);
-  assert.equal(report.cleanup.applicationStopped, false);
-  assert.match(report.cleanup.errors[0], /service metadata: permission denied/);
+  assert.equal(report.failure.message, "history load failed");
+  assert.equal(report.cleanup.hostStop.state, "acceptedPending");
+  assert.match(report.cleanup.errors[0], /Host stop: isolated Host stop is not settled/);
 });
 
-test("history retains business failure and every independent cleanup failure", async (t) => {
-  const { report, child, inventoryCalls } = await finish(t, {
-    metadataError: Object.assign(Error("permission denied"), { code: "EACCES" }),
+test("history keeps Electron, Host and inventory failures independently", async (t) => {
+  const { report, child } = await finish(t, {
     blocked: true,
-    businessFailure: { message: "stored agent parent is missing" },
+    hostStopError: "original Host disconnected",
     inventoryFailure: "Core is still alive",
   });
   assert.equal(child.signalCode, "SIGKILL");
-  assert.equal(inventoryCalls, 1);
   assert.equal(report.passed, false);
-  assert.equal(report.failure.message, "stored agent parent is missing");
-  assert.equal(report.cleanup.applicationStopped, false);
   assert.equal(report.cleanup.errors.length, 3);
-  assert.match(report.cleanup.errors[0], /service metadata: permission denied/);
-  assert.match(report.cleanup.errors[1], /Electron cleanup timed out/);
+  assert.match(report.cleanup.errors[0], /Electron cleanup timed out/);
+  assert.match(report.cleanup.errors[1], /Host stop: original Host disconnected/);
   assert.match(report.cleanup.errors[2], /Core is still alive/);
 });
+
+const prepareHistorySource = new Function(
+  "assert",
+  "rename",
+  "mkdir",
+  "writeFile",
+  "join",
+  "randomUUID",
+  "lstat",
+  "cp",
+  source.slice(
+    source.indexOf("async function prepareHistorySource("),
+    source.indexOf("async function call("),
+  ) + "return prepareHistorySource;",
+)(assert, rename, mkdir, writeFile, join, randomUUID, lstat, cp);
+
+// 原迁移拒绝非空且无清理凭据的 Store；新夹具必须用全新 Host 登记来承载副本。
+test(
+  "history copy publishes a fresh Host source before installing idle bytes",
+  {
+    skip: !process.env.AREAL_CORE_BIN && "requires built AREAL_CORE_BIN",
+  },
+  async (t) => {
+    const require = createRequire(new URL("../app/package.json", import.meta.url));
+    const {
+      GuiHostProjects,
+    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+    const root = await realpath(await mkdtemp(join(tmpdir(), "areal-history-source-test-")));
+    const coreHome = join(root, "core");
+    const project = { id: "a".repeat(24), root: join(root, "workspace") };
+    await mkdir(project.root);
+    await mkdir(join(coreHome, project.id, "state"), { recursive: true });
+    const history = Buffer.from('{"fixture":"immutable idle history"}');
+    const path = join(project.id, "state", randomUUID() + ".json");
+    await writeFile(join(coreHome, path), history);
+    await writeFile(join(coreHome, "projects.json"), JSON.stringify([project]));
+    const owner = new GuiHostProjects({
+      binary: process.env.AREAL_CORE_BIN,
+      home: join(root, "host"),
+      source: { profile: join(root, "profile"), coreHome, legacyServiceHome: join(root, "host") },
+      singletonHeld: true,
+    });
+    t.after(async () => {
+      try {
+        if (owner.client.generation) {
+          const receipt = await owner.client.stop(randomUUID(), owner.client.generation, "ifIdle");
+          assert.equal(receipt.state, "completed");
+        }
+      } finally {
+        owner.close();
+      }
+    });
+    await prepareHistorySource(owner, [project]);
+    assert.ok(owner.sourceId);
+    assert.deepEqual(await readFile(join(coreHome, path)), history);
+    assert.deepEqual(await readFile(join(coreHome + "-history-staging", path)), history);
+    const binding = owner.resolve(project.id);
+    assert.equal(binding.workspace, project.root);
+    await assert.rejects(lstat(join(binding.dataDir, "service.lock")), { code: "ENOENT" });
+    const observer = new GuiHostProjects({ ...owner.options, singletonHeld: false });
+    try {
+      await observer.init();
+      assert.equal(observer.sourceId, owner.sourceId);
+      assert.equal(observer.resolve(project.id).projectId, binding.projectId);
+    } finally {
+      observer.close();
+    }
+  },
+);

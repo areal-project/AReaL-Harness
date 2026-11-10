@@ -61,6 +61,14 @@ const rows = query.has("empty")
 
 const action = async (name: string, params: Data) => {
   fixture.calls.push({ name, params });
+  if (name === "manage" && params.operation === "taskWatch") {
+    const task = rows.find((row) => row.id === params.taskId);
+    if (!task) throw Error("Fixture task unavailable");
+    // 与生产观察一致：先发布被观察任务，再确认 watch，不能只返回目录行。
+    project.state.tasks = { ...project.state.tasks, [task.id]: task };
+    return task;
+  }
+  if (name === "manage" && params.operation === "taskUnwatch") return { removed: true };
   if (name === "projectless" && params.operation === "catalog")
     return { models: [], lastAcceptedModel: null };
   if (name === "projectless" && params.operation === "scratch")

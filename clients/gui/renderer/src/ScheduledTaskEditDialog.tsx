@@ -351,7 +351,6 @@ export function ScheduledTaskDialog({
             </label>
           </div>
         )}
-        <p className="text-ui-sm text-foreground-subtle">{t("operations.schedules.requiresApp")}</p>
         {error && <p role="alert">{error}</p>}
         <DialogFooter>
           <Button variant="ghost" disabled={saving} onClick={onClose}>

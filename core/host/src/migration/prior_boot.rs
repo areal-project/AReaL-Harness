@@ -327,6 +327,131 @@ pub(super) fn observe(
         store_tree,
     })
 }
+// 新 Host 接管独立于 GUI 导入和旧 cleanup 回执；调用方须持有 start.lock。
+pub(crate) fn host_activation(
+    home: &Path,
+    registration: &ProjectRegistration,
+    expected: &Service,
+    owner: &Owner,
+    publish: impl FnOnce(Value) -> Result<()>,
+) -> Result<()> {
+    ensure!(
+        matches!((&expected.owner, owner),
+            (Some(Owner::Host { host_id: old_id, generation: old_generation }),
+             Owner::Host { host_id, generation })
+            if old_id == host_id && old_generation != generation
+                && uuid::Uuid::parse_str(old_generation).is_ok()),
+        "prior-boot adoption requires the same Host and a different original generation"
+    );
+    ensure!(
+        expected.identity.protocol_version == 1
+            && expected.identity.data_dir == registration.data_dir
+            && expected.identity.workspace == registration.workspace
+            && expected.identity.service_id
+                == storage::digest(registration.data_dir.as_os_str().as_encoded_bytes())[..24]
+            && registration.data_dir.canonicalize()? == registration.data_dir
+            && registration.workspace.canonicalize()? == registration.workspace,
+        "prior-boot project identity changed"
+    );
+    let directory = storage::registry(home, &expected.identity.service_id)?;
+    let descriptor = directory.join("service.json");
+    ensure!(
+        directory.canonicalize()? == directory && descriptor.canonicalize()? == descriptor,
+        "prior-boot descriptor path changed"
+    );
+    let mut locks = Vec::new();
+    for name in ["service.lock", "owner.lock"] {
+        let path = registration.data_dir.join(name);
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&path)?;
+        let metadata = file.metadata()?;
+        ensure!(
+            metadata.is_file()
+                && metadata.uid() == unsafe { libc::geteuid() }
+                && metadata.mode() & 0o022 == 0,
+            "untrusted prior-boot lock"
+        );
+        file.try_lock_exclusive()
+            .context("original service or Core still owns its lock")?;
+        locks.push((path, file));
+    }
+    let observe = || -> Result<Value> {
+        let boot = Boot::current()?;
+        ensure!(
+            boot.boot_time.valid()
+                && boot.observed_at.valid()
+                && boot.boot_time.before(&boot.observed_at),
+            "untrusted boot observation"
+        );
+        let mut file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&descriptor)?;
+        let metadata = file.metadata()?;
+        ensure!(
+            metadata.is_file()
+                && metadata.uid() == unsafe { libc::geteuid() }
+                && metadata.mode() & 0o077 == 0
+                && metadata.len() <= 256 * 1024,
+            "untrusted prior-boot descriptor"
+        );
+        let original = stamp(&metadata);
+        ensure!(
+            precedes_boot(&original, &boot),
+            "service descriptor changed during this kernel boot"
+        );
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        let service: Service = serde_json::from_slice(&bytes)?;
+        ensure!(
+            serde_json::to_value(&service)? == serde_json::to_value(expected)?,
+            "original service descriptor changed"
+        );
+        for entry in std::fs::read_dir(home.join("services"))? {
+            let path = entry?.path().join("service.json");
+            if path == descriptor || !path.exists() {
+                continue;
+            }
+            let other: Service = storage::read(&path)?;
+            ensure!(
+                other.identity.data_dir != registration.data_dir,
+                "another service maps this Store"
+            );
+        }
+        let store_tree = tree(&registration.data_dir, &boot)?;
+        for (path, file) in &locks {
+            ensure!(
+                stamp(&file.metadata()?) == stamp(&std::fs::symlink_metadata(path)?),
+                "prior-boot lock was replaced"
+            );
+        }
+        ensure!(
+            stamp(&file.metadata()?) == original
+                && stamp(&std::fs::symlink_metadata(&descriptor)?) == original,
+            "prior-boot descriptor changed during observation"
+        );
+        Ok(
+            json!({"version":1,"reason":"currentProcessLifetimeEnded","projectId":registration.project_id,
+            "descriptor":descriptor,"descriptorSha256":storage::digest(&bytes),"file":original,
+            "bootSessionId":boot.session_id,"bootTime":boot.boot_time,
+            "service":service,"storeTree":store_tree,"newOwner":owner}),
+        )
+    };
+    let proof = observe()?;
+    ensure!(
+        observe()? == proof,
+        "prior-boot evidence changed before publication"
+    );
+    publish(proof.clone())?;
+    ensure!(
+        observe()? == proof,
+        "prior-boot evidence changed before activation"
+    );
+    Ok(())
+}
+
 pub(super) fn revalidate(home: &Path, record: &Record, adoption: &Adoption) -> Result<()> {
     let binding = record
         .bindings
@@ -359,7 +484,7 @@ pub(super) fn revalidate(home: &Path, record: &Record, adoption: &Adoption) -> R
 #[cfg(test)]
 thread_local! { static TEST_BOOT:RefCell<Option<Boot>> = const { RefCell::new(None) }; }
 #[cfg(test)]
-pub(super) fn with_test_boot<T>(offset_seconds: i64, run: impl FnOnce() -> T) -> T {
+pub(crate) fn with_test_boot<T>(offset_seconds: i64, run: impl FnOnce() -> T) -> T {
     struct Reset(Option<Boot>);
     impl Drop for Reset {
         fn drop(&mut self) {
@@ -387,4 +512,107 @@ pub(super) fn with_test_boot<T>(offset_seconds: i64, run: impl FnOnce() -> T) ->
 #[cfg(test)]
 pub(super) fn test_tree_digest(data: &Path) -> Result<String> {
     Ok(tree(data, &Boot::current()?)?.sha256)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod host_tests {
+    use super::*;
+
+    fn fixture(root: &Path) -> (ProjectRegistration, Service, Owner) {
+        let home = root.join("home");
+        let workspace = root.join("workspace");
+        let data = home.join("data");
+        for path in [&home, &workspace, &data] {
+            storage::private_dir(path).unwrap();
+        }
+        for name in ["service.lock", "owner.lock"] {
+            storage::open_private(&data.join(name), true).unwrap();
+        }
+        let registration = ProjectRegistration {
+            project_id: "project".into(),
+            workspace,
+            data_dir: data,
+            source: ProjectSource::Cli,
+            default_binding: false,
+        };
+        let service_id =
+            storage::digest(registration.data_dir.as_os_str().as_encoded_bytes())[..24].to_owned();
+        let directory = storage::registry(&home, &service_id).unwrap();
+        storage::private_dir(&directory).unwrap();
+        let host_id = uuid::Uuid::new_v4().to_string();
+        let owner = Owner::Host {
+            host_id: host_id.clone(),
+            generation: uuid::Uuid::new_v4().to_string(),
+        };
+        let service: Service =
+            serde_json::from_value(json!({"protocolVersion":1,"serviceId":service_id,
+            "generation":uuid::Uuid::new_v4().to_string(),"workspace":registration.workspace,
+            "dataDir":registration.data_dir,"configFingerprint":"old",
+            "owner":{"kind":"host","hostId":host_id,"generation":uuid::Uuid::new_v4().to_string()},
+            "endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1",
+            "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+            "hostPid":500000000,"corePid":500000001,"state":"ready"}))
+            .unwrap();
+        storage::write(&directory.join("service.json"), &service).unwrap();
+        (registration, service, owner)
+    }
+
+    #[test]
+    fn prior_boot_host_proof_rejects_locked_changed_or_foreign_resources() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let (registration, service, owner) = fixture(&root);
+        let home = root.join("home");
+        with_test_boot(-10, || {
+            assert!(
+                host_activation(&home, &registration, &service, &owner, |_| panic!(
+                    "published current-boot state"
+                ))
+                .is_err()
+            )
+        });
+        with_test_boot(10, || {
+            for name in ["service.lock", "owner.lock"] {
+                let lock = storage::open_private(&registration.data_dir.join(name), false).unwrap();
+                lock.try_lock_exclusive().unwrap();
+                assert!(
+                    host_activation(&home, &registration, &service, &owner, |_| panic!(
+                        "published held lock"
+                    ))
+                    .is_err()
+                );
+            }
+            let foreign = Owner::Host {
+                host_id: uuid::Uuid::new_v4().to_string(),
+                generation: uuid::Uuid::new_v4().to_string(),
+            };
+            assert!(
+                host_activation(&home, &registration, &service, &foreign, |_| panic!(
+                    "published foreign owner"
+                ))
+                .is_err()
+            );
+            let result = host_activation(&home, &registration, &service, &owner, |proof| {
+                assert_eq!(proof["newOwner"], serde_json::to_value(&owner).unwrap());
+                assert!(proof.get("cleanupConfirmed").is_none());
+                for name in ["service.lock", "owner.lock"] {
+                    assert!(!storage::available(&registration.data_dir.join(name))?);
+                }
+                std::fs::write(registration.data_dir.join("changed"), "new")?;
+                Ok(())
+            });
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("changed before activation")
+            );
+        });
+        let directory = storage::registry(&home, &service.identity.service_id).unwrap();
+        assert_eq!(
+            storage::read::<Value>(&directory.join("service.json")).unwrap(),
+            serde_json::to_value(&service).unwrap()
+        );
+        assert!(!directory.join("cleanup.json").exists());
+    }
 }

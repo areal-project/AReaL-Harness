@@ -11,7 +11,9 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 // 与产品共用 macOS 原生启动桥，独立 CLI 仍读取自己的真实配置和服务状态。
-const { executeCore: execute } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { executeCore: execute } = createRequire(import.meta.url)(
+  "./support/core-process-fixture.cjs",
+);
 const scratch = await makeTempDir("areal-connection-");
 const workspace = join(scratch, "workspace");
 const home = join(scratch, "desktop");

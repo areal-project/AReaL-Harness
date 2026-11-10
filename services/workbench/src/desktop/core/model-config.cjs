@@ -1,6 +1,5 @@
 // @ts-check
 "use strict";
-const { executeCore } = require("./core-process.cjs");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
 const { randomUUID } = require("node:crypto");
@@ -35,8 +34,8 @@ class ModelConfiguration {
   constructor(backend, hostVault) {
     this.backend = backend;
     this.hostVault = hostVault;
-    /** @type {{keys:Record<string,string>,migrated:string[]}} */
-    this.vault = { keys: {}, migrated: [] };
+    /** @type {{keys:Record<string,string>,migrated:string[],locked:Set<string>,pending:Set<string>}} */
+    this.vault = { keys: {}, migrated: [], locked: new Set(), pending: new Set() };
     /** @type {Set<string>} */ this.references = new Set();
     /** @type {{data:Array<{id:string,name:string,baseUrl:string,protocol:string,enabled:boolean,models:import('./provider-contract.cjs').ModelConfig[],parameters:import('./provider-contract.cjs').ModelParameters,apiKeyEnv?:string}>,retired?:string[]}|undefined} */
     this.legacy = undefined;
@@ -74,6 +73,8 @@ class ModelConfiguration {
     }
     const names = references ?? source.state.credentials.references;
     if (!strings(names)) throw new Error("Host 凭据来源元数据无效");
+    const locked = new Set();
+    const pending = new Set();
     const keys = Object.fromEntries(
       await Promise.all(
         names.map(async (reference) => {
@@ -85,7 +86,9 @@ class ModelConfiguration {
             );
           } catch (error) {
             const code = record(error) ? error.code : undefined;
-            if (code !== "storageLocked" && code !== "storageMissing") throw error;
+            if (code !== "storageLocked" && code !== "storageMissing" && code !== "migrationPending") throw error;
+            if (code === "storageLocked") locked.add(reference);
+            if (code === "migrationPending") pending.add(reference);
             diagnostics.record({
               type: "operation",
               name: "model-configuration",
@@ -100,6 +103,8 @@ class ModelConfiguration {
         }),
       ),
     );
+    this.vault.locked = locked;
+    this.vault.pending = pending;
     this.references = new Set(names);
     this.vault.keys = Object.fromEntries(
       Object.entries(keys).filter(([, value]) => value !== null),
@@ -109,26 +114,13 @@ class ModelConfiguration {
   /** @param {'read'|'write'} operation @param {import('./provider-contract.cjs').ModelUpdate} [request] */
   async execute(operation, request) {
     await this.refreshCredentials();
-    const args = ["config", "models", operation];
-    if (this.backend.config) args.push("--config", this.backend.config);
-    for (const reference of Object.keys(this.vault.keys))
-      args.push("--stored-credential-env", reference);
-    let stdout;
+    let value;
     try {
-      // 与项目启动使用相同的凭据环境，由 Core 判断就绪状态，输出不含密钥。
-      ({ stdout } = await executeCore(this.backend.binary, args, {
-        env: {
-          ...Object.fromEntries(
-            Object.entries(this.backend.hooks.environment()).filter(
-              ([name]) => !this.references.has(name),
-            ),
-          ),
-          ...this.environment(),
-        },
-        timeout: 15000,
-        maxBuffer: 2 * 1024 * 1024,
-        input: request ? JSON.stringify(request) : undefined,
-      }));
+      if (!this.backend.hostCall) throw new Error("Host 模型配置能力不可用");
+      value = await this.backend.hostCall("workbench.utility", {
+        operation: operation === "read" ? "modelsRead" : "modelsWrite",
+        ...(request ? { document: JSON.stringify(request) } : {}),
+      });
     } catch (error) {
       const failure = record(error) ? error : {};
       const timedOut = failure.timedOut === true;
@@ -151,7 +143,7 @@ class ModelConfiguration {
       throw new Error(`${detail}配置若已变化，请刷新核对后再操作。`);
     }
     try {
-      return modelSnapshot(JSON.parse(stdout));
+      return modelSnapshot(value);
     } catch {
       throw new Error("Core 返回了无效的模型配置");
     }
@@ -258,6 +250,11 @@ class ModelConfiguration {
     if (!value) throw new Error("模型配置尚未读取");
     return {
       ...value,
+      credentialErrors: Object.fromEntries(
+        value.data
+          .filter((item) => item.apiKeyEnv && (this.vault.locked.has(item.apiKeyEnv) || this.vault.pending.has(item.apiKeyEnv)))
+          .map((item) => [item.id, this.vault.pending.has(item.apiKeyEnv ?? "") ? "migrationPending" : "storageLocked"]),
+      ),
       data: value.data.map((item) => ({
         ...item,
         protocol: item.protocol === "chat-completions" ? "chatCompletions" : item.protocol,

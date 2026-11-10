@@ -3,9 +3,10 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border: var(--border-width-default) solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-menu-border);
   border-radius: var(--radius-panel);
   background: var(--color-menu);
+  backdrop-filter: var(--material-overlay-filter);
 }
 .areal-task-context[hidden] {
   display: none;
@@ -39,7 +40,7 @@
 }
 .areal-context-section {
   padding-block: var(--spacing-inline);
-  border-bottom: var(--border-width-default) solid var(--color-border);
+  border-bottom: var(--border-width-default) solid var(--color-border-subtle);
 }
 .areal-context-section:first-child {
   padding-top: 0;
@@ -63,6 +64,7 @@
   padding: calc(var(--spacing-inline) / 2) var(--spacing-inline);
   margin-inline: calc(-1 * var(--spacing-inline));
   width: calc(100% + 2 * var(--spacing-inline));
+  border-radius: var(--radius-inset);
   font-size: var(--text-ui-base);
   text-align: left;
   font-weight: normal;
@@ -166,4 +168,10 @@
 .areal-sources-toggle-label {
   margin-left: auto;
   font-size: var(--text-ui-sm);
+}
+
+/* 浮层已画出外框时，卡片不再重复边框与圆角。 */
+.areal-task-context[data-embedded] {
+  border: 0;
+  border-radius: inherit;
 }

@@ -1,0 +1,12 @@
+/* 材质定义（D-005）：模糊只属于窗口栏与浮层；平面与抬起表面不模糊。
+   页面和组件只写 backdrop-filter: var(--material-…)，不直接写 blur()。 */
+:root {
+  --material-chrome-filter: blur(var(--blur-header));
+  --material-overlay-filter: blur(var(--blur-popover));
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --material-chrome-filter: none;
+    --material-overlay-filter: none;
+  }
+}

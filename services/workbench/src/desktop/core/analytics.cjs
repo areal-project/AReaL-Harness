@@ -3,7 +3,6 @@
 const catalogContract = require("@areal/workbench/desktop-contract/catalog");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
-const WebSocket = require("ws");
 const { modelRecord, isCoreItem } = require("@areal/workbench/core-model-contract");
 const { readObservationResult } = require("./history-contract.cjs");
 /** @typedef {{inputTokens:number,outputTokens:number,cachedInputTokens:number}} Usage */
@@ -179,24 +178,13 @@ class UsageAnalytics {
     // 主连接关闭必须覆盖模块加载与握手等待，只释放本次统计读取连接。
     const removeClose = primary?.onClose(() => {
       primaryClosed = true;
-      reader?.close();
+
     });
     const task = (async () => {
       try {
         requireCurrent();
-        const { CoreClient, MAX_RESPONSE_BYTES } = await import("@areal/runtime-client/core");
-        requireCurrent();
-        if (!endpoint) throw new Error("历史同步中断");
-        reader = new CoreClient({
-          createSocket: () =>
-            new WebSocket(endpoint, {
-              headers: { Authorization: `Bearer ${token}` },
-              followRedirects: false,
-              maxPayload: MAX_RESPONSE_BYTES,
-            }),
-        });
-        await reader.connect();
-        requireCurrent();
+        reader = primary ?? undefined;
+        if (!reader) throw new Error("历史同步中断");
         // 独立连接只读取历史，不订阅、恢复或执行历史任务。
         for (const threadId of summaries) {
           requireCurrent();
@@ -217,7 +205,7 @@ class UsageAnalytics {
         if (ownsIdentity()) this.syncErrors.set(project.id, "部分历史尚未同步，连接工作区后重试。");
       } finally {
         removeClose?.();
-        reader?.close();
+
       }
       await this.flush();
     })().finally(() => this.syncing.delete(project.id));

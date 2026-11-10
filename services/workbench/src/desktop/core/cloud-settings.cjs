@@ -6,7 +6,7 @@ const { join } = require("node:path");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 /** @type {typeof import("@areal/workbench/desktop-contract").validateCommand} */
 const validateCommand = require("@areal/workbench/desktop-contract").validateCommand;
-/** @typedef {{home:string,save:(name:string,value:unknown)=>Promise<unknown>}} SettingsHost */
+/** @typedef {{home:string,hostCall?:((method:string,params:unknown)=>Promise<unknown>),host:{sourceId:string},hostCoreClients:Map<string,import('@areal/workbench-service/host-core-client').HostCoreClient>,save:(name:string,value:unknown)=>Promise<unknown>}} SettingsHost */
 /** @typedef {{isEncryptionAvailable:()=>boolean,getSelectedStorageBackend?:()=>string,encryptString:(value:string)=>Buffer|Promise<Buffer>,decryptString:(value:Buffer)=>string|Promise<string>}} Encryption */
 const { cloudServiceURL, CloudClient } = require("./cloud-client.cjs");
 
@@ -98,7 +98,8 @@ class CloudSettings {
     } catch {
       throw new Error("无法解密 Cloud token，请重新保存");
     }
-    return new CloudClient({ baseURL: record.baseURL, token });
+    if (!this.backend.hostCall) throw new Error("Host Cloud transport unavailable");
+    return new CloudClient({ baseURL: record.baseURL, token, host:this.backend.hostCall, sourceId:this.backend.host.sourceId, clients:this.backend.hostCoreClients });
   }
 }
 

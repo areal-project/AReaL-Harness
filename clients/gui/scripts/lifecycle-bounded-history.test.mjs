@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createRequire } from "node:module";
 import { once } from "node:events";
-import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -162,6 +162,104 @@ async function fixture(t, respond, { bounded = true } = {}) {
     targets: [target],
   };
   return { scratch, server, calls, client, project, backend, lifecycle, target, record, closed };
+}
+
+for (const operation of ["request", "read", "reconcile"]) {
+  test(`Rust completed ${operation} projects terminal before client receipt delivery`, async (t) => {
+    let status = "inProgress";
+    const f = await fixture(t, async () => ({ result: baseline([turn("original", status)]) }));
+    await f.backend.readObservation(f.project, "thread");
+    f.backend.rustDomains = ["execution-rust"];
+    f.backend.host.sourceId = "source";
+    const receipt = {
+      ...f.record,
+      version: 1,
+      desktopGeneration: f.lifecycle.generation,
+      phase: "completed",
+      desktopExit: "notRequested",
+      sharedHost: true,
+      targets: f.record.targets.map((target) => ({ ...target, phase: "completed" })),
+    };
+    f.backend.hostCall = async (method) => {
+      assert.equal(method, operation === "request" ? "lifecycle.command" : "lifecycle.read");
+      return structuredClone(receipt);
+    };
+    status = "interrupted";
+    const before = f.calls.length;
+    const result =
+      operation === "request"
+        ? await f.lifecycle.request({
+            requestId: receipt.requestId,
+            kind: receipt.kind,
+            mode: receipt.mode,
+            expectedDesktopGeneration: receipt.desktopGeneration,
+            expectedTargets: receipt.targets,
+            threadId: receipt.threadId,
+            turnId: receipt.turnId,
+          })
+        : await f.lifecycle[operation](receipt.requestId);
+    assert.equal(result.phase, "completed");
+    assert.equal(
+      f.project.model.state.threads.thread.turns.at(-1).status,
+      "interrupted",
+      "终态投影先于Main可延迟的回执交付，不能依赖独立完成通知",
+    );
+    assert.deepEqual(
+      f.calls.slice(before).map((call) => call.method),
+      ["areal/thread/observe"],
+      "完成证明后只读一次，不重派停止或完整历史读取",
+    );
+  });
+}
+
+for (const boundary of ["successor-generation", "late-response", "failed-read"]) {
+  test(`Rust completed receipt preserves proof across ${boundary}`, async (t) => {
+    let status = "inProgress";
+    let f;
+    f = await fixture(t, async () => {
+      if (status === "interrupted" && boundary === "failed-read")
+        return { error: { code: -32000, message: "fixture observation unavailable" } };
+      if (status === "interrupted" && boundary === "late-response") {
+        f.project.service = { serviceId, generation: "successor" };
+        f.project.model.replace({ id: "thread", turns: [turn("successor", "inProgress")] });
+      }
+      return { result: baseline([turn("original", status)]) };
+    });
+    await f.backend.readObservation(f.project, "thread");
+    f.backend.rustDomains = ["execution-rust"];
+    f.backend.host.sourceId = "source";
+    const receipt = {
+      ...f.record,
+      version: 1,
+      desktopGeneration: f.lifecycle.generation,
+      phase: "completed",
+      desktopExit: "notRequested",
+      sharedHost: true,
+      targets: f.record.targets.map((target) => ({ ...target, phase: "completed" })),
+    };
+    f.backend.hostCall = async () => structuredClone(receipt);
+    if (boundary === "successor-generation")
+      f.project.service = { serviceId, generation: "successor" };
+    status = "interrupted";
+    const before = f.calls.length;
+    const result = await f.lifecycle.read(receipt.requestId);
+    assert.equal(result.phase, "completed", "投影读取失败或换代不能降级原权威完成证明");
+    assert.equal(f.project.model.state.threads.thread.turns.at(-1).status, "inProgress");
+    if (boundary === "successor-generation") assert.equal(f.calls.length, before);
+    else
+      assert.deepEqual(
+        f.calls.slice(before).map((call) => call.method),
+        ["areal/thread/observe"],
+      );
+    if (boundary === "late-response")
+      assert.equal(
+        f.project.model.state.threads.thread.turns.at(-1).id,
+        "successor",
+        "迟到旧快照不能覆盖后继代际",
+      );
+    if (boundary === "failed-read")
+      assert.equal(f.project.observationErrors.thread.refreshPending, false);
+  });
 }
 
 test("history reads execute against the original Core while interruption still blocks writes", async (t) => {
@@ -396,31 +494,40 @@ test("legacy Core keeps explicit full-read interruption compatibility", async (t
 });
 
 async function descriptorFixture(f, expectedGeneration = generation) {
-  delete f.backend.host;
-  const authFile = join(f.scratch, "auth.json");
-  await writeFile(
-    authFile,
-    JSON.stringify({
-      principals: [{ permissions: ["observe", "interact", "manage"], token: "fixture-token" }],
-    }),
-  );
-  const descriptor = {
-    protocolVersion: 1,
-    state: "ready",
-    serviceId,
-    generation: expectedGeneration,
-    configFingerprint: "fixture",
-    workspace: await realpath(f.project.root),
-    dataDir: await realpath(join(f.backend.home, "project", "state")),
-    endpoint: `ws://127.0.0.1:${f.server.address().port}`,
-    authFile,
+  let observer;
+  f.backend.host = {
+    sourceId: "fixture-source",
+    resolve: () => ({ projectId: "project" }),
+    observe: async () => ({ descriptor: { serviceId, generation: expectedGeneration } }),
   };
-  f.backend.binary = join(f.scratch, "service-fixture");
-  await writeFile(
-    f.backend.binary,
-    `#!${process.execPath}\nprocess.stdout.write(${JSON.stringify(JSON.stringify(descriptor))});\n`,
-    { mode: 0o700 },
-  );
+  f.backend.hostCall = async (method, params) => {
+    if (method === "core.attach") {
+      assert.equal(params.scope, "observer");
+      observer = new CoreClient({
+        createSocket: () => new WebSocket(`ws://127.0.0.1:${f.server.address().port}`),
+      });
+      await observer.connect();
+      return {
+        lease: "fixture-observer",
+        coreInstanceId: serviceId,
+        coreGeneration: expectedGeneration,
+        connectionId: "fixture-connection",
+        capabilities: observer.capabilities,
+      };
+    }
+    if (method === "core.detach") {
+      observer.close();
+      return { closed: true };
+    }
+    assert.equal(method, "core.request");
+    assert.equal(params.lease, "fixture-observer");
+    try {
+      return { result: await observer.request(params.method, params.params), sequence: 0 };
+    } catch (error) {
+      if (typeof error.code !== "number") throw error;
+      return { error: { code: error.code, message: error.message, data: error.data } };
+    }
+  };
 }
 
 test("offline original-generation inspection negotiates bounded metadata and closes its temporary client", async (t) => {

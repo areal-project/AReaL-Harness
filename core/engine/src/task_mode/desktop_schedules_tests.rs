@@ -85,6 +85,131 @@ impl tools::DynamicToolHost for ScheduleConnection {
     }
 }
 
+struct CreatePreparation {
+    engine: std::sync::Weak<Engine>,
+    reject: AtomicBool,
+    calls: std::sync::Mutex<Vec<Value>>,
+}
+#[async_trait::async_trait]
+impl tools::DynamicToolHost for CreatePreparation {
+    fn id(&self) -> &str {
+        "create-host"
+    }
+    fn identity(&self) -> &str {
+        "owner"
+    }
+    fn is_closed(&self) -> bool {
+        false
+    }
+    async fn prepare_schedule(
+        &self,
+        request: Value,
+        _: CancellationToken,
+    ) -> anyhow::Result<Value> {
+        assert!(self.engine.upgrade().unwrap().task_list().await.is_empty());
+        self.calls.lock().unwrap().push(request);
+        if self.reject.load(Ordering::Acquire) {
+            anyhow::bail!("create refused");
+        }
+        Ok(json!({}))
+    }
+    async fn call(
+        &self,
+        _: Value,
+        _: CancellationToken,
+    ) -> anyhow::Result<areal_protocol::DynamicToolResponse> {
+        anyhow::bail!("unexpected tool")
+    }
+}
+
+#[tokio::test]
+async fn scheduled_create_prepares_before_publish_and_reuses_original_receipt() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let host = Arc::new(CreatePreparation {
+        engine: Arc::downgrade(&engine),
+        reject: AtomicBool::new(true),
+        calls: std::sync::Mutex::new(vec![]),
+    });
+    engine
+        .register_schedule_host_capabilities(host.clone(), true)
+        .await
+        .unwrap();
+    let anchor = engine
+        .create_configured(
+            "owner".into(),
+            serde_json::from_value(json!({"requestId":"create-anchor", "cwd":"/workspace"}))
+                .unwrap(),
+            host.clone(),
+        )
+        .await
+        .unwrap();
+    let request: TaskCreate = serde_json::from_value(json!({"requestId":"create-request", "mode":"scheduled", "objective":"inspect", "threadId":anchor.id, "schedule":{"at":now()+3600}})).unwrap();
+    let digest = desktop::digest(&request).unwrap();
+    let mut invalid_request = request.clone();
+    invalid_request.objective.clear();
+    assert!(
+        engine
+            .task_create("owner".into(), invalid_request)
+            .await
+            .is_err()
+    );
+    assert!(host.calls.lock().unwrap().is_empty());
+    assert!(
+        engine
+            .task_create("owner".into(), request.clone())
+            .await
+            .is_err()
+    );
+    assert!(engine.task_list().await.is_empty());
+    host.reject.store(false, Ordering::Release);
+    let created = engine
+        .task_create("owner".into(), request.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.task_create("owner".into(), request).await.unwrap(),
+        created
+    );
+    assert_eq!(
+        *host.calls.lock().unwrap(),
+        vec![
+            json!({"intent":"create","requestId":"create-request","requestDigest":digest,"threadId":anchor.id}),
+            json!({"intent":"create","requestId":"create-request","requestDigest":digest,"threadId":anchor.id}),
+        ]
+    );
+    assert_eq!(engine.task_list().await.len(), 1);
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn legacy_schedule_host_does_not_receive_create_preparation() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let host = Arc::new(CreatePreparation {
+        engine: Arc::downgrade(&engine),
+        reject: AtomicBool::new(true),
+        calls: std::sync::Mutex::new(vec![]),
+    });
+    engine.register_schedule_host(host.clone()).await.unwrap();
+    let anchor = engine
+        .create_configured(
+            "owner".into(),
+            serde_json::from_value(json!({"requestId":"legacy-anchor","cwd":"/workspace"}))
+                .unwrap(),
+            host.clone(),
+        )
+        .await
+        .unwrap();
+    let request = serde_json::from_value(json!({"requestId":"legacy-create","mode":"scheduled","objective":"inspect","threadId":anchor.id,"schedule":{"at":now()+3600}})).unwrap();
+    engine.task_create("owner".into(), request).await.unwrap();
+    assert!(host.calls.lock().unwrap().is_empty());
+    assert_eq!(engine.task_list().await.len(), 1);
+    engine.shutdown().await;
+}
+
 #[tokio::test]
 async fn desktop_provider_registration_is_connection_scoped_and_revocable() {
     let dir = tempfile::tempdir().unwrap();
@@ -211,12 +336,13 @@ async fn scheduled_run_keeps_scheduler_when_gui_disconnects_without_adopting_suc
     assert_eq!(bindings.host.as_ref().unwrap().id(), "gui");
     assert_eq!(bindings.schedule_host.as_ref().unwrap().id(), "scheduler");
     drop(bindings);
-    assert!(matches!(
-        engine
-            .start(&ordinary.id, vec![Input::text("continue")])
-            .await,
-        Err(Error::Invalid(_))
-    ));
+    let result = engine
+        .start(&ordinary.id, vec![Input::text("continue")])
+        .await;
+    assert!(
+        matches!(result, Err(Error::ToolHostUnavailable)),
+        "actual: {result:?}"
+    );
     engine.shutdown().await;
 }
 
@@ -1117,5 +1243,91 @@ async fn archiving_a_bound_conversation_pauses_its_tasks() {
     let paused = |value: &Value| value["id"].as_str().unwrap().to_owned();
     assert!(engine.task_read(&paused(&bound)).await.unwrap().paused);
     assert!(!engine.task_read(&paused(&detached)).await.unwrap().paused);
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn elapsed_time_updates_publish_without_invalidating_current_run_control() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(Pending), Limits::default()).unwrap();
+    engine.task_modes.started.store(true, Ordering::Release);
+    let host = Arc::new(Host {
+        closed: AtomicBool::new(false),
+    });
+    engine.register_schedule_host(host).await.unwrap();
+    let anchor = engine.create("/workspace".into()).await.unwrap();
+    let created = engine
+        .task_create(
+            "fixture".into(),
+            serde_json::from_value(json!({
+                "requestId":"clock-task", "mode":"scheduled", "objective":"inspect",
+                "threadId":anchor.id, "schedule":{"at":now()-1}
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let id = created["id"].as_str().unwrap();
+    engine.advance_task(id).await.unwrap();
+    let before = engine.task_read(id).await.unwrap();
+    let run = before.runs[0].clone();
+    let (_, mut updates) = engine.task_snapshot_and_subscribe(id).await.unwrap();
+    let directory_revision = engine.owner_watch().0.directory_revision;
+    let elapsed = run.usage.time_used_seconds + 1.0;
+    engine
+        .edit_task(id, |task| task.runs[0].usage.time_used_seconds = elapsed)
+        .await
+        .unwrap();
+    let updated = engine.task_read(id).await.unwrap();
+    assert_eq!(updated.revision, before.revision);
+    assert_eq!(updated.runs[0].usage.time_used_seconds, elapsed);
+    assert!(engine.owner_watch().0.directory_revision > directory_revision);
+    let event = updates.try_recv().unwrap();
+    assert_eq!(event["params"]["task"]["revision"], before.revision);
+    assert_eq!(
+        event["params"]["task"]["runs"][0]["usage"]["timeUsedSeconds"],
+        elapsed
+    );
+    let durable = Snapshot::open(dir.path(), &engine.store).unwrap();
+    assert_eq!(durable.tasks[id].revision, before.revision);
+    assert_eq!(durable.tasks[id].runs[0].usage.time_used_seconds, elapsed);
+    let accepted = engine
+        .task_control(
+            "fixture".into(),
+            "stopRun".into(),
+            TaskControl {
+                request_id: "stop-original-run".into(),
+                task_id: id.into(),
+                expected_revision: before.revision,
+                expected_run_id: Some(run.id.clone()),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(accepted["runs"][0]["id"], run.id);
+    assert_eq!(accepted["runs"][0]["reason"], "stopRequested");
+    for edit in [
+        (|task: &mut Task| task.runs[0].usage.tokens_used += 1) as fn(&mut Task),
+        |task: &mut Task| task.paused = !task.paused,
+        |task: &mut Task| task.objective.push('!'),
+        |task: &mut Task| task.runs[0].usage.time_used_seconds -= 0.5,
+    ] {
+        let original = engine.task_read(id).await.unwrap();
+        engine.edit_task(id, edit).await.unwrap();
+        assert!(engine.task_read(id).await.unwrap().revision > original.revision);
+        let stale = engine
+            .task_control(
+                "fixture".into(),
+                "pause".into(),
+                TaskControl {
+                    request_id: format!("stale-{}", original.revision),
+                    task_id: id.into(),
+                    expected_revision: original.revision,
+                    expected_run_id: Some(run.id.clone()),
+                },
+            )
+            .await;
+        assert!(matches!(stale, Err(Error::Conflict)));
+    }
     engine.shutdown().await;
 }

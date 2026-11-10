@@ -494,7 +494,7 @@ try {
   await call("open", { projectId: pid, threadId: coldThreadId });
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   await page
-    .getByRole("button", { name: "打开自动化 TASK_HISTORY_ARCHIVE_FIXTURE", exact: true })
+    .getByRole("button", { name: "打开定时任务 TASK_HISTORY_ARCHIVE_FIXTURE", exact: true })
     .click();
   assert.equal(
     await page.getByLabel("任务资源面板", { exact: true }).count(),
@@ -648,7 +648,7 @@ try {
   await launch();
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   await page
-    .getByRole("button", { name: "打开自动化 TASK_HISTORY_ARCHIVE_FIXTURE", exact: true })
+    .getByRole("button", { name: "打开定时任务 TASK_HISTORY_ARCHIVE_FIXTURE", exact: true })
     .click();
   await page.getByRole("button", { name: "任务资源", exact: true }).click();
   const history = page.locator(".task-resource-history");
@@ -965,7 +965,7 @@ try {
   await launch();
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   await page
-    .getByRole("button", { name: "打开自动化 TASK_HISTORY_CAPACITY_REAL_GOAL", exact: true })
+    .getByRole("button", { name: "打开定时任务 TASK_HISTORY_CAPACITY_REAL_GOAL", exact: true })
     .click();
   await page.getByRole("button", { name: "任务资源", exact: true }).click();
   const capacityHistory = page.locator(".task-resource-history");

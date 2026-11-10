@@ -7,7 +7,7 @@ const { mkdtemp, mkdir, readFile, realpath, writeFile, rm } = require("node:fs/p
 const { join } = require("node:path");
 const { tmpdir } = require("node:os");
 
-async function fixture(t, retired) {
+async function fixture(t, retired, projectionFixture = false) {
   const root = await mkdtemp(join(tmpdir(), "workbench-backend-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const appRoot = join(root, "app"), home = join(root, "data");
@@ -19,11 +19,18 @@ async function fixture(t, retired) {
   await writeFile(join(appRoot, "node_modules/@areal/workbench-service/src/desktop/core/service-main.cjs"), `
     const fs = require('node:fs/promises');
     exports.createMainDesktop = async (options, lifetime) => {
-      if (lifetime.hostManaged !== true) throw Error("Host ownership must precede backend initialization");
+      if (typeof lifetime.hostCall !== "function") throw Error("Host ownership must precede backend initialization");
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
-      return { backend: { cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path }, adapter: { listen: async () => ({
+      const backend = { home: options.home, hostCall: lifetime.hostCall, host: { sourceId: 'fixture-source' }, cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path };
+      if (options.projectionFixture) {
+        const { CoreWorktrees } = require(${JSON.stringify(require.resolve('../src/desktop/core/worktrees.cjs'))});
+        backend.worktrees = new CoreWorktrees(backend);
+        backend.onChange = () => process.stdout.write(JSON.stringify({ event: 'projection', records: [...backend.worktrees.records.values()] }) + '\\n');
+      }
+      return { backend, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
       }), executeRemote: async (name, params) => {
+        if (params.errorCode) throw Object.assign(Error('private'), { code: params.errorCode, submissionUnknown: params.unknown });
         if (params.fail) throw Error('Core refused: ' + name);
         return { executed: name, params };
       } }, close: () => fs.writeFile(options.home + '/closed', 'closed') };
@@ -43,7 +50,7 @@ async function fixture(t, retired) {
   const lines = createInterface({ input: child.stdout });
   t.after(() => lines.close());
   return { home, child, lines, exited, start: () => child.stdin.write(JSON.stringify({
-    version: 1, method: "backend.start", params: { appRoot, options: { home }, retired },
+    version: 1, method: "backend.start", params: { appRoot, options: { home, projectionFixture }, retired },
   }) + "\n") };
 }
 
@@ -106,6 +113,56 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
     ["relative", { command: "addProject", request: { path: "demo" } }, "请填写项目文件夹的完整路径"],
     ["missing", { command: "addProject", request: { path: "/nonexistent-areal-project" } }, "找不到这个文件夹"],
   ]) assert.deepEqual((await call(id, params)).error, { code: "COMMAND_FAILED", message }, id);
+  for (const code of ["MIGRATION_PENDING", "migrationBlocked"]) {
+    assert.deepEqual((await call(code, { command: "list", request: { errorCode: code } })).error, { code });
+    assert.deepEqual((await call(code + "-unknown", { command: "list", request: { errorCode: code, unknown: true } })).error, { code: "SUBMISSION_UNKNOWN" });
+  }
   f.child.stdin.end();
   assert.deepEqual(await f.exited, [0, null]);
+});
+
+
+test("Host Worktree invalidation refreshes persisted progress and rejects another source", async (t) => {
+  const f = await fixture(t, undefined, true);
+  const ready = once(f.lines, "line");
+  f.start();
+  await ready;
+  const requestId = require("node:crypto").randomUUID();
+  await mkdir(join(f.home, "worktree-requests"));
+  const record = {kind:"thread", requestId, projectId:"logical", parameters:{}, state:"settingUp", recordRevision:7, threadId:"original-thread"};
+  await writeFile(join(f.home, "worktree-requests", requestId + ".json"), JSON.stringify(record));
+  const projected = once(f.lines, "line");
+  f.child.stdin.write(JSON.stringify({version:1,event:"worktree.changed",sourceId:"fixture-source"}) + "\n");
+  assert.deepEqual(JSON.parse((await projected)[0]), {event:"projection", records:[record]});
+  f.child.stdin.write(JSON.stringify({version:1,event:"worktree.changed",sourceId:"another-source"}) + "\n");
+  assert.deepEqual(await f.exited, [1, null]);
+});
+
+test("恢复目录查询只接受空间身份并经 Host 读取，不传入任意来源路径", async (t) => {
+  const f = await fixture(t);
+  const ready = once(f.lines, "line"); f.start(); await ready;
+  const reply = once(f.lines, "line");
+  f.child.stdin.write(JSON.stringify({version:1,id:"inspect",method:"desktop.command",params:{command:"recovery",request:{operation:"inspect"}}})+"\n");
+  const frame=JSON.parse((await reply)[0]);
+  assert.equal(frame.call,"recovery.inspect");
+  assert.deepEqual(frame.params,{});
+  const answer=once(f.lines,"line");
+  f.child.stdin.write(JSON.stringify({version:1,id:frame.id,result:{tasks:"notImported",projects:[],providers:[]}})+"\n");
+  assert.deepEqual(JSON.parse((await answer)[0]).result,{tasks:"notImported",projects:[],providers:[]});
+  const rejected=once(f.lines,"line");
+  f.child.stdin.write(JSON.stringify({version:1,id:"invalid",method:"desktop.command",params:{command:"recovery",request:{operation:"inspect",spaceId:"space-id",sourceProfile:"/arbitrary"}}})+"\n");
+  assert.equal(JSON.parse((await rejected)[0]).error.code,"INVALID_PARAMS");
+  f.child.stdin.end();await f.exited;
+});
+
+ test("恢复工作区只登记 Host 清单的目录，不接受调用者路径", async (t) => {
+  const f=await fixture(t);const ready=once(f.lines,"line");f.start();await ready;
+  const reversed=once(f.lines,"line");
+  f.child.stdin.write(JSON.stringify({version:1,id:"open-space",method:"desktop.command",params:{command:"recovery",request:{operation:"openWorkspace"}}})+"\n");
+  const frame=JSON.parse((await reversed)[0]);assert.equal(frame.call,"recovery.inspect");assert.deepEqual(frame.params,{});
+  const reply=once(f.lines,"line");
+  f.child.stdin.write(JSON.stringify({version:1,id:frame.id,result:{workspace:"/verified-new-space"}})+"\n");
+  assert.deepEqual(JSON.parse((await reply)[0]).result,{projectId:"project:/verified-new-space"});
+  const rejected=once(f.lines,"line");f.child.stdin.write(JSON.stringify({version:1,id:"bad-open",method:"desktop.command",params:{command:"recovery",request:{operation:"openWorkspace",path:"/old-space"}}})+"\n");
+  assert.equal(JSON.parse((await rejected)[0]).error.code,"INVALID_PARAMS");f.child.stdin.end();await f.exited;
 });

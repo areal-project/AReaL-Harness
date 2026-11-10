@@ -1,6 +1,6 @@
 # Shared main conversation, Side and panels
 
-Chinese: [shared workspace](../../../../clients/gui/design-system/exercises/shared-workspace.md). The [surface contract](../../../../clients/gui/design-system/surfaces/shared-workspace.json) combines I-INPUT, I-OBSERVE, I-READ and I-RETURN. Related settings retain P-SETTINGS and existing preference ownership.
+Chinese: [shared workspace](shared-workspace.md). The [surface contract](../../../../clients/gui/design-system/surfaces/shared-workspace.json) combines I-INPUT, I-OBSERVE, I-READ and I-RETURN. Related settings retain P-SETTINGS and existing preference ownership.
 
 ComposerSurface owns editor/toolbar presentation, finite default/compact layouts and basic model-trigger styling. ChatPromptEditor forwards surfaceLayout; App explicitly selects compact for the main Composer/DraftComposer below a full resource view. Side stays default. An ancestor Panel selector must never change another editor. Compact reflow uses its actual composer-dock container; existing editor scrolling and mounted draft identity remain.
 

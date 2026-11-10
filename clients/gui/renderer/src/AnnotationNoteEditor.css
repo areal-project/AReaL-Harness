@@ -3,8 +3,8 @@
   z-index: 3;
   display: grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
+  width: var(--spacing-control-sm);
+  height: var(--spacing-control-sm);
   transform: translate(-50%, -50%);
   border: 1px solid #bddbff;
   border-radius: 50%;
@@ -16,35 +16,35 @@
 .browser-annotation-editor {
   position: absolute;
   z-index: 4;
-  width: min(268px, calc(100% - 8px));
-  padding: 4px 5px;
+  width: min(268px, calc(100% - var(--spacing-inline)));
+  padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) / 2);
   background: var(--color-popover);
   color: var(--color-foreground);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: 22px;
   box-shadow: var(--shadow-overlay);
 }
 .browser-annotation-editor-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 30px;
+  gap: calc(var(--spacing-inline) / 2);
+  height: var(--spacing-control-lg);
 }
 .browser-annotation-editor-row > button {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   border-radius: 50%;
   color: var(--color-foreground-subtle);
 }
 .browser-annotation-editor-row > textarea {
   flex: 1;
   min-width: 0;
-  height: 28px;
+  height: var(--spacing-control);
   min-height: 0;
-  padding: 5px 1px;
+  padding: calc(var(--spacing-inline) / 2) 1px;
   resize: none;
   border: 0;
   background: transparent;
@@ -61,8 +61,8 @@
 .browser-annotation-editor .browser-annotation-confirm {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   border-radius: 50%;
   background: var(--color-foreground);
   color: var(--color-background);
@@ -71,12 +71,12 @@
   opacity: 0.5;
 }
 .browser-annotation-editor.expanded {
-  padding: 8px;
+  padding: var(--spacing-inline);
   border-radius: var(--radius-card);
 }
 .browser-annotation-editor.expanded > small {
   display: block;
-  padding: 6px 0;
+  padding: calc(var(--spacing-inline) * 3 / 4) 0;
   font-size: var(--text-ui-xs);
   color: var(--color-foreground-subtle);
 }
@@ -85,8 +85,8 @@
   width: 100%;
   height: 75px;
   min-height: 0;
-  padding: 8px;
-  border: 1px solid var(--color-border);
+  padding: var(--spacing-inline);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-compact-row);
   background: var(--color-background);
   font-size: var(--text-ui-sm);
@@ -96,5 +96,5 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 7px;
+  margin-top: calc(var(--spacing-inline) * 3 / 4);
 }

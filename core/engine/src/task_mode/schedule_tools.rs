@@ -322,6 +322,7 @@ impl Engine {
                             .create_configured(
                                 owner.clone(),
                                 ThreadStart {
+                                    prepare_task_directory: None,
                                     creation_admission: None,
                                     request_id: format!("anchor:{request_id}"),
                                     cwd: Some(cwd),

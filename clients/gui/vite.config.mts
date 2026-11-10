@@ -13,7 +13,10 @@ export default defineConfig({
   },
   lint: {
     jsPlugins: ["./oxlint-plugin-areal/index.ts"],
-    rules: { "areal/require-suppression-reason": "error" },
+    rules: {
+      "areal/require-suppression-reason": "error",
+      "areal/no-workbench-core-owner": "error",
+    },
     overrides: [
       {
         files: [
@@ -180,12 +183,14 @@ export default defineConfig({
       "design-suite": {
         command: [
           "pnpm --filter @areal/ui check",
-          "node --test scripts/design-system-catalog.test.mjs scripts/design-system-changes.test.mjs scripts/design-system-accessibility.test.mjs scripts/a11y-lint.test.mjs scripts/popup-anchor-lint.test.mjs scripts/design-system-baseline.test.mjs scripts/design-verified.test.mjs scripts/activity-runs.test.mjs scripts/motion-lint.test.mjs",
+          "node --test scripts/design-system-catalog.test.mjs scripts/design-system-changes.test.mjs scripts/design-system-accessibility.test.mjs scripts/a11y-lint.test.mjs scripts/popup-anchor-lint.test.mjs scripts/design-system-baseline.test.mjs scripts/design-verified.test.mjs scripts/activity-runs.test.mjs scripts/motion-lint.test.mjs scripts/layers-lint.test.mjs scripts/terms-lint.test.mjs",
           "node scripts/design-system-audit.mjs",
           "node scripts/a11y-lint.mjs",
           "node scripts/restyle-lint.mjs",
           "node scripts/popup-anchor-lint.mjs",
           "node scripts/motion-lint.mjs",
+          "node scripts/layers-lint.mjs",
+          "node scripts/terms-lint.mjs",
           "node scripts/design-rules.mjs",
           "node scripts/design-generated.mjs",
           "node scripts/design-verified.mjs",

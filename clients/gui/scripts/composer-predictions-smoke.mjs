@@ -434,8 +434,8 @@ try {
     selection.addRange(range);
     element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
   });
-  await page.getByRole("button", { name: "在旁路中询问所选内容", exact: true }).click();
-  const sideScope = page.getByRole("region", { name: "旁路讨论" });
+  await page.getByRole("button", { name: "在侧边聊天中询问所选内容", exact: true }).click();
+  const sideScope = page.getByRole("region", { name: "侧边聊天" });
   const sideInput = sideScope.getByTestId("side-chat-input");
   await sideInput.fill("PREDICTION_SIDE_INITIAL");
   await sideScope.getByTestId("side-chat-send").click();

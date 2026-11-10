@@ -30,7 +30,7 @@
 
 每组组件同目录保留一份MD，包含用途、组成、状态、行为、内容、可访问性、规则和可操作示例。复合组件用`exports`数组声明子组件归属；例如Dialog的Trigger/Content/Title/Close共用一份合同。生成器检查公开组件恰好属于一份合同，类型/API从实际TypeScript声明读取。
 
-包构建生成Markdown副本、API、`components.json`和`llms.txt`；设计站点展示文档与同一包的独立iframe实例。Agent从[包入口](../../../clients/gui/packages/ui/agent-guide.md)进入，先查合同再组合。包依旧private，实验导出从`@areal/ui/wip`消费，未发布到npm。
+包构建生成Markdown副本、API、`components.json`和`llms.txt`；设计站点展示文档与同一包的独立iframe实例。Agent从[包入口](../../../clients/gui/packages/ui/README.md)进入，先查合同再组合。包依旧private，实验导出从`@areal/ui/wip`消费，未发布到npm。
 
 ## 验证与完成边界
 

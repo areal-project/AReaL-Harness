@@ -34,7 +34,16 @@ ajv.addKeyword({
   schemaType: "number",
   validate: (limit, value) => Buffer.byteLength(value, "utf8") <= limit,
 });
-ajv.addSchema(schema);
+const { addHostProtocolSchemas } = createRequire(import.meta.url)(
+  "./host-protocol-schema-registry.cjs",
+);
+addHostProtocolSchemas(
+  ajv,
+  schema,
+  JSON.parse(
+    await readFile(new URL("../../../schemas/areal-core-v1.json", import.meta.url), "utf8"),
+  ),
+);
 const validators = new Map();
 function conforms(ref, value, expected = true) {
   if (!validators.has(ref)) validators.set(ref, ajv.compile({ $ref: `${schema.$id}${ref}` }));

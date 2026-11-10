@@ -36,6 +36,7 @@ export type SidebarNavigationProps = {
   open: (projectId: string, threadId: string) => Promise<void>;
   onOpenProjectTasks: (projectId: string) => void;
   closePanels: () => void;
+  onUpgradeHistory?: () => void;
 };
 const compareActivity = (a: Data, b: Data) =>
   b.updatedAt - a.updatedAt ||

@@ -1,5 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
-import { closeSmokeApplication } from "./application-cleanup.mjs";
+import { cleanupSyntheticHostKeychain, closeSmokeApplication } from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import assert from "node:assert/strict";
 
@@ -10,11 +10,13 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { stripVTControlCharacters } from "node:util";
+import { connect as connectCore } from "../../../examples/desktop-api/client.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
-const { executeCore } = require(join(desktop, "src/core/core-process.cjs"));
+const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
 const root = resolve(gui, "../..");
 const binary = process.env.AREAL_GUI_EXECUTABLE
   ? resolve(dirname(process.env.AREAL_GUI_EXECUTABLE), "../Resources/areal-core/bin/areal")
@@ -45,6 +47,7 @@ await writeFile(
   join(skill, "SKILL.md"),
   "---\nname: fixture-skill\ndescription: Deterministic test skill\n---\nExplain the fixture project.\n",
 );
+const terminalMode = process.argv.includes("--terminal-rust");
 const deployment = join(scratch, "desktop.json");
 await writeFile(
   deployment,
@@ -57,6 +60,7 @@ await writeFile(
         displayName: "标准",
         instructions: "Complete the task",
         allowThreadProcesses: true,
+        ...(terminalMode ? { allowConnectionProcesses: true } : {}),
         approvalTools: ["fs_create"],
         skills: [{ id: "fixture-skill", revision: "v1" }],
       },
@@ -69,6 +73,8 @@ const settingsMode = process.argv.includes("--settings-stage1");
 const desktopSettingsMode = process.argv.includes("--desktop-settings");
 const i18nMode = process.argv.includes("--settings-i18n");
 const nativeI18nMode = process.argv.includes("--native-dialog-i18n");
+if (terminalMode && process.platform === "darwin")
+  assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const hostMode = process.argv.includes("--conversation-host");
 const motionMode = hostMode || process.argv.includes("--conversation-motion");
 const journeyMode =
@@ -285,11 +291,15 @@ const env = {
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "services"),
 };
 delete env.AREAL_CORE_WORKSPACE;
+if (terminalMode) delete env.AREAL_HARNESS_HOME;
 if (process.env.AREAL_GUI_EXECUTABLE) delete env.AREAL_CORE_BIN;
 let app,
   page,
   passed = false,
   failure = null;
+let terminalHostIdentity, terminalObserver, terminalHostClient;
+const terminalElectronPids = [];
+const terminalHostPids = [];
 const errors = [],
   frames = [],
   checks = [];
@@ -301,7 +311,8 @@ async function call(name, params) {
     async ({ name, params }) => window.arealDesktop.command(name, params),
     { name, params },
   );
-  if (!result.ok) throw Error(result.error.message);
+  if (!result.ok)
+    throw Object.assign(new Error(result.error.message), terminalMode ? result.error : {});
   return result.value;
 }
 // Return the observed desktop snapshot, never the predicate's value.
@@ -314,10 +325,26 @@ async function waitForSnapshot(predicate, label) {
   }
   throw Error("Timeout: " + label);
 }
+async function waitForSnapshotAfterQuit(
+  predicate,
+  label = "original terminal Runtime cleanup after GUI quit",
+) {
+  const end = Date.now() + 30000;
+  while (Date.now() < end) {
+    if (await predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  throw new Error(`Timeout: ${label}`);
+}
 // 服务检查与清理使用产品原生启动入口，避免 Node 直接执行本地 Mach-O 被系统拒绝。
 const services = async () =>
   JSON.parse(
-    (await executeCore(binary, ["service", "list", "--json"], { env, timeout: 20000 })).stdout,
+    (
+      await executeCore(binary, ["service", "list", "--json"], {
+        env: terminalMode ? { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME } : env,
+        timeout: 20000,
+      })
+    ).stdout,
   );
 async function waitForApplicationStop(records) {
   const end = Date.now() + 30000;
@@ -384,6 +411,7 @@ async function launch() {
     env,
     timeout: 120000,
   });
+  if (terminalMode) terminalElectronPids.push(app.process().pid);
   app.process().stderr.on("data", (d) => {
     if (String(d).includes("Error")) process.stderr.write(d);
   });
@@ -456,6 +484,34 @@ console.log("GUI evidence:", scratch);
 console.log("Core binary SHA-256 at start:", binarySha256AtStart);
 try {
   await launch();
+  if (terminalMode) {
+    await waitForSnapshot(
+      (snapshot) => snapshot.connection?.state === "ready",
+      "bootstrap desktop",
+    );
+    const { HostClient } = require("@areal/client/node");
+    const bootstrap = new HostClient();
+    await bootstrap.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    terminalHostPids.push(
+      JSON.parse(await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"))
+        .pid,
+    );
+    const stop = await bootstrap.stop(randomUUID(), bootstrap.generation, "cancel");
+    assert.equal(stop.state, "completed");
+    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+    await writeFile(join(scratch, "terminal-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    bootstrap.close();
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    await closeSmokeApplication(app);
+    app = null;
+    await launch();
+    const original = new HostClient();
+    await original.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    terminalHostIdentity = { hostId: original.hostId, generation: original.generation };
+    original.close();
+  }
   const sandbox = await app.evaluate(({ BrowserWindow }) => {
     const p = BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences();
     return {
@@ -495,7 +551,358 @@ try {
     await button("发送").click();
     await waitForSnapshot((s) => turnCountOf(s) > count, "turn admission");
   };
-  if (journey) {
+  if (terminalMode) {
+    await send("准备终端验收");
+    await waitForSnapshot(
+      (s) =>
+        Object.values(project(s).state.threads).some(
+          (t) => t.turns?.at(-1)?.status === "completed",
+        ),
+      "terminal fixture thread ready",
+    );
+    const tid = await page
+      .locator('[data-testid="areal-workbench"]')
+      .getAttribute("data-thread-id");
+    assert.ok(tid, "original fixture Thread is available");
+    const processList = async () =>
+      (await call("manage", { projectId: pid, threadId: tid, operation: "processes" })).data;
+    const before = new Set((await processList()).map((item) => item.id));
+    await openPanel("终端");
+    await page.locator(".terminal-pane .xterm-screen").waitFor();
+    const terminal = page.locator(".terminal-pane .xterm-helper-textarea").first();
+    await terminal.waitFor({ state: "attached" });
+    let first;
+    await waitForSnapshot(async () => {
+      first = (await processList()).find((item) => !before.has(item.id));
+      return first?.state === "running" && first.processId;
+    }, "original GUI terminal Runtime process running");
+    assert.ok(first.id && first.processId);
+    await writeFile(
+      join(scratch, "terminal-first-process.json"),
+      JSON.stringify({ projectId: pid, threadId: tid, process: first }, null, 2),
+    );
+    const output = async (id) => {
+      const value = await call("manage", {
+        projectId: pid,
+        threadId: tid,
+        operation: "processOutput",
+        id,
+        maxBytes: 8192,
+      });
+      return (value.chunks ?? [])
+        .map((chunk) => Buffer.from(chunk.dataBase64, "base64").toString())
+        .join("");
+    };
+    await page.waitForFunction(
+      (id) =>
+        [...document.querySelectorAll(".terminal-pane [data-terminal-id]")].some(
+          (element) => element.getAttribute("data-terminal-id") === id,
+        ),
+      first.id,
+    );
+    await waitForSnapshot(async () => {
+      const text = stripVTControlCharacters(await output(first.id));
+      return /(?:^|[\r\n])[^\r\n]*[#$%>]\s*$/.test(text);
+    }, "original terminal shell prompt ready");
+    await writeFile(
+      join(scratch, "terminal-first-ready.json"),
+      JSON.stringify(
+        { terminalId: first.id, processId: first.processId, promptReady: true },
+        null,
+        2,
+      ),
+    );
+    const size = async (marker) => {
+      await terminal.focus();
+      await terminal.pressSequentially(`printf '${marker}\\n'; stty size`);
+      await terminal.press("Enter");
+      let match;
+      await waitForSnapshot(async () => {
+        match = (await output(first.id)).match(new RegExp(`${marker}\\r?\\n(\\d+) (\\d+)`));
+        return match;
+      }, `PTY size ${marker}`);
+      return [Number(match[1]), Number(match[2])];
+    };
+    const initialSize = await size("AREAL_PTY_BEFORE");
+    const oldBounds = await page.locator(".terminal-pane .xterm-screen").boundingBox();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1000, 700));
+    await page.waitForFunction(
+      (width) =>
+        document.querySelector(".terminal-pane .xterm-screen")?.getBoundingClientRect().width !==
+        width,
+      oldBounds.width,
+    );
+    const resized = await size("AREAL_PTY_AFTER");
+    assert.notDeepEqual(resized, initialSize, "original PTY received resize");
+    const activeTerminalTab = page
+      .getByRole("tablist", { name: "侧边面板标签", exact: true })
+      .getByRole("tab", { selected: true });
+    const firstTabId = await activeTerminalTab.evaluate(
+      (tab) => tab.closest("[data-side-pane-tab-id]")?.getAttribute("data-side-pane-tab-id") ?? "",
+    );
+    assert.match(firstTabId, /^terminal:/);
+    assert.equal(
+      await page.locator(".terminal-pane [data-terminal-id]").getAttribute("data-terminal-id"),
+      first.id,
+    );
+    await activeTerminalTab.press("Delete");
+    await page.locator(`[data-side-pane-tab-id="${firstTabId}"]`).waitFor({ state: "detached" });
+    let firstCleanup;
+    await waitForSnapshot(async () => {
+      firstCleanup = (await processList()).find((item) => item.id === first.id);
+      return firstCleanup?.cleanupConfirmed === true;
+    }, "explicit original terminal cleanup");
+    await writeFile(
+      join(scratch, "terminal-first-cleanup.json"),
+      JSON.stringify(firstCleanup, null, 2),
+    );
+    checks.push(
+      "Electron xterm input/output and resize use the original PTY; explicit close confirms Runtime cleanup",
+    );
+    await openPanel("文件");
+    const openSideTab = button("打开侧边面板标签页");
+    await openSideTab.waitFor();
+    await openSideTab.click();
+    const terminalMenu = page.getByRole("menuitem", { name: /^终端/ });
+    await terminalMenu.waitFor();
+    await terminalMenu.click();
+    let second;
+    await waitForSnapshot(async () => {
+      second = (await processList()).find((item) => item.id !== first.id && !before.has(item.id));
+      return second?.state === "running" && second.processId;
+    }, "second GUI terminal running before quit");
+    assert.notEqual(
+      second.processId,
+      first.processId,
+      "second terminal owns a new Runtime process",
+    );
+    await page.waitForFunction(
+      (id) =>
+        [...document.querySelectorAll(".terminal-pane [data-terminal-id]")].some(
+          (element) => element.getAttribute("data-terminal-id") === id,
+        ),
+      second.id,
+    );
+    const secondTabId = await page
+      .getByRole("tablist", { name: "侧边面板标签", exact: true })
+      .getByRole("tab", { selected: true })
+      .evaluate(
+        (tab) =>
+          tab.closest("[data-side-pane-tab-id]")?.getAttribute("data-side-pane-tab-id") ?? "",
+      );
+    assert.match(secondTabId, /^terminal:/);
+    assert.notEqual(secondTabId, firstTabId);
+    await writeFile(
+      join(scratch, "terminal-reopen.json"),
+      JSON.stringify(
+        {
+          firstTabId,
+          firstTabDetached: true,
+          sidePaneVisible: true,
+          terminalMenuVisible: true,
+          secondTabId,
+          secondTerminalId: second.id,
+          secondProcessId: second.processId,
+        },
+        null,
+        2,
+      ),
+    );
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    terminalHostClient = host;
+    assert.deepEqual({ hostId: host.hostId, generation: host.generation }, terminalHostIdentity);
+    const service = (await services()).find(
+      (item) => item.workspace === workspace && item.state === "ready",
+    );
+    assert.ok(service, "original project service descriptor");
+    terminalObserver = await connectCore(service.endpoint, service.authFile);
+    await writeFile(
+      join(scratch, "terminal-identities.json"),
+      JSON.stringify(
+        {
+          projectId: pid,
+          threadId: tid,
+          first,
+          second,
+          host: terminalHostIdentity,
+          serviceId: service.serviceId,
+          serviceGeneration: service.generation,
+          initialSize,
+          resized,
+        },
+        null,
+        2,
+      ),
+    );
+    // 同一 GUI 来源上的 manage.command 走 Host journal；desktop.command 本身不入该 journal。
+    const anchorCreateId = randomUUID();
+    await writeFile(
+      join(scratch, "terminal-anchor-create-intent.json"),
+      JSON.stringify({ projectId: pid, requestId: anchorCreateId }, null, 2),
+    );
+    const anchor = await call("create", { projectId: pid, requestId: anchorCreateId });
+    assert.ok(anchor.threadId && anchor.threadId !== tid, "scheduled task uses a separate anchor");
+    const taskCreateId = randomUUID();
+    await writeFile(
+      join(scratch, "terminal-task-create-intent.json"),
+      JSON.stringify(
+        { projectId: pid, threadId: anchor.threadId, sourceThreadId: tid, requestId: taskCreateId },
+        null,
+        2,
+      ),
+    );
+    const task = await call("manage", {
+      projectId: pid,
+      threadId: anchor.threadId,
+      sourceThreadId: tid,
+      requestId: taskCreateId,
+      operation: "taskCreate",
+      mode: "scheduled",
+      objective: "TERMINAL_JOURNAL_FIXTURE",
+      schedule: { at: Math.floor(Date.now() / 1000) + 3600, timeZone: "UTC" },
+    });
+    const bootstrap = await page.evaluate(() => window.arealDesktop.getHostTicket());
+    const WebSocket = require("ws");
+    const socket = new WebSocket(bootstrap.websocketUrl, { origin: "areal-ui://app" });
+    await new Promise((resolve, reject) => {
+      socket.once("open", resolve);
+      socket.once("error", reject);
+    });
+    const pending = new Map();
+    socket.on("message", (bytes) => {
+      const frame = JSON.parse(bytes.toString());
+      const entry = pending.get(frame.id);
+      if (!entry) return;
+      pending.delete(frame.id);
+      clearTimeout(entry.timer);
+      if (frame.error) entry.reject(Object.assign(new Error(frame.error.message), frame.error));
+      else entry.resolve(frame.result);
+    });
+    const request = (method, params, commandId) =>
+      new Promise((resolve, reject) => {
+        const id = randomUUID();
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error(`original ${method} response unknown`));
+        }, 15000);
+        pending.set(id, { resolve, reject, timer });
+        socket.send(
+          JSON.stringify({ version: 1, id, method, params, ...(commandId ? { commandId } : {}) }),
+        );
+      });
+    try {
+      const hello = await request("hello", {
+        protocolVersions: [1],
+        capabilities: ["gui-read-v1", "gui-write-v1"],
+        ticket: bootstrap.ticket,
+        expectedGeneration: bootstrap.generation,
+      });
+      assert.equal(hello.hostId, terminalHostIdentity.hostId);
+      assert.equal(hello.generation, terminalHostIdentity.generation);
+      const shell = await request("shell.subscribe", {});
+      const sourceId = bootstrap.preferredSourceId;
+      assert.ok(
+        sourceId &&
+          shell.snapshot.navigation.some(
+            (source) =>
+              source.sourceId === sourceId &&
+              source.bindings.some((binding) => binding.alias === pid || binding.projectId === pid),
+          ),
+        "original GUI source binds the original project",
+      );
+      const commandId = randomUUID(),
+        domainId = randomUUID();
+      const params = {
+        sourceId,
+        projectId: pid,
+        operation: "taskPause",
+        taskId: task.id,
+        expectedRevision: task.revision,
+        requestId: domainId,
+      };
+      await writeFile(
+        join(scratch, "terminal-journal-intent.json"),
+        JSON.stringify({ commandId, params }, null, 2),
+      );
+      const receipt = await request("manage.command", params, commandId);
+      assert.equal(receipt.submissionUnknown, false);
+      assert.equal(receipt.receipt.id, task.id);
+      assert.equal(receipt.receipt.paused, true);
+      assert.deepEqual(await request("command.read", { commandId }), receipt);
+      assert.deepEqual(await request("manage.command", params, commandId), receipt);
+      await assert.rejects(
+        request("manage.command", { ...params, expectedRevision: task.revision + 1 }, commandId),
+        { code: "COMMAND_CONFLICT" },
+      );
+      const originalCore = await terminalObserver.call("areal/request/read", {
+        requestId: domainId,
+      });
+      assert.ok(
+        originalCore.data.some(
+          (row) =>
+            row.requestId === domainId &&
+            row.method === "areal/task/pause" &&
+            row.status === "completed" &&
+            row.identity === "desktop-owner" &&
+            row.result?.id === task.id &&
+            row.result?.paused === true,
+        ),
+        "original Core request receipt is present",
+      );
+      await writeFile(
+        join(scratch, "terminal-journal-receipt.json"),
+        JSON.stringify(
+          { sourceId, commandId, domainId, taskId: task.id, receipt, originalCore },
+          null,
+          2,
+        ),
+      );
+      await call("manage", {
+        projectId: pid,
+        operation: "taskCancel",
+        taskId: task.id,
+        expectedRevision: receipt.receipt.revision,
+      });
+      checks.push(
+        "same-source manage command journal returns its original receipt and rejects changed parameters",
+      );
+    } finally {
+      socket.close();
+    }
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    await closeSmokeApplication(app);
+    app = null;
+    const after = new HostClient();
+    let secondCleanup;
+    try {
+      await after.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      assert.deepEqual(
+        { hostId: after.hostId, generation: after.generation },
+        terminalHostIdentity,
+      );
+      await waitForSnapshotAfterQuit(async () => {
+        secondCleanup = (
+          await terminalObserver.call("areal/process/list", { threadId: tid })
+        ).data.find((item) => item.id === second.id);
+        return secondCleanup?.cleanupConfirmed === true;
+      });
+    } finally {
+      after.close();
+    }
+    await writeFile(
+      join(scratch, "terminal-second-cleanup.json"),
+      JSON.stringify(secondCleanup, null, 2),
+    );
+    checks.push(
+      "GUI quit preserves the original Host and confirms its second terminal Runtime cleanup",
+    );
+    host.close();
+    terminalHostClient = null;
+  } else if (journey) {
     await journey.run({
       app: () => app,
       page: () => page,
@@ -1242,56 +1649,190 @@ try {
   await writeFile(join(scratch, "failure.txt"), failure);
   console.error("GUI failure:", failure);
   console.error("renderer errors", errors);
-  console.error(await page?.locator("body").innerText());
+  if (page && !page.isClosed())
+    console.error(
+      await page
+        .locator("body")
+        .innerText()
+        .catch(() => ""),
+    );
   await shot("failure").catch(() => {});
-  if (page)
+  if (page && !page.isClosed())
+    await state()
+      .then((snapshot) =>
+        writeFile(join(scratch, "failure-state.json"), JSON.stringify(snapshot, null, 2)),
+      )
+      .catch(() => {});
+  if (terminalMode && page && !page.isClosed()) {
+    const attempts = await page
+      .evaluate(() =>
+        Object.keys(localStorage)
+          .filter((key) => key.startsWith("areal-gui:terminal-create:"))
+          .map((key) => {
+            const value = JSON.parse(localStorage.getItem(key));
+            return { key, requestId: value.requestId, state: value.state };
+          }),
+      )
+      .catch(() => []);
     await writeFile(
-      join(scratch, "failure-state.json"),
-      JSON.stringify(await state(), null, 2),
-    ).catch(() => {});
+      join(scratch, "terminal-failure-attempts.json"),
+      JSON.stringify(attempts, null, 2),
+    );
+  }
   throw error;
 } finally {
-  try {
-    await quit();
-    await waitForApplicationStop(await services());
-    const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
-      .then(JSON.parse)
-      .catch((error) => {
-        if (error.code === "ENOENT") return null;
-        throw error;
-      });
-    if (metadata)
-      assert.throws(
-        () => process.kill(metadata.pid, 0),
-        (error) => error.code === "ESRCH",
-        "the GUI adapter exits with its application",
-      );
-    checks.push("application lifecycle cleanup leaves no live adapter or original Core service");
-  } catch (error) {
-    console.error("Adapter fixture cleanup:", error.message);
-    if (passed) {
+  if (terminalMode) {
+    try {
+      if (app) {
+        await app.evaluate(({ dialog }) => {
+          dialog.showMessageBox = async () => ({ response: 0 });
+        });
+        await closeSmokeApplication(app);
+        app = null;
+      }
+    } catch (error) {
       passed = false;
       process.exitCode = 1;
-      errors.push(`Explicit safe stop failed: ${error.message}`);
+      errors.push(`Terminal Electron cleanup: ${error.message}`);
     }
-    // 仅清理本次隔离 home 中的服务；失败不遗留模型任务或后台进程。
+    await terminalObserver?.close().catch((error) => {
+      passed = false;
+      process.exitCode = 1;
+      errors.push(`Terminal observer cleanup: ${error.message}`);
+    });
+    terminalHostClient?.close();
     try {
-      const instances = await services();
-      for (const instance of instances)
-        if (instance.state !== "stopped") {
-          await executeCore(
-            binary,
-            ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
-            { env, timeout: 120000 },
+      const { HostClient } = require("@areal/client/node");
+      const host = new HostClient();
+      try {
+        await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+        if (terminalHostIdentity)
+          assert.deepEqual(
+            { hostId: host.hostId, generation: host.generation },
+            terminalHostIdentity,
           );
+        const descriptor = JSON.parse(
+          await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
+        );
+        const originalServices = await services();
+        const runtimePids = [];
+        for (const item of originalServices) {
+          const log = await readFile(item.logFile, "utf8").catch((error) => {
+            if (error.code === "ENOENT") return "";
+            throw error;
+          });
+          for (const match of log.matchAll(/\bPID:\s*(\d+)/g)) runtimePids.push(Number(match[1]));
         }
-    } catch (failure) {
-      console.error("Core fixture cleanup:", failure.message);
+        const stop = await host.stop(randomUUID(), host.generation, "cancel");
+        assert.equal(stop.state, "completed");
+        assert.ok(stop.projects.every((item) => item.receipt?.state === "completed"));
+        await writeFile(join(scratch, "terminal-final-stop.json"), JSON.stringify(stop, null, 2));
+        for (const item of stop.projects) {
+          const cleanup = JSON.parse(
+            await readFile(
+              join(env.AREAL_HARNESS_SERVICE_HOME, "services", item.serviceId, "cleanup.json"),
+              "utf8",
+            ),
+          );
+          assert.equal(cleanup.cleanupConfirmed, true);
+          assert.equal(cleanup.identity.generation, item.serviceGeneration);
+        }
+        await waitForApplicationStop(originalServices);
+        const pids = [
+          ...new Set(
+            [
+              descriptor.pid,
+              ...terminalHostPids,
+              ...terminalElectronPids,
+              ...runtimePids,
+              ...originalServices.flatMap((item) => [item.hostPid, item.corePid]),
+            ].filter((pid) => Number.isSafeInteger(pid) && pid > 1),
+          ),
+        ];
+        await waitForSnapshotAfterQuit(
+          () =>
+            pids.every((pid) => {
+              try {
+                process.kill(pid, 0);
+                return false;
+              } catch (error) {
+                if (error.code === "ESRCH") return true;
+                throw error;
+              }
+            }),
+          "recorded fixture PIDs exit",
+        );
+        await writeFile(
+          join(scratch, "terminal-pids.json"),
+          JSON.stringify(
+            pids.map((pid) => ({ pid, absent: true })),
+            null,
+            2,
+          ),
+        );
+      } finally {
+        host.close();
+      }
+    } catch (error) {
+      passed = false;
+      process.exitCode = 1;
+      errors.push(`Terminal cleanup: ${error.message}`);
+      console.error("Terminal fixture cleanup:", error);
     }
     try {
-      const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-      process.kill(metadata.pid, "SIGTERM");
-    } catch {}
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      await writeFile(
+        join(scratch, "terminal-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    } catch (error) {
+      passed = false;
+      process.exitCode = 1;
+      errors.push(`Terminal Keychain cleanup: ${error.message}`);
+    }
+  } else {
+    try {
+      await quit();
+      await waitForApplicationStop(await services());
+      const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
+        .then(JSON.parse)
+        .catch((error) => {
+          if (error.code === "ENOENT") return null;
+          throw error;
+        });
+      if (metadata)
+        assert.throws(
+          () => process.kill(metadata.pid, 0),
+          (error) => error.code === "ESRCH",
+          "the GUI adapter exits with its application",
+        );
+      checks.push("application lifecycle cleanup leaves no live adapter or original Core service");
+    } catch (error) {
+      console.error("Adapter fixture cleanup:", error.message);
+      if (passed) {
+        passed = false;
+        process.exitCode = 1;
+        errors.push(`Explicit safe stop failed: ${error.message}`);
+      }
+      // 仅清理本次隔离 home 中的服务；失败不遗留模型任务或后台进程。
+      try {
+        const instances = await services();
+        for (const instance of instances)
+          if (instance.state !== "stopped") {
+            await executeCore(
+              binary,
+              ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
+              { env, timeout: 120000 },
+            );
+          }
+      } catch (failure) {
+        console.error("Core fixture cleanup:", failure.message);
+      }
+      try {
+        const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+        process.kill(metadata.pid, "SIGTERM");
+      } catch {}
+    }
   }
   server.closeAllConnections();
   await new Promise((r) => server.close(r));
@@ -1338,25 +1879,27 @@ try {
         nativeDialogs: nativeI18nMode
           ? "initial project picker injected; archive/save/directory dialog options captured and canceled; OS appearance not verified"
           : "project picker and archive/quit confirmations injected",
-        scenario: desktopSettingsMode
-          ? "desktop-settings"
-          : conversationProduction
-            ? "conversation-production"
-            : nativeI18nMode
-              ? "native-dialog-i18n"
-              : i18nMode
-                ? "settings-i18n"
-                : conversationStage2
-                  ? "conversation-stage2"
-                  : settingsMode
-                    ? "settings-stage1"
-                    : hostMode
-                      ? "conversation-host"
-                      : motionMode
-                        ? "conversation-motion"
-                        : journey
-                          ? "conversation-journey"
-                          : "migration",
+        scenario: terminalMode
+          ? "terminal-rust"
+          : desktopSettingsMode
+            ? "desktop-settings"
+            : conversationProduction
+              ? "conversation-production"
+              : nativeI18nMode
+                ? "native-dialog-i18n"
+                : i18nMode
+                  ? "settings-i18n"
+                  : conversationStage2
+                    ? "conversation-stage2"
+                    : settingsMode
+                      ? "settings-stage1"
+                      : hostMode
+                        ? "conversation-host"
+                        : motionMode
+                          ? "conversation-motion"
+                          : journey
+                            ? "conversation-journey"
+                            : "migration",
         scratch,
         frames: journey ? journey.frames() : frames,
         journeyEvents: journey && !nativeI18nMode ? "journey-events.json" : null,

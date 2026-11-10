@@ -38,7 +38,7 @@
    - `experimental.ts` ∩ Base 成员 = ∅；
    - 生产代码引用 `experimental` 的每个符号都在名单中。
 4. 用 codemod 把 56 个文件的 `@areal/ui/wip` 导入改到新入口（只改导入路径，不改其他代码）。
-5. 删除 `wip` 别名；更新 [包说明](../packages/ui/README.md)（中英）、[Agent 指南](../packages/ui/agent-guide.md)、`dist/components.json` 的生成逻辑和 `llms.txt`。
+5. 删除 `wip` 别名；更新 [包说明](../packages/ui/README.md)（中英）、[Agent 指南](../packages/ui/README.md)、`dist/components.json` 的生成逻辑和 `llms.txt`。
 
 ## 5. 不确定性路径
 

@@ -85,6 +85,9 @@ impl Drop for Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_write_hook(None).await
+    }
+    async fn with_write_hook(hook: Option<std::sync::Arc<dyn Fn() + Send + Sync>>) -> Self {
         let root = tempfile::tempdir().unwrap();
         let mut host = crate::server::schedules::tests::fixture(root.path());
         Rc::get_mut(&mut host.migration).unwrap().vault =
@@ -199,6 +202,7 @@ impl Fixture {
                 });
             }
         }).abort_handle();
+        Rc::get_mut(&mut host.migration).unwrap().vault.before_write = hook;
         let host = Rc::new(host);
         let service = Self::service(&host, endpoint);
         let close = host
@@ -299,6 +303,21 @@ impl Fixture {
             .unwrap();
         mutate(grant);
         self.host.remote.dispatch("remote.gateway.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":self.host.identity.generation,"expectedRevision":snapshot["revision"],"sourceId":self.source,"config":config}), "fixture", &self.host.identity.generation, &self.host.migration, std::slice::from_ref(&self.alias)).unwrap();
+    }
+    async fn workspace_admission(&mut self) {
+        let root = self.host.slots.borrow()["project"]
+            .registration
+            .workspace
+            .clone();
+        let thread = self.call("thread/read").await;
+        assert_eq!(
+            thread.request["params"],
+            json!({"threadId":"thread","includeTurns":false})
+        );
+        thread.reply(json!({"thread":{"id":"thread","sessionId":"thread","cwd":root,"desktop":{"configuration":{"options":{}}}}}));
+        let catalog = self.call("areal/task/list").await;
+        assert_eq!(catalog.request["params"]["limit"], 100);
+        catalog.reply(json!({"data":[],"nextCursor":null,"hasMore":false}));
     }
     async fn call(&mut self, method: &str) -> CoreCall {
         let call = tokio::time::timeout(Duration::from_secs(5), self.calls.recv())
@@ -666,6 +685,12 @@ async fn lost_outcome_write_stays_unknown_after_same_home_owner_reconstruction()
             let mut restarted = crate::server::schedules::tests::fixture(f.root.path());
             Rc::get_mut(&mut restarted.migration).unwrap().vault =
                 crate::vault::Vault::isolated_files(&restarted.home);
+            assert!(restarted.remote.snapshot(&restarted.migration).is_err());
+            restarted
+                .remote
+                .snapshot_async(&restarted.migration)
+                .await
+                .unwrap();
             *restarted.gateway.generation.borrow_mut() = "gateway".into();
             {
                 let mut slots = restarted.slots.borrow_mut();
@@ -757,6 +782,8 @@ async fn create_lost_outcome_recovers_original_receipt_after_owner_reconstructio
         let old_host = Rc::downgrade(&f.host);
         let mut restarted = crate::server::schedules::tests::fixture(f.root.path());
         Rc::get_mut(&mut restarted.migration).unwrap().vault = crate::vault::Vault::isolated_files(&restarted.home);
+        assert!(restarted.remote.snapshot(&restarted.migration).is_err());
+        restarted.remote.snapshot_async(&restarted.migration).await.unwrap();
         *restarted.gateway.generation.borrow_mut() = "gateway".into();
         {
             let mut slots = restarted.slots.borrow_mut();
@@ -841,6 +868,7 @@ async fn unknown_original_answer_allows_settled_ordinary_operations_but_not_unkn
         let sending = Fixture::dispatch(session, send);
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(2));
+        f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         assert_eq!(turn.request["params"]["threadId"], "thread");
         assert_eq!(turn.request["params"]["input"], json!([{"type":"text","text":"later","text_elements":[]}]));
@@ -859,6 +887,7 @@ async fn unknown_original_answer_allows_settled_ordinary_operations_but_not_unkn
         let sending = Fixture::dispatch(session, ordinary);
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(2));
+        f.workspace_admission().await;
         f.call("areal/turn/start").await.disconnect();
         let (session, unresolved) = sending.await.unwrap();
         assert_eq!(unresolved.unwrap()["admissionState"], "unknown");
@@ -1274,6 +1303,7 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
             f.call("areal/thread/observe")
                 .await
                 .reply(Fixture::idle_thread(1));
+            f.workspace_admission().await;
             let turn = f.call("areal/turn/start").await;
             assert_eq!(
                 turn.request["params"]["input"][0]["text"],
@@ -1359,6 +1389,7 @@ async fn gui_write_negotiation_accepts_desktop_rich_input_only_for_declaring_cli
             let sending = Fixture::dispatch(session, f.request("session.send", rich, Some(&uuid::Uuid::new_v4().to_string())));
             f.call("areal/capabilities").await.reply(Fixture::capabilities());
             f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            f.workspace_admission().await;
             let turn = f.call("areal/turn/start").await;
             let input = turn.request["params"]["input"].as_array().unwrap().clone();
             assert_eq!(input[0], json!({"type":"text","text":"look","text_elements":[]}));
@@ -1392,6 +1423,7 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
             let sending = Fixture::dispatch(session, send);
             f.call("areal/capabilities").await.reply(Fixture::capabilities());
             f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+            f.workspace_admission().await;
             let turn = f.call("areal/turn/start").await;
             assert_eq!(turn.request["params"]["input"][0]["text"], "from desktop");
             turn.reply(json!({"turn":{"id":"desktop-turn"}}));
@@ -1521,6 +1553,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let sending = Fixture::dispatch(session, send.clone());
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+        f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let input = turn.request["params"]["input"][0]["text"].as_str().unwrap().to_owned();
         assert!(input.starts_with("Continue"));
@@ -1542,6 +1575,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         caps["methods"].as_array_mut().unwrap().push(json!("turn/steer"));
         f.call("areal/capabilities").await.reply(caps.clone());
         f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"turn","status":"inProgress","items":[]}]},"ownership":{"kind":"ordinary"}}));
+        f.workspace_admission().await;
         let turn = f.call("turn/steer").await;
         let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
         assert_eq!(turn.request["params"]["input"].as_array().unwrap().len(), 4);
@@ -1589,6 +1623,7 @@ const out = value => console.log(JSON.stringify({version:1,...value}));
         let sending = Fixture::dispatch(remote, remote_send.clone());
         f.call("areal/capabilities").await.reply(Fixture::capabilities());
         f.call("areal/thread/observe").await.reply(Fixture::idle_thread(1));
+        f.workspace_admission().await;
         let turn = f.call("areal/turn/start").await;
         let text = turn.request["params"]["input"][0]["text"].as_str().unwrap();
         assert!(text.starts_with("Remote continue") && text.contains("\"selection\":8"));
@@ -1884,5 +1919,38 @@ async fn submit_only_browser_cannot_bypass_approval_with_nested_creation_options
             }
         }
         assert!(f.calls.is_empty());
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn remote_authorization_uses_committed_grants_during_credential_io_and_revokes_at_commit() {
+    tokio::task::LocalSet::new().run_until(async {
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let gate = std::sync::Mutex::new(Some((entered_tx, release_rx)));
+        let f = Fixture::with_write_hook(Some(std::sync::Arc::new(move || {
+            if let Some((entered, release)) = gate.lock().unwrap().take() {
+                let _ = entered.send(());
+                release.recv().unwrap();
+            }
+        }))).await;
+        let session = f.session("a");
+        let snapshot = f.host.remote.snapshot(&f.host.migration).unwrap();
+        let mut config = snapshot["config"].clone();
+        config["deviceGrants"][0]["status"] = json!("revoked");
+        config["deviceGrants"][0]["revision"] = json!(2);
+        let projects = [f.alias.clone()];
+        let mut writing = Box::pin(f.host.remote.dispatch_async("remote.gateway.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":f.host.identity.generation,"sourceId":f.source,"expectedRevision":snapshot["revision"],"config":config}), "fixture", &f.host.identity.generation, &f.host.migration, &projects));
+        tokio::select! {
+            result = entered_rx => result.unwrap(),
+            result = &mut writing => panic!("replacement ended before barrier: {result:?}"),
+        }
+        let during = session.authorize(Some(&f.alias), "observe");
+        release_tx.send(()).unwrap();
+        let completed = writing.await.unwrap();
+        let after = session.authorize(Some(&f.alias), "observe");
+        assert!(during.is_ok(), "in-flight credentials rejected a committed grant: {during:?}");
+        assert_eq!(completed["state"], "completed");
+        assert!(after.is_err(), "revoked grant remained usable after durable commit");
     }).await;
 }

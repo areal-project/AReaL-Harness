@@ -9,7 +9,7 @@ const { canonicalSource, GuiSourceAdapter } = require("./gui-source.cjs");
 const { startupTrace } = require("./startup-timing.cjs");
 const diagnostics = require("./diagnostics.cjs");
 /** @typedef {import('./project-index.cjs').SavedProject} SavedProject */
-/** @typedef {{alias:{profile:string,legacyProjectId:string},projectId:string,workspace:string,dataDir:string,scratchDir:string,sourceId?:string,logicalAlias?:{profile:string,legacyProjectId:string},worktreeRequestId?:string,projectlessRequestId?:string}} Binding */
+/** @typedef {{alias:{profile:string,legacyProjectId:string},projectId:string,workspace:string,dataDir:string,scratchDir:string,sourceId?:string,usesSharedModelConfig?:boolean,logicalAlias?:{profile:string,legacyProjectId:string},worktreeRequestId?:string,projectlessRequestId?:string}} Binding */
 /** @typedef {{suppressed:boolean,activationError:string|null}} Scheduling */
 /** @typedef {{registration:{projectId:string},scheduleActivationSuppressed:boolean,scheduleActivationError?:string}} SchedulingStatus */
 /** @typedef {{state:'pending'|'completed',requestId?:string,error:string|null,code?:string}} RetirementState */
@@ -44,8 +44,11 @@ class GuiHostProjects {
     this.schedules = new Map();
     /** @type {Promise<boolean>|undefined} */
     this.scheduleRefresh = undefined;
+    /** @type {Promise<void>|undefined} */
+    this.migrating = undefined;
   }
-  async init() {
+  /** @param {{deferCredentials?:boolean}} [options] */
+  async init({ deferCredentials = false } = {}) {
     for (const path of Object.values(this.source))
       await mkdir(path, { recursive: true, mode: 0o700 });
     this.source = await canonicalSource(this.source);
@@ -53,7 +56,7 @@ class GuiHostProjects {
     this.client.requireCapability("scheduledActivation");
     this.client.requireCapability("scheduledPreparation");
     let state = await this.client.sourceState(this.source);
-    if (!state) {
+    if (!state || (state.migration?.state === "pending" && this.options.singletonHeld)) {
       if (!this.options.singletonHeld)
         throw new Error("GUI source import requires the original singleton");
       const adapter = new GuiSourceAdapter({
@@ -62,8 +65,10 @@ class GuiHostProjects {
         encryption: this.options.encryption,
         singletonHeld: true,
       });
-      const result = await adapter.import(requestIdFor(JSON.stringify(this.source)));
-      if (result.kind !== "ready") {
+      const result = await adapter.import(requestIdFor(JSON.stringify(this.source)), {
+        publishOnly: deferCredentials,
+      });
+      if (result.kind !== "ready" && result.sourcePublished !== true) {
         const reasons = new Set();
         for (const blocker of Array.isArray(result.blockers) ? result.blockers : []) {
           switch (blocker?.code) {
@@ -95,9 +100,39 @@ class GuiHostProjects {
     await this.list();
     for (const project of this.metadata) {
       if (!this.bindings.has(project.id))
-        await this.register(requestIdFor(`${this.sourceId}:register:${project.id}`), project);
+        await this.register(
+          requestIdFor(`${this.sourceId}:register:${project.id}`),
+          project,
+        );
     }
-    await this.retire();
+    if (deferCredentials && this.options.singletonHeld) this.continueMigration();
+    else await this.retire();
+  }
+  continueMigration() {
+    if (this.migrating) return this.migrating;
+    // 此连接独立于启动探针；窗口退出只断开等待者，已受理写入仍由 Host 结算。
+    const adapter = new GuiSourceAdapter({
+      source: this.source,
+      hostHome: this.home,
+      encryption: this.options.encryption,
+      singletonHeld: this.options.singletonHeld,
+    });
+    const task = (async () => {
+      await adapter.import(this.migrationId);
+      await adapter.retire(this.migrationId);
+    })().catch((error) => {
+      diagnostics.record({
+        type: "operation",
+        name: "startup",
+        outcome: "unknown",
+        code: error instanceof Error && "code" in error ? error.code : undefined,
+      });
+    });
+    this.migrating = task;
+    void task.finally(() => {
+      this.migrating = undefined;
+    });
+    return task;
   }
   retire() {
     if (this.retirement.state === "completed") return Promise.resolve(this.retirement);
@@ -171,7 +206,8 @@ class GuiHostProjects {
     this.client.requireCapability("scheduledPreparation");
     const state = await this.client.sourceState(this.source);
     if (!state || state.sourceId !== this.sourceId) throw new Error("Host GUI source changed");
-    await this.retire();
+    if (this.options.singletonHeld && state.migration?.state === "pending") this.continueMigration();
+    else await this.retire();
     return this.list();
   }
   /** @returns {Promise<SavedProject[]>} */
@@ -190,6 +226,11 @@ class GuiHostProjects {
     }
     this.metadata = metadata;
     const projects = await this.client.listProjects();
+    const status =
+      /** @type {{projects: (SchedulingStatus & {usesSharedModelConfig?: boolean})[]}} */ (
+        /** @type {unknown} */ (await this.client.status())
+      );
+    this.rememberStatus(status);
     this.bindings.clear();
     for (const binding of state.bindings)
       this.bindings.set(binding.alias.legacyProjectId, {
@@ -210,6 +251,13 @@ class GuiHostProjects {
         dataDir: registration.dataDir,
         scratchDir: join(this.source.coreHome, id, "scratch"),
       });
+    }
+    for (const binding of this.bindings.values()) {
+      const hostProject = status.projects.find(
+        (project) => project.registration.projectId === binding.projectId,
+      );
+      binding.usesSharedModelConfig =
+        binding.sourceId === state.sourceId || hostProject?.usesSharedModelConfig === true;
     }
     return [...this.bindings].map(([id, binding]) => ({
       ...metadata.find((project) => project.id === id),
@@ -244,7 +292,10 @@ class GuiHostProjects {
   scheduling(id) {
     const projectId = this.bindings.get(id)?.projectId;
     return (
-      (projectId && this.schedules.get(projectId)) || { suppressed: false, activationError: null }
+      (projectId && this.schedules.get(projectId)) || {
+        suppressed: false,
+        activationError: null,
+      }
     );
   }
   refreshScheduling() {
@@ -290,11 +341,29 @@ class GuiHostProjects {
     return this.resolve(project.id);
   }
   /** @param {string} id */
+  async resumeMigration(id) {
+    if (!this.migrationError(id)) return;
+    // 已交接的来源由 Host 持有；只核对原迁移，不为未决写入创建新 ID。
+    await this.client.importSource(this.migrationId, this.source);
+    await this.list();
+  }
+  /** @param {string} id */
+  migrationError(id) {
+    const binding = this.bindings.get(id);
+    return binding && this.state.migration?.pendingProjects?.includes(binding.projectId)
+      ? "此项目的旧后台清理尚未确认；其余项目可继续使用。请检查原后台后重新连接。"
+      : null;
+  }
+  /** @param {string} id */
   journal(id) {
+    const message = this.migrationError(id);
+    if (message) throw Object.assign(new Error(message), { code: "MIGRATION_PENDING" });
     return this.client.journal(this.resolve(id).projectId);
   }
   /** @param {string} requestId @param {string} id @param {unknown} launchInputs @param {Record<string,string>} [credentials] @param {boolean} [resumeScheduling] */
   async ensure(requestId, id, launchInputs, credentials, resumeScheduling = false) {
+    const message = this.migrationError(id);
+    if (message) throw Object.assign(new Error(message), { code: "MIGRATION_PENDING" });
     const binding = this.resolve(id);
     const result = await this.client.ensureProject(
       requestId,

@@ -191,6 +191,8 @@ pub(crate) fn error_code(message: &str) -> &str {
         | "CAPACITY_EXCEEDED"
         | "TURN_BUSY"
         | "TASK_CONTROL_REQUIRED"
+        | "MIGRATION_PENDING"
+        | "migrationBlocked"
         | "SUBMISSION_UNKNOWN" => message,
         _ => "CORE_UNAVAILABLE",
     }
@@ -1484,13 +1486,7 @@ impl Session {
                 Some("session.send" | "session.control" | "task.pause" | "task.question.reply")
             )
         }) {
-            sent = if gateway_owner::legacy::is_legacy(record) {
-                let id = self.project_id(project)?;
-                gateway_owner::legacy::recover(&self.host, &self.source_id, &id, project, record)
-                    .await
-            } else {
-                self.reconcile_submission(project, record).await?
-            };
+            sent = self.reconcile_submission(project, record).await?;
             Some(&sent)
         } else {
             record
@@ -1725,9 +1721,7 @@ impl Session {
         let (id, _) = self.project(project)?;
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
         ensure!(
-            snapshot["pending"].as_array().unwrap().len()
-                + snapshot["outcomes"].as_object().unwrap().len()
-                < 4096,
+            crate::journal::has_capacity(&snapshot),
             "RESOURCE_UNAVAILABLE"
         );
         let operation = uuid::Uuid::new_v4().to_string();

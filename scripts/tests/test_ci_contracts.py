@@ -172,11 +172,9 @@ class CiContracts(unittest.TestCase):
             "smoke:test:composer-files",
             "mobile-types",
             "mobile-relay-install",
-            "mobile-browser",
         }
         items = {item["id"]: item for item in plan["items"]}
         self.assertTrue(required <= items.keys(), required - items.keys())
-        self.assertEqual(items["mobile-browser"]["dependsOn"], ["mobile-relay-install"])
         self.assertEqual(scope.CI_PLATFORMS["mobile"], "linux")
         self.assertEqual(scope.JOB_GROUPS["gui"]["mobile"], {"mobile"})
         for name in required:
@@ -202,7 +200,6 @@ class CiContracts(unittest.TestCase):
             "macos:renderer",
             "macos:bundle",
             "computer-helper",
-            "mobile-browser",
             "smoke:test:composer-files",
         }
         self.assertTrue(expensive <= full)
@@ -611,6 +608,26 @@ class CiContracts(unittest.TestCase):
                 ]
             report["results"].append(result)
         return plan, list(grouped.values())
+
+    def test_workbench_source_changes_require_the_core_boundary_check(self):
+        for path in (
+            "services/workbench/src/desktop/core/project-connections.cjs",
+            "services/workbench/src/new-owner.ts",
+        ):
+            with self.subTest(path=path):
+                plan, reports = self.gate_fixture(paths=(path,))
+                item = next(
+                    item for item in plan["items"] if item["id"] == "workbench-core-boundary"
+                )
+                self.assertEqual(item["phase"], "commit")
+                self.assertEqual(item["group"], "gui-portable")
+                self.assertTrue(
+                    any(
+                        result["id"] == item["id"]
+                        for report in reports
+                        for result in report["results"]
+                    )
+                )
 
     def test_core_shards_cover_the_manifest_once_and_keep_native_requirements(self):
         plan, _ = self.gate_fixture()

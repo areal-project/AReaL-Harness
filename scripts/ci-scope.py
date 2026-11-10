@@ -387,6 +387,12 @@ def build_plan(paths, source, manifest):
         )
     if affected["gui"]:
         add(
+            "workbench-core-boundary",
+            ["node", "clients/gui/scripts/workbench-boundary.mjs"],
+            "gui-portable",
+            phase="commit",
+        )
+        add(
             "manifest",
             ["node", "--test", "clients/gui/scripts/test-manifest.test.mjs"],
             "gui-portable",
@@ -428,29 +434,21 @@ def build_plan(paths, source, manifest):
             expected=portable,
         )
         add("gui-audit", ["pnpm", "--dir", "clients/gui", "audit"], "gui-portable")
-        mobile = next(entry for entry in manifest if entry["script"] == "test:mobile-browser")
+        # 手机浏览器专项已随旧远程网关删除；这里只保留类型检查和中继依赖安装。
         add(
             "mobile-types",
             ["pnpm", "--dir", "clients/gui", "mobile:typecheck"],
             "mobile",
             requires=("node-24.22.1",),
             phase="commit",
-            platforms=tuple(mobile["platforms"]),
+            platforms=("darwin", "linux"),
         )
         add(
             "mobile-relay-install",
             ["npm", "ci", "--ignore-scripts", "--prefix", "services/remote-relay"],
             "mobile",
             requires=("node-24.2.0",),
-            platforms=tuple(mobile["platforms"]),
-        )
-        add(
-            "mobile-browser",
-            ["pnpm", "--dir", "clients/gui", mobile["script"]],
-            "mobile",
-            ("mobile-relay-install",),
-            tuple(mobile["requires"]),
-            platforms=tuple(mobile["platforms"]),
+            platforms=("darwin", "linux"),
         )
     if affected["relay"]:
         _, _, renderer = gui_builds("relay:", "relay-build")

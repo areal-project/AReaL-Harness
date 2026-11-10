@@ -1,0 +1,57 @@
+id: overlays
+name: 菜单、弹窗与提示
+status: draft
+screens: [window, home]
+components: [menu, dialog, tooltip]
+
+initial: window.sidebar
+
+states:
+  window.sidebar:
+    see: 侧栏与对话，没有浮层
+  window.task-menu:
+    see: 对话行下方弹出任务菜单；上移、下移为不可用的浅色文字；归档前一道分隔线
+  window.organize-menu:
+    see: 侧栏整理菜单与它的排序子菜单同时打开，当前排序方式打勾
+  window.rename:
+    see: 窗口盖上背景层，正中是“重命名”弹窗，输入框是当前标题
+  home.draft:
+    see: 首页输入框有文字，没有提示
+  home.tooltip:
+    see: “发送”上方出现提示，文字“发送”，右侧快捷键标签 Enter
+
+transitions:
+  - from: window.sidebar
+    on: click 任务操作 {标题}
+    to: window.task-menu
+  - from: window.task-menu
+    on: [Esc, click 菜单外]
+    to: window.sidebar
+    note: Esc 时焦点回到“任务操作”按钮
+  - from: window.sidebar
+    on: click 侧栏整理，在子菜单项上按右方向键
+    to: window.organize-menu
+  - from: window.organize-menu
+    on: 在子菜单里选一种排序
+    to: window.sidebar
+    note: 菜单收起；再次打开时新选的一项打勾
+  - from: window.task-menu
+    on: click 重命名
+    to: window.rename
+  - from: window.rename
+    on: 改写名称并按回车或点保存
+    to: window.sidebar
+    note: 侧栏这一行与会话标题栏换成新名称
+  - from: window.rename
+    on: [click 取消, click 关闭弹窗, Esc, click 背景]
+    to: window.sidebar
+    note: 名称不变
+  - from: home.draft
+    on: 鼠标停在 发送
+    to: home.tooltip
+  - from: home.tooltip
+    on: 鼠标移开
+    to: home.draft
+
+motion:
+  - 菜单、弹窗、提示出现与消失只做透明度过渡（motion-normal）；减少动态时直接出现

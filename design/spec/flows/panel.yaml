@@ -1,0 +1,53 @@
+id: panel
+name: 右侧面板
+status: draft
+screens: [window]
+components: [side-panel, menu]
+
+initial: window.sidebar
+
+states:
+  window.sidebar:
+    see: 侧栏与对话，面板收起
+  window.panel:
+    see: 面板打开，顶栏只有完整视图与关闭按钮；内容区是四个入口
+  window.panel-tabs:
+    see: 顶栏两个标签“审查”“文件”，“文件”为当前标签；内容区空白
+  window.panel-add-menu:
+    see: 新增标签按钮下方菜单：终端、浏览器，分隔线，搜索标签页
+  window.panel-full:
+    see: 面板铺满主区，顶栏最左是当前对话标签，“审查”为当前标签；输入框浮在底部
+
+transitions:
+  - from: window.sidebar
+    on: click 展开侧边面板
+    to: window.panel
+    note: 没有打开过标签时显示入口
+  - from: window.panel
+    on: click 审查 入口
+    to: window.panel-tabs
+    note: 打开“审查”标签并成为当前标签
+  - from: [window.panel, window.panel-tabs]
+    on: click 关闭面板
+    to: window.sidebar
+  - from: window.panel-tabs
+    on: click 打开侧边面板标签页
+    to: window.panel-add-menu
+  - from: window.panel-add-menu
+    on: 选 终端
+    to: window.panel-tabs
+    note: 多一个“终端”标签并成为当前标签
+  - from: window.panel-tabs
+    on: 当前标签按 Delete
+    to: window.panel-tabs
+    note: 关掉它，最后一个标签成为当前；关完最后一个时面板收起
+  - from: window.panel-tabs
+    on: click 进入完整视图
+    to: window.panel-full
+  - from: window.panel-full
+    on: click 进入分屏视图
+    to: window.panel-tabs
+
+motion:
+  - 分屏下面板打开或关闭时，对话区宽度平滑变化（先快后慢）；减少动态时直接切换
+  - 新增菜单出现与消失同 menu

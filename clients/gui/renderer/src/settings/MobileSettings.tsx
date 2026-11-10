@@ -186,7 +186,6 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
       className="settings-sections remote-settings"
       aria-label={t("settings.mobileSettings.phoneConnectionSettings")}
     >
-      <p className="remote-intro">{t("settings.mobileConnect.intro")}</p>
       {pending && !adding && (
         <div className="remote-request" role="status">
           <Smartphone size={18} aria-hidden />

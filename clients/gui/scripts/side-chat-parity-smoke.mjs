@@ -336,7 +336,7 @@ const mainComposer = () =>
     .first();
 const sidePane = () =>
   baseline
-    ? page.getByRole("region", { name: "旁路讨论", exact: true })
+    ? page.getByRole("region", { name: "侧边聊天", exact: true })
     : page.getByTestId("side-chat-pane").filter({ visible: true });
 const sideInput = () =>
   sidePane().getByRole("textbox", { name: "描述要做的事，@ 引用文件，/ 查看命令", exact: true });
@@ -655,8 +655,24 @@ async function selectText(body, text, keyboard = false) {
         block: "center",
         behavior: "instant",
       });
+      // 脚本滚动不代表用户开始选择；补齐 pointerdown，让原有阅读所有者先确认当前位置。
+      // 否则下一个 Core/尺寸重绘仍可按旧锚点把正文移回屏外。
+      buildRange().startContainer.parentElement?.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }),
+      );
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const range = buildRange();
+      const viewport = (element.closest(".messages") ?? element).getBoundingClientRect();
+      if (
+        ![...range.getClientRects()].some(
+          (rect) =>
+            rect.bottom > Math.max(0, viewport.top) &&
+            rect.top < Math.min(innerHeight, viewport.bottom) &&
+            rect.right > Math.max(0, viewport.left) &&
+            rect.left < Math.min(innerWidth, viewport.right),
+        )
+      )
+        throw Error("Selection fixture must start inside the visible transcript");
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -694,16 +710,39 @@ async function selectText(body, text, keyboard = false) {
   }
 }
 async function addReference(body, text, target = "main", keyboard = false) {
+  const record = { textLength: text.length, target, keyboard, stage: "select" };
+  (facts.selectionActions ??= []).push(record);
   await selectText(body, text, keyboard);
   const actions = page.getByTestId("transcript-selection-actions");
   await actions.waitFor();
+  // visible 不代表定位和入场过渡已完成；过早聚焦可能滚动弹层并使选区失效。
+  await until(
+    () =>
+      actions.evaluate(
+        (element) =>
+          getComputedStyle(element).opacity === "1" && !element.hasAttribute("data-starting-style"),
+      ),
+    "selection actions finished their open transition",
+  );
   const action = actions.getByRole("button", {
-    name: target === "main" ? "添加到聊天" : "在旁路中询问所选内容",
+    name: target === "main" ? "添加到聊天" : "在侧边聊天中询问所选内容",
     exact: true,
   });
   if (keyboard) await shot("P4-keyboard-selection");
-  await action.focus();
-  await action.press("Enter");
+  record.viewport = await action.evaluate((element) => ({
+    width: innerWidth,
+    height: innerHeight,
+    rect: element.getBoundingClientRect().toJSON(),
+    scrollTop: document.querySelector(".messages")?.scrollTop,
+  }));
+  record.stage = "activate";
+  if (keyboard) {
+    await action.focus();
+    assert.equal(await action.evaluate((element) => document.activeElement === element), true);
+    assert.equal(await page.evaluate(() => window.getSelection().toString()), text);
+    await page.keyboard.press("Enter");
+  } else await action.click();
+  record.stage = "activated";
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
 }
 async function toolAndPermission() {
@@ -1541,7 +1580,7 @@ try {
         tabs.map((tab) => tab.getAttribute("data-side-pane-tab-id")?.slice(5)).filter(Boolean),
       );
       for (const id of childIds) await closeTab(id).catch(() => {});
-      const oldReturn = sidePane().getByRole("button", { name: "返回主会话", exact: true });
+      const oldReturn = sidePane().getByRole("button", { name: "关闭面板", exact: true });
       if (await oldReturn.isVisible()) await oldReturn.click();
     }
   }

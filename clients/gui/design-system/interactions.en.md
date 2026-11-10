@@ -37,6 +37,6 @@ Report business results, interaction continuity, visual consistency and platform
 
 ## Production application in conversation stage two
 
-Process disclosure names its contents and action; command details expose authoritative textual state nearby; child entries and panels use the original assignment with the existing identity fallback. Existing owners retain send/return state. See [stage two](exercises/conversation-stage2.en.md) for decisions and repeatable checks; global values and Base admission remain unchanged.
+Process disclosure names its contents and action; command details expose authoritative textual state nearby; child entries and panels use the original assignment with the existing identity fallback. Existing owners retain send/return state. See [stage two](../../../design/archive/gui/exercises/conversation-stage2.en.md) for decisions and repeatable checks; global values and Base admission remain unchanged.
 
-Hosts explicitly select default/compact editor layout; full resource views do not restyle Side. Draft/model/submission ownership remains separate; see [shared workspace](exercises/shared-workspace.en.md).
+Hosts explicitly select default/compact editor layout; full resource views do not restyle Side. Draft/model/submission ownership remains separate; see [shared workspace](../../../design/archive/gui/exercises/shared-workspace.en.md).

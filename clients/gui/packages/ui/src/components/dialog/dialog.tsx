@@ -33,7 +33,7 @@ function DialogOverlay({
       className={cn(
         // Linux 旧标题栏避让让模态遮罩从 48px 以下开始，窗口顶部仍保持高亮且 tooltip 可见。
         // renderer 自绘窗控位于同一窗口，模态态应与其它平台一致覆盖完整视口。
-        "fixed inset-0 isolate z-(--layer-dialog) bg-black/60 duration-(--motion-normal) supports-backdrop-filter:backdrop-blur-xs transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0",
+        "fixed inset-0 isolate z-(--layer-dialog) bg-dialog-backdrop duration-(--motion-normal) transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0",
         className,
       )}
       {...props}
@@ -65,7 +65,7 @@ function DialogContent({
         className={cn(
           // Electron 自绘标题栏下，弹窗可能会落进窗口顶部的 drag 区域。
           // 如果不把弹窗内容整体标成 no-drag，右上角关闭按钮这类交互会被窗口拖拽命中吞掉。
-          "fixed top-1/2 left-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-field rounded-dialog border border-popover-border bg-popover p-panel text-ui-base/relaxed text-foreground shadow-dialog duration-(--motion-normal) outline-none ui-popup [app-region:no-drag]",
+          "fixed top-1/2 left-1/2 z-(--layer-dialog) grid w-full max-w-[calc(100%-var(--spacing-field)*2)] -translate-x-1/2 -translate-y-1/2 gap-field rounded-dialog border border-border bg-popover p-panel text-ui-base/relaxed text-foreground shadow-dialog duration-(--motion-normal) outline-none ui-popup [app-region:no-drag]",
           className,
         )}
         {...props}
@@ -78,7 +78,7 @@ function DialogContent({
               <Button
                 type="button"
                 variant="ghost"
-                className="absolute top-4 right-4 z-20 hover:bg-surface-hover [app-region:no-drag]"
+                className="absolute top-panel right-panel z-20 [app-region:no-drag]"
                 size="icon-sm"
               />
             }
@@ -94,7 +94,11 @@ function DialogContent({
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
-    <div data-slot="dialog-header" className={cn("flex flex-col gap-1", className)} {...props} />
+    <div
+      data-slot="dialog-header"
+      className={cn("flex flex-col gap-[calc(var(--spacing-inline)/2)]", className)}
+      {...props}
+    />
   );
 }
 
@@ -111,7 +115,7 @@ function DialogFooter({
   return (
     <div
       data-slot="dialog-footer"
-      className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)}
+      className={cn("flex flex-col-reverse gap-inline sm:flex-row sm:justify-end", className)}
       {...props}
     >
       {children}

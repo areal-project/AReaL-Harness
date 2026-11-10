@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Button } from "./components/ui/button.js";
 import { useI18n } from "./i18n/IntlProvider.js";
-import { FeedbackNotice } from "./FeedbackNotice.js";
 
 export type WorkspacePreparationState =
   | { kind: "preparing" }
@@ -35,28 +34,24 @@ export function WorkspacePreparationStatus({
       </span>
     );
   return (
-    <FeedbackNotice
-      tone="error"
-      message={label}
-      detail={`${t("workspace.draftEditable")}\n\n${state.detail}`}
-      actions={
-        onRetry && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={retrying}
-            onClick={() => {
-              setRetrying(true);
-              void onRetry()
-                .catch(() => {})
-                .finally(() => setRetrying(false));
-            }}
-          >
-            {t(scope === "workspace" ? "recovery.retryPrepare" : "recovery.reconnectProject")}
-          </Button>
-        )
-      }
-    />
+    <span role="status" data-testid="workspace-preparation-status">
+      {label}
+      {onRetry && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={retrying}
+          onClick={() => {
+            setRetrying(true);
+            void onRetry()
+              .catch(() => {})
+              .finally(() => setRetrying(false));
+          }}
+        >
+          {t(scope === "workspace" ? "recovery.retryPrepare" : "recovery.reconnectProject")}
+        </Button>
+      )}
+    </span>
   );
 }

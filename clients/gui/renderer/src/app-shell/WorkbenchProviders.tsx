@@ -70,7 +70,8 @@ export function AppProviders({
         (Number(libraryReadOnly) << 1) |
         (Number(taskReadOnly) << 2) |
         (Number(conversationSubmitReadOnly) << 3) |
-        (Number(conversationCreateReadOnly) << 4)
+        (Number(conversationCreateReadOnly) << 4) |
+        (Number(services.reads !== undefined) << 5)
       );
     },
   );

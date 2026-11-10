@@ -1,43 +1,9 @@
 // @ts-check
 "use strict";
-const { executeCore } = require("./core-process.cjs");
-const { statSync } = require("node:fs");
-
-const requiredCoreCommands = Object.freeze([
-  Object.freeze(["config", "models", "read"]),
-  Object.freeze(["config", "models", "write"]),
-]);
-
-/** @param {string} binary @param {readonly string[]} args */
-async function coreCommandHelp(binary, args) {
-  try {
-    return (await executeCore(binary, [...args, "--help"], { timeout: 5000 })).stdout;
-  } catch (error) {
-    return `${error instanceof Error && "stdout" in error ? error.stdout : ""}\n${error instanceof Error && "stderr" in error ? error.stderr : ""}`;
-  }
-}
-
-/** @param {string} binary */
-async function inspectCoreCapabilities(binary) {
-  const help = await Promise.all(
-    requiredCoreCommands.map((args) => coreCommandHelp(binary, args.slice(0, -1))),
-  );
-  const missing = requiredCoreCommands.filter((args, index) =>
-    /unrecognized subcommand/.test(help[index]),
-  );
-  if (!missing.length) return;
-  let identity = binary;
-  try {
-    const version = (await executeCore(binary, ["--version"], { timeout: 5000 })).stdout.trim();
-    const built = statSync(binary).mtime.toISOString();
-    identity = `${binary}（${version}，构建时间 ${built}）`;
-  } catch {
-    /* 版本信息只用于诊断，缺少它不影响拒绝结果。 */
-  }
-  const commands = missing.map((args) => args.join(" ")).join("、");
-  throw new Error(
-    `当前 Core 不支持 ${commands}：${identity}。请在 AReaL-Harness 重新构建包含这些命令的 areal，再用新的绝对路径启动。`,
-  );
+/** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend */
+async function inspectCoreCapabilities(backend) {
+  backend.host.client.requireCapability("workbenchUtilities");
+  if (!backend.hostCall) throw new Error("Host 配置能力不可用，请更新后台。");
 }
 
 // Project only the current connection's public declaration. This does not
@@ -110,4 +76,4 @@ function projectCoreCapabilities(binary, capabilities) {
   };
 }
 
-module.exports = { requiredCoreCommands, inspectCoreCapabilities, projectCoreCapabilities };
+module.exports = { inspectCoreCapabilities, projectCoreCapabilities };

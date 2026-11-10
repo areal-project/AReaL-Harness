@@ -492,30 +492,16 @@ impl Session {
             serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
             "LIMIT_EXCEEDED"
         );
-        let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
-        ensure!(
-            snapshot["pending"].as_array().unwrap().len()
-                + snapshot["outcomes"].as_object().unwrap().len()
-                < 4096,
-            "CAPACITY_EXCEEDED"
-        );
-        ensure!(
-            !snapshot["pending"].as_array().unwrap().iter().any(
-                |entry| entry["params"]["threadId"] == params.thread_id
-                    && !send::remote_control(entry)
-                    && !entry["operationId"]
-                        .as_str()
-                        .is_some_and(|id| snapshot["outcomes"]
-                            .get(id)
-                            .is_some_and(|outcome| outcome["remote"].is_object()))
-            ),
-            "SUBMISSION_UNKNOWN"
-        );
-        snapshot["pending"]
-            .as_array_mut()
-            .unwrap()
-            .push(record.clone());
-        self.host.journal.native_replace(&id, revision, snapshot)?;
+        self.host.journal.native_preflight(&id, &record, true)?;
+        self.host
+            .schedules
+            .connections
+            .workbench_core_admit(&self.host, &id, None, method, &record["params"])
+            .await?;
+        let (revision, snapshot) = self.host.journal.native_snapshot(&id)?;
+        self.host
+            .journal
+            .native_admit(&id, revision, snapshot, record.clone(), true)?;
         let response = if let Some(prepared) = &mut execution {
             prepared.dispatch().await
         } else {

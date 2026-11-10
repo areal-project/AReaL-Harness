@@ -99,6 +99,8 @@ Rust Client 的 `launch_with_limits` 投影可信 PATH 并向 Runtime 传递上�
 
 默认每进程期限 30 秒，整个 Scope 后代累计 8 MiB 输出、4 个并发进程；连接保留 256 Scope/4096 操作。期限含写路径排队和启动，清理前不释放进程额度。部署可以配置，子 Scope 只能收窄。
 
+`wallTimeMs` 是每次进程启动、写路径排队及执行的上限，不是 Turn 的累计时间。Core 创建 Turn 权限 Scope 时继承父级单进程期限；首次工具调用之前的模型等待不预扣该额度。显式命令期限、权限收窄、累计输出预算以及取消后的清理要求继续适用。
+
 `runtime.status.rotationRecommended` 在 Scope、operation 保留量或累计输出用量达到 80% 时为 true，已关闭 Scope 仍占用保留容量。此信号不自动删除记录或重置 epoch；共享服务由可信宿主执行[空闲轮换](../guides/runtime.md#生命周期)，旧 epoch 的句柄与去重语义保持不变。
 
 `fs.execute` 的内部文件进程和显式 `process.startQueued` 在祖先并发名额耗尽时等待释放；排队计入原进程期限，预留名额与检查在同一临界区完成，不提高并发上限。等待前登记并保留本 epoch 的操作回执；重复 ID 复用同一等待与结果，撤销 Scope 会终止等待。累计输出、权限或操作记录容量耗尽仍立即拒绝，不重试已有副作用。`process.start` 保持立即准入或拒绝的行为。Core 的短文件读取与搜索协商使用排队入口；旧 Runtime 未公布该方法时仍使用原入口，不在失败后重放。

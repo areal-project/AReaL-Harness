@@ -1,16 +1,15 @@
-
 .settings-locked-value {
   display: inline-flex;
   align-items: center;
   height: var(--spacing-control);
   min-height: var(--spacing-control);
   max-width: 100%;
-  padding: 0 12px;
+  padding: 0 calc(var(--spacing-inline) * 1.5);
   font-size: var(--text-ui-caption);
-  font-weight: 430;
-  line-height: calc(var(--ui-font-size) + 4px);
+  font-weight: var(--font-weight-toolbar);
+  line-height: var(--line-height-ui-sm);
   border-radius: var(--radius-navigation);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   background: var(--color-hover);
   color: var(--color-foreground);
   cursor: default;

@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { NavigationBackIcon } from "./interfaceIcons.js";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "./components/ui/button.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -22,7 +23,6 @@ export function ScheduledTaskConversation({
   history,
   onClose,
   onOpenThread,
-  onReveal,
   renderConversation,
   renderResources,
 }: {
@@ -33,7 +33,6 @@ export function ScheduledTaskConversation({
   history: ReactNode;
   onClose: () => void;
   onOpenThread: (projectId: string, threadId: string) => void;
-  onReveal?: (projectId: string, path: string) => void;
   renderConversation: TaskConversationRenderer;
   renderResources: (project: Data, thread: Data) => ReactNode;
 }) {
@@ -45,7 +44,7 @@ export function ScheduledTaskConversation({
   const state = scheduledTaskState(task, project, t);
   // 运行接在这段对话里时，详情就是这段对话；旧的“每次新开”任务列出各次运行的对话。
   const bound = scheduledTaskConversation(task);
-  const target: string | undefined = bound ?? task.sourceThreadId ?? undefined;
+  const target: string | undefined = bound ?? task.sourceThreadId ?? task.threadId ?? undefined;
   useEffect(() => {
     if (!project.state?.connected || !target) return;
     let live = true;
@@ -69,10 +68,6 @@ export function ScheduledTaskConversation({
     retry,
   ]);
   const thread = target ? project.state?.threads?.[target] : undefined;
-  const folder =
-    !task.sourceThreadId && thread?.cwd && project.root && thread.cwd.startsWith(project.root)
-      ? thread.cwd.slice(project.root.length + 1) || "."
-      : undefined;
   return (
     <main
       className="task-conversation"
@@ -80,14 +75,16 @@ export function ScheduledTaskConversation({
       data-task-id={task.id}
     >
       <header className="scheduled-task-header">
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label={t("operations.schedules.backToList")}
+          onClick={onClose}
+        >
+          <NavigationBackIcon />
+        </Button>
         <TitleTooltip title={task.objective}>
           <h2>{scheduledTaskName(task)}</h2>
-        </TitleTooltip>
-        <ScheduledWorkspace.Status state={state.kind} label={scheduledTaskStateLabel(state, t)} />
-        <TitleTooltip title={project.root}>
-          <span className="scheduled-task-header-summary">
-            {state.kind === "attention" ? state.reason : scheduledTaskSummary(task, t)}
-          </span>
         </TitleTooltip>
         {task.sourceThreadId && (
           <Button
@@ -99,16 +96,19 @@ export function ScheduledTaskConversation({
             {t("operations.schedules.openSource")}
           </Button>
         )}
-        {folder && onReveal && (
-          <Button size="sm" variant="ghost" onClick={() => onReveal(project.id, folder)}>
-            {t("operations.schedules.revealFolder")}
-          </Button>
-        )}
         {thread && renderResources(project, thread)}
-        <Button size="sm" variant="ghost" onClick={onClose}>
-          {t("operations.schedules.closeDetails")}
-        </Button>
       </header>
+      <section
+        className="scheduled-task-pinned-summary"
+        aria-label={t("operations.schedules.pinnedSummary")}
+      >
+        <div className="scheduled-task-summary-content">
+          <ScheduledWorkspace.Status state={state.kind} label={scheduledTaskStateLabel(state, t)} />
+          <span className="scheduled-task-summary-text">
+            {state.kind === "attention" ? state.reason : scheduledTaskSummary(task, t)}
+          </span>
+        </div>
+      </section>
       {target && read.status === "error" && (
         <p role="alert" className="task-plan-note">
           {t("operations.schedules.sourceUnavailable")}

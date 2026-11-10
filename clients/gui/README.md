@@ -20,18 +20,18 @@ Web/PWA Remote v2 的实施边界见[架构](../../docs/design/remote-control.md
 
 GUI 工程化与设计系统的 P0/P1 整改任务拆分为可交接的 [整改 Spec 包](specs/README.md)，每份写明当前问题、架构决策、验收标准与防复发约束；Spec 描述整改目标，不代表已实现行为。
 
-真实Electron对话专项从仓库根运行 `node clients/gui/scripts/migration-smoke.mjs --conversation-journey`；先构建并核对Core/Runtime及renderer。覆盖命令、子代理、图片、阅读/收敛、暂停UNKNOWN核查与GUI历史恢复；外部模型为本地确定性SSE。证据与注入边界见[真实Electron专项](design-system/exercises/conversation-flow.md#真实-electron-专项-e1)。
+真实Electron对话专项从仓库根运行 `node clients/gui/scripts/migration-smoke.mjs --conversation-journey`；先构建并核对Core/Runtime及renderer。覆盖命令、子代理、图片、阅读/收敛、暂停UNKNOWN核查与GUI历史恢复；外部模型为本地确定性SSE。证据与注入边界见[真实Electron专项](../../design/archive/gui/exercises/conversation-flow.md#真实-electron-专项-e1)。
 生产UI包接入专项为 `node clients/gui/scripts/migration-smoke.mjs --conversation-production`：覆盖顶部任务卡片、Sources三项/全部、子代理列表与真实历史返回、工具图片/活动人工展开、窄桌面、暂停、Core返回UNKNOWN时的核查及Renderer历史重载不重放。沿相同隔离Electron/Core/Runtime与本地模型；它不代替完整专项末尾的活动任务退出后后台完成合同，也不代表安装包或真实供应商验收。
 
-连续动效专项沿用同一入口的 `--conversation-motion`，保留原始 CDP 帧、RAF/输入/阅读观测并验证展开反向、资源进退和减少动态效果；边界与复验要求见[E2 专项](design-system/exercises/conversation-flow.md#真实-electron-连续动效专项-e2)。
+连续动效专项沿用同一入口的 `--conversation-motion`，保留原始 CDP 帧、RAF/输入/阅读观测并验证展开反向、资源进退和减少动态效果；边界与复验要求见[E2 专项](../../design/archive/gui/exercises/conversation-flow.md#真实-electron-连续动效专项-e2)。
 
-宿主与新内容专项使用 `--conversation-host`，验证真实窗口尺寸/125%缩放、子代理与设置焦点返回、草稿和快捷键；原生中文输入法通过独立操作步骤取证。见[E3专项](design-system/exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)，[E4补充](design-system/exercises/conversation-flow.md#原生宿主补充-e4)通过 `AREAL_E4_NATIVE=1 AREAL_E4_OPERATOR=0` 复验同应用窗口往返、独立原生网页交互/隐藏与焦点返回。人工阶段需省略 `AREAL_E4_OPERATOR=0` 并保留实际操作证据；未触发的候选浮窗不计通过。
+宿主与新内容专项使用 `--conversation-host`，验证真实窗口尺寸/125%缩放、子代理与设置焦点返回、草稿和快捷键；原生中文输入法通过独立操作步骤取证。见[E3专项](../../design/archive/gui/exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)，[E4补充](../../design/archive/gui/exercises/conversation-flow.md#原生宿主补充-e4)通过 `AREAL_E4_NATIVE=1 AREAL_E4_OPERATOR=0` 复验同应用窗口往返、独立原生网页交互/隐藏与焦点返回。人工阶段需省略 `AREAL_E4_OPERATOR=0` 并保留实际操作证据；未触发的候选浮窗不计通过。
 
-现有对话目录入口为 `design-system.html?conversation`，复用生产消息、输入区与可返回的资源面板；`pnpm --dir clients/gui test:design --conversation-demo` 专项检查该样板。迁移与旧新版同状态对照边界见[对话目录迁移](design-system/exercises/conversation-flow.md#现有对话目录迁移样板)。
+现有对话目录入口为 `design-system.html?conversation`，复用生产消息、输入区与可返回的资源面板；`pnpm --dir clients/gui test:design --conversation-demo` 专项检查该样板。迁移与旧新版同状态对照边界见[对话目录迁移](../../design/archive/gui/exercises/conversation-flow.md#现有对话目录迁移样板)。
 
 ## 实验性 Host 读路径
 
-GUI 默认继续使用原有读路径。验收时可在开发者工具中设置 `localStorage.setItem("areal.oneProtocol.reads", "1")` 并重新加载，项目导航与会话详情改从 Host 订阅；删除此键并重新加载即可回退。写操作仍由原有适配器提供。`areal web` 打开 Host 发布的同一 Renderer，浏览器首次使用需在本机批准，当前只读。授权与撤销命令见[Host 契约](../../docs/api/host.md#回环-websocket-与共享读路径)。验收必须使用安装包与隔离的真实数据副本，不对原数据启动服务。
+GUI 后台默认由 Host 监督，启动失败不会另起 Main 写者；已有 GUI 需退出重开，工作区与配置沿用原目录。Renderer 的项目导航、会话详情与写操作都经 Host，没有回退开关；手机与远程网页使用同一份界面。`areal web` 打开 Host 发布的同一 Renderer，浏览器首次使用需在本机批准；查看、提交与管理按已授予范围开放，不自动扩大旧授权。授权与撤销命令见[Host 契约](../../docs/api/host.md#回环-websocket-与共享读路径)。验收必须使用安装包与隔离的真实数据副本，不对原数据启动服务。
 
 ## 开发
 
@@ -353,7 +353,7 @@ macOS 安装包将 Desktop 放在独立应用身份的 `AReaL Harness Service.ap
 
 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal pnpm --dir clients/gui run test:service-reopen` 验证 Renderer reload、强制崩溃后的显式刷新，以及两次窗口关闭与重开。Renderer 恢复后从权威快照重新挂接，保留 Main、Desktop、Host、Core 的进程身份、owner、代际和同一模型连接。脚本分别追加新的流片段，在生产 App 中检查历史、活动状态、草稿及新增回复，并完成原 Turn。随后用独立活动 Turn 验证应用退出与重启，要求新 owner 和代际、历史与草稿保留，且不重发中断输入。命名请求与用户执行请求分别计数；Runtime PID 按实际出现记录，不要求启动工具。`AREAL_REOPEN_FORCE_GUI=1` 将应用退出替换为 Main SIGKILL。源码 runner 的生命期连接在测试被杀后结束 Main，再由产品 owner 管道回收服务。可选 `AREAL_REOPEN_REPLACEMENT_BIN=/absolute/verified/areal` 用另一份真实 Mach-O 替换私有路径，验证同次应用窗口重开不隐式换代，随后恢复原字节和时间。未指定时验证文件时间变化不触发换代。
 
-同窗口 Renderer 阅读恢复已有隔离真实 Electron/Core 验证，运行与边界见 [E-RECOVERY](design-system/base-evidence.md#e-recovery)。构建匹配的 Core 与 renderer 后，从仓库根运行 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal node clients/gui/scripts/service-reopen-smoke.mjs --reading-slice`。Core 固定路径必须是该 checkout 内的私有普通副本。此模式核对重载、Renderer 崩溃后显式重载的已加载段落与偏移、阅读历史时的新输出、键盘返回最新以及再次重载后的跟随。原任务、草稿、执行身份与模型请求计数同时检查，不重放原提交。脚本使用隔离的源码 Electron/Core 与确定性本地模型，不证明完整应用重启后的阅读恢复、未加载历史获取、展开状态、真实供应商、其他平台或安装包验收。详细边界见 [Messages 阅读合同](renderer/src/Messages.md#同窗口-renderer-恢复阅读)。 加上 `--manual` 后，脚本先完成自动检查，再保留阅读样例与草稿供操作。看到 `Manual ready` 后可在同一窗口刷新、返回最新并比较；关闭该窗口会清理脚本自有服务。
+同窗口 Renderer 阅读恢复已有隔离真实 Electron/Core 验证，运行与边界见 [E-RECOVERY](../../design/archive/gui/base-evidence.md#e-recovery)。构建匹配的 Core 与 renderer 后，从仓库根运行 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal node clients/gui/scripts/service-reopen-smoke.mjs --reading-slice`。Core 固定路径必须是该 checkout 内的私有普通副本。此模式核对重载、Renderer 崩溃后显式重载的已加载段落与偏移、阅读历史时的新输出、键盘返回最新以及再次重载后的跟随。原任务、草稿、执行身份与模型请求计数同时检查，不重放原提交。脚本使用隔离的源码 Electron/Core 与确定性本地模型，不证明完整应用重启后的阅读恢复、未加载历史获取、展开状态、真实供应商、其他平台或安装包验收。详细边界见 [Messages 阅读合同](renderer/src/Messages.md#同窗口-renderer-恢复阅读)。 加上 `--manual` 后，脚本先完成自动检查，再保留阅读样例与草稿供操作。看到 `Manual ready` 后可在同一窗口刷新、返回最新并比较；关闭该窗口会清理脚本自有服务。
 
 Core 观察连接意外关闭时，项目连接所有者以 500ms 起步、最长 30s 的退避重试，通过 `service status --instance` 发现兼容的运行中实例，并用原子 `areal/thread/observe` 恢复 Thread/Task 快照、订阅和通知基线。观察恢复不重绑工具宿主；用户显式认领原生页时，才读取权威状态并在 Thread 空闲时尝试 `thread/resume` 绑定，仍受 Core 宿主冲突检查约束。恢复不重新提交任务、不同步 Provider/MCP 配置，也不执行配置 revision 屏障。旧连接的消息与异步结果失去投影写入资格。显式停止、适配器关闭、停止中的 Core 或部署指纹不兼容会阻止自动恢复；重新连接需显式操作。
 
@@ -446,9 +446,9 @@ Cloud 支持文本及图片、音频、文件附件；可选择文件、粘贴�
 Cloud 对话的已读标记保存在本地导航元数据中，不要求云端支持桌面整理命令。
 
 `pnpm --dir clients/gui run test:cloud-lifecycle` 使用构建后的真实 Renderer 和 Cloud 适配器，以及本地 WebSocket 协议替身，验证保存配置和项目新聊天不分配云端会话，以及已有云端会话的顶部通知、沙箱回收后的恢复和未知提交草稿保留，并输出截图和请求记录；不替代真实 ARCA、UPFS 或模型验收。
-交互设计从[用户交互模式](design-system/interactions.md)进入，页面是既有模式的组合；[设置页阶段一](design-system/exercises/settings-stage1.md)使用真实隔离Electron验证，第二阶段在审查后选择。
+交互设计从[用户交互模式](design-system/interactions.md)进入，页面是既有模式的组合；[设置页阶段一](../../design/archive/gui/exercises/settings-stage1.md)使用真实隔离Electron验证，第二阶段在审查后选择。
 
-真实对话的发送、命令、子代理及面板返回迁移和同状态验证见[对话阶段二](design-system/exercises/conversation-stage2.md)。
+真实对话的发送、命令、子代理及面板返回迁移和同状态验证见[对话阶段二](../../design/archive/gui/exercises/conversation-stage2.md)。
 
 ## 界面语言与文案开发
 
@@ -486,6 +486,8 @@ test:i18n-native 使用同一隔离 runner，覆盖双语归档、会话与诊�
 检查更新遇到网络变化等错误时，点击蓝色更新按钮可重新检查。发现新版本后再次点击才会下载；若确认已是最新版，错误提示会消失。下载或原生校验失败后，同一按钮重试当前版本。
 
 正式 macOS arm64 包使用 DMG 首次安装、ZIP 自动更新，并保留 Developer ID 签名和 Apple 公证。下载后先校验同一 Release 的 `SHA256SUMS`；从 DMG 将应用拖入所选安装目录，再打开应用，按 macOS 提示处理安全与隐私权限。
+
+从旧版跨大版本升级时停机导入：在终端执行 `bash scripts/offline-upgrade-mac.sh`，它退出旧版、停止 Host 并完整备份数据目录，然后再安装新版；首次启动一次性导入项目、会话历史、资料库、凭据与模型设置、定时任务定义和工作区登记。手机需要重新配对，进行中的任务需要重新发起。新版不支持降级。
 
 升级前备份 GUI 数据（默认 `~/Library/Application Support/AReaL Harness GUI`）、共享配置 `~/.areal` 和自定义项目数据。下载不停止任务；原生校验完成后等待活动任务、队列和后台操作安全结算，再停止后台并交给系统替换/重开。停止受理结果未知时检查原后台资源，不重复提交安装。下载/校验失败可重试；交接系统后未重开时手动打开原安装位置并核对版本。程序回退不等于数据降级，恢复旧程序时可能需要同步恢复备份；凭据继续使用原安全存储，备份目录不代表可跨机器迁移钥匙串。
 

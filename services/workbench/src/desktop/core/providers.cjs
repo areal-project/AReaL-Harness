@@ -82,7 +82,7 @@ class AppProviders {
     /** @type {{service:SubscriptionService,revision:number,lifetime:AbortController}|undefined} */ this.subscriptionRefreshScope =
       undefined;
     /** @type {Promise<void>|undefined} */ this.subscriptionRefresh = undefined;
-    /** @type {WeakMap<CoreProject,{models:import('./provider-contract.cjs').ModelCatalogEntry[],configuration:ModelSnapshot|undefined,subscription:import('@areal/workbench/desktop-contract/provider').ChatGPTStatus,accepted:import('./provider-contract.cjs').AcceptedModel|undefined,configured:string,result:import('./provider-contract.cjs').ModelCatalogEntry[]}>} */ this.catalogs =
+    /** @type {WeakMap<CoreProject,{models:import('./provider-contract.cjs').ModelCatalogEntry[],configuration:ModelSnapshot|undefined,subscription:import('@areal/workbench/desktop-contract/provider').ChatGPTStatus,accepted:import('./provider-contract.cjs').AcceptedModel|undefined,configured:string,locked:Set<string>,result:import('./provider-contract.cjs').ModelCatalogEntry[]}>} */ this.catalogs =
       new WeakMap();
     /** @type {PreparedStatus|null} */ this.preparedSubscriptionStatus = null;
     /** @type {NodeJS.Timeout|null} */ this.reconciliationTimer = null;
@@ -91,6 +91,7 @@ class AppProviders {
     /** @type {InstanceType<typeof import('./subscription.cjs').SubscriptionStore>|undefined} */ this.openaiStore =
       undefined;
     this.subscriptionInitialized = false;
+    this.subscriptionStarting = false;
     /** @type {InstanceType<typeof import("./native-subscription.cjs").NativeSubscription>|undefined} */ this.nativeService =
       undefined;
     this.closed = false;
@@ -108,11 +109,26 @@ class AppProviders {
     } catch (error) {
       if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
     }
-    try {
-      await this.openai();
-    } catch (error) {
-      this.subscriptionUnavailable(error);
-    }
+    // 订阅交接可能等待系统凭据；普通供应商和任务不依赖其完成。
+    this.subscription = {
+      ...this.subscription,
+      state: "checking",
+      availability: "checking",
+      refreshing: true,
+    };
+    this.subscriptionStarting = true;
+    void this.openai()
+      .then(() => {
+        this.subscriptionStarting = false;
+        return this.closed ? undefined : this.prepare();
+      })
+      .catch((error) => {
+        this.subscriptionStarting = false;
+        this.subscriptionUnavailable(error);
+      })
+      .finally(() => {
+        if (!this.closed) this.backend.onChange();
+      });
   }
 
   get value() {
@@ -209,6 +225,7 @@ class AppProviders {
 
   async prepare() {
     if (
+      this.subscriptionStarting ||
       this.subscriptionInitializationError ||
       (this.backend.host.retirement && this.backend.host.retirement.state !== "completed")
     )
@@ -302,7 +319,11 @@ class AppProviders {
         }
       }
       if (changed && !restore)
-        await this.backend.save("subscription-catalog.json", { version: 1, identity, models: [] });
+        await this.backend.save("subscription-catalog.json", {
+          version: 1,
+          identity,
+          models: [],
+        });
     } catch (error) {
       if (revision !== account.revision || this.closed) return;
       this.subscription = {
@@ -1312,7 +1333,10 @@ class AppProviders {
   }
   /** @param {CoreProject} project */
   manages(project) {
-    return this.backend.host.resolve(project.id).sourceId === this.backend.host.sourceId;
+    const binding = this.backend.host.resolve(project.id);
+    return (
+      binding.sourceId === this.backend.host.sourceId || binding.usesSharedModelConfig === true
+    );
   }
   /** @param {CoreProject} project @returns {ProviderTarget} */
   target(project) {
@@ -1694,7 +1718,9 @@ class AppProviders {
               ].every((method) => target.client.capabilities?.methods?.includes(method))
             )
               throw new Error("请更新 Core 后再应用模型配置。");
-            const reconciled = await this.inspectPending(target, undefined, { refreshModels });
+            const reconciled = await this.inspectPending(target, undefined, {
+              refreshModels,
+            });
             if (reconciled?.pending) return;
             const snapshot = await this.config.current();
             this.requireTarget(target);
@@ -1717,15 +1743,19 @@ class AppProviders {
               target.proof.applied.revision === snapshot.revision &&
               this.credentialsReady(target.proof, snapshot)
             ) {
-              await this.confirmProof(target, target.proof, snapshot, { refreshModels });
+              await this.confirmProof(target, target.proof, snapshot, {
+                refreshModels,
+              });
               return;
             }
+            const otherStarting =
+              this.backend.starting.size > (this.backend.starting.has?.(project.id) ? 1 : 0);
             if (
               this.saving ||
               this.backend.providerUpdating ||
               this.backend.resourcesUpdating ||
               this.backend.activeCommands ||
-              this.backend.starting.size
+              otherStarting
             ) {
               project.providerError = null;
               return;
@@ -1742,7 +1772,7 @@ class AppProviders {
               this.backend.providerUpdating ||
               this.backend.resourcesUpdating ||
               this.backend.activeCommands ||
-              this.backend.starting.size
+              this.backend.starting.size > (this.backend.starting.has?.(project.id) ? 1 : 0)
             ) {
               project.providerError = null;
               return;
@@ -1750,7 +1780,9 @@ class AppProviders {
             this.backend.providerUpdating = true;
             try {
               if (this.closed || this.backend.closing) return;
-              const outcome = await this.applyProject(snapshot, target, { refreshModels });
+              const outcome = await this.applyProject(snapshot, target, {
+                refreshModels,
+              });
               if (!outcome.applied && !outcome.pending)
                 this.applicationFailed(target, snapshot.revision, outcome.error);
             } finally {

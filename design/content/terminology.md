@@ -2,7 +2,7 @@
 
 | 对象 | 界面称呼建议 | 避免歧义 | 详细来源 |
 | --- | --- | --- | --- |
-| `R-TERM-002` Project | 项目 | 不用项目名称暗示授权，也不将项目外聊天称为无效会话 | [工作台](../products/workbench/README.md)、[身份与所有权](../people-and-agents/identity-and-ownership.md) |
+| `R-TERM-002` Project | 项目 | 不用项目名称暗示授权，也不将项目外聊天称为无效会话 | [工作台](../../clients/gui/design-system/workbench.md)、[身份与所有权](../people-and-agents/identity-and-ownership.md) |
 | `R-TERM-003` Thread | 聊天；核对技术身份时用会话 | 一段聊天不等于一次执行。标题、头像不能替代 Thread 身份 | [身份与所有权](../people-and-agents/identity-and-ownership.md#会话身份与执行职责) |
 | `R-TERM-004` Turn | 轮次 | 用户输入、过程与回答按所属轮次组织，不能将每个工具调用称为一次聊天 | [任务推进与过程阅读](../patterns/task-progress.md)、[Core API](../../docs/api/core.md) |
 | `R-TERM-007` Goal | 目标 | 不把用户一句目标描述当作已经创建 Goal，不把轮次结束当作目标完成 | [身份与所有权](../people-and-agents/identity-and-ownership.md#会话身份与执行职责)、[Task API](../../docs/api/tasks.md#所有权与模式) |

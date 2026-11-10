@@ -1,7 +1,7 @@
 .user-feedback-anchor {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
 }
 .user-feedback-anchor button[aria-pressed="true"] {
   color: var(--color-foreground);
@@ -21,16 +21,16 @@
   z-index: 85;
   display: flex;
   flex-direction: column;
-  width: min(380px, calc(100vw - 32px));
+  width: min(380px, calc(100vw - var(--spacing-control-lg)));
   max-height: min(680px, calc(100dvh - 160px));
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-composer);
   background: var(--color-background);
   color: var(--color-foreground);
   box-shadow: 0 12px 36px color-mix(in srgb, var(--color-foreground) 12%, transparent);
   font-family: var(--font-sans);
   font-size: var(--text-ui-base, var(--text-fixed-label));
-  animation: feedback-arrive 160ms ease-out;
+  animation: feedback-arrive var(--motion-normal) var(--ease-standard);
 }
 .user-feedback-panel[hidden] {
   display: none;
@@ -40,19 +40,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
+  padding: calc(var(--spacing-inline) * 3 / 2) var(--spacing-field);
 }
 .user-feedback-panel header > span {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .user-feedback-panel header strong {
   font-weight: 550;
 }
 .user-feedback-panel footer {
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .user-feedback-panel footer > span {
   font-size: var(--text-ui-caption, var(--text-fixed-caption));
@@ -60,17 +60,17 @@
   line-height: 1.5;
 }
 .user-feedback-body {
-  padding: 0 16px 16px;
+  padding: 0 var(--spacing-field) var(--spacing-field);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
   overflow-y: auto;
   min-height: 0;
 }
 .user-feedback-body label {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
   font-weight: 500;
 }
 .user-feedback-body textarea {
@@ -78,8 +78,8 @@
   min-height: 60px;
   max-height: 220px;
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 3 / 2);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-feedback);
   background: var(--color-background);
   color: inherit;
@@ -96,14 +96,14 @@
 .feedback-refinement {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border);
+  gap: var(--spacing-inline);
+  padding-top: calc(var(--spacing-inline) * 3 / 2);
+  border-top: var(--border-width-default) solid var(--color-border);
 }
 .feedback-refinement-heading {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: calc(var(--spacing-inline) * 3 / 4);
 }
 .feedback-refinement-heading > button {
   margin-left: auto;
@@ -112,7 +112,7 @@
   color: var(--color-foreground-subtle);
 }
 .feedback-discussion > div {
-  margin-top: 10px;
+  margin-top: var(--spacing-inline);
   color: var(--color-foreground);
   overflow-wrap: anywhere;
 }
@@ -120,7 +120,7 @@
   position: relative;
   overflow: hidden;
   border-radius: var(--radius-compact);
-  padding: 6px 8px;
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-caption, var(--text-fixed-caption));
   background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
@@ -129,9 +129,9 @@
   position: absolute;
   inset: auto 0 0;
   width: 30%;
-  height: 2px;
+  height: calc(var(--spacing-inline) / 4);
   background: var(--color-brand);
-  animation: feedback-progress 1.6s ease-in-out var(--motion-loop);
+  animation: feedback-progress var(--motion-cycle-slow) var(--ease-in-out) var(--motion-loop);
 }
 @keyframes feedback-arrive {
   from {

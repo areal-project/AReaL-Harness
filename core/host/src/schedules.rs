@@ -31,6 +31,11 @@ pub(super) struct Schedules {
     state: RefCell<State>,
     pub wake: Notify,
     pub connections: super::schedule_connection::Connections,
+    pub(super) task_connections: RefCell<BTreeMap<String, (String, u64)>>,
+    pub(super) task_watches: RefCell<BTreeMap<String, (String, Value)>>,
+    pub(super) task_views: RefCell<BTreeMap<(String, String), (String, String)>>,
+    pub(super) task_views_gate: tokio::sync::Mutex<()>,
+    pub(super) task_rows: RefCell<BTreeMap<String, (ProjectRegistration, Vec<Value>)>>,
 }
 impl Schedules {
     pub fn load(home: &Path) -> Result<Self> {
@@ -40,6 +45,11 @@ impl Schedules {
             path,
             wake: Notify::new(),
             connections: super::schedule_connection::Connections::default(),
+            task_connections: RefCell::default(),
+            task_watches: RefCell::default(),
+            task_views: RefCell::default(),
+            task_views_gate: tokio::sync::Mutex::new(()),
+            task_rows: RefCell::default(),
         })
     }
     fn update(&self, change: impl FnOnce(&mut State)) -> Result<()> {

@@ -242,33 +242,17 @@ impl Session {
             serde_json::to_vec(&record)?.len() <= self.command_pending_bytes(),
             "LIMIT_EXCEEDED"
         );
-        let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
-        ensure!(
-            snapshot["pending"].as_array().unwrap().len()
-                + snapshot["outcomes"].as_object().unwrap().len()
-                < 4096,
-            "CAPACITY_EXCEEDED"
-        );
-        ensure!(
-            !snapshot["pending"].as_array().unwrap().iter().any(|entry| {
-                let settled = entry["remote"].is_object()
-                    && entry["operationId"].as_str().is_some_and(|id| {
-                        snapshot["outcomes"]
-                            .get(id)
-                            .is_some_and(|outcome| outcome["remote"].is_object())
-                    });
-                entry["params"]["threadId"] == params.thread_id
-                    && !remote_control(entry)
-                    && !settled
-            }),
-            "SUBMISSION_UNKNOWN"
-        );
+        self.host.journal.native_preflight(&id, &record, true)?;
+        self.host
+            .schedules
+            .connections
+            .workbench_core_admit(&self.host, &id, None, method, &record["params"])
+            .await?;
+        let (revision, snapshot) = self.host.journal.native_snapshot(&id)?;
         self.authorize(Some(project), "submit")?;
-        snapshot["pending"]
-            .as_array_mut()
-            .unwrap()
-            .push(record.clone());
-        self.host.journal.native_replace(&id, revision, snapshot)?;
+        self.host
+            .journal
+            .native_admit(&id, revision, snapshot, record.clone(), true)?;
         let _sending = gateway_owner::push::sending(&self.host, &record);
         let response = if let Some(prepared) = &mut execution {
             prepared.dispatch().await
@@ -418,28 +402,38 @@ impl Session {
                     == scope,
                 "RESYNC_REQUIRED"
             );
-            let candidates = read["data"]
-                .as_array()
-                .context("RESOURCE_UNAVAILABLE")?
-                .iter()
-                .filter(|receipt| {
-                    receipt["requestId"] == operation
-                        && receipt["method"] == record["method"]
-                        && receipt["digest"] == record["nativeDigest"]
-                        && receipt["identity"] == original["identity"]
-                        && if let Some(task) = task {
-                            receipt["taskId"] == *task
-                        } else {
-                            Some(&receipt["threadId"]) == thread
-                        }
-                        && receipt["operation"]["requestId"] == operation
-                        && receipt["operation"]["method"] == record["method"]
-                        && receipt["operation"]["target"] == target
-                        && receipt["status"] == "completed"
-                })
-                .collect::<Vec<_>>();
-            ensure!(candidates.len() == 1, "RESOURCE_UNAVAILABLE");
-            Ok(candidates[0]["result"].clone())
+            let expected = areal_protocol::submissions::ExpectedSubmission {
+                method: record["method"]
+                    .as_str()
+                    .context("RESOURCE_UNAVAILABLE")?
+                    .into(),
+                params: record["params"].clone(),
+                operation: Some(
+                    json!({"requestId":operation,"method":record["method"],"target":target}),
+                ),
+                digest: Some(
+                    record["nativeDigest"]
+                        .as_str()
+                        .context("RESOURCE_UNAVAILABLE")?
+                        .into(),
+                ),
+                identity: Some(
+                    original["identity"]
+                        .as_str()
+                        .context("RESOURCE_UNAVAILABLE")?
+                        .into(),
+                ),
+                strict: true,
+            };
+            let receipt = areal_protocol::submissions::reconcile(
+                &expected,
+                &read,
+                &Value::Null,
+                thread.and_then(Value::as_str),
+            )
+            .context("RESOURCE_UNAVAILABLE")?;
+            ensure!(receipt["status"] == "completed", "RESOURCE_UNAVAILABLE");
+            Ok(receipt["result"].clone())
         }
         .await;
         self.authorize(
@@ -458,56 +452,6 @@ impl Session {
             gateway_owner::push::track(&self.host, &id, project, &settled, true);
         }
         Ok(settled)
-    }
-}
-
-pub(crate) fn remote_control(entry: &Value) -> bool {
-    let params = &entry["params"];
-    let remote = &entry["remote"];
-    let target = &remote["target"];
-    if !entry["operationId"].is_string() {
-        return false;
-    }
-    match entry["method"].as_str() {
-        Some("turn/interrupt") => {
-            remote["method"] == "turn.stop"
-                && remote["capability"] == "interrupt"
-                && params["threadId"].is_string()
-                && params["turnId"].is_string()
-                && target["threadId"] == params["threadId"]
-                && target["expectedTurnId"] == params["turnId"]
-        }
-        Some("areal/interaction/respond") => {
-            remote["method"] == "interaction.respond"
-                && remote["capability"] == "answer"
-                && ["threadId", "turnId", "requestId"]
-                    .iter()
-                    .all(|key| params[key].is_string())
-                && target["threadId"] == params["threadId"]
-                && target["turnId"] == params["turnId"]
-                && target["interactionId"] == params["requestId"]
-        }
-        Some("areal/channel/reply") => {
-            remote["method"] == "task.question.reply"
-                && remote["capability"] == "answer"
-                && params["requestId"] == entry["operationId"]
-                && ["taskId", "runId", "questionId"]
-                    .iter()
-                    .all(|key| params[key].is_string() && target[key] == params[key])
-        }
-        Some("areal/task/pause") => {
-            remote["method"] == "task.pause"
-                && remote["capability"] == "pauseTask"
-                && params["requestId"] == entry["operationId"]
-                && ["taskId", "expectedRunId"]
-                    .iter()
-                    .all(|key| params[key].is_string() && target[key] == params[key])
-                && params["expectedRevision"].as_i64().is_some_and(|revision| {
-                    (-9_007_199_254_740_991..=9_007_199_254_740_991).contains(&revision)
-                })
-                && target["expectedRevision"] == params["expectedRevision"]
-        }
-        _ => false,
     }
 }
 

@@ -6,14 +6,19 @@ import { watch } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID, generateKeyPairSync, sign, createHash } from "node:crypto";
 import { once } from "node:events";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { CoreClient } from "../packages/runtime-client/core.js";
 
 const require = createRequire(import.meta.url);
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const WebSocket = require("../app/node_modules/ws");
-const domains = new Set(process.argv.slice(2).map((arg) => arg.replace(/^--domain=/, "")));
+const domains = new Set(
+  process.argv
+    .slice(2)
+    .filter((arg) => arg !== "--rust")
+    .map((arg) => arg.replace(/^--domain=/, "")),
+);
 const supported = [
   "library",
   "trajectory",
@@ -26,6 +31,10 @@ const supported = [
 ];
 for (const domain of domains) assert.ok(supported.includes(domain), `Unknown domain: ${domain}`);
 const selected = (domain) => domains.size === 0 || domains.has(domain);
+assert.ok(
+  process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
+  "Backend startup writes isolated synthetic Keychain entries; authorize them before setting AREAL_TEST_HOST_KEYCHAIN=1.",
+);
 const root = await realpath(await mkdtemp("/tmp/areal-a3-"));
 const binary = resolve(
   process.env.AREAL_TEST_BIN || join(import.meta.dirname, "../../../target/debug/areal"),
@@ -60,8 +69,19 @@ const backend = new SharedCoreBackend({
   ...options,
   app: { getPath: (name) => (name === "userData" ? source.profile : user) },
 });
-backend.setOneProtocol({ library: true, backend: true });
 const checks = [];
+const ownedProcesses = [];
+async function recordProcesses(service) {
+  const host = JSON.parse(await readFile(join(home, "host", "host.json"), "utf8"));
+  for (const record of [
+    { role: "host", pid: host.pid, generation: host.generation },
+    { role: "backend", pid: service.pid, generation: service.generation },
+  ]) {
+    assert.ok(Number.isSafeInteger(record.pid) && record.pid > 0);
+    if (!ownedProcesses.some((owned) => owned.pid === record.pid)) ownedProcesses.push(record);
+  }
+  await writeFile(join(root, "owned-processes.json"), JSON.stringify(ownedProcesses, null, 2));
+}
 let owner, stopping, web, stopRequestId;
 const stopHost = () => {
   stopRequestId = randomUUID();
@@ -97,11 +117,26 @@ try {
     projects.client.request("backend.ensure", { profile: source.profile, options });
   const owners = await Promise.all([ensure(), ensure()]);
   owner = owners[0];
+  await recordProcesses(owner);
   assert.deepEqual(owners[0], owners[1]);
   assert.notEqual(owner.pid, process.pid);
   checks.push("concurrent ensure owns one child");
   console.log("backend ready");
-  assert.equal(await backend.attach({ expectedIdentity: owner.identity }), true);
+  const attached = await backend.attach({ expectedIdentity: owner.identity });
+  if (!attached)
+    await writeFile(
+      join(root, "attach-failure.json"),
+      JSON.stringify(
+        {
+          connectionState: backend.connectionState,
+          owner,
+          host: await projects.client.request("backend.status", {}),
+        },
+        null,
+        2,
+      ),
+    );
+  assert.equal(attached, true);
   assert.equal(backend.foreignOwner, null);
   assert.equal(backend.connectionState.state, "ready");
   assert.equal(backend.computerHostOwned, true);
@@ -157,7 +192,13 @@ try {
       const id = randomUUID();
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error("Web protocol request timed out"));
+        reject(
+          Object.assign(new Error(`Web protocol request timed out: ${method}`), {
+            requestId: id,
+            commandId,
+            operation: params.operation,
+          }),
+        );
       }, 10000);
       pending.set(id, { resolve: resolveCall, reject, timer });
       web.send(JSON.stringify({ version: 1, id, method, params, ...(commandId && { commandId }) }));
@@ -498,7 +539,32 @@ try {
     assert.match(unboundCatalog.errors[0]?.message, /unbound/);
     assert.equal((await projects.status(projectId)).state, "stopped");
     const { scheduled, startedProject } = await scheduledFixture(projectId);
-    await projects.stop(randomUUID(), projectId, startedProject.service.generation, "ifIdle");
+    const viewId = randomUUID();
+    const watched = await backend.command("manage", {
+      operation: "taskWatch",
+      projectId,
+      taskId: scheduled.id,
+      viewId,
+    });
+    assert.equal(watched.id, scheduled.id);
+    assert.deepEqual(
+      await backend.command("manage", {
+        operation: "taskUnwatch",
+        projectId,
+        taskId: scheduled.id,
+        viewId,
+      }),
+      { removed: true },
+    );
+    checks.push("Task view subscribes through Host and releases the original view without replay");
+
+    const stopped = await projects.stop(
+      randomUUID(),
+      projectId,
+      startedProject.service.generation,
+      "ifIdle",
+    );
+    assert.equal(stopped.state, "completed");
     assert.equal((await projects.status(projectId)).state, "stopped");
     const catalog = await call("tasks.read", {
       sourceId: change.sourceId,
@@ -820,6 +886,7 @@ try {
       backend.readHostActivity(),
       projects.client.status().then(() => backend.readHostActivity()),
     ]);
+    await writeFile(join(root, "concurrent-activity.json"), JSON.stringify(observations, null, 2));
     for (const activity of observations)
       assert.equal(
         activity.complete,
@@ -848,6 +915,7 @@ try {
     process.kill(previousPid, "SIGKILL");
     await recovered;
     owner = (await projects.client.request("backend.status", {})).service;
+    await recordProcesses(owner);
     assert.equal(backend.metadata.pid, owner.pid);
     const restored = JSON.parse(await readFile(join(source.coreHome, "library.json"), "utf8"));
     assert.deepEqual(restored, library);
@@ -882,6 +950,7 @@ try {
     assert.notEqual(projects.client.generation, previousGeneration);
     stopping = undefined;
     owner = await ensure();
+    await recordProcesses(owner);
     const restartedChallenge = await auth("challenge", { publicKey });
     assert.equal(restartedChallenge.state, "challenge");
     const restartedSignature = sign(
@@ -944,4 +1013,40 @@ try {
   }
   if (!stopping && projects.client.generation) await stopHost().catch(() => {});
   projects.close();
+  const syntheticEntries = [];
+  if (process.platform === "darwin") {
+    const service = `org.areal.host.v1.${createHash("sha256").update(home).digest("hex")}`;
+    for (const directory of ["vault-operations", "remote-operations"]) {
+      for (const name of await readdir(join(home, "host", directory)).catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      })) {
+        const receipt = JSON.parse(await readFile(join(home, "host", directory, name), "utf8"));
+        assert.equal(name, `${receipt.requestId}.json`);
+        if (!["vault.replace", "remote.replace"].includes(receipt.method) || !receipt.entryId)
+          continue;
+        assert.match(receipt.entryId, /^[a-f0-9-]{36}$/);
+        const removal = spawnSync(
+          "/usr/bin/security",
+          ["delete-generic-password", "-s", service, "-a", receipt.entryId],
+          { stdio: "ignore" },
+        );
+        const absent = spawnSync(
+          "/usr/bin/security",
+          ["find-generic-password", "-s", service, "-a", receipt.entryId],
+          { stdio: "ignore" },
+        );
+        syntheticEntries.push({
+          entryId: receipt.entryId,
+          removal: removal.status,
+          absent: absent.status === 44,
+        });
+        assert.equal(absent.status, 44, "original synthetic Keychain entry is absent");
+      }
+    }
+  }
+  await writeFile(
+    join(root, "synthetic-keychain-cleanup.json"),
+    JSON.stringify(syntheticEntries, null, 2),
+  );
 }

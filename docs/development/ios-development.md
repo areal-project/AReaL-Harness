@@ -92,50 +92,13 @@ App 使用官方 `@capacitor/app` 8.1.2 处理前后台，使用官方 `@capacit
 
 ```sh
 node --test clients/gui/scripts/mobile-device-store.test.mjs
-AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node node clients/gui/scripts/mobile-pairing-smoke.mjs
 ```
-
-配对 runner 使用独立模拟器、严格 TLS 的本地 Relay 和生产 RemoteControl。DEBUG driver 只操作真实 DOM 输入与按钮，经过实际协议授权和原生 Keychain，依次检查配对、杀掉后重开恢复、进入系统设置再回到 App 的前后台切换、电脑撤销授权、清除确认、再次重开未配对和深色页面。观察结果只含状态、Keychain 是否存在、授权 revision 和公开设备指纹。证据保存在 `.scratch/ios-remote-v1/mobile-pairing/`，`AREAL_MOBILE_EVIDENCE` 可覆盖位置。该 driver 的原生入口只在 DEBUG 构建提供。
 
 这些门禁是开发检查。真机扫码、iOS 17.4、真实桌面人工确认、相机权限拒绝后的恢复、VoiceOver 与 TestFlight 仍需各自验收。视觉检查应与五屏参考稿逐态对照；顶部使用本地化“电脑”，因为现有 Host 契约不返回电脑显示名。截图不能替代 VoiceOver、真机键盘和最小系统版本检查。
 
-## 验证项目和只读会话
+## 验证共享界面
 
-`MobileWorkspace` 管理项目、会话列表与单个前台会话。在线项目摘要读取 `work.list` 第一页，会话列表每页 30 条，支持刷新和读取更早会话。列表轮询更新第一页时保留用户已展开的范围。Task 行使用 `task.read` 显示实际执行详情。
-
-会话使用共享 `Messages`，通过 `session.open` 原子基线与 `acceptSessionMessage` 接收实时更新。新观察窗口清除旧分页状态。滚出实时窗口的消息进入有界历史页；最多保留三页历史正文，驱逐范围留下可再次读取的占位。历史游标只描述 Core 当前可访问范围，不能据此声称归档历史完整。`SessionBodyReader` 复用共享正文读取与身份校验，离开会话释放订阅。
-
-```sh
-node --test clients/gui/scripts/mobile-workspace.test.mjs
-AREAL_TEST_HOST_KEYCHAIN=1 \
-AREAL_CORE_BIN=/path/to/locked-slot/areal \
-AREAL_RUNTIME_BIN=/path/to/locked-slot/areal-runtime \
-AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node \
-node clients/gui/scripts/mobile-workspace-smoke.mjs
-```
-
-真实 Core 门禁必须在 `scripts/verification.py` 的 `slot_lock` 上下文中运行，锁覆盖整个 runner 生命周期。先按[测试指南](testing.md)部署源码匹配的固定槽，包括私有 shell。runner 使用严格 TLS Relay、Rust Host/Core/Runtime、确定性本地模型和原生 WKWebView。它通过公开 Host API 登记两个项目，在首个项目的真实 Core 中创建超过首屏预算的历史，检查首次读取、向上分页、电脑产生的新消息、旧边界消息保留及返回时订阅释放。第二项目只验列表展示。DEBUG driver 点击生产 DOM、滚动消息视图，并记录原 `subscription.close` 的成功回执核对订阅释放。向上自动分页门禁使用合成 `TouchEvent` 和实际 scroll；实体触摸手势仍需真机检查。`AREAL_TEST_HOST_KEYCHAIN=1` 允许夹具管理自己创建的合成 Host vault 条目。证据写入 `.scratch/ios-remote-v1/mobile-workspace/`，包含源码版本、未提交路径、Core/Runtime 文件哈希、原 Host 证据位置与清理结果。它不证明真实供应商响应。
-
-## 验证会话命令
-
-新会话通过 `project.models` 读取电脑目录，初始模型显示“电脑默认”，未指定权限时显示“电脑权限”并继承电脑配置。模型、推理强度与权限选择先保留为内存意图。首发依次创建会话、读取 `session.open` 基线、按实际配置 revision 应用选择，再发送消息。配置不可用或被拒绝时保留草稿与已创建会话。运行中发送使用 `enqueue` 和精确 Turn ID；停止针对当前 Turn，Task 会话需要专属控制入口。
-
-移动页面复用 `ConversationComposer`、`ComposerQueue` 和共享 Dialog。输入器工具栏左侧显示权限，右侧显示模型与推理强度。两个入口分别打开独立底部面板，顶部“完成”确认后应用选择；关闭面板丢弃面板内未确认的改动。模型面板支持按目录档位快速选择推理强度，并通过高级设置分别选择模型和推理档位。权限面板复用 GUI 的请求审批、帮我审批和完全访问语义、图标与说明；已有只读或自定义等状态按实际配置显示，受电脑能力与固定只读 Profile 限制。运行中只能查看设置。草稿只保存在内存。每次写入前，同一设备身份必须成功保存到 Keychain，再保存共享 `ClientState` 定位信息。定位信息不含正文或模型选择。回包丢失、断线或重启后只通过 `command.read` 核对原 commandId；核对创建成功不会继续自动发送。未知停止保留原精确记录，但 Core 已确认空闲后可以发送新消息。
-
-```sh
-node --test clients/gui/scripts/mobile-commands.test.mjs
-AREAL_TEST_HOST_KEYCHAIN=1 \
-AREAL_CORE_BIN=/path/to/locked-slot/areal \
-AREAL_RUNTIME_BIN=/path/to/locked-slot/areal-runtime \
-AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node \
-node clients/gui/scripts/mobile-command-smoke.mjs
-```
-
-命令门禁同样需要 `slot_lock` 覆盖全程。runner 使用 Rust Host/Core/Runtime、两个确定性本地模型、真实 DOM 输入与原生 Keychain，检查非默认模型首发、运行中排队、停止、受理后丢回包与重启核对。模型目录通过 Core 公开 Provider API 配置。`unknown` 的 DEBUG driver 等待真实 `session.send` 受理回执后，仅向客户端丢弃该回包，并立即恢复原请求方法；它记录原 commandId、operationId 和 Turn ID，runner 同时核对原 Core 回执。`recover` 重启 App 后只查询原 `command.read`，定位信息从 1 变为 0，Turn 总数保持 5。这证明客户端回包未知后的核对，不代表 Host/Core 回执本身未知。结果按独立 attempt 目录保存在 `.scratch/ios-remote-v1/mobile-commands/`，包括可见按钮的实际 CSS 触控尺寸。`AREAL_MOBILE_DERIVED` 可指定共享 DerivedData 缓存；证据目录不复用旧尝试。DOM 输入检查不替代实体键盘或触摸验收。
-
-移动项目和会话列表使用内容自适应高度的无阴影卡片；项目名、会话名和顶部标题限制为可用宽度内的单行，超长时显示省略号，完整值保留在 DOM 和 `title` 属性。列表刷新只更新无障碍状态与原位控件，不插入会推移内容的加载行。消息正文继续完整显示。
-
-触摸形态的 Composer 输入使用现有 16px 字号 token，避免 iOS 聚焦时自动放大；消息复制、统计和执行过程折叠入口使用 44pt 最小触控区域。当前构建不包含审批、同步或 Task 提问回复、Task 暂停、边缘滑返和推送；Task 详情仍只读。
+配对后手机加载与桌面同一份界面（`SharedPairedWorkbench`），经配对连接读写 Host，不再有独立的移动工作区与命令实现。项目、会话、发送、停止和审批的行为由桌面与 Web 的同一组测试覆盖；手机端只需额外检查触控尺寸、键盘、前后台切换与断线重连。
 
 ## 选择后续验证工具
 

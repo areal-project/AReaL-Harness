@@ -447,8 +447,8 @@ export const operationMessages = {
   "operations.schedules.newLabel": { "zh-CN": "新建定时任务", en: "New scheduled task" },
   "operations.schedules.newTitle": { "zh-CN": "新建任务", en: "New task" },
   "operations.schedules.openLabel": {
-    "zh-CN": "打开自动化 {title}",
-    en: "Open automation {title}",
+    "zh-CN": "打开定时任务 {title}",
+    en: "Open scheduled task {title}",
   },
   "operations.schedules.retryCreation": {
     "zh-CN": "重试或核对原请求",
@@ -494,7 +494,8 @@ export const operationMessages = {
     en: "Task status is unconfirmed. Retry the update.",
   },
   "operations.schedules.finishedGroup": { "zh-CN": "已结束", en: "Finished" },
-  "operations.schedules.closeDetails": { "zh-CN": "关闭任务详情", en: "Close task details" },
+  "operations.schedules.backToList": { "zh-CN": "返回任务列表", en: "Back to task list" },
+  "operations.schedules.pinnedSummary": { "zh-CN": "定时安排摘要", en: "Schedule summary" },
   "operations.schedules.location": {
     "zh-CN": "工作目录与来源",
     en: "Working directory and source",
@@ -523,7 +524,7 @@ export const operationMessages = {
     "zh-CN": "打开项目以更新",
     en: "Open project to update",
   },
-  "operations.schedules.center": { "zh-CN": "自动化中心", en: "Automation center" },
+  "operations.schedules.center": { "zh-CN": "定时任务中心", en: "Scheduled tasks center" },
   "operations.schedules.forward": { "zh-CN": "前进", en: "Forward" },
   "operations.schedules.toggleSidebar": { "zh-CN": "切换任务侧栏", en: "Toggle task sidebar" },
   "operations.schedules.search": { "zh-CN": "搜索定时任务", en: "Search scheduled tasks" },
@@ -600,10 +601,6 @@ export const operationMessages = {
   "operations.schedules.newThreadEachRun": {
     "zh-CN": "每次运行新开对话",
     en: "Start each run in a new conversation",
-  },
-  "operations.schedules.requiresApp": {
-    "zh-CN": "AReaL 退出后，任务不会运行。",
-    en: "Tasks don't run while AReaL is closed.",
   },
   "operations.schedules.create": { "zh-CN": "创建", en: "Create" },
   "operations.schedules.revealFolder": { "zh-CN": "在文件夹中显示", en: "Show folder" },

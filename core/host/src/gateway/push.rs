@@ -562,16 +562,7 @@ pub(super) async fn historical(host: &Rc<Host>) {
             .into_iter()
             .flat_map(|rows| rows.values())
         {
-            let record = if legacy::is_legacy(record) {
-                legacy::recover(host, source, &project, &alias, record).await
-            } else {
-                record.clone()
-            };
-            if !legacy::is_legacy(&record)
-                || legacy::observed_store(host, source, &project, &alias, &record).is_ok()
-            {
-                track(host, &project, &alias, &record, true);
-            }
+            track(host, &project, &alias, record, true);
         }
     }
 }
@@ -727,31 +718,15 @@ impl Completion {
             )
             .await?;
         let binding = &capabilities["features"]["threadCreationJournal"]["binding"];
-        if legacy::is_legacy(&self.record) {
-            let store = legacy::observed_store(
-                &host,
-                &route.source,
-                &self.project,
-                &self.alias,
-                &self.record,
-            )?;
-            ensure!(
-                store.service_id == route.epoch.0
-                    && binding["identity"] == store.identity
-                    && binding["journalEpoch"] == store.journal_epoch,
-                "RESYNC_REQUIRED"
-            );
-        } else {
-            let original = &self.record["coreScope"]["storeBinding"];
-            ensure!(
-                self.record["coreScope"]["serviceId"] == route.epoch.0
-                    && original["identity"].is_string()
-                    && original["journalEpoch"].is_string()
-                    && binding["identity"] == original["identity"]
-                    && binding["journalEpoch"] == original["journalEpoch"],
-                "RESYNC_REQUIRED"
-            );
-        }
+        let original = &self.record["coreScope"]["storeBinding"];
+        ensure!(
+            self.record["coreScope"]["serviceId"] == route.epoch.0
+                && original["identity"].is_string()
+                && original["journalEpoch"].is_string()
+                && binding["identity"] == original["identity"]
+                && binding["journalEpoch"] == original["journalEpoch"],
+            "RESYNC_REQUIRED"
+        );
         let mut initial = true;
         loop {
             ensure!(

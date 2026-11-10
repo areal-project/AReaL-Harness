@@ -37,6 +37,54 @@ test("background vault reads require capability and never fall back to interacti
   assert.deepEqual(calls, [{ method: "vault.read", params: { slot, interactionAllowed: false } }]);
 });
 
+test("pending subscription handoff does not block ordinary provider startup", async (t) => {
+  const f = await fixture(t);
+  f.backend.onChange = () => {};
+  let release, entered;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const pending = new Promise((_, reject) => {
+    release = () => reject(Object.assign(new Error("fixture locked"), { code: "storageLocked" }));
+  });
+  t.mock.method(NativeSubscription, "connect", () => {
+    entered();
+    return pending;
+  });
+  const app = new AppProviders(f.backend);
+  f.backend.providers = app;
+  let explicit;
+  try {
+    let initialized = false;
+    const initialization = app.init().then(() => {
+      initialized = true;
+    });
+    await started;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(initialized, true, "provider startup must not wait for subscription handoff");
+    await initialization;
+    let prepared = false;
+    const preparation = app.prepare().then(() => {
+      prepared = true;
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(prepared, true, "ordinary project startup must not wait for subscription handoff");
+    await preparation;
+    assert.equal(app.subscription.availability, "checking");
+    explicit = app.openai();
+    assert.equal(
+      NativeSubscription.connect.mock.callCount(),
+      1,
+      "explicit use joins the original handoff",
+    );
+  } finally {
+    release();
+    await explicit?.catch(() => {});
+    await app.openaiPromise?.catch(() => {});
+  }
+  assert.equal(app.subscription.state, "storage_locked");
+});
+
 async function fixture(t) {
   const home = await mkdtemp(join(tmpdir(), "areal-host-credentials-"));
   t.after(() => rm(home, { recursive: true, force: true }));
@@ -51,6 +99,7 @@ async function fixture(t) {
   };
   const backend = {
     home,
+    onChange() {},
     projects: new Map(),
     hooks: { environment: () => ({}) },
     async save(name, value) {
@@ -259,6 +308,7 @@ test("subscription initialization reports network failures separately and keeps 
   };
   const app = new AppProviders(f.backend);
   await assert.doesNotReject(app.init());
+  await app.openaiPromise?.catch(() => {});
   assert.equal(app.subscription.state, "temporarily_unavailable");
   assert.equal(app.subscription.diagnostic.code, "ECONNRESET");
   assert.equal(app.subscription.diagnostic.phase, "initialize");
@@ -483,7 +533,12 @@ test("foreign Host projects retain their own model and subscription authorities"
 
 const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 test("credential failures isolate a provider and a later refresh restores it", async (t) => {
-  const names = ["AREAL_CREDENTIAL_locked", "AREAL_CREDENTIAL_missing", "AREAL_CREDENTIAL_ok"];
+  const names = [
+    "AREAL_CREDENTIAL_locked",
+    "AREAL_CREDENTIAL_missing",
+    "AREAL_CREDENTIAL_ok",
+    "AREAL_CREDENTIAL_pending",
+  ];
   const state = { sourceId: "source", credentials: { references: names } };
   const backend = {
     host: { sourceId: "source", source: {}, state, client: { sourceState: async () => state } },
@@ -495,7 +550,12 @@ test("credential failures isolate a provider and a later refresh restores it", a
       calls.push({ slot, options });
       if (!available && slot.reference !== names[2])
         throw Object.assign(new Error("sensitive detail"), {
-          code: slot.reference === names[0] ? "storageLocked" : "storageMissing",
+          code:
+            slot.reference === names[0]
+              ? "storageLocked"
+              : slot.reference === names[3]
+                ? "migrationPending"
+                : "storageMissing",
         });
       return { value: `value-${slot.reference}` };
     },
@@ -518,13 +578,22 @@ test("credential failures isolate a provider and a later refresh restores it", a
   assert.deepEqual(model.environment(), { [names[2]]: `value-${names[2]}` });
   assert.equal(model.key({ apiKeyEnv: names[0] }), "");
   assert.equal(model.key({ apiKeyEnv: names[1] }), "");
-  assert.deepEqual(events.map((event) => event.code).sort(), ["storageLocked", "storageMissing"]);
+  assert.equal(model.key({ apiKeyEnv: names[3] }), "");
+  assert.equal(model.vault.pending.has(names[3]), true);
+  assert.equal(model.vault.locked.has(names[3]), false);
+  assert.deepEqual(events.map((event) => event.code).sort(), [
+    "migrationPending",
+    "storageLocked",
+    "storageMissing",
+  ]);
   assert(!JSON.stringify(events).includes("sensitive detail"));
   assert(calls.every(({ options }) => options.interactionAllowed === false));
   available = true;
   await model.refreshCredentials();
   assert.equal(model.key({ apiKeyEnv: names[0] }), `value-${names[0]}`);
   assert.equal(model.key({ apiKeyEnv: names[1] }), `value-${names[1]}`);
+  assert.equal(model.key({ apiKeyEnv: names[3] }), `value-${names[3]}`);
+  assert.equal(model.vault.pending.size, 0);
 });
 
 test("transport and invalid credential errors propagate", async () => {

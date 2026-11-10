@@ -127,6 +127,16 @@ impl ReadModels {
                 )
                 .is_ok()
             {
+                if let Some(alias) = &project.alias {
+                    if host.gateway.workbench.backend_has_source(&alias.source_id) {
+                        super::library_service::record_summaries(
+                            host,
+                            &alias.source_id,
+                            &alias.project_id,
+                            &online.summaries,
+                        )?;
+                    }
+                }
                 self.online
                     .borrow_mut()
                     .insert(project.project_id.clone(), online);

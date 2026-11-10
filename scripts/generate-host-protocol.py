@@ -54,6 +54,7 @@ KEYWORDS = (
         "required",
         "additionalProperties",
         "items",
+        "prefixItems",
         "oneOf",
         "anyOf",
     }
@@ -95,7 +96,8 @@ def snake(value):
     )
 
 
-def validate_schema(document):
+def validate_schema(document, root=ROOT):
+    core_document = json.loads((root / "schemas/areal-core-v1.json").read_text())
     definitions = document["$defs"]
     root_keywords = {
         "$schema",
@@ -118,6 +120,18 @@ def validate_schema(document):
             raise ValueError(f"{path}: unsupported keywords {sorted(unknown)}")
         if "$ref" in value:
             ref = value["$ref"]
+            if set(value) - ANNOTATIONS != {"$ref"}:
+                raise ValueError(f"{path}: reference siblings are unsupported")
+            if ref.startswith("urn:areal:core-protocol:v1#/"):
+                if not path.startswith("WorkbenchPrivate"):
+                    raise ValueError(f"{path}: external Core contracts are private-only")
+                current = core_document
+                try:
+                    for part in ref.split("#/", 1)[1].split("/"):
+                        current = current[part.replace("~1", "/").replace("~0", "~")]
+                except (KeyError, TypeError):
+                    raise ValueError(f"{path}: unresolved Core reference {ref}") from None
+                return
             if not ref.startswith("#/$defs/") or ref[8:] not in definitions:
                 raise ValueError(f"{path}: unresolved reference {ref}")
             if set(value) - ANNOTATIONS != {"$ref"}:
@@ -174,7 +188,20 @@ def validate_schema(document):
             elif not isinstance(extra, bool):
                 raise ValueError(f"{path}: invalid additionalProperties")
         if kind == "array":
-            visit(value["items"], f"{path}/items")
+            if "prefixItems" in value:
+                items = value["prefixItems"]
+                if (
+                    not isinstance(items, list)
+                    or not items
+                    or value.get("items") is not False
+                    or value.get("minItems") != len(items)
+                    or value.get("maxItems") != len(items)
+                ):
+                    raise ValueError(f"{path}: tuple arrays must have an exact closed length")
+                for index, item in enumerate(items):
+                    visit(item, f"{path}/prefixItems/{index}")
+            else:
+                visit(value["items"], f"{path}/items")
 
     for name, value in definitions.items():
         if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", name):
@@ -182,19 +209,52 @@ def validate_schema(document):
         visit(value, name)
     if "anyOf" in document:
         visit({"anyOf": document["anyOf"]}, "root")
-    for transport in ("local", "remote", "loopback"):
+    for transport in ("local", "remote", "loopback", "workbench"):
         methods = document["x-current"][transport]["methods"]
         for method, entry in methods.items():
             for kind in ("request", "result"):
                 visit({"$ref": entry[kind]}, f"{transport}/{method}/{kind}")
             request = definitions[entry["request"][8:]]
+            direction = entry.get("direction")
+            tag = (
+                "call" if transport == "workbench" and direction == "workbenchToHost" else "method"
+            )
+            if transport == "workbench" and (
+                direction not in {"workbenchToHost", "hostToWorkbench"}
+                or entry.get("x-owner")
+                != ("host" if direction == "workbenchToHost" else "workbench")
+            ):
+                raise ValueError(f"{transport}/{method}: invalid private owner or direction")
             if (
-                request["properties"]["method"].get("const") != method
+                request["properties"][tag].get("const") != method
                 or request.get("additionalProperties") is not False
             ):
                 raise ValueError(
                     f"{transport}/{method}: request envelope must be closed and method-specific"
                 )
+
+    for event, entry in document["x-current"]["workbench"].get("events", {}).items():
+        if entry.get("direction") not in {"workbenchToHost", "hostToWorkbench"} or entry.get(
+            "x-owner"
+        ) != ("workbench" if entry["direction"] == "workbenchToHost" else "host"):
+            raise ValueError(f"workbench/{event}: invalid event owner or direction")
+        visit({"$ref": entry["schema"]}, f"workbench/{event}/schema")
+
+        def event_shape(shape):
+            variants = shape.get("oneOf", shape.get("anyOf"))
+            if variants is not None:
+                for variant in variants:
+                    event_shape(variant)
+                return
+            if (
+                shape.get("additionalProperties") is not False
+                or shape.get("properties", {}).get("event", {}).get("const") != event
+            ):
+                raise ValueError(
+                    f"workbench/{event}: event envelope must be closed and event-specific"
+                )
+
+        event_shape(definitions[entry["schema"][8:]])
 
 
 def current_inventory(root):
@@ -244,7 +304,28 @@ def current_inventory(root):
     workbench_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", workbench, re.S)
     if not workbench_match:
         raise ValueError("Workbench METHODS declaration moved; update inventory extractor")
+    backend = (root / "services/workbench/src/backend-main.cjs").read_text()
+    private = re.search(r"const privateMethods = \[(.*?)\];", backend, re.S)
+    if not private:
+        raise ValueError("Workbench private ready declaration moved; update inventory extractor")
+    reverse = workbench[
+        workbench.index("pub(super) fn reverse(") : workbench.index("\nfn projects(")
+    ]
+    reverse_methods = set()
+    for arm in re.findall(
+        r'((?:"[A-Za-z][A-Za-z0-9_.:/-]*"\s*(?:\|\s*)?)+)(?:\s+if\s+[^=]+)?\s*=>', reverse
+    ):
+        reverse_methods.update(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', arm))
+    private_events = set(
+        re.findall(r'request\.event\s*===\s*"([A-Za-z][A-Za-z0-9_.:/-]*)"', backend)
+    )
+    private_events.update(
+        set(re.findall(r'event:\s*"([A-Za-z][A-Za-z0-9_.:/-]*)"', backend)) - {"ready"}
+    )
     return {
+        "workbenchEvents": private_events,
+        "workbench": (reverse_methods - private_events)
+        | set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', private[1])),
         "loopback": {"hello"}
         | set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', loopback_match[1])),
         "local": local,
@@ -259,7 +340,11 @@ def current_inventory(root):
 
 def check_inventory(document, root):
     for transport, actual in current_inventory(root).items():
-        declared = set(document["x-current"][transport]["methods"])
+        declared = (
+            set(document["x-current"]["workbench"]["events"])
+            if transport == "workbenchEvents"
+            else set(document["x-current"][transport]["methods"])
+        )
         if actual != declared:
             raise ValueError(
                 f"{transport} method inventory drift: missing={sorted(actual - declared)}, stale={sorted(declared - actual)}"
@@ -268,7 +353,28 @@ def check_inventory(document, root):
 
 class Emitter:
     def __init__(self, document):
-        self.defs = copy.deepcopy(document["$defs"])
+        self.defs = {
+            name: copy.deepcopy(value)
+            for name, value in document["$defs"].items()
+            if not name.startswith("WorkbenchPrivate")
+        }
+        self.private_aliases = set()
+
+        def collect(value):
+            if isinstance(value, dict):
+                reference = value.get("$ref", "")
+                if reference.startswith("#/$defs/WorkbenchPrivate"):
+                    self.private_aliases.add(reference[8:])
+                for child in value.values():
+                    collect(child)
+            elif isinstance(value, list):
+                for child in value:
+                    collect(child)
+
+        for value in self.defs.values():
+            collect(value)
+        for name in self.private_aliases:
+            self.defs[name] = {"x-opaque": True}
 
     def name_inline(self, value, name):
         if "$ref" in value:
@@ -292,6 +398,12 @@ class Emitter:
         ):
             return self.name_inline(value, name)
         if value["type"] == "array":
+            if "prefixItems" in value:
+                fields = [
+                    self.rust_type(item, name + "Item" + str(index + 1))
+                    for index, item in enumerate(value["prefixItems"])
+                ]
+                return "(" + ", ".join(fields) + ("," if len(fields) == 1 else "") + ")"
             return f"Vec<{self.rust_type(value['items'], name + 'Item')}>"
         return {
             "string": "String",
@@ -315,6 +427,8 @@ class Emitter:
                 return " | ".join(self.ts_type(item) for item in value[union])
         kind = value["type"]
         if kind == "array":
+            if "prefixItems" in value:
+                return "[" + ", ".join(self.ts_type(item) for item in value["prefixItems"]) + "]"
             return f"Array<{self.ts_type(value['items'])}>"
         if kind == "object":
             required = value.get("required", [])
@@ -403,7 +517,7 @@ class Emitter:
         digest = hashlib.sha256(
             json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-        header = f"// Generated by scripts/generate-host-protocol.py. Do not edit.\n// Schema SHA-256: {digest}\n// Structural types only; schema and runtime enforce scalar and semantic constraints.\n"
+        header = f"// Generated by scripts/generate-host-protocol.py. Do not edit.\n// Schema SHA-256: {digest}\n// Structural types only; schema and runtime enforce scalar and semantic constraints.\n// Referenced private transport aliases retain JSON projections; their owning schemas remain exact.\n"
         rust = {}
         while set(self.defs) - set(rust):
             for name in sorted(set(self.defs) - set(rust)):
@@ -440,7 +554,12 @@ class Emitter:
         ts += [
             f"export type {name} = {self.ts_type(value)};"
             for name, value in sorted(document["$defs"].items())
+            if not name.startswith("WorkbenchPrivate")
         ]
+        ts += [
+            "// Private transport projections remain JSON values; their finite owning schemas and runtime Core decoders enforce the full contract."
+        ]
+        ts += [f"export type {name} = JsonValue;" for name in sorted(self.private_aliases)]
         for transport in ("local", "remote", "loopback"):
             ts += ["", f"export interface {pascal(transport)}MethodMap {{"]
             for method, entry in sorted(document["x-current"][transport]["methods"].items()):
@@ -460,7 +579,7 @@ class Emitter:
 
 def generate(root=ROOT, check=False):
     document = json.loads((root / SCHEMA).read_text())
-    validate_schema(document)
+    validate_schema(document, root)
     check_inventory(document, root)
     outputs = Emitter(document).render(document)
     for relative, content in zip(OUTPUTS, outputs):

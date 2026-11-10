@@ -108,26 +108,10 @@ node --test clients/gui/scripts/worktree-git.test.cjs clients/gui/scripts/worktr
 
 `node clients/gui/scripts/worktree-ui-smoke.mjs` checks production component interactions with Chromium and a deterministic desktop-action fixture. It is not native Electron, package, or macOS acceptance.
 
-After building the real Core, run the integration in an environment that supports native execution:
+Creation, environment preparation, removal, and scheduled-task ownership are implemented by the Rust Host and covered by `cargo test --locked -p areal-host`. The isolated Electron environment check drives settings, the first prompt, actions, failure, cancellation, and explicit source selection. Only the file picker and external model use fixtures.
 
 ```sh
-make build
-AREAL_CORE_BIN="$PWD/target/debug/areal" node clients/gui/scripts/worktree-integration.mjs
-```
-
-Run environment checks with a trusted Core executable. The first checks real managed scripts, a 40-second preparation and cancellation, cleanup, and removal. The second drives isolated Electron settings, the first prompt, actions, failure, cancellation, and explicit source selection. Only the file picker and external model use fixtures.
-
-```sh
-AREAL_CORE_BIN=/absolute/path/to/areal pnpm --dir clients/gui test:worktree-environment
 AREAL_CORE_BIN=/absolute/path/to/areal pnpm --dir clients/gui test:worktree-environment-ui
 ```
-
-Verify the real Core scheduled-interaction protocol separately:
-
-```sh
-AREAL_CORE_BIN="$PWD/target/debug/areal" node clients/gui/scripts/worktree-schedule-interactions.mjs
-```
-
-From `clients/gui`, `node scripts/worktree-schedule-interactions.mjs` also defaults to the repository-built Core. The script uses a deterministic local model boundary with real CoreBackend/Core. It covers question answers, foreign and stale-request rejection, approval denial, allowOnce, manager reconnect, and same-Run resume. It retains raw logs and a manifest with separate protocol and payload results. A protocol pass does not establish successful file-tool execution: an admitted allowOnce can still fail at Runtime reaper startup without writing its target file. It does not run Electron or establish macOS or real-provider acceptance.
 
 Linux requires working Bubblewrap namespaces and `/proc/self/task/<pid>/children` readable by the Runtime reaper. Missing capability or cleanup evidence must remain a failure rather than disabling protection. GUI behavior, platform behavior, and actual tool mutations require separate verification. Full host fields are in the [desktop host contract](../api/desktop.en.md#desktop-host-worktree-contract).

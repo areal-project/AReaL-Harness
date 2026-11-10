@@ -7,7 +7,6 @@ import {
   ArchiveChatIcon as Archive,
   PinChatIcon as Pin,
   MoreOptionsIcon as MoreHorizontal,
-  EditMessageIcon as PenLine,
 } from "../../icons.js";
 import { cn } from "../../lib/utils.js";
 import { TaskTitleOverflowText } from "../task-title-overflow/task-title-overflow.js";
@@ -98,11 +97,15 @@ export const MemoTaskItem = memo(function TaskListItem({
               </span>
             </TitleTooltip>
           ) : running ? (
-            <LoaderIcon className="size-4 animate-spin motion-reduce:animate-none text-foreground-subtle" />
+            <LoaderIcon
+              role="img"
+              aria-label="运行中"
+              className="size-4 animate-spin motion-reduce:animate-none text-foreground-subtle"
+            />
           ) : attention ? (
-            <span className="size-1.5 rounded-full bg-warning" />
+            <span className="size-1.5 rounded-full bg-warning" role="img" aria-label="等待处理" />
           ) : unread ? (
-            <span className="size-1.5 rounded-full bg-primary" aria-label="未读" />
+            <span className="size-1.5 rounded-full bg-primary" role="img" aria-label="未读" />
           ) : pinned ? (
             <Pin className="size-3.5 text-foreground-subtle" />
           ) : archived ? (
@@ -171,17 +174,14 @@ export const MemoTaskItem = memo(function TaskListItem({
             />
             <DropdownMenuContent align="start">
               <DropdownMenuItem onClick={onRename} disabled={disabled}>
-                <PenLine />
                 重命名
               </DropdownMenuItem>
               <DropdownMenuItem onClick={onPin} disabled={disabled}>
-                <Pin />
                 {pinned ? "取消置顶" : "置顶"}
               </DropdownMenuItem>
               {organizationActions}
               {onArchive && (
                 <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
-                  <Archive />
                   归档
                 </DropdownMenuItem>
               )}

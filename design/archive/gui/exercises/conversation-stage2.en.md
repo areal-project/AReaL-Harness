@@ -1,6 +1,6 @@
 # Conversation stage two: interaction-family migration
 
-Chinese: [stage two](../../../../clients/gui/design-system/exercises/conversation-stage2.md). The user accepted the scoped settings pilot. This stage applies I-INPUT, I-OBSERVE and I-RETURN, supported by I-READ, to the production Electron conversation. The [surface contract](../../../../clients/gui/design-system/surfaces/conversation-stage2.json) retains existing P-CONVERSATION rules.
+Chinese: [stage two](conversation-stage2.md). The user accepted the scoped settings pilot. This stage applies I-INPUT, I-OBSERVE and I-RETURN, supported by I-READ, to the production Electron conversation. The [surface contract](../../../../clients/gui/design-system/surfaces/conversation-stage2.json) retains existing P-CONVERSATION rules.
 
 ## Decisions and ownership
 

@@ -1,7 +1,7 @@
 /* Feedback owns its presentation; callers own messages and recovery actions. */
 .ui-feedback {
-  margin: 12px 0;
-  padding: 10px 12px;
+  margin: calc(var(--spacing-inline) * 3 / 2) 0;
+  padding: 10px calc(var(--spacing-inline) * 3 / 2);
   border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-control);
   color: var(--color-foreground);

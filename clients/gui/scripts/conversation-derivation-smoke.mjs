@@ -464,7 +464,7 @@ async function send(text, threadId) {
 async function stopService(env) {
   const { ServiceConnection } = require(join(desktop, "src/core/service-client.cjs"));
   const { DesktopLifecycle } = require(join(desktop, "src/core/lifecycle.cjs"));
-  const { executeCore } = require(join(desktop, "src/core/core-process.cjs"));
+  const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
   const service = async (args) =>
     JSON.parse(
       (
@@ -1148,7 +1148,7 @@ try {
       unicodeExcerpt,
     );
   await selectSideExcerpt();
-  let sideTrigger = page.getByRole("button", { name: "在旁路中询问所选内容", exact: true });
+  let sideTrigger = page.getByRole("button", { name: "在侧边聊天中询问所选内容", exact: true });
   const selectionActions = page.getByTestId("transcript-selection-actions");
   const addToChat = selectionActions.getByRole("button", { name: "添加到聊天", exact: true });
   await selectionActions.waitFor();
@@ -1157,7 +1157,7 @@ try {
   assert.equal(
     await page
       .locator(".message-actions")
-      .getByRole("button", { name: "在旁路中询问所选内容", exact: true })
+      .getByRole("button", { name: "在侧边聊天中询问所选内容", exact: true })
       .count(),
     0,
   );

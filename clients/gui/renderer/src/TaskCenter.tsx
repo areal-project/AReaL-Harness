@@ -17,6 +17,7 @@ import { useI18n, type MessageId, type Translate } from "./i18n/IntlProvider.js"
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "./components/ui/button.js";
+import { Spinner } from "./components/ui/spinner.js";
 import { Textarea } from "./components/ui/textarea.js";
 import {
   Select,
@@ -38,6 +39,7 @@ import {
   Activity,
 } from "lucide-react";
 import { SidebarToggleIcon } from "./homeChromeIcons.js";
+import { NavigationBackIcon } from "./interfaceIcons.js";
 import { TaskDraft, triggerExplanation, type TaskConversationRenderer } from "./TaskDraft.js";
 import {
   modelParameters,
@@ -100,9 +102,15 @@ type OwnerRows = {
   coverage: { kind: string; reason?: string };
 } & ({ source: "published" } | { source: "live"; connectionGeneration: number });
 type OwnerRead =
-  | { status: "pending"; identity: CatalogIdentity; previous?: OwnerRows }
+  | { status: "pending"; identity: CatalogIdentity; previous?: OwnerRows; explicit?: boolean }
   | { status: "ready"; identity: CatalogIdentity; value: OwnerRows }
-  | { status: "error"; identity: CatalogIdentity; message: string; previous?: OwnerRows };
+  | {
+      status: "error";
+      identity: CatalogIdentity;
+      message: string;
+      previous?: OwnerRows;
+      explicit?: boolean;
+    };
 const ownerRows = (read?: OwnerRead) => (read?.status === "ready" ? read.value : read?.previous);
 const catalogTrace = (
   kind: "begin" | "response_received" | "epoch_discarded" | "owner_committed" | "end" | "abandoned",
@@ -629,9 +637,7 @@ export function TaskCenter({
   target,
   renderConversation,
   renderResources,
-  onReveal,
 }: Props & {
-  onReveal?: (projectId: string, path: string) => void;
   navigation: ReactNode;
   renderConversation: TaskConversationRenderer;
   renderResources: (project: Data, thread: Data, task: Data, revealKey?: string) => ReactNode;
@@ -747,7 +753,8 @@ export function TaskCenter({
   const [channelError, setChannelError] = useState("");
   const [confirmedWatch, setConfirmedWatch] = useState<{
     owner: string;
-    generation: number;
+    generation: number | string;
+    task?: Data;
   } | null>(null);
   const listed: Data[] = [];
   let projectedHasMore = false;
@@ -787,9 +794,13 @@ export function TaskCenter({
   // The control receipt is the Core response for this pause or cancel. Keep it
   // visible until the following read returns, including when a newer snapshot
   // has already settled the same workers.
-  const watchedTask = projects.find((owner) => owner.id === listedTask?.projectId)?.state?.tasks?.[
-    listedTask?.id
-  ];
+  const watchedProject = projects.find((owner) => owner.id === listedTask?.projectId);
+  const watchedTask =
+    watchedProject?.state?.tasks?.[listedTask?.id] ??
+    (confirmedWatch?.owner === selected &&
+    confirmedWatch?.generation === (watchedProject?.core?.connectionGeneration ?? 0)
+      ? confirmedWatch?.task
+      : undefined);
   const task =
     controlView && taskKey(controlView) === selected
       ? controlView
@@ -809,7 +820,7 @@ export function TaskCenter({
     confirmedWatch?.generation === (project?.core?.connectionGeneration ?? 0);
   const detailsReady =
     !!task &&
-    !!project?.state?.tasks?.[task.id] &&
+    Boolean(project?.state?.tasks?.[task.id] || (watchConfirmed && confirmedWatch?.task)) &&
     watchConfirmed &&
     connected &&
     !!project?.state?.connected &&
@@ -1080,6 +1091,7 @@ export function TaskCenter({
             const owner = queue.shift();
             if (!owner) continue;
             const quiet = !!quietOwners && catalogState.current[owner.id]?.status === "ready";
+            const explicit = !!retryProjectId || explicitRefresh;
             if (!quiet)
               setCatalog((previous) => ({
                 ...previous,
@@ -1087,82 +1099,37 @@ export function TaskCenter({
                   status: "pending",
                   identity,
                   previous: ownerRows(previous[owner.id]),
+                  explicit,
                 },
               }));
-            let observed = quiet;
-            if (!quiet)
-              void action("tasks", {
-                operation: "preview",
-                projectId: owner.id,
-                limit: Math.min(1024, 30 * pages.current),
-                ...identity,
-              })
-                .then((result) => {
-                  if (
-                    !active ||
-                    observed ||
-                    result.errors.length ||
-                    result.projectId !== owner.id ||
-                    result.requestId !== identity.requestId ||
-                    result.viewEpoch !== viewEpoch
-                  )
-                    return;
-                  const observation = result.owners[0];
-                  if (observation.status !== "unobserved") return;
-                  setCatalog((previous) => {
-                    const read = previous[owner.id];
-                    if (
-                      (read?.status !== "pending" && read?.status !== "error") ||
-                      read.identity !== identity ||
-                      (!result.data.length && read.previous)
-                    )
-                      return previous;
-                    return {
-                      ...previous,
-                      [owner.id]: {
-                        ...read,
-                        previous: {
-                          source: "published",
-                          data: result.data,
-                          hasMore: result.hasMore,
-                          readAt: observation.readAt,
-                          coverage: observation.coverage,
-                        },
-                      },
-                    };
-                  });
-                })
-                .catch(() => {});
             try {
               if (retryProjectId)
                 await action("connect", { projectId: owner.id, resumeScheduling: true });
-              const result =
-                retryProjectId || explicitRefresh
-                  ? await action("tasks", {
-                      operation: "list",
-                      projectId: owner.id,
-                      limit: Math.min(1024, 30 * pages.current),
-                      ...identity,
-                    }).then((result) => ({
-                      ...result,
-                      owners: result.owners.map((observation): ObservedCatalogOwner =>
-                        observation.status === "ready"
-                          ? {
-                              ...observation,
-                              source: "live",
-                              coverage: { kind: "complete" },
-                              readAt: Date.now(),
-                            }
-                          : observation,
-                      ),
-                    }))
-                  : await action("tasks", {
-                      operation: "observe",
-                      projectId: owner.id,
-                      limit: Math.min(1024, 30 * pages.current),
-                      ...identity,
-                    });
-              observed = result.errors.length === 0;
+              const result = explicit
+                ? await action("tasks", {
+                    operation: "list",
+                    projectId: owner.id,
+                    limit: Math.min(1024, 30 * pages.current),
+                    ...identity,
+                  }).then((result) => ({
+                    ...result,
+                    owners: result.owners.map((observation): ObservedCatalogOwner =>
+                      observation.status === "ready"
+                        ? {
+                            ...observation,
+                            source: "live",
+                            coverage: { kind: "complete" },
+                            readAt: Date.now(),
+                          }
+                        : observation,
+                    ),
+                  }))
+                : await action("tasks", {
+                    operation: "observe",
+                    projectId: owner.id,
+                    limit: Math.min(1024, 30 * pages.current),
+                    ...identity,
+                  });
               catalogTrace("response_received", identity, owner.id, result.data.length);
               if (!active) {
                 catalogTrace("epoch_discarded", identity, owner.id);
@@ -1184,6 +1151,7 @@ export function TaskCenter({
                     identity,
                     message: result.errors.map((error) => error.message).join("\n"),
                     previous: ownerRows(previous[owner.id]),
+                    explicit,
                   },
                 }));
                 continue;
@@ -1210,6 +1178,7 @@ export function TaskCenter({
                   identity,
                   message: (cause as Error).message,
                   previous: ownerRows(previous[owner.id]),
+                  explicit,
                 },
               }));
             }
@@ -1271,8 +1240,17 @@ export function TaskCenter({
       taskId: task.id,
       viewId,
     })
-      .then(() => {
-        if (live) setConfirmedWatch(confirmation);
+      .then((watched) => {
+        if (!live) return;
+        const watchedRecord =
+          watched && typeof watched === "object"
+            ? "task" in watched && watched.task && typeof watched.task === "object"
+              ? (watched.task as Data)
+              : "id" in watched
+                ? (watched as Data)
+                : task
+            : task;
+        setConfirmedWatch({ ...confirmation, task: watchedRecord });
       })
       .catch((cause) => {
         if (live) {
@@ -2019,12 +1997,20 @@ export function TaskCenter({
             {!connected && <p role="status">{t("operations.schedules.disconnectedCatalog")}</p>}
             {projects.map((owner) => {
               const read = catalog[owner.id];
+              const relevant =
+                (read?.status === "error" && read.explicit) ||
+                Boolean(owner.state?.connected) ||
+                Boolean(owner.hasTaskHistory) ||
+                Boolean(ownerRows(read)?.data.length) ||
+                Object.values<Data>(owner.state?.tasks ?? {}).some(
+                  (entry) => entry.mode === "scheduled",
+                );
               return (
                 <TaskCatalogNotice
                   key={owner.id}
                   projectName={projectLabel(owner)}
                   error={
-                    catalogSupported && read?.status === "error"
+                    catalogSupported && read?.status === "error" && relevant
                       ? read.message || t("operations.schedules.readFailed")
                       : undefined
                   }
@@ -2183,20 +2169,27 @@ export function TaskCenter({
             data-task-id={task.id}
           >
             <header>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("operations.schedules.backToList")}
+                onClick={closeDetails}
+              >
+                <NavigationBackIcon />
+              </Button>
               <TitleTooltip title={task.objective}>
                 <h2>{scheduledTaskName(task)}</h2>
               </TitleTooltip>
-              <Button size="sm" variant="ghost" onClick={closeDetails}>
-                {t("operations.schedules.closeDetails")}
-              </Button>
             </header>
-            <p role="status" className="task-plan-note">
-              {t(
-                ownerFailed
-                  ? "operations.schedules.unconfirmedStatus"
-                  : "operations.schedules.updatingStatus",
-              )}
-            </p>
+            {ownerFailed ? (
+              <p role="status" className="task-plan-note">
+                {t("operations.schedules.unconfirmedStatus")}
+              </p>
+            ) : !error ? (
+              <div className="task-conversation-pending flex items-center justify-center">
+                <Spinner label={t("operations.schedules.updatingStatus")} className="size-5" />
+              </div>
+            ) : null}
             {error && (
               <p role="alert" className="task-plan-note">
                 {error}
@@ -2216,13 +2209,14 @@ export function TaskCenter({
           project &&
           !creating &&
           detailsReady &&
-          (task.sourceThreadId || task.delivery === "thread") && (
+          (task.sourceThreadId ||
+            task.delivery === "thread" ||
+            project.projectlessRequestId === "00000000-0000-4000-a000-5c4a7c400001") && (
             <ScheduledTaskConversation
               task={task}
               project={project}
               action={action}
               disabled={disabled}
-              onReveal={onReveal}
               history={runHistory}
               onClose={closeDetails}
               onOpenThread={onOpenThread}
@@ -2237,7 +2231,8 @@ export function TaskCenter({
           !creating &&
           detailsReady &&
           !task.sourceThreadId &&
-          task.delivery !== "thread" && (
+          task.delivery !== "thread" &&
+          project.projectlessRequestId !== "00000000-0000-4000-a000-5c4a7c400001" && (
             <TaskDraft
               key={selected}
               projects={projects}

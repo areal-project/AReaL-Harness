@@ -22,4 +22,4 @@
 | 边界组合 | 明暗主题，UI 字号 14 / 18，宽 / 窄，键盘与 reduced motion | 不靠缩字体通过；当前值、返回、取消、保存和删除均可达；无页面横向溢出 |
 
 <!-- rule:R-WORKTREE-046 -->
-逐状态对照 WT-R01～09 时保留 AReaL 品牌与安全语义差异；截图缺失状态按本稿目标验证并明确标注。当前 [renderer 与 Electron 验收范围](../../../clients/gui/design-system/exercises/worktrees.md)分别报告视觉、交互和真实 Core 路径；尚未验收安装包、物理输入或 Linux 实机，不声明逐像素一致。
+逐状态对照 WT-R01～09 时保留 AReaL 品牌与安全语义差异；截图缺失状态按本稿目标验证并明确标注。当前 [renderer 与 Electron 验收范围](exercises/worktrees.md)分别报告视觉、交互和真实 Core 路径；尚未验收安装包、物理输入或 Linux 实机，不声明逐像素一致。

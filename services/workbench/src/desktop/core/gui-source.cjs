@@ -196,20 +196,47 @@ class GuiSourceAdapter {
       );
     }
   }
-  /** @param {string} requestId */
-  async import(requestId) {
+  /** @param {string} requestId @param {{publishOnly?:boolean}} [options] */
+  async import(requestId, { publishOnly = false } = {}) {
     const client = new HostClient();
     try {
       await client.connect(this.hostHome);
       await client.attachSource(this.source);
       let result = await client.importSource(requestId, this.source);
-      if (Array.isArray(result.pendingSecrets) && result.pendingSecrets.length) {
+      if (
+        !publishOnly &&
+        Array.isArray(result.pendingSecrets) &&
+        result.pendingSecrets.length
+      ) {
+        /** @type {Map<string, typeof result.pendingSecrets>} */
+        const slots = new Map();
         for (const secret of result.pendingSecrets) {
-          const value = await this.extract(secret);
-          const receipt = await client.importSecret(result.migrationId, secret, value);
-          if (receipt.state !== "completed" || receipt.sourceDigest !== secret.sourceDigest)
-            throw new Error("Host did not confirm durable secret storage");
+          const key = JSON.stringify(secret.slot);
+          const group = slots.get(key) ?? [];
+          group.push(secret);
+          slots.set(key, group);
         }
+        await Promise.all([...slots.values()].map(async (secrets) => {
+          for (const secret of secrets) {
+            try {
+              const value = await this.extract(secret);
+              const receipt = await client.importSecret(
+                result.migrationId,
+                secret,
+                value,
+              );
+              if (
+                receipt.state !== "completed" ||
+                receipt.sourceDigest !== secret.sourceDigest
+              )
+                throw new Error("Host did not confirm durable secret storage");
+            } catch (error) {
+              // 同槽未确认时保留原顺序，独立槽继续，不重放未决写入。
+              if (result.sourcePublished !== true) throw error;
+              break;
+            }
+          }
+        }));
         result = await client.importSource(requestId, this.source);
       }
       return result;

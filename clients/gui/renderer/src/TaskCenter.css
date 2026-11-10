@@ -8,12 +8,12 @@
   min-width: 0;
 }
 .task-center-toolbar {
-  height: 44px;
+  height: var(--shell-bar-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 16px;
+  gap: var(--spacing-inline);
+  padding: 0 var(--spacing-field);
 }
 .task-center-list {
   width: 248px;
@@ -22,8 +22,8 @@
   display: flex;
   flex-direction: column;
   background: var(--color-sidebar);
-  border-right: 1px solid var(--color-border);
-  padding: 16px 8px;
+  border-right: var(--border-width-default) solid var(--color-border);
+  padding: 0 var(--spacing-inline) var(--spacing-inline);
 }
 .task-center-list[hidden] {
   display: none;
@@ -32,30 +32,30 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
-  height: 28px;
-  margin-bottom: 12px;
+  padding: 0 calc(var(--spacing-inline) / 2) 0 var(--spacing-inline);
+  height: var(--rail-width);
+  flex-shrink: 0;
 }
 .task-list-heading h1 {
-  font-size: var(--text-ui-lg);
-  font-weight: 600;
-  line-height: 24px;
+  font-size: var(--text-ui-xl);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--line-height-title);
 }
 .task-list-heading button,
 .task-list-subheading button {
-  padding: 4px;
+  padding: calc(var(--spacing-inline) / 2);
   color: var(--color-foreground-subtle);
 }
 .task-new {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
+  gap: var(--spacing-inline);
+  min-height: var(--navigation-row-height);
   flex-shrink: 0;
-  padding: 0 8px;
+  padding: 0 var(--spacing-inline);
   font-size: var(--text-ui-base);
   text-align: left;
-  border-radius: var(--radius-inset);
+  border-radius: var(--radius-navigation);
 }
 .task-new:hover {
   background: var(--color-hover);
@@ -64,16 +64,17 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
-  height: 44px;
+  padding: 0 var(--spacing-inline);
+  height: var(--navigation-row-height);
+  margin-top: var(--spacing-field);
   flex-shrink: 0;
   color: var(--color-foreground-subtle);
 }
 .task-search {
-  margin: 0 8px 8px;
-  border: 1px solid var(--color-border);
+  margin: 0 var(--spacing-inline) var(--spacing-inline);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-inset);
-  padding: 6px 8px;
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline);
 }
 .task-list-scroll {
   overflow-y: auto;
@@ -83,7 +84,7 @@
 }
 .task-list-scroll > p,
 .task-catalog-error {
-  padding: 8px;
+  padding: var(--spacing-inline);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }
@@ -98,8 +99,8 @@
 .task-conversation > header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 20px;
+  gap: calc(var(--spacing-inline) * 3 / 2);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 5 / 2);
   flex-shrink: 0;
 }
 .task-conversation > header h2 {
@@ -124,42 +125,42 @@
 }
 .task-create-welcome {
   text-align: center;
-  padding: 12vh 24px 40px;
+  padding: 12vh var(--spacing-section) calc(var(--spacing-inline) * 5);
 }
 .task-create-welcome > svg {
-  margin: 0 auto 20px;
+  margin: 0 auto calc(var(--spacing-inline) * 5 / 2);
   color: var(--color-foreground-subtle);
 }
 .task-conversation-pending {
   flex: 1;
-  padding: 24px;
+  padding: var(--spacing-section);
   color: var(--color-foreground-subtle);
 }
 .task-plan-note {
-  padding: 8px 20px;
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 5 / 2);
   font-size: var(--text-ui-caption);
 }
 .task-plan-summary {
   flex-shrink: 0;
   display: grid;
-  gap: 8px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--color-border);
+  gap: var(--spacing-inline);
+  padding: calc(var(--spacing-inline) * 3 / 2) calc(var(--spacing-inline) * 5 / 2);
+  border-bottom: var(--border-width-default) solid var(--color-border);
 }
 .task-draft-error {
   color: var(--color-destructive);
 }
 .task-resource-history > div {
-  padding: 8px 8px 0;
+  padding: var(--spacing-inline) var(--spacing-inline) 0;
 }
 .task-resource-history article {
   font-size: var(--text-ui-sm);
 }
 .task-center.is-narrow .task-create-welcome {
-  padding: 48px 16px 24px;
+  padding: calc(var(--spacing-field) * 3) var(--spacing-field) var(--spacing-section);
 }
 .task-center.is-narrow .task-plan-summary {
-  padding: 12px;
+  padding: calc(var(--spacing-inline) * 3 / 2);
 }
 
 .task-create-welcome h2 {
@@ -168,22 +169,22 @@
   font-weight: 500;
 }
 .task-create-welcome > p {
-  margin-top: 8px;
+  margin-top: var(--spacing-inline);
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-base);
 }
 .task-examples {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--spacing-field);
   max-width: 640px;
-  margin: 32px auto 0;
+  margin: calc(var(--spacing-field) * 2) auto 0;
 }
 .task-examples button {
   text-align: left;
-  border: 1px solid var(--color-border);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-dialog);
-  padding: 16px;
+  padding: var(--spacing-field);
 }
 .task-examples button:hover {
   background: var(--color-hover);
@@ -196,30 +197,38 @@
   font-size: var(--text-ui-caption);
   line-height: 20px;
   color: var(--color-foreground-subtle);
-  margin-top: 4px;
+  margin-top: calc(var(--spacing-inline) / 2);
 }
 .task-center.is-narrow .task-examples {
   grid-template-columns: 1fr;
 }
 
-/* 定时任务详情顶部一行：名称、状态、规则与下次时间、操作。 */
 .scheduled-task-header {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-inline);
 }
-.scheduled-task-header > h2,
-.scheduled-task-header-summary {
+.scheduled-task-header > h2 {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.scheduled-task-header > h2 {
-  flex: 0 1 auto;
+.scheduled-task-pinned-summary {
+  flex-shrink: 0;
 }
-.scheduled-task-header-summary {
-  flex: 1;
+.scheduled-task-summary-content {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-inline);
+  width: 100%;
+  max-width: var(--reading-width);
+  margin: 0 auto;
+  padding: var(--spacing-inline) var(--spacing-field);
+}
+.scheduled-task-summary-text {
+  min-width: 0;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-sm);
 }

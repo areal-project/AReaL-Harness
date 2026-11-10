@@ -34,7 +34,6 @@ export function SideChatPane({
   executionBlocked,
   action,
   dark,
-  onReturn,
   onPanel,
 }: {
   project: Data;
@@ -42,7 +41,6 @@ export function SideChatPane({
   executionBlocked: boolean;
   action: Action;
   dark: boolean;
-  onReturn: () => void;
   onPanel: (name: string) => void;
 }) {
   const workspace = useMemo(
@@ -79,12 +77,8 @@ export function SideChatPane({
     };
   }, [workspace]);
   return (
-    <section className="side-chat-pane" aria-label="旁路讨论">
+    <section className="side-chat-pane" aria-label="侧边聊天">
       <div className="side-chat-toolbar">
-        <span className="side-chat-heading">
-          <SideChatIcon />
-          侧边聊天
-        </span>
         <Button
           type="button"
           variant="ghost"
@@ -148,16 +142,6 @@ export function SideChatPane({
               ))}
           </PopoverContent>
         </Popover>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="返回主会话"
-          title="关闭侧边聊天"
-          onClick={onReturn}
-        >
-          <CloseIcon />
-        </Button>
       </div>
       <SideChatEditor
         key={`${workspace.owner(selected)}:${project.core?.connectionGeneration ?? 0}`}
@@ -815,10 +799,10 @@ function SideChatEditor({
           {sideId && !validSide && (
             <p role="status">
               {side
-                ? "旁路归属与当前来源不一致。"
+                ? "侧边聊天的归属与当前来源不一致。"
                 : loading
-                  ? "正在恢复旁路讨论…"
-                  : "正在核对旁路归属…"}
+                  ? "正在恢复侧边聊天…"
+                  : "正在核对侧边聊天归属…"}
             </p>
           )}
           {validSide && side.desktop?.archived && (
@@ -830,8 +814,7 @@ function SideChatEditor({
         {!sideId && (
           <div className="side-chat-empty">
             <SideChatIcon size={30} />
-            <h2>侧边聊天</h2>
-            <p>岔开一个问题，主聊天留在原处。</p>
+            <h2>岔开一个问题，主聊天留在原处。</h2>
             <small>讨论会保留，可从相关讨论中恢复。</small>
           </div>
         )}
@@ -844,12 +827,12 @@ function SideChatEditor({
             action={action}
             dark={dark}
             reserveResponseSpace={false}
-            onLink={() => setError("旁路不提供链接预览；可复制链接后从主会话打开。")}
+            onLink={() => setError("侧边聊天不提供链接预览；可复制链接后从主会话打开。")}
             onFile={() =>
               setError(
                 side.conversation.policy?.workspaceAccess === "readOnly"
-                  ? "旁路模型可只读查询当前工作区；请在问题中指定文件路径。"
-                  : "此旁路仅能读取冻结会话证据。",
+                  ? "侧边聊天的模型可只读查询当前工作区；请在问题中指定文件路径。"
+                  : "此侧边聊天仅能读取冻结会话证据。",
               )
             }
             onReview={() => {}}
@@ -886,7 +869,7 @@ function SideChatEditor({
               来源 Side：{side?.preview || sideId}；{sourceStatus}。请核对或编辑将插入的文字。
             </p>
             {bringPreview.stale && (
-              <p role="status">来源在旁路创建后已推进；以下文字仍依据旧快照。</p>
+              <p role="status">来源在侧边聊天创建后已推进；以下文字仍依据旧快照。</p>
             )}
             <Textarea
               unstyled
@@ -945,7 +928,7 @@ function SideChatEditor({
               }
             }}
           >
-            重试恢复旁路
+            重试恢复侧边聊天
           </Button>
         )}
         {unsettled && !active && (
@@ -1051,6 +1034,7 @@ function SideChatEditor({
             placeholder={t("chat.composer.placeholder")}
             disabled={editorDisabled}
             submitDisabled={disabled || !!active || (!text.trim() && !selection)}
+            hasDraftContent={!!selection && !sideId}
             allowSubmitWhenEmpty={!!selection && !sideId}
             submitting={busy}
             submitLabel="发送"
@@ -1082,7 +1066,7 @@ function SideChatEditor({
                   variant="secondary"
                   size="icon"
                   className="composer-primary-action composer-stop-action"
-                  aria-label="停止旁路"
+                  aria-label="停止侧边聊天"
                   disabled={executionBlocked}
                   onClick={stop}
                 >

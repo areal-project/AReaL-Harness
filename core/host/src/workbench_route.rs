@@ -97,6 +97,9 @@ pub(super) struct Backend {
     /// 已启动后台的项目 profile 与服务身份（不含票据），供 Main 核对所有权。
     ownership: RefCell<Option<(String, Value)>>,
     source: RefCell<Option<String>>,
+    utility_options: RefCell<Option<Value>>,
+    events: RefCell<Vec<Value>>,
+    worktree_cleaning: Cell<bool>,
 }
 
 /// Main 传来的桌面后台启动参数。`options` 是界面 Main 的启动选项，Host 只读取并校验路径字段：
@@ -171,7 +174,7 @@ pub(super) async fn discover_backend(bin: &Path) -> Result<Entry> {
 }
 
 /// 复用已发布 source 的项目绑定；Host ID 与后台 alias 从不按字符串或路径猜测。
-fn backend_project_alias(host: &Host, source: &str, project: &str) -> Result<String> {
+pub(super) fn backend_project_alias(host: &Host, source: &str, project: &str) -> Result<String> {
     let registrations: Vec<_> = host
         .slots
         .borrow()
@@ -196,11 +199,47 @@ pub(super) struct PreparedExecution {
     pub params: Value,
     pub source: String,
     dispatched: bool,
+    host_dispatch: Option<(Weak<Host>, String, String, (String, String, String))>,
 }
 impl PreparedExecution {
     pub(super) async fn dispatch(&mut self) -> Result<Value> {
         ensure!(!self.dispatched, "SUBMISSION_UNKNOWN");
         self.dispatched = true;
+        if let Some((host, project, method, scope)) = &self.host_dispatch {
+            let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
+            ensure!(
+                host.gateway.workbench.backend_has_source(&self.source),
+                "RESYNC_REQUIRED"
+            );
+            let current = host.gateway.workbench.backend.running.borrow().clone();
+            ensure!(
+                current
+                    .as_ref()
+                    .is_some_and(|current| Rc::ptr_eq(current, &self.backend))
+                    && !self.backend.closed(),
+                "CAPABILITY_UNAVAILABLE"
+            );
+            let result = host
+                .schedules
+                .connections
+                .remote_request(
+                    &host,
+                    project,
+                    (&scope.0, &scope.1, &scope.2),
+                    method,
+                    self.params.clone(),
+                )
+                .await;
+            // 回执以 Core 为准；页面租约结算失败不能把已受理的执行改成拒绝或重发。
+            let body = match &result {
+                Ok(result) => {
+                    json!({"connection":self.connection,"handle":self.handle,"result":result})
+                }
+                Err(_) => json!({"connection":self.connection,"handle":self.handle,"error":true}),
+            };
+            self.backend.notify("execution.complete", body).await;
+            return result;
+        }
         let value = self
             .backend
             .request(
@@ -230,6 +269,177 @@ impl Drop for PreparedExecution {
 }
 
 impl Supervisor {
+    pub(super) fn tasks_event(&self, host: &Host, canonical: &str, mut body: Value) {
+        let Some(source) = self.active_source() else {
+            return;
+        };
+        let Ok(alias) = backend_project_alias(host, &source, canonical) else {
+            return;
+        };
+        body["projectId"] = json!(alias);
+        if let Some(backend) = self
+            .backend
+            .running
+            .borrow()
+            .clone()
+            .filter(|b| !b.closed())
+        {
+            tokio::task::spawn_local(async move {
+                backend.notify("tasks.event", body).await;
+            });
+        }
+    }
+
+    pub(super) fn backend_core_event(&self, project: &str, lease: &str, event: &Value) {
+        let backend = self.backend.running.borrow().clone();
+        let body = json!({"projectId":project,"lease":lease,"method":event["method"],"params":event["params"],"sequence":event["sequence"]});
+        if let Some(backend) = backend {
+            tokio::task::spawn_local(async move {
+                backend.notify("core.event", body).await;
+            });
+        } else if self.backend.events.borrow().len() < 4096 {
+            self.backend.events.borrow_mut().push(body);
+        } else {
+            self.backend.stopped.set(true);
+        }
+    }
+    pub(super) async fn backend_core_callback(
+        &self,
+        project: &str,
+        lease: &str,
+        method: &str,
+        params: &Value,
+        request_id: &Value,
+    ) -> Result<Value> {
+        let backend = self
+            .backend
+            .running
+            .borrow()
+            .clone()
+            .context("CAPABILITY_UNAVAILABLE")?;
+        backend.request("core.callback",json!({"projectId":project,"lease":lease,"method":method,"params":params,"requestId":request_id}),json!({})).await
+    }
+    pub(super) async fn backend_private(&self, method: &str, params: Value) -> Result<Value> {
+        ensure!(
+            ["lifecycle.dependencies", "lifecycle.flush"].contains(&method),
+            "FORBIDDEN"
+        );
+        let backend = self
+            .backend
+            .running
+            .borrow()
+            .clone()
+            .context("CAPABILITY_UNAVAILABLE")?;
+        backend.request(method, params, json!({})).await
+    }
+
+    pub(super) fn worktree_backend_identity(&self, source: &str) -> Option<Value> {
+        if !self.backend_has_source(source)
+            || !self
+                .backend
+                .running
+                .borrow()
+                .as_ref()
+                .is_some_and(|backend| !backend.closed())
+        {
+            return None;
+        }
+        self.backend
+            .ownership
+            .borrow()
+            .as_ref()
+            .map(|(_, owner)| owner.clone())
+    }
+    // 沿用原后台 init/finishSetup 的清理触发，不在每次目录读取时启动清理。
+    pub(super) fn schedule_worktree_cleanup(&self, host: &Rc<Host>, source: &str) {
+        if (source != "host" && !self.backend_has_source(source))
+            || self.backend.worktree_cleaning.replace(true)
+        {
+            return;
+        }
+        let source = source.to_owned();
+        let owner = if source == "host" {
+            None
+        } else {
+            self.worktree_backend_identity(&source)
+        };
+        let weak = Rc::downgrade(host);
+        let task: futures_util::future::LocalBoxFuture<'static, ()> = Box::pin(async move {
+            if let Some(host) = weak.upgrade() {
+                let current = source == "host"
+                    || (host.gateway.workbench.backend_has_source(&source)
+                        && host.gateway.workbench.worktree_backend_identity(&source) == owner);
+                if current && host.admission().is_ok() {
+                    let _ = super::worktree_catalog::auto_cleanup(&host, &source).await;
+                }
+                host.gateway.workbench.backend.worktree_cleaning.set(false);
+            }
+        });
+        tokio::task::spawn_local(task);
+    }
+
+    #[cfg(test)]
+    pub(super) fn test_source(&self, source: &str) {
+        *self.backend.source.borrow_mut() = Some(source.into());
+    }
+
+    /// 已启动后台所属的来源；资料库、执行、任务与工作树均由 Host 的 Rust 实现负责。
+    pub(super) fn active_source(&self) -> Option<String> {
+        self.backend.source.borrow().clone()
+    }
+    pub(super) fn utility_options(&self, source: &str) -> Result<Value> {
+        ensure!(
+            self.backend.source.borrow().as_deref() == Some(source),
+            "FORBIDDEN"
+        );
+        self.backend
+            .utility_options
+            .borrow()
+            .clone()
+            .context("CAPABILITY_UNAVAILABLE")
+    }
+    pub(super) async fn library_dependencies(&self, source: &str) -> Result<Value> {
+        ensure!(self.backend_has_source(source), "FORBIDDEN");
+        let backend = self
+            .backend
+            .running
+            .borrow()
+            .clone()
+            .context("CAPABILITY_UNAVAILABLE")?;
+        let result = backend
+            .request("library.dependencies", json!({}), json!({}))
+            .await?;
+        ensure!(
+            self.backend_has_source(source)
+                && self
+                    .backend
+                    .running
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|v| Rc::ptr_eq(v, &backend)),
+            "RESYNC_REQUIRED"
+        );
+        Ok(result)
+    }
+    pub(super) async fn worktree_changed(&self, source: &str) {
+        if !self.backend_has_source(source) {
+            return;
+        }
+        let backend = self.backend.running.borrow().clone();
+        if let Some(backend) = backend {
+            backend
+                .notify("worktree.changed", json!({"sourceId":source}))
+                .await;
+        }
+    }
+
+    pub(super) async fn library_changed(&self) {
+        let backend = self.backend.running.borrow().clone();
+        if let Some(backend) = backend {
+            backend.notify("library.changed", json!({})).await;
+        }
+    }
+
     pub(super) fn backend_has_source(&self, source: &str) -> bool {
         self.backend.source.borrow().as_deref() == Some(source)
     }
@@ -274,6 +484,14 @@ impl Supervisor {
             params: response["call"]["params"].clone(),
             source: source.clone(),
             dispatched: false,
+            host_dispatch: (response["hostDispatch"] == true).then(|| {
+                (
+                    Rc::downgrade(host),
+                    project.to_owned(),
+                    method.to_owned(),
+                    scope.clone(),
+                )
+            }),
         };
         ensure!(response["call"]["method"] == method, "INVALID_RESPONSE");
         ensure!(
@@ -352,6 +570,32 @@ impl Supervisor {
         );
         let alias = backend_project_alias(host, source, project)?;
         ensure!(params["projectId"] == alias, "RESYNC_REQUIRED");
+        if self.backend_has_source(source) {
+            let mut result =
+                super::worktree_catalog::read_thread_target(host, source, &alias, params.clone())
+                    .await?;
+            if result["state"] == "ready" {
+                let execution = result["executionProjectId"]
+                    .as_str()
+                    .context("INVALID_RESPONSE")?;
+                let registrations: Vec<_> = host
+                    .slots
+                    .borrow()
+                    .values()
+                    .map(|slot| slot.registration.clone())
+                    .collect();
+                let matches: Vec<_> = host
+                    .migration
+                    .remote_bindings(source, &registrations)?
+                    .into_iter()
+                    .filter(|(_, alias)| alias == execution)
+                    .collect();
+                ensure!(matches.len() == 1, "RESOURCE_UNAVAILABLE");
+                result["executionProjectId"] = json!(matches[0].0);
+            }
+            return Ok(result);
+        }
+
         let backend = self
             .backend
             .running
@@ -631,6 +875,14 @@ pub(super) fn backend_receipt(
     principal: &str,
     command: &str,
 ) -> Result<Option<Value>> {
+    let receipt = backend_receipt_raw(host, principal, command)?;
+    if let Some(error) = receipt.as_ref().and_then(|value| value.get("error")) {
+        return Err(super::task_catalog::TaskRejection(error.clone()).into());
+    }
+    Ok(receipt)
+}
+
+fn backend_receipt_raw(host: &Host, principal: &str, command: &str) -> Result<Option<Value>> {
     let command = uuid::Uuid::parse_str(command)
         .context("INVALID_PARAMS")?
         .to_string();
@@ -660,6 +912,12 @@ pub(super) async fn backend_command(
     let params = match method {
         "library.command" => serde_json::to_value(
             serde_json::from_value::<areal_protocol::host::WorkbenchLibraryParams>(
+                request["params"].clone(),
+            )
+            .context("INVALID_PARAMS")?,
+        )?,
+        "worktree.command" if principal == "local" => serde_json::to_value(
+            serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandInput>(
                 request["params"].clone(),
             )
             .context("INVALID_PARAMS")?,
@@ -698,26 +956,41 @@ pub(super) async fn backend_command(
     };
     let digest =
         areal_local_service::storage::digest(&serde_json::to_vec(&json!([method, params]))?);
-    if let Some(mut original) = backend_receipt(host, principal, &command)? {
+    if let Some(mut original) = backend_receipt_raw(host, principal, &command)? {
         ensure!(original["semanticDigest"] == digest, "COMMAND_CONFLICT");
+        if let Some(error) = original.get("error") {
+            return Err(super::task_catalog::TaskRejection(error.clone()).into());
+        }
         original.as_object_mut().unwrap().remove("semanticDigest");
         return Ok(original);
     }
+    if method == "worktree.command" {
+        super::worktree_catalog::validate_admission(
+            host,
+            params["sourceId"].as_str().context("INVALID_PARAMS")?,
+            &params,
+        )?;
+    }
     host.admission()?;
-    host.gateway.workbench.resume_backend(host).await?;
-    let backend = host
-        .gateway
-        .workbench
-        .backend
-        .running
-        .borrow()
-        .clone()
-        .context("CAPABILITY_UNAVAILABLE")?;
-    ensure!(!backend.closed(), "CAPABILITY_UNAVAILABLE");
-    ensure!(
-        host.gateway.workbench.backend.source.borrow().as_deref() == params["sourceId"].as_str(),
-        "FORBIDDEN"
-    );
+    let source = params["sourceId"]
+        .as_str()
+        .context("INVALID_PARAMS")?
+        .to_owned();
+    let native = method == "worktree.command" && source == "host";
+    if !native {
+        host.gateway.workbench.resume_backend(host).await?;
+    }
+    let backend = host.gateway.workbench.backend.running.borrow().clone();
+    if !native {
+        ensure!(
+            backend.as_ref().is_some_and(|b| !b.closed()),
+            "CAPABILITY_UNAVAILABLE"
+        );
+        ensure!(
+            host.gateway.workbench.backend_has_source(&source),
+            "FORBIDDEN"
+        );
+    }
     let scope = format!(
         "workbench-{}",
         areal_local_service::storage::digest(principal.as_bytes())
@@ -730,27 +1003,52 @@ pub(super) async fn backend_command(
         .unwrap()
         .push(json!({"requestId":command,"operationId":command,"method":method,"params":{},"result":unknown}));
     host.journal.native_replace(&scope, revision, snapshot)?;
+    let source = params["sourceId"]
+        .as_str()
+        .context("INVALID_PARAMS")?
+        .to_owned();
     let mut payload = params;
     payload.as_object_mut().unwrap().remove("sourceId");
     if method == "manage.command" && payload.get("requestId").is_none() {
         payload["requestId"] = json!(command);
     }
-    let result = backend
-        .request(method, payload, json!({"principal":principal}))
-        .await
-        .and_then(|value| {
-            if method == "library.command" {
-                crate::shell::library_result(value)
-            } else {
-                validate_backend_result(method, &value)?;
-                Ok(value)
-            }
-        });
+    // 资料库、工作树与任务变更由 Host 执行，其余领域交给工作台后台。
+    let native_task = method == "manage.command"
+        && super::task_catalog::mutation(payload["operation"].as_str().unwrap_or("")).is_some();
+    let result = if method == "library.command" {
+        super::library_service::command(host, &source, payload).await
+    } else if method == "worktree.command" {
+        super::worktree_catalog::command(host, &source, payload).await
+    } else if native_task {
+        payload["sourceId"] = json!(source);
+        super::task_catalog::command(host, &payload).await
+    } else {
+        backend
+            .context("CAPABILITY_UNAVAILABLE")?
+            .request(method, payload, json!({"principal":principal}))
+            .await
+    }
+    .and_then(|value| {
+        if method == "library.command" {
+            crate::shell::library_result(value)
+        } else {
+            validate_backend_result(method, &value)?;
+            Ok(value)
+        }
+    });
     let mut receipt = match result {
         Ok(value) => {
             json!({"commandId":command,"method":method,"admissionState":"accepted","submissionUnknown":false,"receipt":value,"semanticDigest":digest})
         }
-        Err(_) => unknown,
+        Err(error) => match native_task
+            .then(|| super::task_catalog::definitive_task_rejection(&error))
+            .flatten()
+        {
+            Some(error) => {
+                json!({"commandId":command,"method":method,"sourceId":source,"admissionState":"rejected","submissionUnknown":false,"error":error,"semanticDigest":digest})
+            }
+            None => unknown,
+        },
     };
     if receipt["submissionUnknown"] == false {
         let (revision, mut snapshot) = host.journal.native_snapshot(&scope)?;
@@ -760,6 +1058,9 @@ pub(super) async fn backend_command(
             .retain(|row| row["requestId"] != command);
         snapshot["outcomes"][&command] = receipt.clone();
         host.journal.native_replace(&scope, revision, snapshot)?;
+    }
+    if let Some(error) = receipt.get("error") {
+        return Err(super::task_catalog::TaskRejection(error.clone()).into());
     }
     receipt.as_object_mut().unwrap().remove("semanticDigest");
     Ok(receipt)
@@ -850,6 +1151,24 @@ pub(super) async fn backend_read(
         host.gateway.workbench.backend.source.borrow().as_deref() == params["sourceId"].as_str(),
         "FORBIDDEN"
     );
+    let source = params["sourceId"]
+        .as_str()
+        .context("INVALID_PARAMS")?
+        .to_owned();
+    if method == "tasks.read" && host.gateway.workbench.backend_has_source(&source) {
+        return super::task_catalog::read(host, &params).await;
+    }
+    if method == "manage.read"
+        && host.gateway.workbench.backend_has_source(&source)
+        && params["operation"]
+            .as_str()
+            .is_some_and(|op| op.starts_with("task") || op == "inboxList")
+    {
+        return super::task_catalog::manage_read(host, &params).await;
+    }
+    if method == "worktree.read" && host.gateway.workbench.backend_has_source(&source) {
+        return super::worktree_catalog::read(host, &source, params).await;
+    }
     params.as_object_mut().unwrap().remove("sourceId");
     let value = host
         .gateway
@@ -914,6 +1233,7 @@ impl Backend {
                 }
             }
             workbench.stop().await?;
+            host.schedules.connections.workbench_close_terminals();
             self.running.borrow_mut().take();
             first_exit = record_exit(&self.failures);
         }
@@ -922,16 +1242,50 @@ impl Backend {
         }
         let source = launch.source_id.clone();
         let record = input.clone();
+        *self.source.borrow_mut() = source.clone();
+        *self.utility_options.borrow_mut() = Some(launch.options.clone());
         match self.start(host, launch).await {
             Ok((workbench, ownership)) => {
                 // 记不下来只影响下次网页自动拉起，不影响这次启动。
                 let _ = areal_local_service::storage::write(&launch_record(host), &record);
                 *self.source.borrow_mut() = source;
-                *self.running.borrow_mut() = Some(Rc::new(workbench));
+                let workbench = Rc::new(workbench);
+                *self.running.borrow_mut() = Some(workbench.clone());
+                let watched = workbench.clone();
+                let weak_host = Rc::downgrade(host);
+                tokio::task::spawn_local(async move {
+                    watched.wait_closed().await;
+                    if let Some(host) = weak_host.upgrade() {
+                        let current = host.gateway.workbench.backend.running.borrow().clone();
+                        if current
+                            .as_ref()
+                            .is_none_or(|current| Rc::ptr_eq(current, &watched))
+                        {
+                            host.schedules.connections.workbench_close_terminals();
+                        }
+                    }
+                });
+                for event in self.events.take() {
+                    workbench.notify("core.event", event).await;
+                }
+                ensure!(!self.stopped.get(), "RESYNC_REQUIRED");
                 *self.ownership.borrow_mut() = Some((key, ownership.clone()));
+                if let Some(source) = self.source.borrow().clone() {
+                    if host.gateway.workbench.backend_has_source(&source) {
+                        host.gateway.workbench.library_changed().await;
+                    }
+                }
+                if let Some(source) = self.source.borrow().clone() {
+                    host.gateway
+                        .workbench
+                        .schedule_worktree_cleanup(host, &source);
+                }
                 Ok(ownership)
             }
             Err(error) => {
+                host.schedules.connections.workbench_close_terminals();
+                self.source.borrow_mut().take();
+                self.utility_options.borrow_mut().take();
                 self.failures.borrow_mut().push(Instant::now());
                 Err(error)
             }
@@ -957,6 +1311,7 @@ impl Backend {
         self.stopped.set(true);
         let _guard = self.starting.lock().await;
         self.ownership.borrow_mut().take();
+        self.utility_options.borrow_mut().take();
         let running = self.running.borrow_mut().take();
         if let Some(workbench) = running {
             let _ = workbench.stop().await;
@@ -1126,11 +1481,283 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
         Box::pin(async move {
             let host = host.upgrade().context("CAPABILITY_UNAVAILABLE")?;
             match call.as_str() {
+                "recovery.importProvider" => host.import_provider(serde_json::from_value(params)?),
+                "recovery.history" => {
+                    crate::space::history::for_host(&host.home, serde_json::from_value(params)?)
+                        .await
+                }
+                "recovery.inspect" => {
+                    ensure!(
+                        params
+                            .as_object()
+                            .is_some_and(|o| o.keys().all(|key| key == "spaceId")),
+                        "INVALID_PARAMS"
+                    );
+                    let space_id = params
+                        .get("spaceId")
+                        .map(|value| value.as_str().context("INVALID_PARAMS"))
+                        .transpose()?;
+                    crate::space::inspect_for_host(&host.home, space_id)
+                }
+                "workbench.utility" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .backend
+                        .source
+                        .borrow()
+                        .clone()
+                        .context("FORBIDDEN")?;
+                    super::workbench_utility::execute(&host, &source, params).await
+                }
                 "pages.event" => {
                     if let Some(sender) = host.gateway.workbench.page_events.borrow().as_ref() {
                         let _ = sender.send(params);
                     }
                     Ok(Value::Null)
+                }
+                "library.patch" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    let result = super::library_service::patch(&host, &source, &params)?;
+                    host.gateway.workbench.library_changed().await;
+                    Ok(result)
+                }
+                "library.command" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    super::library_service::command(&host, &source, params).await
+                }
+                "lifecycle.read" | "lifecycle.command" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    ensure!(params["sourceId"] == source, "FORBIDDEN");
+                    if call == "lifecycle.command" {
+                        super::workbench_lifecycle::command(
+                            &host,
+                            &source,
+                            params["request"].clone(),
+                        )
+                        .await
+                    } else {
+                        super::workbench_lifecycle::read_request(
+                            &host,
+                            &source,
+                            params["operation"].as_str().context("INVALID_PARAMS")?,
+                            &params,
+                        )
+                        .await
+                    }
+                }
+                "tasks.preview" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .backend
+                        .source
+                        .borrow()
+                        .clone()
+                        .context("FORBIDDEN")?;
+                    let mut params = params;
+                    params["sourceId"] = json!(source);
+                    super::task_catalog::preview(&host, &params).await
+                }
+                "tasks.owner.read" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    let mut params = params;
+                    params["sourceId"] = json!(source);
+                    super::task_catalog::owner_read(&host, &params).await
+                }
+                "tasks.observe" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    let mut params = params;
+                    params["sourceId"] = json!(source);
+                    super::task_catalog::observe(&host, &params).await
+                }
+                "tasks.read" | "tasks.command" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    let mut params = params;
+                    params["sourceId"] = json!(source);
+                    if call == "tasks.read" {
+                        super::task_catalog::read(&host, &params).await
+                    } else {
+                        super::task_catalog::native_command(&host, "local", &params).await
+                    }
+                }
+                "worktree.project.add" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    super::worktree_catalog::add_project(&host, &source, params).await
+                }
+                "worktree.thread.prepare" | "worktree.thread.bind" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
+                    if call == "worktree.thread.prepare" {
+                        super::worktree_catalog::prepare_thread_target(
+                            &host,
+                            &source,
+                            project,
+                            params["request"].clone(),
+                        )
+                        .await
+                    } else {
+                        super::worktree_catalog::validate_private_binding(&host, &source, &params)?;
+                        super::worktree_catalog::bind_thread_target(
+                            &host,
+                            &source,
+                            project,
+                            params["requestId"].as_str().context("INVALID_PARAMS")?,
+                            params["params"].clone(),
+                        )
+                        .await
+                    }
+                }
+                "worktree.read" | "worktree.command" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .active_source()
+                        .context("FORBIDDEN")?;
+                    if call == "worktree.read" {
+                        super::worktree_catalog::read(&host, &source, params).await
+                    } else {
+                        let command = params["commandId"]
+                            .as_str()
+                            .context("INVALID_PARAMS")?
+                            .to_owned();
+                        let mut params = params["request"].clone();
+                        params["sourceId"] = json!(source);
+                        backend_command(
+                            &host,
+                            "local",
+                            &json!({"method":call,"commandId":command,"params":params}),
+                        )
+                        .await
+                    }
+                }
+                "execution.admit" => {
+                    let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
+                    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
+                    ensure!(
+                        host.gateway.workbench.backend_has_source(source),
+                        "FORBIDDEN"
+                    );
+                    backend_project_alias(&host, source, project)?;
+                    host.schedules
+                        .connections
+                        .workbench_admit(
+                            &host,
+                            project,
+                            Some(params["lease"].as_str().context("INVALID_PARAMS")?),
+                            params["name"].as_str().context("INVALID_PARAMS")?,
+                            &params["request"],
+                        )
+                        .await
+                }
+                "execution.dismiss" => {
+                    let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
+                    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
+                    ensure!(
+                        host.gateway.workbench.backend_has_source(source),
+                        "FORBIDDEN"
+                    );
+                    backend_project_alias(&host, source, project)?;
+                    let lease = params["lease"].as_str().context("INVALID_PARAMS")?;
+                    host.schedules
+                        .connections
+                        .workbench_request(
+                            &host,
+                            project,
+                            lease,
+                            "areal/capabilities",
+                            json!({"apiVersion":"areal.core.v1"}),
+                        )
+                        .await?;
+                    host.journal.native_dismiss(
+                        project,
+                        params["requestId"].as_str().context("INVALID_PARAMS")?,
+                    )?;
+                    Ok(json!({"dismissed":true}))
+                }
+                "execution.submit" | "execution.reconcile" => {
+                    let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
+                    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
+                    ensure!(
+                        host.gateway.workbench.backend_has_source(source),
+                        "FORBIDDEN"
+                    );
+                    backend_project_alias(&host, source, project)?;
+                    let lease = params["lease"].as_str().context("INVALID_PARAMS")?;
+                    let method = params["method"].as_str().context("INVALID_PARAMS")?;
+                    if call == "execution.submit" {
+                        super::workbench_submissions::submit(
+                            &host,
+                            project,
+                            lease,
+                            method,
+                            params["params"].clone(),
+                            params["remember"] == true,
+                        )
+                        .await
+                    } else {
+                        super::workbench_submissions::reconcile(
+                            &host,
+                            project,
+                            lease,
+                            method,
+                            params["params"].clone(),
+                        )
+                        .await
+                    }
+                }
+                "cloud.attach" => {
+                    let source = host
+                        .gateway
+                        .workbench
+                        .backend
+                        .source
+                        .borrow()
+                        .clone()
+                        .context("FORBIDDEN")?;
+                    ensure!(params["sourceId"] == source, "FORBIDDEN");
+                    host.schedules
+                        .connections
+                        .workbench_cloud_attach(&host, &source, &params)
+                        .await
+                }
+                "core.attach" | "core.detach" | "core.media" | "core.blob" => {
+                    workbench_core_call(&host, &call, &params).await
+                }
+                "core.request" if params.get("lease").is_some() => {
+                    workbench_core_call(&host, &call, &params).await
                 }
                 "projects.list" => Ok(projects(&host)),
                 "core.request" => core_request(&host, &params).await,
@@ -1148,6 +1775,52 @@ fn projects(host: &Host) -> Value {
         .map(|slot| json!({"projectId":slot.registration.project_id,"ready":slot.state == "ready"}))
         .collect();
     json!({ "projects": projects })
+}
+
+async fn workbench_core_call(host: &Rc<Host>, method: &str, params: &Value) -> Result<Value> {
+    let source = params["sourceId"].as_str().context("INVALID_PARAMS")?;
+    let project = params["projectId"].as_str().context("INVALID_PARAMS")?;
+    ensure!(
+        host.gateway.workbench.backend_has_source(source),
+        "FORBIDDEN"
+    );
+    let remote = params["lease"].as_str().is_some_and(|lease| {
+        host.schedules
+            .connections
+            .workbench_remote(source, project, lease)
+    });
+    if !remote {
+        backend_project_alias(host, source, project)?;
+    }
+    let connections = &host.schedules.connections;
+    if method == "core.attach" {
+        return connections
+            .workbench_attach(host, project, params["scope"].as_str())
+            .await;
+    }
+    let lease = params["lease"].as_str().context("INVALID_PARAMS")?;
+    if method == "core.detach" {
+        return connections.workbench_detach(host, project, lease);
+    }
+    if method == "core.blob" {
+        return connections
+            .workbench_blob(host, project, lease, params)
+            .await;
+    }
+    if method == "core.media" {
+        return connections
+            .workbench_media(host, project, lease, params)
+            .await;
+    }
+    connections
+        .workbench_request(
+            host,
+            project,
+            lease,
+            params["method"].as_str().context("INVALID_PARAMS")?,
+            params["params"].clone(),
+        )
+        .await
 }
 
 async fn core_request(host: &Host, params: &Value) -> Result<Value> {
@@ -1181,6 +1854,66 @@ async fn core_request(host: &Host, params: &Value) -> Result<Value> {
 mod tests {
     use super::*;
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn task_rejection_is_recovered_for_original_workbench_command() {
+        use futures_util::{SinkExt, StreamExt};
+        use tokio_tungstenite::tungstenite::Message;
+        tokio::task::LocalSet::new().run_until(async {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
+                crate::ProjectSource::Gui { profile: input.profile.clone(), legacy_project_id: "logical".into() };
+            host.gateway.workbench.ensure_backend(&host, input).await.unwrap();
+            host.gateway.workbench.test_source(&source);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let registration = host.slots.borrow()["project"].registration.clone();
+            let service = areal_protocol::service::Service {
+                identity: areal_protocol::service::Identity { protocol_version: 1, service_id: "fixture".into(), generation: "first".into(), workspace: registration.workspace, data_dir: registration.data_dir, config_fingerprint: "fixture".into() },
+                owner: Some(host.owner()), endpoint: format!("ws://{}/", listener.local_addr().unwrap()), web_url: String::new(), auth_file: host.home.join("core-auth.json"), log_file: host.home.join("core.log"), host_pid: 1, core_pid: 2, state: areal_protocol::service::State::Ready,
+            };
+            areal_local_service::storage::write(&service.auth_file, &json!({"principals":[{"id":"desktop-owner","token":"fixture"}]})).unwrap();
+            let gate = host.slots.borrow()["project"].gate.clone();
+            let _guard = gate.write().await;
+            { let mut slots = host.slots.borrow_mut(); let slot = slots.get_mut("project").unwrap(); slot.service = Some(service.clone()); slot.state = "ready".into(); let (writer, lifetime) = areal_local_service::OwnerLifetime::pair().unwrap(); slot.writer = Some(writer); slot.lifetime = Some(Rc::new(lifetime)); }
+            let count = Rc::new(std::cell::Cell::new(0)); let observed = count.clone();
+            let server = tokio::task::spawn_local(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+                while let Some(Ok(Message::Text(text))) = socket.next().await {
+                    let call: Value = serde_json::from_str(&text).unwrap();
+                    if call.get("id").is_none() { continue; }
+                    let response = match call["method"].as_str().unwrap() {
+                        "initialize" => json!({"id":call["id"],"result":{}}),
+                        "areal/conversation/list" | "areal/work/overview" => json!({"id":call["id"],"result":{"data":[],"nextCursor":null}}),
+                        "areal/task/stopRun" => { observed.set(observed.get()+1); if call["params"]["taskId"] == "lost" { break; } json!({"id":call["id"],"error":{"code":-32009,"message":"private","data":{"outcome":{"kind":"rejected"}}}}) },
+                        method => panic!("unexpected {method}"),
+                    };
+                    socket.send(Message::Text(response.to_string().into())).await.unwrap();
+                }
+            });
+            let close = host.schedules.connections.connect_test_core(host.clone(), "project", service).await.unwrap();
+            let command = uuid::Uuid::new_v4().to_string();
+            let request = json!({"method":"manage.command","commandId":command,"params":{"sourceId":source,"projectId":"logical","operation":"taskStopRun","taskId":"task","expectedRevision":9,"expectedRunId":"run"}});
+            for _ in 0..2 {
+                let error = backend_command(&host, "local", &request).await.unwrap_err();
+                assert_eq!(super::super::task_catalog::task_rejection_response(&error).unwrap()["coreCode"], -32009);
+            }
+            assert_eq!(count.get(), 1);
+            let mut changed = request.clone(); changed["params"]["expectedRevision"] = json!(10);
+            assert_eq!(backend_command(&host, "local", &changed).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            let mut foreign = request.clone(); foreign["params"]["sourceId"] = json!("different-source");
+            assert_eq!(backend_command(&host, "local", &foreign).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
+            assert!(backend_receipt(&host, "local", &command).unwrap_err().downcast_ref::<super::super::task_catalog::TaskRejection>().is_some());
+            let mut lost = request.clone(); lost["commandId"] = json!(uuid::Uuid::new_v4().to_string()); lost["params"]["taskId"] = json!("lost");
+            let unknown = backend_command(&host, "local", &lost).await.unwrap();
+            assert_eq!(unknown["submissionUnknown"], true);
+            assert_eq!(backend_command(&host, "local", &lost).await.unwrap(), unknown);
+            assert_eq!(count.get(), 2);
+            close(); server.abort(); host.gateway.workbench.stop_backend().await;
+        }).await;
+    }
+
     // 只替代 Node 业务装配，恢复、来源校验、启动记录和子进程监督均走正式路径。
     fn resumable_host(root: &Path) -> (Rc<Host>, Ensure, String) {
         let mut host = crate::server::schedules::tests::fixture(root);
@@ -1203,9 +1936,9 @@ mod tests {
                 const frame = JSON.parse(line);
                 if (frame.method === 'backend.start') {
                     out({event:'ready',methods:['providers.read','pages.command'],service:{pid:process.pid,identity:String(process.pid)}});
-                } else if (frame.params.crash) {
+                } else if (frame.params?.crash) {
                     process.exit(1);
-                } else {
+                } else if (frame.id !== undefined) {
                     out({id:frame.id,result:frame.method === 'providers.read' ? {models:[]} : {pid:process.pid}});
                 }
             });
@@ -1360,7 +2093,7 @@ mod tests {
             let (backend, _) = Workbench::start_with(&runtime, &runner, root.path(), reverse(&host), Some(("backend.start", json!({
                 "appRoot":app,"options":{"home":data,"userHome":root.path()},
             })))).await.unwrap();
-            for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
+            for (code, expected) in [(json!("COMMAND_CONFLICT"), "COMMAND_CONFLICT"), (json!("TURN_BUSY"), "TURN_BUSY"), (json!("MIGRATION_PENDING"), "MIGRATION_PENDING"), (json!("migrationBlocked"), "migrationBlocked"), (json!("ENOENT"), "CORE_UNAVAILABLE"), (json!(-32602), "CORE_UNAVAILABLE")] {
                 assert_eq!(backend.request("providers.read", json!({"code":code}), json!({})).await.unwrap_err().to_string(), expected);
             }
             backend.stop().await.unwrap();
@@ -1411,6 +2144,44 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    async fn local_gui_source_worktree_profile_keeps_native_admission_and_identity() {
+        tokio::task::LocalSet::new().run_until(async {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().canonicalize().unwrap();
+            let (host, input, source) = resumable_host(&root);
+            host.slots.borrow_mut().get_mut("project").unwrap().registration.source =
+                crate::ProjectSource::Gui { profile:input.profile.clone(), legacy_project_id:"logical".into() };
+            host.gateway.workbench.ensure_backend(&host,input).await.unwrap();
+            host.gateway.workbench.test_source(&source);
+            let home=super::super::library_store::source_home(&host,&source).unwrap();
+            let creation=uuid::Uuid::new_v4().to_string();
+            areal_local_service::storage::private_dir(&home.join("worktree-requests")).unwrap();
+            areal_local_service::storage::write(&home.join("worktree-requests").join(format!("{creation}.json")),
+                &json!({"requestId":creation,"projectId":"logical","state":"ready","threadId":"original-thread","record":{"directory":root.join("workspace")}})).unwrap();
+            let command=uuid::Uuid::new_v4().to_string();
+            let request=json!({"method":"worktree.command","commandId":command,"params":{"sourceId":source,"projectId":"logical","operation":"worktreeOpen","requestId":uuid::Uuid::new_v4().to_string(),"worktreeRequestId":creation,"agentProfile":{"id":"areal-standard","revision":"resources-existing"}}});
+            let mut old_params=request["params"].clone();
+            old_params.as_object_mut().unwrap().remove("agentProfile");
+            assert_eq!(serde_json::to_value(serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandInput>(old_params.clone()).unwrap()).unwrap(),
+                serde_json::to_value(serde_json::from_value::<areal_protocol::host::WorkbenchWorktreeCommandParams>(old_params).unwrap()).unwrap());
+            let receipt=backend_command(&host,"local",&request).await.unwrap();
+            assert_eq!(receipt["submissionUnknown"],false);
+            assert_eq!(receipt["receipt"]["threadId"],"original-thread");
+            assert_eq!(backend_command(&host,"local",&request).await.unwrap(),receipt);
+            let mut changed=request.clone();
+            changed["params"]["agentProfile"]["revision"]=json!("different-revision");
+            assert_eq!(backend_command(&host,"local",&changed).await.unwrap_err().to_string(),"COMMAND_CONFLICT");
+            let mut foreign=request.clone();
+            foreign["commandId"]=json!(uuid::Uuid::new_v4().to_string());
+            foreign["params"]["sourceId"]=json!("foreign-source");
+            assert_eq!(backend_command(&host,"local",&foreign).await.unwrap_err().to_string(),"FORBIDDEN");
+            assert!(backend_receipt(&host,"local",foreign["commandId"].as_str().unwrap()).unwrap().is_none());
+            assert_eq!(backend_command(&host,"web:fixture",&request).await.unwrap_err().to_string(),"INVALID_PARAMS");
+            host.gateway.workbench.stop_backend().await;
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn lost_backend_reply_keeps_the_original_library_command_unknown() {
         tokio::task::LocalSet::new().run_until(async {
             let root = tempfile::tempdir().unwrap();
@@ -1420,7 +2191,7 @@ mod tests {
             let runner = root.path().join("lost-reply.cjs");
             std::fs::write(&runner, r#"
                 const fs = require('node:fs');
-                console.log(JSON.stringify({version:1,event:'ready',methods:['library.command']}));
+                console.log(JSON.stringify({version:1,event:'ready',methods:['feedback.command']}));
                 require('node:readline').createInterface({input:process.stdin}).on('line', () => {
                   fs.appendFileSync(process.env.AREAL_WORKBENCH_DATA + '/effects', 'once\n');
                   process.exit(0);
@@ -1431,13 +2202,13 @@ mod tests {
             *host.gateway.workbench.backend.running.borrow_mut() = Some(Rc::new(backend));
             *host.gateway.workbench.backend.source.borrow_mut() = Some("fixture".into());
             let command = uuid::Uuid::new_v4().to_string();
-            let request = json!({"method":"library.command","commandId":command,"params":{"sourceId":"fixture","operation":"createSection","title":"fixture"}});
+            let request = json!({"method":"feedback.command","commandId":command,"params":{"sourceId":"fixture","operation":"preference","enabled":true}});
             let first = backend_command(&host, "local", &request).await.unwrap();
             assert_eq!(first["submissionUnknown"], true);
             assert_eq!(backend_command(&host, "local", &request).await.unwrap(), first);
             assert_eq!(std::fs::read_to_string(root.path().join("effects")).unwrap(), "once\n");
             let mut conflict = request.clone();
-            conflict["params"]["title"] = json!("changed");
+            conflict["params"]["enabled"] = json!(false);
             assert_eq!(backend_command(&host, "local", &conflict).await.unwrap_err().to_string(), "COMMAND_CONFLICT");
             assert_eq!(backend_receipt(&host, "local", &command).unwrap().unwrap()["submissionUnknown"], true);
             let other_method = json!({"method":"worktree.command","commandId":command,"params":{"sourceId":"fixture","operation":"worktreeSettings","worktreeRoot":"/isolated","branchPrefix":"fixture"}});
@@ -1699,4 +2470,11 @@ mod tests {
             vec![Instant::now() - FAILURE_WINDOW - Duration::from_secs(1); 5];
         assert!(supervisor.admit().is_ok());
     }
+}
+
+pub(super) fn frontend_options(host: &Host, source: &str, options: Value) -> Result<Value> {
+    let profile = host.migration.source_profile(source)?;
+    let (_, launch) = launch(host, Ensure { profile, options })?;
+    ensure!(launch.source_id.as_deref() == Some(source), "FORBIDDEN");
+    Ok(launch.options)
 }

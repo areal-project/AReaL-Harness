@@ -1,5 +1,14 @@
 /* Generated from @areal/ui/tokens.json. Run pnpm --dir clients/gui --filter @areal/ui generate. */
 :root, :root.light {
+  --color-surface-elevated: color-mix(in oklab, #1a1c1f 4%, #ffffff);
+  --color-surface-tertiary: color-mix(in oklab, #1a1c1f 6.5%, #ffffff);
+  --color-surface-glass: color-mix(in oklab, color-mix(in oklab, #1a1c1f 4%, #ffffff) 86%, transparent);
+  --color-border-subtle: color-mix(in oklab, #1a1c1f 5.5%, transparent);
+  --color-activity-summary: color-mix(in oklab, #1a1c1f 60.5%, transparent);
+  --color-activity-child: color-mix(in oklab, #1a1c1f 60.5%, transparent);
+  --color-diff-added-surface: color-mix(in oklab, #16a45d 10%, transparent);
+  --color-diff-removed-surface: color-mix(in oklab, #df515b 10%, transparent);
+  --color-focus-ring-soft: color-mix(in oklab, #3a83f7 22%, transparent);
   --color-background: #ffffff;
   --color-foreground: #1a1c1f;
   --color-brand: #3a83f7;
@@ -27,7 +36,7 @@
   --color-sidebar: color-mix(in srgb, #ffffff 70%, transparent);
   --color-sidebar-item: color-mix(in srgb, #1a1c1f 5.5%, transparent);
   --color-composer: color-mix(in srgb, #ffffff 86.4706%, transparent);
-  --shadow-composer: var(--composer-shadow-light);
+  --shadow-composer: 0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 80px 8px #00000006;
   --color-background-alt: color-mix(in srgb, #1a1c1f 3%, #ffffff);
   --color-card: #ffffff;
   --color-settings-card: #ffffff;
@@ -38,6 +47,7 @@
   --color-menu-border: color-mix(in srgb, #1a1c1f 8%, transparent);
   --color-menu-hover: color-mix(in srgb, #1a1c1f 5.5%, transparent);
   --color-composer-catalog: #ffffff;
+  --color-markdown-inline-code: color-mix(in oklab, #1a1c1f 6.5%, #ffffff);
   --color-input: #ffffff;
   --color-input-focused: #ffffff;
   --color-input-border: var(--color-border);
@@ -78,8 +88,21 @@
   --color-slider-selected-track: #ffffff80;
   --color-annotation-selected-foreground: #91c5ff;
   --color-annotation-selected-surface: #4795ff26;
+  --color-tooltip: #f0f0f0;
+  --color-tooltip-foreground: #0d0d0d;
+  --color-tooltip-tag: #e6e6e6;
+  --color-tooltip-tag-foreground: #5c5c5c;
 }
 :root.dark {
+  --color-surface-elevated: color-mix(in oklab, #ffffff 7%, #181818);
+  --color-surface-tertiary: color-mix(in oklab, #ffffff 11%, #181818);
+  --color-surface-glass: color-mix(in oklab, color-mix(in oklab, #ffffff 7%, #181818) 84%, transparent);
+  --color-border-subtle: color-mix(in oklab, #ffffff 6%, transparent);
+  --color-activity-summary: color-mix(in oklab, #ffffff 60%, transparent);
+  --color-activity-child: color-mix(in oklab, #ffffff 45.5%, transparent);
+  --color-diff-added-surface: color-mix(in oklab, #16a45d 14%, transparent);
+  --color-diff-removed-surface: color-mix(in oklab, #df515b 14%, transparent);
+  --color-focus-ring-soft: color-mix(in oklab, #3a83f7 28%, transparent);
   --color-background: #181818;
   --color-foreground: #ffffff;
   --color-brand: #3a83f7;
@@ -107,7 +130,7 @@
   --color-sidebar: rgb(40 40 40 / 0.7);
   --color-sidebar-item: rgba(255, 255, 255, 0.08);
   --color-composer: color-mix(in srgb, color-mix(in srgb, #ffffff 12.987012987012987%, #181818) 96%, transparent);
-  --shadow-composer: var(--composer-shadow-dark);
+  --shadow-composer: inset 0 0 1px 0 #fff3;
   --color-background-alt: color-mix(in srgb, #ffffff 3%, #181818);
   --color-card: #181818;
   --color-settings-card: color-mix(in srgb, #ffffff 4.761904761904762%, #181818);
@@ -118,6 +141,7 @@
   --color-menu-border: color-mix(in srgb, #ffffff 8.2%, transparent);
   --color-menu-hover: color-mix(in srgb, #ffffff 5.5%, transparent);
   --color-composer-catalog: color-mix(in srgb, #ffffff 8.658008658008658%, #181818);
+  --color-markdown-inline-code: color-mix(in oklab, #ffffff 11%, #181818);
   --color-input: #181818;
   --color-input-focused: #181818;
   --color-input-border: var(--color-border);
@@ -158,4 +182,8 @@
   --color-slider-selected-track: #ffffff80;
   --color-annotation-selected-foreground: #91c5ff;
   --color-annotation-selected-surface: #4795ff26;
+  --color-tooltip: #2b2b2b;
+  --color-tooltip-foreground: #f8f8f8;
+  --color-tooltip-tag: #363636;
+  --color-tooltip-tag-foreground: #adadad;
 }

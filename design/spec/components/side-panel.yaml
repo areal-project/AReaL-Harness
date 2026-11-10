@@ -1,0 +1,89 @@
+id: side-panel
+name: 右侧面板
+status: draft
+purpose: 对话旁边的工作区：用标签页同时开着审查、终端、浏览器、文件等工具，可以并排看，也可以铺满。
+why: 工具和对话并排，看改动或跑命令时不用离开对话；标签页让多个工具共用一块地方，入口与快捷键在打开前就看得见。
+layout:
+  place: 主区右段，紧贴对话区右侧，从窗口顶边一直到底；打开后对话区让出宽度，侧栏与应用导航栏不动
+  width: 默认占主区宽的百分之四十五；可在百分之二十五到六十五之间拖动，最窄 reading-width 的十六分之五
+  surface: 左缘 border-width-default 的 color-border，外加 shadow-leading-panel 向左投影；顶栏透明；顶栏以下的内容区底色 color-background，右上、右下两角 radius-panel（与纸面外框同），左侧两角直角
+  open: 会话标题栏右端“展开侧边面板”按钮（side-panel 图标）打开面板；打开期间按钮底色 color-selected、标为按下；再点一次关闭
+  restore: 打开时回到上次看的标签；没有打开过标签时显示入口列表
+anatomy:
+  - part: tab-bar
+    role: 面板顶栏：标签页、新增标签按钮、完整视图按钮、关闭按钮
+  - part: tab
+    role: 一个打开的工具
+  - part: launcher
+    role: 没有标签时的入口列表
+  - part: add-menu
+    role: 新增标签按钮打开的菜单
+  - part: resize
+    role: 面板左缘的宽度把手
+  - part: full-view
+    optional: true
+    role: 面板铺满主区时，顶栏最左多一个对话标签
+parts:
+  tab-bar:
+    height: height-toolbar，与会话标题栏同高、顶边对齐
+    padding: 左右 spacing-inline
+    gap: 各项之间 spacing-inline 的四分之一
+    order: 自左向右为标签页、新增标签按钮（紧跟最后一个标签，不被推到右端）；最右为完整视图按钮与关闭按钮（靠右）
+    buttons: 新增、完整视图、关闭三个按钮都是 spacing-control 见方，圆角 radius-button，图标 icon-size-control；新增与完整视图的图标颜色同 tab 图标（foreground 的六成五不透明度），关闭图标 foreground；悬停底色 color-hover
+    icons: 新增 panel-add；完整视图在分屏时 panel-full-view、铺满时 panel-exit-full-view；关闭 side-panel
+    empty: 没有标签时（显示入口列表）不显示新增标签按钮
+  tab:
+    size: 高 spacing-control-lg；标签条的宽度按标签数乘单个标签最宽值给出，再受可用宽度限制，所以所有标签平分可用宽度，每个最宽 reading-width 的十六分之五减去 spacing-inline 的四分之一，最窄 spacing-control-lg 的两倍；圆角 radius-navigation
+    content: 左内边距 spacing-inline 的一倍又四分之一，右内边距 spacing-control-xs 加 spacing-inline（给关闭按钮留位）；图标 icon-size-control 与名称间隔 spacing-inline 的一半；名称 text-ui-caption，ui-font-weight，行高 line-height-ui-sm，单行省略
+    icon: 颜色 foreground 的六成五不透明度；审查 panel-review，终端 panel-terminal，浏览器 panel-browser，文件 panel-files
+    rest: 文字 foreground-subtle，底色透明
+    hover: 文字 foreground，底色 color-hover
+    current: 文字 foreground，底色 color-selected
+    close: 关闭按钮 spacing-control-xs 见方，圆角 radius-compact，图标 tab-close；距标签右缘 spacing-inline 的四分之三，垂直居中；当前标签始终显示，其他标签悬停或获得焦点时才显示；悬停底色 color-hover
+    names: 审查、终端、浏览器、文件
+  launcher:
+    padding: 四周 spacing-inline 的一倍半
+    list: 竖排，紧贴顶部，占满宽但最宽 reading-width 的四分之三，水平居中；各项间隔 spacing-inline 的一半
+    item: 最小高 spacing-control-lg 加 spacing-inline；内边距上下 spacing-inline、左右 spacing-inline 的一倍又四分之一；图标、名称、快捷键横排，间隔 spacing-inline；圆角 radius-button；底色 color-surface-elevated，悬停 color-surface-tertiary
+    icon: icon-size-control，颜色同 tab 图标
+    label: text-fixed-label，ui-font-weight，行高 line-height-ui，foreground，单行省略
+    shortcut: 靠右；内边距上下 spacing-inline 的四分之一、左右 spacing-inline 的四分之三；圆角 radius-micro；底色 color-surface-tertiary；text-fixed-caption，font-weight-toolbar，行高与字号相同，foreground-subtle
+    entries: 依次为 审查（Ctrl+Shift+G）、终端（Ctrl+`）、浏览器（Ctrl+T）、文件（Ctrl+P）；在苹果电脑上快捷键写作 ⌃⇧G、⌃`、⌘T、⌘P
+  add-menu:
+    surface: 同 menu 组件，对齐新增标签按钮右缘，在其下方间隔 spacing-inline 的四分之一；菜单打开期间新增标签按钮底色 color-selected
+    items: 入口列表里尚未打开的项（审查、文件已打开时不再列出；终端、浏览器总在），每项带图标与快捷键（快捷键外观同 launcher 的 shortcut）；之后一道分隔线，最后一项“搜索标签页”（search 图标，颜色 foreground，不减淡）；工具图标颜色同 tab 图标
+  resize:
+    hit: 骑在面板左缘上，宽 spacing-field，左右各占一半；鼠标为左右拖动
+    line: 悬停或获得焦点时在左缘画一道 border-width-default 宽的竖线，上下两端渐隐、中间 foreground-subtle
+    keyboard: 获得焦点后左右方向键每次改变主区宽的百分之二
+  full-view:
+    place: 面板铺满整个主区，左缘描边与投影去掉；会话标题栏隐藏，面板顶栏占它的位置
+    conversation-tab: 顶栏最左一个对话标签：side-chat 图标与当前对话标题（文字同 tab 名称，颜色 foreground-subtle，图标同色），间隔 spacing-inline，单行省略；高 spacing-control-lg 减 border-width-default；内边距上下 spacing-inline 的一半、左右 spacing-inline 的一倍又四分之一；最窄 spacing-control-lg 的三倍，最宽同 tab；右缘 border-width-default 的 color-border；不圆角
+    composer: 对话的输入框仍浮在主区底部正中，位置与宽度同分屏前的对话底部输入框；对话内容隐藏
+    close: 最右的按钮变成“进入分屏视图”，点它回到分屏
+  content:
+    note: 各标签里的内容（审查、终端、浏览器、文件）不在本规格内
+icons:
+  source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+  used: [side-panel, panel-add, panel-full-view, panel-exit-full-view, panel-review, panel-terminal, panel-browser, panel-files, tab-close, side-chat, search]
+content: 示例数据 states 里 panel.tabs 是打开的标签（改动即审查），panel.active 是当前标签（功能即入口列表），panel.view 为 panel 时铺满
+accessible-names:
+  open: 展开侧边面板（按钮，标为按下或未按下）
+  tabs: 选项卡列表“侧边面板标签”；每个标签是选项卡，名称即标签名，当前标签标为已选；可按 Delete 关闭
+  close-tab: 关闭 <标签名> 标签（只给鼠标用，不进入读屏与 Tab 顺序）
+  add: 打开侧边面板标签页
+  full-view: 进入完整视图 / 退出完整视图（按钮，标为按下或未按下）
+  close: 关闭面板；铺满时为“进入分屏视图”
+  resize: 分隔条“调整侧边面板宽度”，竖向，当前值为宽度占比，范围二十五到六十五
+  launcher: 每个入口是按钮，名称以入口名开头
+keyboard:
+  - 选项卡之间左右方向键移动
+  - 选中的标签按 Delete 关闭，焦点移到剩下的当前标签
+  - 分隔条获得焦点后左右方向键调宽度
+behavior:
+  - 点入口列表里的一项，打开对应标签并成为当前标签；入口列表消失
+  - 已打开的工具再从新增菜单或入口选择时，不重复开标签，只切过去
+  - 关闭当前标签后，最后一个标签成为当前标签；关掉最后一个标签时面板收起
+  - 关闭面板不清空标签，下次打开回到原来的当前标签
+  - 完整视图下点对话标签：仍是完整视图，但主区换回对话，面板内容隐藏、面板顶栏保留；点“进入分屏视图”回到并排
+  - 宽度在本机记住，下次打开沿用

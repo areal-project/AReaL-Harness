@@ -12,18 +12,9 @@
   flex: 0 0 100%;
   min-width: 0;
 }
-.user-prompt-edit .composer-surface {
-  background: var(--color-composer-catalog, var(--color-surface));
-  box-shadow: none;
-  backdrop-filter: none;
-  border-radius: var(--radius-composer);
-}
-.user-prompt-edit .composer-surface:focus-within {
-  box-shadow: 0 0 0 1px var(--color-border-hover);
-}
 .user-prompt-edit .composer-toolbar button {
-  height: 28px;
-  padding: 3px 10px;
+  height: var(--spacing-control);
+  padding: calc(var(--spacing-inline) / 4) var(--spacing-inline);
   border-radius: var(--radius-control);
   font-size: var(--text-ui-base);
 }
@@ -32,7 +23,7 @@
   color: var(--color-background);
 }
 .user-prompt-edit-note {
-  margin: 6px 4px 0;
+  margin: calc(var(--spacing-inline) * 3 / 4) calc(var(--spacing-inline) / 2) 0;
   color: var(--color-foreground-subtle);
   font-size: var(--text-ui-caption);
   line-height: 1.5;

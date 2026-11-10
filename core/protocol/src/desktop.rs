@@ -832,6 +832,8 @@ pub struct CreationAdmission {
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ThreadStart {
+    #[serde(default, skip_serializing_if = "task_directory_preparation_disabled")]
+    pub prepare_task_directory: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub creation_admission: Option<CreationAdmission>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -847,6 +849,10 @@ pub struct ThreadStart {
     #[serde(default)]
     pub dynamic_tools: Vec<super::ToolDefinition>,
 }
+fn task_directory_preparation_disabled(value: &Option<bool>) -> bool {
+    *value != Some(true)
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TurnStart {

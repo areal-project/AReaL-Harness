@@ -37,6 +37,7 @@ import { useWorkspacePreview } from "./state/useWorkspacePreview.js";
 import { terminalOwner, useTerminalWorkspace } from "./terminal/terminalWorkspace.js";
 import { ToastHost } from "./ToastHost.js";
 import { UpdateIndicator } from "./UpdateIndicator.js";
+import { UpgradeGuide } from "./views/UpgradeGuide.js";
 import { useConversationEscape } from "./useConversationEscape.js";
 import { ConversationNavigation } from "./views/ConversationNavigation.js";
 import { ConversationWorkspace } from "./views/ConversationWorkspace.js";
@@ -63,6 +64,8 @@ export function App({ services }: { services: PlatformServices }) {
 }
 function AppContent({ services }: { services: PlatformServices }) {
   const { t } = useI18n();
+  const [upgradeAvailable, setUpgradeAvailable] = React.useState(false);
+  const [upgradeOpenRequest, setUpgradeOpenRequest] = React.useState(0);
   const requestNavigation = useGuardedQuit(services);
   const { terminalLocation, nextPromptSuggestions } = useApplicationPreferences();
   const session = useSessionNavigation(services, (message) => setError(message));
@@ -488,6 +491,16 @@ function AppContent({ services }: { services: PlatformServices }) {
         data-startup-ready={startupReady}
         data-shell-ready={shellReady}
       >
+        <UpgradeGuide
+          services={services}
+          ready={snapshot.connection?.state === "ready"}
+          onAvailable={setUpgradeAvailable}
+          openRequest={upgradeOpenRequest}
+          onModels={() => {
+            setSettingsTab("模型服务");
+            setSettingsOpen(true);
+          }}
+        />
         <ToastHost />
         {snapshot.computerControl?.active === true && (
           <div
@@ -611,6 +624,9 @@ function AppContent({ services }: { services: PlatformServices }) {
               requestNavigation={requestNavigation}
               choose={choose}
               newTask={newTask}
+              onUpgradeHistory={
+                upgradeAvailable ? () => setUpgradeOpenRequest((value) => value + 1) : undefined
+              }
               open={open}
               closePanels={() => workspacePanels.selectPanel("")}
               onOpenProjectTasks={(pid) => {

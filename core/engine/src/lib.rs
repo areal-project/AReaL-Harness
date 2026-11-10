@@ -23,6 +23,7 @@ mod request_meter;
 mod session_name;
 mod sessions;
 mod store;
+pub use store::persisted::PersistedConversation;
 mod task_mode;
 pub use areal_plugins::PluginComponentId;
 #[cfg(feature = "test-support")]
@@ -39,6 +40,7 @@ mod turns;
 mod watchdog;
 pub mod workgroup;
 mod workspace;
+mod worktrees;
 
 use areal_protocol::{Input, Item, Modality, Thread, ThreadStatus, Turn, TurnStatus, notification};
 use futures_util::{FutureExt, StreamExt};

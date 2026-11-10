@@ -64,7 +64,10 @@ class HostClient {
   #intentKey = "";
   /** @type {{id:string,generation:string,sequence:number,onState:(state:unknown)=>void}|null} */
   #gatewaySubscription = null;
-  constructor() {
+  /** @param {{desktopCore?:boolean}} [options] */
+  constructor(options = {}) {
+    this.desktopCore = options.desktopCore === true;
+    this.maxFrame = this.desktopCore ? 64 * 1024 * 1024 : MAX_FRAME;
     /** @type {Map<string,{resolve:(value:any)=>void,reject:(error:Error)=>void}>} */
     this.pending = new Map();
     /** @type {import('node:net').Socket|undefined} */
@@ -75,6 +78,8 @@ class HostClient {
     /** @type {string[]} */
     this.capabilities = [];
     this.home = "";
+    /** @type {((event:unknown)=>void)|null} */ this.desktopCoreEvent = null;
+    /** @type {(()=>void)|null} */ this.desktopCoreClosed = null;
     /** @type {Map<string,HostJournal>} */
     this.journals = new Map();
   }
@@ -119,7 +124,7 @@ class HostClient {
     );
     const hello = await this.request("hello", {
       protocolVersions: [1],
-      capabilities: [],
+      capabilities: this.desktopCore ? ["desktopCore"] : [],
       authToken: token,
     });
     if (
@@ -158,9 +163,14 @@ class HostClient {
     const child = spawn(binary, ["host", "run"], {
       env: {
         ...Object.fromEntries(
-          ["HOME", "PATH", "TMPDIR", "LANG", "AREAL_HOST_WEBSOCKET"].flatMap((key) =>
-            process.env[key] ? [[key, process.env[key]]] : [],
-          ),
+          [
+            "HOME",
+            "PATH",
+            "TMPDIR",
+            "LANG",
+            "AREAL_HOST_WEBSOCKET",
+            "AREAL_SPACES_TEST_ROOT",
+          ].flatMap((key) => (process.env[key] ? [[key, process.env[key]]] : [])),
         ),
         AREAL_HARNESS_HOME: home,
         AREAL_HARNESS_SERVICE_HOME: home,
@@ -230,10 +240,10 @@ class HostClient {
     for (;;) {
       const newline = this.bytes.indexOf(10);
       if (newline < 0) {
-        if (this.bytes.length >= MAX_FRAME) this.fail(new Error("Host frame exceeds 1 MiB"));
+        if (this.bytes.length >= this.maxFrame) this.fail(new Error("Host frame exceeds 1 MiB"));
         return;
       }
-      if (newline + 1 > MAX_FRAME) return this.fail(new Error("Host frame exceeds 1 MiB"));
+      if (newline + 1 > this.maxFrame) return this.fail(new Error("Host frame exceeds 1 MiB"));
       const frame = this.bytes.subarray(0, newline);
       this.bytes = this.bytes.subarray(newline + 1);
       try {
@@ -241,6 +251,10 @@ class HostClient {
         if (response.version !== 1) throw new Error("Invalid Host response");
         if (response.method === "remote.gateway.stateChanged") {
           this.gatewayState(response.params, false);
+          continue;
+        }
+        if (response.method === "desktop.core.event" && this.desktopCoreEvent) {
+          this.desktopCoreEvent(response.params);
           continue;
         }
         if (typeof response.id !== "string") throw new Error("Invalid Host response");
@@ -264,6 +278,9 @@ class HostClient {
   fail(error) {
     this.#intentKey = "";
     this.#gatewaySubscription = null;
+    this.desktopCoreClosed?.();
+    this.desktopCoreEvent = null;
+    this.desktopCoreClosed = null;
     for (const request of this.pending.values()) request.reject(error);
     this.pending.clear();
     this.socket?.destroy();
@@ -274,7 +291,8 @@ class HostClient {
     if (!socket || socket.destroyed) return Promise.reject(new Error("Host is disconnected"));
     const id = randomUUID();
     const bytes = Buffer.from(JSON.stringify({ version: 1, id, method, params }) + "\n");
-    if (bytes.length > MAX_FRAME) return Promise.reject(new Error("Host request exceeds 1 MiB"));
+    if (bytes.length > this.maxFrame)
+      return Promise.reject(new Error("Host request exceeds 1 MiB"));
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(
         () => this.fail(new Error("Host request timed out; mutation outcome may be unknown")),
@@ -420,10 +438,10 @@ class HostClient {
   retirementStatus(migrationId) {
     return this.request("gui.retirementStatus", { migrationId });
   }
-  /** @param {string} migrationId @param {{slot:unknown,sourceDigest:string}} secret @param {unknown} value */
+  /** @param {string} migrationId @param {{slot:unknown,sourceDigest:string,requestId?:string}} secret @param {unknown} value */
   importSecret(migrationId, secret, value) {
     return this.request("gui.importSecret", {
-      requestId: randomUUID(),
+      requestId: secret.requestId ?? randomUUID(),
       expectedGeneration: this.generation,
       migrationId,
       slot: secret.slot,
@@ -583,4 +601,23 @@ class HostJournal {
     return result;
   }
 }
-module.exports = { HostClient };
+module.exports = { HostClient, executeHost };
+
+/** 原生外壳只可运行Host自身的安装/离线回执命令，不能借此启动Core。
+ * @param {string} binary @param {string[]} args @param {{env:NodeJS.ProcessEnv,timeout?:number,maxBuffer?:number}} options @returns {Promise<{stdout:string,stderr:string}>} */
+function executeHost(binary, args, options) {
+  if (
+    args[0] !== "host" ||
+    !["install", "uninstall", "service-status", "operation"].includes(args[1] ?? "") ||
+    !isAbsolute(binary)
+  )
+    return Promise.reject(new Error("Unsupported native Host command"));
+  return new Promise((resolve, reject) =>
+    require("node:child_process").execFile(
+      binary,
+      args,
+      { ...options, encoding: "utf8", maxBuffer: options.maxBuffer ?? 1024 * 1024 },
+      (error, stdout, stderr) => (error ? reject(error) : resolve({ stdout, stderr })),
+    ),
+  );
+}

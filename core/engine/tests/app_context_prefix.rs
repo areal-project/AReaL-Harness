@@ -148,6 +148,7 @@ async fn app_fixture(limits: Limits) -> AppFixture {
         .create_configured(
             "owner".into(),
             ThreadStart {
+                prepare_task_directory: None,
                 creation_admission: None,
                 request_id: "start".into(),
                 cwd: Some(workspace.path().to_string_lossy().into_owned()),

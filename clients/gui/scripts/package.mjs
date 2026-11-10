@@ -214,13 +214,17 @@ await build({
     files: ["**/*"],
     extraResources: [
       { from: bundle, to: "areal-core" },
-      { from: relayBundle.bundleDir, to: "areal-relay" },
+      { from: relayBundle.bundleDir, to: "areal-relay", filter: ["**/*", "!assets{,/**}"] },
       {
         from: join(relayBundle.bundleDir, "node_modules"),
         to: "areal-relay/node_modules",
       },
       { from: workbenchBundle.bundleDir, to: "areal-workbench" },
-      { from: join(gui, "renderer/dist"), to: "areal-gui" },
+      {
+        from: join(gui, "renderer/dist"),
+        to: "areal-gui",
+        filter: ["**/*", "!bundle-analysis.json"],
+      },
       {
         from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),
         to: "computer-helper/AReaL Computer Helper.app",

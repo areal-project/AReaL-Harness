@@ -45,7 +45,7 @@ assert.equal(
 );
 const require = createRequire(join(sourceApp, "package.json"));
 const { _electron: electron } = require("playwright-core");
-const { executeCore } = require(join(sourceApp, "src/core/core-process.cjs"));
+const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -791,7 +791,7 @@ try {
     await waitTurn(panels[0], ordinal);
   }
   await page.getByRole("button", { name: "任务操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "旁路讨论", exact: true }).click();
+  await page.getByRole("menuitem", { name: "侧边聊天", exact: true }).click();
   await page.getByTestId("side-chat-input").waitFor();
   await sendUI(panels[1], prompt("SIDE", 1));
   for (let ordinal = 2; ordinal <= 36; ordinal++) {

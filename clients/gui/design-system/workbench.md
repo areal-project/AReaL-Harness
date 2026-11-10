@@ -15,7 +15,7 @@
 
 `R-WORKBENCH-020` 右侧任务上下文的候选组织见[对话流设计草案](conversation-flow.md#右侧任务上下文)：Changes、当前 Worktree 关联项目、Subagents 与可折叠的 Sources。概览与深入阅读共用原宿主，不能从参考图推断跨项目数据能力；该草案尚未迁移生产页面。
 
-Worktree 从 Composer 配置、准备过程到侧栏身份与设置管理的布局见[Worktree 设计规范](worktrees.md)。它沿原工作台区域组织，不迁移已有会话或新增工作区执行所有者；生产组合与代表状态已迁移，验收范围见 [Worktree 验收题](exercises/worktrees.md)。
+Worktree 从 Composer 配置、准备过程到侧栏身份与设置管理的布局见[Worktree 设计规范](worktrees.md)。它沿原工作台区域组织，不迁移已有会话或新增工作区执行所有者；生产组合与代表状态已迁移，验收范围见 [Worktree 验收题](../../../design/archive/gui/exercises/worktrees.md)。
 
 ## 进入、深入查看与返回
 
@@ -29,10 +29,10 @@ App 已有按项目与 Thread 记录面板归属及返回焦点的处理。具�
 
 ## 预览与真实路径分别核对
 
-[完整工作台候选](../../../design/products/workbench/candidate.md)将提交、过程、审批、资源与设置放在同一条可操作路径中。打开 `/design-system.html?product-candidate` 评价整体体验；它使用本地演示数据，验证范围在候选说明中维护。
+[完整工作台候选](workbench-candidate.md)将提交、过程、审批、资源与设置放在同一条可操作路径中。打开 `/design-system.html?product-candidate` 评价整体体验；它使用本地演示数据，验证范围在候选说明中维护。
 
 从仓库根运行 `pnpm --dir clients/gui design:dev` 查看已有设计预览，运行 `pnpm --dir clients/gui design:build` 检查预览构建。预览入口是 [main.tsx](../renderer/src/design-system/main.tsx)。打开[共享工作区示例](../renderer/design-system.html?shared-workspace)核对所挂载状态，生产组件接线见 [SharedWorkspacePreview](../renderer/src/design-system/SharedWorkspacePreview.tsx)。
 
 `R-WORKBENCH-027` 共享工作区示例组合生产聊天、输入、侧面板与设置组件，使用本地数据和展示状态。示例可以检查所挂载状态的布局、草稿操作和焦点行为。它不连接 Core，不执行真实提交，也不能证明服务受理、权限、恢复、原生浏览器或终端生命周期。
 
-生产接线继续经过 App、Desktop 服务和 Core。首条真实路径的验收需覆盖提交、观察过程、处理决定、查看资源、返回阅读和修改外观，并列明未知或失败状态的实际覆盖。完整候选与迁移进度见[建设计划](../../../design/roadmap.md)。
+生产接线继续经过 App、Desktop 服务和 Core。首条真实路径的验收需覆盖提交、观察过程、处理决定、查看资源、返回阅读和修改外观，并列明未知或失败状态的实际覆盖。完整候选与迁移进度见[建设计划](roadmap.md)。

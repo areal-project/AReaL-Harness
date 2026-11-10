@@ -25,6 +25,7 @@ import { McpMentionsPicker, useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
 import { Messages } from "../Messages.js";
 import { ProjectlessDraft } from "../ProjectlessDraft.js";
 import { recoverySettings } from "../recoveryPresentation.js";
+import { conversationLoadState } from "./conversationLoadState.js";
 import { type Action, type PlatformServices } from "../services.js";
 import { projectExecutionBlocked } from "../state/projectExecution.js";
 import { useTaskWorkspace } from "../state/taskWorkspace.js";
@@ -110,9 +111,9 @@ function ConversationContent() {
 
   const { terminalOpen, setTerminalOpen } = panelNavigation;
 
-  const { restorationFailed, restorationError, viewFailure, viewRefreshing } = startup;
+  const { restorationFailed, viewFailure, viewRefreshing } = startup;
   const settings = viewFailure && recoverySettings(viewFailure);
-  const projectStopped = project?.state?.hostState === "stopped" && !project.state.connected;
+  const loadState = conversationLoadState(project, startup, !!settings);
 
   const { t } = useI18n();
   return (
@@ -126,25 +127,19 @@ function ConversationContent() {
           {thread && project ? (
             <ActiveConversation />
           ) : threadId ||
-            (project && (restorationFailed || viewRefreshing || !project.state?.connected)) ? (
+            (project && (restorationFailed || viewRefreshing || loadState.kind !== "reading")) ? (
             <div
               className="conversation-loading"
               role="status"
-              aria-busy={!restorationFailed && !projectStopped}
+              aria-busy={loadState.kind !== "failed"}
             >
               <div className="settings-empty conversation-loading-body">
                 <p>
-                  {projectStopped
-                    ? t("startup.projectStopped")
-                    : restorationFailed
-                      ? restorationError || t("common.conversation.unavailable")
-                      : t(
-                          project?.state?.connected
-                            ? "startup.readingConversation"
-                            : "startup.connectingProject",
-                        )}
+                  {loadState.kind === "failed" && loadState.detail
+                    ? loadState.detail
+                    : t(loadState.message)}
                 </p>
-                {restorationFailed && (
+                {loadState.kind === "failed" && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -154,7 +149,7 @@ function ConversationContent() {
                     {t("recovery.retryView")}
                   </Button>
                 )}
-                {restorationFailed && settings && (
+                {loadState.kind === "failed" && loadState.settings && settings && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -241,7 +236,7 @@ function ActiveConversation() {
     setError,
   } = useConversationContext();
   const { project, thread, threadId, library, snapshot, resourceAction } = session;
-  const readOnly = useReadOnly();
+  const readOnly = useReadOnly() || session.readOnly;
   const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const conversationCreateReadOnly = useConversationCreateReadOnly();
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
@@ -271,6 +266,9 @@ function ActiveConversation() {
   if (!project || !thread) return null;
   return (
     <>
+      {thread && "persistedHistory" in thread && thread.persistedHistory === true && (
+        <FeedbackNotice tone="warning" message={t("common.navigation.persistedHistory")} />
+      )}
       {empty ? (
         <div className="draft-greeting">
           <ConversationDraftEmptyState
@@ -298,7 +296,11 @@ function ActiveConversation() {
           thread={thread}
           action={action}
           readOnly={readOnly}
-          interactivePages={!thread.cloud && (!readOnly || services.capabilities?.pages === true)}
+          interactivePages={
+            !session.readOnly &&
+            !thread.cloud &&
+            (!readOnly || services.capabilities?.pages === true)
+          }
           decisionShown
           onOpenResult={mcpWorkspace.openResult}
           resultStates={mcpWorkspace.resultStates}
@@ -325,7 +327,7 @@ function ActiveConversation() {
           onAgent={(id) => showPanel(`agent:${id}`)}
         />
       )}
-      {!conversationSubmitReadOnly && (!thread.cloud || !readOnly) && (
+      {!conversationSubmitReadOnly && !session.readOnly && (!thread.cloud || !readOnly) && (
         <div className={empty ? "draft-composer" : "active-composer"}>
           {empty && (
             <div className="composer-project-bar">
@@ -386,6 +388,7 @@ function ActiveConversation() {
           ) : (
             <Composer
               surfaceLayout={workspaceView === "panel" ? "compact" : "default"}
+              surfacePlacement={empty ? "home" : "thread"}
               onAnnotate={openImageAnnotation}
               key={`${project.id}:${thread.id}`}
               onMcpMention={() => setMcpMentionsOpen(true)}

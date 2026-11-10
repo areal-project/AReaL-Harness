@@ -4,6 +4,35 @@ struct DispatchLease {
     ids: Arc<std::sync::Mutex<HashSet<String>>>,
     id: String,
 }
+
+fn only_elapsed_time_changed(previous: &Value, next: &Value) -> bool {
+    let mut comparable = next.clone();
+    let Some(before) = previous["runs"].as_array() else {
+        return false;
+    };
+    let Some(after) = comparable["runs"].as_array_mut() else {
+        return false;
+    };
+    if before.len() != after.len() {
+        return false;
+    }
+    for (before, after) in before.iter().zip(after) {
+        if before["id"] != after["id"] {
+            return false;
+        }
+        let (Some(old), Some(new)) = (
+            before["usage"]["timeUsedSeconds"].as_f64(),
+            after["usage"]["timeUsedSeconds"].as_f64(),
+        ) else {
+            return false;
+        };
+        if new < old {
+            return false;
+        }
+        after["usage"]["timeUsedSeconds"] = before["usage"]["timeUsedSeconds"].clone();
+    }
+    previous == &comparable
+}
 impl Drop for DispatchLease {
     fn drop(&mut self) {
         self.ids.lock().unwrap().remove(&self.id);
@@ -105,10 +134,14 @@ impl Engine {
         let mut task = state.tasks.get(id).cloned().ok_or(Error::NotFound)?;
         let previous = serde_json::to_value(&task).map_err(invalid)?;
         edit(&mut task);
-        if previous == serde_json::to_value(&task).map_err(invalid)? {
+        let next = serde_json::to_value(&task).map_err(invalid)?;
+        if previous == next {
             return Ok(());
         }
-        task.revision += 1;
+        // 累计计时继续持久化并发布，控制版本只跟随会改变执行语义的状态。
+        if !only_elapsed_time_changed(&previous, &next) {
+            task.revision += 1;
+        }
         let mut candidate = state.clone();
         candidate.tasks.insert(id.into(), task);
         self.save_tasks(&mut state, candidate, id, true).await

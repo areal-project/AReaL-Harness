@@ -21,7 +21,7 @@ GUI 的目录、依赖与实验入口由 [@areal/ui](../../clients/gui/packages/
 
 首批合同见[按意图选择控件](controls.md#gui-就近合同)。合同邻接生产实现，参数与导出仍从类型读取，合同不扩大 GUI Base 准入。
 
-产品中如何组合这些控件见[桌面工作台](../products/workbench/README.md)。
+产品中如何组合这些控件见[桌面工作台](../../clients/gui/design-system/workbench.md)。
 
 ## 一份合同对应一个实现所有者
 

@@ -61,7 +61,7 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 | pending 时 Host 断开 | Run 暂停为 hostUnavailable；拒绝旧 requestId，恢复后回答新问题。 |
 | 取消、已完成、错误 Session/锚点或过期交互 | 拒绝，不消费另一个有效 pending 交互。 |
 
-`node clients/gui/scripts/worktree-schedule-interactions.mjs` 从仓库根验证真实 Core 协议，使用本地确定性模型而不启动 Electron。manifest 区分协议验证和 Runtime payload；原生文件执行未成功时不能据协议通过宣称写入已验证。目录、分支、旧快照兼容性、并发和隔离边界见[Worktree 指南](../guides/worktrees.md)。
+目录、分支、旧快照兼容性、并发和隔离边界见[Worktree 指南](../guides/worktrees.md)。
 
 ## 认证与连接
 
@@ -258,7 +258,7 @@ Desktop 首先按相同 generation 查询状态并尝试重连。仅在 `status 
 
 `credentials` 是目标文件所引用的 `AREAL_CREDENTIAL_` 名称到秘密值的有界映射。只允许追加不可变引用，同引用异值拒绝；旧引用继续供已有任务使用。秘密只在可信请求与执行内存中存在，不写入配置、历史、摘要、日志或回执。普通启动环境变量不能通过此入口更新。
 
-响应包含 `{serviceId,generation,applied:{revision,sequence},modelRevision,credentialStates,operation?}`。`applied.revision` 是实际提交的整个配置文件版本，`sequence` 在本代际成功应用后递增；它们不同于默认模型的 `modelRevision`。首次装配从序号 0 开始。Core 复用同一次受控文件快照进行版本与配置校验，拒绝过期目标、已变化的非模型部署、活动工作和凭据冲突，不调用 drain、不重启 Core 或 Runtime。现有 Thread、Turn 和队列保留原配置与凭据引用。
+响应包含 `{serviceId,generation,applied:{revision,sequence},modelRevision,credentialStates,operation?}`。`applied.revision` 是实际提交的整个配置文件版本，`sequence` 在本代际成功应用后递增；它们不同于默认模型的 `modelRevision`。首次装配从序号 0 开始。Core 复用同一次受控文件快照进行版本与配置校验，拒绝过期目标、已变化的非模型部署、活动工作和凭据冲突，不调用 drain、不重启 Core 或 Runtime。默认配置首次写入既定的 `home/config.toml` 不属于部署变更；实际非模型配置或来源路径变化仍需重启。现有 Thread、Turn 和队列保留原配置与凭据引用。
 
 `operation` 使用原 `requestId`，状态为 `running`、`applied`、`rejected` 或 `unknown`，终态可带脱敏的 `result` 或 `error`。受理后的操作由 Core 持有，断线不取消提交。重复请求返回原结果，不重复发布配置；响应丢失先读取原请求。进程内回执有容量边界，代际改变或记录不可用不证明原请求失败，不能自动重发。客户端可核对新实例的当前就绪状态，但不能将其当成旧请求的回执。
 

@@ -1,4 +1,93 @@
 export const commonMessages = {
+  "upgrade.title": { "zh-CN": "开始使用新版", en: "Start using the new version" },
+  "upgrade.description": {
+    "zh-CN": "新版使用独立空工作区。原项目、历史和任务仍保留在旧空间。",
+    en: "The new version uses a separate empty workspace. Your original projects, history and tasks remain in the previous space.",
+  },
+  "upgrade.projects": {
+    "zh-CN": "旧项目：{count} 个。旧后台状态尚未确认，暂不打开原目录。",
+    en: "Previous projects: {count}. Their original folders remain unavailable until the old backend state is confirmed.",
+  },
+  "upgrade.providers": {
+    "zh-CN": "发现旧供应商：{names}。请在模型设置中检查并重新保存凭据。",
+    en: "Previous providers: {names}. Check your model settings and save credentials again.",
+  },
+  "upgrade.noProviders": {
+    "zh-CN": "请在模型设置中配置供应商。",
+    en: "Configure a provider in model settings.",
+  },
+  "upgrade.tasks": {
+    "zh-CN": "旧定时任务不会自动运行；如需继续使用，请在新空间重新创建。",
+    en: "Previous scheduled tasks will not run automatically. Recreate any you need in the new space.",
+  },
+  "upgrade.create": { "zh-CN": "创建空工作区", en: "Create empty workspace" },
+  "upgrade.creating": { "zh-CN": "正在创建…", en: "Creating…" },
+  "upgrade.created": { "zh-CN": "空工作区已准备好。", en: "The empty workspace is ready." },
+  "upgrade.models": { "zh-CN": "检查模型设置", en: "Review model settings" },
+  "upgrade.enter": { "zh-CN": "进入新版", en: "Continue" },
+  "upgrade.later": { "zh-CN": "稍后处理", en: "Not now" },
+  "upgrade.failed": {
+    "zh-CN": "工作区尚未准备好，请稍后重试。",
+    en: "The workspace is not ready. Try again later.",
+  },
+  "upgrade.inspectFailed": {
+    "zh-CN": "暂时无法读取升级信息，请重试或稍后处理。",
+    en: "Upgrade information is unavailable. Retry or continue later.",
+  },
+  "upgrade.retry": { "zh-CN": "重试", en: "Retry" },
+  "upgrade.providerImport": { "zh-CN": "导入停用配置", en: "Import disabled configuration" },
+  "upgrade.providerImported": {
+    "zh-CN": "已导入；请补充密钥并启用",
+    en: "Imported; add credentials and enable",
+  },
+  "upgrade.providerCheck": { "zh-CN": "检查导入结果", en: "Check import status" },
+  "upgrade.providerUnknown": {
+    "zh-CN": "导入结果尚未确认，请检查原请求。",
+    en: "The import result is unconfirmed. Check the original request.",
+  },
+  "upgrade.providerUnavailable": {
+    "zh-CN": "部分旧供应商配置暂不可读取，请在模型设置中检查。",
+    en: "Some previous provider settings are unavailable. Review model settings.",
+  },
+  "upgrade.taskList": { "zh-CN": "旧定时任务", en: "Previous scheduled tasks" },
+  "upgrade.taskScheduleUnavailable": { "zh-CN": "计划暂不可读", en: "Schedule unavailable" },
+  "upgrade.taskUnavailable": {
+    "zh-CN": "部分旧任务目录暂不可读取。",
+    en: "Some previous task directories are unavailable.",
+  },
+  "upgrade.unknown": {
+    "zh-CN": "创建结果尚未确认，请先检查新空间中的项目。",
+    en: "The result is unconfirmed. Check the new space before trying again.",
+  },
+  "upgrade.history": { "zh-CN": "查看旧历史", en: "View previous history" },
+  "upgrade.historyStatus": {
+    "zh-CN": "未完成的旧记录不会自动继续。",
+    en: "Unfinished previous work will not resume automatically.",
+  },
+  "upgrade.historyDescription": {
+    "zh-CN": "旧会话只读；附件和引用会话暂不加载。",
+    en: "Previous conversations are read-only; attachments and referenced conversations are unavailable.",
+  },
+  "upgrade.historyEmpty": {
+    "zh-CN": "没有可显示的旧会话。",
+    en: "There are no previous conversations to show.",
+  },
+  "upgrade.historyTruncated": {
+    "zh-CN": "这里只显示部分旧会话。",
+    en: "Only some previous conversations are shown.",
+  },
+  "upgrade.historyLoading": { "zh-CN": "正在读取历史…", en: "Loading history…" },
+  "upgrade.historyFailed": {
+    "zh-CN": "暂时无法读取这段历史，原记录仍然保留。",
+    en: "This history cannot be read right now. The original record remains available.",
+  },
+  "upgrade.historyOlder": { "zh-CN": "加载更早内容", en: "Load earlier messages" },
+  "upgrade.historyBack": { "zh-CN": "返回列表", en: "Back to list" },
+  "upgrade.historyGuide": { "zh-CN": "返回升级引导", en: "Back to upgrade guide" },
+  "upgrade.historyTool": { "zh-CN": "工具调用记录", en: "Tool activity" },
+  "upgrade.historyDeferred": { "zh-CN": "加载较长内容", en: "Load longer content" },
+  "upgrade.historyYou": { "zh-CN": "你", en: "You" },
+  "upgrade.historyAssistant": { "zh-CN": "助手", en: "Assistant" },
   "common.agents.createHelp": {
     "zh-CN": "在当前工作区只读分析，权限不超过父任务。",
     en: "Read-only analysis in the current workspace, within the parent task's permissions.",
@@ -149,6 +238,14 @@ export const commonMessages = {
   "common.review.branch": { "zh-CN": "分支比较", en: "Branch comparison" },
   "common.review.task": { "zh-CN": "任务工作区更改", en: "Task workspace changes" },
   "common.review.lastTurn": { "zh-CN": "上一轮", en: "Last turn" },
+  "common.review.unmodifiedLines": {
+    "zh-CN": "{count} 行未改动",
+    en: "{count, plural, one {# unmodified line} other {# unmodified lines}}",
+  },
+  "common.review.moreContext": {
+    "zh-CN": "可能还有未改动的上下文",
+    en: "More unchanged context may be available",
+  },
   "common.browser.manualFrame": {
     "zh-CN": "· 仅人工操作，iframe 使用区域标注",
     en: "· Manual control only; use region annotations for iframes",
@@ -187,6 +284,18 @@ export const commonMessages = {
   "common.navigation.projectActions": {
     "zh-CN": "项目操作 {project}",
     en: "Actions for project {project}",
+  },
+  "common.navigation.migrationPending": {
+    "zh-CN": "迁移暂未完成，其他项目可继续使用。",
+    en: "Migration is pending. Other projects remain available.",
+  },
+  "common.navigation.persistedHistory": {
+    "zh-CN": "当前为只读历史，项目运行状态尚未恢复。",
+    en: "Read-only history. The project's execution state has not been restored.",
+  },
+  "common.navigation.migrationRecovery": {
+    "zh-CN": "请确认旧版本的任务已停止并退出旧版本，再重新打开此项目以检查迁移状态。",
+    en: "Confirm that tasks in the previous version have stopped, then quit it. Reopen this project to check migration progress.",
   },
   "common.navigation.moveUp": { "zh-CN": "上移", en: "Move up" },
   "common.navigation.moveDown": { "zh-CN": "下移", en: "Move down" },
@@ -490,9 +599,9 @@ export const commonMessages = {
   "startup.quit": { "zh-CN": "退出界面", en: "Quit interface" },
   "startup.back": { "zh-CN": "返回加载界面", en: "Back to loading" },
   "startup.connectingProject": { "zh-CN": "正在连接项目…", en: "Connecting to project…" },
-  "startup.projectStopped": {
-    "zh-CN": "项目已停止，可选择其他项目继续。",
-    en: "Project stopped. Select another project to continue.",
+  "startup.projectStartFailed": {
+    "zh-CN": "项目没有启动成功，可以重试。",
+    en: "The project didn't start. Try again.",
   },
   "startup.readingConversation": { "zh-CN": "正在读取对话…", en: "Reading conversation…" },
   "common.conversation.newInProject": {
@@ -885,7 +994,7 @@ export const commonMessages = {
   "chat.image.fit": { "zh-CN": "适应窗口", en: "Fit to window" },
   "chat.side.title": { "zh-CN": "侧边聊天", en: "Side Chat" },
   "chat.side.numbered": { "zh-CN": "侧边聊天 {ordinal}", en: "Side Chat {ordinal}" },
-  "chat.side.history": { "zh-CN": "历史旁路讨论", en: "Previous side discussions" },
+  "chat.side.history": { "zh-CN": "历史侧边聊天", en: "Previous side chats" },
   "chat.side.btw": { "zh-CN": "顺便问一句", en: "Ask a side question" },
   "chat.side.newDescription": {
     "zh-CN": "在右侧新建聊天",
@@ -960,7 +1069,7 @@ export const commonMessages = {
     en: "User quote. Source is unverified.",
   },
   "chat.selection.askInSideChat": {
-    "zh-CN": "在旁路中询问所选内容",
+    "zh-CN": "在侧边聊天中询问所选内容",
     en: "Ask about selection in side chat",
   },
   "chat.selection.inspectSource": { "zh-CN": "核查来源", en: "Inspect source" },

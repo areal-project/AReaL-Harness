@@ -8,7 +8,7 @@ const {
 const { startupTrace } = require("./startup-timing.cjs");
 const diagnostics = require("./diagnostics.cjs");
 
-const { GuiHostProjects, requestIdFor } = require("./gui-host-projects.cjs");
+const { GuiHostProjects } = require("./gui-host-projects.cjs");
 const { LifecycleOperations } = require("./lifecycle-operations.cjs");
 const { randomUUID, createHash } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
@@ -88,6 +88,12 @@ class CoreBackend {
     if (!binary || !isAbsolute(binary))
       throw new Error("请设置 AREAL_CORE_BIN 为 areal 可执行文件的绝对路径");
     this.binary = binary;
+    /** 工作台启动时由 Host 管道替换。 @type {(call:string,params:unknown)=>Promise<unknown>} */
+    this.hostCall = async () => {
+      throw Object.assign(new Error("Host 管道尚未就绪"), { code: "CAPABILITY_UNAVAILABLE" });
+    };
+    /** @type {Map<string,import('../../host-core-client').HostCoreClient>} */
+    this.hostCoreClients = new Map();
     this.applicationOwner = applicationOwner;
     this.host = new GuiHostProjects({
       binary,
@@ -197,6 +203,9 @@ class CoreBackend {
         get analytics() {
           return backend.analytics;
         },
+        get hostCall() { return backend.hostCall; },
+        get hostCoreClients() { return backend.hostCoreClients; },
+        get host() { return backend.host; },
         get applicationOwner() {
           return backend.applicationOwner;
         },
@@ -362,13 +371,12 @@ class CoreBackend {
       await this.library.init();
       await this.cloudConversations.init();
       await this.worktrees.init();
-      await this.taskWorkspaceOwners.init();
       trace.advance("projectless");
       await this.projectless.init();
       trace.advance("analytics");
       await this.analytics.init();
       trace.advance("capabilities");
-      await inspectCoreCapabilities(this.binary);
+      await inspectCoreCapabilities(this);
       trace.advance("providers");
       await this.providers.init();
       trace.advance("feedback");
@@ -377,7 +385,6 @@ class CoreBackend {
       await this.resources.init();
       await this.lifecycleOperations.reconcileLoaded();
       await this.refreshHostProjects({ observeForeign: true });
-      void this.worktrees.autoCleanup().catch(() => {});
       trace.finish("ok");
     } catch (error) {
       trace.finish("error", error);
@@ -440,22 +447,14 @@ class CoreBackend {
     const registration = (this.projectWrites ?? Promise.resolve())
       .catch(() => {})
       .then(async () => {
-        if (this.saved.some((project) => project.id === id)) return;
-        const saved = [
-          ...this.saved,
-          {
-            id,
-            root,
-            ...(worktreeResources ? { worktreeResources } : {}),
-            ...(projectlessRequestId ? { projectless: true, projectlessRequestId } : {}),
-          },
-        ];
-        await this.save("projects.json", saved);
-        await this.host.register(
-          requestIdFor(`${this.host.sourceId}:register:${id}`),
-          saved[saved.length - 1],
-        );
-        this.saved = saved;
+        const registered = await this.hostCall("worktree.project.add", {
+          root,
+          ...(worktreeResources ? { worktreeResources } : {}),
+          ...(projectlessRequestId ? { projectlessRequestId } : {}),
+        });
+        if (!modelRecord(registered) || registered.projectId !== id)
+          throw new Error("Host 项目登记回执与目录不匹配");
+        this.saved = await this.host.list();
       });
     this.projectWrites = registration.catch(() => {});
     await registration;
@@ -466,18 +465,13 @@ class CoreBackend {
   }
 
   snapshot() {
-    const taskHistoryOwners = new Set(
-      this.saved
-        .filter((project) => this.taskWorkspaceOwners.hosts.get(project.id)?.size)
-        .map((project) => project.logicalProjectId ?? project.id),
-    );
     return {
       library: this.library.value,
       subscription: this.providers.subscription,
       projectless: this.projectless.snapshot(),
       power: this.power ?? null,
       projects: this.worktrees.aggregate(
-        this.saved.map((project) => snapshotProject(this, project, taskHistoryOwners)),
+        this.saved.map((project) => snapshotProject(this, project)),
       ),
     };
   }
@@ -512,6 +506,7 @@ class CoreBackend {
         : startupTrace("core.start_project", { projectId: id });
     trace?.advance("journal");
     try {
+      await this.host.resumeMigration(id);
       const project = await this.loadProjectJournal(id);
       if (project.client?.ready && !project.resourceInitializing) {
         if (resumeScheduling) await this.launch(project, { resumeScheduling: true });
@@ -702,7 +697,7 @@ class CoreBackend {
       }
       if (
         observeForeign &&
-        binding.sourceId !== this.host.sourceId &&
+        (binding.sourceId !== this.host.sourceId || !project.client?.ready) &&
         !this.lifecycleOperations.schedulingSuppressed(project.id)
       )
         this.scheduleReconnect(project);
@@ -1189,14 +1184,6 @@ class CoreBackend {
     if (project.configurationChanges.has(threadId)) throw new Error("会话配置正在更新，请稍后重试");
     project.configurationChanges.set(threadId, token);
     try {
-      await this.changePending(project, (pending) => {
-        if (
-          pending.some((value) => !isRemoteControl(value) && value.params.threadId === threadId)
-        ) {
-          throw new Error("该会话有未结算的请求结果，请先处理后再修改配置");
-        }
-        return pending;
-      });
       if (
         request.model === undefined &&
         request.profile === undefined &&
@@ -1411,7 +1398,7 @@ class CoreBackend {
   }
 
   /** @param {string} commandName @param {Record<string,unknown>} rawRequest
-   * @param {{guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:import('./project-state.cjs').CoreProject,client:import('@areal/runtime-client/core').CoreClient,request:Record<string,unknown>,result:unknown)=>void,onBrowserTurnStarted?:(turnId:string)=>void,onBrowserTurnQueued?:(queueItemId:string)=>void}} [context] */
+   * @param {{guiTerminalClient?:import('@areal/workbench-service/host-core-client').HostCoreClient,guiTerminalRequest?:(method:string,params:import("./project-state.cjs").SubmissionParams)=>Promise<unknown>,onMcpAppOpened?:(project:import('./project-state.cjs').CoreProject,client:import('@areal/runtime-client/core').CoreClient,request:Record<string,unknown>,result:unknown)=>void,onBrowserTurnStarted?:(turnId:string)=>void,onBrowserTurnQueued?:(queueItemId:string)=>void}} [context] */
   async command(commandName, rawRequest, context = {}) {
     const semantics = commandSemantics(commandName, rawRequest);
     if (semantics.requestId && !rawRequest[semantics.requestId])
@@ -1510,6 +1497,17 @@ class CoreBackend {
       return manage(this, project, request, context);
     }
     if (this.closing) throw new Error("应用正在退出");
+    if (name === "recovery") {
+      if (!this.hostCall) throw Object.assign(new Error("Recovery Host unavailable"), { code: "CAPABILITY_UNAVAILABLE" });
+      if (["history", "importProvider"].includes(request.operation)) {
+        const { operation, ...query } = request;
+        return this.hostCall(`recovery.${operation}`, query);
+      }
+      const catalog = await this.hostCall("recovery.inspect", request.spaceId === undefined ? {} : { spaceId: request.spaceId });
+      if (request.operation === "inspect") return catalog;
+      if (!modelRecord(catalog) || typeof catalog.workspace !== "string") throw new Error("Invalid recovery workspace");
+      return { projectId: await this.addProject(catalog.workspace) };
+    }
     if (name === "analytics") return this.analytics.command(request);
     // 后台只读状态不占任务或配置准入；参数仍由轨迹能力校验。
     if (name === "trajectory" && request?.operation === "status")
@@ -1555,11 +1553,11 @@ class CoreBackend {
     }
   }
 
-  /** @param {Project} project @param {Fields} request */
-  async prepareThreadInProject(project, request) {
+  /** @param {Project} project @param {Fields} request @param {{preparedCore?:boolean}} [options] */
+  async prepareThreadInProject(project, request, { preparedCore = false } = {}) {
     this.assertThreadCreationAvailable(project, request);
     try {
-      await this.resources.beforeCreate(project);
+      await this.resources.beforeCreate(project, { allowRestart: !preparedCore });
       const configured = request.model;
       if (modelRecord(configured) && configured.providerId === "areal_openai") {
         await this.providers.ensureSubscription(project);
@@ -1633,6 +1631,7 @@ class CoreBackend {
         (!tools.length || this.connections.currentDesktopToolHost(project, client, owner)),
     };
   }
+
 
   /** @param {Project} project @param {Fields} request */
   async createThreadInProject(project, request) {
@@ -1759,11 +1758,10 @@ class CoreBackend {
       case "dismissRecovery": {
         const requestId = request.requestId;
         if (typeof requestId !== "string") throw new Error("缺少原请求标识");
-        await this.changeOutcomes(project, (previous) => {
-          const outcomes = { ...previous };
-          if (!outcomes[requestId]?.remote) delete outcomes[requestId];
-          return outcomes;
-        });
+        const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+        if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core 投影尚未就绪");
+        await project.client.dismiss(requestId);
+        await this.submissions.refreshProjectJournal(project);
         break;
       }
       case "media":
@@ -1982,7 +1980,7 @@ class CoreBackend {
           await this.refreshAfterAdmission(
             project,
             id,
-            recovered.operation ?? operationOf(method, { requestId, sourceThreadId, threadId }),
+            operationOf(method, { requestId, sourceThreadId, threadId }),
           );
           return {
             confirmed: true,
@@ -2251,8 +2249,9 @@ class CoreBackend {
     return this.snapshot();
   }
 
-  hasWork({ includePausedQueues = true } = {}) {
-    return [...this.projects.values()].some(
+  /** @param {{includePausedQueues?:boolean, project?:import('./project-state.cjs').CoreProject|null}} [options] */
+  hasWork({ includePausedQueues = true, project = null } = {}) {
+    return (project ? [project] : [...this.projects.values()]).some(
       (project) =>
         project.pending.some((entry) => !isRemoteControl(entry)) ||
         Object.values(project.model.state.threads).some((thread) =>

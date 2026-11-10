@@ -199,7 +199,13 @@ pub(super) async fn listen(
     let (revision, mut saved) = source
         .migration
         .vault
-        .subscription_transport(&source.source, &source.migration)
+        .subscription_slot_async(
+            crate::vault::Slot::SubscriptionTransport {
+                source_id: source.source.clone(),
+            },
+            &source.migration,
+        )
+        .await
         .map_err(Failure::storage)?;
     let token = saved["token"]
         .as_str()
@@ -223,13 +229,14 @@ pub(super) async fn listen(
         let receipt = source
             .migration
             .vault
-            .replace_subscription_transport(
+            .replace_subscription_transport_async(
                 &source.source,
                 &request,
                 revision,
                 saved,
                 &source.migration,
             )
+            .await
             .map_err(Failure::storage)?;
         if receipt["state"] != "completed" {
             return Err(Failure::new("storage_locked", "transport"));

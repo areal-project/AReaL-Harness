@@ -1,6 +1,5 @@
 // @ts-check
 "use strict";
-const { spawn } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
 const { readFile } = require("node:fs/promises");
 const { join } = require("node:path");
@@ -47,80 +46,21 @@ class UserFeedback {
   /** @param {string} operation @param {Record<string,unknown>} [input] @returns {Promise<Record<string,unknown>>} */
   async cli(operation, input) {
     await this.backend.providers.config.refreshCredentials();
-    return new Promise((resolve, reject) => {
-      const args = ["trajectory", operation];
-      if (this.backend.config) args.push("--config", this.backend.config);
-      const child = spawn(this.backend.binary, args, {
-        env: {
-          ...this.backend.hooks.environment(),
-          ...this.backend.providers.environment(),
-        },
-        stdio: ["pipe", "pipe", "pipe"],
+    if (!this.backend.hostCall) throw new Error("Host 评价接收端适配器不可用");
+    try {
+      const value = await this.backend.hostCall("workbench.utility", {
+        operation: operation === "feedback-status" ? "feedbackStatus" : "feedbackSubmit",
+        ...(input ? { document: JSON.stringify(input) } : {}),
       });
-      let stdout = "",
-        stderr = "",
-        settled = false;
-      /** @param {Error|null} error @param {Record<string,unknown>} [value] */
-      const finish = (error, value) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (error) {
-          reject(error);
-          return;
-        }
-        if (value) {
-          resolve(value);
-          return;
-        }
-        reject(new Error("评价回执为空"));
-      };
-      const timer = setTimeout(() => {
-        child.kill();
-        finish(
-          Object.assign(new Error("评价提交状态待确认，可使用原评价重试"), {
-            submissionUnknown: !!input,
-          }),
-        );
-      }, 30000);
-      child.stdout.on("data", (chunk) => {
-        stdout += chunk;
-        if (Buffer.byteLength(stdout) > 2 * 1024 * 1024) {
-          child.kill();
-          finish(new Error("评价回执超过上限"));
-        }
+      if (!modelRecord(value)) throw new Error("评价回执结构无效");
+      return value;
+    } catch (error) {
+      throw Object.assign(new Error("评价回执无法确认，请用原评价核查", { cause: error }), {
+        submissionUnknown: !!input,
       });
-      child.stderr.on("data", (chunk) => {
-        stderr = (stderr + chunk).slice(-2048);
-      });
-      child.on("error", () => finish(new Error("无法启动评价接收端适配器")));
-      child.on("close", (code) => {
-        if (code !== 0)
-          return finish(
-            Object.assign(
-              new Error(
-                this.backend.providers.redact(stderr).slice(0, 1024) || "评价提交失败，请重试",
-              ),
-              { submissionUnknown: !!input },
-            ),
-          );
-        try {
-          /** @type {unknown} */
-          const value = JSON.parse(stdout);
-          if (!modelRecord(value)) throw new Error("评价回执结构无效");
-          finish(null, value);
-        } catch {
-          finish(
-            Object.assign(new Error("评价回执无法确认，请用原评价重试"), {
-              submissionUnknown: !!input,
-            }),
-          );
-        }
-      });
-      child.stdin.on("error", () => {});
-      child.stdin.end(input ? JSON.stringify(input) : undefined);
-    });
+    }
   }
+
   async status(force = false) {
     if (!force && this.cached && Date.now() - this.cached.at < 15000)
       return { ...this.cached.value, opted_in: this.enabled };

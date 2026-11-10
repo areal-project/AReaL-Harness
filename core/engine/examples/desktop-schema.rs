@@ -20,6 +20,7 @@ fn native_host_schema() -> Value {
 }
 fn desktop_schema() -> Value {
     let mut methods = serde_json::Map::new();
+    methods.extend(schema::worktrees::requests());
     macro_rules! add {
         ($name:expr,$type:ty) => {
             methods.insert(
@@ -148,6 +149,7 @@ fn desktop_schema() -> Value {
     );
     add!("areal/work/overview", areal_protocol::work::OverviewRequest);
     add!("areal/goal/create", areal_protocol::goals::GoalCreate);
+    add!("areal/task/draft", areal_protocol::tasks::TaskDraftRequest);
     add!("areal/task/create", areal_protocol::tasks::TaskCreate);
     add!("areal/task/update", areal_protocol::tasks::TaskUpdate);
     add!(
@@ -272,6 +274,10 @@ fn desktop_schema() -> Value {
         methods.insert(method.into(), empty.clone());
     }
     let object = |properties: Value, required: Vec<&str>| json!({"type":"object","properties":properties,"required":required,"additionalProperties":false});
+    methods.insert(
+        "areal/task/host/ready".into(),
+        object(json!({"prepareCreate":{"type":"boolean"}}), vec![]),
+    );
     for method in [
         "areal/goal/get",
         "areal/thread/inspect",
@@ -402,7 +408,7 @@ fn desktop_schema() -> Value {
     methods.insert(
         "areal/request/read".into(),
         json!({"oneOf":[
-            object(json!({"threadId":string,"requestId":string,"creationAdmission":schemars::schema_for!(CreationAdmission)}),vec!["requestId"]),
+            object(json!({"threadId":string,"requestId":string,"creationAdmission":schemars::schema_for!(CreationAdmission),"expectedSubmission":schemars::schema_for!(areal_protocol::submissions::ExpectedSubmission)}),vec!["requestId"]),
             schemars::schema_for!(areal_protocol::tasks::TaskRunNow)
         ]}),
     );
@@ -638,10 +644,10 @@ fn desktop_schema() -> Value {
         json!({"threadId":string,"turnId":string,"hostGeneration":string,"event":{"enum":["Stop","Interrupt"]}}),
         vec!["threadId", "turnId", "hostGeneration", "event"],
     );
-    output["serverRequests"]["areal/task/prepare"] = object(
-        json!({"taskId":string,"runId":string,"threadId":string,"scheduledAt":integer,"intent":{"enum":["start","resume"]}}),
-        vec!["taskId", "runId", "threadId", "scheduledAt", "intent"],
-    );
+    output["serverRequests"]["areal/task/prepare"] = json!({"oneOf":[
+        object(json!({"taskId":string,"runId":string,"threadId":string,"scheduledAt":integer,"intent":{"enum":["start","resume"]}}), vec!["taskId", "runId", "threadId", "scheduledAt", "intent"]),
+        object(json!({"intent":{"const":"create"},"requestId":string,"requestDigest":{"type":"string","pattern":"^[0-9a-f]{64}$"},"threadId":string,"sourceThreadId":string}), vec!["intent","requestId","requestDigest","threadId"])
+    ]});
     output["serverRequests"]["areal/host/status"] = empty.clone();
     output["serverResponses"] = json!({"item/tool/call":schemars::schema_for!(areal_protocol::DynamicToolResponse),"areal/browser/prepare":{"type":"object"},"areal/task/prepare":{"type":"object"},"areal/host/status":{"anyOf":[schemars::schema_for!(HostUpdateStatus),{"type":"null"}]}});
     output["serverResponses"]["areal/computer/prepare"] = json!({"type":"object"});

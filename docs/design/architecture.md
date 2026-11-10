@@ -2,7 +2,7 @@
 
 # 架构与目录
 
-共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI Main 在同一进程中装配可重建投影、偏好、原生 Browser/Computer 适配与在线通知，不再启动独立 Desktop Service 进程。普通 GUI 退出保留 Host 与 Core，撤销该 Main 的连接资源。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
+共享 Host 的[目标设计与阶段](../development/shared-host-spec.md)由 [ADR 0016](../adr/0016-shared-host.md)确定，契约见 [Host API](../api/host.md)。每用户 Rust Host 持有认证控制、项目监督、凭据、提交 journal、定时激活与执行准备，以及已实现的 Remote Gateway 和 provider subscription 传输；Core 保留执行和历史权威。GUI 默认连接 Host 监督的工作台后台；Main 提供原生 Browser/Computer 适配与在线通知，不再由界面偏好决定业务后台所有权。普通 GUI 退出保留 Host 与 Core，撤销该 Main 的连接资源。Host 按来源保存的休眠偏好保护真实运行中的工作。Host-owned 与 `legacyPending` 分别报告；旧后台仅经显式恢复路径检查和退役。Remote 方法按实际能力协商，不因入口可连接而推断所有客户端方法已受支持。
 
 AReaL-Harness 采用 **Clients → Core → Runtime** 分层。Core 是会话、Turn、模型循环与 Agent 状态的唯一所有者；Runtime 只处理执行权限、操作事实和资源生命周期。客户端不维护另一套权威历史。
 
@@ -190,7 +190,7 @@ GUI 订阅展示状态由 Desktop 的 `AppProviders` 统一投影，设置分组
 
 服务崩溃后的自动换代必须经过现有本地服务所有者：原 Host 对意外 Core 退出和 Runtime 清理发布正向证明，在启动锁内复核原代际、同一 GUI owner、存活期、部署配置和二进制，并排除已受理或结算未知的显式停止。恢复预留与原代际到后继代际的回执只允许一个后继，丢失回复也不能启动第二个。缺少证明、Host 丢失、配置变化或明确停止均不自动换代。换代后只恢复观察和原请求核查，Core 的启动恢复负责将未完成执行标为 UNKNOWN，不重放未完成任务的模型请求、工具或外部效果；已授权且尚未开始的定时安排沿用其原有规则。详细保证见 [本地服务契约](../api/local-service.md)。
 
-桌面 Worktree 由 `clients/gui/app/src/core/worktrees.cjs` 持有创建与线程绑定日志，`worktree-admission.cjs` 核对线程身份与定时任务目录的持久作者预约，`task-workspace-owners.cjs` 持久记录任务的实际宿主及可信线程锚点，`schedule-admission.cjs` 从 Core Task、桌面 owner、来源与执行锚点的同一 cwd 派生普通来源安排的共享资格，并保留自动分配项目外目录的旧任务家庭预约、执行准备和精确交互作者映射核查，`packages/workspace-git` 持有受控 Git 创建与事实核查。逻辑项目和物理执行目录分别登记。普通新会话使用当前目录与 Core；只有当前创建明确选择 Worktree 才分配新 checkout，不根据会话数量或旧偏好自动隔离。每个隔离 checkout 通过原服务入口启动独立 Core/Runtime，客户端仅聚合线程投影，不迁移 Core 历史。线程、子线程及请求收据定位原执行宿主，文件、进程和浏览器回调沿同一归属路由。接口和保证范围见[桌面宿主契约](../api/desktop.md#桌面宿主-worktree-契约)及[Worktree 指南](../guides/worktrees.md)。 环境配置归现有 library 的逻辑项目元数据，创建时冻结脚本；`worktree-environment.cjs` 仅适配 Core 受管进程回执。空线程绑定不代表环境就绪，首条 Prompt 需等待 setup 成功。取消和删除保留原创建身份，删除 tombstone 阻止旧 owner 重连或回退来源。
+桌面 Worktree 由 `clients/gui/app/src/core/worktrees.cjs` 持有创建与线程绑定日志，`worktree-admission.cjs` 核对线程身份与定时任务目录的持久作者预约，`task-workspace-owners.cjs` 持久记录任务的实际宿主及可信线程锚点，`schedule-admission.cjs` 从 Core Task、桌面 owner、来源与执行锚点的同一 cwd 派生普通来源安排的共享资格，并保留自动分配项目外目录的旧任务家庭预约、执行准备和精确交互作者映射核查，`packages/workspace-git` 持有受控 Git 创建与事实核查。逻辑项目和物理执行目录分别登记。普通新会话使用当前目录与 Core；只有当前创建明确选择 Worktree 才分配新 checkout，不根据会话数量或旧偏好自动隔离。每个隔离 checkout 通过原服务入口启动独立 Core/Runtime，客户端仅聚合线程投影，不迁移 Core 历史。线程、子线程及请求收据定位原执行宿主，文件、进程和浏览器回调沿同一归属路由。接口和保证范围见[桌面宿主契约](../api/desktop.md#桌面宿主-worktree-契约)及[Worktree 指南](../guides/worktrees.md)。 环境配置归现有 library 的逻辑项目元数据，创建时冻结脚本；创建、环境脚本、删除与任务归属由 Rust Host 执行，上述桌面模块只保留投影和转发。空线程绑定不代表环境就绪，首条 Prompt 需等待 setup 成功。取消和删除保留原创建身份，删除 tombstone 阻止旧 owner 重连或回退来源。
 
 GUI 的 `history-observation` 委托 `catalog-observation` 按项目、连接和代际合并目录读取：最多一批在途与一批待办，初次加载及显式刷新读取完整分页目录，生命周期通知只回读受影响会话的元数据。完整目录才交给 Worktree 所有者判断绑定；旧连接结果不发布，持续通知不延长已经完成批次的等待。导航缓存仍是可重建投影。
 

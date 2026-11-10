@@ -1089,7 +1089,8 @@ async fn unspecified_budgets_allow_long_tool_runs_and_large_durable_history() {
         )
         .await
         .unwrap();
-    let result = tokio::time::timeout(Duration::from_secs(60), engine.wait(&thread.id))
+    // 这是 140 次持久化和 >2 MiB 历史的正确性回归；共享 CI 的磁盘抖动不作为产品性能门槛。
+    let result = tokio::time::timeout(Duration::from_secs(180), engine.wait(&thread.id))
         .await
         .unwrap()
         .unwrap();

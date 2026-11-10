@@ -154,6 +154,7 @@ export function ConversationStatusCard({
     );
   return (
     <TaskContext
+      embedded
       title={allSources ? t("chat.context.allSources") : workspaceName}
       onBack={allSources ? () => setAllSources(false) : undefined}
       actions={

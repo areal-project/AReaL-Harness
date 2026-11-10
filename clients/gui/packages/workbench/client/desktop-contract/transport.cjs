@@ -18,11 +18,19 @@ const operations = (semantics, names) =>
   Object.fromEntries(names.split(" ").map((name) => [name, semantics]));
 /** @satisfies {Record<keyof Requests,readonly ['main'|'service','app'|'project'|'thread',CommandEffect|Record<string,CommandEffect>]>} */
 const commandDefinitions = Object.freeze({
+  recovery: [
+    "service",
+    "app",
+    { inspect: read, history: read, openWorkspace: mutation, importProvider: recoverable },
+  ],
   cloud: ["service", "app", { status: read, save: mutation }],
   cloudSession: [
     "service",
     "project",
-    { ...operations(subscription, "open"), ...operations(mutation, "create reconnect send stop") },
+    {
+      ...operations(subscription, "open"),
+      ...operations(mutation, "create reconnect send stop"),
+    },
   ],
   connect: ["service", "project", subscription],
   list: ["service", "project", read],
@@ -129,7 +137,11 @@ const commandDefinitions = Object.freeze({
       ...operations(mutation, "hooksSave skillToggle skillSave mcpSave mcpConnect mcpDisconnect"),
     },
   ],
-  projectless: ["service", "app", { catalog: read, directory: mutation, prepare: recoverable }],
+  projectless: [
+    "service",
+    "app",
+    { catalog: read, directory: mutation, prepare: recoverable, scratch: mutation },
+  ],
   tasks: ["service", "app", operations(read, "list inbox preview observe")],
   trajectory: ["service", "app", { status: read, ...operations(mutation, "retry setEnabled") }],
   feedback: [
@@ -248,7 +260,9 @@ function desktopError(error) {
   const recovery =
     record(rawRecovery) &&
     ["retryRead", "queryOriginal", "needsUser", "none"].includes(String(rawRecovery.kind))
-      ? { kind: /** @type {NonNullable<DesktopError['recovery']>['kind']} */ (rawRecovery.kind) }
+      ? {
+          kind: /** @type {NonNullable<DesktopError['recovery']>['kind']} */ (rawRecovery.kind),
+        }
       : undefined;
   const originalId = outcome && "operation" in outcome ? outcome.operation.requestId : requestId;
   const unknown = outcome

@@ -17,4 +17,4 @@
 
 ## 使用与重审
 
-从 [包指南](../../clients/gui/packages/ui/README.md)和 [Agent 入口](../../clients/gui/packages/ui/agent-guide.md)进入；站点入口为 [UI 包与架构](../../clients/gui/renderer/design-system.html?ui-library)。日常修改先更新所属源，显式 generate 后 build/check，再验证受影响组合。
+从 [包指南](../../clients/gui/packages/ui/README.md)和 [Agent 入口](../../clients/gui/packages/ui/README.md)进入；站点入口为 [UI 包与架构](../../clients/gui/renderer/design-system.html?ui-library)。日常修改先更新所属源，显式 generate 后 build/check，再验证受影响组合。

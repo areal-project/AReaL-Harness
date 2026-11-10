@@ -35,7 +35,7 @@
 
 合并分两个 PR：
 
-1. **集成 PR**：A0–A3 与 A4 第 1 项（共享界面）。新路径全部挂在开关后，开关默认关，装上后用户看到的行为与发布前一致。合并条件是 CI 全绿且不放宽任何门槛（行数上限、IPC 冻结、协议检查、渲染层边界）；不要求安装包验收。
+1. **集成 PR**：A0–A3 与 A4 第 1 项（共享界面）。原集成阶段的新路径挂在默认关闭的开关后；当前 GUI 后台所有权已默认收口到 Host，Renderer 读路径与 Rust 领域实现仍独立选择。合并条件是 CI 全绿且不放宽任何门槛（行数上限、IPC 冻结、协议检查、渲染层边界）；不要求安装包验收。
 2. **退役 PR**：A4 第 2–4 项，删除旧页面、旧 IPC 与开关，让 TUI/CLI 改连 Host。只在发版前验收（真实数据升级、旧配对升级、登录自启与重启、升级后身份不变、签名公证的安装包，以及 OP-01 至 OP-08）通过后开，删除前先问维护者。
 
 - 推理强度全部用 high。A3 的工作台服务设计说明写入提交，可先实施；涉及"需要停下来问的情况"时停下。
@@ -156,7 +156,7 @@ GUI 的项目清单与会话详情改从 Host 读；浏览器打开同一地址�
 ### 约束
 
 - 不动任何写路径；写操作仍走旧 IPC。
-- 开关默认关闭，维护者验收后再默认打开。
+- Renderer 读路径开关默认关闭；后台所有权默认归 Host，不能用界面领域开关回退到 Main 写者。
 
 ### 需要停下来问的情况
 
@@ -333,3 +333,13 @@ Main 中其余业务迁入 Host 监督的 Node 工作台服务或 Core，经协�
 | `connectService` | 现有 `host.subscribe`, `host.status`（部分）; 提案 discovery | Host 服务发现和连接 |
 | `export` | 现有 `session.history`, `session.body`（部分）; 提案 export | Core 历史和导出数据；外壳选择位置并保存 |
 | `remoteControl` | 现有 `remote.read`, `remote.replace`, `remote.gateway.state`, `remote.gateway.status`, `remote.gateway.control`（部分）; 提案 pairing/configuration | Host 远程配置及配对 |
+
+## Rust 收口验收边界
+
+资料库、执行与连接、定时任务、Worktree 四组实现可以并行开发，完整集成后统一验收。先登记协议与递减预算，再迁移权威行为；执行迁移必须先列逐函数等价实现与差异处置。功能实现、编译、真实服务、页面旅程和 CLI-only 环境分别给出证据。旧路径删除单独确认，回退不能重放 UNKNOWN。Worktree 删除日志沿用桌面生命周期回执形状，私有 `lifecycle.dependencies.lifecycleGeneration` 只读提供回退模式下的原生命周期代次。创建 Worktree 的页面准备必须复用 Host 已冻结的 Core 与资源 revision；输入准备不能通过隐式重启绕过原绑定。所有权与开关见[工作台服务](../design/workbench-service.md#rust-领域实现)。
+
+定时任务的独立目录预约必须先于 Core 发布任务。新 Core 与 Host 通过 `taskPrepareCreate` 和原连接的 `prepareCreate` 显式协商，由 Core 的创建入口回调 Host 预约；配置草稿、Agent 工具与直接创建共用该边界，不能在成功响应后才补记录。固定共享 Scratch 的每个任务使用真实直接子目录，原 Core 登记根保持不变；省略 `cwd` 按原创建 requestId 生成稳定目录名。预约和恢复绑定原请求摘要、锚点及唯一 Core 创建回执，兄弟目录活动须经完整有界归属检查，不可用全局计数豁免代替。
+
+统一验收覆盖原资料库回执逐字段一致、后台冒烟、`node clients/gui/scripts/seed-host-copy.mjs` 生成的真实数据副本旅程，以及无 GUI 环境的 CLI 定时任务和 Worktree 生命周期。未运行的平台保留待验收，不用单测替代。
+
+任务写入只有在 Core 明确返回 `data.outcome.kind=rejected/noMutation` 时才结算为确定拒绝。Host 持久保存脱敏拒绝事实，原 ID 查询返回同一拒绝，改参冲突；本机协议返回 `TASK_REJECTED`，保留数值 `coreCode` 与 `coreError.data.outcome`。传输失败继续保留 pending/UNKNOWN，不重新派发。

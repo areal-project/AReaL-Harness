@@ -40,7 +40,7 @@ v1 先由现有代码和上述方法建立。[governance](../../../clients/gui/d
 
 ### Worktree 用户参考图
 
-九张用户直接提供的静态截图按 WT-R01～WT-R09 编号；[Worktree 规范](../../../clients/gui/design-system/worktrees.md#依据与取舍)维护唯一观察表、采用边界与待实现规则。采用紧凑行式菜单、轻量准备过程、侧栏分叉标识、项目列表与独立环境编辑层级；保留 AReaL 的语义色、图标与执行安全合同。图片缺少 CSS viewport、DPR 和连续操作证据，不作为精确 CSS 数值或动效验收。原始图片与索引留本地，不导入用户项目列表和聊天内容；三个页面合同已登记代表截图的对照结果，实际覆盖和保留差异见 [Worktree 验收题](../../../clients/gui/design-system/exercises/worktrees.md)，不把静态参考当作动态行为证明。
+九张用户直接提供的静态截图按 WT-R01～WT-R09 编号；[Worktree 规范](../../../clients/gui/design-system/worktrees.md#依据与取舍)维护唯一观察表、采用边界与待实现规则。采用紧凑行式菜单、轻量准备过程、侧栏分叉标识、项目列表与独立环境编辑层级；保留 AReaL 的语义色、图标与执行安全合同。图片缺少 CSS viewport、DPR 和连续操作证据，不作为精确 CSS 数值或动效验收。原始图片与索引留本地，不导入用户项目列表和聊天内容；三个页面合同已登记代表截图的对照结果，实际覆盖和保留差异见 [Worktree 验收题](exercises/worktrees.md)，不把静态参考当作动态行为证明。
 
 ### 设置组的有界观察与采纳
 
@@ -48,7 +48,7 @@ v1 先由现有代码和上述方法建立。[governance](../../../clients/gui/d
 
 直接观察：约 655.48px 宽设置组的标签为13px、说明为12px、表面圆角20px；两个下拉触发器高28px、水平留白12px、圆角12.5px；三个开关为32×20px。约495.48px宽的同组仍左右排列；菜单展示 Never / Only when unfocused / Always。以上是实测，不声明内部 Token、断点、原生窗口最小尺寸或未观察状态。
 
-与[固定迁移题](../../../clients/gui/design-system/exercises/settings-reflow.md)的同内容对照发现：字体与设置表面角色可沿用，设置单选和预览开关选择了偏小的紧凑档。候选0.1.1在公共 SettingsSelect 修正角色，并让预览沿用默认 Switch；没有新建数值源。控件尺寸与布局规则归 [patterns.md](../../../clients/gui/design-system/patterns.md#设置控件与反馈)。
+与[固定迁移题](exercises/settings-reflow.md)的同内容对照发现：字体与设置表面角色可沿用，设置单选和预览开关选择了偏小的紧凑档。候选0.1.1在公共 SettingsSelect 修正角色，并让预览沿用默认 Switch；没有新建数值源。控件尺寸与布局规则归 [patterns.md](../../../clients/gui/design-system/patterns.md#设置控件与反馈)。
 
 AReaL 保留窄容器上下排列：这是既有长文案可达性合同，与该参考状态不同；本题按大字号和长文案验证后保留。此决定不是逐像素一致声明，也不是已批准的视觉基线。
 
@@ -56,7 +56,7 @@ AReaL 保留窄容器上下排列：这是既有长文案可达性合同，与�
 
 问题 `Q-SETTINGS-TEXT-CONTRAST-02` 补采同版本参考：深色默认contrast60、明亮默认45，调色板分别为#181818/白色和#FFFFFF/#1A1C1F。在两种主题各自的0、默认、100三个已观测点，设置说明均为前景色65%透明度；深色卡片背景随contrast变化。采集在可见滑块值确认、计算颜色/几何连续稳定后执行；此前过渡中的样本保留但不用于终态颜色判断。未据这些点推断参考内部完整转换函数。
 
-采纳：深色设置说明默认层级在唯一 paletteVariables 所有者修订。保留差异：AReaL继续支持原对比度斜率，明亮说明保留原69.5%混合；禁用和已完成过程信息不变。规则用途归 [foundations](../../../clients/gui/design-system/foundations.md) 与 [Token 来源与使用](../../foundations/tokens.md#容易选错的角色)；[设置说明题](../../../clients/gui/design-system/exercises/settings-contrast.md)固定默认、端点、自定义颜色和隔离范围。此处不将全部次文字统一为同一个透明度。
+采纳：深色设置说明默认层级在唯一 paletteVariables 所有者修订。保留差异：AReaL继续支持原对比度斜率，明亮说明保留原69.5%混合；禁用和已完成过程信息不变。规则用途归 [foundations](../../../clients/gui/design-system/foundations.md) 与 [Token 来源与使用](../../foundations/tokens.md#容易选错的角色)；[设置说明题](exercises/settings-contrast.md)固定默认、端点、自定义颜色和隔离范围。此处不将全部次文字统一为同一个透明度。
 
 ### 对话信息流的动态观察
 
@@ -77,7 +77,7 @@ AReaL 保留窄容器上下排列：这是既有长文案可达性合同，与�
 
 ### 复合任务的逐状态对照
 
-`Q-CONVERSATION-COMPOSITE-06`把已有观察转成一条本地可重放场景。参考仍是上述run2及独立dynamic/retry2；不是新增Codex采集，也不补写参考未捕获的时序。具体对照表与当前差异统一维护在[复合题](../../../clients/gui/design-system/exercises/conversation-flow.md#逐状态对照)，原图、实现帧、录像、时钟与运行身份仅留本地证据索引。
+`Q-CONVERSATION-COMPOSITE-06`把已有观察转成一条本地可重放场景。参考仍是上述run2及独立dynamic/retry2；不是新增Codex采集，也不补写参考未捕获的时序。具体对照表与当前差异统一维护在[复合题](exercises/conversation-flow.md#逐状态对照)，原图、实现帧、录像、时钟与运行身份仅留本地证据索引。
 
 直接采纳：用户输入与过程分层、Shell详情、图片模态、独立子对话、完成总组与独立final。明确的产品选择：在同一场景中安排分批进程输出、图片打开期间继续推进、父子先后完成、人工详情跨完成保留。保留差异：本产品原有字体/图标/密度、子对话身份样式，以及图片预览尚无参考的缩放工具；这些不能因行为通过就记为视觉等同。
 
@@ -93,7 +93,7 @@ AReaL 保留窄容器上下排列：这是既有长文案可达性合同，与�
 
 本次恢复的常驻参考实例沿用原验证聊天，通过CDP在真实浏览器页签导航本地合成Project preview；启动应用包核对为Codex26.1013.40934（20770），与此前E3记录的版本分别标注。宿主工具栏和独立网页分别取证；点击Try preview后按钮变为Preview clicked，主宿主焦点记录为WEBVIEW；随后点击Hide tabs，焦点回到Work with Codex。该记录支持网页交互与本路径关闭后的焦点结果，不推断其内部恢复机制或任意入口的行为。
 
-AReaL选定窗口往返与原生网页切片见[E4](../../../clients/gui/design-system/exercises/conversation-flow.md#原生宿主补充-e4)。双方保留各自原生视图及宿主图，不把宿主空白当作网页缺失；本轮不调整Token或声称像素一致。自有应用的人工补采只确认英文文字上屏，用户明确未见候选字列表，候选浮窗仍未知；不能把既有组合事件升级成候选窗口已覆盖。参考的原生OS激活和中文候选仍无独立证据。
+AReaL选定窗口往返与原生网页切片见[E4](exercises/conversation-flow.md#原生宿主补充-e4)。双方保留各自原生视图及宿主图，不把宿主空白当作网页缺失；本轮不调整Token或声称像素一致。自有应用的人工补采只确认英文文字上屏，用户明确未见候选字列表，候选浮窗仍未知；不能把既有组合事件升级成候选窗口已覆盖。参考的原生OS激活和中文候选仍无独立证据。
 
 ### 2026-10-24 过程摘要、上下文卡片与组件文档再调研
 

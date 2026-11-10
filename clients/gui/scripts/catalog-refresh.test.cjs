@@ -43,14 +43,13 @@ function fixture(read, { classified = true, loaded = false, summaries = [] } = {
   });
   const observation = new HistoryObservation({
     currentConnection: (p, c) => p.client === c,
-    library: {
-      value: {},
-      recordThreadSummaries: async (_id, rows) => saves.push(structuredClone(rows)),
-      recordThreadActivity: async () => {},
-    },
+    library: { value: {} },
     worktrees: {
-      observeProject: async (p) =>
-        observed.push({ complete: p.summariesLoaded, ids: p.summaries.map((t) => t.id) }),
+      // 完整目录落定后才通知归属观察；以此记录每次落定的目录。
+      observeProject: async (p) => {
+        saves.push(structuredClone(p.summaries));
+        observed.push({ complete: p.summariesLoaded, ids: p.summaries.map((t) => t.id) });
+      },
     },
     analytics: { observe() {} },
     notifications: { observe() {} },

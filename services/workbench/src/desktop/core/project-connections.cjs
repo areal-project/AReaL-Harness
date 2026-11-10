@@ -2,7 +2,6 @@
 "use strict";
 const diagnostics = require("./diagnostics.cjs");
 const { startupTrace } = require("./startup-timing.cjs");
-const WebSocket = require("ws");
 const { failure: browserFailure } = require("./browser-tool.cjs");
 const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contract");
 
@@ -13,7 +12,7 @@ const { modelRecord, isCoreTask } = require("@areal/workbench/core-model-contrac
 /** @typedef {import('./local-service.cjs').RecoveryTarget} Service */
 /** @typedef {Awaited<ReturnType<typeof import('./local-service.cjs').connectService>>} ServiceConnection */
 /** @typedef {Awaited<ReturnType<InstanceType<typeof import('./backend.cjs').CoreBackend>['prepareServiceLaunch']>>} Launch */
-/** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'applicationOwner'|'worktrees'|'lifecycleOperations'|'providers'|'resources'|'scheduleAdmission'|'hooks'|'defaultProfile'|'analytics'|'saved'> & {
+/** @typedef {Pick<InstanceType<typeof import('./backend.cjs').CoreBackend>,'applicationOwner'|'worktrees'|'lifecycleOperations'|'providers'|'resources'|'scheduleAdmission'|'hooks'|'defaultProfile'|'analytics'|'saved'|'hostCall'|'hostCoreClients'|'host'> & {
  * closing:boolean,providerUpdating:boolean|undefined,resourcesUpdating:boolean|undefined,
  * starting:Map<string,Promise<Project>>,projects:Map<string,Project>,
  * startProject:(id:string,options?:{resumeScheduling?:boolean})=>Promise<Project>,stopReconciliation:(project:Project)=>void,
@@ -220,7 +219,7 @@ class ProjectConnections {
       project.client?.ready
     )
       return;
-    const delay = Math.min(500 * 2 ** Math.min(project.reconnectAttempt ?? 0, 6), 30000);
+    const delay = project.reconnectAttempt ? Math.min(500 * 2 ** Math.min(project.reconnectAttempt, 6), 30000) : 0;
     project.reconnectTimer = setTimeout(() => {
       project.reconnectTimer = null;
       if (
@@ -325,7 +324,6 @@ class ProjectConnections {
   async connect(project, { observeOnly = false } = {}) {
     const startup = this.host.starting.get(project.id);
     const owner = this.host.desktopToolOwner?.() ?? null;
-    const { CoreClient, MAX_RESPONSE_BYTES } = await import("@areal/runtime-client/core");
     if (this.host.closing) throw new Error("应用正在退出");
     if ((this.host.desktopToolOwner?.() ?? null) !== owner)
       throw new Error("Desktop tool owner changed during connection startup");
@@ -342,39 +340,9 @@ class ProjectConnections {
     };
     /** @type {unknown} */
     let cuaHostGeneration;
-    const client = new CoreClient({
-      createSocket: () => {
-        /** @type {import('./diagnostics.cjs').SocketTarget} */
-        const target = Object.freeze({
-          boundary: "desktop-core",
-          projectId: project.id,
-          coreGeneration: project.service?.generation,
-          connectionGeneration: project.connectionGeneration,
-          hostPid:
-            typeof project.service?.hostPid === "number" ? project.service.hostPid : undefined,
-          corePid:
-            typeof project.service?.corePid === "number" ? project.service.corePid : undefined,
-          serviceId: project.service?.serviceId,
-        });
-        if (!project.endpoint) throw new Error("Core 连接地址尚未就绪");
-        const socket = new WebSocket(project.endpoint, {
-          headers: { Authorization: `Bearer ${project.token}` },
-          followRedirects: false,
-          maxPayload: MAX_RESPONSE_BYTES,
-        });
-        socket.on("open", () => diagnostics.record({ type: "socket-open", ...target }));
-        socket.on("error", (error) =>
-          diagnostics.record({
-            type: "socket-error",
-            ...target,
-            code: "code" in error ? error.code : undefined,
-          }),
-        );
-        socket.on("close", (closeCode) =>
-          diagnostics.record({ type: "socket-close", ...target, closeCode }),
-        );
-        return socket;
-      },
+    if (!this.host.hostCall) throw new Error("Host Core transport unavailable");
+    /** @type {Pick<ConstructorParameters<typeof import('@areal/runtime-client/core').CoreClient>[0],'onServerRequest'>} */
+    const connectionOptions = {
       onServerRequest: async (method, params, context) => {
         if (!modelRecord(params)) throw new Error("Invalid Core tool host request");
         if (
@@ -462,7 +430,11 @@ class ProjectConnections {
           return { error: result.structuredContent.code, dispatch: "not_sent" };
         return result;
       },
-    });
+    };
+    const canonical = this.host.host.resolve(project.id).projectId;
+    const client = new (require("@areal/workbench-service/host-core-client").HostCoreClient)({ host: this.host.hostCall, sourceId: this.host.host.sourceId,
+      projectId: canonical, onServerRequest: connectionOptions.onServerRequest });
+    this.host.hostCoreClients.set(canonical, client);
     if (owner) this.desktopOwners.set(client, owner);
     project.client = client;
     project.connectionGeneration = (project.connectionGeneration ?? 0) + 1;
@@ -479,6 +451,7 @@ class ProjectConnections {
           this.host.observeNotification(project, client, method, params);
       });
       client.onClose((failure) => {
+        if (this.host.hostCoreClients.get(canonical) === client) this.host.hostCoreClients.delete(canonical);
         if (cuaHostGeneration)
           void Promise.resolve(
             this.host.cuaRead?.({

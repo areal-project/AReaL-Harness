@@ -387,12 +387,14 @@ async fn connection_process_requires_context_profile_and_original_budget() {
         .as_mut()
         .unwrap()
         .allow_connection_processes = false;
+    let denied = fixture
+        .engine
+        .process_start_on_connection("fixture".into(), request.clone(), connection.clone())
+        .await
+        .unwrap_err();
+    assert!(matches!(denied, Error::Rejected(_)), "{denied}");
     assert!(
-        fixture
-            .engine
-            .process_start_on_connection("fixture".into(), request.clone(), connection.clone())
-            .await
-            .unwrap_err()
+        denied
             .to_string()
             .contains("profile does not authorize connection")
     );

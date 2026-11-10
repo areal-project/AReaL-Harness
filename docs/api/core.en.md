@@ -8,6 +8,28 @@ Core implements a subset of pinned Codex app-server 0.145.0 plus AReaL extension
 
 Optional `Turn.interruption` records `userPause` or `coreRecovery`. Missing facts in older records remain unknown. Optional `continuedFromTurnId` identifies a new Turn created by explicit continuation. It does not restore a model call or process. Pause still settles the original Turn and preserves UNKNOWN and failure classifications. Opening a conversation, reconnecting, or restarting never continues ordinary work automatically. See the [desktop submission contract](desktop.en.md#submissions).
 
+## Command settlement receipts
+
+At Turn completion, after closing the Turn scope and before the original Runtime exits, Core
+queries the original native handles whose last tool observation did not contain a terminal result.
+It persists an optional `processReceipts` array in the original Turn, returned by `turn/completed`
+and existing history reads. Each receipt contains the model-facing `processId`, original
+`runtimeProcessId`, `scopeId`, `state` (`exited` or `unknown`), `exitCode`, `signal`, `stopReason`,
+`cleanupConfirmed`, and `error`. Already settled tool results are not queried again, and original
+tool output is unchanged.
+
+An `exited` receipt requires either an exit code or a POSIX signal, plus confirmed cleanup.
+Failed queries, mismatched identities, and missing terminal outcomes produce `unknown` and fail
+the Turn. Signal and nonzero exits remain command failures; they do not automatically fail the
+entire task. Receipts establish neither complete output collection nor successful verification.
+Existing model, budget or cleanup errors retain their original classification and message;
+additional unknown process outcomes remain in the receipts. Ordinary cancellation stays
+interrupted only when process outcomes are confirmed; unknown outcomes make it fail.
+Older history defaults to an empty array, which does not imply command success. Recovery reads
+the original receipts without restoring expired handles or replaying commands.
+
+JSON remains backward compatible; Rust `Turn` literals must initialize `process_receipts`.
+
 ## Next prompt prediction
 
 `areal/thread/prediction {threadId,sourceTurnId,operation:"request"|"cancel"}` is a mutation driven by explicit desktop demand. Core accepts only the latest successfully settled user turn in an ordinary main or Side conversation. Active turns, goals, tasks, delegated children, archived threads and unresolved outcomes do not generate predictions. Completion only retains the actual model instance from that turn; background CLI and hidden conversations never trigger inference automatically. Core does not reconstruct the model or regenerate a prediction after restarting.
@@ -30,7 +52,7 @@ This limit bounds JSON encoding output. Earlier full-history hydration and JSON 
 |---|---|
 | `model/list` | `{}` |
 | `thread/start` | `{cwd?,model?,dynamicTools?}` |
-| `areal/thread/start` | `{requestId,agentProfile?:{id,revision},cwd?,model?,parameters?,options?,dynamicTools?}`; atomically saves initial configuration and starts the Workflow bound to the Profile automatically |
+| `areal/thread/start` | `{requestId,agentProfile?:{id,revision},cwd?,prepareTaskDirectory?,model?,parameters?,options?,dynamicTools?}`; atomically saves initial configuration and starts the Workflow bound to the Profile automatically |
 | `thread/list` | `{cursor?,limit?}`; 1–100, default 30 |
 | `thread/read` | `{threadId,includeTurns?}` |
 | `thread/resume` | `{threadId,mode?:"bounded",maxBytes?}` |
@@ -50,6 +72,10 @@ Pagination advances through immutable sort keys without a consistent snapshot ac
 `areal/thread/fork` requires `anchor:{turnId,boundary}` with an explicit `before` or `after` and `workspaceMode:"sharedCurrent"`. `before` excludes the selected turn and everything after it, including an active turn; `after` requires a terminal turn. Failed and interrupted states in the included prefix remain unchanged. An unsettled tool or hook, or a tool, hook, or plugin UNKNOWN outcome without source inspection, returns `HISTORY_UNRESOLVED`. Inspection records facts and does not turn a historical UNKNOWN into success. A missing anchor returns `ANCHOR_NOT_FOUND`, a delegated Worker or Side source returns `SOURCE_KIND_UNSUPPORTED`, and `after` on an active turn returns `TURN_NOT_TERMINAL`; clients can use `error.data.reason` to present a recovery path. Fork inherits conversation history while project files remain in the current shared workspace. See the [desktop API](desktop.en.md) for the full request and origin metadata.
 
 Fork model compatibility accepts both legacy individual Responses context items and the complete `areal_response_output` envelope, retaining provider fields in their original order. Only Responses adapters can replay these forms. Switching to a protocol that cannot retain this context still returns `MODEL_CONTEXT_INCOMPATIBLE`; opaque history is never discarded to admit the switch.
+
+`features.taskPrepareCreate` allows Host to send `prepareCreate: true` in `areal/task/host/ready`. The capability belongs to the registered Host connection and principal. Host enables workspace reservation for GUI sources; CLI sources retain their existing admission path. Omission preserves existing behavior. When enabled, Core validates a scheduled task and then sends `areal/task/prepare {intent:"create",requestId,requestDigest,threadId,sourceThreadId?}` before persistence and publication. `requestDigest` hashes the complete normalized creation parameters. Host reserves the workspace for the original request and execution anchor; a conflict or disconnect prevents creation. A completed original request returns its saved receipt without reserving again. The `start` and `resume` callback contracts stay unchanged. `areal/task/create` and `areal/task/draft` use the existing bounded concurrent request slots so the same connection can read state and answer callbacks while creation waits. Admitted writes settle their original records even after a disconnect.
+
+`features.taskDirectoryPreparation` declares support for optional `prepareTaskDirectory: true` on `areal/thread/start`. Host sets it only for task creation after verifying the reserved projectless task workspace owner. Core requires `cwd` to be a direct workspace child, with a name of at most 128 UTF-16 units that neither starts with a dot nor contains path separators, and rejects symlinks and escapes. The private directory is created after the original request is admitted; reading the same completed request does not repeat creation. Omitting the field or sending `false` preserves the original request digest and does not prepare a directory.
 
 input preserves text/image/audio/file ordering with at most 1 MiB aggregate UTF-8 text, also constrained by the history budget. Authenticated clients upload media Blobs rather than supplying host localImage/localAudio paths. Adapter/model capabilities validate modalities. Original thread/start model must match the service default; product model selection uses areal/thread/start/configure.
 

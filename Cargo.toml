@@ -65,6 +65,7 @@ areal-runtime-exec-native = { path = "runtime/exec-native" }
 
 [profile.release]
 lto = "thin"
+strip = "symbols"
 
 [profile.dev.package.sha2]
 opt-level = 3

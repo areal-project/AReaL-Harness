@@ -12,7 +12,7 @@ const require = createRequire(join(gui, "app/package.json"));
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
 const {
   readLifecycleReceipt,
   reconcileLifecycleReceipt,

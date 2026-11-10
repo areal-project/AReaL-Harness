@@ -1,7 +1,7 @@
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 
 .settings-section-heading {
@@ -11,14 +11,14 @@
   align-items: flex-end;
   justify-content: space-between;
   margin-bottom: 0;
-  min-height: 24px;
+  min-height: var(--spacing-control-sm);
   padding-bottom: 0;
 }
 
 .settings-section-heading .settings-section-title {
   font-size: var(--text-ui-base);
-  font-weight: 500;
-  line-height: 21px;
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-ui);
   color: var(--color-foreground);
   margin: 0;
 }
@@ -26,8 +26,8 @@
 .settings-section-desc,
 .settings-section-heading .settings-section-desc {
   font-size: var(--text-ui-sm);
-  color: var(--color-settings-secondary, var(--color-muted-foreground));
-  margin: 2px 0 0;
+  color: var(--color-settings-secondary);
+  margin: calc(var(--spacing-inline) / 4) 0 0;
   line-height: var(--line-height-ui-sm);
 }
 
@@ -48,9 +48,9 @@
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
-  border-radius: var(--radius-overlay);
-  border: 1px solid var(--color-border);
-  background-color: var(--color-settings-card, var(--color-card));
+  border-radius: var(--radius-panel);
+  border: var(--border-width-default) solid var(--color-border-subtle);
+  background-color: var(--color-settings-card);
   overflow: hidden;
   box-shadow: none;
 }
@@ -61,14 +61,14 @@
 
 .settings-field-row {
   position: relative;
-  padding: 12px 16px;
-  min-height: 48px;
+  padding: calc(var(--spacing-inline) * 1.5) var(--spacing-field);
+  min-height: calc(var(--spacing-control-sm) + var(--spacing-section));
   box-sizing: border-box;
 }
 
 .settings-group-card[data-density="compact"] .settings-field-row {
-  padding-block: 8px;
-  min-height: 40px;
+  padding-block: var(--spacing-inline);
+  min-height: calc(var(--spacing-control-sm) + var(--spacing-field));
 }
 
 /* 调用方仍须禁用实际控件，行只阻止指针操作。 */
@@ -80,40 +80,41 @@
   content: "";
   position: absolute;
   bottom: 0;
-  left: 16px;
-  right: 16px;
-  height: 0.5px;
-  background: var(--color-border);
+  left: var(--spacing-field);
+  right: var(--spacing-field);
+  height: calc(var(--border-width-default) / 2);
+  background: var(--color-border-subtle);
   pointer-events: none;
 }
 
 .settings-field-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) fit-content(280px);
+  /* 控件按内容取宽，最多占半行；一组按钮宁可挤窄说明也不折行。 */
+  grid-template-columns: minmax(0, 1fr) fit-content(calc(var(--reading-width) / 2));
   align-items: center;
-  gap: 24px;
+  gap: var(--spacing-section);
   width: 100%;
 }
 
 .settings-field-layout-wide {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 280px);
+  grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--reading-width) * 3 / 8));
   align-items: center;
 }
 
 .settings-field-label {
   font-size: var(--text-ui-caption);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--color-foreground);
-  line-height: 1.428571;
+  line-height: var(--line-height-ui-sm);
   overflow-wrap: break-word;
 }
 
 .settings-field-description {
-  margin-top: 2px;
+  margin-top: calc(var(--spacing-inline) / 4);
   font-size: var(--text-ui-sm);
-  font-weight: 430;
-  line-height: 1.333333;
-  color: var(--color-settings-secondary, var(--color-muted-foreground));
+  font-weight: var(--font-weight-toolbar);
+  line-height: var(--line-height-ui-sm);
+  color: var(--color-settings-secondary);
   overflow-wrap: break-word;
 }
 
@@ -123,7 +124,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--spacing-inline);
   width: auto;
   min-width: 0;
   max-width: 100%;
@@ -145,18 +146,31 @@
   }
 }
 
-.settings-field-row .settings-field-control input[type="number"],
-.settings-field-row .settings-field-control input[type="text"] {
+.settings-field-row
+  .settings-field-control
+  input:is([type="number"], [type="text"], [type="password"]) {
   height: var(--spacing-control);
-  border-radius: var(--radius-control);
-  border: 1px solid var(--color-border);
-  background-color: var(--color-background);
+  border-radius: var(--radius-compact);
+  border: var(--border-width-default) solid var(--color-input-border);
+  background-color: var(--color-input);
   color: var(--color-foreground);
   font-size: var(--text-ui-caption);
-  font-weight: 430;
-  line-height: calc(var(--ui-font-size) + 4px);
-  padding: 0 8px;
+  font-weight: var(--font-weight-toolbar);
+  line-height: var(--line-height-ui-sm);
+  padding: 0 var(--spacing-inline);
   box-sizing: border-box;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+
+.settings-field-row
+  .settings-field-control
+  input:is([type="number"], [type="text"], [type="password"]):focus-visible {
+  outline: none;
+  border-color: var(--color-input-border-focused);
+  background-color: var(--color-input-focused);
+  box-shadow: none;
 }
 
 .settings-field-row .settings-field-control input[type="range"] {

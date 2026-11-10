@@ -3,6 +3,7 @@ use super::*;
 use areal_protocol::tasks::*;
 
 areal_protocol::method_catalog! {
+    "areal/task/draft" => Mutation, Task;
     "areal/task/create" => Mutation, Task;
     "areal/task/schedule/preview" => Read;
     "areal/task/schedule/context" => Read;
@@ -67,6 +68,13 @@ pub(crate) async fn dispatch(
         "areal/task/directory/list" | "areal/task/directory/read" | "areal/task/attention/read"
     ) {
         authorize_owner(principal)?;
+    }
+    if method == "areal/task/draft" {
+        authorize_owner(principal)?;
+        return engine
+            .task_draft(principal.id.clone(), parse(params)?)
+            .await
+            .map_err(map_error);
     }
     let authorized = if let Some(id) = params["taskId"].as_str() {
         Some(authorize(engine, principal, id).await?)

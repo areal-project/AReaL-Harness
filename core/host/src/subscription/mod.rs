@@ -30,6 +30,25 @@ impl SourceAccounts {
         })
     }
 
+    async fn read_async(vault: &Vault, source: &str, migration: &Migration) -> Result<Self> {
+        let (revision, value) = vault
+            .subscription_slot_async(
+                crate::vault::Slot::SubscriptionAccount {
+                    source_id: source.to_owned(),
+                    provider_id: "openai".into(),
+                },
+                migration,
+            )
+            .await?;
+        Ok(Self {
+            revision: VaultRevision(revision),
+            directory: if value.is_null() {
+                None
+            } else {
+                Some(AccountDirectory::decode(value)?)
+            },
+        })
+    }
     fn public(&self) -> Value {
         self.directory.as_ref().map_or_else(
             || serde_json::json!({"activeAccountId":null,"accounts":[]}),
@@ -88,13 +107,27 @@ pub(crate) struct SourceSubscription {
     notice: RefCell<Option<String>>,
 }
 impl SourceSubscription {
+    #[cfg(test)]
     pub(crate) fn load(
         migration: Rc<Migration>,
         source: String,
         network: Network,
     ) -> network::Result<Rc<Self>> {
         SourceAccounts::read(&migration.vault, &source, &migration).map_err(Failure::storage)?;
-        Ok(Rc::new(Self {
+        Ok(Self::loaded(migration, source, network))
+    }
+    pub(crate) async fn load_async(
+        migration: Rc<Migration>,
+        source: String,
+        network: Network,
+    ) -> network::Result<Rc<Self>> {
+        SourceAccounts::read_async(&migration.vault, &source, &migration)
+            .await
+            .map_err(Failure::storage)?;
+        Ok(Self::loaded(migration, source, network))
+    }
+    fn loaded(migration: Rc<Migration>, source: String, network: Network) -> Rc<Self> {
+        Rc::new(Self {
             migration,
             source,
             oauth: RefCell::new(Rc::new(oauth::OAuth::new(network.clone()))),
@@ -114,7 +147,7 @@ impl SourceSubscription {
             listener: RefCell::new(None),
             login: RefCell::new(None),
             notice: RefCell::new(None),
-        }))
+        })
     }
     fn track(&self, task: JoinHandle<()>) {
         let mut tasks = self.tasks.borrow_mut();

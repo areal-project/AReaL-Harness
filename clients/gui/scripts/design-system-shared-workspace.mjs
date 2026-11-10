@@ -213,7 +213,7 @@ export async function runSharedWorkspace(page, scratch, report, baseline) {
       "Side草稿：保留独立问题",
   );
   assert.equal(await side().innerText(), "Side草稿：保留独立问题");
-  await scope.getByRole("button", { name: "返回主会话", exact: true }).click();
+  await scope.getByRole("button", { name: "关闭面板", exact: true }).click();
   assert.equal(await main.innerText(), "主草稿：检查面板返回");
   await scope.getByRole("button", { name: "打开共享设置", exact: true }).click();
   await page.getByRole("dialog").getByLabel("共享阅读密度", { exact: true }).click();

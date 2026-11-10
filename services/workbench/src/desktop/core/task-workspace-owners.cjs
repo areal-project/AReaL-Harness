@@ -1,8 +1,5 @@
 // @ts-check
 "use strict";
-const { mkdir, readdir, readFile } = require("node:fs/promises");
-const { join } = require("node:path");
-const { readTask } = require("@areal/workbench/desktop-contract/management-tasks");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
 /** @typedef {{id:string,threadId?:string,ambiguous?:boolean}} OwnerRecord */
 /** @param {string} message */
@@ -16,196 +13,22 @@ const unavailable = (message) =>
 const identifier = (value) =>
   typeof value === "string" && value.length > 0 && value.length <= 256 && !value.includes("\0");
 
+/** 任务执行归属由 Host 持有；这里只读取并校验回执。 */
 class TaskWorkspaceOwners {
   /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend */
   constructor(backend) {
-    /** @type {InstanceType<typeof import("./backend.cjs").CoreBackend>} */
     this.backend = backend;
-    /** @type {Map<string,Map<string,OwnerRecord>>} */
-    this.hosts = new Map();
-    /** @type {Map<string,Set<string>>} */
-    this.owners = new Map();
-    /** @type {Map<string,Promise<void>>} */
-    this.writes = new Map();
-    this.dirty = new Set();
-  }
-  /** @param {import('./project-index.cjs').SavedProject} project */
-  logical(project) {
-    return project.logicalProjectId ?? project.id;
-  }
-  /** @param {string} id */
-  registered(id) {
-    const owner = this.backend.saved.find((project) => project.id === id);
-    if (!owner) throw unavailable("任务执行工作区已移除，请检查原任务");
-    return owner;
-  }
-  async init() {
-    const directory = join(this.backend.home, "task-owners");
-    await mkdir(directory, { recursive: true, mode: 0o700 });
-    for (const name of await readdir(directory)) {
-      if (!/^[a-f0-9]{24}\.json$/.test(name)) continue;
-      /** @type {unknown} */
-      const records = JSON.parse(await readFile(join(directory, name), "utf8"));
-      if (!Array.isArray(records)) throw unavailable("任务执行归属索引无效");
-      // 已移除的宿主也保留归属，避免旧任务意外回退到来源目录。
-      for (const record of records)
-        this.remember(name.slice(0, -5), typeof record === "string" ? { id: record } : record);
-    }
-  }
-  /** @param {string} projectId @param {unknown} task */
-  remember(projectId, task) {
-    if (
-      !modelRecord(task) ||
-      !identifier(task.id) ||
-      (task.threadId != null && !identifier(task.threadId)) ||
-      (task.ambiguous !== undefined && typeof task.ambiguous !== "boolean")
-    )
-      throw unavailable("任务身份无效");
-    let records = this.hosts.get(projectId);
-    if (!records) {
-      records = new Map();
-      this.hosts.set(projectId, records);
-    }
-    const previous = records.get(task.id);
-    /** @type {OwnerRecord} */
-    const record = { id: task.id, threadId: task.threadId ?? previous?.threadId };
-    if (
-      task.ambiguous ||
-      previous?.ambiguous ||
-      (previous?.threadId && task.threadId && previous.threadId !== task.threadId)
-    )
-      record.ambiguous = true;
-    records.set(task.id, record);
-    let owners = this.owners.get(task.id);
-    if (!owners) {
-      owners = new Set();
-      this.owners.set(task.id, owners);
-    }
-    owners.add(projectId);
-    return JSON.stringify(previous) !== JSON.stringify(record);
-  }
-  /** @param {import('./project-state.cjs').CoreProject} project @param {import("@areal/workbench/desktop-contract/management-tasks").Task} task */
-  async observe(project, task) {
-    if (task?.id) await this.observeTasks(project, [task]);
-  }
-  /** @param {import('./project-state.cjs').CoreProject} project */
-  async observeProject(project) {
-    await this.observeTasks(project, Object.values(project.model.state.tasks ?? {}));
-  }
-  /** @param {import('./project-state.cjs').CoreProject} project @param {Array<{id:string,threadId?:string|null}|import("@areal/workbench/desktop-contract/management-tasks").InboxEntry>} tasks */
-  async observeTasks(project, tasks) {
-    this.registered(project.id);
-    let changed = false;
-    for (const task of tasks)
-      changed =
-        this.remember(project.id, {
-          ...task,
-          id: "taskId" in task ? task.taskId : task.id,
-        }) || changed;
-    if (changed) this.dirty.add(project.id);
-    if (this.dirty.has(project.id)) {
-      const write = (this.writes.get(project.id) ?? Promise.resolve())
-        .catch(() => {})
-        .then(async () => {
-          await mkdir(join(this.backend.home, "task-owners"), {
-            recursive: true,
-            mode: 0o700,
-          });
-          try {
-            await this.backend.save(join("task-owners", project.id + ".json"), [
-              ...(this.hosts.get(project.id)?.values() ?? []),
-            ]);
-            this.dirty.delete(project.id);
-          } catch (error) {
-            this.dirty.add(project.id);
-            throw error;
-          }
-        });
-      this.writes.set(project.id, write);
-      await write;
-    }
-    if (
-      tasks.some(
-        (task) =>
-          (this.owners.get(String("taskId" in task ? task.taskId : task.id))?.size ?? 0) > 1 ||
-          this.hosts.get(project.id)?.get(String("taskId" in task ? task.taskId : task.id))
-            ?.ambiguous,
-      )
-    )
-      throw unavailable("任务执行归属不唯一，未向任何工作区发送操作");
-  }
-  /** @param {import('./project-index.cjs').SavedProject} owner @param {string} taskId */
-  async read(owner, taskId) {
-    try {
-      const { project, client } = await this.backend.readConnection(owner.id);
-      const task = await client.request("areal/task/read", { taskId }, { decode: readTask });
-      /** @type {InstanceType<typeof import("./backend.cjs").CoreBackend>} */
-      const backend = this.backend;
-      backend.requireConnection(project, client);
-      if (task?.id !== taskId) throw unavailable("原任务身份不匹配");
-      return { project, task };
-    } catch (error) {
-      if (modelRecord(error) && error.code === -32004) return null;
-      throw unavailable("无法确认原任务的执行工作区，未发送操作；请先重新读取任务目录");
-    }
   }
   /** @param {string} logicalId @param {string} taskId @param {{execution?:boolean}} [options] */
   async target(logicalId, taskId, options = {}) {
-    if (!identifier(taskId)) throw unavailable("任务身份无效");
-    const logical = this.logical(this.registered(logicalId));
-    const indexed = this.owners.get(taskId);
-    if ((indexed?.size ?? 0) > 1) throw unavailable("任务执行归属不唯一，未向任何工作区发送操作");
-    let candidates;
-    if (indexed?.size) {
-      const id = [...indexed][0];
-      const owner = this.registered(id);
-      if (this.logical(owner) !== logical) throw unavailable("任务不属于此逻辑项目");
-      const record = this.hosts.get(id)?.get(taskId);
-      if (!record) throw unavailable("任务执行归属索引缺失");
-      if (record.ambiguous) throw unavailable("任务会话锚点不唯一，未向任何工作区发送操作");
-      if (record.threadId && !options.execution) {
-        await this.writes.get(id);
-        // 等待落盘期间其他宿主可能报告冲突；放行前重新验证归属和锚点。
-        const currentOwners = this.owners.get(taskId);
-        const current = this.hosts.get(id)?.get(taskId);
-        if (
-          currentOwners?.size !== 1 ||
-          !currentOwners.has(id) ||
-          current?.ambiguous ||
-          current?.threadId !== record.threadId
-        )
-          throw unavailable("任务执行归属已变化，未向任何工作区发送操作");
-        if (this.logical(this.registered(id)) !== logical)
-          throw unavailable("任务不属于此逻辑项目");
-        return { projectId: id, threadId: current.threadId };
-      }
-      candidates = [owner];
-    } else candidates = this.backend.saved.filter((project) => this.logical(project) === logical);
-    /** @type {NodeJS.Timeout|undefined} */
-    let timer;
-    let matches;
-    try {
-      matches = await Promise.race([
-        Promise.all(candidates.map((owner) => this.read(owner, taskId))),
-        new Promise(
-          /** @param {(value:never)=>void} _ */ (_, reject) => {
-            timer = setTimeout(() => reject(unavailable("任务执行归属读取超时，未发送操作")), 5000);
-          },
-        ),
-      ]);
-    } finally {
-      clearTimeout(timer);
-    }
-    const found = matches.filter((value) => value !== null);
-    // 多宿主确认全部成功后才保存或放行，离线/超时不等于不存在。
-    if (found.length !== 1)
-      throw unavailable(found.length ? "任务执行归属不唯一，未发送操作" : "任务不存在于此逻辑项目");
-    await this.observe(found[0].project, found[0].task);
-    return {
-      projectId: found[0].project.id,
-      threadId: found[0].task.threadId ?? undefined,
-      ...(options.execution ? { mode: found[0].task.mode } : {}),
-    };
+    if (!this.backend.hostCall) throw unavailable("Host 任务归属不可用");
+    const value = await this.backend.hostCall("tasks.owner.read", { projectId: logicalId, taskId, execution: options.execution === true });
+    if (!modelRecord(value) || !identifier(value.projectId) ||
+        (value.threadId !== undefined && !identifier(value.threadId)) ||
+        (value.mode !== undefined && !["foreground","background","scheduled"].includes(String(value.mode))))
+      throw unavailable("Host 任务执行归属无效");
+    return { projectId: value.projectId, ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
+      ...(typeof value.mode === "string" ? { mode: value.mode } : {}) };
   }
   /** @param {string} logicalId @param {string} taskId */
   async resolve(logicalId, taskId) {

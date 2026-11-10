@@ -33,6 +33,7 @@ import { ConversationContentView } from "./ConversationContentView.js";
 import { GenUiCard } from "./GenUiWorkspace.js";
 import { submitMessage, sending, markSending } from "./Composer.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { errorText } from "./errors/errorCopy.js";
 import { WorktreeStatus } from "./WorktreeStatus.js";
 import { TurnUsage } from "./TurnUsage.js";
 import { mcpResultKey, type McpResultSource, type McpResultState } from "./mcp-app-services.js";
@@ -532,9 +533,7 @@ export function Messages({
           projectId: project.id,
           threadId: thread.id,
           path,
-        }).catch((error: unknown) =>
-          toast(error instanceof Error ? error.message : String(error), "error"),
-        );
+        }).catch((error: unknown) => toast(errorText(t, error), "error"));
         return;
       }
       if (fileOpen && opensOutside(path))

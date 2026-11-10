@@ -1,6 +1,7 @@
 // @ts-check
 "use strict";
-const WebSocket = require("ws");
+const { HostCoreClient } = require("@areal/workbench-service/host-core-client");
+const { randomUUID } = require("node:crypto");
 
 /** @param {string} value */
 function backendURL(value) {
@@ -20,8 +21,9 @@ function backendURL(value) {
 
 /** Arena 与远程 Core 使用同一原生接口，客户端不管理平台 Session。 */
 class CloudClient {
-  /** @param {{baseURL:string,token:string}} options */
-  constructor({ baseURL, token }) {
+  /** @param {{baseURL:string,token:string,host:(method:string,params:unknown)=>Promise<unknown>,sourceId:string,clients:Map<string,import('@areal/workbench-service/host-core-client').HostCoreClient>}} options */
+  constructor({ baseURL, token, host, sourceId, clients }) {
+    this.host = host; this.sourceId = sourceId; this.clients = clients;
     this.baseURL = backendURL(baseURL);
     if (typeof token !== "string" || !token.trim() || /[\r\n]/.test(token))
       throw new Error("Cloud token 无效");
@@ -33,20 +35,14 @@ class CloudClient {
       throw new Error("Cloud Session ID 无效");
     const url = new URL(this.baseURL);
     url.pathname += encodeURIComponent(sessionId) + "/";
-    return new CloudClient({ baseURL: url.href, token: this.token });
+    return new CloudClient({ baseURL: url.href, token: this.token, host:this.host, sourceId:this.sourceId, clients:this.clients });
   }
   /** @param {{onNotification?:(method:string,params:unknown)=>void,onClose?:()=>void}} [options] */
   async connect({ onNotification = () => {}, onClose = () => {} } = {}) {
-    const { CoreClient, MAX_RESPONSE_BYTES } = await import("@areal/runtime-client/core");
-    const client = new CoreClient({
-      timeoutMs: 180_000,
-      createSocket: () =>
-        new WebSocket(this.baseURL.href, {
-          headers: { Authorization: `Bearer ${this.token}` },
-          followRedirects: false,
-          maxPayload: MAX_RESPONSE_BYTES,
-        }),
-    });
+    const client = new HostCoreClient({ host:this.host, sourceId:this.sourceId, projectId:"", cloud:{baseURL:this.baseURL.href,token:this.token} });
+    const key=`cloud:${randomUUID()}`;
+    this.clients.set(key,client);
+    client.onClose(() => { if (this.clients.get(key)===client) this.clients.delete(key); });
     client.onNotification(onNotification);
     client.onClose(onClose);
     try {

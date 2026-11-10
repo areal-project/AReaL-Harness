@@ -435,7 +435,7 @@ async function recover(backend, notify) {
   backend.connection?.close();
   backend.connection = null;
   backend.status = { connected: false };
-  await backend.initialize(false);
+  await backend.initialize();
   if (
     backend.metadata?.identity !== journal.replacementIdentity ||
     backend.status.lifecycle?.version !== 2

@@ -73,16 +73,18 @@ export function renderPalette(tokens) {
     const entry = palette.semantic[name];
     assert.ok(entry.meaning?.trim() && entry.source?.trim(), `missing semantic metadata: ${name}`);
     resolving.add(name);
-    const value = expression(entry.value);
+    const floor = entry.minimumContrast && parameter(entry.minimumContrast);
+    const value = expression(entry.value, floor);
     const overrides = (entry.defaultOverrides ?? []).map(
-      (override) => `(${condition(override.match)}) ? ${expression(override.value)} : `,
+      (override) => `(${condition(override.match)}) ? ${expression(override.value, floor)} : `,
     );
     definitions.push(`  const ${variable(name)} = ${overrides.join("")}${value};`);
     resolving.delete(name);
     resolved.add(name);
     return variable(name);
   };
-  const expression = (rule) => {
+  // floor：文字对比度下限。只作用于前景混入背景（或透明后叠在背景上）的混色，把百分比推到达标为止。
+  const expression = (rule, floor) => {
     assert.ok(
       rule && typeof rule === "object" && !Array.isArray(rule),
       "palette rule must be an object",
@@ -99,7 +101,7 @@ export function renderPalette(tokens) {
     if (Object.hasOwn(rule, "semantic")) return semantic(rule.semantic);
     if (Object.hasOwn(rule, "mode")) {
       assert.deepEqual(Object.keys(rule.mode).sort(), ["dark", "light"]);
-      return `(dark ? ${expression(rule.mode.dark)} : ${expression(rule.mode.light)})`;
+      return `(dark ? ${expression(rule.mode.dark, floor)} : ${expression(rule.mode.light, floor)})`;
     }
     if (Object.hasOwn(rule, "translucent")) {
       assert.deepEqual(Object.keys(rule.translucent).sort(), ["solid", "translucent"]);
@@ -111,13 +113,22 @@ export function renderPalette(tokens) {
         ["srgb", "oklab"].includes(rule.mix.space),
         `unsupported color space: ${rule.mix.space}`,
       );
+      let percent = parameter(rule.mix.percent);
+      if (floor) {
+        assert.equal(rule.mix.from.input, "foreground", "contrast floor needs a foreground mix");
+        assert.ok(
+          rule.mix.into.input === "background" || rule.mix.into.reference === "transparent",
+          "contrast floor needs a mix into the background",
+        );
+        percent = `minimumPercent(p.foreground, p.background, ${percent}, ${floor})`;
+      }
       return (
         "`color-mix(in " +
         rule.mix.space +
         ", ${" +
         expression(rule.mix.from) +
         "} ${" +
-        parameter(rule.mix.percent) +
+        percent +
         "}%, ${" +
         expression(rule.mix.into) +
         "})`"
@@ -173,7 +184,7 @@ export function renderPalette(tokens) {
     "// Generated from tokens.json by scripts/palette.mjs. Do not edit.\n" +
     'import type { Palette } from "../theme.js";\n\n' +
     `export const PALETTE_REFERENCES = {\n${references.join("\n")}\n} as const;\n\n` +
-    "export function derivePaletteVariables(p: Palette, dark: boolean, readableForeground: (background: string) => string): Record<string, string> {\n" +
+    "export function derivePaletteVariables(p: Palette, dark: boolean, readableForeground: (background: string) => string, minimumPercent: (foreground: string, background: string, percent: number, contrast: number) => number): Record<string, string> {\n" +
     `  const contrastDelta = p.contrast - (dark ? ${darkContrast} : ${lightContrast});\n` +
     definitions.join("\n") +
     `\n  return {\n${roles.join("\n")}\n  };\n}\n`

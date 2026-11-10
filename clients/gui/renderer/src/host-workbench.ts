@@ -115,6 +115,7 @@ export const DESKTOP_COMMANDS = new Set([
   "providers",
   "queue",
   "queueEdit",
+  "recovery",
   "reconcile",
   "remoteControl",
   "resources",
@@ -130,6 +131,7 @@ const DESKTOP_ONLY_SETTINGS = new Set(["电脑控制"]);
 export function hostDesktopCommand(
   client: HostClient,
   source: () => string | undefined,
+  onSnapshot?: (snapshot: Record<string, unknown>) => void,
 ): PlatformServices["command"] {
   return async (name, params) => {
     if (!DESKTOP_COMMANDS.has(name) || !client.writable("desktop.command"))
@@ -142,13 +144,25 @@ export function hostDesktopCommand(
         command: name,
         request: params as Parameters<HostClient["workbench"]>[1],
       });
+      if (
+        value &&
+        typeof value === "object" &&
+        "projects" in value &&
+        Array.isArray((value as { projects?: unknown }).projects)
+      ) {
+        onSnapshot?.(value as Record<string, unknown>);
+      }
       return { ok: true, value };
     } catch (error) {
       const message =
         error && typeof error === "object" && "message" in error ? String(error.message) : "";
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
       return {
         ok: false,
-        error: { code: "COMMAND_FAILED", message: message || "操作失败" },
+        error: {
+          code: ["migrationBlocked", "MIGRATION_PENDING"].includes(code) ? code : "COMMAND_FAILED",
+          message: message || "操作失败",
+        },
       } as Awaited<ReturnType<PlatformServices["command"]>>;
     }
   };
@@ -173,21 +187,6 @@ const LIBRARY_SETTINGS = new Set([
   "showCompleted",
 ]);
 
-/** 按领域切到工作台服务的开关，逗号分隔，如 `analytics`。只在 reads 开着时生效。 */
-export function hostDomains(): Set<string> {
-  try {
-    if (localStorage.getItem("areal.oneProtocol.reads") !== "1") return new Set();
-    return new Set(
-      (localStorage.getItem("areal.oneProtocol.domains") ?? "")
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean),
-    );
-  } catch {
-    return new Set();
-  }
-}
-
 function declined(error: unknown) {
   return (
     error !== null &&
@@ -203,64 +202,33 @@ function declined(error: unknown) {
 export function createWorkbenchRoutes(
   client: HostClient,
   desktop: PlatformServices | undefined,
-  domains: Set<string>,
   events: Pick<Window, "addEventListener"> | undefined,
   document: Document | undefined,
   source: () => string | undefined,
-): PlatformServices["workbench"] {
-  if (
-    ![
-      "analytics",
-      "library",
-      "worktree",
-      "tasks",
-      "trajectory",
-      "feedback",
-      "manage",
-      "providers",
-      "pages",
-    ].some((domain) => domains.has(domain))
-  )
-    return undefined;
+): NonNullable<PlatformServices["workbench"]> {
   let lastInput = Date.now();
   for (const name of ["pointerdown", "pointermove", "keydown", "wheel"])
     events?.addEventListener(name, () => (lastInput = Date.now()), { passive: true });
-  let imported: Promise<void> | undefined;
-  const importDesktop = () =>
-    (imported ??= (async () => {
-      if (!desktop) return;
-      const result = await desktop.command("analytics", { operation: "read" });
-      if (!result.ok) return;
-      const summary = result.value as { since: number; days: Record<string, { activeMs: number }> };
-      const days = Object.fromEntries(
-        Object.entries(summary.days)
-          .filter(([, day]) => day.activeMs > 0)
-          .map(([date, day]) => [date, day.activeMs]),
-      );
-      await client.workbench("analytics.import", {
-        state: { version: 1, since: summary.since, days, turns: {}, skills: {} },
-      });
-    })().catch((error) => {
-      imported = undefined;
-      throw error;
-    }));
   const report = () => {
-    if (!domains.has("analytics")) return;
     if (!client.writable("analytics.activity")) return;
-    void importDesktop().catch(() => {});
     const focused = document
       ? document.hasFocus() && document.visibilityState === "visible"
       : false;
     const idleSeconds = Math.min(IDLE_CAP_SECONDS, Math.floor((Date.now() - lastInput) / 1000));
     void client.workbench("analytics.activity", { focused, idleSeconds }).catch(() => {});
   };
-  if (domains.has("analytics")) {
-    setInterval(report, ACTIVITY_MS);
-    for (const name of ["focus", "blur"]) events?.addEventListener(name, report);
-  }
+  setInterval(report, ACTIVITY_MS);
+  for (const name of ["focus", "blur"]) events?.addEventListener(name, report);
   return {
     async call(name, params) {
-      if (name === "manage" && params.operation === "mcpApps" && domains.has("pages")) {
+      // 原生进程的连接租约与归档确认弹窗归 Main；其薄适配仍经 Host 访问 Core。
+      if (
+        desktop &&
+        name === "manage" &&
+        (String(params.operation).startsWith("process") || params.operation === "archive")
+      )
+        return undefined;
+      if (name === "manage" && params.operation === "mcpApps") {
         if (!client.writable("pages.command")) return undefined;
         return {
           value: await client.workbench("pages.command", {
@@ -270,7 +238,7 @@ export function createWorkbenchRoutes(
           } as Parameters<HostClient["workbench"]>[1]),
         };
       }
-      if (name === "tasks" && domains.has("tasks") && client.writable("tasks.read")) {
+      if (name === "tasks" && client.writable("tasks.read")) {
         const sourceId = source();
         if (!sourceId) throw new Error("请先选择任务目录来源");
         return {
@@ -281,11 +249,11 @@ export function createWorkbenchRoutes(
       }
 
       if (
-        (name === "workspace" && domains.has("worktree")) ||
-        (name === "trajectory" && domains.has("trajectory")) ||
-        (name === "feedback" && domains.has("feedback")) ||
-        (name === "manage" && domains.has("manage")) ||
-        (name === "providers" && domains.has("providers"))
+        name === "workspace" ||
+        name === "trajectory" ||
+        name === "feedback" ||
+        name === "manage" ||
+        name === "providers"
       ) {
         const operation = String(params.operation);
         const domain = name === "workspace" ? "worktree" : name;
@@ -365,7 +333,6 @@ export function createWorkbenchRoutes(
 
       if (
         name === "library" &&
-        domains.has("library") &&
         (LIBRARY_OPERATIONS.has(String(params.operation)) ||
           (params.operation === "settings" && LIBRARY_SETTINGS.has(String(params.key)))) &&
         client.writable("library.command")
@@ -410,11 +377,9 @@ export function createWorkbenchRoutes(
           );
         }
       }
-      if (name !== "analytics" || !domains.has("analytics") || !client.writable("analytics.read"))
-        return undefined;
+      if (name !== "analytics" || !client.writable("analytics.read")) return undefined;
       const method = params.operation === "sync" ? "analytics.sync" : "analytics.read";
       try {
-        await importDesktop().catch(() => {});
         return { value: await client.workbench(method) };
       } catch (error) {
         if (declined(error)) return undefined;
@@ -427,38 +392,33 @@ export function createWorkbenchRoutes(
 export function hostPlatformCapabilities(
   client: HostClient,
   desktop: PlatformServices | undefined,
-  domains: Set<string>,
   librarySourceId: string | undefined,
-  writes?: boolean,
 ): PlatformServices["capabilities"] {
-  const available = (domain: string, method: string) =>
-    domains.has(domain) && !!librarySourceId && client.writable(method);
+  const available = (method: string) => !!librarySourceId && client.writable(method);
   const commands = desktop === undefined && !!librarySourceId && client.writable("desktop.command");
   return {
     mutations: desktop !== undefined || commands,
     conversationSubmit:
       desktop !== undefined ||
-      (!!writes && client.writable("session.send") && client.writable("session.control")),
-    conversationCreate: desktop !== undefined || (!!writes && client.writable("session.create")),
+      (client.writable("session.send") && client.writable("session.control")),
+    conversationCreate: desktop !== undefined || client.writable("session.create"),
     native: desktop !== undefined,
     pages:
       desktop !== undefined ||
-      (domains.has("pages") &&
-        client.writable("pages.command") &&
-        client.writable("pages.resource")),
-    library: desktop !== undefined || available("library", "library.command"),
+      (client.writable("pages.command") && client.writable("pages.resource")),
+    library: desktop !== undefined || available("library.command"),
     ...(desktop === undefined && {
-      taskCatalog: available("tasks", "tasks.read"),
-      taskManage: available("manage", "manage.command"),
+      taskCatalog: available("tasks.read"),
+      taskManage: available("manage.command"),
       settings: commands
         ? settingsNavigationGroups
             .flatMap((group) => group.items.map((item) => item.id))
             .filter((id) => !DESKTOP_ONLY_SETTINGS.has(id))
         : [
-            ...(available("providers", "providers.read") ? ["模型服务"] : []),
-            ...(available("worktree", "worktree.read") ? ["Worktrees"] : []),
-            ...(available("trajectory", "trajectory.read") ? ["数据飞轮"] : []),
-            ...(domains.has("analytics") && client.writable("analytics.read") ? ["用量"] : []),
+            ...(available("providers.read") ? ["模型服务"] : []),
+            ...(available("worktree.read") ? ["Worktrees"] : []),
+            ...(available("trajectory.read") ? ["数据飞轮"] : []),
+            ...(client.writable("analytics.read") ? ["用量"] : []),
           ],
     }),
   };

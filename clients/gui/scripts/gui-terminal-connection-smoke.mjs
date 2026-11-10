@@ -65,17 +65,51 @@ async function until(check, message) {
   }
 }
 
-function terminalOwner(descriptor) {
+async function terminalOwner(descriptor) {
+  const ownerRoot = join(root, `main-owner-${owners.length}`),
+    nativeSource = {
+      profile: join(ownerRoot, "profile"),
+      coreHome: join(ownerRoot, "gui-core"),
+      legacyServiceHome: join(ownerRoot, "services"),
+    };
+  for (const path of Object.values(nativeSource))
+    await mkdir(path, { recursive: true, mode: 0o700 });
+  await writeFile(join(nativeSource.coreHome, "projects.json"), "[]");
+  const setup = new HostClient();
+  let sourceId;
+  try {
+    await setup.connect(home);
+    await setup.attachSource(nativeSource);
+    const result = await setup.importSource(randomUUID(), nativeSource);
+    assert.equal(result.kind, "ready");
+    sourceId = (await setup.sourceState(nativeSource)).sourceId;
+  } finally {
+    setup.close();
+  }
+  const options = {
+    binary,
+    home: nativeSource.coreHome,
+    guiProfile: nativeSource.profile,
+    hostHome: home,
+    userHome: user,
+    configHome: user,
+    config,
+  };
+
   const source = `
-    const { GuiTerminalConnections } = require(process.argv[1]);
-    const connections = new GuiTerminalConnections();
+    const {createNativeHostTransport}=require(process.argv[1]);
+    const {HostCoreClient}=require(process.argv[2]);
+    const config=JSON.parse(process.argv[3]);
+    const backend={host:{sourceId:config.sourceId,home:config.home},hostCoreClients:new Map()};
+    let transport,client;
+    const ready=(async()=>{transport=await createNativeHostTransport(backend,config.options);client=new HostCoreClient({host:transport.call,sourceId:config.sourceId,projectId:config.projectId,scope:'terminal'});backend.hostCoreClients.set('terminal',client);await client.connect();})();
     process.on("message", async ({id, request}) => {
       if (request === "close") {
-        connections.close();
+        await ready;client.close();transport.close();
         process.send({id, result: true}, () => process.exit(0));
         return;
       }
-      try { process.send({id, result: await connections.request(request)}); }
+      try {await ready;process.send({id,result:await client.request(request.method,request.params)}); }
       catch (error) { process.send({id, error: {message: error.message, code: error.code}}); }
     });
   `;
@@ -84,7 +118,9 @@ function terminalOwner(descriptor) {
     [
       "-e",
       source,
-      join(repository, "services/workbench/src/desktop/core/gui-terminal-connections.cjs"),
+      join(repository, "services/workbench/src/generated/native-host-transport.cjs"),
+      join(repository, "services/workbench/src/generated/host-core-client.cjs"),
+      JSON.stringify({ sourceId, home, options, projectId: descriptor.projectId }),
     ],
     {
       env: { PATH: process.env.PATH, HOME: user },
@@ -166,16 +202,13 @@ try {
   }));
   observer = await connect(service.endpoint, service.authFile);
   assert.equal((await observer.call("areal/capabilities")).features.connectionProcesses, true);
-  const auth = JSON.parse(await readFile(service.authFile, "utf8"));
   const descriptor = {
     projectId: "terminal-project",
     serviceId: service.serviceId,
     generation: service.generation,
-    endpoint: service.endpoint,
-    token: auth.principals[0].token,
   };
-  const a = terminalOwner(descriptor);
-  const b = terminalOwner(descriptor);
+  const a = await terminalOwner(descriptor);
+  const b = await terminalOwner(descriptor);
   const thread = (
     await observer.call("areal/thread/start", {
       requestId: randomUUID(),
@@ -250,7 +283,7 @@ try {
   assert.ok(secondRecord.connectionId);
   assert.notEqual(firstRecord.connectionId, secondRecord.connectionId);
   assert.equal(active.find((process) => process.id === ordinary.id).connectionId, undefined);
-  checks.push("dedicated-main-connections-start-read-write-resize-real-ptys");
+  checks.push("host-owned-terminal-leases-start-read-write-resize-real-ptys");
 
   a.child.kill("SIGKILL");
   assert.equal((await a.exited).signal, "SIGKILL");

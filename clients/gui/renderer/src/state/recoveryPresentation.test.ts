@@ -6,6 +6,8 @@ import {
   sameRecoveryOwner,
   type RecoveryOperation,
 } from "../recoveryPresentation.js";
+import { catalogs } from "../i18n/messages.js";
+import type { Translate } from "../i18n/uiMessage.js";
 
 const operation: RecoveryOperation = {
   requestId: "request-1",
@@ -63,6 +65,18 @@ test("connection generations belong to recovery identity and unknown results nev
   expect(isTechnicalErrorMessage("请先保存当前文件")).toBe(false);
 });
 
+test("with copy available, operation failures use the error table instead of backend text", () => {
+  const zh: Translate = (id) => catalogs["zh-CN"][id];
+  const busy = { code: "TURN_BUSY", message: "命令未受理，请刷新状态后检查草稿" };
+  expect(recoveryMessage(busy, "operation", zh)).toBe(catalogs["zh-CN"]["errors.TURN_BUSY"]);
+  expect(recoveryMessage({ message: "Project Core unavailable" }, "operation", zh)).toBe(
+    catalogs["zh-CN"]["errors.generic"],
+  );
+  expect(recoveryMessage({ message: "x", submissionUnknown: true }, "operation", zh)).toBe(
+    "操作结果待确认。",
+  );
+});
+
 test("an outcome without the original operation cannot release an unknown submission", () => {
   expect(
     recoveredOutcome(
@@ -86,4 +100,20 @@ test("an outcome without the original operation cannot release an unknown submis
       operation,
     ),
   ).toBeUndefined();
+});
+
+test("migration blocks explain the original stop boundary without releasing unknown operations", () => {
+  const message =
+    "旧运行状态尚未确认，暂时无法打开项目。历史和草稿已保留，请先检查原任务的停止结果。";
+  for (const code of ["migrationBlocked", "MIGRATION_PENDING"]) {
+    const failure = Object.freeze({
+      message: "internal lifecycle detail",
+      code,
+      requestId: "original",
+    });
+    expect(recoveryMessage(failure, "view")).toBe(message);
+    expect(recoveryMessage({ ...failure, submissionUnknown: true })).toBe("操作结果待确认。");
+    expect(failure.requestId).toBe("original");
+    expect(failure.message).toBe("internal lifecycle detail");
+  }
 });

@@ -269,7 +269,6 @@ export function ComputerSettings({
                       : "settings.computer.notReady",
             )}
             description={status?.message || status?.reason || undefined}
-            controlLayout="wide"
             control={
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button

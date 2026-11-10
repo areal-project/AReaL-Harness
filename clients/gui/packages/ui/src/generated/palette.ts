@@ -19,8 +19,8 @@ export const PALETTE_REFERENCES = {
   "settings-sidebar-default-translucent": "rgb(40 40 40 / 0.7)",
   "settings-row-default-dark": "rgba(255, 255, 255, 0.08)",
   "page-shadow-ambient": "#0000000d",
-  "composer-shadow-light": "var(--composer-shadow-light)",
-  "composer-shadow-dark": "var(--composer-shadow-dark)",
+  "composer-shadow-light": "0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 80px 8px #00000006",
+  "composer-shadow-dark": "inset 0 0 1px 0 #fff3",
   "success": "var(--color-success)",
   "warning": "var(--color-warning)",
   "error": "var(--color-destructive)",
@@ -45,17 +45,34 @@ export const PALETTE_REFERENCES = {
   "workbench-slider-selected-track": "#ffffff80",
   "workbench-annotation-selected-foreground": "#91c5ff",
   "workbench-annotation-selected-surface": "#4795ff26",
+  "tooltip-surface-light": "#f0f0f0",
+  "tooltip-surface-dark": "#2b2b2b",
+  "tooltip-text-light": "#0d0d0d",
+  "tooltip-text-dark": "#f8f8f8",
+  "tooltip-tag-light": "#e6e6e6",
+  "tooltip-tag-dark": "#363636",
+  "tooltip-tag-text-light": "#5c5c5c",
+  "tooltip-tag-text-dark": "#adadad",
 } as const;
 
-export function derivePaletteVariables(p: Palette, dark: boolean, readableForeground: (background: string) => string): Record<string, string> {
+export function derivePaletteVariables(p: Palette, dark: boolean, readableForeground: (background: string) => string, minimumPercent: (foreground: string, background: string, percent: number, contrast: number) => number): Record<string, string> {
   const contrastDelta = p.contrast - (dark ? 60 : 45);
+  const surfaceElevatedOklab = `color-mix(in oklab, ${p.foreground} ${(dark ? 7 : 4)}%, ${p.background})`;
+  const surfaceTertiaryOklab = `color-mix(in oklab, ${p.foreground} ${(dark ? 11 : 6.5)}%, ${p.background})`;
+  const surfaceGlassOklab = `color-mix(in oklab, ${surfaceElevatedOklab} ${(dark ? 84 : 86)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const borderSubtleOklab = `color-mix(in oklab, ${p.foreground} ${((dark ? 6 : 5.5) + contrastDelta * 0.06)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const textActivitySummary = `color-mix(in oklab, ${p.foreground} ${minimumPercent(p.foreground, p.background, 60, 4.5)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const textActivityChild = `color-mix(in oklab, ${p.foreground} ${minimumPercent(p.foreground, p.background, 36, 4.5)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const surfaceDiffAdded = `color-mix(in oklab, ${PALETTE_REFERENCES["workbench-diff-count-added"]} ${(dark ? 14 : 10)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const surfaceDiffRemoved = `color-mix(in oklab, ${PALETTE_REFERENCES["workbench-diff-count-removed"]} ${(dark ? 14 : 10)}%, ${PALETTE_REFERENCES["transparent"]})`;
+  const interactionFocusRingSoft = `color-mix(in oklab, ${p.accent} ${(dark ? 28 : 22)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const surfaceBase = p.background;
   const textDefault = p.foreground;
   const interactionFocus = p.accent;
   const textFileLink = (p.accent === PALETTE_REFERENCES["default-accent"]) ? PALETTE_REFERENCES["file-link-default"] : p.accent;
   const textFileLinkOnSurface = (dark ? `color-mix(in srgb, ${textFileLink} ${80}%, ${textDefault})` : textFileLink);
-  const textSubtle = `color-mix(in srgb, ${p.foreground} ${((dark ? 69.5 : 75) + contrastDelta * 0.15)}%, ${p.background})`;
-  const statusSettled = (dark ? `color-mix(in srgb, ${p.foreground} ${(55 + contrastDelta * 0.15)}%, ${PALETTE_REFERENCES["transparent"]})` : textSubtle);
+  const textSubtle = `color-mix(in srgb, ${p.foreground} ${minimumPercent(p.foreground, p.background, ((dark ? 69.5 : 75) + contrastDelta * 0.15), 4.5)}%, ${p.background})`;
+  const statusSettled = (dark ? `color-mix(in srgb, ${p.foreground} ${minimumPercent(p.foreground, p.background, (55 + contrastDelta * 0.15), 4.5)}%, ${PALETTE_REFERENCES["transparent"]})` : textSubtle);
   const surfaceRaised = `color-mix(in srgb, ${p.foreground} ${(2100 / 231)}%, ${p.background})`;
   const surfaceMuted = `color-mix(in srgb, ${p.foreground} ${(3 + contrastDelta * 0.03)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const surfaceRaisedTranslucent = (dark ? `color-mix(in srgb, ${surfaceRaised} ${50}%, ${PALETTE_REFERENCES["transparent"]})` : surfaceMuted);
@@ -89,8 +106,8 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
   const surfaceCatalog = (dark ? `color-mix(in srgb, ${p.foreground} ${(2000 / 231)}%, ${p.background})` : surfaceBase);
   const borderDefault = `color-mix(in srgb, ${p.foreground} ${((dark ? 8.4 : 7.8) + contrastDelta * 0.08)}%, ${PALETTE_REFERENCES["transparent"]})`;
   const borderHover = `color-mix(in srgb, ${p.foreground} ${(11.7 + contrastDelta * 0.1)}%, ${PALETTE_REFERENCES["transparent"]})`;
-  const textSubtlest = `color-mix(in srgb, ${p.foreground} ${((dark ? 55 : 70) + contrastDelta * 0.05)}%, ${p.background})`;
-  const textSettingsSecondary = (dark ? `color-mix(in srgb, ${p.foreground} ${(65 + contrastDelta * 0.15)}%, ${PALETTE_REFERENCES["transparent"]})` : textSubtle);
+  const textSubtlest = `color-mix(in srgb, ${p.foreground} ${minimumPercent(p.foreground, p.background, ((dark ? 55 : 70) + contrastDelta * 0.05), 4.5)}%, ${p.background})`;
+  const textSettingsSecondary = (dark ? `color-mix(in srgb, ${p.foreground} ${minimumPercent(p.foreground, p.background, (65 + contrastDelta * 0.15), 4.5)}%, ${PALETTE_REFERENCES["transparent"]})` : textSubtle);
   const statusRunning = textSubtle;
   const statusSuccess = PALETTE_REFERENCES["success"];
   const statusAttention = PALETTE_REFERENCES["warning"];
@@ -116,8 +133,21 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
   const interactionSliderSelectedTrack = PALETTE_REFERENCES["workbench-slider-selected-track"];
   const textAnnotationSelected = PALETTE_REFERENCES["workbench-annotation-selected-foreground"];
   const surfaceAnnotationSelected = PALETTE_REFERENCES["workbench-annotation-selected-surface"];
+  const surfaceTooltip = (dark ? PALETTE_REFERENCES["tooltip-surface-dark"] : PALETTE_REFERENCES["tooltip-surface-light"]);
+  const textTooltip = (dark ? PALETTE_REFERENCES["tooltip-text-dark"] : PALETTE_REFERENCES["tooltip-text-light"]);
+  const surfaceTooltipTag = (dark ? PALETTE_REFERENCES["tooltip-tag-dark"] : PALETTE_REFERENCES["tooltip-tag-light"]);
+  const textTooltipTag = (dark ? PALETTE_REFERENCES["tooltip-tag-text-dark"] : PALETTE_REFERENCES["tooltip-tag-text-light"]);
   const interactionPressed = interactionSelected;
   return {
+    "--color-surface-elevated": surfaceElevatedOklab,
+    "--color-surface-tertiary": surfaceTertiaryOklab,
+    "--color-surface-glass": surfaceGlassOklab,
+    "--color-border-subtle": borderSubtleOklab,
+    "--color-activity-summary": textActivitySummary,
+    "--color-activity-child": textActivityChild,
+    "--color-diff-added-surface": surfaceDiffAdded,
+    "--color-diff-removed-surface": surfaceDiffRemoved,
+    "--color-focus-ring-soft": interactionFocusRingSoft,
     "--color-background": surfaceBase,
     "--color-foreground": textDefault,
     "--color-brand": interactionFocus,
@@ -156,6 +186,7 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
     "--color-menu-border": borderMenu,
     "--color-menu-hover": interactionMenuHover,
     "--color-composer-catalog": surfaceCatalog,
+    "--color-markdown-inline-code": surfaceTertiaryOklab,
     "--color-input": surfaceBase,
     "--color-input-focused": surfaceBase,
     "--color-input-border": "var(--color-border)",
@@ -196,5 +227,9 @@ export function derivePaletteVariables(p: Palette, dark: boolean, readableForegr
     "--color-slider-selected-track": interactionSliderSelectedTrack,
     "--color-annotation-selected-foreground": textAnnotationSelected,
     "--color-annotation-selected-surface": surfaceAnnotationSelected,
+    "--color-tooltip": surfaceTooltip,
+    "--color-tooltip-foreground": textTooltip,
+    "--color-tooltip-tag": surfaceTooltipTag,
+    "--color-tooltip-tag-foreground": textTooltipTag,
   };
 }

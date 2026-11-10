@@ -101,7 +101,12 @@ export async function stageCoreApp({ root, destination }) {
                 "__tests__",
                 "examples",
               ].includes(part),
-            ) && !/\.(map|d\.ts|d\.mts|d\.cts|tsbuildinfo)$/.test(rel)
+            ) &&
+          !/\.(map|d\.ts|d\.mts|d\.cts|tsbuildinfo)$/.test(rel) &&
+          (pkg.name.startsWith("@areal/") || !/\.(ts|mts|cts|wat|flow)$/i.test(rel)) &&
+          (pkg.name.startsWith("@areal/") ||
+            !/\.md$/i.test(rel) ||
+            /^(licen[cs]e|notice|copying)(\.|$)/i.test(rel.split("/").pop()))
         );
       },
     });

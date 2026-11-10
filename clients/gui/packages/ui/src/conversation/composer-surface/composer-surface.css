@@ -3,19 +3,20 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) 12px;
+  grid-template-columns: var(--composer-inset) minmax(0, 1fr) var(--composer-inset);
   gap: 0;
-  padding: 12px 0 var(--spacing-inline);
+  padding: var(--composer-inset) 0 var(--spacing-inline);
   border: 0;
   border-radius: var(--radius-composer);
-  background: var(--color-composer, var(--color-background));
+  background: var(--color-composer);
   box-shadow: var(--shadow-composer);
-  backdrop-filter: blur(16px);
+  transition: box-shadow var(--motion-fast) var(--ease-standard);
 }
 .composer-surface:focus-within {
   box-shadow:
     var(--shadow-composer),
-    0 0 0 1px var(--color-border-hover);
+    0 0 0 1px var(--color-border-hover),
+    0 0 0 3px var(--color-focus-ring-soft);
 }
 .composer-surface[data-dragging] {
   outline: var(--focus-width) solid var(--color-brand);
@@ -32,7 +33,7 @@
   min-width: 0;
   max-height: 40dvh;
   overflow-y: auto;
-  padding: 0 12px;
+  padding: 0 var(--composer-inset);
 }
 .composer-editor {
   scrollbar-width: thin;
@@ -137,6 +138,53 @@
   .composer-surface[data-layout="compact"] .composer-model-trigger {
     max-width: 120px;
   }
+}
+
+/* 放置位置：首页更大圆角；消息内编辑是平面、无阴影，只在聚焦时描边。 */
+.composer-surface[data-placement="home"] {
+  border-radius: var(--radius-composer-large);
+}
+.composer-surface[data-placement="inline"] {
+  background: var(--color-composer-catalog);
+  box-shadow: none;
+  border-radius: var(--radius-composer);
+}
+.composer-surface[data-placement="inline"]:focus-within {
+  box-shadow: 0 0 0 1px var(--color-border-hover);
+}
+/* 决策面（审批/提问）压成一行，保留已挂载的编辑器与草稿。 */
+.composer-surface[data-layout="decision"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--spacing-inline) / 2);
+  padding: calc(var(--spacing-inline) * 3 / 4) var(--spacing-inline)
+    calc(var(--spacing-inline) * 3 / 4) var(--composer-inset);
+}
+.composer-surface[data-layout="decision"] .composer-editor {
+  flex: 1 1 120px;
+  padding: 0 0 0 calc(var(--spacing-control) + var(--spacing-inline) * 3 / 4);
+  max-height: calc(4 * var(--line-height-ui));
+}
+.composer-surface[data-layout="decision"] .composer-editor :is([contenteditable], textarea) {
+  min-height: var(--line-height-ui);
+  padding-bottom: 0;
+}
+.composer-surface[data-layout="decision"]
+  .composer-editor
+  :is([contenteditable], textarea, .composer-prediction) {
+  font-size: var(--text-ui-base);
+  line-height: var(--line-height-ui);
+}
+.composer-surface[data-layout="decision"] .composer-toolbar {
+  position: static;
+  flex: 0 0 auto;
+}
+.composer-surface[data-layout="decision"] [data-composer-leading-actions] {
+  position: absolute;
+  left: calc(var(--composer-inset) - var(--spacing-inline) / 4);
+  bottom: calc(var(--spacing-inline) * 3 / 4);
+  width: calc(var(--spacing-control) + var(--spacing-inline) / 2);
 }
 
 @media (max-width: 760px) {

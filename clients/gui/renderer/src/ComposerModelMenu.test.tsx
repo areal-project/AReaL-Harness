@@ -1,6 +1,7 @@
 import { createElement, type ComponentProps } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { OpenSettingsContext } from "./settings/openSettingsContext.js";
 import { ComposerModelMenu, composerModelOption } from "./ComposerModelMenu.js";
 
 vi.mock("./i18n/IntlProvider.js", () => ({
@@ -207,5 +208,78 @@ describe("composer confirmed Fast status", () => {
     );
     expect(markup.includes("Fast · chat.composer.effort.max")).toBe(serviceTier === "fast");
     expect(markup).toContain('aria-label="chat.composer.chooseEffort"');
+  });
+});
+
+describe("unavailable model guidance", () => {
+  it("lists configured unavailable models and opens model settings", () => {
+    const openSettings = vi.fn();
+    const options = [
+      composerModelOption({
+        providerId: "a",
+        providerName: "Provider A",
+        modelId: "alpha",
+        available: false,
+        credentialState: "unavailable",
+      }),
+      composerModelOption({
+        providerId: "a",
+        providerName: "Provider A",
+        modelId: "alpha-2",
+        available: false,
+        credentialState: "unavailable",
+      }),
+      composerModelOption({
+        providerId: "b",
+        providerName: "Provider B",
+        modelId: "beta",
+        unavailableReason: "storageLocked",
+      }),
+    ];
+    menu.expanded = true;
+    menu.actions.clear();
+    try {
+      const markup = renderToStaticMarkup(
+        createElement(
+          OpenSettingsContext.Provider,
+          { value: openSettings },
+          createElement(ComposerModelMenu, {
+            options,
+            value: "",
+            onChange: vi.fn(),
+            onClose: vi.fn(),
+          }),
+        ),
+      );
+      for (const text of [
+        "alpha",
+        "Provider A",
+        "缺少 API Key",
+        "beta",
+        "Provider B",
+        "钥匙串访问受限，请重新保存密钥",
+      ])
+        expect(markup).toContain(text);
+      expect(markup).toContain("alpha-2");
+      expect(markup.match(/缺少 API Key/g)).toHaveLength(1);
+      expect(markup).not.toContain('type="radio"');
+      menu.actions.get("chat.composer.configureModels")?.();
+      expect(openSettings).toHaveBeenCalledWith("模型服务");
+    } finally {
+      menu.expanded = false;
+      menu.actions.clear();
+    }
+  });
+
+  it("keeps the empty catalog fallback", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ComposerModelMenu, {
+        options: [],
+        value: "",
+        onChange: vi.fn(),
+        onClose: vi.fn(),
+      }),
+    );
+    expect(markup).toContain("chat.composer.noModels");
   });
 });

@@ -7,11 +7,11 @@ use areal_local_service::storage;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
-    cell::RefCell,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct State {
     source_id: String,
@@ -37,11 +37,141 @@ struct Replace {
 struct Acquire {
     source_id: String,
 }
+type Seed = Option<(String, String, Vec<String>)>;
+pub(crate) trait Credentials {
+    fn vault(&self) -> &crate::vault::Vault;
+    fn remote_seed(&self) -> Result<Seed>;
+}
+impl Credentials for Migration {
+    fn vault(&self) -> &crate::vault::Vault {
+        &self.vault
+    }
+    fn remote_seed(&self) -> Result<Seed> {
+        Migration::remote_seed(self)
+    }
+}
+impl Credentials for std::rc::Rc<Migration> {
+    fn vault(&self) -> &crate::vault::Vault {
+        &self.vault
+    }
+    fn remote_seed(&self) -> Result<Seed> {
+        Migration::remote_seed(self)
+    }
+}
+struct CredentialSnapshot {
+    vault: crate::vault::Vault,
+    seed: Seed,
+}
+impl Credentials for CredentialSnapshot {
+    fn vault(&self) -> &crate::vault::Vault {
+        &self.vault
+    }
+    fn remote_seed(&self) -> Result<Seed> {
+        Ok(self.seed.clone())
+    }
+}
+struct Projection {
+    state: State,
+    config: Value,
+}
+#[derive(Clone)]
 pub(crate) struct RemoteState {
     home: PathBuf,
-    lease: RefCell<Option<(String, String)>>,
+    lease: Arc<Mutex<Option<(String, String)>>>,
+    projection: Arc<Mutex<Option<Projection>>>,
 }
 impl RemoteState {
+    async fn run<T: Send + 'static>(
+        &self,
+        migration: &Migration,
+        request_id: Option<String>,
+        work: impl FnOnce(Self, CredentialSnapshot) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        // 只复制已提交的迁移种子；Migration 的源锁与租约仍由 Host 持有。
+        let seed = migration.remote_seed()?;
+        let remote = self.clone();
+        migration
+            .vault
+            .run(
+                json!({"slot":{"kind":"remoteIdentity"},"requestId":request_id}),
+                move |vault| work(remote, CredentialSnapshot { vault, seed }),
+            )
+            .await
+    }
+    pub(crate) async fn dispatch_async(
+        &self,
+        method: &str,
+        params: Value,
+        connection: &str,
+        generation: &str,
+        migration: &Migration,
+        projects: &[String],
+    ) -> Result<Value> {
+        let request = params["requestId"].as_str().map(str::to_owned);
+        let method = method.to_owned();
+        let connection = connection.to_owned();
+        let generation = generation.to_owned();
+        let projects = projects.to_vec();
+        self.run(migration, request, move |remote, credentials| {
+            remote.dispatch(
+                &method,
+                params,
+                &connection,
+                &generation,
+                &credentials,
+                &projects,
+            )
+        })
+        .await
+    }
+    pub(crate) async fn snapshot_async(&self, migration: &Migration) -> Result<Value> {
+        if let Ok(snapshot) = self.snapshot(migration) {
+            return Ok(snapshot);
+        }
+        self.dispatch_async(
+            "remote.read",
+            json!({}),
+            "native-gateway",
+            "",
+            migration,
+            &[],
+        )
+        .await
+    }
+    pub(crate) async fn handoff_async(
+        &self,
+        params: Value,
+        identity: &crate::HostIdentity,
+        migration: &Migration,
+    ) -> Result<Value> {
+        let request = params["requestId"].as_str().map(str::to_owned);
+        let identity = identity.clone();
+        self.run(migration, request, move |remote, credentials| {
+            remote.handoff(params, &identity, &credentials)
+        })
+        .await
+    }
+    pub(crate) async fn operation_async(
+        &self,
+        id: &str,
+        migration: &Migration,
+    ) -> Result<Option<Value>> {
+        let Some(receipt) = Self::operation_offline(&self.home, id)? else {
+            return Ok(None);
+        };
+        if receipt["state"] != "acceptedPending"
+            || migration
+                .vault
+                .slot_in_flight(&crate::vault::Slot::RemoteIdentity)
+        {
+            return Ok(Some(receipt));
+        }
+        let id = id.to_owned();
+        self.run(migration, None, move |remote, credentials| {
+            remote.operation(&id, &credentials)
+        })
+        .await
+    }
     pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
         wire::request_id(id)?;
         let remote = Self::new(home);
@@ -86,13 +216,14 @@ impl RemoteState {
     pub fn new(home: &Path) -> Self {
         Self {
             home: home.into(),
-            lease: RefCell::new(None),
+            lease: Arc::new(Mutex::new(None)),
+            projection: Arc::new(Mutex::new(None)),
         }
     }
     fn path(&self) -> PathBuf {
         self.home.join("host/remote-state.json")
     }
-    fn state(&self, migration: &Migration) -> Result<Option<State>> {
+    fn state(&self, migration: &impl Credentials) -> Result<Option<State>> {
         if let Some(state) = migration::read_optional(&self.path())? {
             return Ok(Some(state));
         }
@@ -119,15 +250,64 @@ impl RemoteState {
         wire::request_id(id)?;
         self.save_receipt(&json!({"requestId":id,"method":"remote.gateway.control","sourceId":source_id,"hostId":identity.host_id,"generation":identity.generation,"controlDigest":digest,"state":"completed","ephemeral":true}))
     }
-    pub(crate) fn snapshot(&self, migration: &Migration) -> Result<Value> {
-        self.dispatch(
-            "remote.read",
-            json!({}),
-            "native-gateway",
-            "",
-            migration,
-            &[],
+    fn project(&self, state: &State, config: Value) -> Result<Value> {
+        Ok(
+            json!({"revision":state.revision,"sourceId":state.source_id,"config":config,"owner":if self.native_owner()?.is_some(){"native"}else{"legacy"}}),
         )
+    }
+    fn same_state(left: &State, right: &State) -> bool {
+        left.source_id == right.source_id
+            && left.revision == right.revision
+            && left.entry_id == right.entry_id
+    }
+    fn publish_read(&self, state: &State, config: Value) -> Result<Value> {
+        let mut projection = self.projection.lock().unwrap();
+        let durable = migration::read_optional::<State>(&self.path())?;
+        ensure!(
+            durable
+                .as_ref()
+                .is_some_and(|current| Self::same_state(current, state)),
+            error(
+                "revisionConflict",
+                "Remote state changed while loading credentials"
+            )
+        );
+        let value = self.project(state, config.clone())?;
+        *projection = Some(Projection {
+            state: state.clone(),
+            config,
+        });
+        Ok(value)
+    }
+    fn commit_state(&self, state: &State, config: Value) -> Result<()> {
+        // Keychain I/O 已完成；短临界区让撤销持久化和同步授权投影同时对读者生效。
+        let mut projection = self.projection.lock().unwrap();
+        storage::write(&self.path(), state)?;
+        *projection = Some(Projection {
+            state: state.clone(),
+            config,
+        });
+        Ok(())
+    }
+    pub(crate) fn snapshot(&self, _migration: &impl Credentials) -> Result<Value> {
+        let projection = self.projection.lock().unwrap();
+        let loaded = projection.as_ref().ok_or_else(|| {
+            error(
+                "remoteStateUnavailable",
+                "Remote configuration has not been loaded",
+            )
+        })?;
+        let durable = migration::read_optional::<State>(&self.path())?;
+        ensure!(
+            durable
+                .as_ref()
+                .is_some_and(|current| Self::same_state(current, &loaded.state)),
+            error(
+                "remoteStateUnavailable",
+                "Remote configuration changed outside its owner"
+            )
+        );
+        self.project(&loaded.state, loaded.config.clone())
     }
     pub(crate) fn native_owner(&self) -> Result<Option<Value>> {
         migration::read_optional(&self.home.join("host/remote-gateway.json"))
@@ -136,7 +316,7 @@ impl RemoteState {
         &self,
         params: Value,
         identity: &crate::HostIdentity,
-        migration: &Migration,
+        migration: &impl Credentials,
     ) -> Result<Value> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -175,11 +355,11 @@ impl RemoteState {
             error("revisionConflict", "Remote source or revision changed")
         );
         ensure!(
-            self.lease.borrow().is_none(),
+            self.lease.lock().unwrap().is_none(),
             error("remoteBusy", "Legacy Gateway has not drained")
         );
         let config = migration
-            .vault
+            .vault()
             .read(&state.entry_id)?
             .context("Remote configuration is missing")?;
         crate::gateway::wire::Identity::from_base64(
@@ -202,6 +382,7 @@ impl RemoteState {
             receipt["assetRoot"] = json!(root);
         }
         storage::write(&self.home.join("host/remote-gateway.json"), &receipt)?;
+        self.publish_read(&state, config)?;
         Ok(receipt)
     }
     pub fn dispatch(
@@ -210,7 +391,7 @@ impl RemoteState {
         params: Value,
         connection: &str,
         generation: &str,
-        migration: &Migration,
+        migration: &impl Credentials,
         projects: &[String],
     ) -> Result<Value> {
         self.dispatch_inner(
@@ -254,7 +435,7 @@ impl RemoteState {
         &self,
         params: Value,
         generation: &str,
-        migration: &Migration,
+        migration: &impl Credentials,
         projects: &[String],
     ) -> Result<Value> {
         self.dispatch_inner(
@@ -271,7 +452,7 @@ impl RemoteState {
         method: &str,
         params: Value,
         (connection, generation): (&str, &str),
-        migration: &Migration,
+        migration: &impl Credentials,
         projects: &[String],
         enrollment: bool,
     ) -> Result<Value> {
@@ -302,12 +483,10 @@ impl RemoteState {
                     return Ok(json!({"revision":0,"sourceId":null,"config":null}));
                 };
                 let current = migration
-                    .vault
+                    .vault()
                     .read(&state.entry_id)?
                     .context("missing Remote vault entry")?;
-                Ok(
-                    json!({"revision":state.revision,"sourceId":state.source_id,"config":current,"owner":if self.native_owner()?.is_some(){"native"}else{"legacy"}}),
-                )
+                self.publish_read(&state, current)
             }
             "remote.acquire" => {
                 let input: Acquire = serde_json::from_value(params)?;
@@ -319,7 +498,8 @@ impl RemoteState {
                 }
                 if self
                     .lease
-                    .borrow()
+                    .lock()
+                    .unwrap()
                     .as_ref()
                     .is_some_and(|(owner, _)| owner != connection)
                 {
@@ -330,11 +510,12 @@ impl RemoteState {
                 }
                 let lease_id = self
                     .lease
-                    .borrow()
+                    .lock()
+                    .unwrap()
                     .as_ref()
                     .map(|(_, id)| id.clone())
                     .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-                *self.lease.borrow_mut() = Some((connection.into(), lease_id.clone()));
+                *self.lease.lock().unwrap() = Some((connection.into(), lease_id.clone()));
                 Ok(json!({"leaseId":lease_id,"sourceId":input.source_id}))
             }
             "remote.replace" => {
@@ -380,7 +561,7 @@ impl RemoteState {
                         if previous["sourceId"] != input.source_id
                             || previous["previousRevision"] != input.expected_revision
                             || migration
-                                .vault
+                                .vault()
                                 .read(
                                     previous["entryId"]
                                         .as_str()
@@ -417,7 +598,7 @@ impl RemoteState {
                 }
                 if state.revision != 0 {
                     let current = migration
-                        .vault
+                        .vault()
                         .read(&state.entry_id)?
                         .context("missing Remote vault entry")?;
                     if current.get("identity").is_some()
@@ -453,7 +634,7 @@ impl RemoteState {
                     pending["controlDigest"] = json!(digest);
                 }
                 self.save_receipt(&pending)?;
-                migration.vault.write(&entry_id, &input.config)?;
+                migration.vault().write(&entry_id, &input.config)?;
                 state.revision += 1;
                 state.entry_id = entry_id.clone();
                 let mut receipt = json!({"requestId":input.request_id,"method":"remote.replace","sourceId":state.source_id,"previousRevision":input.expected_revision,"revision":state.revision,"entryId":entry_id,"state":"completed"});
@@ -461,7 +642,7 @@ impl RemoteState {
                     receipt["controlDigest"] = json!(digest);
                 }
                 state.receipt = Some(receipt.clone());
-                storage::write(&self.path(), &state)?;
+                self.commit_state(&state, input.config)?;
                 self.save_receipt(&receipt)?;
                 Ok(receipt)
             }
@@ -481,7 +662,8 @@ impl RemoteState {
             receipt,
         )
     }
-    fn recover(&self, migration: &Migration) -> Result<()> {
+    fn recover(&self, migration: &impl Credentials) -> Result<()> {
+        migration.vault().idle()?;
         let mut state = self.state(migration)?;
         if let Some(receipt) = state.as_ref().and_then(|state| state.receipt.as_ref()) {
             self.save_receipt(receipt)?;
@@ -499,7 +681,7 @@ impl RemoteState {
                 .as_str()
                 .context("missing pending Remote entry")?
                 .to_owned();
-            let value = migration.vault.read(&entry_id)?;
+            let value = migration.vault().read(&entry_id)?;
             let mut next = state
                 .as_ref()
                 .map(|state| State {
@@ -544,7 +726,7 @@ impl RemoteState {
             validate(&value, &next.allowed_projects)?;
             if next.revision != 0 {
                 let current = migration
-                    .vault
+                    .vault()
                     .read(&next.entry_id)?
                     .context("missing Remote vault entry")?;
                 ensure!(
@@ -557,14 +739,20 @@ impl RemoteState {
             receipt["state"] = json!("completed");
             receipt["revision"] = json!(next.revision);
             next.receipt = Some(receipt.clone());
-            storage::write(&self.path(), &next)?;
+            self.commit_state(&next, value)?;
             self.save_receipt(&receipt)?;
             state = Some(next);
         }
         Ok(())
     }
-    pub fn operation(&self, id: &str, migration: &Migration) -> Result<Option<Value>> {
+    pub fn operation(&self, id: &str, migration: &impl Credentials) -> Result<Option<Value>> {
         wire::request_id(id)?;
+        if migration
+            .vault()
+            .recovery_blocked(&crate::vault::Slot::RemoteIdentity)
+        {
+            return Self::operation_offline(&self.home, id);
+        }
         if let Some(receipt) = self.native_owner()?
             && receipt["requestId"] == id
         {
@@ -588,11 +776,12 @@ impl RemoteState {
     pub fn disconnect(&self, connection: &str) {
         if self
             .lease
-            .borrow()
+            .lock()
+            .unwrap()
             .as_ref()
             .is_some_and(|(owner, _)| owner == connection)
         {
-            *self.lease.borrow_mut() = None;
+            *self.lease.lock().unwrap() = None;
         }
     }
 }
@@ -627,6 +816,55 @@ pub(crate) fn validate(config: &Value, projects: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn committed_projection_requires_cold_load_and_rejects_unpublished_state() {
+        let root = tempfile::tempdir().unwrap();
+        let mut migration = Migration::new(root.path()).unwrap();
+        migration.vault = crate::vault::Vault::isolated_files(root.path());
+        let remote = RemoteState::new(root.path());
+        let config = json!({"identity":"synthetic","deviceGrants":[{"devicePeerId":"a","status":"active","revision":1}]});
+        remote.dispatch_async("remote.replace", json!({"requestId":uuid::Uuid::new_v4().to_string(),"expectedGeneration":"generation","sourceId":"source","expectedRevision":0,"config":config}), "fixture", "generation", &migration, &[]).await.unwrap();
+        let restored = RemoteState::new(root.path());
+        assert!(
+            restored.snapshot(&migration).is_err(),
+            "cold state must not authorize before credential recovery"
+        );
+        migration.vault.locked.set(true);
+        assert!(restored.snapshot_async(&migration).await.is_err());
+        assert!(restored.snapshot(&migration).is_err());
+        // 已提交且已加载的授权不因另一个凭据调用的锁状态被撤销。
+        assert_eq!(remote.snapshot(&migration).unwrap()["config"], config);
+        migration.vault.locked.set(false);
+        assert_eq!(
+            restored.snapshot_async(&migration).await.unwrap()["config"],
+            config
+        );
+        let original: State = storage::read(&remote.path()).unwrap();
+        let mut changed = original.clone();
+        changed.revision += 1;
+        let backup = root.path().join("original-state.json");
+        std::fs::rename(remote.path(), &backup).unwrap();
+        std::fs::create_dir(remote.path()).unwrap();
+        assert!(
+            remote
+                .commit_state(&changed, json!({"identity":"unpublished"}))
+                .is_err()
+        );
+        assert!(remote.snapshot(&migration).is_err());
+        std::fs::remove_dir(remote.path()).unwrap();
+        std::fs::rename(backup, remote.path()).unwrap();
+        assert_eq!(
+            remote.snapshot(&migration).unwrap()["config"],
+            config,
+            "failed persistence published new grants"
+        );
+        storage::write(&remote.path(), &changed).unwrap();
+        assert!(
+            remote.snapshot(&migration).is_err(),
+            "mismatched durable revision must fail closed"
+        );
+    }
 
     #[test]
     fn fresh_configuration_requires_one_executor_and_preserves_identity() {
@@ -742,7 +980,7 @@ mod tests {
                 Some("source".into())
             );
             if after_vault {
-                migration.vault.write(&entry_id, &config).unwrap();
+                migration.vault().write(&entry_id, &config).unwrap();
             }
             let restarted = RemoteState::new(home);
             let receipt = restarted
@@ -789,7 +1027,7 @@ mod tests {
             let remote = RemoteState::new(home);
             let original_entry = uuid::Uuid::new_v4().to_string();
             migration
-                .vault
+                .vault()
                 .write(
                     &original_entry,
                     &json!({"identity":"dummy-noise", "deviceGrants":[]}),
@@ -808,7 +1046,7 @@ mod tests {
             let pending = json!({"requestId":request,"method":"remote.replace","sourceId":"source","previousRevision":1,"entryId":pending_entry,"state":"acceptedPending"});
             remote.save_receipt(&pending).unwrap();
             if window != "beforeVault" {
-                migration.vault.write(&pending_entry, &proposed).unwrap();
+                migration.vault().write(&pending_entry, &proposed).unwrap();
             }
             if window == "afterState" {
                 let mut completed = pending.clone();
@@ -822,7 +1060,7 @@ mod tests {
                 state.revision = 3;
                 state.entry_id = uuid::Uuid::new_v4().to_string();
                 migration
-                    .vault
+                    .vault()
                     .write(
                         &state.entry_id,
                         &json!({"identity":"dummy-noise","deviceGrants":[]}),
@@ -871,7 +1109,7 @@ mod tests {
                 usize::from(applied)
             );
             assert_eq!(
-                migration.vault.read(&pending_entry).unwrap().is_some(),
+                migration.vault().read(&pending_entry).unwrap().is_some(),
                 window != "beforeVault"
             );
             let replay = restarted.dispatch("remote.replace",json!({"requestId":request,"expectedGeneration":"generation","expectedRevision":1,"sourceId":"source","config":proposed}),"connection","generation",&migration, &["project".into()]).unwrap();

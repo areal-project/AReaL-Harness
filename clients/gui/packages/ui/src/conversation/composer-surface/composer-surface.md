@@ -56,4 +56,4 @@ editor、toolbar为必要插槽；editor承载正文和行内引用，context承
 
 `R-LAYOUT-013` `ChatPromptEditor.surfaceLayout` 透传 `ComposerSurface.layout`，仅有 default / compact。App 为满屏资源下的主 Composer / DraftComposer 选择 compact；Side 不继承工作区祖先的输入布局。变体、容器重排和模型入口基础样式归 ComposerSurface.css，不能在页面复制全屏选择器。ConversationComposer 仍理解模型目录和继承；主/Side 的草稿、来源、配置、提交及未知受理归原业务所有者。Side 的错误与带回反馈复用 Feedback。
 
-`design-system.html?shared-workspace` 组合真实主输入、SideChatPane、SidePane 与 portal 设置；本地动作不执行任务。运行 `node clients/gui/scripts/design-system-smoke.mjs --shared-workspace` 验证代表条件；真实发送和模型隔离使用 `conversation-derivation-smoke.mjs --shared-workspace` 与已核对的 AREAL_CORE_BIN。设计裁决、规则强度与范围归[共享工作区合同](../../../../../design-system/exercises/shared-workspace.md)。
+`design-system.html?shared-workspace` 组合真实主输入、SideChatPane、SidePane 与 portal 设置；本地动作不执行任务。运行 `node clients/gui/scripts/design-system-smoke.mjs --shared-workspace` 验证代表条件；真实发送和模型隔离使用 `conversation-derivation-smoke.mjs --shared-workspace` 与已核对的 AREAL_CORE_BIN。设计裁决、规则强度与范围归[共享工作区合同](../../../../../../../design/archive/gui/exercises/shared-workspace.md)。

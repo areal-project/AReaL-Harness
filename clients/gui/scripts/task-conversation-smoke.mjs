@@ -9,7 +9,11 @@ import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { CoreClient } from "../packages/runtime-client/core.js";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+} from "./application-cleanup.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 for (const name of [
@@ -31,6 +35,10 @@ const binarySha256 = createHash("sha256")
   .update(await readFile(binary))
   .digest("hex");
 const scratch = await makeTempDir("areal-schedule-desktop-");
+const rust = process.argv.includes("--rust");
+const seedNavigation = process.argv.includes("--seed-navigation");
+assert.ok(!seedNavigation || rust, "Navigation projection requires Rust mode");
+if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const legacyTargetOnly = process.argv.includes("--legacy-target-only");
 const calendarRegression = process.env.AREAL_TASK_CALENDAR_REGRESSION === "1";
 const calendarDropGate = join(scratch, "calendar-drop-response"),
@@ -628,6 +636,7 @@ let app,
   pid,
   workspacePid,
   taskCwd,
+  navigationFixture,
   passed = false;
 async function until(fn, label, timeout = 60000) {
   const end = Date.now() + timeout;
@@ -748,7 +757,7 @@ async function openLegacyFixture() {
     boundary:
       "Supported bridge setup creates an existing legacy task; subsequent editing and history use the real TaskCenter UI. This does not prove the removed new-task TaskDraft UI.",
   });
-  await page.getByRole("button", { name: `打开自动化 ${seed.objective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${seed.objective}`, exact: true }).click();
   await page.getByRole("main", { name: "定时任务会话", exact: true }).waitFor();
   const chat = page.getByTestId("chat-input");
   await chat.waitFor();
@@ -801,9 +810,9 @@ async function checkLegacyTargetRegression() {
     threadId: history.threadId,
   });
   assert.ok(Array.isArray(skills.data), "Skills remain readable after opening legacy history");
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page
-    .getByRole("button", { name: `打开自动化 ${creation.seed.objective}`, exact: true })
+    .getByRole("button", { name: `打开定时任务 ${creation.seed.objective}`, exact: true })
     .click();
   await until(() => page.getByTestId("chat-input").isEditable(), "legacy history stays responsive");
   checks.push(
@@ -821,7 +830,7 @@ async function checkLegacyTargetRegression() {
     }
     await page.getByRole("button", { name: "定时任务", exact: true }).click();
     await page
-      .getByRole("button", { name: `打开自动化 ${creation.seed.objective}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 ${creation.seed.objective}`, exact: true })
       .click();
     await until(
       () => page.getByTestId("chat-input").isEditable(),
@@ -1229,7 +1238,7 @@ async function checkDailyStartRegression() {
       .waitFor();
     await page.screenshot({ path: join(scratch, "daily-" + results.length + ".png") });
     checks.push("daily start " + entry.name + " saves " + entry.expected);
-    await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+    await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   }
   assert.deepEqual(errors, []);
 }
@@ -1324,7 +1333,7 @@ async function checkCalendarRegression() {
     "visible month-end preview agrees with literal dates",
   );
   await page.screenshot({ path: join(scratch, "calendar-month-end.png") });
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByText("日历验收 SCHEDULE_FIXTURE_COMPLETE", { exact: true }).first().click();
   await page.getByLabel("后续执行预览", { exact: true }).waitFor();
   assert.equal(
@@ -1332,7 +1341,7 @@ async function checkCalendarRegression() {
       .threadId,
     history.threadId,
   );
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   const context = await call("manage", {
     projectId: pid,
     operation: "taskScheduleContext",
@@ -1355,7 +1364,7 @@ async function checkCalendarRegression() {
     return t.lastTriggerDecision?.outcome.kind === "missedWindow" && t;
   }, "Core missed once decision");
   assert.equal(missedState.runs.length, 0);
-  await page.getByRole("button", { name: "打开自动化 日历错过验收 HOLD", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 日历错过验收 HOLD", exact: true }).click();
   await page.getByText("已超过允许的延迟，跳过 1 次计划执行。", { exact: true }).first().waitFor();
   await page.screenshot({ path: join(scratch, "calendar-missed-once.png") });
   if (!(await page.getByLabel("任务资源面板", { exact: true }).isVisible()))
@@ -1372,8 +1381,11 @@ async function checkCalendarRegression() {
   assert.equal(manualAfterMissed.runs.at(-1).trigger, "manual");
   assert.deepEqual(manualAfterMissed.lastTriggerDecision, missedState.lastTriggerDecision);
   assert.equal(manualAfterMissed.nextRunAt, null);
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
-  const activeRow = page.getByRole("button", { name: "打开自动化 日历错过验收 HOLD", exact: true });
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
+  const activeRow = page.getByRole("button", {
+    name: "打开定时任务 日历错过验收 HOLD",
+    exact: true,
+  });
   await until(
     async () => (await activeRow.isVisible()) && (await activeRow.innerText()).includes("运行中"),
     "manual run after a missed once displays its active status",
@@ -1458,10 +1470,10 @@ async function checkCalendarRegression() {
     withheldReceipts.every((entry) => entry.requestId === unknown.params.requestId),
     "receipt fault is limited to the exact original calendar request",
   );
-  await page.getByRole("button", { name: "打开自动化 日历重试验收", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await page.screenshot({ path: join(scratch, "calendar-unknown.png") });
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
-  await page.getByRole("button", { name: "打开自动化 日历重试验收", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 日历重试验收", exact: true }).click();
   await until(
     async () =>
       !!(await snapshot()).projects
@@ -1696,8 +1708,10 @@ async function checkCreationRegression() {
       "gpt-6-sol",
     "newer ordinary preference admitted",
   );
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${created.objective}`, exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
+  await page
+    .getByRole("button", { name: `打开定时任务 ${created.objective}`, exact: true })
+    .click();
   await chat.waitFor();
   const reopened = await call("manage", {
     projectId: pid,
@@ -1713,7 +1727,7 @@ async function checkCreationRegression() {
   checks.push(
     "reopened management keeps its model and effort after a newer ordinary model admission",
   );
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByRole("button", { name: "新建定时任务", exact: true }).click();
   const next = await assertGlobalCreation();
   assert.equal(next.draft.thread.desktop.configuration.model.modelId, "gpt-6-sol");
@@ -1896,16 +1910,16 @@ async function checkLoadingRegression() {
   await until(() => traced("project pending"), "global catalog waits on unrelated project");
   const startupPendingAt = Date.now();
   await page
-    .getByRole("button", { name: "打开自动化 READY_TASK_FIRST", exact: true })
+    .getByRole("button", { name: "打开定时任务 READY_TASK_FIRST", exact: true })
     .waitFor({ timeout: 4000 });
   for (let index = 0; index < 3; index++)
     await page
-      .getByRole("button", { name: `打开自动化 READY_TASK_OWNER_${index}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 READY_TASK_OWNER_${index}`, exact: true })
       .waitFor({ timeout: 4000 });
   await page.getByText("其余任务仍在读取…", { exact: true }).waitFor();
   assert.equal(await page.getByText("没有符合筛选条件的定时任务。", { exact: true }).count(), 0);
   assert.equal(await page.getByText("正在读取任务…", { exact: true }).count(), 0);
-  await page.getByRole("button", { name: "打开自动化 READY_TASK_FIRST", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 READY_TASK_FIRST", exact: true }).click();
   await until(() => traced("watch pending " + first.id), "first subscription receipt held");
   assert.equal(
     await page.getByTestId("chat-input").count(),
@@ -1917,7 +1931,7 @@ async function checkLoadingRegression() {
     0,
     "existing management loading has no environment banner",
   );
-  await page.getByRole("button", { name: "打开自动化 READY_TASK_SECOND", exact: true }).click();
+  await page.getByRole("button", { name: "打开定时任务 READY_TASK_SECOND", exact: true }).click();
   await until(() => traced("watch pending " + second.id), "second subscription receipt held");
   await rm(watchGates[0]);
   await until(
@@ -1985,13 +1999,17 @@ async function checkLoadingRegression() {
     "ready task opens and sends through Composer before unrelated catalog returns; pending and stale subscription receipts do not enable management",
   );
   assert.equal(
-    await page.getByRole("button", { name: "打开自动化 DELAYED_OWNER_TASK", exact: true }).count(),
+    await page
+      .getByRole("button", { name: "打开定时任务 DELAYED_OWNER_TASK", exact: true })
+      .count(),
     0,
   );
   await rm(loadingGate);
   const obsoleteRetry = page.getByRole("button", { name: "重试读取 slow-workspace", exact: true });
   if (await obsoleteRetry.count()) await obsoleteRetry.click();
-  await page.getByRole("button", { name: "打开自动化 DELAYED_OWNER_TASK", exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "打开定时任务 DELAYED_OWNER_TASK", exact: true })
+    .waitFor();
   await until(
     async () => (await page.getByText("其余任务仍在读取…", { exact: true }).count()) === 0,
     "catalog completes after startup readiness releases",
@@ -2111,7 +2129,9 @@ async function checkLoadingRegression() {
   await until(() => traced("catalog page fixture-second"), "second page RPC held");
   await page.getByRole("alert").filter({ hasText: "任务目录读取超时" }).waitFor({ timeout: 10000 });
   assert.equal(
-    await page.getByRole("button", { name: "打开自动化 DELAYED_OWNER_TASK", exact: true }).count(),
+    await page
+      .getByRole("button", { name: "打开定时任务 DELAYED_OWNER_TASK", exact: true })
+      .count(),
     1,
     "RPC failure retains previous complete owner rows",
   );
@@ -2119,7 +2139,7 @@ async function checkLoadingRegression() {
   await page.getByRole("button", { name: "返回对话", exact: true }).click();
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   await page
-    .getByRole("button", { name: "打开自动化 READY_TASK_FIRST", exact: true })
+    .getByRole("button", { name: "打开定时任务 READY_TASK_FIRST", exact: true })
     .waitFor({ timeout: 4000 });
   await page.getByText("其余任务仍在读取…", { exact: true }).waitFor();
   const beforeRelease = await readFile(loadingTrace, "utf8");
@@ -2129,9 +2149,11 @@ async function checkLoadingRegression() {
     "reentering and retries share the held underlying page",
   );
   await rm(loadingRpcGate);
-  await page.getByRole("button", { name: "打开自动化 DELAYED_OWNER_TASK", exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: "打开定时任务 DELAYED_OWNER_TASK", exact: true })
+    .waitFor();
   assert.equal(
-    await page.getByRole("button", { name: "打开自动化 LATE_CATALOG_TASK", exact: true }).count(),
+    await page.getByRole("button", { name: "打开定时任务 LATE_CATALOG_TASK", exact: true }).count(),
     0,
     "expired page cannot publish to new view",
   );
@@ -2169,7 +2191,7 @@ async function checkLoadingRegression() {
   checks.push(
     "structured renderer evidence ties healthy response to visible commit and uniquely terminates catalog batches",
   );
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   const retainedId = randomUUID(),
     retainedText = "保留初始化失败前的任务描述";
   await page.evaluate(
@@ -2585,24 +2607,25 @@ async function checkInlineRegression() {
     );
   }
   await assertRestored("completed");
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${inlineObjective}`, exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${inlineObjective}`, exact: true }).click();
   await assertRestored("navigation");
   await app.close();
   await launch();
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${inlineObjective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${inlineObjective}`, exact: true }).click();
   await assertRestored("reopen");
 }
-async function closeOwnedApp() {
+async function closeOwnedApp(quitResponse = rust ? 0 : 1, expectHost = rust) {
   const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
     .then(JSON.parse)
     .catch((error) => {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  const hostIdentity = expectHost ? await observeHostIdentity() : null;
   await app.evaluate(
-    ({ dialog }, trace) => {
+    ({ dialog }, { trace, quitResponse }) => {
       const fs = process.getBuiltinModule("node:fs");
       if (typeof fs?.appendFileSync !== "function")
         throw Error("Main builtin filesystem is unavailable for quit evidence");
@@ -2621,12 +2644,12 @@ async function closeOwnedApp() {
             trace,
             JSON.stringify({ message: options.message, buttons: options.buttons }) + "\n",
           );
-          return { response: 1 };
+          return { response: quitResponse };
         }
         return old(...args);
       };
     },
-    join(scratch, "manual-quit-dialogs.jsonl"),
+    { trace: join(scratch, "manual-quit-dialogs.jsonl"), quitResponse },
   );
   const processHandle = app.process();
   await closeSmokeApplication(app, 20000);
@@ -2637,15 +2660,27 @@ async function closeOwnedApp() {
   );
   assert.equal(processHandle.exitCode, 0, "owned Electron quit exit code");
   assert.equal(processHandle.signalCode, null, "owned Electron quit signal");
-  await assertApplicationStopped(binary, env, metadata);
+  if (expectHost)
+    assert.deepEqual(await observeHostIdentity(), hostIdentity, "original Host remains available");
+  else await assertApplicationStopped(binary, env, metadata);
   manualCleanup.exits.push({
     pid: processHandle.pid,
     exitCode: processHandle.exitCode,
     signal: processHandle.signalCode,
-    applicationStopped: true,
+    ...(expectHost ? { hostIdentity } : { applicationStopped: true }),
   });
   app = null;
   page = null;
+}
+async function observeHostIdentity() {
+  const { HostClient } = require("@areal/client/node");
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    return { hostId: host.hostId, generation: host.generation };
+  } finally {
+    host.close();
+  }
 }
 async function checkManualRegression() {
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
@@ -2697,7 +2732,7 @@ async function checkManualRegression() {
     "current Run opens authoritative Thread",
   );
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${manualObjective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${manualObjective}`, exact: true }).click();
   const fixture = await until(() => [...manualRuns.values()][0], "manual fixture stream");
   fixture.release();
   const complete = await until(async () => {
@@ -2861,7 +2896,7 @@ async function checkManualRegression() {
     "recovery never replays runNow",
   );
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  await page.getByRole("button", { name: `打开自动化 ${manualObjective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${manualObjective}`, exact: true }).click();
   await showResources();
   await until(() => runNow().isEnabled(), "original receipt releases saved Task controls");
   checks.push(
@@ -2872,6 +2907,99 @@ async function checkManualRegression() {
 }
 try {
   await launch();
+  if (rust) {
+    await until(async () => (await call("serviceStatus", {})).connected, "bootstrap backend ready");
+    const stop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    assert.equal(stop.state, "completed");
+    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+    await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    await closeOwnedApp(0, false);
+    if (seedNavigation) {
+      const { createSeedNavigationFixture } = await import("./support/seed-navigation-fixture.mjs");
+      const readJson = async (path, fallback) =>
+        readFile(path, "utf8")
+          .then(JSON.parse)
+          .catch((error) => {
+            if (error.code === "ENOENT") return fallback;
+            throw error;
+          });
+      const coreHome = env.AREAL_CORE_HOME;
+      const fixture = await createSeedNavigationFixture({
+        seedHome: resolve(gui, "../../.scratch/one-protocol-rust/seed-real"),
+        fixtureRoot: scratch,
+        existingProjects: await readJson(join(coreHome, "projects.json"), []),
+        existingLibrary: await readJson(join(coreHome, "library.json"), {}),
+      });
+      navigationFixture = fixture;
+      await writeFile(join(coreHome, "projects.json"), JSON.stringify(fixture.projects));
+      await writeFile(join(coreHome, "library.json"), JSON.stringify(fixture.library));
+    }
+    const {
+      GuiHostProjects,
+    } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
+    const projects = new GuiHostProjects({
+      binary,
+      home: env.AREAL_HARNESS_SERVICE_HOME,
+      singletonHeld: true,
+      source: {
+        profile: env.AREAL_GUI_USER_DATA,
+        coreHome: env.AREAL_CORE_HOME,
+        legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
+      },
+    });
+    try {
+      await projects.init();
+      for (const project of navigationFixture?.importedProjects ?? [])
+        await projects.register(randomUUID(), project);
+      const listing = await projects.client.listProjects();
+      for (const project of listing.projects) {
+        assert.ok(
+          project.workspace.startsWith(scratch + "/"),
+          "All registered workspaces must be isolated",
+        );
+      }
+      const receipt = await projects.client.vaultReplace(
+        randomUUID(),
+        {
+          kind: "providerCredential",
+          sourceId: projects.sourceId,
+          reference: "AREAL_CREDENTIAL_task_fixture",
+        },
+        0,
+        "task-fixture-key",
+      );
+      assert.equal(receipt.state, "completed");
+      await writeFile(
+        join(scratch, "fixture-credential-receipt.json"),
+        JSON.stringify(receipt, null, 2),
+      );
+    } finally {
+      projects.close();
+    }
+    const seededStop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    await writeFile(join(scratch, "fixture-seed-stop.json"), JSON.stringify(seededStop, null, 2));
+    assert.equal(seededStop.state, "completed");
+    await launch();
+    await until(async () => {
+      const record = await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "workbench/backend-launch.json"),
+        "utf8",
+      )
+        .then(JSON.parse)
+        .catch(() => null);
+      return record !== null;
+    }, "Host backend launch record");
+  }
   await app.evaluate(({ dialog, BrowserWindow }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
     BrowserWindow.getAllWindows()[0].setSize(1488, 1056);
@@ -2885,6 +3013,38 @@ try {
     )
   ).id;
   workspacePid = pid;
+  if (seedNavigation) {
+    const imported = navigationFixture.importedProjects[0];
+    const originalTitle =
+      navigationFixture.library.projects[imported.id]?.title || imported.root.split("/").at(-1);
+    const row = page.locator(`[data-sidebar-project="${imported.id}"]`);
+    await row.waitFor();
+    const actions = row.getByRole("button", { name: `项目操作 ${originalTitle}`, exact: true });
+    await actions.focus();
+    await actions.press("Enter");
+    await page.getByRole("menuitem", { name: "置顶项目", exact: true }).click();
+    await until(
+      async () => (await snapshot()).library.projects[imported.id]?.pinned === true,
+      "project pinned",
+    );
+    await page
+      .locator("[data-sidebar-pinned]")
+      .locator(`[data-sidebar-project="${imported.id}"]`)
+      .waitFor();
+    await actions.focus();
+    await actions.press("Enter");
+    await page.getByRole("menuitem", { name: "重命名", exact: true }).click();
+    await page.getByRole("textbox", { name: "名称", exact: true }).fill("隔离导航验收项目");
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await until(
+      async () => (await snapshot()).library.projects[imported.id]?.title === "隔离导航验收项目",
+      "project renamed",
+    );
+    await row.getByRole("button", { name: "隔离导航验收项目", exact: true }).waitFor();
+    checks.push(
+      "projected navigation opens in isolated sidebar; GUI pins and renames a projected project",
+    );
+  }
   if (legacyTargetOnly) {
     await checkLegacyTargetRegression();
     passed = true;
@@ -3022,7 +3182,7 @@ try {
       checks.push(
         "explicit one-time edit clears the interval without treating omitted frequency as a change",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       const rejected = await page.evaluate(
         ({ projectId, cwd, draftId }) =>
           window.arealDesktop.command("manage", {
@@ -3090,7 +3250,7 @@ try {
       });
       assert.equal(legacyHistory.threadId, legacyStart.threadId);
       await page
-        .getByRole("button", { name: `打开自动化 ${legacy.objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${legacy.objective}`, exact: true })
         .click();
       await chat.waitFor();
       await page.getByText("旧项目目录验收，明天执行。", { exact: true }).waitFor();
@@ -3107,14 +3267,14 @@ try {
       checks.push(
         "existing project-bound task opens its original management Thread, cwd and history",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       await rmdir(taskDirectory);
       await page.evaluate(
         (key) => localStorage.removeItem(key),
         `areal-gui:task-edit:${workspacePid}:${legacy.id}`,
       );
       await page
-        .getByRole("button", { name: `打开自动化 ${legacy.objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${legacy.objective}`, exact: true })
         .click();
       await chat.waitFor();
       await page.getByText("旧项目目录验收，明天执行。", { exact: true }).waitFor();
@@ -3131,7 +3291,7 @@ try {
       checks.push(
         "legacy management history remains available when its bound directory is missing",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       const next = await openLegacyFixture();
       await chat.fill("独立目录验收，定时执行。");
       await page.getByTestId("chat-send-button").click();
@@ -3174,7 +3334,7 @@ try {
       for (const entry of [once, legacy, independent])
         assert.equal(
           await page
-            .getByRole("button", { name: `打开自动化 ${entry.objective}`, exact: true })
+            .getByRole("button", { name: `打开定时任务 ${entry.objective}`, exact: true })
             .count(),
           1,
         );
@@ -3184,13 +3344,15 @@ try {
       passed = true;
     } else {
       await send("每天上午九点，稍后安排。");
+      const expectedObjective = "检查项目提交和 PR SCHEDULE_FIXTURE_COMPLETE";
       const created = await until(
         async () =>
           (await call("tasks", { operation: "list" })).data.find(
             (t) =>
               t.id === creation.seed.id &&
               t.revision > creation.seed.revision &&
-              t.objective.includes("SCHEDULE_FIXTURE_COMPLETE"),
+              t.objectiveTruncated === false &&
+              t.objectivePreview === expectedObjective,
           ),
         "Agent updates the seeded legacy task",
       );
@@ -3200,6 +3362,9 @@ try {
         "existing fixture cannot satisfy the schedule-update wait",
       );
       const taskId = created.id;
+      const savedTask = await task(taskId);
+      assert.equal(savedTask.id, taskId);
+      assert.equal(savedTask.objective, expectedObjective);
       let resources = page.getByRole("button", { name: "任务资源", exact: true });
       assert.equal(
         await page.getByLabel("任务资源面板").isVisible(),
@@ -3231,7 +3396,7 @@ try {
       );
       await page.screenshot({ path: join(scratch, "task-detail-closed.png") });
       await page
-        .getByText(/^已创建任务。/)
+        .getByText(/^已保存修改。/)
         .last()
         .waitFor();
       const history = await call("manage", {
@@ -3260,15 +3425,15 @@ try {
         taskCwd,
       );
       await send("更新描述，只汇报阻塞项。");
-      await until(
-        async () => (await task(taskId)).objective.startsWith("只汇报阻塞项"),
-        "Agent updated description",
-      );
+      const updated = await until(async () => {
+        const value = await task(taskId);
+        return value.objective === "只汇报阻塞项 SCHEDULE_FIXTURE_COMPLETE" && value;
+      }, "Agent updated description");
+      assert.equal(updated.id, taskId);
+      assert.ok(updated.objective.length > 24);
+      const expectedSummary = `${updated.objective.slice(0, 24)}…`;
       await resources.click();
-      await page
-        .getByLabel("定时任务安排")
-        .getByText("只汇报阻塞项 SCHEDULE_FIXTURE_COMPLETE", { exact: true })
-        .waitFor();
+      await page.getByLabel("定时任务安排").getByText(expectedSummary, { exact: true }).waitFor();
       assert.equal(
         (await call("manage", { projectId: pid, operation: "taskDraftHistory", taskId })).threadId,
         managementThread,
@@ -3337,9 +3502,12 @@ try {
       checks.push(
         "shared Messages and Composer; no task textarea/dialog; legacy clarification, schedule and description update, failed proposal, pause/resume; same management Thread; light/dark",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       await page
-        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
+        .getByRole("button", {
+          name: `打开定时任务 ${(await task(taskId)).objective}`,
+          exact: true,
+        })
         .click();
       await page.getByText("你希望什么时候执行？", { exact: true }).waitFor();
       await chat.waitFor();
@@ -3358,7 +3526,10 @@ try {
       resources = page.getByRole("button", { name: "任务资源", exact: true });
       await page.getByRole("button", { name: "定时任务", exact: true }).click();
       await page
-        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
+        .getByRole("button", {
+          name: `打开定时任务 ${(await task(taskId)).objective}`,
+          exact: true,
+        })
         .click();
       await chat.waitFor();
       await page.getByText("你希望什么时候执行？", { exact: true }).waitFor();
@@ -3404,9 +3575,12 @@ try {
       checks.push(
         "scheduled execution Threads retain the task independent directory after navigation and restart",
       );
-      await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+      await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
       await page
-        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
+        .getByRole("button", {
+          name: `打开定时任务 ${(await task(taskId)).objective}`,
+          exact: true,
+        })
         .click();
       await chat.waitFor();
       await until(
@@ -3419,7 +3593,15 @@ try {
       await send("取消任务。");
       await until(async () => (await task(taskId)).cancelled, "Agent cancelled schedule");
       await resources.click();
-      await page.getByLabel("定时任务安排").getByText("已取消", { exact: true }).waitFor();
+      await page
+        .getByLabel("定时任务安排")
+        .getByRole("status")
+        .filter({ hasText: /^已结束$/ })
+        .waitFor();
+      await page
+        .getByRole("button", { name: `打开自动化 ${(await task(taskId)).objective}`, exact: true })
+        .getByText("已取消", { exact: true })
+        .waitFor();
       assert.ok((await task(taskId)).runs.length >= 2);
       checks.push("Agent cancellation preserves execution history");
       assert.deepEqual(errors, []);
@@ -3430,6 +3612,22 @@ try {
   errors.push(error.stack ?? String(error));
   await writeFile(join(scratch, "failure-error.txt"), error.stack ?? String(error)).catch(() => {});
   if (page && !page.isClosed()) {
+    const ownerId = legacySetups.at(-1)?.ownerId;
+    if (ownerId) {
+      const observe = await withSmokeDeadline("failure task observation", () =>
+        page.evaluate(
+          (projectId) => window.arealDesktop.command("tasks", { operation: "observe", projectId }),
+          ownerId,
+        ),
+      ).catch((cause) => ({ error: cause.message }));
+      const lifecycle = await withSmokeDeadline("failure lifecycle status", () =>
+        page.evaluate(() => window.arealDesktop.command("serviceStatus", {})),
+      ).catch((cause) => ({ error: cause.message }));
+      await writeFile(
+        join(scratch, "failure-owner-observation.json"),
+        JSON.stringify({ ownerId, observe, lifecycle }, null, 2),
+      );
+    }
     await snapshot()
       .then((value) =>
         writeFile(join(scratch, "failure-state.json"), JSON.stringify(value, null, 2)),
@@ -3528,12 +3726,53 @@ try {
     try {
       if (app && app.process().exitCode === null && app.process().signalCode === null)
         await closeOwnedApp();
+    } catch (error) {
+      errors.push("manual cleanup: " + error.message);
+    }
+    if (rust && app) {
+      let handle;
+      try {
+        handle = app.process();
+      } catch {
+        // Playwright 已释放退出中的应用对象。
+      }
+      if (handle && handle.exitCode === null && handle.signalCode === null) {
+        manualCleanup.forcedElectronExit = true;
+        handle.kill("SIGKILL");
+        await until(
+          () => handle.exitCode !== null || handle.signalCode !== null,
+          "owned Electron forced cleanup exit",
+          5000,
+        );
+      }
+    }
+    if (rust) {
+      try {
+        const originalHost = await observeHostIdentity();
+        const lastHost = manualCleanup.exits.at(-1)?.hostIdentity;
+        if (lastHost) assert.deepEqual(originalHost, lastHost, "cleanup targets original Host");
+        const stop = JSON.parse(
+          execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+            env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+            encoding: "utf8",
+          }),
+        );
+        await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
+        assert.equal(stop.state, "completed");
+        assert.equal(stop.hostId, originalHost.hostId);
+        assert.equal(stop.generation, originalHost.generation);
+        assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+      } catch (error) {
+        errors.push("Host cleanup: " + error.message);
+      }
+    }
+    try {
       await assertApplicationStopped(binary, env, metadata);
       manualCleanup.applicationStopped = true;
     } catch (error) {
       errors.push("manual cleanup: " + error.message);
     }
-    if (metadata && !manualCleanup.applicationStopped) {
+    if (!rust && metadata && !manualCleanup.applicationStopped) {
       manualCleanup.assistedServiceStop = true;
       const {
         ServiceConnection,
@@ -3569,9 +3808,14 @@ try {
         connection.close();
       }
     }
-    if (app) {
-      const handle = app.process();
-      if (handle.exitCode === null && handle.signalCode === null) {
+    if (!rust && app) {
+      let handle;
+      try {
+        handle = app.process();
+      } catch {
+        // Playwright 已释放退出中的应用对象。
+      }
+      if (handle && handle.exitCode === null && handle.signalCode === null) {
         manualCleanup.forcedElectronExit = true;
         handle.kill("SIGKILL");
         await until(
@@ -3610,6 +3854,19 @@ try {
       errors.push("uncaught Main " + error.origin + ": " + error.message);
     await writeFile(join(scratch, "manual-cleanup.json"), JSON.stringify(manualCleanup, null, 2));
     if (errors.length) {
+      passed = false;
+      process.exitCode = 1;
+    }
+  }
+  if (rust) {
+    try {
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      await writeFile(
+        join(scratch, "synthetic-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    } catch (error) {
+      errors.push(`synthetic Keychain cleanup: ${error.message}`);
       passed = false;
       process.exitCode = 1;
     }

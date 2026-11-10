@@ -67,6 +67,87 @@ struct Record {
     initial_digest: String,
     snapshot: Snapshot,
     last_operation: Option<Prepared>,
+    /// 每条已结算回执首次落盘的 Unix 秒；只供回收排序，不随快照返回给客户端。
+    #[serde(default)]
+    settled_at: BTreeMap<String, u64>,
+}
+
+/// 单个日志范围内待决与已结算记录的硬上限；回收保证正常使用不会触达。
+pub(crate) const CAPACITY: usize = 4096;
+/// 超过软阈值时回收最旧的已结算回执，降到目标值为止。
+const RECLAIM_THRESHOLD: usize = 3072;
+const RECLAIM_TARGET: usize = 2048;
+/// 结算后至少保留一天，保证同一 commandId 的重试仍得到原回执而不是被当成新命令。
+const RECLAIM_MIN_AGE_SECS: u64 = 24 * 60 * 60;
+
+pub(crate) fn has_capacity(snapshot: &Value) -> bool {
+    snapshot["pending"].as_array().map_or(0, Vec::len)
+        + snapshot["outcomes"]
+            .as_object()
+            .map_or(0, |rows| rows.len())
+        < CAPACITY
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+/// 这些回执是长期授权事实而不只是去重记录，删除会改变行为，永不回收。
+fn retained_forever(outcome: &Value) -> bool {
+    let remote = &outcome["remote"];
+    remote["method"] == "session.control" && remote["target"]["operation"] == "goalCreate"
+}
+
+/// 旧版 JS 远程网关写下的远程行没有 nativeDigest 与 coreScope。升级不迁移在途工作，
+/// 这些行在新版没有任何读者；目标创建回执是长期授权事实，仍然保留。
+fn legacy_remote(record: &Value) -> bool {
+    matches!(
+        record["remote"]["method"].as_str(),
+        Some("session.send" | "session.control" | "task.pause" | "task.question.reply")
+    ) && record.get("nativeDigest").is_none()
+        && record.get("coreScope").is_none()
+}
+
+fn drop_legacy_remote(snapshot: &mut Snapshot) {
+    snapshot.pending.retain(|entry| !legacy_remote(entry));
+    snapshot
+        .outcomes
+        .retain(|_, outcome| !legacy_remote(outcome) || retained_forever(outcome));
+}
+
+/// 记录新结算回执的时间，并在超过软阈值时按结算时间从旧到新回收。
+/// 仍被待决行引用、未满最短保留时间或长期授权类的回执不回收。
+fn reclaim(record: &mut Record, now: u64) {
+    let outcomes = &mut record.snapshot.outcomes;
+    record.settled_at.retain(|id, _| outcomes.contains_key(id));
+    for id in outcomes.keys() {
+        record.settled_at.entry(id.clone()).or_insert(now);
+    }
+    let pending = &record.snapshot.pending;
+    let total = pending.len() + outcomes.len();
+    if total <= RECLAIM_THRESHOLD {
+        return;
+    }
+    let referenced: std::collections::BTreeSet<&str> =
+        pending.iter().filter_map(submission_id).collect();
+    let mut candidates: Vec<(u64, String)> = record
+        .settled_at
+        .iter()
+        .filter(|(id, at)| {
+            now.saturating_sub(**at) >= RECLAIM_MIN_AGE_SECS
+                && !referenced.contains(id.as_str())
+                && !outcomes.get(*id).is_some_and(retained_forever)
+        })
+        .map(|(id, at)| (*at, id.clone()))
+        .collect();
+    candidates.sort();
+    let excess = total - RECLAIM_TARGET;
+    for (_, id) in candidates.into_iter().take(excess) {
+        outcomes.remove(&id);
+        record.settled_at.remove(&id);
+    }
 }
 
 pub(crate) struct Journal {
@@ -96,6 +177,12 @@ struct Commit {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ReadRequest {
     project_id: String,
+}
+
+fn submission_id(entry: &Value) -> Option<&str> {
+    entry["operationId"]
+        .as_str()
+        .or_else(|| entry["params"]["requestId"].as_str())
 }
 
 impl Journal {
@@ -159,6 +246,13 @@ impl Journal {
         Ok(journal)
     }
 
+    /// 停机导入：只带入已结算回执。旧版待决行属于在途工作，不迁移。
+    pub(crate) fn import(&self, project_id: &str, outcomes: Value) -> Result<()> {
+        let mut snapshot = Snapshot::parse(json!({"version":1,"pending":[],"outcomes":outcomes}))?;
+        drop_legacy_remote(&mut snapshot);
+        self.initialize(project_id, serde_json::to_value(&snapshot)?)
+    }
+
     pub(crate) fn initialize(&self, project_id: &str, snapshot: Value) -> Result<()> {
         let snapshot = Snapshot::parse(snapshot)?;
         let digest = storage::digest(&serde_json::to_vec(&snapshot)?);
@@ -179,6 +273,7 @@ impl Journal {
                 initial_digest: digest,
                 snapshot,
                 last_operation: None,
+                settled_at: BTreeMap::new(),
             },
         )
     }
@@ -219,7 +314,76 @@ impl Journal {
             .revision
             .checked_add(1)
             .context("journal revision exhausted")?;
+        reclaim(&mut record, now_secs());
         storage::write(&self.record_path(project_id)?, &record)
+    }
+
+    /// 准入与结算共用同一快照事务；调用方只负责授权与方法特有的权威前置条件。
+    pub(crate) fn native_preflight(
+        &self,
+        project: &str,
+        entry: &Value,
+        block_target: bool,
+    ) -> Result<()> {
+        let (_, snapshot) = self.native_snapshot(project)?;
+        check_admission(&snapshot, entry, block_target)
+    }
+
+    pub(crate) fn native_admit(
+        &self,
+        project: &str,
+        revision: u64,
+        mut snapshot: Value,
+        entry: Value,
+        block_target: bool,
+    ) -> Result<()> {
+        check_admission(&snapshot, &entry, block_target)?;
+        snapshot["pending"].as_array_mut().unwrap().push(entry);
+        self.native_replace(project, revision, snapshot)
+    }
+
+    pub(crate) fn native_finish(
+        &self,
+        project: &str,
+        entry: &Value,
+        outcome: Option<Value>,
+    ) -> Result<Value> {
+        let id = submission_id(entry).context("INVALID_PARAMS")?;
+        let (revision, mut snapshot) = self.native_snapshot(project)?;
+        if let Some(previous) = snapshot["outcomes"].get(id) {
+            return Ok(previous.clone());
+        }
+        let original = snapshot["pending"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| submission_id(row) == Some(id))
+            .context("SUBMISSION_UNKNOWN")?;
+        ensure!(
+            original["method"] == entry["method"] && original["params"] == entry["params"],
+            "COMMAND_CONFLICT"
+        );
+        snapshot["pending"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|row| submission_id(row) != Some(id));
+        if let Some(outcome) = &outcome {
+            snapshot["outcomes"][id] = outcome.clone();
+        }
+        self.native_replace(project, revision, snapshot)?;
+        Ok(outcome.unwrap_or(Value::Null))
+    }
+
+    pub(crate) fn native_dismiss(&self, project: &str, id: &str) -> Result<()> {
+        let (revision, mut snapshot) = self.native_snapshot(project)?;
+        if snapshot["outcomes"]
+            .get(id)
+            .is_some_and(|outcome| outcome["remote"].is_object())
+        {
+            return Ok(());
+        }
+        snapshot["outcomes"].as_object_mut().unwrap().remove(id);
+        self.native_replace(project, revision, snapshot)
     }
 
     pub(crate) fn dispatch(
@@ -313,6 +477,15 @@ impl Journal {
         );
         record.snapshot.validate()?;
         self.recover(&record)?;
+        let mut record = record;
+        drop_legacy_remote(&mut record.snapshot);
+        if record.settled_at.is_empty() {
+            // 升级前写入的记录没有结算时间，视为已过最短保留期，满额项目升级后即可恢复。
+            for id in record.snapshot.outcomes.keys() {
+                record.settled_at.insert(id.clone(), 0);
+            }
+        }
+        reclaim(&mut record, now_secs());
         Ok(record)
     }
     fn recover(&self, record: &Record) -> Result<()> {
@@ -462,19 +635,21 @@ impl Journal {
                 && storage::digest(&bytes) == operation.sha256,
             "journal slot digest changed"
         );
-        let snapshot = Snapshot::parse(serde_json::from_slice(&bytes)?)?;
+        let mut snapshot = Snapshot::parse(serde_json::from_slice(&bytes)?)?;
+        preserve_native_entries(&record.snapshot, &mut snapshot)?;
         preserve_pending_identity(&record.snapshot, &snapshot)?;
         let revision = record
             .revision
             .checked_add(1)
             .context("journal revision exhausted")?;
         operation.receipt = json!({"requestId":operation.request_id,"projectId":operation.project_id,"revision":revision,"sha256":operation.sha256,"method":"journal.commit","state":"completed"});
-        let next = Record {
+        let mut next = Record {
             revision,
             snapshot,
             last_operation: Some(operation.clone()),
             ..record
         };
+        reclaim(&mut next, now_secs());
         storage::write(&self.record_path(&operation.project_id)?, &next)?;
         storage::write(&self.operation_path(&operation.request_id), &operation)?;
         remove_transfer(&operation.write_path)?;
@@ -485,6 +660,94 @@ impl Journal {
         storage::write(&self.operation_path(&operation.request_id), &operation)?;
         remove_transfer(&operation.write_path)
     }
+}
+
+fn check_admission(snapshot: &Value, entry: &Value, block_target: bool) -> Result<()> {
+    let key = submission_id(entry).context("INVALID_PARAMS")?;
+    let pending = snapshot["pending"].as_array().context("INVALID_PARAMS")?;
+    let outcomes = snapshot["outcomes"].as_object().context("INVALID_PARAMS")?;
+    ensure!(has_capacity(snapshot), "CAPACITY_EXCEEDED");
+    ensure!(
+        !outcomes.contains_key(key) && !pending.iter().any(|row| submission_id(row) == Some(key)),
+        "COMMAND_CONFLICT"
+    );
+    if block_target {
+        let params = &entry["params"];
+        let target = params
+            .get("taskId")
+            .filter(|id| id.as_str().is_some_and(|id| !id.is_empty()))
+            .map(|id| ("taskId", id))
+            .or_else(|| {
+                params
+                    .get("threadId")
+                    .filter(|id| id.as_str().is_some_and(|id| !id.is_empty()))
+                    .map(|id| ("threadId", id))
+            });
+        ensure!(
+            !pending.iter().any(|row| {
+                let settled = row["remote"].is_object()
+                    && submission_id(row).is_some_and(|id| {
+                        outcomes
+                            .get(id)
+                            .is_some_and(|outcome| outcome["remote"].is_object())
+                    });
+                if settled || areal_protocol::submissions::remote_control(row) {
+                    return false;
+                }
+                if matches!(
+                    entry["method"].as_str(),
+                    Some("areal/thread/fork" | "areal/side/start" | "areal/side/create")
+                ) {
+                    return row["method"] == entry["method"]
+                        && row["params"]["sourceThreadId"] == params["sourceThreadId"];
+                }
+                target.is_some_and(|(field, id)| !id.is_null() && row["params"][field] == *id)
+            }),
+            "SUBMISSION_UNKNOWN"
+        );
+    }
+    Ok(())
+}
+
+fn preserve_native_entries(before: &Snapshot, after: &mut Snapshot) -> Result<()> {
+    for original in before
+        .pending
+        .iter()
+        .filter(|entry| entry["rustOwner"] == true)
+    {
+        ensure!(
+            after.pending.iter().any(|entry| entry == original),
+            "Host-owned pending submission cannot be changed by a client snapshot"
+        );
+    }
+    for (id, original) in before
+        .outcomes
+        .iter()
+        .filter(|(_, entry)| entry["rustOwner"] == true)
+    {
+        let next = after
+            .outcomes
+            .get_mut(id)
+            .context("Host-owned outcome requires execution.dismiss")?;
+        let fields = next.as_object_mut().context("invalid outcome projection")?;
+        let original = original.as_object().context("invalid Host outcome")?;
+        // 旧任务草稿仅追加自己的投影注记，不能接管提交的受理事实与原身份。
+        for (key, value) in original {
+            if let Some(next) = fields.get(key) {
+                ensure!(next == value, "Host-owned outcome identity cannot change");
+            }
+            fields.insert(key.clone(), value.clone());
+        }
+        ensure!(
+            fields.iter().all(|(key, value)| original.contains_key(key)
+                || (matches!(
+                    key.as_str(),
+                    "draftThreadId" | "taskDraftMessage" | "taskDraftError"
+                ) && value.is_string())),
+            "unsupported Host outcome annotation"
+        );
+    }
+    Ok(())
 }
 
 fn preserve_pending_identity(before: &Snapshot, after: &Snapshot) -> Result<()> {
@@ -575,6 +838,185 @@ mod tests {
 
     fn snapshot(text: &str) -> Value {
         json!({"version":1,"pending":[{"method":"areal/thread/start","params":{"requestId":"original-core-id","input":[{"type":"text","text":text}]},"createdAt":"original-time","remote":{"opaque":"preserved"}}],"outcomes":{"old":{"accepted":true,"threadId":"old-thread"}}})
+    }
+    #[test]
+    fn import_keeps_settled_receipts_and_drops_legacy_remote_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        journal
+            .import(
+                "project",
+                json!({
+                    "local":{"accepted":true,"threadId":"thread"},
+                    "legacy-send":{"accepted":true,"remote":{"method":"session.send"}},
+                    "legacy-goal":{"accepted":true,"remote":{"method":"session.control","target":{"operation":"goalCreate"}}},
+                    "native-send":{"accepted":true,"nativeDigest":"digest","remote":{"method":"session.send"}},
+                }),
+            )
+            .unwrap();
+        let (_, snapshot) = journal.native_snapshot("project").unwrap();
+        assert_eq!(snapshot["pending"], json!([]));
+        let kept: Vec<_> = snapshot["outcomes"].as_object().unwrap().keys().collect();
+        assert_eq!(kept, ["legacy-goal", "local", "native-send"]);
+    }
+    #[test]
+    fn native_admission_is_cas_bound_and_settlement_keeps_original_outcome() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        let (revision, snapshot) = journal.native_snapshot("project").unwrap();
+        let entry = json!({"method":"areal/turn/submit","params":{"requestId":"one","threadId":"thread"},"rustOwner":true});
+        journal
+            .native_admit("project", revision, snapshot.clone(), entry.clone(), true)
+            .unwrap();
+        assert!(journal.native_admit("project", revision, snapshot, json!({"method":"areal/turn/submit","params":{"requestId":"two","threadId":"other"}}), true).is_err());
+        let (revision, snapshot) = journal.native_snapshot("project").unwrap();
+        let conflict =
+            json!({"method":"areal/turn/submit","params":{"requestId":"two","threadId":"thread"}});
+        assert!(
+            journal
+                .native_admit("project", revision, snapshot, conflict, true)
+                .unwrap_err()
+                .to_string()
+                .contains("SUBMISSION_UNKNOWN")
+        );
+        let mut altered = entry.clone();
+        altered["params"]["threadId"] = json!("other");
+        assert!(journal.native_finish("project", &altered, None).is_err());
+        let outcome = json!({"rustOwner":true,"method":"areal/turn/submit","accepted":true,"status":"completed","threadId":"thread"});
+        assert_eq!(
+            journal
+                .native_finish("project", &entry, Some(outcome.clone()))
+                .unwrap(),
+            outcome
+        );
+        assert_eq!(
+            journal
+                .native_finish("project", &entry, Some(json!({"status":"failed"})))
+                .unwrap(),
+            outcome
+        );
+        assert!(
+            journal.native_snapshot("project").unwrap().1["pending"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    fn outcomes(count: usize) -> BTreeMap<String, Value> {
+        (0..count)
+            .map(|index| (format!("done-{index:05}"), json!({"accepted":true})))
+            .collect()
+    }
+
+    #[test]
+    fn reclaim_keeps_recent_referenced_and_goal_control_receipts() {
+        let now = 10 * RECLAIM_MIN_AGE_SECS;
+        let mut snapshot = Snapshot {
+            version: 1,
+            pending: vec![
+                json!({"method":"areal/turn/submit","params":{"requestId":"done-00000"}}),
+            ],
+            outcomes: outcomes(CAPACITY),
+        };
+        snapshot.outcomes.insert(
+            "goal".into(),
+            json!({"remote":{"method":"session.control","target":{"operation":"goalCreate"}},"admissionState":"accepted"}),
+        );
+        let mut settled_at: BTreeMap<String, u64> =
+            snapshot.outcomes.keys().map(|id| (id.clone(), 0)).collect();
+        // 最新的 100 条仍在最短保留期内。
+        for index in CAPACITY - 100..CAPACITY {
+            settled_at.insert(format!("done-{index:05}"), now - 60);
+        }
+        let mut record = Record {
+            project_id: "project".into(),
+            revision: 0,
+            initial_digest: String::new(),
+            snapshot,
+            last_operation: None,
+            settled_at,
+        };
+        reclaim(&mut record, now);
+        let kept = &record.snapshot.outcomes;
+        assert_eq!(record.snapshot.pending.len() + kept.len(), RECLAIM_TARGET);
+        assert!(kept.contains_key("goal") && kept.contains_key("done-00000"));
+        assert!(
+            (CAPACITY - 100..CAPACITY).all(|index| kept.contains_key(&format!("done-{index:05}")))
+        );
+        assert!(!kept.contains_key("done-00001"));
+        assert_eq!(record.settled_at.len(), kept.len());
+
+        // 全部在最短保留期内时一条都不回收，同一 commandId 仍能命中原回执。
+        let mut fresh = Record {
+            settled_at: BTreeMap::new(),
+            snapshot: Snapshot {
+                version: 1,
+                pending: vec![],
+                outcomes: outcomes(RECLAIM_THRESHOLD + 10),
+            },
+            ..record
+        };
+        reclaim(&mut fresh, now);
+        assert_eq!(fresh.snapshot.outcomes.len(), RECLAIM_THRESHOLD + 10);
+        assert!(fresh.settled_at.values().all(|at| *at == now));
+    }
+
+    #[test]
+    fn full_journal_from_previous_release_admits_after_reclaim() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        journal.native_snapshot("project").unwrap();
+        // 模拟升级前写满且没有结算时间字段的记录。
+        let path = journal.record_path("project").unwrap();
+        let mut legacy: Value = read_large(&path).unwrap();
+        legacy["snapshot"]["outcomes"] = serde_json::to_value(outcomes(CAPACITY)).unwrap();
+        legacy.as_object_mut().unwrap().remove("settledAt");
+        storage::write(&path, &legacy).unwrap();
+
+        let (revision, snapshot) = journal.native_snapshot("project").unwrap();
+        assert_eq!(
+            snapshot["outcomes"].as_object().unwrap().len(),
+            RECLAIM_TARGET
+        );
+        let entry =
+            json!({"method":"areal/turn/submit","params":{"requestId":"next","threadId":"thread"}});
+        journal
+            .native_admit("project", revision, snapshot, entry.clone(), true)
+            .unwrap();
+        journal
+            .native_finish("project", &entry, Some(json!({"accepted":true})))
+            .unwrap();
+        let stored: Value = read_large(&path).unwrap();
+        assert_eq!(
+            stored["snapshot"]["outcomes"].as_object().unwrap().len(),
+            RECLAIM_TARGET + 1
+        );
+        assert!(stored["settledAt"]["next"].as_u64().unwrap() > 0);
+        // 刚结算的回执在保留期内，重复结算返回原回执。
+        assert_eq!(
+            journal
+                .native_finish("project", &entry, Some(json!({"accepted":false})))
+                .unwrap(),
+            json!({"accepted":true})
+        );
+    }
+
+    #[test]
+    fn client_snapshot_cannot_remove_or_rebind_rust_owned_facts() {
+        let pending = json!({"method":"areal/turn/submit","params":{"requestId":"one","threadId":"thread"},"rustOwner":true});
+        let original = Snapshot::parse(json!({"version":1,"pending":[pending],"outcomes":{"done":{"rustOwner":true,"accepted":true,"threadId":"thread"}}})).unwrap();
+        let mut removed = original.clone();
+        removed.pending.clear();
+        assert!(preserve_native_entries(&original, &mut removed).is_err());
+        let mut altered = original.clone();
+        altered.outcomes.get_mut("done").unwrap()["threadId"] = json!("other");
+        assert!(preserve_native_entries(&original, &mut altered).is_err());
+        let mut annotated = original.clone();
+        annotated.outcomes.get_mut("done").unwrap()["taskDraftMessage"] = json!("projection");
+        assert!(preserve_native_entries(&original, &mut annotated).is_ok());
+        annotated.outcomes.remove("done");
+        assert!(preserve_native_entries(&original, &mut annotated).is_err());
     }
     fn prepare(journal: &Journal, connection: &str, revision: u64, value: Value) -> Value {
         let bytes = serde_json::to_vec(&value).unwrap();

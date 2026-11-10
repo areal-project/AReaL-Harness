@@ -390,6 +390,7 @@ export function AgentsPane({
         )}
         <SubagentPanel
           open
+          embedded
           hasMore={more}
           agents={children.map((child) => {
             const result = results[child.id];

@@ -1,5 +1,6 @@
 import { makeTempDir } from "./support/temp.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
+import { withSmokeDeadline } from "./smoke-deadline.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
   captureSmokeFailure,
@@ -109,18 +110,24 @@ const errors = [],
   frames = [],
   checks = [];
 const button = (name) => page.getByRole("button", { name, exact: true });
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const state = () =>
+  withSmokeDeadline("queue renderer snapshot", () =>
+    page.evaluate(() => window.arealDesktop.snapshot()),
+  );
 const project = (snapshot) => snapshot.projects.find((p) => p.root === workspace && !p.projectless);
 async function call(name, params) {
-  const result = await page.evaluate(
-    async ({ name, params }) => {
-      if (Array.isArray(params.bytes)) params.bytes = new Uint8Array(params.bytes);
-      return window.arealDesktop.command(name, params);
-    },
-    {
-      name,
-      params: params.bytes instanceof Uint8Array ? { ...params, bytes: [...params.bytes] } : params,
-    },
+  const result = await withSmokeDeadline(`queue command ${name}`, () =>
+    page.evaluate(
+      async ({ name, params }) => {
+        if (Array.isArray(params.bytes)) params.bytes = new Uint8Array(params.bytes);
+        return window.arealDesktop.command(name, params);
+      },
+      {
+        name,
+        params:
+          params.bytes instanceof Uint8Array ? { ...params, bytes: [...params.bytes] } : params,
+      },
+    ),
   );
   if (!result.ok) throw Error(result.error.message);
   return result.value;
@@ -176,6 +183,15 @@ async function launch() {
   app.process().stderr.on("data", (d) => {
     if (String(d).includes("Error")) process.stderr.write(d);
   });
+  // 原生异常弹窗可能阻塞 IPC；只观测错误栈，不改变默认异常处理。
+  await app.evaluate(
+    (_, path) => {
+      process.on("uncaughtExceptionMonitor", (error) => {
+        process.getBuiltinModule("fs").appendFileSync(path, `${error.stack ?? error}\n`);
+      });
+    },
+    join(scratch, "main-exceptions.log"),
+  );
   page = await app.firstWindow();
   page.setDefaultTimeout(15000);
   page.on("pageerror", (e) => errors.push(e.message));
@@ -184,10 +200,11 @@ async function launch() {
 }
 async function quit() {
   if (!app) return;
-  await app.evaluate(({ dialog }) => {
-    dialog.showMessageBox = async () => ({ response: 1 });
+  await closeRecordedSmokeApplication(app, 20000, async () => {
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 1 });
+    });
   });
-  await app.close();
   app = null;
 }
 console.log("GUI evidence:", scratch);
@@ -645,7 +662,24 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
-  await quit();
+  try {
+    await quit();
+  } catch (error) {
+    passed = false;
+    process.exitCode = 1;
+    errors.push(`Electron cleanup: ${error.message}`);
+  }
+  const mainFailures = await readFile(join(scratch, "main-exceptions.log"), "utf8").catch(
+    (error) => {
+      if (error.code !== "ENOENT") throw error;
+      return "";
+    },
+  );
+  if (mainFailures) {
+    passed = false;
+    process.exitCode = 1;
+    errors.push(mainFailures);
+  }
   try {
     await assertApplicationStopped(binary, env, stoppingAdapter);
     checks.push(

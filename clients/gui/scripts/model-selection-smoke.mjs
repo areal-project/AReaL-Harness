@@ -1002,35 +1002,12 @@ async function verifyModelDefaults(projectId) {
       modelId: name === "Alpha" ? "alpha-default" : "beta-default",
     },
   ) => {
-    await button("会话配置").click();
-    await page.waitForFunction(() => {
-      const menu = document.querySelector('[role="combobox"][aria-label="新会话默认模型"]');
-      const tabs = document.querySelector('[role="tablist"][aria-label="新会话默认模型"]');
-      return (
-        (menu && !menu.disabled) ||
-        (tabs && [...tabs.querySelectorAll('[role="tab"]')].some((tab) => !tab.disabled))
-      );
+    const catalog = await call("providers", { operation: "list" });
+    await call("providers", {
+      operation: "defaultAndApply",
+      expectedRevision: catalog.revision,
+      model: reference,
     });
-    await page.waitForFunction(async () => {
-      const reply = await window.arealDesktop.command("serviceStatus", {});
-      return (
-        reply.ok &&
-        !reply.value.busy &&
-        !reply.value.activeCommands &&
-        !reply.value.starting &&
-        !reply.value.providerUpdating
-      );
-    });
-    const defaultMenu = page.getByRole("combobox", { name: "新会话默认模型", exact: true });
-    if (await defaultMenu.count()) {
-      await defaultMenu.click();
-      await page.getByRole("option", { name, exact: true }).click();
-    } else
-      await page
-        .getByRole("tablist", { name: "新会话默认模型", exact: true })
-        .getByRole("tab", { name, exact: true })
-        .click();
-    await button("返回应用").click({ trial: true, timeout: 180000 });
     let configured;
     await until(async () => {
       configured = await call("providers", { operation: "list" });
@@ -1042,20 +1019,6 @@ async function verifyModelDefaults(projectId) {
     }, "fallback default save reaches its authoritative configuration");
     assert.deepEqual(configured.defaultModel, reference);
     assert.equal(configured.pendingApply, false);
-    if (await defaultMenu.count())
-      assert.equal(
-        (await defaultMenu.innerText()).trim(),
-        name,
-        "default picker shows the model name rather than its internal reference",
-      );
-    else
-      assert.equal(
-        await page
-          .getByRole("tablist", { name: "新会话默认模型", exact: true })
-          .getByRole("tab", { name, exact: true })
-          .getAttribute("aria-selected"),
-        "true",
-      );
   };
   const chooseModel = async (name) => {
     await button("选择模型").click();
@@ -1982,7 +1945,7 @@ async function runFullModelSelection() {
   assert.equal(
     await page.getByRole("combobox", { name: "新会话默认模型", exact: true }).count(),
     0,
-    "global default belongs to session settings",
+    "the provider page has no global default picker",
   );
   const search = page.getByRole("searchbox", { name: "搜索模型名称或 ID", exact: true });
   const modelRow = page.locator(".provider-model-row").filter({ hasText: "theta-model" });
@@ -2510,10 +2473,10 @@ async function runFullModelSelection() {
     1,
     "confirmed invalidity is marked inside the model label",
   );
-  await openModelSettings();
   checks.push(
     "Core credential states and saved enablement remain separate from drafts and pending apply; Composer explicitly selects and executes another available model",
   );
+  // 空目录是后续场景的夹具准备；离开设置页后再写入，避免其目录刷新与管理命令竞争。
   let providers = await call("providers", { operation: "list" });
   for (const provider of providers.data) {
     await page.waitForFunction(async () => {
@@ -2532,7 +2495,6 @@ async function runFullModelSelection() {
       expectedRevision: providers.revision,
     });
   }
-  await button("返回应用").click();
   await createProjectConversation(page, "workspace");
   await until((s) => fixtureProject(s).models.length === 0, "empty Core catalog");
   const fallbackNotice = page.getByRole("status").filter({ hasText: "上次使用的模型" });

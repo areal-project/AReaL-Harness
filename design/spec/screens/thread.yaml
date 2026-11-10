@@ -1,0 +1,58 @@
+id: thread
+name: 对话
+status: draft
+purpose: 阅读 Agent 的过程与结果，并继续下达任务。
+
+regions:
+  # 本界面的规格入口只渲染主区与输入框，占满视口；A/B/C 见 window 界面，本界面的标准截图不含它们。
+  - id: A
+    name: 应用导航栏
+  - id: B
+    name: 侧栏
+  - id: C
+    name: 会话标题栏
+    contains: [conversation-title, changes-summary-trigger]
+    material: chrome
+  - id: D
+    name: 对话信息流
+    layout: 内容水平居中，宽度不超过 reading-width（含左右各 spacing-field 内边距）；滚动区左右两侧都为细滚动条预留位置（滚动条只出现在右侧，左侧对称留空），所以主区变窄时正文两侧各再缩进一个细滚动条宽；底部在输入框上沿渐隐
+    contains: [user-message, turn-process, final-answer, turn-status-line, turn-navigation]
+    note: 回合导航相对本区域定位（输入框与队列以上的部分），所以输入框上方出现队列时它的垂直位置随之变化
+  - id: E
+    name: 输入框
+    layout: 与信息流正文列同宽居中，但不受信息流滚动条留位影响（主区变窄时输入框比正文宽出两侧滚动条留位）；上留 spacing-inline，距窗口底部 spacing-field
+    contains:
+      - composer:
+          variant: thread
+
+rules:
+  - 一个回合只有一处实时状态，在回合末尾一行（运行中为“正在生成回复…”）；状态变化只换文字不改高度
+  - 暂停后回合末尾是一条居中分隔线，文字“你暂停了本轮执行”
+  - 已完成的过程默认收起；最终回答不在收起范围
+  - 读者向上阅读后，新内容不抢走阅读位置；“回到最新”是显式动作
+  - 回合过程标题吸顶时用平面材质，不加模糊
+
+fixtures: [send-run-stop]
+
+states:
+  - idle: 已有历史，未在运行
+  - running: 回合进行中，末尾状态行在变化
+  - done: 回合结束，过程收起，最终回答完整可见
+  - queued: 运行中，输入框上方有一条“待发送消息”
+  - stopped: 回合被暂停，末尾一行写明，已产生内容保留
+  - approval: 运行中，输入框上方一张审批卡，见 decision-card
+  - question: 运行中，输入框上方一张提问卡，见 decision-card
+
+references:
+  - state: idle
+    themes: [light, dark]
+  - state: running
+    themes: [light, dark]
+  - state: queued
+    themes: [light, dark]
+  - state: stopped
+    themes: [light, dark]
+  - state: approval
+    themes: [light, dark]
+  - state: question
+    themes: [light, dark]

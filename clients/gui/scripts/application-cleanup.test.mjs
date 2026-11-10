@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { EventEmitter } from "node:events";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -10,6 +11,52 @@ import {
   closeRecordedSmokeApplication,
   closeSmokeApplication,
 } from "./application-cleanup.mjs";
+
+test("cleanup observes the owned child exit while Playwright close is pending", async (t) => {
+  const child = spawn(process.execPath, ["-e", "process.on('message', () => process.exit(0))"], {
+    stdio: ["ignore", "ignore", "ignore", "ipc"],
+  });
+  t.after(() => {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  });
+  await closeSmokeApplication(
+    {
+      process: () => child,
+      close: () => {
+        child.send("quit");
+        return new Promise(() => {});
+      },
+    },
+    2000,
+  );
+  assert.equal(child.exitCode, 0);
+  assert.equal(child.signalCode, null);
+});
+
+for (const exit of ["nonzero", "signal"]) {
+  test(`cleanup rejects an owned child exit by ${exit}`, async (t) => {
+    const child = spawn(process.execPath, ["-e", "process.on('message', () => process.exit(7))"], {
+      stdio: ["ignore", "ignore", "ignore", "ipc"],
+    });
+    t.after(() => {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    });
+    await assert.rejects(
+      closeSmokeApplication(
+        {
+          process: () => child,
+          close: () => {
+            if (exit === "signal") child.kill("SIGTERM");
+            else child.send("quit");
+            return new Promise(() => {});
+          },
+        },
+        2000,
+      ),
+      /Electron.*exit/,
+    );
+  });
+}
 
 test("recorded cleanup starts native quit before a blocked recorder drain", async () => {
   const child = new EventEmitter();

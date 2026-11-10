@@ -63,6 +63,7 @@ export function ChatPromptEditor({
   nextPrompt,
   syncInitialValueOnMount = true,
   placeholder,
+  hasDraftContent = false,
   disabled = false,
   disabledReason,
   submitting = false,
@@ -101,6 +102,7 @@ export function ChatPromptEditor({
   className,
   shellClassName,
   surfaceLayout = "default",
+  surfacePlacement,
   compactPlaceholder = false,
   touchInput = false,
   onChange,
@@ -126,6 +128,7 @@ export function ChatPromptEditor({
   initialValue?: string;
   syncInitialValueOnMount?: boolean;
   placeholder?: string;
+  hasDraftContent?: boolean;
   disabled?: boolean;
   disabledReason?: string;
   submitting?: boolean;
@@ -170,7 +173,8 @@ export function ChatPromptEditor({
   promptHistory?: readonly string[];
   className?: string;
   shellClassName?: string;
-  surfaceLayout?: "default" | "compact";
+  surfaceLayout?: "default" | "compact" | "decision";
+  surfacePlacement?: "thread" | "home" | "inline";
   compactPlaceholder?: boolean;
   touchInput?: boolean;
   onChange?: (value: string) => void;
@@ -560,6 +564,7 @@ export function ChatPromptEditor({
       )}
       <ComposerSurface
         layout={surfaceLayout}
+        placement={surfacePlacement}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -593,6 +598,7 @@ export function ChatPromptEditor({
           <LexicalChatInput
             touchInput={touchInput}
             placeholder={placeholder}
+            hidePlaceholder={hasDraftContent}
             nextPrompt={nextPrompt}
             disabled={disabled}
             submitDisabled={submitDisabled || pendingReferences > 0}

@@ -95,7 +95,7 @@ function TooltipContent({
           data-slot="tooltip-content"
           role="tooltip"
           className={cn(
-            "ui-popup inline-flex w-fit max-w-[min(20rem,var(--available-width))] items-center gap-1.5 rounded-overlay border border-border bg-tooltip px-3 py-1.5 text-ui-sm text-tooltip-foreground shadow-overlay has-data-[slot=kbd]:pr-1.5 **:data-[slot=kbd]:relative **:data-[slot=kbd]:rounded-sm",
+            "ui-popup inline-flex w-fit max-w-[min(calc(var(--reading-width)/2),var(--available-width))] items-center gap-inline rounded-overlay border border-border bg-tooltip px-[calc(var(--spacing-inline)*1.5)] py-[calc(var(--spacing-inline)/2)] text-ui-sm/(--line-height-ui-sm) font-medium text-tooltip-foreground shadow-overlay has-data-[slot=kbd]:pr-[calc(var(--spacing-inline)/2)] **:data-[slot=kbd]:relative",
             className,
           )}
           {...props}
@@ -124,13 +124,8 @@ function TitleTooltip({
   return (
     <Tooltip>
       <TooltipTrigger render={children} aria-description={description} />
-      <TooltipContent
-        sideOffset={2}
-        className="max-w-[min(28rem,calc(100vw-1rem))] px-2.5 py-1 text-left"
-      >
-        <span className="text-ui-sm font-medium whitespace-pre-line break-words text-tooltip-foreground">
-          {title}
-        </span>
+      <TooltipContent sideOffset={2} className="text-left">
+        <span className="whitespace-pre-line break-words">{title}</span>
       </TooltipContent>
     </Tooltip>
   );

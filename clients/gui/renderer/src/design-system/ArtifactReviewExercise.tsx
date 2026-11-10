@@ -19,12 +19,48 @@ type Artifact = {
 };
 
 const artifacts = [
-  { id: "guide", name: "项目快速开始.md", type: "文档", information: "当前可用", outcome: "checked" },
-  { id: "trace", name: "本轮执行过程与工具返回记录-包含中文和English的长文件名.ndjson", type: "记录", information: "当前可用", outcome: "failed" },
-  { id: "screenshot", name: "结果截图.png", type: "图片", information: "当前可用", outcome: "checked" },
-  { id: "remote", name: "远端模型产物.bin", type: "其他", information: "仅远端可用", outcome: "unavailable" },
-  { id: "draft", name: "交付摘要草稿.md", type: "文档", information: "资料可能过期", outcome: "unknown" },
-  { id: "metrics", name: "运行指标.json", type: "记录", information: "当前可用", outcome: "checked" },
+  {
+    id: "guide",
+    name: "项目快速开始.md",
+    type: "文档",
+    information: "当前可用",
+    outcome: "checked",
+  },
+  {
+    id: "trace",
+    name: "本轮执行过程与工具返回记录-包含中文和English的长文件名.ndjson",
+    type: "记录",
+    information: "当前可用",
+    outcome: "failed",
+  },
+  {
+    id: "screenshot",
+    name: "结果截图.png",
+    type: "图片",
+    information: "当前可用",
+    outcome: "checked",
+  },
+  {
+    id: "remote",
+    name: "远端模型产物.bin",
+    type: "其他",
+    information: "仅远端可用",
+    outcome: "unavailable",
+  },
+  {
+    id: "draft",
+    name: "交付摘要草稿.md",
+    type: "文档",
+    information: "资料可能过期",
+    outcome: "unknown",
+  },
+  {
+    id: "metrics",
+    name: "运行指标.json",
+    type: "记录",
+    information: "当前可用",
+    outcome: "checked",
+  },
 ] as const satisfies readonly Artifact[];
 
 type ArtifactId = (typeof artifacts)[number]["id"];
@@ -53,42 +89,53 @@ export function ArtifactReviewExercise({ baseVersion }: { baseVersion: string })
   useEffect(() => {
     const pending = timers.current;
     return () => {
-      pending.forEach(timer => clearTimeout(timer));
+      pending.forEach((timer) => clearTimeout(timer));
       pending.clear();
     };
   }, []);
 
-  const visibleArtifacts = artifacts.filter(artifact => filter === "全部" || artifact.type === filter);
-  const selected = visibleArtifacts.find(artifact => artifact.id === selectedId);
+  const visibleArtifacts = artifacts.filter(
+    (artifact) => filter === "全部" || artifact.type === filter,
+  );
+  const selected = visibleArtifacts.find((artifact) => artifact.id === selectedId);
   const result = selected ? results[selected.id] : undefined;
 
   function changeFilter(value: string) {
-    const visible = artifacts.filter(artifact => value === "全部" || artifact.type === value);
+    const visible = artifacts.filter((artifact) => value === "全部" || artifact.type === value);
     setFilter(value);
-    setSelectedId(current => visible.some(artifact => artifact.id === current)
-      ? current
-      : visible[0]?.id ?? null);
+    setSelectedId((current) =>
+      visible.some((artifact) => artifact.id === current) ? current : (visible[0]?.id ?? null),
+    );
   }
 
   function review(artifact: (typeof artifacts)[number], intent: "check" | "resolve") {
     const previous = results[artifact.id];
     if (artifact.outcome === "unavailable" || timers.current.has(artifact.id)) return;
     if (intent === "check" ? previous.status !== "未核对" : previous.status !== "结果未知") return;
-    const operationId = previous.status === "结果未知"
-      ? previous.operationId
-      : `artifact-${artifact.id}-${++nextOperation.current}`;
-    setResults(current => ({
+    const operationId =
+      previous.status === "结果未知"
+        ? previous.operationId
+        : `artifact-${artifact.id}-${++nextOperation.current}`;
+    setResults((current) => ({
       ...current,
       [artifact.id]: { status: "处理中", operationId, intent },
     }));
     const timer = setTimeout(() => {
       timers.current.delete(artifact.id);
-      setResults(current => {
+      setResults((current) => {
         const pending = current[artifact.id];
-        if (pending.status !== "处理中" || pending.operationId !== operationId || pending.intent !== intent) return current;
-        const status = intent === "resolve" || artifact.outcome === "checked"
-          ? "已核对"
-          : artifact.outcome === "failed" ? "明确失败" : "结果未知";
+        if (
+          pending.status !== "处理中" ||
+          pending.operationId !== operationId ||
+          pending.intent !== intent
+        )
+          return current;
+        const status =
+          intent === "resolve" || artifact.outcome === "checked"
+            ? "已核对"
+            : artifact.outcome === "failed"
+              ? "明确失败"
+              : "结果未知";
         return { ...current, [artifact.id]: { status, operationId } };
       });
     }, 500);
@@ -106,14 +153,22 @@ export function ArtifactReviewExercise({ baseVersion }: { baseVersion: string })
             label="类型筛选"
             control={
               <SettingsSelect aria-label="类型筛选" value={filter} onValueChange={changeFilter}>
-                {filters.map(value => <option key={value} value={value}>{value}</option>)}
+                {filters.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
               </SettingsSelect>
             }
           />
           <SettingsRow
             label={`资料刷新：${refreshCount}`}
             description="刷新只更新资料次数和说明，保留核对结果。"
-            control={<ActionButton type="button" onClick={() => setRefreshCount(count => count + 1)}>刷新资料</ActionButton>}
+            control={
+              <ActionButton type="button" onClick={() => setRefreshCount((count) => count + 1)}>
+                刷新资料
+              </ActionButton>
+            }
           />
         </SettingsGroupCard>
       </SettingsSection>
@@ -121,7 +176,7 @@ export function ArtifactReviewExercise({ baseVersion }: { baseVersion: string })
       <SettingsSection title="交付物列表">
         {visibleArtifacts.length ? (
           <SettingsGroupCard>
-            {visibleArtifacts.map(artifact => {
+            {visibleArtifacts.map((artifact) => {
               const itemResult = results[artifact.id];
               return (
                 <SettingsRow
@@ -140,16 +195,22 @@ export function ArtifactReviewExercise({ baseVersion }: { baseVersion: string })
                       {selectedId === artifact.id ? "已选择" : "选择"}
                     </Button>
                   }
-                  detail={itemResult.status === "明确失败"
-                    ? <Feedback error="明确失败，文件已移走。" />
-                    : itemResult.status === "结果未知"
-                      ? <Feedback message={`结果未知。操作标识：${itemResult.operationId}。请显式核对结果。`} />
-                      : undefined}
+                  detail={
+                    itemResult.status === "明确失败" ? (
+                      <Feedback error="明确失败，文件已移走。" />
+                    ) : itemResult.status === "结果未知" ? (
+                      <Feedback
+                        message={`结果未知。操作标识：${itemResult.operationId}。请显式核对结果。`}
+                      />
+                    ) : undefined
+                  }
                 />
               );
             })}
           </SettingsGroupCard>
-        ) : <Feedback message="此类型下没有交付物。请选择其他类型。" />}
+        ) : (
+          <Feedback message="此类型下没有交付物。请选择其他类型。" />
+        )}
       </SettingsSection>
 
       {selected && result && (
@@ -158,38 +219,55 @@ export function ArtifactReviewExercise({ baseVersion }: { baseVersion: string })
             <SettingsGroupCard>
               <SettingsRow
                 label="资料状态"
-                description={refreshCount
-                  ? `${selected.information}。已完成 ${refreshCount} 次本地资料刷新。`
-                  : selected.information}
+                description={
+                  refreshCount
+                    ? `${selected.information}。已完成 ${refreshCount} 次本地资料刷新。`
+                    : selected.information
+                }
                 control={<span className="text-ui-sm text-foreground-subtle">{selected.type}</span>}
               />
               <SettingsRow
                 label="核对结果"
                 description={result.status}
                 control={
-                  result.status === "结果未知" || (result.status === "处理中" && result.intent === "resolve") ? (
+                  result.status === "结果未知" ||
+                  (result.status === "处理中" && result.intent === "resolve") ? (
                     <ActionButton
                       type="button"
                       pending={result.status === "处理中"}
                       onClick={() => review(selected, "resolve")}
-                    >核对结果</ActionButton>
+                    >
+                      核对结果
+                    </ActionButton>
                   ) : (
                     <ActionButton
                       type="button"
                       pending={result.status === "处理中"}
                       disabled={selected.outcome === "unavailable" || result.status !== "未核对"}
                       onClick={() => review(selected, "check")}
-                    >核对交付物</ActionButton>
+                    >
+                      核对交付物
+                    </ActionButton>
                   )
                 }
                 detail={
                   <>
-                    {selected.outcome === "unavailable" && <Feedback message="本地核对不可用，此交付物仅远端可用，本地没有可核对的文件。" />}
-                    {result.status === "处理中" && <Feedback message="处理中，正在等待此交付物的本地模拟结果。" />}
+                    {selected.outcome === "unavailable" && (
+                      <Feedback message="本地核对不可用，此交付物仅远端可用，本地没有可核对的文件。" />
+                    )}
+                    {result.status === "处理中" && (
+                      <Feedback message="处理中，正在等待此交付物的本地模拟结果。" />
+                    )}
                     {result.status === "已核对" && <Feedback message="已核对，内容与记录一致。" />}
                     {result.status === "明确失败" && <Feedback error="明确失败，文件已移走。" />}
-                    {result.status === "结果未知" && <Feedback message="结果未知，不会自动重复核对。请点击核对结果确认本次操作。" />}
-                    {result.status !== "未核对" && <p className="text-ui-sm text-foreground-subtle">操作标识：{result.operationId}</p>}
+                    {result.status === "结果未知" && (
+                      <Feedback message="结果未知，不会自动重复核对。请点击核对结果确认本次操作。" />
+                    )}
+                    {result.status !== "未核对" && (
+                      <p className="text-ui-sm text-foreground-subtle">
+                        操作标识：{result.operationId}
+                      </p>
+                    )}
                   </>
                 }
               />

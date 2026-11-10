@@ -4,7 +4,16 @@ import {
   useConversationCreateReadOnly,
 } from "../PlatformReadContext.js";
 import { useI18n } from "../i18n/IntlProvider.js";
+import { errorText } from "../errors/errorCopy.js";
 import { Input } from "../components/ui/input.js";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog.js";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import { createContext, useContext } from "react";
 import {
@@ -41,6 +50,7 @@ import {
   type SidebarNavigationProps,
 } from "../state/useSidebarNavigation.js";
 import { MemoTaskItem } from "../TaskListItem.js";
+import { ProjectMigrationNotice } from "./ProjectMigrationNotice.js";
 
 const SidebarContext = createContext<ReturnType<typeof useSidebarNavigation> | null>(null);
 function useSidebarContext() {
@@ -53,7 +63,7 @@ export function ConversationNavigation(props: SidebarNavigationProps) {
   const model = useSidebarNavigation(props);
   return (
     <SidebarContext.Provider value={model}>
-      {props.visible && <SidebarContent />}
+      {props.visible && <SidebarContent onUpgradeHistory={props.onUpgradeHistory} />}
       <SidebarSearch />
       <SidebarRename />
     </SidebarContext.Provider>
@@ -303,7 +313,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
                         projectId: owner.id,
                         path: ".",
                       })
-                      .catch((cause) => setError(cause.message))
+                      .catch((cause) => setError(errorText(t, cause)))
                   }
                 >
                   {t("common.navigation.openDefault")}
@@ -317,7 +327,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
                         projectId: owner.id,
                         path: ".",
                       })
-                      .catch((cause) => setError(cause.message))
+                      .catch((cause) => setError(errorText(t, cause)))
                   }
                 >
                   {t("common.navigation.reveal")}
@@ -398,6 +408,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
           </HoverActions>
         )}
       </SidebarDragSurface>
+      <ProjectMigrationNotice hostState={owner.state?.hostState} />
       <div id={`project-threads-${owner.id}`} hidden={collapsed}>
         <ul>
           {rows.slice(0, visibleCount).map((row) => (
@@ -423,7 +434,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
     </section>
   );
 }
-function SidebarContent() {
+function SidebarContent({ onUpgradeHistory }: { onUpgradeHistory?: () => void }) {
   const readOnly = useReadOnly();
   const conversationCreateReadOnly = useConversationCreateReadOnly();
   const libraryReadOnly = useLibraryReadOnly();
@@ -473,6 +484,13 @@ function SidebarContent() {
         {!conversationCreateReadOnly && (
           <div className="sidebar-tools">
             <NewTaskButtonGroup onCreateTask={() => void newTask()} />
+          </div>
+        )}
+        {onUpgradeHistory && (
+          <div className="sidebar-tools">
+            <Button variant="ghost" onClick={onUpgradeHistory}>
+              {t("upgrade.history")}
+            </Button>
           </div>
         )}
         {
@@ -735,39 +753,39 @@ function SidebarRename() {
   const { t } = useI18n();
   const { action, rename, setRename, renameText, setRenameText } = useSidebarContext();
   return (
-    <>
-      {rename && (
-        <div className="dialog-backdrop">
-          <form
-            className="rename-dialog"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void action("library", { ...rename, title: renameText })
-                .then(() => setRename(null))
-                .catch(() => {});
-            }}
-          >
-            <h2>{t("common.navigation.rename")}</h2>
-            <Input
-              unstyled
-              autoFocus
-              aria-label={t("common.navigation.name")}
-              maxLength={200}
-              required
-              value={renameText}
-              onChange={(e) => setRenameText(e.target.value)}
-            />
-            <div className="utility-actions">
-              <Button unstyled type="button" onClick={() => setRename(null)}>
-                {t("common.navigation.cancel")}
-              </Button>
-              <Button unstyled type="submit">
-                {t("common.navigation.save")}
-              </Button>
-            </div>
-          </form>
-        </div>
-      )}
-    </>
+    <Dialog open={!!rename} onOpenChange={(open) => !open && setRename(null)}>
+      <DialogContent className="max-w-[min(calc(var(--reading-width)/2),calc(100%-var(--spacing-field)*2))]">
+        <form
+          className="contents"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!rename || !renameText.trim()) return;
+            void action("library", { ...rename, title: renameText.trim() })
+              .then(() => setRename(null))
+              .catch(() => {});
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{t("common.navigation.rename")}</DialogTitle>
+          </DialogHeader>
+          <Input
+            autoFocus
+            onFocus={(e) => e.currentTarget.select()}
+            aria-label={t("common.navigation.name")}
+            maxLength={200}
+            value={renameText}
+            onChange={(e) => setRenameText(e.target.value)}
+          />
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>
+              {t("common.navigation.cancel")}
+            </DialogClose>
+            <Button type="submit" disabled={!renameText.trim()}>
+              {t("common.navigation.save")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

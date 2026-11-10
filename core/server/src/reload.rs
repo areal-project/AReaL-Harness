@@ -89,6 +89,10 @@ pub(super) fn parameters(config: &SelectedModelConfig) -> areal_protocol::deskto
 pub(super) fn deployment(config: &ResolvedCoreConfig) -> Value {
     let mut value = config.diagnostic(false);
     value.as_object_mut().unwrap().remove("model");
+    // 默认配置首次落盘不改变来源路径；真实非模型配置仍必须通过部署校验。
+    if config.config_file.is_none() {
+        value["config_file"] = serde_json::json!(config.home.join("config.toml"));
+    }
     value
 }
 

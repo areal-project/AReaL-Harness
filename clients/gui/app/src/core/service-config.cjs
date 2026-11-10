@@ -4,11 +4,11 @@ const { createHash } = require("node:crypto");
 const { realpathSync } = require("node:fs");
 const { join, resolve } = require("node:path");
 const { homedir } = require("node:os");
-const { resolveCoreBinary } = require("@areal/workbench-service/desktop/core/bundle.cjs");
+const bootstrap = require("@areal/workbench-service/desktop/core/space-bootstrap.cjs");
 // 独立应用身份避免接管旧安装；开发版按工作树隔离。
 /** @param {import('electron').App} app @param {NodeJS.ProcessEnv} [env] */
 function configureUserData(app, env = process.env) {
-  const explicit = env.AREAL_GUI_USER_DATA;
+  const explicit = bootstrap.selectActiveSpace(app, env) || env.AREAL_GUI_USER_DATA;
   if (explicit) app.setPath("userData", explicit);
   else if (!app.isPackaged) {
     const checkout = createHash("sha256")
@@ -31,7 +31,7 @@ function serviceOptions(app) {
     process.env.AREAL_HARNESS_HOME || join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal"),
   );
   return {
-    binary: resolveCoreBinary({
+    binary: bootstrap.resolveCoreBinary({
       explicit:
         process.env.AREAL_CORE_BIN ||
         (!app.isPackaged ? resolve(__dirname, "../../../../../target/debug/areal") : undefined),
@@ -80,4 +80,4 @@ function serviceOptions(app) {
   };
 }
 const { serviceIdentity } = require("@areal/workbench-service/desktop/core/service-identity.cjs");
-module.exports = { configureUserData, serviceHome, serviceOptions, serviceIdentity };
+module.exports = { ...bootstrap, configureUserData, serviceHome, serviceOptions, serviceIdentity };

@@ -774,6 +774,7 @@ export function DraftComposer({
         <ChatPromptEditor
           key={outgoing || (activeCreation?.worktree && busy) ? "waiting" : "draft"}
           surfaceLayout={surfaceLayout}
+          surfacePlacement="home"
           triggerPanelContainer={menuAnchor}
           shellClassName="@container/composer"
           workspacePath={project.root}
@@ -788,6 +789,9 @@ export function DraftComposer({
           inputApiRef={api}
           inputTestId="chat-input"
           submitTestId="chat-send-button"
+          hasDraftContent={
+            !outgoing && (!!files.length || !!comments.length || !!skills.selected.length)
+          }
           placeholder={
             activeCreation?.worktree && busy
               ? t("worktree.waitSetup")
@@ -812,9 +816,7 @@ export function DraftComposer({
                 !skills.selected.length)
           }
           submitDisabledReason={
-            desktopUnsupported && !goalMode
-              ? t("backend.updateRequired")
-              : (!modelSelectionDisabled && models.missing && t(models.missing)) || undefined
+            desktopUnsupported && !goalMode ? t("backend.updateRequired") : undefined
           }
           submitting={busy}
           submitLabel={goalMode ? "开始目标" : "发送"}

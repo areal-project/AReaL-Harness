@@ -8,15 +8,16 @@ import { collectUiAdoption } from "./design-system-maturity.mjs";
 import { readTestManifest } from "./test-manifest.mjs";
 import { collectDesignRuleMetrics } from "./design-rules.mjs";
 
-// PR #128 的人工审阅声明，不是授权验证。新基线进入 base 后自然失效，可移除此迁移记录。
+// D-005 规格包与 R-CHECK-024 的人工审阅声明，不是授权验证。新基线进入 base 后自然失效，可移除此迁移记录。
 const reviewedDocBudgetTransition = Object.freeze({
   metric: "activeDesignDocBytes",
-  from: 262924,
-  to: 269714,
+  from: 184954,
+  to: 193947,
   direction: "down",
   owner: "design/ clients/gui/design-system",
-  reason: "Bilingual plugin resource specifications and disclosure/copy rules; no extra headroom",
-  review: "PR #128: owner-approved document-only budget adjustment",
+  reason:
+    "Reproducible design spec package (D-005, design/spec) and layer check rule; no extra headroom",
+  review: "Owner-approved architecture in the project thread; document-only budget adjustment",
 });
 
 export function reviewedBaselineTransition(name, before, current) {
@@ -56,7 +57,7 @@ async function filesAt(root, dir) {
     .map((file) => `${dir}/${file}`);
 }
 
-export async function collectHealth({ root = gui, nativeSources } = {}) {
+export async function collectHealth({ root = gui, nativeSources, retainedWorkbenchSources } = {}) {
   const paths = (
     await Promise.all(["app/src", "renderer/src", "packages"].map((dir) => filesAt(root, dir)))
   ).flat();
@@ -142,12 +143,43 @@ export async function collectHealth({ root = gui, nativeSources } = {}) {
         source: await readFile(resolve(root, path), "utf8"),
       })),
   );
+  // 已有的非收口模块按精确路径保留；新增或改名模块默认计入，不能靠拆文件逃逸。
+  const retainedWorkbench =
+    retainedWorkbenchSources ?? storedBaseline.$workbenchRetainedSources ?? [];
+  if (
+    !Array.isArray(retainedWorkbench) ||
+    new Set(retainedWorkbench).size !== retainedWorkbench.length ||
+    !retainedWorkbench.every(
+      (path) =>
+        typeof path === "string" &&
+        path.startsWith("../../services/workbench/src/") &&
+        sourceExtension.test(path) &&
+        !path
+          .slice("../../".length)
+          .split("/")
+          .some((part) => part === ".." || part === "."),
+    )
+  )
+    throw new Error("Invalid retained workbench source classification");
+  const workbenchConvergeSources = Object.fromEntries(
+    await Promise.all(
+      servicePaths
+        .filter((path) => !retainedWorkbench.includes(path))
+        .map(async (path) => [path, lines(await readFile(resolve(root, path), "utf8"))]),
+    ),
+  );
   const checkedSources = [...main, ...serviceSources];
   const checkedMainFiles = checkedSources.filter(
     (file) => /@ts-check\b/.test(file.source) || /\.tsx?$/.test(file.path),
   ).length;
   const mainSourceLines = sum(main);
   const metrics = {
+    workbenchConvergeLines: row(
+      Object.values(workbenchConvergeSources).reduce((total, count) => total + count, 0),
+      "down",
+      "services/workbench/src",
+      "R1/R2/R4/R5 convergence source lines; exact retained paths in $workbenchRetainedSources; new paths count by default",
+    ),
     mainSourceLines: row(
       mainSourceLines,
       "down",
@@ -331,6 +363,8 @@ export async function collectHealth({ root = gui, nativeSources } = {}) {
     scope:
       "GUI production app/src, renderer/src, packages/*/{src,client}, and package-root implementations; excludes package build/config/declaration tooling, vendor/generated/design previews/i18n messages/tests; manifest covers GUI root package only",
     metrics,
+    workbenchConvergeSources,
+    workbenchRetainedSources: retainedWorkbench,
     mainBusinessSources,
     mainNativeSources,
     counts: {
@@ -362,19 +396,27 @@ function execFileSyncResult(args, root) {
 }
 
 // 继承问题单独归因，但仍按已审核基准判定失败，不能借比较基点自动豁免。
-async function baseHealth(base, root, nativeSources) {
+async function baseHealth(base, root, nativeSources, retainedWorkbenchSources) {
   const gitRoot = execFileSyncResult(["rev-parse", "--show-toplevel"], root);
   if (!gitRoot) throw new Error(`Unavailable baseline base ${base}`);
   const gui = relative(gitRoot, root).replaceAll("\\", "/");
   const design = relative(gitRoot, resolve(root, "../../design")).replaceAll("\\", "/");
   const directory = await mkdtemp(join(tmpdir(), "areal-health-base-"));
   try {
-    const archive = execFileSync("git", ["archive", "--format=tar", base, "--", gui, design], {
+    const workbench = "services/workbench/src";
+    const paths = [gui, design];
+    if (execFileSyncResult(["ls-tree", "--name-only", base, "--", workbench], gitRoot))
+      paths.push(workbench);
+    const archive = execFileSync("git", ["archive", "--format=tar", base, "--", ...paths], {
       cwd: gitRoot,
       maxBuffer: 1 << 30,
     });
     execFileSync("tar", ["-x", "-C", directory], { input: archive });
-    return await collectHealth({ root: join(directory, gui), nativeSources });
+    return await collectHealth({
+      root: join(directory, gui),
+      nativeSources,
+      retainedWorkbenchSources,
+    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -478,6 +520,7 @@ function baselineFrom(report, previous) {
     $schemaVersion: 1,
     $revision: report.revision,
     $mainNativeSources: report.mainNativeSources,
+    $workbenchRetainedSources: report.workbenchRetainedSources,
     ...Object.fromEntries(
       Object.entries(report.metrics).map(([name, metric]) => [
         name,
@@ -530,6 +573,8 @@ async function main() {
   ]);
   for (const name of allowed)
     if (!names.has(name)) throw new Error(`Unknown regression exception ${name}`);
+  if (allowed.has("workbenchConvergeLines"))
+    throw new Error("Workbench convergence growth cannot be waived with --allow-regression");
   if (allowed.has("mainBusinessLines") || allowed.has("mainSourceLines"))
     throw new Error("Main source growth cannot be waived with --allow-regression");
   const failures = baseline ? compare(report, baseline) : [];
@@ -551,6 +596,7 @@ async function main() {
       base,
       root,
       before.$mainNativeSources ?? report.mainNativeSources,
+      before.$workbenchRetainedSources ?? report.workbenchRetainedSources,
     );
     for (const name of ["mainSourceLines", "mainBusinessLines"]) {
       const measured = measuredBase.metrics[name].value;
@@ -573,6 +619,30 @@ async function main() {
           reason: "Main source grew against base",
         });
     }
+    const convergence = "workbenchConvergeLines";
+    const actual = report.metrics[convergence].value;
+    const measured = measuredBase.metrics[convergence].value;
+    if (!before[convergence] && baseline[convergence]?.value !== measured)
+      failures.push({
+        metric: convergence,
+        reason: "initial baseline must equal actual workbench lines at base",
+      });
+    if (actual > measured || baseline[convergence]?.value > measured)
+      failures.push({
+        metric: convergence,
+        reason: "workbench source or baseline grew against actual base",
+        current: actual,
+        baseline: measured,
+        direction: "down",
+      });
+    if (before[convergence])
+      for (const path of report.workbenchRetainedSources)
+        if (!(before.$workbenchRetainedSources ?? []).includes(path))
+          failures.push({
+            metric: convergence,
+            path,
+            reason: "retained exemption added against base",
+          });
     if (before.mainBusinessLines)
       for (const path of Object.keys(report.mainNativeSources))
         if (!(path in before.$mainNativeSources))
@@ -656,6 +726,7 @@ async function main() {
       allowedRegressions: failures.filter((failure) => allowed.has(failure.metric)),
       inheritedRegressions: inherited,
       metrics: metric ? { [metric]: report.metrics[metric] } : report.metrics,
+      workbenchConvergeSources: report.workbenchConvergeSources,
       mainBusinessSources: report.mainBusinessSources,
       mainNativeSources: report.mainNativeSources,
     }),

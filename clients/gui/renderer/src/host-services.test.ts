@@ -9,6 +9,7 @@ import { useConversationHistory } from "./ConversationHistory.js";
 import { draftModelOptions, draftModelSelection } from "./lib/draftModelSelection.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
 import { recoveredOutcome } from "./recoveryPresentation.js";
+import { ProjectMigrationNotice } from "./views/ProjectMigrationNotice.js";
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 const connection = {
   hostId: "host",
@@ -107,7 +108,7 @@ function transport(
   const requests: {
     method: string;
     params: Record<string, unknown>;
-    context?: { projectId: string; serviceGeneration: string };
+    context?: { projectId: string; serviceGeneration?: string };
   }[] = [];
   let event: (value: unknown) => void = () => {};
   let sessionSequence = 0;
@@ -161,6 +162,113 @@ function options(factory: NonNullable<HostClientOptions["transport"]>): HostClie
   };
 }
 describe("Host renderer read authority", () => {
+  it("projects a stopped project's persisted history as read-only without marking it connected", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    const stopped = { ...project, state: "stopped" as const, serviceGeneration: undefined };
+    const wire = transport(observation, undefined, {
+      projects: [stopped],
+      navigation: [navigation],
+    });
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, persistedHistory: true },
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "session.openPersisted")
+              return {
+                ...identity,
+                ...context,
+                serviceGeneration: "old-gen",
+                threadId: params.threadId,
+                snapshot: observation,
+                access: { kind: "persisted", readOnly: true, snapshotId: "snapshot" },
+              };
+            return base.transport.request(method, params, context);
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    try {
+      await until(services);
+      await services.reads!.selectSession({
+        projectId: "alias",
+        threadId: "thread",
+        persisted: true,
+      });
+      const owner = (await services.snapshot()).projects[0];
+      expect(owner.state.connected).toBe(false);
+      expect(owner.state.threads.thread).toMatchObject({ persistedHistory: true });
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+  it("shows migration recovery only for the pending project and clears it after Host publication", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    const blocked = {
+      ...project,
+      projectId: "blocked",
+      alias: { sourceId: "source", projectId: "blocked-alias" },
+      workspace: "/blocked",
+      state: "legacyPending" as const,
+      serviceGeneration: "",
+      summaries: { state: "unknown" as const, items: [] },
+    };
+    const wire = transport(observation, undefined, {
+      projects: [project, blocked],
+      navigation: [
+        {
+          ...navigation,
+          bindings: [
+            ...navigation.bindings,
+            { projectId: "blocked", alias: "blocked-alias", projectless: false },
+          ],
+        },
+      ],
+    });
+    const services = createHostReadServices(undefined, options(wire.factory));
+    const notice = (owner: Snapshot["projects"][number]) =>
+      renderToStaticMarkup(
+        createElement(ProjectMigrationNotice, { hostState: owner.state.hostState }),
+      );
+    try {
+      await until(services);
+      const before = await services.snapshot();
+      const pending = before.projects.find((owner) => owner.id === "blocked-alias")!;
+      expect(pending.state.connected).toBe(false);
+      expect(notice(pending)).toContain('role="status"');
+      expect(notice(before.projects.find((owner) => owner.id === "alias")!)).toBe("");
+      wire.send({
+        event: "shell.updated",
+        ...connection,
+        subscriptionId: "shell",
+        sequence: 1,
+        delta: {
+          projects: {
+            upsert: [{ ...blocked, state: "ready", serviceGeneration: "published-gen" }],
+            remove: [],
+          },
+          navigation: { upsert: [], remove: [] },
+        },
+      });
+      const restored = (await services.snapshot()).projects.find(
+        (owner) => owner.id === "blocked-alias",
+      )!;
+      expect(restored.state.connected).toBe(true);
+      expect(notice(restored)).toBe("");
+      expect(wire.requests.map((request) => request.method)).toEqual(["shell.subscribe"]);
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("preserves a stopped project's terminal state without opening or waking it", async () => {
     const page = new EventTarget();
     vi.stubGlobal("window", page);
@@ -254,7 +362,6 @@ describe("Host renderer read authority", () => {
       };
       const services = createHostReadServices(undefined, {
         ...options(factory),
-        domains: new Set(["library", "tasks", "manage", "providers", "pages"]),
         events: page as Window,
       });
       try {
@@ -664,6 +771,7 @@ describe("Host renderer read authority", () => {
           root: "/legacy",
           models: [{ id: "legacy-model" }],
           profiles: [{ id: "legacy-profile" }],
+          core: { serviceGeneration: "core-gen" },
           state: { threads: { thread: { id: "thread", name: "WRONG LEGACY", turns: [] } } },
           summaries: [{ id: "wrong" }],
         },
@@ -674,9 +782,13 @@ describe("Host renderer read authority", () => {
         projects: { alias: { title: "WRONG LEGACY" } },
       },
     };
+    let emitDesktop: (value: Snapshot) => void = () => {};
     const desktop: PlatformServices = {
       snapshot: async () => legacy,
-      onState: () => () => {},
+      onState: (listener) => {
+        emitDesktop = listener;
+        return () => {};
+      },
       chooseProject: async () => null,
       command: async () => {
         throw new Error("Native write invoked");
@@ -697,6 +809,149 @@ describe("Host renderer read authority", () => {
     expect(snapshot.projects[0].profiles).toEqual([{ id: "legacy-profile" }]);
     expect(snapshot.projects[0].summaries[0].name).toBe("Host title");
     expect(snapshot.projects[0].state.threads.thread.name).toBe("Host thread");
+    const task = {
+      id: "task",
+      revision: 1,
+      mode: "scheduled",
+      threadId: "task-anchor",
+      runs: [
+        { id: "run", threadId: "run-thread" },
+        { id: "summary-run", threadId: "run-summary" },
+      ],
+    };
+    const side = {
+      id: "side",
+      conversation: {
+        kind: "side",
+        policy: { kind: "sideExecutableV2" },
+        origin: { sourceThreadId: "thread" },
+      },
+      turns: [],
+      desktop: { queue: { revision: 1, items: [] }, interactions: [], interactionRevision: 2 },
+    };
+    const fullRun = {
+      id: "run-thread",
+      turns: [],
+      displayHistory: { supported: true, viewGeneration: "run-history" },
+      desktop: {
+        queue: { revision: 3, items: [] },
+        interactions: [],
+        interactionRevision: 4,
+        configuration: { model: "run-model" },
+      },
+    };
+    const anchor = { ...fullRun, id: "task-anchor" };
+    emitDesktop({
+      ...legacy,
+      projects: [
+        {
+          ...legacy.projects[0],
+          state: {
+            ...legacy.projects[0].state,
+            connected: true,
+            tasks: { task },
+            threads: {
+              ...legacy.projects[0].state.threads,
+              side,
+              "task-anchor": anchor,
+              "run-thread": fullRun,
+              unrelated: { id: "unrelated", turns: [] },
+              "run-summary": { id: "run-summary" },
+              summary: { id: "summary", conversation: side.conversation },
+            },
+          },
+        },
+      ],
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task });
+    const projected = (await services.snapshot()).projects[0];
+    expect(projected.state.threads.side).toMatchObject(side);
+    expect(projected.state.threads["task-anchor"]).toMatchObject(anchor);
+    expect(projected.state.threads["task-anchor"].displayHistory.owner).toBe("workbench");
+    expect(projected.state.threads["run-thread"]).toMatchObject(fullRun);
+    expect(projected.state.threads["run-thread"].displayHistory.owner).toBe("workbench");
+    expect(projected.state.threads.thread.displayHistory.owner).not.toBe("workbench");
+    expect(projected.state.threads.unrelated).toBeUndefined();
+    expect(projected.state.threads["run-summary"]).toBeUndefined();
+    expect(projected.configurations["run-thread"]).toEqual(fullRun.desktop.configuration);
+    expect(projected.state.queues["run-thread"]).toEqual(fullRun.desktop.queue);
+    expect(projected.state.interactions["run-thread"]).toEqual({ revision: 4, data: [] });
+    expect(projected.state.threads.thread.name).toBe("Host thread");
+    expect(projected.state.threads.summary).toBeUndefined();
+    expect(projected.state.queues.side).toEqual(side.desktop.queue);
+    expect(projected.state.interactions.side).toEqual({ revision: 2, data: [] });
+    emitDesktop({
+      ...legacy,
+      projects: [
+        {
+          ...legacy.projects[0],
+          state: { connected: false, tasks: { task }, threads: { "run-thread": fullRun } },
+        },
+      ],
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
+    const updated = { ...task, revision: 2 };
+    emitDesktop({
+      ...legacy,
+      projects: [
+        {
+          ...legacy.projects[0],
+          state: {
+            ...legacy.projects[0].state,
+            connected: true,
+            tasks: { task: updated },
+            threads: { side, "run-thread": fullRun },
+          },
+        },
+      ],
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task: updated });
+    wire.send({
+      event: "shell.updated",
+      ...connection,
+      subscriptionId: "shell",
+      sequence: 1,
+      delta: {
+        projects: { upsert: [{ ...project, serviceGeneration: "next-gen" }], remove: [] },
+        navigation: { upsert: [], remove: [] },
+      },
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
+    expect((await services.snapshot()).projects[0].core.serviceGeneration).toBe("next-gen");
+    emitDesktop({
+      ...legacy,
+      projects: [
+        {
+          ...legacy.projects[0],
+          core: { serviceGeneration: "next-gen" },
+          state: {
+            ...legacy.projects[0].state,
+            connected: true,
+            tasks: { task: updated },
+            threads: { side, "run-thread": fullRun },
+          },
+        },
+      ],
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task: updated });
+    expect((await services.snapshot()).projects[0].state.threads.side).toBeDefined();
+    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeDefined();
+    wire.send({
+      event: "shell.updated",
+      ...connection,
+      subscriptionId: "shell",
+      sequence: 2,
+      delta: {
+        projects: { upsert: [], remove: [] },
+        navigation: { upsert: [{ ...navigation, bindings: [] }], remove: [] },
+      },
+    });
+    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
+    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
     expect(snapshot.library?.projects.alias.title).toBe("Host project title");
     expect(snapshot.library?.settings.sidebarSort).toBe("manual");
     expect(snapshot.library?.settings.unmigratedPreference).toBe("retained");
@@ -929,7 +1184,7 @@ describe("Host renderer read authority", () => {
         },
       };
     };
-    const services = createHostReadServices(undefined, { ...options(factory), writes: true });
+    const services = createHostReadServices(undefined, options(factory));
     await until(services);
     await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
     const { call } = await import("./services.js");
@@ -1081,7 +1336,7 @@ describe("Host renderer read authority", () => {
       onTheme: () => () => {},
       preview: async () => ({}),
     };
-    const services = createHostReadServices(desktop, { ...options(factory), writes: true });
+    const services = createHostReadServices(desktop, options(factory));
     await until(services);
     await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
     const { call } = await import("./services.js");

@@ -27,6 +27,12 @@ WS 只接受 `/host/socket`，拒绝 query，精确校验 Host authority 与单�
 
 Remote 的新读方法和原生会话格式只在 hello 协商 `gui-read-v1` 后提供，仍受现有设备项目授权约束；旧方法表仍为 24 项。共享客户端通过 Noise 或本机 WS 使用同一读模型。具体消息、字段与边界见 `schemas/areal-host-protocol-v1.json`。
 
+本机 WebSocket 协商 `persistedHistoryV1` 后，可对已登记且未运行的项目调用 `session.openPersisted`。Host 核对旧服务身份并取得启动、服务和 Store 锁，生成有大小上限的固定只读快照，不启动 Core 或 Runtime；响应标记 `access.readOnly` 和快照摘要，不改变项目状态或旧回执。历史分页及内容寻址附件绑定该订阅；不支持的继承视图和缺失资源明确返回错误。连接关闭、订阅关闭或项目归属改变后快照失效。此能力不授予发送、任务控制或项目接管权限。
+
+Host 无法交接时，`areal host history-snapshot --service <service.json> --thread <id> --output <private-dir>/history.html` 可在取得同样的项目锁并验证服务身份后导出离线只读页面。输出目录须为当前用户拥有的私有目录；命令不连接或启动 Host、Core、Runtime，不改变原回执。页面不加载附件或引用会话，也不能发送或执行操作。
+
+旧后台状态未确认时，用户可显式创建独立空间。`areal space` 以稳定请求身份准备和选择私有 profile、Host、Core 与空工作区；不复制旧 Store、任务或凭据。新 Host 的 `recovery.inspect` 返回经过滤的旧目录和停用配置模板，`recovery.history` 持原锁读取绑定快照，`recovery.importProvider` 只按原请求导入停用模板并核查未决结果。新 Host 拒绝把旧项目或旧数据根及其祖先、后代作为工作区；原任务需手动在新空间重建。`kind:none` 表示当前 Host 不属于独立空间，不能据此推断旧后台状态。
+
 协商 `gui-write-v1` 的 Remote 连接可在模型目录、提交与回执查询等项目请求中使用共享清单的 Host projectId，也可沿用来源别名。Host 从当前配对来源解析为同一个别名后检查原设备项目授权，并使用同一回执范围；知道 Host ID 不授予项目权限。未协商的旧调用仍只接受来源别名。
 
 Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 origin，`areal web --json` 只返回不含秘密的 endpoint。浏览器在 IndexedDB 保存不可导出的 P-256 私钥，向同源 `POST /host/auth/challenge` 提交公钥。未授权返回有效 120 秒的请求；用户在本机执行 `areal host web approve REQUEST_ID`，再在浏览器检查批准状态。已授权公钥获取有效 30 秒的一次性 challenge，对 Host 身份、nonce 和 origin 签名，再向 `POST /host/auth/ticket` 换票。HTTP origin 本身不授予访问权。
@@ -53,13 +59,15 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 普通 GUI 登记要求 `profile` 对应唯一已提交来源，`legacyProjectId` 为 24 位小写十六进制别名。新 GUI 项目的 `dataDir` 必须为该来源的 `<coreHome>/<legacyProjectId>/state`。原导入绑定保留原 Store 路径。同一来源别名不能改绑另一个 Host 项目。Host 在现有项目登记文件中保存新别名，不改原导入 manifest。未知或歧义来源分别返回 `sourceNotFound` 或 `sourceConflict`。
 
-`ProjectStatus` 包含 `registration`、`state`、可选 `service` 和 `migration`。状态为 `stopped`、`starting`、`ready`、`stopping`、`unavailable` 或 `legacyPending`。迁移记录包含原 `serviceId`、`generation`、存在时的 owner、来源 profile 与阶段。`legacyPending` 不制造 Host owner，也不签发声称受 Host 监督的描述。等待迁移时，客户端原有旧连接可以继续运行。
+`ProjectStatus` 包含 `registration`、`state`、可选 `service` 和 `migration`。可选 `usesSharedModelConfig:boolean` 表示 Host 确认项目使用共享模型配置，客户端读取旧回复时缺省为 false。状态为 `stopped`、`starting`、`ready`、`stopping`、`unavailable` 或 `legacyPending`。迁移记录包含原 `serviceId`、`generation`、存在时的 owner、来源 profile 与阶段。`legacyPending` 不制造 Host owner，也不签发声称受 Host 监督的描述。等待迁移时，客户端原有旧连接可以继续运行。
 
 监督 owner 为 `{kind:"host",hostId,generation}`，标识持有 service-host 生命期管道的进程。它与 Remote Noise peer 身份、设备授权分别建模。H1 与 H2 保留 `{kind:"gui",appRunId,profile}` 的运行支持，直到 GUI 生命周期迁移完成；之后只保留旧身份识别。旧 GUI 不能接管新 Host-owned 服务。不能静默改变严格 service-v1 的旧客户端解码行为，必须协商 Host-aware 描述或返回能力错误。
 
 `LaunchInputs` 必须包含绝对路径 `workspace`、`cwd`、`configHome` 与 `options:LocalArgs`，另有可选绝对路径 `homedir`、`configPath`、`deploymentPath`，非秘密字符串映射 `environment` 和 `credentialNames:string[]`。外层字段使用 camelCase；`options` 保留 `core/local-service/src/spec.rs` 中的 snake_case 字段，可选参数值允许 null。它包含模型选择、权限、沙箱与 Runtime 限额、工作区/数据/配置路径，以及 `read_only_path`、`task_credential_command`、`no_deployment_mcp`。CLI 参数使用连字符。CLI 连接后通过 Core 配置 run-scoped MCP；Host 启动输入携带相应凭据名，不携带 `mcpConfigPath`。Skill 根目录属于部署条目，不另设 `skillsPaths`。
 
 客户端发送前解析路径与启动上下文。Host 启动前校验登记一致性、绝对路径、允许的环境名与配置。秘密通过认证连接中的独立字符串映射 `project.ensure.credentials` 传递；`credentialNames` 标识所需条目，也包括生成的 MCP 秘密引用。凭据值不进入 Debug 输出、日志、状态或持久操作参数。H1 将它们保存在当前 Host generation 的项目私有内存中。模型配置引用的凭据缺失时，Core 管理服务仍可启动并读取本地历史，相关模型在执行边界返回 `MODEL_CREDENTIAL_UNAVAILABLE`；其他必要凭据缺失仍返回 `credentialsRequired`。密钥库持久化属于 H2。
+
+重复 `project.ensure` 核实服务仍为 Ready、所有者和配置摘要一致且属于当前项目服务身份时，保留现有 Ready 状态与共享 Core 连接；实际启动或配置变化沿用原启动准入与代次检查。
 
 发布 ready 前，Host 将部署 JSON 和引用的 Skill 树快照到 `<home>/host/launch/<project-id-digest>/`，保留嵌套资源和可执行位。重写后的路径保存在 `inputs.json`，部署与 Skill 路径包含内容摘要。Core 对同一 `id/revision` 保留显式部署的 Skill 根目录，自动发现及刷新不会覆盖该快照；不同 revision 继续按现有发现规则处理。CLI 随后可移除自己的临时部署目录。普通 TOML 保留原路径与既有配置监听行为，配置兼容性与安全重启规则继续生效。各子进程使用提交的 cwd 和环境，Host 不修改进程全局 cwd 或环境。`configHome` 保留调用端的配置、插件与 Hook 根目录，与 Host registry home 独立；Host 仅把 `AREAL_HARNESS_SERVICE_HOME` 指向自身 registry。
 
@@ -108,7 +116,7 @@ Host 启动后及登记、迁移、启动输入变化后读取已发布任务目
 
 GUI 的 `LaunchInputs.schedulePreparation` 显式选择 `managed` 或 `external`。`managed` 携带绝对路径 `resourceStatePath`、`userManagedSkillsRoot`、`projectManagedSkillsRoot`，以及 `projectResourceScope` 和 `defaultProfile:{id,revision}`。Host 按现有用户/项目优先级及启停偏好生成部署，并保留历史 Skill revision。Skill revision 沿用 GUI 的目录、名称与描述摘要；只修改正文或附属文件不会生成新 revision，同一 `id/revision` 继续使用已保留的快照。`external` 只携带可选 `defaultProfile`，使用原部署和 Core 默认配置。CLI 可省略此字段；GUI 缺失准备描述时不推断资源来源。
 
-启动准备核对当前 Task、Run、来源线程、旧独立目录预约和工作区作者记录。资源 profile 变化时，Host 保存原重启请求 ID、MCP 及可信 plugin 连接，确认 `restartSafe` 后执行 drain 和受控重启。重连核对原回执并恢复精确连接后才注册调度宿主。原 Core 回调不返回新代际的 profile；`resume` 保留已冻结的执行配置。GUI 后续启动也合并 Host 已保存的 managed Skill 版本，避免旧 profile 引用丢失。
+启动准备核对当前 Task、Run、来源线程、旧独立目录预约和工作区作者记录。固定共享 Scratch 按真实直接子目录保存作者及原创建请求身份，Core 登记根不变；省略 `cwd` 的任务使用原 requestId 的规范 UUID 子目录。恢复须唯一匹配原 Core 创建回执，兄弟目录活动仅在完整有界快照可归属且前后状态一致时放行。资源 profile 变化时，Host 保存原重启请求 ID、MCP 及可信 plugin 连接，确认 `restartSafe` 后执行 drain 和受控重启。重连核对原回执并恢复精确连接后才注册调度宿主。原 Core 回调不返回新代际的 profile；`resume` 保留已冻结的执行配置。GUI 后续启动也合并 Host 已保存的 managed Skill 版本，避免旧 profile 引用丢失。
 
 ## 全局活动
 
@@ -178,15 +186,19 @@ GUI 根目录中的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` �
 | `remote.acquire`   | `{sourceId}`                                                                  | `{leaseId,sourceId}`。执行租约绑定当前连接，断连释放。                            |
 | `remote.replace`   | `{requestId,expectedGeneration,expectedRevision,sourceId,config}`             | 持久替换回执，以 revision 校验写入冲突。执行租约不限制本机配置写入。              |
 
-导入先保存固定 manifest 和原字节备份，再保存秘密与回执，核验旧服务清理证明和锁。旧版原停止回执在 `cleanupConfirmed:true` 时可能仍保存 `acceptedPending`；只有服务与 Store 两把锁均已独占，且回执版本、服务身份、owner 和代际精确匹配时，才沿原只读查询语义将其作为已完成清理证明，不改写旧回执。清理未确认、停止受理结果 UNKNOWN 或身份不符默认仍阻塞迁移；下述受限跨启动接管仅解除当前所有权交接，不结算旧停止结果。Host 随后安装非 JSON 来源启动哨兵及每项目 journal 哨兵，最后发布 committed marker。未发布来源占用的项目不能激活或访问 journal，包括复用的 CLI 登记。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。
+每个 journal 范围（项目、工作台命令、任务）的待决与已结算记录合计上限 4096 条，满额拒绝新准入。超过 3072 条时，Host 在读取或写入快照时按结算时间从旧到新回收已结算回执，降到 2048 条；结算不满 24 小时、仍被待决记录引用，或作为 Goal 控制授权依据的 `goalCreate` 回执不回收。回收后的 `commandId` 重新提交会被当作新命令，因此客户端只应在 24 小时内用原 ID 恢复。
+
+导入先保存固定 manifest 和原字节备份，在原来源保护下安装根启动哨兵并发布来源；项目和凭据分别确认。每个项目仍核验旧服务清理证明和锁。旧版原停止回执在 `cleanupConfirmed:true` 时可能仍保存 `acceptedPending`；只有服务与 Store 两把锁均已独占，且回执版本、服务身份、owner 和代际精确匹配时，才沿原只读查询语义将其作为已完成清理证明，不改写旧回执。清理未确认、停止受理结果 UNKNOWN 或身份不符默认仍阻塞迁移；下述受限跨启动接管仅解除当前所有权交接，不结算旧停止结果。Host 为通过核验的项目安装 journal 哨兵并独立发布；受阻项目不能激活或访问 journal，包括复用的 CLI 登记，其余项目可继续使用。全部项目和凭据完成后才发布整体 committed marker，原导入操作在此之前保持 acceptedPending。已发布来源可使用原 migrationId 继续核对项目，不再要求已退出的来源连接；未完成凭据仍要求原单实例适配器。导入保留原 Store、scratch 路径和 `(profile,legacyProjectId)` 别名。原 registry 与非秘密备份保留。原导入回执中的 `retirement:"pending"` 记录导入提交时的事实，后续退役结果由独立接口查询。 Remote 身份还必须具有绑定不可变凭据条目的授权核验证据；旧未提交迁移中的 completed 写入回执本身不构成该证据。缺证时仅 Remote 保持 migrationPending，后台适配器用原 ID 和来源摘要核验，原写入回执保持不变。旧 committed 沿用原提交证明。
 
 macOS 旧 GUI 的原服务若为 `stopped` 或 `unavailable`，且只有历史清理证明缺失，导入可使用受限的跨系统启动接管依据。Host 在原服务与 Store 双锁下核对当前内核 boot session、启动时间、原描述符精确身份及其 birth/mtime/ctime，并扫描原 Store 的完整文件与目录元数据。描述符和 Store 必须均未在本次系统启动内修改；路径、属主、原来源单实例保护与同 Store 服务映射须一致，重试重新核查。该策略限于可信旧 GUI/service-host 来源，依赖可信本机时钟和未被外部回滚的私有状态，不构成任意独立 app-server 或外部进程的清理证明。当前启动内故障、锁占用、来源变化或证据不完整仍阻塞。迁移回执的 `priorBootAdoptions` 独立保留原代际、描述符摘要、元数据清单摘要与 boot 依据，并参与提交摘要。它只允许原 Store 的新 owner 接管，不结算旧请求或外部副作用；旧 stop/cleanup 记录不改写，UNKNOWN 按原身份导入且不重发。没有该字段的旧提交保持原摘要语义。
 
-`gui.source` 按规范化的完整 `GuiSource` 查询，仅返回已提交来源。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
+对于本 Host 的旧 Host 代次，`project.ensure` 也可在系统重启后取得独立的接管依据。它在项目服务的 `start.lock` 内独占两把现存 Store 锁，核对原描述符、同一 hostId、完整 Store 清单与当前内核 boot，并在启动前复核。新请求先持久记录 `priorBootAdoption` 和定时抑制，再沿现有项目服务启动路径交接；调用方即使本次请求恢复定时，也须在接管完成后另行明确恢复。此依据不进入 cleanup/stop 结算，不改写旧 UNKNOWN，未决 Host 生命周期请求仍阻止新激活。本策略依赖正常项目服务启动入口的锁约定；绕过项目服务直接启动独立 Core 的完整插入并退出不属于该接管证明，不能将此策略当作独立 Core 的资源清理证明。
+
+`gui.source` 按规范化的完整 `GuiSource` 查询，返回已发布来源。可选 `migration` 包含整体 state 与尚未发布的 pendingProjects，旧 committed 来源等价于全部完成。同一 profile 对应多个已提交来源时返回 `sourceConflict`，不混合新登记的别名。查询不取得来源 guard，不启动导入，不读取凭据，也不创建目录。`bindings` 中保留导入时复用的 CLI 项目别名，并加入该 profile 的新 GUI 登记。新绑定的 scratch 路径为 `<coreHome>/<legacyProjectId>/scratch`。Host 重启后从原导入回执和现有项目登记重建结果。
 
 GUI 初始化或重连 Host 后，为 `ready` 的外来项目建立只观察连接并加载会话目录。发现项目不启动已停止的 Core，也不覆盖 CLI 的配置。同代际重发现保留正在建立的观察连接。历史配置解码接受 Core 的 `automaticSessionName` 字段；GUI 创建命令的输入字段限制不因此扩展。
 
-`credentials` 仅含非秘密迁移元数据。`references` 合并原 provider 引用与该来源后续创建的 vault 槽，保留已撤销引用；值仍由 `vault.read` 决定。`migratedConfigPaths` 保留原配置迁移标记。`legacyProviders` 去除密文，仅对原 providers manifest 中有秘密的条目附加 `apiKeyEnv`。读取会核对原备份摘要或退役计划的派生摘要，不读取已封存的凭据源文件。
+`credentials` 仅含非秘密迁移元数据。manifest 槽的全部原秘密回执未完成时，`vault.read`/写入返回 `migrationPending`，不能把它当作缺失或从环境变量替代；其他已确认槽独立可用。pendingSecrets 中的 requestId 固定原凭据操作身份，重复连接不得换 ID。凭据 I/O 通过按槽 worker 执行，在途查询保持 acceptedPending，断连不取消已受理写入。`references` 合并原 provider 引用与该来源后续创建的 vault 槽，保留已撤销引用；值仍由 `vault.read` 决定。`migratedConfigPaths` 保留原配置迁移标记。`legacyProviders` 去除密文，仅对原 providers manifest 中有秘密的条目附加 `apiKeyEnv`。读取会核对原备份摘要或退役计划的派生摘要，不读取已封存的凭据源文件。
 
 ### 旧秘密退役
 
@@ -194,7 +206,7 @@ Host 在 `retirement.json` 保存独立计划与回执，不改原 manifest、�
 
 进度为 `{requestId,migrationId,planId,state,next}`，`state` 为 `applying` 或 `completed`。只有 prepare 返回下一个目标 `{site,relativeName,backupId,beforeDigest,afterDigest,byteLength}`。`site` 为 `source` 或 `backup`。status、confirm 和操作回执的 `next` 均为 null，不返回文件内容。Host 将派生内容保存在固定私有文件 `host/imports/<migrationId>/retirement/<planId>/<backupId>.bytes`，避免控制帧限制截断大文件。adapter 校验文件所有者、权限、类型、长度和摘要后，使用临时文件、fsync、rename 及目录 fsync 替换目标。备份路径沿用 `host/imports/<migrationId>/backups/<backupId>.bytes`。
 
-prepare 要求原导入已提交、来源 guard 有效，且原 manifest 的每项秘密都有 completed 回执和可读的原 vault entry。缺失或锁定 entry 阻止后续替换。退役不使用当前凭据版本补种旧值，因此后续撤销不会复活旧账户。每个文件替换前重新 prepare，替换后 confirm。Host 独立读取并核验目标，只接受原摘要或计划中的派生摘要。完成前还会核验原启动及 journal 哨兵。
+prepare 要求来源已发布、来源 guard 有效，且原 manifest 的每项秘密都有 completed 回执和可读的原 vault entry。分批导入按来源发布摘要和全部凭据回执绑定清理计划，后续项目提交不改计划身份；旧 committed 导入保留原 bundle 摘要。缺失或锁定 entry 阻止后续替换。退役不使用当前凭据版本补种旧值，因此后续撤销不会复活旧账户。每个文件替换前重新 prepare，替换后 confirm。Host 独立读取并核验目标，只接受原摘要或计划中的派生摘要。完成前还会核验原启动及 journal 哨兵。
 
 macOS 退役预检读取原 vault entry 时禁止弹出 Keychain 交互；需要交互授权时返回 `storageLocked`，保留原计划与来源文件。普通凭据读取的交互策略不变。GUI 将已提交来源的项目加载与旧秘密退役分别结算：退役未确认时仍可进入客户端，使用可用的普通模型与项目；清理问题保留原请求身份并记录为局部诊断。重连或显式订阅操作可恢复原退役请求，同一 GUI 内的并发恢复共用一个执行。此适配不把退役标成完成，也不重发 UNKNOWN 订阅交接。退役未完成时，GUI 在任何 `subscription.read`、订阅槽读取、网络配置或 handoff 前停止订阅初始化，并显示该订阅不可用；协议或网络错误保留独立诊断，不归为 Keychain 锁定。
 
@@ -262,9 +274,7 @@ macOS 退役预检读取原 vault entry 时禁止弹出 Keychain 交互；需要
 
 `session.send` 直接或排队发送时，Host journal 在派发前保存原 `operationId`、typed Core 请求摘要、来源项目/设备/手机 `commandId` 与 Core 存储绑定。同设备并发副本在最后一次前置异步读取后核对原关联，只派发一次；错误分支也以已存在的原关联为准。直接发送的受理结果保留原 `threadId`/`turnId`；排队结果保留原 `receipt.queueItemId`，不猜测将来的 Turn。`command.read` 在项目离线时仍能读取原日志；UNKNOWN 恢复只读原 `areal/request/read`，核对请求、方法、typed 摘要、目标与原存储身份。相同 serviceId、principal identity 与持久 journalEpoch 可跨 Core 代际查询原回执；存储不符、没有回执或证据不完整继续 UNKNOWN，不重新派发。同一会话还有未结算的非控制提交且无对应 outcome 时，即使 Core 当前 idle，新命令也返回 `SUBMISSION_UNKNOWN` 与 `submissionUnknown:true`；精确停止/交互控制按原关联识别，已结算 outcome 优先。会话创建的 outcome 持久化发生 I/O 错误后，只有重读到与原已持久化 pending 完全一致的记录时，才返回原 commandId/operationId 的 `admissionState:"unknown"` 与 `submissionUnknown:true`，不附带受理回执或 Thread。pending 未落盘、重读失败或记录已变化时保留错误，不推断未提交；授权仍在返回前复核。原发送仍在等待回复时，只读查询可显示 `pending`；进程退出不将这项临时等待状态当作受理证明。
 
-原生记录按原 typed 请求摘要和 Core 存储绑定恢复。旧 JS `session.send` 记录仅在 `nativeDigest` 与 `coreScope` 两字段都缺席时进入旧格式核查，显式 null、混合字段或校验失败不降级。Host 使用已提交来源的 sourceId、migrationId、manifest 摘要、canonical project/dataDir 与当前来源映射，核对同一认证 Core 的原请求回执，并在既有 journal CAS 保存单条 `legacyReceiptProof`。这同时适用于初次导入记录及导入后旧 JS 经 Host journal 写入的记录。旧 pending 必须有原 params/requestId、关联及 typed 摘要一致的受理回执，才转为 accepted；旧 accepted 保留原结果，仅在原 Turn 或 queueItem 与回执一致时添加观察证明，不补造原派发摘要或 coreScope。证明写入前重新核对完整原记录、来源与 Core 连接身份；缺回执、错误来源、摘要或结果冲突继续保留原 UNKNOWN 或 accepted 历史，不重新派发。
-
-旧记录的完成观察在证明落盘前获取现有 CoreObservation 的快照、屏障和监听，落盘后转交现有完成队列。首份快照已经终结的历史结果不补发；首份快照仍进行中，随后完成则按原 Turn/queueItem 推送。来源或连接失效释放监听；证明失败不占用完成观察去重。该观察证明描述当前原回执核查所得的存储身份，不冒充旧 JS 派发时未保存的绑定，也不保证旧 owner 关闭到首个新观察之间的通知连续性。
+原生记录按原 typed 请求摘要和 Core 存储绑定恢复。升级采用停机导入：旧版待决提交属于在途工作，不带入新 journal；旧 JS 远程网关写下的远程记录（`nativeDigest` 与 `coreScope` 两字段都缺席）在导入和加载时丢弃，只保留作为长期授权事实的目标创建回执。Host 不再核查或恢复旧格式记录。
 
 `enable` 沿用原 Relay origin、一次性 `code` 与 `confirmed` 输入。非法 origin、无效 code 或缺少必要登记信息在受理前返回 `invalid-origin`、`invalid-code` 或 `enrollment-required`。Host 在唯一 HTTPS `/enroll` POST 前持久化原 `remote.gateway.control` 的 `outcomeUnknown` 回执，绑定来源、Host 身份、代际、原 revision 与 HMAC，不保存登记码。禁用客户端重试和重定向。可证明拒绝授权的 403/429 响应，以及发送阶段明确发生在 TLS 连接建立前的未知签发者、过期或域名不匹配证书错误，结算为原 `blocked` 回执。证书分类仅接受 typed TLS 校验原因，并返回不含凭据的 HTTPS 诊断；其他连接错误不据此认定未受理。断流、超时、异常状态或无法解析的成功响应保持 UNKNOWN。确定成功后，只有当前内存延续可以将同一原 ID 转入既有 Remote CAS/Vault 提交链；不从 UNKNOWN 查询触发另一次登记。GUI 仅按原 ID 核查已确认拒绝；未知结果保留原引用。
 
@@ -297,7 +307,11 @@ journal 快照为 `{version:1,pending:object[],outcomes:object}`，保留条目�
 
 provider 值是非空字符串或 null；subscription 值是完整记录对象或 null。null 是持久撤销值，并增加 revision。原导入回执只初始化尚不存在的槽，不覆盖后续替换或撤销。过期 expectedRevision 在写入前返回顶层 `revisionConflict` 错误，客户端不得重做远端 OAuth refresh。
 
-`credentialVaultNoninteractiveV1` 支持 `interactionAllowed:false`，在本次槽读取的 state、恢复与值读取整条同步路径中禁止安全存储交互；缺省值保留原交互语义。需要交互时返回 `storageLocked`，不当作 null 或已撤销。GUI 初始读取使用该模式；旧 Host 缺少此能力时，将对应槽标为不可用，不退回交互读取。单槽 `storageLocked` 或 `storageMissing` 仅使引用它的 provider 凭据不可用；后续刷新重新核查可恢复的槽。其他传输或协议错误继续向上返回。
+macOS 的公开 vault 操作、订阅交接和 Remote 身份初始化在独立凭据进程执行系统钥匙串 I/O；Host 仍持有槽版本和原回执。同槽操作串行，不同槽互不等待；活跃操作按原 ID 查询时保持原回执，不提前恢复或重发。凭据进程继承 Host 锁，退出交接在系统调用结束前不释放该所有权。旧迁移、部分 Remote 控制和账号操作仍有同步凭据路径。
+
+Remote 授权读取已成功加载、且与持久来源和版本一致的已提交配置；持久化与投影发布处于同一临界区。冷启动尚未加载或状态不匹配时拒绝授权，撤销提交后旧授权立即失效。并发凭据 I/O 不撤销已提交的授权，授权修改仍须安全存储成功。
+
+`credentialVaultNoninteractiveV1` 支持 `interactionAllowed:false`，在本次槽读取的 state、恢复与值读取整条同步路径中禁止安全存储交互；缺省值保留原交互语义。需要交互时返回 `storageLocked`，不当作 null 或已撤销。GUI 初始读取使用该模式；旧 Host 缺少此能力时，将对应槽标为不可用，不退回交互读取。单槽 `storageLocked` 或 `storageMissing` 仅使引用它的 provider 凭据不可用；后续刷新重新核查可恢复的槽。工作台 `providers.read` 的可选 `credentialErrors` 按 provider ID 返回 `storageLocked`，供设置页提示安全存储不可用；不包含凭据或原始诊断。其他传输或协议错误继续向上返回。
 
 Host 项目启动也采用非交互凭据读取。槽不可读时本次启动不注入该凭据，并移除项目内存中的旧值，保留 vault 原状态和恢复回执；模型凭据不可用不会阻止历史读取。
 

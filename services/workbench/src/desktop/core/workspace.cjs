@@ -28,38 +28,11 @@ async function readFileBefore(project, threadId, reference) {
     reference.sizeBytes > MAX_FILE_BEFORE_BYTES
   )
     throw new Error("历史文件前像引用无效");
-  if (!project.endpoint) throw new Error("Core 连接不可用");
-  const url = new URL(project.endpoint);
-  url.protocol = url.protocol === "wss:" ? "https:" : "http:";
-  url.pathname = `/areal/blobs/${digest}`;
-  url.search = "";
-  url.searchParams.set("threadId", threadId);
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${project.token}` },
-    redirect: "error",
-    signal: AbortSignal.timeout(30000),
-  });
-  if (!response.ok) throw new Error(`历史文件前像读取失败 (${response.status})`);
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error("历史文件前像响应不完整");
-  const chunks = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > reference.sizeBytes || size > MAX_FILE_BEFORE_BYTES)
-        throw new Error("历史文件前像超过记录大小");
-      chunks.push(value);
-    }
-  } catch (error) {
-    await reader.cancel().catch(() => {});
-    throw error;
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = Buffer.concat(chunks, size);
+  const {HostCoreClient}=require("@areal/workbench-service/host-core-client");
+  if (!(project.client instanceof HostCoreClient)) throw new Error("Host Core transport unavailable");
+  const value=await project.client.blob({operation:"read",threadId,uri:reference.uri});
+  if(typeof value.base64!=="string") throw new Error("历史文件前像响应不完整");
+  const bytes=Buffer.from(value.base64,"base64"),size=bytes.length;
   if (size !== reference.sizeBytes || createHash("sha256").update(bytes).digest("hex") !== digest)
     throw new Error("历史文件前像与记录的大小或哈希不一致");
   return bytes;
@@ -68,29 +41,19 @@ async function readFileBefore(project, threadId, reference) {
 /** 用户直接操作的桌面文件／Git 功能，复用原有路径与 revision 校验。 */
 /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {Record<string,unknown>} request */
 async function executeWorkspaceCommand(backend, request) {
-  if (request.operation === "worktreeList") return backend.worktrees.list();
-  if (request.operation === "worktreeSettings") return backend.worktrees.configure(request);
+  if (typeof request.operation === "string" && request.operation.startsWith("worktree")) {
+    const reading = ["worktreeList", "worktreeOptions", "worktreeRead"].includes(request.operation);
+    const result = await backend.hostCall(reading ? "worktree.read" : "worktree.command",
+      reading ? request : { commandId: require("node:crypto").randomUUID(), request });
+    backend.saved = await backend.host.list();
+    await backend.library.reload();
+    await backend.worktrees.reloadNative();
+    backend.onChange();
+    return result;
+  }
   const project = backend.saved.find((item) => item.id === request.projectId);
   if (!project) throw new Error("未知工作区");
   switch (request.operation) {
-    case "worktreeOptions":
-      return backend.worktrees.options(project, request.sourceRoot);
-    case "worktreeEnvironmentSave":
-      return backend.worktrees.saveEnvironment(project, request);
-    case "worktreeEnvironmentDelete":
-      return backend.worktrees.saveEnvironment(project, request, true);
-    case "worktreeCancel":
-      return backend.worktrees.cancel(project, request.requestId);
-    case "worktreeAction":
-      return backend.worktrees.action(project, request);
-    case "worktreeDelete":
-      return backend.worktrees.remove(project, request);
-    case "worktreeCreate":
-      return backend.worktrees.create(project, request);
-    case "worktreeRead":
-      return backend.worktrees.read(project, request.requestId);
-    case "worktreeOpen":
-      return backend.worktrees.open(project, request.requestId);
     case "localDirectoryReference": {
       const path = require("node:path");
       if (typeof request.path !== "string" || !path.isAbsolute(request.path))

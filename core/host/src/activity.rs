@@ -20,7 +20,7 @@ pub(crate) async fn observe(
 ) -> Result<ProjectActivity> {
     let instance = &storage::digest(registration.data_dir.as_os_str().as_encoded_bytes())[..24];
     let directory = storage::registry(home, instance)?;
-    let _startup = existing_lock(&directory.join("start.lock"))?;
+    let _startup = existing_lock(&directory.join("start.lock")).context("lifecycleLock")?;
     let record: Option<Service> = storage::read_optional(&directory.join("service.json"))?;
     let Some(service) = record else {
         ensure!(
@@ -59,8 +59,12 @@ pub(crate) async fn observe(
         service.state == State::Ready && supervised && service.owner.as_ref() == Some(owner),
         "project has no current supervised Core"
     );
-    areal_local_service::probe(&service).await?;
-    let status = areal_local_service::rpc(&service, "areal/server/status", json!({})).await?;
+    areal_local_service::probe(&service)
+        .await
+        .context("coreProbe")?;
+    let status = areal_local_service::rpc(&service, "areal/server/status", json!({}))
+        .await
+        .context("coreActivity")?;
     let current: Service = storage::read(&directory.join("service.json"))?;
     ensure!(
         current.identity == service.identity
@@ -68,7 +72,19 @@ pub(crate) async fn observe(
             && current.state == State::Ready,
         "service changed during observation"
     );
-    counts(&registration.project_id, status)
+    counts(&registration.project_id, status).context("coreActivityResponse")
+}
+
+pub(crate) fn failure_stage(error: &anyhow::Error) -> &'static str {
+    [
+        "lifecycleLock",
+        "coreProbe",
+        "coreActivity",
+        "coreActivityResponse",
+    ]
+    .into_iter()
+    .find(|stage| error.chain().any(|cause| cause.to_string() == *stage))
+    .unwrap_or("serviceEvidence")
 }
 
 fn existing_lock(path: &Path) -> Result<Option<File>> {

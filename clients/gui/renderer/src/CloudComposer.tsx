@@ -184,6 +184,7 @@ export function CloudComposer({
         submitting={busy}
         enterSubmits={prefs.sendShortcut === "enter"}
         enableMentionPanel={false}
+        hasDraftContent={files.length > 0}
         allowSubmitWhenEmpty={files.length > 0}
         enableExternalFileDrop
         onPaste={(event) => {

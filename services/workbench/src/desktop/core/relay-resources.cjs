@@ -12,7 +12,7 @@ const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 function locations() {
   const packaged = process.resourcesPath && join(process.resourcesPath, "areal-relay");
   if (packaged && existsSync(join(packaged, "bundle.json")))
-    return { source: packaged, site: join(packaged, "assets") };
+    return { source: packaged, site: join(process.resourcesPath, "areal-gui") };
   return {
     source: resolve(__dirname, "../../../../../services/remote-relay"),
     site: resolve(__dirname, "../../../../../clients/gui/renderer/dist"),

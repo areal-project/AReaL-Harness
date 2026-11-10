@@ -69,12 +69,22 @@ export function ComposerModelMenu({
   const availableOptions = options.filter(
     (option) => !option.unavailableReason && !option.historical,
   );
+  const unavailableOptions = options.filter(
+    (option) => option.unavailableReason && !option.historical,
+  );
   const providers = new Map<string, ComposerModelOption[]>();
   for (const option of availableOptions) {
     const providerId = option.providerId ?? "";
     const group = providers.get(providerId) ?? [];
     group.push(option);
     providers.set(providerId, group);
+  }
+  const unavailableGroups = new Map<string, ComposerModelOption[]>();
+  for (const option of unavailableOptions) {
+    const key = JSON.stringify([option.providerId, option.providerName, option.unavailableReason]);
+    const group = unavailableGroups.get(key) ?? [];
+    group.push(option);
+    unavailableGroups.set(key, group);
   }
   const model = options.find((option) => option.value === value);
   const label = model?.label ?? t("chat.composer.chooseModel");
@@ -155,7 +165,7 @@ export function ComposerModelMenu({
       ))}
     </div>
   );
-  if (!availableOptions.length && !model)
+  if (!availableOptions.length && !unavailableOptions.length && !model)
     return openSettings ? (
       <Button type="button" variant="secondary" size="sm" onClick={() => openSettings("模型服务")}>
         {t("chat.composer.configureModels")}
@@ -249,6 +259,40 @@ export function ComposerModelMenu({
                 </TabsContent>
               ))}
             </Tabs>
+          ) : unavailableOptions.length ? (
+            <div className="composer-model-unavailable">
+              <div className="composer-model-unavailable-groups">
+                {[...unavailableGroups].map(([key, models]) => (
+                  <section key={key} className="composer-model-unavailable-group">
+                    <div className="composer-model-unavailable-provider">
+                      {models[0].providerName || models[0].providerId}
+                    </div>
+                    <p className="composer-model-source">{models[0].unavailableReason}</p>
+                    <ul>
+                      {models.map((option) => (
+                        <li key={option.value} aria-disabled="true">
+                          {option.label}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+              {openSettings && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  aria-label={t("chat.composer.configureModels")}
+                  onClick={() => {
+                    setModelOpen(false);
+                    openSettings("模型服务");
+                  }}
+                >
+                  {t("chat.composer.configureModels")}
+                </Button>
+              )}
+            </div>
           ) : (
             <p className="composer-effort-unavailable">{t("chat.composer.noModelsGuidance")}</p>
           )}

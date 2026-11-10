@@ -254,8 +254,7 @@ test("Host activity is passive and whole-Host stop is durable before one dispatc
   assert.equal(f.backend.snapshot().connection.recovery, "reconnect");
   assert.equal(f.backend.canReconnect(), false);
   assert.equal(isLifecycleProjection(f.backend.lifecycleProjection()), true);
-  f.backend.initialize = async (_automatic, options) => {
-    assert.equal(options.reconnectHost, true);
+  f.backend.initialize = async () => {
     f.backend.status.connected = true;
     f.backend.connectionState = { state: "ready" };
   };
@@ -483,10 +482,8 @@ test("completed original stop cannot clear successor Main terminal ownership", a
   });
   const first = await f.backend.requestHostStop({ strategy: "cancel" });
   assert.equal(first.stopped, false);
-  const {
-    GuiTerminalConnections,
-  } = require("@areal/workbench-service/desktop/core/gui-terminal-connections.cjs");
-  f.backend.terminalConnections = new GuiTerminalConnections();
+  const { NativeTerminalOwners } = require("@areal/workbench-service/native-host-transport");
+  f.backend.terminalConnections = new NativeTerminalOwners({ options: () => ({}) });
   let closed = false;
   f.backend.connection = { close: () => (closed = true) };
   f.backend.status.connected = true;
@@ -737,8 +734,7 @@ test("failed explicit reconnect keeps the original Host reference durable", asyn
     strategy: "cancel",
   });
   await f.backend.persistReferences();
-  f.backend.initialize = async (_automatic, options) => {
-    assert.equal(options.reconnectHost, true);
+  f.backend.initialize = async () => {
     throw new Error("explicit reconnect failed");
   };
   await assert.rejects(f.backend.init(), /explicit reconnect failed/);

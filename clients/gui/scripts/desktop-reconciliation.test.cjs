@@ -14,6 +14,7 @@ async function fixture(t, entries, read) {
   const home = await mkdtemp(join(tmpdir(), "areal-desktop-receipts-"));
   const backend = Object.assign(Object.create(CoreBackend.prototype), {
     home,
+    rustDomains: [],
     saves: new Map(),
     awaitingResponses: new Set(),
     onChange() {},

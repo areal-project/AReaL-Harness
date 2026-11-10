@@ -4,7 +4,16 @@ pub(crate) mod conversation_media;
 mod conversation_read;
 #[path = "gateway/owner.rs"]
 mod gateway_owner;
+#[path = "space/import.rs"]
+mod space_import;
+#[cfg(test)]
+#[path = "vault_liveness_tests.rs"]
+mod vault_liveness_tests;
 pub(crate) use gateway_owner::error_code;
+#[path = "library_commands.rs"]
+mod library_commands;
+#[path = "library_service.rs"]
+mod library_service;
 #[path = "library_store.rs"]
 mod library_store;
 #[path = "loopback.rs"]
@@ -19,10 +28,20 @@ mod schedules;
 mod shell_subscription;
 #[path = "subscription/host.rs"]
 mod subscriptions;
+#[path = "task_catalog.rs"]
+mod task_catalog;
 #[path = "updates.rs"]
 pub(crate) mod updates;
+#[path = "workbench_lifecycle.rs"]
+mod workbench_lifecycle;
 #[path = "workbench_route.rs"]
 mod workbench_route;
+#[path = "workbench_submissions.rs"]
+mod workbench_submissions;
+#[path = "workbench_utility.rs"]
+mod workbench_utility;
+#[path = "worktree_catalog.rs"]
+mod worktree_catalog;
 use crate::{
     Activity, CAPABILITIES, HostIdentity, HostStatus, LaunchInputs, OpenResult, ProjectActivity,
     ProjectRegistration, ProjectStatus, StopStrategy, VERSION, launch,
@@ -36,7 +55,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::PathBuf,
     rc::Rc,
@@ -88,6 +107,7 @@ struct Slot {
     service: Option<Service>,
     migration: Option<Value>,
     credentials: BTreeMap<String, String>,
+    imported_credentials: BTreeSet<String>,
 }
 struct Host {
     home: PathBuf,
@@ -121,6 +141,7 @@ impl Slot {
             service: None,
             migration: None,
             credentials: BTreeMap::new(),
+            imported_credentials: BTreeSet::new(),
         }
     }
 }
@@ -131,6 +152,10 @@ struct ConnectionGuard {
 }
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
+        self.host
+            .schedules
+            .connections
+            .frontend_disconnect(&self.id);
         self.host.migration.disconnect(&self.id);
         let _ = self.host.journal.disconnect(&self.id);
         self.host.remote.disconnect(&self.id);
@@ -218,7 +243,7 @@ async fn run_local(options: RunOptions) -> Result<HostExit> {
 }
 async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> {
     let home = storage::prepare_host_home(&options.home)?;
-    let lock = storage::open_private(&home.join("host.lock"), true)?;
+    let lock = Arc::new(storage::open_private(&home.join("host.lock"), true)?);
     match lock.try_lock_exclusive() {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -282,11 +307,13 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
                     service: None,
                     migration: None,
                     credentials: BTreeMap::new(),
+                    imported_credentials: BTreeSet::new(),
                 },
             );
         }
     }
-    let migration = crate::migration::Migration::new(&home)?;
+    let mut migration = crate::migration::Migration::new(&home)?;
+    migration.vault.hold_owner(lock.clone(), &identity, &token);
     for registration in migration.published()? {
         if slots
             .get(&registration.project_id)
@@ -349,7 +376,10 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
             )?;
         }
     }
-    host.restore_subscriptions().await?;
+    host.subscriptions.restoring.set(true);
+    let restoring_subscriptions = host.restore_subscriptions();
+    tokio::pin!(restoring_subscriptions);
+    let mut restoring = true;
     let mut loopback = loopback::bind(
         host.clone(),
         std::env::var_os("AREAL_HOST_WEBSOCKET").is_none_or(|value| value != "0"),
@@ -370,6 +400,11 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     loop {
         tokio::select! {
             _=host.exit.notified()=>break,
+            result=&mut restoring_subscriptions, if restoring=> {
+                result?;
+                restoring = false;
+                host.subscriptions.restoring.set(false);
+            },
             result=loopback.run()=>{result?;unreachable!("loopback listener lives with Host")},
             _=&mut scheduler=>unreachable!("scheduler lifetime is the Host lifetime"),
             _=&mut connections=>unreachable!("schedule connections live with the Host"),
@@ -384,6 +419,8 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     host.gateway.workbench.stop().await;
     host.close_subscriptions().await;
     host.power.close().await;
+    // 系统凭据调用可能仍在等待用户；不能先释放 Host 锁而允许第二写者启动。
+    host.migration.vault.close().await;
     std::fs::remove_file(socket)?;
     std::fs::remove_file(directory.join("host.json"))?;
     crate::service_run::ServiceRun::finish(&host.home)?;
@@ -391,6 +428,19 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     drop(lock);
     Ok(HostExit::Stopped)
 }
+async fn write_local_frame(
+    writer: &mut (impl tokio::io::AsyncWrite + Unpin),
+    value: &Value,
+    limit: usize,
+) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+    let mut bytes = serde_json::to_vec(value)?;
+    bytes.push(b'\n');
+    ensure!(bytes.len() <= limit, "frame exceeds negotiated limit");
+    writer.write_all(&bytes).await?;
+    Ok(())
+}
+
 async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     ensure!(
         stream.peer_cred()?.uid() == unsafe { libc::geteuid() },
@@ -418,7 +468,15 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     if !hello.protocol_versions.contains(&VERSION) {
         return Ok(());
     }
-    let _ = hello.capabilities;
+    let desktop_core = hello
+        .capabilities
+        .iter()
+        .any(|capability| capability == "desktopCore");
+    let frame_limit = if desktop_core {
+        crate::workbench::MAX_FRAME
+    } else {
+        wire::MAX_FRAME
+    };
     let connection = ConnectionGuard {
         host: host.clone(),
         id: uuid::Uuid::new_v4().to_string(),
@@ -429,12 +487,51 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let mut previous = Value::Null;
     let mut gateway_subscription: Option<(String, String, u64, Value)> = None;
+    let mut frontend_events: Option<tokio::sync::mpsc::Receiver<Value>> = None;
     let mut frame_bytes = Vec::new();
+    let (credential_results, mut credential_responses) =
+        tokio::sync::mpsc::unbounded_channel::<Value>();
+    let mut credential_requests = 0usize;
     loop {
         tokio::select! {
-            value=wire::read_buffered(&mut reader,&mut frame_bytes)=> {
+            response=credential_responses.recv(), if credential_requests > 0 => {
+                credential_requests -= 1;
+                write_local_frame(&mut writer,&response.context("credential response task ended")?,frame_limit).await?;
+            },
+            value=wire::read_buffered_limit(&mut reader,&mut frame_bytes,frame_limit)=> {
                 let Some(value)=value? else {return Ok(());};
                 let request:wire::Request=serde_json::from_value(value)?;
+                if request.version == VERSION && !request.id.is_empty() && request.method == "gui.importSecret" {
+                    let admitted = (|| -> Result<crate::migration::ImportSecret> {
+                        host.validate_client_state(&request.method, &request.params)?;
+                        let input: crate::migration::ImportSecret = serde_json::from_value(request.params)?;
+                        host.generation(&input.expected_generation)?;
+                        Ok(input)
+                    })();
+                    match admitted {
+                        Ok(input) => {
+                            let owned = host.clone();
+                            let connection_id = connection.id.clone();
+                            let mut task = Box::pin(async move {
+                                let result = owned.migration.import_secret_async(input, &connection_id).await;
+                                owned.changed();
+                                match result { Ok(value) => json!({"version":VERSION,"id":request.id,"result":value}), Err(error) => json!({"version":VERSION,"id":request.id,"error":local_command_error(&error)}) }
+                            });
+                            // 先完成槽准入再读取下一帧；重复请求直接返回原 pending，不积累等待任务。
+                            match futures_util::poll!(task.as_mut()) {
+                                std::task::Poll::Ready(response) => write_local_frame(&mut writer,&response,frame_limit).await?,
+                                std::task::Poll::Pending => {
+                                    credential_requests += 1;
+                                    let responses = credential_results.clone();
+                                    // 断连不取消已受理的独立槽；Host 持有原回执直到结算。
+                                    tokio::task::spawn_local(async move { let _ = responses.send(task.await); });
+                                }
+                            }
+                        }
+                        Err(error) => write_local_frame(&mut writer,&json!({"version":VERSION,"id":request.id,"error":local_command_error(&error)}),frame_limit).await?,
+                    }
+                    continue;
+                }
                 let result=if request.version!=VERSION {Err(error("unsupportedVersion","Host requires version 1"))} else if request.id.is_empty() {Err(error("invalidRequest","id must be nonempty"))} else if request.method=="host.subscribe" {serde_json::from_value::<Empty>(request.params).map_err(anyhow::Error::from)?;let id=uuid::Uuid::new_v4().to_string();subscription=Some((id.clone(),0));let status=host.status().await;previous=serde_json::to_value(&status)?;Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"status":status}))} else if request.method=="remote.gateway.subscribe" {
                     #[derive(Deserialize)]
                     #[serde(rename_all="camelCase",deny_unknown_fields)]
@@ -448,11 +545,20 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                         gateway_subscription=Some((input.source_id,id.clone(),0,state.clone()));
                         Ok(json!({"subscriptionId":id,"generation":host.identity.generation,"sequence":0,"state":state}))
                     })()
+                } else if request.method=="desktop.core.subscribe" {
+                    ensure!(frontend_events.is_none(),error("invalidRequest","desktop attachment already exists"));
+                    let source=request.params["sourceId"].as_str().context("INVALID_PARAMS")?;
+                    let (result,events)=host.schedules.connections.frontend_subscribe(&host,&connection.id,source,request.params["options"].clone())?;
+                    frontend_events=Some(events);Ok(result)
                 } else {host.dispatch_connection(&request.method,request.params,&connection).await};
-                let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>{let code=e.downcast_ref::<wire::Error>().map(|e|e.code).unwrap_or(if e.downcast_ref::<serde_json::Error>().is_some(){"invalidRequest"}else{"internalError"});json!({"version":VERSION,"id":request.id,"error":{"code":code,"message":e.to_string()}})}};
-                let sent=wire::write(&mut writer,&response).await;
+                let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>json!({"version":VERSION,"id":request.id,"error":local_command_error(&e)})};
+                let sent=write_local_frame(&mut writer,&response,frame_limit).await;
                 if host.stop.borrow().as_ref().is_some_and(|v|v["state"]=="completed") {host.exit.notify_one();}
                 sent?;
+            },
+            event=async {frontend_events.as_mut().unwrap().recv().await}, if frontend_events.is_some()=> {
+                let event=event.context("desktop attachment closed")?;
+                write_local_frame(&mut writer,&json!({"version":VERSION,"method":"desktop.core.event","params":event}),frame_limit).await?;
             },
             _=changes.changed(),if subscription.is_some() || gateway_subscription.is_some()=>{},
             _=tick.tick(),if subscription.is_some() || gateway_subscription.is_some()=>{}
@@ -474,6 +580,21 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
             }
         }
     }
+}
+
+fn local_command_error(error: &anyhow::Error) -> Value {
+    if let Some(rejected) = task_catalog::task_rejection_response(error) {
+        return rejected;
+    }
+    let code = error
+        .downcast_ref::<wire::Error>()
+        .map(|error| error.code)
+        .unwrap_or(if error.downcast_ref::<serde_json::Error>().is_some() {
+            "invalidRequest"
+        } else {
+            "internalError"
+        });
+    json!({"code":code,"message":error.to_string()})
 }
 impl Host {
     fn intent_digest(
@@ -507,20 +628,16 @@ impl Host {
         if let Some(receipt) = self.journal.operation(id)? {
             return Ok(Some(receipt));
         }
-        if let Some(receipt) = self.migration.vault.operation(id, &self.migration)? {
+        if let Some(receipt) = crate::vault::Vault::operation_offline(&self.home, id)? {
             return Ok(Some(receipt));
         }
-        if let Some(receipt) = self.remote.operation(id, &self.migration)? {
+        if let Some(receipt) = crate::remote_state::RemoteState::operation_offline(&self.home, id)?
+        {
             return Ok(Some(receipt));
         }
         self.subscription_operation(id)
     }
-    fn client_state(
-        &self,
-        method: &str,
-        params: Value,
-        connection: &ConnectionGuard,
-    ) -> Result<Value> {
+    fn validate_client_state(&self, method: &str, params: &Value) -> Result<()> {
         if let Some(id) = params.get("requestId").and_then(Value::as_str) {
             wire::request_id(id)?;
             self.admission()?;
@@ -551,6 +668,15 @@ impl Host {
                 }
             }
         }
+        Ok(())
+    }
+    fn client_state(
+        &self,
+        method: &str,
+        params: Value,
+        connection: &ConnectionGuard,
+    ) -> Result<Value> {
+        self.validate_client_state(method, &params)?;
         match method {
             "gui.source" => {
                 #[derive(Deserialize)]
@@ -626,6 +752,7 @@ impl Host {
                 self.migration
                     .status(&serde_json::from_value::<Query>(params)?.migration_id)
             }
+            #[cfg(test)]
             "gui.importSecret" => {
                 let input: crate::migration::ImportSecret = serde_json::from_value(params)?;
                 self.generation(&input.expected_generation)?;
@@ -855,6 +982,23 @@ impl Host {
         for id in ids {
             projects.push(self.project_status(&id).await);
         }
+        for (registration, migration_id) in self.migration.pending_projects().unwrap_or_default() {
+            if projects
+                .iter()
+                .any(|p| p.registration.project_id == registration.project_id)
+            {
+                continue;
+            }
+            projects.push(ProjectStatus {
+                registration,
+                state: "legacyPending".into(),
+                service: None,
+                uses_shared_model_config: true,
+                schedule_activation_suppressed: true,
+                schedule_activation_error: Some("migrationPending".into()),
+                migration: Some(json!({"phase":"legacyPending","migrationId":migration_id})),
+            });
+        }
         let stop = self.stop.borrow();
         HostStatus {
             host_id: self.identity.host_id.clone(),
@@ -882,24 +1026,26 @@ impl Host {
         };
         for id in ids {
             let gate = self.slots.borrow()[&id].gate.clone();
-            // 后台调谐也会短暂持写锁；在同一观察超时内等它结束，不能把竞争投影成未知。
+            let acquired = std::cell::Cell::new(false);
             let observed = tokio::time::timeout(Duration::from_secs(3), async {
+                // 短配置同步可能正在排队写锁；等它结算后重取权威身份，锁等待共用原观察预算。
                 let _guard = gate.read().await;
-                // 等待期间可能发生代际切换，身份和监督状态必须在取得锁后一起读取。
-                let (registration, supervised, known_service) = {
+                acquired.set(true);
+                let (registration, supervised, known_service, stable) = {
                     let slots = self.slots.borrow();
                     let slot = &slots[&id];
-                    ensure!(
-                        !slot.uncertain_start && slot.migration.is_none(),
-                        "project lifecycle is unavailable"
-                    );
                     (
                         slot.registration.clone(),
                         slot.writer.is_some(),
                         slot.service.clone(),
+                        !slot.uncertain_start && slot.migration.is_none(),
                     )
                 };
-                crate::activity::observe(
+                if !stable {
+                    eprintln!("Host activity unavailable: projectId={id} stage=hostLifecycleState");
+                    return None;
+                }
+                match crate::activity::observe(
                     &self.home,
                     &registration,
                     &self.owner(),
@@ -907,10 +1053,27 @@ impl Host {
                     known_service.as_ref(),
                 )
                 .await
+                {
+                    Ok(activity) => Some(activity),
+                    Err(cause) => {
+                        eprintln!(
+                            "Host activity unavailable: projectId={id} stage={}",
+                            crate::activity::failure_stage(&cause)
+                        );
+                        None
+                    }
+                }
             })
             .await
-            .ok()
-            .and_then(Result::ok);
+            .unwrap_or_else(|_| {
+                let stage = if acquired.get() {
+                    "observationBudget"
+                } else {
+                    "hostLifecycleGate"
+                };
+                eprintln!("Host activity unavailable: projectId={id} stage={stage}");
+                None
+            });
             let observed = observed.filter(|activity| {
                 let ProjectActivity::Observed { active_tasks, .. } = activity else {
                     return false;
@@ -928,6 +1091,29 @@ impl Host {
                 .push(observed.unwrap_or(ProjectActivity::Unavailable { project_id: id }));
         }
         result
+    }
+    fn uses_shared_host_config(&self, inputs: &LaunchInputs) -> bool {
+        let shared = self.home.join("config.toml");
+        inputs.config_home == self.home
+            && inputs.config_path.as_deref().is_none_or(|p| p == shared)
+            && inputs.options.config.as_deref().is_none_or(|p| p == shared)
+    }
+    fn project_uses_shared_config(&self, registration: &ProjectRegistration) -> bool {
+        let path = self
+            .home
+            .join("host/launch")
+            .join(storage::digest(registration.project_id.as_bytes()))
+            .join("inputs.json");
+        match storage::read_optional::<LaunchInputs>(&path) {
+            Ok(Some(inputs)) if matches!(registration.source, crate::ProjectSource::Gui { .. }) => {
+                let shared = self.home.join("config.toml");
+                inputs.config_path.as_deref().is_none_or(|p| p == shared)
+                    && inputs.options.config.as_deref().is_none_or(|p| p == shared)
+            }
+            Ok(Some(inputs)) => self.uses_shared_host_config(&inputs),
+            Ok(None) => matches!(registration.source, crate::ProjectSource::Gui { .. }),
+            Err(_) => false,
+        }
     }
     async fn project_status(&self, id: &str) -> ProjectStatus {
         let (registration, gate) = {
@@ -970,7 +1156,7 @@ impl Host {
         }
         let slots = self.slots.borrow();
         let slot = &slots[id];
-        ProjectStatus {schedule_activation_suppressed:self.schedules.suppressed(id),schedule_activation_error:self.schedules.error(id),registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
+        ProjectStatus {uses_shared_model_config:self.project_uses_shared_config(&registration),schedule_activation_suppressed:self.schedules.suppressed(id),schedule_activation_error:self.schedules.error(id),registration,state:slot.state.clone(),service:slot.service.clone().filter(|s|s.owner.as_ref()==Some(&self.owner()) && slot.writer.is_some() && slot.state=="ready"),migration:slot.migration.clone().or_else(||slot.service.as_ref().filter(|s|s.owner.is_none() && s.state==State::Ready).map(|s|json!({"serviceId":s.identity.service_id,"generation":s.identity.generation,"phase":"legacyPending"})))}
     }
     async fn dispatch_connection(
         self: &Rc<Self>,
@@ -978,6 +1164,49 @@ impl Host {
         params: Value,
         connection: &ConnectionGuard,
     ) -> Result<Value> {
+        if method == "desktop.core.terminals.close" {
+            ensure!(
+                params.as_object().is_some_and(|params| params.len() == 1),
+                "INVALID_PARAMS"
+            );
+            return self.schedules.connections.frontend_close_terminals(
+                self,
+                params["sourceId"].as_str().context("INVALID_PARAMS")?,
+            );
+        }
+        if method == "desktop.core.call" {
+            return self
+                .schedules
+                .connections
+                .frontend_call(self, &params)
+                .await;
+        }
+        if method == "desktop.core.callback" {
+            return self.schedules.connections.frontend_reply(&params);
+        }
+        if method == "tasks.read" {
+            serde_json::from_value::<areal_protocol::host::LocalTasksReadParams>(params.clone())?;
+            return task_catalog::read(self, &params).await;
+        }
+        if method == "tasks.command" {
+            serde_json::from_value::<areal_protocol::host::LocalTasksCommandParams>(
+                params.clone(),
+            )?;
+            return task_catalog::native_command(self, "local", &params).await;
+        }
+        if method == "worktree.read" {
+            serde_json::from_value::<areal_protocol::host::LocalWorktreeReadParams>(
+                params.clone(),
+            )?;
+            let source = params["sourceId"].as_str().unwrap_or("host").to_owned();
+            return worktree_catalog::read(self, &source, params).await;
+        }
+        if method == "worktree.command" {
+            serde_json::from_value::<areal_protocol::host::LocalWorktreeCommandParams>(
+                params.clone(),
+            )?;
+            return workbench_route::backend_command(self,"local",&json!({"method":method,"commandId":params["commandId"],"params":params["request"]})).await;
+        }
         if method == "backend.ensure" {
             serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
                 params.clone(),
@@ -1033,6 +1262,71 @@ impl Host {
         if method.starts_with("subscription.") {
             return self.subscription_dispatch(method, params, connection).await;
         }
+        if matches!(
+            method,
+            "remote.read"
+                | "remote.replace"
+                | "remote.gateway.replace"
+                | "remote.acquire"
+                | "remote.gateway.handoff"
+        ) {
+            self.validate_client_state(method, &params)?;
+            if method == "remote.gateway.handoff" {
+                return self
+                    .remote
+                    .handoff_async(params, &self.identity, &self.migration)
+                    .await;
+            }
+            let projects = if method == "remote.read" {
+                Vec::new()
+            } else {
+                let source = params["sourceId"]
+                    .as_str()
+                    .ok_or_else(|| error("invalidRequest", "sourceId is required"))?;
+                let current: Vec<_> = self
+                    .slots
+                    .borrow()
+                    .values()
+                    .map(|slot| slot.registration.clone())
+                    .collect();
+                self.migration.remote_projects(source, &current)?
+            };
+            let result = self
+                .remote
+                .dispatch_async(
+                    method,
+                    params,
+                    &connection.id,
+                    &self.identity.generation,
+                    &self.migration,
+                    &projects,
+                )
+                .await?;
+            if method == "remote.gateway.replace" {
+                let snapshot = self.remote.snapshot_async(&self.migration).await?;
+                self.gateway.refresh_config(&snapshot["config"]);
+            }
+            return Ok(result);
+        }
+        if method == "gui.importSecret" {
+            self.validate_client_state(method, &params)?;
+            let input: crate::migration::ImportSecret = serde_json::from_value(params)?;
+            self.generation(&input.expected_generation)?;
+            let result = self
+                .migration
+                .import_secret_async(input, &connection.id)
+                .await?;
+            self.changed();
+            return Ok(result);
+        }
+        if method == "vault.read" || method == "vault.replace" {
+            self.validate_client_state(method, &params)?;
+            return self
+                .migration
+                .vault
+                .dispatch_async(method, params, &self.identity.generation, &self.migration)
+                .await;
+        }
         if method.starts_with("gui.")
             || method.starts_with("journal.")
             || method.starts_with("vault.")
@@ -1044,6 +1338,19 @@ impl Host {
     }
     async fn dispatch(&self, method: &str, params: Value) -> Result<Value> {
         match method {
+            "recovery.importProvider" => self.import_provider(serde_json::from_value(params)?),
+            "recovery.history" => {
+                crate::space::history::for_host(&self.home, serde_json::from_value(params)?).await
+            }
+            "recovery.inspect" => {
+                #[derive(Deserialize)]
+                #[serde(rename_all = "camelCase", deny_unknown_fields)]
+                struct Inspect {
+                    space_id: Option<String>,
+                }
+                let input: Inspect = serde_json::from_value(params)?;
+                crate::space::inspect_for_host(&self.home, input.space_id.as_deref())
+            }
             "host.status" => {
                 serde_json::from_value::<Empty>(params)?;
                 Ok(serde_json::to_value(self.status().await)?)
@@ -1078,8 +1385,17 @@ impl Host {
                         json!({"operation":self.reconcile_update(&query.request_id).await?}),
                     );
                 }
+                if let Some(operation) = self.migration.operation_async(&query.request_id).await? {
+                    return Ok(json!({"operation":operation}));
+                }
                 Ok(
-                    json!({"operation":match self.client_operation(&query.request_id)? { Some(receipt) => Some(receipt), None => self.reconcile(&query.request_id).await? }}),
+                    json!({"operation":match self.migration.vault.operation_async(&query.request_id, &self.migration).await? {
+                        Some(receipt) => Some(receipt),
+                        None => match self.remote.operation_async(&query.request_id, &self.migration).await? {
+                            Some(receipt) => Some(receipt),
+                            None => match self.client_operation(&query.request_id)? { Some(receipt) => Some(receipt), None => self.reconcile(&query.request_id).await? }
+                        }
+                    }}),
                 )
             }
             "host.updateStatus" => {
@@ -1112,6 +1428,7 @@ impl Host {
                 && !self.home.starts_with(&r.workspace),
             "invalidRequest: state must be outside workspace"
         );
+        crate::space::validate_workspace(&self.home, &r.workspace)?;
         self.migration.validate_registration(
             r,
             &self
@@ -1243,6 +1560,7 @@ impl Host {
                     service: None,
                     migration: None,
                     credentials: BTreeMap::new(),
+                    imported_credentials: BTreeSet::new(),
                 },
             );
             Ok(json!({"registration":r,"created":created}))
@@ -1371,6 +1689,32 @@ impl Host {
         }
         result
     }
+    fn begin_project_activation(
+        &self,
+        project: &str,
+        fingerprint: &str,
+        current: Option<&Service>,
+    ) {
+        {
+            let mut slots = self.slots.borrow_mut();
+            let slot = slots.get_mut(project).unwrap();
+            // 重复确认同一已运行服务不能撤销它的共享连接；实际启动和配置变化仍进入 starting。
+            let reusing_ready = current.is_some_and(|service| {
+                service.state == State::Ready
+                    && service.owner.as_ref() == Some(&self.owner())
+                    && service.identity.config_fingerprint == fingerprint
+                    && slot.state == "ready"
+                    && slot.writer.is_some()
+                    && slot.service.as_ref().is_some_and(|previous| {
+                        previous.identity == service.identity && previous.owner == service.owner
+                    })
+            });
+            if !reusing_ready {
+                slot.state = "starting".into();
+            }
+        }
+        self.changed();
+    }
     async fn ensure_inner(&self, input: &Ensure) -> Result<Value> {
         if self.migration.unpublished_reserved(&input.project_id)? {
             return Err(error(
@@ -1379,6 +1723,7 @@ impl Host {
             ));
         }
         let registration = self.slots.borrow()[&input.project_id].registration.clone();
+        crate::space::validate_workspace(&self.home, &registration.workspace)?;
         let saved_path = self
             .home
             .join("host/launch")
@@ -1393,8 +1738,31 @@ impl Host {
                 )
             })?,
         };
-        if let Some(source) = self.migration.credential_source(&registration)?
-            && self.migration.vault.subscription_owner(&source)?.is_some()
+        let uses_shared_host_config = self.uses_shared_host_config(&inputs);
+        if uses_shared_host_config && self.home.join("config.toml").exists() {
+            let config = areal_config::load_management_config(&areal_config::ConfigInputs {
+                cwd: inputs.cwd.clone(),
+                homedir: inputs.homedir.clone(),
+                config_file: Some(self.home.join("config.toml")),
+                ..Default::default()
+            })?;
+            for name in config.model.api_key_env.iter().chain(
+                config
+                    .model_catalog
+                    .iter()
+                    .filter_map(|provider| provider.api_key_env.as_ref()),
+            ) {
+                if name.starts_with("AREAL_CREDENTIAL_") && !inputs.credential_names.contains(name)
+                {
+                    inputs.credential_names.push(name.clone());
+                }
+            }
+        }
+        let credential_source = self
+            .migration
+            .shared_credential_source(&registration, uses_shared_host_config)?;
+        if let Some(source) = &credential_source
+            && self.migration.vault.subscription_owner(source)?.is_some()
             && !inputs
                 .credential_names
                 .iter()
@@ -1412,12 +1780,46 @@ impl Host {
                 .all(|k| inputs.credential_names.contains(k)),
             "invalidRequest: credentials must be named by launch inputs"
         );
-        let imported_source = self.migration.credential_source(&registration)?.is_some();
+
+        let selected_credential = launch::selected_credential(&self.home, &inputs);
+        let mut deferred_credentials = BTreeSet::new();
         let mut imported_credentials = BTreeMap::new();
         for name in &inputs.credential_names {
-            if imported_source && name.starts_with("AREAL_CREDENTIAL_") {
-                let credential = match self.migration.credential(&registration, name) {
+            if let Some(source) = &credential_source
+                && name.starts_with("AREAL_CREDENTIAL_")
+            {
+                let optional = selected_credential
+                    .as_ref()
+                    .is_some_and(|selected| selected != name);
+                let credential_slot = if name == "AREAL_CREDENTIAL_areal_openai" {
+                    crate::vault::Slot::SubscriptionTransport {
+                        source_id: source.clone(),
+                    }
+                } else {
+                    crate::vault::Slot::ProviderCredential {
+                        source_id: source.clone(),
+                        reference: name.clone(),
+                    }
+                };
+                if optional && self.migration.vault.slot_in_flight(&credential_slot) {
+                    deferred_credentials.insert(name.clone());
+                    continue;
+                }
+                let credential = match self
+                    .migration
+                    .credential_for_source_async(source, name)
+                    .await
+                {
                     Ok(value) => value,
+                    Err(cause)
+                        if optional
+                            && cause
+                                .downcast_ref::<wire::Error>()
+                                .is_some_and(|error| error.code == "migrationPending") =>
+                    {
+                        deferred_credentials.insert(name.clone());
+                        continue;
+                    }
                     Err(cause)
                         if cause.downcast_ref::<wire::Error>().is_some_and(|error| {
                             matches!(error.code, "storageLocked" | "storageMissing")
@@ -1434,16 +1836,38 @@ impl Host {
         let credentials = {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();
-            slot.credentials.extend(input.credentials.clone());
+            for name in std::mem::take(&mut slot.imported_credentials) {
+                if deferred_credentials.contains(&name) {
+                    slot.imported_credentials.insert(name);
+                } else {
+                    slot.credentials.remove(&name);
+                }
+            }
+            slot.credentials.extend(
+                input
+                    .credentials
+                    .iter()
+                    .filter(|(name, _)| !deferred_credentials.contains(*name))
+                    .map(|(name, value)| (name.clone(), value.clone())),
+            );
             for (name, value) in imported_credentials {
                 if let Some(value) = value {
+                    slot.imported_credentials.insert(name.clone());
                     slot.credentials.insert(name, value);
                 } else {
                     slot.credentials.remove(&name);
                 }
             }
-            slot.credentials.clone()
+            slot.credentials
+                .iter()
+                .filter(|(name, _)| !deferred_credentials.contains(*name))
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect()
         };
+        // 未依赖的在途或迁移中凭据只从本次启动投影暂缓，不清除缓存或改写原回执。
+        inputs
+            .credential_names
+            .retain(|name| !deferred_credentials.contains(name));
         let (mut spec, _) =
             launch::prepare(&self.home, &self.bin, &registration, &inputs, &credentials)?;
         let mut journal = self
@@ -1471,15 +1895,29 @@ impl Host {
         } else {
             None
         };
+        let mut prior_boot_activation = false;
         if let Some(previous) = current.as_ref().filter(|s| {
             s.owner.as_ref() != Some(&self.owner())
                 && s.state != State::Ready
                 && s.state != State::Stopping
         }) {
-            self.cleanup_proof(previous).await?;
+            match self.cleanup_proof(previous).await {
+                Ok(()) => {}
+                Err(cause)
+                    if cause
+                        .downcast_ref::<wire::Error>()
+                        .is_some_and(|e| e.code == "migrationBlocked")
+                        && previous.state == State::Stopped
+                        && matches!(previous.owner, Some(Owner::Host { .. })) =>
+                {
+                    prior_boot_activation = true;
+                }
+                Err(cause) => return Err(cause),
+            }
         }
-        if let Some(service) =
-            current.filter(|s| s.state == State::Ready || s.state == State::Stopping)
+        if let Some(service) = current
+            .as_ref()
+            .filter(|s| s.state == State::Ready || s.state == State::Stopping)
         {
             if service.owner.is_none() {
                 let migration_id = uuid::Uuid::new_v4().to_string();
@@ -1533,6 +1971,7 @@ impl Host {
                     let slot = &slots[&input.project_id];
                     return Ok(serde_json::to_value(OpenResult {
                         project: ProjectStatus {
+                            uses_shared_model_config: uses_shared_host_config,
                             schedule_activation_suppressed: self
                                 .schedules
                                 .suppressed(&input.project_id),
@@ -1553,12 +1992,7 @@ impl Host {
             }
         }
         spec.owner = Some(self.owner());
-        {
-            let mut slots = self.slots.borrow_mut();
-            let slot = slots.get_mut(&input.project_id).unwrap();
-            slot.state = "starting".into();
-        }
-        self.changed();
+        self.begin_project_activation(&input.project_id, &spec.fingerprint, current.as_ref());
         let lifetime = {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(&input.project_id).unwrap();
@@ -1577,9 +2011,57 @@ impl Host {
             .get_mut(&input.project_id)
             .unwrap()
             .uncertain_start = true;
-        let result =
-            areal_local_service::ensure_with_lifetime(&spec, &lifetime, input.no_auto_restart)
-                .await;
+        let activation_checked = std::cell::Cell::new(false);
+        let before_launch = || -> Result<()> {
+            if !prior_boot_activation {
+                return Ok(());
+            }
+            let previous = previous
+                .as_ref()
+                .context("missing original service descriptor")?;
+            crate::migration::prior_boot::host_activation(
+                &self.home,
+                &registration,
+                previous,
+                &self.owner(),
+                |proof| {
+                    let mut record = self
+                        .receipt(&input.request_id)?
+                        .context("missing activation receipt")?;
+                    record.evidence["priorBootAdoption"] = proof;
+                    record.evidence["scheduleActivationSuppressed"] = json!(true);
+                    record.evidence["schedulingIntentPending"] = json!(true);
+                    storage::write(
+                        &wire::operation_path(&self.home, &input.request_id),
+                        &record,
+                    )?;
+                    self.apply_scheduling_intent(&input.request_id)
+                },
+            )
+            .map_err(|cause| {
+                error(
+                    "migrationBlocked",
+                    format!("prior-boot activation is unconfirmed: {cause:#}"),
+                )
+            })?;
+            activation_checked.set(true);
+            Ok(())
+        };
+        let result = areal_local_service::ensure_with_lifetime_checked(
+            &spec,
+            &lifetime,
+            input.no_auto_restart,
+            &before_launch,
+        )
+        .await;
+        if prior_boot_activation && !activation_checked.get() {
+            // 接管检查在任何新进程启动之前拒绝；不能把确定拒绝变为 UNKNOWN。
+            self.slots
+                .borrow_mut()
+                .get_mut(&input.project_id)
+                .unwrap()
+                .uncertain_start = false;
+        }
         if result.is_err()
             && let Ok(service) = areal_local_service::status(&self.home, &spec.service_id).await
         {
@@ -1600,6 +2082,7 @@ impl Host {
             "invalid Host owner after launch"
         );
         let project = ProjectStatus {
+            uses_shared_model_config: uses_shared_host_config,
             schedule_activation_suppressed: self.schedules.suppressed(&input.project_id),
             schedule_activation_error: self.schedules.error(&input.project_id),
             registration,
@@ -1986,6 +2469,12 @@ impl Host {
         Ok(())
     }
     async fn reconcile(&self, id: &str) -> Result<Option<Value>> {
+        if self
+            .receipt(id)?
+            .is_some_and(|r| r.receipt["method"] == "recovery.importProvider")
+        {
+            return self.reconcile_provider_import(id);
+        }
         let Some(mut record) = self.receipt(id)? else {
             return Ok(None);
         };
@@ -2110,6 +2599,8 @@ impl Host {
                         record.receipt["state"] = json!("completed");
                         record.receipt["result"] = serde_json::to_value(OpenResult {
                             project: ProjectStatus {
+                                uses_shared_model_config: self
+                                    .project_uses_shared_config(&registration),
                                 schedule_activation_suppressed: self
                                     .schedules
                                     .suppressed(&registration.project_id),
@@ -2281,6 +2772,139 @@ fn aggregate(receipt: &Value) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn prior_boot_host_activation_records_adoption_without_settling_history() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path().canonicalize().unwrap();
+        let host = schedules::tests::fixture(&root);
+        let registration = host.slots.borrow()["project"].registration.clone();
+        storage::private_dir(&registration.data_dir).unwrap();
+        storage::private_dir(&host.bin).unwrap();
+        for name in [
+            "areal",
+            "areal-runtime",
+            "areal-runtime-fs",
+            "areal-runtime-reaper",
+        ] {
+            std::fs::write(host.bin.join(name), "not an executable").unwrap();
+        }
+        for name in ["service.lock", "owner.lock"] {
+            storage::open_private(&registration.data_dir.join(name), true).unwrap();
+        }
+        let directory = storage::registry(&host.home, &Host::service_id(&registration)).unwrap();
+        storage::private_dir(&directory).unwrap();
+        let previous: Service = serde_json::from_value(json!({
+            "protocolVersion":1,"serviceId":Host::service_id(&registration),
+            "generation":uuid::Uuid::new_v4().to_string(),"workspace":registration.workspace,
+            "dataDir":registration.data_dir,"configFingerprint":"old",
+            "owner":{"kind":"host","hostId":host.identity.host_id,"generation":uuid::Uuid::new_v4().to_string()},
+            "endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1",
+            "authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),
+            "hostPid":500000000,"corePid":500000001,"state":"ready"
+        })).unwrap();
+        storage::write(&directory.join("service.json"), &previous).unwrap();
+        let original_stop = storage::StopReceipt {
+            operation: StopOperation {
+                version: 1,
+                request_id: uuid::Uuid::new_v4().to_string(),
+                service_id: previous.identity.service_id.clone(),
+                generation: previous.identity.generation.clone(),
+                cancel: true,
+                state: StopOperationState::AcceptedPending,
+                message: None,
+                lifecycle: None,
+            },
+            service: previous.clone(),
+            cleanup_confirmed: false,
+        };
+        storage::write_stop_receipt(&directory, &original_stop).unwrap();
+        let original_stop_path =
+            storage::stop_receipt_path(&directory, &original_stop.operation.request_id).unwrap();
+        let original_stop_bytes = std::fs::read(&original_stop_path).unwrap();
+        let inputs = LaunchInputs {
+            workspace: registration.workspace.clone(),
+            cwd: registration.workspace.clone(),
+            config_home: root.join("config"),
+            homedir: Some(root.clone()),
+            config_path: None,
+            deployment_path: None,
+            schedule_preparation: None,
+            environment: BTreeMap::new(),
+            credential_names: vec![],
+            options: areal_local_service::LocalArgs::default(),
+        };
+        let input = Ensure {
+            request_id: uuid::Uuid::new_v4().to_string(),
+            expected_generation: host.identity.generation.clone(),
+            project_id: "project".into(),
+            no_auto_restart: false,
+            resume_scheduling: true,
+            launch_inputs: Some(inputs),
+            credentials: BTreeMap::new(),
+        };
+        crate::migration::prior_boot::with_test_boot(-10, || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut current_boot = input.clone();
+                    current_boot.request_id = uuid::Uuid::new_v4().to_string();
+                    let failure = host.ensure(current_boot.clone()).await.unwrap_err();
+                    assert!(
+                        failure.to_string().contains("migrationBlocked"),
+                        "{failure:#}"
+                    );
+                    let record = host.receipt(&current_boot.request_id).unwrap().unwrap();
+                    assert_eq!(record.receipt["state"], "blocked");
+                    assert!(record.evidence["priorBootAdoption"].is_null());
+                });
+        });
+        crate::migration::prior_boot::with_test_boot(10, || {
+            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+                // 可执行文件故意缺失；本测试只走真实准入与接管门，不启动 Core。
+                let startup = storage::open_private(&directory.join("start.lock"), true).unwrap();
+                startup.try_lock_exclusive().unwrap();
+                let opening = host.ensure(input.clone());
+                tokio::pin!(opening);
+                assert!(futures_util::poll!(&mut opening).is_pending());
+                assert!(host.receipt(&input.request_id).unwrap().unwrap().evidence["priorBootAdoption"].is_null());
+                drop(startup);
+                let failure = opening.await.unwrap_err();
+                let record = host.receipt(&input.request_id).unwrap().unwrap();
+                assert!(record.evidence["priorBootAdoption"].is_object(), "{failure:#}");
+                assert!(host.schedules.suppressed("project"));
+                assert_eq!(record.evidence["scheduleActivationSuppressed"], true);
+                assert_eq!(std::fs::read(&original_stop_path).unwrap(), original_stop_bytes);
+                assert_eq!(areal_local_service::operation(&host.home, &previous.identity.service_id,
+                    &previous.identity.generation, &original_stop.operation.request_id).await.unwrap().unwrap().state,
+                    StopOperationState::AdmissionUnknown);
+                assert_eq!(storage::read_stop_receipt(&directory, &original_stop.operation.request_id).unwrap().unwrap().operation.state,
+                    StopOperationState::AcceptedPending);
+                assert!(!directory.join("cleanup.json").exists());
+                assert!(!directory.join("crash.json").exists());
+                let mut stopped = previous.clone(); stopped.state = State::Stopped;
+                assert!(host.cleanup_proof(&stopped).await.is_err());
+                let mut next = input.clone(); next.request_id = uuid::Uuid::new_v4().to_string();
+                // 原 ensure 启动结果未知时，即便 boot 依据充分也不能换 ID 接管。
+                assert!(host.ensure(next.clone()).await.unwrap_err().to_string().contains("admissionUnknown"));
+                assert!(host.receipt(&next.request_id).unwrap().is_none());
+                assert_eq!(host.receipt(&input.request_id).unwrap().unwrap().receipt, record.receipt);
+            });
+        });
+    }
+    #[test]
+    fn task_rejection_keeps_safe_core_code_and_definitive_outcome_on_local_wire() {
+        let error: anyhow::Error = task_catalog::TaskRejection(
+            json!({"code":-32009,"message":"private","data":{"outcome":{"kind":"rejected"}}}),
+        )
+        .into();
+        assert_eq!(
+            local_command_error(&error),
+            json!({"code":"TASK_REJECTED","message":"Core rejected task request","coreCode":-32009,"coreError":{"code":-32009,"message":"Core rejected task request","data":{"outcome":{"kind":"rejected"}}}})
+        );
+    }
     use crate::{Client, ProjectSource};
 
     #[tokio::test(flavor = "current_thread")]
@@ -2333,19 +2957,20 @@ mod tests {
                     })
                 }));
             let server = tokio::task::spawn_local(async move { axum::serve(listener, app).await.unwrap() });
-            let (first, second, third) = tokio::join!(host.activity(), host.activity(), async {
-                host.project_status("project").await;
-                host.activity().await
-            });
+            let (first, second, third) = tokio::join!(host.activity(), host.activity(), async { host.status().await; host.activity().await });
             assert!(first.complete && second.complete && third.complete, "readers must not invalidate each other: {first:?} {second:?} {third:?}");
             assert_eq!(first, second);
+            assert_eq!(first, third);
             assert!(matches!(first.projects[0], ProjectActivity::Observed { idle_allowed: true, .. }));
             let gate = host.gate("project").unwrap();
-            let changing = gate.write().await;
-            let mut waiting = Box::pin(host.activity());
-            assert!(futures_util::poll!(waiting.as_mut()).is_pending(), "a transient lifecycle writer must be awaited");
-            drop(changing);
-            assert!(waiting.await.complete, "observation must resume when the writer releases its gate");
+            let syncing = gate.write().await;
+            let writer = host.slots.borrow_mut().get_mut("project").unwrap().writer.take();
+            let activity = host.activity();
+            tokio::pin!(activity);
+            assert!(futures_util::poll!(activity.as_mut()).is_pending(), "短同步不能直接投影成 UNKNOWN");
+            host.slots.borrow_mut().get_mut("project").unwrap().writer = writer;
+            drop(syncing);
+            assert!(activity.await.complete, "取得读锁后必须重取已结算的 owner，再核对真实 Core 活动");
             let _changing = gate.write().await;
             assert!(!host.activity().await.complete, "a lasting lifecycle change must remain unknown");
             server.abort();
@@ -2764,6 +3389,57 @@ mod tests {
                 ("OPENAI_API_KEY".into(), "run-scoped-secret".into()),
             ]),
         };
+        let cli_id = "independent-cli".to_owned();
+        let cli_registration = ProjectRegistration {
+            project_id: cli_id.clone(),
+            workspace: input.launch_inputs.as_ref().unwrap().workspace.clone(),
+            data_dir: base.join("independent-state"),
+            source: ProjectSource::Cli,
+            default_binding: false,
+        };
+        storage::private_dir(&cli_registration.data_dir).unwrap();
+        host.slots
+            .borrow_mut()
+            .insert(cli_id.clone(), Slot::imported(cli_registration.clone()));
+        std::fs::write(home.join("config.toml"), "schema_version=2\n[model]\nname='fixture'\n[model.providers.default]\nendpoint='http://127.0.0.1:1/v1/chat/completions'\napi_key_env='AREAL_CREDENTIAL_key'\n").unwrap();
+        let mut saved = input.launch_inputs.clone().unwrap();
+        saved.config_home = home.clone();
+        saved.credential_names.clear();
+        let saved_path = home
+            .join("host/launch")
+            .join(storage::digest(cli_id.as_bytes()))
+            .join("inputs.json");
+        storage::private_dir(saved_path.parent().unwrap()).unwrap();
+        storage::write(&saved_path, &saved).unwrap();
+        let cli_input = Ensure {
+            project_id: cli_id.clone(),
+            launch_inputs: None,
+            credentials: BTreeMap::new(),
+            ..input.clone()
+        };
+        let failure = host.ensure_inner(&cli_input).await.unwrap_err();
+        assert!(
+            failure.to_string().contains("missing activation receipt"),
+            "{failure:#}"
+        );
+        assert!(host.project_uses_shared_config(&cli_registration));
+        assert_eq!(
+            host.slots.borrow()[&cli_id].credentials[reference],
+            "vault-secret"
+        );
+        let custom = base.join("custom.toml");
+        std::fs::copy(home.join("config.toml"), &custom).unwrap();
+        saved.config_path = Some(custom.clone());
+        saved.options.config = Some(custom);
+        storage::write(&saved_path, &saved).unwrap();
+        assert!(!host.project_uses_shared_config(&cli_registration));
+        let _ = host.ensure_inner(&cli_input).await.unwrap_err();
+        assert!(!host.project_uses_shared_config(&cli_registration));
+        assert!(
+            !host.slots.borrow()[&cli_id]
+                .credentials
+                .contains_key(reference)
+        );
         let first = host.ensure_inner(&input).await.unwrap_err();
         assert!(
             first.to_string().contains("missing activation receipt"),
@@ -3169,7 +3845,7 @@ mod tests {
             let root=tempfile::tempdir().unwrap();let home=root.path().canonicalize().unwrap().join("home");
             for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
             let mut slots=BTreeMap::new();
-            slots.insert("project".into(),Slot {registration:ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});
+            slots.insert("project".into(),Slot {registration:ProjectRegistration {project_id:"project".into(),workspace:root.path().into(),data_dir:home.join("data"),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new(),imported_credentials:BTreeSet::new()});
             let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let activation=uuid::Uuid::new_v4().to_string();
             let mut record=Operation {digest:"fixture".into(),receipt:json!({"requestId":activation,"method":"project.ensure","projectId":"project","state":"acceptedPending"}),evidence:Value::Null};
@@ -3194,7 +3870,7 @@ mod tests {
             for path in [&home,&home.join("host/operations"),&home.join("host/projects")] {storage::private_dir(path).unwrap();}
             let workspace=root.path().join("workspace");std::fs::create_dir(&workspace).unwrap();let workspace=workspace.canonicalize().unwrap();
             let mut slots=BTreeMap::new();
-            for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new()});}
+            for id in ["a","b","c"] {slots.insert(id.into(),Slot {registration:ProjectRegistration {project_id:id.into(),workspace:workspace.clone(),data_dir:home.join(id),source:ProjectSource::Cli,default_binding:false},gate: Arc::new(RwLock::new(())),writer:None,uncertain_start:false,lifetime:None,state:"stopped".into(),service:None,migration:None,credentials:BTreeMap::new(),imported_credentials:BTreeSet::new()});}
             let (changes,_)=watch::channel(0);let host=Rc::new(Host {home:home.clone(),bin:root.path().into(),identity:HostIdentity {version:1,host_id:uuid::Uuid::new_v4().to_string(),generation:uuid::Uuid::new_v4().to_string(),socket_path:home.join("control.sock"),auth_file:home.join("auth.json"),pid:std::process::id(),executable_version:"fixture".into()},token:"fixture".into(),slots:RefCell::new(slots),stop:RefCell::new(None),host_stop_gate:Mutex::new(()),changes,exit:Notify::new(),migration:crate::migration::Migration::new(&home).unwrap().into(),gateway:gateway_owner::Gateway::default(),subscriptions:subscriptions::Subscriptions::default(),power:power::Power::default(), read_models: Default::default(),loopback:loopback::Loopback::default(),journal:crate::journal::Journal::new(&home).unwrap(),remote:crate::remote_state::RemoteState::new(&home),schedules:schedules::Schedules::load(&home).unwrap()});
             let registration=host.slots.borrow()["b"].registration.clone();storage::private_dir(&registration.data_dir).unwrap();let instance=Host::service_id(&registration);let directory=storage::registry(&home,&instance).unwrap();storage::private_dir(&directory).unwrap();
             let service:Service=serde_json::from_value(json!({"protocolVersion":1,"serviceId":instance,"generation":uuid::Uuid::new_v4().to_string(),"workspace":workspace,"dataDir":registration.data_dir,"configFingerprint":"fixture","owner":host.owner(),"endpoint":"http://127.0.0.1:1","webUrl":"http://127.0.0.1:1","authFile":directory.join("auth.json"),"logFile":directory.join("host.log"),"hostPid":1,"corePid":1,"state":"stopped"})).unwrap();storage::write(&directory.join("service.json"),&service).unwrap();storage::write(&directory.join("crash.json"),&storage::CrashReceipt {version:1,unexpected_core_exit:true,identity:service.identity.clone(),owner:service.owner.clone(),components:BTreeMap::new(),cleanup_confirmed:true}).unwrap();

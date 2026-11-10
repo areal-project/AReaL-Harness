@@ -10,6 +10,7 @@ use std::{
 use tokio::sync::Semaphore;
 mod archive;
 mod lazy;
+pub(crate) mod persisted;
 pub(crate) use lazy::RestoredSession;
 
 pub(crate) fn fit_history_fragment(

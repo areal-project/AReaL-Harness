@@ -1,5 +1,7 @@
 import type { DesktopError } from "./services.js";
 import type { Data } from "./services.js";
+import { ERROR_CODES, errorCode, errorText } from "./errors/errorCopy.js";
+import type { Translate } from "./i18n/uiMessage.js";
 
 export type RecoveryFailure = DesktopError;
 export type RecoveryOperation = Extract<
@@ -96,9 +98,11 @@ export function recoveredOutcome(
   if (!outcome.status && typeof outcome.accepted !== "boolean") return;
   return outcome;
 }
+/** 传入 t 时，已登记的错误码用错误文案表，未知错误不再原样显示后台文字。 */
 export function recoveryMessage(
   failure: RecoveryFailure,
   context: "operation" | "view" = "operation",
+  t?: Translate,
 ) {
   if (
     context === "operation" &&
@@ -107,6 +111,11 @@ export function recoveryMessage(
       failure.outcome?.kind === "unconfirmed")
   )
     return "操作结果待确认。";
+  if (["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure.code)))
+    return "旧运行状态尚未确认，暂时无法打开项目。历史和草稿已保留，请先检查原任务的停止结果。";
+  const code = errorCode(failure);
+  if (t && context === "operation" && code && Object.hasOwn(ERROR_CODES, code))
+    return errorText(t, failure);
   if (
     /auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(
       `${failure.reason ?? ""} ${failure.code ?? ""}`,
@@ -147,6 +156,7 @@ export function recoveryMessage(
     return failure.outcome?.kind === "rejected" || failure.outcome?.kind === "noMutation"
       ? "操作尚未受理，输入已保留，请在连接恢复后重试。"
       : "暂时无法完成操作，请检查原操作结果后继续。";
+  if (t) return t("errors.generic");
   return failure.message || "操作未完成，请重试。";
 }
 
@@ -158,7 +168,7 @@ export function recoverySettings(failure: RecoveryFailure): RecoveryNotice["sett
 }
 
 export function isTechnicalErrorMessage(message: string) {
-  return /Error invoking remote method|\bIPC\b|\b(?:ENOENT|ECONNREFUSED|ECONNRESET|EACCES)\b|control\.sock|service socket path|\n\s*at /i.test(
+  return /Error invoking remote method|\bIPC\b|\b(?:ENOENT|ECONNREFUSED|ECONNRESET|EACCES)\b|control\.sock|service socket path|service requires explicit lifecycle restart|Host disconnected|Project Core unavailable|\n\s*at /i.test(
     message,
   );
 }

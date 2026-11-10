@@ -7,7 +7,7 @@ import { createLocalTlsFixture } from "./desktop-network-smoke.mjs";
 
 const require = createRequire(import.meta.url);
 const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-const { executeCore } = require("@areal/workbench-service/desktop/core/core-process.cjs");
+const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
 
 export function desktopSettingsSmoke(scratch, workspace) {
   const frames = [],

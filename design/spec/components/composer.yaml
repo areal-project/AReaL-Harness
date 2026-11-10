@@ -1,0 +1,121 @@
+id: composer
+name: 输入框
+status: draft
+purpose: 用户写下任务并提交给 Agent；运行中继续输入会进入队列，停止也在这里。
+terms:
+  普通对话: 用户直接发起的主对话；任务、目标和侧边对话不算
+why: 输入区与对话正文同一字号与节奏，读起来像对话的下一行，视线在读和写之间不换尺度。
+
+anatomy:
+  - part: context-bar
+    optional: true
+    role: 输入框上方的一条，显示当前项目与工作区，最右是工作区设置入口
+  - part: attachments
+    optional: true
+    role: 实际上传的附件缩略卡；文件、技能等引用不在这里，而是正文内的行内标识
+  - part: editor
+    role: 多行文字输入，随内容增高，到上限后在内部滚动
+  - part: toolbar
+    role: 一行控件，左侧添加与权限，右侧上下文占用（仅对话中）、模型、强度与主按钮
+    children: [add-menu, permission-menu, context-meter, model-menu, effort-menu, primary-action]
+  - part: decision-slot
+    optional: true
+    role: 待处理的审批或提问卡片出现在输入框正上方，只在这里出现
+
+variants:
+  placement:
+    home: 首页草稿，位于视觉重心，圆角取大号
+    thread: 对话底部
+    inline: 在一条用户消息内改写；平面无阴影，底色 color-composer-catalog，聚焦时只有一圈 border-hover 描边
+  layout:
+    default: 编辑区在上，工具栏在下
+    compact: 窄容器与侧边对话，编辑区与工具栏同一行；容器变窄时工具栏换到编辑区下方
+    decision: 有待决卡片时压成一行：添加按钮在左，编辑区单行（最多四行），右侧上下文占用、模型、强度与主按钮；不显示权限入口；上下内边距 spacing-inline 的四分之三，左 composer-inset，右 spacing-inline，添加按钮与编辑区之间 spacing-inline 的一半，右侧各控件之间的间隔与默认工具栏右组相同（不改成一半）；工具栏入口仍按 toolbar-height（含透明描边），所以整行高 = toolbar-height 加上下内边距；添加按钮绝对定位，左缘距外框 composer-inset 减 spacing-inline 的四分之一，下缘距外框 spacing-inline 的四分之三；文字起点距外框左缘 composer-inset 加 spacing-inline 的一半，再加 spacing-control 与 spacing-inline 的四分之三；文字 text-ui-base、行高 line-height-ui；草稿不丢
+
+states:
+  - empty: 占位文字说明输入目标；主按钮不可用并说明原因
+  - draft: 有文字或附件；主按钮为“发送”
+  - focused: 在阴影之上从外框边缘向外画两圈：一圈 border-width-default 宽的 color-border-hover，压在一圈三倍 border-width-default 宽的 color-focus-ring-soft 之上（两圈都从边缘起算，所以柔光只露出外侧两倍宽）；有草稿时编辑区自动获得焦点
+  - dragover: 拖入文件时整体出现放置提示
+  - sending: 提交中；保留草稿直到确认受理
+  - running: 草稿为空时主按钮为“停止”（普通对话为“暂停执行”）；有草稿时主按钮为“发送”，提交进入队列
+  - blocked: 草稿为空时只禁用主按钮；其他不能发送的原因（没有模型、后台不可用）以可见文字关联到主按钮，不只靠悬停提示
+  - error: 错误以一行可关闭的反馈出现在输入框正上方，草稿保留；不用顶部弹窗
+
+tokens:
+  surface: color-composer
+  material: raised
+  elevation: shadow-composer
+  radius:
+    home: radius-composer-large
+    thread: radius-composer
+    inline: radius-composer
+    compact: radius-composer-large；容器变窄时 radius-composer
+  inset: composer-inset（编辑区左右与顶部、工具栏左右）；工具栏下方 spacing-inline
+  toolbar-groups: 工具栏分左右两组，组间 spacing-inline；左组（添加、权限）组内间隔 spacing-inline 的一半；右组（上下文占用、模型与强度、主按钮）组内间隔 spacing-inline 的四分之三，其中模型与强度两个入口之间只有 spacing-inline 的四分之一
+  toolbar-height: 由模型入口决定：text-ui-caption 乘 line-height-toolbar 的一行，加上下各 spacing-inline 的一半，再加上下各一道 border-width-default 的透明描边；其他控件在这一行内垂直居中
+  button-border: 工具栏里的文字入口与主按钮都带 border-width-default 的透明描边，计入尺寸；所以相邻按钮的可见间距比组内间隔多出两道描边
+  icon: 图标按文件自带宽高；添加 icon-size-control，权限图标、菜单箭头与发送、停止见各自文件
+  disabled: opacity-disabled
+  text: text-conversation
+  line: conversation-line
+  focus: color-focus-ring-soft
+  editor-min: 编辑区最少两行正文高（两倍 text-conversation 乘 conversation-line），这个高度已含下方 spacing-inline 的留白（留白在文字下面，第一行文字与占位文字紧贴编辑区顶边）；首页与对话相同；用多行文本框实现时要按一行起算再撑到这个最小高（浏览器默认的两行会多出一截）
+  toolbar-label: text-ui-caption，字重 font-weight-toolbar；模型名 foreground，权限名 foreground-subtle
+  toolbar-item: 权限、模型、强度入口：左右 spacing-inline，图标与文字间隔 spacing-inline 的一半，圆角 radius-navigation；模型与强度上下 spacing-inline 的一半、最小高 spacing-control，文字后带 menu-chevron；权限入口高 spacing-control-sm，图标在文字前，不带箭头
+  add-button: spacing-control 见方，图标颜色 foreground
+  tracking: 输入框文字不加字距（tracking-conversation 只给 Agent 正文）
+  context-meter: spacing-control 见方的按钮，居中放 context-ring 图标，颜色 foreground-subtle；悬停时 foreground，底色 color-muted
+  primary-action-shape: spacing-control 见方的圆（radius-pill）；发送图标比 icon-size-control 大 spacing-inline 的一半，停止图标为 icon-size-control
+  primary-disabled: 底色 color-secondary，图标 foreground-subtlest，再整体 opacity-disabled；只有可用时才用 color-composer-action
+  running: 运行中权限、模型、强度三个入口不可用，按 opacity-disabled 显示
+  primary-action: color-composer-action
+
+queue:
+  card: 位于输入框正上方，左右各缩进 composer-inset；底边藏进输入框，重叠 composer-inset 加 spacing-inline
+  card-padding: 上与左 spacing-inline 的一半，右 spacing-inline，下为 composer-inset 加一倍半 spacing-inline（重叠部分加露出的 spacing-inline 的一半）
+  row-geometry: 行最小高 spacing-control 加 spacing-inline，内容垂直居中；序号列宽 icon-size-control，序号居中；序号、正文、操作之间 spacing-inline
+  action-button: 高 spacing-control，内边距为 spacing-control 减 icon-size-control 的一半，圆角 radius-control，按钮之间 spacing-inline 的四分之一；立即发送带文字（text-ui-sm，左右 spacing-inline，图标与文字间 spacing-inline 的一半），删除与更多只有图标
+  surface: color-composer-catalog，边框 border-width-default 的 color-border，无下边框，上方两角 radius-composer
+  row: 左侧序号（text-ui-xs，foreground-subtlest，等宽数字），悬停时序号换成拖动把手；正文 text-fixed-control 单行省略；行悬停底色 color-hover，圆角 radius-compact-row
+  actions: 立即发送、删除、更多操作只在悬停或聚焦这一行时出现；触屏设备常显
+
+behavior:
+  - 草稿在切换布局、收起审批、模型保存期间保持同一实例，不丢失、不重建
+  - 编辑区高度到上限后在内部滚动，外框不再长高
+  - 输入 @ 引用文件与资源，$ 选技能，/ 打开命令；关键词就在输入框里输入，菜单不另设搜索框
+  - 保存模型或强度配置时不播放发送中的提示，也不打断输入焦点
+
+accessibility:
+  - 编辑区有可读名称；图标按钮都有可读名称
+  - 键盘顺序与视觉顺序一致：编辑区、工具栏、主按钮
+  - 不可发送的原因对读屏可见，并关联主按钮
+  - 中文输入法组合期间按回车不提交
+
+accessible-names:
+  editor: 与占位文字相同；可以是多行文本框或可编辑区域
+  primary-action:
+    draft: 发送
+    running-empty: 停止；普通对话为“暂停执行”
+    running-with-draft: 发送
+  add-menu: 添加功能与 Skills
+  permission-menu: 更改权限
+  context-meter: 上下文占用
+  permission-label: 当前权限模式名，见示例数据；输入框宽度不到 reading-width 的四分之三时不显示，只留图标
+  effort-label: 当前思考强度名，见示例数据
+  queue-region: 待发送消息
+  queue-item:
+    send-now: 立即发送 {内容}
+    delete: 删除排队消息 {内容}
+    reorder: 调整顺序 {内容}
+    more: 更多操作 {内容}
+  model-menu: 选择模型
+  effort-menu: 选择思考强度
+  placeholder: 描述要做的事，@ 引用文件，/ 查看命令（颜色 foreground-subtle，字号与行高同正文）
+  placeholder-decision: 可以继续输入，消息会排在这一轮之后发送
+
+references:
+  - state: home.empty
+  - state: home.draft
+  - state: thread.running
+  - state: thread.queued
