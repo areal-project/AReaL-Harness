@@ -1,6 +1,6 @@
-# Agent 工作环境与验证分层
+**中文** | [English](agent-environment.en.md)
 
-[English](agent-environment.en.md)
+# Agent 工作环境与验证分层
 
 本页说明 Agent（以及人）在云端容器里能验证到哪一步、哪些必须留到 Mac 上验收。产品处于前期 Beta，不支持降级。
 

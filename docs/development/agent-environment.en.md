@@ -1,6 +1,6 @@
-# Agent environment and verification layers
+[中文](agent-environment.md) | **English**
 
-[中文](agent-environment.md)
+# Agent environment and verification layers
 
 What an agent (or a person) can verify in a cloud container, and what still needs a Mac. The product is in early Beta and does not support downgrades.
 
