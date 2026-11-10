@@ -260,26 +260,28 @@ fn import_from(
         }
     }
     let store = areal_plugins::Store::open_user(root.clone(), user_home())?;
-    let mut saved: std::collections::BTreeMap<String, Value> = Default::default();
-    let mut save = |name: &str, server: Value| -> Result<Option<String>> {
+    // 值记录配置和是否来自用户级；同名同配置复用已导入的插件，项目级来源仍要在本项目启用。
+    let mut saved: std::collections::BTreeMap<String, (Value, bool)> = Default::default();
+    let mut save = |name: &str, server: Value, user_level: bool| -> Result<Option<String>> {
         let mut candidate = name.to_owned();
         for n in 2.. {
             match saved.get(&candidate) {
-                Some(existing) if *existing == server => return Ok(None),
+                Some((existing, true)) if *existing == server => return Ok(None),
+                Some((existing, false)) if *existing == server => return Ok(Some(candidate)),
                 Some(_) => candidate = format!("{name}-{n}"),
                 None => break,
             }
         }
         let revision = store.list()?.revision;
         store.save_local_mcp(&candidate, &server, revision)?;
-        saved.insert(candidate.clone(), server);
+        saved.insert(candidate.clone(), (server, user_level));
         Ok(Some(candidate))
     };
     let runtime_ids: Vec<_> = user.iter().map(|(_, runtime, _)| runtime.clone()).collect();
     for (id, _, config) in &user {
         match standalone_server(config) {
             Ok(server) => {
-                if let Err(error) = save(id, server) {
+                if let Err(error) = save(id, server, true) {
                     eprintln!("standalone MCP {id} not imported: {error:#}");
                 }
             }
@@ -298,7 +300,7 @@ fn import_from(
                 continue;
             }
             let imported =
-                standalone_server(&record["config"]).and_then(|server| save(&id, server));
+                standalone_server(&record["config"]).and_then(|server| save(&id, server, false));
             match imported {
                 Ok(Some(name)) => {
                     // 只在原项目里启用：用户默认关，项目里开。
@@ -421,8 +423,24 @@ mod tests {
             source: crate::ProjectSource::Cli,
             default_binding: false,
         };
+        // 第二个项目有同名同配置的 MCP：复用同一插件，也在第二个项目里启用。
+        let (second_data, second) = (temp.path().join("data2"), temp.path().join("second"));
+        std::fs::create_dir_all(second_data.join("desktop")).unwrap();
+        std::fs::create_dir_all(&second).unwrap();
+        std::fs::write(second_data.join("desktop/mcp.json"), json!({
+            "local":{"id":"local","revision":1,"directoryRevision":0,"config":{"transport":{"type":"stdio","command":"local-mcp"}}}
+        }).to_string()).unwrap();
+        let projects = [
+            project.clone(),
+            crate::ProjectRegistration {
+                project_id: "p2".into(),
+                workspace: second.clone(),
+                data_dir: second_data,
+                ..project.clone()
+            },
+        ];
         let root = temp.path().join("plugins");
-        super::import_from(&root, vec![gui.clone()], std::slice::from_ref(&project)).unwrap();
+        super::import_from(&root, vec![gui.clone()], &projects).unwrap();
         let view = |workspace: &std::path::Path| {
             areal_plugins::Store::open(root.clone(), workspace.into(), None)
                 .unwrap()
@@ -440,12 +458,17 @@ mod tests {
         assert_eq!(enabled(&here, "local@local-mcp"), Some((true, true)));
         assert_eq!(enabled(&here, "user-docs@local-mcp"), None);
         assert_eq!(enabled(&here, "broken@local-mcp"), None);
+        assert_eq!(
+            enabled(&view(&second), "local@local-mcp"),
+            Some((true, true))
+        );
+        assert_eq!(enabled(&view(&second), "local-2@local-mcp"), None);
         let elsewhere = view(&other);
         assert_eq!(enabled(&elsewhere, "docs@local-mcp"), Some((true, true)));
         assert_eq!(enabled(&elsewhere, "local@local-mcp"), Some((true, false)));
         // 第二次启动不重复导入。
         std::fs::remove_dir_all(root.join("local-mcp/plugins/docs")).unwrap();
-        super::import_from(&root, vec![gui], std::slice::from_ref(&project)).unwrap();
+        super::import_from(&root, vec![gui], &projects).unwrap();
         assert!(!root.join("local-mcp/plugins/docs").exists());
     }
 }

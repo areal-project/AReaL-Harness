@@ -70,6 +70,13 @@ impl Store {
         expected_revision: u64,
     ) -> Result<PluginDetail> {
         ensure!(valid_name(name), "invalid MCP server name");
+        // 登记会原样回给有管理权限的客户端；密钥只能写成环境变量引用。
+        ensure!(
+            ["env", "http_headers", "headers"]
+                .iter()
+                .all(|field| server.get(field).is_none()),
+            "MCP secrets must be environment variable references (env_vars, env_http_headers)"
+        );
         let document = json!({"mcpServers": {name: server}});
         let outcome = areal_mcp::normalize_plugin_document(
             false,

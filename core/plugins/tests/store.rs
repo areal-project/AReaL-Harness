@@ -616,6 +616,16 @@ fn local_mcp_is_a_single_server_plugin() {
             .save_local_mcp("bad name", &server, edited.revision)
             .is_err()
     );
+    for literal in [
+        json!({"command":"docs","env":{"TOKEN":"secret"}}),
+        json!({"url":"https://mcp.example.test","http_headers":{"Authorization":"Bearer secret"}}),
+    ] {
+        assert!(
+            store
+                .save_local_mcp("leak", &literal, edited.revision)
+                .is_err()
+        );
+    }
     assert!(
         store
             .save_local_mcp("x", &json!({"url":"ftp://x"}), edited.revision)
