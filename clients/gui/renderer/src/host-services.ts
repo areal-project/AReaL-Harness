@@ -26,8 +26,12 @@ import {
   readInheritedHistoryPage,
 } from "@areal/workbench/desktop-contract/conversation-history";
 import { pageTopology } from "@areal/workbench/history-projection";
+import { commandSemantics, desktopError } from "@areal/workbench/desktop-contract/transport";
 import {
   createWorkbenchRoutes,
+  DESKTOP_COMMANDS,
+  declinedCode,
+  desktopKeepsCommand,
   hostDesktopCommand,
   hostPlatformCapabilities,
 } from "./host-workbench.js";
@@ -44,6 +48,27 @@ export type HostHistoryPage = ReturnType<typeof readInheritedHistoryPage>;
 export type HistoryEntry = ReturnType<typeof readHistoryEntry>;
 export type HistoryPage = ReturnType<typeof readHistoryPage> & { pageId: string; cursor: string };
 export type PageRecord = { id: string; cursor: string; items: ReturnType<typeof pageTopology> };
+
+/**
+ * Host 命令通道的失败与桌面原通道同一份错误形状：保留错误码、受理结果与恢复方式。
+ * 没有错误码说明回复丢了，写操作按“不确定是否受理”处理。
+ */
+export function hostCommandError(name: string, params: Record<string, unknown>, error: unknown) {
+  const shaped = desktopError(error);
+  if (shaped.code !== undefined) return shaped;
+  let write = true;
+  try {
+    write = commandSemantics(name, params).effect !== "read";
+  } catch {}
+  return write
+    ? {
+        ...shaped,
+        submissionUnknown: true,
+        outcome: { kind: "unconfirmed" },
+        recovery: { kind: "queryOriginal" },
+      }
+    : { ...shaped, code: "COMMAND_FAILED" };
+}
 
 export function createHostReadServices(
   desktop: PlatformServices | undefined,
@@ -758,23 +783,46 @@ export function createHostReadServices(
   const unavailable = async () => {
     throw new Error("此功能需要桌面应用");
   };
+  const hostCommand = hostDesktopCommand(
+    client,
+    () => librarySourceId,
+    hostCommandError,
+    (next) => {
+      snapshot = next as unknown as Snapshot;
+      publish();
+    },
+  );
   return {
     ...(desktop ?? {
       chooseProject: () => chooseHostProject(client, librarySourceId),
-      command: hostDesktopCommand(
-        client,
-        () => librarySourceId,
-        (next) => {
-          snapshot = next as unknown as Snapshot;
-          publish();
-        },
-      ),
+      command: hostCommand,
       theme: async () => ({
         dark: matchMedia("(prefers-color-scheme: dark)").matches,
         id: "system",
       }),
       onTheme: () => () => {},
       preview: unavailable,
+    }),
+    ...(desktop && {
+      // 桌面与网页同走 Host 的后台命令；只有 Main 加了本机行为的、或资料库来源未就绪时仍走 Main。
+      // 过渡：到 0.2.0 删（来源去掉、Main 附加行为迁走后整条走 Host）
+      command: (async (name: string, params: Record<string, unknown>) => {
+        type Run = (
+          name: string,
+          params: Record<string, unknown>,
+        ) => ReturnType<PlatformServices["command"]>;
+        const native = desktop.command as Run;
+        if (
+          !DESKTOP_COMMANDS.has(name) ||
+          desktopKeepsCommand(name, params) ||
+          !librarySourceId ||
+          !client.writable("desktop.command")
+        )
+          return native(name, params);
+        const result = await (hostCommand as Run)(name, params);
+        // 窗口刚打开时 Main 可能还没把后台交给 Host；Host 明确拒绝（未受理）时走 Main，Main 会等后台就绪。
+        return !result.ok && declinedCode(result.error.code) ? native(name, params) : result;
+      }) as PlatformServices["command"],
     }),
     get capabilities() {
       return hostPlatformCapabilities(client, desktop, librarySourceId);

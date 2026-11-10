@@ -953,7 +953,13 @@ describe("Host renderer read authority", () => {
     expect(snapshot.library?.projects.alias.title).toBe("Host project title");
     expect(snapshot.library?.settings.sidebarSort).toBe("manual");
     expect(snapshot.library?.settings.unmigratedPreference).toBe("retained");
-    expect(services.command).toBe(desktop.command);
+    // Main 加了本机行为的命令和主进程命令仍走桌面通道。
+    await expect(services.command("open", { projectId: "alias" } as never)).rejects.toThrow(
+      "Native write invoked",
+    );
+    await expect(
+      services.command("computerControl", { operation: "status" } as never),
+    ).rejects.toThrow("Native write invoked");
   });
   it("preserves native history source identities, media and opaque cursor", async () => {
     const wire = transport();

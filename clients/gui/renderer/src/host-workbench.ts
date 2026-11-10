@@ -131,6 +131,7 @@ const DESKTOP_ONLY_SETTINGS = new Set(["电脑控制"]);
 export function hostDesktopCommand(
   client: HostClient,
   source: () => string | undefined,
+  failure: (name: string, params: Record<string, unknown>, error: unknown) => unknown,
   onSnapshot?: (snapshot: Record<string, unknown>) => void,
 ): PlatformServices["command"] {
   return async (name, params) => {
@@ -154,18 +155,43 @@ export function hostDesktopCommand(
       }
       return { ok: true, value };
     } catch (error) {
-      const message =
-        error && typeof error === "object" && "message" in error ? String(error.message) : ""; // raw-error-ok: 按原文分类
-      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
       return {
         ok: false,
-        error: {
-          code: ["migrationBlocked", "MIGRATION_PENDING"].includes(code) ? code : "COMMAND_FAILED",
-          message: message || "操作失败",
-        },
+        error: failure(name, params as Record<string, unknown>, error),
       } as Awaited<ReturnType<PlatformServices["command"]>>;
     }
   };
+}
+
+/**
+ * 桌面窗口里这些命令仍走 Main：Main 在后台调用前后加了本机行为（确认框、选文件、打开浏览器、
+ * 记下 MCP 元数据图片、电脑控制准入、导航落盘）。迁走这些行为后从这里删掉。
+ */
+export function desktopKeepsCommand(name: string, params: Record<string, unknown>) {
+  const operation = String(params.operation ?? "");
+  if (name === "open" || name === "remoteControl") return true;
+  if (name === "chatgpt") return operation === "login";
+  if (name === "library")
+    return (
+      operation === "settings" &&
+      ["computerControlEnabled", "computerControlProvider", "computerControlExecutable"].includes(
+        String(params.key),
+      )
+    );
+  if (name === "manage")
+    return (
+      operation.startsWith("process") ||
+      [
+        "archive",
+        "pluginArchivePick",
+        "pluginArchiveImport",
+        "pluginAuth",
+        "mcpApps",
+        "mcpForms",
+        "mcpExtensionCall",
+      ].includes(operation)
+    );
+  return false;
 }
 
 const ACTIVITY_MS = 5000;
@@ -186,6 +212,11 @@ const LIBRARY_SETTINGS = new Set([
   "showPinned",
   "showCompleted",
 ]);
+
+/** Host 明确未受理（服务没起来、方法未开放、无权限），可以安全改走桌面原路径。 */
+export function declinedCode(code: unknown) {
+  return FALLBACK.has(String(code));
+}
 
 function declined(error: unknown) {
   return (

@@ -6,6 +6,7 @@ import {
   hostDesktopCommand,
   hostPlatformCapabilities,
 } from "./host-workbench.js";
+import { hostCommandError } from "./host-services.js";
 import type { PlatformServices } from "./services.js";
 
 function setup(answer: (method: string, params: unknown) => unknown) {
@@ -584,7 +585,7 @@ describe("local web desktop commands", () => {
         return { done: true };
       },
     } as unknown as HostClient;
-    const command = hostDesktopCommand(client, () => "source");
+    const command = hostDesktopCommand(client, () => "source", hostCommandError);
     expect(await command("list", { projectId: "p" })).toEqual({ ok: true, value: { done: true } });
     expect(await command("recovery", { operation: "inspect" })).toEqual({
       ok: true,
@@ -592,7 +593,7 @@ describe("local web desktop commands", () => {
     });
     expect(await command("list", { fail: true } as never)).toEqual({
       ok: false,
-      error: { code: "COMMAND_FAILED", message: "Core refused" },
+      error: { code: "x", message: "Core refused" },
     });
     await expect(command("computerControl", {} as never)).rejects.toThrow("需要桌面应用");
     expect(calls[0]).toEqual([
@@ -617,11 +618,15 @@ describe("local web desktop commands", () => {
         throw Object.assign(new Error("blocked"), { code: "MIGRATION_PENDING" });
       },
     } as unknown as HostClient;
-    expect(await hostDesktopCommand(client, () => "source")("connect", { projectId: "p" })).toEqual(
-      {
-        ok: false,
-        error: { code: "MIGRATION_PENDING", message: "blocked" },
-      },
-    );
+    expect(
+      await hostDesktopCommand(
+        client,
+        () => "source",
+        hostCommandError,
+      )("connect", { projectId: "p" }),
+    ).toEqual({
+      ok: false,
+      error: { code: "MIGRATION_PENDING", message: "blocked" },
+    });
   });
 });
