@@ -21,10 +21,6 @@ exports: ["ActionButton"]
 
 本合同覆盖同模块导出的整组组件：ActionButton。真实API读取生成的TypeScript声明。
 
-## 状态
-
-`R-ACTIONBUTTON-001` 默认、图标、pending、disabled。
-
 ## 行为
 
 `R-ACTIONBUTTON-002` pending时保留文字、显示转动图标并禁止重复点击，不推断操作已完成。

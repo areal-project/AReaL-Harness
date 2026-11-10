@@ -1,3 +1,4 @@
+import { currentErrorText } from "../errors/currentErrorText.js";
 import type {
   ComposerWorkspaceFiles,
   ComposerFileReferenceInput,
@@ -408,9 +409,7 @@ export function ChatPromptEditor({
               setDropError(
                 error instanceof UiMessageError
                   ? intl.formatMessage(error.descriptor)
-                  : error instanceof Error
-                    ? error.message
-                    : String(error),
+                  : currentErrorText(error),
               );
           }
         }

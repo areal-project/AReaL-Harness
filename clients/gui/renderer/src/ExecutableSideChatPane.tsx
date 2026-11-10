@@ -1,4 +1,5 @@
 import { useI18n } from "./i18n/IntlProvider.js";
+import { errorText } from "./errors/errorCopy.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Composer, sending } from "./Composer.js";
 import { Messages } from "./Messages.js";
@@ -114,7 +115,7 @@ export function ExecutableSideChatPane({
     if (!project.state?.connected) return;
     void action("open", { projectId: project.id, threadId: tab.childId }).catch((cause) => {
       if (!current) return;
-      setError(cause.message);
+      setError(errorText(t, cause));
     });
     return () => {
       current = false;
@@ -148,7 +149,7 @@ export function ExecutableSideChatPane({
         .then((result) => {
           if (result.destination === "internal") return openBrowser(result.url);
         })
-        .catch((cause) => setError(cause.message));
+        .catch((cause) => setError(errorText(t, cause)));
     },
     [services, project.id, tab.childId, openBrowser],
   );
@@ -223,7 +224,7 @@ export function ExecutableSideChatPane({
       run: () => {
         void apps
           .openApp(server, tool, { kind: "thread" })
-          .catch((cause) => setError(cause.message));
+          .catch((cause) => setError(errorText(t, cause)));
       },
     }),
   );
@@ -353,7 +354,7 @@ export function ExecutableSideChatPane({
         <ProcessesPane
           {...props}
           onOpenService={(url) => {
-            void openBrowser(url).catch((cause) => setError(cause.message));
+            void openBrowser(url).catch((cause) => setError(errorText(t, cause)));
           }}
         />
       );
@@ -452,7 +453,7 @@ export function ExecutableSideChatPane({
             readAction={action}
             onPanel={(name) =>
               name === "预览"
-                ? void openBrowser().catch((cause) => setError(cause.message))
+                ? void openBrowser().catch((cause) => setError(errorText(t, cause)))
                 : setResource(name)
             }
             onNew={onNew}

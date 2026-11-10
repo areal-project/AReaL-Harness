@@ -1,4 +1,5 @@
 import type { PluginCommand, PluginMutationRequest } from "./pluginTypes.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { Input } from "@areal/ui";
 import { useI18n, UiMessageError, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
@@ -107,7 +108,7 @@ const message = (error: unknown): string | UiMessage =>
   error instanceof UiMessageError
     ? error.descriptor
     : error instanceof Error
-      ? error.message
+      ? currentErrorText(error)
       : { id: "settings.pluginHookSettings.couldNotLoadPluginHooks" };
 
 export function PluginHookSettings({
@@ -207,7 +208,7 @@ export function PluginHookSettings({
           cause instanceof UiMessageError
             ? cause.descriptor
             : cause instanceof Error
-              ? cause.message
+              ? currentErrorText(cause)
               : {
                   id: "settings.pluginHookSettings.hookConfigurationIsIncompleteCheckSubmissionStatus",
                 },

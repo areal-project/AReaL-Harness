@@ -141,7 +141,7 @@ export async function submitMessage(
         try {
           recordUnknownReviewSubmission(reviewKey, error.requestId, comments);
         } catch {
-          error.message += " 评论提交记录无法保存，原评论已保留。";
+          error.message += " 评论提交记录无法保存，原评论已保留。"; // raw-error-ok: 补充详情
         }
       }
       throw cause;

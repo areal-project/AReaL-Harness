@@ -267,7 +267,7 @@ export function ModelTrajectoryPane({
   const thresholdMs = Math.max(0, Number(threshold === "custom" ? custom : threshold) || 0) * 1000;
   const filtered = candidates.filter(({ node, turn, entry, duration: ms }) => {
     const matches =
-      `${node.title} ${turn.id} ${turn.configuration?.model?.modelId ?? ""} ${status(turn.status)} ${JSON.stringify(turn.error ?? null)} ${label(entry)} ${entry.text}`
+      `${node.title} ${turn.id} ${turn.configuration?.model?.modelId ?? ""} ${status(turn.status)} ${JSON.stringify(turn.error ?? null)} ${label(entry)} ${entry.text}` // raw-error-ok: 搜索索引
         .toLocaleLowerCase()
         .includes(query.trim().toLocaleLowerCase());
     return (

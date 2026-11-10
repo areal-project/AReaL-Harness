@@ -21,10 +21,6 @@ exports: ["Input", "inputVariants"]
 
 本合同覆盖同模块导出的整组组件：Input, inputVariants。真实API读取生成的TypeScript声明。
 
-## 行为
-
-`R-INPUT-002` 原生输入事件、ref和输入法沿原控件，不因外观迁移改变提交。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

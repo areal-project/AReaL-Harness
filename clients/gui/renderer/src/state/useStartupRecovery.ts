@@ -37,7 +37,7 @@ export function useStartupRecovery(
       ].includes(String(viewFailure.code)) ||
       (!viewFailure.code &&
         /连接中断|已断开|正在恢复|disconnect|timeout|connection|transport/i.test(
-          viewFailure.message,
+          viewFailure.message, // raw-error-ok: 只进详情
         )));
   const viewRefreshing =
     !!currentObservationFailure?.refreshPending || !!currentRestoration?.pending;

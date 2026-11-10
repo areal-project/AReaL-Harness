@@ -24,10 +24,6 @@ related: ["settings-group-card", "disclosure"]
 
 `R-SETTINGSROW-005` label插槽是布局内容，不能自动标记任意控件。宿主通过htmlFor/id或aria-label命名实际输入，用aria-describedby连接帮助及错误；真实disabled由控件负责。
 
-## 规则
-
-`R-SETTINGSROW-006` 纯布局组件不保存值、不推导提交状态、不访问服务。SettingsSelect/Switch等业务适配继续由renderer拥有；input/range基础外观沿现有设置规范。
-
 ## 示例
 
 独立实例覆盖长说明、wide输入、锁定控件及本地保存反馈。示例状态选择器只控制本地状态，不提供真实配置保存。

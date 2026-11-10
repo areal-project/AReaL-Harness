@@ -1,4 +1,5 @@
 import { Button, Input } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useRef, useState } from "react";
 import type { Action, Data } from "./services.js";
 
@@ -47,7 +48,7 @@ export function RelatedSideChats({
         }
       })
       .catch((cause: Error) => {
-        if (current && generation.current === requestGeneration) setError(cause.message);
+        if (current && generation.current === requestGeneration) setError(currentErrorText(cause));
       })
       .finally(() => {
         if (current && generation.current === requestGeneration) setBusy(false);

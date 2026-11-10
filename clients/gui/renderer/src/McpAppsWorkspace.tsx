@@ -1,4 +1,6 @@
 import { observeResize } from "@areal/ui/observe-resize";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { useI18n, formatUiMessage, UiMessageError, type UiMessage } from "./i18n/IntlProvider.js";
 import { Button } from "./components/ui/button.js";
@@ -158,7 +160,7 @@ export function useMcpAppsWorkspace({
           cause instanceof UiMessageError
             ? cause.descriptor
             : cause instanceof Error
-              ? cause.message
+              ? currentErrorText(cause)
               : { id: "settings.mcpAppsWorkspace.appDirectoryUnavailable" },
         );
       }
@@ -709,7 +711,7 @@ export function useMcpAppsWorkspace({
             cause instanceof UiMessageError
               ? cause.descriptor
               : cause instanceof Error
-                ? cause.message
+                ? currentErrorText(cause)
                 : { id: "settings.mcpAppsWorkspace.couldNotReadPendingForms" },
           );
       } finally {
@@ -871,7 +873,7 @@ export function useMcpAppsWorkspace({
         onMessage={message}
         onModelContext={modelContext}
         onClose={() => {
-          void close(appTab(app)).catch((cause) => current.current.onError(cause.message));
+          void close(appTab(app)).catch((cause) => current.current.onError(errorText(t, cause)));
         }}
         onError={app.resultSource ? () => resultPageFailed(app) : onError}
       />
@@ -898,7 +900,9 @@ export function useMcpAppsWorkspace({
                 unstyled
                 data-slot={undefined}
                 type="submit"
-                onClick={() => void clearContext(app).catch((cause) => onError(cause.message))}
+                onClick={() =>
+                  void clearContext(app).catch((cause) => onError(errorText(t, cause)))
+                }
               >
                 {t("settings.mcpAppsWorkspace.removeAppContext")}
               </Button>
@@ -1080,9 +1084,7 @@ export function McpAppsHub({
         onOpen={(server, tool) =>
           void workspace
             .openApp(server, tool, { kind: "global" })
-            .catch((cause) =>
-              setFeedback(cause instanceof UiMessageError ? cause.descriptor : cause.message),
-            )
+            .catch((cause) => setFeedback(errorText(t, cause)))
         }
       />
       {settingsServers.length === 1 && !server && (
@@ -1114,11 +1116,7 @@ export function McpAppsHub({
             data-slot={undefined}
             type="submit"
             onClick={() =>
-              void workspace
-                .ensureThread()
-                .catch((cause) =>
-                  setFeedback(cause instanceof UiMessageError ? cause.descriptor : cause.message),
-                )
+              void workspace.ensureThread().catch((cause) => setFeedback(errorText(t, cause)))
             }
           >
             {t("settings.mcpAppsWorkspace.createAppConversation")}

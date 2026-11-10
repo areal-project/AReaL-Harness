@@ -1,4 +1,5 @@
 import { useI18n } from "./i18n/IntlProvider.js";
+import { errorText } from "./errors/errorCopy.js";
 import { TaskContext } from "@areal/ui/experimental";
 import { DelayedVisible } from "@areal/ui";
 import "@areal/ui/conversation.css";
@@ -228,7 +229,7 @@ export function ConversationStatusCard({
                 threadId: thread.id,
                 path: ".",
               })
-                .catch((cause: Error) => setWorkspaceError(cause.message))
+                .catch((cause: Error) => setWorkspaceError(errorText(t, cause)))
                 .finally(() => setOpeningWorkspace(false));
             }}
           />

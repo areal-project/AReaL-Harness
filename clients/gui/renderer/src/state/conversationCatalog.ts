@@ -1,4 +1,5 @@
 import { browserAnnotationTitle } from "../browserAnnotations.js";
+import { conversationUserState } from "./userStates.js";
 import { imageAnnotationTitle } from "../imageAnnotations.js";
 import type { Data } from "../services.js";
 
@@ -72,6 +73,7 @@ export function conversationCatalog(
       })
       .map((summary) => {
         const t = owner.state?.threads[summary.id];
+        const status = conversationUserState(owner, summary.id, t);
         return {
           owner,
           summary,
@@ -90,10 +92,9 @@ export function conversationCatalog(
           unread: !!library.threads?.[`${owner.id}:${summary.id}`]?.unread,
           // 未启动的项目没有在跑的东西，不画"加载中"；只有已连接但摘要还没到时才算待定。
           statePending: owner.state?.connected === true && owner.summariesLoaded === false,
-          running: owner.state?.connected && t?.turns?.some((t: Data) => t.status === "inProgress"),
-          attention:
-            owner.state?.connected &&
-            owner.state?.interactions[summary.id]?.data?.some((i: Data) => i.status === "pending"),
+          status,
+          running: status.kind === "working",
+          attention: status.kind === "needsYou",
         };
       });
   });

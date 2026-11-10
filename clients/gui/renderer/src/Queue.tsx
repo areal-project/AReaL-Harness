@@ -1,4 +1,5 @@
 import { Button, Textarea } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useState } from "react";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { Data, Action, CommandParams } from "./services.js";
@@ -86,7 +87,7 @@ export function Queue({
       setError(
         failure.submissionUnknown
           ? "队列操作结果尚未确认，不会自动重发。请核对原队列。"
-          : failure.message,
+          : currentErrorText(failure),
       );
     } finally {
       setBusy(false);

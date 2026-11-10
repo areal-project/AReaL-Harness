@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { errorText } from "./errors/errorCopy.js";
 import { JumpToFileIcon } from "./GitPaneChangeCard.js";
 import {
   views,
@@ -493,7 +494,7 @@ export function GitPane({
       })
       .catch((e) => {
         if (active) {
-          setError(e.message);
+          setError(errorText(t, e));
           setReference(undefined);
           setFiles([]);
         }
@@ -768,7 +769,7 @@ export function GitPane({
     ],
   );
   const copy = (path: string) =>
-    void navigator.clipboard.writeText(path).catch((e) => setError(e.message));
+    void navigator.clipboard.writeText(path).catch((e) => setError(errorText(t, e)));
   const setPreview = (value: boolean) => {
     setSelection(undefined);
     setRenderPreview(value);

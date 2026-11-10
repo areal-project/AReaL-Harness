@@ -1,3 +1,4 @@
+import { currentErrorText } from "./errors/currentErrorText.js";
 export type SideRestoreState = "idle" | "loading" | "ready" | "error";
 
 // 每个 owner/connectionGeneration 拥有一次恢复；确定失败等待显式重试。
@@ -31,7 +32,7 @@ export function createSideRestore() {
       } catch (error) {
         if (disposed || revision !== token) return;
         state = "error";
-        update(state, error instanceof Error ? error.message : String(error));
+        update(state, currentErrorText(error));
       }
     },
   };

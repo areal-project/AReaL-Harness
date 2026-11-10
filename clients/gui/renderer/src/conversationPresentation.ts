@@ -652,7 +652,7 @@ const turnOutcomeLabels: Readonly<Record<string, string>> = {
 
 /** 图片 400 只给检查建议；结构化 code 优先，旧历史保持原展示。 */
 export function turnFailureMessage(turn: Data): string {
-  const message = turn.error?.message;
+  const message = turn.error?.message; // raw-error-ok: 模型服务原话，按已知情况改写
   const outcome = turn.error?.outcome;
   if (outcome?.code === "GOAL_TOKEN_BUDGET" && outcome.source === "core_goal_token_budget")
     return goalBudgetMessage("GOAL_TOKEN_BUDGET")!;
@@ -683,7 +683,7 @@ export function turnFailureMessage(turn: Data): string {
     )
   )
     return `${message}。这条消息包含图片，请确认所选模型支持图片输入，或移除图片后重试。`;
-  return message ?? JSON.stringify(turn.error);
+  return message ?? "这一轮没有完成。";
 }
 
 const settledLabels: Record<string, string> = {

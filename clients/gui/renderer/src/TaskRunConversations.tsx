@@ -1,4 +1,5 @@
 import { DelayedVisible } from "@areal/ui";
+import { errorText } from "./errors/errorCopy.js";
 import { TitleTooltip } from "@areal/ui";
 import { describeMoment } from "./scheduleText.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -104,7 +105,7 @@ export function TaskRunConversations({
                 ...previous,
                 [id]: {
                   status: "error",
-                  error: cause instanceof Error ? cause.message : String(cause),
+                  error: errorText(t, cause),
                 },
               }));
           } finally {

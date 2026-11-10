@@ -20,14 +20,6 @@ related: ["worktree-settings", "button"]
 
 Root、Group和Item。Item接收name、受控open、details children、删除意图回调和宿主操作状态。
 
-## 行为
-
-`R-WORKTREEDIRECTORY-002` 查看和删除是分开的按钮。删除回调只表达意图；确认、requestId、锁与安全检查由原宿主负责。删除受阻时目录记录保留。
-
-## 规则
-
-`R-WORKTREEDIRECTORY-005` Item不会自动确认、重试或移除目录。提示Toast消失不清除原删除结果；具体受阻原因仍可在详情核对。
-
 ## 示例
 
 [组件目录](../../../../../renderer/design-system.html?ui-library#component-worktree-directory)。
@@ -38,6 +30,5 @@ Root、Group和Item。Item接收name、受控open、details children、删除意
 
 - `R-WORKTREEDIRECTORY-007` 名称优先使用绑定会话标题，其次为分支，再无名称时使用短标识。完整路径、分支、环境、状态在展开详情中可读，不能只藏在不可复制的 tooltip。短标识不取代真实身份。
 - 行首 Chevron 表达目录层级展开；选中 / 展开 / hover 是三种状态。纯图标删除按钮具名，hover 和键盘聚焦时可辨，不依赖红色小图标解释后果。
-- `R-WORKTREEDIRECTORY-009` 删除前显示目录身份及“移除目录，保留分支和历史”，沿现有删除确认合同。未提交、未跟踪、忽略文件、未合并提交、活动执行等阻挡原因用原检查结果说明；不增加强制删除按钮。
 
 页面只有一个主纵向滚动区；目录列表随页滚动，详情中的短字段不额外套独立滚动容器。

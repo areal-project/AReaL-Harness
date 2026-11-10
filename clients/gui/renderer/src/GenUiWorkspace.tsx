@@ -1,3 +1,4 @@
+import { rawText } from "./errors/errorCopy.js";
 import {
   createContext,
   lazy,
@@ -264,7 +265,7 @@ export function GenUiCard({
       pending.resolve();
       entry.pending = undefined;
     } catch (error) {
-      pending.reject(error instanceof Error ? error : Error(String(error)));
+      pending.reject(error instanceof Error ? error : Error(rawText(error)));
       entry.pending = undefined;
       entry.error = "submission";
     } finally {

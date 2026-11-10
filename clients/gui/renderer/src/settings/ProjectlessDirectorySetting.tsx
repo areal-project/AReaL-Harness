@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { SettingsRow } from "@areal/ui/compositions";
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { useRef, useState } from "react";
@@ -30,7 +31,7 @@ export function ProjectlessDirectorySetting({
         cause instanceof UiMessageError
           ? cause.descriptor
           : cause instanceof Error
-            ? cause.message
+            ? currentErrorText(cause)
             : { id: "settings.projectlessDirectorySetting.directorySettingWasNotSaved" },
       );
     } finally {

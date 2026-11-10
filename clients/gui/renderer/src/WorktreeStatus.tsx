@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { errorText } from "./errors/errorCopy.js";
 import { Button } from "./components/ui/button.js";
 import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover.js";
 import { GitBranch, GitFork } from "lucide-react";
@@ -122,7 +123,7 @@ export function WorktreeActions({
       },
       (cause) => {
         if (active) {
-          setError(cause.message);
+          setError(errorText(t, cause));
         }
       },
     );

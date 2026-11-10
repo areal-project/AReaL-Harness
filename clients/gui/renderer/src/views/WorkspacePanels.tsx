@@ -1,4 +1,6 @@
 import React from "react";
+import { projectUserState } from "../state/userStates.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { agentAssignment, agentName } from "../AgentIdentity.js";
 import { SidePane } from "../app-shell/SidePane.js";
 import {
@@ -154,7 +156,7 @@ function usePanelTabLifecycle(props: WorkspacePanelsProps) {
       const owner = panelOwner;
       workspacePanels.selectPanel(name);
       void browserWorkspace.request({ operation: "selectPage", pageId }).catch((cause) => {
-        if (previewOwner.current === owner) setError(cause.message);
+        if (previewOwner.current === owner) setError(currentErrorText(cause));
       });
       return;
     }
@@ -200,7 +202,7 @@ function retainedSidePanels(
           core: { ...owner.core, ...execution.executionCore },
           state: {
             ...owner.state,
-            connected: execution.executionConnected ?? owner.state?.connected,
+            connected: execution.executionConnected ?? projectUserState(owner).canAct,
           },
           error: execution.executionError ?? owner.error,
         }
@@ -249,7 +251,7 @@ function retainedSidePanels(
               void sideChats
                 .close(tab)
                 .then(() => removeSideTab(tab))
-                .catch((cause) => setError(cause.message));
+                .catch((cause) => setError(currentErrorText(cause)));
             }}
           />
         ),

@@ -20,10 +20,6 @@ related: ["worktree-picker", "worktree-workspace"]
 
 摘要、可展开阶段、details插槽及controls插槽。组件拥有展开状态，宿主提供state、running、label及阶段显示模型。
 
-## 状态
-
-`R-WORKTREESTATUS-001` 创建、已创建、绑定、Setup、取消中、取消、失败、未知和就绪均由宿主事实描述。目录已创建不等于会话已绑定/可发送。
-
 ## 示例
 
 独立实例可切换运行/失败/未知/就绪、展开日志并触发本地动作；生产Messages和DraftComposer沿原适配使用。
@@ -40,10 +36,6 @@ related: ["worktree-picker", "worktree-workspace"]
 | `R-WORKTREESTATUS-007` 控制行 | 左侧“展开详情 / 收起详情”，右侧“不使用 Worktree”“取消” | 动作保持具名、同一基线；窄窗可换为第二行，不能挤掉其中一个 |
 | 已创建 | GitFork + “Worktree 已创建”一行 | 可进入详情核对目录与分支；随后仍在绑定 / Setup 时，另有准确等待说明 |
 
-`R-WORKTREESTATUS-010` 阶段标题只能来自实际可用的 Git / 宿主 / Setup 投影。没有细粒度进度时只显示“准备工作区”，不虚构“检出 80%”、已完成阶段、计时或 ETA。`created` 只说明 Git checkout 已确认，`ready` 才表示绑定与环境准备均已确认；不用同一个绿色成功态掩盖两者。
-
 `WT-PROGRESS-02`：准备期间 Composer 保持原位，以“正在等待 Worktree 准备…”说明不能重复发送。停止 / 取消走原请求的取消路径。点击取消后立即显示“正在取消”，只有权威确认才显示“已取消”；已创建目录是否保留必须说明。不能因关闭详情、切换聊天或请求返回就宣称进程停止。
 
 `R-WORKTREESTATUS-011` “不使用 Worktree”是显式改用原目录的用户意图：先确认原准备取消，再发起新的明确请求；等待期间禁止重复点击，失败或 UNKNOWN 不能自动回退。已确认失败时保留 Prompt、记录与可用恢复动作；UNKNOWN 只提供原请求核对入口。具体允许动作沿宿主，不在设计层新增“重试即可”通路。
-
-`WT-PROGRESS-03`：手动展开跨日志增量保持，终态收敛不抹去可核对的记录；回看历史时不强制滚到最新。准备日志不是第二条独立聊天时间线，沿[对话阅读合同](../../../../../design-system/patterns.md#对话信息流)与[活动层级](../../../../../design-system/conversation-flow.md#主阅读列与活动层级)处理。

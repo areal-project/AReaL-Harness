@@ -1,4 +1,5 @@
 import { ThemeDiffPreview } from "./ThemeDiffPreview.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { TitleTooltip } from "@areal/ui";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { colorContrastRatio } from "@areal/ui/theme";
@@ -115,7 +116,7 @@ export function GeneralSettings({
         error instanceof UiMessageError
           ? error.descriptor
           : error instanceof Error
-            ? error.message
+            ? currentErrorText(error)
             : { id: "settings.displaySettings.failedToSaveSleepSettings" },
       );
     } finally {

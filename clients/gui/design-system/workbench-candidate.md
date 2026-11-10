@@ -16,12 +16,6 @@
 
 精确色值、尺寸、形状和动效继续归[基础表达与 Token 所有者](../../../design/foundations/tokens.md)。本候选不冻结新的全局视觉基线。
 
-## 实现与状态边界
-
-`R-WORKBENCH-009` 候选入口与组合由 [ProductCandidate](../renderer/src/design-system/ProductCandidate.tsx) 维护，复用 Messages、ConversationComposer、ApprovalRequest、工作台布局和设置控件。草稿、路由、外观与模拟执行有明确的本地所有者，不建立 Core 协议模拟服务。
-
-`R-WORKBENCH-010` 审批提交与执行完成是不同事件。后续结果到达前不生成交付物。重新开始使旧事件失效，资源与设置导航不启动另一轮执行。外观仅在当前候选内生效，不写入生产偏好。
-
 ## 评价重点
 
 - 审批的信息是否足够作决定，批准、拒绝与后续结果是否连贯。

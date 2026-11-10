@@ -1,4 +1,5 @@
 import type { PluginCommand } from "./pluginTypes.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { Textarea } from "@areal/ui";
 import { useI18n, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
@@ -82,7 +83,7 @@ export function PluginAuthConfiguration({
     } catch (cause) {
       const failure = cause as { message?: string; submissionUnknown?: boolean };
       setError(
-        failure.message ?? {
+        (cause instanceof Error ? currentErrorText(cause) : undefined) ?? {
           id: "settings.pluginAuthConfiguration.authenticationConfigurationIncomplete",
         },
       );
@@ -111,7 +112,7 @@ export function PluginAuthConfiguration({
       setPendingId(undefined);
       if (!receipt.accepted)
         setError(
-          receipt.error?.message ?? {
+          (receipt.error ? currentErrorText(receipt.error) : undefined) ?? {
             id: "settings.pluginAuthConfiguration.authenticationConfigurationWasNotAccepted",
           },
         );

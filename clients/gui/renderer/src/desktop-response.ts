@@ -104,8 +104,8 @@ export function readPreviewResult(value: unknown): Record<string, unknown> {
   const result = readFields(value);
   if (!Object.hasOwn(result, "previewFailure")) return result;
   const error = readFields(result.previewFailure);
-  if (typeof error.message !== "string") throw new Error("Invalid Desktop preview failure");
-  throw Object.assign(new Error(error.message), desktopError(error));
+  if (typeof error.message !== "string") throw new Error("Invalid Desktop preview failure"); // raw-error-ok: 传输层解码，不上屏
+  throw Object.assign(new Error(error.message), desktopError(error)); // raw-error-ok: 传输层解码，不上屏
 }
 export function readCommandResult(value: unknown): DesktopResult<unknown> {
   const result = readFields(value);
@@ -113,7 +113,7 @@ export function readCommandResult(value: unknown): DesktopResult<unknown> {
     return { ok: true, value: result.value };
   if (result.ok === false) {
     const error = readFields(result.error);
-    if (typeof error.message === "string") return { ok: false, error: desktopError(error) };
+    if (typeof error.message === "string") return { ok: false, error: desktopError(error) }; // raw-error-ok: 传输层解码，不上屏
   }
   throw new Error("Invalid Desktop command envelope");
 }

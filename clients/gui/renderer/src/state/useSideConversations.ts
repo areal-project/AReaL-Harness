@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { errorText } from "../errors/errorCopy.js";
 import { sending } from "../Composer.js";
 import {
   addConversationSelection,
@@ -213,7 +214,7 @@ export function useSideConversations(
       );
       if (!result.ok) setError(selectionLimitMessage(t, result.reason));
       revealSide(tab);
-    })().catch((cause) => setError(cause.message));
+    })().catch((cause) => setError(errorText(t, cause)));
   };
   return {
     sideChats,

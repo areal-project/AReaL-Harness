@@ -24,10 +24,6 @@ editor、toolbar为必要插槽；editor承载正文和行内引用，context承
 
 `R-COMPOSERSURFACE-002` 默认、compact、聚焦、拖放。空内容、附件、发送中、运行中和模型不可用由宿主提供内容与动作，不转为包内执行状态机。
 
-## 行为
-
-`R-COMPOSERSURFACE-003` 编辑区随内容增高，到局部高度上限后纵向阅读；compact在窄容器回到上下布局。同一草稿保持实例身份，换布局或收起审批不重建编辑器。
-
 ## 内容
 
 `R-COMPOSERSURFACE-004` 占位说明输入目标；阻塞发送时呈现准确原因并保留草稿。输入、附件读取、上传与发送错误统一使用顶部反馈弹窗，不在输入框内或上方重复展示错误条。错误摘要保持简短，技术原因按需展开；附件不展示上传状态文字。重试保留成功上传回执，结果未知仍先核对原请求。模型、权限、附件名与引用来源来自真实目录，不能从灰按钮推断后台受理。
@@ -51,8 +47,6 @@ editor、toolbar为必要插槽；editor承载正文和行内引用，context承
 ### 输入区与面板组合
 
 `CONV-COMPOSER-01`：默认布局的 Composer 是对话的一部分。输入文字用 `--text-conversation` / `--conversation-line`（默认 14px / 20px），与发出后的用户气泡一致；外框圆角 `--radius-composer`（18px），内边距上 12、左右 12、下 8；编辑区最少 40px，空态总高约 88px，内容超过 40dvh 后在编辑区内滚动；工具栏 28px，主按钮 28px 圆。附件缩略卡尺寸由 `R-ATTACHMENTCARD-001` 定义。上方上下文条可见高度 34px，圆角与输入框相同，Worktree 配置收在其最右齿轮里（`WT-PICKER-01`），工具栏不放 Worktree，也不加语音输入。运行中不在输入框上方加状态栏，停止就是主按钮本身；待处理审批只以卡片出现在输入框上方（`CONV-STATUS-01`）。理由：输入区比对话正文大一号、留白更厚时，视线在“读”和“写”之间要换一次尺度；同一字号与节奏让 Composer 读起来像对话的下一行。
-
-`R-LAYOUT-012` 桌面 Composer 的模型和思考强度使用相邻的独立 Popover。主界面模型入口只显示模型名，完整提示保留供应商身份。模型菜单左侧按供应商 ID 浏览，右侧选择模型；浏览不保存配置，选择后关闭菜单。强度菜单对每个模型提供 none、minimal、low、medium、high、xhigh、max 七档与独立的服务默认动作，不以目录能力隐藏选项。显式强度保留并提交 Core 校验，未知值原样显示。强度菜单左上角复用 Button 与 Tooltip 提供独立的 Fast 闪电开关，aria-pressed 投影已确认的 Fast 请求状态，提示开启或关闭并说明额度或费用影响。开启写 serviceTier=fast，关闭写 default，未配置继承模型及供应商默认值。用户指定的闪电入口沿用 aria-pressed 按钮，这是 R-BUTTON-001 持久值通常使用 Switch 的本地例外，仅限此入口，不增加公共变体。Fast 与思考强度互不改写，切模型保留显式 Fast 选择；主强度入口仅在请求 Fast 时显示闪电及 Fast 标记，不表示供应商已提供加速。主 Composer 的模型配置保存与消息发送反馈分开：保存期间仍可编辑草稿，不播放发送中的 Spinner，也不通过禁用滑块打断焦点。`ConversationComposer.modelPending` 只锁定模型配置动作，发送入口仍由宿主阻止；滑块保留待保存位置，完成或失败后回到 Core 确认值。未知结果继续沿原恢复路径处理，不自动重试。
 
 `R-LAYOUT-013` `ChatPromptEditor.surfaceLayout` 透传 `ComposerSurface.layout`，仅有 default / compact。App 为满屏资源下的主 Composer / DraftComposer 选择 compact；Side 不继承工作区祖先的输入布局。变体、容器重排和模型入口基础样式归 ComposerSurface.css，不能在页面复制全屏选择器。ConversationComposer 仍理解模型目录和继承；主/Side 的草稿、来源、配置、提交及未知受理归原业务所有者。Side 的错误与带回反馈复用 Feedback。
 

@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { projectUserState } from "../state/userStates.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { useState } from "react";
 import { ActionButton } from "../components/ui/action-button.js";
@@ -44,7 +45,7 @@ export function CoreCapabilitiesSettings({
             )}
             {projects.map((project) => {
               const core = project.core,
-                available = connected && !!project.state?.connected;
+                available = connected && projectUserState(project).canAct;
               const error = project.error || project.state?.error;
               return (
                 <SettingsGroupCard key={project.id}>

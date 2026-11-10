@@ -1,4 +1,5 @@
 import { observeResize } from "@areal/ui/observe-resize";
+import { errorText } from "./errors/errorCopy.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Textarea } from "@areal/ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -263,7 +264,7 @@ export function UserFeedback({
         projectId: project.id,
         threadId: thread.id,
         id: draft.id,
-      }).catch((cause: Error) => setError(cause.message));
+      }).catch((cause: Error) => setError(errorText(t, cause)));
     if (supported && !draft?.submissionUnknown) {
       localStorage.removeItem(key);
       setDraft(undefined);
@@ -382,7 +383,7 @@ export function UserFeedback({
                             threadId: draft.sideThreadId,
                             turnId: active.id,
                             requestId: crypto.randomUUID(),
-                          }).catch((cause: Error) => setError(cause.message))
+                          }).catch((cause: Error) => setError(errorText(t, cause)))
                         }
                       >
                         <Square size={12} />

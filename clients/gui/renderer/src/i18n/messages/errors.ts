@@ -162,6 +162,10 @@ export const errorMessages = {
     "zh-CN": "上一轮已经结束，这条内容没有发出，已保留在输入框。请检查后再发送。",
     en: "The previous turn already ended, so this wasn't sent. It's still in the input box; check it and send again.",
   },
+  "errors.inboxProjectFailed": {
+    "zh-CN": "{project}：{reason}已保留上次读取的问题。",
+    en: "{project}: {reason} Showing the questions from the last read.",
+  },
   "errors.workerRunMissing": {
     "zh-CN": "找不到这个对话所属的任务运行。",
     en: "Couldn't find the task run this conversation belongs to.",

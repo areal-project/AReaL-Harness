@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import {
   recoveryMessage,
   sameRecoveryOwner,
@@ -355,11 +356,12 @@ export function useSessionNavigation(
       .snapshot()
       .then(setSnapshot)
       .catch((e) => {
-        onError(e.message);
-        updateSnapshot((previous) =>
-          previous.connection?.state === "ready"
-            ? previous
-            : { ...previous, connection: { state: "unavailable", message: e.message } },
+        onError(currentErrorText(e));
+        updateSnapshot(
+          (previous) =>
+            previous.connection?.state === "ready"
+              ? previous
+              : { ...previous, connection: { state: "unavailable", message: e.message } }, // raw-error-ok: 连接说明只进详情
         );
       });
     return unsubscribe;

@@ -1,4 +1,5 @@
 import { trajectoryText } from "./trajectory.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import type { Action, Data } from "./services.js";
 
 export type TraceNode = {
@@ -168,9 +169,9 @@ export async function loadTraceTree(
         check();
         child.nodes = (oldChild?.nodes ?? []).map((n) => ({
           ...n,
-          errors: [...n.errors, String(error)],
+          errors: [...n.errors, currentErrorText(error)],
         }));
-        child.error = error instanceof Error ? error.message : String(error);
+        child.error = currentErrorText(error);
       }
       node.children.push(child);
     }
@@ -191,7 +192,7 @@ export async function loadTraceTree(
         child.nodes.push(value);
       } catch (cause) {
         check();
-        child.error = cause instanceof Error ? cause.message : String(cause);
+        child.error = currentErrorText(cause);
       }
       node.children.push(child);
     }

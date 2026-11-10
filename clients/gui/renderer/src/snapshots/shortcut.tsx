@@ -1,4 +1,5 @@
 import { Camera } from "lucide-react";
+import { errorText } from "../errors/errorCopy.js";
 import type { Translate } from "../i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -169,7 +170,7 @@ export function snapShotCommandEntries(
       icon: <Camera size={16} />,
       group: "功能" as const,
       run: () => {
-        void bridge.captureSnapShot().catch((cause: Error) => onError(cause.message));
+        void bridge.captureSnapShot().catch((cause: Error) => onError(errorText(t, cause)));
       },
     },
   ];

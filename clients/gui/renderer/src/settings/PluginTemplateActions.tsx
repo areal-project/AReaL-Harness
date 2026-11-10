@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import type { ManagementResponseMap } from "../services.js";
 import type { PluginCommandRef } from "../services.js";
 import type { PluginDetail } from "./pluginTypes.js";
@@ -35,7 +36,7 @@ export function PluginTemplateActions({
         cause instanceof UiMessageError
           ? formatUiMessage(t, cause.descriptor)
           : cause instanceof Error
-            ? cause.message
+            ? currentErrorText(cause)
             : t("settings.pluginCenter.pluginOperationFailed"),
       );
     } finally {

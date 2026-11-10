@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { useI18n, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { useRef, useState } from "react";
@@ -95,7 +96,7 @@ export function TrajectorySettings({
     onError(cause) {
       setError(
         cause instanceof Error
-          ? cause.message
+          ? currentErrorText(cause)
           : { id: "settings.trajectorySettings.couldNotReadTrajectoryUploadStatus" },
       );
       onStatus(null);

@@ -1,4 +1,6 @@
 import { DelayedVisible } from "@areal/ui";
+import { projectUserState } from "../state/userStates.js";
+import { errorText } from "../errors/errorCopy.js";
 import { TitleTooltip } from "@areal/ui";
 import { useI18n, UiMessageError, type UiMessage, formatUiMessage } from "../i18n/IntlProvider.js";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -63,7 +65,7 @@ async function skillBody(action: Action, skill: CenterSkill, project?: Data) {
       });
     return String(result.content);
   }
-  if (!project?.state?.connected)
+  if (!project || !projectUserState(project).canAct)
     throw new UiMessageError({ id: "settings.pluginSkillsPage.connectTheOwningProjectToReadThe" });
   const profile =
     project.profiles.find((item: Data) => item.id === "areal-standard") ?? project.profiles[0];
@@ -126,6 +128,7 @@ export function PluginSkillsPage({
   active: boolean;
 }) {
   const { t, intl } = useI18n();
+  const projectCanAct = projectUserState(project).canAct;
   const sourceLabel = (skill: CenterSkill) => formatUiMessage(t, skill.sourceLabel);
   const [loadFailures, setLoadFailures] = useState<{ source: string | UiMessage; error: string }[]>(
     [],
@@ -233,7 +236,7 @@ export function PluginSkillsPage({
         if (current) setContent(value);
       })
       .catch((cause) => {
-        if (current) setError(cause instanceof UiMessageError ? cause.descriptor : cause.message);
+        if (current) setError(errorText(t, cause));
       })
       .finally(() => {
         if (current) setContentLoading(false);
@@ -241,7 +244,7 @@ export function PluginSkillsPage({
     return () => {
       current = false;
     };
-  }, [selected?.key, selected?.revision, action, project?.state?.connected]);
+  }, [selected?.key, selected?.revision, action, projectCanAct]);
   const displayedError = [
     formatUiMessage(t, error),
     ...loadFailures.map((failure) => `${formatUiMessage(t, failure.source)} · ${failure.error}`),
@@ -283,7 +286,7 @@ export function PluginSkillsPage({
         throw new Error(skill.error);
       const draftVersion = draftGeneration.current;
       if (skill.scope === "plugin") {
-        if (!project?.state?.connected || !skill.pluginId)
+        if (!project || !projectCanAct || !skill.pluginId)
           throw new UiMessageError({
             id: "settings.pluginSkillsPage.connectTheOwningProjectToReadThe",
           });

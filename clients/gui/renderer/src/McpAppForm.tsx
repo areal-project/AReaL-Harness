@@ -1,4 +1,5 @@
 import { Button, Input, Textarea } from "@areal/ui";
+import { rawText } from "./errors/errorCopy.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import { McpAppIcon } from "./McpAppIcon.js";
@@ -284,7 +285,7 @@ export function McpAppForm({
     } catch (cause) {
       if (mounted.current)
         setError(
-          String(cause).includes("RESOURCE_UPLOAD_UNSUPPORTED")
+          (rawText(cause) ?? "").includes("RESOURCE_UPLOAD_UNSUPPORTED")
             ? "此服务器不支持本机文件上传。您仍可选择服务器提供的资源。"
             : "资源选择未确认，请检查表单状态。",
         );

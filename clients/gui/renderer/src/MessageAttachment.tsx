@@ -1,4 +1,5 @@
 import { usePlatformReads, useReadOnly, type MediaOwner } from "./PlatformReadContext.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
 import type { SnapShotSource } from "./services.js";
@@ -422,7 +423,7 @@ export function SentAttachment({
       })
       .catch((cause) => {
         if (active) {
-          const message = cause instanceof Error ? cause.message : "读取附件失败";
+          const message = cause instanceof Error ? currentErrorText(cause) : "读取附件失败";
           setFailure(message);
           onError?.(message);
         }

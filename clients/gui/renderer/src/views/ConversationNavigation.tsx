@@ -408,7 +408,7 @@ function SidebarProjectGroup({ owner }: { owner: Data }) {
           </HoverActions>
         )}
       </SidebarDragSurface>
-      <ProjectMigrationNotice hostState={owner.state?.hostState} />
+      <ProjectMigrationNotice project={owner} />
       <div id={`project-threads-${owner.id}`} hidden={collapsed}>
         <ul>
           {rows.slice(0, visibleCount).map((row) => (

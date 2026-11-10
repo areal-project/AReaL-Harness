@@ -1,4 +1,5 @@
 import { useI18n } from "./i18n/IntlProvider.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useRef, useState } from "react";
 import type { Action, Data } from "./services.js";
 import {
@@ -278,7 +279,7 @@ export function useSideChatTabs(action: Action, projects: Data[]) {
             ? {
                 ...item,
                 closeRequestId: rejected ? undefined : requestId,
-                closeError: failure.message,
+                closeError: currentErrorText(failure),
               }
             : item,
         ),

@@ -1,4 +1,5 @@
 import { Button } from "../components/ui/button.js";
+import { rawText } from "../errors/errorCopy.js";
 import { FeedbackNotice } from "../FeedbackNotice.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { isTechnicalErrorMessage, recoverySettings } from "../recoveryPresentation.js";
@@ -86,8 +87,8 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
           tone="error"
           message={restorationError}
           detail={
-            viewFailure && viewFailure.message !== restorationError
-              ? viewFailure.message
+            viewFailure && rawText(viewFailure) !== restorationError
+              ? rawText(viewFailure)
               : undefined
           }
           onDismiss={() => dismissNotice(restorationNoticeId)}

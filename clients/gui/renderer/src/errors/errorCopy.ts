@@ -10,7 +10,7 @@ type Entry = {
   retryable: boolean;
 };
 
-// 后台错误码 → 用户文案的唯一登记处。Host 源码里出现的码必须在这里登记，
+// R-RECOVERY-004 R-RECOVERY-005 后台错误码 → 用户文案的唯一登记处。Host 源码里出现的码必须在这里登记，
 // scripts/ui-honesty-lint.mjs 会对照 core/host/src 检查。
 export const ERROR_CODES = {
   FORBIDDEN: { action: "openSettings", retryable: false },

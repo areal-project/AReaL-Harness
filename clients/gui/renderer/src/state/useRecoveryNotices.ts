@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { rawText } from "../errors/errorCopy.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { call, type Action, type Data, type PlatformServices, type Snapshot } from "../services.js";
 import {
@@ -200,7 +201,7 @@ export function useRecoveryNotices(
                 kind: unconfirmed ? "unconfirmed" : "error",
                 message: recoveryMessage(failure),
                 settings: recoverySettings(failure),
-                detail: [failure.message, failure.code, failure.reason, operation?.method]
+                detail: [rawText(failure), failure.code, failure.reason, operation?.method]
                   .filter((value) => value !== undefined)
                   .join("\n"),
               },

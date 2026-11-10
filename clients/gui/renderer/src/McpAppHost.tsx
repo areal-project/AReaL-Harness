@@ -1,4 +1,5 @@
 import { Button } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useRef, useState } from "react";
 import { AppBridge, PostMessageTransport } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type {
@@ -204,7 +205,9 @@ export function McpAppHost({
     const error = (cause: unknown) => {
       if (active) {
         setFailure("应用请求失败，请关闭后重新打开。");
-        callbacks.current.onError?.(cause instanceof Error ? cause.message : "App request failed");
+        callbacks.current.onError?.(
+          cause instanceof Error ? currentErrorText(cause) : "App request failed",
+        );
       }
     };
     if (app.resultSource) transport.onPageError = () => error(new Error("交互结果页面发生错误"));

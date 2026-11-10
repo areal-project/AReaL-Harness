@@ -1,4 +1,5 @@
 import type { ManagementResponseMap } from "./services.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "./components/ui/button.js";
@@ -76,7 +77,7 @@ export function PlanPane({
     let live = true;
     void action("manage", { projectId: project.id, threadId: thread.id, operation: "plan" })
       .catch((cause) => {
-        if (live) setError(cause.message);
+        if (live) setError(currentErrorText(cause));
       })
       .finally(() => {
         if (live) setLoading(false);

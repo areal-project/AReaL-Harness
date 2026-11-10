@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { errorText } from "./errors/errorCopy.js";
 import { FileChanges } from "./interfaceIcons.js";
 import { useEffect, useId, useState } from "react";
 import { Button } from "./components/ui/button.js";
@@ -127,7 +128,7 @@ export function TurnFileSummary({
           setReview({
             kind: "unavailable",
             identity,
-            error: cause instanceof Error ? cause.message : String(cause),
+            error: errorText(t, cause),
           });
       });
     return () => {

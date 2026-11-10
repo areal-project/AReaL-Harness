@@ -1,4 +1,5 @@
 import type { Attachment } from "./services.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import type { Action } from "./services.js";
 import {
   composerUploads,
@@ -64,7 +65,7 @@ export async function uploadComposerFiles(
         }
         return attachment;
       } catch (cause) {
-        const reason = cause instanceof Error ? cause.message : String(cause);
+        const reason = currentErrorText(cause);
         const message = `${file.name}: ${reason}`;
         const error = Object.assign(new Error(message), cause, { message });
         if (preparation.states.has(file))

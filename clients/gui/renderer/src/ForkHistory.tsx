@@ -1,4 +1,5 @@
 import { usePlatformReads } from "./PlatformReadContext.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useState } from "react";
 import type { Action, Data } from "./services.js";
 
@@ -79,7 +80,7 @@ export function useForkHistory(projectId: string, thread: Data, action: Action) 
       } while (!cancelled);
     };
     void load().catch((cause) => {
-      if (!cancelled) setLoaded({ owner, turns: [], error: cause.message });
+      if (!cancelled) setLoaded({ owner, turns: [], error: currentErrorText(cause) });
     });
     return () => {
       cancelled = true;

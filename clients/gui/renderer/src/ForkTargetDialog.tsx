@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { Button } from "./components/ui/button.js";
 import { Dialog, DialogContent, DialogTitle } from "./components/ui/dialog.js";
 import { ForkIcon } from "./interfaceIcons.js";
@@ -31,7 +32,7 @@ export function ForkTargetDialog({
           cause.submissionUnknown
         ),
       );
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(currentErrorText(cause));
     } finally {
       setBusy(false);
     }
@@ -42,7 +43,7 @@ export function ForkTargetDialog({
       await onCheck();
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(currentErrorText(cause));
     } finally {
       setBusy(false);
     }

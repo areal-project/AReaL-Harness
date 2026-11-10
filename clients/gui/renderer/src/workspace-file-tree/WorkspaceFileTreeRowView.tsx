@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { currentErrorText } from "../errors/currentErrorText.js";
 // Adapted from ZCode WorkspaceFileTreeRowView: row composition and drag contract.
 // Platform actions are supplied by AReaL; no ZCode service/store is imported.
 import type { CSSProperties, KeyboardEvent } from "react";
@@ -62,7 +63,7 @@ export function WorkspaceFileTreeRowView({
     name: row.name,
   };
   const copy = (path: string) =>
-    void navigator.clipboard.writeText(path).catch((e) => onError(e.message));
+    void navigator.clipboard.writeText(path).catch((e) => onError(currentErrorText(e)));
   return (
     <ContextMenu>
       <TitleTooltip title={row.path}>

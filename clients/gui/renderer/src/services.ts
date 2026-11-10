@@ -344,7 +344,7 @@ async function executeCall<N extends CommandName, P extends CommandParams<N>>(
     return value as CommandResponse<N, P>;
   }
   const result = await services.command(name, params);
-  if (!result.ok) throw Object.assign(new Error(result.error.message), result.error);
+  if (!result.ok) throw Object.assign(new Error(result.error.message), result.error); // raw-error-ok: 传输层解码，不上屏
   try {
     await contract.validateCommandResponse(name, params, result.value);
   } catch (error) {

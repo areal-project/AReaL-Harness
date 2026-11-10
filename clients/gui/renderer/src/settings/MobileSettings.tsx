@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { Smartphone } from "lucide-react";
 import { Button } from "@areal/ui";
 import { SettingsGroupCard } from "@areal/ui/compositions";
@@ -55,7 +56,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
                 networkDiagnostics[failure.code] ?? "settings.mobileSettings.networkStatusUnknown",
               values: { code: failure.code },
             }
-          : failure.message,
+          : currentErrorText(failure),
       );
       return undefined;
     } finally {
@@ -75,7 +76,7 @@ export function MobileSettings({ action, projects }: { action: Action; projects:
           if (live)
             setError({
               id: "settings.mobileSettings.theHostIsOfflineOrTheBackground",
-              values: { value0: error.message },
+              values: { value0: currentErrorText(error) },
             });
         });
     void read();
