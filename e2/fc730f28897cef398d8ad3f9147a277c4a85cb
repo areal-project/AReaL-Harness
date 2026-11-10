@@ -1,0 +1,52 @@
+docs/guides/programmatic-tools.md
+  s_bf83cab8355b2b::t_ef4516ca98114d 75-76
+examples/tool-profiles/split-file-tools.json
+  s_bf83cab8355b2b::t_ef4516ca98114d 1-10
+docs/guides/programmatic-tools.en.md
+  s_bf83cab8355b2b::t_12c4969a680a8c 75-76
+core/engine/src/tools.rs
+  s_bf83cab8355b2b::t_e55445036ab0ac 363
+core/engine/tests/operation_composition.rs
+  s_bf83cab8355b2b::t_9668006d8555ee 369-373,380-382,387-388,395-398,409-410,423,429-447,474,500,502-505
+  s_bf83cab8355b2b::t_6d10587d23dd68 374-379,383-386,389-394,399-408,411-422,424-428,448-473,475-499,501
+core/engine/src/desktop/mcp_tools.rs
+  s_bf83cab8355b2b::t_f85e91fb734506 76,247-254
+core/engine/src/tools/registry.rs
+  s_bf83cab8355b2b::t_f85e91fb734506 18-19,47,332-335
+  s_bf83cab8355b2b::t_e55445036ab0ac 608-619,623-626,630-646
+  s_bf83cab8355b2b::t_4873362719e47d 595-607,620-622,627-629,647-648
+  s_bf83cab8355b2b::t_a57abc860080a4 594
+core/engine/src/context.rs
+  s_bf83cab8355b2b::t_e55445036ab0ac 592-598
+core/engine/src/tools/program.rs
+  s_bf83cab8355b2b::t_f85e91fb734506 7,277-281,283
+docs/benchmarks/reports/split-file-tools.md
+  s_bf83cab8355b2b::t_12c4969a680a8c 1-52
+docs/benchmarks/reports/split-file-tools.en.md
+  s_bf83cab8355b2b::t_12c4969a680a8c 1-52
+core/engine/src/tools/file_surface.rs
+  s_bf83cab8355b2b::t_f85e91fb734506 1-47,54-55,68-69
+  s_bf83cab8355b2b::t_e55445036ab0ac 48-53,56-67
+docs/benchmarks/reports/README.en.md
+  s_bf83cab8355b2b::t_d75ae767830060 9
+docs/benchmarks/reports/README.md
+  s_bf83cab8355b2b::t_f10f14317c27a6 9
+docs/benchmarks/reports/split-file-tools.json
+  s_bf83cab8355b2b::t_ea302e3fcce0d9 1-122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e2fc730f28897cef398d8ad3f9147a277c4a85cb",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
