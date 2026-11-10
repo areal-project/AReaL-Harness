@@ -1847,7 +1847,12 @@ export function PluginCenter({
                 <p role="status">{t("settings.pluginCenter.loadingPluginDetails")}</p>
               </DelayedVisible>
               <Feedback
-                error={detailError || (pendingKind !== "unknown" ? displayedError?.message : "")}
+                error={
+                  detailError ||
+                  (pendingKind !== "unknown"
+                    ? displayedError?.message // raw-error-ok: failure() 已呈现
+                    : "")
+                }
               />
               {isDetail && projectRecovery}
               {detailError && (

@@ -1,4 +1,5 @@
 import { attachmentDrafts } from "../composerDraftAttachments.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import type { DesktopSnapShot, SnapShotSource } from "../services.js";
 import { registerSnapShotFile, snapShotFile } from "./source.js";
 
@@ -16,7 +17,7 @@ export const snapShotDraftTarget = (id: string, fallback: string) => targets.get
 function localFailure(cause: unknown) {
   window.dispatchEvent(
     new CustomEvent("areal-snapshot-local-error", {
-      detail: cause instanceof Error ? cause.message : String(cause),
+      detail: currentErrorText(cause),
     }),
   );
 }

@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { Button, Input } from "@areal/ui";
 import { useI18n, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { ActionButton } from "../components/ui/action-button.js";
@@ -86,7 +87,7 @@ export function UsageDashboard({ action }: { action: Action }) {
         if (id === sequence.current)
           setError(
             e instanceof Error
-              ? e.message
+              ? currentErrorText(e)
               : { id: "settings.usageDashboard.couldNotReadUsageStatistics" },
           );
       } finally {

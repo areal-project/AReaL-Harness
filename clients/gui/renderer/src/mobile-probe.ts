@@ -106,7 +106,7 @@ export async function runProbe(
       diagnostic:
         error instanceof Error
           ? Object.values(config)
-              .reduce((text, value) => text.split(value).join("[redacted]"), error.message)
+              .reduce((text, value) => text.split(value).join("[redacted]"), error.message) // raw-error-ok: 诊断上报，已脱敏
               .slice(0, 240)
           : "NonErrorFailure",
     });

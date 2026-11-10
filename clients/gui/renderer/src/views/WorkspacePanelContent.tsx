@@ -1,4 +1,5 @@
 import React from "react";
+import { errorText } from "../errors/errorCopy.js";
 import { AgentHistoryPane } from "../AgentHistoryPane.js";
 import { browserPageId, isBrowserTab } from "../app-shell/useBrowserWorkspace.js";
 import { ContextPane } from "../ContextPane.js";
@@ -156,7 +157,7 @@ export function WorkspacePanelContent({
               }
               void mcpWorkspace
                 .openApp(server, tool, { kind: "file", filePath: panel.slice(5) })
-                .catch((cause) => setError(cause.message));
+                .catch((cause) => setError(errorText(t, cause)));
             }}
           />
         )}

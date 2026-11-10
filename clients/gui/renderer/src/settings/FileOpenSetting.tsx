@@ -1,4 +1,5 @@
 import { SettingsRow } from "@areal/ui/compositions";
+import { errorText } from "../errors/errorCopy.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
 import { SettingsSelect } from "./SettingsPageParts.js";
@@ -29,7 +30,7 @@ export function FileOpenSetting({
           }
         })
         .catch((cause) => {
-          if (current) setError(cause.message);
+          if (current) setError(errorText(t, cause));
         });
     return () => {
       current = false;

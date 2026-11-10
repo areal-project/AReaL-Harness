@@ -1,4 +1,5 @@
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import {
   createContext,
   useCallback,
@@ -95,7 +96,7 @@ export function UnsavedChangesProvider({ children }: { children: ReactNode }) {
         cause instanceof UiMessageError
           ? cause.descriptor
           : cause instanceof Error
-            ? cause.message
+            ? currentErrorText(cause)
             : { id: "settings.unsavedChanges.saveFailedTryAgain" },
       );
     } finally {

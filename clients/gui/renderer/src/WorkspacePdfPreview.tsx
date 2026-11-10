@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { getDocument, PDFWorker, type PDFDocumentProxy } from "pdfjs-dist";
 import PdfWorker from "pdfjs-dist/build/pdf.worker.mjs?worker";
 import { Button } from "./components/ui/button.js";
@@ -67,7 +69,7 @@ export function WorkspacePdfPreview({
       const document = await loading.promise;
       if (active) setState({ phase: "ready", document });
     })().catch((cause: Error) => {
-      if (active) setState({ phase: "failed", message: cause.message });
+      if (active) setState({ phase: "failed", message: currentErrorText(cause) });
       dispose();
     });
     return () => {
@@ -107,7 +109,7 @@ export function WorkspacePdfPreview({
       if (active) setPageText(text.items.map((item) => ("str" in item ? item.str : "")).join(" "));
     })()
       .catch((cause: Error) => {
-        if (active) setPageError(cause.message);
+        if (active) setPageError(errorText(t, cause));
       })
       .finally(() => {
         if (active) setRendering(false);

@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { errorText } from "./errors/errorCopy.js";
 import { isRequest } from "./services.js";
 import { modelRecord } from "./services.js";
 import { Button } from "@areal/ui";
@@ -94,7 +95,7 @@ export function ComposerQueue({
       } else {
         localStorage.removeItem(operationKey);
         setUnknown(null);
-        setError(failure.message);
+        setError(errorText(t, failure));
       }
     } finally {
       setBusy(false);

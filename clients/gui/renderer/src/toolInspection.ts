@@ -1,4 +1,5 @@
 import type { Data } from "./services.js";
+import { rawText } from "./errors/errorCopy.js";
 
 export function hasUnknownToolOutcome(item: Data): boolean {
   return (
@@ -23,6 +24,6 @@ export function showTurnStatus(turn: Data, interrupted: boolean, readingSummary:
     turn.status !== "inProgress" &&
     !interrupted &&
     !(turn.status === "completed" && readingSummary) &&
-    !(turn.error?.message?.includes("UNKNOWN") && turn.items?.some(hasUnknownToolOutcome))
+    !(rawText(turn.error)?.includes("UNKNOWN") && turn.items?.some(hasUnknownToolOutcome))
   );
 }

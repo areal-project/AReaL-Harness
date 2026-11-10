@@ -1,4 +1,5 @@
 import { Play } from "lucide-react";
+import { errorText } from "../errors/errorCopy.js";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -57,9 +58,9 @@ export function SnapShotSettings({
   };
   useEffect(() => {
     if (!bridge) return;
-    void refresh().catch((cause: Error) => setError(cause.message));
+    void refresh().catch((cause: Error) => setError(errorText(t, cause)));
     const visible = () => {
-      void refresh().catch((cause: Error) => setError(cause.message));
+      void refresh().catch((cause: Error) => setError(errorText(t, cause)));
     };
     window.addEventListener("focus", visible);
     const unsubscribe = bridge.onSnapShotEvent(visible);

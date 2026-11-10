@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { errorText } from "../errors/errorCopy.js";
 import { useI18n, formatUiMessage, UiMessageError, type UiMessage } from "../i18n/IntlProvider.js";
 import { useRef, useState } from "react";
 import { ActionButton } from "../components/ui/action-button.js";
@@ -63,7 +64,7 @@ export function SpaceReclamation({
       localStorage.removeItem(key);
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
-      setError(failure instanceof UiMessageError ? failure.descriptor : failure.message);
+      setError(errorText(t, failure));
       if (!failure.submissionUnknown) localStorage.removeItem(key);
       else
         setNotice({ id: "settings.spaceReclamation.theMaintenanceResultNeedsVerificationItWill" });

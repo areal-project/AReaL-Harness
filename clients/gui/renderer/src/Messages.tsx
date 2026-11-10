@@ -1,4 +1,5 @@
 import { ConversationDiagramDialog } from "./ConversationDiagramDialog.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import type { MediaOwner } from "./PlatformReadContext.js";
 import { scheduledRunTask, scheduledTaskName } from "./scheduleText.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
@@ -1058,7 +1059,7 @@ export function Messages({
           )}
           {history.failure && !history.failure.itemId && (
             <div>
-              <p role="alert">{history.failure.message}</p>
+              <p role="alert">{history.failure.message /* raw-error-ok: 已是词条 */}</p>
               <Button
                 type="button"
                 variant="ghost"
@@ -1087,7 +1088,7 @@ export function Messages({
               <MemoTurn
                 key={JSON.stringify([owner, turn.id])}
                 turn={turn}
-                stamp={`${turnStamp}${JSON.stringify([inspectTurn, isInherited, turn.id === latestTurnId, forkError?.turnId === turn.id && forkError?.message])}`}
+                stamp={`${turnStamp}${JSON.stringify([inspectTurn, isInherited, turn.id === latestTurnId, forkError?.turnId === turn.id && forkError?.message])}`} // raw-error-ok: 渲染缓存键
                 render={() => {
                   const forkReason = inspectTurn
                     ? "历史包含未结算或未核查的操作；请在来源核查或选择更早轮次"
@@ -1106,7 +1107,7 @@ export function Messages({
                               ? "来源历史有未结算或未核查的操作；请在来源核查 UNKNOWN，或选择更早轮次。"
                               : reason === "ANCHOR_NOT_FOUND"
                                 ? "轮次位置已变化；请刷新来源后重新选择。"
-                                : cause.message;
+                                : currentErrorText(cause);
                         setForkError({ turnId: turn.id, message });
                       })
                       .finally(() => setForking(false));
@@ -1263,7 +1264,7 @@ export function Messages({
                                 loading={localThread.displayHistory?.loadingItems?.[item.id]}
                                 error={
                                   history.failure?.itemId === item.id
-                                    ? history.failure?.message
+                                    ? history.failure?.message // raw-error-ok: 已是词条
                                     : undefined
                                 }
                                 onLoad={() => {
@@ -1425,7 +1426,7 @@ export function Messages({
                                           (entry.processRecords ?? [entry]).some(
                                             (record: Data) => record.id === history.failure?.itemId,
                                           )
-                                            ? history.failure?.message
+                                            ? history.failure?.message // raw-error-ok: 已是词条
                                             : undefined
                                         }
                                         {...disclosure}
@@ -1613,7 +1614,7 @@ export function Messages({
                       )}
                       {canFork && forkError?.turnId === turn.id && (
                         <p role="alert" className="notice">
-                          {forkError?.message}
+                          {forkError?.message /* raw-error-ok: 已呈现 */}
                         </p>
                       )}
                       {showTurnStatus(turn, hasInterruption, hasReadingSummary) && (

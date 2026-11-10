@@ -1,4 +1,6 @@
 import type { Attachment } from "./services.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { DraftAttachment } from "./MessageAttachment.js";
 import { AttachmentIcon } from "./interfaceIcons.js";
 import { forgetComposerUploads } from "./ComposerUploadState.js";
@@ -120,7 +122,7 @@ export function CloudComposer({
       if (!thread) await onOpen?.(project.id, target);
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
-      setError(failure.message);
+      setError(errorText(t, failure));
       if (failure.submissionUnknown) {
         setUnknown(true);
         localStorage.setItem(`${key}:unknown`, "true");
@@ -131,7 +133,7 @@ export function CloudComposer({
         const targetKey = `areal-cloud-draft:${project.id}:${target}`;
         localStorage.setItem(targetKey, text);
         fileDrafts.set(targetKey, files);
-        draftErrors.set(targetKey, failure.message);
+        draftErrors.set(targetKey, currentErrorText(failure));
         // 创建已完成，失败草稿归属该会话；后续新聊天必须生成独立的创建标识。
         localStorage.removeItem(key);
         localStorage.removeItem(`${key}:create`);
@@ -247,7 +249,7 @@ export function CloudComposer({
                   projectId: project.id,
                   threadId: thread?.id,
                   turnId: running.id,
-                }).catch((cause) => setError(cause.message));
+                }).catch((cause) => setError(errorText(t, cause)));
               }}
             >
               {t("cloud.stop")}

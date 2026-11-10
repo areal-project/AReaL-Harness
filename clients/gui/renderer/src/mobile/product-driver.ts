@@ -407,8 +407,8 @@ export async function runProduct(
         mode: config.mode,
         state: document.querySelector("[data-state]")?.getAttribute("data-state"),
         error:
-          error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,64}$/.test(error.message)
-            ? error.message
+          error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,64}$/.test(error.message) // raw-error-ok: 取错误码
+            ? error.message // raw-error-ok: 取错误码
             : "UnknownError",
       },
     });

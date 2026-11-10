@@ -1,4 +1,5 @@
 import { DelayedVisible } from "@areal/ui";
+import { errorText } from "../errors/errorCopy.js";
 import { TitleTooltip } from "@areal/ui";
 import { useI18n, UiMessageError, type UiMessage, formatUiMessage } from "../i18n/IntlProvider.js";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -233,7 +234,7 @@ export function PluginSkillsPage({
         if (current) setContent(value);
       })
       .catch((cause) => {
-        if (current) setError(cause instanceof UiMessageError ? cause.descriptor : cause.message);
+        if (current) setError(errorText(t, cause));
       })
       .finally(() => {
         if (current) setContentLoading(false);

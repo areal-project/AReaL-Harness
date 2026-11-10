@@ -1,4 +1,6 @@
 import type { ITheme, IWindowsPty } from "@xterm/xterm";
+import { currentErrorText } from "../errors/currentErrorText.js";
+import { rawText } from "../errors/errorCopy.js";
 import type { Action, CommandParams } from "../services.js";
 type TerminalPresentation = {
   fontFamily?: string;
@@ -137,7 +139,7 @@ export function createTerminalServices(
     return true;
   };
   const fail = (p: Process, error: unknown) => {
-    p.failed = error instanceof Error ? error : new Error(String(error));
+    p.failed = error instanceof Error ? error : new Error(rawText(error));
     onError(p.failed.message);
   };
   const publishExit = async (id: string, p: Process) => {
@@ -370,7 +372,7 @@ export function createTerminalServices(
           processes.delete(id);
           return result;
         } catch (e) {
-          onError(e instanceof Error ? e.message : String(e));
+          onError(currentErrorText(e));
           throw e;
         }
       },

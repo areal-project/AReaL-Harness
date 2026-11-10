@@ -100,7 +100,7 @@ test("missing child coverage is retained instead of reporting a complete search"
     "root",
     new AbortController().signal,
   );
-  expect(traceCoverage(tree)).toEqual(["isolated task: worker unavailable"]);
+  expect(traceCoverage(tree)).toEqual(["isolated task: 操作没有完成，请重试。"]);
   const incomplete = vi.fn(async () =>
     response([saved], { page: { data: [], complete: false, nextCursor: null } }),
   );

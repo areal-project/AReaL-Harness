@@ -1,4 +1,5 @@
 import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadState.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import type { Attachment } from "./services.js";
 import type { QueueEditInput } from "./Queue.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
@@ -198,7 +199,7 @@ export function useComposerQueueEdit({
         ? { unknown: { requestId: cause.requestId, operation } }
         : {}),
     });
-    if (owner.current) setError(cause.message);
+    if (owner.current) setError(currentErrorText(cause));
   };
   const begin = async (target: Data) => {
     if (edit || busy || pending || annotationBlocked || !connected || target.status !== "pending")
@@ -253,7 +254,7 @@ export function useComposerQueueEdit({
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean; requestId?: string };
       if (failure.submissionUnknown) unknown({ ...record, phase: "restoring" }, failure, "resume");
-      else restoreLocal(record, `原草稿已恢复；队列未自动继续：${failure.message}`);
+      else restoreLocal(record, `原草稿已恢复；队列未自动继续：${currentErrorText(failure)}`);
     }
   };
   const save = async () => {

@@ -1,4 +1,6 @@
 import { DelayedVisible } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
 import { Input } from "@areal/ui";
@@ -980,7 +982,7 @@ export function TaskCenter({
           selection.current.selected === history.owner &&
           selection.current.target === target
         )
-          setTargetRead({ target, epoch, status: "error", error: cause.message });
+          setTargetRead({ target, epoch, status: "error", error: currentErrorText(cause) });
       });
   }, [action, target, targetRead, selected, history.enabled, history.owner, displayedRuns]);
   const pending =
@@ -1149,7 +1151,7 @@ export function TaskCenter({
                   [owner.id]: {
                     status: "error",
                     identity,
-                    message: result.errors.map((error) => error.message).join("\n"),
+                    message: result.errors.map((error) => currentErrorText(error)).join("\n"),
                     previous: ownerRows(previous[owner.id]),
                     explicit,
                   },
@@ -1255,7 +1257,7 @@ export function TaskCenter({
       .catch((cause) => {
         if (live) {
           setConfirmedWatch(null);
-          setError(cause.message);
+          setError(errorText(t, cause));
         }
       });
     return () => {
@@ -1981,7 +1983,7 @@ export function TaskCenter({
                     onClick={() => {
                       setError("");
                       void action("reconcile", { projectId: project?.id }).catch((cause) =>
-                        setError(cause.message),
+                        setError(errorText(t, cause)),
                       );
                     }}
                   >

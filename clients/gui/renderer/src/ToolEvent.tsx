@@ -1,4 +1,5 @@
 import { DelayedVisible, Skeleton, TitleTooltip } from "@areal/ui";
+import { errorText } from "./errors/errorCopy.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 // Adapted from ZCode ToolSummaryRow / ToolLayout; Codex reference guides presentation.
 // Core owns all outcomes.
@@ -189,7 +190,7 @@ export function ToolEvent({
         if (active)
           setReview({
             itemId: item.id,
-            error: cause instanceof Error ? cause.message : String(cause),
+            error: errorText(t, cause),
           });
       });
     return () => {

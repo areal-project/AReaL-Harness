@@ -1,4 +1,6 @@
 import type { ManagementResponseMap } from "./services.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { Input } from "@areal/ui";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { SubagentPanel, TaskContext } from "@areal/ui/experimental";
@@ -334,7 +336,7 @@ export function AgentsPane({
         document.dispatchEvent(new CustomEvent("areal:agent-draft-updated", { detail: key }));
         if (mounted.current) setUnknown(false);
       }
-      if (mounted.current) setError(failure.message);
+      if (mounted.current) setError(errorText(t, failure));
     } finally {
       locked.current = false;
       if (mounted.current) {
@@ -720,7 +722,7 @@ export function AgentsPane({
                 </p>
               )}
               {result?.error && (
-                <p className="text-destructive">{result.error.message || "执行失败"}</p>
+                <p className="text-destructive">{currentErrorText(result.error)}</p>
               )}
               {result?.text && <p className="whitespace-pre-wrap break-words">{result.text}</p>}
               {result?.truncated && (

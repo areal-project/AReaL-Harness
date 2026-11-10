@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { rawText } from "./errors/errorCopy.js";
 import { Input, Switch, Textarea } from "@areal/ui";
 import { ImagePlus, Trash2 } from "lucide-react";
 import { Button } from "./components/ui/button.js";
@@ -71,7 +72,7 @@ export function BugReportDialog({
     try {
       await operation();
     } catch (cause) {
-      const code = cause instanceof Error ? cause.message : "";
+      const code = rawText(cause) ?? "";
       setError(
         t(
           code.includes("UPLOAD_TOO_LARGE")

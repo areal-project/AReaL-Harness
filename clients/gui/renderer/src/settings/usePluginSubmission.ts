@@ -1,4 +1,5 @@
 import { useRef, useState, type RefObject } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import type { ManagementResponseMap, PluginMutation } from "../services.js";
 import type {
   PluginCommand,
@@ -25,11 +26,11 @@ export type PluginFailure = {
 };
 export function failure(cause: unknown): PluginFailure {
   if (cause instanceof UiMessageError) return { message: cause.descriptor };
-  if (cause instanceof Error) return cause;
+  if (cause instanceof Error) return Object.assign({}, cause, { message: currentErrorText(cause) });
   return { message: { id: "settings.pluginCenter.pluginOperationFailed" } };
 }
 export function failureText(error: PluginFailure | null, t: Translate) {
-  const text = error ? formatUiMessage(t, error.message) : "";
+  const text = error ? formatUiMessage(t, error.message) : ""; // raw-error-ok: failure() 已呈现
   if (!error) return "";
   return [
     error.submissionUnknown ? t("settings.pluginCenter.submissionResultUnconfirmed") : "",
@@ -140,9 +141,11 @@ export function usePluginSubmission() {
       setSubmission(null);
       if (receipt.status === "failed" || receipt.error) {
         setError({
-          message: receipt.error?.message ?? {
-            id: "settings.pluginCenter.theOriginalPluginOperationIsConfirmedFailed",
-          },
+          message: receipt.error
+            ? currentErrorText(receipt.error)
+            : {
+                id: "settings.pluginCenter.theOriginalPluginOperationIsConfirmedFailed",
+              },
           code: receipt.error?.code,
           reason: receipt.error?.reason,
           requestId: original.requestId,

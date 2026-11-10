@@ -141,5 +141,5 @@ function unavailableResponse(readOnly: boolean, requestId?: string) {
     ...(!readOnly ? { submissionUnknown: true } : {}),
     ...(requestId ? { requestId } : {}),
   };
-  return Object.assign(new Error(error.message), error);
+  return Object.assign(new Error(error.message), error); // raw-error-ok: 传输层解码，不上屏
 }

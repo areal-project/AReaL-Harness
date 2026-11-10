@@ -1,4 +1,5 @@
 import React, { useCallback } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import {
   browserPageId,
   browserTabId,
@@ -91,7 +92,7 @@ export function useWorkspacePreview(
           void openBrowser(false, result.url);
         })
         .catch((cause) => {
-          if (previewOwner.current === owner) setError(cause.message);
+          if (previewOwner.current === owner) setError(currentErrorText(cause));
         });
     },
     [services, project?.id, threadId, openBrowser],

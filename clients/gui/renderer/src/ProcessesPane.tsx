@@ -1,4 +1,6 @@
 import { DelayedVisible } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import type { ManagementResponseMap } from "./services.js";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -255,7 +257,7 @@ export function ProcessesPane({
         localStorage.removeItem(`${draftKey}:pending`);
         setUnknown(false);
       }
-      setCreateError(failure.message);
+      setCreateError(errorText(t, failure));
     } finally {
       locked.current = false;
       setCreating(false);
@@ -414,7 +416,7 @@ export function ProcessesPane({
         localStorage.removeItem(cleanupKey);
         setCleanupPending(false);
       }
-      setCleanupError(`资源处理未完成。${failure.message}`);
+      setCleanupError(`资源处理未完成。${currentErrorText(failure)}`);
       await read();
     } finally {
       locked.current = false;

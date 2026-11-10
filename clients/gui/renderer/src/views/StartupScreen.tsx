@@ -50,7 +50,7 @@ export function StartupScreen({
     !state.lifecycleBlocked;
   const details =
     state.backend.error ||
-    state.restoration.failure?.message ||
+    state.restoration.failure?.message || // raw-error-ok: 只进详情
     state.restoration.error ||
     state.lifecycle?.error ||
     state.lifecycle?.recovery?.message ||

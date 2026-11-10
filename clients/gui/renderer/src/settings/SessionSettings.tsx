@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { errorText, rawText } from "../errors/errorCopy.js";
 import { Textarea } from "@areal/ui";
 import { useI18n, UiMessageError, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsSelect } from "./SettingsPageParts.js";
@@ -235,14 +236,14 @@ export function SessionSettings({
         setMessage("");
         return;
       }
-      if (/已变化|conflict/i.test(failure.message)) {
+      if (/已变化|conflict/i.test(rawText(failure) ?? "")) {
         setConflict(true);
         setError({
           id: "settings.sessionSettings.sessionSettingsChangedReloadBeforeDecidingWhether",
         });
         return;
       }
-      setError(cause instanceof UiMessageError ? cause.descriptor : failure.message);
+      setError(errorText(t, cause));
     } finally {
       setBusy(false);
     }

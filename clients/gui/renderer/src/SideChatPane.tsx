@@ -1,4 +1,5 @@
 import { sideSelection, sideAnchor, type SideSelection, type SideAnchor } from "./services.js";
+import { errorText } from "./errors/errorCopy.js";
 import { Textarea } from "@areal/ui";
 import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
@@ -572,7 +573,7 @@ function SideChatEditor({
         localStorage.removeItem(pendingKey);
         setPendingId("");
       }
-      setError(failure.message);
+      setError(errorText(t, failure));
     } finally {
       if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false);
     }
@@ -660,7 +661,7 @@ function SideChatEditor({
         threadId: sideId,
         turnId: turn.id,
         requestId: crypto.randomUUID(),
-      }).catch((cause: Error) => setError(cause.message));
+      }).catch((cause: Error) => setError(errorText(t, cause)));
   };
   const editorDisabled =
     !project.state?.connected ||
@@ -940,7 +941,7 @@ function SideChatEditor({
               type="button"
               onClick={() => {
                 void action("reconcile", { projectId: project.id }).catch((cause: Error) =>
-                  setError(cause.message),
+                  setError(errorText(t, cause)),
                 );
               }}
             >

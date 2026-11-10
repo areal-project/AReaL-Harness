@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { applyThemeWithoutTransitions } from "@areal/ui/theme";
 import type { PlatformServices } from "../services.js";
 import { useAppearance } from "../settings/applicationPreferences.js";
@@ -68,7 +69,7 @@ export function useWorkbenchAppearance(
         setDark(next.dark);
         applyTheme(next);
       })
-      .catch((cause) => onError(cause.message))
+      .catch((cause) => onError(currentErrorText(cause)))
       .finally(() => setThemeReady(true));
   }, [theme, services]);
   return {

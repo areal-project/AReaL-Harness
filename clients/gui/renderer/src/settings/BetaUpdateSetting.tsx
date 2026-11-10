@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { useRef, useState } from "react";
 import type { Action } from "../services.js";
@@ -31,7 +32,7 @@ export function BetaUpdateSetting({
         cause instanceof UiMessageError
           ? cause.descriptor
           : cause instanceof Error
-            ? cause.message
+            ? currentErrorText(cause)
             : { id: "settings.betaUpdates.saveFailed" },
       );
     } finally {

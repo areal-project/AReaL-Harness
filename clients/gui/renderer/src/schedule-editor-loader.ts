@@ -1,3 +1,4 @@
+import { currentErrorText } from "./errors/currentErrorText.js";
 export type ScheduleEditorState<T> = {
   editor: T | null;
   loading: boolean;
@@ -37,8 +38,7 @@ export function createScheduleEditorLoader<T>(
         editor = loaded;
         state(false, "", true);
       } catch (cause) {
-        if (request === generation)
-          state(false, cause instanceof Error ? cause.message : String(cause));
+        if (request === generation) state(false, currentErrorText(cause));
       } finally {
         if (request === generation) pending = false;
       }

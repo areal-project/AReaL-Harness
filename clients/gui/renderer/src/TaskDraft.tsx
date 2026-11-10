@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { errorText } from "./errors/errorCopy.js";
 import { CalendarClock, X } from "lucide-react";
 import { NavigationBackIcon } from "./interfaceIcons.js";
 import { Button } from "./components/ui/button.js";
@@ -321,7 +322,7 @@ export function TaskDraft({
       .catch((cause) => {
         starts.delete(draft.draftId);
         if (live) {
-          setError(cause.message);
+          setError(errorText(t, cause));
           const latest = retainedDraft(storageKey, current.current);
           current.current = latest;
           setSaved(latest);
@@ -402,7 +403,7 @@ export function TaskDraft({
               pending: failure.submissionUnknown ? "confirm" : undefined,
               failedTurn: result.turnId ?? undefined,
             });
-            setError(failure.message);
+            setError(errorText(t, failure));
           } finally {
             if (live) setSaving(false);
           }
@@ -548,7 +549,7 @@ export function TaskDraft({
                       setRetry((n) => n + 1);
                     }
                   })
-                  .catch((cause) => setError(cause.message));
+                  .catch((cause) => setError(errorText(t, cause)));
               }}
             >
               核对受理状态

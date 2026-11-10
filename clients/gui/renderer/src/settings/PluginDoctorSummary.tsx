@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import type { ManagementResponseMap } from "../services.js";
 import type { PluginCommand } from "./pluginTypes.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -26,7 +27,9 @@ export function PluginDoctorSummary({
       );
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : t("settings.pluginCenter.pluginOperationFailed"),
+        cause instanceof Error
+          ? currentErrorText(cause)
+          : t("settings.pluginCenter.pluginOperationFailed"),
       );
     } finally {
       setBusy(false);

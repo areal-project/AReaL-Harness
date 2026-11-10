@@ -1,12 +1,12 @@
 export { modelUsage, generationStats } from "./services.js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import type {
   ContextPartKind,
   ContextUsageResponse,
   GenerationStats,
 } from "../../packages/runtime-client/core.js";
 import type { Action, Data } from "./services.js";
-import { isTechnicalErrorMessage } from "./recoveryPresentation.js";
 
 export const contextLabels: Record<ContextPartKind, string> = {
   systemPrompt: "System prompt",
@@ -98,9 +98,8 @@ export function useContextUsage(
       acceptedVersion.current = requestedVersion;
       setResult(value);
     } catch (cause) {
-      const msg = cause instanceof Error ? cause.message : "";
       if (request === sequence.current && requestedVersion === current.current)
-        setError(!msg || isTechnicalErrorMessage(msg) ? "读取上下文失败" : msg);
+        setError(currentErrorText(cause));
     } finally {
       if (inFlight.current?.request === request) inFlight.current = null;
       if (request === sequence.current) setBusy(false);

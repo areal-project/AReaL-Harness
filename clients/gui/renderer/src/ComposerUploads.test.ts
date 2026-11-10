@@ -19,7 +19,7 @@ describe("composer attachment preparation", () => {
       .mockRejectedValueOnce(new Error("upload denied"));
     await expect(
       uploadComposerFiles(invoke, "project", "thread", files, undefined, owner),
-    ).rejects.toThrow("second.txt: upload denied");
+    ).rejects.toThrow("second.txt: 操作没有完成，请重试。");
     expect(composerUploads(owner).states.get(files[0])?.state).toBe("ready");
     expect(composerUploads(owner).states.get(files[1])?.state).toBe("failed");
     action.mockResolvedValueOnce(receipt("second"));

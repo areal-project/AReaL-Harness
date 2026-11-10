@@ -102,7 +102,10 @@ export async function collectUiHonesty() {
     for (const [, id] of source.matchAll(ID_COMPARE)) add(file, "cjk-identifier", id);
     for (const match of source.matchAll(LOCALE_DATE)) add(file, "unlocalized-date", match[0]);
     if (!file.startsWith("renderer/src/errors/"))
-      for (const match of source.matchAll(RAW_ERROR)) add(file, "raw-error-text", match[0]);
+      for (const line of source.split("\n"))
+        // 不上屏的读取（匹配、转封装、详情）在行尾写明 raw-error-ok 和原因。
+        if (!line.includes("raw-error-ok"))
+          for (const match of line.matchAll(RAW_ERROR)) add(file, "raw-error-text", match[0]);
     if (/\/(?:views|settings)\/[^/]+\.tsx$/.test(path))
       for (const match of source.matchAll(INTERNAL_STATE))
         add(file, "internal-state-in-view", match[0]);

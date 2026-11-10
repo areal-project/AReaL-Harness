@@ -1,4 +1,5 @@
 import { useTaskReadOnly } from "./PlatformReadContext.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScheduledWorkspace } from "@areal/ui/experimental";
 import { DelayedVisible } from "@areal/ui";
@@ -100,7 +101,7 @@ export function useScheduledTaskControl(
     setBusy(true);
     void action("reconcile", { projectId: project.id })
       .then(() => changed(project.id))
-      .catch((cause) => setError(cause.message))
+      .catch((cause) => setError(currentErrorText(cause)))
       .finally(() => setBusy(false));
   };
   return { control, reconcile, busy, error, pending, blocked, run };

@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { NavigationBackIcon } from "./interfaceIcons.js";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "./components/ui/button.js";
@@ -54,7 +55,7 @@ export function ScheduledTaskConversation({
         if (live) setRead({ status: "ready" });
       })
       .catch((cause) => {
-        if (live) setRead({ status: "error", error: cause.message });
+        if (live) setRead({ status: "error", error: currentErrorText(cause) });
       });
     return () => {
       live = false;

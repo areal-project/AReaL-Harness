@@ -51,7 +51,7 @@ test("failed loading exposes the error and an explicit retry can succeed", async
   expect(publish).toHaveBeenLastCalledWith({
     editor: null,
     loading: false,
-    error: "offline",
+    error: "操作没有完成，请重试。",
     editing: false,
   });
   expect(load).toHaveBeenCalledTimes(1);

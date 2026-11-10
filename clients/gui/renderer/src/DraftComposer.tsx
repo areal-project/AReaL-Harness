@@ -1,4 +1,5 @@
 import { composerDraftStorage } from "./composerDraftStorage.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useDraftComposerState } from "./draftComposerState.js";
 import {
   useReadOnly,
@@ -566,7 +567,7 @@ export function DraftComposer({
       if (!failure.submissionUnknown) {
         localStorage.removeItem(`${key}:pending-create-request`);
         if (targetKey) {
-          attachmentErrors.set(targetKey, failure.message);
+          attachmentErrors.set(targetKey, currentErrorText(failure));
         } else setDraftError(recoveryMessage(failure));
       }
       const requestId = failure.requestId ?? (!targetKey ? creationRequestId : undefined);

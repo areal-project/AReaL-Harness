@@ -1,4 +1,6 @@
 import { TitleTooltip } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { WorkspaceDelimitedPreview } from "./WorkspaceDelimitedPreview.js";
 import { Textarea } from "@areal/ui";
 // ZCode PreviewPane breadcrumb/header composition + its CodeViewer.
@@ -122,7 +124,7 @@ export function WorkspaceFilePane({
           if (current) setOpenTargets(value as FileOpenTargets);
         })
         .catch((cause) => {
-          if (current) setOpenTargetsError(`打开位置读取失败：${cause.message}`);
+          if (current) setOpenTargetsError(`打开位置读取失败：${currentErrorText(cause)}`);
         });
     return () => {
       current = false;
@@ -173,7 +175,7 @@ export function WorkspaceFilePane({
           if (mounted.current) setDoc(document);
         })
         .catch((e) => {
-          if (!cancelled && mounted.current) setMessage(e.message);
+          if (!cancelled && mounted.current) setMessage(errorText(t, e));
         })
         .finally(() => {
           if (!cancelled && mounted.current) setBusy(false);
@@ -443,7 +445,7 @@ export function WorkspaceFilePane({
                   onClick={() =>
                     void navigator.clipboard
                       .writeText(`${root}/${path}`)
-                      .catch((e) => setMessage(e.message))
+                      .catch((e) => setMessage(errorText(t, e)))
                   }
                 >
                   <Copy className="size-4" />
@@ -451,7 +453,9 @@ export function WorkspaceFilePane({
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() =>
-                    void navigator.clipboard.writeText(path).catch((e) => setMessage(e.message))
+                    void navigator.clipboard
+                      .writeText(path)
+                      .catch((e) => setMessage(errorText(t, e)))
                   }
                 >
                   <Copy className="size-4" />
@@ -554,7 +558,7 @@ export function WorkspaceFilePane({
                     void navigator.clipboard
                       .writeText(doc.text)
                       .then(() => setMessage(""))
-                      .catch((error) => setMessage(error.message));
+                      .catch((error) => setMessage(errorText(t, error)));
                   }}
                 >
                   <Copy className="size-4" />

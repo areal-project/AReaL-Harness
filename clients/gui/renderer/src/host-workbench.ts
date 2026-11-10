@@ -155,7 +155,7 @@ export function hostDesktopCommand(
       return { ok: true, value };
     } catch (error) {
       const message =
-        error && typeof error === "object" && "message" in error ? String(error.message) : "";
+        error && typeof error === "object" && "message" in error ? String(error.message) : ""; // raw-error-ok: 按原文分类
       const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
       return {
         ok: false,

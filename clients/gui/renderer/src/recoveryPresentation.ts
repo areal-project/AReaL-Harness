@@ -1,6 +1,6 @@
 import type { DesktopError } from "./services.js";
 import type { Data } from "./services.js";
-import { ERROR_CODES, errorCode, errorText } from "./errors/errorCopy.js";
+import { ERROR_CODES, errorCode, errorText, rawText } from "./errors/errorCopy.js";
 import type { Translate } from "./i18n/uiMessage.js";
 
 export type RecoveryFailure = DesktopError;
@@ -138,7 +138,7 @@ export function recoveryMessage(
     context === "view" &&
     (failure.recovery?.kind === "retryRead" ||
       /disconnect|timeout|connection|transport|RESPONSE_UNKNOWN/i.test(
-        `${failure.message} ${failure.code ?? ""}`,
+        `${rawText(failure)} ${failure.code ?? ""}`,
       ))
   )
     return "暂时无法加载对话。连接恢复后可重新加载，历史和草稿已保留。";
@@ -150,14 +150,14 @@ export function recoveryMessage(
   if (
     context === "operation" &&
     /disconnect|timeout|connection|transport|RESPONSE_UNKNOWN/i.test(
-      `${failure.message} ${failure.code ?? ""}`,
+      `${rawText(failure)} ${failure.code ?? ""}`,
     )
   )
     return failure.outcome?.kind === "rejected" || failure.outcome?.kind === "noMutation"
       ? "操作尚未受理，输入已保留，请在连接恢复后重试。"
       : "暂时无法完成操作，请检查原操作结果后继续。";
   if (t) return t("errors.generic");
-  return failure.message || "操作未完成，请重试。";
+  return failure.message || "操作未完成，请重试。"; // raw-error-ok: 未传 t 的旧调用
 }
 
 export function recoverySettings(failure: RecoveryFailure): RecoveryNotice["settings"] {
