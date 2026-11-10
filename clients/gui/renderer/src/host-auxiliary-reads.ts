@@ -6,6 +6,7 @@ type ShellProject = { projectId: string; state: string; serviceGeneration?: unkn
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+const RETRY_MS = 5000;
 
 /** 模型、配置档与 Core 能力都由 Host 的 project.models 提供，桌面与网页同一来源。 */
 export function refreshModelCatalogs(
@@ -25,12 +26,19 @@ export function refreshModelCatalogs(
     void client
       .query("project.models", project.projectId, {})
       .then((value) => {
-        if (catalogs.get(project.projectId) !== entry || !object(value)) return;
-        if (!Array.isArray(value.models)) return;
+        if (catalogs.get(project.projectId) !== entry) return;
+        if (!object(value) || !Array.isArray(value.models)) throw new Error("INVALID_RESPONSE");
         entry.value = value;
         publish();
       })
-      .catch(() => {});
+      .catch(() => {
+        // 后台可能还在连接；这一代的条目先占着挡住重绘重读，过了退避再放开重试。
+        setTimeout(() => {
+          if (catalogs.get(project.projectId) !== entry) return;
+          catalogs.delete(project.projectId);
+          publish();
+        }, RETRY_MS);
+      });
   }
 }
 
