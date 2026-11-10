@@ -188,11 +188,13 @@ try {
     "invalid creation configuration is rejected before acceptance and clears pending without replay",
   );
   const ids = [randomUUID(), randomUUID()];
+  // 自动命名在完成通知后修改历史；此夹具只验证工作树归属与真实工具执行。
+  const threadOptions = { permissionPreset: "fullAccess", automaticSessionName: false };
   const create = (index) =>
     backend.command("create", {
       projectId,
       requestId: ids[index],
-      options: { permissionPreset: "fullAccess" },
+      options: threadOptions,
       ...(index === 1 ? { worktree: { mode: "worktree", ref: "main" } } : {}),
     });
   const ordinary = await Promise.all([
@@ -200,7 +202,7 @@ try {
     backend.command("create", {
       projectId,
       requestId: randomUUID(),
-      options: { permissionPreset: "fullAccess" },
+      options: threadOptions,
     }),
   ]);
   for (const { threadId } of ordinary) {
@@ -315,6 +317,8 @@ try {
         // 命名会合法地使旧历史视图失效；等待其观察完成后重新打开，再租用分页视图。
         await backend.command("open", { projectId, threadId: threads[index].threadId });
         const history = { projectId, threadId: threads[index].threadId, viewId: randomUUID() };
+        // 完成通知不保证先前分页游标仍有效；与显式打开聊天一致，先取得新的观察窗口。
+        await backend.command("open", { projectId, threadId: history.threadId });
         await backend.command("history", { ...history, operation: "acquire" });
         const turn = projection().state.threads[threads[index].threadId].turns.at(-1);
         for (const item of turn.items) {
