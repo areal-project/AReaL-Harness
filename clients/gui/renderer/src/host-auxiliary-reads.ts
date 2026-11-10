@@ -7,18 +7,17 @@ type ShellProject = { projectId: string; state: string; serviceGeneration?: unkn
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
-/** 桌面后台只认识资料库里的项目；其余项目（如命令行登记的）由 Host 读模型目录。 */
+/** 模型、配置档与 Core 能力都由 Host 的 project.models 提供，桌面与网页同一来源。 */
 export function refreshModelCatalogs(
   client: HostClient,
   projects: readonly ShellProject[],
-  known: (projectId: string) => boolean,
   catalogs: Cache,
   publish: () => void,
 ) {
   const connection = client.snapshot();
   if (connection.connection !== "ready") return;
   for (const project of projects) {
-    if (project.state !== "ready" || known(project.projectId)) continue;
+    if (project.state !== "ready") continue;
     const identity = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
     if (catalogs.get(project.projectId)?.identity === identity) continue;
     const entry: { identity: string; value?: Record<string, unknown> } = { identity };

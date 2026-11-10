@@ -57,6 +57,9 @@ pub(crate) struct ShellProject {
     pub service_generation: Option<String>,
     pub summaries: Summaries,
     pub attention: Attention,
+    /// 任务目录变化标记：Core 每发一次任务更新就换值，客户端据此重读任务，不轮询。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task_revision: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -167,6 +170,8 @@ pub(crate) struct SourceNavigation {
     pub sidebar_thread_order: Vec<String>,
     pub sidebar_revision: u64,
     pub preferences: NavigationPreferences,
+    /// 资料库里除导航排序外的应用偏好（设置页、文件打开方式等），只给本机连接；导航字段仍以 preferences 为准。
+    pub settings: serde_json::Map<String, Value>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
@@ -205,6 +210,8 @@ pub(crate) enum NavigationState {
 struct Library {
     #[serde(default)]
     settings: NavigationPreferences,
+    #[serde(skip)]
+    raw_settings: serde_json::Map<String, Value>,
     #[serde(default)]
     projects: BTreeMap<String, CachedMetadata>,
     #[serde(default)]
@@ -296,6 +303,7 @@ pub(crate) fn snapshot(
                         .map(|service| service.identity.generation.clone()),
                     summaries: Summaries::Unknown { items: Vec::new() },
                     attention: Attention::Unknown,
+                    task_revision: None,
                 },
             )
         })
@@ -443,6 +451,7 @@ pub(crate) fn snapshot(
                 .collect(),
             sidebar_revision: library.sidebar_revision,
             preferences: library.settings,
+            settings: library.raw_settings,
         });
     }
     Ok(ShellView {
@@ -710,7 +719,26 @@ pub(crate) fn library_result(value: Value) -> Result<Value> {
 
 fn check_library(value: Value) -> Result<Library> {
     ensure!(value.is_object(), "invalid navigation library");
-    let library: Library = serde_json::from_value(value).context("invalid navigation library")?;
+    let mut raw_settings = value["settings"].as_object().cloned().unwrap_or_default();
+    // 代理地址和工作树配置可能带凭据，不进读模型；桌面设置页从外壳读代理，工作树走自己的读接口。
+    for key in [
+        "sidebarSort",
+        "sidebarSortChats",
+        "sidebarSortProjects",
+        "sidebarSortPinned",
+        "showPinned",
+        "showCompleted",
+        "httpProxy",
+        "httpProxyNoProxy",
+        "httpProxyCaCertPath",
+        "worktrees",
+        "worktreeRevision",
+    ] {
+        raw_settings.remove(key);
+    }
+    let mut library: Library =
+        serde_json::from_value(value).context("invalid navigation library")?;
+    library.raw_settings = raw_settings;
     let entries = library.projects.len()
         + library.threads.len()
         + library.project_order.len()

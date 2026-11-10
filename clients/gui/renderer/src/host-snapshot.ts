@@ -108,6 +108,20 @@ export function hostCommandOutcome(result: unknown, requestId: string): JsonObje
       : {}),
   };
 }
+/** 任务目录行里能定位到的对话：任务自己的对话和最近、当前运行的对话。 */
+function taskThreads(task: unknown) {
+  if (!task || typeof task !== "object") return [];
+  const value = task as Record<string, unknown>;
+  return [value.threadId, ...(Array.isArray(value.runs) ? value.runs : [])]
+    .map((entry) =>
+      typeof entry === "string"
+        ? entry
+        : entry && typeof entry === "object"
+          ? (entry as { threadId?: unknown }).threadId
+          : undefined,
+    )
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+}
 export function windowIdentity(observation: Observation) {
   return JSON.stringify([
     observation.history,
@@ -147,6 +161,23 @@ export type ReadProject = Record<string, unknown> & {
   summariesFreshness: "fresh" | "cached" | "unknown";
 };
 
+/** Electron 外壳独有的应用状态；业务数据一律来自 Host 读模型。 */
+export const SHELL_SNAPSHOT_KEYS = [
+  "power",
+  "menuBar",
+  "serviceSummary",
+  "backendUpdate",
+  "lifecycle",
+  "computerControl",
+  "subscription",
+  "projectless",
+] as const;
+/** 代理设置可能带凭据，Host 读模型不含；桌面设置页从外壳读。 */
+export const SHELL_SETTING_KEYS = ["httpProxy", "httpProxyNoProxy", "httpProxyCaCertPath"] as const;
+export type ShellSnapshot = Partial<Pick<Snapshot, (typeof SHELL_SNAPSHOT_KEYS)[number]>> & {
+  settings?: Record<string, unknown>;
+};
+
 export function configurationIdentity(configuration: unknown) {
   const value = configuration as { revision?: unknown; defaultModelRevision?: unknown } | null;
   return JSON.stringify([value?.revision ?? null, value?.defaultModelRevision ?? null]);
@@ -174,6 +205,8 @@ export function createHostSnapshotProjector(
       fresh: boolean;
       sessionFreshness?: string;
       outcomes?: Record<string, JsonObject>;
+      tasks?: Record<string, unknown>;
+      watched: Observation["thread"][];
       value: ReadProject;
     }
   >();
@@ -184,14 +217,19 @@ export function createHostSnapshotProjector(
     currentSession: SessionRead | undefined,
     native: Observation | undefined,
     {
-      legacy,
+      shellExtras,
+      watched,
+      tasks,
       readingWindow,
       observation,
       session,
       historyVersion,
       commandOutcomes,
     }: {
-      legacy?: Snapshot;
+      shellExtras?: ShellSnapshot;
+      /** 附加观察（侧边讨论）的会话，按 Host 项目归组。 */
+      watched: ReadonlyMap<string, Observation["thread"][]>;
+      tasks: ReadonlyMap<string, Record<string, unknown>>;
       readingWindow?: ReadingWindow;
       observation?: Observation;
       session?: SessionRead;
@@ -223,8 +261,9 @@ export function createHostSnapshotProjector(
     const canonical = (id: string) => ids.get(id) ?? id;
     const rows = (shell?.snapshot.projects ?? []).map((project) => {
       const id = canonical(project.projectId);
-      const desktopProject = legacy?.projects.find((value) => value.id === id);
-      const auxiliary = desktopProject ?? catalogs.get(project.projectId)?.value;
+      const auxiliary = catalogs.get(project.projectId)?.value;
+      const projectTasks = tasks.get(project.projectId);
+      const sideThreads = watched.get(project.projectId) ?? [];
       const bound = !!navigation?.bindings.some(
         (binding) => binding.projectId === project.projectId && binding.alias === id,
       );
@@ -251,6 +290,9 @@ export function createHostSnapshotProjector(
         cached.fresh === fresh &&
         cached.sessionFreshness === sessionFreshness &&
         cached.outcomes === outcomes &&
+        cached.tasks === projectTasks &&
+        cached.watched.length === sideThreads.length &&
+        cached.watched.every((thread, index) => thread === sideThreads[index]) &&
         cached.value.id === id
       ) {
         for (const summary of cached.value.summaries)
@@ -339,64 +381,14 @@ export function createHostSnapshotProjector(
         return { ...summary, ...execution };
       });
       const desktop = thread?.desktop;
-      const trustedDesktop =
-        fresh &&
-        project.state === "ready" &&
-        desktopProject?.state?.connected &&
-        project.serviceGeneration &&
-        desktopProject.core?.serviceGeneration === project.serviceGeneration &&
-        bound;
       const taskThreadIds = new Set(
-        trustedDesktop
-          ? Object.entries(desktopProject.state.tasks ?? {}).flatMap(
-              ([id, task]: [string, unknown]) => {
-                if (
-                  !task ||
-                  typeof task !== "object" ||
-                  !("id" in task) ||
-                  task.id !== id ||
-                  !("mode" in task) ||
-                  task.mode !== "scheduled" ||
-                  !("runs" in task) ||
-                  !Array.isArray(task.runs)
-                )
-                  return [];
-                return [
-                  ...("threadId" in task && typeof task.threadId === "string" && task.threadId
-                    ? [task.threadId]
-                    : []),
-                  ...task.runs.flatMap((run: unknown) =>
-                    run &&
-                    typeof run === "object" &&
-                    "id" in run &&
-                    typeof run.id === "string" &&
-                    run.id.length > 0 &&
-                    "threadId" in run &&
-                    typeof run.threadId === "string" &&
-                    run.threadId.length > 0
-                      ? [run.threadId]
-                      : [],
-                  ),
-                ];
-              },
-            )
-          : [],
+        Object.values(projectTasks ?? {}).flatMap((task) => taskThreads(task)),
       );
-      const auxiliaryThreads = trustedDesktop
-        ? Object.entries(
-            (desktopProject.state.threads ?? {}) as Record<string, Observation["thread"]>,
-          ).filter(
-            ([key, value]) =>
-              value?.id === key &&
-              key !== thread?.id &&
-              Array.isArray(value.turns) &&
-              (taskThreadIds.has(key) ||
-                (value.conversation?.kind === "side" &&
-                  value.conversation.policy?.kind === "sideExecutableV2" &&
-                  typeof (value.conversation.origin as { sourceThreadId?: unknown } | undefined)
-                    ?.sourceThreadId === "string")),
-          )
-        : [];
+      for (const threadId of taskThreadIds)
+        threadTargets.set(`${logicalId}:${threadId}`, project.projectId);
+      const auxiliaryThreads = sideThreads
+        .filter((side) => side.id !== thread?.id)
+        .map((side) => [side.id, side] as const);
       for (const [threadId] of auxiliaryThreads)
         threadTargets.set(`${logicalId}:${threadId}`, project.projectId);
       const value: ReadProject = {
@@ -411,30 +403,21 @@ export function createHostSnapshotProjector(
           ? canonical(project.logicalProjectId)
           : undefined,
         core: {
-          ...auxiliary?.core,
-          // 网页没有桌面后台的项目快照，权限能力随 project.models 一起从 Host 来。
+          ...(auxiliary?.core as Record<string, unknown> | undefined),
+          // 权限与功能能力随 project.models 一起从 Host 来，桌面与网页相同。
           ...(auxiliary?.features ? { features: auxiliary.features } : {}),
           serviceGeneration: project.serviceGeneration ?? null,
           connectionGeneration: project.serviceGeneration ?? "",
           instanceId: project.serviceGeneration ?? "",
         },
         state: {
-          ...(trustedDesktop ? { tasks: desktopProject.state.tasks } : {}),
+          ...(projectTasks ? { tasks: projectTasks } : {}),
           connected: fresh && project.state === "ready",
           hostState: fresh ? project.state : undefined,
           error: null,
           threads: {
             ...Object.fromEntries(
-              auxiliaryThreads.map(([key, side]) => [
-                key,
-                {
-                  ...side,
-                  ...(side.displayHistory && typeof side.displayHistory === "object"
-                    ? { displayHistory: { ...side.displayHistory, owner: "workbench" } }
-                    : {}),
-                  ...execution,
-                },
-              ]),
+              auxiliaryThreads.map(([key, side]) => [key, { ...side, ...execution }]),
             ),
             ...(thread ? { [thread.id]: { ...thread, ...execution } } : {}),
           },
@@ -490,8 +473,8 @@ export function createHostSnapshotProjector(
         summaries,
         summariesLoaded: project.summaries.state === "fresh",
         summariesFreshness: project.summaries.state,
-        pending: auxiliary?.pending ?? [],
-        outcomes: outcomes ? { ...auxiliary?.outcomes, ...outcomes } : (auxiliary?.outcomes ?? {}),
+        pending: [],
+        outcomes: outcomes ?? {},
         error: null,
         observationErrors: {},
         attention: project.attention,
@@ -505,6 +488,8 @@ export function createHostSnapshotProjector(
         fresh,
         sessionFreshness,
         outcomes,
+        tasks: projectTasks,
+        watched: sideThreads,
         value,
       });
       return value;
@@ -572,7 +557,7 @@ export function createHostSnapshotProjector(
           ...projectedNavigation[project.id],
           navigationSummaries: project.summaries,
         };
-    const navigationSettings: Record<string, unknown> = { ...legacy?.library?.settings };
+    const navigationSettings: Record<string, unknown> = { ...navigation?.settings };
     for (const key of [
       "sidebarSort",
       "sidebarSortChats",
@@ -585,10 +570,12 @@ export function createHostSnapshotProjector(
       const value = navigation?.preferences[key];
       if (value !== undefined) navigationSettings[key] = value;
     }
+    const { settings: shellSettings, ...shellState } = shellExtras ?? {};
+    Object.assign(navigationSettings, shellSettings);
     return {
       sourceId,
       snapshot: {
-        ...legacy,
+        ...shellState,
         projects,
         revision: ++revision,
         connection: {

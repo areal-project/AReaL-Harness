@@ -8000,17 +8000,66 @@
         },
         "features": {
           "type": "object",
+          "description": "Core 在当前连接上公开声明、界面据此显示入口的功能；只做投影，不授予权限。",
           "properties": {
+            "conversation": {
+              "type": "boolean"
+            },
+            "promptPrediction": {
+              "type": "boolean"
+            },
+            "ordinaryTurnSubmit": {
+              "type": "boolean"
+            },
+            "editLastMessage": {
+              "type": "boolean"
+            },
             "permissionPresets": {
               "type": "boolean"
             },
             "permissionFullAccess": {
               "type": "boolean"
+            },
+            "forkPreview": {
+              "type": "boolean"
+            },
+            "sideExecutableV2": {
+              "type": "boolean"
+            },
+            "sidePreview": {
+              "type": "boolean"
+            },
+            "sideWorkspaceRead": {
+              "type": "boolean"
+            },
+            "goals": {
+              "type": "boolean"
+            },
+            "tasks": {
+              "type": "boolean"
+            },
+            "processes": {
+              "type": "boolean"
+            },
+            "executions": {
+              "type": "boolean"
             }
           },
           "required": [
+            "conversation",
+            "promptPrediction",
+            "ordinaryTurnSubmit",
+            "editLastMessage",
             "permissionPresets",
-            "permissionFullAccess"
+            "permissionFullAccess",
+            "forkPreview",
+            "sideExecutableV2",
+            "sidePreview",
+            "sideWorkspaceRead",
+            "goals",
+            "tasks",
+            "processes",
+            "executions"
           ],
           "additionalProperties": false
         }
@@ -13550,6 +13599,10 @@
         },
         "worktree": {
           "$ref": "#/$defs/WorktreeDisplay"
+        },
+        "taskRevision": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [
@@ -13658,6 +13711,10 @@
         },
         "preferences": {
           "$ref": "#/$defs/NavigationPreferences"
+        },
+        "settings": {
+          "type": "object",
+          "description": "资料库里除导航排序、代理和工作树外的应用偏好；只在本机连接上出现。"
         }
       },
       "required": [
@@ -13670,7 +13727,8 @@
         "sections",
         "sidebarThreadOrder",
         "sidebarRevision",
-        "preferences"
+        "preferences",
+        "settings"
       ],
       "additionalProperties": false
     },
@@ -14490,6 +14548,53 @@
         }
       ]
     },
+    "LoopbackSessionWatchRequest": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "type": "string",
+          "const": "session.watch"
+        },
+        "params": {
+          "$ref": "#/$defs/ConversationOpenParams"
+        },
+        "context": {
+          "$ref": "#/$defs/ReadContext"
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "method",
+        "params",
+        "context"
+      ],
+      "additionalProperties": false,
+      "examples": [
+        {
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "session.watch",
+          "params": {
+            "threadId": "thread",
+            "view": "conversation"
+          },
+          "version": 1,
+          "context": {
+            "projectId": "project",
+            "serviceGeneration": "core-generation"
+          }
+        }
+      ],
+      "description": "在当前选中会话之外再观察一个会话（侧边讨论等），每个连接最多 4 个；用 subscription.close 结束。"
+    },
     "LoopbackSessionHistoryRequest": {
       "type": "object",
       "properties": {
@@ -14596,6 +14701,9 @@
         },
         {
           "$ref": "#/$defs/LoopbackSessionOpenRequest"
+        },
+        {
+          "$ref": "#/$defs/LoopbackSessionWatchRequest"
         },
         {
           "$ref": "#/$defs/LoopbackPersistedSessionOpenRequest"
@@ -67897,6 +68005,11 @@
         },
         "session.open": {
           "request": "#/$defs/LoopbackSessionOpenRequest",
+          "result": "#/$defs/ConversationOpenResult",
+          "source": "core/host/src/loopback.rs"
+        },
+        "session.watch": {
+          "request": "#/$defs/LoopbackSessionWatchRequest",
           "result": "#/$defs/ConversationOpenResult",
           "source": "core/host/src/loopback.rs"
         },

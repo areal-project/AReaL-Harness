@@ -1277,14 +1277,24 @@ async fn gui_write_resolves_shared_project_identity_without_expanding_grants() {
                     .reply(json!({"data":[{"providerId":"fixture","modelId":"model"}]}));
                 f.call("areal/capabilities")
                     .await
-                    .reply(json!({"features":{"permissionPresets":true}}));
+                    .reply(json!({"methods":["areal/side/create","areal/side/close","areal/side/start"],
+                        "features":{"permissionPresets":true,"sideExecutableV2":true,
+                            "conversationDerivationV1":{"sideWorkspaceAccess":["readOnly"]}}}));
                 let (next, result) = listing.await.unwrap();
                 let result = result.unwrap();
                 assert_eq!(result["models"][0]["modelId"], "model");
-                assert_eq!(
-                    result["features"],
-                    json!({"permissionPresets":true,"permissionFullAccess":false})
-                );
+                let features = &result["features"];
+                assert_eq!(features["permissionPresets"], true);
+                assert_eq!(features["permissionFullAccess"], false);
+                // 声明了方法和功能才显示入口：侧边聊天可建、可读工作区，缺 context/read 就没有预览。
+                assert_eq!(features["sideExecutableV2"], true);
+                assert_eq!(features["sideWorkspaceRead"], true);
+                assert_eq!(features["sidePreview"], false);
+                assert_eq!(features["processes"], false);
+                assert!(serde_json::from_value::<
+                    areal_protocol::host::RemoteProjectModelsResult,
+                >(result.clone())
+                .is_ok());
                 session = next;
             }
             let mut send = f.request(

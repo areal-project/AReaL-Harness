@@ -90,10 +90,7 @@ impl Session {
             .await?;
         self.authorize(Some(project), "observe")?;
         ensure!(self.project(project)?.1 == generation, "RESYNC_REQUIRED");
-        result["features"] = json!({
-            "permissionPresets": caps["features"]["permissionPresets"] == true,
-            "permissionFullAccess": caps["features"]["permissionFullAccess"] == true,
-        });
+        result["features"] = public_features(&caps);
         Ok(result)
     }
 
@@ -263,4 +260,47 @@ mod tests {
                 .all(|model| model["available"] == false)
         );
     }
+}
+
+/// 只投影 Core 当前连接公开声明的功能，界面据此显示入口；不据此授权。
+fn public_features(caps: &Value) -> Value {
+    let methods: std::collections::HashSet<&str> = caps["methods"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    let supports = |required: &[&str]| required.iter().all(|method| methods.contains(method));
+    let features = &caps["features"];
+    let flag = |name: &str| features[name] == true;
+    let derivation = &features["conversationDerivationV1"];
+    let lists = |field: &str, value: &str| {
+        derivation[field]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item == value))
+    };
+    json!({
+        "conversation": supports(&["thread/start", "turn/start"]),
+        "promptPrediction": supports(&["areal/thread/prediction"]),
+        "ordinaryTurnSubmit": supports(&["areal/turn/submit"]) && flag("ordinaryTurnSubmit"),
+        "editLastMessage": supports(&["areal/turn/submit"]) && flag("editLastMessage"),
+        "permissionPresets": flag("permissionPresets"),
+        "permissionFullAccess": flag("permissionFullAccess"),
+        "forkPreview": supports(&["areal/thread/fork", "areal/conversation/history"])
+            && lists("workspaceModes", "sharedCurrent"),
+        "sideExecutableV2": supports(&["areal/side/create", "areal/side/close"])
+            && flag("sideExecutableV2"),
+        "sidePreview": supports(&["areal/side/start", "areal/side/context/read"])
+            && lists("sideWorkspaceAccess", "none"),
+        "sideWorkspaceRead": supports(&["areal/side/start"])
+            && lists("sideWorkspaceAccess", "readOnly"),
+        "goals": supports(&["areal/goal/create", "areal/goal/get"]),
+        "tasks": supports(&["areal/task/create", "areal/inbox/list"]),
+        "processes": supports(&[
+            "areal/process/start", "areal/process/list", "areal/process/get",
+            "areal/process/read", "areal/process/write", "areal/process/closeStdin",
+            "areal/process/wait", "areal/process/terminate", "areal/process/resize",
+        ]),
+        "executions": supports(&["areal/agent/delegate", "areal/execution/list", "areal/execution/read"]),
+    })
 }

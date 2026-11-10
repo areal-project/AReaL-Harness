@@ -168,6 +168,7 @@ function shellProject(p: unknown): p is ShellProject {
     ["fresh", "cached", "unknown"].includes(String(p.summaries.state)) &&
     Array.isArray(p.summaries.items) &&
     p.summaries.items.every(summary) &&
+    (p.taskRevision === undefined || typeof p.taskRevision === "string") &&
     record(p.attention) &&
     (p.attention.state === "unknown" ||
       (p.attention.state === "fresh" &&
@@ -203,6 +204,7 @@ function navigation(n: unknown): n is SourceNavigation {
         (b.logicalProjectId === undefined || typeof b.logicalProjectId === "string"),
     ) &&
     preferences(n.preferences) &&
+    record(n.settings) &&
     metadataMap(n.projects) &&
     metadataMap(n.threads) &&
     strings(n.projectOrder) &&

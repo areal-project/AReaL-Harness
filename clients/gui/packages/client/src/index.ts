@@ -7,6 +7,9 @@ import type {
 } from "./protocol.js";
 import { record } from "./bootstrap.js";
 import { connectWebSocket } from "./websocket.js";
+import { WatchedSessionSet } from "./watched-sessions.js";
+import { joinChunks, mediaChunk } from "./media.js";
+export type { WatchedSessions } from "./watched-sessions.js";
 import {
   applyConversationPatch,
   applyShellDelta,
@@ -105,6 +108,15 @@ export class HostClient {
   #target?: { projectId: string; threadId: string; persisted?: boolean };
   #opening?: { key: string; selection: number; promise: Promise<void> };
   #sessionCache = new Map<string, { value: SessionRead; expires: number }>();
+  #watched = new WatchedSessionSet({
+    transport: () => this.#transport,
+    connection: () => (this.#state.connection === "ready" ? this.#state.identity : undefined),
+    project: (id) =>
+      previous(this.#reads.shell)?.snapshot.projects.find((value) => value.projectId === id),
+    changed: () => {
+      for (const listener of this.#readListeners) listener();
+    },
+  });
   #cacheTimer?: ReturnType<typeof setTimeout>;
   #connectedHost?: string;
   #mediaQueue = Promise.resolve();
@@ -121,6 +133,7 @@ export class HostClient {
   }
   snapshot = () => this.#state;
   readsSnapshot = () => this.#reads;
+  watchedSnapshot = () => this.#watched.view;
   subscribe = (listener: () => void) => {
     this.#listeners.add(listener);
     return () => {
@@ -146,6 +159,10 @@ export class HostClient {
   #publishReads(state: ReadSnapshot) {
     this.#reads = state;
     for (const listener of this.#readListeners) listener();
+  }
+  /** 在选中会话之外再观察一个会话（如侧边讨论）；返回的函数结束观察。 */
+  watchSession(target: { projectId: string; threadId: string }) {
+    return this.#watched.watch(target);
   }
   #pruneSessionCache() {
     clearTimeout(this.#cacheTimer);
@@ -200,6 +217,7 @@ export class HostClient {
       previous: value,
     });
     this.#publishReads({ shell: stale(this.#reads.shell), session: stale(this.#reads.session) });
+    this.#watched.markStale();
     const current = () => !this.#closed && epoch === this.#epoch;
     void (async () => {
       const connection = this.options.transport
@@ -235,6 +253,7 @@ export class HostClient {
         this.#publishReads({ shell: { state: "loading" }, session: { state: "loading" } });
       const selection = this.#selection;
       await this.#subscribeShell();
+      if (current()) this.#watched.reopen();
       if (current() && selection === this.#selection && this.#target)
         await this.#openSession().catch(() => {});
     })().catch(() => {
@@ -290,11 +309,18 @@ export class HostClient {
     this.#acceptShell(shell);
   }
   #acceptShell(value: ShellRead) {
-    const selected = (shell?: ShellRead) =>
-      shell?.snapshot.projects.find((project) => project.projectId === this.#target?.projectId);
-    const before = selected(previous(this.#reads.shell)),
+    const find = (shell: ShellRead | undefined, id: string | undefined) =>
+      shell?.snapshot.projects.find((project) => project.projectId === id);
+    const selected = (shell?: ShellRead) => find(shell, this.#target?.projectId);
+    const old = previous(this.#reads.shell);
+    const before = selected(old),
       after = selected(value);
     this.#publishReads({ ...this.#reads, shell: { state: "fresh", value } });
+    this.#watched.reopen((id) => {
+      const a = find(old, id),
+        b = find(value, id);
+      return a?.serviceGeneration !== b?.serviceGeneration || a?.state !== b?.state;
+    });
     if (
       !this.#target ||
       (before?.serviceGeneration === after?.serviceGeneration && before?.state === after?.state)
@@ -647,64 +673,12 @@ export class HostClient {
         owner,
       );
       current();
-      if (
-        !identity(value) ||
-        [
-          "connectionId",
-          "gatewayGeneration",
-          "subscriptionId",
-          "projectId",
-          "serviceGeneration",
-          "threadId",
-        ].some((key) => value[key] !== owner[key as keyof SessionRead]) ||
-        value.view !== "conversation" ||
-        value.sequence < owner.sequence ||
-        value.sourceThreadId !== (source.sourceThreadId ?? owner.threadId) ||
-        value.turnId !== source.turnId ||
-        value.itemId !== source.itemId ||
-        value.uri !== source.uri ||
-        value.offset !== offset ||
-        !Number.isSafeInteger(value.totalBytes) ||
-        Number(value.totalBytes) < 0 ||
-        Number(value.totalBytes) > 16 * 1024 * 1024 ||
-        typeof value.mimeType !== "string" ||
-        !value.mimeType ||
-        value.mimeType.length > 256 ||
-        /[\r\n\0]/.test(value.mimeType) ||
-        (value.raster !== undefined &&
-          (!record(value.raster) ||
-            value.raster.mime !== value.mimeType ||
-            !Number.isSafeInteger(value.raster.width) ||
-            Number(value.raster.width) <= 0 ||
-            !Number.isSafeInteger(value.raster.height) ||
-            Number(value.raster.height) <= 0)) ||
-        typeof value.base64 !== "string" ||
-        value.base64.length > 87384 ||
-        !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.base64)
-      )
-        throw new Error("Invalid conversation media chunk");
-      if (totalBytes !== undefined && (value.totalBytes !== totalBytes || value.mimeType !== mime))
-        throw new Error("Media identity changed");
-      totalBytes = Number(value.totalBytes);
-      mime = String(value.mimeType);
-      const bytes = Uint8Array.from(atob(value.base64), (char) => char.charCodeAt(0));
-      if (
-        (!bytes.length && totalBytes !== 0) ||
-        bytes.length > 65536 ||
-        offset + bytes.length > totalBytes ||
-        value.nextOffset !== (offset + bytes.length === totalBytes ? null : offset + bytes.length)
-      )
-        throw new Error("Invalid conversation media range");
-      parts.push(bytes);
-      offset += bytes.length;
+      const chunk = mediaChunk(value, owner, source, offset, totalBytes, mime);
+      ({ totalBytes, mime } = chunk);
+      parts.push(chunk.bytes);
+      offset += chunk.bytes.length;
     } while (offset < totalBytes);
-    const bytes = new Uint8Array(totalBytes);
-    let position = 0;
-    for (const part of parts) {
-      bytes.set(part, position);
-      position += part.length;
-    }
-    return { mime, bytes };
+    return { mime: mime!, bytes: joinChunks(parts, totalBytes!) };
   }
   #onEvent(event: unknown) {
     if (record(event) && event.event === "pages.event") {
@@ -758,6 +732,7 @@ export class HostClient {
       }
       return;
     }
+    if (String(event.event).startsWith("session.") && this.#watched.accept(event)) return;
     const session = this.#reads.session;
     if (session.state !== "fresh" || !String(event.event).startsWith("session.")) return;
     const current = session.value;
@@ -807,6 +782,7 @@ export class HostClient {
     clearTimeout(this.#timer);
     clearTimeout(this.#cacheTimer);
     this.#sessionCache.clear();
+    this.#watched.clear();
     this.#abort?.abort();
     this.#transport?.close();
     this.#transport = undefined;

@@ -1,4 +1,4 @@
-// 网页业务旅程（W0–W5）：真实 Host、后台和 Core，外部模型是本地假模型，界面在 Chromium 里打开 Host 的本机网页。
+// 网页业务旅程（W0–W6）：真实 Host、后台和 Core，外部模型是本地假模型，界面在 Chromium 里打开 Host 的本机网页。
 // 网页与桌面是同一份界面、同一套 Host 协议，所以这里通过的业务旅程不必再在 Mac 上逐项点一遍。
 // 桌面窗口只用来做一次引导：网页需要桌面先登记资料库来源，引导后立即关闭。
 // 先构建 Core（make build）和界面（pnpm --dir clients/gui build），再运行：
@@ -125,8 +125,37 @@ try {
   await page.getByText("已添加 clamp").first().waitFor({ timeout: 60_000 });
   record(await inspectPage(page, "W3 刷新后对话仍在"));
 
+  // 旅程 W6：侧边聊天经 Host 附加观察显示：打开、发送后右侧能看到自己的问题和回复进度，不依赖桌面后台快照。
+  await input.fill("/side");
+  await page
+    .getByRole("option", { name: /\/side/ })
+    .first()
+    .click();
+  const sidePane = page.getByTestId("side-chat-pane");
+  const sideInput = sidePane.getByTestId("side-chat-input");
+  await sideInput.waitFor({ timeout: 60_000 });
+  await sideInput.fill("侧边：这个函数叫什么");
+  await sidePane.getByTestId("side-chat-send").click();
+  await sidePane.getByText("侧边：这个函数叫什么").first().waitFor({ timeout: 60_000 });
+  await sidePane
+    .locator('.decision-card, :text("添加 clamp")')
+    .first()
+    .waitFor({ timeout: 60_000 });
+  await shot("side-chat");
+  record(await inspectPage(page, "W6 侧边聊天"));
+  const sideApproval = sidePane.locator('.decision-card[data-interaction="approval"]');
+  if (await sideApproval.isVisible()) {
+    await sideApproval
+      .getByRole("button", { name: /拒绝/ })
+      .first()
+      .click();
+    await sideApproval.waitFor({ state: "detached", timeout: 60_000 });
+  }
+
   // 旅程 W5：归档不可撤销，先确认；取消不归档，确认后会话移出列表。运行中的会话不能归档，先拒绝排队消息触发的审批。
-  const pendingApproval = page.locator('.decision-card[data-interaction="approval"]');
+  const pendingApproval = page
+    .getByTestId("chat-view")
+    .locator('.decision-card[data-interaction="approval"]');
   await pendingApproval
     .getByRole("button", { name: /拒绝/ })
     .first()

@@ -121,6 +121,11 @@ export function ExecutableSideChatPane({
       current = false;
     };
   }, [action, project.id, tab.childId, project.state?.connected]);
+  // 侧栏打开期间向 Host 订阅该会话，卸载时退订。
+  useEffect(
+    () => services.reads?.watch?.({ projectId: project.id, threadId: tab.childId }),
+    [services.reads, project.id, tab.childId],
+  );
   useConversationEscape({
     pane,
     project,

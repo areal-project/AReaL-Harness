@@ -158,6 +158,8 @@ export interface PlatformReadServices {
   selectSession(
     target: { projectId: string; threadId: string; persisted?: boolean } | null,
   ): Promise<void>;
+  /** 在选中会话之外再观察一个会话（侧边讨论）；返回的函数结束观察。 */
+  watch?(target: { projectId: string; threadId: string }): () => void;
   history(options: {
     view: "own" | "inherited" | "reference";
     cursor?: string;

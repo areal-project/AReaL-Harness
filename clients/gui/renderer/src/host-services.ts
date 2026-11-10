@@ -1,5 +1,9 @@
+import { refreshTaskDirectory, type TaskDirectoryState } from "./host-task-directory.js";
 import {
   createHostSnapshotProjector,
+  SHELL_SETTING_KEYS,
+  SHELL_SNAPSHOT_KEYS,
+  type ShellSnapshot,
   windowIdentity,
   hostCommandOutcome,
   settleHostCommand as settled,
@@ -80,7 +84,28 @@ export function createHostReadServices(
   const client = new HostClient({ ...options, writes: true });
   const pages = createHostPages(client);
   const listeners = new Set<(snapshot: Snapshot) => void>();
-  let legacy: Snapshot | undefined;
+  let shellExtras: ShellSnapshot | undefined;
+  // 按读结果对象缓存解析，同一份附加会话不重复解析，投影缓存才能按引用命中。
+  const watchedParsed = new WeakMap<object, Observation["thread"] | null>();
+  const watchedThreads = () => {
+    const byProject = new Map<string, Observation["thread"][]>();
+    for (const read of client.watchedSnapshot().values()) {
+      const value = "value" in read ? read.value : read.previous;
+      if (!value) continue;
+      let thread = watchedParsed.get(value);
+      if (thread === undefined) {
+        try {
+          thread = readObservationResult(value.snapshot).thread;
+        } catch {
+          thread = null;
+        }
+        watchedParsed.set(value, thread);
+      }
+      if (thread)
+        byProject.set(value.projectId, [...(byProject.get(value.projectId) ?? []), thread]);
+    }
+    return byProject;
+  };
   let librarySourceId: string | undefined;
   let snapshot: Snapshot = { projects: [], connection: { state: "connecting" } };
   let session: SessionRead | undefined;
@@ -96,6 +121,7 @@ export function createHostReadServices(
   const inspections = new Map<string, { identity: string; value?: Record<string, unknown> }>();
   const commandOutcomes = new Map<string, Record<string, JsonObject>>();
   const commandOwners = new Map<string, string>();
+  const taskState: TaskDirectoryState = { tasks: new Map(), reads: new Map() };
   const projectSnapshot = createHostSnapshotProjector(
     client,
     desktop,
@@ -243,20 +269,32 @@ export function createHostReadServices(
       shellState.state === "fresh",
       currentSession,
       observation,
-      { legacy, readingWindow, observation, session, historyVersion, commandOutcomes },
+      {
+        shellExtras,
+        watched: watchedThreads(),
+        tasks: taskState.tasks,
+        readingWindow,
+        observation,
+        session,
+        historyVersion,
+        commandOutcomes,
+      },
     );
     snapshot = projection.snapshot;
     librarySourceId = projection.sourceId;
     for (const listener of listeners) listener(snapshot);
-    if ((!desktop || legacy) && client.writable("project.models"))
-      refreshModelCatalogs(
+    if (client.writable("project.models"))
+      refreshModelCatalogs(client, shell?.snapshot.projects ?? [], catalogs, publish);
+    if (librarySourceId && client.writable("tasks.read"))
+      refreshTaskDirectory(
         client,
         shell?.snapshot.projects ?? [],
-        (id) => !!legacy?.projects.some((value) => value.id === (ids.get(id) ?? id)),
-        catalogs,
+        librarySourceId,
+        ids,
+        taskState,
         publish,
       );
-    if (!desktop && librarySourceId && client.writable("desktop.command"))
+    if (librarySourceId && client.writable("desktop.command"))
       refreshInspections(
         client,
         librarySourceId,
@@ -271,6 +309,13 @@ export function createHostReadServices(
   const reads: PlatformReadServices = {
     status: client.snapshot,
     subscribe: client.subscribe,
+    watch(target) {
+      const projectId =
+        threadTargets.get(`${target.projectId}:${target.threadId}`) ??
+        [...ids].find(([, alias]) => alias === target.projectId)?.[0] ??
+        target.projectId;
+      return client.watchSession({ projectId, threadId: target.threadId });
+    },
     async selectSession(target) {
       if (!target) return client.selectSession(null);
       const canonical =
@@ -501,16 +546,23 @@ export function createHostReadServices(
     if (client.snapshot().connection !== "ready") publish();
   });
   if (desktop) {
-    desktop.onState((value) => {
-      legacy = value;
+    // 外壳只提供窗口、电源、菜单栏、生命周期和代理设置；项目、会话、任务与其余设置都从 Host 读。
+    const accept = (value: Snapshot) => {
+      const settings: Record<string, unknown> = value.library?.settings ?? {};
+      shellExtras = {
+        ...Object.fromEntries(
+          SHELL_SNAPSHOT_KEYS.flatMap((key) => (key in value ? [[key, value[key]]] : [])),
+        ),
+        settings: Object.fromEntries(
+          SHELL_SETTING_KEYS.flatMap((key) => (key in settings ? [[key, settings[key]]] : [])),
+        ),
+      };
       publish();
-    });
+    };
+    desktop.onState(accept);
     void desktop
       .snapshot()
-      .then((value) => {
-        legacy = value;
-        publish();
-      })
+      .then(accept)
       .catch(() => {});
   }
   client.retry();

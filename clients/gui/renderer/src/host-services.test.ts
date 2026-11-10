@@ -33,6 +33,7 @@ const project = {
 const navigation = {
   sourceId: "source",
   preferences: { sidebarSort: "manual" },
+  settings: {},
   state: "available",
   bindings: [{ projectId: "canonical", alias: "alias", projectless: false }],
   projects: { alias: { title: "Host project title" } },
@@ -760,33 +761,21 @@ describe("Host renderer read authority", () => {
       restored.turns.flatMap((turn: { items: unknown[] }) => turn.items).length,
     ).toBeLessThanOrEqual(1601);
   });
-  it("replaces legacy lists and conversations while retaining write catalogs and native commands", async () => {
-    const wire = transport();
-    const legacy: Snapshot = {
-      projects: [
-        {
-          id: "alias",
-          root: "/legacy",
-          models: [{ id: "legacy-model" }],
-          profiles: [{ id: "legacy-profile" }],
-          core: { serviceGeneration: "core-gen" },
-          state: { threads: { thread: { id: "thread", name: "WRONG LEGACY", turns: [] } } },
-          summaries: [{ id: "wrong" }],
-        },
-        { id: "legacy-only" },
-      ],
-      library: {
-        settings: { sidebarSort: "priority", unmigratedPreference: "retained" },
-        projects: { alias: { title: "WRONG LEGACY" } },
-      },
+  it("takes only shell state from the desktop; projects, settings, tasks and side chats come from Host", async () => {
+    const page = new EventTarget();
+    vi.stubGlobal("window", page);
+    const changed: unknown[] = [];
+    page.addEventListener("areal-scheduled-tasks-changed", (event) =>
+      changed.push((event as CustomEvent).detail),
+    );
+    const desktopState: Snapshot = {
+      projects: [{ id: "alias", root: "/legacy", models: [{ id: "legacy-model" }] }],
+      library: { settings: { busyEnter: "steer", httpProxy: "http://proxy.test" } },
+      power: { enabled: true, active: false, error: null },
     };
-    let emitDesktop: (value: Snapshot) => void = () => {};
     const desktop: PlatformServices = {
-      snapshot: async () => legacy,
-      onState: (listener) => {
-        emitDesktop = listener;
-        return () => {};
-      },
+      snapshot: async () => desktopState,
+      onState: () => () => {},
       chooseProject: async () => null,
       command: async () => {
         throw new Error("Native write invoked");
@@ -797,26 +786,6 @@ describe("Host renderer read authority", () => {
         throw new Error("Native preview invoked");
       },
     };
-    const services = createHostReadServices(desktop, options(wire.factory));
-    await until(services);
-    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
-    const snapshot = await services.snapshot();
-    expect(snapshot.projects.map((project) => project.id)).toEqual(["alias"]);
-    expect(snapshot.projects[0].root).toBe("/canonical");
-    expect(snapshot.projects[0].models).toEqual([{ id: "legacy-model" }]);
-    expect(snapshot.projects[0].profiles).toEqual([{ id: "legacy-profile" }]);
-    expect(snapshot.projects[0].summaries[0].name).toBe("Host title");
-    expect(snapshot.projects[0].state.threads.thread.name).toBe("Host thread");
-    const task = {
-      id: "task",
-      revision: 1,
-      mode: "scheduled",
-      threadId: "task-anchor",
-      runs: [
-        { id: "run", threadId: "run-thread" },
-        { id: "summary-run", threadId: "run-summary" },
-      ],
-    };
     const side = {
       id: "side",
       conversation: {
@@ -825,141 +794,132 @@ describe("Host renderer read authority", () => {
         origin: { sourceThreadId: "thread" },
       },
       turns: [],
-      desktop: { queue: { revision: 1, items: [] }, interactions: [], interactionRevision: 2 },
-    };
-    const fullRun = {
-      id: "run-thread",
-      turns: [],
-      displayHistory: { supported: true, viewGeneration: "run-history" },
       desktop: {
-        queue: { revision: 3, items: [] },
+        queue: { revision: 1, items: [] },
         interactions: [],
-        interactionRevision: 4,
-        configuration: { model: "run-model" },
+        interactionRevision: 2,
       },
     };
-    const anchor = { ...fullRun, id: "task-anchor" };
-    emitDesktop({
-      ...legacy,
-      projects: [
-        {
-          ...legacy.projects[0],
-          state: {
-            ...legacy.projects[0].state,
-            connected: true,
-            tasks: { task },
-            threads: {
-              ...legacy.projects[0].state.threads,
-              side,
-              "task-anchor": anchor,
-              "run-thread": fullRun,
-              unrelated: { id: "unrelated", turns: [] },
-              "run-summary": { id: "run-summary" },
-              summary: { id: "summary", conversation: side.conversation },
-            },
+    const taskRow = {
+      id: "task",
+      projectId: "alias",
+      revision: 1,
+      mode: "scheduled",
+      threadId: "task-anchor",
+      latestRun: { id: "run", threadId: "run-thread", status: "completed" },
+    };
+    const wire = transport(observation, undefined, {
+      projects: [{ ...project, taskRevision: "c:1" }],
+      navigation: [{ ...navigation, settings: { busyEnter: "queue", fileOpenTarget: "zed" } }],
+    });
+    const reads: { method: string; params: Record<string, unknown> }[] = [];
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        identity: { ...base.identity, writeMethods: ["tasks.read", "desktop.command"] },
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "session.watch")
+              return {
+                ...identity,
+                subscriptionId: "side-subscription",
+                ...context,
+                threadId: params.threadId,
+                snapshot: { thread: side },
+              };
+            return base.transport.request(method, params, context);
+          },
+          async write(method, params) {
+            reads.push({ method, params });
+            if (method === "tasks.read")
+              return { data: [taskRow], errors: [], owners: [], hasMore: false };
+            throw new Error(`Unexpected ${method}`);
           },
         },
-      ],
-    });
-    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task });
-    const projected = (await services.snapshot()).projects[0];
-    expect(projected.state.threads.side).toMatchObject(side);
-    expect(projected.state.threads["task-anchor"]).toMatchObject(anchor);
-    expect(projected.state.threads["task-anchor"].displayHistory.owner).toBe("workbench");
-    expect(projected.state.threads["run-thread"]).toMatchObject(fullRun);
-    expect(projected.state.threads["run-thread"].displayHistory.owner).toBe("workbench");
-    expect(projected.state.threads.thread.displayHistory.owner).not.toBe("workbench");
-    expect(projected.state.threads.unrelated).toBeUndefined();
-    expect(projected.state.threads["run-summary"]).toBeUndefined();
-    expect(projected.configurations["run-thread"]).toEqual(fullRun.desktop.configuration);
-    expect(projected.state.queues["run-thread"]).toEqual(fullRun.desktop.queue);
-    expect(projected.state.interactions["run-thread"]).toEqual({ revision: 4, data: [] });
-    expect(projected.state.threads.thread.name).toBe("Host thread");
-    expect(projected.state.threads.summary).toBeUndefined();
-    expect(projected.state.queues.side).toEqual(side.desktop.queue);
-    expect(projected.state.interactions.side).toEqual({ revision: 2, data: [] });
-    emitDesktop({
-      ...legacy,
-      projects: [
-        {
-          ...legacy.projects[0],
-          state: { connected: false, tasks: { task }, threads: { "run-thread": fullRun } },
+      };
+    };
+    const services = createHostReadServices(desktop, options(factory));
+    try {
+      await until(services);
+      await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+      await vi.waitFor(async () =>
+        expect((await services.snapshot()).projects[0].state.tasks?.task).toBeDefined(),
+      );
+      let snapshot = await services.snapshot();
+      expect(snapshot.power).toEqual(desktopState.power);
+      expect(snapshot.projects[0].root).toBe("/canonical");
+      expect(snapshot.projects[0].models).toEqual([]);
+      expect(snapshot.library?.settings).toMatchObject({
+        busyEnter: "queue",
+        fileOpenTarget: "zed",
+        httpProxy: "http://proxy.test",
+      });
+      expect(snapshot.library?.settings.sidebarSort).toBe("manual");
+      expect(snapshot.projects[0].state.tasks.task.runs).toEqual([taskRow.latestRun]);
+      expect(reads[0]).toMatchObject({
+        method: "tasks.read",
+        params: { operation: "observe", sourceId: "source" },
+      });
+      // 任务运行对话按任务目录定位到所在项目，打开时走同一 Host 会话。
+      await services.reads!.selectSession({ projectId: "alias", threadId: "run-thread" });
+      expect(wire.requests.at(-1)).toMatchObject({
+        method: "session.open",
+        context: { projectId: "canonical" },
+        params: { threadId: "run-thread" },
+      });
+      await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+      const stop = services.reads!.watch!({ projectId: "alias", threadId: "side" });
+      await vi.waitFor(async () =>
+        expect((await services.snapshot()).projects[0].state.threads.side).toBeDefined(),
+      );
+      snapshot = await services.snapshot();
+      expect(snapshot.projects[0].state.threads.side).toMatchObject(side);
+      expect(snapshot.projects[0].state.threads.thread.name).toBe("Host thread");
+      expect(snapshot.projects[0].state.queues.side).toEqual(side.desktop.queue);
+      expect(snapshot.projects[0].state.interactions.side).toEqual({ revision: 2, data: [] });
+      wire.send({
+        event: "session.updated",
+        ...connection,
+        subscriptionId: "side-subscription",
+        projectId: "canonical",
+        serviceGeneration: "core-gen",
+        threadId: "side",
+        view: "conversation",
+        sequence: 1,
+        patch: { turns: [], order: [], head: { thread: { ...side, name: "Side renamed" } } },
+      });
+      expect((await services.snapshot()).projects[0].state.threads.side.name).toBe("Side renamed");
+      // 主会话的事件不会误改侧边讨论。
+      expect((await services.snapshot()).projects[0].state.threads.thread.name).toBe("Host thread");
+      stop();
+      expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
+      expect(wire.requests.at(-1)).toMatchObject({
+        method: "subscription.close",
+        params: { subscriptionId: "side-subscription" },
+      });
+      // Host 每次任务更新换标记；换了才重读，并通知打开的任务视图。
+      wire.send({
+        event: "shell.updated",
+        ...connection,
+        subscriptionId: "shell",
+        sequence: 1,
+        delta: {
+          projects: { upsert: [{ ...project, taskRevision: "c:2" }], remove: [] },
+          navigation: { upsert: [], remove: [] },
         },
-      ],
-    });
-    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
-    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
-    const updated = { ...task, revision: 2 };
-    emitDesktop({
-      ...legacy,
-      projects: [
-        {
-          ...legacy.projects[0],
-          state: {
-            ...legacy.projects[0].state,
-            connected: true,
-            tasks: { task: updated },
-            threads: { side, "run-thread": fullRun },
-          },
-        },
-      ],
-    });
-    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task: updated });
-    wire.send({
-      event: "shell.updated",
-      ...connection,
-      subscriptionId: "shell",
-      sequence: 1,
-      delta: {
-        projects: { upsert: [{ ...project, serviceGeneration: "next-gen" }], remove: [] },
-        navigation: { upsert: [], remove: [] },
-      },
-    });
-    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
-    expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
-    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
-    expect((await services.snapshot()).projects[0].core.serviceGeneration).toBe("next-gen");
-    emitDesktop({
-      ...legacy,
-      projects: [
-        {
-          ...legacy.projects[0],
-          core: { serviceGeneration: "next-gen" },
-          state: {
-            ...legacy.projects[0].state,
-            connected: true,
-            tasks: { task: updated },
-            threads: { side, "run-thread": fullRun },
-          },
-        },
-      ],
-    });
-    expect((await services.snapshot()).projects[0].state.tasks).toEqual({ task: updated });
-    expect((await services.snapshot()).projects[0].state.threads.side).toBeDefined();
-    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeDefined();
-    wire.send({
-      event: "shell.updated",
-      ...connection,
-      subscriptionId: "shell",
-      sequence: 2,
-      delta: {
-        projects: { upsert: [], remove: [] },
-        navigation: { upsert: [{ ...navigation, bindings: [] }], remove: [] },
-      },
-    });
-    expect((await services.snapshot()).projects[0].state.tasks).toBeUndefined();
-    expect((await services.snapshot()).projects[0].state.threads.side).toBeUndefined();
-    expect((await services.snapshot()).projects[0].state.threads["run-thread"]).toBeUndefined();
-    expect(snapshot.library?.projects.alias.title).toBe("Host project title");
-    expect(snapshot.library?.settings.sidebarSort).toBe("manual");
-    expect(snapshot.library?.settings.unmigratedPreference).toBe("retained");
-    // Main 加了本机行为的命令和主进程命令仍走桌面通道。
-    await expect(services.command("open", { projectId: "alias" } as never)).rejects.toThrow(
-      "Native write invoked",
-    );
-    await expect(
-      services.command("computerControl", { operation: "status" } as never),
-    ).rejects.toThrow("Native write invoked");
+      });
+      await vi.waitFor(() => expect(changed).toEqual(["alias"]));
+      expect(reads.filter((read) => read.method === "tasks.read")).toHaveLength(2);
+      // Main 加了本机行为的命令和主进程命令仍走桌面通道。
+      await expect(services.command("open", { projectId: "alias" } as never)).rejects.toThrow(
+        "Native write invoked",
+      );
+    } finally {
+      page.dispatchEvent(new Event("pagehide"));
+      vi.unstubAllGlobals();
+    }
   });
   it("preserves native history source identities, media and opaque cursor", async () => {
     const wire = transport();

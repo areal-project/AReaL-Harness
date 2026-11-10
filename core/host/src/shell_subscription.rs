@@ -97,6 +97,11 @@ impl ReadModels {
             let Some(revision) = revisions.get(&project.project_id) else {
                 continue;
             };
+            project.task_revision = host
+                .schedules
+                .connections
+                .task_revision(host, &project.project_id)
+                .ok();
             let cached = self
                 .online
                 .borrow()
