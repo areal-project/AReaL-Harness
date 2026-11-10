@@ -122,6 +122,7 @@ function hostPluginStoreParams(request) {
     (request.operation === "plugins" ||
       request.operation === "plugin" ||
       request.operation === "mcp" ||
+      request.operation === "pluginInstall" ||
       (request.operation === "pluginConfigure" && scope === "project"));
   return keepProject ? { ...rest, projectId } : rest;
 }

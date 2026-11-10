@@ -45,7 +45,14 @@ fn fields(operation: &str) -> Option<&'static [&'static str]> {
     Some(match operation {
         "plugins" | "mcp" => &["projectId"],
         "plugin" => &["projectId", "id"],
-        "pluginInstall" => &["id", "expectedRevision", "source", "expectedDigest"],
+        // 安装是用户级的，projectId 只用来发现该项目工作区里的插件市场。
+        "pluginInstall" => &[
+            "id",
+            "projectId",
+            "expectedRevision",
+            "source",
+            "expectedDigest",
+        ],
         "pluginUninstall" | "pluginResolve" => &["id", "expectedRevision"],
         "pluginConfigure" => &["id", "projectId", "enabled", "expectedRevision"],
         "marketplaceAdd" | "marketplaceRemove" => &["root", "expectedRevision"],
