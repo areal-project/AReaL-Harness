@@ -173,11 +173,11 @@ impl RequestBudget {
     }
 }
 
-// 留出封装与 JSON 转义的余量，整条消息仍在 applicationMessageBytes（256 KiB）以内。
 /// 远程与本机写入口共用的错误码；其余一律归为 CORE_UNAVAILABLE。
 pub(crate) fn error_code(message: &str) -> &str {
     match message {
         "INVALID_PARAMS"
+        | "ATTACHMENT_UNSUPPORTED"
         | "FORBIDDEN"
         | "GRANT_CHANGED"
         | "RESYNC_REQUIRED"

@@ -37,6 +37,10 @@ export const errorMessages = {
     "zh-CN": "这个操作没有完成，请刷新后再试。",
     en: "That didn't work. Refresh and try again.",
   },
+  "errors.ATTACHMENT_UNSUPPORTED": {
+    "zh-CN": "不支持这个附件。可以附加图片、音频，或 UTF-8 编码的文本和源码文件。",
+    en: "This attachment isn't supported. Attach an image, audio, or a UTF-8 text or source file.",
+  },
   "errors.INVALID_RESPONSE": {
     "zh-CN": "收到的结果不完整，请重试。",
     en: "The result came back incomplete. Please try again.",

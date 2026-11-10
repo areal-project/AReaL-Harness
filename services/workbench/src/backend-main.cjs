@@ -73,6 +73,7 @@ const domains = {
 // 与 Host 的 error_code 白名单一致；未知内部错误仍使用原来的兜底，不回传异常详情。
 const businessErrorCodes = new Set([
   "INVALID_PARAMS",
+  "ATTACHMENT_UNSUPPORTED",
   "FORBIDDEN",
   "GRANT_CHANGED",
   "RESYNC_REQUIRED",
