@@ -25,10 +25,6 @@ exports: ["Popover", "PopoverContent", "PopoverDescription", "PopoverHeader", "P
 
 关闭/打开、定位碰撞、受控、keepMounted。
 
-## 行为
-
-`R-POPOVER-001` Escape/外部点击与焦点返回沿Base UI，不接管业务请求或资源生命周期。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

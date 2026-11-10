@@ -24,7 +24,6 @@
 - 主要动作：审批主动作与发送共用 `--color-primary` / `--color-primary-foreground`；`--color-composer-action` 是同一配对的别名。强调色 `--color-brand` 只用于链接与焦点。
 - 设置说明：活跃设置标签的说明用 `--color-settings-secondary`，不借用禁用透明度或已完成过程的颜色。
 - `R-TOKEN-019` 过程附注与对话：对话时间线用 `--text-conversation` / `--conversation-line` / `--conversation-gap`（跟随内容字号）；按钮、菜单等控件文字用 `--text-ui-*`（跟随界面字号）。两种字号偏好不能合并。
-- `R-TOKEN-020` 阅读宽度：消息列与输入停靠区共用 `--reading-width`，内侧留白用 `--spacing-field`；嵌入式对话保留宿主宽度。
 
 ## 自动守卫
 

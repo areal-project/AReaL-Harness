@@ -25,10 +25,6 @@ exports: ["ContextMenu", "ContextMenuContent", "ContextMenuItem", "ContextMenuSe
 
 打开、禁用、子菜单。
 
-## 行为
-
-`R-CONTEXTMENU-001` 沿原Base UI右键与键盘路径，不从菜单可见性推断服务端权限。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

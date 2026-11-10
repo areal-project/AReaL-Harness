@@ -20,10 +20,6 @@ related: ["settings-page", "settings-section", "worktree-directory"]
 
 Root、Breadcrumb、Project、Environment、Script、Action。平台Tabs、输入、变量Popover和保存动作由宿主作为内容传入。
 
-## 规则
-
-`R-WORKTREESETTINGS-005` 包不认识存储revision或requestId，不改变确认、版本冲突和锁定语义。通用几何在包，产品页面宽度与刷新按钮定位留renderer。
-
 ## 示例
 
 [组件目录](../../../../../renderer/design-system.html?ui-library#component-worktree-settings)。
@@ -61,5 +57,3 @@ Variables 入口打开小型只读说明，列出 `AREAL_WORKTREE_PATH`、`AREAL
 ### Action 的有限形态
 
 `WT-ACTION-01`：已有 Action 行以名称为主、必要的命令摘要为次，尾部“编辑 / 删除”；添加或编辑在所属行下展开名称与脚本，沿同样的平台标签规则。不要让每个 Action 常驻三个大编辑器。顺序沿已保存配置，删除仅移除配置；运行入口在会话工作区详情，不能把设置里的“保存”变成运行。
-
-`R-WORKTREESETTINGS-017` 通用用途可以是“构建”“测试”“启动开发命令”，这些是名称示例，不预填会执行的项目命令。没有 Action 时不出现虚假的可运行按钮。当前受管命令的超时与后台进程限制沿现有指南，不把“启动”描述成持久服务管理能力。

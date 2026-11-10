@@ -25,10 +25,6 @@ exports: ["Textarea"]
 
 空值、长正文、聚焦、禁用、无效。
 
-## 行为
-
-`R-TEXTAREA-001` 保持原生textarea事件与field-sizing，不承担草稿持久化或发送。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

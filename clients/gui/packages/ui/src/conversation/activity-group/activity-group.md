@@ -36,10 +36,6 @@ related: ["activity-row", "disclosure", "image-disclosure", "thinking-status"]
 
 `R-ACTIVITYGROUP-029` 不能仅隐藏横向滚动条而裁掉内容；活动列表及其内嵌命令正文不产生横向滚动，也不撑宽主聊天。**为什么：**隐藏滚动条会让超出部分永远读不到。**推广：**适用于活动组内的所有嵌套内容。**检查：**`clients/gui/scripts/design-system-conversation-system.mjs`
 
-## 内容
-
-`R-ACTIVITYGROUP-005` 摘要使用真实类型和数量（如“已探索 · 4 个文件，1 个目录”“已运行 3 条命令”），没有准确计数就省略那一项。模型过程摘要使用 [ThinkingStatus](../thinking-status/thinking-status.md)，不替代执行结果。
-
 ## 可访问性
 
 `R-ACTIVITYGROUP-006` 沿 Disclosure 键盘语义，Enter/Space 切换并暴露 expanded；滚动区可聚焦。**为什么：**活动组是最常用的阅读入口，键盘用户与鼠标用户要有同样的路径。**推广：**新增的展开入口都使用 Disclosure 或原生按钮。**检查：**`clients/gui/scripts/design-system-conversation-system.mjs`

@@ -88,10 +88,6 @@
 | ConversationFlowExercise / Messages阅读逻辑 | 同一任务串接命令、子代理、图片、正文与收敛；可自动播放或暂停逐事件推进 | 复合题在生产renderer中验收；不是Core或桌面验收 |
 | AgentConversationPane / SentAttachment | 复合题挂载生产子对话与图片预览，读取仅由隔离fixture响应 | 本题仍为fixture；E1另验选定生产子对话、图片返回和GUI重开，原生面板及完整重连矩阵仍未覆盖 |
 
-## 按钮与表面
-
-`R-LAYOUT-030` 一个外框对应一个功能关系；只读详情与工具过程优先轻量展示。不要把每一行、每段状态、每个按钮再装进独立大卡片。选中、hover、focus、disabled、busy 与 error 使用组件状态，业务页面不重新描边或覆盖控件圆角。
-
 ## 最小实现说明
 
 新页面、公共模式或跨状态的实质修改先按[结构化流程](structured-flow.md)在 `surfaces/` 登记合同；纯文案或沿现有合同的小改动可引用已有合同。变更说明简短引用合同及差异即可：

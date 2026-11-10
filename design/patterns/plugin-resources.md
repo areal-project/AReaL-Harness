@@ -16,10 +16,6 @@
 
 `R-PLUGINRESOURCES-004` 管理动作使用原有提交入口。处理中显示等待并禁用重复动作。明确失败保留对象及可行的下一步，成功以权威结果为准。结果未知保留原请求标识，只能显式核对原提交，不能自动重复写入。
 
-## 返回原任务
-
-`R-PLUGINRESOURCES-005` 返回原任务是导航动作，不是开始插件对话或新建草稿。原项目、任务、未发送内容和当前可用的阅读位置保留，焦点回到对应任务的输入入口。用户明确返回另一所属任务时沿用原有任务打开与错误处理，不建立第二套恢复流程。
-
 ## 所有者与范围
 
 - [PluginCenter](../../clients/gui/renderer/src/settings/PluginCenter.tsx) 拥有资源路由与详情组合。读取代次归usePluginCenter，原回执归usePluginSubmission，安装审阅布局归PluginInstallReview。
