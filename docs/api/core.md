@@ -8,6 +8,23 @@ Core 提供固定 Codex app-server 0.145.0 的子集与 AReaL 扩展，不代表
 
 `Turn.interruption` 可选取 `userPause` 或 `coreRecovery`，记录主动暂停或重启修复的事实。旧记录缺省时不猜原因。可选 `continuedFromTurnId` 只标记用户显式继续所创建的新 Turn，不表示旧模型调用或进程恢复。暂停仍结算原 Turn，UNKNOWN 和失败分类保留。打开会话、重连和重启不自动继续；普通会话的提交与继续见[桌面提交契约](desktop.md#submissions)。
 
+## 命令收尾回执
+
+Turn 结束时，Core 在关闭本轮 Scope 后、原 Runtime 退出前，按原生句柄查询工具最后
+一次观察仍未结束的命令。结果随原 Turn 持久保存为可选 `processReceipts` 数组，并由
+`turn/completed` 和现有历史读取接口返回。每条包含模型使用的 `processId`、原生
+`runtimeProcessId`、`scopeId`、`state`（`exited` 或 `unknown`）、`exitCode`、`signal`、
+`stopReason`、`cleanupConfirmed` 和 `error`。已结算的工具结果不重复收集，原始工具输出不改写。
+
+`exited` 必须具有退出码或 POSIX 信号之一，并确认资源清理；查询失败、身份不符或
+缺少真实终态记录为 `unknown`，该 Turn 失败。信号退出和非零退出仍是命令失败，
+不自动等同于整个任务失败。`processReceipts` 不说明输出分页已读完，也不证明验证通过。
+已存在的模型、预算或清理错误保留原分类与消息，额外的未知进程事实记录在回执中。
+普通取消只有在进程终态已确认时保留 interrupted；未知终态使其失败。
+历史缺省数组为空，不能据此推断旧命令成功。恢复仅读取原回执，不恢复过期句柄或重放命令。
+
+JSON 保持向后兼容；直接构造 Rust `Turn` 时需要初始化 `process_receipts`。
+
 ## 下一条提示词预测
 
 `areal/thread/prediction {threadId,sourceTurnId,operation:"request"|"cancel"}` 是显式桌面需求驱动的变更方法。Core 只接受普通主会话或 Side 最新成功结算的用户轮次；活动轮次、目标、任务、委派子会话、归档及未确认结果不生成预测。完成时仅保留该轮实际模型实例，后台 CLI 或隐藏会话不会自动请求模型。Core 重启后不重建模型、不补发预测。
@@ -48,6 +65,8 @@ Core 拥有 Thread/Turn/Item 的稳定 ID 与历史。read 不订阅，resume �
 分页使用不可变排序键推进，不提供跨页一致快照：并发新建或分类变化仍可能影响后续页。名称、归档、配置和权限读取当前会话状态；查询会等待实际检查的会话锁，但不先复制全部历史或收集重排整个目录。
 
 `areal/thread/fork` 的 `anchor:{turnId,boundary}` 必须明确选择 `before` 或 `after`，并使用 `workspaceMode:"sharedCurrent"`。`before` 排除所选轮次及之后的全部历史，包括活动轮次；`after` 只接受已终结轮次。纳入前缀中的失败、中断状态按原样保留；未结算工具或 hook、未经来源核查的工具、hook 或插件 UNKNOWN 返回 `HISTORY_UNRESOLVED`。核查只记录事实，历史 UNKNOWN 不改写为成功。锚点不存在返回 `ANCHOR_NOT_FOUND`，委派 Worker 或 Side 来源返回 `SOURCE_KIND_UNSUPPORTED`，活动轮次的 `after` 返回 `TURN_NOT_TERMINAL`；错误的 `data.reason` 可用于呈现恢复路径。分支只继承对话历史，项目文件仍是当前共享工作区。完整请求与来源元数据见[桌面 API](desktop.md)。
+
+Fork 的模型兼容检查同时接受旧版 Responses 单项上下文与 `areal_response_output` 完整输出封装，按原顺序保留供应商字段。它们只允许 Responses 适配器回放；切换到无法保留该上下文的协议仍返回 `MODEL_CONTEXT_INCOMPATIBLE`，不通过丢弃不透明历史放行。
 
 input 为有序 text/image/audio/file 等内容，UTF-8 文本合计最多 1 MiB，仍受历史预算约束；认证客户端上传媒体 Blob，不传宿主 localImage/localAudio 路径。模态由 adapter/模型能力校验。原有 thread/start 的 model 需匹配服务默认；产品模型选择使用 areal/thread/start/configure。
 

@@ -8,6 +8,7 @@
 
 - Prioritize complete user prompts and Agent replies to reduce waiting and missing messages in tool-heavy histories. Preserve the reading position when loading older history.
 - Keep compact tool summaries and automatically fetch details on expansion, removing repeated notices that large records need manual loading.
+- Fix opening historical chats with automatic session naming disabled.
 - Show reasoning efforts allowed by the model configuration while keeping Fast independently selectable.
 - Show copy, branch and time together after a turn ends. Center pause, retry recovery, model change and compaction notices between separator lines. Align control tooltips, focus and motion feedback.
 

@@ -384,6 +384,7 @@ impl Store {
                         && let Some(turn) = thread.turns.last()
                     {
                         projection.turns.push(areal_protocol::Turn {
+                            process_receipts: Vec::new(),
                             id: turn.id.clone(),
                             items: Vec::new(),
                             status: turn.status.clone(),

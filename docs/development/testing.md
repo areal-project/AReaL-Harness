@@ -13,9 +13,17 @@ Side Chat 的 Esc 回退测试等待任务资源外层弹层完全退出布局�
 
 依赖安装见[开发指南](README.md)。常规测试使用临时目录、动态 loopback 端口和确定性模型，无需真实模型凭据。
 
-模型选择 smoke 以夹具明确配置的思考档位为预期：四档、二档与空列表分别验证选项、滑块边界、键盘/拖动、历史无效值修正和服务默认；Fast 的请求与冷重开断言使用同一受限档位配置。供应商目录读取可能结算待应用配置，保存种子前的空闲检查放在目录读取之后。
+MCP 隔离回归用 `gated-startup` 夹具显式阻塞 A 的初始化，验证 B 完成控制操作后 A 仍未结束，再放行 A；不以 300ms 内完成磁盘写入作为隔离判据。研究等待容量回归通过结束被等待的子任务收尾，避免把已派发工具取消后的合法 UNKNOWN 当作测试失败。大历史回归保留 140 次操作、超过 2 MiB 历史及重启后续轮的断言，180 秒仅为测试死锁上限，不是产品时延门槛。
+
+模型选择 smoke 以夹具明确配置的思考档位为预期：四档、二档与空列表分别验证选项、滑块边界、键盘/拖动、历史无效值修正和服务默认；Fast 的请求与冷重开断言使用同一受限档位配置。供应商目录读取可能结算待应用配置，保存种子前的空闲检查放在目录读取之后。空目录场景的管理命令在离开设置页后执行，避免设置页的目录刷新与夹具写入竞争；真实用户的单次保存、应用回执和草稿保护断言保持不变。
 
 浏览器终态结果、Worktree 与定时任务合同通过现有 `history.loadItem` 读取成功工具的延期原文，再核对真实执行结果与所属目录中的落盘文件；不能把对话摘要缺少原文判为工具未执行，也不能仅凭摘要宣称执行成功。迁移 smoke 通过当前工具摘要的展开控件查看结果，保留子对话与主草稿隔离断言。
+
+Worktree 集成夹具将自动命名响应保持到真实文件工具完成后，确认命名已进入观察状态，再重新打开会话并租用历史视图，避免把合法的命名编辑误判为工具失败。文件、Shell、受管进程、目录隔离与重启断言保持不变。
+
+Side Chat parity 的 P4 使用真实 Shift/方向键与 Enter，读取选区矩形并确认选中文字仍在对话视口内，再执行引用操作；旧阅读锚点不能抢回原生键盘移动后的视口。数量、字数限制、冻结的引用正文及不自动提交断言继续由原场景检查。
+
+模型选择专项在模型回合断言之后，先观察公开的 serviceStatus.canStop，确认后台命令、启动、模型配置更新和资源均已结算，再通过原生菜单发起一次退出；真实退出仍受原有 15 秒断言约束。退出失败时复用已有清理器，只回收本次启动的 Electron 子进程，保留失败与现场，避免存活进程把一次清理失败拖到整个 CI job 超时。
 
 | 入口 | 范围 |
 |---|---|
@@ -119,6 +127,10 @@ AREAL_CORE_BIN=/absolute/verified/bin/areal pnpm --dir clients/gui test:history-
 `node clients/gui/scripts/bounded-history-ui-smoke.mjs` 在生产 Renderer 和 Desktop 历史所有者上使用受控 Core 响应。上滑分页应静默加载；场景在请求挂起时检查无分页加载文字，完成后检查旧消息出现，并验证正文与输入框位置、失败重试，以及读取期间上滑只续读一次、向下取消续读。场景延迟滚动后的动画帧，在该帧前合入历史页，验证同一可见段落的偏移不超过 2 像素；另检查 30 轮完整快照的上下滚轮浏览，以及超过 16 页后的淘汰和缺页重读。`AREAL_HISTORY_UI_LOCALE=en` 可复验英文。该场景不代表真实 Core 或安装包验收。
 
 `test:navigation-cache` 使用生产 React App、真实 Chrome 和 fixture PlatformServices，记录无关 UI 操作的派生计算次数，检查名称、未读、运行、排序和新快照刷新，并保存源码身份及截图。它不启动 Core/Electron，也不验证安装包或感知延迟。`readingViews` 单测覆盖 32 项内存边界、最近访问淘汰、存储不可用和语义锚点重载；真实主题与布局连续性仍需 Renderer 场景。旧 `conversation-flow` 场景在 `.tool-summary-row .tool-failed` 定位器超时；生产折叠失败状态由 `ActivityRowStatus` 的 `data-tone="failed"` 表达。该 markup 与 `readingViews` 容量裁剪属于不同边界，本专项未修改旧 runner，完整对话流未计为通过。
+
+Linux 移动浏览器 job 安装依赖前，将托管 runner 的 Ubuntu mirror list 指向官方 HTTPS archive。发行版、组件、APT 签名校验、锁定 Playwright 的完整依赖与两种浏览器保持原样；下载超时仍属于 CI 安装失败，不计作浏览器测试通过。
+
+对话流设计验收先等待活动面板的展开过渡结束，并确认列表中心是实际鼠标命中区域，再发送一次真实滚轮输入。`conversation-wheel.json` 保留可信输入、命中和滚动前后位置；仍要求该列表真实滚动，不用脚本改滚动位置替代滚轮断言。
 
 ## 本地验证产物与启动诊断
 
@@ -253,6 +265,8 @@ Slash 键盘验收等待本次打开触发的 Core 目录刷新完成，再核�
 
 原生工具 smoke 在断言前等待 HTTP fixture 的请求线程全部结束。主求解请求与完成审计严格等量；单次辅助命名允许在 HTTP 抵达前取消，此时只接受无 HTTP 状态的中断审计。已观测请求缺审计、重复命名、未观测却完成以及命名携带工具均失败。
 
+Runtime 输出验收分页收齐超出热窗口的全部原文，并独立检查显式输出额度超限。Harness 的转义密集输出验收通过 `read_tool_result` 续读预览省略的快照，逐字核对 stdout/stderr、终态与页大小；验证命令同时核对有界尾部和保存的完整日志。恢复与重试测试按 `kind=discardedCompletion` 选择审计，不能把上下文预算等诊断记录计作丢弃响应。
+
 `node --test clients/gui/scripts/browser-diagnostics-contract.test.cjs` 覆盖原生关闭的资源所有权和错误边界：先释放后 dispose/profile quiesce、输入与录制收敛、旧 Page 重建、隔离动作超时及迟到销毁。它用受控事件检验等待条件，不证明真实 DOM、窗口焦点或 SELECT popup。后者须用隔离 Electron 核对活动 open SELECT 的关闭、无窗口聚焦、真实 `destroyed` 与自然退出；保留原 10 秒原生关闭和 20 秒 runner 清理期限，强杀仍计失败。
 
 插件连接回归通过一次性屏障冻结旧目录扫描，验证其不能撤销扫描后发布的新代；另在握手暂停时禁用插件，要求禁用完成且连接不得发布。原生工作组用例失败时保留临时目录，并输出具体场景、模型用量和权威工具回执，区分预算错误与其前序失败。
@@ -362,9 +376,17 @@ CI 失败先按“证据 → 操作身份与状态所有者 → 可控反例 →
 
 每次诊断运行应区分一个明确假设。候选原因仍无法区分或补丁开始跨模块扩散时，先进行针对性的所有权与设计审查。复用现有日志、状态和 trace；不要求新增统一诊断平台。修复完成后检查 owned diff、运行受影响测试及必需门禁，按最终源码版本核对远端状态；本地快检通过只证明其已执行范围，条件跳过单独列出。
 
+Side Chat 引用烟测等待选区弹层完成入场过渡后再操作；键盘选区使用真实 Shift 扩展和 Enter，其他引用使用鼠标点击，保留内容、去重和容量边界断言。manifest 记录引用长度、目标和操作阶段。浏览器导航烟测被动保存原生快捷键及最近 128 个 Main 页面回执；这些记录不改变页面返回顺序，不将未复现的 CI 失败声明为已修复。
+
+选区夹具在脚本定位后发出 pointerdown，先由既有阅读所有者确认当前位置，再建立可见的原生 Range；激活前保存按钮与视口几何。队列烟测对 snapshot/command 和退出使用既有期限，Main 的 `uncaughtExceptionMonitor` 只落盘错误栈，不吞异常；任何异常或清理失败仍使验收失败。 Hook 崩溃夹具先完成副作用计数，再发布进程就绪 PID；测试读到就绪信号后仍核对恰好一次副作用，并在重启后确认 UNKNOWN 与禁止重放。
+
 macOS 与 Linux 宿主检查使用同一矩阵定义，`fail-fast: false` 保证任一平台失败不取消另一平台的覆盖。macOS 使用 `make setup-node`，仅安装原生 smoke 和 SDK 所需的 Node 依赖；Linux `make setup` 继续安装全部锁定格式工具。原生验收在同一次子 Make 调用中运行 Runtime、Harness、桌面 API 和 Workgroup smoke，共用一次 workspace build。Docker 只复制所需 CLI/TUI/Web 客户端，GUI 不进入构建上下文。原生 Runtime 和 Harness 覆盖保持不变。
 
 `harness-smoke.mjs` 通过真实 Core/Runtime 和模型请求检查根/嵌套 `AGENTS.md` 与 `AGENTS.override.md` 的单层替换、空白回退、顺序、无关目录隔离、缺失文件、跨 Turn 刷新、32 KiB 边界、UTF-8 和符号链接拒绝。
+
+对话流预览的图片可用性验收等待不可用提示实际出现，再操作展开按钮；恢复可用后等待提示消失并核对收起状态，避免把选择框事件派发完成当作组件状态已提交。
+
+同一脚本还在没有 `AGENTS.md` 预读取的工作区，将首次模型回复延迟到超过 2 秒的单进程期限，再通过真实 Runtime 创建并读回文件；反例在相同模型等待后实际执行命令，确认其显式 200 毫秒期限仍终止进程并完成清理。它验证模型等待不侵占工具进程额度，不提高产品默认预算，也不证明长任务整体收益。
 
 [CI](../../.github/workflows/ci.yml) 在 macOS 执行原生 Harness，在 Linux 执行常规回归和 Docker sandbox/文件所有权检查，独立检查 Rust/npm 依赖公告。工作流固定 action commit、使用只读权限并保留失败日志；是否通过以对应提交的运行结果为准。
 
@@ -395,6 +417,8 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 `node examples/desktop-api/run.mjs goal-mode` 使用真实 Core/Runtime 与 HTTP/SSE fixture，通过生成 schema 验证 Goal API、两次 Turn 的文件创建/验证、隔离 Workgroup 共享计量、观察权限、重复请求、多客户端恢复和 headless 跨 Turn 等待；已纳入 `make examples-desktop-api`。它不替代真实模型的任务成功率评估。
 
 ## 共享本地服务
+
+`node scripts/runtime-rotation-smoke.mjs` 使用隔离目录、真实 Core/Runtime 和本地模型，分别降低 Scope、operation 与累计输出容量，验证达到预警但未耗尽时的自动轮换、活动轮次推迟、旧 Core/Runtime 退出、部署漂移保护、新 epoch、历史与 Queue 意图保留、跨轮换请求去重及后续续轮。该检查进入 `make local-service-smoke` 和 `make harness-smoke`。宿主测试覆盖维护 RPC 超时与退出取消；Engine 生命周期测试同时验证并发新轮与轮换的原子准入，以及历史 UNKNOWN 保留和未确认资源清理的阻塞；这些是确定性契约回归，不代表整体 Agent 能力提升。
 
 `make local-service-smoke` 使用临时目录、真实 Core/Runtime、两个 PTY 和 HTTP 模型 fixture，验证并发 ensure、工作区/符号链接身份、配置冲突、认证、Web 发现、窗口退出、忙碌拒绝停止/显式取消、历史保留、launcher/host 强杀清理与重新连接。已纳入 `make harness-smoke`。`make desktop-schemas` 同时导出 `schemas/local-service-v1.json`。
 
@@ -469,7 +493,7 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 `pnpm --dir clients/gui test:macos-dmg` 在 macOS 上独立通过真实 `codesign` 和 `hdiutil` 验证签名 framework 暂存。它需要允许磁盘映像设备访问的环境；受限 Agent 沙箱可能返回 `Device not configured`。应记录环境失败，并在允许的宿主环境重跑相同测试，不跳过断言，也不据此宣称安装包验收通过。macOS GUI job 显式执行该检查；可移植 `verify` 不创建磁盘映像。
 
-GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 Core 合同与 GUI smoke 并行消费同一份产物，分别校验源码 SHA 和可执行组件；`GUI gate` 同时等待两组结果，失败、取消或意外跳过都不能通过。Core 合同的日志、报告和隔离临时目录单独归档。历史兼容、迁移、Composer、模型选择、队列、对话派生和 Side chat 按清单选择后拆成独立隔离的 matrix job（最多四个并发，`fail-fast: false`；各 workflow 仍共享 macOS 配额）。同轮 artifact 以 tar 保留可执行权限，并记录精确 checkout SHA；smoke 拒绝不匹配的源码。锁定的 pnpm/Electron/FFmpeg 下载使用缓存；构建成功即可保存构建缓存，不再因后续 smoke 失败丢失缓存。报告与跨 job 产物绑定 workflow attempt；需要重跑时执行完整 workflow，旧 attempt 的通过记录或产物不能满足新一轮门禁。缺失产物、失败、取消或意外跳过仍使 gate 失败，不使用 `continue-on-error`。
+GUI CI 只构建一次 Core 和 Renderer。构建 job 完成后，10 项原生 Core 合同按两条 lane 依次执行；两条 lane 结算后，GUI smoke 最多两个并发，避免两个矩阵同时争领容量不足的 macOS arm64 runner。两组消费同一份产物，分别校验源码 SHA 和可执行组件；Core 失败仍收集独立 smoke，`GUI gate` 要求两组全部通过，失败、取消或意外跳过都不能通过。Core 合同的日志、报告和隔离临时目录单独归档。历史兼容、迁移、Composer、模型选择、队列、对话派生和 Side chat 按清单选择后拆成独立隔离的 matrix job（`fail-fast: false`；各 workflow 仍共享 macOS 配额）。同轮 artifact 以 tar 保留可执行权限，并记录精确 checkout SHA；smoke 拒绝不匹配的源码。锁定的 pnpm/Electron/FFmpeg 下载使用缓存；构建成功即可保存构建缓存，不再因后续 smoke 失败丢失缓存。报告与跨 job 产物绑定 workflow attempt；需要重跑时执行完整 workflow，旧 attempt 的通过记录或产物不能满足新一轮门禁。缺失产物、失败、取消或意外跳过仍使 gate 失败，不使用 `continue-on-error`。
 
 恢复去重的归属包含项目、聊天和 Core 连接代际；适配器重建后不能复用旧代际的完成/失败尝试。`thread-restoration-ui-smoke.mjs` 使用真实构建的 Renderer 及受控 Desktop 投影复现此边界，同时保持未知提交不重发。
 

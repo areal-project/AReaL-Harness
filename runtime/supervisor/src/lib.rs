@@ -291,7 +291,11 @@ impl Supervisor {
             "processes": state.processes.values().filter(|p| !p.info.cleanup_confirmed).take(16).map(|p| &p.info).collect::<Vec<_>>(),
             "unconfirmedProcesses": state.processes.values().filter(|p| !p.info.cleanup_confirmed).count()
         }));
-        json!({"rotationRecommended":state.scopes.len()*5>=self.config.max_scopes*4||state.operations.len()*5>=self.config.max_operations*4,"runtimeEpoch":self.epoch,"scopes":{"used":state.scopes.len(),"limit":self.config.max_scopes},
+        // 累计输出同样只在 epoch 结束时返还，不能等下一次工具调用才发现已耗尽。
+        let root = &state.scopes[&self.root].info;
+        let output_rotation =
+            u128::from(root.output_bytes) * 5 >= u128::from(root.limits.output_bytes) * 4;
+        json!({"rotationRecommended":state.scopes.len()*5>=self.config.max_scopes*4||state.operations.len()*5>=self.config.max_operations*4||output_rotation,"runtimeEpoch":self.epoch,"scopes":{"used":state.scopes.len(),"limit":self.config.max_scopes},
             "admissionOpen":state.scopes[&self.root].info.state == ScopeState::Active,"recovery":recovery,
             "operations":{"used":state.operations.len(),"limit":self.config.max_operations},
             "activeProcesses":state.processes.values().filter(|p|p.info.state==ProcessState::Running || p.info.state==ProcessState::Starting).count(),

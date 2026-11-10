@@ -41,6 +41,8 @@ pub struct LocalArgs {
     pub command_output_bytes: Option<u64>,
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub runtime_max_processes: Option<u32>,
+    #[arg(long, value_parser = clap::value_parser!(u32).range(4..))]
+    pub runtime_max_scopes: Option<u32>,
     #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub runtime_max_operations: Option<u32>,
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..=17_179_869_184))]
@@ -105,6 +107,7 @@ impl LocalArgs {
             ),
             ("command-output-bytes", self.command_output_bytes),
             ("runtime-output-bytes", self.runtime_output_bytes),
+            ("runtime-max-scopes", self.runtime_max_scopes.map(u64::from)),
             (
                 "runtime-max-operations",
                 self.runtime_max_operations.map(u64::from),
@@ -189,6 +192,10 @@ impl LaunchSpec {
         ensure!(
             args.runtime_max_operations.is_none_or(|value| value > 0),
             "runtime max operations must be positive"
+        );
+        ensure!(
+            args.runtime_max_scopes.is_none_or(|value| value >= 4),
+            "runtime max scopes must be at least four"
         );
         ensure!(
             args.runtime_output_bytes.is_none_or(|value| value
@@ -351,6 +358,7 @@ impl LaunchSpec {
                 "desktopTimeout":args.desktop_process_timeout_ms,
                 "output":args.command_output_bytes.unwrap_or(8*1024*1024),
                 "maxProcesses":args.runtime_max_processes.unwrap_or(4),
+                "maxScopes":args.runtime_max_scopes.unwrap_or(256),
                 "maxOperations":args.runtime_max_operations.unwrap_or(4096),
                 "cumulativeOutput":args.runtime_output_bytes.unwrap_or(args.command_output_bytes.unwrap_or(8*1024*1024)),"toolchain":resolved.workgroup_toolchain}),
             ),
@@ -505,6 +513,32 @@ mod tests {
                 .unwrap()
                 .to_string()
                 .contains("runtime output budget must cover one command")
+        );
+    }
+
+    #[test]
+    fn scope_capacity_reserves_the_connection_command_and_turn_scopes() {
+        let args = Cli::try_parse_from(["areal", "--runtime-max-scopes", "12"])
+            .unwrap()
+            .local;
+        assert_eq!(args.runtime_max_scopes, Some(12));
+        assert_eq!(
+            args.launcher_args(),
+            [OsString::from("--runtime-max-scopes=12")]
+        );
+        for value in ["0", "3", "4294967296"] {
+            assert!(Cli::try_parse_from(["areal", "--runtime-max-scopes", value]).is_err());
+        }
+        let args = LocalArgs {
+            runtime_max_scopes: Some(3),
+            ..Default::default()
+        };
+        assert!(
+            LaunchSpec::in_bin(&args, PathBuf::new())
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("runtime max scopes")
         );
     }
 

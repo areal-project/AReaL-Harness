@@ -654,8 +654,24 @@ async function selectText(body, text, keyboard = false) {
         block: "center",
         behavior: "instant",
       });
+      // 脚本滚动不代表用户开始选择；补齐 pointerdown，让原有阅读所有者先确认当前位置。
+      // 否则下一个 Core/尺寸重绘仍可按旧锚点把正文移回屏外。
+      buildRange().startContainer.parentElement?.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }),
+      );
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       const range = buildRange();
+      const viewport = (element.closest(".messages") ?? element).getBoundingClientRect();
+      if (
+        ![...range.getClientRects()].some(
+          (rect) =>
+            rect.bottom > Math.max(0, viewport.top) &&
+            rect.top < Math.min(innerHeight, viewport.bottom) &&
+            rect.right > Math.max(0, viewport.left) &&
+            rect.left < Math.min(innerWidth, viewport.right),
+        )
+      )
+        throw Error("Selection fixture must start inside the visible transcript");
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -673,18 +689,59 @@ async function selectText(body, text, keyboard = false) {
       await page.keyboard.up("Shift");
     }
     assert.equal(await page.evaluate(() => window.getSelection().toString()), text);
+    assert.ok(
+      await body.evaluate((element) => {
+        const viewport = (element.closest(".messages") ?? element).getBoundingClientRect();
+        const selection = window.getSelection();
+        return (
+          selection?.rangeCount === 1 &&
+          [...selection.getRangeAt(0).getClientRects()].some(
+            (rect) =>
+              rect.bottom > Math.max(0, viewport.top) &&
+              rect.top < Math.min(innerHeight, viewport.bottom) &&
+              rect.right > Math.max(0, viewport.left) &&
+              rect.left < Math.min(innerWidth, viewport.right),
+          )
+        );
+      }),
+      "native keyboard selection stays in the transcript viewport before quoting",
+    );
   }
 }
 async function addReference(body, text, target = "main", keyboard = false) {
+  const record = { textLength: text.length, target, keyboard, stage: "select" };
+  (facts.selectionActions ??= []).push(record);
   await selectText(body, text, keyboard);
   const actions = page.getByTestId("transcript-selection-actions");
   await actions.waitFor();
+  // visible 不代表定位和入场过渡已完成；过早聚焦可能滚动弹层并使选区失效。
+  await until(
+    () =>
+      actions.evaluate(
+        (element) =>
+          getComputedStyle(element).opacity === "1" && !element.hasAttribute("data-starting-style"),
+      ),
+    "selection actions finished their open transition",
+  );
   const action = actions.getByRole("button", {
     name: target === "main" ? "添加到聊天" : "在旁路中询问所选内容",
     exact: true,
   });
-  await action.focus();
-  await action.press("Enter");
+  if (keyboard) await shot("P4-keyboard-selection");
+  record.viewport = await action.evaluate((element) => ({
+    width: innerWidth,
+    height: innerHeight,
+    rect: element.getBoundingClientRect().toJSON(),
+    scrollTop: document.querySelector(".messages")?.scrollTop,
+  }));
+  record.stage = "activate";
+  if (keyboard) {
+    await action.focus();
+    assert.equal(await action.evaluate((element) => document.activeElement === element), true);
+    assert.equal(await page.evaluate(() => window.getSelection().toString()), text);
+    await page.keyboard.press("Enter");
+  } else await action.click();
+  record.stage = "activated";
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
 }
 async function toolAndPermission() {

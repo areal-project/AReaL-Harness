@@ -28,7 +28,7 @@ Core owns cross-restart creation admission evidence in the existing submissions 
 | `core/engine` | Models, tools, history, persistence, child tasks and Workgroups |
 | `core/app-server` | WebSocket, authentication, subscriptions and callback correlation; no separate history |
 | `core/local-service` | Shared discovery, configuration compatibility and control client; depends on config/protocol |
-| `core/service-host` | Rust trusted launcher and independent local service host; manages Core/Runtime lifecycles and private pipes |
+| `core/service-host` | Rust trusted launcher and independent local service host; manages Core/Runtime lifecycles, private pipes and idle capacity rotation |
 | `core/server` | Configuration, models, MCP, Hosts, Runtime and shutdown assembly |
 | `core/plugins` | Codex-compatible package parsing, local marketplaces, digest caches and installation/activation transactions; never executes package code |
 | `core/mcp` | Official rmcp client and result adaptation; no Turn ownership |

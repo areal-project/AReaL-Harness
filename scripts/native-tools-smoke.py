@@ -35,6 +35,7 @@ def main():
     recovered = {}
     stdin_checks = []
     stdin_process = [None]
+    verification_output = ("output" * 4000 + "\n").encode()
     with tempfile.TemporaryDirectory(prefix="areal-native-tools-") as temp:
         base = Path(temp)
         repo = base / "repo"
@@ -148,8 +149,12 @@ def main():
                     elif "verification" in results[-1]:
                         receipt = results[-1]["verification"]
                         assert receipt["status"] == "complete" and receipt["exitCode"] == 0, receipt
-                        assert receipt["sourceUnchanged"] and receipt["logBytes"] > 16000
-                        assert "outputTail" not in receipt and results[-1]["state"] == "exited"
+                        assert receipt["sourceUnchanged"]
+                        assert receipt["logBytes"] == len(verification_output)
+                        assert results[-1]["state"] == "exited"
+                        assert receipt["outputTail"].encode() == verification_output[-8192:]
+                        assert receipt["outputTailStartByte"] == len(verification_output) - 8192
+                        assert receipt["outputTailTruncated"]
                         name = "large_fixture"
                         arguments = {}
                     elif results[-1].get("rawAvailable"):
@@ -385,7 +390,10 @@ max_tool_calls = 32
         assert len(task_scratch) == 1, task_scratch
         receipts = list((task_scratch[0] / "verification").glob("*.json"))
         assert len(receipts) == 1, receipts
-        assert json.loads(receipts[0].read_text())["exitCode"] == 0
+        saved_receipt = json.loads(receipts[0].read_text())
+        assert saved_receipt["exitCode"] == 0
+        # 模型只接收有界尾部，保存的日志必须保留全部原文。
+        assert Path(saved_receipt["logPath"]).read_bytes() == verification_output
         audits = [json.loads(p.read_text()) for p in (data / "model-requests").glob("*.json")]
         ordinary = [audit for audit in audits if audit["purpose"] == "Solve"]
         summaries = [audit for audit in audits if audit["purpose"] == "Summary"]

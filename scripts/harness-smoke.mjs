@@ -170,6 +170,8 @@ const model = createServer(async (req, res) => {
         previous = index;
       }
       for (const text of expected.absent) assert(!system.includes(text), text);
+    } else if (mode.startsWith("late-first-")) {
+      assert(!request.messages[0].content.includes("Project rule: run check.sh after edits."));
     } else {
       assert(request.messages[0].content.includes("Project rule: run check.sh after edits."));
     }
@@ -177,6 +179,32 @@ const model = createServer(async (req, res) => {
     let name, args;
     if (mode.startsWith("instructions:")) {
       // 直接收尾，断言真实模型请求中的指令链，不让 fixture 自行读取文件。
+    } else if (mode === "late-first-file") {
+      if (results.length === 0) {
+        // 模型等待超过单进程期限；它不能预先消耗尚未开始的文件操作额度。
+        await wait(2500);
+        name = "fs_create";
+        args = { path: "late-first-tool.txt", text: "late tool wrote once" };
+      } else if (results.length === 1) {
+        assert(JSON.parse(results[0].content).sha256);
+        name = "fs_read";
+        args = { path: "late-first-tool.txt" };
+      } else {
+        assert.equal(results.length, 2);
+        assert.equal(JSON.parse(results[1].content).text, "late tool wrote once");
+      }
+    } else if (mode === "late-first-process-timeout") {
+      if (results.length === 0) {
+        await wait(2500);
+        name = "run_command";
+        args = { argv: ["/bin/sleep", "60"], cwd: ".", timeoutMs: 200 };
+      } else {
+        assert.equal(results.length, 1);
+        const result = JSON.parse(results[0].content);
+        assert.equal(result.state, "exited");
+        assert.equal(result.stopReason, "wallTimeMs exceeded");
+        assert.equal(result.processComplete, true);
+      }
     } else if (mode === "delegate-files") {
       assert(request.tools.some((tool) => tool.function.name === "agent_spawn"));
       assert(!request.tools.some((tool) => tool.function.name === "workgroup_start"));
@@ -301,19 +329,42 @@ const model = createServer(async (req, res) => {
         };
       } else {
         const pages = results.map((item) => JSON.parse(item.content));
-        const result = pages.at(-1);
-        if (!result.outputClosed) {
+        const intervals = pages.filter((page) => page.processId);
+        const result = intervals.at(-1);
+        let pending;
+        const originals = [];
+        for (const interval of intervals) {
+          if (!interval.displayOmittedBytes) {
+            originals.push(interval);
+            continue;
+          }
+          const resultId = interval.rawResult?.resultId;
+          assert(resultId, "omitted output must retain a durable readback reference");
+          const chunks = pages.filter(
+            (page) => page.historicalSnapshot && page.resultId === resultId,
+          );
+          if (!chunks.at(-1)?.eof) {
+            pending = { resultId, after: chunks.at(-1)?.nextCursor ?? null };
+            break;
+          }
+          originals.push(JSON.parse(chunks.map((page) => page.text).join("")));
+        }
+        if (pending) {
+          name = "read_tool_result";
+          args = pending;
+        } else if (!result.outputClosed) {
           name = "read_process";
           args = { processId: result.processId };
         } else {
-          const stdout = pages.map((page) => page.stdout ?? "").join("");
-          const stderr = pages.map((page) => page.stderr ?? "").join("");
-          assert(stdout.startsWith("你好"));
+          const stdout = originals.map((page) => page.stdout ?? "").join("");
+          const stderr = originals.map((page) => page.stderr ?? "").join("");
+          assert.equal(stdout, "你好" + "\0".repeat(7000));
           assert.equal(Buffer.byteLength(stdout), 7006);
           assert.equal(stderr, "末尾");
           assert.equal(result.exitCode, 0);
-          assert(pages.every((page) => !page.gap && !page.truncated));
-          assert(pages.some((page) => page.returnReason === "outputLimit"));
+          assert(intervals.every((page) => !page.gap && !page.truncated));
+          assert(intervals.some((page) => page.displayOmittedBytes > 0));
+          assert.equal(result.outputReadComplete, true);
           assert.equal(result.returnReason, "completed");
           assert(results.every((page) => Buffer.byteLength(page.content) <= 16384));
         }
@@ -475,7 +526,7 @@ const model = createServer(async (req, res) => {
 });
 model.listen(0, "127.0.0.1");
 await once(model, "listening");
-async function start() {
+async function start(extraArgs = []) {
   const child = spawn(
     "python3",
     [
@@ -500,6 +551,7 @@ async function start() {
       "--allow-write",
       "--allow-concurrent-writes",
       ...runtimeArgs,
+      ...extraArgs,
     ],
     {
       stdio: ["ignore", "pipe", "pipe"],
@@ -1035,6 +1087,41 @@ try {
   server.ws.close();
   server.child.kill("SIGTERM");
   assert.equal((await stopped)[0], 0);
+  // 不让项目指令的真实预读取提前建立 Turn Scope，掩盖首次工具调用过晚的情形。
+  await rm(join(workspace, "AGENTS.md"));
+  server = await start(["--command-timeout-ms", "2000"]);
+  for (const mode of ["late-first-file", "late-first-process-timeout"]) {
+    const session = (await server.call("thread/start", {})).thread.id;
+    await server.call("turn/start", { threadId: session, input: [{ type: "text", text: mode }] });
+    const result = await completed(server, session);
+    assert.equal(result.turns[0].status, "completed", JSON.stringify(result));
+    const tools = result.turns[0].items.filter((item) => item.type === "dynamicToolCall");
+    assert(tools.every((item) => item.execution.outcome !== "unknown"));
+    if (mode === "late-first-file") {
+      assert.deepEqual(
+        tools.map((item) => item.tool),
+        ["fs_create", "fs_read"],
+      );
+      assert(tools.every((item) => item.success));
+      assert.equal(
+        await readFile(join(workspace, "late-first-tool.txt"), "utf8"),
+        "late tool wrote once",
+      );
+    } else {
+      assert.deepEqual(
+        tools.map((item) => item.tool),
+        ["run_command"],
+      );
+      assert.equal(tools[0].success, false);
+    }
+  }
+  const limitedStopped = once(server.child, "exit");
+  server.ws.close();
+  server.child.kill("SIGTERM");
+  assert.equal((await limitedStopped)[0], 0);
+  console.log(
+    "PASS late first tool preserves per-process allowance; command deadline still kills and cleans up",
+  );
   console.log(
     "PASS Harness: fragmented model tool calls → durable journal → Runtime read/patch/test → final answer; Core SIGKILL → process cleanup → UNKNOWN recovery → explicit inspection; no replay",
   );

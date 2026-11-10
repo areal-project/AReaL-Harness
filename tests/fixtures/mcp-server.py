@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 
 log = Path(sys.argv[1])
 mode = sys.argv[2] if len(sys.argv) > 2 else "normal"
@@ -33,6 +34,9 @@ try:
         if method == "initialize":
             if mode == "hang-startup":
                 continue
+            if mode == "gated-startup":
+                while not Path(sys.argv[3]).exists():
+                    time.sleep(0.005)
             result = {
                 "protocolVersion": "2025-11-25",
                 "capabilities": {"tools": {"listChanged": True}},

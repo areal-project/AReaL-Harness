@@ -152,17 +152,23 @@ async fn retry_discards_only_failed_completion_and_never_executes_its_calls() {
             .any(|i| matches!(i,Item::AgentMessage{text,..} if text.contains("Discard this")))
     );
     assert_eq!(turn.usage.as_ref().unwrap().input_tokens, 8);
-    let audit = std::fs::read_dir(data.path().join("audit"))
+    let audits: Vec<Value> = std::fs::read_dir(data.path().join("audit"))
         .unwrap()
-        .find(|entry| {
+        .filter(|entry| {
             entry
                 .as_ref()
-                .is_ok_and(|e| e.path().extension().is_some_and(|x| x == "json"))
+                .unwrap()
+                .path()
+                .extension()
+                .is_some_and(|x| x == "json")
         })
-        .unwrap()
-        .unwrap()
-        .path();
-    let audit = std::fs::read_to_string(audit).unwrap();
+        .map(|entry| {
+            serde_json::from_slice::<Value>(&std::fs::read(entry.unwrap().path()).unwrap()).unwrap()
+        })
+        .filter(|audit| audit["kind"] == "discardedCompletion")
+        .collect();
+    assert_eq!(audits.len(), 1);
+    let audit = audits[0].to_string();
     assert!(audit.contains("never-execute"));
     assert!(audit.contains("Discard this"));
     engine.shutdown().await;

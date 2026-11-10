@@ -26,7 +26,7 @@ GUI Renderer 只在 `main.tsx` 读取 preload 对象，由 `createDesktopService
 | `core/engine` | 模型、工具、历史、持久化、父子任务和 Workgroup |
 | `core/app-server` | WebSocket、认证、订阅、回调关联；不拥有另一份历史 |
 | `core/local-service` | 共享服务发现、配置兼容性和控制客户端，只依赖 config/protocol |
-| `core/service-host` | Rust 可信 launcher 和独立本地服务宿主，管理 Core/Runtime 生命周期与私有管道 |
+| `core/service-host` | Rust 可信 launcher 和独立本地服务宿主，管理 Core/Runtime 生命周期、私有管道与空闲容量轮换 |
 | `core/server` | 装配配置、模型、MCP、Host、Runtime 和关闭流程 |
 | `core/plugins` | Codex 兼容插件包解析、本地 marketplace、摘要缓存与安装/启用事务；不执行包代码 |
 | `core/mcp` | 官方 rmcp 客户端与结果适配，不拥有 Turn |

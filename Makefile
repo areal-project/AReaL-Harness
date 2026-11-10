@@ -194,6 +194,7 @@ harness-smoke: build sdk-build ## 原生 SDK 与完整读改测试/强杀恢复
 	node scripts/git-auth-smoke.mjs
 	python3 scripts/tui-local-smoke.py
 	node scripts/local-service-smoke.mjs
+	node scripts/runtime-rotation-smoke.mjs
 
 unified-execution-smoke: build ## 真实 Runtime 的统一委派、组合交付、取消和恢复回归
 	node scripts/unified-execution-smoke.mjs
@@ -203,6 +204,7 @@ delegation-permissions-smoke: build ## 验证只读强约束、不可用准入�
 
 local-service-smoke: build ## 验证共享服务、多个窗口与宿主故障恢复
 	node scripts/local-service-smoke.mjs
+	node scripts/runtime-rotation-smoke.mjs
 
 git-auth-smoke: build ## 验证共享服务的 Git 身份、SSH agent 与 HTTPS 认证及失败保护
 	node scripts/git-auth-smoke.mjs

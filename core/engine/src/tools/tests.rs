@@ -1353,6 +1353,8 @@ async fn research_wait_releases_workspace_and_tool_capacity() {
             .unwrap();
     }
     let cancel = CancellationToken::new();
+    let child_id = child.id.clone();
+    let child_turn = child.turns.last().unwrap().id.clone();
     let wait = tokio::spawn({
         let engine = engine.clone();
         let parent = parent.clone();
@@ -1381,8 +1383,13 @@ async fn research_wait_releases_workspace_and_tool_capacity() {
     }).await.unwrap();
     let writer_admitted = engine.workspace_gate.clone().try_write_owned().is_ok();
     let permits = engine.tool_permits.available_permits();
-    cancel.cancel();
-    wait.await.unwrap().unwrap();
+    // 结束被等待的子任务，让 read_agent 正常返回；取消工具本身可能已派发，必须保留 UNKNOWN。
+    engine.interrupt(&child_id, &child_turn).await.unwrap();
+    tokio::time::timeout(Duration::from_secs(10), wait)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
     engine.shutdown().await;
     assert!(
         writer_admitted,

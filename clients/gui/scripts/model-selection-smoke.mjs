@@ -1,5 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -499,36 +499,60 @@ async function closeGui() {
   const current = app;
   if (!current) return;
   const child = current.process();
-  stoppingAdapter = await readFile(join(scratch, "core/service.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-  if (failure) {
-    await current
-      .evaluate(({ app }) => app.exit(1))
-      .catch((error) => {
-        if (child.exitCode === null) throw error;
-      });
-  } else {
-    await current
-      .evaluate(({ Menu }) => {
-        const quit = Menu.getApplicationMenu().items[0].submenu.items.find(
-          (item) => item.label === "退出 AReaL Harness",
-        );
-        if (!quit) throw new Error("Safe application quit menu is missing");
-        quit.click();
-      })
-      .catch((error) => {
-        if (child.exitCode === null) throw error;
-      });
+  try {
+    await closeSmokeApplication(
+      {
+        process: () => child,
+        close: async () => {
+          try {
+            stoppingAdapter = await readFile(join(scratch, "core/service.json"), "utf8")
+              .then(JSON.parse)
+              .catch((error) => {
+                if (error.code === "ENOENT") return null;
+                throw error;
+              });
+            if (!failure) {
+              // 模型回合完成后仍可能结算后台读取与配置更新；确认可空闲停止后只发起一次退出。
+              await page.waitForFunction(async () => {
+                const reply = await window.arealDesktop.command("serviceStatus", {});
+                return reply.ok && reply.value.canStop;
+              });
+            }
+            if (failure) {
+              await current
+                .evaluate(({ app }) => app.exit(1))
+                .catch((error) => {
+                  if (child.exitCode === null) throw error;
+                });
+            } else {
+              await current
+                .evaluate(({ Menu }) => {
+                  const quit = Menu.getApplicationMenu().items[0].submenu.items.find(
+                    (item) => item.label === "退出 AReaL Harness",
+                  );
+                  if (!quit) throw new Error("Safe application quit menu is missing");
+                  quit.click();
+                })
+                .catch((error) => {
+                  if (child.exitCode === null) throw error;
+                });
+            }
+            const deadline = Date.now() + 15000;
+            while (child.exitCode === null && Date.now() < deadline)
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            assert.notEqual(child.exitCode, null, "owned Electron process exits");
+          } catch (error) {
+            await captureSmokeFailure(page, scratch, error);
+            throw error;
+          }
+        },
+        // 外层覆盖就绪观察与失败取证；菜单退出本身仍必须在原有 15 秒内完成。
+      },
+      40000,
+    );
+  } finally {
+    if (child.exitCode !== null || child.signalCode !== null) app = undefined;
   }
-  const deadline = Date.now() + 15000;
-  while (child.exitCode === null && Date.now() < deadline)
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  assert.notEqual(child.exitCode, null, "owned Electron process exits");
-  app = undefined;
 }
 async function verifyModelCapabilities() {
   const previous = await call("providers", { operation: "list" });
@@ -2486,10 +2510,10 @@ async function runFullModelSelection() {
     1,
     "confirmed invalidity is marked inside the model label",
   );
-  await openModelSettings();
   checks.push(
     "Core credential states and saved enablement remain separate from drafts and pending apply; Composer explicitly selects and executes another available model",
   );
+  // 空目录是后续场景的夹具准备；离开设置页后再写入，避免其目录刷新与管理命令竞争。
   let providers = await call("providers", { operation: "list" });
   for (const provider of providers.data) {
     await page.waitForFunction(async () => {
@@ -2508,7 +2532,6 @@ async function runFullModelSelection() {
       expectedRevision: providers.revision,
     });
   }
-  await button("返回应用").click();
   await createProjectConversation(page, "workspace");
   await until((s) => fixtureProject(s).models.length === 0, "empty Core catalog");
   const fallbackNotice = page.getByRole("status").filter({ hasText: "上次使用的模型" });
