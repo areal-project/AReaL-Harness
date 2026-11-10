@@ -1,43 +1,16 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { detectCapabilities } from "./agent-capabilities.mjs";
 import { readTestManifest } from "./test-manifest.mjs";
 
 const gui = fileURLToPath(new URL("../", import.meta.url));
 const manifest = await readTestManifest();
 const coreContracts = process.argv.includes("--core-contracts");
-const coreAvailable =
-  !!process.env.AREAL_CORE_BIN &&
-  spawnSync(process.env.AREAL_CORE_BIN, ["build-info"], { stdio: "ignore" }).status === 0;
-const nativeAvailable =
-  process.platform === "darwin"
-    ? spawnSync("/usr/bin/sandbox-exec", ["-p", "(version 1)(allow default)", "/usr/bin/true"], {
-        stdio: "ignore",
-      }).status === 0
-    : process.platform === "linux" &&
-      spawnSync(
-        "/usr/bin/bwrap",
-        ["--unshare-all", "--die-with-parent", "--ro-bind", "/", "/", "--", "/usr/bin/true"],
-        { stdio: "ignore" },
-      ).status === 0;
-const available = [
-  ...((await access(resolve(gui, "renderer/dist/index.html")).then(
-    () => true,
-    () => false,
-  ))
-    ? ["gui-build"]
-    : []),
-  ...(coreAvailable ? ["core-binary"] : []),
-  ...(nativeAvailable ? ["native-runtime"] : []),
-  `node-${process.versions.node}`,
-  ...["git", "python3", "openssl"].filter(
-    (command) =>
-      spawnSync(command, [command === "openssl" ? "version" : "--version"], { stdio: "ignore" })
-        .status === 0,
-  ),
-];
+const available = detectCapabilities();
+const coreAvailable = available.includes("core-binary");
 const argument = (name) =>
   process.argv.find((value) => value.startsWith(`${name}=`))?.slice(name.length + 1);
 const planPath = argument("--plan");

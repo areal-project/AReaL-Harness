@@ -14,7 +14,7 @@
 | <!-- rule:R-CONVERSATION-007 --> 连续更新打断阅读或混淆权限 | 摘要不抢焦点、不定时生成、不推断执行结果；原活动记录独立保留 | 更新不提交/重试，来源/草稿/子任务选择不随文字变化重置 |
 | <!-- rule:R-CONVERSATION-008 --> MD存在但像薄说明书、在站点不可见 | 实现旁MD维护完整结构与元数据；站点显示关联、原文与该组件的独立示例 | 每份目录组件可找到同目录MD、用途与状态、类型API和可操作例子，生成检查拒绝缺失结构 |
 
-引用 [R-CONVERSATION-009](../../../clients/gui/packages/ui/src/conversation/task-context/task-context.md#非模态阅读)。
+引用 [R-CONVERSATION-009](../../../clients/gui/packages/ui/src/conversation/task-context/task-context.md)。
 
 <!-- rule:R-CONVERSATION-010 -->
 宿主适配位于 [ConversationSystemPreview](../../../clients/gui/renderer/src/design-system/ConversationSystemPreview.tsx)，固定数据位于 [conversationSystemScenario](../../../clients/gui/renderer/src/design-system/conversationSystemScenario.ts)。活动、图片和右侧基本外观已由私有包的实验对话组件提供；本地 CSS 仅保留页面布局与 ToolEvent/SentAttachment 适配。复用原 CommandDetails、ConversationComposer 和 WorkbenchShell。图片来自既有仓库示例，文件/网页/变更/子任务详情是本地说明，不读取真实项目、不执行命令、不连接 Core 或供应商。

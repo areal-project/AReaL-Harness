@@ -17,7 +17,7 @@
     "owner": "app/src"
   },
   "appLines": {
-    "value": 774,
+    "value": 787,
     "direction": "down",
     "owner": "renderer/src/App.tsx"
   },
@@ -52,7 +52,7 @@
     "owner": "app/src renderer/src packages"
   },
   "rendererCssLines": {
-    "value": 10110,
+    "value": 10226,
     "direction": "down",
     "owner": "renderer/src"
   },
@@ -67,7 +67,7 @@
     "owner": "design-system/literal-baseline.json"
   },
   "privateTmpHardcodes": {
-    "value": 3,
+    "value": 5,
     "direction": "down",
     "owner": "scripts"
   },
@@ -233,6 +233,7 @@
     "packages/chatgpt-provider/probe.js": 50,
     "packages/chatgpt-provider/sessions.js": 105,
     "packages/chatgpt-provider/subscription-contract.js": 5,
+    "packages/client/src/index.ts": 821,
     "packages/gen-ui/adapters.ts": 8,
     "packages/gen-ui/assistantDirectiveParser.ts": 371,
     "packages/gen-ui/atomicFileLock.ts": 275,
@@ -255,7 +256,7 @@
     "packages/ui/src/components/action-button/action-button.tsx": 20,
     "packages/ui/src/components/button/button.tsx": 71,
     "packages/ui/src/components/card/card.tsx": 85,
-    "packages/ui/src/components/code-viewer/code-viewer.tsx": 798,
+    "packages/ui/src/components/code-viewer/code-viewer.tsx": 808,
     "packages/ui/src/components/command/command.tsx": 188,
     "packages/ui/src/components/context-menu/context-menu.tsx": 150,
     "packages/ui/src/components/control-hint-tooltip/control-hint-tooltip.tsx": 154,

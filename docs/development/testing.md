@@ -494,7 +494,7 @@ macOS 实际崩溃预算使用 `AREAL_HOST_SERVICE_ROOT=/absolute/authorized/roo
 
 `node scripts/shared-host-schedule-smoke.mjs` 使用 `AREAL_TEST_BIN_DIR` 指定的完整固定产物，默认 `.local/shared-host-bin`。它经真实 Core 创建启用、暂停及显式停止的定时任务，重启 Host 后检查仅启用项目自动激活、到期执行一次、停止抑制仍生效及显式恢复。另验证 managed 技能变更触发受控 Core 重启、新 profile 生效且 Run 不重复。独立工具连接发布 Browser/Computer 后，验证模型收到目录，工具连接关闭后原 Run 继续，后续 Run 不声明桌面工具；该检查不执行真实桌面动作。模型为本地确定性 HTTP fixture；原子发布根、不可变 Task body 和 Host 状态共同提供断言。临时目录的 `result.json` 保留源码、产物、请求与清理证据。该场景不启动 Electron，不访问 Keychain，不替代 GUI 退出交互、真机、真实供应商或系统服务登录验收。
 
-`AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal AREAL_SCHEDULE_GUI_ROOT=/absolute/source/clients/gui AREAL_SCHEDULE_MODE=accept node clients/gui/scripts/schedule-reliability-lifecycle-smoke.mjs` 运行真实源码 Electron/Main/Host 调度生命周期回归。夹具使用独立应用身份和已构建的 Renderer 资源，通过公开 bridge 创建任务；不验证任务创建对话框。原断言覆盖未打开项目到期一次、GUI 退出后触发、显式停止期间不准入及显式重连后的 misfire。生命周期身份取认证 Host 描述及原停止回执，不依赖旧 Desktop 的 `core/service.json`。停止未确认时保留隔离凭据和现场，清理只核查原请求。结果、trace、截图与清理在 `.scratch/schedule-reliability-lifecycle-*/manifest.json`；该路径不覆盖真实供应商、真机或系统登录。
+`AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal AREAL_SCHEDULE_GUI_ROOT=/absolute/source/clients/gui AREAL_SCHEDULE_MODE=accept node clients/gui/scripts/schedule-reliability-lifecycle-smoke.mjs` 运行真实源码 Electron/Main/Host 调度生命周期回归。夹具使用独立应用身份和已构建的 Renderer 资源，通过公开 bridge 创建任务；不验证任务创建对话框。原断言覆盖未打开项目到期一次、GUI 退出后触发、显式停止期间不准入及显式重连后的 misfire。生命周期身份取认证 Host 描述及原停止回执，不依赖旧 Desktop 的 core/service.json。停止未确认时保留隔离凭据和现场，清理只核查原请求。结果、trace、截图与清理在 `.scratch/schedule-reliability-lifecycle-*/manifest.json`；该路径不覆盖真实供应商、真机或系统登录。
 
 将上述选择变量换为 `RC05_PUBLIC_COMMANDS_ONLY=1`，并分别设置 `AREAL_REMOTE_TRANSPORT=direct` 与 `relay`，运行真实 Rust Host 的公开命令子集。它核对重复发送复用原 operation/Turn、不同设备使用同一 commandId 各自隔离、改变语义返回冲突及每个 Runtime 文件副作用恰好一次。一次合法 create 在本案 journal 目录只读期间必须返回带原 commandId 的 `CORE_UNAVAILABLE`，恢复原权限后核对 journal 字节、Core Thread 集合不变和原命令 `notFound`。迟到的旧 Turn 停止请求必须返回 `TARGET_CHANGED`，当前 held Turn 继续并正常完成。此选择保留 `acceptance=false`，不覆盖受理后崩溃、丢失 Core 回应、outcome 写入失败、已准入 interrupt 屏障或 100 次竞态验收。
 
@@ -582,9 +582,9 @@ PR #111 在初始 G0 快照后整合历史恢复与定时任务所有权。以�
 
 | 所有者 | 原行数 → 当前行数 | 原因 |
 | --- | --- | --- |
-| `app/src/core/backend.cjs` | 2270 → 2284 | 连接任务目录与定时 owner 生命周期 |
-| `app/src/core/history-observation.cjs` | 1072 → 1175 | 协调有界历史读取、owner 任务与恢复 |
-| `app/src/core/lifecycle-operations.cjs` | 845 → 878 | 持久化调度抑制并支持显式恢复 |
+| `services/workbench/src/desktop/core/backend.cjs` | 2270 → 2284 | 连接任务目录与定时 owner 生命周期 |
+| `services/workbench/src/desktop/core/history-observation.cjs` | 1072 → 1175 | 协调有界历史读取、owner 任务与恢复 |
+| `services/workbench/src/desktop/core/lifecycle-operations.cjs` | 845 → 878 | 持久化调度抑制并支持显式恢复 |
 | `renderer/src/Composer.tsx` | 1564 → 1580 | 通过 owner 任务目录定位 worker 的原任务运行 |
 | `renderer/src/Messages.tsx` | 1561 → 1718 | 加载早期历史时保持阅读锚点 |
 | `renderer/src/TaskCenter.tsx` | 2356 → 2380 | 观察任务目录修订与共享 owner 激活 |

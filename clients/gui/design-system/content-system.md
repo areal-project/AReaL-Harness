@@ -65,7 +65,7 @@ Gen UI在已完成的助手消息上解析并核对引用，随后打开已发�
 
 Messages 的混合投影和公式边界见[消息合同](../renderer/src/Messages.md#混合内容与过程标题)。
 
-审批摘要、完整原文与页脚由[DecisionCard](../packages/ui/src/conversation/decision-card/decision-card.md#行为)定义；逐题选择、明确发送和草稿由[QuestionCard](../packages/ui/src/conversation/question-card/question-card.md#行为)定义。
+审批摘要、完整原文与页脚由[DecisionCard](../packages/ui/src/conversation/decision-card/decision-card.md#行为)定义；逐题选择、明确发送和草稿由[QuestionCard](../packages/ui/src/conversation/question-card/question-card.md#状态)定义。
 
 过程标题、失败工具与断连显示见[消息合同](../renderer/src/Messages.md#混合内容与过程标题)。
 
