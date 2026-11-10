@@ -35,6 +35,8 @@ ENTRY_GLOBS = (
     ".githooks/*",
     # 使用指南与开发文档里写明手动运行的工具也算有入口。
     "docs/guides/*.md",
+    "docs/api/*.md",
+    "examples/*/README*.md",
     "docs/development/*.md",
     "tests/guides/*.md",
 )
