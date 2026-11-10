@@ -345,6 +345,20 @@ fn inspect(manifest: &Manifest) -> Result<Value> {
 pub fn inspect_space(space_id: &str) -> Result<Value> {
     inspect(&read_manifest(&roots()?, space_id)?)
 }
+/// 工作台反向调用 recovery.inspect：只接受可选的 spaceId。
+pub(crate) fn inspect_params_for_host(host_home: &Path, params: &Value) -> Result<Value> {
+    ensure!(
+        params
+            .as_object()
+            .is_some_and(|o| o.keys().all(|key| key == "spaceId")),
+        "INVALID_PARAMS"
+    );
+    let space_id = params
+        .get("spaceId")
+        .map(|value| value.as_str().context("INVALID_PARAMS"))
+        .transpose()?;
+    inspect_for_host(host_home, space_id)
+}
 pub(crate) fn inspect_for_host(host_home: &Path, space_id: Option<&str>) -> Result<Value> {
     inspect_for_host_at(&roots()?, host_home, space_id)
 }

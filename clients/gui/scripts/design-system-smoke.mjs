@@ -201,8 +201,16 @@ async function settingsChecks() {
     await page.getByLabel("面板宽度", { exact: true }).selectOption(sample.width);
     await settle();
     const observations = {};
+    // 设置卡片圆角按规格取令牌 radius-panel，不写死像素值。
+    const panelRadius = await page.evaluate(() => {
+      const probe = document.body.appendChild(document.createElement("div"));
+      probe.style.borderRadius = "var(--radius-panel)";
+      const radius = getComputedStyle(probe).borderRadius;
+      probe.remove();
+      return radius;
+    });
     const assertCard = (value, name) => {
-      assert.equal(value.radius, "20px", `${name} uses the overlay radius`);
+      assert.equal(value.radius, panelRadius, `${name} uses the panel radius`);
       assert.equal(
         value.background,
         value.semantic.background,
@@ -678,8 +686,12 @@ try {
         await settleLayout();
         const after = await position(control);
         const clamped = collapsing ? Math.max(0, before.top - after.max) : 0;
+        // 收起后内容变短、滚动被压到末尾时，控件只能下移，最多下移被压掉的距离；
+        // 吸顶的过程标题收起后回到自然位置，下移量会小于被压掉的距离。
+        const shift = after.y - before.y;
         assert.ok(
-          Math.abs(after.y - before.y - clamped) <= 1,
+          Math.abs(shift - clamped) <= 1 ||
+            (clamped > 0 && after.top >= after.max - 1 && shift >= -1 && shift <= clamped + 1),
           `${label} retains the activated control position: ${JSON.stringify({ before, after, clamped })}`,
         );
       };
@@ -1360,7 +1372,13 @@ try {
               height: el.getBoundingClientRect().height,
             };
           };
+          // 圆角按规格取令牌 radius-card，不写死像素值。
+          const probe = document.body.appendChild(document.createElement("div"));
+          probe.style.borderRadius = "var(--radius-card)";
+          const cardRadius = getComputedStyle(probe).borderRadius;
+          probe.remove();
           return {
+            cardRadius,
             card: style(".decision-card"),
             feedback: style(".ui-feedback"),
             sideInfo: style(".side-chat-information"),
@@ -1374,7 +1392,7 @@ try {
         });
         assert.equal(measured.overflow, false, "preview panels must not overflow horizontally");
         assert.equal(measured.card.fontSize, `${sample.font}px`);
-        assert.equal(measured.card.radius, "20px");
+        assert.equal(measured.card.radius, measured.cardRadius);
         assert.equal(measured.feedback.fontSize, `${sample.font}px`);
         if (!baseline) {
           assert.equal(measured.sideInfo.fontSize, `${Math.max(11, Number(sample.font) - 3)}px`);
@@ -1524,11 +1542,20 @@ try {
             duration: Number(animation.effect.getTiming().duration),
           }));
         });
+        // 扫光周期取动效令牌 motion-cycle-slow，不写死毫秒数。
+        const cycle = await page.evaluate(() => {
+          const probe = document.body.appendChild(document.createElement("div"));
+          probe.style.transitionDuration = "var(--motion-cycle-slow)";
+          const seconds = parseFloat(getComputedStyle(probe).transitionDuration);
+          probe.remove();
+          return Math.round(seconds * 1000);
+        });
+        assert.ok(cycle > 0, "motion-cycle-slow resolves to a duration");
         assert.deepEqual(
           animations,
           [
-            { name: "areal-thinking-sweep", duration: 1800 },
-            { name: "areal-thinking-sweep", duration: 1800 },
+            { name: "areal-thinking-sweep", duration: cycle },
+            { name: "areal-thinking-sweep", duration: cycle },
           ],
           "phase sampling controls the band and its counter-moving text after screenshot replay cleanup",
         );
