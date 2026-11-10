@@ -138,7 +138,10 @@ test("new credentials reach running Cores by reference before saving, without a 
   assert.ok(register < calls.findIndex((call) => call.method === "areal/plugin/userConfig/set"));
   assert.deepEqual(calls[register].params, { credentials: { private_ref: "NORMALIZED_SECRET" } });
   assert.deepEqual(calls.find((call) => call.other)?.params, calls[register].params);
-  assert.equal(calls.some((call) => call.restart), false);
+  assert.equal(
+    calls.some((call) => call.restart),
+    false,
+  );
   assert.equal(result.reloadDeferred, true);
   assert.deepEqual(calls.at(-1).params.values, {
     TOKEN: { kind: "secretRef", value: "private_ref" },
@@ -286,11 +289,7 @@ test("every typed plugin mutation can reach original-receipt observation through
   }
 });
 test("plugin recovery rejects unrelated mutations before reaching the receipt owner", async () => {
-  for (const mutation of [
-    "providerSave",
-    "pluginInstall",
-    "unknownMutation",
-  ]) {
+  for (const mutation of ["providerSave", "pluginInstall", "unknownMutation"]) {
     const fixture = receiptFixture(mutation, { confirmed: false });
     await assert.rejects(manage(fixture.backend, fixture.project, fixture.request));
     assert.equal(fixture.reads.length, 0);
