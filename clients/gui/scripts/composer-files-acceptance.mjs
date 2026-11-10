@@ -110,7 +110,24 @@ export async function runComposerFilesAcceptance({
         (await current())?.turns.at(-1)?.status === "completed" &&
         !project(await state()).pending.length,
       "file input completed",
-    );
+    ).catch(async (error) => {
+      // 超时时带上卡在哪一步：模型请求没发出、轮次没结束，还是提交还挂着。
+      const thread = await current();
+      throw new Error(
+        `file input did not complete: ${JSON.stringify({
+          requests: received.length - count,
+          thread: await activeId(),
+          turns: thread?.turns.length,
+          last: thread?.turns.at(-1)?.status,
+          pending: project(await state()).pending.length,
+          draft: await input().textContent(),
+          sendDisabled: await button("发送")
+            .isDisabled()
+            .catch(() => null),
+        })}`,
+        { cause: error },
+      );
+    });
     await page.waitForFunction(
       () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
     );
