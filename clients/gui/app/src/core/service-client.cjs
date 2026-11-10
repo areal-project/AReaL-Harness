@@ -1092,6 +1092,16 @@ class SharedCoreBackend {
       throw new Error("后台尚未连接，请点击“重新连接后台”检查并恢复旧服务");
     return this.requireConnection().request("resources", request, request.operation !== "inspect");
   }
+  /** @param {Record<string,unknown>} request */
+  async remoteControl(request) {
+    if (request.operation !== "status") this.assertApplicationWrite();
+    if (!this.status.connected) throw new Error("后台尚未连接");
+    return this.requireConnection().request(
+      "remoteControl",
+      request,
+      request.operation !== "status",
+    );
+  }
   async serviceStatus() {
     if (!this.status.connected) throw new Error("后台尚未连接");
     const connection = this.requireConnection();
