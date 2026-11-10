@@ -498,6 +498,16 @@ fn response_result(response: Value, id: &str) -> Result<Value> {
         .context("missing Host response result")
 }
 
+/// `-p`/exec 会话各自登记 `<home>/cli/runs/<id>/state`，只属于那次会话；
+/// 没指定数据目录的启动不能接管它，否则同一目录跑过两次会话后就报歧义。
+fn session_private(project: &ProjectRegistration) -> bool {
+    let mut parts = project.data_dir.components().rev();
+    parts.next().is_some_and(|part| part.as_os_str() == "state")
+        && parts.next().is_some()
+        && parts.next().is_some_and(|part| part.as_os_str() == "runs")
+        && parts.next().is_some_and(|part| part.as_os_str() == "cli")
+}
+
 fn select_project<'a>(
     projects: &'a [ProjectRegistration],
     input: &ResolveProject,
@@ -518,7 +528,11 @@ fn select_project<'a>(
         .iter()
         .filter(|p| {
             p.workspace == input.registration.workspace
-                && (!input.explicit_data_dir || p.data_dir == input.registration.data_dir)
+                && (if input.explicit_data_dir {
+                    p.data_dir == input.registration.data_dir
+                } else {
+                    !session_private(p)
+                })
         })
         .collect();
     if candidates.len() < 2 {
@@ -661,6 +675,24 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("projectAmbiguous")
+        );
+        let mut session = first.clone();
+        session.project_id = "session".into();
+        session.data_dir = "/home/cli/runs/run-one/state".into();
+        let mut other = session.clone();
+        other.data_dir = "/home/cli/runs/run-two/state".into();
+        assert!(
+            select_project(&[session.clone(), other.clone()], &input)
+                .unwrap()
+                .is_none(),
+            "会话私有登记不参与默认启动的选择"
+        );
+        assert_eq!(
+            select_project(&[session, other, first.clone()], &input)
+                .unwrap()
+                .unwrap()
+                .project_id,
+            "one"
         );
         second.default_binding = true;
         assert_eq!(
