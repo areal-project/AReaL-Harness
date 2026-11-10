@@ -2113,7 +2113,24 @@ async function runFullModelSelection() {
   await button("首页").click();
   await createProjectConversation(page, "workspace");
   await button("选择模型").click();
-  await (await showModel("theta-model")).click();
+  await (await showModel("theta-model")).click().catch(async (error) => {
+    // 超时时带上各项目的应用状态和菜单里实际显示的内容，区分“没应用完”和“应用完了但目录没重读”。
+    const status = await call("providers", { operation: "list" });
+    const shown = await page.getByRole("radio").allTextContents();
+    throw new Error(
+      `saved model is not selectable: ${JSON.stringify({
+        revision: status.revision,
+        pendingApply: status.pendingApply,
+        projects: status.projects.map((item) => ({
+          root: item.root === workspace ? "workspace" : "other",
+          applied: item.applied,
+          application: item.application?.kind,
+        })),
+        shown,
+      })}`,
+      { cause: error },
+    );
+  });
   await page.keyboard.press("Escape");
   assert.match(await button("选择模型").innerText(), /theta-model/);
   assert.equal(requests.length, 0, "model selection does not create or send a task");
