@@ -67,6 +67,7 @@ pub(crate) fn classify(error: &StreamableHttpError<reqwest_mcp::Error>) -> HttpF
             },
             e.status().map(|s| s.as_u16()),
         ),
+        HttpStatus(e) => ("http_status", Some(e.status)),
         AuthRequired(_) => ("authentication", Some(401)),
         InsufficientScope(_) => ("scope", Some(403)),
         Auth(_) => ("authentication", None),
@@ -76,7 +77,7 @@ pub(crate) fn classify(error: &StreamableHttpError<reqwest_mcp::Error>) -> HttpF
         Io(_) => ("io", None),
         UnexpectedEndOfStream => ("end_of_stream", None),
         UnexpectedServerResponse(message) => {
-            // rmcp3.3 prefixes HTTP rejections with its own numeric status.
+            // 其余 HTTP 拒绝仍以 "HTTP <status>" 开头。
             // Copy only that bounded integer, never the provider body suffix.
             let status = message
                 .strip_prefix("HTTP ")
