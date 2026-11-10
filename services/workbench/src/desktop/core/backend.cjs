@@ -1687,7 +1687,8 @@ class CoreBackend {
       const read = operation === "plugins" || operation === "plugin" || operation === "mcp";
       if (read || store.pluginStoreOperation(operation)) {
         // logicalProjectId 是桌面通道内部的路由字段，Host 不认。
-        const { logicalProjectId: _logical, ...plain } = request;
+        const plain = /** @type {Record<string, unknown>} */ ({ ...request });
+        delete plain.logicalProjectId;
         return this.hostCall(
           read ? "plugins.read" : "plugins.command",
           store.hostPluginStoreParams(plain),
