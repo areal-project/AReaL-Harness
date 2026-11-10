@@ -1,0 +1,27 @@
+docs/benchmarks/reports/README.en.md
+  s_bf83cab8355b2b::t_b49a2b684e745a 9
+docs/benchmarks/reports/main-f08-regression-review.md
+  s_bf83cab8355b2b::t_b49a2b684e745a 1-68
+docs/benchmarks/reports/README.md
+  s_bf83cab8355b2b::t_b49a2b684e745a 9
+docs/benchmarks/reports/main-f08-regression-review.en.md
+  s_bf83cab8355b2b::t_b49a2b684e745a 1-68
+docs/benchmarks/reports/main-f08-regression-review.json
+  s_bf83cab8355b2b::t_52d07001769ff6 1-760
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ecd39e9c80a6ba5a174cec56797baaf2f9b21366",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
