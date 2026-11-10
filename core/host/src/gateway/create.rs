@@ -324,9 +324,7 @@ impl Session {
         );
         let (revision, snapshot) = self.host.journal.native_snapshot(&id)?;
         ensure!(
-            snapshot["pending"].as_array().unwrap().len()
-                + snapshot["outcomes"].as_object().unwrap().len()
-                < 4096,
+            crate::journal::has_capacity(&snapshot),
             "RESOURCE_UNAVAILABLE"
         );
         self.authorize(Some(project), "submit")?;

@@ -538,12 +538,7 @@ impl Session {
         );
         let record = json!({"method":method,"operationId":operation,"params":native,"nativeDigest":native_digest(method,&native)?,"coreScope":{"serviceId":scope.0,"generation":scope.1,"connectionId":scope.2,"storeBinding":binding},"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":request["method"],"capability":capability,"admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":target}});
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
-        ensure!(
-            snapshot["pending"].as_array().unwrap().len()
-                + snapshot["outcomes"].as_object().unwrap().len()
-                < 4096,
-            "CAPACITY_EXCEEDED"
-        );
+        ensure!(crate::journal::has_capacity(&snapshot), "CAPACITY_EXCEEDED");
         snapshot["pending"]
             .as_array_mut()
             .unwrap()

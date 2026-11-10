@@ -67,6 +67,70 @@ struct Record {
     initial_digest: String,
     snapshot: Snapshot,
     last_operation: Option<Prepared>,
+    /// 每条已结算回执首次落盘的 Unix 秒；只供回收排序，不随快照返回给客户端。
+    #[serde(default)]
+    settled_at: BTreeMap<String, u64>,
+}
+
+/// 单个日志范围内待决与已结算记录的硬上限；回收保证正常使用不会触达。
+pub(crate) const CAPACITY: usize = 4096;
+/// 超过软阈值时回收最旧的已结算回执，降到目标值为止。
+const RECLAIM_THRESHOLD: usize = 3072;
+const RECLAIM_TARGET: usize = 2048;
+/// 结算后至少保留一天，保证同一 commandId 的重试仍得到原回执而不是被当成新命令。
+const RECLAIM_MIN_AGE_SECS: u64 = 24 * 60 * 60;
+
+pub(crate) fn has_capacity(snapshot: &Value) -> bool {
+    snapshot["pending"].as_array().map_or(0, Vec::len)
+        + snapshot["outcomes"]
+            .as_object()
+            .map_or(0, |rows| rows.len())
+        < CAPACITY
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+/// 这些回执是长期授权事实而不只是去重记录，删除会改变行为，永不回收。
+fn retained_forever(outcome: &Value) -> bool {
+    let remote = &outcome["remote"];
+    remote["method"] == "session.control" && remote["target"]["operation"] == "goalCreate"
+}
+
+/// 记录新结算回执的时间，并在超过软阈值时按结算时间从旧到新回收。
+/// 仍被待决行引用、未满最短保留时间或长期授权类的回执不回收。
+fn reclaim(record: &mut Record, now: u64) {
+    let outcomes = &mut record.snapshot.outcomes;
+    record.settled_at.retain(|id, _| outcomes.contains_key(id));
+    for id in outcomes.keys() {
+        record.settled_at.entry(id.clone()).or_insert(now);
+    }
+    let pending = &record.snapshot.pending;
+    let total = pending.len() + outcomes.len();
+    if total <= RECLAIM_THRESHOLD {
+        return;
+    }
+    let referenced: std::collections::BTreeSet<&str> =
+        pending.iter().filter_map(submission_id).collect();
+    let mut candidates: Vec<(u64, String)> = record
+        .settled_at
+        .iter()
+        .filter(|(id, at)| {
+            now.saturating_sub(**at) >= RECLAIM_MIN_AGE_SECS
+                && !referenced.contains(id.as_str())
+                && !outcomes.get(*id).is_some_and(retained_forever)
+        })
+        .map(|(id, at)| (*at, id.clone()))
+        .collect();
+    candidates.sort();
+    let excess = total - RECLAIM_TARGET;
+    for (_, id) in candidates.into_iter().take(excess) {
+        outcomes.remove(&id);
+        record.settled_at.remove(&id);
+    }
 }
 
 pub(crate) struct Journal {
@@ -185,6 +249,7 @@ impl Journal {
                 initial_digest: digest,
                 snapshot,
                 last_operation: None,
+                settled_at: BTreeMap::new(),
             },
         )
     }
@@ -225,6 +290,7 @@ impl Journal {
             .revision
             .checked_add(1)
             .context("journal revision exhausted")?;
+        reclaim(&mut record, now_secs());
         storage::write(&self.record_path(project_id)?, &record)
     }
 
@@ -387,6 +453,14 @@ impl Journal {
         );
         record.snapshot.validate()?;
         self.recover(&record)?;
+        let mut record = record;
+        if record.settled_at.is_empty() {
+            // 升级前写入的记录没有结算时间，视为已过最短保留期，满额项目升级后即可恢复。
+            for id in record.snapshot.outcomes.keys() {
+                record.settled_at.insert(id.clone(), 0);
+            }
+        }
+        reclaim(&mut record, now_secs());
         Ok(record)
     }
     fn recover(&self, record: &Record) -> Result<()> {
@@ -544,12 +618,13 @@ impl Journal {
             .checked_add(1)
             .context("journal revision exhausted")?;
         operation.receipt = json!({"requestId":operation.request_id,"projectId":operation.project_id,"revision":revision,"sha256":operation.sha256,"method":"journal.commit","state":"completed"});
-        let next = Record {
+        let mut next = Record {
             revision,
             snapshot,
             last_operation: Some(operation.clone()),
             ..record
         };
+        reclaim(&mut next, now_secs());
         storage::write(&self.record_path(&operation.project_id)?, &next)?;
         storage::write(&self.operation_path(&operation.request_id), &operation)?;
         remove_transfer(&operation.write_path)?;
@@ -566,7 +641,7 @@ fn check_admission(snapshot: &Value, entry: &Value, block_target: bool) -> Resul
     let key = submission_id(entry).context("INVALID_PARAMS")?;
     let pending = snapshot["pending"].as_array().context("INVALID_PARAMS")?;
     let outcomes = snapshot["outcomes"].as_object().context("INVALID_PARAMS")?;
-    ensure!(pending.len() + outcomes.len() < 4096, "CAPACITY_EXCEEDED");
+    ensure!(has_capacity(snapshot), "CAPACITY_EXCEEDED");
     ensure!(
         !outcomes.contains_key(key) && !pending.iter().any(|row| submission_id(row) == Some(key)),
         "COMMAND_CONFLICT"
@@ -780,6 +855,105 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .is_empty()
+        );
+    }
+
+    fn outcomes(count: usize) -> BTreeMap<String, Value> {
+        (0..count)
+            .map(|index| (format!("done-{index:05}"), json!({"accepted":true})))
+            .collect()
+    }
+
+    #[test]
+    fn reclaim_keeps_recent_referenced_and_goal_control_receipts() {
+        let now = 10 * RECLAIM_MIN_AGE_SECS;
+        let mut snapshot = Snapshot {
+            version: 1,
+            pending: vec![
+                json!({"method":"areal/turn/submit","params":{"requestId":"done-00000"}}),
+            ],
+            outcomes: outcomes(CAPACITY),
+        };
+        snapshot.outcomes.insert(
+            "goal".into(),
+            json!({"remote":{"method":"session.control","target":{"operation":"goalCreate"}},"admissionState":"accepted"}),
+        );
+        let mut settled_at: BTreeMap<String, u64> =
+            snapshot.outcomes.keys().map(|id| (id.clone(), 0)).collect();
+        // 最新的 100 条仍在最短保留期内。
+        for index in CAPACITY - 100..CAPACITY {
+            settled_at.insert(format!("done-{index:05}"), now - 60);
+        }
+        let mut record = Record {
+            project_id: "project".into(),
+            revision: 0,
+            initial_digest: String::new(),
+            snapshot,
+            last_operation: None,
+            settled_at,
+        };
+        reclaim(&mut record, now);
+        let kept = &record.snapshot.outcomes;
+        assert_eq!(record.snapshot.pending.len() + kept.len(), RECLAIM_TARGET);
+        assert!(kept.contains_key("goal") && kept.contains_key("done-00000"));
+        assert!(
+            (CAPACITY - 100..CAPACITY).all(|index| kept.contains_key(&format!("done-{index:05}")))
+        );
+        assert!(!kept.contains_key("done-00001"));
+        assert_eq!(record.settled_at.len(), kept.len());
+
+        // 全部在最短保留期内时一条都不回收，同一 commandId 仍能命中原回执。
+        let mut fresh = Record {
+            settled_at: BTreeMap::new(),
+            snapshot: Snapshot {
+                version: 1,
+                pending: vec![],
+                outcomes: outcomes(RECLAIM_THRESHOLD + 10),
+            },
+            ..record
+        };
+        reclaim(&mut fresh, now);
+        assert_eq!(fresh.snapshot.outcomes.len(), RECLAIM_THRESHOLD + 10);
+        assert!(fresh.settled_at.values().all(|at| *at == now));
+    }
+
+    #[test]
+    fn full_journal_from_previous_release_admits_after_reclaim() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        journal.native_snapshot("project").unwrap();
+        // 模拟升级前写满且没有结算时间字段的记录。
+        let path = journal.record_path("project").unwrap();
+        let mut legacy: Value = read_large(&path).unwrap();
+        legacy["snapshot"]["outcomes"] = serde_json::to_value(outcomes(CAPACITY)).unwrap();
+        legacy.as_object_mut().unwrap().remove("settledAt");
+        storage::write(&path, &legacy).unwrap();
+
+        let (revision, snapshot) = journal.native_snapshot("project").unwrap();
+        assert_eq!(
+            snapshot["outcomes"].as_object().unwrap().len(),
+            RECLAIM_TARGET
+        );
+        let entry =
+            json!({"method":"areal/turn/submit","params":{"requestId":"next","threadId":"thread"}});
+        journal
+            .native_admit("project", revision, snapshot, entry.clone(), true)
+            .unwrap();
+        journal
+            .native_finish("project", &entry, Some(json!({"accepted":true})))
+            .unwrap();
+        let stored: Value = read_large(&path).unwrap();
+        assert_eq!(
+            stored["snapshot"]["outcomes"].as_object().unwrap().len(),
+            RECLAIM_TARGET + 1
+        );
+        assert!(stored["settledAt"]["next"].as_u64().unwrap() > 0);
+        // 刚结算的回执在保留期内，重复结算返回原回执。
+        assert_eq!(
+            journal
+                .native_finish("project", &entry, Some(json!({"accepted":false})))
+                .unwrap(),
+            json!({"accepted":true})
         );
     }
 

@@ -153,12 +153,7 @@ impl Session {
         let operation = uuid::Uuid::new_v4().to_string();
         let record = json!({"method":"turn/interrupt","operationId":operation,"params":native,"threadId":params.thread_id,"turnId":params.expected_turn_id,"remote":{"hostId":self.host_peer,"devicePeerId":self.peer,"projectId":project,"commandId":command,"method":"turn.stop","capability":"interrupt","admittedGrantRevision":self.grant["revision"],"semanticDigest":digest,"target":params}});
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
-        ensure!(
-            snapshot["pending"].as_array().unwrap().len()
-                + snapshot["outcomes"].as_object().unwrap().len()
-                < 4096,
-            "CAPACITY_EXCEEDED"
-        );
+        ensure!(crate::journal::has_capacity(&snapshot), "CAPACITY_EXCEEDED");
         self.authorize(Some(project), "interrupt")?;
         snapshot["pending"]
             .as_array_mut()

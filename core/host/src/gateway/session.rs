@@ -1727,9 +1727,7 @@ impl Session {
         let (id, _) = self.project(project)?;
         let (revision, mut snapshot) = self.host.journal.native_snapshot(&id)?;
         ensure!(
-            snapshot["pending"].as_array().unwrap().len()
-                + snapshot["outcomes"].as_object().unwrap().len()
-                < 4096,
+            crate::journal::has_capacity(&snapshot),
             "RESOURCE_UNAVAILABLE"
         );
         let operation = uuid::Uuid::new_v4().to_string();
