@@ -114,16 +114,15 @@ async function executeMediaCommand(project, request, backend) {
       throw new Error("上传回执不完整");
     return receipt;
   } catch (cause) {
+    const code = modelRecord(cause) ? String(cause.code) : "";
     const definite =
-      modelRecord(cause) &&
-      ["INVALID_PARAMS", "LIMIT_EXCEEDED", "RESOURCE_UNAVAILABLE", "FORBIDDEN"].includes(
-        String(cause.code),
-      );
+      /^(INVALID_PARAMS|ATTACHMENT_UNSUPPORTED|LIMIT_EXCEEDED|RESOURCE_UNAVAILABLE|FORBIDDEN)$/.test(code);
     throw Object.assign(
       new Error(
         `附件上传结果待核对：${cause instanceof Error ? cause.message : String(cause)}。不会自动重发。`,
       ),
-      { submissionUnknown: !definite },
+      // 明确被拒时带回错误码，界面按文案表说明原因。
+      { submissionUnknown: !definite, ...(definite ? { code } : {}) },
     );
   }
 }
