@@ -412,7 +412,8 @@ jobs:
             target/debug/shells clients/gui/renderer/dist clients/gui/dist/design-system clients/gui/packages/ui/dist \
             target/ci/checks/gui-build/report.json clients/gui/native/computer-helper/build \
             clients/gui/packages/gen-ui/dist clients/gui/packages/browser-automation/dist \
-            clients/gui/packages/browser-data/dist clients/gui/app/src/core/snapshots/build
+            clients/gui/packages/browser-data/dist clients/gui/app/src/core/snapshots/build \
+            clients/gui/app/src/ipc/generated services/workbench/src/generated
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         id: smoke-inputs
         if: ${{ !cancelled() && steps.build.outputs.artifact_ready == 'true' }}
