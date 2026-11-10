@@ -21,7 +21,8 @@ describe("model catalog refresh", () => {
       { projectId: "host", state: "ready", serviceGeneration: "generation" },
     ] as unknown as ShellProject[];
     const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
-    const refresh = () => refreshModelCatalogs(client, projects, catalogs, refresh);
+    let epoch = 0;
+    const refresh = () => refreshModelCatalogs(client, projects, catalogs, refresh, epoch);
     refresh();
     await vi.advanceTimersByTimeAsync(0);
     refresh();
@@ -31,5 +32,11 @@ describe("model catalog refresh", () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(calls).toBe(2);
     expect(catalogs.get("host")?.value).toMatchObject({ profiles: [{ id: "profile" }] });
+    // 模型服务设置写入后：同一代也重读，重读期间旧目录还在。
+    epoch = 1;
+    refresh();
+    expect(catalogs.get("host")?.value).toMatchObject({ profiles: [{ id: "profile" }] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls).toBe(3);
   });
 });

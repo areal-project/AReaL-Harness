@@ -1,6 +1,7 @@
 import type { HostClient, JsonObject } from "@areal/client";
 import type { PlatformServices } from "./services.js";
 import { isLibraryState } from "./services.js";
+import { commandWrites } from "./desktop-response.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
 
 const WORKTREE_READS = new Set(["worktreeList", "worktreeOptions", "worktreeRead"]);
@@ -170,6 +171,15 @@ type Run = (
   name: string,
   params: Record<string, unknown>,
 ) => ReturnType<PlatformServices["command"]>;
+
+/** 模型服务设置写入成功后通知一次；读取不算。 */
+export function afterProviderWrite(run: Run, changed: () => void): Run {
+  return async (name, params) => {
+    const result = await run(name, params);
+    if (name === "providers" && result.ok && commandWrites(name, params)) changed();
+    return result;
+  };
+}
 
 /**
  * 插件授权和 ChatGPT 登录返回授权页地址，由界面交给系统浏览器打开；桌面与网页同一处理。

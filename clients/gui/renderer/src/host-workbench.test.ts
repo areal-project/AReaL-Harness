@@ -3,6 +3,7 @@ import type { HostClient } from "@areal/client";
 import { call } from "./services.js";
 import {
   createWorkbenchRoutes,
+  afterProviderWrite,
   hostDesktopCommand,
   hostPlatformCapabilities,
   openingAuthorization,
@@ -639,6 +640,23 @@ describe("local web desktop commands", () => {
     expect(capabilities?.settings).toContain("模型服务");
     expect(capabilities?.settings).not.toContain("电脑控制");
     expect(hostPlatformCapabilities(client, undefined, undefined)?.mutations).toBe(false);
+  });
+
+  it("reports successful model service writes but not reads or failures", async () => {
+    let changes = 0;
+    let ok = true;
+    const run = afterProviderWrite(
+      async () => (ok ? { ok: true, value: {} } : { ok: false, error: { message: "x" } }) as never,
+      () => changes++,
+    );
+    await run("providers", { operation: "list" } as never);
+    await run("list", { projectId: "p" } as never);
+    expect(changes).toBe(0);
+    await run("providers", { operation: "saveAndApply" } as never);
+    expect(changes).toBe(1);
+    ok = false;
+    await run("providers", { operation: "saveAndApply" } as never);
+    expect(changes).toBe(1);
   });
 
   it("preserves a migration block for read-only history recovery", async () => {
