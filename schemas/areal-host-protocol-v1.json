@@ -65646,7 +65646,7 @@
     },
     "WorkbenchPluginsCommandParams": {
       "type": "object",
-      "description": "Plugin store writes owned by the Host. Installation is user level; projectId on pluginConfigure sets the project override. mcpSave stores a directly added MCP server as a single-server plugin.",
+      "description": "Plugin store writes owned by the Host. Installation is user level; projectId on pluginInstall discovers that project's marketplaces, and on pluginConfigure sets the project override. mcpSave stores a directly added MCP server as a single-server plugin.",
       "properties": {
         "operation": {
           "type": "string",
