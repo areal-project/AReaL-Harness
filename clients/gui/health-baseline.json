@@ -2,7 +2,7 @@
   "$schemaVersion": 1,
   "$revision": "6d50f24d4c5db74dd005cafc693b6d2ea8d942c5",
   "mainSourceLines": {
-    "value": 24714,
+    "value": 24072,
     "direction": "down",
     "owner": "app/src"
   },
@@ -122,6 +122,7 @@
     "app/src/core/legacy-service-cancel.cjs": 543,
     "app/src/core/lifecycle.cjs": 364,
     "app/src/core/main.cjs": 1908,
+    "app/src/core/mcp-apps-images.cjs": 198,
     "app/src/core/mcp-form-resources.cjs": 245,
     "app/src/core/menu-bar.cjs": 68,
     "app/src/core/plugin-archives.cjs": 62,
@@ -839,7 +840,7 @@
     "app/src/update/package-users.cjs": "Electron application update installation, Squirrel readiness and package occupancy"
   },
   "mainBusinessLines": {
-    "value": 8055,
+    "value": 7411,
     "direction": "down",
     "owner": "app/src"
   },
@@ -940,7 +941,7 @@
     "../../services/workbench/src/pages.cjs"
   ],
   "workbenchConvergeLines": {
-    "value": 9871,
+    "value": 7865,
     "direction": "down",
     "owner": "services/workbench/src"
   }

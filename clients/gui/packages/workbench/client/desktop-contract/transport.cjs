@@ -179,7 +179,7 @@ const commandDefinitions = Object.freeze({
   ],
   exportDiagnostics: ["main", "app", read],
   connectService: ["main", "app", subscription],
-  remoteControl: ["service", "app", mutation],
+  remoteControl: ["main", "app", mutation],
 });
 /** @param {string} name @param {Record<string,unknown>} request @returns {CommandEffect} */
 function commandSemantics(name, request) {

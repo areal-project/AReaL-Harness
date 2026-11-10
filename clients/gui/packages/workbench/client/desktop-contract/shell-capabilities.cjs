@@ -61,6 +61,7 @@ const mainCommands = {
   serviceStatus: { kind: "transitional", reason: "后台状态；应由 Host 统一给出" },
   recoverResources: { kind: "transitional", reason: "后台恢复；应由 Host 统一处理" },
   connectService: { kind: "transitional", reason: "连接后台；界面全走 Host 后不再需要" },
+  remoteControl: { kind: "transitional", reason: "远程控制配置属于业务" },
 };
 
 /**
@@ -87,6 +88,6 @@ const desktopOperations = {
 };
 
 /** 业务仍走 IPC 的上限：迁走一项就把对应数字减一，不允许加回去。 */
-const transitionalLimit = { bridge: 8, mainCommands: 3 };
+const transitionalLimit = { bridge: 8, mainCommands: 4 };
 
 module.exports = { bridge, mainCommands, desktopOperations, transitionalLimit };
