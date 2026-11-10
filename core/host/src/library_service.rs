@@ -129,24 +129,20 @@ pub(super) async fn command(host: &Rc<Host>, source: &str, params: Value) -> Res
                 .into(),
         ));
     }
-    if params["operation"] == "readThread" {
-        if let (Some(project), Some(thread)) =
+    if params["operation"] == "readThread"
+        && let (Some(project), Some(thread)) =
             (params["projectId"].as_str(), params["threadId"].as_str())
-        {
-            if let Some((canonical, _)) = aliases.iter().find(|(_, alias)| alias == project) {
-                if rpc(
-                    host,
-                    canonical,
-                    "thread/read",
-                    json!({"threadId":thread,"includeTurns":false}),
-                )
-                .await
-                .is_ok()
-                {
-                    context.readable.push((project.into(), thread.into()));
-                }
-            }
-        }
+        && let Some((canonical, _)) = aliases.iter().find(|(_, alias)| alias == project)
+        && rpc(
+            host,
+            canonical,
+            "thread/read",
+            json!({"threadId":thread,"includeTurns":false}),
+        )
+        .await
+        .is_ok()
+    {
+        context.readable.push((project.into(), thread.into()));
     }
     if params["operation"] == "hideProject" && params["hidden"] == true {
         for owner in worktree_catalog::owners(

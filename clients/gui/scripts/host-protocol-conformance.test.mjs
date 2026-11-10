@@ -90,7 +90,7 @@ async function localConnection(t, fixture) {
     for (;;) {
       const response = await next();
       if (typeof response?.method === "string") {
-        const ref = schema["x-current"].local.events[response.method];
+        const ref = schema["x-current"].local.events[response.method]?.schema;
         assert.equal(typeof ref, "string", `actual local event ${response.method} is declared`);
         conforms(ref, response);
         continue;
@@ -201,7 +201,7 @@ if (!process.env.RC12_TLS_HOME) {
     });
     const event = await local.next();
     assert.equal(event.method, "host.statusChanged");
-    conforms(schema["x-current"].local.events[event.method], event);
+    conforms(schema["x-current"].local.events[event.method]?.schema, event);
     assert.equal(event.params.subscriptionId, subscription.subscriptionId);
     assert.equal(event.params.sequence, 1);
     assert.notDeepEqual(event.params.status, before);
@@ -245,7 +245,7 @@ if (!process.env.RC12_TLS_HOME) {
       root: nextWorkspace,
     });
     const localUpdate = await local.next();
-    conforms(schema["x-current"].local.events[localUpdate.method], localUpdate);
+    conforms(schema["x-current"].local.events[localUpdate.method]?.schema, localUpdate);
     const {
       value: [bytes],
     } = await deadline(messages.next());

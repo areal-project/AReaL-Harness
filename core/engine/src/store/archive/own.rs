@@ -307,7 +307,7 @@ pub(crate) fn page(
             cursor.offset = 0;
             cursor.version = Some(version.clone());
             return Err(failure(
-                &thread,
+                thread,
                 "HISTORY_ITEM_CHANGED",
                 Some(cursor.encoded()),
             ));

@@ -326,10 +326,10 @@ fn inspect(manifest: &Manifest) -> Result<Value> {
         }
     }
     for provider in &mut public {
-        if let Some(id) = provider["id"].as_str() {
-            if let Some(operation) = import_projection(&manifest.host_home, id)? {
-                provider["importOperation"] = operation;
-            }
+        if let Some(id) = provider["id"].as_str()
+            && let Some(operation) = import_projection(&manifest.host_home, id)?
+        {
+            provider["importOperation"] = operation;
         }
     }
     let (scheduled_tasks, task_catalog_unavailable, tasks_truncated) =
@@ -454,6 +454,74 @@ fn validate_workspace_for_manifest(manifest: &Manifest, workspace: &Path) -> Res
         );
     }
     Ok(())
+}
+
+/// 只读取现存后台，不负责启动、停止或核对未决操作。
+pub async fn preflight_space(source: SpaceSource) -> Result<Value> {
+    for path in [&source.profile, &source.core_home, &source.host_home] {
+        ensure!(path.is_absolute(), "source paths must be absolute");
+        match fs::symlink_metadata(path) {
+            Ok(_) => directory(path)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    let projects = metadata(&source.core_home.join("projects.json"))?;
+    let providers = metadata(&source.core_home.join("providers.json"))?;
+    let has_existing = projects
+        .as_ref()
+        .and_then(Value::as_array)
+        .is_some_and(|v| !v.is_empty())
+        || providers.as_ref().is_some_and(|v| {
+            v.as_array()
+                .or_else(|| v["data"].as_array())
+                .or_else(|| v["providers"].as_array())
+                .is_some_and(|v| !v.is_empty())
+        });
+    if !has_existing {
+        return Ok(json!({"kind":"normal","hasExistingData":false}));
+    }
+    let Some(identity) = metadata(&source.host_home.join("host/host.json"))? else {
+        return Ok(json!({"kind":"normal","hasExistingData":true}));
+    };
+    let observed = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        let client = crate::Client::connect_at(source.host_home.clone()).await?;
+        client.status().await
+    })
+    .await;
+    let status = match observed {
+        Ok(Ok(status)) => status,
+        _ => {
+            return Ok(json!({"kind":"blocked","hasExistingData":true,"reason":"hostUnreachable"}));
+        }
+    };
+    let previous = json!({"hostId":status.host_id,"generation":status.generation});
+    if identity["hostId"] != status.host_id || identity["generation"] != status.generation {
+        return Ok(
+            json!({"kind":"blocked","hasExistingData":true,"previousHost":previous,"reason":"identityChanged"}),
+        );
+    }
+    let stop = metadata(&source.host_home.join("host/stop.json"))?.unwrap_or(Value::Null);
+    let reason = if status.stop_intent
+        && stop["generation"] == status.generation
+        && stop["state"] == "admissionUnknown"
+    {
+        Some("stopUnknown")
+    } else if status
+        .projects
+        .iter()
+        .any(|project| project.schedule_activation_error.as_deref() == Some("migrationBlocked"))
+    {
+        Some("migrationBlocked")
+    } else {
+        None
+    };
+    Ok(match reason {
+        Some(reason) => {
+            json!({"kind":"upgradeRequired","hasExistingData":true,"previousHost":previous,"reason":reason})
+        }
+        None => json!({"kind":"normal","hasExistingData":true,"previousHost":previous}),
+    })
 }
 
 #[cfg(test)]
@@ -700,72 +768,4 @@ mod tests {
         storage::write(&path, &json!({"spaceId":null})).unwrap();
         assert_eq!(active(&roots).unwrap(), json!({"spaceId":null}));
     }
-}
-
-/// 只读取现存后台，不负责启动、停止或核对未决操作。
-pub async fn preflight_space(source: SpaceSource) -> Result<Value> {
-    for path in [&source.profile, &source.core_home, &source.host_home] {
-        ensure!(path.is_absolute(), "source paths must be absolute");
-        match fs::symlink_metadata(path) {
-            Ok(_) => directory(path)?,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e.into()),
-        }
-    }
-    let projects = metadata(&source.core_home.join("projects.json"))?;
-    let providers = metadata(&source.core_home.join("providers.json"))?;
-    let has_existing = projects
-        .as_ref()
-        .and_then(Value::as_array)
-        .is_some_and(|v| !v.is_empty())
-        || providers.as_ref().is_some_and(|v| {
-            v.as_array()
-                .or_else(|| v["data"].as_array())
-                .or_else(|| v["providers"].as_array())
-                .is_some_and(|v| !v.is_empty())
-        });
-    if !has_existing {
-        return Ok(json!({"kind":"normal","hasExistingData":false}));
-    }
-    let Some(identity) = metadata(&source.host_home.join("host/host.json"))? else {
-        return Ok(json!({"kind":"normal","hasExistingData":true}));
-    };
-    let observed = tokio::time::timeout(std::time::Duration::from_secs(3), async {
-        let client = crate::Client::connect_at(source.host_home.clone()).await?;
-        client.status().await
-    })
-    .await;
-    let status = match observed {
-        Ok(Ok(status)) => status,
-        _ => {
-            return Ok(json!({"kind":"blocked","hasExistingData":true,"reason":"hostUnreachable"}));
-        }
-    };
-    let previous = json!({"hostId":status.host_id,"generation":status.generation});
-    if identity["hostId"] != status.host_id || identity["generation"] != status.generation {
-        return Ok(
-            json!({"kind":"blocked","hasExistingData":true,"previousHost":previous,"reason":"identityChanged"}),
-        );
-    }
-    let stop = metadata(&source.host_home.join("host/stop.json"))?.unwrap_or(Value::Null);
-    let reason = if status.stop_intent
-        && stop["generation"] == status.generation
-        && stop["state"] == "admissionUnknown"
-    {
-        Some("stopUnknown")
-    } else if status
-        .projects
-        .iter()
-        .any(|project| project.schedule_activation_error.as_deref() == Some("migrationBlocked"))
-    {
-        Some("migrationBlocked")
-    } else {
-        None
-    };
-    Ok(match reason {
-        Some(reason) => {
-            json!({"kind":"upgradeRequired","hasExistingData":true,"previousHost":previous,"reason":reason})
-        }
-        None => json!({"kind":"normal","hasExistingData":true,"previousHost":previous}),
-    })
 }

@@ -294,7 +294,7 @@ export const commonMessages = {
     en: "Read-only history. The project's execution state has not been restored.",
   },
   "common.navigation.migrationRecovery": {
-    "zh-CN": "请确认旧版本任务已停止并退出，再重新打开此项目查看迁移状态。",
+    "zh-CN": "请先停止旧版本的任务并退出旧版本，再重新打开此项目检查迁移状态。",
     en: "Confirm that tasks in the previous version have stopped, then quit it. Reopen this project to check migration progress.",
   },
   "common.navigation.moveUp": { "zh-CN": "上移", en: "Move up" },

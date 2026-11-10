@@ -4,7 +4,7 @@ const { createHash } = require("node:crypto");
 const { realpathSync } = require("node:fs");
 const { join, resolve } = require("node:path");
 const { homedir } = require("node:os");
-const bootstrap = require("@areal/workbench-service/desktop/core/space-bootstrap.cjs");
+const bootstrap = require("./space-bootstrap.cjs");
 // 独立应用身份避免接管旧安装；开发版按工作树隔离。
 /** @param {import('electron').App} app @param {NodeJS.ProcessEnv} [env] */
 function configureUserData(app, env = process.env) {

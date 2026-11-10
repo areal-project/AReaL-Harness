@@ -9,6 +9,7 @@ const require = createRequire(new URL("../app/package.json", import.meta.url));
 const { TrajectoryExport, publicStatus } = require("@areal/workbench-service/trajectory");
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
+const { hostCoreClient } = createRequire(import.meta.url)("./support/host-core-fixture.cjs");
 const status = {
   enabled: true,
   state: "degraded",
@@ -385,8 +386,7 @@ test("explicit retry and ordinary send still count as work and release admission
     id: "a".repeat(24),
     root: backend.home,
     model: { state: { threads: {} } },
-    client: {
-      ready: true,
+    client: await hostCoreClient({
       capabilities: { methods: ["areal/turn/submit"], features: { ordinaryTurnSubmit: true } },
       request: async (method, params) => {
         if (method === "thread/read") {
@@ -397,7 +397,7 @@ test("explicit retry and ordinary send still count as work and release admission
         assert.deepEqual(params, { limit: 100 });
         return { data: [], nextCursor: null };
       },
-    },
+    }),
     configurations: { thread: { revision: 0 } },
   };
   backend.start = async (id) => {

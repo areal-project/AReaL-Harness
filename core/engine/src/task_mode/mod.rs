@@ -510,14 +510,13 @@ impl Engine {
                 if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
                 if state.tasks.len() >= MAX_TASKS { return Err(Error::Exhausted("task capacity reached".into())); }
             }
-            if request.mode == TaskMode::Scheduled {
-                if let Some(host) = engine.schedule_create_host(&owner).await {
+            if request.mode == TaskMode::Scheduled
+                && let Some(host) = engine.schedule_create_host(&owner).await {
                     let mut prepare = json!({"intent":"create", "requestId":request.request_id, "requestDigest":hash, "threadId":request.thread_id});
                     if let Some(source) = &request.source_thread_id { prepare["sourceThreadId"] = json!(source); }
                     host.prepare_schedule(prepare, engine.shutdown.child_token()).await.map_err(invalid)?;
                     if !engine.host_current(&host).await { return Err(Error::Closed); }
                 }
-            }
             let mut state = engine.task_modes.state.lock().await;
             if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
             let mut candidate = state.clone();

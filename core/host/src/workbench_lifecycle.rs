@@ -258,16 +258,15 @@ async fn settle(
             continue;
         }
         if interrupt {
-            if let Ok(canonical) = checked_target(host, bindings, target) {
-                if let Some(turn) = turn(host, &canonical, target, &thread, &turn_id).await? {
-                    if matches!(
-                        turn["status"].as_str(),
-                        Some("completed" | "failed" | "interrupted")
-                    ) {
-                        target["phase"] = json!("completed");
-                        target.as_object_mut().unwrap().remove("error");
-                    }
-                }
+            if let Ok(canonical) = checked_target(host, bindings, target)
+                && let Some(turn) = turn(host, &canonical, target, &thread, &turn_id).await?
+                && matches!(
+                    turn["status"].as_str(),
+                    Some("completed" | "failed" | "interrupted")
+                )
+            {
+                target["phase"] = json!("completed");
+                target.as_object_mut().unwrap().remove("error");
             }
         } else if let Some(operation) = host
             .reconcile(

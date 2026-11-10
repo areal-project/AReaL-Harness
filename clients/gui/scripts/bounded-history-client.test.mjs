@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { createRequire } from "node:module";
 import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
 import { createHash } from "node:crypto";
-import { CoreClient } from "../packages/runtime-client/core.js";
 const require = createRequire(import.meta.url);
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const {
@@ -716,8 +715,7 @@ test("completing more live history re-bounds a view even after an explicit old i
     turns: [turn("t2", [item("i2", "x".repeat(2000000))])],
   });
   f.project.client.close = () => {};
-  const request = f.project.client.request,
-    originalConnect = CoreClient.prototype.connect;
+  const request = f.project.client.request;
   Object.assign(f.backend, {
     stopReconciliation() {},
     scheduleReconciliation() {},
@@ -727,14 +725,12 @@ test("completing more live history re-bounds a view even after an explicit old i
     library: { value: {}, recordThreadActivity: async () => {} },
     providers: { ...f.backend.providers, requestReconciliation() {} },
   });
-  CoreClient.prototype.connect = async () => {
+  f.backend.host = { sourceId: "source", resolve: () => ({ projectId: "project" }) };
+  f.backend.hostCoreClients = new Map();
+  f.backend.hostCall = async () => {
     throw new Error("fixture stops before transport");
   };
-  try {
-    await assert.rejects(f.backend.connect(f.project), /fixture stops/);
-  } finally {
-    CoreClient.prototype.connect = originalConnect;
-  }
+  await assert.rejects(f.backend.connect(f.project), /fixture stops/);
   const client = f.project.client;
   Object.assign(client, {
     ready: true,
