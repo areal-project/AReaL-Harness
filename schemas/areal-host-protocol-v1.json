@@ -14500,7 +14500,22 @@
         "params",
         "context"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "session.openPersisted",
+          "params": {
+            "threadId": "thread",
+            "view": "conversation"
+          },
+          "context": {
+            "projectId": "project",
+            "serviceGeneration": "core-generation"
+          }
+        }
+      ]
     },
     "LoopbackSessionOpenRequest": {
       "type": "object",
@@ -21482,6 +21497,26 @@
             "threadId": {
               "type": "string"
             },
+            "agentProfile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-maxUtf8Bytes": 128
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-maxUtf8Bytes": 128
+                }
+              },
+              "required": [
+                "id",
+                "revision"
+              ],
+              "additionalProperties": false
+            },
             "sourceId": {
               "type": "string",
               "minLength": 1
@@ -21496,7 +21531,6 @@
             }
           },
           "required": [
-            "threadId",
             "projectId",
             "operation"
           ],
@@ -21536,6 +21570,26 @@
             "threadId": {
               "type": "string"
             },
+            "agentProfile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-maxUtf8Bytes": 128
+                },
+                "revision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "x-maxUtf8Bytes": 128
+                }
+              },
+              "required": [
+                "id",
+                "revision"
+              ],
+              "additionalProperties": false
+            },
             "sourceId": {
               "type": "string",
               "minLength": 1
@@ -21550,7 +21604,6 @@
             }
           },
           "required": [
-            "threadId",
             "skill",
             "projectId",
             "operation"
@@ -66657,6 +66710,11 @@
         {
           "$ref": "#/$defs/RecoverySpaceInspectResult"
         }
+      ],
+      "examples": [
+        {
+          "kind": "none"
+        }
       ]
     },
     "LocalRecoveryInspectRequest": {
@@ -66791,7 +66849,19 @@
         "attachments",
         "page"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "projectId": "project",
+          "threadId": "thread",
+          "snapshotId": "snapshot",
+          "serviceGeneration": "core-generation",
+          "capturedAt": 0,
+          "readOnly": true,
+          "attachments": "unavailable",
+          "page": {}
+        }
+      ]
     },
     "LocalRecoveryHistoryRequest": {
       "type": "object",
@@ -66825,7 +66895,8 @@
           "id": "example",
           "method": "recovery.history",
           "params": {
-            "spaceId": "00000000-0000-4000-8000-000000000000"
+            "projectId": "project",
+            "threadId": "thread"
           }
         }
       ]
@@ -67221,7 +67292,15 @@
         "state",
         "templateDigest"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "requestId": "01234567-89ab-cdef-0123-456789abcdef",
+          "providerId": "provider",
+          "state": "completed",
+          "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ]
     },
     "LocalRecoveryProviderImportRequest": {
       "type": "object",
@@ -67248,7 +67327,19 @@
         "method",
         "params"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "01234567-89ab-cdef-0123-456789abcdef",
+          "method": "recovery.importProvider",
+          "params": {
+            "requestId": "01234567-89ab-cdef-0123-456789abcdef",
+            "providerId": "provider",
+            "templateDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ]
     },
     "WorkbenchPrivateRecoveryProviderImportRequest": {
       "type": "object",
