@@ -79,7 +79,6 @@ const mutations = {
   hookAcknowledge: "areal/hook/acknowledge",
   pluginAuthConfigure: "areal/plugin/auth/configure",
   pluginConnection: "areal/plugin/connection",
-  connectorConfigure: "areal/plugin/connector/configure",
   pluginComponentConfigure: "areal/plugin/component/configure",
   pluginSetup: "areal/plugin/setup",
   pluginUserConfigSave: "areal/plugin/userConfig/set",
@@ -255,8 +254,6 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       request,
       request.mutation ? mutations[request.mutation] : undefined,
     );
-  if (operation === "pluginCredentialsReload")
-    return require("./plugin-configuration.cjs").reloadPluginCredentials(backend, project);
   if (rawRequest.operation === "pluginUserConfigSave")
     return require("./plugin-configuration.cjs").configurePluginValues(
       backend,
@@ -265,48 +262,6 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
     );
   if (operation === "pluginAuthCredential")
     return configurePluginAuthentication(backend, project, request);
-  if (operation === "connectorCredential") {
-    if (
-      request.provider !== "github" ||
-      typeof request.secret !== "string" ||
-      !request.secret.trim() ||
-      typeof request.requestId !== "string" ||
-      !request.requestId
-    )
-      throw new Error("请填写 GitHub 凭据和提交标识");
-    if (
-      backend.providerUpdating ||
-      backend.resourcesUpdating ||
-      backend.starting.size ||
-      backend.hasWork()
-    )
-      throw new Error("请等待任务和操作完成后保存凭据");
-    backend.providerUpdating = true;
-    try {
-      // Reuse the encrypted credential owner. Core receives secrets only through trusted launch inputs.
-      const reference = await backend.providers.config.credential(request.secret);
-      if (!reference) throw new Error("凭据引用未保存");
-      const drained = await current.request(
-        "areal/server/drain",
-        { strategy: "ifIdle", timeoutMs: 30000 },
-        { timeoutMs: 35000, decode: serverStatus },
-      );
-      if (!drained.restartSafe) throw new Error("后台仍有未结算任务，请等待后重试");
-      await backend.restartProject(project);
-      const credentialRef = reference.replace(/^AREAL_CREDENTIAL_/, "");
-      const result = await backend.submit(
-        project,
-        "areal/plugin/connector/configure",
-        { ...pick(request, ["id", "connectorId", "provider", "expectedDigest"]), credentialRef },
-        { requestId: request.requestId },
-      );
-      if (!modelRecord(result))
-        throw Object.assign(new Error("连接器受理回执结构无效"), { submissionUnknown: true });
-      return { ...result, credentialRef };
-    } finally {
-      backend.providerUpdating = false;
-    }
-  }
   if (
     operation === "pluginAuth" ||
     [

@@ -113,8 +113,8 @@ fn desktop_schema() -> Value {
         areal_protocol::plugin_runtime::AuthConfigure
     );
     add!(
-        "areal/plugin/connector/configure",
-        areal_protocol::plugin_runtime::Connector
+        "areal/plugin/credentials/register",
+        areal_protocol::plugin_runtime::CredentialsRegister
     );
     add!(
         "areal/mcp/tool/result",

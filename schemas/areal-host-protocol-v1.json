@@ -39630,10 +39630,10 @@
             },
             "method": {
               "type": "string",
-              "const": "areal/plugin/connector/configure"
+              "const": "areal/plugin/credentials/register"
             },
             "params": {
-              "$ref": "urn:areal:core-protocol:v1#/requests/areal~1plugin~1connector~1configure"
+              "$ref": "urn:areal:core-protocol:v1#/requests/areal~1plugin~1credentials~1register"
             }
           },
           "required": [
@@ -43253,7 +43253,7 @@
                   "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1connection"
                 },
                 {
-                  "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1connector~1configure"
+                  "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1credentials~1register"
                 },
                 {
                   "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1development~1link"
@@ -50895,43 +50895,6 @@
             },
             "method": {
               "type": "string",
-              "const": "areal/plugin/connector/configure"
-            },
-            "params": {
-              "$ref": "urn:areal:core-protocol:v1#/requests/areal~1plugin~1connector~1configure"
-            },
-            "remember": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "sourceId",
-            "projectId",
-            "lease",
-            "method",
-            "params"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "sourceId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "projectId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "lease": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "method": {
-              "type": "string",
               "const": "areal/plugin/development/link"
             },
             "params": {
@@ -53057,7 +53020,7 @@
                   "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1connection"
                 },
                 {
-                  "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1connector~1configure"
+                  "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1credentials~1register"
                 },
                 {
                   "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1development~1link"
@@ -55755,82 +55718,6 @@
               "anyOf": [
                 {
                   "$ref": "urn:areal:core-protocol:v1#/requests/areal~1plugin~1connection"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "requestId": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "threadId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    },
-                    "taskId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    },
-                    "sourceThreadId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    },
-                    "parentThreadId": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    },
-                    "id": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 512
-                    }
-                  },
-                  "required": [
-                    "requestId"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
-            }
-          },
-          "required": [
-            "sourceId",
-            "projectId",
-            "lease",
-            "method",
-            "params"
-          ],
-          "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "sourceId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "projectId": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "lease": {
-              "type": "string",
-              "format": "uuid"
-            },
-            "method": {
-              "type": "string",
-              "const": "areal/plugin/connector/configure"
-            },
-            "params": {
-              "anyOf": [
-                {
-                  "$ref": "urn:areal:core-protocol:v1#/requests/areal~1plugin~1connector~1configure"
                 },
                 {
                   "type": "object",
@@ -60261,7 +60148,7 @@
               "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1connection"
             },
             {
-              "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1connector~1configure"
+              "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1credentials~1register"
             },
             {
               "$ref": "urn:areal:core-protocol:v1#/responses/areal~1plugin~1development~1link"

@@ -13,8 +13,6 @@ const currentManagePrefixes = ["plugin", "marketplace", "mcpApp", "mcpForm"];
 const currentManageOperations = new Set([
   "mcpExtensionCall",
   "mcpToolResult",
-  "connectorConfigure",
-  "connectorCredential",
   "hookAcknowledge",
   "taskCreate",
   "taskUpdate",

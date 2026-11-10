@@ -34,13 +34,9 @@ pub struct Auth {
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Connector {
-    pub request_id: String,
-    pub id: String,
-    pub connector_id: String,
-    pub provider: String,
-    pub credential_ref: String,
-    pub expected_digest: String,
+/// 把 Host vault 里刚保存的凭据交给运行中的 Core，按引用使用，无需重启。
+pub struct CredentialsRegister {
+    pub credentials: std::collections::BTreeMap<String, String>,
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

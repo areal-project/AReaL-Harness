@@ -109,10 +109,8 @@ pub fn projections(responses: &mut Map<String, Value>, notifications: &mut Map<S
         object(json!({"pluginId":string,"serverId":string,"state":{"const":"configured"}})),
     );
     insert(
-        &["plugin/connector/configure"],
-        object(
-            json!({"pluginId":string,"connectorId":string,"provider":string,"state":{"const":"mapped"}}),
-        ),
+        &["plugin/credentials/register"],
+        object(json!({"registered":number})),
     );
     let tool_metadata = object(json!({"name":string,"inputSchema":any_object}));
     let mut tool_result = object(json!({"content":array(object(json!({"type":string})))}));

@@ -253,11 +253,6 @@ class Module:
             req['required'].append('prompt')
         if operation == 'pluginAuthCredential':
             req['properties']['credentials']={'type':'object','properties':{key:{'type':'string'} for key in ['clientSecret','privateKeyPem','apiKey']},'additionalProperties':False}
-        if operation == 'connectorCredential':
-            req['properties']['secret']={'type':'string'}
-            req['required'].append('secret')
-            res['properties']['credentialRef']={'type':'string'}
-            res['required'].append('credentialRef')
         if operation in ('toolAcknowledge','providerRemove'):
             # management.cjs toolAcknowledge and desktop.rs:921 providerRemove return exactly {}.
             res={'type':'object','additionalProperties':False}
@@ -281,8 +276,6 @@ class Module:
             res['required'].append('questionId')
         if operation == 'processStart':
             res['properties'].update({'shell':{'type':'string'},'fontFamily':{'type':'string'},'fontSize':{'type':'number'},'theme':{'type':'object','additionalProperties':{'type':'string'}},'fontFamilySource':{'enum':['custom','system','fallback']}})
-        if operation in ('connectorConfigure','connectorCredential'):
-            req['properties']['provider']={'const':'github'}
         if operation == 'mcpAppRequest':
             identity={'type':['string','number','null']}
             req['properties']['request']={'type':'object','properties':{'jsonrpc':{'const':'2.0'},'id':identity,'method':{'type':'string'},'params':True},'required':['jsonrpc','method']}
@@ -337,7 +330,6 @@ def main():
       'serverDrain':('areal/server/drain',[]),'serverGc':('areal/server/gc',[]),
       'agentSpawn':('areal/agent/spawn',['parentThreadId','agentProfile','model','instructions','skills','toolAllowlist']),
       'pluginAuthCredential':('areal/plugin/auth/configure',['id','server','expectedDigest','configuration']),
-      'connectorCredential':('areal/plugin/connector/configure',['id','connectorId','provider','expectedDigest']),
       'toolAcknowledge':('areal/tool/acknowledge',['threadId','itemId','inspection']),
     })
     groups={}

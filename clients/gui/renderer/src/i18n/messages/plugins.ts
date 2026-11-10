@@ -315,14 +315,6 @@ export const pluginMessages = {
     "zh-CN": "来源已解析，可确认安装内容。",
     en: "Source resolved. Confirm the installation contents.",
   },
-  "settings.pluginCenter.savingCredentialsDidNotReturnAProtected": {
-    "zh-CN": "凭据保存未返回受保护引用。",
-    en: "Saving credentials did not return a protected reference.",
-  },
-  "settings.pluginCenter.githubConnectorConfigurationSavedConnectThePlugin": {
-    "zh-CN": "GitHub Connector 配置已保存，请明确连接该插件。",
-    en: "GitHub Connector configuration saved. Connect the plugin when ready.",
-  },
   "settings.pluginCenter.pluginsValue": {
     "zh-CN": "插件 · {value0}",
     en: "Plugin · {value0}",
@@ -803,34 +795,6 @@ export const pluginMessages = {
     "zh-CN": "请使用 {value0} 帮助我完成任务。",
     en: "Please use {value0} to help me complete my task.",
   },
-  "settings.pluginCenter.githubConnectorConfiguration": {
-    "zh-CN": "GitHub Connector 配置",
-    en: "GitHub Connector configuration",
-  },
-  "settings.pluginCenter.credentialsAreSavedInProtectedDesktopCredential": {
-    "zh-CN": "凭据保存在受保护的桌面凭据存储中。修改前请先断开连接。",
-    en: "Credentials are saved in protected desktop credential storage. Disconnect before making changes.",
-  },
-  "settings.pluginCenter.originalConnectorID": {
-    "zh-CN": "原始 Connector ID",
-    en: "Original Connector ID",
-  },
-  "settings.pluginCenter.selectADeclaredConnector": {
-    "zh-CN": "选择声明的 Connector",
-    en: "Select a declared Connector",
-  },
-  "settings.pluginCenter.githubAccessToken": {
-    "zh-CN": "GitHub 访问令牌",
-    en: "GitHub access token",
-  },
-  "settings.pluginCenter.saveSecurelyAndConfigureGitHub": {
-    "zh-CN": "安全保存并配置 GitHub",
-    en: "Save securely and configure GitHub",
-  },
-  "settings.pluginCenter.protectedCredentialsConfigured": {
-    "zh-CN": "受保护凭据已配置",
-    en: "Protected credentials configured",
-  },
   "settings.pluginCenter.enabledStatus": {
     "zh-CN": "启用状态",
     en: "Enabled status",
@@ -1016,8 +980,8 @@ export const pluginMessages = {
     en: "Authentication required",
   },
   "settings.pluginConnectionPanel.connectionConfigurationRequired": {
-    "zh-CN": "需要配置连接",
-    en: "Connection configuration required",
+    "zh-CN": "暂不支持",
+    en: "Not supported yet",
   },
   "settings.pluginConnectionPanel.connected": {
     "zh-CN": "已连接",
@@ -1064,8 +1028,8 @@ export const pluginMessages = {
     en: "Complete authentication, then confirm trust and connect the services.",
   },
   "settings.pluginConnectionPanel.configureTheConnectorsDeclaredByThisPlugin": {
-    "zh-CN": "请配置此插件声明的 Connector 后再连接。",
-    en: "Configure the Connectors declared by this plugin before connecting.",
+    "zh-CN": "插件市场还没有收录它需要的服务。",
+    en: "The marketplace does not list the services this plugin needs yet.",
   },
   "settings.pluginConnectionPanel.pluginServicesAreAvailableInConversations": {
     "zh-CN": "插件服务已可在对话中使用。",
@@ -2224,8 +2188,8 @@ export const pluginMessages = {
     en: "Current configuration unsupported",
   },
   "settings.pluginResources.missingMappingState": {
-    "zh-CN": "需要配置凭据映射",
-    en: "Credential mapping required",
+    "zh-CN": "暂不支持",
+    en: "Not supported yet",
   },
   "settings.pluginResources.configurationState": {
     "zh-CN": "服务配置无效，请在插件详情查看",

@@ -109,6 +109,7 @@ pub(crate) fn preview(
         skills: vec![],
         required_tools: vec![],
         onboarding_skill: None,
+        connector_servers: Default::default(),
     })
 }
 fn http(url: &str) -> Result<Vec<u8>> {

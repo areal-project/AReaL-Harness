@@ -3,14 +3,13 @@
 const { modelRecord } = require("../core-model-contract.js");
 const { protocolFor } = require("./generated/management-protocol.cjs");
 const pluginStore = require("./plugin-store.cjs");
-/** @typedef {'pluginArchiveImport'|'pluginConnection'|'pluginHooksConfigure'|'hookAcknowledge'|'pluginAuthConfigure'|'connectorConfigure'|'pluginComponentConfigure'|'pluginSetup'|'pluginUserConfigSave'|'pluginDevelopmentLink'|'pluginDevelopmentUnlink'} PluginMutation */
+/** @typedef {'pluginArchiveImport'|'pluginConnection'|'pluginHooksConfigure'|'hookAcknowledge'|'pluginAuthConfigure'|'pluginComponentConfigure'|'pluginSetup'|'pluginUserConfigSave'|'pluginDevelopmentLink'|'pluginDevelopmentUnlink'} PluginMutation */
 /** @typedef {import('./plugin-store.cjs').PluginStoreOperation} PluginStoreOperation */
 /** @typedef {import('./generated/management-protocol.cjs').RequestMap} ProtocolRequestMap */
 /** @typedef {import('./generated/management-protocol.cjs').ResponseMap} ProtocolResponseMap */
 /** @typedef {{projectId:string,operation:'workgroupArtifactStatus'|'workgroupApplyArtifact',id:string,path:string,head:string}} ArtifactRequest */
 /** @typedef {{kind:'string',value:string}|{kind:'boolean',value:boolean}|{kind:'number',value:number}} PublicPluginConfigValue */
 /** @typedef {{
- * pluginCredentialsReload:{operation:'pluginCredentialsReload',projectId:string},
  * pluginUserConfigSave:{operation:'pluginUserConfigSave',projectId:string,requestId?:string,id:string,expectedRevision:number,expectedDigest:string,values:Record<string,PublicPluginConfigValue>,secrets:Record<string,string>,clearKeys?:string[]},
  * workgroupArtifactStatus:ArtifactRequest&{operation:'workgroupArtifactStatus'},workgroupApplyArtifact:ArtifactRequest&{operation:'workgroupApplyArtifact'},
  * workgroupCapabilities:{projectId:string,operation:'workgroupCapabilities'},pluginCapabilities:{projectId:string,operation:'pluginCapabilities'},
@@ -37,7 +36,6 @@ const pluginStore = require("./plugin-store.cjs");
  * processSubmission:{confirmed:false}|{confirmed:true,result:ProtocolResponseMap['processStart']&TerminalPresentation&{argv:string[],closed:boolean,controls:number}},
  * agentSubmission:{confirmed:false}|({confirmed:true,accepted:true,method:'areal/agent/spawn',parentThreadId:string,threadId:string,turnId:string}&import('./shared.cjs').SubmissionOutcome),
  * mcpFormResourceSubmission:SubmissionRead<ProtocolResponseMap['mcpFormResourceStage']>,
- * pluginCredentialsReload:{reloaded:true},
  * pluginUserConfigSave:ProtocolResponseMap['pluginUserConfigSave']&{reloadDeferred?:boolean},
  * pluginStoreSnapshot:PluginStoreSnapshot,pluginStoreDoctor:PluginDoctorReport,
  * pluginArchivePick:{canceled:true}|{selectionToken:string,fileName:string}
@@ -55,7 +53,6 @@ const pluginMutations = Object.freeze({
   pluginHooksConfigure: true,
   hookAcknowledge: true,
   pluginAuthConfigure: true,
-  connectorConfigure: true,
   pluginComponentConfigure: true,
   pluginSetup: true,
   pluginUserConfigSave: true,
@@ -87,8 +84,6 @@ function isManagementRequest(value) {
       )
     );
   if (typeof value.projectId !== "string") return false;
-  if (value.operation === "pluginCredentialsReload")
-    return Object.keys(value).every((key) => ["operation", "projectId"].includes(key));
   if (value.operation === "pluginUserConfigSave")
     return (
       typeof value.id === "string" &&
@@ -256,8 +251,6 @@ function validateManagementResponse(request, value) {
           value.canceled === true ||
           (typeof value.selectionToken === "string" && typeof value.fileName === "string")
         );
-      case "pluginCredentialsReload":
-        return value.reloaded === true;
       case "pluginUserConfigSave":
         return (
           protocolResponse("pluginUserConfigSave", value) &&

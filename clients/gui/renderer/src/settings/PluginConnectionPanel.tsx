@@ -27,7 +27,6 @@ type Props = {
   onRefresh: () => void;
   onAuthActivity: (id: string, pending: boolean) => void;
   onComponentChange: (serverId: string, enabled: boolean) => void;
-  connectorConfiguration: ReactNode;
 };
 
 /** Projects the installed package's authoritative connection snapshot; consent is only a local draft. */
@@ -45,7 +44,6 @@ export function PluginConnectionPanel({
   onRefresh,
   onAuthActivity,
   onComponentChange,
-  connectorConfiguration,
 }: Props) {
   const { t } = useI18n();
   const [auth, setAuth] = useState<Record<string, AuthState>>({});
@@ -165,9 +163,9 @@ export function PluginConnectionPanel({
     snapshot?.diagnostics?.some(
       (item: Data) => item.class === "configuration" || item.class === "policy",
     );
-  const mappingRequired = connectors.some(
-    (connector) => connector.state === "missingMapping" || connector.state === "authRequired",
-  );
+  // 连接器在安装时按市场解析成普通服务；只有全部未收录、没有可连服务时才挡住连接。
+  const mappingRequired =
+    !servers.length && connectors.some((connector) => connector.state === "missingMapping");
   const hasConnections = servers.length > 0 || connectors.length > 0;
   const blocked =
     supportBlocked(detail.installedComponentSupport, detail.installedDigest) ||
@@ -368,7 +366,6 @@ export function PluginConnectionPanel({
               </div>
             );
           })}
-          {mappingRequired && connectorConfiguration}
           {uncertain && (
             <Button variant="outline" disabled={loading} onClick={onRefresh}>
               {t("settings.pluginConnectionPanel.checkConnectionStatus")}
@@ -474,7 +471,6 @@ export function PluginConnectionPanel({
                 onSaved={onRefresh}
               />
             ))}
-          {!mappingRequired && connectors.length > 0 && connectorConfiguration}
           {!!snapshot.diagnostics?.length && (
             <SettingsDisclosure title={t("settings.pluginConnectionPanel.connectionDiagnostics")}>
               <pre>{JSON.stringify(snapshot.diagnostics, null, 2)}</pre>

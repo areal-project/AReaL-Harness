@@ -1,8 +1,8 @@
 // @ts-check
 "use strict";
-// Values stay inside the existing encrypted credential owner and trusted launch inputs.
+// 凭据值存进 Host vault，再按引用交给在线 Core，不重启。
 const { record, pluginConnections } = require("./resource-contract.cjs");
-const { serverStatus } = require("./provider-contract.cjs");
+const { registerPluginCredentials } = require("./plugin-configuration.cjs");
 const fields = [
   "clientSecretRef",
   "privateKeyRef",
@@ -13,13 +13,8 @@ const fields = [
 ];
 /** @param {InstanceType<typeof import("./backend.cjs").CoreBackend>} backend @param {import("./project-state.cjs").CoreProject} project @param {Record<string,unknown>} request */
 async function configurePluginAuthentication(backend, project, request) {
-  if (
-    backend.providerUpdating ||
-    backend.resourcesUpdating ||
-    backend.starting.size ||
-    backend.hasWork()
-  )
-    throw Error("请等待任务和操作完成后保存认证配置");
+  if (backend.providerUpdating || backend.resourcesUpdating || backend.starting.size)
+    throw Error("请等待操作完成后保存认证配置");
   const client = project.client;
   if (!client) throw Error("Core 连接不可用");
   const current = await client.request("areal/plugin/mcp/list", {}, { decode: pluginConnections });
@@ -45,7 +40,8 @@ async function configurePluginAuthentication(backend, project, request) {
     throw Error("认证凭据字段无效");
   backend.providerUpdating = true;
   try {
-    let changed = false;
+    /** @type {Record<string, string>} */
+    const credentials = {};
     for (const { field, ref, privateKey } of [
       { field: "clientSecret", ref: "clientSecretRef", privateKey: false },
       { field: "privateKeyPem", ref: "privateKeyRef", privateKey: true },
@@ -54,18 +50,13 @@ async function configurePluginAuthentication(backend, project, request) {
       if (values[field] === undefined || values[field] === "") continue;
       const reference = await backend.providers.config.credential(values[field], { privateKey });
       if (!reference) throw Error("认证凭据不能为空");
-      configuration[ref] = reference.replace(/^AREAL_CREDENTIAL_/, "");
-      changed = true;
+      const credentialRef = reference.replace(/^AREAL_CREDENTIAL_/, "");
+      configuration[ref] = credentialRef;
+      // 交给 Core 的是 vault 里规范化后的值，与重启时注入的一致。
+      credentials[credentialRef] = backend.providers.config.key({ apiKeyEnv: reference });
     }
-    if (changed) {
-      const drained = await client.request(
-        "areal/server/drain",
-        { strategy: "ifIdle", timeoutMs: 30000 },
-        { timeoutMs: 35000, decode: serverStatus },
-      );
-      if (!drained.restartSafe) throw Error("后台尚未结算，请等待后重试");
-      await backend.restartProject(project);
-    }
+    if (Object.keys(credentials).length)
+      await registerPluginCredentials(backend, project, credentials);
     return await backend.submit(
       project,
       "areal/plugin/auth/configure",

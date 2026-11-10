@@ -1,19 +1,13 @@
 // @ts-check
 "use strict";
 const { readPluginReadiness } = require("@areal/workbench/desktop-contract/management");
-const { serverStatus } = require("./provider-contract.cjs");
 
 /** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend
  * @param {import('./project-state.cjs').CoreProject} project
  * @param {import('@areal/workbench/desktop-contract/management').ManagementRequestMap['pluginUserConfigSave']} request */
 async function configurePluginValues(backend, project, request) {
-  if (
-    backend.providerUpdating ||
-    backend.resourcesUpdating ||
-    backend.starting.size ||
-    backend.hasWork({ project })
-  )
-    throw new Error("请等待任务和操作完成后保存插件配置");
+  if (backend.providerUpdating || backend.resourcesUpdating || backend.starting.size)
+    throw new Error("请等待操作完成后保存插件配置");
   const client = project.client;
   if (!client) throw new Error("Core 连接不可用");
   const detail = await client.request(
@@ -44,21 +38,23 @@ async function configurePluginValues(backend, project, request) {
   try {
     /** @type {import('@areal/workbench/desktop-contract/management').ProtocolRequestMap['pluginUserConfigSave']['values']} */
     const values = { ...request.values };
+    /** @type {Record<string, string>} */
+    const credentials = {};
     for (const [key, secret] of Object.entries(request.secrets)) {
       const reference = await backend.providers.config.credential(secret);
       if (!reference) throw new Error("插件凭据未保存");
+      const ref = reference.replace(/^AREAL_CREDENTIAL_/, "");
+      // 交给 Core 的是 vault 里规范化后的值，与重启时注入的一致。
+      credentials[ref] = backend.providers.config.key({ apiKeyEnv: reference });
       // 配置键允许 __proto__，写成自有属性以保留原字段名。
       Object.defineProperty(values, key, {
         enumerable: true,
-        value: { kind: "secretRef", value: reference.replace(/^AREAL_CREDENTIAL_/, "") },
+        value: { kind: "secretRef", value: ref },
       });
     }
-    const sensitiveChanged =
-      Object.keys(request.secrets).length > 0 ||
-      clearKeys.some((key) => fields[key]?.definition.sensitive);
-    if (Object.keys(request.secrets).length > 0) {
-      await restartForPluginCredentials(backend, project);
-    }
+    const reloadDeferred = Object.keys(credentials).length
+      ? await registerPluginCredentials(backend, project, credentials)
+      : false;
     const result = await backend.submit(
       project,
       "areal/plugin/userConfig/set",
@@ -71,32 +67,6 @@ async function configurePluginValues(backend, project, request) {
       },
       { requestId: request.requestId },
     );
-    let reloadDeferred = false;
-    if (sensitiveChanged) {
-      for (const other of backend.projects?.values?.() ?? []) {
-        if (
-          other === project ||
-          !other.client ||
-          (backend.providers.manages && !backend.providers.manages(other))
-        )
-          continue;
-        if (other.pending?.length) {
-          reloadDeferred = true;
-          continue;
-        }
-        try {
-          const drained = await other.client.request(
-            "areal/server/drain",
-            { strategy: "ifIdle", timeoutMs: 2000 },
-            { timeoutMs: 2000, decode: serverStatus },
-          );
-          if (drained.restartSafe) await backend.restartProject(other);
-          else reloadDeferred = true;
-        } catch {
-          reloadDeferred = true;
-        }
-      }
-    }
     return reloadDeferred
       ? { .../** @type {Record<string, unknown>} */ (result), reloadDeferred: true }
       : result;
@@ -105,33 +75,30 @@ async function configurePluginValues(backend, project, request) {
     backend.onChange();
   }
 }
-/** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {import('./project-state.cjs').CoreProject} project */
-async function restartForPluginCredentials(backend, project) {
+/**
+ * 新凭据已存进 Host vault，再按引用交给在线 Core，不重启。本项目必须成功；其他项目登记失败时
+ * 下次启动从 vault 取，返回 true 让界面提示稍后生效。
+ * @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend
+ * @param {import('./project-state.cjs').CoreProject} project
+ * @param {Record<string, string>} credentials 引用（不含 AREAL_CREDENTIAL_ 前缀）→ 值
+ */
+async function registerPluginCredentials(backend, project, credentials) {
   if (!project.client) throw new Error("Core 连接不可用");
-  const drained = await project.client.request(
-    "areal/server/drain",
-    { strategy: "ifIdle", timeoutMs: 30000 },
-    { timeoutMs: 35000, decode: serverStatus },
-  );
-  if (!drained.restartSafe) throw new Error("后台尚未结算，请等待后重新载入凭据");
-  await backend.restartProject(project);
-}
-/** @param {InstanceType<typeof import('./backend.cjs').CoreBackend>} backend @param {import('./project-state.cjs').CoreProject} project */
-async function reloadPluginCredentials(backend, project) {
-  if (
-    backend.providerUpdating ||
-    backend.resourcesUpdating ||
-    backend.starting.size ||
-    backend.hasWork()
-  )
-    throw new Error("请等待任务和操作完成后重新载入插件凭据");
-  backend.providerUpdating = true;
-  try {
-    await restartForPluginCredentials(backend, project);
-    return { reloaded: true };
-  } finally {
-    backend.providerUpdating = false;
-    backend.onChange();
+  await project.client.request("areal/plugin/credentials/register", { credentials });
+  let deferred = false;
+  for (const other of backend.projects?.values?.() ?? []) {
+    if (
+      other === project ||
+      !other.client ||
+      (backend.providers.manages && !backend.providers.manages(other))
+    )
+      continue;
+    try {
+      await other.client.request("areal/plugin/credentials/register", { credentials });
+    } catch {
+      deferred = true;
+    }
   }
+  return deferred;
 }
-module.exports = { configurePluginValues, reloadPluginCredentials };
+module.exports = { configurePluginValues, registerPluginCredentials };

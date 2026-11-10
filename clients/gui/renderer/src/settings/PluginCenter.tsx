@@ -68,7 +68,6 @@ const pluginMethods: Record<string, PluginOperation["mutation"]> = {
   "areal/plugin/hooks/configure": "pluginHooksConfigure",
   "areal/plugin/auth": "pluginAuth",
   "areal/plugin/auth/configure": "pluginAuthConfigure",
-  "areal/plugin/connector/configure": "connectorConfigure",
   "areal/plugin/userConfig/set": "pluginUserConfigSave",
   "areal/plugin/development/link": "pluginDevelopmentLink",
   "areal/plugin/development/unlink": "pluginDevelopmentUnlink",
@@ -296,10 +295,6 @@ export function PluginCenter({
   const [connectionReadKey, setConnectionReadKey] = useState(0);
   const [connections, setConnections] = useState<Data[]>([]);
   const [connectionError, setConnectionError] = useState<UiMessage | string>("");
-  const [connectorId, setConnectorId] = useState("");
-  const [connectorToken, setConnectorToken] = useState("");
-  const [credentialRef, setCredentialRef] = useState("");
-  const [credentialBusy, setCredentialBusy] = useState(false);
   const panelActiveRef = useRef(panelActive);
   panelActiveRef.current = panelActive;
   const panelGeneration = useRef(0);
@@ -375,8 +370,6 @@ export function PluginCenter({
     setCopiedDigest(false);
     setMetadataCopy(null);
     setConnections([]);
-    setConnectorToken("");
-    setCredentialRef("");
   }, [selected]);
   useEffect(() => {
     setInstallReview(false);
@@ -734,46 +727,6 @@ export function PluginCenter({
       scope,
       expectedRevision: preview.revision,
     });
-  };
-  const saveConnectorCredential = async () => {
-    if (!detail?.installedDigest || !connectorId.trim() || !connectorToken || credentialBusy)
-      return;
-    const requestId = crypto.randomUUID();
-    const secret = connectorToken;
-    setConnectorToken("");
-    setCredentialBusy(true);
-    setError(null);
-    try {
-      const saved = await api({
-        projectId,
-        operation: "connectorCredential",
-        id: detail.id,
-        connectorId: connectorId.trim(),
-        provider: "github",
-        expectedDigest: detail.installedDigest,
-        secret,
-        requestId,
-      });
-      if (typeof saved.credentialRef !== "string" || !saved.credentialRef)
-        throw new UiMessageError({
-          id: "settings.pluginCenter.savingCredentialsDidNotReturnAProtected",
-        });
-      setCredentialRef(saved.credentialRef);
-      setMessage({ id: "settings.pluginCenter.githubConnectorConfigurationSavedConnectThePlugin" });
-      window.dispatchEvent(new Event("areal-plugins-changed"));
-      await refresh();
-    } catch (cause) {
-      const error = failure(cause);
-      if (error.submissionUnknown)
-        setSubmission({
-          mutation: "connectorConfigure",
-          projectId: projectId!,
-          requestId: error.requestId ?? requestId,
-        });
-      setError(error);
-    } finally {
-      setCredentialBusy(false);
-    }
   };
   const copyMetadataLink = async (url: string | undefined, name: string) => {
     if (url === undefined) return;
@@ -2040,70 +1993,6 @@ export function PluginCenter({
                       onAuthActivity={onAuthActivity}
                       onComponentChange={(id, enabled) =>
                         configureComponent("mcpServer", id, enabled)
-                      }
-                      connectorConfiguration={
-                        <SettingsDisclosure
-                          title={t("settings.pluginCenter.githubConnectorConfiguration")}
-                        >
-                          <p>
-                            {t(
-                              "settings.pluginCenter.credentialsAreSavedInProtectedDesktopCredential",
-                            )}
-                          </p>
-                          <label>
-                            {t("settings.pluginCenter.originalConnectorID")}
-                            <SettingsSelect
-                              value={connectorId}
-                              onValueChange={(value) => {
-                                setConnectorId(value);
-                                setCredentialRef("");
-                              }}
-                              disabled={disabled || credentialBusy}
-                              aria-label={t("settings.pluginCenter.originalConnectorID")}
-                            >
-                              <option value="">
-                                {t("settings.pluginCenter.selectADeclaredConnector")}
-                              </option>
-                              {connections.flatMap((row) =>
-                                (row.connectors ?? []).map((item: Data) => (
-                                  <option key={item.id} value={item.id}>
-                                    {item.id}
-                                  </option>
-                                )),
-                              )}
-                            </SettingsSelect>
-                          </label>
-                          <label>
-                            {t("settings.pluginCenter.githubAccessToken")}
-                            <Input
-                              type="password"
-                              autoComplete="new-password"
-                              value={connectorToken}
-                              onChange={(event) => setConnectorToken(event.target.value)}
-                              disabled={disabled || credentialBusy}
-                            />
-                          </label>
-                          <Button
-                            variant="outline"
-                            disabled={
-                              disabled ||
-                              credentialBusy ||
-                              !connectorId ||
-                              !connectorToken ||
-                              connections.some(
-                                (row) => row.state === "connected" || row.state === "partial",
-                              )
-                            }
-                            onClick={() => void saveConnectorCredential()}
-                          >
-                            {t("settings.pluginCenter.saveSecurelyAndConfigureGitHub")}
-                          </Button>
-                          {credentialRef && (
-                            <p role="status">
-                              {t("settings.pluginCenter.protectedCredentialsConfigured")}
-                            </p>
-                          )}
-                        </SettingsDisclosure>
                       }
                     />
                   ) : null}

@@ -32,6 +32,8 @@ pub struct InstalledComponents {
     pub diagnostics: Vec<String>,
     pub support: crate::PackageComponentSupport,
     pub disabled_mcp_servers: std::collections::BTreeSet<String>,
+    /// 连接器 ID → 市场解析出的 MCP 服务名；未收录的 ID 不在其中。
+    pub connectors: std::collections::BTreeMap<String, String>,
 }
 /// One atomic state-file read for publishing an activation directory. Package
 /// bytes remain immutable; concurrent commits cannot mix selection revisions.
@@ -116,6 +118,17 @@ impl Store {
                 .cloned()
                 .unwrap_or(Value::Null),
         )?;
+        // 包被限制或不兼容时连接器声明已一并清空，不再补出远程服务。
+        if !detail.connector_servers.is_empty() && !component.app_documents.is_empty() {
+            component.mcp_documents.push(McpComponentDocument {
+                origin: crate::connectors::CATALOG.into(),
+                declaration: areal_mcp::PluginDeclaration::parse(
+                    true,
+                    crate::connectors::document(&detail.connector_servers),
+                ),
+            });
+            component.connectors = crate::connectors::services(&detail.connector_servers);
+        }
         component.disabled_mcp_servers = self
             .component_choices(state, &detail.id)
             .disabled_mcp_servers;
@@ -232,6 +245,7 @@ impl Store {
             policy,
             diagnostics: vec![],
             disabled_mcp_servers: Default::default(),
+            connectors: Default::default(),
             support: parsed
                 .component_support
                 .context("validated package support report missing")?,

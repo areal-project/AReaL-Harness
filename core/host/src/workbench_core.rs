@@ -64,7 +64,7 @@ const WORKBENCH_METHODS: &[&str] = &[
     "areal/plugin/component/configure",
     "areal/plugin/components",
     "areal/plugin/connection",
-    "areal/plugin/connector/configure",
+    "areal/plugin/credentials/register",
     "areal/plugin/development/link",
     "areal/plugin/development/unlink",
     "areal/plugin/hooks/configure",

@@ -23093,37 +23093,21 @@
       "title": "Connection",
       "type": "object"
     },
-    "areal/plugin/connector/configure": {
+    "areal/plugin/credentials/register": {
       "additionalProperties": false,
+      "description": "把 Host vault 里刚保存的凭据交给运行中的 Core，按引用使用，无需重启。",
       "properties": {
-        "connectorId": {
-          "type": "string"
-        },
-        "credentialRef": {
-          "type": "string"
-        },
-        "expectedDigest": {
-          "type": "string"
-        },
-        "id": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "requestId": {
-          "type": "string"
+        "credentials": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
         }
       },
       "required": [
-        "requestId",
-        "id",
-        "connectorId",
-        "provider",
-        "credentialRef",
-        "expectedDigest"
+        "credentials"
       ],
-      "title": "Connector",
+      "title": "CredentialsRegister",
       "type": "object"
     },
     "areal/plugin/development/link": {
@@ -57877,6 +57861,11 @@
           },
           "type": "array"
         },
+        "connectorServers": {
+          "additionalProperties": true,
+          "description": "安装时按市场 connectors.json 解析：连接器 ID → {service, server}。",
+          "type": "object"
+        },
         "description": {
           "type": "string"
         },
@@ -58518,27 +58507,16 @@
       ],
       "type": "object"
     },
-    "areal/plugin/connector/configure": {
+    "areal/plugin/credentials/register": {
       "additionalProperties": true,
       "properties": {
-        "connectorId": {
-          "type": "string"
-        },
-        "pluginId": {
-          "type": "string"
-        },
-        "provider": {
-          "type": "string"
-        },
-        "state": {
-          "const": "mapped"
+        "registered": {
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "required": [
-        "connectorId",
-        "pluginId",
-        "provider",
-        "state"
+        "registered"
       ],
       "type": "object"
     },
@@ -58898,6 +58876,11 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "connectorServers": {
+              "additionalProperties": true,
+              "description": "安装时按市场 connectors.json 解析：连接器 ID → {service, server}。",
+              "type": "object"
             },
             "description": {
               "type": "string"
@@ -59570,6 +59553,11 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "connectorServers": {
+              "additionalProperties": true,
+              "description": "安装时按市场 connectors.json 解析：连接器 ID → {service, server}。",
+              "type": "object"
             },
             "description": {
               "type": "string"
@@ -60524,6 +60512,11 @@
           },
           "type": "array"
         },
+        "connectorServers": {
+          "additionalProperties": true,
+          "description": "安装时按市场 connectors.json 解析：连接器 ID → {service, server}。",
+          "type": "object"
+        },
         "description": {
           "type": "string"
         },
@@ -61068,6 +61061,11 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "connectorServers": {
+              "additionalProperties": true,
+              "description": "安装时按市场 connectors.json 解析：连接器 ID → {service, server}。",
+              "type": "object"
             },
             "description": {
               "type": "string"
@@ -62121,6 +62119,11 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "connectorServers": {
+          "additionalProperties": true,
+          "description": "安装时按市场 connectors.json 解析：连接器 ID → {service, server}。",
+          "type": "object"
         },
         "description": {
           "type": "string"
@@ -68376,6 +68379,11 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "connectorServers": {
+              "additionalProperties": true,
+              "description": "安装时按市场 connectors.json 解析：连接器 ID → {service, server}。",
+              "type": "object"
             },
             "description": {
               "type": "string"

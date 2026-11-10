@@ -81,11 +81,11 @@ const commandDefinitions = Object.freeze({
       ...operations(subscription, "taskWatch taskUnwatch"),
       ...operations(
         recoverable,
-        "pluginUserConfigSave pluginDevelopmentLink pluginDevelopmentUnlink pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge pluginAuthConfigure pluginConnection connectorConfigure connectorCredential pluginComponentConfigure pluginSetup providerSave providerRemove archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend",
+        "pluginUserConfigSave pluginDevelopmentLink pluginDevelopmentUnlink pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge pluginAuthConfigure pluginConnection pluginComponentConfigure pluginSetup providerSave providerRemove archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend",
       ),
       ...operations(
         mutation,
-        "pluginInstall pluginUninstall pluginResolve pluginConfigure marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate mcpSave pluginCredentialsReload pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
+        "pluginInstall pluginUninstall pluginResolve pluginConfigure marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate mcpSave pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
       ),
       taskDraftStart: { effect: "mutation", requestId: "draftId" },
     },

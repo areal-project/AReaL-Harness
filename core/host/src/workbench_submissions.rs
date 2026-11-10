@@ -37,7 +37,6 @@ pub(super) const METHODS: &[&str] = &[
     "areal/plugin/auth/configure",
     "areal/plugin/component/configure",
     "areal/plugin/connection",
-    "areal/plugin/connector/configure",
     "areal/plugin/development/link",
     "areal/plugin/development/unlink",
     "areal/plugin/hooks/configure",

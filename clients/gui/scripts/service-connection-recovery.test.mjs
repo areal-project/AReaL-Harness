@@ -1067,20 +1067,6 @@ test("an unadvertised backend rejects current commands before sending or inventi
       "mcpExtensionCall",
       "mcpToolResult",
     ].map((operation) => ["manage", { ...thread, operation }]),
-    ...["connectorConfigure", "connectorCredential"].map((operation) => [
-      "manage",
-      {
-        ...thread,
-        operation,
-        id: "plugin",
-        connectorId: "github",
-        provider: "github",
-        expectedDigest: "a".repeat(64),
-        requestId: "connector-request",
-        credentialRef: "saved-ref",
-        secret: "fixture-secret",
-      },
-    ]),
     [
       "manage",
       {

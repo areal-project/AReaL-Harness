@@ -75,7 +75,7 @@ cargo build --locked --workspace
 cargo test --locked -p areal-plugins --tests
 cargo test --locked -p areal-mcp --tests
 cargo test --locked -p areal-engine --test plugin_mcp_runtime --test plugin_mcp_subscriptions --test codex_plugins --test admission_guards
-cargo test --locked -p areal-engine --lib connector_transport_inputs_do_not_cross_accounts
+cargo test --locked -p areal-engine --test plugin_mcp_runtime connectors_resolve_from_marketplace
 cargo test --locked -p areal-runtime-fs --test import
 make desktop-schemas
 pnpm --dir clients/gui typecheck
@@ -83,7 +83,6 @@ pnpm --dir clients/gui run verify
 pnpm --dir clients/gui build
 node scripts/plugin-wire-smoke.mjs
 node scripts/plugin-cli-p1-smoke.mjs
-node scripts/plugin-github-smoke.mjs
 node clients/gui/scripts/plugin-p1-auth-smoke.mjs
 node clients/gui/scripts/plugin-p3-uploads-smoke.mjs
 AREAL_MCP_FORM_PROTOCOL=modern node clients/gui/scripts/plugin-p3-uploads-smoke.mjs

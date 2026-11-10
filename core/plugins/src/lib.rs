@@ -2,6 +2,7 @@
 mod archive;
 mod components;
 mod configuration;
+mod connectors;
 mod development;
 pub use development::{DevelopmentLink, DevelopmentRefresh};
 pub mod hook_sources;
@@ -166,6 +167,9 @@ pub struct PluginDetail {
     #[serde(default)]
     pub required_tools: Vec<String>,
     pub onboarding_skill: Option<String>,
+    /// 安装时按市场 connectors.json 解析：连接器 ID → {service, server}。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub connector_servers: BTreeMap<String, serde_json::Value>,
 }
 impl PluginDetail {
     pub fn review_digest(&self) -> &str {
@@ -784,7 +788,7 @@ impl Store {
             "invalid plugin scope"
         );
         let state = self.state()?;
-        let (_, discovered, errors) = self.catalogs(&state);
+        let (markets, discovered, errors) = self.catalogs(&state);
         let candidate = discovered.into_iter().find(|d| d.id == id).ok_or_else(|| {
             anyhow::anyhow!("plugin source unavailable {id}: {}", errors.join("; "))
         })?;
@@ -814,13 +818,31 @@ impl Store {
             return Err(StoreError::SourceChanged { id: id.into() }.into());
         }
         let cache = self.root.join("cache").join(&digest);
-        let (mut detail, _) = package::parse_context(
+        let (mut detail, selection) = package::parse_context(
             &files,
             id,
             &candidate.source,
             &cache,
             candidate.definition.as_ref().map(|d| &d.context),
         )?;
+        let app_ids: Vec<String> = components::documents(
+            selection.overlay.get("apps"),
+            ".app.json",
+            &files,
+            selection.portable,
+            &mut vec![],
+        )
+        .documents
+        .iter()
+        .flat_map(|(_, document)| app_declarations(&document.value))
+        .filter_map(|app| app.summary?["id"].as_str().map(str::to_owned))
+        .collect();
+        if let Some(market) = id
+            .rsplit_once('@')
+            .and_then(|(_, name)| markets.iter().find(|m| m.name == name))
+        {
+            detail.connector_servers = connectors::resolve(&market.root, &app_ids)?;
+        }
         if let Some(definition) = &candidate.definition {
             definition.validate(id, expected_digest)?;
             detail.definition = Some(definition.clone());

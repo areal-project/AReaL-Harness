@@ -12,7 +12,7 @@ areal_protocol::method_catalog! {
     "areal/plugin/connection" => Mutation, Management;
     "areal/plugin/auth" => Mutation;
     "areal/plugin/auth/configure" => Mutation, Management;
-    "areal/plugin/connector/configure" => Mutation, Management;
+    "areal/plugin/credentials/register" => Mutation, Management;
     "areal/mcp/tool/result" => Read;
     "areal/mcp/apps/list" => Read;
     "areal/genUi/source" => Read;
@@ -48,7 +48,6 @@ pub(crate) async fn dispatch(
             | "areal/plugin/hooks/configure"
             | "areal/hook/acknowledge"
             | "areal/plugin/connection"
-            | "areal/plugin/connector/configure"
             | "areal/plugin/auth/configure"
             | "areal/mcp/form/resource/stage"
     ) {
@@ -155,17 +154,9 @@ async fn dispatch_inner(
             let p: Auth = parse(params)?;
             engine.plugin_auth(p.id, p.server, p.operation).await
         }
-        "areal/plugin/connector/configure" => {
-            let p: Connector = parse(params)?;
-            engine
-                .connector_configure(
-                    p.id,
-                    p.connector_id,
-                    p.provider,
-                    p.credential_ref,
-                    p.expected_digest,
-                )
-                .await
+        "areal/plugin/credentials/register" => {
+            let p: CredentialsRegister = parse(params)?;
+            engine.register_credentials(p.credentials)
         }
         "areal/genUi/source" => {
             let p: GenUiSource = parse(params)?;

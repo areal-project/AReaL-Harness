@@ -3,7 +3,6 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const {
   configurePluginValues,
-  reloadPluginCredentials,
 } = require("@areal/workbench-service/desktop/core/plugin-configuration.cjs");
 const { snapshotProject } = require("@areal/workbench-service/desktop/core/project-snapshot.cjs");
 const { validateCommand } = require("../packages/workbench/client/desktop-contract.cjs");
@@ -59,7 +58,7 @@ function fixture() {
       async request(method, params, options) {
         calls.push({ method, params });
         if (method === "areal/plugin/read") return options.decode(detail);
-        if (method === "areal/server/drain") return { restartSafe: true };
+        if (method === "areal/plugin/credentials/register") return { registered: 1 };
         throw new Error(method);
       },
     },
@@ -74,6 +73,7 @@ function fixture() {
           calls.push({ credential: value });
           return "AREAL_CREDENTIAL_private_ref";
         },
+        key: () => "NORMALIZED_SECRET",
       },
     },
     async restartProject() {
@@ -107,94 +107,44 @@ test("empty secret edits preserve stored credentials, and clearKeys is an explic
   );
   assert.equal(submitted.options.requestId, requestId);
 });
-test("Main creates credential references with the existing owner and restarts before Core consumes them", async () => {
+test("new credentials reach running Cores by reference before saving, without a restart", async () => {
   const { backend, project, calls } = fixture();
-  const result = await configurePluginValues(backend, project, {
-    ...baseRequest,
-    secrets: { TOKEN: "SECRET_CANARY" },
-  });
-  assert.equal(
-    calls.findIndex((call) => call.restart) <
-      calls.findIndex((call) => call.method === "areal/plugin/userConfig/set"),
-    true,
-  );
-  assert.deepEqual(calls.at(-1).params.values, {
-    TOKEN: { kind: "secretRef", value: "private_ref" },
-  });
-  assert.equal(JSON.stringify(result).includes("SECRET_CANARY"), false);
-  assert.equal(JSON.stringify(result).includes("private_ref"), false);
-});
-test("sensitive changes restart idle managed projects after saving and defer busy projects", async () => {
-  const { backend, project, calls } = fixture();
-  const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
-  project.model = { state: { threads: {}, queues: {} } };
-  backend.hasWork = CoreBackend.prototype.hasWork;
-  const idle = {
-    pending: [],
+  const other = {
     client: {
       async request(method, params) {
-        calls.push({ other: "drain", method, params });
-        return { restartSafe: true };
+        calls.push({ other: method, params });
+        return { registered: 1 };
       },
     },
   };
-  const busy = {
-    pending: [{}],
+  const offline = {
     client: {
       async request() {
-        assert.fail("busy project drained");
-      },
-    },
-  };
-  const unmanaged = {
-    client: {
-      async request() {
-        assert.fail("unmanaged project drained");
+        throw new Error("offline");
       },
     },
   };
   backend.projects = new Map([
     ["p", project],
-    ["idle", idle],
-    ["busy", busy],
-    ["unmanaged", unmanaged],
+    ["other", other],
+    ["offline", offline],
   ]);
-  backend.providers.manages = (other) => other !== unmanaged;
-  backend.restartProject = async (other) => calls.push({ other: "restart", project: other });
   const result = await configurePluginValues(backend, project, {
     ...baseRequest,
-    clearKeys: ["TOKEN"],
+    secrets: { TOKEN: "SECRET_CANARY" },
   });
+  const register = calls.findIndex((call) => call.method === "areal/plugin/credentials/register");
+  assert.ok(register >= 0);
+  assert.ok(register < calls.findIndex((call) => call.method === "areal/plugin/userConfig/set"));
+  assert.deepEqual(calls[register].params, { credentials: { private_ref: "NORMALIZED_SECRET" } });
+  assert.deepEqual(calls.find((call) => call.other)?.params, calls[register].params);
+  assert.equal(calls.some((call) => call.restart), false);
   assert.equal(result.reloadDeferred, true);
-  assert.ok(
-    calls.findIndex((call) => call.method === "areal/plugin/userConfig/set") <
-      calls.findIndex((call) => call.other === "drain"),
-  );
-  assert.deepEqual(calls.find((call) => call.other === "drain").params, {
-    strategy: "ifIdle",
-    timeoutMs: 2000,
+  assert.deepEqual(calls.at(-1).params.values, {
+    TOKEN: { kind: "secretRef", value: "private_ref" },
   });
-  assert.equal(calls.find((call) => call.other === "restart").project, idle);
-});
-test("unsafe or failed drains defer reload without failing the save", async () => {
-  for (const request of [
-    async () => ({ restartSafe: false }),
-    async () => {
-      throw new Error("offline");
-    },
-  ]) {
-    const { backend, project } = fixture();
-    backend.projects = new Map([["other", { pending: [], client: { request } }]]);
-    assert.equal(
-      (
-        await configurePluginValues(backend, project, {
-          ...baseRequest,
-          clearKeys: ["TOKEN"],
-        })
-      ).reloadDeferred,
-      true,
-    );
-  }
+  assert.equal(JSON.stringify(result).includes("SECRET_CANARY"), false);
+  assert.equal(JSON.stringify(result).includes("private_ref"), false);
 });
 test("browser writes reject private references and Main verifies exact schema before saving", async () => {
   assert.throws(() =>
@@ -253,19 +203,6 @@ test("unresolved public snapshots keep original request identity and omit privat
     requestId,
   });
   assert.equal(entry.params.values.TOKEN.value, "PRIVATE_REFERENCE_CANARY");
-});
-
-test("a project can explicitly reload shared credentials through the existing idle drain and restart", async () => {
-  const { backend, project, calls } = fixture();
-  assert.deepEqual(await reloadPluginCredentials(backend, project), { reloaded: true });
-  assert.deepEqual(
-    calls.map((call) => call.method ?? "restart"),
-    ["areal/server/drain", "restart"],
-  );
-  assert.equal(
-    calls.some((call) => call.credential || call.method === "areal/plugin/userConfig/set"),
-    false,
-  );
 });
 
 const { manage } = require("@areal/workbench-service/desktop/core/management.cjs");
@@ -352,7 +289,6 @@ test("plugin recovery rejects unrelated mutations before reaching the receipt ow
   for (const mutation of [
     "providerSave",
     "pluginInstall",
-    "pluginCredentialsReload",
     "unknownMutation",
   ]) {
     const fixture = receiptFixture(mutation, { confirmed: false });

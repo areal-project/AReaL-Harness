@@ -2,7 +2,7 @@
 
 # 插件包兼容
 
-AReaL 的插件登记（市场来源、安装与启用选择）由 Host 管理，GUI、网页与 CLI 读写同一份登记；连接、认证与执行由各项目 Core 负责。支持本地/Git marketplace、Git 与 npm 来源、兼容 manifest 中的 Skills，以及显式 onboarding；插件 MCP、Apps 和 GitHub Connector 通过现有 Core 执行边界接入。固定格式基线见 [upstream/pins.json](../../upstream/pins.json)，完整实施与验收见[任务计划](../development/codex-plugins-plan.md)。
+AReaL 的插件登记（市场来源、安装与启用选择）由 Host 管理，GUI、网页与 CLI 读写同一份登记；连接、认证与执行由各项目 Core 负责。支持本地/Git marketplace、Git 与 npm 来源、兼容 manifest 中的 Skills，以及显式 onboarding；插件 MCP 和 Apps 通过现有 Core 执行边界接入，Connector 在安装时按市场解析成普通 MCP。固定格式基线见 [upstream/pins.json](../../upstream/pins.json)，完整实施与验收见[任务计划](../development/codex-plugins-plan.md)。
 
 ## 查看组件支持
 
@@ -32,7 +32,7 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 仓库提供 [本地市场示例](../../examples/plugin-marketplace/README.zh-CN.md)，包含调用现有工具的 AReaL 浏览器和电脑适配 Skill，以及固定版本的官方 Heptabase 来源。浏览器和电脑包是 AReaL 适配包，不宣称原始 ZCode JavaScript SDK 可以原样执行。创建技能继续使用既有 **Create Skill** 和固定官方 Creator，市场发现、创建产物和发布分别处理。
 
-要安装官方 Heptabase，在示例市场选择 **Heptabase**，或将 `https://github.com/heptameta/heptabase-agent-plugins.git` 作为 Git 市场添加，ref 使用 `7cae4b5988bb4a2875e7ba9ea3f9eec12c644826`。解析来源、预览并核对摘要后安装。示例目录固定 `plugins/heptabase` 原包的 `0.2.0` 版本，保留便携 manifest、MCP、Skills、许可证与 Codex overlay 的 `.app.json` 注册。安装验证覆盖原包导入与安装。当前 Heptabase App ID 缺少 AReaL Connector 映射，包内 MCP 也未显式声明 OAuth，因此账号连接与真实工具调用尚未打通。
+要安装官方 Heptabase，在示例市场选择 **Heptabase**，或将 `https://github.com/heptameta/heptabase-agent-plugins.git` 作为 Git 市场添加，ref 使用 `7cae4b5988bb4a2875e7ba9ea3f9eec12c644826`。解析来源、预览并核对摘要后安装。示例目录固定 `plugins/heptabase` 原包的 `0.2.0` 版本，保留便携 manifest、MCP、Skills、许可证与 Codex overlay 的 `.app.json` 注册。安装验证覆盖原包导入与安装。当前 Heptabase App ID 未被默认市场的 `connectors.json` 收录，包内 MCP 也未显式声明 OAuth，因此账号连接与真实工具调用尚未打通。
 
 ## 插件、Skills 与 MCP
 
@@ -48,9 +48,9 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 官方 Creator 的初始化和校验脚本需要 Python 3 与 PyYAML。选择 Skill 本身不扩大 Runtime 文件权限。受限任务通过 `skill_read` 分页读取脚本，再由 Runtime 将返回的原始字节写入授权工作区的临时目录后执行；不会直接执行 Desktop 私有缓存中的文件。`clients/gui/scripts/plugin-concepts-smoke.mjs --creator-only` 验证空项目普通首轮中的资源读取、项目内创建和官方校验，可用 `AREAL_TEST_PYTHON` 指定解释器；该解释器须在隔离 HOME、禁用用户 site-packages 的环境中仍能导入 `yaml`。
 
-交互应用和 Hooks 位于插件详情或已有工作区入口。GitHub 在用户界面中作为插件管理，Connector 仅保留为内部服务映射与凭据绑定。
+交互应用和 Hooks 位于插件详情或已有工作区入口。GitHub 等远程服务在界面中作为插件管理，不单独出现“Connector”。
 
-详情页展示已安装版本的真实介绍、使用示例和声明组件，来源审核单独显示候选版本。没有声明的 Skills/MCP 区块不显示。网站和法律链接可以复制。只有 Skills 的包无需登录；混合包中的 Skill 不等待 MCP 认证。安装不会连接服务，浏览器授权、密钥配置、Connector 映射和连接继续走各服务的明确步骤。
+详情页展示已安装版本的真实介绍、使用示例和声明组件，来源审核单独显示候选版本。没有声明的 Skills/MCP 区块不显示。网站和法律链接可以复制。只有 Skills 的包无需登录；混合包中的 Skill 不等待 MCP 认证。安装不会连接服务，浏览器授权、密钥配置和连接继续走各服务的明确步骤。
 
 普通聊天与新建聊天草稿输入 `@`，可选择已安装、已启用且在当前上下文可用的插件。选择插入插件标签，不发送消息；原 MCP 资源搜索保留在同一菜单。发送时重新核对安装摘要、已选择的精确 Skill 引用和启用服务，把可读插件意图与允许的 Skill 内容交给模型。选择后关闭、更新或卸载插件会阻止发送并保留草稿。删除插件标签只移除它隐含附加的 Skills，单独选择的 Skill 标签保留。Side 的插件标签标为“仅作引用”，只传递意图，保留现有只读权限。
 
@@ -93,7 +93,7 @@ areal plugin --workspace /absolute/workspace disconnect review-helper@team-tools
 areal plugin --workspace /absolute/workspace disable review-helper@team-tools --scope project
 ```
 
-安装只有用户级一份；`enable`/`disable` 加 `--scope project` 只改当前项目的选择。登记命令（市场、解析、安装、启用、卸载）直接写插件登记，不需要项目服务在运行。用户选择作为默认值，项目的明确选择覆盖用户默认；它们不代表更高权限的强制要求。产品生成的普通标准 Profile 明确启用 `allowPluginSkills`，因此可选择已启用插件的 Skills。其他显式 Profile 未声明该权限时，不会自动获得插件 Skills。MCP 必须明确核对已安装摘要后连接；Connector 必须映射原始 ID 并配置账户。未支持的 hook handler、认证机制、命令执行语义或依赖显示诊断。“已安装”不代表服务器已经连接。
+安装只有用户级一份；`enable`/`disable` 加 `--scope project` 只改当前项目的选择。登记命令（市场、解析、安装、启用、卸载）直接写插件登记，不需要项目服务在运行。用户选择作为默认值，项目的明确选择覆盖用户默认；它们不代表更高权限的强制要求。产品生成的普通标准 Profile 明确启用 `allowPluginSkills`，因此可选择已启用插件的 Skills。其他显式 Profile 未声明该权限时，不会自动获得插件 Skills。MCP 必须明确核对已安装摘要后连接；Connector 只在市场收录时可用，认证与普通 MCP 相同。未支持的 hook handler、认证机制、命令执行语义或依赖显示诊断。“已安装”不代表服务器已经连接。
 
 ## Skills 与设置流程
 
@@ -158,7 +158,7 @@ Git marketplace 快照最多包含 20,000 个文件和 20,000 个文件系统条
 
 `ui/message` 可以将文本和资源添加到草稿，保留未发送的人类内容；只有 `send:true` 发起明确的新提交。标题和 `_meta` 留在历史/UI，递归剔除 `_meta` 后才进入模型。App 上下文按实例分组，可更新或移除。设置、mentions 和表单预览通过服务器声明的工具/资源处理；不猜测方法或地址。
 
-GitHub Connector 保留 `.app.json` 的原始 ID。在详情中填写这个 ID 和 GitHub token，通过系统安全存储保存，再明确连接。Core 将这个显式映射接到 `https://api.githubcopilot.com/mcp/`；不会根据不透明 ID 猜测供应商。账户凭据不足、未映射和不支持分别显示。`scripts/plugin-github-smoke.mjs` 使用固定版本的官方 GitHub 包，通过真实 MCP 读取公开 `openai/plugins` 仓库的市场文件。模型使用本地确定性服务，GitHub HTTP、桌面用户路径和真实模型供应商的验收分别记录。
+插件 `.app.json` 声明的 Connector ID 在安装时按所在市场的 `connectors.json` 解析成普通远程 MCP 服务，之后和其他服务一样认证、连接：需要 API key 的在服务的认证配置里填写，OAuth 服务在浏览器里登录。市场没有收录的 ID 显示为“暂不支持”，不会根据不透明 ID 猜测供应商。凭据保存进 Host 的凭据库后直接交给运行中的项目，不需要重启。
 
 文件入口只给 App 不透明资源 URI。Core 校验保存的文件授权，并复用 Runtime 的目录描述符文件助手读写；Main 只管理窗口与文件监听。读取最多2 MiB，当前原子写入最多64 KiB；超限返回 `too-large`。写入支持 ETag/CAS 和持久请求回执；重试同键返回原结果，不覆盖后续编辑。
 

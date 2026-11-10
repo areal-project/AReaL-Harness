@@ -41,7 +41,7 @@ case'pluginStoreSnapshot':{const list={revision,data:[detail(),{...detail(),id:'
 case'pluginStoreDoctor':return {revision,scope:{kind:'user'},observedAt:Date.now(),runtimeObserved:false,data:[],errors:[]};
 case'pluginComponents':return {pluginId:p.id,installedDigest:digest,commands:mode==='templates'?[{componentId:'commands/review.md',name:'github:review',description:'Review a file',argumentHint:'file',installedDigest:digest}]:[],agents:mode==='templates'?[{componentId:'agents/reviewer.md',name:'github:reviewer',description:'Review profile',profile:{id:'plugin-profile',revision:'profile-v1'}}]:[],agentDiagnostics:[],developmentError:null,mcpServers:[],apps:[],appsNeedingAuth:[]};
 case'pluginUserConfigSave':if(p.values.TITLE)titleValue=p.values.TITLE.value;if(p.secrets.TOKEN)tokenConfigured=true;if(p.clearKeys?.includes('TOKEN'))tokenConfigured=false;configRevision++;revision++;return {revision,data:[detail()],marketplaces:[],errors:[]};
-case'pluginCredentialsReload':return {reloaded:true};
+
 case'pluginDevelopmentLink':case'pluginDevelopmentUnlink':return {revision,data:[detail()],marketplaces:[],errors:[]};
 case'pluginReadiness':if(!installed||p.expectedDigest!==digest||!['github@official','other@official'].includes(p.id))throw Error('STALE_READINESS_SNAPSHOT');return {pluginId:p.id,installedDigest:digest,requiredTools:[],missingTools:[],available:true};
 case'pluginCapabilities':return {enabled:true};
