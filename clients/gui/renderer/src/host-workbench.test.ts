@@ -603,9 +603,14 @@ describe("local web desktop commands", () => {
     const calls: unknown[] = [];
     const client = {
       writable: () => true,
-      workbench: async (method: string, params: { request: { fail?: boolean } }) => {
+      workbench: async (
+        method: string,
+        params: { command: string; request: { fail?: boolean } },
+      ) => {
         calls.push([method, params]);
         if (params.request.fail) throw Object.assign(new Error("Core refused"), { code: "x" });
+        // JSON 通道把后台的 Uint8Array 变成按下标排的对象。
+        if (params.command === "media") return { bytes: { 0: 137, 1: 80 }, mime: "image/png" };
         return { done: true };
       },
     } as unknown as HostClient;
@@ -620,6 +625,10 @@ describe("local web desktop commands", () => {
       error: { code: "x", message: "Core refused" },
     });
     await expect(command("computerControl", {} as never)).rejects.toThrow("需要桌面应用");
+    expect(await command("media", { projectId: "p", operation: "read" } as never)).toEqual({
+      ok: true,
+      value: { bytes: new Uint8Array([137, 80]), mime: "image/png" },
+    });
     expect(calls[0]).toEqual(["desktop.command", { command: "list", request: { projectId: "p" } }]);
     expect(calls[1]).toEqual([
       "desktop.command",

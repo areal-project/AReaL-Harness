@@ -127,6 +127,13 @@ export const DESKTOP_COMMANDS = new Set([
 /** 只有桌面窗口才有的设置页：电脑控制要本机系统权限。 */
 const DESKTOP_ONLY_SETTINGS = new Set(["电脑控制"]);
 
+// 命令通道是 JSON：后台返回的 Uint8Array 到这里成了按下标排的对象，还原后界面才能当字节用。
+function reviveBytes<T>(value: T): T {
+  const bytes = (value as { bytes?: unknown } | null)?.bytes;
+  if (!bytes || typeof bytes !== "object" || Array.isArray(bytes) || bytes instanceof Uint8Array)
+    return value;
+  return { ...value, bytes: Uint8Array.from(Object.values(bytes as Record<string, number>)) };
+}
 /** 本机网页的桌面命令通道；返回 undefined 表示该命令只能在桌面窗口里执行。 */
 export function hostDesktopCommand(
   client: HostClient,
@@ -149,7 +156,7 @@ export function hostDesktopCommand(
       ) {
         onSnapshot?.(value as Record<string, unknown>);
       }
-      return { ok: true, value };
+      return { ok: true, value: reviveBytes(value) };
     } catch (error) {
       return {
         ok: false,
