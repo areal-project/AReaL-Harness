@@ -304,6 +304,10 @@ def current_inventory(root):
     workbench_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", workbench, re.S)
     if not workbench_match:
         raise ValueError("Workbench METHODS declaration moved; update inventory extractor")
+    plugins = (root / "core/host/src/plugins.rs").read_text()
+    plugins_match = re.search(r"const METHODS: &\[&str\] = &\[(.*?)\];", plugins, re.S)
+    if not plugins_match:
+        raise ValueError("Plugin METHODS declaration moved; update inventory extractor")
     backend = (root / "services/workbench/src/backend-main.cjs").read_text()
     private = re.search(r"const privateMethods = \[(.*?)\];", backend, re.S)
     if not private:
@@ -332,19 +336,23 @@ def current_inventory(root):
         "remote": set(
             re.findall(
                 r'"([A-Za-z][A-Za-z0-9_.:/-]*)"',
-                match[1] + read_match[1] + upload_match[1] + workbench_match[1],
+                match[1] + read_match[1] + upload_match[1] + workbench_match[1] + plugins_match[1],
             )
         ),
+        "remoteLegacy": set(re.findall(r'"([A-Za-z][A-Za-z0-9_.:/-]*)"', match[1])),
     }
 
 
 def check_inventory(document, root):
     for transport, actual in current_inventory(root).items():
-        declared = (
-            set(document["x-current"]["workbench"]["events"])
-            if transport == "workbenchEvents"
-            else set(document["x-current"][transport]["methods"])
-        )
+        if transport == "workbenchEvents":
+            declared = set(document["x-current"]["workbench"]["events"])
+        elif transport == "remoteLegacy":
+            declared = set(
+                document["$defs"]["RemoteReady"]["properties"]["methods"]["items"]["enum"]
+            )
+        else:
+            declared = set(document["x-current"][transport]["methods"])
         if actual != declared:
             raise ValueError(
                 f"{transport} method inventory drift: missing={sorted(actual - declared)}, stale={sorted(declared - actual)}"

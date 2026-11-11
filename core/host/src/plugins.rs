@@ -5,6 +5,8 @@ use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
+pub(super) const METHODS: &[&str] = &["plugins.read", "plugins.command"];
+
 /// 插件库目录，与 Core 读取的位置一致（`$AREAL_HARNESS_HOME/plugins`，默认 `~/.areal/plugins`）。
 pub(crate) fn root() -> Result<PathBuf> {
     let home = match std::env::var_os("AREAL_HARNESS_HOME") {

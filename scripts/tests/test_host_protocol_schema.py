@@ -24,6 +24,12 @@ class HostProtocolSchemaTests(unittest.TestCase):
 
     def test_current_inventory_matches_actual_dispatch_and_handshake(self):
         GEN.check_inventory(self.schema, ROOT)
+        changed = copy.deepcopy(self.schema)
+        changed["$defs"]["RemoteReady"]["properties"]["methods"]["items"]["enum"].remove(
+            "session.create"
+        )
+        with self.assertRaisesRegex(ValueError, "remoteLegacy.*session.create"):
+            GEN.check_inventory(changed, ROOT)
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for name in (
@@ -33,6 +39,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 "gateway/shared_reads.rs",
                 "gateway/uploads.rs",
                 "workbench_route.rs",
+                "plugins.rs",
                 "loopback.rs",
             ):
                 target = root / "core/host/src" / name
@@ -101,6 +108,7 @@ class HostProtocolSchemaTests(unittest.TestCase):
                 Path("core/host/src/gateway/shared_reads.rs"),
                 Path("core/host/src/gateway/uploads.rs"),
                 Path("core/host/src/workbench_route.rs"),
+                Path("core/host/src/plugins.rs"),
             ):
                 target = root / name
                 target.parent.mkdir(parents=True, exist_ok=True)

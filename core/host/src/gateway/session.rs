@@ -65,8 +65,6 @@ const METHODS: &[&str] = &[
     "subscription.close",
     "work.list",
     "attention.list",
-    "plugins.read",
-    "plugins.command",
 ];
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1164,7 +1162,7 @@ impl Session {
             )
             .await;
         }
-        if method == "desktop.command" || method.starts_with("plugins.") {
+        if method == "desktop.command" || crate::server::plugins::METHODS.contains(&method) {
             ensure!(self.local && self.gui_write, "FORBIDDEN");
             self.authorize(None, "manage")?;
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
