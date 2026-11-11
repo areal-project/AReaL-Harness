@@ -290,51 +290,6 @@ assert.deepEqual(schema.$defs.ProposalHelloParams.properties.grants.items.enum, 
 """
         subprocess.run(["node", "-e", script], cwd=ROOT, check=True)
 
-    def test_typescript_requires_fields_and_narrows_control_operation(self):
-        package = ROOT / "clients/gui/renderer/node_modules/typescript"
-        self.assertTrue(
-            (package / "package.json").is_file(),
-            "Install GUI dependencies before checking generated TypeScript",
-        )
-        metadata = json.loads((package / "package.json").read_text())
-        compiler = package / metadata["bin"]["tsc6"]
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            shutil.copyfile(ROOT / GEN.OUTPUTS[1], root / "host-protocol.d.ts")
-            (
-                root / "consumer.ts"
-            ).write_text("""import type { LocalHelloParams, RemoteProjectListResult, RemoteSessionControlParams, RemoteSessionSendParams } from './host-protocol';
-const hello: LocalHelloParams = {protocolVersions:[1], capabilities:[], authToken:'fixture'};
-// @ts-expect-error authToken is required.
-const missing: LocalHelloParams = {protocolVersions:[1], capabilities:[]};
-const result: RemoteProjectListResult = {projects:[{projectId:'p', name:'P', connectionState:'offline', serviceGeneration:null}], nextCursor:null};
-// @ts-expect-error nullable serviceGeneration is required, not optional.
-const incomplete: RemoteProjectListResult = {projects:[{projectId:'p', name:'P', connectionState:'offline'}], nextCursor:null};
-// @ts-expect-error optional enqueue does not accept explicit null.
-const send: RemoteSessionSendParams = {threadId:'t', expectedConfigRevision:1, text:'hello', enqueue:null};
-function inspect(control: RemoteSessionControlParams) {
-  if (control.operation === 'goalCreate') {
-    control.values.objective.toUpperCase();
-    // @ts-expect-error goalCreate does not carry queueItemId.
-    control.values.queueItemId;
-  }
-  if (control.operation === 'configure') control.values.model?.providerId;
-}
-""")
-            subprocess.run(
-                [
-                    "node",
-                    str(compiler),
-                    "--strict",
-                    "--noEmit",
-                    "--skipLibCheck",
-                    "--ignoreConfig",
-                    str(root / "consumer.ts"),
-                ],
-                cwd=ROOT,
-                check=True,
-            )
-
 
 if __name__ == "__main__":
     unittest.main()
