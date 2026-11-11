@@ -39,6 +39,7 @@
   "clients/gui/renderer/src/terminal/coreTerminalService.ts": 3,
   "clients/gui/renderer/src/terminal/terminalWorkspace.ts": 2,
   "clients/gui/renderer/src/useComposerQueueEdit.ts": 7,
+  "clients/gui/renderer/src/useOperation.ts": 2,
   "clients/gui/renderer/src/UserFeedback.tsx": 11,
   "clients/gui/renderer/src/UserPromptEdit.tsx": 2,
   "clients/gui/renderer/src/useSideChatTabs.ts": 4,

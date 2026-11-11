@@ -169,7 +169,7 @@ export function GitPane({
   const [commentError, setCommentError] = useState("");
   const opening = useOperation();
   const openingFile = opening.running;
-  const fileError = opening.state.status === "failed" ? opening.state.message : "";
+  const fileError = opening.state.message ?? "";
   const openOutside = (file: FileChange, operation: "open" | "reveal") =>
     fileOpen &&
     opening.run(() =>
