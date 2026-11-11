@@ -722,7 +722,12 @@ async fn responses_invalid_arguments_are_returned_to_model_for_correction() {
                         "usage":{"input_tokens":5 + 2 * round,"output_tokens":2,"input_tokens_details":{"cached_tokens":1}}
                     }}));
                     let wire = events.into_iter().map(|event| format!("data: {event}\n\n")).collect::<String>();
-                    ([("content-type", "text/event-stream")], wire)
+                    // 明确关闭本地 SSE 连接，避免受测机的 HTTP 代理复用半关闭连接，
+                    // 让下一轮请求被错误地阻塞在连接池中。
+                    ([
+                        ("content-type", "text/event-stream"),
+                        ("connection", "close"),
+                    ], wire)
                 }
             }),
         );
