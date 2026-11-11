@@ -523,3 +523,209 @@ async fn compact_surface(program_only: bool, direct_edit: bool) {
     client.shutdown().await.unwrap();
     rt.await.unwrap();
 }
+
+struct CommonSearchModel {
+    round: AtomicUsize,
+    initial_tools: Mutex<Option<Vec<Value>>>,
+    program_only: bool,
+    direct_edit: bool,
+    denied: bool,
+}
+
+#[async_trait]
+impl Model for CommonSearchModel {
+    fn name(&self) -> &str {
+        "common-search-fixture"
+    }
+
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        unreachable!()
+    }
+
+    async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
+        use sha2::{Digest, Sha256};
+        let round = self.round.fetch_add(1, Ordering::SeqCst) % if self.denied { 2 } else { 3 };
+        let mut initial = self.initial_tools.lock().await;
+        if let Some(expected) = initial.as_ref() {
+            // 搜索已提供工具不应扩展后续工具菜单，新 Turn 也应保持相同投影。
+            assert_eq!(&tools, expected);
+        } else {
+            println!(
+                "common-search-schema program={} direct_edit={} denied={} sha256={:x}",
+                self.program_only,
+                self.direct_edit,
+                self.denied,
+                Sha256::digest(serde_json::to_vec(&tools)?)
+            );
+            *initial = Some(tools.clone());
+        }
+        drop(initial);
+        let names: Vec<_> = tools
+            .iter()
+            .filter_map(|d| d["function"]["name"].as_str())
+            .collect();
+        assert_eq!(
+            names.contains(&"edit_files"),
+            !self.denied && (!self.program_only || self.direct_edit)
+        );
+        let event = match round {
+            0 => call("tool_search", json!({"query":" EDIT_FILES ","limit":1}), 0),
+            1 => {
+                let receipt: Value =
+                    serde_json::from_str(&messages.last().unwrap().text_content())?;
+                if self.denied {
+                    assert_eq!(receipt["tools"], json!([]));
+                    assert!(receipt.get("schemaStatus").is_none());
+                    // 拒绝分支验证搜索不泄漏；不引入与发现契约无关的读文件进程。
+                    ModelEvent::text("denied tool remains hidden")
+                } else {
+                    assert_eq!(receipt["tools"][0]["name"], "edit_files");
+                    assert_eq!(receipt["schemaStatus"], "already_available");
+                    if self.program_only && !self.direct_edit {
+                        let program = tools
+                            .iter()
+                            .find(|d| d["function"]["name"] == "tool_program")
+                            .unwrap();
+                        assert!(
+                            program["function"]["description"]
+                                .as_str()
+                                .unwrap()
+                                .contains("### tools.edit_files\n")
+                        );
+                        call(
+                            "tool_program",
+                            json!({"code":"text(await tools.edit_files({files:[{path:'created',text:'content'}]}));"}),
+                            1,
+                        )
+                    } else {
+                        call(
+                            "edit_files",
+                            json!({"files":[{"path":"created","text":"content"}]}),
+                            1,
+                        )
+                    }
+                }
+            }
+            _ => {
+                assert!(messages.last().unwrap().text_content().contains("APPLIED"));
+                ModelEvent::text("authorized tool executed")
+            }
+        };
+        Ok(Box::pin(futures_util::stream::iter([Ok(event)])))
+    }
+}
+
+async fn common_search(program_only: bool, direct_edit: bool, denied: bool) {
+    use areal_engine::tools::{ToolExtensions, ToolPolicy};
+    let dir = tempfile::tempdir().unwrap();
+    let workspace = dir.path().join("workspace");
+    std::fs::create_dir(&workspace).unwrap();
+    std::fs::write(workspace.join("existing"), "existing-content").unwrap();
+    let operations = Arc::new(Mutex::new(vec![]));
+    let (client, rt) = runtime(&workspace, operations.clone()).await;
+    let model = Arc::new(CommonSearchModel {
+        round: AtomicUsize::new(0),
+        initial_tools: Mutex::new(None),
+        program_only,
+        direct_edit,
+        denied,
+    });
+    let engine = Engine::open_with_extensions(
+        &dir.path().join("data"),
+        model.clone(),
+        Limits::default(),
+        Some(RuntimeConfig {
+            client: client.clone(),
+            workspace: workspace.clone(),
+            writable: true,
+            command_scope: None,
+            command_scratch: None,
+        }),
+        ToolExtensions {
+            policy: ToolPolicy {
+                compact_tools: true,
+                programmatic_tools_only: program_only,
+                programmatic_direct_tools: if direct_edit {
+                    vec!["edit_files".into()]
+                } else {
+                    Vec::new()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let thread = engine
+        .create(workspace.to_str().unwrap().into())
+        .await
+        .unwrap();
+    if denied {
+        let deployment = dir.path().join("deployment.json");
+        std::fs::write(&deployment, json!({"profiles":[{"id":"reader","revision":"v1","displayName":"Reader","instructions":"","toolAllowlist":["tool_search","read_file"]}]}).to_string()).unwrap();
+        engine.install_deployment(&deployment).unwrap();
+        engine.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":1,"agentProfile":{"id":"reader","revision":"v1"}})).unwrap()).await.unwrap();
+    }
+    for _ in 0..2 {
+        engine
+            .start(
+                &thread.id,
+                vec![Input::text("Use the authorized file tools")],
+            )
+            .await
+            .unwrap();
+        let done = tokio::time::timeout(Duration::from_secs(15), engine.wait(&thread.id))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            done.turns.last().unwrap().status,
+            TurnStatus::Completed,
+            "{:?}",
+            done.turns.last().unwrap().error
+        );
+        assert_eq!(
+            std::fs::read_to_string(workspace.join("existing")).unwrap(),
+            "existing-content"
+        );
+        if denied {
+            assert!(!workspace.join("created").exists());
+        } else {
+            assert_eq!(
+                std::fs::read_to_string(workspace.join("created")).unwrap(),
+                "content"
+            );
+            std::fs::remove_file(workspace.join("created")).unwrap();
+        }
+    }
+    assert_eq!(
+        model.round.load(Ordering::SeqCst),
+        if denied { 4 } else { 6 }
+    );
+    if denied {
+        assert!(operations.lock().await.is_empty());
+    }
+    engine.shutdown().await;
+    client.shutdown().await.unwrap();
+    rt.await.unwrap();
+}
+
+#[tokio::test]
+async fn common_search_direct_executes_existing_tool() {
+    common_search(false, false, false).await;
+}
+
+#[tokio::test]
+async fn common_search_program_executes_embedded_tool() {
+    common_search(true, false, false).await;
+}
+
+#[tokio::test]
+async fn common_search_direct_edit_preserves_program_surface() {
+    common_search(true, true, false).await;
+}
+
+#[tokio::test]
+async fn common_search_does_not_disclose_allowlist_denied_tool() {
+    common_search(false, false, true).await;
+}
