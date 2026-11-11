@@ -6,13 +6,13 @@ use anyhow::{Context, Result, ensure};
 use areal_local_service::storage;
 use areal_protocol::service::{Service, StopOperationState};
 use fs2::FileExt;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     fs::{File, OpenOptions},
-    io::{Read, Write},
+    io::Read,
     os::unix::fs::{MetadataExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
@@ -233,7 +233,7 @@ impl Migration {
         Ok(self.home.join("host/imports").join(id))
     }
     fn read(&self, id: &str) -> Result<Record> {
-        read_optional(&self.directory(id)?.join("record.json"))?
+        storage::read_json(&self.directory(id)?.join("record.json"))?
             .ok_or_else(|| error("migrationNotFound", "unknown migrationId"))
     }
     fn save(&self, r: &Record) -> Result<()> {
@@ -244,7 +244,7 @@ impl Migration {
         for entry in std::fs::read_dir(self.home.join("host/imports"))? {
             let entry = entry?;
             if entry.file_type()?.is_dir()
-                && let Some(r) = read_optional(&entry.path().join("record.json"))?
+                && let Some(r) = storage::read_json(&entry.path().join("record.json"))?
             {
                 records.push(r);
             }
@@ -346,7 +346,7 @@ impl Migration {
     }
     fn committed(&self, r: &Record) -> Result<Option<Commit>> {
         let commit: Option<Commit> =
-            read_optional(&self.directory(&r.request_id)?.join("committed.json"))?;
+            storage::read_json(&self.directory(&r.request_id)?.join("committed.json"))?;
         if let Some(commit) = &commit {
             ensure!(
                 commit.bundle_digest == self.bundle_digest(r)?,
@@ -624,7 +624,7 @@ impl Migration {
         ensure!(source.core_home.is_dir(), "source Core home must exist");
         let directory = self.directory(&input.request_id)?;
         let mut record = if let Some(record) =
-            read_optional::<Record>(&directory.join("record.json"))?
+            storage::read_json::<Record>(&directory.join("record.json"))?
         {
             if record.source != source {
                 return Err(error(
@@ -755,7 +755,7 @@ impl Migration {
     }
     fn source_unchanged(&self, r: &Record) -> Result<bool> {
         for file in &r.originals {
-            let bytes = read_bytes(&r.source.core_home.join(&file.relative_name))?;
+            let bytes = storage::read_bytes(&r.source.core_home.join(&file.relative_name))?;
             let matches = match (&file.original, bytes) {
                 (Original::Absent, None) => true,
                 (Original::Bytes { sha256, .. }, Some(bytes)) => storage::digest(&bytes) == *sha256,
@@ -773,7 +773,7 @@ impl Migration {
     }
     fn verify_sources(&self, r: &Record) -> Result<()> {
         for file in &r.originals {
-            let bytes = read_bytes(&r.source.core_home.join(&file.relative_name))?;
+            let bytes = storage::read_bytes(&r.source.core_home.join(&file.relative_name))?;
             if r.phase == Phase::Fencing
                 && matches!(
                     file.role.as_str(),
@@ -867,7 +867,7 @@ impl Migration {
         Ok(names)
     }
     fn snapshot(&self, r: &mut Record, existing: &[ProjectRegistration]) -> Result<()> {
-        let bytes = read_bytes(&r.source.core_home.join("projects.json"))?;
+        let bytes = storage::read_bytes(&r.source.core_home.join("projects.json"))?;
         let projects: Vec<SavedProject> = bytes
             .as_deref()
             .map(serde_json::from_slice)
@@ -979,23 +979,24 @@ impl Migration {
             });
         }
         for (role, name) in self.names(&r.source, &r.bindings)? {
-            let original = if let Some(bytes) = read_bytes(&r.source.core_home.join(&name))? {
-                let backup_id = uuid::Uuid::new_v4().to_string();
-                atomic_bytes(
-                    &self
-                        .directory(&r.request_id)?
-                        .join("backups")
-                        .join(format!("{backup_id}.bytes")),
-                    &bytes,
-                )?;
-                Original::Bytes {
-                    sha256: storage::digest(&bytes),
-                    byte_length: bytes.len() as u64,
-                    backup_id,
-                }
-            } else {
-                Original::Absent
-            };
+            let original =
+                if let Some(bytes) = storage::read_bytes(&r.source.core_home.join(&name))? {
+                    let backup_id = uuid::Uuid::new_v4().to_string();
+                    storage::write_bytes(
+                        &self
+                            .directory(&r.request_id)?
+                            .join("backups")
+                            .join(format!("{backup_id}.bytes")),
+                        &bytes,
+                    )?;
+                    Original::Bytes {
+                        sha256: storage::digest(&bytes),
+                        byte_length: bytes.len() as u64,
+                        backup_id,
+                    }
+                } else {
+                    Original::Absent
+                };
             r.originals.push(OriginalFile {
                 role,
                 relative_name: name,
@@ -1028,7 +1029,7 @@ impl Migration {
                 .join("backups")
                 .join(format!("{backup_id}.bytes"));
             let value: Value = serde_json::from_slice(
-                &read_bytes(&read_path)?.context("missing original backup")?,
+                &storage::read_bytes(&read_path)?.context("missing original backup")?,
             )?;
             let mut slots = Vec::new();
             match file.role.as_str() {
@@ -1117,7 +1118,7 @@ impl Migration {
             Original::Bytes {
                 backup_id, sha256, ..
             } => {
-                let bytes = read_bytes(
+                let bytes = storage::read_bytes(
                     &self
                         .directory(&r.request_id)?
                         .join("backups")
@@ -1298,7 +1299,7 @@ impl Migration {
             let service_id =
                 storage::digest(binding.data_dir.as_os_str().as_encoded_bytes())[..24].to_owned();
             let directory = storage::registry(&r.source.legacy_service_home, &service_id)?;
-            let descriptor: Option<Service> = read_optional(&directory.join("service.json"))?;
+            let descriptor: Option<Service> = storage::read_json(&directory.join("service.json"))?;
             if !binding.data_dir.exists() {
                 storage::private_dir(&binding.data_dir)?;
             }
@@ -1349,7 +1350,7 @@ impl Migration {
             }
             let mut confirmed = false;
             if let Some(proof) =
-                read_optional::<storage::CleanupReceipt>(&directory.join("cleanup.json"))?
+                storage::read_json::<storage::CleanupReceipt>(&directory.join("cleanup.json"))?
             {
                 confirmed = proof.version == 1
                     && proof.identity == service.identity
@@ -1357,7 +1358,7 @@ impl Migration {
                     && proof.cleanup_confirmed;
             }
             if let Some(proof) =
-                read_optional::<storage::CrashReceipt>(&directory.join("crash.json"))?
+                storage::read_json::<storage::CrashReceipt>(&directory.join("crash.json"))?
             {
                 confirmed |= proof.version == 1
                     && proof.identity == service.identity
@@ -1616,7 +1617,8 @@ impl Migration {
             if path.extension().is_none_or(|extension| extension != "json") {
                 continue;
             }
-            let value: Value = read_optional(&path)?.context("worktree metadata disappeared")?;
+            let value: Value =
+                storage::read_json(&path)?.context("worktree metadata disappeared")?;
             let id = value["executionProjectId"].as_str();
             if id != Some(alias.as_str()) && id != Some(project.project_id.as_str()) {
                 continue;
@@ -1693,7 +1695,7 @@ impl Migration {
                                 continue;
                             }
                             wire::request_id(&name[..name.len() - 5])?;
-                            if let Some(bytes) = read_bytes(&entry.path())? {
+                            if let Some(bytes) = storage::read_bytes(&entry.path())? {
                                 operations.push(serde_json::from_slice(&bytes)?);
                             }
                         }
@@ -1946,7 +1948,8 @@ impl Migration {
                 .find(|file| file.relative_name == "provider-credentials.json")
                 .context("legacy Relay source fence missing")?;
             ensure!(
-                read_bytes(&record.source.core_home.join("provider-credentials.json"))?.as_deref()
+                storage::read_bytes(&record.source.core_home.join("provider-credentials.json"))?
+                    .as_deref()
                     == Some(self.fence_bytes(&record, original)?.as_slice()),
                 "legacy Relay source fence changed"
             );
@@ -2032,46 +2035,6 @@ fn legacy_id(id: &str) -> bool {
             .bytes()
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
-pub(crate) fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
-    let file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path);
-    let mut file = match file {
-        Ok(file) => file,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e.into()),
-    };
-    let metadata = file.metadata()?;
-    ensure!(
-        metadata.is_file() && metadata.uid() == unsafe { libc::geteuid() },
-        "source must be a regular file owned by current user"
-    );
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
-    Ok(Some(bytes))
-}
-pub(crate) fn read_optional<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
-    read_bytes(path)?
-        .map(|bytes| serde_json::from_slice(&bytes).map_err(Into::into))
-        .transpose()
-}
-pub(crate) fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
-    let parent = path.parent().context("missing parent")?;
-    let temporary = parent.join(format!(".tmp-host-{}", uuid::Uuid::new_v4()));
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&temporary)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    std::fs::rename(temporary, path)?;
-    File::open(parent)?.sync_all()?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3197,7 +3160,7 @@ mod tests {
             .iter()
             .find(|o| o.relative_name == "provider-credentials.json")
             .unwrap();
-        atomic_bytes(
+        storage::write_bytes(
             &f.source.core_home.join("provider-credentials.json"),
             &f.migration.fence_bytes(&r, original).unwrap(),
         )
@@ -3499,7 +3462,7 @@ mod tests {
             .directory(&f.request)
             .unwrap()
             .join("committed.json");
-        let mut receipt: Commit = read_optional(&committed).unwrap().unwrap();
+        let mut receipt: Commit = storage::read_json(&committed).unwrap().unwrap();
         receipt.bundle_digest = "tampered".into();
         storage::write(&committed, &receipt).unwrap();
         assert!(f.migration.published().is_err());

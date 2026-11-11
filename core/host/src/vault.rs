@@ -462,7 +462,7 @@ impl Vault {
     pub(crate) fn operation_offline(home: &Path, id: &str) -> Result<Option<Value>> {
         wire::request_id(id)?;
         let vault = Self::new(home);
-        let receipt: Option<Value> = crate::migration::read_optional(&vault.operation_path(id))?;
+        let receipt: Option<Value> = storage::read_json(&vault.operation_path(id))?;
         if receipt
             .as_ref()
             .is_some_and(|value| value["state"] != "acceptedPending")
@@ -488,8 +488,7 @@ impl Vault {
         self.state_seed(slot, migration.vault_seed(slot)?)
     }
     fn state_seed(&self, slot: &Slot, seed: Option<Receipt>) -> Result<SlotState> {
-        if let Some(state) = crate::migration::read_optional::<SlotState>(&self.state_path(slot)?)?
-        {
+        if let Some(state) = storage::read_json::<SlotState>(&self.state_path(slot)?)? {
             ensure!(state.slot == *slot, "vault slot metadata mismatch");
             return Ok(state);
         }
@@ -576,7 +575,7 @@ impl Vault {
         if !self.worker && !self.flight.lock().unwrap().is_empty() {
             return Self::operation_offline(&self.home, id);
         }
-        let receipt = crate::migration::read_optional::<Value>(&self.operation_path(id))?;
+        let receipt = storage::read_json::<Value>(&self.operation_path(id))?;
         if receipt.is_none() {
             for path in storage::json_records(&self.home.join("host/vault-slots"), false)? {
                 let state: SlotState = storage::read(&path)?;
@@ -594,7 +593,7 @@ impl Vault {
         let slot: Slot = serde_json::from_value(receipt["slot"].clone())?;
         let mut state = self.state(&slot, migration)?;
         self.recover(&mut state)?;
-        crate::migration::read_optional(&self.operation_path(id))
+        storage::read_json(&self.operation_path(id))
     }
     pub fn dispatch(
         &self,
@@ -830,7 +829,7 @@ impl Vault {
     }
     pub(crate) fn subscription_owner(&self, source: &str) -> Result<Option<Value>> {
         wire::request_id(source)?;
-        crate::migration::read_optional(
+        storage::read_json(
             &self
                 .home
                 .join("host/subscription-owners")
@@ -937,7 +936,7 @@ impl Vault {
         }
         #[cfg(test)]
         if self.isolated_files {
-            return crate::migration::read_optional(&self.path(entry));
+            return storage::read_json(&self.path(entry));
         }
         #[cfg(target_os = "macos")]
         {
@@ -953,7 +952,7 @@ impl Vault {
             )
         }
         #[cfg(not(target_os = "macos"))]
-        crate::migration::read_optional(&self.path(entry))
+        storage::read_json(&self.path(entry))
     }
     #[cfg(all(test, target_os = "macos"))]
     fn service(&self) -> String {
@@ -972,7 +971,7 @@ impl Vault {
         std::fs::File::open(self.home.join("host"))?.sync_all()?;
         storage::write(&self.path(entry), value)?;
         ensure!(
-            crate::migration::read_optional::<Value>(&self.path(entry))?.as_ref() == Some(value),
+            storage::read_json::<Value>(&self.path(entry))?.as_ref() == Some(value),
             "vault read-back verification failed"
         );
         Ok(())

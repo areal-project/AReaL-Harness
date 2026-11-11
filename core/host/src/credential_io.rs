@@ -318,7 +318,7 @@ fn entry_is_owned(home: &Path, entry: &str) -> Result<bool> {
                 }
                 candidate.path()
             };
-            let Some(record) = crate::migration::read_optional::<Value>(&path)? else {
+            let Some(record) = storage::read_json::<Value>(&path)? else {
                 continue;
             };
             let owned = if directory == "imports" {
@@ -334,7 +334,7 @@ fn entry_is_owned(home: &Path, entry: &str) -> Result<bool> {
         }
     }
     Ok(
-        crate::migration::read_optional::<Value>(&home.join("host/remote-state.json"))?
+        storage::read_json::<Value>(&home.join("host/remote-state.json"))?
             .is_some_and(|state| state["entryId"] == entry),
     )
 }

@@ -1,5 +1,5 @@
 use crate::{
-    migration::{self, Migration},
+    migration::Migration,
     wire::{self, error},
 };
 use anyhow::{Context, Result, ensure};
@@ -180,21 +180,19 @@ impl RemoteState {
         {
             return Ok(Some(receipt));
         }
-        if let Some(state) = migration::read_optional::<State>(&remote.path())?
+        if let Some(state) = storage::read_json::<State>(&remote.path())?
             && let Some(receipt) = state.receipt.filter(|value| value["requestId"] == id)
         {
             return Ok(Some(receipt));
         }
-        migration::read_optional(
+        storage::read_json(
             &home
                 .join("host/remote-operations")
                 .join(format!("{id}.json")),
         )
     }
     pub fn selected_source(home: &Path) -> Result<Option<String>> {
-        if let Some(state) =
-            migration::read_optional::<State>(&home.join("host/remote-state.json"))?
-        {
+        if let Some(state) = storage::read_json::<State>(&home.join("host/remote-state.json"))? {
             return Ok(Some(state.source_id));
         }
         for path in storage::json_records(&home.join("host/remote-operations"), false)? {
@@ -221,7 +219,7 @@ impl RemoteState {
         self.home.join("host/remote-state.json")
     }
     fn state(&self, migration: &impl Credentials) -> Result<Option<State>> {
-        if let Some(state) = migration::read_optional(&self.path())? {
+        if let Some(state) = storage::read_json(&self.path())? {
             return Ok(Some(state));
         }
         let Some((source_id, entry_id, allowed_projects)) = migration.remote_seed()? else {
@@ -259,7 +257,7 @@ impl RemoteState {
     }
     fn publish_read(&self, state: &State, config: Value) -> Result<Value> {
         let mut projection = self.projection.lock().unwrap();
-        let durable = migration::read_optional::<State>(&self.path())?;
+        let durable = storage::read_json::<State>(&self.path())?;
         ensure!(
             durable
                 .as_ref()
@@ -294,7 +292,7 @@ impl RemoteState {
                 "Remote configuration has not been loaded",
             )
         })?;
-        let durable = migration::read_optional::<State>(&self.path())?;
+        let durable = storage::read_json::<State>(&self.path())?;
         ensure!(
             durable
                 .as_ref()
@@ -307,7 +305,7 @@ impl RemoteState {
         self.project(&loaded.state, loaded.config.clone())
     }
     pub(crate) fn native_owner(&self) -> Result<Option<Value>> {
-        migration::read_optional(&self.home.join("host/remote-gateway.json"))
+        storage::read_json(&self.home.join("host/remote-gateway.json"))
     }
     pub(crate) fn handoff(
         &self,
@@ -750,14 +748,14 @@ impl RemoteState {
             return Ok(Some(receipt));
         }
         self.recover(migration)?;
-        if let Some(state) = migration::read_optional::<State>(&self.path())?
+        if let Some(state) = storage::read_json::<State>(&self.path())?
             && let Some(receipt) = state.receipt
             && receipt["requestId"] == id
         {
             self.save_receipt(&receipt)?;
             return Ok(Some(receipt));
         }
-        migration::read_optional(
+        storage::read_json(
             &self
                 .home
                 .join("host/remote-operations")

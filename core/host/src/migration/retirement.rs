@@ -256,7 +256,7 @@ impl Migration {
             else {
                 continue;
             };
-            let bytes = read_bytes(
+            let bytes = storage::read_bytes(
                 &self
                     .directory(&record.request_id)?
                     .join("backups")
@@ -306,7 +306,7 @@ impl Migration {
         Ok(self.directory(migration)?.join("retirement.json"))
     }
     fn retirement_plan(&self, migration: &str) -> Result<Option<Plan>> {
-        read_optional(&self.retirement_path(migration)?)
+        storage::read_json(&self.retirement_path(migration)?)
     }
     fn save_retirement(&self, plan: &Plan) -> Result<()> {
         storage::write(&self.retirement_path(&plan.migration_id)?, plan)
@@ -397,7 +397,7 @@ impl Migration {
                 .iter()
                 .find(|file| file.relative_name == *name)
                 .context("fence is absent from manifest")?;
-            if read_bytes(&record.source.core_home.join(name))?.as_deref()
+            if storage::read_bytes(&record.source.core_home.join(name))?.as_deref()
                 != Some(self.fence_bytes(record, file)?.as_slice())
             {
                 return Err(error("sourceChanged", "permanent source fence changed"));
@@ -580,7 +580,8 @@ impl Migration {
                 .directory(&record.request_id)?
                 .join("backups")
                 .join(format!("{backup_id}.bytes"));
-            let bytes = read_bytes(&backup)?.context("original retirement backup is missing")?;
+            let bytes =
+                storage::read_bytes(&backup)?.context("original retirement backup is missing")?;
             if storage::digest(&bytes) != *sha256 {
                 return Err(error(
                     "sourceChanged",
@@ -621,7 +622,7 @@ impl Migration {
         let directory = parent.join(&plan.plan_id);
         storage::private_dir(&directory)?;
         for (backup_id, bytes) in derivatives {
-            atomic_bytes(&directory.join(format!("{backup_id}.bytes")), &bytes)?;
+            storage::write_bytes(&directory.join(format!("{backup_id}.bytes")), &bytes)?;
         }
         File::open(&parent)?.sync_all()?;
         File::open(self.directory(&record.request_id)?)?.sync_all()?;

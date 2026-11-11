@@ -4,6 +4,7 @@
 use super::Host;
 use crate::wire::error;
 use anyhow::{Context, Result, ensure};
+use areal_local_service::storage;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -30,8 +31,7 @@ fn library_path(host: &Host, profile: &Path) -> Result<PathBuf> {
 }
 
 fn digest(path: &Path) -> Result<Option<String>> {
-    Ok(crate::migration::read_bytes(path)?
-        .map(|bytes| areal_local_service::storage::digest(&bytes)))
+    Ok(storage::read_bytes(path)?.map(|bytes| storage::digest(&bytes)))
 }
 
 pub(super) fn write(host: &Host, input: Write) -> Result<Value> {
@@ -41,7 +41,7 @@ pub(super) fn write(host: &Host, input: Write) -> Result<Value> {
         error("invalidRequest", "invalid staged library name")
     );
     let staged = path.with_file_name(&input.staged);
-    let bytes = crate::migration::read_bytes(&staged)?
+    let bytes = storage::read_bytes(&staged)?
         .ok_or_else(|| error("invalidRequest", "staged library is missing"))?;
     let _ = std::fs::remove_file(&staged);
     let value: Value = serde_json::from_slice(&bytes)
@@ -69,8 +69,8 @@ fn swap(path: &Path, expected: Option<&str>, value: &Value) -> Result<String> {
     if digest(path)?.as_deref() != expected {
         return Err(error("conflict", "library changed since it was read"));
     }
-    crate::migration::atomic_bytes(path, &bytes)?;
-    Ok(areal_local_service::storage::digest(&bytes))
+    storage::write_bytes(path, &bytes)?;
+    Ok(storage::digest(&bytes))
 }
 
 /// Host 原生来源不伪装 GUI profile；已发布 GUI 来源仍只读原位置。
@@ -88,7 +88,7 @@ pub(super) fn read_source(host: &Host, source: &str) -> Result<Value> {
 }
 fn read_path(path: &Path) -> Result<Value> {
     let mut state = json!({"projects":{},"threads":{},"projectOrder":[],"sections":[],"sidebarThreadOrder":[],"sidebarRevision":0,"settings":{}});
-    if let Some(bytes) = crate::migration::read_bytes(path)? {
+    if let Some(bytes) = storage::read_bytes(path)? {
         crate::shell::validate_library(&bytes)?;
         let value: Value = serde_json::from_slice(&bytes)?;
         state
@@ -127,7 +127,7 @@ pub(super) fn change(
     }
     let bytes = serde_json::to_vec(&value)?;
     crate::shell::validate_library(&bytes)?;
-    crate::migration::atomic_bytes(&path, &bytes)?;
+    storage::write_bytes(&path, &bytes)?;
     host.changed();
     Ok(value)
 }

@@ -92,7 +92,7 @@ struct Library {
     settings: Settings,
 }
 fn preference(home: &std::path::Path) -> Result<bool> {
-    let Some(bytes) = crate::migration::read_bytes(&home.join("library.json"))? else {
+    let Some(bytes) = storage::read_bytes(&home.join("library.json"))? else {
         return Ok(true);
     };
     ensure!(

@@ -5,7 +5,7 @@ use std::{collections::BTreeSet, path::Path};
 
 /// 直接读取既有项目登记，不维护第二份逻辑项目/执行项目映射。
 pub(super) fn saved_projects(home: &Path) -> Result<Vec<Value>> {
-    let Some(bytes) = crate::migration::read_bytes(&home.join("projects.json"))? else {
+    let Some(bytes) = storage::read_bytes(&home.join("projects.json"))? else {
         return Ok(Vec::new());
     };
     ensure!(bytes.len() <= 8 * 1024 * 1024, "LIMIT_EXCEEDED");
@@ -59,8 +59,7 @@ pub(super) fn operations(home: &Path) -> Result<Vec<Value>> {
         if uuid::Uuid::parse_str(id).is_err() {
             continue;
         }
-        let bytes =
-            crate::migration::read_bytes(&entry.path())?.context("worktree record disappeared")?;
+        let bytes = storage::read_bytes(&entry.path())?.context("worktree record disappeared")?;
         ensure!(bytes.len() <= 1024 * 1024, "LIMIT_EXCEEDED");
         let row: Value = serde_json::from_slice(&bytes)?;
         ensure!(
@@ -80,14 +79,12 @@ use areal_local_service::storage;
 use std::{collections::BTreeMap, path::PathBuf, rc::Rc};
 
 fn library(home: &Path) -> Result<Value> {
-    Ok(
-        match crate::migration::read_bytes(&home.join("library.json"))? {
-            Some(bytes) => serde_json::from_slice(&bytes)?,
-            None => {
-                json!({"projects":{},"threads":{},"settings":{},"projectOrder":[],"sections":[],"sidebarThreadOrder":[],"sidebarRevision":0})
-            }
-        },
-    )
+    Ok(match storage::read_bytes(&home.join("library.json"))? {
+        Some(bytes) => serde_json::from_slice(&bytes)?,
+        None => {
+            json!({"projects":{},"threads":{},"settings":{},"projectOrder":[],"sections":[],"sidebarThreadOrder":[],"sidebarRevision":0})
+        }
+    })
 }
 fn settings(value: &Value) -> Value {
     let mut settings = json!({"worktreeRoot":"","branchPrefix":"areal","fetchBeforeCreate":false,"autoCleanup":false,"keepCount":10});
@@ -155,7 +152,7 @@ fn merge_project_metadata(home: &Path, incoming: Value) -> Result<Value> {
     }
     rows.push(incoming.clone());
     storage::private_dir(home)?;
-    crate::migration::atomic_bytes(&home.join("projects.json"), &serde_json::to_vec(&rows)?)?;
+    storage::write_bytes(&home.join("projects.json"), &serde_json::to_vec(&rows)?)?;
     Ok(incoming)
 }
 
@@ -279,7 +276,7 @@ fn persist(home: &Path, value: &mut Value) -> Result<()> {
     let directory = home.join("worktree-requests");
     storage::private_dir(&directory)?;
     let path = directory.join(format!("{id}.json"));
-    let current = crate::migration::read_bytes(&path)?
+    let current = storage::read_bytes(&path)?
         .map(|bytes| serde_json::from_slice::<Value>(&bytes))
         .transpose()?;
     let expected = value["recordRevision"].as_u64().unwrap_or(0);
@@ -296,7 +293,7 @@ fn persist(home: &Path, value: &mut Value) -> Result<()> {
             .checked_add(1)
             .context("worktree record revision exhausted")?
     );
-    crate::migration::atomic_bytes(&path, &serde_json::to_vec(value)?)
+    storage::write_bytes(&path, &serde_json::to_vec(value)?)
 }
 
 async fn persist_and_notify(
@@ -314,9 +311,8 @@ async fn persist_and_notify(
 fn record(home: &Path, id: &str, logical: &str) -> Result<Value> {
     let id = uuid::Uuid::parse_str(id)?.to_string();
     let path = home.join("worktree-requests").join(format!("{id}.json"));
-    let value: Value = serde_json::from_slice(
-        &crate::migration::read_bytes(&path)?.context("RESOURCE_UNAVAILABLE")?,
-    )?;
+    let value: Value =
+        serde_json::from_slice(&storage::read_bytes(&path)?.context("RESOURCE_UNAVAILABLE")?)?;
     ensure!(value["projectId"] == logical, "FORBIDDEN");
     Ok(value)
 }
@@ -1434,7 +1430,7 @@ async fn register_target(
         rows.push(json!({"id":saved_alias,"root":root,"logicalProjectId":alias,"worktreeRequestId":creation}));
     }
     storage::private_dir(home)?;
-    crate::migration::atomic_bytes(&home.join("projects.json"), &serde_json::to_vec(&rows)?)?;
+    storage::write_bytes(&home.join("projects.json"), &serde_json::to_vec(&rows)?)?;
     open_record(value, saved_alias);
     freeze_prepared_core(host, source, &execution_id, value)?;
     persist_and_notify(host, source, home, value).await?;

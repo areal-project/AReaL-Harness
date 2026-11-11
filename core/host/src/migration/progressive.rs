@@ -22,7 +22,7 @@ impl Migration {
             return Ok(true);
         }
         let publication: Option<Publication> =
-            read_optional(&self.directory(&r.request_id)?.join("source-published.json"))?;
+            storage::read_json(&self.directory(&r.request_id)?.join("source-published.json"))?;
         let Some(publication) = publication else {
             return Ok(false);
         };
@@ -42,7 +42,7 @@ impl Migration {
         if !self.source_ready(r)? {
             return Ok(false);
         }
-        let publication: Option<Publication> = read_optional(
+        let publication: Option<Publication> = storage::read_json(
             &self
                 .directory(&r.request_id)?
                 .join("projects")
@@ -67,7 +67,7 @@ impl Migration {
             .find(|f| f.relative_name == name)
             .context("fence absent from manifest")?;
         let path = r.source.core_home.join(name);
-        let bytes = read_bytes(&path)?;
+        let bytes = storage::read_bytes(&path)?;
         let fence = self.fence_bytes(r, original)?;
         if bytes.as_deref() != Some(fence.as_slice()) {
             let matches = match (&original.original, bytes) {
@@ -82,7 +82,7 @@ impl Migration {
                     "project journal changed after migration snapshot"
                 )
             );
-            atomic_bytes(&path, &fence)?;
+            storage::write_bytes(&path, &fence)?;
         }
         if !r.fences.iter().any(|v| v == name) {
             r.fences.push(name.to_owned());

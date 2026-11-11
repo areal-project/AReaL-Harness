@@ -53,7 +53,7 @@ fn path(directory: &Path, request: &str) -> Result<PathBuf> {
 }
 fn read(directory: &Path, request: &str) -> Result<Option<Value>> {
     let path = path(directory, request)?;
-    let Some(bytes) = crate::migration::read_bytes(&path)? else {
+    let Some(bytes) = storage::read_bytes(&path)? else {
         return Ok(None);
     };
     let value: Value = serde_json::from_slice(&bytes).context("LIFECYCLE_RECEIPT_INVALID")?;
@@ -92,10 +92,10 @@ fn store(host: &Host, directory: &Path, record: &Value) -> Result<()> {
         .context("LIFECYCLE_RECEIPT_INVALID")?;
     let path = path(directory, id)?;
     let bytes = serde_json::to_vec(record)?;
-    if crate::migration::read_bytes(&path)?.as_deref() == Some(bytes.as_slice()) {
+    if storage::read_bytes(&path)?.as_deref() == Some(bytes.as_slice()) {
         return Ok(());
     }
-    crate::migration::atomic_bytes(&path, &bytes)?;
+    storage::write_bytes(&path, &bytes)?;
     host.changed();
     Ok(())
 }

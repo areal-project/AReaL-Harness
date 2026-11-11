@@ -104,7 +104,7 @@ fn source_credential_metadata_survives_retirement_and_discovers_new_slots() {
     let Original::Bytes { backup_id, .. } = &backup.original else {
         panic!("missing backup")
     };
-    atomic_bytes(
+    storage::write_bytes(
         &fixture
             .migration
             .directory(&fixture.migration_id)
@@ -156,7 +156,7 @@ impl Fixture {
         )
         .unwrap();
         for (name, bytes) in files {
-            atomic_bytes(&core.join(name), bytes).unwrap();
+            storage::write_bytes(&core.join(name), bytes).unwrap();
         }
         let mut migration = Migration::new(&home).unwrap();
         migration.vault = vault::Vault::isolated_files(&home);
@@ -546,14 +546,14 @@ fn retirement_rejects_changed_targets_missing_targets_symlinks_and_fences() {
         let progress = f.prepare().unwrap();
         let path = f.source.core_home.join("subscription-transport.json");
         match kind {
-            "changed" => atomic_bytes(&path, br#"{"token":"newer","port":1234}"#).unwrap(),
+            "changed" => storage::write_bytes(&path, br#"{"token":"newer","port":1234}"#).unwrap(),
             "missing" => std::fs::remove_file(&path).unwrap(),
             "symlink" => {
                 std::fs::remove_file(&path).unwrap();
                 std::os::unix::fs::symlink(f.source.core_home.join("projects.json"), &path)
                     .unwrap();
             }
-            "fence" => atomic_bytes(
+            "fence" => storage::write_bytes(
                 &f.source.core_home.join("provider-credentials.json"),
                 b"changed",
             )

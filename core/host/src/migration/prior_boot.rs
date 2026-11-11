@@ -283,7 +283,8 @@ pub(super) fn observe(
             if path == descriptor || !path.exists() {
                 continue;
             }
-            let other: Service = read_optional(&path)?.context("service mapping disappeared")?;
+            let other: Service =
+                storage::read_json(&path)?.context("service mapping disappeared")?;
             ensure!(
                 other.identity.data_dir != binding.data_dir,
                 "another service descriptor maps the legacy Store"

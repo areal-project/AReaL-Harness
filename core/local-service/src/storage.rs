@@ -126,15 +126,50 @@ pub fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
 }
 
 pub fn write(path: &Path, value: &impl Serialize) -> Result<()> {
-    let mut file = tempfile::NamedTempFile::new_in(path.parent().context("missing parent")?)?;
+    let mut bytes = serde_json::to_vec(value)?;
+    bytes.push(b'\n');
+    write_bytes(path, &bytes)
+}
+
+/// 同目录临时文件 + fsync + 改名 + fsync 目录；临时文件名以 `.tmp` 开头，见 `json_records`。
+pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path.parent().context("missing parent")?;
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
     file.as_file()
         .set_permissions(std::fs::Permissions::from_mode(0o600))?;
-    serde_json::to_writer(&mut file, value)?;
-    file.write_all(b"\n")?;
+    file.write_all(bytes)?;
     file.as_file().sync_all()?;
     file.persist(path)?;
-    File::open(path.parent().unwrap())?.sync_all()?;
+    File::open(parent)?.sync_all()?;
     Ok(())
+}
+
+/// 读当前用户拥有的普通文件，不限大小、不要求 0600；不存在返回 None。
+pub fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
+    let mut file = match OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let metadata = file.metadata()?;
+    ensure!(
+        metadata.is_file() && metadata.uid() == unsafe { libc::geteuid() },
+        "source must be a regular file owned by current user"
+    );
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut file, &mut bytes)?;
+    Ok(Some(bytes))
+}
+
+/// `read_bytes` 再按 JSON 解析。
+pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
+    read_bytes(path)?
+        .map(|bytes| serde_json::from_slice(&bytes).map_err(Into::into))
+        .transpose()
 }
 
 /// 列出目录里的 `*.json` 记录。`write` 崩溃时留下的 `.tmp*` 临时文件不是记录，
