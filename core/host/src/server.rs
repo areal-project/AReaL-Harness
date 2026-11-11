@@ -171,6 +171,18 @@ struct Operation {
     #[serde(default)]
     evidence: Value,
 }
+impl Operation {
+    /// 只有自己和全部停止目标都是 completed / blocked 才算结算；状态未知一律当未结算保留。
+    fn settled(&self) -> bool {
+        let done =
+            |receipt: &Value| matches!(receipt["state"].as_str(), Some("completed" | "blocked"));
+        done(&self.receipt)
+            && self.evidence["schedulingIntentPending"] != true
+            && self.receipt["projects"]
+                .as_array()
+                .is_none_or(|targets| targets.iter().all(|target| done(&target["receipt"])))
+    }
+}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Hello {
@@ -363,6 +375,8 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
                     .as_str()
                     .context("missing scheduling request identity")?,
             )?;
+        } else if record.settled() && storage::past_retention(&path)? {
+            std::fs::remove_file(&path)?;
         }
     }
     host.subscriptions.restoring.set(true);
@@ -3936,6 +3950,45 @@ if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.un
                 task.abort();assert!(task.await.is_err_and(|error|error.is_cancelled()));
             }
         }).await;
+    }
+
+    #[test]
+    fn only_fully_settled_operations_are_reclaimable() {
+        let operation = |receipt: Value, evidence: Value| Operation {
+            digest: "d".into(),
+            receipt,
+            evidence,
+        };
+        for (receipt, evidence, settled) in [
+            (json!({"state":"completed"}), Value::Null, true),
+            (json!({"state":"blocked"}), Value::Null, true),
+            (json!({"state":"acceptedPending"}), Value::Null, false),
+            (json!({"state":"admissionUnknown"}), Value::Null, false),
+            (json!({"state":"settlementIncomplete"}), Value::Null, false),
+            (json!({"state":"partial"}), Value::Null, false),
+            (json!({}), Value::Null, false),
+            (
+                json!({"state":"completed"}),
+                json!({"schedulingIntentPending":true}),
+                false,
+            ),
+            (
+                json!({"state":"completed","projects":[{"receipt":{"state":"completed"}},{"dispatch":"notStarted"}]}),
+                Value::Null,
+                false,
+            ),
+            (
+                json!({"state":"blocked","projects":[{"receipt":{"state":"blocked"}}]}),
+                Value::Null,
+                true,
+            ),
+        ] {
+            assert_eq!(
+                operation(receipt.clone(), evidence).settled(),
+                settled,
+                "{receipt}"
+            );
+        }
     }
 
     #[test]

@@ -55,7 +55,7 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 {"version":1,"id":"rpc-2","error":{"code":"projectAmbiguous","message":"Select a projectId","details":{"projectIds":["p1","p2"]}}}
 ```
 
-`id` 是关联单次传输响应的非空字符串，不是幂等键。有副作用的写操作另带非空 UUID `requestId`，在副作用前持久化。相同 ID 不得绑定不同方法参数。`expectedGeneration` 指 Host 启动代际，`serviceGeneration` 则指项目 Core 服务代际。旧 Host 代际在新副作用前返回 `generationMismatch`；新 Host 仍允许查询旧回执。
+`id` 是关联单次传输响应的非空字符串，不是幂等键。有副作用的写操作另带非空 UUID `requestId`，在副作用前持久化。相同 ID 不得绑定不同方法参数。`expectedGeneration` 指 Host 启动代际，`serviceGeneration` 则指项目 Core 服务代际。旧 Host 代际在新副作用前返回 `generationMismatch`；新 Host 仍允许查询旧回执。已结算（`completed` 或 `blocked`）的操作回执至少保留 24 小时，Host 启动时删除更早的；未结算的不删。被删的 `requestId` 再次提交按新请求处理，`host.operation` 返回 `null`，所以客户端只应在 24 小时内用原 ID 恢复。
 
 `ProjectRegistration` 独立于运行服务描述持久化。字段为 `projectId`、规范绝对路径 `workspace` 与 `dataDir`、`source`、`defaultBinding`。`source` 为 `{kind:"cli"}` 或 `{kind:"gui",profile,legacyProjectId}`。`defaultBinding` 是布尔值，为工作区选择默认登记。`projectId` 是稳定不透明标识，不等同于工作区路径。服务描述保留 service-v1 既有字段，仅在协商后的 Host-aware 契约中增加 Host owner。
 

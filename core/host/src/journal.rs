@@ -78,7 +78,7 @@ pub(crate) const CAPACITY: usize = 4096;
 const RECLAIM_THRESHOLD: usize = 3072;
 const RECLAIM_TARGET: usize = 2048;
 /// 结算后至少保留一天，保证同一 commandId 的重试仍得到原回执而不是被当成新命令。
-const RECLAIM_MIN_AGE_SECS: u64 = 24 * 60 * 60;
+const RECLAIM_MIN_AGE_SECS: u64 = storage::SETTLED_RECEIPT_RETENTION.as_secs();
 
 pub(crate) fn has_capacity(snapshot: &Value) -> bool {
     snapshot["pending"].as_array().map_or(0, Vec::len)
@@ -253,6 +253,8 @@ impl Journal {
             let operation: Prepared = storage::read(&path)?;
             if operation.receipt["state"] == "prepared" {
                 journal.expire(operation)?;
+            } else if storage::past_retention(&path)? {
+                std::fs::remove_file(&path)?;
             }
         }
         Ok(journal)
@@ -1154,6 +1156,36 @@ mod tests {
         std::fs::set_permissions(&corrupt, std::fs::Permissions::from_mode(0o600)).unwrap();
         drop(journal);
         assert!(Journal::new(root.path()).is_err());
+    }
+
+    #[test]
+    fn restart_reclaims_settled_operations_past_retention() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        let write = |id: &str, age: u64| {
+            let operation = json!({
+                "requestId":id,"projectId":"project","expectedRevision":0,"sha256":"x",
+                "byteLength":0,"slotId":"slot","epoch":"old","connectionId":"c",
+                "writePath":root.path().join("gone"),
+                "receipt":{"requestId":id,"method":"journal.commit","state":"completed"}
+            });
+            let path = journal.operation_path(id);
+            storage::write(&path, &operation).unwrap();
+            let at = std::time::SystemTime::now() - std::time::Duration::from_secs(age);
+            File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_modified(at)
+                .unwrap();
+            path
+        };
+        let old = write("old", RECLAIM_MIN_AGE_SECS + 60);
+        let recent = write("recent", RECLAIM_MIN_AGE_SECS - 60);
+        drop(journal);
+        Journal::new(root.path()).unwrap();
+        assert!(!old.exists());
+        assert!(recent.exists());
     }
 
     #[test]

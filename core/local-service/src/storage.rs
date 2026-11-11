@@ -207,6 +207,18 @@ pub fn json_records(directory: &Path, clean: bool) -> Result<Vec<PathBuf>> {
     Ok(records)
 }
 
+/// 已结算回执的保留期：重试同一 requestId 在这段时间内仍得到原回执。
+pub const SETTLED_RECEIPT_RETENTION: std::time::Duration =
+    std::time::Duration::from_secs(24 * 60 * 60);
+
+/// 文件最后一次写入早于保留期。回执每次改状态都整份重写，所以 mtime 就是结算时间。
+pub fn past_retention(path: &Path) -> Result<bool> {
+    let modified = std::fs::symlink_metadata(path)?.modified()?;
+    Ok(modified
+        .elapsed()
+        .is_ok_and(|age| age >= SETTLED_RECEIPT_RETENTION))
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StopReceipt {
