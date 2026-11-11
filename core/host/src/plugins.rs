@@ -3,6 +3,7 @@
 use super::Host;
 use anyhow::{Context, Result, ensure};
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 pub(super) const METHODS: &[&str] = &["plugins.read", "plugins.command"];
@@ -90,6 +91,15 @@ fn absolute(params: &Value, key: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+fn saved_inputs(home: &std::path::Path, project: &str) -> Result<Option<crate::LaunchInputs>> {
+    areal_local_service::storage::read_optional(
+        &home
+            .join("host/launch")
+            .join(areal_local_service::storage::digest(project.as_bytes()))
+            .join("inputs.json"),
+    )
+}
+
 /// 项目视图用于读取项目里的市场和本项目的启用结果；没有项目时是用户级视图。
 fn store(host: &Host, project: Option<&str>) -> Result<areal_plugins::Store> {
     let root = root()?;
@@ -111,19 +121,13 @@ fn store(host: &Host, project: Option<&str>) -> Result<areal_plugins::Store> {
                 .map(|slot| slot.registration.workspace.clone())
                 .context("RESOURCE_UNAVAILABLE")?;
             // 项目 Core 按启动时的配置目录读插件库；这里跟它读同一处，否则装完 Core 看不到。
-            let saved = host
-                .home
-                .join("host/launch")
-                .join(areal_local_service::storage::digest(project.as_bytes()))
-                .join("inputs.json");
-            let (root, homedir) =
-                match areal_local_service::storage::read_optional::<crate::LaunchInputs>(&saved)? {
-                    Some(inputs) => (
-                        inputs.config_home.join("plugins"),
-                        inputs.homedir.or_else(user_home),
-                    ),
-                    None => (root, user_home()),
-                };
+            let (root, homedir) = match saved_inputs(&host.home, project)? {
+                Some(inputs) => (
+                    inputs.config_home.join("plugins"),
+                    inputs.homedir.or_else(user_home),
+                ),
+                None => (root, user_home()),
+            };
             areal_plugins::Store::open(root, workspace, homedir)
         }
     }
@@ -271,6 +275,30 @@ pub(super) fn import(host: &Host, projects: &[crate::ProjectRegistration]) {
     });
     if let Err(error) = result {
         eprintln!("plugin store import failed: {error:#}");
+    }
+    // 项目 Core 读各自启动时的配置目录；与 Host 目录不同的，也在这次停机导入里一并处理。
+    // 单个目录失败只记日志：插件读取会报错，项目照常启动。
+    import_project_roots(&host.home, root().ok(), projects);
+}
+
+fn import_project_roots(
+    home: &std::path::Path,
+    host_root: Option<PathBuf>,
+    projects: &[crate::ProjectRegistration],
+) {
+    let roots: BTreeSet<_> = projects
+        .iter()
+        .filter_map(|project| saved_inputs(home, &project.project_id).ok().flatten())
+        .map(|inputs| inputs.config_home.join("plugins"))
+        .filter(|root| Some(root) != host_root.as_ref())
+        .collect();
+    for root in roots {
+        if let Err(error) = areal_plugins::Store::import_path_keyed_state(&root) {
+            eprintln!(
+                "plugin store import failed for {}: {error:#}",
+                root.display()
+            );
+        }
     }
 }
 
@@ -443,6 +471,7 @@ pub(super) fn backend_project_id(host: &Host, alias: &str) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::standalone_server;
+    use serde_json::Value;
     use serde_json::json;
 
     #[test]
@@ -584,5 +613,65 @@ mod tests {
         std::fs::remove_dir_all(root.join("local-mcp/plugins/docs")).unwrap();
         super::import_from(&root, vec![gui], &projects).unwrap();
         assert!(!root.join("local-mcp/plugins/docs").exists());
+    }
+    #[test]
+    fn startup_imports_each_project_configuration_home_without_blocking_others() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("service");
+        let project = |id: &str| {
+            let workspace = temp.path().join(id);
+            std::fs::create_dir_all(&workspace).unwrap();
+            let config_home = temp.path().join(format!("{id}-config"));
+            let plugins = config_home.join("plugins");
+            std::fs::create_dir_all(&plugins).unwrap();
+            let saved = home
+                .join("host/launch")
+                .join(areal_local_service::storage::digest(id.as_bytes()));
+            std::fs::create_dir_all(&saved).unwrap();
+            let inputs = crate::LaunchInputs {
+                workspace: workspace.clone(),
+                cwd: workspace.clone(),
+                config_home,
+                homedir: None,
+                config_path: None,
+                deployment_path: None,
+                schedule_preparation: None,
+                environment: Default::default(),
+                credential_names: Vec::new(),
+                options: Default::default(),
+            };
+            areal_local_service::storage::write(&saved.join("inputs.json"), &inputs).unwrap();
+            (
+                crate::ProjectRegistration {
+                    project_id: id.into(),
+                    workspace: workspace.clone(),
+                    data_dir: temp.path().join(format!("{id}-data")),
+                    source: crate::ProjectSource::Cli,
+                    default_binding: false,
+                },
+                workspace,
+                plugins,
+            )
+        };
+        let (broken, _, broken_root) = project("broken");
+        std::fs::write(broken_root.join("state.json"), b"invalid plugin state").unwrap();
+        let (old, workspace, old_root) = project("old");
+        let key = workspace.to_string_lossy().into_owned();
+        std::fs::write(
+            old_root.join("state.json"),
+            json!({"revision":6,"projects":{key.as_str():{"old@local":false}}}).to_string(),
+        )
+        .unwrap();
+        super::import_project_roots(&home, None, &[broken, old]);
+        // 坏的状态文件原样保留、不阻断其他项目；旧格式按项目身份导入，原选择保留。
+        assert_eq!(
+            std::fs::read(broken_root.join("state.json")).unwrap(),
+            b"invalid plugin state"
+        );
+        let view = areal_plugins::Store::open(old_root.clone(), workspace.clone(), None).unwrap();
+        assert_eq!(view.list().unwrap().revision, 7);
+        let state: Value =
+            serde_json::from_slice(&std::fs::read(old_root.join("state.json")).unwrap()).unwrap();
+        assert_eq!(state["projects"][key.as_str()]["old@local"], false);
     }
 }

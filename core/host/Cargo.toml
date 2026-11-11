@@ -14,6 +14,7 @@ areal-plugins.workspace = true
 areal-mcp.workspace = true
 areal-local-service.workspace = true
 areal-protocol.workspace = true
+areal-runtime-host-tools.workspace = true
 fs2.workspace = true
 hmac = "=0.12.1"
 ring = "=0.17.14"

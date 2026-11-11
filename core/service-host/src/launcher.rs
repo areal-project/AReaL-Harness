@@ -308,14 +308,7 @@ fn runtime_env(
         command.env("SSH_AUTH_SOCK", socket);
     }
     if credentials {
-        for name in [
-            "MULTICA_TOKEN",
-            "MULTICA_TASK_ID",
-            "MULTICA_AGENT_ID",
-            "MULTICA_WORKSPACE_ID",
-            "MULTICA_SERVER_URL",
-            "MULTICA_RUNTIME_PROVIDER",
-        ] {
+        for name in areal_runtime_host_tools::TASK_CREDENTIAL_ENVIRONMENT {
             if let Some(value) = std::env::var_os(name) {
                 command.env(name, value);
             }
