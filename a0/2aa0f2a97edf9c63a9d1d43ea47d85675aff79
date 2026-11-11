@@ -1,0 +1,19 @@
+core/engine/tests/tools.rs
+  s_6eb5a7389a677f::t_20ed05f51f4173 725-730
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a02aa0f2a97edf9c63a9d1d43ea47d85675aff79",
+  "prompts": {},
+  "sessions": {
+    "s_6eb5a7389a677f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1c603-367d-7323-abff-0b9c62db8a4e",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
