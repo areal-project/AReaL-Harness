@@ -2,7 +2,7 @@
 
 # One Protocol and One UI: Implementation Spec
 
-Status: target design, not implemented. Decisions are in [ADR 0017](../adr/0017-one-protocol-one-ui.en.md); ownership follows [ADR 0016](../adr/0016-shared-host.en.md); current Host contracts are in the [Host API](../api/host.en.md) and [Remote API](../api/remote-control.en.md). Method names, fields and commands here are proposals and must not be described as supported elsewhere until implemented and accepted.
+Status: implemented; the [Host API](../api/host.en.md) is authoritative for methods and fields, and rows marked partial or proposal are not fully landed. Decisions are in [ADR 0017](../adr/0017-one-protocol-one-ui.en.md); ownership follows [ADR 0016](../adr/0016-shared-host.en.md); current Host contracts are in the [Host API](../api/host.en.md) and [Remote API](../api/remote-control.en.md).
 
 ## Conclusion
 

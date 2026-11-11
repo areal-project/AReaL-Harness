@@ -4,8 +4,6 @@
 
 This is a plan to execute, not a report of tests passed in this handoff.
 
-Independent Desktop Service acceptance is specified by ENV-01 through ENV-15 in the [environment service plan](environment-service-plan.en.md). Reuse this page's transport/business checks, with separate evidence for independent owners, real LaunchAgent registration, transition recovery, and signed packages. Existing exit scenarios do not automatically cover those new boundaries.
-
 ## Relay Host/PWA source and strict-TLS fixture
 
 Run `pnpm --dir clients/gui test:remote-relay` (Node 24.2.0, OpenSSL and installed locked Relay dependencies required). Real Relay CLI/SQLite, production Host, wire factory and Noise run through isolated-CA HTTPS/WSS with certificate and hostname validation enabled. Cases cover untrusted CA, wrong SAN, expired certificates, encrypted enrollment persistence, pin/room/channel, shared transport budgets, revocation, observers, restart/replacement and actual TCP slow-reader isolation. Static tests use the actual Remote export and check CSP/content hashes.

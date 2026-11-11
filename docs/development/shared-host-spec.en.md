@@ -8,7 +8,7 @@ Status: target design, in progress. H0 fixes the contract; H1 through H4 require
 
 Each OS user runs exactly one AReaL Host. CLI, TUI, GUI, `areal web` and the phone are all clients of it, and no client owns it. A client quitting or crashing never affects running work. The Host is written in Rust and ships inside the existing `areal` binary. It owns the project registry, starting and supervising each project's Core, credentials, the Remote Gateway and scheduled-task activation. Threads, Turns and Tasks remain authoritative in each project's Core.
 
-This spec supersedes the dual "GUI-owned / background-owned" modes and the dual-mode transition mechanism in the [independent environment service design](../design/environment-service.en.md) and its [implementation plan](environment-service-plan.en.md). The authority boundaries, Host identity, explicit project start, stop intent and no-replay rules from those documents still apply and are reused below.
+This spec supersedes the dual "GUI-owned / background-owned" modes and the dual-mode transition mechanism in the [independent environment service design](../design/environment-service.en.md). The authority boundaries, Host identity, explicit project start, stop intent and no-replay rules from those documents still apply and are reused below.
 
 Baselines: AReaL-Harness main `62a8f02`; T3 Code `8760d063` (`apps/server/src/serverOwnership.ts`, `docs/user/background-service.md`); ZCode `3c5b2276` (`docs/architecture/r2-server-cli-and-daemon.md`). Commands, protocol methods, fields and exit codes here are proposals. Other documents must not describe them as supported until they are implemented and accepted.
 

@@ -2,7 +2,7 @@
 
 # 一套协议与一份界面实施规格
 
-状态为目标设计，尚未实施。决策见 [ADR 0017](../adr/0017-one-protocol-one-ui.md)，所有权沿用 [ADR 0016](../adr/0016-shared-host.md)，现有 Host 契约见 [Host API](../api/host.md) 与 [Remote API](../api/remote-control.md)。本文中的方法名、字段和命令都是提案，实现并通过验收前不能在其他文档写成已支持能力。
+状态：已实现，方法与字段以 [Host API](../api/host.md) 为准；表中标为 partial 或 proposal 的行仍未全部落地。决策见 [ADR 0017](../adr/0017-one-protocol-one-ui.md)，所有权沿用 [ADR 0016](../adr/0016-shared-host.md)，现有 Host 契约见 [Host API](../api/host.md) 与 [Remote API](../api/remote-control.md)。
 
 ## 结论
 

@@ -94,7 +94,7 @@ Recovery follows fixture preparation, so it uses **warm file caches**. First con
 
 The legacy `catalog_performance_comparison` retains five `all` samples without separate warmup as supplementary data. Complete-pagination tables consistently use the new backend entry and its warmups; results are not selected across entries. RSS also includes the identical system Python launch wrapper.
 
-A frozen historical R3 executable runs five sparse-authorization comparisons as a secondary reference. The primary backend conclusion uses the same current executable. The [results JSON](conversation-catalog-sqlite-results.json) retains all samples, exit codes, source and executable SHA256 values, index state and unsuccessful attempts.
+A frozen historical R3 executable runs five sparse-authorization comparisons as a secondary reference. The primary backend conclusion uses the same current executable. `conversation-catalog-sqlite-results.json` (Git history at 82f227a9) retains all samples, exit codes, source and executable SHA256 values, index state and unsuccessful attempts.
 
 ## Functional protection and acceptance limits
 

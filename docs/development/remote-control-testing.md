@@ -4,8 +4,6 @@
 
 这是待执行的测试计划，不是本次已通过的测试报告。
 
-独立 Desktop Service 的新增验收见[环境服务实施计划](environment-service-plan.md)中的 ENV-01 至 ENV-15。复用本页传输与业务验证，另行验证独立 owner、真实 LaunchAgent、转换恢复和签名安装包；现有退出用例不能自动覆盖这些新增边界。
-
 ## Relay Host/PWA 源码与严格 TLS 夹具
 
 运行 `pnpm --dir clients/gui test:remote-relay`（需 Node 24.2.0、OpenSSL 与已安装的 Relay 锁定依赖）。真实 Relay CLI/SQLite、生产 Host、wire 工厂和 Noise 经过隔离 CA 的 HTTPS/WSS，证书验证与 hostname 检查保持启用；覆盖未信任 CA、错误 SAN、过期证书拒绝、加密登记持久化、pin/room/channel、双传输共享预算、撤销、观察器、重启/替换和真实 TCP 慢读隔离。静态资源测试用实际 Remote export 并检查 CSP/内容 hash。

@@ -141,7 +141,6 @@ def impact(paths):
                 "REVIEW.md",
                 "SECURITY.en.md",
                 "SECURITY.md",
-                "handoff.md",
             }
             or path.endswith(".md")
             and path.startswith(("design/", "clients/gui/design-system/"))

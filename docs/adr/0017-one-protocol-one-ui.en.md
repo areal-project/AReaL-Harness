@@ -2,7 +2,7 @@
 
 # 0017: The Host is the only entry point; clients share one protocol and one UI
 
-Status: accepted target design, not implemented. Building on the ownership in [ADR 0016](0016-shared-host.en.md), this decides how clients connect and how the UI is reused. It supersedes the statement in H2 of the [shared Host spec](../development/shared-host-spec.en.md) that "the Renderer keeps its current way of reaching Core": today the Renderer reads through Electron Main's desktop IPC and never connects to Core directly.
+Status: accepted and implemented; the workbench service (Node) remains a transitional host for moved business. Building on the ownership in [ADR 0016](0016-shared-host.en.md), this decides how clients connect and how the UI is reused. It supersedes the statement in H2 of the [shared Host spec](../development/shared-host-spec.en.md) that "the Renderer keeps its current way of reaching Core": today the Renderer reads through Electron Main's desktop IPC and never connects to Core directly.
 
 ## Context
 

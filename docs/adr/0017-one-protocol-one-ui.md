@@ -2,7 +2,7 @@
 
 # 0017：Host 是唯一入口，客户端共用一套协议和一份界面
 
-状态：已接受的目标设计，尚未实现。本文在 [ADR 0016](0016-shared-host.md) 的所有权之上，决定客户端如何连接与界面如何复用。它取代[共享 Host 实施规格](../development/shared-host-spec.md) H2 中"Renderer 与 Core 的连接方式不变"的表述：当前 Renderer 经 Electron Main 的桌面 IPC 取数，并不直连 Core。
+状态：已接受，已实现；工作台服务（Node）仍是过渡承接。本文在 [ADR 0016](0016-shared-host.md) 的所有权之上，决定客户端如何连接与界面如何复用。它取代[共享 Host 实施规格](../development/shared-host-spec.md) H2 中"Renderer 与 Core 的连接方式不变"的表述：当前 Renderer 经 Electron Main 的桌面 IPC 取数，并不直连 Core。
 
 ## 背景
 

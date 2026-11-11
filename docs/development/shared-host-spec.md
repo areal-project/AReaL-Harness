@@ -8,7 +8,7 @@
 
 每个 OS 用户只运行一个 AReaL Host。CLI、TUI、GUI、`areal web` 和手机都是连到它的客户端，没有哪个客户端拥有它。任何客户端退出或崩溃都不影响正在运行的工作。Host 由 Rust 实现，放进现有 `areal` 二进制。它负责项目登记、各项目 Core 的启停与监督、凭据、Remote Gateway 和定时任务激活；对话、Turn、Task 的权威仍在各项目 Core。
 
-本规格取代 [独立开发环境服务设计](../design/environment-service.md) 与 [实施计划](environment-service-plan.md) 中“GUI 托管 / 后台托管”双模式及其模式转换机制。那两篇里的权威边界、Host 身份、显式启动项目、停止意图和不重放规则继续有效，下文直接沿用。
+本规格取代 [独立开发环境服务设计](../design/environment-service.md) 中“GUI 托管 / 后台托管”双模式及其模式转换机制。那两篇里的权威边界、Host 身份、显式启动项目、停止意图和不重放规则继续有效，下文直接沿用。
 
 对照基线：AReaL-Harness main `62a8f02`；T3 Code `8760d063`（`apps/server/src/serverOwnership.ts`、`docs/user/background-service.md`）；ZCode `3c5b2276`（`docs/architecture/r2-server-cli-and-daemon.md`）。本文中的命令、协议方法、字段和退出码都是提案，实现并通过验收前不能在其他文档写成已支持能力。
 

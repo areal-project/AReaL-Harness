@@ -4,7 +4,7 @@
 
 > Superseded by the [shared Host implementation spec](../development/shared-host-spec.en.md): the dual "GUI-owned / background-owned" modes are dropped. The new spec defines controlled restart, submission journal single-writer switching, and migration receipts. The authority boundaries, Host identity, explicit project start, stop intent and no-replay rules here are carried into the new spec.
 
-Status: target design, not implemented. This document defines how Desktop Service evolves; it does not claim independent startup, execution after GUI exit, or a complete mobile development workflow has shipped. See the [implementation plan](../development/environment-service-plan.en.md) for stages and evidence gates. The current [local service](../api/local-service.en.md), [Desktop API](../api/desktop.en.md), and [Remote API](../api/remote-control.en.md) remain authoritative. New capabilities require updates to those contracts before activation.
+Status: superseded by the [shared Host spec](../development/shared-host-spec.en.md); kept for historical reference. The current [local service](../api/local-service.en.md), [Desktop API](../api/desktop.en.md), and [Remote API](../api/remote-control.en.md) remain authoritative. New capabilities require updates to those contracts before activation.
 
 ## 1. Goal and scope
 
@@ -184,4 +184,4 @@ Reusing the Electron backend preserves credentials, subscriptions, and native ad
 
 ZCode's separation of Source identity from route, and T3's separation of client and environment lifecycles, are references rather than deployment or Provider architectures to copy. Sources: [ZCode Source Server](https://github.com/zai-org/ZCode/blob/3c5b2276/docs/architecture/r3-source-server-remote-architecture.md), [T3 Remote architecture](https://github.com/pingdotgg/t3code/blob/c8a606c7b7/docs/internals/remote.md). This repository's owners and acceptance evidence determine implementation choices.
 
-See the [phased implementation plan](../development/environment-service-plan.en.md). This design refines the lifecycle of ADR 0008's existing-backend/no-new-agent-daemon direction; the old mode and current APIs remain valid until their respective implementation stages are complete.
+This design refines the lifecycle of ADR 0008's existing-backend/no-new-agent-daemon direction; the old mode and current APIs remain valid until their respective implementation stages are complete.
