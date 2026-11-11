@@ -87,7 +87,7 @@ impl ResolveProject {
         })?;
         let mut credentials = BTreeMap::new();
         let mut names = Vec::new();
-        let references: std::collections::BTreeSet<_> = config
+        let mut references: std::collections::BTreeSet<_> = config
             .model
             .api_key_env
             .iter()
@@ -97,19 +97,31 @@ impl ResolveProject {
                     .iter()
                     .filter_map(|provider| provider.api_key_env.as_ref()),
             )
+            .map(String::as_str)
             .collect();
+        if !args.task_credential_command.is_empty() {
+            // 任务凭据仅交给显式声明的程序，值沿内存凭据通道传递，不进入启动记录。
+            references.extend([
+                "MULTICA_TOKEN",
+                "MULTICA_TASK_ID",
+                "MULTICA_AGENT_ID",
+                "MULTICA_WORKSPACE_ID",
+                "MULTICA_SERVER_URL",
+                "MULTICA_RUNTIME_PROVIDER",
+            ]);
+        }
         for name in references {
             if let Some(value) = context.environment.get(std::ffi::OsStr::new(name)) {
-                names.push(name.clone());
+                names.push(name.to_owned());
                 credentials.insert(
-                    name.clone(),
+                    name.to_owned(),
                     value
                         .to_str()
                         .context("credential environment must be UTF-8")?
                         .to_owned(),
                 );
-            } else if config.model.api_key_env.as_ref() == Some(name) {
-                names.push(name.clone());
+            } else if config.model.api_key_env.as_deref() == Some(name) {
+                names.push(name.to_owned());
             }
         }
         let environment = std::env::vars()

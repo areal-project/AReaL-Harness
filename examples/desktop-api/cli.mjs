@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { spawnNative } from "../../scripts/native-child.mjs";
 import { once } from "node:events";
-import { mkdtemp, mkdir, writeFile, readFile, rm, readdir, chmod } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  realpath,
+  rm,
+  readdir,
+  chmod,
+} from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fixture } from "./fixture.mjs";
+import { connect } from "./client.mjs";
 const consumer = JSON.parse(
   await readFile(new URL("./fixtures/multica-consumer.json", import.meta.url), "utf8"),
 );
@@ -14,7 +23,7 @@ const daemonInput = await readFile(
   new URL("./fixtures/claude-daemon-input.jsonl", import.meta.url),
   "utf8",
 );
-const root = await mkdtemp(join(tmpdir(), "areal-cli-test-")),
+const root = await realpath(await mkdtemp(join(tmpdir(), "areal-cli-test-"))),
   workspace = join(root, "workspace"),
   home = join(root, "home");
 await mkdir(workspace);
@@ -29,6 +38,25 @@ const binary = process.env.AREAL_TEST_BIN_DIR
   ? resolve(process.env.AREAL_TEST_BIN_DIR, "areal")
   : resolve("target/debug/areal");
 const all = [];
+const isolatedEnv = {
+  ...process.env,
+  HOME: join(root, "user"),
+  AREAL_HARNESS_HOME: home,
+  AREAL_HARNESS_SERVICE_HOME: home,
+};
+async function hostCommand(args) {
+  const child = spawnNative(binary, ["host", ...args, "--json"], {
+    env: isolatedEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stdout = "",
+    stderr = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  child.stderr.on("data", (chunk) => (stderr += chunk));
+  const [code] = await once(child, "exit");
+  assert.equal(code, 0, stderr);
+  return JSON.parse(stdout);
+}
 async function run(
   extra,
   input,
@@ -58,7 +86,7 @@ async function run(
     ],
     {
       cwd,
-      env: { ...process.env, HOME: join(root, "user"), AREAL_HARNESS_HOME: home, ...env },
+      env: { ...isolatedEnv, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     },
   );
@@ -66,8 +94,7 @@ async function run(
     stderr = "",
     buffer = "";
   const frames = [];
-  let signalledPids = [],
-    signalError;
+  let signalledService, signalledSession, signalTask, signalError;
   child.stdout.on("data", (chunk) => {
     stdout += chunk;
     buffer += chunk;
@@ -85,25 +112,24 @@ async function run(
         }
         if (frame.type === "control_request") control?.(frame, child);
         if (signal && frame.type === "stream_event" && frame.event.type === "content_block_delta") {
-          try {
-            // 强杀前记录整棵进程树；macOS 日志中的 supervisor 不是实际 Runtime。
-            signalledPids = [
-              ...stderr.matchAll(/(?:Runtime(?: supervisor)?|Core) PID: (\d+)/g),
-            ].map((match) => Number(match[1]));
-            const rows = execFileSync("/bin/ps", ["-axo", "pid=,ppid="], { encoding: "utf8" })
-              .trim()
-              .split("\n")
-              .map((row) => row.trim().split(/\s+/).map(Number));
-            for (let i = 0; i < signalledPids.length; i++) {
-              signalledPids.push(
-                ...rows.filter(([, parent]) => parent === signalledPids[i]).map(([pid]) => pid),
-              );
-            }
-          } catch (error) {
-            signalError = error;
-          }
-          child.kill(signal);
+          const requestedSignal = signal;
           signal = null;
+          signalTask = (async () => {
+            const mapping = JSON.parse(
+              await readFile(join(home, "cli/sessions", `${frame.session_id}.json`), "utf8"),
+            );
+            const dataDir = join(home, "cli/runs", mapping.runId, "state");
+            const status = await hostCommand(["status"]);
+            signalledService = status.projects.find(
+              (project) => project.registration.dataDir === dataDir,
+            )?.service;
+            assert.equal(signalledService?.owner.kind, "host");
+            signalledSession = frame.session_id;
+            child.kill(requestedSignal);
+          })().catch((error) => {
+            signalError = error;
+            child.kill("SIGKILL");
+          });
         }
       } catch {}
     }
@@ -114,6 +140,7 @@ async function run(
   else child.stdin.end(input ?? "");
   const [code] = await once(child, "exit");
   clearTimeout(timer);
+  await signalTask;
   assert.ifError(signalError);
   // 消费 Claude Code 原有消息；禁止重新加入 AReaL 协议标识或私有终态。
   for (const frame of frames) {
@@ -179,7 +206,7 @@ async function run(
     }
   }
   all.push({ code, frames });
-  return { code, frames, stdout, stderr, signalledPids };
+  return { code, frames, stdout, stderr, signalledService, signalledSession };
 }
 try {
   const probe = spawnNative(binary, ["--version"], { stdio: ["ignore", "pipe", "pipe"] });
@@ -435,29 +462,38 @@ try {
   );
   assert.notEqual(r.code, 0);
   assert(!r.frames.some((f) => f.type === "result" && !f.is_error));
-  const owners = [...r.stderr.matchAll(/(?:Runtime(?: supervisor)?|Core) PID: (\d+)/g)].map(
-    (match) => Number(match[1]),
+  const owned = r.signalledService;
+  const surviving = (await hostCommand(["status"])).projects.find(
+    (project) => project.service?.serviceId === owned.serviceId,
+  )?.service;
+  assert.equal(surviving?.generation, owned.generation, "client exit must not replace the service");
+  assert.equal(
+    surviving?.corePid,
+    owned.corePid,
+    "client exit must leave the original Core running",
   );
-  assert.equal(owners.length, 2, r.stderr);
-  const owned = r.signalledPids;
-  assert(
-    owners.every((pid) => owned.includes(pid)),
-    "missing pre-kill process snapshot",
-  );
-  // hang fixture 不启动工具：Linux 两个进程，macOS 额外包含等待 Runtime 的 Python。
-  assert.equal(owned.length, process.platform === "darwin" ? 3 : 2, r.stderr);
-  const cleanupDeadline = Date.now() + 10000;
-  const alive = (pid) => {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  while (owned.some(alive) && Date.now() < cleanupDeadline)
-    await new Promise((r) => setTimeout(r, 25));
-  assert(!owned.some(alive), "CLI SIGKILL left owned processes alive");
+  const observer = await connect(surviving.endpoint, surviving.authFile);
+  try {
+    const observed = await observer.call("areal/thread/observe", { threadId: r.signalledSession });
+    assert.equal(observed.thread.turns.length, 1, "client exit must not admit another Turn");
+    const turn = observed.thread.turns[0];
+    assert.equal(turn.status, "inProgress", "Host owns the admitted Turn after CLI SIGKILL");
+    await observer.call("turn/interrupt", { threadId: r.signalledSession, turnId: turn.id });
+    const completed = await observer.waitEvent(
+      "turn/completed",
+      (value) => value.turn.id === turn.id,
+    );
+    assert.equal(completed.turn.status, "interrupted");
+    const final = await observer.call("thread/read", {
+      threadId: r.signalledSession,
+      includeTurns: true,
+    });
+    assert.equal(final.thread.turns.length, 1);
+    assert.equal(final.thread.turns[0].id, turn.id);
+    assert.equal(final.thread.turns[0].status, "interrupted");
+  } finally {
+    await observer.close();
+  }
   r = await run(["--output-format", "stream-json", "--include-partial-messages"], "hello", {
     brokenPipe: true,
   });
@@ -526,12 +562,23 @@ try {
       consumer: `multica ${consumer.version} / ${consumer.revision}`,
       liveDaemon: "pending",
       cleanupConfirmed: true,
-      cleanupProcessCount: owned.length,
+      detachedServiceId: owned.serviceId,
     }),
   );
 } finally {
   model.server.closeAllConnections();
   await new Promise((r) => model.server.close(r));
+  // 共享 Host 的生命期不归 CLI；删除隔离目录前显式取消并核对停止回执。
+  const status = await hostCommand(["status"]);
+  const stopped = await hostCommand([
+    "stop",
+    "--cancel",
+    "--request-id",
+    crypto.randomUUID(),
+    "--expected-generation",
+    status.generation,
+  ]);
+  assert.equal(stopped.state, "completed", "isolated Host cleanup must settle before data removal");
   // 取消后的宿主可能刚结束最后一次状态落盘；短重试避免清理异常遮蔽原始断言。
   await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

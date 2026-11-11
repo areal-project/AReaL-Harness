@@ -315,7 +315,14 @@ impl Local {
         // 启动参数先校验，无效时不拉起 Host。
         let input = resolve()?;
         let client = areal_host::Client::connect_or_start().await?;
-        let opened = match client.open(input).await {
+        // 任务凭据只在 Runtime 启动时接收；续接时显式重启空闲服务，刷新本次运行的凭据。
+        let opened = match if args.resume.is_some() && !args.task_credential_command.is_empty() {
+            client
+                .restart(input, areal_host::StopStrategy::IfIdle)
+                .await
+        } else {
+            client.open(input).await
+        } {
             // 续接时本进程独占这个会话（client.lock）；权限等启动参数变了，由它显式重启空闲的会话服务。
             Err(error)
                 if args.resume.is_some()
