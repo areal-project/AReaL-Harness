@@ -9,7 +9,8 @@ import type { WorkspaceChanges } from "./useWorkspaceChanges.js";
 import { ScheduledTaskRow, ThreadScheduledTasks } from "./ScheduledTasks.js";
 import { ReviewPanelIcon, TerminalPanelIcon, DocumentPanelIcon } from "./app-shell/panelIcons.js";
 import { AgentsPane } from "./AgentsPane.js";
-import { SentAttachment } from "./MessageAttachment.js";
+import { mediaOwner, SentAttachment } from "./MessageAttachment.js";
+import type { MediaOwner } from "./PlatformReadContext.js";
 import { verifiedFileReceipts } from "./TurnFileSummary.js";
 import { LinkIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { ProjectFolderIcon } from "./homeChromeIcons.js";
@@ -90,19 +91,27 @@ export function ConversationStatusCard({
       ),
     ).values(),
   ];
-  const attachments: Data[] = [
-    ...new Map<string, Data>(
+  // 附件字节按“哪一轮的哪条消息”向 Host 读取，所以每个附件带着它的出处。
+  const attachments = [
+    ...new Map<string, { part: Data; owner: MediaOwner }>(
       (thread.turns ?? []).flatMap((turn: Data) =>
         (turn.items ?? [])
           .filter((item: Data) => item.type === "userMessage")
           .flatMap((item: Data) =>
-            (item.content ?? []).filter(
-              (part: Data) =>
-                ["image", "audio", "file"].includes(part.type) &&
-                typeof (part.url ?? part.uri) === "string",
-            ),
-          )
-          .map((part: Data) => [part.url ?? part.uri, part] as [string, Data]),
+            (item.content ?? [])
+              .filter(
+                (part: Data) =>
+                  ["image", "audio", "file"].includes(part.type) &&
+                  typeof (part.url ?? part.uri) === "string",
+              )
+              .map((part: Data) => {
+                const owner = mediaOwner(item, turn.id, thread.displayHistory?.viewGeneration);
+                return [part.url ?? part.uri, { part, owner }] as [
+                  string,
+                  { part: Data; owner: MediaOwner },
+                ];
+              }),
+          ),
       ),
     ).values(),
   ];
@@ -122,9 +131,9 @@ export function ConversationStatusCard({
           links.add(match[0].replace(/[).,;，。；）]+$/, ""));
       }
     }
-  type Source = { id: string; part?: Data; path?: string; url?: string };
+  type Source = { id: string; part?: Data; owner?: MediaOwner; path?: string; url?: string };
   const entries: Source[] = [
-    ...attachments.map((part) => ({ id: `media:${part.url ?? part.uri}`, part })),
+    ...attachments.map(({ part, owner }) => ({ id: `media:${part.url ?? part.uri}`, part, owner })),
     ...sources.map((source) => ({ id: `file:${source.path}`, path: source.path })),
     ...[...links].map((url) => ({ id: `web:${url}`, url })),
   ];
@@ -136,6 +145,7 @@ export function ConversationStatusCard({
         threadId={thread.id}
         action={action}
         compact
+        mediaSource={entry.owner}
       />
     ) : entry.url ? (
       <TaskContext.Item
