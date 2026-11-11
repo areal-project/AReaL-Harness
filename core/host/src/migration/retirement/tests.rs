@@ -1,4 +1,5 @@
 use super::*;
+use std::io::Write;
 
 #[test]
 fn source_credential_metadata_survives_retirement_and_discovers_new_slots() {
