@@ -1,0 +1,25 @@
+docs/benchmarks/reports/README.en.md
+  s_bf83cab8355b2b::t_ba72c515863069 9
+docs/benchmarks/reports/inline-result-readback.en.md
+  s_bf83cab8355b2b::t_ba72c515863069 1-37
+docs/benchmarks/reports/inline-result-readback.md
+  s_bf83cab8355b2b::t_ba72c515863069 1-37
+docs/benchmarks/reports/README.md
+  s_bf83cab8355b2b::t_ba72c515863069 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b26eb225a163b7cb6c56f35e11eec3698ccf013e",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
