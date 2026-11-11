@@ -869,7 +869,7 @@ mod tests {
         assert_eq!(std::fs::read(state).unwrap(), b"invalid plugin state");
     }
     #[test]
-    fn launch_imports_legacy_plugins_from_its_configuration_home() {
+    fn launch_imports_path_keyed_plugins_from_its_configuration_home() {
         let fixture = managed_launch_fixture();
         let plugins = fixture.inputs.config_home.join("plugins");
         std::fs::create_dir_all(&plugins).unwrap();
