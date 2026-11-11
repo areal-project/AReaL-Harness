@@ -127,7 +127,33 @@ impl Session {
         let caps = self
             .rpc(project, generation, "areal/capabilities", json!({}))
             .await?;
-        let enqueue = params.enqueue == Some(true);
+        // 受理前只观察一次：既用来替没指定的客户端选择“立即发/排队”，也用于下面的前置检查。
+        // Core 的 admissionGuard 在锁内再校验一遍，这里看到的状态过期也不会误受理。
+        let (observed, _, _observation) = self
+            .host
+            .schedules
+            .connections
+            .remote_observe(&self.host, &id, generation, &params.thread_id)
+            .await?;
+        let state = projection::snapshot(
+            &observed["thread"],
+            &observed["ownership"],
+            &[
+                project.to_owned(),
+                scope.0.clone(),
+                scope.1.clone(),
+                params.thread_id.clone(),
+            ],
+            &caps["features"],
+        )?;
+        let (enqueue, expected_turn) = match params.enqueue {
+            Some(enqueue) => (enqueue, params.expected_turn_id.clone()),
+            // 客户端不指定时由 Host 决定：有进行中的轮次就排到它后面，否则立即发。
+            None => {
+                let turn = state["activeTurnId"].as_str().map(str::to_owned);
+                (turn.is_some(), turn)
+            }
+        };
         let method = if enqueue {
             "areal/turn/enqueue"
         } else {
@@ -161,7 +187,7 @@ impl Session {
         let mut guard =
             json!({"ordinarySession":true,"configRevision":params.expected_config_revision});
         if enqueue {
-            guard["expectedTurnId"] = json!(params.expected_turn_id);
+            guard["expectedTurnId"] = json!(expected_turn);
         }
         let native: areal_protocol::desktop::TurnStart = serde_json::from_value(
             json!({"requestId":operation,"threadId":params.thread_id,"input":message_input(&effective)?,"expectedConfigRevision":params.expected_config_revision,"admissionGuard":guard}),
@@ -179,12 +205,6 @@ impl Session {
         if let Some(prepared) = &execution {
             ensure!(prepared.params == native, "INVALID_RESPONSE");
         }
-        let (observed, _, _observation) = self
-            .host
-            .schedules
-            .connections
-            .remote_observe(&self.host, &id, generation, &params.thread_id)
-            .await?;
         self.authorize(Some(project), "submit")?;
         if let Some(record) = self.command_record(project, command)? {
             ensure!(
@@ -201,17 +221,6 @@ impl Session {
                 == scope,
             "RESYNC_REQUIRED"
         );
-        let state = projection::snapshot(
-            &observed["thread"],
-            &observed["ownership"],
-            &[
-                project.to_owned(),
-                scope.0.clone(),
-                scope.1.clone(),
-                params.thread_id.clone(),
-            ],
-            &caps["features"],
-        )?;
         ensure!(
             state["ownership"]["kind"] == "ordinary",
             "TASK_CONTROL_REQUIRED"
@@ -220,7 +229,7 @@ impl Session {
             ensure!(
                 state["activeTurnId"]
                     .as_str()
-                    .is_some_and(|turn| Some(turn) == params.expected_turn_id.as_deref()),
+                    .is_some_and(|turn| Some(turn) == expected_turn.as_deref()),
                 "TARGET_CHANGED"
             );
         } else {

@@ -881,8 +881,8 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
     let (stale, _) = call(
         &mut socket,
         105,
-        "areal/queue/pause",
-        json!({"threadId":id,"expectedRevision":99}),
+        "areal/queue/reorder",
+        json!({"threadId":id,"expectedRevision":99,"queueItemIds":[]}),
     )
     .await;
     assert_eq!(stale["error"]["code"], -32009, "{stale}");
@@ -890,6 +890,20 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         stale["error"]["data"]["outcome"]["kind"], "rejected",
         "{stale}"
     );
+    // 暂停和继续不覆盖任何内容，版本过期也照常执行。
+    for (request, method, paused) in [
+        (106, "areal/queue/pause", true),
+        (107, "areal/queue/resume", false),
+    ] {
+        let (done, _) = call(
+            &mut socket,
+            request,
+            method,
+            json!({"threadId":id,"expectedRevision":99}),
+        )
+        .await;
+        assert_eq!(done["result"]["paused"], paused, "{done}");
+    }
     let mut req = req;
     req["admissionGuard"]["configRevision"] = json!(1);
     req["requestId"] = json!("false-send");

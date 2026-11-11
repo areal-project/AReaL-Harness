@@ -119,9 +119,10 @@ export async function submitMessage(
     ]
       .filter(Boolean)
       .join("\n\n");
+    let sent: unknown;
     try {
       options.onSendStart?.();
-      await action(options.steer ? "steer" : "send", {
+      sent = await action(options.steer ? "steer" : "send", {
         projectId,
         threadId,
         text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
@@ -155,6 +156,8 @@ export async function submitMessage(
       consumeMcpDraft(key, capturedMcp);
       consumeConversationSelections(selectionScope, capturedReferences);
     }
+    // Host 可能把“立即发”改成排队（对话刚好开始了新一轮）；调用方据此撤掉乐观显示。
+    return { queued: !!sent && typeof sent === "object" && "queued" in sent && sent.queued === true };
   } finally {
     if (options.appMessage) forgetComposerUploads(uploadOwner, imageFiles);
   }

@@ -236,11 +236,9 @@ export function useComposerQueueEdit({
         ? await readAction("queue", { projectId: project.id, threadId })
         : await mutation(record, { operation: "pause" });
       settled = true;
-      if (
-        paused.revision !== record.revision + (record.wasPaused ? 0 : 1) ||
-        paused.items.find((row: Data) => row.id === target.id)?.status !== "pending"
-      )
-        throw new Error("暂停时队列已有更新，原草稿已保留，请取消后重新核对");
+      // 暂停不比对版本；只要这条消息还在排队，就以暂停后拿到的最新队列为准进入编辑。
+      if (paused.items.find((row: Data) => row.id === target.id)?.status !== "pending")
+        throw new Error("这条消息已经不在队列里，原草稿已保留");
       enter(record, paused, target.input);
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
@@ -260,9 +258,9 @@ export function useComposerQueueEdit({
     }
     try {
       const latest = await readAction("queue", { projectId: project.id, threadId });
-      // 暂停与版本必须仍属于本次编辑；外部变更后只恢复本地输入，不恢复旧队列状态。
-      if (latest.revision !== record.revision || !latest.paused || latest.pauseReason !== "user") {
-        restoreLocal(record, "原草稿已恢复；队列状态已有更新，保持当前状态。");
+      // 队列已被别处继续或换了暂停原因时不再动它；仍是本次编辑造成的暂停就照常继续。
+      if (!latest.paused || latest.pauseReason !== "user") {
+        restoreLocal(record);
         return;
       }
       await mutation({ ...record, phase: "restoring" }, { operation: "resume" });

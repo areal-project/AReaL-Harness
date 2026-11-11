@@ -626,7 +626,7 @@ export function Composer({
         });
         configurationRequestId = undefined;
       }
-      await submitMessage(action, project.id, thread.id, value, files, {
+      const sent = await submitMessage(action, project.id, thread.id, value, files, {
         onSendStart: () => {
           sendStarted = true;
         },
@@ -642,7 +642,10 @@ export function Composer({
         },
       });
       clear();
-      acceptPendingMessage(key);
+      if (sent?.queued) {
+        setPendingMessage(key);
+        cancelTurnStart(turnStart);
+      } else acceptPendingMessage(key);
     } catch (e) {
       setPendingMessage(key);
       const error = e as Error & {
