@@ -8,6 +8,7 @@ const CATALOG_BYTES: usize = 16 * 1024;
 #[derive(Default)]
 pub(crate) struct ToolExposure {
     catalog: Vec<ToolSummary>,
+    common_catalog: Vec<ToolSummary>,
     loaded: BTreeSet<String>,
     offered: Option<BTreeSet<String>>,
 }
@@ -47,6 +48,22 @@ impl ToolExposure {
             .extend(matches.iter().map(|tool| tool.name.clone()));
         json!({"tools": matches, "truncated": truncated})
     }
+
+    fn search_native(&mut self, query: &str, limit: usize) -> Value {
+        // 常用工具已投影为直接入口或程序内 schema；精确搜索不能将它们误报为空。
+        // 只读当前授权投影，不增加 lazy 加载集，也不改变模糊搜索和 MCP 搜索。
+        if let Some(tool) = self
+            .common_catalog
+            .iter()
+            .find(|tool| tool.name.eq_ignore_ascii_case(query.trim()))
+        {
+            return json!({
+                "tools": [tool], "truncated": false, "schemaStatus": "already_available",
+                "schemaLocation": "Use the existing tool definition, or its tools.NAME schema in tool_program when provided there."
+            });
+        }
+        self.search(query, limit)
+    }
 }
 
 impl Engine {
@@ -63,7 +80,7 @@ impl Engine {
             return definitions;
         }
         let bindings = cell.bindings.read().await;
-        let catalog: Vec<_> = definitions
+        let (common_catalog, catalog): (Vec<_>, Vec<_>) = definitions
             .iter()
             .filter_map(|d| {
                 let name = d["function"]["name"].as_str()?;
@@ -74,8 +91,7 @@ impl Engine {
                         | crate::tools::Backend::Core
                         | crate::tools::Backend::Agent
                         | crate::tools::Backend::Coordination
-                ) || common_native(name)
-                {
+                ) {
                     return None;
                 }
                 Some(ToolSummary {
@@ -89,7 +105,7 @@ impl Engine {
                         .collect(),
                 })
             })
-            .collect();
+            .partition(|tool| common_native(&tool.name));
         drop(bindings);
         let mut state = cell.state.lock().await;
         let Some(active) = state.active.as_mut() else {
@@ -97,6 +113,7 @@ impl Engine {
         };
         let exposure = &mut active.native_tool_exposure;
         exposure.catalog = catalog;
+        exposure.common_catalog = common_catalog;
         let names: BTreeSet<_> = exposure.catalog.iter().map(|t| t.name.as_str()).collect();
         definitions.retain(|d| {
             let name = d["function"]["name"].as_str().unwrap_or("");
@@ -142,7 +159,7 @@ impl Engine {
             .as_mut()
             .filter(|a| a.id == turn_id)
             .ok_or(Error::Conflict)?;
-        Ok(active.native_tool_exposure.search(query, limit))
+        Ok(active.native_tool_exposure.search_native(query, limit))
     }
 
     pub(crate) async fn project_mcp_tools(
@@ -264,4 +281,42 @@ fn common_native(name: &str) -> bool {
             | "read_tool_result"
             | "environment_info"
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exact_common_search_reports_the_existing_schema() {
+        let mut exposure = ToolExposure {
+            common_catalog: vec![ToolSummary {
+                name: "edit_files".into(),
+                server_id: "native".into(),
+                description: "Edit authorized files".into(),
+            }],
+            ..Default::default()
+        };
+
+        let result = exposure.search_native(" edit_files ", 1);
+        assert_eq!(result["schemaStatus"], "already_available");
+        assert_eq!(result["tools"][0]["name"], "edit_files");
+        assert!(exposure.loaded.is_empty());
+    }
+
+    #[test]
+    fn unknown_common_search_keeps_existing_matching_behavior() {
+        let mut exposure = ToolExposure {
+            catalog: vec![ToolSummary {
+                name: "read_history".into(),
+                server_id: "native".into(),
+                description: "Read history".into(),
+            }],
+            ..Default::default()
+        };
+
+        let result = exposure.search_native("missing_tool", 1);
+        assert_eq!(result["tools"].as_array().unwrap().len(), 0);
+        assert!(result.get("schemaStatus").is_none());
+    }
 }
