@@ -1,5 +1,36 @@
 import { describe, expect, it } from "vite-plus/test";
-import { readFileOpenResult, readSnapshot } from "./desktop-response.js";
+import { hostCommandError, readFileOpenResult, readSnapshot } from "./desktop-response.js";
+
+describe("Host command response loss", () => {
+  it.each([
+    {
+      name: "queueEdit",
+      params: { operation: "pause", requestId: "original-queue" },
+      id: "original-queue",
+    },
+    {
+      name: "manage",
+      params: { operation: "taskDraftStart", draftId: "original-draft" },
+      id: "original-draft",
+    },
+  ])(
+    "retains the original $name business identity for receipt reconciliation",
+    ({ name, params, id }) => {
+      expect(hostCommandError(name, params, new Error("connection closed"))).toMatchObject({
+        submissionUnknown: true,
+        requestId: id,
+        outcome: { kind: "unconfirmed" },
+        recovery: { kind: "queryOriginal" },
+      });
+    },
+  );
+
+  it("keeps domain response IDs distinct from recoverable mutation IDs", () => {
+    expect(
+      hostCommandError("respond", { requestId: "interaction" }, new Error("connection closed")),
+    ).not.toHaveProperty("requestId");
+  });
+});
 
 describe("desktop Host recovery snapshots", () => {
   it.each([

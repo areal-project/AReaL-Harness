@@ -50,6 +50,7 @@ export function ComposerQueue({
   const queue = project.state?.queues?.[thread.id];
   const items: Data[] = (queue?.items ?? []).filter((item: Data) => item.status === "pending");
   const [busy, setBusy] = useState(false);
+  const [confirmed, setConfirmed] = useState<{ owner: string; revision: number } | null>(null);
   const [error, setError] = useState("");
   const operationKey = `areal-gui:draft:${project.id}:${thread.id}:queue-operation`;
   const [unknown, setUnknown] = useState<{
@@ -67,7 +68,12 @@ export function ComposerQueue({
   const [drag, setDrag] = useState<{ id: string; ids: string[]; revision: number } | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const running = thread.turns?.find((turn: Data) => turn.status === "inProgress");
-  const locked = disabled || busy || !!editingId || !!unknown;
+  const locked =
+    disabled ||
+    busy ||
+    !!editingId ||
+    !!unknown ||
+    (confirmed?.owner === operationKey && queue?.revision < confirmed.revision);
   const edit = async (request: QueueEditInput, revision = queue.revision) => {
     if (locked) return;
     setBusy(true);
@@ -76,12 +82,16 @@ export function ComposerQueue({
     localStorage.setItem(operationKey, JSON.stringify(unresolved));
     setUnknown(unresolved);
     try {
-      await action("queueEdit", {
+      const result = await action("queueEdit", {
         projectId: project.id,
         threadId: thread.id,
         expectedRevision: revision,
         requestId: unresolved.requestId,
         ...request,
+      });
+      setConfirmed({
+        owner: operationKey,
+        revision: "revision" in result ? result.revision : result.queueRevision,
       });
       localStorage.removeItem(operationKey);
       setUnknown(null);

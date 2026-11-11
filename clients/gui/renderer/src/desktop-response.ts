@@ -184,13 +184,18 @@ export function hostCommandError(name: string, params: Record<string, unknown>, 
   const shaped = desktopError(error);
   if (shaped.code !== undefined) return shaped;
   let write = true;
+  let requestId: string | undefined;
   try {
-    write = commandSemantics(name, params).effect !== "read";
+    const semantics = commandSemantics(name, params);
+    write = semantics.effect !== "read";
+    const original = semantics.requestId ? params[semantics.requestId] : undefined;
+    if (typeof original === "string") requestId = original;
   } catch {}
   return write
     ? {
         ...shaped,
         submissionUnknown: true,
+        ...(requestId === undefined ? {} : { requestId }),
         outcome: { kind: "unconfirmed" },
         recovery: { kind: "queryOriginal" },
       }
