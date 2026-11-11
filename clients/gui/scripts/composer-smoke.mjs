@@ -1992,7 +1992,10 @@ try {
     try {
       await assert.rejects(readSkill(), "Core must fail to read the injected resource");
       await button("发送").click();
-      await page.getByRole("alert").filter({ hasText: "无法读取技能" }).waitFor();
+      // 失败走顶部提示，具体原因在“查看详情”里。
+      await page.getByRole("alert").getByRole("button", { name: "查看详情" }).click();
+      await page.getByText("无法读取技能").waitFor();
+      await page.keyboard.press("Escape");
       assert.equal(received.length, requestCount);
       assert.equal(await tags().count(), 1);
       assert.equal(
