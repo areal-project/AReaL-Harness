@@ -287,6 +287,8 @@ pub(crate) fn prepare(
     credentials: &BTreeMap<String, String>,
 ) -> Result<(LaunchSpec, LaunchInputs)> {
     validate(inputs, registration)?;
+    // 项目配置目录可与 Host 服务目录不同，也可能在 Host 启动后才登记。
+    areal_plugins::Store::import_path_keyed_state(&inputs.config_home.join("plugins"))?;
     let mut saved = inputs.clone();
     let directory = home
         .join("host/launch")
@@ -834,6 +836,66 @@ mod tests {
         assert_eq!(config.home, config_home);
         assert_eq!(spec.home, home);
         assert_eq!(saved.config_home, config_home);
+    }
+    #[test]
+    fn launch_rejects_invalid_plugin_import_without_changing_it() {
+        let fixture = managed_launch_fixture();
+        let plugins = fixture.inputs.config_home.join("plugins");
+        std::fs::create_dir_all(&plugins).unwrap();
+        let state = plugins.join("state.json");
+        std::fs::write(&state, b"invalid plugin state").unwrap();
+        let failure = prepare(
+            &fixture.home,
+            &fixture.bin,
+            &fixture.registration,
+            &fixture.inputs,
+            &BTreeMap::new(),
+        )
+        .err()
+        .expect("invalid plugin state must prevent Core startup");
+        assert!(failure.to_string().contains("invalid plugin state"));
+        assert_eq!(std::fs::read(state).unwrap(), b"invalid plugin state");
+    }
+    #[test]
+    fn launch_imports_legacy_plugins_from_its_configuration_home() {
+        let fixture = managed_launch_fixture();
+        let plugins = fixture.inputs.config_home.join("plugins");
+        std::fs::create_dir_all(&plugins).unwrap();
+        let workspace = fixture.registration.workspace.to_string_lossy();
+        storage::write(
+            &plugins.join("state.json"),
+            &serde_json::json!({"revision":6,"projects":{workspace.as_ref():{"old@local":false}}}),
+        )
+        .unwrap();
+        prepare(
+            &fixture.home,
+            &fixture.bin,
+            &fixture.registration,
+            &fixture.inputs,
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        let view = areal_plugins::Store::open(
+            plugins.clone(),
+            fixture.registration.workspace.clone(),
+            fixture.inputs.homedir.clone(),
+        )
+        .unwrap();
+        // 项目 Core 的首个插件读取必须能使用相同配置目录，而不是 Host 服务目录。
+        assert_eq!(view.list().unwrap().revision, 7);
+        let imported = std::fs::read(plugins.join("state.json")).unwrap();
+        let state: serde_json::Value = serde_json::from_slice(&imported).unwrap();
+        assert_eq!(state["projects"][workspace.as_ref()]["old@local"], false);
+        prepare(
+            &fixture.home,
+            &fixture.bin,
+            &fixture.registration,
+            &fixture.inputs,
+            &BTreeMap::new(),
+        )
+        .unwrap();
+        assert_eq!(std::fs::read(plugins.join("state.json")).unwrap(), imported);
+        assert!(!fixture.home.join("plugins/state.json").exists());
     }
     #[test]
     fn configuration_environment_keeps_budget_keys_and_excludes_unregistered_secrets() {
