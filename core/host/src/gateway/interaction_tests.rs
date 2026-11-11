@@ -1463,6 +1463,7 @@ async fn local_desktop_principal_sends_through_the_shared_journal_without_device
 }
 
 #[tokio::test(flavor = "current_thread")]
+#[ignore = "需要 GUI 的 Node 依赖；由 make host-protocol-check 运行"]
 async fn local_send_and_steer_freeze_authoritative_gen_ui_context_without_private_state() {
     tokio::task::LocalSet::new().run_until(async {
         let mut f = Fixture::new().await;

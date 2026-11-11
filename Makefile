@@ -305,10 +305,12 @@ desktop-schema-check: ## 临时生成并规范化比较三份桌面 schema，不
 	python3 scripts/desktop-schemas.py
 
 .PHONY: host-protocol-check
-host-protocol-check: ## 检查 A0 协议生成物与桌面 IPC 冻结的反例
+host-protocol-check: ## 检查 A0 协议生成物、桌面 IPC 冻结反例和要 GUI 依赖的用例（先装 clients/gui 依赖）
 	python3 scripts/generate-host-protocol.py --check
 	python3 -m unittest scripts.tests.test_host_protocol_schema
+	python3 -m unittest scripts/tests/host_protocol_typescript.py
 	node --test clients/gui/scripts/desktop-ipc-freeze.test.cjs
+	cargo test --locked -p areal-host local_send_and_steer_freeze -- --ignored
 
 package: release ## 生成 macOS arm64 / Linux x86_64 发行产物及完整性清单；ARGS 指定 --output
 	python3 scripts/package.py $(ARGS)
