@@ -35,8 +35,6 @@ type QueueEdit = {
 };
 
 /** 只保存主 Composer 的未提交输入；队列内容、版本和受理结果始终由 Core 确认。 */
-const unresolvedText = "没能确认这次操作是否生效，请以当前显示的状态为准。";
-
 export function useComposerQueueEdit({
   project,
   threadId,
@@ -105,6 +103,7 @@ export function useComposerQueueEdit({
     (!item || item.status !== "pending" || queue?.revision !== edit.revision || !queue?.paused);
   // 请求发出前就记下了原编号；还在等回复时不算“结果未知”，回复确实没回来才开始自动核对。
   const [awaiting, setAwaiting] = useState(false);
+  const [unresolved, setUnresolved] = useState<string | null>(null);
   const unconfirmed = !!edit?.unknown && !awaiting;
   const feedback = unconfirmed
     ? ""
@@ -382,10 +381,9 @@ export function useComposerQueueEdit({
     if (!edit) return;
     // 查不出来就到此为止：正在编辑的内容留着，其余情况回到原草稿，只提示一次。
     const record = { ...edit, unknown: undefined };
-    if (edit.unknown?.operation === "update") {
-      saveRecord(record);
-      setError(unresolvedText);
-    } else restoreLocal(record, unresolvedText);
+    setUnresolved(edit.unknown?.requestId ?? null);
+    if (edit.unknown?.operation === "update") saveRecord(record);
+    else restoreLocal(record);
   });
   return {
     edit,
@@ -393,6 +391,7 @@ export function useComposerQueueEdit({
     conflict,
     feedback,
     unconfirmed,
+    unresolved,
     begin,
     save,
     cancel,

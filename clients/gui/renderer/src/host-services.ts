@@ -655,8 +655,7 @@ export function createHostReadServices(
             name === "send" ? "session.send" : "session.control",
             target.hostProjectId,
             name === "send"
-              ? // 立即发还是排队由 Host 按对话当前状态决定，界面不再断言“现在是哪一轮”。
-                {
+              ? {
                   threadId: target.threadId,
                   expectedConfigRevision: Number(config.revision),
                   ...input,

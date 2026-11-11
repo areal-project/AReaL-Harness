@@ -17,7 +17,7 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
   const { operationNotices, dismissedNotices, dismissNotice } = recovery;
   const { restorationError, restorationFailed, restorationNoticeId, viewFailure } = startup;
   const { setSettingsTab, setSettingsOpen } = surfaces;
-  const { resourceAction, retryRestoration } = session;
+  const { retryRestoration } = session;
   const { t } = useI18n();
   return (
     <>
@@ -28,7 +28,11 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
           transient
           message={
             notice.kind === "unconfirmed"
-              ? t("recovery.operationUnconfirmed")
+              ? t(
+                  /turn\/(start|enqueue|submit)$/.test(notice.operation?.method ?? "")
+                    ? "recovery.sendUnresolved"
+                    : "recovery.operationUnresolved",
+                )
               : isTechnicalErrorMessage(notice.message)
                 ? t("recovery.operationFailed")
                 : notice.message
@@ -61,20 +65,6 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
                       ? "recovery.checkModelSettings"
                       : "recovery.checkSessionSettings",
                   )}
-                </Button>
-              )}
-              {notice.kind === "unconfirmed" && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() =>
-                    void resourceAction("reconcile", {
-                      projectId: notice.projectId,
-                      requestId: notice.requestId,
-                    }).catch(() => {})
-                  }
-                >
-                  {t("recovery.checkOriginal")}
                 </Button>
               )}
             </>

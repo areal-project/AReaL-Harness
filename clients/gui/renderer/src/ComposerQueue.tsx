@@ -55,6 +55,7 @@ export function ComposerQueue({
   const [busy, setBusy] = useState(false);
   // 原请求还在路上时不核对；答复确实没回来才开始自动核对。
   const [awaiting, setAwaiting] = useState(false);
+  const [unresolved, setUnresolved] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<{ owner: string; revision: number } | null>(null);
   const [error, setError] = useState("");
   const operationKey = `areal-gui:draft:${project.id}:${thread.id}:queue-operation`;
@@ -155,8 +156,8 @@ export function ComposerQueue({
     reconcile,
     () => {
       localStorage.removeItem(operationKey);
+      setUnresolved(unknown?.requestId ?? null);
       setUnknown(null);
-      setError(t("recovery.operationUnresolved"));
     },
   );
   const move = (id: string, offset: number) => {
@@ -178,13 +179,23 @@ export function ComposerQueue({
     setDrag(null);
     setOver(null);
   };
-  if (!queue || (!items.length && !error)) return null;
+  const unresolvedNotice = unresolved && (
+    <FeedbackNotice
+      transient
+      tone="warning"
+      requestId={unresolved}
+      message={t("recovery.operationUnresolved")}
+      onDismiss={() => setUnresolved(null)}
+    />
+  );
+  if (!queue || (!items.length && !error && !unresolved)) return null;
   if (!items.length)
     return (
       <div className="composer-queue-feedback">
         {error && (
           <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
         )}
+        {unresolvedNotice}
       </div>
     );
   return (
@@ -209,6 +220,7 @@ export function ComposerQueue({
       {error && (
         <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
       )}
+      {unresolvedNotice}
       <div className="composer-queue-rows">
         {items.map((item, index) => (
           <div

@@ -245,6 +245,8 @@ export function Composer({
   const [unknown, setUnknown] = useState<string | null>(() =>
     composerDraftStorage.getItem(`${key}:pending`),
   );
+  // 核对不出结果的那次发送；提示用原编号做键，和全局提示合并成一条。
+  const [unresolved, setUnresolved] = useState<string | null>(null);
   const [deliveryNotice, setDeliveryNotice] = useState<Pick<
     PresentedError,
     "message" | "detail"
@@ -519,8 +521,8 @@ export function Composer({
       for (const suffix of ["pending", "pending-operation", "pending-goal", "pending-continue", "pending-configure"])
         composerDraftStorage.removeItem(`${key}:${suffix}`);
       window.dispatchEvent(new Event("areal-snapshot-drain"));
+      setUnresolved(unknown);
       setUnknown(null);
-      setDeliveryNotice({ message: t("recovery.sendUnresolved") });
     },
   );
   useEffect(() => {
@@ -932,6 +934,15 @@ export function Composer({
           onDismiss={() => setDeliveryNotice(null)}
         />
       )}
+      {unresolved && (
+        <FeedbackNotice
+          transient
+          tone="warning"
+          requestId={unresolved}
+          message={t("recovery.sendUnresolved")}
+          onDismiss={() => setUnresolved(null)}
+        />
+      )}
       {inspection.notice}
       {!readOnly && planReady && !queueEditor.edit && (
         <section
@@ -1215,6 +1226,14 @@ export function Composer({
               )}
               {queueEditor.feedback && (
                 <FeedbackNotice transient tone="error" message={queueEditor.feedback} />
+              )}
+              {queueEditor.unresolved && (
+                <FeedbackNotice
+                  transient
+                  tone="warning"
+                  requestId={queueEditor.unresolved}
+                  message={t("recovery.operationUnresolved")}
+                />
               )}
               {!queueEditor.edit && (
                 <ConversationSelectionReferences

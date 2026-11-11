@@ -8,6 +8,8 @@ describe("scheduleReconcile", () => {
     const giveUp = vi.fn();
     scheduleReconcile(run, giveUp, [10, 20]);
     await vi.advanceTimersByTimeAsync(1000);
+    expect(giveUp).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
     expect(run).toHaveBeenCalledTimes(2);
     expect(giveUp).toHaveBeenCalledTimes(1);
     vi.useRealTimers();

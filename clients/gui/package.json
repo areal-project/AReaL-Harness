@@ -10,7 +10,7 @@
     "health": "node scripts/gui-health.mjs --check",
     "verify:tests": "node scripts/test-manifest.mjs",
     "verify:bundle": "node scripts/bundle-budget.mjs --check",
-    "test:health": "node --test scripts/gui-health.test.mjs scripts/design-system-maturity.test.mjs scripts/shell-capabilities.test.cjs",
+    "test:health": "node --test scripts/gui-health.test.mjs scripts/design-system-maturity.test.mjs scripts/shell-capabilities.test.cjs scripts/unknown-outcome-sources.test.mjs",
     "test:workbench-backend": "node scripts/workbench-backend-smoke.mjs",
     "test:shared-host-consumers": "node scripts/shared-host-consumers-smoke.mjs",
     "test:ux-checks": "node --test scripts/ux-checks.test.mjs",
