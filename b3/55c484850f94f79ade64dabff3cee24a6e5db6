@@ -1,0 +1,34 @@
+core/engine/src/model/decoder.rs
+  s_ba113a33f2fc96::t_5a0d50bc5f16b0 474,500-501,936
+core/engine/src/model/terminal_integrity_tests.rs
+  s_ba113a33f2fc96::t_0abc9c22c327ac 174-181,183-205,218-223
+  s_ba113a33f2fc96::t_fd9cb9a0ea01a9 182
+  s_ba113a33f2fc96::t_9b54b8fa922623 206-217
+core/engine/tests/tools.rs
+  s_ba113a33f2fc96::t_1ae3d5fa07940c 780
+  s_ba113a33f2fc96::t_3f24caa18ea55a 654
+  s_ba113a33f2fc96::t_a76b0039803a91 663-667,672,729-730,732-737,743,755-756,782,785-786,806-813
+  s_ba113a33f2fc96::t_e693ba3af77975 726
+  s_ba113a33f2fc96::t_8f513a94a54c34 652,655,815-816
+  s_ba113a33f2fc96::t_9647f84a78bbc3 651,653,656-662,668-671,673-725,727-728,731,738-742,744-754,757-779,781,783-784,787-805,814
+docs/api/core.md
+  s_ba113a33f2fc96::t_2ed42b9dbd7c71 117,190
+docs/api/core.en.md
+  s_ba113a33f2fc96::t_2ed42b9dbd7c71 122,195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b355c484850f94f79ade64dabff3cee24a6e5db6",
+  "prompts": {},
+  "sessions": {
+    "s_ba113a33f2fc96": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1c887-cedd-7551-9211-361b580d2f86",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
