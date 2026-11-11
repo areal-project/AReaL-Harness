@@ -26,7 +26,7 @@ Core owns cross-restart creation admission evidence in the existing submissions 
 
 | Module | Responsibility |
 |---|---|
-| `clients/cli`, `clients/tui`, `clients/web` | CLI, terminal and local Web; connection setup, projections and requests |
+| `clients/cli`, `clients/tui` | CLI and terminal; connection setup, projections and requests |
 | `clients/gui` | React/Electron desktop client; narrow IPC, native resources, public service discovery and rebuildable projections |
 | `clients/mobile` | Capacitor iOS/Android Remote client; reuse the GUI mobile entry, shared Remote protocol and conversation components, with native Keychain, Android Keystore, scanning and lifecycle adapters; see the [iOS development guide](../development/ios-development.en.md) for capabilities and acceptance boundaries |
 | `core/config` | User configuration, provenance, credential references, Skill directories and the tool-host proxy environment allowlist; no Engine/Runtime dependency |

@@ -50,7 +50,7 @@ Descriptor fields are defined in [local-service-v1.json](../../schemas/local-ser
 | `generation` | Fresh UUID per launch; distinct from Runtime epoch and tool Host generation |
 | `workspace`, `dataDir` | Canonical absolute paths |
 | `configFingerprint` | Digest of deployment configuration, model CLI/environment overrides, permissions, deployment files and binary contents; hot model values are versioned separately |
-| `endpoint`, `webUrl` | Core WebSocket and `/ui` URLs |
+| `endpoint`, `webUrl` | Core WebSocket and HTTP (media and health) URLs |
 | `authFile`, `logFile` | Authentication and host log paths for trusted callers |
 | `hostPid`, `corePid` | Diagnostic only; never signal a stale PID from discovery |
 | `state` | `ready`, `stopping`, `stopped` or `unavailable` |
@@ -182,7 +182,7 @@ The deterministic cross-process regression is `AREAL_TEST_BIN_DIR=/absolute/bin 
 
 `areal service stop --expected-generation <generation>` checks the target generation under the startup lock and refuses to stop a replacement instance. GUI cancellation confirmation binds the original Desktop, project scope and Core generations; the final public host stop retains the cancel intent. Partial stops and unknown responses remain recovery states, without claiming rollback or replaying mutations. Clients confirm registration withdrawal and original-process exit.
 
-- `areal web` opens the shared interface served by Host without starting a project Core. `--json` returns a public endpoint and does not mint a login URL. Legacy local options remain accepted but neither select a project nor start its service. See [Host loopback access](host.en.md#loopback-websocket-and-shared-reads) for browser approval, reconnects, and revocation. The legacy Core `/ui` login API remains documented under [browser login](desktop.en.md#browser-auth).
+- `areal web` opens the shared interface served by Host without starting a project Core. `--json` returns a public endpoint and does not mint a login URL. See [Host loopback access](host.en.md#loopback-websocket-and-shared-reads) for browser approval, reconnects, and revocation. Core serves no web page and rejects every request that carries an Origin.
 - Desktop Main executes `areal service ensure --json` with an argument array, checks `protocolVersion`, reads authFile in Main and establishes the authenticated connection. Expose only filtered application operations/state to Renderer, never the full descriptor or token.
 - Rediscover and compare generation before initialize/initialized and thread/resume. Query request/read or authoritative state before deciding to retry; never replay accepted operations automatically.
 - Dynamic ToolHosts that must survive windows belong in a stable Main/independent host connection. Window tools do not transfer automatically; disconnect retains Host generation and UNKNOWN semantics.
@@ -191,7 +191,7 @@ Internal control uses one-line JSON over a Unix socket, with 0700 directories an
 
 Requests are `{method:"status",version:1}` or `{method:"stop",version:1,generation,cancel}`. Responses are `{result:"ok",service}` or `{result:"error",message}`. Non-Rust clients should use the CLI instead of duplicating address derivation, locking, and recovery.
 
-Authenticated GET `/areal/service` returns the six identity fields (protocolVersion/serviceId/generation/workspace/dataDir/configFingerprint), requires observe permission and rejects a mismatched Origin. An authenticated Core without managed identity returns 404. Business operations retain the [Core](core.en.md) and [desktop API](desktop.en.md) protocols and the same Agent loop.
+Authenticated GET `/areal/service` returns the six identity fields (protocolVersion/serviceId/generation/workspace/dataDir/configFingerprint), requires observe permission and rejects any request carrying an Origin. An authenticated Core without managed identity returns 404. Business operations retain the [Core](core.en.md) and [desktop API](desktop.en.md) protocols and the same Agent loop.
 
 LocalArgs adds permissions (YOLO/ASK_PERMISSIONS) and scratch. Effective permission policy and scratch participate in deployment compatibility. Local launcher now defaults to full-access; the changed default requires an explicit restart for an existing service. No client attach operation silently widens the old service. See [permissions](../guides/configuration.en.md#permissions).
 

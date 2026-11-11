@@ -849,7 +849,6 @@ class CiContracts(unittest.TestCase):
         for path in (
             "clients/cli/src/main.rs",
             "clients/tui/src/lib.rs",
-            "clients/web/app.js",
             "core/server/build.rs",
             "runtime/daemon/src/main.rs",
             "schemas/native-host-v2.json",

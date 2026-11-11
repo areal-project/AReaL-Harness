@@ -40,14 +40,14 @@ TUI 的模型凭据来自 Core 启动时的环境。先在终端导出密钥变�
 修改终端环境不会改变已运行 Core 的环境。已有共享服务需要使用相同配置、工作区和部署参数执行 `areal service restart`，再启动 TUI；有后台任务时先等待结算，不要为更新密钥自动取消工作。`Ctrl-R` 只重连，不能注入新密钥。使用 `--endpoint` 时，应在远端 Core 的启动环境中配置凭据。密钥值不要放入命令行参数或 TOML。配置示例见[模型配置](configuration.md#gui-与-cli-共享模型目录)。
 
 ```sh
-target/debug/areal web --workspace /absolute/task
+target/debug/areal web
 target/debug/areal service list --json
 target/debug/areal service status --json
 target/debug/areal service restart --json
 target/debug/areal service stop --json
 ```
 
-`areal exec 'prompt' --output-format stream-json --verbose` 提供非交互 CLI，`areal serve` 启动持续服务；参数、认证、恢复与退出码见 [CLI 契约](../api/claude-cli.md)。Web 位于服务的 `/ui`；通过 `areal web` 打开会自动登录，无需复制 token。直接打开地址且没有有效会话时，可在设置中填写服务数据目录 `security/auth.json` 中的本地 token。
+`areal exec 'prompt' --output-format stream-json --verbose` 提供非交互 CLI，`areal serve` 启动持续服务；参数、认证、恢复与退出码见 [CLI 契约](../api/claude-cli.md)。`areal web` 打开 Host 发布的网页，与桌面是同一份界面；浏览器第一次连接需要在本机批准。
 
 本地 `areal exec` 与 `-p` 将启动所有权交给共享 Host。每个 run 继续使用 `<home>/cli/runs/<runId>/state` 与 `<home>/cli/sessions/` 会话映射，`--resume` 重新打开原 run。Host 在 ready 前保存临时部署和 Skill 输入快照，并在内存保存项目凭据。CLI 退出只断开连接，不停止 Core/Runtime。显式 `--endpoint` 也由服务宿主管理生命周期。macOS 可信服务链需要 `/usr/bin/python3`。GUI 迁移完成前仍使用独立的应用生命周期。
 

@@ -9,7 +9,7 @@ mod spec;
 pub mod storage;
 
 pub use client::{
-    CONFIGURATION_CONFLICT, bind, browser_login_url, capabilities, ensure, ensure_with_lifetime,
+    CONFIGURATION_CONFLICT, bind, capabilities, ensure, ensure_with_lifetime,
     ensure_with_lifetime_checked, ensure_without_restart, list, operation, probe, reconnect,
     recover_crashed, restart, rpc, select, status, status_with_recovery, stop, stop_operation,
     stop_with_generation,

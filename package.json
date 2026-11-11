@@ -14,8 +14,8 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "format": "prettier --write \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"clients/web/*.{js,css,html}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json",
-    "format:check": "prettier --check \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"clients/web/*.{js,css,html}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json"
+    "format": "prettier --write \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json",
+    "format:check": "prettier --check \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json"
   },
   "devDependencies": {
     "ajv": "8.20.0",

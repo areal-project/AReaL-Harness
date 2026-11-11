@@ -425,7 +425,7 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
     Ok(())
 }
 
-pub async fn web(_local: LocalArgs, json: bool) -> Result<()> {
+pub async fn web(json: bool) -> Result<()> {
     let endpoint = areal_host::Client::connect_or_start()
         .await?
         .web_endpoint()

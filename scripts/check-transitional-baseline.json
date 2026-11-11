@@ -33,7 +33,6 @@
   "clients/tui/src/commands.rs": 4,
   "clients/tui/src/history.rs": 3,
   "clients/tui/src/ui.rs": 2,
-  "clients/web/app.js": 1,
   "core/app-server/src/desktop.rs": 3,
   "core/config/src/file.rs": 1,
   "core/config/src/resolve.rs": 4,

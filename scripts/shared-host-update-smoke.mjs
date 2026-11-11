@@ -29,7 +29,6 @@ assert(
   [
     "main",
     "cancel-confirmed",
-    "web-pending",
     "prepare-red",
     "prepare-recovery",
     "prepare-existing-recovery",
@@ -231,163 +230,7 @@ try {
   console.log(JSON.stringify({ root, mode, resultPath, hostPid: identity.pid }));
   await pointAt(newBinary);
   const host = await hostClient();
-  if (mode === "web-pending") {
-    const workspace = join(root, "workspace"),
-      dataDir = join(root, "project"),
-      config = join(root, "config.toml");
-    await mkdir(workspace);
-    await mkdir(dataDir);
-    await writeFile(config, "schema_version = 1\n");
-    const projectId = randomUUID();
-    const ensureArgs = [
-      "host",
-      "ensure",
-      "--json",
-      "--project-id",
-      projectId,
-      "--workspace",
-      workspace,
-      "--data-dir",
-      dataDir,
-      "--config",
-      config,
-    ];
-    const ensureId = randomUUID();
-    const ensured = await cli([...ensureArgs, "--request-id", ensureId]);
-    evidence.service = ensured.service;
-    evidence.web = { projectId, phases: [], proofs: [] };
-    const stage = async (name, service, requestId, generation, expectedText) => {
-      const descriptor = {
-        name,
-        stageId: randomUUID(),
-        projectId,
-        hostId: identity.hostId,
-        generation,
-        requestId,
-        service,
-        expectedText,
-      };
-      evidence.web.phases.push(descriptor);
-      await save();
-      await writeFile(join(root, "web-stage.json"), JSON.stringify(descriptor, null, 2));
-      const proof = await until(
-        async () => {
-          const path = join(root, `web-${name}-observed.json`);
-          try {
-            return JSON.parse(await readFile(path, "utf8"));
-          } catch (error) {
-            if (error.code === "ENOENT") return null;
-            throw error;
-          }
-        },
-        `real browser ${name} observation`,
-        180000,
-      );
-      for (const key of ["stageId", "projectId", "hostId", "generation", "requestId"])
-        assert.equal(proof[key], descriptor[key], `browser ${name} original ${key}`);
-      assert.equal(proof.passed, true);
-      assert.equal(proof.visibleText, expectedText);
-      assert.equal(typeof proof.browserId, "string");
-      assert(proof.browserId.length > 0);
-      assert(Number.isSafeInteger(proof.navigationCount) && proof.navigationCount >= 0);
-      if (evidence.web.proofs.length)
-        assert.equal(
-          proof.browserId,
-          evidence.web.proofs[0].browserId,
-          "one browser profile throughout upgrade",
-        );
-      if (name !== "closed") {
-        assert.equal(typeof proof.png, "string");
-        assert.equal(typeof proof.aria, "string");
-        assert((await readFile(proof.png)).length > 0);
-        assert((await readFile(proof.aria)).length > 0);
-        assert.equal(
-          proof.webAppSha256,
-          createHash("sha256")
-            .update(await readFile(join(repository, "clients/web/app.js")))
-            .digest("hex"),
-        );
-        evidence.web.proofs.push(proof);
-      } else evidence.web.closed = proof;
-      await save();
-      return proof;
-    };
-    await stage(
-      "baseline",
-      ensured.service,
-      ensureId,
-      identity.generation,
-      "已连接本地 Core · 后台 0.1.8",
-    );
-    evidence.checks.push(
-      "real served Web connects to old Core and shows the running Host without pending restart",
-    );
-    const prepared = await prepare(host);
-    const pending = await stage(
-      "pending",
-      ensured.service,
-      prepared.requestId,
-      identity.generation,
-      "已连接本地 Core · 后台 0.1.8 · 待应用 0.1.9",
-    );
-    assert.equal(
-      pending.navigationCount,
-      evidence.web.proofs[0].navigationCount,
-      "the original connected page observes pending through its refresh cadence without reload",
-    );
-    evidence.checks.push(
-      "the same Web page shows pending after prepare without refresh or another login",
-    );
-    pendingApply = randomUUID();
-    evidence.pendingApply = {
-      requestId: pendingApply,
-      hostId: host.hostId,
-      generation: host.generation,
-    };
-    await save();
-    try {
-      evidence.web.applyResponse = await host.request("host.update", {
-        requestId: pendingApply,
-        expectedGeneration: host.generation,
-        action: "apply",
-        targetVersion: "0.1.9",
-        strategy: "ifIdle",
-      });
-    } catch (error) {
-      evidence.web.applyReplyError = { code: error.code, message: error.message };
-    }
-    host.close();
-    const after = await until(async () => {
-      const value = await descriptor();
-      return (
-        value?.generation !== identity.generation && value?.executableVersion === "0.1.9" && value
-      );
-    }, "updated Host for Web reconnect");
-    assert.equal(after.hostId, identity.hostId);
-    assert.equal(after.pid, identity.pid);
-    const original = await until(async () => {
-      const receipt = await operation(pendingApply);
-      return receipt?.state === "completed" && receipt;
-    }, "original Web update request completed");
-    assert.equal(original.hostId, identity.hostId);
-    assert.equal(original.generation, identity.generation);
-    evidence.operations.push(original);
-    evidence.after = after;
-    const reopened = await cli([...ensureArgs, "--request-id", randomUUID()], newBinary);
-    evidence.reopenedService = reopened.service;
-    assert.notEqual(reopened.service.generation, ensured.service.generation);
-    await stage(
-      "updated",
-      reopened.service,
-      pendingApply,
-      after.generation,
-      "已连接本地 Core · 后台 0.1.9",
-    );
-    evidence.checks.push(
-      "the same browser explicitly reconnects to the new Core and no longer shows pending",
-    );
-    await stage("closed", reopened.service, pendingApply, after.generation, "browser closed");
-  } else if (mode === "startup-failure") {
+  if (mode === "startup-failure") {
     const directory = join(home, "host/subscription-owners");
     await mkdir(directory, { mode: 0o700 });
     await writeFile(join(directory, "fixture.json"), "{}\n", { mode: 0o600 });
@@ -794,7 +637,7 @@ try {
     model.closeAllConnections();
     await new Promise((done) => model.close(done));
   }
-  if (evidence.service && mode !== "web-pending") {
+  if (evidence.service) {
     evidence.coreModelRequests = (
       await readFile(join(evidence.service.dataDir, "model-requests/requests.jsonl"), "utf8")
     )

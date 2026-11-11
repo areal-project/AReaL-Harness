@@ -1,39 +1,4 @@
 {
-  "browserBootstrap": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "description": "只通过可信本地客户端交付给浏览器，不进入服务发现描述或日志。",
-    "properties": {
-      "code": {
-        "type": "string"
-      },
-      "expiresIn": {
-        "format": "uint64",
-        "minimum": 0,
-        "type": "integer"
-      }
-    },
-    "required": [
-      "code",
-      "expiresIn"
-    ],
-    "title": "BrowserBootstrap",
-    "type": "object"
-  },
-  "browserBootstrapExchange": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "code": {
-        "type": "string"
-      }
-    },
-    "required": [
-      "code"
-    ],
-    "title": "BrowserBootstrapExchange",
-    "type": "object"
-  },
   "capabilities": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,

@@ -31,6 +31,5 @@
 | 客户端 | 现有设计与实现入口 | 平台责任 |
 | --- | --- | --- |
 | 桌面 GUI | [GUI 设计入口](../clients/gui/design-system/README.md)、[@areal/ui](../clients/gui/packages/ui/README.md)、[生产目录](../clients/gui/design-system/inventory.md) | React 控件、布局、窗口与原生视图的适配和准入 |
-| 本地 Web | [界面](../clients/web/app.js)、[样式](../clients/web/style.css) | 独立 Web 实现及主题偏好，不等同于 Remote Web |
 
 已完成的过程记录与调研材料在[设计归档](archive/README.md)，不是现行规则。

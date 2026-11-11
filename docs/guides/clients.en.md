@@ -40,14 +40,14 @@ TUI model credentials come from the environment that starts Core. Export the key
 Changing your terminal environment does not update a running Core. For an existing shared service, run `areal service restart` with the same configuration, workspace, and deployment arguments, then start the TUI. Wait for background work to settle rather than canceling it to update a key. `Ctrl-R` only reconnects and cannot inject a new key. With `--endpoint`, configure credentials in the remote Core's launch environment. Keep key values out of command arguments and TOML. See the [model configuration examples](configuration.en.md#shared-gui-and-cli-model-catalog).
 
 ```sh
-target/debug/areal web --workspace /absolute/task
+target/debug/areal web
 target/debug/areal service list --json
 target/debug/areal service status --json
 target/debug/areal service restart --json
 target/debug/areal service stop --json
 ```
 
-`areal exec 'prompt' --output-format stream-json --verbose` provides noninteractive CLI operation; `areal serve` starts a persistent service. See the [CLI contract](../api/claude-cli.en.md) for arguments, authentication, resume and exit codes. Web is served at `/ui`; `areal web` opens it and signs in automatically without copying a token. Direct visits without a valid session can use the local token from `security/auth.json` in the service data directory.
+`areal exec 'prompt' --output-format stream-json --verbose` provides noninteractive CLI operation; `areal serve` starts a persistent service. See the [CLI contract](../api/claude-cli.en.md) for arguments, authentication, resume and exit codes. `areal web` opens the page Host serves, the same interface as the desktop app; a browser needs local approval the first time it connects.
 
 Local `areal exec` and `-p` transfer launch ownership to the shared Host. Each run retains `<home>/cli/runs/<runId>/state` and session mappings in `<home>/cli/sessions/`; `--resume` reopens that run. The Host snapshots temporary deployment and Skill inputs before readiness and keeps project credentials in memory. CLI exit disconnects without stopping Core/Runtime. Explicit `--endpoint` also leaves service lifecycle to its owner. On macOS the trusted service chain requires `/usr/bin/python3`. The GUI still uses its separate application-owned lifecycle until its migration completes.
 

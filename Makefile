@@ -65,10 +65,9 @@ fmt-check: ## 检查各语言格式，不修改文件
 	uv run --locked --only-group dev ruff format --check $(PYTHON_SOURCES)
 	npm run format:check
 
-lint: ## Rust / Python 静态检查和 Web 语法检查
+lint: ## Rust / Python 静态检查
 	cargo clippy --locked --workspace --all-targets -- -D warnings
 	uv run --locked --only-group dev ruff check $(PYTHON_SOURCES)
-	node --check clients/web/app.js
 
 test: build ## 构建匹配 Runtime 后运行 workspace 测试（不含显式容量测试）
 	AREAL_TEST_BIN_DIR="$${AREAL_TEST_BIN_DIR:-$(CURDIR)/target/debug}" cargo test --locked --workspace --no-fail-fast $(CARGO_TEST_ARGS)
@@ -181,9 +180,8 @@ integration-boundaries: ## 检查独立构建、发行与产品代码不依赖�
 launcher-test: build ## 构建后验证真实 Rust launcher；缺二进制必须失败
 	python3 -m unittest discover -s scripts/launcher-tests
 
-script-test: integration-boundaries ## 无需产品二进制的脚本、Web 投影、perf 与文档离线回归
+script-test: integration-boundaries ## 无需产品二进制的脚本、perf 与文档离线回归
 	python3 scripts/check-docs.py
-	node --test scripts/web-progress.test.mjs
 	node --test scripts/local-service-wait.test.mjs
 	node --test scripts/persisted-state-fixture.test.mjs
 	node --test clients/gui/scripts/smoke-deadline.test.mjs

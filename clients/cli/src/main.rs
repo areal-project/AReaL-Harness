@@ -65,10 +65,8 @@ enum Command {
     },
     /// 管理共享 Core 的 Codex 插件包。
     Plugin(plugins::Options),
-    /// 复用本地服务并打开 Web；--json 只返回连接描述。
+    /// 打开 Host 发布的网页；--json 只返回连接描述。
     Web {
-        #[command(flatten)]
-        local: Box<areal_local_service::LocalArgs>,
         #[arg(long)]
         json: bool,
     },
@@ -266,8 +264,8 @@ async fn main() {
             service_result(service::execute(command).await);
             return;
         }
-        Some(Command::Web { local, json }) => {
-            service_result(service::web(*local, json).await);
+        Some(Command::Web { json }) => {
+            service_result(service::web(json).await);
             return;
         }
         Some(Command::Serve { args }) => areal_service_host::launcher::run(args).await,

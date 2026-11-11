@@ -165,7 +165,6 @@ def impact(paths):
                 "scripts/",
                 ".github/",
                 ".githooks/",
-                "clients/web/",
                 "clients/cli/",
                 "clients/tui/",
                 "upstream/",

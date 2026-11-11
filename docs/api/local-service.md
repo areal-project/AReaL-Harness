@@ -50,7 +50,7 @@ target/debug/areal web --json
 | `generation` | 每次启动的新 UUID；不是 Runtime epoch 或工具 Host generation |
 | `workspace`, `dataDir` | 规范绝对路径 |
 | `configFingerprint` | 部署配置、模型 CLI/环境覆盖、权限、部署文件与二进制内容的摘要；热更新模型值独立版本化 |
-| `endpoint`, `webUrl` | Core WebSocket 与 `/ui` URL |
+| `endpoint`, `webUrl` | Core WebSocket 与 HTTP（媒体与健康检查）地址 |
 | `authFile`, `logFile` | 可信调用方读取的认证文件与宿主日志路径 |
 | `hostPid`, `corePid` | 仅用于诊断，不能据此对旧 PID 发信号 |
 | `state` | `ready`、`stopping`、`stopped` 或 `unavailable` |
@@ -182,7 +182,7 @@ Desktop 还必须在派发前及发布替代结果前检查自身生命周期意
 
 `areal service stop --expected-generation <generation>` 在启动锁内核对目标换代身份，失配时拒绝停止替代实例。GUI 的取消确认绑定原 Desktop、项目范围和 Core generation；最终公共宿主停止保持同一 cancel 意图。部分停止或未知回执保持恢复状态，不报告全局回滚、不自动重发；客户端须确认原实例登记撤回和进程退出。
 
-- `areal web` 打开 Host 发布的共享界面，不启动项目 Core；`--json` 返回公开 endpoint，不签发登录 URL。旧本地参数继续接受，但不选择项目或启动服务。浏览器首次授权、重新连接与撤销见[Host 回环入口](host.md#回环-websocket-与共享读路径)。Core 的旧 `/ui` 登录 API 仍由[浏览器登录](desktop.md#browser-auth)定义。
+- `areal web` 打开 Host 发布的共享界面，不启动项目 Core；`--json` 返回公开 endpoint，不签发登录 URL。浏览器首次授权、重新连接与撤销见[Host 回环入口](host.md#回环-websocket-与共享读路径)。Core 不发布网页，带 Origin 的请求一律拒绝。
 - Desktop Main 用参数数组执行 `areal service ensure --json`，校验 `protocolVersion`，在 Main 读取 authFile 建立认证连接；只向 Renderer 暴露经过筛选的应用操作和状态。不要把完整服务描述或 token 交给 Renderer。
 - 重连重新发现并比较 generation，然后 initialize/initialized 和 thread/resume。先查 request/read 或权威状态再决定重试，不自动重放已提交操作。
 - 需要跨窗口的动态 ToolHost 应放在稳定 Main/独立宿主连接中。窗口上的动态工具不会自动转移；连接丢失仍按现有 Host generation 与 UNKNOWN 语义处理。
@@ -191,7 +191,7 @@ Desktop 还必须在派发前及发布替代结果前检查自身生命周期意
 
 请求为 `{method:"status",version:1}` 或 `{method:"stop",version:1,generation,cancel}`，响应为 `{result:"ok",service}` 或 `{result:"error",message}`。建议非 Rust 客户端使用 CLI，避免复制地址派生、锁和恢复逻辑。
 
-认证 GET `/areal/service` 返回描述中的六个身份字段（protocolVersion/serviceId/generation/workspace/dataDir/configFingerprint），需要 observe 权限，拒绝不匹配的 Origin；无托管身份的已认证 Core 返回 404。业务协议仍见 [Core](core.md) 与[桌面 API](desktop.md)，无需另建 Agent loop。
+认证 GET `/areal/service` 返回描述中的六个身份字段（protocolVersion/serviceId/generation/workspace/dataDir/configFingerprint），需要 observe 权限，拒绝带 Origin 的请求；无托管身份的已认证 Core 返回 404。业务协议仍见 [Core](core.md) 与[桌面 API](desktop.md)，无需另建 Agent loop。
 
 LocalArgs 新增 permissions（YOLO/ASK_PERMISSIONS）与 scratch。生效权限策略和 scratch 参与部署兼容性摘要。本地 launcher 默认改为 full-access；旧共享服务需显式重启应用此默认变更，客户端连接不会静默扩权。见[权限配置](../guides/configuration.md#permissions)。
 

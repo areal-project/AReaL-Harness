@@ -393,7 +393,7 @@ async fn websocket_lifecycle_matches_pinned_upstream_schemas() {
 }
 
 #[tokio::test]
-async fn browser_origin_is_limited_to_the_served_loopback_ui() {
+async fn core_serves_no_browser_ui_and_rejects_every_origin() {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine::open(dir.path(), Arc::new(TextModel), Limits::default()).unwrap();
@@ -406,40 +406,18 @@ async fn browser_origin_is_limited_to_the_served_loopback_ui() {
         stop.clone(),
     ));
     let http = reqwest::Client::new();
-    let page = http.get(format!("http://{addr}/ui")).send().await.unwrap();
-    assert!(page.status().is_success());
-    assert!(
-        page.headers()["content-security-policy"]
-            .to_str()
-            .unwrap()
-            .contains("frame-ancestors 'none'")
-    );
-    assert_eq!(page.headers()["x-content-type-options"], "nosniff");
-    assert!(page.text().await.unwrap().contains("/ui/app.js"));
-    for (path, mime) in [("app.js", "text/javascript"), ("style.css", "text/css")] {
-        let asset = http
-            .get(format!("http://{addr}/ui/{path}"))
+    for path in ["ui", "ui/app.js", "areal/auth/bootstrap"] {
+        let response = http
+            .get(format!("http://{addr}/{path}"))
             .send()
             .await
             .unwrap();
-        assert!(asset.status().is_success());
-        assert!(
-            asset.headers()["content-type"]
-                .to_str()
-                .unwrap()
-                .starts_with(mime)
-        );
+        assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND, "{path}");
     }
-    let mut request = format!("ws://{addr}").into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("Origin", "https://example.com".parse().unwrap());
-    let err = tokio_tungstenite::connect_async(request).await.unwrap_err();
-    assert!(err.to_string().contains("403"));
     for origin in [
         "null".to_owned(),
-        format!("https://{addr}"),
-        format!("http://{addr}.example.com"),
+        format!("http://{addr}"),
+        "https://example.com".to_owned(),
     ] {
         let mut request = format!("ws://{addr}").into_client_request().unwrap();
         request
@@ -453,20 +431,18 @@ async fn browser_origin_is_limited_to_the_served_loopback_ui() {
                 .contains("403")
         );
     }
-    let mut request = format!("ws://{addr}").into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("Origin", format!("http://{addr}").parse().unwrap());
-    let (mut browser, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let (mut local, _) = tokio_tungstenite::connect_async(format!("ws://{addr}"))
+        .await
+        .unwrap();
     let (response, _) = call(
-        &mut browser,
+        &mut local,
         1,
         "initialize",
-        json!({"clientInfo":{"name":"browser","version":"1"}}),
+        json!({"clientInfo":{"name":"local","version":"1"}}),
     )
     .await;
     assert!(response.get("result").is_some());
-    browser.close(None).await.unwrap();
+    local.close(None).await.unwrap();
     engine.shutdown().await;
     stop.cancel();
     server.await.unwrap().unwrap();

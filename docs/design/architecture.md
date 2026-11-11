@@ -24,7 +24,7 @@ GUI Renderer 只在 `desktop-services.ts` 读取 preload 对象，由 `initializ
 
 | 模块 | 职责 |
 |---|---|
-| `clients/cli`, `clients/tui`, `clients/web` | CLI、终端和本地 Web；初始化连接、显示投影与提交请求 |
+| `clients/cli`, `clients/tui` | CLI 与终端；初始化连接、显示投影与提交请求 |
 | `clients/gui` | React/Electron 桌面客户端；窄 IPC、原生资源、公开服务发现与可重建投影 |
 | `clients/mobile` | Capacitor iOS/Android Remote 客户端；复用 GUI mobile 入口、共享 Remote 协议与会话组件，原生适配负责钥匙串、Android Keystore、扫码与生命周期；能力与验收边界见 [iOS 开发指南](../development/ios-development.md) |
 | `core/config` | 解析用户配置、来源、凭据引用和 Skill 目录，定义工具宿主的代理环境白名单；不依赖 Engine 或 Runtime |

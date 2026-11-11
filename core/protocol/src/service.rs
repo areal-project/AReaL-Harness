@@ -5,20 +5,6 @@ use std::path::PathBuf;
 
 pub const VERSION: u32 = 1;
 
-/// 只通过可信本地客户端交付给浏览器，不进入服务发现描述或日志。
-#[derive(Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowserBootstrap {
-    pub code: String,
-    pub expires_in: u64,
-}
-
-#[derive(Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct BrowserBootstrapExchange {
-    pub code: String,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Identity {

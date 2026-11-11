@@ -11,4 +11,3 @@
 | 平台 | 实现所有者 | 应核对的结果 |
 | --- | --- | --- |
 | 桌面 GUI | [长文本组件指南](../../clients/gui/packages/ui/src/conversation/collapsible-text/collapsible-text.md#gui-接线)、原资源宿主 | 全文可达、展开与收起、身份、返回、焦点及原生视图 |
-| 本地 Web | [界面所有者](../../clients/web/app.js) | 浏览器内的展开、导航和草稿，不据此推导原生窗口能力 |

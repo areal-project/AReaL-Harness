@@ -976,47 +976,6 @@ pub async fn probe(service: &Service) -> Result<()> {
     Ok(())
 }
 
-/// 返回仅供打开浏览器的一次性 URL；调用方不得写入日志或发现描述。
-pub async fn browser_login_url(service: &Service) -> Result<String> {
-    probe(service).await?;
-    let mut url = http_endpoint(service)?;
-    url.set_path("/areal/auth/bootstrap");
-    let mut response = reqwest::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(5))
-        .build()?
-        .post(url.clone())
-        .bearer_auth(token(service)?)
-        .send()
-        .await?;
-    ensure!(
-        response.status().is_success(),
-        "browser login could not be prepared; rerun areal web or sign in manually at {}",
-        service.web_url
-    );
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await? {
-        ensure!(
-            bytes.len() + chunk.len() <= 4096,
-            "invalid browser login response"
-        );
-        bytes.extend_from_slice(&chunk);
-    }
-    let ticket: areal_protocol::service::BrowserBootstrap = serde_json::from_slice(&bytes)
-        .map_err(|_| anyhow::anyhow!("invalid browser login response"))?;
-    ensure!(
-        ticket.code.len() == 64
-            && ticket.code.bytes().all(|c| c.is_ascii_hexdigit())
-            && (1..=60).contains(&ticket.expires_in),
-        "invalid browser login response"
-    );
-    // 固定已校验的 loopback origin 和路径，不信任服务返回的跳转地址。
-    url.set_path("/ui");
-    url.set_fragment(Some(&format!("bootstrap={}", ticket.code)));
-    Ok(url.into())
-}
-
 pub async fn rpc(service: &Service, method: &str, params: Value) -> Result<Value> {
     use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
     let mut request = service.endpoint.as_str().into_client_request()?;

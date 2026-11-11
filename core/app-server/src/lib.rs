@@ -1,5 +1,4 @@
 pub mod auth;
-mod browser_auth;
 mod codex_plugins;
 pub mod configuration;
 mod delegations;
@@ -19,7 +18,7 @@ use axum::{
         ws::{CloseFrame, Message, WebSocket},
     },
     http::{HeaderMap, StatusCode, header},
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     routing::get,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -41,33 +40,24 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Instrument, info_span};
 
 pub fn router(engine: Arc<Engine>) -> Router {
-    configured_router(engine, None, None, None, None)
+    configured_router(engine, None, None, None)
 }
 fn configured_router(
     engine: Arc<Engine>,
-    browser_origin: Option<String>,
     authentication: Option<auth::Authentication>,
     service: Option<areal_protocol::service::Identity>,
     configuration: Option<Arc<dyn configuration::ModelConfigurationControl>>,
 ) -> Router {
     engine.start_task_scheduler();
-    let authentication = authentication.map(|auth| {
-        browser_auth::BrowserAuth::new(auth, browser_origin.as_deref().unwrap_or_default())
-    });
     Router::new()
         .route("/", get(upgrade))
-        .route("/ui", get(|| async {
-            ([("content-security-policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"), ("x-content-type-options", "nosniff"), ("referrer-policy", "no-referrer")], Html(include_str!("../../../clients/web/index.html")))
-        }))
-        .route("/ui/app.js", get(|| async { ([("content-type", "text/javascript; charset=utf-8"), ("x-content-type-options", "nosniff")], include_str!("../../../clients/web/app.js")) }))
-        .route("/ui/style.css", get(|| async { ([("content-type", "text/css; charset=utf-8"), ("x-content-type-options", "nosniff")], concat!(include_str!("../../../design/tokens/focus.css"), "\n", include_str!("../../../clients/web/style.css"))) }))
-        .route("/areal/auth/session", axum::routing::post(browser_auth::session))
-        .route("/areal/auth/bootstrap", axum::routing::post(browser_auth::bootstrap))
-        .route("/areal/auth/bootstrap/exchange", axum::routing::post(browser_auth::exchange).layer(DefaultBodyLimit::max(1024)))
         .route("/healthz", get(|| async { "ok" }))
         .route("/areal/service", get(service_identity))
         .route("/areal/blobs/{id}", get(read_blob))
-        .route("/areal/blobs", axum::routing::post(upload_blob).layer(DefaultBodyLimit::max(16 * 1024 * 1024)))
+        .route(
+            "/areal/blobs",
+            axum::routing::post(upload_blob).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+        )
         .route(
             "/readyz",
             get(|State(engine): State<Arc<Engine>>| async move {
@@ -79,25 +69,25 @@ fn configured_router(
             }),
         )
         .layer(Extension(authentication))
-        .layer(Extension(browser_origin))
         .layer(Extension(service))
         .layer(Extension(configuration))
         .with_state(engine)
 }
 
+/// Core 只服务本机进程；浏览器经 Host 发布的网页访问，带 Origin 的请求一律拒绝。
+fn from_browser(headers: &HeaderMap) -> bool {
+    headers.contains_key(header::ORIGIN)
+}
+
 async fn service_identity(
-    Extension(authentication): Extension<Option<browser_auth::BrowserAuth>>,
+    Extension(authentication): Extension<Option<auth::Authentication>>,
     Extension(service): Extension<Option<areal_protocol::service::Identity>>,
-    Extension(browser_origin): Extension<Option<String>>,
     headers: HeaderMap,
 ) -> Response {
-    if headers
-        .get("origin")
-        .is_some_and(|value| value.to_str().ok() != browser_origin.as_deref())
-    {
+    if from_browser(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let Some(principal) = authentication.and_then(|auth| auth.authenticate(&headers)) else {
+    let Some(principal) = authentication.and_then(|auth| auth.authenticate_bearer(&headers)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     if !principal.allows(auth::Permission::Observe) {
@@ -118,13 +108,16 @@ struct BlobQuery {
 }
 async fn read_blob(
     State(engine): State<Arc<Engine>>,
-    Extension(authentication): Extension<Option<browser_auth::BrowserAuth>>,
+    Extension(authentication): Extension<Option<auth::Authentication>>,
     headers: HeaderMap,
     Query(query): Query<BlobQuery>,
     Path(id): Path<String>,
 ) -> Response {
+    if from_browser(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     let bytes = if let Some(authentication) = authentication {
-        let Some(principal) = authentication.authenticate(&headers) else {
+        let Some(principal) = authentication.authenticate_bearer(&headers) else {
             return StatusCode::UNAUTHORIZED.into_response();
         };
         let Some(thread_id) = query.thread_id else {
@@ -149,20 +142,16 @@ async fn read_blob(
 }
 async fn upload_blob(
     State(engine): State<Arc<Engine>>,
-    Extension(authentication): Extension<Option<browser_auth::BrowserAuth>>,
-    Extension(browser_origin): Extension<Option<String>>,
+    Extension(authentication): Extension<Option<auth::Authentication>>,
     headers: HeaderMap,
     Query(query): Query<BlobQuery>,
     bytes: axum::body::Bytes,
 ) -> Response {
-    if headers
-        .get("origin")
-        .is_some_and(|origin| origin.to_str().ok() != browser_origin.as_deref())
-    {
+    if from_browser(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
     let principal = match authentication {
-        Some(auth) => match auth.authenticate(&headers) {
+        Some(auth) => match auth.authenticate_bearer(&headers) {
             Some(p) => p,
             None => return StatusCode::UNAUTHORIZED.into_response(),
         },
@@ -250,16 +239,9 @@ pub async fn serve_service_with_configuration(
         listener.local_addr()?.ip().is_loopback(),
         "Core listener must bind to loopback"
     );
-    let origin = format!("http://{}", listener.local_addr()?);
     axum::serve(
         listener,
-        configured_router(
-            engine,
-            Some(origin),
-            authentication,
-            identity,
-            configuration,
-        ),
+        configured_router(engine, authentication, identity, configuration),
     )
     .with_graceful_shutdown(stop.cancelled_owned())
     .await?;
@@ -269,26 +251,23 @@ pub async fn serve_service_with_configuration(
 async fn upgrade(
     State(engine): State<Arc<Engine>>,
     Extension(configuration): Extension<Option<Arc<dyn configuration::ModelConfigurationControl>>>,
-    Extension(browser_origin): Extension<Option<String>>,
-    Extension(authentication): Extension<Option<browser_auth::BrowserAuth>>,
+    Extension(authentication): Extension<Option<auth::Authentication>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    if let Some(origin) = headers.get("origin")
-        && (origin.to_str().ok() != browser_origin.as_deref() || browser_origin.is_none())
-    {
+    if from_browser(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let (principal, expires) = match authentication {
-        Some(authentication) => match authentication.connection(&headers) {
+    let principal = match authentication {
+        Some(authentication) => match authentication.authenticate_bearer(&headers) {
             Some(principal) => principal,
             None => return StatusCode::UNAUTHORIZED.into_response(),
         },
-        None => (auth::Principal::embedded(), None),
+        None => auth::Principal::embedded(),
     };
     ws.max_message_size(MAX_FRAME_BYTES)
         .max_frame_size(MAX_FRAME_BYTES)
-        .on_upgrade(move |socket| connection(socket, engine, principal, expires, configuration))
+        .on_upgrade(move |socket| connection(socket, engine, principal, configuration))
         .into_response()
 }
 
@@ -370,16 +349,8 @@ async fn connection(
     socket: WebSocket,
     engine: Arc<Engine>,
     principal: Arc<auth::Principal>,
-    expires: Option<tokio::time::Instant>,
     configuration: Option<Arc<dyn configuration::ModelConfigurationControl>>,
 ) {
-    let expired = async move {
-        match expires {
-            Some(deadline) => tokio::time::sleep_until(deadline).await,
-            None => std::future::pending::<()>().await,
-        }
-    };
-    tokio::pin!(expired);
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<Outbound>(256);
     let stop = CancellationToken::new();
@@ -465,7 +436,7 @@ async fn connection(
         rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),
     };
     loop {
-        let message = tokio::select! { biased; _ = stop.cancelled() => break, _ = &mut expired => break, message = stream.next() => message };
+        let message = tokio::select! { biased; _ = stop.cancelled() => break, message = stream.next() => message };
         let Some(Ok(message)) = message else {
             break;
         };
