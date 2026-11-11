@@ -13,6 +13,24 @@ const WebSocket = require("ws");
 export async function certificates(commonName = "RC12 isolated test CA") {
   const home = await mkdtemp(join(tmpdir(), "rc12-tls-"));
   const run = (args) => execFileSync("openssl", args, { cwd: home, stdio: "pipe" });
+  // 扩展写在自带的配置里：macOS 自带的 LibreSSL 会把 -addext 和默认配置里的同名扩展
+  // 各写一份，rustls 不接受带重复扩展的根证书。
+  await writeFile(
+    join(home, "ca.cnf"),
+    [
+      "[req]",
+      "distinguished_name=dn",
+      "x509_extensions=ca",
+      "prompt=no",
+      "[dn]",
+      `CN=${commonName}`,
+      "[ca]",
+      "basicConstraints=critical,CA:TRUE",
+      "keyUsage=critical,keyCertSign,cRLSign",
+      "subjectKeyIdentifier=hash",
+      "",
+    ].join("\n"),
+  );
   run([
     "req",
     "-x509",
@@ -25,10 +43,8 @@ export async function certificates(commonName = "RC12 isolated test CA") {
     "ca.key",
     "-out",
     "ca.pem",
-    "-subj",
-    `/CN=${commonName}`,
-    "-addext",
-    "basicConstraints=critical,CA:TRUE",
+    "-config",
+    "ca.cnf",
   ]);
   run([
     "req",
