@@ -7376,7 +7376,7 @@
       "properties": {
         "applicationMessageBytes": {
           "type": "integer",
-          "const": 262144
+          "const": 8388608
         },
         "transportFrameBytes": {
           "type": "integer",
@@ -7729,7 +7729,7 @@
             "work.list"
           ],
           "limits": {
-            "applicationMessageBytes": 262144,
+            "applicationMessageBytes": 8388608,
             "transportFrameBytes": 524288,
             "receiveBufferedBytes": 2097152,
             "sendBufferedBytes": 2097152,
@@ -66546,7 +66546,7 @@
         "shell.invalidated": "#/$defs/ShellInvalidated"
       },
       "limits": {
-        "applicationMessageBytes": 262144,
+        "applicationMessageBytes": 8388608,
         "transportFrameBytes": 524288,
         "receiveBufferedBytes": 2097152,
         "sendBufferedBytes": 2097152,
