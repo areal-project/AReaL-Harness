@@ -57,6 +57,11 @@ function fixture(options = {}) {
   });
   return { updater, controller, calls, states };
 }
+// 界面模式下载完成只到 ready；第二次点击“重启并安装”才进入安装。
+const downloadAndRestart = async (controller) => {
+  await controller.download();
+  return controller.download();
+};
 
 async function hostInstallFixture(t, activity) {
   const root = await realpath(await mkdtemp("/tmp/ah-install-"));
@@ -226,9 +231,16 @@ test("install cannot proceed when work arrives at Host stop admission", async (t
 test("adjacent formal version passes safety checks before native staging and handoff", async () => {
   const { controller, calls, states } = fixture();
   assert.equal((await controller.check()).status, "available");
+  assert.equal((await controller.download()).status, "ready");
+  assert.deepEqual(calls.slice(1), ["download"]);
+  assert.equal(states.find((state) => state.percent === 42).status, "downloading");
+  // 后台检查和菜单里的“检查更新…”都不能替用户重启。
+  await controller.check();
+  await controller.check(true);
+  assert.equal(controller.state().status, "ready");
+  assert.deepEqual(calls.slice(1), ["download"]);
   assert.equal((await controller.download()).status, "installing");
   assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
-  assert.equal(states.find((state) => state.percent === 42).status, "downloading");
   await controller.install();
   await controller.download();
   assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
@@ -266,7 +278,7 @@ test("busy work defers install and idle retry uses the same verified download", 
   let busy = true;
   const { controller, calls } = fixture({ hasWork: async () => busy });
   await controller.check();
-  assert.equal((await controller.download()).status, "deferred");
+  assert.equal((await downloadAndRestart(controller)).status, "deferred");
   assert.deepEqual(calls.slice(1), ["download"]);
   busy = false;
   assert.equal((await controller.install()).status, "installing");
@@ -282,7 +294,7 @@ test("activity appearing at admission is deferred without native replacement", a
     },
   });
   await controller.check();
-  assert.equal((await controller.download()).status, "deferred");
+  assert.equal((await downloadAndRestart(controller)).status, "deferred");
   assert.deepEqual(calls.slice(1), ["download"]);
   busy = false;
   await controller.install();
@@ -299,7 +311,7 @@ test("download interruption or checksum error preserves Core and supports retry"
     assert.equal((await controller.download()).detail, message);
     assert.deepEqual(calls.slice(1), []);
     updater.downloadUpdate = async () => calls.push("download");
-    await controller.download();
+    await downloadAndRestart(controller);
     assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
   }
 });
@@ -316,7 +328,7 @@ test("failed native staging after safe shutdown requires manual reconciliation",
     },
   });
   await controller.check();
-  assert.equal((await controller.download()).status, "error");
+  assert.equal((await downloadAndRestart(controller)).status, "error");
   assert.match(controller.state().detail, /后台已安全停止.*native signature rejected/);
   assert.equal(notices.length, 1);
   assert.equal(notices[0].message, "更新安装尚未完成");
@@ -341,7 +353,7 @@ test("a rejected package user check cannot arm native installation on normal exi
     },
   });
   await controller.check();
-  assert.equal((await controller.download()).status, "deferred");
+  assert.equal((await downloadAndRestart(controller)).status, "deferred");
   assert.equal(armed, false);
   assert.deepEqual(calls.slice(1), ["download"]);
 });
@@ -353,7 +365,7 @@ test("handoff failure after staging cannot be repeated by automatic actions", as
     throw new Error("handoff failed");
   };
   await controller.check();
-  assert.equal((await controller.download()).status, "error");
+  assert.equal((await downloadAndRestart(controller)).status, "error");
   await controller.install();
   await controller.download();
   await controller.check(true);
@@ -369,7 +381,7 @@ test("unknown stop result cannot be replayed by idle, check, or download actions
     },
   });
   await controller.check();
-  assert.equal((await controller.download()).status, "error");
+  assert.equal((await downloadAndRestart(controller)).status, "error");
   await controller.install();
   await controller.check(true);
   await controller.download();
@@ -383,6 +395,10 @@ test("check errors are visible and a successful retry clears them", async () => 
   updater.checkForUpdates = async () => {
     throw new Error("feed unavailable");
   };
+  // 定时检查与切换频道的失败只记日志；用户发起的检查才上屏。
+  assert.equal((await controller.check(false, { background: true })).status, "idle");
+  assert.equal((await controller.setChannel(true)).status, "idle");
+  assert.equal(controller.state().detail, "");
   assert.equal((await controller.check()).status, "error");
   assert.equal(controller.state().detail, "feed unavailable");
   updater.checkForUpdates = async () => ({ updateInfo: offer("0.1.12") });
@@ -409,7 +425,7 @@ test("the download action retries a failed check without downloading the newly f
   assert.equal((await retry).status, "available");
   assert.equal(controller.state().detail, "");
   assert.deepEqual(calls.slice(1), []);
-  await controller.download();
+  await downloadAndRestart(controller);
   assert.deepEqual(calls.slice(1), ["download", "stop-core", "native-ready", "install"]);
 });
 

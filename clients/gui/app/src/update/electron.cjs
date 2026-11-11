@@ -27,14 +27,8 @@ function setupUpdater(options) {
     notify: (options) => dialog.showMessageBox(options),
   });
   /** @type {NodeJS.Timeout[]} */ const timers = [];
-  if (options.onState)
-    timers.push(
-      setInterval(() => {
-        if (controller.state().status === "deferred") void controller.install();
-      }, 5000),
-    );
   if (app.isPackaged && config && process.env.AREAL_GUI_SMOKE !== "1") {
-    const check = () => void controller.check();
+    const check = () => void controller.check(false, { background: true });
     timers.push(setTimeout(check, 8000).unref(), setInterval(check, 10 * 60 * 1000).unref());
   }
   app.once("will-quit", () => timers.forEach(clearTimeout));

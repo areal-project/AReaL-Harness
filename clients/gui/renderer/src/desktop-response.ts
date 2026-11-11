@@ -124,6 +124,7 @@ const updateSchema: z.ZodType<UpdateState> = z
       "idle",
       "available",
       "downloading",
+      "ready",
       "validating",
       "deferred",
       "installing",

@@ -146,7 +146,15 @@ export interface Snapshot {
 export interface UpdateState {
   enabled: boolean;
   channel?: "stable" | "beta";
-  status: "idle" | "available" | "downloading" | "validating" | "deferred" | "installing" | "error";
+  status:
+    | "idle"
+    | "available"
+    | "downloading"
+    | "ready"
+    | "validating"
+    | "deferred"
+    | "installing"
+    | "error";
   version?: string;
   downloaded?: string;
   installing?: boolean;
