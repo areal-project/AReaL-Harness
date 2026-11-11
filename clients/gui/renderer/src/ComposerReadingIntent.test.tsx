@@ -233,14 +233,21 @@ describe("Composer receipt before history projection", () => {
     await observed.submit!("follow-up message");
     await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
     expect(f.action).toHaveBeenCalledOnce();
+    // 对话列表未挂载、用户消息以历史占位出现时，投影本身也要解锁输入框。
+    const deferred = {
+      id: "accepted-user",
+      type: "historyDeferred",
+      originalType: "userMessage",
+      text: "",
+    };
     f.thread.turns.push({
       id: "accepted-turn",
       status: "inProgress",
       configuration: { revision: 1, options: planModeOptions(false) },
-      items: [{ id: "accepted-user", type: "userMessage", text: "first message" }],
+      items: [deferred],
     });
-    setPendingMessage(f.key);
     f.render();
+    expect(observed.composer?.submitDisabled).toBe(false);
     await observed.submit!("follow-up message");
     await vi.waitFor(() => expect(f.action).toHaveBeenCalledTimes(2));
     expect(f.action.mock.calls[1][1]).toMatchObject({
