@@ -263,6 +263,9 @@ endpoint = "http://127.0.0.1:{model.server_port}"
         input_file.write_text(json.dumps([{"type": "text", "text": "read-fixture"}]))
         naming_count = len(summary_requests)
         for entry in [args, [args[0], "serve", "--tui", *args[1:]]]:
+            # 默认入口经共享 Host，空闲的 Core 会留着占住数据目录；自持入口前先让 Host 停掉它。
+            if entry is not args:
+                run([args[0], "host", "stop", "--json"])
             disabled = run([*entry, "--input-file", str(input_file), "--no-session-name"])
             assert disabled.stdout.strip() == "reply:read-fixture", disabled
             disabled_id = re.search(r"Thread: ([a-f0-9-]+)", disabled.stderr)[1]
@@ -295,6 +298,8 @@ endpoint = "http://127.0.0.1:{model.server_port}"
         assert trajectory["enabled"] and trajectory["state"] == "invalid", trajectory
         assert not trajectory["worker_running"], trajectory
         # Every local launch must use its actual bound endpoint and close it on exit.
+        # 经共享 Host 的启动由 Host 持有，停掉 Host 后才算退出。
+        run([args[0], "host", "stop", "--json"])
         for log in data.glob("launch-*.log"):
             match = re.search(r"listening on ws://127.0.0.1:(\d+)", log.read_text())
             assert match, log.read_text()
