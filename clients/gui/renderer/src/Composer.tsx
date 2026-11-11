@@ -33,6 +33,7 @@ import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { UiMessageError, useI18n } from "./i18n/IntlProvider.js";
 import { errorText, presentError, rawText, type PresentedError } from "./errors/errorCopy.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
+import { wasReported } from "./errors/reported.js";
 import { useToolInspection } from "./UnknownToolInspection.js";
 import { CircleAlert } from "lucide-react";
 import { useComposerPrediction } from "./useComposerPrediction.js";
@@ -249,11 +250,13 @@ export function Composer({
     "message" | "detail"
   > | null>(null);
   // 已有专门说明的失败（待确认、需要设置等）用 recoveryMessage，原始文字只进详情。
-  const showDeliveryNotice = (cause: unknown) =>
+  const showDeliveryNotice = (cause: unknown) => {
+    if (wasReported(cause)) return;
     setDeliveryNotice({
       message: recoveryMessage(cause as RecoveryFailure, "operation", t),
       detail: presentError(t, cause).detail,
     });
+  };
   const inspection = useToolInspection(project, thread, action, () => api.current?.focus());
   // 附件失败以“文件名: 原因”标出是哪个附件；原因同样取自错误文案表。
   const admissionText = (cause: unknown) => {
@@ -316,9 +319,9 @@ export function Composer({
   const stop = () => {
     if (executionBlocked) return;
     if (running)
-      void stopConversationTurn(action, project, thread).catch((cause: unknown) =>
-        setDeliveryNotice(presentError(t, cause)),
-      );
+      void stopConversationTurn(action, project, thread).catch((cause: unknown) => {
+        if (!wasReported(cause)) setDeliveryNotice(presentError(t, cause));
+      });
   };
   const saveQueueEdit = async () => {
     if (disabled || workspaceReferencePending || sending.has(key)) return;
@@ -899,6 +902,7 @@ export function Composer({
       />
       {deliveryNotice && (
         <FeedbackNotice
+          transient
           tone="error"
           message={deliveryNotice.message}
           detail={deliveryNotice.detail}
@@ -908,6 +912,7 @@ export function Composer({
       {inspection.notice}
       {unknown && (
         <FeedbackNotice
+          transient
           tone="warning"
           requestId={unknown}
           message={t("recovery.sendUnconfirmed")}
@@ -1205,9 +1210,16 @@ export function Composer({
                 </div>
               )}
               {queueEditor.feedback && (
-                <FeedbackNotice tone="error" message={queueEditor.feedback} />
+                <FeedbackNotice
+                  transient
+                  tone={queueEditor.unconfirmed ? "warning" : "error"}
+                  requestId={
+                    queueEditor.unconfirmed ? queueEditor.edit?.unknown?.requestId : undefined
+                  }
+                  message={queueEditor.feedback}
+                />
               )}
-              {queueEditor.edit?.unknown && (
+              {queueEditor.unconfirmed && (
                 <Button
                   type="button"
                   size="sm"

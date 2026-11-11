@@ -14,6 +14,16 @@ mod push;
 mod session;
 pub(crate) use session::{error_code, write_limits};
 
+/// 执行方明确报出的失败：结果已知，不记成“结果未知”，也不需要事后核对。
+/// 后台中途退出时未完成的请求也是 CAPABILITY_UNAVAILABLE，所以它和兜底的 CORE_UNAVAILABLE 不算。
+pub(crate) fn settled_failure(code: &str) -> bool {
+    error_code(code) == code
+        && !matches!(
+            code,
+            "CAPABILITY_UNAVAILABLE" | "CORE_UNAVAILABLE" | "SUBMISSION_UNKNOWN"
+        )
+}
+
 /// 本机桌面写入口，包装 Gateway 会话的本机主体。
 pub(crate) struct LocalSession(session::Session);
 impl LocalSession {

@@ -877,6 +877,19 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         stale["error"]["data"]["outcome"]["kind"], "rejected",
         "{stale}"
     );
+    // 队列编辑的版本冲突在持久化前判定，同样是保证没有变更的明确拒绝。
+    let (stale, _) = call(
+        &mut socket,
+        105,
+        "areal/queue/pause",
+        json!({"threadId":id,"expectedRevision":99}),
+    )
+    .await;
+    assert_eq!(stale["error"]["code"], -32009, "{stale}");
+    assert_eq!(
+        stale["error"]["data"]["outcome"]["kind"], "rejected",
+        "{stale}"
+    );
     let mut req = req;
     req["admissionGuard"]["configRevision"] = json!(1);
     req["requestId"] = json!("false-send");

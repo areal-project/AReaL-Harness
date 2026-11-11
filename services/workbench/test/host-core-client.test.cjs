@@ -60,7 +60,7 @@ test("Host Core requests keep source, lease and original request; failed transpo
   await client.connect();
   await assert.rejects(
     client.request("areal/turn/start", { requestId: "original", threadId: "thread" }),
-    /lost response/,
+    (error) => /lost response/.test(error.message) && error.submissionUnknown === true,
   );
   assert.deepEqual(
     calls.filter((call) => call.method === "core.request"),
@@ -78,6 +78,15 @@ test("Host Core requests keep source, lease and original request; failed transpo
     ],
   );
   client.close();
+  // 连接已关：请求没有发出去，保证没有变更，不能算“结果未知”。
+  await assert.rejects(
+    client.request("areal/turn/start", { requestId: "unsent", threadId: "thread" }),
+    (error) =>
+      error.code === "DISCONNECTED" &&
+      error.outcome.kind === "noMutation" &&
+      error.submissionUnknown === false,
+  );
+  assert.equal(calls.filter((call) => call.method === "core.request").length, 1);
 });
 
 test("late attach releases only its returned lease and cannot revive a closed projection", async () => {

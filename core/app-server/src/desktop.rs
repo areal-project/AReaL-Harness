@@ -774,10 +774,22 @@ async fn dispatch_inner(
             if !valid {
                 return Err(RpcError::invalid("queue fields do not match operation"));
             }
-            engine
+            // 队列编辑先在副本上校验，持久化之前的这几类错误保证没有变更：
+            // 标成明确拒绝，调用方不必再按“结果未知”核对。
+            return engine
                 .edit_queue(p.thread_id, p.expected_revision, action.into(), params)
                 .await
                 .map(|q| json!(q))
+                .map_err(|error| {
+                    let unchanged =
+                        matches!(error, Error::Conflict | Error::NotFound | Error::Invalid(_));
+                    let error = map_error(error);
+                    if unchanged {
+                        rejected(error, "REQUEST_REJECTED")
+                    } else {
+                        error
+                    }
+                });
         }
         "areal/worktree/read" => engine
             .worktree_read(params)

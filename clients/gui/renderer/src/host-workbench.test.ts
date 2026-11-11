@@ -6,6 +6,7 @@ import {
   hostDesktopCommand,
   hostPlatformCapabilities,
   openingAuthorization,
+  outcomeUnknown,
 } from "./host-workbench.js";
 import { hostCommandError } from "./desktop-response.js";
 import type { PlatformServices } from "./services.js";
@@ -157,6 +158,15 @@ describe("library routes without a desktop adapter", () => {
       routes.call("library", { operation: "createSection", title: "Inbox" }),
     ).rejects.toMatchObject({ code: "FORBIDDEN", submissionUnknown: false });
     expect(commands).toHaveLength(1);
+  });
+
+  it.each([
+    [{ code: "TARGET_CHANGED" }, false],
+    [{ code: "TARGET_CHANGED", submissionUnknown: true }, true],
+    [{ code: "SUBMISSION_UNKNOWN" }, true],
+    [new Error("socket closed"), true],
+  ])("treats only a missing reply as an unknown result: %j", (failure, unknown) => {
+    expect(outcomeUnknown(failure)).toBe(unknown);
   });
 
   it.each([null, {}, { submissionUnknown: false }, { submissionUnknown: true }])(

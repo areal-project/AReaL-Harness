@@ -244,6 +244,17 @@ function declined(error: unknown) {
   );
 }
 
+/**
+ * 写操作失败后是否“不知道有没有执行”。Host 回了错误码就是明确的结论，按它给的标记算；
+ * 只有回复没回来（断连、超时，没有错误码）才是未知。
+ */
+export function outcomeUnknown(error: unknown) {
+  if (!error || typeof error !== "object") return true;
+  const failure = error as { submissionUnknown?: unknown; code?: unknown };
+  if (typeof failure.submissionUnknown === "boolean") return failure.submissionUnknown;
+  return typeof failure.code !== "string" || failure.code === "SUBMISSION_UNKNOWN";
+}
+
 /** 插件库写入由 Host 直接完成；没有回执时界面重读登记核对，不重放。 */
 async function acceptedCommand(client: HostClient, method: string, payload: unknown) {
   const commandId = crypto.randomUUID();
@@ -270,12 +281,7 @@ async function acceptedCommand(client: HostClient, method: string, payload: unkn
       throw new Error("操作结果尚未确认，请刷新后核对");
     return result.receipt;
   } catch (error) {
-    const unknown = !(
-      error &&
-      typeof error === "object" &&
-      "submissionUnknown" in error &&
-      error.submissionUnknown === false
-    );
+    const unknown = outcomeUnknown(error);
     throw Object.assign(error instanceof Error ? error : new Error("操作结果尚未确认"), {
       commandId,
       submissionUnknown: unknown,
@@ -417,12 +423,7 @@ export function createWorkbenchRoutes(
             throw new Error("操作结果尚未确认，请查询原操作状态");
           return { value: result.receipt };
         } catch (error) {
-          const unknown = !(
-            error &&
-            typeof error === "object" &&
-            "submissionUnknown" in error &&
-            error.submissionUnknown === false
-          );
+          const unknown = outcomeUnknown(error);
           throw Object.assign(error instanceof Error ? error : new Error("操作结果尚未确认"), {
             commandId,
             submissionUnknown: unknown,
@@ -462,12 +463,7 @@ export function createWorkbenchRoutes(
             throw new Error("资料库操作结果尚未确认，请刷新后核对");
           return { value: result.receipt };
         } catch (error) {
-          const unknown = !(
-            error &&
-            typeof error === "object" &&
-            "submissionUnknown" in error &&
-            error.submissionUnknown === false
-          );
+          const unknown = outcomeUnknown(error);
           throw Object.assign(
             error instanceof Error ? error : new Error("资料库操作结果尚未确认"),
             { commandId, submissionUnknown: unknown },

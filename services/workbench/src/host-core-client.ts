@@ -1,6 +1,6 @@
 import { parseCoreCapabilities } from "@areal/runtime-client/capabilities";
 import type { CoreClient } from "@areal/runtime-client/core";
-import { CoreRpcError, requestFailure, requestIdentity } from "@areal/runtime-client/errors";
+import { CoreRpcError, requestFailure, requestIdentity, UNSENT } from "@areal/runtime-client/errors";
 
 type Fields = Record<string, unknown>;
 type Call = (method: string, params: unknown) => Promise<unknown>;
@@ -103,7 +103,7 @@ export class HostCoreClient {
   ): Promise<Result> {
     const request = requestIdentity(method, params, this.capabilities);
     if (!this.ready || this.closed)
-      throw requestFailure("Host Core projection is disconnected", request, "DISCONNECTED");
+      throw requestFailure("Host Core projection is disconnected", request, "DISCONNECTED", UNSENT);
     const maximum = options.maxResponseBytes ?? 64 * 1024 * 1024;
     if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 64 * 1024 * 1024)
       throw new RangeError("Invalid Core response byte budget");

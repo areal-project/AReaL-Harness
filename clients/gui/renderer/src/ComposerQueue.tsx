@@ -26,6 +26,8 @@ import { queueText, type QueueEditInput } from "./Queue.js";
 import { imageAnnotationTitle } from "./imageAnnotations.js";
 import type { Action, Data } from "./services.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { FeedbackNotice } from "./FeedbackNotice.js";
+import { wasReported } from "./errors/reported.js";
 import { recoveredOutcome } from "./recoveryPresentation.js";
 
 const queueLabel = (item: Data) => imageAnnotationTitle(queueText(item));
@@ -101,11 +103,11 @@ export function ComposerQueue({
         const unresolved = { requestId: failure.requestId, operation: request.operation };
         localStorage.setItem(operationKey, JSON.stringify(unresolved));
         setUnknown(unresolved);
-        setError("队列操作结果尚未确认，条目以 Core 状态为准，不会自动重发。");
+        if (!wasReported(failure)) setError(t("recovery.operationUnconfirmed"));
       } else {
         localStorage.removeItem(operationKey);
         setUnknown(null);
-        setError(errorText(t, failure));
+        if (!wasReported(failure)) setError(errorText(t, failure));
       }
     } finally {
       setBusy(false);
@@ -171,7 +173,9 @@ export function ComposerQueue({
   if (!items.length)
     return (
       <div className="composer-queue-feedback">
-        {error && <p role="alert">{error}</p>}
+        {error && (
+          <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
+        )}
         {unknown && (
           <Button
             unstyled
@@ -205,9 +209,7 @@ export function ComposerQueue({
         </div>
       )}
       {error && (
-        <p role="alert" className="composer-queue-feedback">
-          {error}
-        </p>
+        <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
       )}
       {unknown && (
         <Button

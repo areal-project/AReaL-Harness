@@ -22,7 +22,7 @@
   "core/host/src/server.rs": 4030,
   "core/host/src/task_catalog.rs": 1594,
   "core/host/src/vault.rs": 1678,
-  "core/host/src/workbench_route.rs": 2480,
+  "core/host/src/workbench_route.rs": 2255,
   "core/host/src/worktree_catalog.rs": 2248,
   "runtime/supervisor/src/lib.rs": 1616
 }
