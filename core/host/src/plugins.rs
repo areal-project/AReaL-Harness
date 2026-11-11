@@ -97,7 +97,21 @@ fn store(host: &Host, project: Option<&str>) -> Result<areal_plugins::Store> {
                 .get(project)
                 .map(|slot| slot.registration.workspace.clone())
                 .context("RESOURCE_UNAVAILABLE")?;
-            areal_plugins::Store::open(root, workspace, user_home())
+            // 项目 Core 按启动时的配置目录读插件库；这里跟它读同一处，否则装完 Core 看不到。
+            let saved = host
+                .home
+                .join("host/launch")
+                .join(areal_local_service::storage::digest(project.as_bytes()))
+                .join("inputs.json");
+            let (root, homedir) =
+                match areal_local_service::storage::read_optional::<crate::LaunchInputs>(&saved)? {
+                    Some(inputs) => (
+                        inputs.config_home.join("plugins"),
+                        inputs.homedir.or_else(user_home),
+                    ),
+                    None => (root, user_home()),
+                };
+            areal_plugins::Store::open(root, workspace, homedir)
         }
     }
 }
@@ -384,6 +398,53 @@ fn standalone_server(config: &Value) -> Result<Value> {
 mod tests {
     use super::standalone_server;
     use serde_json::json;
+
+    #[test]
+    fn project_writes_land_where_its_core_reads_plugins() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let host = super::super::schedules::tests::fixture(&root);
+        let workspace = root.join("workspace");
+        let config_home = root.join("config");
+        let saved = host
+            .home
+            .join("host/launch")
+            .join(areal_local_service::storage::digest(b"project"))
+            .join("inputs.json");
+        areal_local_service::storage::private_dir(saved.parent().unwrap()).unwrap();
+        areal_local_service::storage::write(
+            &saved,
+            &crate::LaunchInputs {
+                workspace: workspace.clone(),
+                cwd: workspace,
+                config_home: config_home.clone(),
+                homedir: Some(root.clone()),
+                config_path: None,
+                deployment_path: None,
+                schedule_preparation: None,
+                environment: Default::default(),
+                credential_names: vec![],
+                options: Default::default(),
+            },
+        )
+        .unwrap();
+        let store = super::store(&host, Some("project")).unwrap();
+        let server = json!({"command":"docs-mcp"});
+        store
+            .save_local_mcp("docs", &server, store.list().unwrap().revision)
+            .unwrap();
+        // Core 以启动时的配置目录为家，从这里读插件库。
+        let core_view =
+            areal_plugins::Store::open_user(config_home.join("plugins"), Some(root)).unwrap();
+        assert!(
+            core_view
+                .list()
+                .unwrap()
+                .data
+                .iter()
+                .any(|row| row.installed)
+        );
+    }
 
     #[test]
     fn standalone_servers_keep_transport_secrets_by_reference_and_timeouts() {
