@@ -1,0 +1,85 @@
+docs/guides/programmatic-tools.md
+  s_bf83cab8355b2b::t_372d56f21450ae 75
+  s_bf83cab8355b2b::t_6d0c12db95a7e2 76
+docs/guides/programmatic-tools.en.md
+  s_bf83cab8355b2b::t_6d0c12db95a7e2 76
+  s_bf83cab8355b2b::t_372d56f21450ae 75
+core/engine/src/turns.rs
+  s_bf83cab8355b2b::t_e43b9046899f35 305
+core/engine/src/lib.rs
+  s_bf83cab8355b2b::t_e43b9046899f35 229
+core/engine/tests/adaptive_tool_schemas.rs
+  s_bf83cab8355b2b::t_c9587c18e56ac2 733-735,763,766,771-778
+  s_bf83cab8355b2b::t_04fda6fd639ccf 346-349,354-364,381-382,401-406,408,426-427,465-469,484-488,499-500,508-509,518-523,802
+  s_bf83cab8355b2b::t_16efff54c6efe4 2-4,551-571,580,596-618,670,692-696,710,716-719,728-732,756-758,781-785,790,801
+  s_bf83cab8355b2b::t_5ac3570977b671 572-579,581-595,619-669,671-691,697-709,711-715,720-727,786-789,791-800
+  s_bf83cab8355b2b::t_348bebc172e284 13,61-82,93-100,110-113,134-147,151,171-172,174,181-185,190-192,197,212,226-228,233,248
+  s_bf83cab8355b2b::t_17a49423059c9a 28-33,37-41,44-49,54-58,102-104,106-108,116-122,125,128-133,154-170,173,175-180,186-189,198-211,214-225,234-241,243-244,258-282,284-292,298-311,313-315,321-344
+  s_bf83cab8355b2b::t_835813e7f336cc 152-153,193-196,229-232,249-253,365-380,383-400,407,409-425,428-464,470-483,489-498,501-507,510-517
+  s_bf83cab8355b2b::t_4fa3e60045b555 736-755,759-762,764-765,767-770,779-780
+  s_bf83cab8355b2b::t_eb4d529fdf102b 1,5-12,14-27,34-36,42-43,50-53,59-60,83-92,101,105,109,114-115,123-124,126-127,148-150,213,242,245-247,254-257,283,293-297,312,316-320,345
+  s_bf83cab8355b2b::t_081df3e6fc8008 527-546
+  s_bf83cab8355b2b::t_ee5f76e1d2f71a 350-353,524-526,547-550
+core/engine/src/tools/registry.rs
+  s_bf83cab8355b2b::t_e43b9046899f35 16-17,46
+docs/api/core.en.md
+  s_bf83cab8355b2b::t_372d56f21450ae 580
+  s_bf83cab8355b2b::t_1764c57e0d41ac 581
+core/engine/src/tools.rs
+  s_bf83cab8355b2b::t_1779003d7dbd44 1416-1420
+  s_bf83cab8355b2b::t_e43b9046899f35 374
+  s_6eb5a7389a677f::t_ad3f9c426be3f3 1421
+docs/guides/configuration.md
+  s_bf83cab8355b2b::t_6d0c12db95a7e2 658
+  s_bf83cab8355b2b::t_372d56f21450ae 657
+core/engine/src/tools/schema_recovery.rs
+  s_bf83cab8355b2b::t_13316507f83fa1 12,31,51-54,69,73-78
+  s_bf83cab8355b2b::t_1779003d7dbd44 32,37-39,179-190
+  s_bf83cab8355b2b::t_e43b9046899f35 1-11,13-16,18-29,40-50,55-57,62-63,65-68,70-72,121,192-210,215-218
+  s_bf83cab8355b2b::t_eb4d529fdf102b 17,122-178,191,211-214
+  s_bf83cab8355b2b::t_eea6ca43a428db 30
+  s_bf83cab8355b2b::t_b9eb48dc786203 58-61,79-120
+  s_bf83cab8355b2b::t_835813e7f336cc 33-36
+  s_bf83cab8355b2b::t_ee5f76e1d2f71a 64
+core/engine/src/tools/extensions.rs
+  s_bf83cab8355b2b::t_13316507f83fa1 56-60
+  s_bf83cab8355b2b::t_e43b9046899f35 55,61-62
+docs/guides/configuration.en.md
+  s_bf83cab8355b2b::t_6d0c12db95a7e2 658
+  s_bf83cab8355b2b::t_372d56f21450ae 657
+core/engine/src/generation.rs
+  s_bf83cab8355b2b::t_13316507f83fa1 916-920
+  s_bf83cab8355b2b::t_e1dac9826012a9 432-434
+  s_bf83cab8355b2b::t_1779003d7dbd44 422-426
+  s_bf83cab8355b2b::t_97b02187acee77 428-430
+  s_bf83cab8355b2b::t_e2652d523605a8 421,427
+  s_bf83cab8355b2b::t_17a49423059c9a 435-437
+  s_bf83cab8355b2b::t_b9eb48dc786203 438
+docs/api/core.md
+  s_bf83cab8355b2b::t_1764c57e0d41ac 590
+  s_bf83cab8355b2b::t_372d56f21450ae 589
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4314bf44cee256eaad5e63ceeda999c88e820f29",
+  "prompts": {},
+  "sessions": {
+    "s_6eb5a7389a677f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1c603-367d-7323-abff-0b9c62db8a4e",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    },
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
