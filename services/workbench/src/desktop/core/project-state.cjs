@@ -23,7 +23,7 @@ const {
 /** @typedef {import("@areal/workbench/desktop-contract/shared").SubmissionOutcome} SubmissionOutcome */
 /** @typedef {import('./project-index.cjs').SavedProject & {
  * model:import('@areal/workbench/core-model').CoreTaskModel,
- * pending:PendingSubmission[],journalWrite?:Promise<unknown>,reconciliation?:Reconciliation|null,reconciliationRead?:{client:import('@areal/runtime-client/core').CoreClient|null|undefined,generation?:number,promise:Promise<void>}|null,outcomes:Record<string,SubmissionOutcome>,
+ * pending:PendingSubmission[],unconfirmedReads?:Map<string,number>,journalWrite?:Promise<unknown>,reconciliation?:Reconciliation|null,reconciliationRead?:{client:import('@areal/runtime-client/core').CoreClient|null|undefined,generation?:number,promise:Promise<void>}|null,outcomes:Record<string,SubmissionOutcome>,
  * configurations:Record<string,import("./thread-configuration.cjs").Configuration|undefined>,configurationChanges:Map<string,string>,taskDraftWrites?:Map<string,Promise<unknown>>,taskCreateWrites?:Map<string,Promise<unknown>>,taskViewWrite?:Promise<unknown>,
  * models?:import('./provider-contract.cjs').ModelCatalogEntry[],profiles?:unknown,resourceProfile?:import('@areal/workbench/desktop-contract').ResourceRef,resourceFingerprint?:string,providerRevision?:string|null,providerSnapshot?:import('./provider-contract.cjs').ModelSnapshot,summariesLoaded?:boolean,
  * providerProof?:import('./provider-contract.cjs').ConfigurationProof,providerError?:string|null,providerFailure?:{revision:string,serviceId?:string,generation?:string,message:string,catalogRefreshPending?:boolean},
@@ -89,8 +89,32 @@ function isAwaitingResponse(responses, projectId, entry) {
   return key !== null && responses.has(key);
 }
 
+// Core 可达且连续两次答复“没有这条回执”后，这条提交不再锁住对话；
+// 记录仍留在日志里，之后回执出现照常结算。只存在内存里，重启后重新核对。
+const unresolvedAfterReads = 2;
+
+/** @param {{unconfirmedReads?:Map<string,number>}} project @param {PendingSubmission} entry @param {{confirmed?:unknown,state?:unknown}} result */
+function noteReconcileRead(project, entry, result) {
+  const id = entry.params?.requestId;
+  if (typeof id !== "string") return;
+  project.unconfirmedReads ??= new Map();
+  if (result.confirmed === false && result.state === "unconfirmed")
+    project.unconfirmedReads.set(id, (project.unconfirmedReads.get(id) ?? 0) + 1);
+  else project.unconfirmedReads.delete(id);
+}
+
+/** @param {{unconfirmedReads?:Map<string,number>}|undefined|null} project @param {PendingSubmission} entry */
+function isUnresolved(project, entry) {
+  const id = entry.params?.requestId;
+  return (
+    typeof id === "string" && (project?.unconfirmedReads?.get(id) ?? 0) >= unresolvedAfterReads
+  );
+}
+
 module.exports = {
   createProjectState,
+  isUnresolved,
+  noteReconcileRead,
   submissionKey,
   sameSubmission,
   isAwaitingResponse,

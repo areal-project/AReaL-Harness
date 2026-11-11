@@ -1190,12 +1190,14 @@ describe("Host renderer read authority", () => {
       projectId: "canonical",
       params: {
         expectedConfigRevision: 7,
-        enqueue: true,
         attachments: message.attachments,
         conversationQuotes: message.conversationQuotes,
         mcpContent: message.mcpContent,
       },
     });
+    // 立即发还是排队由 Host 决定；界面不再替它断言当前轮次。
+    expect(writes.at(-1)?.params).not.toHaveProperty("enqueue");
+    expect(writes.at(-1)?.params).not.toHaveProperty("expectedTurnId");
     await call(services, "steer", message);
     expect(writes.at(-1)).toMatchObject({
       method: "session.control",

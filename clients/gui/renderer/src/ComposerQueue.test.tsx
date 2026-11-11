@@ -6,6 +6,9 @@ import type { Action } from "./services.js";
 const hooks = vi.hoisted(() => ({ slots: [] as unknown[], cursor: 0 }));
 vi.mock("react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react")>()),
+  // 组件在这里被当作函数直接调用，没有渲染器；自动核对的副作用不在本测试范围内。
+  useRef: (current: unknown) => ({ current }),
+  useEffect: () => {},
   useState: (initial: unknown) => {
     const index = hooks.cursor++;
     if (!(index in hooks.slots))

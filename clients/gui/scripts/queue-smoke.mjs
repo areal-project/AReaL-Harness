@@ -155,12 +155,11 @@ function proxyHostSocket(socket) {
     socket.send(message);
   });
 }
-async function assertDropped(operation, key) {
+// 回复丢失后界面自动用原编号核对；这里只断言原请求只发过一次、没有重发。
+async function assertDropped(operation) {
   await withSmokeDeadline(`discard accepted queue ${operation} reply`, () => droppedReply);
   const dropped = queueFaults.dropped.at(-1);
   assert.equal(dropped?.method, `areal/queue/${operation}`);
-  const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), key);
-  assert.equal(saved.unknown?.requestId ?? saved.requestId, dropped.requestId);
   assert.equal(
     queueFaults.calls.filter((entry) => entry.requestId === dropped.requestId).length,
     1,
@@ -597,10 +596,7 @@ try {
   dropQueueReply("pause");
   await more("2 外部更新");
   await page.getByRole("menuitem", { name: "编辑消息", exact: true }).click();
-  await button("核对编辑操作").waitFor();
-  await assertDropped("pause", `${key}:queue-edit`);
-  assert.equal(await input().textContent(), "原未发送草稿");
-  await button("核对编辑操作").click();
+  await assertDropped("pause");
   await page.waitForFunction(
     (key) => JSON.parse(localStorage.getItem(`${key}:queue-edit`)).phase === "editing",
     key,
@@ -626,14 +622,12 @@ try {
   assert.equal(queue(await state()).paused, true);
   dropQueueReply("resume");
   await button("取消").click();
-  await button("核对编辑操作").waitFor();
-  await assertDropped("resume", `${key}:queue-edit`);
-  await button("核对编辑操作").click();
+  await assertDropped("resume");
   await restoredDraft();
   assert.equal(await input().textContent(), "原未发送草稿");
   assert.equal(queue(await state()).paused, false);
   checks.push(
-    "pause/resume lost accepted responses reconcile explicitly; actual Host WebSocket disconnect preserves edit and disables save until reconnect",
+    "pause/resume lost accepted responses reconcile automatically; actual Host WebSocket disconnect preserves edit and disables save until reconnect",
   );
   await call("queueEdit", {
     projectId: pid,
@@ -646,11 +640,7 @@ try {
   await input().fill("2 对账更新");
   dropQueueReply("update");
   await button("保存").click();
-  await page.getByRole("alert").filter({ hasText: "编辑内容已保留，不会自动重发" }).waitFor();
-  assert.equal(await input().textContent(), "2 对账更新");
-  assert.ok(await button("保存").isDisabled());
-  await assertDropped("update", `${key}:queue-edit`);
-  await button("核对编辑操作").click();
+  await assertDropped("update");
   await until(
     (s) => !project(s).pending.length && pending(s).some((i) => i.input[0].text === "2 对账更新"),
     "update receipt reconciled",
@@ -661,16 +651,14 @@ try {
   const mutations = queueFaults.calls;
   assert.equal(mutations.filter((entry) => entry.method === "areal/queue/update").length, 1);
   checks.push(
-    "accepted update response loss keeps edit draft locked; receipt reconciliation restores original draft without resubmission",
+    "accepted update response loss is reconciled automatically; original draft is restored without resubmission",
   );
   // 原子转为引导：当前轮次出现一条消息，队列退出 pending，未知响应只查收据。
   dropQueueReply("steer");
   await row("2 对账更新")
     .getByRole("button", { name: /立即发送/ })
     .click();
-  await button("核对队列操作").waitFor();
-  await assertDropped("steer", `${key}:queue-operation`);
-  await button("核对队列操作").click();
+  await assertDropped("steer");
   await until(
     (s) => !project(s).pending.length && queue(s).items.some((i) => i.status === "steered"),
     "steer receipt",

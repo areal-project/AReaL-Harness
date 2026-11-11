@@ -445,7 +445,8 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       return await current.request("areal/thread/closeResources", { threadId: request.threadId });
     } catch (cause) {
       const error = submissionError(cause);
-      if (!error.settled && (typeof error.code !== "number" || error.code === -32603)) error.submissionUnknown = true;
+      if (!error.settled && (typeof error.code !== "number" || error.code === -32603))
+        error.submissionUnknown = true;
       throw error;
     }
   }

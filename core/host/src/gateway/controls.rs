@@ -392,7 +392,11 @@ impl Session {
                 "TARGET_CHANGED"
             );
         }
-        if params.operation.starts_with("queue") {
+        // 与 Core 一致：暂停、继续、删除不覆盖内容，不比对队列版本。
+        if matches!(
+            params.operation.as_str(),
+            "queueUpdate" | "queueReorder" | "queueSteer"
+        ) {
             ensure!(
                 state["queue"]["revision"] == params.expected_revision,
                 "TARGET_CHANGED"

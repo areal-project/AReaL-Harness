@@ -384,7 +384,9 @@ impl Engine {
             }
             let mut candidate = state.thread.clone();
             let data = candidate.desktop.get_or_insert_with(Default::default);
-            if data.queue.revision != expected {
+            // 只有会覆盖内容或顺序的操作才比对版本；暂停、继续、删除按目标本身判断，
+            // 队列在别处刚变过也照常执行，不让人为一次无害的并发重试。
+            if matches!(action.as_str(), "update" | "reorder") && data.queue.revision != expected {
                 return Err(Error::Conflict);
             }
             match action.as_str() {

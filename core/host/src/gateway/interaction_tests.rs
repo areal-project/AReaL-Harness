@@ -874,6 +874,22 @@ async fn unknown_original_answer_allows_settled_ordinary_operations_but_not_unkn
         let sent = sent.unwrap();
         assert_eq!(sent["admissionState"], "accepted");
         assert_eq!(sent["turnId"], "later-turn");
+        // 客户端不指定立即发还是排队：Host 看到有进行中的轮次，就排到这一轮后面。
+        let queued = f.request("session.send", json!({"threadId":"thread","expectedConfigRevision":2,"text":"while busy"}), Some(&uuid::Uuid::new_v4().to_string()));
+        let queueing = Fixture::dispatch(session, queued);
+        let mut caps = Fixture::capabilities();
+        caps["features"]["turnEnqueueAdmissionGuard"] = json!(true);
+        caps["methods"].as_array_mut().unwrap().push(json!("areal/turn/enqueue"));
+        f.call("areal/capabilities").await.reply(caps);
+        f.call("areal/thread/observe").await.reply(json!({"thread":{"id":"thread","status":{"type":"active"},"turns":[{"id":"busy","status":"inProgress","items":[]}],"desktop":{"configuration":{"revision":2}}},"ownership":{"kind":"ordinary"}}));
+        f.workspace_admission().await;
+        let enqueue = f.call("areal/turn/enqueue").await;
+        assert_eq!(enqueue.request["params"]["admissionGuard"]["expectedTurnId"], "busy");
+        enqueue.reply(json!({"queueItemId":"queued-item"}));
+        let (session, queued) = queueing.await.unwrap();
+        let queued = queued.unwrap();
+        assert_eq!(queued["admissionState"], "accepted");
+        assert_eq!(queued["receipt"]["queueItemId"], "queued-item");
         let reading = Fixture::dispatch(session, f.request("command.read", json!({"commandId":command}), None));
         f.call("areal/interaction/list").await.reply(json!({"data":[Fixture::item("answered")]}));
         let (session, recovered) = reading.await.unwrap();

@@ -588,6 +588,14 @@ export const commonMessages = {
     "zh-CN": "发送结果待确认，输入已保留。",
     en: "The send result is not confirmed yet. Your draft is saved while we check the original request.",
   },
+  "recovery.sendUnresolved": {
+    "zh-CN": "没能确认是否已发送，输入已保留，请先看一下对话。",
+    en: "We couldn't confirm whether this was sent. Your draft is kept. Check the conversation before sending again.",
+  },
+  "recovery.operationUnresolved": {
+    "zh-CN": "没能确认这次操作是否生效，请以当前显示的状态为准。",
+    en: "We couldn't confirm whether this took effect. The state shown now is current.",
+  },
   "recovery.createUnconfirmed": {
     "zh-CN": "任务创建结果待确认。",
     en: "Task creation is unconfirmed.",

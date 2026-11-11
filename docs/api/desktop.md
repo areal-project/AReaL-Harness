@@ -419,7 +419,7 @@ Turn 显示投影保留 Core 的 `goal.origin`、`goal.sequence` 与 `durationMs
 
 正文、推理和工具文本通过 `session.body {threadId, turnId, itemId, cursor?}` 完整读取并交给同一 GUI 消息流渲染，长回复不再只显示预览。该只读入口要求当前项目的 observe 授权和已打开的精确会话订阅；每页重新校验设备授权、连接与 Core 代际。公共消息正文超过内联额度时按最多 32 KiB 的 UTF-8 页读取，每位观察者只保留一个有效期 45 秒、最多 4 MiB 的临时冻结正文版本；游标不能跨消息或订阅使用。媒体与 Core 已归档、不可访问的历史仍不提供。工具参数、文本输出和公开执行状态可以展开；modelContext、凭据、完整配置、instructionSnapshot、钩子负载和私有执行元数据不传输。浏览器仅缓存当前显示范围的正文，切换会话或断开后清空；读取失败可显式重试，不重放发送或工具操作。现有原生历史接收上限仍适用。
 
-`session.send` 可附带 `enqueue: true, expectedTurnId`，映射 `areal/turn/enqueue`，要求 `turnEnqueueAdmissionGuard`；Core 在锁内确认普通归属与配置版本。`session.control {threadId, operation, expectedRevision, values}` 使用 submit 能力和既有 commandId journal，仅支持 configure、goalCreate/goalPause/goalResume/goalClear、queueUpdate/queueRemove/queueReorder/queuePause/queueResume/queueSteer、steer。字段严格限定；不接受路径、原生方法名、连接信息或凭据。Task 归属拒绝这些普通会话控制。
+`session.send` 不带 `enqueue` 时由 Host 按会话当前状态选择：有活动轮次就映射 `areal/turn/enqueue` 并填入该轮次，否则映射 `areal/turn/start`。也可显式附带 `enqueue: true, expectedTurnId`。排队要求 `turnEnqueueAdmissionGuard`；Core 在锁内确认普通归属与配置版本。队列的 pause、resume、remove 不比对 `expectedRevision`，只有 update、reorder、steer 在版本过期时拒绝。`session.control {threadId, operation, expectedRevision, values}` 使用 submit 能力和既有 commandId journal，仅支持 configure、goalCreate/goalPause/goalResume/goalClear、queueUpdate/queueRemove/queueReorder/queuePause/queueResume/queueSteer、steer。字段严格限定；不接受路径、原生方法名、连接信息或凭据。Task 归属拒绝这些普通会话控制。
 
 快照包含脱敏模型目录、配置、目标与队列显示投影；队列至多 128 项，每项文本 1024 UTF-8 字节，含附件或截断项不可在 Remote 编辑。模型目录至多 200 项。发送和控制共享 Session 未确认门；结果未知只查原 commandId，不重发。配置/目标/队列及 enqueue 使用原生持久收据核对。直接 `turn/steer` 无可查询原生请求键，回应丢失时保持 UNKNOWN，不将消息回显当作受理证明。
 

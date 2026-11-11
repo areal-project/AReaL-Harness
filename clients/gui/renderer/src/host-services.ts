@@ -646,7 +646,6 @@ export function createHostReadServices(
               ? { conversationQuotes: params.conversationQuotes }
               : {}),
             ...(params.mcpContent !== undefined ? { mcpContent: params.mcpContent } : {}),
-            ...(params.expectedTurnId ? { expectedTurnId: params.expectedTurnId } : {}),
           });
           const commandId =
             typeof params.requestId === "string" ? params.requestId : crypto.randomUUID();
@@ -660,13 +659,15 @@ export function createHostReadServices(
                   threadId: target.threadId,
                   expectedConfigRevision: Number(config.revision),
                   ...input,
-                  enqueue: params.enqueue === true,
                 }
               : {
                   threadId: target.threadId,
                   operation: "steer",
                   expectedRevision: Number(config.revision),
-                  values: input,
+                  values: {
+                    ...input,
+                    ...(params.expectedTurnId ? { expectedTurnId: params.expectedTurnId } : {}),
+                  },
                 },
             commandId,
           );
@@ -686,7 +687,7 @@ export function createHostReadServices(
             routed: true,
             value: {
               threadId: target.threadId,
-              ...(typeof result.turnId === "string" ? { turnId: result.turnId } : {}),
+              ...(typeof result.turnId === "string" ? { turnId: result.turnId } : { queued: true }),
             },
           };
         }
