@@ -28,9 +28,6 @@ const LEGACY_READ_METHODS = new Set([
   "areal/side/context/read",
 ]);
 
-/** 请求没有离开本进程时传给 requestFailure 的选项。 */
-export const UNSENT = { unsent: true };
-
 /** unsent：请求没有离开本进程（连接未就绪），写操作也保证没有变更，不算“结果未知”。 */
 export function requestFailure(
   message,
@@ -135,3 +132,7 @@ export function requestIdentity(method, params, capabilities) {
         : { kind: "project" },
   };
 }
+
+/** 请求没有离开本进程时用它：保留原错误码，记为“没有执行”。 */
+requestFailure.unsent = (message, request, code) =>
+  requestFailure(message, request, code, { unsent: true });

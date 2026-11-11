@@ -157,7 +157,9 @@ export async function submitMessage(
       consumeConversationSelections(selectionScope, capturedReferences);
     }
     // Host 可能把“立即发”改成排队（对话刚好开始了新一轮）；调用方据此撤掉乐观显示。
-    return { queued: !!sent && typeof sent === "object" && "queued" in sent && sent.queued === true };
+    return {
+      queued: !!sent && typeof sent === "object" && "queued" in sent && sent.queued === true,
+    };
   } finally {
     if (options.appMessage) forgetComposerUploads(uploadOwner, imageFiles);
   }

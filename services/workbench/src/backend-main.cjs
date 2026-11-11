@@ -559,12 +559,12 @@ async function start({ input, output }) {
                     ? { code: error.code }
                     : coreRejectionCodes[rejectedCoreCode(error)]
                       ? { code: coreRejectionCodes[rejectedCoreCode(error)] }
-                    : request.method === "desktop.command"
-                      ? {
-                          code: "COMMAND_FAILED",
-                          message: String(error?.message ?? "").slice(0, 512),
-                        }
-                      : { code: "CORE_UNAVAILABLE" },
+                      : request.method === "desktop.command"
+                        ? {
+                            code: "COMMAND_FAILED",
+                            message: String(error?.message ?? "").slice(0, 512),
+                          }
+                        : { code: "CORE_UNAVAILABLE" },
             }) + "\n",
           ),
       );

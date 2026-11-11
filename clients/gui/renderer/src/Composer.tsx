@@ -509,7 +509,10 @@ export function Composer({
     unknown,
     project.state?.connected === true,
     async () => {
-      await readAction("reconcile", { projectId: project.id, requestId: unknown ?? undefined }).catch(() => {});
+      await readAction("reconcile", {
+        projectId: project.id,
+        requestId: unknown ?? undefined,
+      }).catch(() => {});
       await readAction("reconcile", { projectId: project.id }).catch(() => {});
     },
     () => {
@@ -518,7 +521,13 @@ export function Composer({
         JSON.stringify([project.id, thread.id, false]),
       )?.pendingTurnStart;
       if (turnStart?.requestId === unknown) cancelTurnStart(turnStart);
-      for (const suffix of ["pending", "pending-operation", "pending-goal", "pending-continue", "pending-configure"])
+      for (const suffix of [
+        "pending",
+        "pending-operation",
+        "pending-goal",
+        "pending-continue",
+        "pending-configure",
+      ])
         composerDraftStorage.removeItem(`${key}:${suffix}`);
       window.dispatchEvent(new Event("areal-snapshot-drain"));
       setUnresolved(unknown);
