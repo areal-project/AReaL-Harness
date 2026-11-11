@@ -171,11 +171,34 @@ struct Operation {
     #[serde(default)]
     evidence: Value,
 }
+/// Host 操作回执的状态机。落盘仍是 receipt 里的 `state` 字符串，这里只给读写一个类型。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum ReceiptState {
+    AcceptedPending,
+    AdmissionUnknown,
+    SettlementIncomplete,
+    /// 只用于 host.stop 汇总：部分目标已完成。
+    Partial,
+    Blocked,
+    Completed,
+}
+impl ReceiptState {
+    /// 读不出或不认识的状态返回 None，调用方一律按未结算处理。
+    fn of(receipt: &Value) -> Option<Self> {
+        Self::deserialize(&receipt["state"]).ok()
+    }
+    fn settled(state: Option<Self>) -> bool {
+        matches!(state, Some(Self::Completed | Self::Blocked))
+    }
+    fn is(receipt: &Value, state: Self) -> bool {
+        Self::of(receipt) == Some(state)
+    }
+}
 impl Operation {
-    /// 只有自己和全部停止目标都是 completed / blocked 才算结算；状态未知一律当未结算保留。
+    /// 只有自己和全部停止目标都已结算才算结算；状态未知一律当未结算保留。
     fn settled(&self) -> bool {
-        let done =
-            |receipt: &Value| matches!(receipt["state"].as_str(), Some("completed" | "blocked"));
+        let done = |receipt: &Value| ReceiptState::settled(ReceiptState::of(receipt));
         done(&self.receipt)
             && self.evidence["schedulingIntentPending"] != true
             && self.receipt["projects"]
@@ -342,7 +365,8 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     let journal = crate::journal::Journal::new(&home)?;
     let remote = crate::remote_state::RemoteState::new(&home);
     let stop: Option<Value> = storage::read_optional(&directory.join("stop.json"))?;
-    let stop = stop.filter(|v| v["state"] != "completed" && !settled_refusal(v));
+    let stop =
+        stop.filter(|v| !ReceiptState::is(v, ReceiptState::Completed) && !settled_refusal(v));
     let (changes, _) = watch::channel(0);
     let host = Rc::new(Host {
         schedules: schedules::Schedules::load(&home)?,
@@ -556,7 +580,7 @@ async fn connection_loop(host: Rc<Host>, stream: UnixStream) -> Result<()> {
                 } else {host.dispatch_connection(&request.method,request.params,&connection).await};
                 let response=match result {Ok(value)=>json!({"version":VERSION,"id":request.id,"result":value}),Err(e)=>json!({"version":VERSION,"id":request.id,"error":local_command_error(&e)})};
                 let sent=write_local_frame(&mut writer,&response,frame_limit).await;
-                if host.stop.borrow().as_ref().is_some_and(|v|v["state"]=="completed") {host.exit.notify_one();}
+                if host.stop.borrow().as_ref().is_some_and(|v| ReceiptState::is(v, ReceiptState::Completed)) {host.exit.notify_one();}
                 sent?;
             },
             event=async {frontend_events.as_mut().unwrap().recv().await}, if frontend_events.is_some()=> {
@@ -992,7 +1016,10 @@ impl Host {
         HostStatus {
             host_id: self.identity.host_id.clone(),
             generation: self.identity.generation.clone(),
-            state: if stop.as_ref().is_some_and(|s| s["state"] == "completed") {
+            state: if stop
+                .as_ref()
+                .is_some_and(|s| ReceiptState::is(s, ReceiptState::Completed))
+            {
                 "stopped"
             } else if stop.is_some() {
                 "stopping"
@@ -1553,7 +1580,7 @@ impl Host {
             .receipt;
         match outcome {
             Ok(result) => {
-                receipt["state"] = json!("completed");
+                receipt["state"] = json!(ReceiptState::Completed);
                 receipt["result"] = result.clone();
                 self.save(id, digest, &receipt)?;
                 self.changed();
@@ -2137,10 +2164,7 @@ impl Host {
                     .is_some_and(|targets| {
                         targets.iter().any(|target| {
                             target["projectId"] == project_id
-                                && !matches!(
-                                    target["receipt"]["state"].as_str(),
-                                    Some("completed" | "blocked")
-                                )
+                                && !ReceiptState::settled(ReceiptState::of(&target["receipt"]))
                         })
                     })
             {
@@ -2152,10 +2176,13 @@ impl Host {
             if record.receipt["requestId"] == current || record.receipt["projectId"] != project_id {
                 continue;
             }
-            let state = record.receipt["state"].as_str().unwrap_or("");
             if matches!(
-                state,
-                "acceptedPending" | "admissionUnknown" | "settlementIncomplete"
+                ReceiptState::of(&record.receipt),
+                Some(
+                    ReceiptState::AcceptedPending
+                        | ReceiptState::AdmissionUnknown
+                        | ReceiptState::SettlementIncomplete
+                )
             ) {
                 return Err(error(
                     "admissionUnknown",
@@ -2228,10 +2255,10 @@ impl Host {
                 json!({"version":VERSION,"requestId":request_id,"projectId":project_id,"serviceId":service.identity.service_id,"serviceGeneration":service.identity.generation,"strategy":strategy,"state":"admissionUnknown","message":"Read the original operation to reconcile admission"})
             }
         };
-        if receipt["state"] == "blocked" {
+        if ReceiptState::is(&receipt, ReceiptState::Blocked) {
             self.slots.borrow_mut().get_mut(project_id).unwrap().state = "ready".into();
         }
-        if receipt["state"] == "completed" {
+        if ReceiptState::is(&receipt, ReceiptState::Completed) {
             let mut slots = self.slots.borrow_mut();
             let slot = slots.get_mut(project_id).unwrap();
             slot.writer = None;
@@ -2351,8 +2378,12 @@ impl Host {
     async fn stop_host_new(&self, input: Stop) -> Result<Value> {
         if let Some(existing) = self.stop.borrow().as_ref() {
             if !matches!(
-                existing["state"].as_str(),
-                Some("blocked" | "partial" | "settlementIncomplete")
+                ReceiptState::of(existing),
+                Some(
+                    ReceiptState::Blocked
+                        | ReceiptState::Partial
+                        | ReceiptState::SettlementIncomplete
+                )
             ) {
                 return Err(error(
                     "stopInProgress",
@@ -2362,8 +2393,8 @@ impl Host {
             if existing["projects"].as_array().is_some_and(|targets| {
                 targets.iter().any(|t| {
                     matches!(
-                        t["receipt"]["state"].as_str(),
-                        Some("admissionUnknown" | "acceptedPending")
+                        ReceiptState::of(&t["receipt"]),
+                        Some(ReceiptState::AdmissionUnknown | ReceiptState::AcceptedPending)
                     )
                 })
             }) {
@@ -2410,7 +2441,7 @@ impl Host {
                     services.push(service);
                 }
             } else if self.slots.borrow()[&id].writer.is_some() {
-                receipt["state"] = json!("settlementIncomplete");
+                receipt["state"] = json!(ReceiptState::SettlementIncomplete);
                 self.save_host_stop(&input.request_id, &digest, &receipt)?;
                 return Ok(receipt);
             }
@@ -2439,19 +2470,21 @@ impl Host {
         Ok(receipt)
     }
     async fn settle_local_relay(&self, receipt: &mut Value) {
-        if receipt.get("localRelay").is_none() || receipt["localRelay"]["state"] == "completed" {
+        if receipt.get("localRelay").is_none()
+            || ReceiptState::is(&receipt["localRelay"], ReceiptState::Completed)
+        {
             return;
         }
         if receipt["hostId"] != self.identity.host_id
             || receipt["generation"] != self.identity.generation
         {
-            receipt["localRelay"]["state"] = json!("settlementIncomplete");
+            receipt["localRelay"]["state"] = json!(ReceiptState::SettlementIncomplete);
             return;
         }
         if !receipt["projects"].as_array().is_some_and(|targets| {
             targets
                 .iter()
-                .all(|target| target["receipt"]["state"] == "completed")
+                .all(|target| ReceiptState::is(&target["receipt"], ReceiptState::Completed))
         }) {
             return;
         }
@@ -2521,8 +2554,8 @@ impl Host {
             }
         }
         if matches!(
-            record.receipt["state"].as_str(),
-            Some("acceptedPending" | "admissionUnknown")
+            ReceiptState::of(&record.receipt),
+            Some(ReceiptState::AcceptedPending | ReceiptState::AdmissionUnknown)
         ) {
             if record.receipt["method"] == "projects.register" {
                 if let Some(expected) = record.evidence.get("registration") {
@@ -2549,7 +2582,7 @@ impl Host {
                         .as_ref()
                             == Some(&expected)
                     {
-                        record.receipt["state"] = json!("completed");
+                        record.receipt["state"] = json!(ReceiptState::Completed);
                         record.receipt["result"] =
                             json!({"registration":expected,"created":record.evidence["created"]});
                         self.save(id, &record.digest, &record.receipt)?;
@@ -2597,7 +2630,7 @@ impl Host {
                         && configuration_matches
                         && (new_generation || previous_ready)
                     {
-                        record.receipt["state"] = json!("completed");
+                        record.receipt["state"] = json!(ReceiptState::Completed);
                         record.receipt["result"] = serde_json::to_value(OpenResult {
                             project: ProjectStatus {
                                 uses_shared_model_config: self
@@ -2620,7 +2653,7 @@ impl Host {
                         && (new_generation || previous_ready)
                         && self.cleanup_proof(&service).await.is_ok()
                     {
-                        record.receipt["state"] = json!("blocked");
+                        record.receipt["state"] = json!(ReceiptState::Blocked);
                         record.receipt["error"] = json!({"code":"activationInterrupted","message":"Original generation cleanup is confirmed; explicit activation may start a new request"});
                         self.save(id, &record.digest, &record.receipt)?;
                     }
@@ -2646,11 +2679,11 @@ impl Host {
             record.receipt["migration"]["receipt"] = serde_json::to_value(&operation)?;
             if operation.state == StopOperationState::Completed {
                 record.receipt["migration"]["phase"] = json!("oldStopped");
-                record.receipt["state"] = json!("blocked");
+                record.receipt["state"] = json!(ReceiptState::Blocked);
             }
             if operation.state == StopOperationState::Blocked {
                 record.receipt["migration"]["phase"] = json!("legacyPending");
-                record.receipt["state"] = json!("blocked");
+                record.receipt["state"] = json!(ReceiptState::Blocked);
             }
             self.save(id, &record.digest, &record.receipt)?;
         }
@@ -2658,7 +2691,9 @@ impl Host {
             let strategy: StopStrategy =
                 serde_json::from_value(record.receipt["strategy"].clone())?;
             for target in record.receipt["projects"].as_array_mut().unwrap() {
-                if target["dispatch"] == "started" && target["receipt"]["state"] != "completed" {
+                if target["dispatch"] == "started"
+                    && !ReceiptState::is(&target["receipt"], ReceiptState::Completed)
+                {
                     let operation = areal_local_service::operation(
                         &self.home,
                         target["serviceId"].as_str().unwrap(),
@@ -2728,46 +2763,48 @@ pub(crate) fn settled_refusal(receipt: &Value) -> bool {
     let Some(targets) = receipt["projects"].as_array() else {
         return false;
     };
-    matches!(receipt["state"].as_str(), Some("blocked" | "partial"))
-        && targets
-            .iter()
-            .any(|target| target["receipt"]["state"] == "blocked")
+    matches!(
+        ReceiptState::of(receipt),
+        Some(ReceiptState::Blocked | ReceiptState::Partial)
+    ) && targets
+        .iter()
+        .any(|target| ReceiptState::is(&target["receipt"], ReceiptState::Blocked))
         && targets.iter().all(|target| {
             target["dispatch"] == "started"
-                && matches!(
-                    target["receipt"]["state"].as_str(),
-                    Some("completed" | "blocked")
-                )
+                && ReceiptState::settled(ReceiptState::of(&target["receipt"]))
         })
 }
-fn aggregate(receipt: &Value) -> &'static str {
-    let targets = receipt["projects"].as_array().unwrap();
-    if targets.iter().all(|t| t["receipt"]["state"] == "completed")
-        && let Some(relay) = receipt.get("localRelay")
-    {
-        return match relay["state"].as_str() {
-            Some("completed") => "completed",
-            Some("settlementIncomplete") => "settlementIncomplete",
-            _ => "acceptedPending",
+fn aggregate(receipt: &Value) -> ReceiptState {
+    use ReceiptState::*;
+    let targets: Vec<_> = receipt["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| ReceiptState::of(&t["receipt"]))
+        .collect();
+    let all_completed = targets.iter().all(|state| *state == Some(Completed));
+    if all_completed && let Some(relay) = receipt.get("localRelay") {
+        return match ReceiptState::of(relay) {
+            Some(Completed) => Completed,
+            Some(SettlementIncomplete) => SettlementIncomplete,
+            _ => AcceptedPending,
         };
     }
-    if targets.iter().all(|t| t["receipt"]["state"] == "completed") {
-        return "completed";
+    if all_completed {
+        return Completed;
     }
-    if targets.iter().any(|t| t["receipt"]["state"] == "completed") {
-        return "partial";
+    if targets.contains(&Some(Completed)) {
+        return Partial;
     }
-    for state in [
-        "admissionUnknown",
-        "settlementIncomplete",
-        "acceptedPending",
-        "blocked",
-    ] {
-        if targets.iter().any(|t| t["receipt"]["state"] == state) {
-            return state;
-        }
-    }
-    "acceptedPending"
+    [
+        AdmissionUnknown,
+        SettlementIncomplete,
+        AcceptedPending,
+        Blocked,
+    ]
+    .into_iter()
+    .find(|state| targets.contains(&Some(*state)))
+    .unwrap_or(AcceptedPending)
 }
 
 #[cfg(test)]
@@ -3992,31 +4029,55 @@ if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.un
     }
 
     #[test]
+    fn receipt_state_keeps_disk_strings_and_treats_unknown_as_unsettled() {
+        use ReceiptState::*;
+        for (state, disk) in [
+            (AcceptedPending, "acceptedPending"),
+            (AdmissionUnknown, "admissionUnknown"),
+            (SettlementIncomplete, "settlementIncomplete"),
+            (Partial, "partial"),
+            (Blocked, "blocked"),
+            (Completed, "completed"),
+        ] {
+            assert_eq!(json!(state), disk);
+            assert_eq!(ReceiptState::of(&json!({"state":disk})), Some(state));
+            assert_eq!(
+                ReceiptState::settled(Some(state)),
+                matches!(state, Blocked | Completed)
+            );
+        }
+        for receipt in [json!({}), json!({"state":"Completed"}), json!({"state":1})] {
+            assert_eq!(ReceiptState::of(&receipt), None);
+            assert!(!ReceiptState::settled(ReceiptState::of(&receipt)));
+        }
+    }
+
+    #[test]
     fn aggregate_keeps_unknown_and_partial_targets_distinct() {
         for state in ["acceptedPending", "settlementIncomplete", "completed"] {
             assert_eq!(
-                aggregate(
+                json!(aggregate(
                     &json!({"projects":[{"receipt":{"state":"completed"}}],"localRelay":{"state":state}})
-                ),
+                )),
                 state
             );
         }
         assert_eq!(
-            aggregate(
+            json!(aggregate(
                 &json!({"projects":[{"receipt":{"state":"blocked"}}],"localRelay":{"state":"acceptedPending"}})
-            ),
+            )),
             "blocked"
         );
         assert_eq!(
-            aggregate(
+            json!(aggregate(
                 &json!({"projects":[{"receipt":{"state":"completed"}},{"dispatch":"notStarted"}]})
-            ),
+            )),
             "partial"
         );
         assert_eq!(
-            aggregate(
+            json!(aggregate(
                 &json!({"projects":[{"receipt":{"state":"admissionUnknown"}},{"receipt":{"state":"blocked"}}]})
-            ),
+            )),
             "admissionUnknown"
         );
     }
@@ -4057,7 +4118,7 @@ if task.is_finished(){panic!("Host exited before connection: {:?}",task.await.un
         let mut original = json!({"requestId":"original-stop","hostId":"same-host","generation":"original-generation","projects":[],"localRelay":{"state":"acceptedPending"}});
         host.settle_local_relay(&mut original).await;
         assert_eq!(original["localRelay"]["state"], "settlementIncomplete");
-        assert_eq!(aggregate(&original), "settlementIncomplete");
+        assert_eq!(json!(aggregate(&original)), "settlementIncomplete");
         let mut completed = original.clone();
         completed["localRelay"]["state"] = json!("completed");
         host.settle_local_relay(&mut completed).await;
