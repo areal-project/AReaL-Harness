@@ -301,11 +301,8 @@ jobs:
           node-version: '24.22.1'
           cache: pnpm
           cache-dependency-path: clients/gui/pnpm-lock.yaml
-      - name: Prepare locked GUI inputs with the supported build runtime
-        run: |
-          pnpm --dir clients/gui install --frozen-lockfile
-          python3 scripts/ci-preflight.py --groups relay-build --output target/ci/checks/relay-build
       # 中继传输用例经 Host 夹具启动真实 Core，要本次提交构建的二进制；与 Linux 主机检查共用构建缓存。
+      # 缓存恢复会重写 target/，所以排在写 target/ci 报告的步骤之前。
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           shared-key: host-debug-${{ runner.os }}
@@ -314,6 +311,10 @@ jobs:
         run: |
           rustup show
           make build
+      - name: Prepare locked GUI inputs with the supported build runtime
+        run: |
+          pnpm --dir clients/gui install --frozen-lockfile
+          python3 scripts/ci-preflight.py --groups relay-build --output target/ci/checks/relay-build
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         if: ${{ !cancelled() }}
         with:
