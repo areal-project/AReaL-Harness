@@ -310,7 +310,7 @@ host-protocol-check: ## 检查 A0 协议生成物、桌面 IPC 冻结反例和�
 	python3 -m unittest scripts.tests.test_host_protocol_schema
 	python3 -m unittest scripts/tests/host_protocol_typescript.py
 	node --test clients/gui/scripts/desktop-ipc-freeze.test.cjs
-	pnpm --dir clients/gui exec vp run snapshots-build
+	pnpm --dir clients/gui exec vp run desktop-build
 	cargo test --locked -p areal-host local_send_and_steer_freeze -- --ignored
 
 package: release ## 生成 macOS arm64 / Linux x86_64 发行产物及完整性清单；ARGS 指定 --output
