@@ -171,6 +171,56 @@ fn legacy_function_items_with_no_status_remain_compatible() {
     }
 }
 
+#[test]
+fn completed_responses_calls_preserve_invalid_arguments_for_tool_feedback() {
+    for arguments in ["{", "[]", "null", "", "{}"] {
+        for status in [None, Some(Value::Null), Some(json!("completed"))] {
+            for chunk in [1, 17, usize::MAX] {
+                for item_done in [false, true] {
+                    let call = function(status.clone(), arguments);
+                    let prefix = if item_done {
+                        vec![json!({"type":"response.output_item.done","item":call.clone()})]
+                    } else {
+                        vec![]
+                    };
+                    let (events, result) = decode(prefix, vec![call.clone()], true, 8, chunk);
+                    result.unwrap();
+                    let calls: Vec<_> = events
+                        .iter()
+                        .filter_map(|event| match event {
+                            ModelEvent::ToolCall(call) => Some(call),
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(calls.len(), 1);
+                    assert_eq!(calls[0].id, "call-terminal");
+                    assert_eq!(calls[0].name, "fs_write");
+                    assert_eq!(calls[0].arguments, arguments);
+                    assert_eq!(
+                        events
+                            .iter()
+                            .filter(|event| matches!(event, ModelEvent::Usage(_)))
+                            .count(),
+                        1
+                    );
+                    assert!(
+                        events
+                            .iter()
+                            .any(|event| matches!(event, ModelEvent::Usage(usage)
+                        if usage.input_tokens == 19 && usage.output_tokens == 7))
+                    );
+                    assert!(
+                        events
+                            .iter()
+                            .any(|event| matches!(event, ModelEvent::ProviderContext(context)
+                        if context["items"] == json!([call])))
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn message(id: &str, phase: Option<&str>, text: &str) -> Value {
     let mut item = json!({"type":"message","id":id,"role":"assistant","status":"completed",
         "content":[{"type":"output_text","text":text,"annotations":[]}]});

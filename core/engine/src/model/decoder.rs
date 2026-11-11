@@ -471,7 +471,7 @@ impl ResponsesDecoder {
                 } else {
                     self.budget
                         .reserve(true, [0; 3], [id.len(), name.len(), arguments.len()])?;
-                    // 参数可能在输出上限处截断；先保留有界原文，等响应终态结算用量后再校验。
+                    // 参数可能在输出上限处截断；先保留有界原文，等待响应终态确认调用完整。
                     // 保留 Responses 原始 item ID、参数字节与字段，用于后续 wire 回放。
                     self.contexts.push(item.clone());
                     self.calls.push(ToolCall {
@@ -497,12 +497,8 @@ impl ResponsesDecoder {
                 self.record_item(item, output)?;
             }
         }
-        for call in &self.calls {
-            anyhow::ensure!(
-                serde_json::from_str::<Value>(&call.arguments).is_ok_and(|value| value.is_object()),
-                ModelFailure::InvalidToolArguments
-            );
-        }
+        // 这里只确认协议终态；参数 JSON 与 schema 由共享工具边界校验并返回可纠正错误。
+        // 未完成响应仍不得发布任何调用，不能把截断误当作一次普通工具失败。
         for item in &self.contexts {
             if item["type"] == "function_call"
                 && item
@@ -937,7 +933,7 @@ mod truncated_usage_tests {
                 } else {
                     assert_eq!(
                         error.downcast_ref::<ModelFailure>(),
-                        Some(&ModelFailure::InvalidToolArguments)
+                        Some(&ModelFailure::Incomplete)
                     );
                 }
             }

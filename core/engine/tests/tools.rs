@@ -649,6 +649,172 @@ async fn responses_tools_retain_provider_context_and_exact_arguments() {
 }
 
 #[tokio::test]
+async fn responses_invalid_arguments_are_returned_to_model_for_correction() {
+    use areal_engine::model::{ModelOptions, ModelProtocol};
+    use axum::{Json, Router, routing::post};
+
+    for invalid_arguments in ["{", "[]", r#"{"path":false}"#] {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let workspace = dir.path().join("workspace");
+        std::fs::create_dir(&workspace).unwrap();
+        let fixture = runtime(data.clone(), false).await;
+        let methods = fixture.methods.clone();
+        let requests = Arc::new(AtomicUsize::new(0));
+        let recorded = requests.clone();
+        let app = Router::new().route(
+            "/",
+            post(move |Json(request): Json<Value>| {
+                let round = recorded.fetch_add(1, Ordering::SeqCst);
+                let methods = methods.clone();
+                async move {
+                    assert!(round < 4, "unexpected Responses request round {round}");
+                    let input = request["input"].as_array().unwrap();
+                    let results: Vec<_> = input.iter()
+                        .filter(|item| item["type"] == "function_call_output").collect();
+                    assert_eq!(results.len(), round);
+                    let ids = ["prior-call", "rejected-call", "corrected-call"];
+                    for (index, result) in results.iter().enumerate() {
+                        assert_eq!(result["call_id"], ids[index]);
+                        let result: Value = serde_json::from_str(result["output"].as_str().unwrap()).unwrap();
+                        if index == 1 {
+                            assert_eq!(result["error"]["code"], "INVALID_ARGUMENT");
+                            assert!(!result["error"]["message"].as_str().unwrap().is_empty());
+                        } else {
+                            assert_eq!(result["sha256"], "fixture-digest");
+                        }
+                        let calls: Vec<_> = input.iter()
+                            .filter(|item| item["type"] == "function_call" && item["call_id"] == ids[index])
+                            .collect();
+                        assert_eq!(calls.len(), 1, "每个结果必须恰好对应一个调用");
+                        if index == 1 {
+                            let original = serde_json::from_str::<Value>(invalid_arguments)
+                                .unwrap_or_else(|_| json!(invalid_arguments));
+                            let expected = if original.is_object() { original }
+                                else { json!({"_rejected_arguments":original}) };
+                            assert_eq!(
+                                serde_json::from_str::<Value>(calls[0]["arguments"].as_str().unwrap()).unwrap(),
+                                expected
+                            );
+                        }
+                    }
+                    // 失败调用前后的已确认操作各执行一次；错误反馈不触发旧操作重放。
+                    assert_eq!(
+                        methods.lock().unwrap().iter().filter(|method| *method == "fs.execute").count(),
+                        match round { 0 => 0, 1 | 2 => 1, _ => 2 }
+                    );
+                    let mut events = Vec::new();
+                    let output = if round < 3 {
+                        let arguments = if round == 1 { invalid_arguments.to_owned() } else {
+                            json!({"path":format!("workspace://repo/{}", ids[round]),
+                                "text":"hello","expectedSha256":null}).to_string()
+                        };
+                        let call = json!({"type":"function_call","id":format!("item-{}", ids[round]),
+                            "call_id":ids[round],"name":"fs_write","status":"completed","arguments":arguments});
+                        events.push(json!({"type":"response.output_item.done","item":call}));
+                        vec![call]
+                    } else {
+                        events.push(json!({"type":"response.output_text.delta","delta":"corrected and verified"}));
+                        vec![]
+                    };
+                    events.push(json!({"type":"response.completed","response":{
+                        "status":"completed","output":output,
+                        "usage":{"input_tokens":5 + 2 * round,"output_tokens":2,"input_tokens_details":{"cached_tokens":1}}
+                    }}));
+                    let wire = events.into_iter().map(|event| format!("data: {event}\n\n")).collect::<String>();
+                    ([("content-type", "text/event-stream")], wire)
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let model = HttpModel::with_protocol(
+            format!("http://{address}/"),
+            "responses-correction-fixture".into(),
+            None,
+            ModelProtocol::Responses,
+        )
+        .unwrap()
+        .with_options(ModelOptions {
+            max_retries: 0,
+            ..ModelOptions::default()
+        })
+        .unwrap();
+        let engine = Engine::open_with_runtime(
+            &data,
+            Arc::new(SolveOnlyHttpModel(model)),
+            Limits::default(),
+            RuntimeConfig {
+                client: fixture.client.clone(),
+                workspace: workspace.clone(),
+                writable: true,
+                command_scope: None,
+                command_scratch: None,
+            },
+        )
+        .unwrap();
+        let thread = engine
+            .create(workspace.to_string_lossy().into_owned())
+            .await
+            .unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("write two files")])
+            .await
+            .unwrap();
+        let done = bounded(engine.wait(&thread.id)).await.unwrap();
+        let turn = &done.turns[0];
+        assert_eq!(turn.status, TurnStatus::Completed, "{:?}", turn.error);
+        assert_eq!(requests.load(Ordering::SeqCst), 4);
+        let usage = turn.usage.as_ref().unwrap();
+        assert_eq!(
+            (
+                usage.input_tokens,
+                usage.cached_input_tokens,
+                usage.output_tokens
+            ),
+            (32, 4, 8)
+        );
+        let calls: Vec<_> = turn
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::DynamicToolCall {
+                    call_id, execution, ..
+                } => Some((call_id.as_str(), execution)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls.len(), 3);
+        assert_eq!(calls[0].0, "prior-call");
+        assert_eq!(calls[0].1.outcome, ToolOutcome::Succeeded);
+        assert_eq!(calls[1].0, "rejected-call");
+        assert_eq!(calls[1].1.outcome, ToolOutcome::Failed);
+        assert_eq!(
+            calls[1].1.original_arguments.as_deref(),
+            Some(invalid_arguments)
+        );
+        assert_eq!(calls[2].0, "corrected-call");
+        assert_eq!(calls[2].1.outcome, ToolOutcome::Succeeded);
+        assert!(turn.items.iter().any(|item| matches!(
+            item,
+            Item::ModelContext { value, .. } if value["type"] == "areal_response_output"
+                && value["items"][0]["call_id"] == "rejected-call"
+                && value["items"][0]["arguments"] == invalid_arguments
+        )));
+        assert!(turn.items.iter().any(|item| matches!(
+            item,
+            Item::AgentMessage { text, .. } if text == "corrected and verified"
+        )));
+        engine.shutdown().await;
+        fixture.client.shutdown().await.unwrap();
+        fixture.task.await.unwrap();
+        server.abort();
+        let _ = server.await;
+    }
+}
+
+#[tokio::test]
 async fn tool_journal_precedes_submission_and_result_drives_the_next_model_round() {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().join("data");
