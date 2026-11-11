@@ -409,23 +409,19 @@ try {
         const user = page.locator(`[data-side-item-id="paged-user-${suffix}"]`);
         const answer = page.locator(`[data-side-item-id="paged-item-${suffix}"]`);
         if (suffix === "00") {
-          for (let attempt = 0; attempt < 10 && !(await user.count()); attempt++) {
-            const before = await read();
-            const first = before.turns[0]?.items[0]?.id;
+          for (let attempt = 0; attempt < profile.turnCount && !(await user.count()); attempt++) {
+            const first = await page
+              .locator(".messages [data-turn-id]")
+              .first()
+              .getAttribute("data-turn-id");
             await page.locator(".messages").hover();
             await page.mouse.wheel(0, -1000000);
             await page.waitForFunction(
-              async ({ projectId, threadId, first }) => {
-                const thread = (await window.arealDesktop.snapshot()).projects.find(
-                  (value) => value.id === projectId,
-                )?.state.threads[threadId];
-                return (
-                  thread &&
-                  !thread.displayHistory.loadingOlder &&
-                  (thread.displayHistory.complete || thread.turns[0]?.items[0]?.id !== first)
-                );
-              },
-              { ...request, first },
+              (first) =>
+                Boolean(document.querySelector('[data-side-item-id="paged-user-00"]')) ||
+                document.querySelector(".messages [data-turn-id]")?.getAttribute("data-turn-id") !==
+                  first,
+              first,
               { timeout: 30000 },
             );
           }
