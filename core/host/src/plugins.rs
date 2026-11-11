@@ -94,6 +94,14 @@ fn store(host: &Host, project: Option<&str>) -> Result<areal_plugins::Store> {
     match project {
         None => areal_plugins::Store::open_user(root, user_home()),
         Some(project) => {
+            // 网页传 Host 项目 ID；桌面界面传后台 alias，按当前后台的绑定换回。
+            let known = host.slots.borrow().contains_key(project);
+            let project = if known {
+                project.to_owned()
+            } else {
+                backend_project_id(host, project)?
+            };
+            let project = project.as_str();
             let workspace = host
                 .slots
                 .borrow()
@@ -405,6 +413,29 @@ fn standalone_server(config: &Value) -> Result<Value> {
         server["enabled_tools"] = json!(tools);
     }
     Ok(server)
+}
+
+/// `backend_project_alias` 的反向：桌面界面按后台 alias 访问 Host 方法时换回 Host 项目 ID。
+pub(super) fn backend_project_id(host: &Host, alias: &str) -> Result<String> {
+    let source = host
+        .gateway
+        .workbench
+        .backend_source()
+        .context("RESOURCE_UNAVAILABLE")?;
+    let registrations: Vec<_> = host
+        .slots
+        .borrow()
+        .values()
+        .map(|slot| slot.registration.clone())
+        .collect();
+    let mut ids = host
+        .migration
+        .remote_bindings(&source, &registrations)?
+        .into_iter()
+        .filter(|(_, bound)| bound == alias);
+    let (id, _) = ids.next().context("RESOURCE_UNAVAILABLE")?;
+    ensure!(ids.next().is_none(), "RESYNC_REQUIRED");
+    Ok(id)
 }
 
 #[cfg(test)]

@@ -444,6 +444,9 @@ impl Supervisor {
     pub(super) fn backend_has_source(&self, source: &str) -> bool {
         self.backend.source.borrow().as_deref() == Some(source)
     }
+    pub(super) fn backend_source(&self) -> Option<String> {
+        self.backend.source.borrow().clone()
+    }
 
     pub(super) async fn prepare_execution(
         &self,
@@ -2153,6 +2156,8 @@ mod tests {
                 crate::ProjectSource::Gui { profile:input.profile.clone(), legacy_project_id:"logical".into() };
             host.gateway.workbench.ensure_backend(&host,input).await.unwrap();
             host.gateway.workbench.test_source(&source);
+            assert_eq!(super::super::plugins::backend_project_id(&host,"logical").unwrap(),"project");
+            assert_eq!(super::super::plugins::backend_project_id(&host,"other").unwrap_err().to_string(),"RESOURCE_UNAVAILABLE");
             let home=super::super::library_store::source_home(&host,&source).unwrap();
             let creation=uuid::Uuid::new_v4().to_string();
             areal_local_service::storage::private_dir(&home.join("worktree-requests")).unwrap();
