@@ -1,7 +1,7 @@
 import type { DesktopError } from "./services.js";
 import type { Data } from "./services.js";
 import { ERROR_CODES, errorCode, errorText, rawText } from "./errors/errorCopy.js";
-import type { Translate } from "./i18n/uiMessage.js";
+import { UiMessageError, type Translate } from "./i18n/uiMessage.js";
 
 export type RecoveryFailure = DesktopError;
 export type RecoveryOperation = Extract<
@@ -118,19 +118,13 @@ export function recoveryMessage(
     return "操作结果待确认。";
   if (["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure.code)))
     return "旧运行状态尚未确认，暂时无法打开项目。历史和草稿已保留，请先检查原任务的停止结果。";
+  if (t && failure instanceof UiMessageError) return errorText(t, failure);
   const code = errorCode(failure);
   if (t && context === "operation" && code && Object.hasOwn(ERROR_CODES, code))
     return errorText(t, failure);
-  if (
-    /auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(
-      reasonAndCode(failure),
-    )
-  )
+  if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reasonAndCode(failure)))
     return "无法完成操作，请检查模型服务的登录或凭据设置后重试。";
-  if (
-    failure.code === -32003 ||
-    /permission|forbidden|权限|denied/i.test(reasonAndCode(failure))
-  )
+  if (failure.code === -32003 || /permission|forbidden|权限|denied/i.test(reasonAndCode(failure)))
     return "当前权限不允许此操作，请检查权限设置后重试。";
   if (/config|配置/i.test(reasonAndCode(failure)))
     return "当前配置不可用，请检查会话或模型配置后重试。";
