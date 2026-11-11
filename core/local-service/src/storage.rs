@@ -137,6 +137,41 @@ pub fn write(path: &Path, value: &impl Serialize) -> Result<()> {
     Ok(())
 }
 
+/// 列出目录里的 `*.json` 记录。`write` 崩溃时留下的 `.tmp*` 临时文件不是记录，
+/// `clean` 为真时顺手删掉；只在持有目录写权的启动阶段传真。
+pub fn json_records(directory: &Path, clean: bool) -> Result<Vec<PathBuf>> {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut records = Vec::new();
+    for entry in entries {
+        let path = entry?.path();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if name.starts_with(".tmp") {
+            if clean {
+                match std::fs::remove_file(&path) {
+                    Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                        return Err(error.into());
+                    }
+                    _ => {}
+                }
+            }
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension == "json")
+        {
+            records.push(path);
+        }
+    }
+    records.sort();
+    Ok(records)
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StopReceipt {
@@ -254,11 +289,7 @@ pub fn has_admitted_stop_receipt(
         return Ok(false);
     }
     private_dir(&operations)?;
-    for entry in std::fs::read_dir(&operations)? {
-        let path = entry?.path();
-        if path.extension().is_none_or(|ext| ext != "json") {
-            continue;
-        }
+    for path in json_records(&operations, false)? {
         let receipt: StopReceipt = read(&path)?;
         if receipt.operation.generation != identity.generation {
             continue;

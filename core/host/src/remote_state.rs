@@ -197,18 +197,15 @@ impl RemoteState {
         {
             return Ok(Some(state.source_id));
         }
-        let operations = home.join("host/remote-operations");
-        if operations.is_dir() {
-            for entry in std::fs::read_dir(operations)? {
-                let receipt: Value = storage::read(&entry?.path())?;
-                if receipt["state"] == "acceptedPending" {
-                    return Ok(Some(
-                        receipt["sourceId"]
-                            .as_str()
-                            .context("missing pending Remote source")?
-                            .to_owned(),
-                    ));
-                }
+        for path in storage::json_records(&home.join("host/remote-operations"), false)? {
+            let receipt: Value = storage::read(&path)?;
+            if receipt["state"] == "acceptedPending" {
+                return Ok(Some(
+                    receipt["sourceId"]
+                        .as_str()
+                        .context("missing pending Remote source")?
+                        .to_owned(),
+                ));
             }
         }
         Ok(None)
@@ -616,16 +613,14 @@ impl RemoteState {
                 if let Some(receipt) = &state.receipt {
                     self.save_receipt(receipt)?;
                 }
-                let operations = self.home.join("host/remote-operations");
-                if operations.is_dir() {
-                    for entry in std::fs::read_dir(operations)? {
-                        let receipt: Value = storage::read(&entry?.path())?;
-                        if receipt["state"] == "acceptedPending" {
-                            return Err(error(
-                                "operationPending",
-                                "an earlier Remote replacement has not settled",
-                            ));
-                        }
+                for path in storage::json_records(&self.home.join("host/remote-operations"), false)?
+                {
+                    let receipt: Value = storage::read(&path)?;
+                    if receipt["state"] == "acceptedPending" {
+                        return Err(error(
+                            "operationPending",
+                            "an earlier Remote replacement has not settled",
+                        ));
                     }
                 }
                 let entry_id = uuid::Uuid::new_v4().to_string();
@@ -668,12 +663,8 @@ impl RemoteState {
         if let Some(receipt) = state.as_ref().and_then(|state| state.receipt.as_ref()) {
             self.save_receipt(receipt)?;
         }
-        let directory = self.home.join("host/remote-operations");
-        if !directory.is_dir() {
-            return Ok(());
-        }
-        for entry in std::fs::read_dir(directory)? {
-            let mut receipt: Value = storage::read(&entry?.path())?;
+        for path in storage::json_records(&self.home.join("host/remote-operations"), true)? {
+            let mut receipt: Value = storage::read(&path)?;
             if receipt["state"] != "acceptedPending" {
                 continue;
             }

@@ -125,12 +125,8 @@ fn confirmed_cleanup(directory: &Path, service: &Service) -> Result<bool> {
     {
         return Ok(true);
     }
-    let operations = directory.join("operations");
-    if !operations.exists() {
-        return Ok(false);
-    }
-    for entry in std::fs::read_dir(operations)? {
-        let receipt: storage::StopReceipt = storage::read(&entry?.path())?;
+    for path in storage::json_records(&directory.join("operations"), false)? {
+        let receipt: storage::StopReceipt = storage::read(&path)?;
         if receipt.service.identity == service.identity
             && receipt.service.owner == service.owner
             && receipt.cleanup_confirmed

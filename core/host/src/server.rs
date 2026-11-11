@@ -293,26 +293,23 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     };
     storage::write(&identity.auth_file, &token)?;
     let mut slots = BTreeMap::new();
-    for entry in std::fs::read_dir(directory.join("projects"))? {
-        let path = entry?.path();
-        if path.extension().is_some_and(|v| v == "json") {
-            let registration: ProjectRegistration = storage::read(&path)?;
-            slots.insert(
-                registration.project_id.clone(),
-                Slot {
-                    registration,
-                    gate: Arc::new(RwLock::new(())),
-                    writer: None,
-                    uncertain_start: false,
-                    lifetime: None,
-                    state: "stopped".into(),
-                    service: None,
-                    migration: None,
-                    credentials: BTreeMap::new(),
-                    imported_credentials: BTreeSet::new(),
-                },
-            );
-        }
+    for path in storage::json_records(&directory.join("projects"), true)? {
+        let registration: ProjectRegistration = storage::read(&path)?;
+        slots.insert(
+            registration.project_id.clone(),
+            Slot {
+                registration,
+                gate: Arc::new(RwLock::new(())),
+                writer: None,
+                uncertain_start: false,
+                lifetime: None,
+                state: "stopped".into(),
+                service: None,
+                migration: None,
+                credentials: BTreeMap::new(),
+                imported_credentials: BTreeSet::new(),
+            },
+        );
     }
     let mut migration = crate::migration::Migration::new(&home)?;
     migration.vault.hold_owner(lock.clone(), &identity, &token);
@@ -358,11 +355,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     let registrations = host.registrations();
     host.schedules.import(&host.migration, &registrations)?;
     plugins::import(&host, &registrations);
-    for entry in std::fs::read_dir(directory.join("operations"))? {
-        let path = entry?.path();
-        if path.extension().is_none_or(|extension| extension != "json") {
-            continue;
-        }
+    for path in storage::json_records(&directory.join("operations"), true)? {
         let record: Operation = storage::read(&path)?;
         if record.evidence["schedulingIntentPending"] == true {
             host.apply_scheduling_intent(
@@ -2100,23 +2093,20 @@ impl Host {
         {
             return Ok(());
         }
-        let operations = directory.join("operations");
-        if operations.is_dir() {
-            for entry in std::fs::read_dir(operations)? {
-                let receipt: storage::StopReceipt = storage::read(&entry?.path())?;
-                if receipt.service.identity == service.identity
-                    && receipt.cleanup_confirmed
-                    && let Some(operation) = areal_local_service::operation(
-                        &self.home,
-                        &service.identity.service_id,
-                        &service.identity.generation,
-                        &receipt.operation.request_id,
-                    )
-                    .await?
-                    && operation.state == StopOperationState::Completed
-                {
-                    return Ok(());
-                }
+        for path in storage::json_records(&directory.join("operations"), false)? {
+            let receipt: storage::StopReceipt = storage::read(&path)?;
+            if receipt.service.identity == service.identity
+                && receipt.cleanup_confirmed
+                && let Some(operation) = areal_local_service::operation(
+                    &self.home,
+                    &service.identity.service_id,
+                    &service.identity.generation,
+                    &receipt.operation.request_id,
+                )
+                .await?
+                && operation.state == StopOperationState::Completed
+            {
+                return Ok(());
             }
         }
         Err(error(
@@ -2125,8 +2115,8 @@ impl Host {
         ))
     }
     async fn check_pending(&self, project_id: &str, current: &str) -> Result<()> {
-        for entry in std::fs::read_dir(self.home.join("host/operations"))? {
-            let record: Operation = storage::read(&entry?.path())?;
+        for path in storage::json_records(&self.home.join("host/operations"), false)? {
+            let record: Operation = storage::read(&path)?;
             if record.receipt["requestId"] != current
                 && record.receipt["projects"]
                     .as_array()
@@ -2276,12 +2266,7 @@ impl Host {
                 )
             );
             let operation = self
-                .wait_stop(
-                    &instance,
-                    expected_generation,
-                    &input.request_id,
-                    operation,
-                )
+                .wait_stop(&instance, expected_generation, &input.request_id, operation)
                 .await?;
             return Ok(stop_receipt(id, input.strategy, &operation));
         }

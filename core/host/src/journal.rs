@@ -209,14 +209,12 @@ impl Journal {
         };
         let Some(operation) = journal.prepared(id)? else {
             let directory = journal.root.join("records");
-            if directory.try_exists()? {
-                for entry in std::fs::read_dir(directory)? {
-                    let record: Record = read_large(&entry?.path())?;
-                    if let Some(committed) =
-                        record.last_operation.filter(|value| value.request_id == id)
-                    {
-                        return Ok(Some(committed.receipt));
-                    }
+            for path in storage::json_records(&directory, false)? {
+                let record: Record = read_large(&path)?;
+                if let Some(committed) =
+                    record.last_operation.filter(|value| value.request_id == id)
+                {
+                    return Ok(Some(committed.receipt));
                 }
             }
             return Ok(None);
@@ -247,12 +245,12 @@ impl Journal {
             epoch: uuid::Uuid::new_v4().to_string(),
             reads: RefCell::new(BTreeMap::new()),
         };
-        for entry in std::fs::read_dir(journal.root.join("records"))? {
-            let record: Record = read_large(&entry?.path())?;
+        for path in storage::json_records(&journal.root.join("records"), true)? {
+            let record: Record = read_large(&path)?;
             journal.recover(&record)?;
         }
-        for entry in std::fs::read_dir(journal.root.join("operations"))? {
-            let operation: Prepared = storage::read(&entry?.path())?;
+        for path in storage::json_records(&journal.root.join("operations"), true)? {
+            let operation: Prepared = storage::read(&path)?;
             if operation.receipt["state"] == "prepared" {
                 journal.expire(operation)?;
             }
@@ -442,8 +440,8 @@ impl Journal {
     }
 
     pub(crate) fn disconnect(&self, connection_id: &str) -> Result<()> {
-        for entry in std::fs::read_dir(self.root.join("operations"))? {
-            let operation: Prepared = storage::read(&entry?.path())?;
+        for path in storage::json_records(&self.root.join("operations"), false)? {
+            let operation: Prepared = storage::read(&path)?;
             if operation.epoch == self.epoch
                 && operation.connection_id == connection_id
                 && operation.receipt["state"] == "prepared"
@@ -1131,6 +1129,31 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert!(journal.ensure_empty("project").is_err());
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn restart_ignores_interrupted_atomic_writes_but_rejects_corrupt_records() {
+        let root = tempfile::tempdir().unwrap();
+        let journal = Journal::new(root.path()).unwrap();
+        let mut leftovers = Vec::new();
+        for directory in ["records", "operations"] {
+            let path = journal.root.join(directory).join(".tmpAbC123");
+            std::fs::write(&path, b"{\"projectId\":").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+            leftovers.push(path);
+        }
+        drop(journal);
+        let journal = Journal::new(root.path()).unwrap();
+        assert!(leftovers.iter().all(|path| !path.exists()));
+        journal.disconnect("connection").unwrap();
+        let corrupt = journal
+            .root
+            .join("operations")
+            .join(format!("{}.json", "a".repeat(64)));
+        std::fs::write(&corrupt, b"{\"projectId\":").unwrap();
+        std::fs::set_permissions(&corrupt, std::fs::Permissions::from_mode(0o600)).unwrap();
+        drop(journal);
+        assert!(Journal::new(root.path()).is_err());
     }
 
     #[test]

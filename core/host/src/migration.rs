@@ -2058,7 +2058,7 @@ pub(crate) fn read_optional<T: DeserializeOwned>(path: &Path) -> Result<Option<T
 }
 pub(crate) fn atomic_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     let parent = path.parent().context("missing parent")?;
-    let temporary = parent.join(format!(".host-{}.tmp", uuid::Uuid::new_v4()));
+    let temporary = parent.join(format!(".tmp-host-{}", uuid::Uuid::new_v4()));
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)

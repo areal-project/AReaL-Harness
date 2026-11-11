@@ -446,18 +446,15 @@ impl Vault {
         source: &str,
     ) -> Result<std::collections::BTreeSet<String>> {
         let mut references = std::collections::BTreeSet::new();
-        let directory = self.home.join("host/vault-slots");
-        if directory.try_exists()? {
-            for entry in std::fs::read_dir(directory)? {
-                let state: SlotState = storage::read(&entry?.path())?;
-                if let Slot::ProviderCredential {
-                    source_id,
-                    reference,
-                } = state.slot
-                    && source_id == source
-                {
-                    references.insert(reference);
-                }
+        for path in storage::json_records(&self.home.join("host/vault-slots"), false)? {
+            let state: SlotState = storage::read(&path)?;
+            if let Slot::ProviderCredential {
+                source_id,
+                reference,
+            } = state.slot
+                && source_id == source
+            {
+                references.insert(reference);
             }
         }
         Ok(references)
@@ -472,13 +469,10 @@ impl Vault {
         {
             return Ok(receipt);
         }
-        let directory = home.join("host/vault-slots");
-        if directory.try_exists()? {
-            for entry in std::fs::read_dir(directory)? {
-                let state: SlotState = storage::read(&entry?.path())?;
-                if let Some(committed) = state.receipt.filter(|value| value["requestId"] == id) {
-                    return Ok(Some(committed));
-                }
+        for path in storage::json_records(&home.join("host/vault-slots"), false)? {
+            let state: SlotState = storage::read(&path)?;
+            if let Some(committed) = state.receipt.filter(|value| value["requestId"] == id) {
+                return Ok(Some(committed));
             }
         }
         Ok(receipt)
@@ -539,12 +533,8 @@ impl Vault {
                 self.save_operation(receipt)?;
             }
         }
-        let directory = self.home.join("host/vault-operations");
-        if !directory.is_dir() {
-            return Ok(());
-        }
-        for entry in std::fs::read_dir(directory)? {
-            let mut receipt: Value = storage::read(&entry?.path())?;
+        for path in storage::json_records(&self.home.join("host/vault-operations"), false)? {
+            let mut receipt: Value = storage::read(&path)?;
             if receipt["state"] != "acceptedPending"
                 || receipt["slot"] != serde_json::to_value(&state.slot)?
             {
@@ -588,16 +578,11 @@ impl Vault {
         }
         let receipt = crate::migration::read_optional::<Value>(&self.operation_path(id))?;
         if receipt.is_none() {
-            let directory = self.home.join("host/vault-slots");
-            if directory.is_dir() {
-                for entry in std::fs::read_dir(directory)? {
-                    let state: SlotState = storage::read(&entry?.path())?;
-                    if let Some(receipt) =
-                        state.receipt.filter(|receipt| receipt["requestId"] == id)
-                    {
-                        self.save_operation(&receipt)?;
-                        return Ok(Some(receipt));
-                    }
+            for path in storage::json_records(&self.home.join("host/vault-slots"), false)? {
+                let state: SlotState = storage::read(&path)?;
+                if let Some(receipt) = state.receipt.filter(|receipt| receipt["requestId"] == id) {
+                    self.save_operation(&receipt)?;
+                    return Ok(Some(receipt));
                 }
             }
             return Ok(None);
