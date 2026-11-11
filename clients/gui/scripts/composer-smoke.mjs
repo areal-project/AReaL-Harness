@@ -1,3 +1,4 @@
+import { desktopBridge } from "./support/desktop-fixture.mjs";
 import {
   createFolderVisionFixture,
   composerFolderVisionResponse,
@@ -335,25 +336,10 @@ const errors = [],
 const pasteEvidence = { uploadedFile: null, folded: [] };
 const skillCatalogEvents = [];
 const button = (name) => page.getByRole("button", { name, exact: true });
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const bridge = desktopBridge(() => page);
+const { state, call } = bridge;
+const until = (predicate, label) => bridge.untilState(predicate, label, { interval: 80 });
 const project = (snapshot) => snapshot.projects.find((p) => p.root === workspace && !p.projectless);
-async function call(name, params) {
-  const result = await page.evaluate(
-    async ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  if (!result.ok) throw Error(result.error.message);
-  return result.value;
-}
-async function until(predicate, label) {
-  const end = Date.now() + 30000;
-  while (Date.now() < end) {
-    const s = await state();
-    if (await predicate(s)) return s;
-    await new Promise((r) => setTimeout(r, 80));
-  }
-  throw Error("Timeout: " + label);
-}
 async function shot(name) {
   const clip = await page.evaluate(() => {
     const boxes = [

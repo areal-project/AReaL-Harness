@@ -1,4 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
+import { until as waitFor } from "./support/desktop-fixture.mjs";
 // 真实 Electron / Desktop adapter / Core；模型响应确定化，所有状态与权限来自生产路径。
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -638,15 +639,7 @@ let app,
   taskCwd,
   navigationFixture,
   passed = false;
-async function until(fn, label, timeout = 60000) {
-  const end = Date.now() + timeout;
-  while (Date.now() < end) {
-    const value = await fn();
-    if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, 150));
-  }
-  throw Error(`Timeout: ${label}`);
-}
+const until = (read, label, timeout = 60000) => waitFor(read, label, { timeout, interval: 150 });
 const snapshot = () =>
   legacyTargetOnly
     ? withSmokeDeadline("legacy target snapshot", () =>

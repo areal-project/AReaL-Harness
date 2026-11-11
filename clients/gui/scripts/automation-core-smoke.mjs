@@ -1,4 +1,5 @@
 import { prepareTaskBenchmark } from "./browser-task-benchmark-driver.mjs";
+import { desktopBridge, until as waitFor } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -478,26 +479,8 @@ async function benchmarkSourceSnapshot() {
     hashes,
   };
 }
-async function until(predicate, label, timeout = 60000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const value = await predicate();
-    if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw Error(`Timeout waiting for ${label}`);
-}
-async function state() {
-  return page.evaluate(() => window.arealDesktop.snapshot());
-}
-async function command(name, params) {
-  const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  assert.equal(result.ok, true, JSON.stringify(result));
-  return result.value;
-}
+const until = (read, label, timeout = 60000) => waitFor(read, label, { timeout });
+const { state, call: command } = desktopBridge(() => page);
 async function preview(operation, extra = {}) {
   return page.evaluate((params) => window.arealDesktop.preview(params), {
     operation,

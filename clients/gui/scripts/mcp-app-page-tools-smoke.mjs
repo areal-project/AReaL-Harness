@@ -1,4 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
+import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import {
@@ -373,17 +374,15 @@ let app,
   passed = false;
 const button = (name) => page.getByRole("button", { name, exact: true });
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-async function eventually(read, predicate, label, timeout = 30000) {
-  const end = Date.now() + timeout;
-  let value;
-  do {
-    if (modelFailure) throw modelFailure;
-    value = await read();
-    if (predicate(value)) return value;
-    await new Promise((resolve) => setTimeout(resolve, 75));
-  } while (Date.now() < end);
-  throw Error(`Timeout ${label}. Last observation ${String(JSON.stringify(value)).slice(0, 4096)}`);
-}
+const eventually = (read, predicate, label, timeout = 30000) =>
+  until(read, label, {
+    accept: predicate,
+    timeout,
+    interval: 75,
+    abort: () => {
+      if (modelFailure) throw modelFailure;
+    },
+  });
 async function transportEvents() {
   try {
     return (await readFile(transportLog, "utf8"))

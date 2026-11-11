@@ -1,4 +1,5 @@
 import { makeTempDir } from "./support/temp.mjs";
+import { desktopBridge } from "./support/desktop-fixture.mjs";
 import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -399,7 +400,9 @@ async function saveProvider() {
   assert.equal(await button("应用模型配置").count(), 0);
 }
 
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const bridge = desktopBridge(() => page);
+const { state, call } = bridge;
+const until = (predicate, label) => bridge.untilState(predicate, label, { interval: 80 });
 const fixtureProject = (snapshot) =>
   snapshot.projects.find((project) => project.root === workspace);
 async function showModel(name) {
@@ -410,23 +413,6 @@ async function showModel(name) {
   const provider = model.providerName || model.providerId || "服务默认";
   await page.getByRole("tab", { name: provider, exact: true }).click();
   return page.getByRole("radio", { name, exact: true });
-}
-async function call(name, params) {
-  const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  assert.equal(result.ok, true, JSON.stringify(result));
-  return result.value;
-}
-async function until(predicate, label) {
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline) {
-    const snapshot = await state();
-    if (await predicate(snapshot)) return snapshot;
-    await new Promise((resolve) => setTimeout(resolve, 80));
-  }
-  throw new Error(`Timeout: ${label}`);
 }
 async function stopService() {
   if (!stoppingHost) return;
