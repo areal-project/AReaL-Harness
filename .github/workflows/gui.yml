@@ -466,6 +466,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
+      # 协议一致性用例要启动真实中继，它有独立的依赖清单且只认 Node 24.2.0。
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.2.0'
+      - name: Retain Relay runtime and install its locked dependencies
+        run: |
+          echo "AREAL_RELAY_NODE=$(command -v node)" >> "$GITHUB_ENV"
+          npm ci --ignore-scripts --prefix services/remote-relay
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: '24.22.1'
