@@ -27,6 +27,7 @@ import { imageAnnotationTitle } from "./imageAnnotations.js";
 import type { Action, Data } from "./services.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
+import { useAutoReconcile } from "./errors/autoReconcile.js";
 import { wasReported } from "./errors/reported.js";
 import { recoveredOutcome } from "./recoveryPresentation.js";
 
@@ -52,6 +53,8 @@ export function ComposerQueue({
   const queue = project.state?.queues?.[thread.id];
   const items: Data[] = (queue?.items ?? []).filter((item: Data) => item.status === "pending");
   const [busy, setBusy] = useState(false);
+  // 原请求还在路上时不核对；答复确实没回来才开始自动核对。
+  const [awaiting, setAwaiting] = useState(false);
   const [confirmed, setConfirmed] = useState<{ owner: string; revision: number } | null>(null);
   const [error, setError] = useState("");
   const operationKey = `areal-gui:draft:${project.id}:${thread.id}:queue-operation`;
@@ -83,6 +86,7 @@ export function ComposerQueue({
     const unresolved = { requestId: crypto.randomUUID(), operation: request.operation };
     localStorage.setItem(operationKey, JSON.stringify(unresolved));
     setUnknown(unresolved);
+    setAwaiting(true);
     try {
       const result = await action("queueEdit", {
         projectId: project.id,
@@ -103,13 +107,13 @@ export function ComposerQueue({
         const unresolved = { requestId: failure.requestId, operation: request.operation };
         localStorage.setItem(operationKey, JSON.stringify(unresolved));
         setUnknown(unresolved);
-        if (!wasReported(failure)) setError(t("recovery.operationUnconfirmed"));
       } else {
         localStorage.removeItem(operationKey);
         setUnknown(null);
         if (!wasReported(failure)) setError(errorText(t, failure));
       }
     } finally {
+      setAwaiting(false);
       setBusy(false);
     }
   };
@@ -138,18 +142,23 @@ export function ComposerQueue({
       if (outcome) {
         localStorage.removeItem(operationKey);
         setUnknown(null);
-        setError(
-          outcome.status === "failed" || outcome.accepted === false
-            ? (outcome.message ?? "队列操作执行失败，请核对当前队列。")
-            : "队列操作已确认。",
-        );
+        if (outcome.status === "failed" || outcome.accepted === false)
+          setError(outcome.message ?? "队列操作没有执行，当前显示的是最新队列。");
       }
-    } catch (cause) {
-      setError((cause as Error).message);
     } finally {
       setBusy(false);
     }
   };
+  useAutoReconcile(
+    unknown && !awaiting ? unknown.requestId : null,
+    project.state?.connected === true,
+    reconcile,
+    () => {
+      localStorage.removeItem(operationKey);
+      setUnknown(null);
+      setError(t("recovery.operationUnresolved"));
+    },
+  );
   const move = (id: string, offset: number) => {
     const ids = items.map((item) => item.id),
       at = ids.indexOf(id);
@@ -169,23 +178,12 @@ export function ComposerQueue({
     setDrag(null);
     setOver(null);
   };
-  if (!queue || (!items.length && !error && !unknown)) return null;
+  if (!queue || (!items.length && !error)) return null;
   if (!items.length)
     return (
       <div className="composer-queue-feedback">
         {error && (
           <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
-        )}
-        {unknown && (
-          <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            disabled={busy || !project.state?.connected}
-            onClick={() => void reconcile()}
-          >
-            核对队列操作
-          </Button>
         )}
       </div>
     );
@@ -210,17 +208,6 @@ export function ComposerQueue({
       )}
       {error && (
         <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
-      )}
-      {unknown && (
-        <Button
-          unstyled
-          data-slot={undefined}
-          type="submit"
-          disabled={busy || !project.state?.connected}
-          onClick={() => void reconcile()}
-        >
-          核对队列操作
-        </Button>
       )}
       <div className="composer-queue-rows">
         {items.map((item, index) => (

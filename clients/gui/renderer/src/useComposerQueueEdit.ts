@@ -1,5 +1,6 @@
 import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadState.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
+import { useAutoReconcile } from "./errors/autoReconcile.js";
 import { wasReported } from "./errors/reported.js";
 import type { Attachment } from "./services.js";
 import type { QueueEditInput } from "./Queue.js";
@@ -34,6 +35,8 @@ type QueueEdit = {
 };
 
 /** 只保存主 Composer 的未提交输入；队列内容、版本和受理结果始终由 Core 确认。 */
+const unresolvedText = "没能确认这次操作是否生效，请以当前显示的状态为准。";
+
 export function useComposerQueueEdit({
   project,
   threadId,
@@ -100,10 +103,11 @@ export function useComposerQueueEdit({
     !!edit &&
     edit.phase === "editing" &&
     (!item || item.status !== "pending" || queue?.revision !== edit.revision || !queue?.paused);
-  // 请求发出前就记下了原编号；还在等回复时不算“结果未知”，等到回复确实没回来才提示。
-  const unconfirmed = !!edit?.unknown && !busy;
+  // 请求发出前就记下了原编号；还在等回复时不算“结果未知”，回复确实没回来才开始自动核对。
+  const [awaiting, setAwaiting] = useState(false);
+  const unconfirmed = !!edit?.unknown && !awaiting;
   const feedback = unconfirmed
-    ? "队列操作结果尚未确认，编辑内容已保留，不会自动重发。"
+    ? ""
     : conflict
       ? "队列或消息已有更新，编辑内容已保留。请取消编辑后核对当前队列；不会覆盖新版本或自动继续。"
       : error;
@@ -183,13 +187,14 @@ export function useComposerQueueEdit({
     const requestId = crypto.randomUUID();
     // 请求发出前保留业务键；切换任务或重新挂载后只读核对原请求。
     saveRecord({ ...record, unknown: { requestId, operation: request.operation } });
+    setAwaiting(true);
     return action("queueEdit", {
       projectId: project.id,
       threadId,
       expectedRevision: record.revision,
       requestId,
       ...request,
-    });
+    }).finally(() => setAwaiting(false));
   };
   const unknown = (
     record: QueueEdit,
@@ -202,7 +207,9 @@ export function useComposerQueueEdit({
         ? { unknown: { requestId: cause.requestId, operation } }
         : {}),
     });
-    if (owner.current && !wasReported(cause)) setError(currentErrorText(cause));
+    // 结果未知时先自动核对，不提示；只有明确的失败才说出来。
+    if (owner.current && !cause.submissionUnknown && !wasReported(cause))
+      setError(currentErrorText(cause));
   };
   const begin = async (target: Data) => {
     if (edit || busy || pending || annotationBlocked || !connected || target.status !== "pending")
@@ -344,10 +351,7 @@ export function useComposerQueueEdit({
             operation: edit.unknown.operation,
           });
       const outcome = known ?? (observed?.confirmed ? observed : null);
-      if (!outcome) {
-        setError("Core 尚未确认原请求，请继续保留编辑内容并核对状态。");
-        return;
-      }
+      if (!outcome) return;
       const record = { ...edit, unknown: undefined };
       if (outcome.status === "failed" || outcome.accepted === false) {
         if (edit.unknown.operation === "resume") restoreLocal(record, outcome.message);
@@ -372,12 +376,19 @@ export function useComposerQueueEdit({
           throw new Error("原队列回执不完整，请继续核对原请求。");
         await finish({ ...record, revision });
       } else restoreLocal(record);
-    } catch (cause) {
-      setError((cause as Error).message);
     } finally {
       setBusy(false);
     }
   };
+  useAutoReconcile(unconfirmed ? edit?.unknown?.requestId : null, connected, reconcile, () => {
+    if (!edit) return;
+    // 查不出来就到此为止：正在编辑的内容留着，其余情况回到原草稿，只提示一次。
+    const record = { ...edit, unknown: undefined };
+    if (edit.unknown?.operation === "update") {
+      saveRecord(record);
+      setError(unresolvedText);
+    } else restoreLocal(record, unresolvedText);
+  });
   return {
     edit,
     busy,

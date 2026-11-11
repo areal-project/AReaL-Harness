@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { isAwaitingResponse } = require("./project-state.cjs");
+const { isAwaitingResponse, isUnresolved } = require("./project-state.cjs");
 const { isRemoteControl } = require("./submission-recovery.cjs");
 const { projectCoreCapabilities } = require("./core-capabilities.cjs");
 const { isTaskDraftConfiguration, displayTaskDraftThread } = require("./task-draft.cjs");
@@ -55,6 +55,7 @@ function snapshotProject(backend, project) {
             }
           : {}),
         awaitingResponse: isAwaitingResponse(backend.awaitingResponses, project.id, entry),
+        ...(isUnresolved(live, entry) ? { unresolved: true } : {}),
       })),
     outcomes: live?.outcomes ?? {},
     models: live ? backend.providers.catalog(live.models ?? [], live) : [],

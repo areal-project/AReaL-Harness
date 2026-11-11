@@ -33,9 +33,9 @@ import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { UiMessageError, useI18n } from "./i18n/IntlProvider.js";
 import { errorText, presentError, rawText, type PresentedError } from "./errors/errorCopy.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
+import { useAutoReconcile } from "./errors/autoReconcile.js";
 import { wasReported } from "./errors/reported.js";
 import { useToolInspection } from "./UnknownToolInspection.js";
-import { CircleAlert } from "lucide-react";
 import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
 import { isOrdinaryConversation, interruptedConversationTurn } from "./ordinaryConversation.js";
@@ -503,6 +503,26 @@ export function Composer({
       changeGoalMode(false);
     } else clear();
   }, [unknown, pending, project.outcomes]);
+  useAutoReconcile(
+    unknown,
+    project.state?.connected === true,
+    async () => {
+      await readAction("reconcile", { projectId: project.id, requestId: unknown ?? undefined }).catch(() => {});
+      await readAction("reconcile", { projectId: project.id }).catch(() => {});
+    },
+    () => {
+      // 查不出来就到此为止：输入保留、解锁，只提示一次，由人看过对话后决定要不要再发。
+      const turnStart = readingViews.get(
+        JSON.stringify([project.id, thread.id, false]),
+      )?.pendingTurnStart;
+      if (turnStart?.requestId === unknown) cancelTurnStart(turnStart);
+      for (const suffix of ["pending", "pending-operation", "pending-goal", "pending-continue", "pending-configure"])
+        composerDraftStorage.removeItem(`${key}:${suffix}`);
+      window.dispatchEvent(new Event("areal-snapshot-drain"));
+      setUnknown(null);
+      setDeliveryNotice({ message: t("recovery.sendUnresolved") });
+    },
+  );
   useEffect(() => {
     if (thread.goals?.goal && goalMode) changeGoalMode(false);
   }, [thread.goals?.goal?.id]);
@@ -910,25 +930,6 @@ export function Composer({
         />
       )}
       {inspection.notice}
-      {unknown && (
-        <FeedbackNotice
-          transient
-          tone="warning"
-          requestId={unknown}
-          message={t("recovery.sendUnconfirmed")}
-          actions={
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                void readAction("reconcile", { projectId: project.id }).catch(() => {})
-              }
-            >
-              {t("recovery.checkOriginal")}
-            </Button>
-          }
-        />
-      )}
       {!readOnly && planReady && !queueEditor.edit && (
         <section
           className="flex items-center justify-between gap-3 px-3 py-2 text-ui-sm"
@@ -1210,24 +1211,7 @@ export function Composer({
                 </div>
               )}
               {queueEditor.feedback && (
-                <FeedbackNotice
-                  transient
-                  tone={queueEditor.unconfirmed ? "warning" : "error"}
-                  requestId={
-                    queueEditor.unconfirmed ? queueEditor.edit?.unknown?.requestId : undefined
-                  }
-                  message={queueEditor.feedback}
-                />
-              )}
-              {queueEditor.unconfirmed && (
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={queueEditor.busy || !project.state?.connected}
-                  onClick={() => void queueEditor.reconcile()}
-                >
-                  核对编辑操作
-                </Button>
+                <FeedbackNotice transient tone="error" message={queueEditor.feedback} />
               )}
               {!queueEditor.edit && (
                 <ConversationSelectionReferences
@@ -1332,23 +1316,6 @@ export function Composer({
           )}
           leadingActions={
             <>
-              {unknown && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t("recovery.pendingAction")}
-                  title={t("recovery.checkOriginal")}
-                  onClick={() =>
-                    void readAction("reconcile", {
-                      projectId: project.id,
-                      requestId: unknown,
-                    }).catch(() => {})
-                  }
-                >
-                  <CircleAlert size={16} />
-                </Button>
-              )}
               {!readOnly && (
                 <ComposerPermissionMenu
                   value={executionPermission}

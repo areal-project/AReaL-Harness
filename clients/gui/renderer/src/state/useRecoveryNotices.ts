@@ -156,8 +156,13 @@ export function useRecoveryNotices(
       } catch (cause) {
         const failure = cause as RecoveryFailure;
         const composerRefusal = name === "send" && failure.outcome?.kind === "rejected";
+        // 这几种操作没收到答复时由发起的组件自动核对，核对期间不打扰人；核对本身失败也不提示。
+        const selfReconciled =
+          name === "reconcile" ||
+          (["send", "queueEdit"].includes(name) && failure.submissionUnknown === true);
         if (
           !composerRefusal &&
+          !selfReconciled &&
           !["providers", "chatgpt", "prediction", "history"].includes(name) &&
           !(name === "respond" && "answers" in params && params.answers) &&
           name !== "media" &&

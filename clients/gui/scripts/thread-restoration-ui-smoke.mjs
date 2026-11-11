@@ -819,18 +819,12 @@ try {
   await page.evaluate(() => window.failedQueue());
   await page.getByText("Other fixture history", { exact: true }).first().click();
   await page.getByText("Synthetic history restoration", { exact: true }).first().click();
-  await page.getByRole("button", { name: "核对队列操作", exact: true }).click();
   await page.getByText("QUEUE_FAILED_SENTINEL", { exact: true }).waitFor();
   check(
     (await page.getByText("QUEUE_FAILED_SENTINEL", { exact: true }).count()) === 1,
     "An admitted failed queue operation remains a failure after receipt reconciliation.",
   );
-  check(
-    (await page.getByText("队列操作已确认。", { exact: true }).count()) === 0,
-    "A failed queue receipt is never reported as a successful queue operation.",
-  );
   await page.evaluate(() => window.failedQueue(true));
-  await page.getByRole("button", { name: "核对编辑操作", exact: true }).click();
   await page.getByText("QUEUE_EDIT_FAILED_SENTINEL", { exact: true }).waitFor();
   check(
     (await input.innerText()) === "QUEUE_EDIT_DRAFT_SENTINEL",

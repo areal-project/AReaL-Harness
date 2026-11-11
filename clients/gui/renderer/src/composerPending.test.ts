@@ -33,6 +33,13 @@ describe("Composer configuration admission", () => {
       });
     expect(
       composerPending(
+        [{ method: "turn/start", params: { threadId: "chat", requestId: "lost" }, unresolved: true }],
+        "chat",
+        null,
+      ),
+    ).toEqual({ configuring: false, pending: false });
+    expect(
+      composerPending(
         [configure, { method: "turn/start", params: { threadId: "chat", requestId: "send" } }],
         "chat",
         "save",

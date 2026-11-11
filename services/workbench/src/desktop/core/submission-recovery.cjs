@@ -6,6 +6,8 @@ const {
   submissionKey,
   sameSubmission,
   isAwaitingResponse,
+  isUnresolved,
+  noteReconcileRead,
   parsePendingSubmissions,
   parseSubmissionOutcomes,
   isPendingSubmission,
@@ -540,13 +542,11 @@ class SubmissionRecovery {
             (value) =>
               !isRemoteControl(value) &&
               value.params.threadId === parameters.threadId &&
-              !(value.remote && value.operationId && outcomes[value.operationId]?.remote),
+              !(value.remote && value.operationId && outcomes[value.operationId]?.remote) &&
+              !isUnresolved(project, value),
           )
         )
-          throw Object.assign(new Error("此会话有未结算提交"), {
-            code: "SUBMISSION_UNKNOWN",
-            submissionUnknown: true,
-          });
+          throw Object.assign(new Error("此会话上一次操作还在确认"), { code: "RESOURCE_BUSY" });
         return [...pending, entry];
       });
       if (original) return this.recoverRemoteSubmission(project, original);
@@ -1021,6 +1021,7 @@ class SubmissionRecovery {
       try {
         const result = await client.reconcile(entry.method, entry.params);
         if (!this.reconciliationCurrent(project, client, generation)) break;
+        noteReconcileRead(project, entry, result);
         if (result.confirmed === true && entry.params.requestId) {
           delete project.refreshErrors?.[entry.params.requestId];
           await this.refreshProjectJournal(project);
@@ -1049,7 +1050,6 @@ class SubmissionRecovery {
       }
     }
     await this.refreshProjectJournal(project);
-    return;
   }
 }
 
