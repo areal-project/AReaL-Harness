@@ -21,7 +21,7 @@ endif
 	cordis-pin update-cordis sdk-test harness harness-smoke verify-harness \
 	setup setup-node sdk-build script-test launcher-test workgroup-smoke unified-execution-smoke delegation-permissions-smoke capacity-workgroup local-service-smoke upgrade-smoke tui-upgrade-smoke \
 	verify-native integration-boundaries ci-preflight ci-gui-static ci-gui-health \
-	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size
+	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size lazy-mcp-compare
 
 help: ## 显示常用操作（默认目标）
 	@printf '%s\n' '用法：make <target> [ARGS="..."]' ''
@@ -288,6 +288,9 @@ capacity-workgroup: build ## 32 个真实 Runtime 的隔离写入与资源回收
 
 perf: ## 交互式运行 Docker E2E/perf 工作流
 	./scripts/perf interactive
+
+lazy-mcp-compare: ## MCP 按需加载关/开真实模型对照（用本机模型凭据，状态全在 --out）；ARGS='--repeats 3 --out <目录>'
+	python3 scripts/lazy-mcp-compare.py $(ARGS)
 
 .PHONY: examples-desktop-api desktop-schemas desktop-schema-check package
 examples-desktop-api: build sdk-build ## 真实 Core/Runtime 的桌面 API 与 CLI 确定性验收
