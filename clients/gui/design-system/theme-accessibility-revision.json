@@ -1,6 +1,6 @@
 {
   "baseVersion": "0.4.1",
-  "source": "D4 accessibility correction; original theme-baseline.json remains frozen.",
+  "source": "D4 accessibility correction and D-005 text contrast floor; original theme-baseline.json remains frozen.",
   "roles": [
     {
       "name": "--color-foreground-subtle",
@@ -384,12 +384,12 @@
           "rgba": [140, 151, 167, 255]
         },
         "--color-foreground-subtlest": {
-          "color": "color(srgb 0.482196 0.527216 0.589961)",
-          "rgba": [123, 134, 150, 255]
+          "color": "color(srgb 0.486078 0.531078 0.593824)",
+          "rgba": [124, 135, 151, 255]
         },
         "--color-process-settled": {
-          "color": "color(srgb 0.854902 0.898039 0.960784 / 0.46)",
-          "rgba": [218, 229, 244, 117]
+          "color": "color(srgb 0.854902 0.898039 0.960784 / 0.525)",
+          "rgba": [219, 228, 245, 134]
         },
         "--color-settings-secondary": {
           "color": "color(srgb 0.854902 0.898039 0.960784 / 0.56)",
@@ -413,12 +413,12 @@
           "rgba": [140, 151, 167, 255]
         },
         "--color-foreground-subtlest": {
-          "color": "color(srgb 0.482196 0.527216 0.589961)",
-          "rgba": [123, 134, 150, 255]
+          "color": "color(srgb 0.486078 0.531078 0.593824)",
+          "rgba": [124, 135, 151, 255]
         },
         "--color-process-settled": {
-          "color": "color(srgb 0.854902 0.898039 0.960784 / 0.46)",
-          "rgba": [218, 229, 244, 117]
+          "color": "color(srgb 0.854902 0.898039 0.960784 / 0.525)",
+          "rgba": [219, 228, 245, 134]
         },
         "--color-settings-secondary": {
           "color": "color(srgb 0.854902 0.898039 0.960784 / 0.56)",

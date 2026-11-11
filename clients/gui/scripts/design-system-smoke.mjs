@@ -201,16 +201,27 @@ async function settingsChecks() {
     await page.getByLabel("面板宽度", { exact: true }).selectOption(sample.width);
     await settle();
     const observations = {};
-    // 设置卡片圆角按规格取令牌 radius-panel，不写死像素值。
-    const panelRadius = await page.evaluate(() => {
+    // 按 settings-page 规格解析角色令牌，字号变化时不沿用旧的固定几何值。
+    const settingsTokens = await page.evaluate(() => {
       const probe = document.body.appendChild(document.createElement("div"));
       probe.style.borderRadius = "var(--radius-panel)";
-      const radius = getComputedStyle(probe).borderRadius;
+      probe.style.lineHeight = "var(--line-height-ui)";
+      probe.style.minHeight = "calc(var(--spacing-control-sm) + var(--spacing-section))";
+      probe.style.maxHeight = "calc(var(--spacing-control-sm) + var(--spacing-field))";
+      probe.style.width = "calc(var(--reading-width) * 3 / 8)";
+      const css = getComputedStyle(probe);
+      const values = {
+        radius: css.borderRadius,
+        titleLine: css.lineHeight,
+        rowMinHeight: css.minHeight,
+        compactMinHeight: css.maxHeight,
+        wideControlWidth: css.width,
+      };
       probe.remove();
-      return radius;
+      return values;
     });
     const assertCard = (value, name) => {
-      assert.equal(value.radius, panelRadius, `${name} uses the panel radius`);
+      assert.equal(value.radius, settingsTokens.radius, `${name} uses the panel radius`);
       assert.equal(
         value.background,
         value.semantic.background,
@@ -219,11 +230,11 @@ async function settingsChecks() {
       assert.equal(value.title.font, `${sample.font}px`);
       assert.equal(value.title.weight, "500");
       assert.equal(value.title.margin, "0px");
-      assert.equal(value.title.line, "21px");
+      assert.equal(value.title.line, settingsTokens.titleLine);
       assert.equal(value.description.font, `${Number(sample.font) - 2}px`);
       assert.equal(value.description.color, value.semantic.secondary);
       assert.equal(value.description.margin, "2px 0px 0px");
-      assert.equal(value.row.minHeight, "48px");
+      assert.equal(value.row.minHeight, settingsTokens.rowMinHeight);
       assert.equal(value.row.padding, "12px 16px");
       assert.deepEqual(value.separator, {
         height: "0.5px",
@@ -238,7 +249,11 @@ async function settingsChecks() {
       );
       assert.equal(value.wideColumns.length, sample.width === "wide" ? 2 : 1);
       if (sample.width === "wide")
-        assert.equal(value.wideColumns[1], "280px", `${name} keeps the wide control column`);
+        assert.equal(
+          value.wideColumns[1],
+          settingsTokens.wideControlWidth,
+          `${name} keeps the wide control column`,
+        );
       assert.deepEqual(value.nativeText, {
         font: `${Number(sample.font) - 1}px`,
         height: `${Number(sample.font) + 14}px`,
@@ -263,7 +278,11 @@ async function settingsChecks() {
         top: getComputedStyle(el).paddingTop,
         bottom: getComputedStyle(el).paddingBottom,
       }));
-    assert.deepEqual(compact, { minHeight: "40px", top: "8px", bottom: "8px" });
+    assert.deepEqual(compact, {
+      minHeight: settingsTokens.compactMinHeight,
+      top: "8px",
+      bottom: "8px",
+    });
     const mobile = await host("mobile")
       .locator(".remote-access-panel")
       .evaluate((el) => {
@@ -309,7 +328,7 @@ async function settingsChecks() {
     samples.push({ settings: sample, observations, compact, mobile });
   }
   checks.push(
-    "settings standalone, production SettingsPage and portal SettingsDialog share literal 20px radius, semantic backgrounds and section typography across themes/font sizes/widths; compact density, dividers, responsive stacking and Mobile content slot/padding are preserved",
+    "settings standalone, production SettingsPage and portal SettingsDialog share semantic radius, backgrounds, section typography and row geometry across themes/font sizes/widths; compact density, dividers, responsive stacking and Mobile content slot/padding are preserved",
   );
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByLabel("主题", { exact: true }).selectOption("light");
