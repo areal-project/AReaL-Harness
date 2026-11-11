@@ -47,22 +47,4 @@ The Task scenario `node examples/desktop-api/run.mjs task-mode` verifies indepen
 
 `node examples/desktop-api/run.mjs task-matrix` (TASK-02) additionally covers real headless ordinary conversations and Goals, immediate question/approval refusal while permitted native commands continue, no implicit scheduling, foreground asynchronous replies after disconnection, one-shot timers, recurring schedule controls, and background worker files, cross-Turn lifetimes and shared budgets. It is included in `make examples-desktop-api`.
 
-<a id="web-validation"></a>
-## Browser validation
-
-After `make build`, run `node examples/desktop-api/run.mjs --serve` and keep it running. It prints a temporary Web URL, authentication-file path and workspace path. Sign in with that file's local test token. Ctrl-C stops the service and removes temporary data. Deterministic fixtures replace only the HTTP/SSE model boundary; browser actions use the real WebUI, Core and Runtime without assessing provider-model quality.
-
-| Action | Check |
-|---|---|
-| Create a conversation; send `hello`, then `native` | Completed text and native tool execution; native.txt appears in the workspace |
-| Create Goal `goal-native-fixture` | Automatic continuation completes in two Turns and produces goal.txt |
-| Delete the completed Goal session in the sidebar and refresh | The session remains absent from the list; the file remains and Core archives rather than permanently erasing history |
-| Create Goal `task-channel-fixture` in a new conversation | Independent plan work follows the asynchronous question; answering B in the sidebar Inbox resumes the same Run |
-| Create headless background task `task-workers-fixture` | An independent worker creates task-worker.txt; the coordinator verifies it across Turns and publishes completion |
-| Create background task `task-channel-fixture` | Pause, reload the page and answer B from the independent Inbox; it stays paused until explicitly resumed |
-| Schedule `goal-native-fixture` in a new conversation | A future local timestamp triggers two-Turn completion; repeating schedules can be paused, resumed and cancelled before firing |
-| Fill an Inbox answer, then refresh the Inbox | The draft remains; a new connection can still answer after the original page disconnects |
-
-Also inspect narrow-screen navigation, desktop layout and browser errors. Record protocol fixtures, DOM substitutes and real browser validation separately; none substitutes for the other layers.
-
 The bundle exposes `bin/areal`. `libexec/areal/areal-runtime` and `libexec/areal/areal-runtime-fs` are isolated execution components and do not belong on PATH. Move the complete bundle: launch and shared-service identity checks resolve components relative to it. Copying areal alone omits required Runtime components.

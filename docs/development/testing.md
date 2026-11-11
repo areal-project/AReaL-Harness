@@ -530,7 +530,7 @@ macOS 上即使 GUI 配置为空，启动也会生成订阅传输 token 并写�
 
 故障清理时，控制 socket 或 Core 的本机 HTTP 端点可先关闭而实例锁仍由清理进程持有；故障状态轮询只等待明确的连接拒绝过渡，仍须在原有期限内读到预期的 `stopped` 或 `unavailable`。其它错误立即失败，正常状态查询不放宽。`AREAL_TEST_EVIDENCE` 可指定 JSON 回执位置，记录阶段和状态轮询；CI 将其保存在 `target/ci/local-service.json`，失败时与日志一起上传。
 
-`cargo test --locked -p areal-app-server --test browser_auth` 验证可信客户端到真实 HTTP/WebSocket 的自动登录、并发单次兑换、Origin 校验、实例隔离、权限继承、手动登录与会话到期断连；该 crate 单元测试使用虚拟时间检查登录码/会话过期和容量上限。`node --test scripts/web-progress.test.mjs` 检查兑换前清除 URL 片段、成功后连接、失败时手动登录兜底和普通刷新。
+Core 不提供网页：`cargo test --locked -p areal-app-server --test contracts` 检查 `/ui` 不存在、任何带 Origin 的请求都被拒绝。
 
 PTY helper 在等待 CLI、服务停止和窗口退出时持续消费终端输出，避免缓冲区背压阻塞 TUI。`make script-test` 包含退出前输出超过 PTY 容量的确定性回归。
 
@@ -548,7 +548,7 @@ TUI 与共享服务 PTY 检查共用终端画面解析器，处理增量重绘�
 
 `node examples/desktop-api/schedule-host.mjs` 使用真实 Core/WS 与持久重启验证 Host 离线补执行、每轮新 Thread、受限身份与订阅的授权、准备失败后同 Run 继续、准备期间停止及旧 Host 迟到回复。`node clients/gui/scripts/schedule-desktop-smoke.mjs` 使用隔离 Electron/Core 和确定性本地模型验证对话创建、时区、新会话无历史、忙碌跳过、暂停和停止分离及普通审批 UI，保留截图与 JSON。设置 `AREAL_SCHEDULE_APPROVAL_EXPIRY=1` 会等待默认 300 秒期限，并验证 Turn 结算及同 Run 明确恢复后的新审批；未设置时不声称超时恢复通过。这些证据不替代真实供应商或安装包验收。
 
-`node examples/desktop-api/run.mjs task-matrix` 使用真实二进制与 Runtime 检查 headless 普通对话/Goal 的提问与审批拒绝、允许的命令继续执行、无隐式定时调度、前台异步 Goal 断连后回复、定时触发与控制、独立 worker 文件产物及共享计量。`node --test scripts/web-progress.test.mjs` 检查等待状态、跨分页选中项、旧 revision 拒绝、Inbox 草稿保留和超时回复幂等重试。真实浏览器验收入口与操作见[桌面示例](../examples/desktop-api.md#web-validation)。
+`node examples/desktop-api/run.mjs task-matrix` 使用真实二进制与 Runtime 检查 headless 普通对话/Goal 的提问与审批拒绝、允许的命令继续执行、无隐式定时调度、前台异步 Goal 断连后回复、定时触发与控制、独立 worker 文件产物及共享计量。
 
 统一 CLI 的解析与配置进程回归位于 `clients/cli`，覆盖默认 TUI、exec、旧 -p、参数冲突和无副作用诊断。launcher 回归使用一个 areal fixture 分派 Core 与 TUI；桌面 CLI 验收同时运行 exec 和旧参数协议，发行搬迁验收检查 bin 只含 areal 且内部 Runtime 路径可用。
 

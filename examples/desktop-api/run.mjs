@@ -37,7 +37,7 @@ if (selection === "--list") {
   console.log(available.join("\n"));
   process.exit(0);
 }
-if (selection !== "all" && selection !== "--serve" && !available.includes(selection))
+if (selection !== "all" && !available.includes(selection))
   throw Error("unknown example; use --list");
 const directory = await mkdtemp(join(tmpdir(), "areal-desktop-"));
 const workspace = join(directory, "workspace"),
@@ -333,21 +333,7 @@ try {
       await new Promise((r) => setTimeout(r, 25));
     }
   }
-  if (selection === "--serve") {
-    console.log(
-      JSON.stringify({
-        endpoint,
-        authFile,
-        workspace,
-        url: endpoint.replace("ws:", "http:").replace(/\/$/, "") + "/ui",
-      }),
-    );
-    await new Promise((resolve) => {
-      process.once("SIGTERM", resolve);
-      process.once("SIGINT", resolve);
-    });
-  }
-  for (const name of selection === "--serve" ? [] : selection === "all" ? available : [selection]) {
+  for (const name of selection === "all" ? available : [selection]) {
     const c = await client();
     if (name === "desktop-minimal" || name === "desktop-launcher") {
       const cap = await c.call("areal/capabilities", { apiVersion: "areal.core.v1" });
