@@ -1,0 +1,23 @@
+docs/benchmarks/reports/chat-continuation.md
+  s_bf83cab8355b2b::t_aef699604e8476 29-47
+  s_bf83cab8355b2b::t_063483b76567d8 48-62,65
+docs/benchmarks/reports/chat-continuation.en.md
+  s_bf83cab8355b2b::t_aef699604e8476 29-47
+  s_bf83cab8355b2b::t_063483b76567d8 48-62,65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b344001328f4a125cbb8c8424be62af241eb4313",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
