@@ -285,7 +285,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.relay == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -305,6 +305,15 @@ jobs:
         run: |
           pnpm --dir clients/gui install --frozen-lockfile
           python3 scripts/ci-preflight.py --groups relay-build --output target/ci/checks/relay-build
+      # 中继传输用例经 Host 夹具启动真实 Core，要本次提交构建的二进制；与 Linux 主机检查共用构建缓存。
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: host-debug-${{ runner.os }}
+          save-if: false
+      - name: Build the Core used by Host fixtures
+        run: |
+          rustup show
+          make build
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         if: ${{ !cancelled() }}
         with:
@@ -313,6 +322,8 @@ jobs:
           cache-dependency-path: services/remote-relay/package-lock.json
       - name: Verify Relay contracts with their required runtime
         if: ${{ !cancelled() }}
+        env:
+          AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
         run: |
           mkdir -p target/ci/gui
           node --version > target/ci/gui/relay-node-version.txt
@@ -512,6 +523,8 @@ jobs:
       - name: Verify registered Core-dependent contracts
         env:
           AREAL_CORE_BIN: ${{ github.workspace }}/target/debug/areal
+          # Host 夹具会往钥匙串写隔离的合成条目；这里是一次性的 CI 机器，可以授权。
+          AREAL_TEST_HOST_KEYCHAIN: '1'
           CHECK_GROUP: ${{ matrix.group }}
           CHECK_ITEM: ${{ matrix.item }}
         run: |
