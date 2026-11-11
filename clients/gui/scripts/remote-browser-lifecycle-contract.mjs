@@ -168,7 +168,7 @@ function page({
             gatewayGeneration: "gateway",
             grantRevision: 1,
             capabilities: ["observe", "submit", "interrupt", "answer"],
-            limits: { applicationMessageBytes: 262144 },
+            limits: { applicationMessageBytes: 8388608 },
             ...ready,
           });
         if (call.method === "project.list")
