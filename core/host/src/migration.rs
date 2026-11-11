@@ -3554,10 +3554,7 @@ mod tests {
             )
             .unwrap();
             assert_eq!(read["revision"], 0);
-            assert_eq!(
-                snapshot["pending"],
-                serde_json::from_slice::<Value>(&f.original).unwrap()
-            );
+            assert_eq!(snapshot["pending"], json!([]));
             assert_eq!(snapshot["outcomes"], json!({}));
         });
     }

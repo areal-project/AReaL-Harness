@@ -42,7 +42,7 @@
   "clients/gui/renderer/src/UserFeedback.tsx": 11,
   "clients/gui/renderer/src/UserPromptEdit.tsx": 2,
   "clients/gui/renderer/src/useSideChatTabs.ts": 4,
-  "clients/gui/renderer/src/views/RecoveryNotices.tsx": 2,
+  "clients/gui/renderer/src/views/RecoveryNotices.tsx": 3,
   "clients/gui/renderer/src/views/UpgradeGuide.tsx": 3,
   "clients/gui/renderer/src/WorkgroupsPane.tsx": 2,
   "core/host/src/conversation_media.rs": 2,

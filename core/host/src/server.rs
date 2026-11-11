@@ -590,7 +590,7 @@ fn local_command_error(error: &anyhow::Error) -> Value {
         } else {
             "internalError"
         });
-    json!({"code":code,"message":error.to_string()})
+    json!({"code":code,"message":format!("{error:#}")})
 }
 impl Host {
     fn registrations(&self) -> Vec<ProjectRegistration> {
@@ -1569,7 +1569,7 @@ impl Host {
                 } else {
                     "blocked"
                 });
-                receipt["error"] = json!({"code":e.downcast_ref::<wire::Error>().map(|e|e.code).unwrap_or("internalError"),"message":e.to_string()});
+                receipt["error"] = json!({"code":e.downcast_ref::<wire::Error>().map(|e|e.code).unwrap_or("internalError"),"message":format!("{e:#}")});
                 self.save(id, digest, &receipt)?;
                 self.changed();
                 Err(e)
@@ -1984,6 +1984,7 @@ impl Host {
         let activation_checked = std::cell::Cell::new(false);
         let before_launch = || -> Result<()> {
             if !prior_boot_activation {
+                activation_checked.set(true);
                 return Ok(());
             }
             let previous = previous
@@ -2024,8 +2025,12 @@ impl Host {
             &before_launch,
         )
         .await;
-        if prior_boot_activation && !activation_checked.get() {
-            // 接管检查在任何新进程启动之前拒绝；不能把确定拒绝变为 UNKNOWN。
+        if !activation_checked.get()
+            && current
+                .as_ref()
+                .is_none_or(|previous| previous.state != State::Ready)
+        {
+            // 启动前校验在任何进程停止或启动之前拒绝；不能把确定拒绝变为 UNKNOWN。
             self.slots
                 .borrow_mut()
                 .get_mut(&input.project_id)
@@ -2253,6 +2258,33 @@ impl Host {
         self.admission()?;
         self.check_pending(id, &input.request_id).await?;
         let instance = Self::service_id(&self.slots.borrow()[id].registration);
+        if let Some(expected_generation) = input.service_generation.as_deref()
+            && let Some(operation) = areal_local_service::operation(
+                &self.home,
+                &instance,
+                expected_generation,
+                &input.request_id,
+            )
+            .await
+            .map_err(|cause| error("requestConflict", cause.to_string()))?
+        {
+            ensure!(
+                operation.cancel == input.strategy.cancel(),
+                error(
+                    "requestConflict",
+                    "stop request conflict: cancel strategy changed"
+                )
+            );
+            let operation = self
+                .wait_stop(
+                    &instance,
+                    expected_generation,
+                    &input.request_id,
+                    operation,
+                )
+                .await?;
+            return Ok(stop_receipt(id, input.strategy, &operation));
+        }
         let service = areal_local_service::status(&self.home, &instance).await?;
         if input.service_generation.as_deref() != Some(&service.identity.generation) {
             return Err(error("generationMismatch", "service generation changed"));

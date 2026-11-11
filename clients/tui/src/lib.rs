@@ -165,7 +165,12 @@ pub async fn run_with_notices(
     if args.endpoint.is_none() {
         let input = areal_host::ResolveProject::from_local_args(&args.local)?;
         let host = areal_host::Client::connect_or_start().await?;
-        let opened = host.open(input).await?;
+        let opened = if !args.local.task_credential_command.is_empty() {
+            host.restart(input, areal_host::StopStrategy::IfIdle)
+                .await?
+        } else {
+            host.open(input).await?
+        };
         let service = opened.service()?;
         eprintln!(
             "Shared Harness: {} · instance {}",

@@ -43,7 +43,7 @@ test("locked orphan does not appear in current providers, active lock appears in
   assert.deepEqual(config.public().credentialErrors, {});
 });
 
-test("clearing sensitive plugin configuration restarts idle peers and reports deferred peers", async () => {
+test("clearing sensitive plugin configuration saves without restarting peers", async () => {
   const calls = [];
   const detail = {
     id: "p",
@@ -119,8 +119,8 @@ test("clearing sensitive plugin configuration restarts idle peers and reports de
     secrets: {},
     clearKeys: ["TOKEN"],
   });
-  assert.deepEqual(calls, ["save", "restart:idle"]);
-  assert.equal(result.reloadDeferred, true);
+  assert.deepEqual(calls, ["save"]);
+  assert.equal(result.reloadDeferred, undefined);
 });
 
 test("projectless catalog exposes the active locked provider", async () => {

@@ -131,4 +131,100 @@ describe("queued composer upload lifetime", () => {
     expect(fixture.action.mock.calls.filter(([name]) => name === "queueEdit")).toHaveLength(1);
     forgetComposerUploads(fixture.owner, [fixture.originalFile, fixture.addition]);
   });
+
+  it("loads the paused queue snapshot item content when another client updated it before pause settled", async () => {
+    const project = {
+      id: crypto.randomUUID(),
+      core: { instanceId: "core" },
+      state: {
+        connected: true,
+        queues: {
+          thread: {
+            revision: 3,
+            paused: false,
+            items: [
+              { id: "item", status: "pending", input: [{ type: "text", text: "stale text" }] },
+            ],
+          },
+        },
+      },
+    };
+    const key = `areal-gui:draft:${project.id}:thread`;
+    const drafts = new Map<string, ComposerDraftAttachment[]>();
+    localStorage.setItem(key, "original draft");
+    localStorage.removeItem(`${key}:queue-edit`);
+    const action = vi.fn<Action>().mockResolvedValueOnce({
+      revision: 4,
+      paused: true,
+      pauseReason: "user",
+      items: [
+        {
+          id: "item",
+          status: "pending",
+          input: [
+            { type: "text", text: "latest remote text" },
+            { type: "image", url: "areal://blob/remote-image", mimeType: "image/png" },
+          ],
+        },
+      ],
+    });
+    let editor!: ReturnType<typeof useComposerQueueEdit>;
+    function Harness() {
+      editor = useComposerQueueEdit({
+        project,
+        threadId: "thread",
+        draftKey: key,
+        action: action as Action,
+        readAction: action as Action,
+        api: { current: null },
+        draftFiles: drafts,
+        setText: vi.fn(),
+        setFiles: vi.fn(),
+        setGoalMode: vi.fn(),
+        uploadFiles: async () => [],
+        inFlight: false,
+        setInFlight: vi.fn(),
+        annotationBlocked: false,
+      });
+      return null;
+    }
+    renderToStaticMarkup(createElement(Harness));
+    await editor.begin(project.state.queues.thread.items[0]);
+    expect(localStorage.getItem(key)).toBe("latest remote text");
+    const saved = JSON.parse(localStorage.getItem(`${key}:queue-edit`)!);
+    expect(saved.revision).toBe(4);
+    expect(saved.attachments).toEqual([
+      { type: "image", url: "areal://blob/remote-image", mimeType: "image/png" },
+    ]);
+  });
+
+  it("does not auto-resume on cancel when the queue revision changed while editing", async () => {
+    const fixture = await editingFixture();
+    localStorage.setItem(
+      `${fixture.key}:queue-edit`,
+      JSON.stringify({
+        id: "item",
+        revision: 3,
+        phase: "editing",
+        wasPaused: false,
+        attachments: [],
+        original: { text: "original draft", skills: null, goal: null },
+      }),
+    );
+    fixture.action.mockResolvedValueOnce({
+      revision: 5,
+      paused: true,
+      pauseReason: "user",
+      items: [{ id: "item", status: "pending" }],
+    });
+    await fixture.editor.cancel();
+    expect(
+      fixture.action.mock.calls.filter(
+        ([name, params]) =>
+          name === "queueEdit" && "operation" in params && params.operation === "resume",
+      ),
+    ).toHaveLength(0);
+    expect(localStorage.getItem(fixture.key)).toBe("original draft");
+    forgetComposerUploads(fixture.owner, [fixture.originalFile, fixture.addition]);
+  });
 });

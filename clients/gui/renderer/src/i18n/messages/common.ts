@@ -603,8 +603,8 @@ export const commonMessages = {
     en: "We couldn't confirm whether this was sent. Your draft and original request are kept until the result is confirmed.",
   },
   "recovery.operationUnresolved": {
-    "zh-CN": "尚未确认操作结果，原请求已保留，请等待核对。",
-    en: "We couldn't confirm the result. The original request is kept while it is reconciled.",
+    "zh-CN": "尚未确认操作结果，原请求已保留，确认结果后才能继续操作。",
+    en: "We couldn't confirm the result. The original request is kept until the result is confirmed.",
   },
   "recovery.createUnconfirmed": {
     "zh-CN": "任务创建结果待确认。",

@@ -143,6 +143,7 @@ export function ComposerQueue({
       if (outcome) {
         localStorage.removeItem(operationKey);
         setUnknown(null);
+        setUnresolved(null);
         if (outcome.status === "failed" || outcome.accepted === false)
           setError(outcome.message ?? "队列操作没有执行，当前显示的是最新队列。");
       }

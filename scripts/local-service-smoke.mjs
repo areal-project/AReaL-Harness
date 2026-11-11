@@ -284,7 +284,9 @@ try {
         s.corePid === current.corePid,
     ),
   );
-  assert.equal((await cli(["web", "--json", ...local])).generation, current.generation);
+  const webEndpoint = await cli(["web", "--json", ...local]);
+  assert.equal(webEndpoint.hostId, current.owner.hostId);
+  assert.equal(webEndpoint.generation, current.owner.generation);
   assert.equal((await ensure(["--runtime-max-processes", "4"])).generation, current.generation);
   assert.equal((await ensure(["--no-auto-restart"])).generation, current.generation);
   await rejected(
@@ -413,7 +415,7 @@ try {
   assert.notEqual(other.serviceId, current.serviceId);
   await rejected(
     () => ensure(["--workspace", ws2, "--data-dir", current.dataDir]),
-    /bound to a different workspace/s,
+    /bound to a different workspace|dataDir already registered/s,
   );
   await stop(other);
   // 没有配置模型的 Web 管理入口仍须能启动并输出发现信息。

@@ -493,6 +493,7 @@ export function Composer({
     composerDraftStorage.removeItem(`${key}:pending-operation`);
     window.dispatchEvent(new Event("areal-snapshot-drain"));
     setUnknown(null);
+    setUnresolved(null);
     reconcileReviewSubmission(reviewKey, unknown, outcome.accepted !== false);
     const wasGoal = composerDraftStorage.getItem(`${key}:pending-goal`) === unknown;
     composerDraftStorage.removeItem(`${key}:pending-goal`);
@@ -513,21 +514,17 @@ export function Composer({
       changeGoalMode(false);
     } else clear();
   }, [unknown, pending, project.outcomes]);
-  useAutoReconcile(
-    unknown,
-    project.state?.connected === true,
-    async () => {
-      await readAction("reconcile", {
-        projectId: project.id,
-        requestId: unknown ?? undefined,
-      }).catch(() => {});
-      await readAction("reconcile", { projectId: project.id }).catch(() => {});
-    },
-    () => {
-      // 自动核对结束只提示；原身份和草稿仍由权威回执结算。
-      setUnresolved(unknown);
-    },
-  );
+  const reconcileUnknown = async () => {
+    await readAction("reconcile", {
+      projectId: project.id,
+      requestId: unknown ?? undefined,
+    }).catch(() => {});
+    await readAction("reconcile", { projectId: project.id }).catch(() => {});
+  };
+  useAutoReconcile(unknown, project.state?.connected === true, reconcileUnknown, () => {
+    // 自动核对结束只提示；原身份和草稿仍由权威回执结算。
+    setUnresolved(unknown);
+  });
   useEffect(() => {
     if (thread.goals?.goal && goalMode) changeGoalMode(false);
   }, [thread.goals?.goal?.id]);
@@ -1354,12 +1351,7 @@ export function Composer({
                   variant="ghost"
                   size="sm"
                   disabled={!project.state?.connected}
-                  onClick={() =>
-                    void readAction("reconcile", {
-                      projectId: project.id,
-                      requestId: unknown,
-                    }).catch(() => {})
-                  }
+                  onClick={() => void reconcileUnknown()}
                 >
                   {t("recovery.checkOriginal")}
                 </Button>

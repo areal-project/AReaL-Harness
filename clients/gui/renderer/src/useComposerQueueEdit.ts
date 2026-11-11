@@ -146,11 +146,16 @@ export function useComposerQueueEdit({
     draftFiles.set(draftKey, originalFiles);
     draftFiles.delete(backupKey);
     saveRecord(null);
+    setUnresolved(null);
     sync();
     if (owner.current) setError(message);
   };
   const enter = (record: QueueEdit, confirmed: Data, input: unknown[]) => {
     if (!confirmed.paused) throw new Error("队列未确认暂停，原草稿已保留");
+    const attachments = input.filter(
+      (part): part is Data =>
+        !!part && typeof part === "object" && "type" in part && part.type !== "text",
+    );
     const parsed = sentImageAnnotations(
       input
         .flatMap((part) =>
@@ -164,15 +169,17 @@ export function useComposerQueueEdit({
             : [],
         )
         .join("\n"),
-      record.attachments,
+      attachments,
     );
     saveRecord({
       ...record,
+      attachments,
       imageNotes: parsed.notes,
       revision: confirmed.revision,
       phase: "editing",
       unknown: undefined,
     });
+    setUnresolved(null);
     composerDraftStorage.setItem(draftKey, parsed.text);
     composerDraftStorage.removeItem(`${draftKey}:skills`);
     composerDraftStorage.removeItem(`${draftKey}:goal`);
@@ -236,9 +243,9 @@ export function useComposerQueueEdit({
         : await mutation(record, { operation: "pause" });
       settled = true;
       // 暂停不比对版本；只要这条消息还在排队，就以暂停后拿到的最新队列为准进入编辑。
-      if (paused.items.find((row: Data) => row.id === target.id)?.status !== "pending")
-        throw new Error("这条消息已经不在队列里，原草稿已保留");
-      enter(record, paused, target.input);
+      const current = paused.items.find((row: Data) => row.id === target.id);
+      if (current?.status !== "pending") throw new Error("这条消息已经不在队列里，原草稿已保留");
+      enter(record, paused, current.input);
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
       // 暂停被明确拒绝时什么都没发生：直接回到原草稿，不把人留在打不开的编辑状态里。
@@ -257,8 +264,8 @@ export function useComposerQueueEdit({
     }
     try {
       const latest = await readAction("queue", { projectId: project.id, threadId });
-      // 队列已被别处继续或换了暂停原因时不再动它；仍是本次编辑造成的暂停就照常继续。
-      if (!latest.paused || latest.pauseReason !== "user") {
+      // 队列版本已变、已被别处继续或换了暂停原因时不再动它；仍是本次编辑造成的暂停就照常继续。
+      if (latest.revision !== record.revision || !latest.paused || latest.pauseReason !== "user") {
         restoreLocal(record);
         return;
       }
@@ -349,6 +356,7 @@ export function useComposerQueueEdit({
           });
       const outcome = known ?? (observed?.confirmed ? observed : null);
       if (!outcome) return;
+      setUnresolved(null);
       const record = { ...edit, unknown: undefined };
       if (outcome.status === "failed" || outcome.accepted === false) {
         if (edit.unknown.operation === "resume") restoreLocal(record, outcome.message);

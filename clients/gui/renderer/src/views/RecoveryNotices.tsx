@@ -17,7 +17,7 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
   const { operationNotices, dismissedNotices, dismissNotice } = recovery;
   const { restorationError, restorationFailed, restorationNoticeId, viewFailure } = startup;
   const { setSettingsTab, setSettingsOpen } = surfaces;
-  const { retryRestoration } = session;
+  const { resourceAction, retryRestoration } = session;
   const { t } = useI18n();
   return (
     <>
@@ -65,6 +65,22 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
                       ? "recovery.checkModelSettings"
                       : "recovery.checkSessionSettings",
                   )}
+                </Button>
+              )}
+              {notice.kind === "unconfirmed" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    const target = { projectId: notice.projectId };
+                    void resourceAction("reconcile", {
+                      ...target,
+                      requestId: notice.requestId,
+                    }).catch(() => {});
+                    void resourceAction("reconcile", target).catch(() => {});
+                  }}
+                >
+                  {t("recovery.checkOriginal")}
                 </Button>
               )}
             </>

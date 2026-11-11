@@ -375,8 +375,12 @@ impl Client {
             .await?;
         ensure!(
             receipt["state"] == "completed",
-            "restart stop is {}; reconcile host.operation requestId {} before activation",
+            "restart stop is {}{}; reconcile host.operation requestId {} before activation",
             receipt["state"],
+            receipt["message"]
+                .as_str()
+                .map(|message| format!(" ({message})"))
+                .unwrap_or_default(),
             request_id
         );
         self.open(input).await
