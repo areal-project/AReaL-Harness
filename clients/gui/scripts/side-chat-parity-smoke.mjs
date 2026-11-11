@@ -1542,6 +1542,10 @@ try {
   );
   projectId = project(await state()).id;
   ctx.projectId = projectId;
+  await page.waitForFunction(
+    (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === id,
+    projectId,
+  );
   for (const [id, run] of scenarios) {
     if (scenario && scenario !== id) continue;
     const row = { id, startedAt: new Date().toISOString(), requestsBefore: requests.length };

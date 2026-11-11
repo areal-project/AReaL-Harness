@@ -409,6 +409,7 @@ try {
         const user = page.locator(`[data-side-item-id="paged-user-${suffix}"]`);
         const answer = page.locator(`[data-side-item-id="paged-item-${suffix}"]`);
         if (suffix === "00") {
+          // Host 按字节分页；旧后台已加载完整历史，不能用它判断当前阅读窗口的进展。
           for (let attempt = 0; attempt < profile.turnCount && !(await user.count()); attempt++) {
             const first = await page
               .locator(".messages [data-turn-id]")
