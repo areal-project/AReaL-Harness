@@ -13,6 +13,7 @@ import {
 import { observeResize } from "@areal/ui/observe-resize";
 // Toolbar, empty state and change-card layout adapted from ZCode GitPane.
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useOperation } from "./useOperation.js";
 import { Button } from "./components/ui/button.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import {
@@ -166,20 +167,14 @@ export function GitPane({
     () => localStorage.getItem("areal-gui:review-ignore-whitespace") === "true",
   );
   const [commentError, setCommentError] = useState("");
-  const [fileError, setFileError] = useState("");
-  const [openingFile, setOpeningFile] = useState(false);
-  const openOutside = async (file: FileChange, operation: "open" | "reveal") => {
-    if (!fileOpen || openingFile) return;
-    setOpeningFile(true);
-    setFileError("");
-    try {
-      await fileOpen({ operation, projectId, threadId, path: file.workspaceRelativePath });
-    } catch (cause) {
-      setFileError((cause as Error).message);
-    } finally {
-      setOpeningFile(false);
-    }
-  };
+  const opening = useOperation();
+  const openingFile = opening.running;
+  const fileError = opening.state.status === "failed" ? opening.state.message : "";
+  const openOutside = (file: FileChange, operation: "open" | "reveal") =>
+    fileOpen &&
+    opening.run(() =>
+      fileOpen({ operation, projectId, threadId, path: file.workspaceRelativePath }),
+    );
   const [version, setVersion] = useState<ReviewVersion>();
   const [selection, setSelection] = useState<{ path: string; range: SelectedLineRange }>();
   const disabled = commentsDisabled || !!storageError;
