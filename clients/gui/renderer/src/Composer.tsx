@@ -14,7 +14,13 @@ import { uploadComposerFiles } from "./ComposerUploads.js";
 export { uploadComposerFiles } from "./ComposerUploads.js";
 
 import { requestTurnStart, cancelTurnStart, readingViews } from "./readingViews.js";
-import { acceptPendingMessage, setPendingMessage, usePendingMessage } from "./pendingMessage.js";
+import {
+  acceptPendingMessage,
+  pendingMessageProjected,
+  setPendingMessage,
+  usePendingMessage,
+  userMessageIds,
+} from "./pendingMessage.js";
 import { Input } from "@areal/ui";
 import { ComposerActionButton } from "@areal/ui/experimental";
 import { parseMentionMarkdown } from "./mentions/mentionMarkdown.js";
@@ -215,7 +221,9 @@ export function Composer({
     configuration.requestId ?? null,
   );
   const pendingMessage = usePendingMessage(key);
-  const awaitingProjection = pendingMessage?.accepted === true;
+  // 不依赖对话列表是否挂载：投影出现新用户消息即解锁，否则会一直禁止发送。
+  const awaitingProjection =
+    pendingMessage?.accepted === true && !pendingMessageProjected(thread.turns, pendingMessage);
   const outgoing = busy ? pendingMessage : undefined;
   useEffect(() => {
     // 待提交预览只清空现有编辑器，保留 Enter 发送时的焦点与选区所有权。
@@ -567,11 +575,7 @@ export function Composer({
       setPendingMessage(key, {
         text: submittedInput.text,
         files: submittedInput.files,
-        previousUserIds: (thread.turns ?? []).flatMap((turn: Data) =>
-          (turn.items ?? [])
-            .filter((item: Data) => item.type === "userMessage")
-            .map((item: Data) => item.id),
-        ),
+        previousUserIds: userMessageIds(thread.turns),
       });
     try {
       if (sideCommand && onSide) {

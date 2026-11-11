@@ -15,6 +15,23 @@ export function setPendingMessage(key: string, message?: PendingMessage) {
   else messages.delete(key);
   listeners.forEach((listener) => listener());
 }
+type Turns = readonly { items?: readonly { id: string; type: string; originalType?: string }[] }[];
+// 历史页里体积大的用户消息以 historyDeferred 占位，originalType 保留原类型。
+export function userMessageIds(turns: Turns | undefined) {
+  return (turns ?? []).flatMap((turn) =>
+    (turn.items ?? [])
+      .filter(
+        (item) =>
+          item.type === "userMessage" ||
+          (item.type === "historyDeferred" && item.originalType === "userMessage"),
+      )
+      .map((item) => item.id),
+  );
+}
+/** 投影里出现了提交前没有的用户消息，说明这次提交已被历史接管。 */
+export function pendingMessageProjected(turns: Turns | undefined, message: PendingMessage) {
+  return userMessageIds(turns).some((id) => !message.previousUserIds.includes(id));
+}
 export function acceptPendingMessage(key: string) {
   const message = messages.get(key);
   if (message) setPendingMessage(key, { ...message, accepted: true });

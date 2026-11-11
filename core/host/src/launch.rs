@@ -299,7 +299,7 @@ pub(crate) fn prepare(
     credentials: &BTreeMap<String, String>,
 ) -> Result<(LaunchSpec, LaunchInputs)> {
     validate(inputs, registration)?;
-    // 项目配置目录可与 Host 服务目录不同，也可能在 Host 启动后才登记。
+    // 过渡：到 0.2.0 删。项目配置目录可与 Host 服务目录不同，也可能在 Host 启动后才登记。
     areal_plugins::Store::import_path_keyed_state(&inputs.config_home.join("plugins"))?;
     let mut saved = inputs.clone();
     let directory = home
@@ -868,6 +868,7 @@ mod tests {
         assert!(failure.to_string().contains("invalid plugin state"));
         assert_eq!(std::fs::read(state).unwrap(), b"invalid plugin state");
     }
+    // 过渡：到 0.2.0 删，随启动前导入一起删。
     #[test]
     fn launch_imports_path_keyed_plugins_from_its_configuration_home() {
         let fixture = managed_launch_fixture();
