@@ -234,7 +234,7 @@ No shell, raw CDP, arbitrary JS, desktop native-view changes, unknown public-sit
 
 - `core/engine/src/tools/extensions.rs` can reuse prepare+approval for existing act/wait. Do not rewrite execution beyond necessary contract fields.
 
-- Extend existing fixtures and entry points in `clients/gui/scripts/browser-read-contract.test.mjs`, `browser-actions-smoke.mjs`, and `browser-action-invalidation-smoke.mjs`.
+- Extend existing fixtures and entry points in `clients/gui/scripts/browser-read-contract.test.mjs` and `browser-actions-smoke.mjs`.
 
 - Update `docs/api/browser.md/.en.md`, `docs/development/browser-testing.md/.en.md`, and, if needed, `docs/features.md/.en.md`.
 

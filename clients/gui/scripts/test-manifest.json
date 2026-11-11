@@ -1044,5 +1044,41 @@
     "areas": ["composer", "settings", "conversation", "provider"],
     "requires": ["electron", "browser", "core-binary", "git", "gui-build"],
     "notes": "Business journeys in Chromium against the real Host web endpoint: browser approval, open project by path, send, approval with queued input, completion, reload, settings. Electron only bootstraps the library source once and is closed before the web journeys run."
+  },
+  {
+    "script": "test:history-upgrade",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "areas": ["lifecycle", "conversation"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "notes": "Isolated legacy GUI data restored progressively through Host; real-data upgrade still needs Mac acceptance."
+  },
+  {
+    "script": "test:upgrade-guide-ui",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "areas": ["lifecycle", "settings"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "notes": "Upgrade guide UI against an isolated old Core and a relaunched GUI profile."
+  },
+  {
+    "script": "test:upgrade-guide-lifecycle",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "areas": ["lifecycle", "service"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "notes": "Old Core stop receipt and Host takeover probe used by the upgrade guide; set AREAL_UPGRADE_OLD_CORE."
+  },
+  {
+    "script": "test:web-partial-migration",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "areas": ["lifecycle", "service"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "notes": "Web client against a partially migrated Host; needs AREAL_PARTIAL_CORE_SHA256 of the old Core."
   }
 ]

@@ -39,6 +39,8 @@ ENTRY_GLOBS = (
     "examples/*/README*.md",
     "docs/development/*.md",
     "tests/guides/*.md",
+    "clients/gui/README*.md",
+    "docs/benchmarks/reports/*.md",
 )
 # 只检查这些文档里的反引号路径：Agent 按它们找文件，断了就会走错。
 DOC_GLOBS = (

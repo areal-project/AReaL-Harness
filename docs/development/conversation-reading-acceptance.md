@@ -192,7 +192,7 @@ node clients/gui/scripts/conversation-dual-product-rich-areal.mjs
 
 第一个入口覆盖三组各 25 次输入、实际流式重叠、阅读锚点及最终供应商正文；第二个覆盖共享 Mermaid/表格素材的流中打开与复制。每轮使用新证据目录，保存 `manifest.json`、原始样本、供应商记录和清理回执。B1–B3 结合 `test:composer`；B4 使用 `test:send-admission` 的受理前拒绝、结果未知及受理后丢回执场景。必须看到故障边界回执和权威历史，不能只看错误提示。
 
-T3 的 `conversation-dual-product-t3.mjs` 与 `conversation-dual-product-t3-functional.mjs` 为外部隔离产品的手动驱动，不接入常规 CI，也不负责下载或修改 T3。固定参考提交、Replay 适配与服务准备条件见[双产品实测记录](../../design/archive/research/conversation-dual-product-baseline.md)。
+T3 的 `clients/gui/scripts/conversation-dual-product-t3.mjs` 与 `clients/gui/scripts/conversation-dual-product-t3-functional.mjs` 为外部隔离产品的手动驱动，不接入常规 CI，也不负责下载或修改 T3。固定参考提交、Replay 适配与服务准备条件见[双产品实测记录](../../design/archive/research/conversation-dual-product-baseline.md)。
 
 固定两边提交、dirty 差异摘要、构建类型、OS、运行时、窗口 CSS 像素、缩放、字号、主题、语言和后台负载。冷/热运行分开，交替串行运行。每种性能负载至少 20 个有效原始样本；跨产品排名还需同素材、同边界和重复轮次。单边历史证据标为 reused，不能冒充本轮受控对照。React 耗时、IPC 受理、供应商首段与屏幕呈现分别报告。
 

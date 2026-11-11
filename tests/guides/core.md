@@ -17,7 +17,7 @@
 2. 协议生成物：`python3 scripts/generate-host-protocol.py --check`。改了 Host 方法或 schema 必跑。
 3. 契约：`pnpm --dir clients/gui test:host-protocol-conformance`、`test:host-client`。
 4. 真实进程冒烟（隔离 home，确定性模型）：
-   - `node scripts/shared-host-smoke.mjs`、`shared-host-subscription-smoke.mjs`、`shared-host-schedule-smoke.mjs`
+   - `node scripts/shared-host-smoke.mjs`、`shared-host-schedule-smoke.mjs`
    - `pnpm --dir clients/gui test:workbench-backend`：Host 拉起桌面后台、资料库写回执、崩溃重启、Main detach、Host stop。
    - `pnpm --dir clients/gui test:host-seed-copy`；需要真实数据形状时用 `seed-host-copy.mjs` 从 `~/.areal` 只读复制到临时目录。
 5. 收尾：`cargo fmt -p <crate> -- --check`、`make check-changed`（显式 `CI_BASE`）。
