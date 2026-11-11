@@ -72,6 +72,7 @@ import {
   $isPromptMentionNode,
   PromptMentionNode,
 } from "./mentions/nodes/PromptMentionNode.js";
+import { registerPluginMentionMetadata } from "./mentions/pluginMentionMetadata.js";
 import { logger } from "./logger.js";
 
 import { navigatePromptHistory } from "./lib/promptHistory.js";
@@ -771,22 +772,9 @@ function PluginMentionMetadataPlugin({ catalog }: { catalog?: ComposerCatalogDat
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
     if (!catalog) return;
-    editor.update(
-      () => {
-        for (const node of $getRoot().getAllTextNodes()) {
-          if (!$isPromptMentionNode(node) || node.getMention().category !== "plugins") continue;
-          const mention = catalog.entries.find(
-            (entry) => entry.mention?.value === node.getMention().value,
-          )?.mention;
-          if (
-            mention &&
-            (node.getMarkdown() !== mention.markdown ||
-              (node.getMention().description ?? "") !== (mention.description ?? ""))
-          )
-            node.replace($createPromptMentionNode(mention));
-        }
-      },
-      { tag: PROGRAMMATIC_UPDATE_TAG },
+    return registerPluginMentionMetadata(
+      editor,
+      catalog.entries.flatMap((entry) => (entry.mention ? [entry.mention] : [])),
     );
   }, [editor, catalog?.entries]);
   return null;

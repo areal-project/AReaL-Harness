@@ -314,6 +314,21 @@ require(${JSON.stringify(join(desktop, "src/main.cjs"))});
 let app,
   page,
   passed = false;
+let pasteCore;
+async function readPasteThread(threadId) {
+  if (!pasteCore) {
+    const services = [];
+    const root = join(env.AREAL_HARNESS_SERVICE_HOME, "services");
+    for (const directory of await readdir(root)) {
+      const service = JSON.parse(await readFile(join(root, directory, "service.json"), "utf8"));
+      if (service.workspace === workspace && service.state === "ready") services.push(service);
+    }
+    assert.equal(services.length, 1, "folded paste reads its single isolated native Core");
+    const { connect } = await import("../../../examples/desktop-api/client.mjs");
+    pasteCore = await connect(services[0].endpoint, services[0].authFile);
+  }
+  return (await pasteCore.call("thread/read", { threadId, includeTurns: true })).thread;
+}
 const errors = [],
   frames = [],
   checks = [];
@@ -390,7 +405,9 @@ async function launch() {
 async function quit() {
   if (!app) return;
   await app.evaluate(({ dialog }) => {
-    dialog.showMessageBox = async () => ({ response: 1 });
+    dialog.showMessageBox = async (...args) => ({
+      response: args.at(-1).message === "退出 AReaL Harness？" ? 0 : 1,
+    });
   });
   const child = app.process();
   const closed = await Promise.race([
@@ -401,7 +418,7 @@ async function quit() {
     const exited = new Promise((resolve) => child.once("exit", resolve));
     child.kill("SIGKILL");
     await exited;
-    checks.push("bounded cleanup ended the owned Electron process after Host stop");
+    checks.push("bounded cleanup ended the owned Electron process");
   }
   app = null;
 }
@@ -491,15 +508,24 @@ try {
   };
   const sendAndWait = async () => {
     const count = received.length;
+    const previous = new Set(
+      Object.values(project(await state()).state.threads).flatMap((thread) =>
+        (thread.turns ?? []).map((turn) => turn.id),
+      ),
+    );
+    const completed = (snapshot) =>
+      Object.values(project(snapshot).state.threads)
+        .flatMap((thread) => thread.turns ?? [])
+        .find((turn) => !previous.has(turn.id) && turn.status === "completed");
     await button("发送").click();
     try {
-      await until(
-        (s) =>
-          Object.values(project(s).state.threads).some(
-            (t) => t.turns?.at(-1)?.status === "completed",
-          ) && received.length > count,
+      const accepted = await until(
+        (s) => completed(s) && received.length > count,
         "send completed",
       );
+      await page
+        .locator(`[data-turn-id="${completed(accepted).id}"][data-turn-status="completed"]`)
+        .waitFor();
     } catch (error) {
       await writeFile(
         join(scratch, "send-timeout-state.json"),
@@ -1298,13 +1324,14 @@ try {
       await shot(`03b-folded-${label}`);
       const beforePaste = {
         requests: received.length,
-        turns: pasteThread(await state())?.turns.length ?? 0,
+        turns: newDraft ? 0 : (await readPasteThread(pasteTid)).turns.length,
         uploads: newDraft ? [] : pasteUploads,
       };
       const evidence = { label, expectedText, before: beforePaste };
       pasteEvidence.folded.push(evidence);
+      let acceptedThread;
       await button("发送").click();
-      const accepted = await until(async (s) => {
+      await until(async (s) => {
         if (newDraft)
           pasteTid = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
         const refusal = await page
@@ -1330,14 +1357,26 @@ try {
             `${label}: folded clipboard text was sent as File; expected exact Text input`,
           );
         }
+        const native = pasteTid ? await readPasteThread(pasteTid) : undefined;
+        evidence.waiting = {
+          requests: received.length,
+          turns: native?.turns.map((turn) => ({ id: turn.id, status: turn.status })),
+          backendTurns: pasteThread(s)?.turns.map((turn) => ({ id: turn.id, status: turn.status })),
+          pending: project(s).pending.map((entry) => ({
+            method: entry.method,
+            requestId: entry.params?.requestId,
+          })),
+        };
+        acceptedThread = native;
         return (
           received.length === beforePaste.requests + 1 &&
-          pasteThread(s)?.turns.length === beforePaste.turns + 1 &&
-          pasteThread(s)?.turns.at(-1)?.status === "completed" &&
+          native?.turns.length === beforePaste.turns + 1 &&
+          native?.turns.at(-1)?.status === "completed" &&
           !project(s).pending.length
         );
       }, `${label}: folded paste direct Send completes as Text`);
-      const turn = pasteThread(accepted).turns.at(-1);
+      const turn = acceptedThread.turns.at(-1);
+      await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
       const userMessages = turn.items.filter((item) => item.type === "userMessage");
       assert.equal(userMessages.length, 1);
       assert.deepEqual(
@@ -1591,6 +1630,7 @@ try {
       expectedRevision: pluginList.revision,
       expectedDigest: plugin.installedDigest,
     });
+    await page.evaluate(() => window.dispatchEvent(new Event("areal-plugins-changed")));
     await sendAndWait();
     await until(
       (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
@@ -1779,6 +1819,9 @@ try {
     const sidePluginThread = Object.values(project(sideCompleted).state.threads).find(
       (row) => row.conversation?.kind === "side" && row.turns?.at(-1)?.status === "completed",
     );
+    await sidePane
+      .locator(`[data-turn-id="${sidePluginThread.turns.at(-1).id}"][data-turn-status="completed"]`)
+      .waitFor();
     assert.equal(sidePluginThread.conversation.policy.kind, "sideExecutableV2");
     assert.deepEqual(project(sideCompleted).configurations[tid], parentConfiguration);
     await page.waitForFunction(
@@ -2095,6 +2138,7 @@ try {
   throw error;
 } finally {
   await writeFile(join(scratch, "model-requests.json"), JSON.stringify(received, null, 2));
+  await pasteCore?.close();
   if (filesRegression && app)
     await app.evaluate(() => {
       globalThis.filesReleaseList?.();
@@ -2118,22 +2162,49 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  await quit();
   if (descriptor) {
     const { HostClient } = require("@areal/client/node");
     const { randomUUID } = require("node:crypto");
+    const {
+      readHostReceipt,
+      readOfflineHostReceipt,
+    } = require("../app/src/core/host-lifecycle.cjs");
     const host = new HostClient();
+    const reference = {
+      kind: "stopHost",
+      requestId: randomUUID(),
+      home: hostHome,
+      hostId: descriptor.hostId,
+      generation: descriptor.generation,
+      strategy: "cancel",
+    };
+    await writeFile(join(scratch, "host-stop-reference.json"), JSON.stringify(reference, null, 2));
     try {
       await host.connect(hostHome);
       assert.equal(host.hostId, descriptor.hostId);
       assert.equal(host.generation, descriptor.generation);
-      const receipt = await host.stop(randomUUID(), descriptor.generation, "cancel");
-      await writeFile(join(scratch, "host-stop.json"), JSON.stringify(receipt, null, 2));
-      assert.equal(receipt.state, "completed");
+      let receipt;
+      try {
+        receipt = readHostReceipt(
+          reference,
+          await host.stop(reference.requestId, reference.generation, reference.strategy),
+        );
+      } catch {
+        host.close();
+        receipt = await readOfflineHostReceipt(binary, reference);
+      }
+      await writeFile(join(scratch, "host-stop.json"), JSON.stringify(receipt ?? null, null, 2));
+      assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
+      checks.push("explicit fixture Host stop completes with matching original project receipts");
+    } catch (error) {
+      passed = false;
+      process.exitCode = 1;
+      errors.push(`Host cleanup: ${error.message}`);
     } finally {
       host.close();
     }
   }
-  await quit();
   const authoritativeHistory = [];
   for (const entry of await readdir(join(scratch, "core"), { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -2153,9 +2224,7 @@ try {
   );
   try {
     await assertApplicationStopped(binary, env, stoppingAdapter);
-    checks.push(
-      "application quit stops the isolated adapter and all Core generations, including projectless",
-    );
+    checks.push("explicit Host stop leaves the isolated adapter and all Core generations stopped");
   } catch (error) {
     console.error("Adapter fixture cleanup:", error.message);
     if (passed) {
@@ -2163,26 +2232,6 @@ try {
       process.exitCode = 1;
       errors.push(`Explicit safe stop failed: ${error.message}`);
     }
-    // 仅清理本次隔离 home 中的服务；失败不遗留模型任务或后台进程。
-    try {
-      const instances = JSON.parse(
-        execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
-      );
-      for (const instance of instances)
-        if (instance.workspace === workspace && instance.state !== "stopped") {
-          execFileSync(
-            binary,
-            ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
-            { env, timeout: 120000, stdio: "pipe" },
-          );
-        }
-    } catch (failure) {
-      console.error("Core fixture cleanup:", failure.message);
-    }
-    try {
-      const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-      process.kill(metadata.pid, "SIGTERM");
-    } catch {}
   }
   server.closeAllConnections();
   await new Promise((r) => server.close(r));
