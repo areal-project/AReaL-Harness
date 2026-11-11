@@ -87,6 +87,7 @@ class AppProviders {
     /** @type {PreparedStatus|null} */ this.preparedSubscriptionStatus = null;
     /** @type {NodeJS.Timeout|null} */ this.reconciliationTimer = null;
     /** @type {Promise<void>|null} */ this.reconciliation = null;
+    /** @type {Array<() => void>} */ this.roundWaiters = [];
     /** @type {Promise<void>|undefined} */ this.modelSelectionUpdate = undefined;
     /** @type {InstanceType<typeof import('./subscription.cjs').SubscriptionStore>|undefined} */ this.openaiStore =
       undefined;
@@ -944,6 +945,7 @@ class AppProviders {
   async close() {
     this.closed = true;
     if (this.reconciliationTimer) clearTimeout(this.reconciliationTimer);
+    for (const done of this.roundWaiters.splice(0)) done();
     this.preparedSubscriptionStatus = null;
     try {
       const service = await (this.nativeService ?? this.openaiPromise);
@@ -1027,6 +1029,23 @@ class AppProviders {
     target.project.providerError = message;
     if (catalogRefreshPending) this.requestReconciliation(2000);
   }
+  /**
+   * 保存只落盘就返回，应用到各项目的 Core 排在后面；这时读模型目录会拿到旧的。
+   * 读目录前等排队或进行中的这一轮结束，最多等 limit 毫秒，Core 卡住时照常返回现有目录。
+   */
+  settled(limit = 5000) {
+    if (this.closed || (!this.reconciliationTimer && !this.reconciliation))
+      return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        resolve(undefined);
+      };
+      const timer = setTimeout(done, limit);
+      timer.unref?.();
+      this.roundWaiters.push(done);
+    });
+  }
   requestReconciliation(delay = 0) {
     if (this.closed || this.backend.closing || this.reconciliationTimer || this.reconciliation)
       return;
@@ -1045,6 +1064,7 @@ class AppProviders {
         .finally(() => {
           this.reconciliation = null;
           this.backend.onChange();
+          for (const done of this.roundWaiters.splice(0)) done();
           if (
             [...this.backend.projects.values()].some(
               (project) =>
