@@ -2,8 +2,8 @@
 "use strict";
 const { newer, validateUpdate, channelFeedUrl } = require("./config.cjs");
 
-// 下载和摘要校验可保持后台运行；Squirrel 原生准备只在安全停止和占用检查后触发。
-/** @typedef {'idle'|'available'|'downloading'|'validating'|'deferred'|'installing'|'error'} UpdateStatus */
+// 下载和摘要校验可保持后台运行；重启安装只由用户发起，Squirrel 原生准备只在安全停止和占用检查后触发。
+/** @typedef {'idle'|'available'|'downloading'|'ready'|'validating'|'deferred'|'installing'|'error'} UpdateStatus */
 /** @typedef {{enabled:boolean,channel:'stable'|'beta',checking:boolean,downloading:boolean,installing:boolean,downloaded?:string,status:UpdateStatus,version?:string,percent:number|null,detail:string}} UpdateState */
 /** @typedef {{hasWork:()=>boolean|Promise<boolean>,prepareInstall:()=>Promise<unknown>,recoverInstall?:()=>Promise<unknown>,onState?:(state:UpdateState)=>void}} UpdateLifecycle */
 /** @param {UpdateLifecycle & {updater:import('electron-updater').AppUpdater,config?:import('./config.cjs').UpdateConfig|null,version:string,platform?:NodeJS.Platform,arch?:string,notify?:(options:import('electron').MessageBoxOptions)=>Promise<import('electron').MessageBoxReturnValue>,prepareNativeInstall?:()=>Promise<void>,log?:Pick<Console,'warn'>}} options */
@@ -102,7 +102,7 @@ function createUpdater({
     let prepared = false;
     try {
       if (await hasWork()) {
-        set("deferred", "还有活动任务、排队消息或操作，空闲后将自动重启安装。");
+        set("deferred", "还有活动任务、排队消息或操作，完成后再重启安装。");
         return state();
       }
       if (!onState) {
@@ -157,7 +157,7 @@ function createUpdater({
           "CONFIRMATION_STALE",
         ].includes("code" in error && typeof error.code === "string" ? error.code : "")
       ) {
-        set("deferred", `后台尚未就绪：${error.message}。处理后将自动重试。`);
+        set("deferred", `后台尚未就绪：${error.message}。检查后台后再重启安装。`);
         if (!onState) {
           const answer = await question("warning", "需要先处理后台状态", error.message, [
             "稍后",
@@ -166,7 +166,7 @@ function createUpdater({
           if (answer?.response === 1) await recoverInstall?.();
         }
       } else if (/活动任务|其他操作|完成任务|仍有任务/.test(error.message)) {
-        set("deferred", `${error.message}。空闲后将自动重试。`);
+        set("deferred", `${error.message}。完成后再重启安装。`);
       } else {
         set("error", error.message);
         if (!onState) await message("暂时无法安装更新", error.message);
@@ -189,7 +189,9 @@ function createUpdater({
       downloaded = available;
       downloading = false;
       percent = 100;
-      await install();
+      // 界面模式下重启时机交给用户；原生菜单路径在 install() 里用对话框确认。
+      if (onState) set("ready");
+      else await install();
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
       downloading = false;
@@ -198,7 +200,8 @@ function createUpdater({
     }
     return state();
   }
-  async function check(manual = false) {
+  /** @param {boolean} [manual] @param {{background?:boolean}} [options] 后台检查失败只记日志，不在界面上报错。 */
+  async function check(manual = false, { background = false } = {}) {
     if (checking || downloading || installing) {
       if (manual && !onState) await message("更新操作正在进行", "请等待当前更新操作完成。");
       return state();
@@ -216,7 +219,9 @@ function createUpdater({
       set("idle");
     }
     if (downloaded) {
-      if (manual) await install();
+      if (manual && onState)
+        await message(`版本 ${downloaded.version} 已下载`, "点击侧栏的更新图标重启安装。");
+      else if (manual) await install();
       return state();
     }
     // electron-updater remembers the latest check target; keep it aligned with the displayed offer.
@@ -231,7 +236,7 @@ function createUpdater({
       // 检查期间设置可能已改变，旧频道的结果不能成为新频道的下载目标。
       if (wanted !== channel) {
         checking = false;
-        return await check(manual);
+        return await check(manual, { background });
       }
       const info = result?.updateInfo;
       if (!info || !newer(info.version, version)) {
@@ -249,7 +254,7 @@ function createUpdater({
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
       log.warn("[areal-update]", error.message);
-      set("error", error.message);
+      if (!background) set("error", error.message);
       if (manual) await message("更新失败", error.message);
     } finally {
       checking = false;
@@ -263,7 +268,7 @@ function createUpdater({
     if (next === wanted) return Promise.resolve(state());
     wanted = next;
     publish();
-    return enabled ? check() : Promise.resolve(state());
+    return enabled ? check(false, { background: true }) : Promise.resolve(state());
   }
   return { check, download, install, state, setChannel };
 }

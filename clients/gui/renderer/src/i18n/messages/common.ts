@@ -161,6 +161,7 @@ export const commonMessages = {
   "common.update.version": { "zh-CN": "版本 {version}", en: "Version {version}" },
   "common.update.available": { "zh-CN": "有可用更新", en: "An update is available" },
   "common.update.downloading": { "zh-CN": "正在下载更新", en: "Downloading update" },
+  "common.update.ready": { "zh-CN": "更新已就绪", en: "Update ready" },
   "common.update.validating": { "zh-CN": "正在准备安装", en: "Preparing installation" },
   "common.update.deferred": {
     "zh-CN": "已下载，等待安装",
@@ -170,20 +171,24 @@ export const commonMessages = {
   "common.update.failed": { "zh-CN": "更新未完成", en: "Update interrupted" },
   "common.update.installIncomplete": { "zh-CN": "安装尚未完成", en: "Installation incomplete" },
   "common.update.availableHelp": {
-    "zh-CN": "下载时可以继续工作。后台空闲后会安装并重启应用。",
-    en: "Keep working while the update downloads. Installation restarts the app once the backend is idle.",
+    "zh-CN": "下载时可以继续工作。下载完成后由你决定何时重启安装。",
+    en: "Keep working while the update downloads. You choose when to restart and install.",
   },
   "common.update.downloadingHelp": {
     "zh-CN": "正在获取更新包，你可以继续当前工作。",
     en: "The update is downloading. You can keep working.",
+  },
+  "common.update.readyHelp": {
+    "zh-CN": "重启应用即可完成安装。请先保存手头的工作。",
+    en: "Restart the app to finish installing. Save your work first.",
   },
   "common.update.validatingHelp": {
     "zh-CN": "后台已停止，正在校验更新并准备替换应用。",
     en: "The backend has stopped. The update is being verified before the app is replaced.",
   },
   "common.update.deferredHelp": {
-    "zh-CN": "后台尚未就绪。可以等待空闲，或检查后台并确认后继续安装。",
-    en: "The backend is not ready. Wait until it is idle, or review it and confirm before continuing.",
+    "zh-CN": "后台还有工作。完成后点下方按钮继续安装。",
+    en: "The backend still has work. When it finishes, use the button below to continue.",
   },
   "common.update.installingHelp": {
     "zh-CN": "应用即将重启，完成后请在“关于”中核对版本。",
@@ -209,6 +214,11 @@ export const commonMessages = {
   },
   "common.update.retryVersion": { "zh-CN": "重试更新 {version}", en: "Retry update {version}" },
   "common.update.retry": { "zh-CN": "重试", en: "Retry" },
+  "common.update.restart": { "zh-CN": "重启并安装", en: "Restart and install" },
+  "common.update.restartVersion": {
+    "zh-CN": "重启并安装 {version}",
+    en: "Restart and install {version}",
+  },
   "common.update.recover": { "zh-CN": "检查后台并安装", en: "Review backend and install" },
   "common.update.recoverLabel": {
     "zh-CN": "检查后台资源并继续安装更新",
