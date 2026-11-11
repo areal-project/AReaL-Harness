@@ -1090,7 +1090,7 @@ impl Connection {
         method: &str,
         params: Value,
     ) -> Result<Value, RpcError> {
-        self.dispatch_response(engine, method, params, 0).await
+        Box::pin(self.dispatch_response(engine, method, params, 0)).await // 装箱：future 很大，连着 await 会撑爆测试线程栈
     }
     async fn dispatch_response(
         &mut self,
