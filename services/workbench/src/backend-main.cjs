@@ -313,6 +313,7 @@ async function start({ input, output }) {
           return { cloudThreads, pendingProjects };
         }
         if (request.method === "creation.catalog") {
+          await desktop.backend.providers.settled();
           const project = desktop.backend.projects.get(request.params.projectId);
           if (!project?.client) throw Error("Creation catalog unavailable");
           const pick = (value, fields) =>

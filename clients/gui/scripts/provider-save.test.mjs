@@ -1010,6 +1010,19 @@ test("matched proof refreshes Settings and ordinary reconciliation by default", 
   assert.equal(f.calls.filter(([method]) => method === applyMethod).length, 0);
 });
 
+test("a catalog read waits for the apply round queued by a save", async (t) => {
+  const f = fixture();
+  t.after(() => f.service.close());
+  await f.service.settled();
+  f.service.config.value = { ...f.original, revision: "next" };
+  f.project.models = [];
+  f.service.requestReconciliation();
+  assert.equal(f.project.providerRevision, "old", "the save returns before the apply round runs");
+  await f.service.settled();
+  assert.equal(f.project.providerRevision, "next");
+  assert.deepEqual(f.project.models, [{ id: "old-model", enabled: true }]);
+});
+
 test("deferred refresh preserves fresh application and lost-receipt reconciliation without another apply", async (t) => {
   for (const lostApply of [false, true]) {
     const f = fixture({ lostApply });
