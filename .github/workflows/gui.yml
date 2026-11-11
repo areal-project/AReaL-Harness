@@ -389,6 +389,8 @@ jobs:
           mkdir -p target/ci/gui "$TMPDIR"
           rustup show
           if ! command -v cmake; then brew install cmake; fi
+          # GUI 冒烟引用 examples/desktop-api 的客户端，它的 ws 来自仓库根的锁定依赖。
+          npm ci --ignore-scripts
           make gui-install
       - name: Restore Vite+ task cache
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25
@@ -492,6 +494,8 @@ jobs:
       - name: Prepare locked GUI dependencies
         run: |
           mkdir -p "$TMPDIR"
+          # GUI 冒烟引用 examples/desktop-api 的客户端，它的 ws 来自仓库根的锁定依赖。
+          npm ci --ignore-scripts
           pnpm --dir clients/gui install --frozen-lockfile
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -596,6 +600,8 @@ jobs:
       - name: Prepare locked GUI dependencies
         run: |
           mkdir -p "$TMPDIR"
+          # GUI 冒烟引用 examples/desktop-api 的客户端，它的 ws 来自仓库根的锁定依赖。
+          npm ci --ignore-scripts
           make gui-install
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -668,6 +674,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y bubblewrap xvfb libgtk-3-0 libnss3 libasound2t64 libgbm1 cmake
           npm install --global pnpm@11.7.0
+          # GUI 冒烟引用 examples/desktop-api 的客户端，它的 ws 来自仓库根的锁定依赖。
+          npm ci --ignore-scripts
           make gui-install
       - name: Build and freeze qualification inputs
         run: |
@@ -713,6 +721,8 @@ jobs:
       - name: Prepare locked GUI dependencies
         run: |
           npm install --global pnpm@11.7.0
+          # GUI 冒烟引用 examples/desktop-api 的客户端，它的 ws 来自仓库根的锁定依赖。
+          npm ci --ignore-scripts
           make gui-install
           pnpm --dir clients/gui build:desktop
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
