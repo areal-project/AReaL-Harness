@@ -2,13 +2,14 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, writeFile, readFile, rename, cp, rm } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rename, cp, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { spawnNative } from "../../scripts/native-child.mjs";
 import { connect } from "./client.mjs";
 import { fixture } from "./fixture.mjs";
 
-const root = await mkdtemp("/tmp/areal-package-workgroup-");
+const root = await trackedMkdtemp("/tmp/areal-package-workgroup-");
 const bundle = join(root, "relocated bundle"),
   override = join(root, "explicit helpers");
 const model = await fixture(),

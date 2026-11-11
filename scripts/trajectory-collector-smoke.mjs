@@ -4,7 +4,8 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createReadStream } from "node:fs";
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { createServer } from "node:http";
 import { createServer as createSocketServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -28,7 +29,7 @@ async function fileHash(path) {
   return hash.digest("hex");
 }
 assert.equal(await fileHash(archive), pin.sha256, "official Collector archive SHA256 mismatch");
-const directory = await realpath(await mkdtemp(join(tmpdir(), "areal-collector-fanout-")));
+const directory = await realpath(await trackedMkdtemp(join(tmpdir(), "areal-collector-fanout-")));
 const output =
   process.env.AREAL_COLLECTOR_SMOKE_OUTPUT && resolve(process.env.AREAL_COLLECTOR_SMOKE_OUTPUT);
 const binary = await realpath(resolve("target/debug/areal"));

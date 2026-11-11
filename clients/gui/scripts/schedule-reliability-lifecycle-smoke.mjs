@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { appendFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -31,7 +32,7 @@ const binary = resolve(process.env.AREAL_CORE_BIN || join(root, "target/debug/ar
 const mode = process.env.AREAL_SCHEDULE_MODE || "accept";
 assert.ok(["baseline", "accept"].includes(mode));
 const scratch = await makeTempDir("areal-sl-");
-const evidence = await mkdtemp(join(root, ".scratch/schedule-reliability-lifecycle-"));
+const evidence = await trackedMkdtemp(join(root, ".scratch/schedule-reliability-lifecycle-"));
 const requests = [],
   checks = [],
   errors = [],

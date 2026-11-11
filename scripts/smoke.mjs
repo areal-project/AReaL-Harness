@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { spawnNative } from "./native-child.mjs";
 import { createServer } from "node:http";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { once } from "node:events";
@@ -12,7 +13,7 @@ import { connect } from "../examples/desktop-api/client.mjs";
 const binDir = resolve(process.env.AREAL_TEST_BIN_DIR ?? "target/debug");
 const catalogBackend = process.env.AREAL_CATALOG_TEST_BACKEND ?? "memory";
 assert.ok(["memory", "sqlite", "memory-lazy", "sqlite-lazy"].includes(catalogBackend));
-const directory = await mkdtemp(join(tmpdir(), "areal-smoke-"));
+const directory = await trackedMkdtemp(join(tmpdir(), "areal-smoke-"));
 const children = new Set();
 const requests = [];
 // 本地 fixture 必须直连，避免宿主代理缓冲 SSE 或把测试请求转发到外部。

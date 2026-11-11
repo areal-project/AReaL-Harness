@@ -5,16 +5,8 @@ import { createServer } from "node:http";
 import { createServer as httpsServer } from "node:https";
 import { connect as tcpConnect } from "node:net";
 import { createRequire } from "node:module";
-import {
-  mkdir,
-  mkdtemp,
-  open,
-  readFile,
-  readdir,
-  realpath,
-  unlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, open, readFile, readdir, realpath, unlink, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
 import { CoreSubscription } from "../clients/gui/packages/chatgpt-provider/core.js";
@@ -35,7 +27,7 @@ const oauthRequire = createRequire(
   join(repository, "clients/gui/packages/chatgpt-provider/package.json"),
 );
 const { SignJWT } = await import(oauthRequire.resolve("jose"));
-const root = await realpath(await mkdtemp("/tmp/ah-host-subscription-"));
+const root = await realpath(await trackedMkdtemp("/tmp/ah-host-subscription-"));
 const home = join(root, "host"),
   user = join(root, "user"),
   workspace = join(root, "workspace");

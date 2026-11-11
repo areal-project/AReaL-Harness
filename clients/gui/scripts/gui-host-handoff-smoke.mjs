@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -48,7 +49,7 @@ const source = async () => {
 };
 const evidenceRoot = join(root, ".scratch/shared-host/h2-gui-tui-handoff");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await mkdtemp(join(evidenceRoot, "run-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
 const state = await makeTempDir("ah-handoff-");
 const workspace = join(state, "workspace");
 const cliWorkspace = join(state, "cli-workspace");

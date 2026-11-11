@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { assertApplicationStopped, cleanupSyntheticHostKeychain } from "./application-cleanup.mjs";
 
-const root = await realpath(await mkdtemp("/tmp/areal-web-partial-"));
+const root = await realpath(await trackedMkdtemp("/tmp/areal-web-partial-"));
 const gui = resolve("clients/gui"),
   binary = resolve("target/debug/areal");
 const expected = process.env.AREAL_PARTIAL_CORE_SHA256;

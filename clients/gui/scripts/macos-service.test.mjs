@@ -3,7 +3,8 @@ import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { spawn, execFileSync } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -33,7 +34,7 @@ test(
   "packaged macOS service has a separate identity and resolves shared resources to the same GUI",
   { skip: process.platform !== "darwin" },
   async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "areal-service-layout-"));
+    const root = await trackedMkdtemp(join(tmpdir(), "areal-service-layout-"));
     t.after(() => rm(root, { recursive: true, force: true }));
     const app = join(root, "App with spaces.app"),
       contents = join(app, "Contents");
@@ -131,7 +132,7 @@ test(
     timeout: 45000,
   },
   async (t) => {
-    const root = await mkdtemp(join(tmpdir(), "areal-service-native-"));
+    const root = await trackedMkdtemp(join(tmpdir(), "areal-service-native-"));
     const userData = join(root, "user-data"),
       user = join(root, "user");
     await mkdir(user);

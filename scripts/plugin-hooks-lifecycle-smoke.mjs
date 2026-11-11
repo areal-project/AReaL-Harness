@@ -1,7 +1,8 @@
 // 失败契约：真实子任务压缩必须保留身份；恢复只在新执行会话发一次；
 // 自动/手动压缩、Fork、Interrupt 和全部事件输入须符合固定上游 schema。
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, realpath } from "node:fs/promises";
+import { mkdir, readFile, writeFile, realpath } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
@@ -15,7 +16,7 @@ const require = createRequire(import.meta.url),
   exec = promisify(execFile);
 assert(process.argv.slice(2).every((v) => v === "--focus-child"));
 const focusChild = process.argv.includes("--focus-child");
-const scratch = await realpath(await mkdtemp("/private/tmp/areal-hooks-lifecycle-")),
+const scratch = await realpath(await trackedMkdtemp("/private/tmp/areal-hooks-lifecycle-")),
   workspace = join(scratch, "workspace"),
   home = join(scratch, "home");
 const bin = resolve(process.env.AREAL_TEST_BIN_DIR ?? "target/debug", "areal"),

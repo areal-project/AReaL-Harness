@@ -2,7 +2,8 @@ import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -36,7 +37,7 @@ assert.equal(
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const evidenceRoot = join(root, ".scratch/permission-presets-gui");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await mkdtemp(join(evidenceRoot, "run-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
 const stateRoot = await makeTempDir("app-");
 const owner = randomUUID();
 await writeFile(join(stateRoot, ".owner"), owner);

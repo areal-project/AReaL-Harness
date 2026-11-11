@@ -220,7 +220,7 @@ AREAL_CORE_BIN=/absolute/fixed/areal node scripts/repeat-tests.mjs --profile=mac
 
 `ciSmoke` 绑定现有 macOS smoke 矩阵。领域映射只裁剪已知的局部 Renderer 改动；共享所有者、测试脚本、未知路径及没有对应 smoke 的领域保留完整矩阵。没有比较基准的运行也使用完整矩阵。Linux 单元与契约不按领域裁剪。
 
-临时目录统一使用 `scripts/support/temp.mjs` 的 `makeTempDir(prefix)`。它对 `os.tmpdir()` 做 `realpath`，保留 macOS 路径比较语义。`verify:tests` 通过 AST 检查所有登记脚本及本地导入，拒绝实际路径字面量 `/private/tmp` 和 `/var/folders`。审计规则及负例中的字符串不构成临时目录创建。
+临时目录统一使用 `scripts/support/temp.mjs` 的 `makeTempDir(prefix)`。它对 `os.tmpdir()` 做 `realpath`，保留 macOS 路径比较语义。`verify:tests` 通过 AST 检查所有登记脚本及本地导入，拒绝实际路径字面量 `/private/tmp` 和 `/var/folders`。审计规则及负例中的字符串不构成临时目录创建。需要固定前缀（如 `/tmp` 短路径）时改用 `support/host-cleanup.cjs` 的 `trackedMkdtemp`，不直接调 `mkdtemp`：CLI 自动拉起的 Host 脱离了测试进程组，只有登记过的临时目录会在测试退出或 Ctrl-C 时被 `host stop`，否则每次运行都会在机器上留下一套 Host、Core 与 Runtime。
 
 重复驱动保留每次首跑的日志、独立临时目录、退出状态、耗时和运行前后源码/Core 摘要，不自动重试或删除失败。Linux 计划复用启动/恢复、发送/流式、停止 Turn、桌面设置、退出草稿五个现有 runner，各跑 10 次；macOS 计划对可无人值守的登记 E2E 各跑 5 次。`--scripts=test:composer,test:queue` 可缩小范围，报告明确标为 scoped。`--repetitions=N` 可用于诊断，但少于 10 次的 Linux 样本不能获得必跑资格。退出草稿仍要求仓库 `.local/dev-bin/` 下的完整固定 Core bundle。
 

@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const { randomUUID } = require("node:crypto");
 const { createServer } = require("node:net");
 const { once } = require("node:events");
-const { mkdtemp, mkdir, realpath, writeFile, readFile, chmod } = require("node:fs/promises");
+const { mkdir, realpath, writeFile, readFile, chmod } = require("node:fs/promises");
+const { trackedMkdtemp } = require("./support/host-cleanup.cjs");
 const { join } = require("node:path");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
 const { readReferences } = require("../app/src/core/service-control.cjs");
@@ -16,7 +17,7 @@ const {
   isLifecycleProjection,
 } = require("../packages/workbench/client/desktop-contract/shared.cjs");
 async function fixture(t, extraCapabilities = []) {
-  const root = await realpath(await mkdtemp("/tmp/ah-host-stop-"));
+  const root = await realpath(await trackedMkdtemp("/tmp/ah-host-stop-"));
   const home = join(root, "desktop"),
     hostHome = join(root, "host"),
     profile = join(root, "profile");

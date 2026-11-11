@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { spawnNative } from "../../scripts/native-child.mjs";
 import { connect } from "./client.mjs";
 import { fixture } from "./fixture.mjs";
 
-const root = await mkdtemp("/tmp/areal-task-controls-");
+const root = await trackedMkdtemp("/tmp/areal-task-controls-");
 const data = join(root, "state"),
   ready = join(root, "ready.json");
 const model = await fixture();

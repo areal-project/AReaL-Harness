@@ -2,7 +2,8 @@ import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -27,7 +28,7 @@ if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_H
 const evidenceRoot =
   process.env.AREAL_WORKTREE_ENV_EVIDENCE || join(root, ".scratch/worktrees-20261024/electron");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await mkdtemp(join(evidenceRoot, "run-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
 const workspace = join(scratch, "repo");
 const userHome = join(scratch, "user/home");
 await mkdir(workspace, { recursive: true });

@@ -1,16 +1,8 @@
 import assert from "node:assert/strict";
 import { spawnNative } from "../../scripts/native-child.mjs";
 import { once } from "node:events";
-import {
-  mkdtemp,
-  mkdir,
-  writeFile,
-  readFile,
-  realpath,
-  rm,
-  readdir,
-  chmod,
-} from "node:fs/promises";
+import { mkdir, writeFile, readFile, realpath, rm, readdir, chmod } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -23,7 +15,7 @@ const daemonInput = await readFile(
   new URL("./fixtures/claude-daemon-input.jsonl", import.meta.url),
   "utf8",
 );
-const root = await realpath(await mkdtemp(join(tmpdir(), "areal-cli-test-"))),
+const root = await realpath(await trackedMkdtemp(join(tmpdir(), "areal-cli-test-"))),
   workspace = join(root, "workspace"),
   home = join(root, "home");
 await mkdir(workspace);

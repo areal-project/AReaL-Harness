@@ -1,12 +1,13 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { mkdtemp, mkdir, writeFile, chmod, readFile, realpath, rm } = require("node:fs/promises");
+const { mkdir, writeFile, chmod, readFile, realpath, rm } = require("node:fs/promises");
+const { trackedMkdtemp } = require("./support/host-cleanup.cjs");
 const { join } = require("node:path");
 const { tmpdir } = require("node:os");
 const { prepareUpgrade, selectActiveSpace } = require("../app/src/core/space-bootstrap.cjs");
 
 test("upgrade choice reuses the same space request and never starts the old Host", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "areal-bootstrap-"));
+  const root = await trackedMkdtemp(join(tmpdir(), "areal-bootstrap-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, "areal");
   const log = join(root, "calls");
@@ -60,7 +61,7 @@ test("explicit isolated profile bypasses active-space selection", () => {
 });
 
 test("unconfirmed activation never continues into the old backend", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "areal-bootstrap-failed-"));
+  const root = await trackedMkdtemp(join(tmpdir(), "areal-bootstrap-failed-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, "areal");
   await writeFile(
@@ -107,7 +108,7 @@ test("unreadable active space prevents fallback to the old backend", () => {
 });
 
 test("selected space clears inherited old configuration and workspace", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "areal-bootstrap-active-"));
+  const root = await trackedMkdtemp(join(tmpdir(), "areal-bootstrap-active-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, "areal");
   await writeFile(
@@ -138,7 +139,7 @@ console.log(JSON.stringify(process.argv[3] === 'active' ? active : {...active, p
 });
 
 test("marked test roots cannot redirect preflight to a real user profile", async (t) => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "areal-bootstrap-isolated-")));
+  const root = await realpath(await trackedMkdtemp(join(tmpdir(), "areal-bootstrap-isolated-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "profile"));
   await mkdir(join(root, "core"));

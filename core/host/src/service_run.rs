@@ -148,9 +148,38 @@ pub fn offline_service_status(home: &Path) -> Result<Value> {
     }))
 }
 
+/// 发现文件消失或换成别的代次后，客户端再也连不上本 Host；继续常驻只会成为残留进程，所以退出且不改动目录里的文件。
+pub(crate) async fn until_discovery_lost(home: &Path, generation: &str) {
+    while !discovery_lost(home, generation) {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+}
+fn discovery_lost(home: &Path, generation: &str) -> bool {
+    match std::fs::read(home.join("host/host.json")) {
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+        // 读到半截写入时不下结论，等下一轮。
+        Ok(bytes) => serde_json::from_slice::<Value>(&bytes)
+            .is_ok_and(|identity| identity["generation"] != generation),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discovery_is_lost_only_when_the_descriptor_is_gone_or_replaced() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        storage::private_dir(&home.join("host")).unwrap();
+        let path = home.join("host/host.json");
+        storage::write(&path, &serde_json::json!({"generation":"mine"})).unwrap();
+        assert!(!discovery_lost(&home, "mine"));
+        std::fs::write(&path, b"{\"gener").unwrap();
+        assert!(!discovery_lost(&home, "mine"));
+        storage::write(&path, &serde_json::json!({"generation":"successor"})).unwrap();
+        assert!(discovery_lost(&home, "mine"));
+        std::fs::remove_dir_all(&home).unwrap();
+        assert!(discovery_lost(&home, "mine"));
+    }
     #[test]
     fn controlled_exec_acknowledges_only_original_stop_without_resetting_budget() {
         let root = tempfile::tempdir().unwrap();

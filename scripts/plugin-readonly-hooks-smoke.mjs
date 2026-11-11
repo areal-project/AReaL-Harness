@@ -4,7 +4,6 @@
 // and package data, reject stale/revoked trust, and preserve Profile/Side exclusions.
 import assert from "node:assert/strict";
 import {
-  mkdtemp,
   mkdir,
   readFile,
   writeFile,
@@ -14,6 +13,7 @@ import {
   symlink,
   unlink,
 } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "node:child_process";
@@ -39,7 +39,7 @@ for (const path of new Set(
   sourceFiles[path] = createHash("sha256")
     .update(await readFile(path))
     .digest("hex");
-const scratch = await realpath(await mkdtemp("/private/tmp/areal-readonly-hooks-")),
+const scratch = await realpath(await trackedMkdtemp("/private/tmp/areal-readonly-hooks-")),
   workspace = join(scratch, "workspace"),
   home = join(scratch, "home"),
   privateScratch = join(scratch, "command-scratch"),

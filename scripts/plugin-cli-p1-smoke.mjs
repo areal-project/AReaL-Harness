@@ -1,7 +1,8 @@
 // 真实 Core + CLI 验收：阻止隐式远程解析/连接，绑定安装摘要，并取证收据去重和丢包恢复。
 // 从仓库根运行；AREAL_TEST_BIN_DIR 指向同次构建。仅使用本地 Git 和无凭据 fixture。
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, realpath, access } from "node:fs/promises";
+import { mkdir, writeFile, readFile, realpath, access } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createRequire } from "node:module";
@@ -12,7 +13,7 @@ import { CoreClient } from "../clients/gui/packages/runtime-client/core.js";
 const require = createRequire(new URL("../clients/gui/app/package.json", import.meta.url));
 const WebSocket = require("ws"),
   exec = promisify(execFile);
-const scratch = await realpath(await mkdtemp("/private/tmp/areal-plugin-cli-p1-"));
+const scratch = await realpath(await trackedMkdtemp("/private/tmp/areal-plugin-cli-p1-"));
 const workspace = join(scratch, "workspace"),
   packageRepo = join(scratch, "package-repo");
 const marketplaceRepo = join(scratch, "marketplace-repo"),

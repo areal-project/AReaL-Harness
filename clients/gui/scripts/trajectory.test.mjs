@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,7 +47,7 @@ const status = {
 };
 
 async function fixture(t) {
-  const directory = await mkdtemp(join(tmpdir(), "areal-trajectory-gui-"));
+  const directory = await trackedMkdtemp(join(tmpdir(), "areal-trajectory-gui-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const binary = join(directory, "core fixture.cjs"),
     response = join(directory, "response.json"),
@@ -157,7 +158,7 @@ test("capture restart fences configuration changes during original Host cleanup"
 });
 
 async function backendFixture(t) {
-  const home = await mkdtemp(join(tmpdir(), "areal-trajectory-backend-"));
+  const home = await trackedMkdtemp(join(tmpdir(), "areal-trajectory-backend-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const backend = new CoreBackend({ binary: process.execPath, home });
   backend.saved = [];

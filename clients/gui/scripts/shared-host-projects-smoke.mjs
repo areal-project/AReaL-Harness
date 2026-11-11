@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +17,7 @@ const binary = join(
   process.env.AREAL_TEST_BIN_DIR ?? join(repository, ".local/shared-host-bin"),
   "areal",
 );
-const root = await realpath(await mkdtemp("/tmp/ah-gui-projects-"));
+const root = await realpath(await trackedMkdtemp("/tmp/ah-gui-projects-"));
 const home = join(root, "host-home");
 const source = {
   profile: join(root, "profile"),

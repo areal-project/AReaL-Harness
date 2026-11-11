@@ -4,14 +4,15 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm, access } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { connect } from "../examples/desktop-api/client.mjs";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
-const root = await mkdtemp(join(tmpdir(), "areal-modes-"));
+const root = await trackedMkdtemp(join(tmpdir(), "areal-modes-"));
 const workspace = join(root, "workspace");
 await mkdir(workspace);
 const config = join(root, "config.toml");

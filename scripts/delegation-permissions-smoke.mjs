@@ -4,12 +4,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
 
-const root = await mkdtemp(join(tmpdir(), "areal-delegation-permissions-"));
+const root = await trackedMkdtemp(join(tmpdir(), "areal-delegation-permissions-"));
 const evidence = resolve(process.env.AREAL_PERMISSION_EVIDENCE_DIR ?? root);
 await mkdir(evidence, { recursive: true });
 const marker = "public source evidence\n";

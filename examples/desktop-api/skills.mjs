@@ -1,14 +1,15 @@
 // 使用隔离的用户目录验证所有入口；模型 fixture 只返回工具调用，不运行第二套循环。
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile, symlink, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, symlink, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { spawnNative } from "../../scripts/native-child.mjs";
 import { connect } from "./client.mjs";
 import { fixture } from "./fixture.mjs";
 
-const scratch = await mkdtemp(join(tmpdir(), "areal-skills-"));
+const scratch = await trackedMkdtemp(join(tmpdir(), "areal-skills-"));
 const workspace = join(scratch, "workspace"),
   userDirectory = join(scratch, "user");
 const bin = resolve(process.env.AREAL_TEST_BIN_DIR ?? "target/debug");

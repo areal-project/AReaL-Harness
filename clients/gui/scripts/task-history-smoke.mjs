@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { mkdtemp, mkdir, writeFile, readFile, readdir, realpath } from "node:fs/promises";
+import { mkdir, writeFile, readFile, readdir, realpath } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -71,7 +72,7 @@ const binarySha256 = createHash("sha256")
   .digest("hex");
 const evidenceRoot = process.env.AREAL_TASK_HISTORY_EVIDENCE || (await realpath(tmpdir()));
 await mkdir(evidenceRoot, { recursive: true });
-const scratch = await mkdtemp(join(evidenceRoot, "task-history-"));
+const scratch = await trackedMkdtemp(join(evidenceRoot, "task-history-"));
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
 await mkdir(workspace);

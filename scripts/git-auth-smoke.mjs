@@ -15,7 +15,6 @@ import {
   access,
   copyFile,
   mkdir,
-  mkdtemp,
   readFile,
   readdir,
   realpath,
@@ -24,6 +23,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -755,7 +755,7 @@ try {
   // macOS 默认 TMPDIR 经 realpath 后常超过服务的 AF_UNIX 上限；使用明确的短目录契约。
   const temporaryRoot =
     process.env.AREAL_GIT_AUTH_TMPDIR ?? (process.platform === "darwin" ? "/tmp" : tmpdir());
-  root = await realpath(await mkdtemp(join(temporaryRoot, "ag-")));
+  root = await realpath(await trackedMkdtemp(join(temporaryRoot, "ag-")));
   workspace = join(root, "workspace");
   home = join(root, "home");
   data = join(root, "data");

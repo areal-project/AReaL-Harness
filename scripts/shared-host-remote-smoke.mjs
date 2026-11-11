@@ -4,7 +4,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, open, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
 import {
@@ -28,7 +29,7 @@ const { GuiHostProjects } = require("../app/src/core/gui-host-projects.cjs");
 const { HostRemote } = require("../app/src/core/host-remote.cjs");
 const { NativeRemote } = require("../app/src/core/native-remote.cjs");
 const WebSocket = require("ws");
-const root = await realpath(await mkdtemp("/tmp/ah-host-remote-"));
+const root = await realpath(await trackedMkdtemp("/tmp/ah-host-remote-"));
 const home = join(root, "host"),
   user = join(root, "user"),
   workspace = join(root, "workspace");

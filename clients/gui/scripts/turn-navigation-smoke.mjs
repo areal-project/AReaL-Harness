@@ -8,7 +8,6 @@ import {
   chmod,
   cp,
   mkdir,
-  mkdtemp,
   readFile,
   readdir,
   realpath,
@@ -16,6 +15,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
@@ -50,7 +50,7 @@ const sha = (value) => createHash("sha256").update(value).digest("hex");
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 await mkdir(join(root, ".scratch/gui-evidence"), { recursive: true });
-const scratch = await mkdtemp(join(root, ".scratch/gui-evidence/turn-navigation-"));
+const scratch = await trackedMkdtemp(join(root, ".scratch/gui-evidence/turn-navigation-"));
 const state = await makeTempDir("atn-");
 await writeFile(join(state, ".owner"), scratch);
 const applicationRoot = join(scratch, "application");

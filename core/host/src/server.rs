@@ -384,18 +384,17 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     storage::write(&directory.join("host.json"), &host.identity)?;
     host.settle_update_start()?;
     let scheduler = schedules::run(host.clone());
-    tokio::pin!(scheduler);
     let connections = schedule_connection::run(host.clone());
-    tokio::pin!(connections);
     let gateway = gateway_owner::run(host.clone());
-    tokio::pin!(gateway);
     let subscriptions = host.run_subscriptions();
-    tokio::pin!(subscriptions);
     let power = power::run(host.clone());
-    tokio::pin!(power);
-    loop {
+    let discovery = crate::service_run::until_discovery_lost(&host.home, &host.identity.generation);
+    tokio::pin!(scheduler, connections, gateway);
+    tokio::pin!(subscriptions, power, discovery);
+    let orphaned = loop {
         tokio::select! {
-            _=host.exit.notified()=>break,
+            _=host.exit.notified()=>break false,
+            _=&mut discovery=>break true,
             result=&mut restoring_subscriptions, if restoring=> {
                 result?;
                 restoring = false;
@@ -409,7 +408,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
             _=&mut power=>unreachable!("power protection lives with the Host"),
             connection=listener.accept()=> {let (stream,_)=connection?;let host=host.clone();tokio::task::spawn_local(async move {let _=connection_loop(host,stream).await;});}
         }
-    }
+    };
     drop(loopback);
     host.gateway.workbench.stop_backend().await;
     host.gateway.workbench.stop().await;
@@ -417,6 +416,10 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     host.power.close().await;
     // 系统凭据调用可能仍在等待用户；不能先释放 Host 锁而允许第二写者启动。
     host.migration.vault.close().await;
+    if orphaned {
+        let _ = std::fs::remove_file(socket);
+        return Ok(HostExit::Stopped);
+    }
     std::fs::remove_file(socket)?;
     std::fs::remove_file(directory.join("host.json"))?;
     crate::service_run::ServiceRun::finish(&host.home)?;
@@ -2276,12 +2279,7 @@ impl Host {
                 )
             );
             let operation = self
-                .wait_stop(
-                    &instance,
-                    expected_generation,
-                    &input.request_id,
-                    operation,
-                )
+                .wait_stop(&instance, expected_generation, &input.request_id, operation)
                 .await?;
             return Ok(stop_receipt(id, input.strategy, &operation));
         }

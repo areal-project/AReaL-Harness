@@ -4,7 +4,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
@@ -27,7 +28,7 @@ assert.ok(
   "Use the existing private fixed Core build",
 );
 await mkdir(join(root, ".scratch/gui-feedback-20261020"), { recursive: true });
-const evidence = await mkdtemp(join(root, ".scratch/gui-feedback-20261020/run-"));
+const evidence = await trackedMkdtemp(join(root, ".scratch/gui-feedback-20261020/run-"));
 const scratch = await makeTempDir("af-");
 const workspace = join(scratch, "workspace");
 const userHome = join(scratch, "user");
