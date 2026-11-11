@@ -100,7 +100,7 @@ function fixture(plan = false, file = false, running = false, empty = false, web
     );
   };
   render();
-  return { key, owner, action, render };
+  return { key, owner, action, render, thread };
 }
 
 describe("Composer reading intent across unknown boundaries", () => {
@@ -220,6 +220,38 @@ describe("Composer pending attachment visibility", () => {
 });
 
 describe("Composer receipt before history projection", () => {
+  it("waits for the accepted turn projection before choosing the follow-up destination", async () => {
+    const f = fixture(false, false, false, true);
+    f.action.mockReset().mockResolvedValue({ threadId: "thread" });
+    observed.submit!("first message");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    localStorage.setItem(f.key, "follow-up message");
+    f.render();
+    expect(observed.composer?.disabled).toBe(false);
+    expect(observed.composer?.submitDisabled).toBe(true);
+    await observed.submit!("follow-up message");
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    expect(f.action).toHaveBeenCalledOnce();
+    f.thread.turns.push({
+      id: "accepted-turn",
+      status: "inProgress",
+      configuration: { revision: 1, options: planModeOptions(false) },
+      items: [{ id: "accepted-user", type: "userMessage", text: "first message" }],
+    });
+    setPendingMessage(f.key);
+    f.render();
+    await observed.submit!("follow-up message");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledTimes(2));
+    expect(f.action.mock.calls[1][1]).toMatchObject({
+      enqueue: true,
+      expectedTurnId: "accepted-turn",
+    });
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    setPendingMessage(f.key);
+    readingViews.delete(f.owner);
+  });
+
   it.each([true, false])(
     "keeps the outgoing message until history replaces it (first=%s)",
     async (first) => {

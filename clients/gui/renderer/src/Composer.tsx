@@ -215,6 +215,7 @@ export function Composer({
     configuration.requestId ?? null,
   );
   const pendingMessage = usePendingMessage(key);
+  const awaitingProjection = pendingMessage?.accepted === true;
   const outgoing = busy ? pendingMessage : undefined;
   useEffect(() => {
     // 待提交预览只清空现有编辑器，保留 Enter 发送时的焦点与选区所有权。
@@ -510,7 +511,14 @@ export function Composer({
       return;
     if (desktopUnsupported && !creatingGoal && !queueEditor.edit) return;
     const submittedInput = composerInput(value, files);
-    if (disabled || annotationEditing || invalidAnnotation || sending.has(key)) return;
+    if (
+      disabled ||
+      awaitingProjection ||
+      annotationEditing ||
+      invalidAnnotation ||
+      sending.has(key)
+    )
+      return;
     if (hasMissingComposerFiles(files)) {
       setAdmissionError(t("chat.composer.missingAttachmentsBlockSend"));
       return;
@@ -1086,6 +1094,7 @@ export function Composer({
           submitDisabled={
             workspaceReferencePending ||
             disabled ||
+            awaitingProjection ||
             (desktopUnsupported && !queueEditor.edit && !creatingGoal) ||
             (readOnly && creatingGoal) ||
             (taskManagement && !!running) ||
@@ -1437,6 +1446,7 @@ export function Composer({
                   aria-describedby={desktopUnsupported ? compatibilityDescription : undefined}
                   disabled={
                     disabled ||
+                    awaitingProjection ||
                     desktopUnsupported ||
                     taskManagement ||
                     (readOnly && creatingGoal) ||
