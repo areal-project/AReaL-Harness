@@ -46,7 +46,7 @@ jobs:
   host-protocol:
     name: Host protocol and desktop boundaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -59,8 +59,14 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.13'
+      # 这里有 GUI 依赖，要它的 Host 用例也在这里编译运行；与 Linux 主机检查共用构建缓存。
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: host-debug-${{ runner.os }}
+          save-if: false
       - name: Check generated contracts and rejection cases
         run: |
+          rustup show
           npm ci --ignore-scripts
           npm install --global pnpm@11.7.0
           pnpm --dir clients/gui install --frozen-lockfile

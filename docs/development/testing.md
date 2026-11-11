@@ -440,7 +440,7 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `python3 scripts/generate-host-protocol.py --check` 比较 schema 生成的 Rust 与 TypeScript 类型，并核对本机、Gateway 和回环方法清单。A0 不接入生产代码；A1 的握手与票据边界开始使用生成类型。现有消息封装与提案分开；结构类型不替代字节预算、授权及可变归属检查。
 
-`make host-protocol-check` 检查生成物、生成器回归和桌面 IPC 冻结反例。CI 还以 PR 基线的完整提交 SHA 运行 `node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base <SHA>`，拒绝新增顶层命令或已有命令下的业务 operation，原生 bridge 通道不在冻结范围内。
+`make host-protocol-check` 检查生成物、生成器回归和桌面 IPC 冻结反例，并运行需要 GUI 依赖的两条用例（生成的 TypeScript 声明、Host 经工作台后台冻结上下文），所以要先装 `clients/gui` 的依赖。CI 还以 PR 基线的完整提交 SHA 运行 `node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base <SHA>`，拒绝新增顶层命令或已有命令下的业务 operation，原生 bridge 通道不在冻结范围内。
 
 Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric=mainBusinessLines --base=<SHA>` 和 `--metric=mainSourceLines` 检查。业务统计默认包含所有 Main 文件，仅排除基线逐路径注明职责的原生文件；混合文件整计为业务的保守上界。两项同时比较基线值和 PR 基点实测，不允许提高基线或通过重新分类隐藏增长。Renderer 的平台边界通过 `pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui` 检查，规则单测与其他 oxlint 规则放在同一测试文件中。
 
