@@ -20,6 +20,8 @@ import {
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
+const { HostClient } = require("@areal/client/node");
+const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const scratch = await makeTempDir("ams-");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
@@ -160,6 +162,7 @@ const coreSha256 = createHash("sha256")
 let app,
   page,
   stoppingAdapter,
+  stoppingHost,
   failure = null,
   passed = false;
 const checks = [],
@@ -426,43 +429,48 @@ async function until(predicate, label) {
   throw new Error(`Timeout: ${label}`);
 }
 async function stopService() {
-  if (stoppingAdapter?.applicationOwner) {
-    await assertApplicationStopped(coreBinary, env, stoppingAdapter);
-    stoppedServices.push({ pid: stoppingAdapter.pid, exited: true });
-    stoppingAdapter = undefined;
-    return;
-  }
-  const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-  const connection = new ServiceConnection();
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  if (!stoppingHost) return;
+  const home = env.AREAL_HARNESS_SERVICE_HOME;
+  const reference = {
+    kind: "stopHost",
+    requestId: randomUUID(),
+    home,
+    hostId: stoppingHost.hostId,
+    generation: stoppingHost.generation,
+    strategy: "cancel",
+  };
+  const suffix = stoppedServices.length;
+  await writeFile(
+    join(scratch, `host-stop-reference-${suffix}.json`),
+    JSON.stringify(reference, null, 2),
+  );
+  const host = new HostClient();
   try {
-    await connection.connect(metadata);
-    const drainDeadline = Date.now() + 15000;
-    for (;;) {
-      try {
-        await connection.request("stopService", { protocol: metadata.protocol }, true);
-        break;
-      } catch (error) {
-        // A known busy rejection has not submitted a stop; let this fixture's requests drain.
-        if (!/请等待已提交操作完成/.test(error.message) || Date.now() >= drainDeadline) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    }
-  } finally {
-    connection.close();
-  }
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
+    await host.connect(home);
+    assert.equal(host.hostId, reference.hostId);
+    assert.equal(host.generation, reference.generation);
+    let receipt;
     try {
-      process.kill(metadata.pid, 0);
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error;
-      stoppedServices.push({ pid: metadata.pid, exited: true });
-      return;
+      receipt = readHostReceipt(
+        reference,
+        await host.stop(reference.requestId, reference.generation, reference.strategy),
+      );
+    } catch {
+      host.close();
+      receipt = await readOfflineHostReceipt(coreBinary, reference);
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await writeFile(
+      join(scratch, `host-stop-${suffix}.json`),
+      JSON.stringify(receipt ?? null, null, 2),
+    );
+    assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
+    await assertApplicationStopped(coreBinary, env, stoppingAdapter);
+    stoppedServices.push({ pid: stoppingHost.pid, exited: true });
+    stoppingHost = undefined;
+    stoppingAdapter = undefined;
+  } finally {
+    host.close();
   }
-  throw new Error(`Isolated backend ${metadata.pid} did not exit`);
 }
 async function launch() {
   app = await electron.launch({
@@ -499,6 +507,12 @@ async function closeGui() {
   const current = app;
   if (!current) return;
   const child = current.process();
+  stoppingHost = await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
   try {
     await closeSmokeApplication(
       {
@@ -2621,11 +2635,11 @@ try {
         .catch((error) => cleanupFailure("destroy failed window", error));
     // 先断开 GUI，避免设置页的刷新请求与安全停止竞争。
     await closeGui().catch((error) => cleanupFailure("close GUI", error));
-    try {
-      await stopService();
-    } catch (error) {
-      cleanupFailure("stop service", error);
-    }
+  }
+  try {
+    await stopService();
+  } catch (error) {
+    cleanupFailure("stop service", error);
   }
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));

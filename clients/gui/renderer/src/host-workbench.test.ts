@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { HostClient } from "@areal/client";
 import { call } from "./services.js";
 import {
@@ -9,6 +9,7 @@ import {
 } from "./host-workbench.js";
 import { hostCommandError } from "./desktop-response.js";
 import type { PlatformServices } from "./services.js";
+import { refreshModelCatalogs } from "./host-auxiliary-reads.js";
 
 function setup(answer: (method: string, params: unknown) => unknown) {
   const calls: Array<[string, unknown]> = [];
@@ -586,6 +587,59 @@ describe("task management Host routing", () => {
 });
 
 describe("provider Host routing", () => {
+  it.each(["list", "saveAndApply"])(
+    "refreshes the same-generation model catalog after providers %s confirms a saved credential",
+    async (operation) => {
+      let saved = false;
+      const query = vi.fn(async () => ({
+        models: [{ providerId: "theta", modelId: "theta-model", available: saved }],
+      }));
+      const status = () => ({
+        revision: saved ? "saved" : "initial",
+        credentialStates: { theta: saved ? "available" : "unavailable" },
+        projects: [{ projectId: "project", applied: saved }],
+      });
+      const client = {
+        writable: () => true,
+        snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+        query,
+        workbench: async (method: string, _params: unknown, commandId?: string) =>
+          method === "providers.read"
+            ? status()
+            : {
+                method,
+                commandId,
+                admissionState: "accepted",
+                submissionUnknown: false,
+                receipt: status(),
+              },
+      } as unknown as HostClient;
+      const routes = createWorkbenchRoutes(
+        client,
+        undefined,
+        undefined,
+        undefined,
+        () => "source",
+      )!;
+      const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
+      const refresh = () =>
+        refreshModelCatalogs(
+          client,
+          [{ projectId: "project", state: "ready", serviceGeneration: "generation" }],
+          catalogs,
+          refresh,
+        );
+      await routes.call("providers", { operation: "list" });
+      refresh();
+      await vi.waitFor(() => expect(query).toHaveBeenCalledOnce());
+      expect(catalogs.get("project")?.value?.models).toMatchObject([{ available: false }]);
+      saved = true;
+      await routes.call("providers", { operation });
+      await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(2));
+      expect(catalogs.get("project")?.value?.models).toMatchObject([{ available: true }]);
+    },
+  );
+
   it("keeps discovery credentials on the managed command route and never exposes revealKey", async () => {
     const calls: Array<{ method: string; params: unknown; commandId?: string }> = [];
     const client = {

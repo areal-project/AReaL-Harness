@@ -394,7 +394,11 @@ export function createWorkbenchRoutes(
         const method = `${domain}.${read ? "read" : "command"}`;
         if (!client.writable(method)) return undefined;
         const payload = params as Parameters<HostClient["workbench"]>[1];
-        if (read) return { value: await client.workbench(method, payload) };
+        if (read) {
+          const value = await client.workbench(method, payload);
+          if (name === "providers") modelServiceObserved(client, value);
+          return { value };
+        }
         backendReady();
         // 保留领域请求 ID；Host commandId 管跨端派发，后台原 journal 管领域生命周期。
         const commandId = crypto.randomUUID();
@@ -415,6 +419,7 @@ export function createWorkbenchRoutes(
             !("receipt" in result)
           )
             throw new Error("操作结果尚未确认，请查询原操作状态");
+          if (name === "providers") modelServiceObserved(client, result.receipt);
           return { value: result.receipt };
         } catch (error) {
           const unknown = !(
