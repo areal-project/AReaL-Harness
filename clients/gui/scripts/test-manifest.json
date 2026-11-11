@@ -953,6 +953,14 @@
     "requires": ["gui-build", "openssl", "node-24.2.0"]
   },
   {
+    "script": "test:relay-legacy-guard",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "lifecycle"],
+    "requires": ["electron"],
+    "notes": "Host passes --areal-relay-legacy-guard (local_relay.rs); the guard keeps the old Desktop singleton lock until the Host pipe closes."
+  },
+  {
     "script": "test:relay-service-ui",
     "layer": "e2e",
     "platformReason": "Uses the macOS fixed Core runner and optional iOS Simulator.",

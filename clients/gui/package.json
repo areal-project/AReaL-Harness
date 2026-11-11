@@ -181,6 +181,7 @@
     "test:mobile-android-storage": "node scripts/mobile-android-storage.mjs",
     "test:relay-service": "node --test scripts/relay-deployment.test.cjs scripts/relay-resources.test.cjs scripts/relay-package.test.cjs scripts/mobile-local-relay.test.mjs && npm --prefix ../../services/remote-relay test",
     "test:relay-service-ui": "node scripts/relay-service-ui-smoke.mjs",
+    "test:relay-legacy-guard": "node --test scripts/relay-legacy-guard.test.cjs",
     "test:conversation-reading": "node scripts/conversation-reading-ui-smoke.mjs && node scripts/send-continuity-ui-smoke.mjs",
     "test:tool-detail-ui": "node scripts/tool-detail-ui-smoke.mjs",
     "test:snapshots": "AREAL_SNAPSHOTS_REGRESSION=1 node scripts/composer-smoke.mjs",
