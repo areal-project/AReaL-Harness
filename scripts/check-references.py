@@ -148,9 +148,19 @@ def missing_doc_paths(files):
                     continue
                 if not any(
                     candidate.endswith("/" + token) or candidate == token for candidate in suffixes
-                ):
+                ) and not ignored(token):
                     problems.append(f"{path}: 反引号路径不存在：{token}")
     return problems
+
+
+def ignored(path):
+    """.gitignore 里的生成物在干净检出上不存在，文档引用它不算断链。"""
+    return (
+        subprocess.run(
+            ["git", "check-ignore", "-q", "--no-index", path], cwd=ROOT, check=False
+        ).returncode
+        == 0
+    )
 
 
 def orphan_scripts(files):

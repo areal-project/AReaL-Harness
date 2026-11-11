@@ -34,6 +34,15 @@ class TransitionalChecks(unittest.TestCase):
         with patch("builtins.print"):
             return checks.main()
 
+    def test_business_words_and_vendored_bundles_are_not_transitional(self):
+        source = "const coreIncompatible = true;\nconst compatibility = 1;\n"
+        self.assertEqual(self.run_check(source, {}), 0)
+        self.assertEqual(self.run_check("fn compat_read() {}\n", {}), 1)
+        (self.root / "core/vendor").mkdir(parents=True)
+        (self.root / "core/vendor/lib.js").write_text("var legacy = 1;\n")
+        (self.root / "core/app.min.js").write_text("var legacy = 1;\n")
+        self.assertEqual(self.run_check("", {}), 0)
+
     def test_unmarked_legacy_name_beyond_baseline_fails(self):
         self.assertEqual(self.run_check("fn legacy_read() {}\n", {}), 1)
         self.assertEqual(self.run_check("fn legacy_read() {}\n", {"core/read.rs": 1}), 0)

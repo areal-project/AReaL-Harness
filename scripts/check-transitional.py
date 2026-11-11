@@ -24,9 +24,10 @@ BASELINE = ROOT / "scripts/check-transitional-baseline.json"
 SUFFIXES = (".rs", ".ts", ".tsx", ".cjs", ".mjs", ".js")
 # 测试、夹具、生成物和脚本不算产品代码：旧数据夹具本来就该叫 legacy。
 SKIP = re.compile(
-    r"(^|/)(node_modules|dist|build|generated|fixtures|tests?|scripts)/|\.test\.|_tests?\.rs$"
+    r"(^|/)(node_modules|dist|build|generated|fixtures|tests?|scripts|vendor)/|\.test\.|_tests?\.rs$|\.min\.js$"
 )
-NAME = re.compile(r"legacy|compat", re.I)
+# incompatible / compatibility 是业务词（如 coreIncompatible），不是兼容层。
+NAME = re.compile(r"legacy|(?<!in)compat(?!ib)", re.I)
 MARK = re.compile(r"过渡：.*?(\d+\.\d+\.\d+)")
 
 
