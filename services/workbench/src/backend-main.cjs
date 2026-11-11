@@ -70,6 +70,12 @@ const domains = {
   "manage.command": "manage",
 };
 
+// Core 保证没有变更的拒绝（outcome 为 rejected/noMutation）按原因给业务码，界面不必按“结果未知”核对。
+const coreRejectionCodes = { [-32009]: "TARGET_CHANGED", [-32004]: "RESOURCE_UNAVAILABLE" };
+/** @param {any} error */
+const rejectedCoreCode = (error) =>
+  ["rejected", "noMutation"].includes(error?.outcome?.kind) ? error.code : undefined;
+
 // 与 Host 的 error_code 白名单一致；未知内部错误仍使用原来的兜底，不回传异常详情。
 const businessErrorCodes = new Set([
   "INVALID_PARAMS",
@@ -551,6 +557,8 @@ async function start({ input, output }) {
                   ? { code: "SUBMISSION_UNKNOWN" }
                   : businessErrorCodes.has(error?.code)
                     ? { code: error.code }
+                    : coreRejectionCodes[rejectedCoreCode(error)]
+                      ? { code: coreRejectionCodes[rejectedCoreCode(error)] }
                     : request.method === "desktop.command"
                       ? {
                           code: "COMMAND_FAILED",

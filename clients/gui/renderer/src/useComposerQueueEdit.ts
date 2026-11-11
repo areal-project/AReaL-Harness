@@ -1,5 +1,6 @@
 import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadState.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
+import { wasReported } from "./errors/reported.js";
 import type { Attachment } from "./services.js";
 import type { QueueEditInput } from "./Queue.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
@@ -99,7 +100,9 @@ export function useComposerQueueEdit({
     !!edit &&
     edit.phase === "editing" &&
     (!item || item.status !== "pending" || queue?.revision !== edit.revision || !queue?.paused);
-  const feedback = edit?.unknown
+  // 请求发出前就记下了原编号；还在等回复时不算“结果未知”，等到回复确实没回来才提示。
+  const unconfirmed = !!edit?.unknown && !busy;
+  const feedback = unconfirmed
     ? "队列操作结果尚未确认，编辑内容已保留，不会自动重发。"
     : conflict
       ? "队列或消息已有更新，编辑内容已保留。请取消编辑后核对当前队列；不会覆盖新版本或自动继续。"
@@ -199,7 +202,7 @@ export function useComposerQueueEdit({
         ? { unknown: { requestId: cause.requestId, operation } }
         : {}),
     });
-    if (owner.current) setError(currentErrorText(cause));
+    if (owner.current && !wasReported(cause)) setError(currentErrorText(cause));
   };
   const begin = async (target: Data) => {
     if (edit || busy || pending || annotationBlocked || !connected || target.status !== "pending")
@@ -220,10 +223,12 @@ export function useComposerQueueEdit({
     draftFiles.set(backupKey, draftFiles.get(draftKey) ?? []);
     setBusy(true);
     setError("");
+    let settled = false;
     try {
       const paused = queue.paused
         ? await readAction("queue", { projectId: project.id, threadId })
         : await mutation(record, { operation: "pause" });
+      settled = true;
       if (
         paused.revision !== record.revision + (record.wasPaused ? 0 : 1) ||
         paused.items.find((row: Data) => row.id === target.id)?.status !== "pending"
@@ -231,7 +236,11 @@ export function useComposerQueueEdit({
         throw new Error("暂停时队列已有更新，原草稿已保留，请取消后重新核对");
       enter(record, paused, target.input);
     } catch (cause) {
-      unknown(record, cause as Error, "pause");
+      const failure = cause as Error & { submissionUnknown?: boolean };
+      // 暂停被明确拒绝时什么都没发生：直接回到原草稿，不把人留在打不开的编辑状态里。
+      if (!settled && !failure.submissionUnknown)
+        restoreLocal(record, wasReported(failure) ? "" : currentErrorText(failure));
+      else unknown(record, failure, "pause");
     } finally {
       setBusy(false);
     }
@@ -374,6 +383,7 @@ export function useComposerQueueEdit({
     busy,
     conflict,
     feedback,
+    unconfirmed,
     begin,
     save,
     cancel,

@@ -2,6 +2,8 @@ import { Button, Textarea } from "@areal/ui";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { useState } from "react";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { FeedbackNotice } from "./FeedbackNotice.js";
+import { wasReported } from "./errors/reported.js";
 import type { Data, Action, CommandParams } from "./services.js";
 
 export type QueueEditInput = {
@@ -84,11 +86,12 @@ export function Queue({
       if (request.operation === "update") setDraft(null);
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
-      setError(
-        failure.submissionUnknown
-          ? "队列操作结果尚未确认，不会自动重发。请核对原队列。"
-          : currentErrorText(failure),
-      );
+      if (!wasReported(failure))
+        setError(
+          failure.submissionUnknown
+            ? t("recovery.operationUnconfirmed")
+            : currentErrorText(failure),
+        );
     } finally {
       setBusy(false);
     }
@@ -132,7 +135,9 @@ export function Queue({
               : queue.pauseReason}
         </p>
       )}
-      {reason && <p role="alert">{reason}</p>}
+      {reason && (
+        <FeedbackNotice transient tone="error" message={reason} onDismiss={() => setError("")} />
+      )}
       {queue.items.length === 0 && <p>任务运行中可以继续发送消息，消息将在这里排队。</p>}
       {queue.items.map((item: Data) => {
         const position = pending.findIndex((entry: Data) => entry.id === item.id);

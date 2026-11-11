@@ -28,7 +28,16 @@ const LEGACY_READ_METHODS = new Set([
   "areal/side/context/read",
 ]);
 
-export function requestFailure(message, request, code, { cause, data, received = false } = {}) {
+/** 请求没有离开本进程时传给 requestFailure 的选项。 */
+export const UNSENT = { unsent: true };
+
+/** unsent：请求没有离开本进程（连接未就绪），写操作也保证没有变更，不算“结果未知”。 */
+export function requestFailure(
+  message,
+  request,
+  code,
+  { cause, data, received = false, unsent = false } = {},
+) {
   const readOnly = request.effect === "read" || request.effect === "subscription";
   const operation = {
     method: request.method,
@@ -38,7 +47,7 @@ export function requestFailure(message, request, code, { cause, data, received =
   const known = ["noMutation", "rejected", "admitted", "unconfirmed"].includes(data?.outcome?.kind);
   const outcome = known
     ? data.outcome
-    : readOnly
+    : readOnly || unsent
       ? { kind: "noMutation" }
       : { kind: "unconfirmed", operation };
   const retryRead =
@@ -51,12 +60,14 @@ export function requestFailure(message, request, code, { cause, data, received =
             ? retryRead
               ? "retryRead"
               : "none"
-            : request.requestId
-              ? "queryOriginal"
-              : "needsUser",
+            : unsent
+              ? "none"
+              : request.requestId
+                ? "queryOriginal"
+                : "needsUser",
         };
   return new CoreRpcError(message, {
-    code: received || readOnly ? code : "RESPONSE_UNKNOWN",
+    code: received || readOnly || unsent ? code : "RESPONSE_UNKNOWN",
     method: request.method,
     cause,
     data: {
@@ -90,6 +101,8 @@ export class CoreRpcError extends Error {
     this.data = data;
     this.reason = data?.reason;
     this.outcome = data?.outcome;
+    // Core 保证没有变更（明确拒绝、请求没发出去）：结果已知，调用方不得再标成“结果未知”。
+    this.settled = ["rejected", "noMutation"].includes(data?.outcome?.kind);
     this.recovery = data?.recovery;
     this.requestId = data?.outcome?.operation?.requestId ?? data?.requestId;
     this.delivery = data?.delivery;

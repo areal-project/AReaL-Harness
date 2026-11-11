@@ -325,7 +325,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       return result;
     } catch (cause) {
       const error = submissionError(cause);
-      if (typeof error.code !== "number" || error.code === -32603) {
+      if (!error.settled && (typeof error.code !== "number" || error.code === -32603)) {
         error.submissionUnknown = true;
         error.message = `操作结果待核对，不会自动重发。${String(error.message)}`;
       }
@@ -387,7 +387,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       );
     } catch (cause) {
       const error = submissionError(cause);
-      if (typeof error.code !== "number" || error.code === -32603) {
+      if (!error.settled && (typeof error.code !== "number" || error.code === -32603)) {
         error.submissionUnknown = true;
         error.message = `维护操作结果待核对，不会自动重发。${String(error.message)}`;
       }
@@ -445,7 +445,7 @@ async function executeManagement(backend, project, rawRequest, context = {}) {
       return await current.request("areal/thread/closeResources", { threadId: request.threadId });
     } catch (cause) {
       const error = submissionError(cause);
-      if (typeof error.code !== "number" || error.code === -32603) error.submissionUnknown = true;
+      if (!error.settled && (typeof error.code !== "number" || error.code === -32603)) error.submissionUnknown = true;
       throw error;
     }
   }

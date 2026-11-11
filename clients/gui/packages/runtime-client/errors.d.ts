@@ -11,10 +11,16 @@ export function requestIdentity(
   params: object,
   capabilities?: import("./core.js").CoreClient["capabilities"],
 ): RequestIdentity;
+export const UNSENT: { unsent: true };
 export function requestFailure(
   message: string,
   request: RequestIdentity,
   code: string | number | undefined,
-  options?: { cause?: unknown; data?: Record<string, unknown>; received?: boolean },
+  options?: {
+    cause?: unknown;
+    data?: Record<string, unknown>;
+    received?: boolean;
+    unsent?: boolean;
+  },
 ): import("./core.js").CoreRpcError;
 export function responseTooLarge(): import("./core.js").CoreRpcError;

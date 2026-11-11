@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { rawText } from "../errors/errorCopy.js";
+import { markReported } from "../errors/reported.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { call, type Action, type Data, type PlatformServices, type Snapshot } from "../services.js";
 import {
@@ -191,6 +192,7 @@ export function useRecoveryNotices(
             const pendingOperation = latest?.pending?.find(
               (entry: Data) => entry.params?.requestId === requestId,
             )?.operation;
+            markReported(failure);
             setNotices((previous) => [
               ...previous.filter((notice) => notice.id !== id),
               {
@@ -199,7 +201,7 @@ export function useRecoveryNotices(
                 requestId,
                 operation: operation ?? pendingOperation,
                 kind: unconfirmed ? "unconfirmed" : "error",
-                message: recoveryMessage(failure),
+                message: recoveryMessage(failure, "operation", t),
                 settings: recoverySettings(failure),
                 detail: [rawText(failure), failure.code, failure.reason, operation?.method]
                   .filter((value) => value !== undefined)
@@ -211,7 +213,7 @@ export function useRecoveryNotices(
         throw cause;
       }
     },
-    [services, selection.projectId, selection.threadId],
+    [services, selection.projectId, selection.threadId, t],
   );
   return { operationNotices, dismissedNotices, dismissNotice, setError, action };
 }

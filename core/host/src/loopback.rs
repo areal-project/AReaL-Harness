@@ -882,14 +882,9 @@ fn loopback_error(request: &Value, error: &anyhow::Error) -> Value {
         )
     ) {
         value["commandId"] = request["commandId"].clone();
-        value["submissionUnknown"] = json!(!matches!(
-            code,
-            "FORBIDDEN"
-                | "INVALID_PARAMS"
-                | "COMMAND_CONFLICT"
-                | "CAPABILITY_UNAVAILABLE"
-                | "LIMIT_EXCEEDED"
-        ));
+        value["submissionUnknown"] = json!(
+            !(super::gateway_owner::settled_failure(code) || code == "CAPABILITY_UNAVAILABLE")
+        );
     } else if request["method"] == "providers.read" {
         value["submissionUnknown"] = json!(false);
     }
