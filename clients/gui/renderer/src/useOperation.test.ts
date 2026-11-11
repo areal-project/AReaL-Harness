@@ -11,6 +11,9 @@ vi.mock("react", () => ({
   useRef: (value: unknown) => (hook.ref ??= { current: value }),
   useCallback: (callback: unknown) => callback,
 }));
+vi.mock("./errors/currentErrorText.js", () => ({
+  currentErrorText: (cause: unknown) => (cause as Error).message,
+}));
 
 it("maps a lost response to unknown and a refusal to failed", () => {
   expect(operationFailure(Object.assign(new Error("lost"), { submissionUnknown: true }))).toEqual({

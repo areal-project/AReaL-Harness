@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { currentErrorText } from "./errors/currentErrorText.js";
 
 // 一次用户操作的显式状态。unknown 表示已发出但结果未确认：只能核对，不能自动重发。
 export type OperationStatus = "idle" | "running" | "succeeded" | "failed" | "unknown";
@@ -6,7 +7,10 @@ export type OperationState = { status: OperationStatus; message?: string };
 
 export function operationFailure(cause: unknown): OperationState {
   const failure = cause as Error & { submissionUnknown?: boolean };
-  return { status: failure.submissionUnknown ? "unknown" : "failed", message: failure.message };
+  return {
+    status: failure.submissionUnknown ? "unknown" : "failed",
+    message: currentErrorText(cause),
+  };
 }
 
 export function useOperation(initial: OperationState = { status: "idle" }) {
