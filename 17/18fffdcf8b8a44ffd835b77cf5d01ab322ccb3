@@ -1,0 +1,31 @@
+core/engine/src/tools/registry.rs
+  s_bf83cab8355b2b::t_13bf2ddb860981 78-79,90
+docs/guides/tools.md
+  s_bf83cab8355b2b::t_317d87d39cce08 108-109
+docs/guides/tools.en.md
+  s_bf83cab8355b2b::t_317d87d39cce08 105-106
+core/engine/src/tools/results.rs
+  s_bf83cab8355b2b::t_13bf2ddb860981 419-421,423-450,472-481,486-508
+  s_bf83cab8355b2b::t_317d87d39cce08 482-485,791-793
+  s_bf83cab8355b2b::t_b1db7aa4eeb02a 964-977,985-992,999-1013,1017,1021,1026-1032,1038-1039
+  s_bf83cab8355b2b::t_acb4d69f7532b5 978-984,993-998,1014-1016,1018-1020,1022-1025,1033-1037
+  s_bf83cab8355b2b::t_a91d62508d8026 757-758,795-798,807-810,828-831,838-840,846-851,854-858,868-875,884-886,890-914,924-931,935-939,944-947,949-956
+  s_bf83cab8355b2b::t_0857e683f2aa52 749-756,759-790,794,799-806,811-827,832-837,841-845,852-853,859-867,876-883,887-889,915-923,932-934,940-943,948,957-963
+  s_bf83cab8355b2b::t_9b912dc50ae4e7 509-510
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1718fffdcf8b8a44ffd835b77cf5d01ab322ccb3",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
