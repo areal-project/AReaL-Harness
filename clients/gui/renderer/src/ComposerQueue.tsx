@@ -155,9 +155,7 @@ export function ComposerQueue({
     project.state?.connected === true,
     reconcile,
     () => {
-      localStorage.removeItem(operationKey);
       setUnresolved(unknown?.requestId ?? null);
-      setUnknown(null);
     },
   );
   const move = (id: string, offset: number) => {
@@ -188,7 +186,18 @@ export function ComposerQueue({
       onDismiss={() => setUnresolved(null)}
     />
   );
-  if (!queue || (!items.length && !error && !unresolved)) return null;
+  const checkOriginal = unknown && (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={busy || !project.state?.connected}
+      onClick={() => void reconcile()}
+    >
+      {t("recovery.checkOriginal")}
+    </Button>
+  );
+  if (!queue || (!items.length && !error && !unresolved && !unknown)) return null;
   if (!items.length)
     return (
       <div className="composer-queue-feedback">
@@ -196,10 +205,12 @@ export function ComposerQueue({
           <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
         )}
         {unresolvedNotice}
+        {checkOriginal}
       </div>
     );
   return (
     <section className="composer-queue" aria-label="待发送消息">
+      {checkOriginal}
       {queue.paused && items.length > 0 && (
         <div className="composer-queue-pause">
           <Pause size={12} />

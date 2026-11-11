@@ -789,9 +789,13 @@ try {
     .toString()
     .split("\0")
     .filter(Boolean)) {
-    sourceFiles[path] = createHash("sha256")
-      .update(await readFile(join(root, path)))
-      .digest("hex");
+    sourceFiles[path] = await readFile(join(root, path)).then(
+      (bytes) => createHash("sha256").update(bytes).digest("hex"),
+      (failure) => {
+        if (failure.code !== "ENOENT") throw failure;
+        return null;
+      },
+    );
   }
   const diff = execFileSync("git", ["diff", "--binary", "HEAD"], { cwd: root });
   await writeFile(

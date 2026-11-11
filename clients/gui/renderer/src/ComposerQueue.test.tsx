@@ -4,6 +4,12 @@ import { ComposerQueue } from "./ComposerQueue.js";
 import type { Action } from "./services.js";
 
 const hooks = vi.hoisted(() => ({ slots: [] as unknown[], cursor: 0 }));
+const recovery = vi.hoisted(() => ({ giveUp: undefined as (() => void) | undefined }));
+vi.mock("./errors/autoReconcile.js", () => ({
+  useAutoReconcile: (_id: unknown, _enabled: unknown, _run: unknown, giveUp: () => void) => {
+    recovery.giveUp = giveUp;
+  },
+}));
 vi.mock("react", async (importOriginal) => ({
   ...(await importOriginal<typeof import("react")>()),
   // 组件在这里被当作函数直接调用，没有渲染器；自动核对的副作用不在本测试范围内。
@@ -90,4 +96,37 @@ it("waits for a confirmed queue revision before applying another order to its pr
     expectedRevision: 2,
     queueItemIds: ["1", "2", "3"],
   });
+});
+
+it("keeps the original queue request locked after automatic checks give up", () => {
+  const projectId = crypto.randomUUID();
+  const requestId = crypto.randomUUID();
+  const key = `areal-gui:draft:${projectId}:thread:queue-operation`;
+  localStorage.setItem(key, JSON.stringify({ requestId, operation: "reorder" }));
+  const project = {
+    id: projectId,
+    state: { connected: true, queues: { thread: queue(1, ["1", "2"]) } },
+  };
+  const action = vi.fn<Action>();
+  const render = () => {
+    hooks.cursor = 0;
+    return grips(
+      ComposerQueue({
+        project,
+        thread: { id: "thread", turns: [] },
+        disabled: false,
+        action: action as Action,
+        onEdit: vi.fn(),
+      }),
+    );
+  };
+  expect(render().every((button) => button.disabled)).toBe(true);
+  recovery.giveUp?.();
+  expect(render().every((button) => button.disabled)).toBe(true);
+  expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+    requestId,
+    operation: "reorder",
+  });
+  expect(action).not.toHaveBeenCalled();
+  localStorage.removeItem(key);
 });

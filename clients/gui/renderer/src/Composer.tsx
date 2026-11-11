@@ -524,22 +524,8 @@ export function Composer({
       await readAction("reconcile", { projectId: project.id }).catch(() => {});
     },
     () => {
-      // 查不出来就到此为止：输入保留、解锁，只提示一次，由人看过对话后决定要不要再发。
-      const turnStart = readingViews.get(
-        JSON.stringify([project.id, thread.id, false]),
-      )?.pendingTurnStart;
-      if (turnStart?.requestId === unknown) cancelTurnStart(turnStart);
-      for (const suffix of [
-        "pending",
-        "pending-operation",
-        "pending-goal",
-        "pending-continue",
-        "pending-configure",
-      ])
-        composerDraftStorage.removeItem(`${key}:${suffix}`);
-      window.dispatchEvent(new Event("areal-snapshot-drain"));
+      // 自动核对结束只提示；原身份和草稿仍由权威回执结算。
       setUnresolved(unknown);
-      setUnknown(null);
     },
   );
   useEffect(() => {
@@ -1248,6 +1234,17 @@ export function Composer({
                   message={t("recovery.operationUnresolved")}
                 />
               )}
+              {queueEditor.unconfirmed && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={queueEditor.busy || !project.state?.connected}
+                  onClick={() => void queueEditor.reconcile()}
+                >
+                  {t("recovery.checkOriginal")}
+                </Button>
+              )}
               {!queueEditor.edit && (
                 <ConversationSelectionReferences
                   references={references}
@@ -1351,6 +1348,22 @@ export function Composer({
           )}
           leadingActions={
             <>
+              {unknown && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!project.state?.connected}
+                  onClick={() =>
+                    void readAction("reconcile", {
+                      projectId: project.id,
+                      requestId: unknown,
+                    }).catch(() => {})
+                  }
+                >
+                  {t("recovery.checkOriginal")}
+                </Button>
+              )}
               {!readOnly && (
                 <ComposerPermissionMenu
                   value={executionPermission}

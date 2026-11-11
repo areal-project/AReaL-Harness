@@ -11,10 +11,9 @@ export function composerPending(
     entry.method === "areal/thread/configure" && entry.awaitingResponse === true;
   return {
     configuring: configurationRequestId !== null || owned.some(saving),
-    // unresolved：后台已多次核对仍查不到回执，这条提交不再锁输入。
+    // 查不到回执不能证明未受理，仍保留同一会话的提交屏障。
     pending: owned.some(
-      (entry) =>
-        entry.params?.requestId !== configurationRequestId && !saving(entry) && !entry.unresolved,
+      (entry) => entry.params?.requestId !== configurationRequestId && !saving(entry),
     ),
   };
 }

@@ -379,11 +379,8 @@ export function useComposerQueueEdit({
   };
   useAutoReconcile(unconfirmed ? edit?.unknown?.requestId : null, connected, reconcile, () => {
     if (!edit) return;
-    // 查不出来就到此为止：正在编辑的内容留着，其余情况回到原草稿，只提示一次。
-    const record = { ...edit, unknown: undefined };
+    // 自动核对结束只提示，保留原请求与编辑草稿等待权威结果。
     setUnresolved(edit.unknown?.requestId ?? null);
-    if (edit.unknown?.operation === "update") saveRecord(record);
-    else restoreLocal(record);
   });
   return {
     edit,

@@ -43,7 +43,7 @@ describe("Composer configuration admission", () => {
         "chat",
         null,
       ),
-    ).toEqual({ configuring: false, pending: false });
+    ).toEqual({ configuring: false, pending: true });
     expect(
       composerPending(
         [configure, { method: "turn/start", params: { threadId: "chat", requestId: "send" } }],

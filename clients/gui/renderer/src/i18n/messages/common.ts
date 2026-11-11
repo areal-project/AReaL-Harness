@@ -599,12 +599,12 @@ export const commonMessages = {
     en: "The send result is not confirmed yet. Your draft is saved while we check the original request.",
   },
   "recovery.sendUnresolved": {
-    "zh-CN": "没能确认是否已发送，输入已保留，请先看一下对话。",
-    en: "We couldn't confirm whether this was sent. Your draft is kept. Check the conversation before sending again.",
+    "zh-CN": "尚未确认是否已发送，输入和原请求已保留，确认结果后才能继续发送。",
+    en: "We couldn't confirm whether this was sent. Your draft and original request are kept until the result is confirmed.",
   },
   "recovery.operationUnresolved": {
-    "zh-CN": "没能确认这次操作是否生效，请以当前显示的状态为准。",
-    en: "We couldn't confirm whether this took effect. The state shown now is current.",
+    "zh-CN": "尚未确认操作结果，原请求已保留，请等待核对。",
+    en: "We couldn't confirm the result. The original request is kept while it is reconciled.",
   },
   "recovery.createUnconfirmed": {
     "zh-CN": "任务创建结果待确认。",

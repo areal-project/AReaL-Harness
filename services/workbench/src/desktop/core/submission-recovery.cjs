@@ -6,7 +6,6 @@ const {
   submissionKey,
   sameSubmission,
   isAwaitingResponse,
-  isUnresolved,
   noteReconcileRead,
   parsePendingSubmissions,
   parseSubmissionOutcomes,
@@ -542,8 +541,7 @@ class SubmissionRecovery {
             (value) =>
               !isRemoteControl(value) &&
               value.params.threadId === parameters.threadId &&
-              !(value.remote && value.operationId && outcomes[value.operationId]?.remote) &&
-              !isUnresolved(project, value),
+              !(value.remote && value.operationId && outcomes[value.operationId]?.remote),
           )
         )
           throw Object.assign(new Error("此会话上一次操作还在确认"), { code: "RESOURCE_BUSY" });
