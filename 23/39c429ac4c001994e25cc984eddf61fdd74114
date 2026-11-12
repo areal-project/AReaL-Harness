@@ -1,0 +1,25 @@
+integrations/gameagent/README.en.md
+  s_f0b7318bf98084::t_666ec0dd0dbd0b 15
+  s_f0b7318bf98084::t_b8418dec0d0123 18
+integrations/gameagent/README.md
+  s_f0b7318bf98084::t_b8418dec0d0123 15,18
+integrations/gameagent/requirements.txt
+  s_f0b7318bf98084::t_666ec0dd0dbd0b 5
+  s_f0b7318bf98084::t_b8418dec0d0123 1-4,6-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2339c429ac4c001994e25cc984eddf61fdd74114",
+  "prompts": {},
+  "sessions": {
+    "s_f0b7318bf98084": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d080-b4c3-7ed0-91bb-6cf2f4aefe98",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
