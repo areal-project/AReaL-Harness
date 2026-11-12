@@ -1278,15 +1278,22 @@ try {
       );
       assert.equal(await readFile(join(workspace, "approved.txt"), "utf8"), "approved once");
       await send("需要问答");
+      const questionTurnId = current(await state()).turns.at(-1).id;
       await page.getByRole("radio", { name: /最小修改/ }).click();
       await page
         .getByRole("region", { name: "需要你的回答", exact: true })
         .getByRole("button", { name: "发送", exact: true })
         .click();
-      await waitForSnapshot(
-        (s) => current(s).turns.at(-1)?.status === "completed",
-        "question resumed",
-      );
+      await waitForSnapshot(async () => {
+        const record = JSON.parse(
+          await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
+        );
+        const turn = record.thread.turns.at(-1);
+        return turn?.id === questionTurnId && turn.status === "completed";
+      }, "question resumed");
+      await page
+        .locator(`[data-turn-id="${questionTurnId}"][data-turn-status="completed"]`)
+        .waitFor();
       checks.push("tool approval executes filesystem write; question reply resumes same turn");
       await send("等待停止");
       await waitForSnapshot((s) => current(s).turns.at(-1)?.status === "inProgress", "running");
@@ -1529,6 +1536,7 @@ try {
         "background started",
       );
       const turnCount = current(await state()).turns.length;
+      const backgroundTurnId = current(await state()).turns.at(-1).id;
       const requestCount = received.length;
       const adapter = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
       const applicationPid = app.process().pid;
@@ -1537,11 +1545,20 @@ try {
       process.kill(adapter.pid, 0);
       finishBackground();
       await revealWindow();
-      await waitForSnapshot(
-        (s) => project(s)?.state?.connected && current(s)?.turns.at(-1)?.status === "completed",
-        "recover after window close",
-      );
-      assert.equal(current(await state()).turns.length, turnCount);
+      await waitForSnapshot(async (s) => {
+        const record = JSON.parse(
+          await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
+        );
+        return (
+          project(s)?.state?.connected &&
+          record.thread.turns.length === turnCount &&
+          record.thread.turns.at(-1)?.id === backgroundTurnId &&
+          record.thread.turns.at(-1)?.status === "completed"
+        );
+      }, "recover after window close");
+      await page
+        .locator(`[data-turn-id="${backgroundTurnId}"][data-turn-status="completed"]`)
+        .waitFor();
       assert.equal(received.length, requestCount);
       assert.equal(await input().textContent(), "保留未发送草稿");
       await shot("07-background-recovered");
@@ -1618,12 +1635,21 @@ try {
         "Host retains the same subscription transport",
       );
       await send("适配器重连后继续");
-      await waitForSnapshot(
-        (s) =>
-          current(s).turns.length === turnCount + 1 &&
-          current(s).turns.at(-1)?.status === "completed",
-        "continued after adapter exit",
-      );
+      let continuedTurn;
+      await waitForSnapshot(async () => {
+        const record = JSON.parse(
+          await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
+        );
+        continuedTurn = record.thread.turns.at(-1);
+        return (
+          record.thread.turns.length === turnCount + 1 &&
+          continuedTurn?.id !== backgroundTurnId &&
+          continuedTurn?.status === "completed"
+        );
+      }, "continued after adapter exit");
+      await page
+        .locator(`[data-turn-id="${continuedTurn.id}"][data-turn-status="completed"]`)
+        .waitFor();
       const publicState = JSON.stringify(await state());
       assert.ok(!publicState.includes(transport.token));
       assert.ok(!publicState.includes(adapter.token));
