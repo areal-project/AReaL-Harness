@@ -3,7 +3,7 @@ import { desktopBridge } from "./support/desktop-fixture.mjs";
 import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -162,6 +162,7 @@ const coreSha256 = createHash("sha256")
   .digest("hex");
 let app,
   page,
+  coreReader,
   stoppingAdapter,
   stoppingHost,
   failure = null,
@@ -420,6 +421,8 @@ async function showModel(name) {
 }
 async function stopService() {
   console.log("[model-selection] stopping isolated Host");
+  await coreReader?.close();
+  coreReader = undefined;
   if (!stoppingHost) return;
   const home = env.AREAL_HARNESS_SERVICE_HOME;
   const reference = {
@@ -462,6 +465,21 @@ async function stopService() {
   } finally {
     host.close();
   }
+}
+async function readCoreThread(threadId) {
+  if (!coreReader) {
+    const root = join(env.AREAL_HARNESS_SERVICE_HOME, "services");
+    const services = [];
+    for (const directory of await readdir(root)) {
+      const descriptor = JSON.parse(await readFile(join(root, directory, "service.json"), "utf8"));
+      if (descriptor.workspace === workspace && descriptor.state === "ready")
+        services.push(descriptor);
+    }
+    assert.equal(services.length, 1, "one isolated Core owns the workspace");
+    const { connect } = await import("../../../examples/desktop-api/client.mjs");
+    coreReader = await connect(services[0].endpoint, services[0].authFile);
+  }
+  return (await coreReader.call("thread/read", { threadId, includeTurns: true })).thread;
 }
 async function launch() {
   console.log("[model-selection] launching GUI");
@@ -2305,10 +2323,12 @@ async function runFullModelSelection() {
   assert.equal(await arena.isEnabled(), true);
   await arena.click();
   await page.keyboard.press("Escape");
+  const selectedThreadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+  assert.ok(selectedThreadId);
   await until(
-    (s) =>
-      fixtureProject(s).configurations[Object.keys(fixtureProject(s).state.threads)[0]]?.model
-        ?.providerId === "arena",
+    async () =>
+      (await readCoreThread(selectedThreadId)).desktop?.configuration?.model?.providerId ===
+      "arena",
     "Core accepts Composer model selection",
   );
   await page.getByTestId("chat-input").fill("Use the other configured model");
