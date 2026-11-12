@@ -214,6 +214,8 @@ async fn oversized_goal_summary_drains_usage_before_retry_or_preserving_the_chec
         let limits = Limits {
             context_window_bytes: 2000,
             context_recent_bytes: 256,
+            max_completion_retries: 0,
+            max_empty_completion_retries: 0,
             ..Limits::default()
         };
         let engine = Engine::open(dir.path(), model.clone(), limits).unwrap();
@@ -653,7 +655,11 @@ async fn pause_settles_then_resume_keeps_unknown_reservations_and_clear_keeps_ca
 
 #[tokio::test]
 async fn queued_input_invalidates_completion_and_precedes_automatic_continuation() {
-    let (_dir, e, mut rx) = controlled(Limits::default());
+    let (_dir, e, mut rx) = controlled(Limits {
+        max_completion_retries: 0,
+        max_empty_completion_retries: 0,
+        ..Limits::default()
+    });
     let t = e.create("/workspace".into()).await.unwrap();
     e.goal_create("test".into(), request(&t.id)).await.unwrap();
     next(&mut rx).await.report("complete");

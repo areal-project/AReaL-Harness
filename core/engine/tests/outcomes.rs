@@ -52,6 +52,7 @@ async fn terminal_codes_survive_events_storage_and_restart_without_completion_re
         });
         let limits = Limits {
             max_completion_retries: 0,
+            max_empty_completion_retries: 0,
             watchdog_disable: true,
             stream_idle_timeout: Duration::from_millis(idle),
             model_request_timeout: Duration::from_millis(idle),

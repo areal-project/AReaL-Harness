@@ -467,6 +467,7 @@ async fn recovery_hint_survives_request_rebuild_after_compaction() {
         data.path(),
         model.clone(),
         Limits {
+            max_completion_retries: 0,
             max_empty_completion_retries: 1,
             ..limits()
         },

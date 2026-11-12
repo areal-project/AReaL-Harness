@@ -102,9 +102,9 @@ pub struct Limits {
     /// 实验性相同失败调用执行上限；默认 0 不限制。
     pub max_repeated_tool_failures: usize,
     pub command_stdin_closed: bool,
-    /// 实验性空白恢复额度；默认 0 关闭，与一般恢复共享整轮已用计数。
+    /// 空响应恢复上限；默认 3，与一般恢复取较大上限并共享整轮已用计数。
     pub max_empty_completion_retries: usize,
-    /// Total discarded completions that may be retried within one Turn.
+    /// 同一 Turn 的未完成响应恢复上限；默认 3，两个上限均为 0 时关闭。
     pub max_completion_retries: usize,
     /// 显式 Goal 报告阶段的请求轮次上限；默认 0，沿用既有进度保护。
     pub max_goal_report_rounds: usize,
@@ -167,8 +167,8 @@ impl Default for Limits {
             context_reference_tokens: 0,
             max_repeated_tool_failures: 0,
             command_stdin_closed: true,
-            max_empty_completion_retries: 0,
-            max_completion_retries: 0,
+            max_empty_completion_retries: 3,
+            max_completion_retries: 3,
             max_goal_report_rounds: 0,
             goal_recover_unknown_model_usage: false,
             watchdog_disable: false,

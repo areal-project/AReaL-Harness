@@ -261,6 +261,8 @@ async fn reasoning_is_bounded_and_is_not_a_successful_answer() {
             Arc::new(ReasoningOnly),
             Limits {
                 max_output_bytes,
+                max_completion_retries: 0,
+                max_empty_completion_retries: 0,
                 ..Limits::default()
             },
         )

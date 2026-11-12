@@ -47,8 +47,9 @@ mode = "auto"
 # reference_tokens = 8192
 
 [limits]
-# 实验性恢复策略；每次只验证一个假设，保持根预算不变。
-# max_empty_completion_retries = 2
+# 未完成响应与空响应共享每 Turn 的 3 次恢复；严格对照需将两项均设为 0，范围为 0–8。
+# max_completion_retries = 3
+# max_empty_completion_retries = 3
 # max_repeated_tool_failures = 2
 
 [budget]

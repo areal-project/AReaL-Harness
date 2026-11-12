@@ -208,6 +208,7 @@ async fn assert_settlement(outcome: &'static str, ending: Ending) {
         Limits {
             watchdog_disable: true,
             max_completion_retries: 0,
+            max_empty_completion_retries: 0,
             ..Limits::default()
         },
         RuntimeConfig {

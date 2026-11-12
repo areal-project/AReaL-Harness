@@ -28,6 +28,7 @@ fn limits() -> Limits {
     Limits {
         watchdog_disable: true,
         max_completion_retries: 0,
+        max_empty_completion_retries: 0,
         ..Default::default()
     }
 }

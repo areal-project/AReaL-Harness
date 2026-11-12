@@ -914,7 +914,7 @@ mod experiment_tests {
         };
         for enabled in [false, true] {
             let text = if enabled {
-                "schema_version=2\n[context]\nobservation_tokens=4096\nreference_tokens=2048\n[limits]\nmax_empty_completion_retries=1\nmax_repeated_tool_failures=3\n"
+                "schema_version=2\n[context]\nobservation_tokens=4096\nreference_tokens=2048\n[limits]\nmax_completion_retries=2\nmax_empty_completion_retries=1\nmax_repeated_tool_failures=3\n"
             } else {
                 "schema_version=2\n"
             };
@@ -931,12 +931,24 @@ mod experiment_tests {
                 limits.context_reference_tokens,
                 if enabled { 2048 } else { 0 }
             );
-            assert_eq!(limits.max_empty_completion_retries, usize::from(enabled));
+            assert_eq!(limits.max_completion_retries, if enabled { 2 } else { 3 });
+            assert_eq!(
+                limits.max_empty_completion_retries,
+                if enabled { 1 } else { 3 }
+            );
             assert_eq!(
                 limits.max_repeated_tool_failures,
                 if enabled { 3 } else { 0 }
             );
             assert!(limits.command_stdin_closed);
         }
+        std::fs::write(
+            inputs.config_file.as_ref().unwrap(),
+            "schema_version=2\n[limits]\nmax_completion_retries=0\nmax_empty_completion_retries=0\n",
+        )
+        .unwrap();
+        let limits = engine_limits(&areal_config::load_config(&inputs).unwrap());
+        assert_eq!(limits.max_completion_retries, 0);
+        assert_eq!(limits.max_empty_completion_retries, 0);
     }
 }

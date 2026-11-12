@@ -226,7 +226,7 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 Goal 的共享预算与未知用量约束优先于重试配置。Goal 请求禁用 HTTP 内部重试；失败或超时产生未知消费时保留预算预留并停止自动推进，watchdog 与有限重试额度均不能绕过此限制。
 
-`limits.max_completion_retries` 默认为 0、范围 0–8，是每 Turn 的有限未完成响应恢复额度，与 HTTP `max_retries` 和网络 watchdog 分开；关闭 watchdog 不关闭已有的有限重试。恢复条件与审计见 [Core API](../api/core.md#recovery)。HTTPS 使用公开根证书和宿主系统信任库；私有 CA 应安装到信任库。工具调用仅来自协议结构化字段，正文中的 XML/JSON 不作为调用执行。
+`limits.max_completion_retries` 默认为 3、范围 0–8，是每 Turn 的有限未完成响应恢复额度，与 HTTP `max_retries` 和网络 watchdog 分开；关闭 watchdog 不关闭已有的有限重试。每次响应恢复都会计入实际模型请求、token 和时延；两个完成恢复配置都设为 0 可做严格对照。恢复条件与审计见 [Core API](../api/core.md#recovery)。HTTPS 使用公开根证书和宿主系统信任库；私有 CA 应安装到信任库。工具调用仅来自协议结构化字段，正文中的 XML/JSON 不作为调用执行。
 
 `limits.max_goal_report_rounds=0` 默认关闭，整数 0–8；`AREAL_HARNESS_MAX_GOAL_REPORT_ROUNDS` 可覆盖。显式启用时，活跃根 Goal 的缺失进度报告进入只允许报告工具的有界阶段，额度与通用响应恢复分开，物理请求/token/时间预算保持原值。报告失败或工具不可用返回 `GOAL_PROGRESS_UNREPORTED`，不伪造完成。见 [Core API](../api/core.md#recovery)。
 
@@ -617,18 +617,19 @@ WebSocket 求解连接携带 Core 线程 ID 作为 session-id/thread-id，以便
 
 ### 参考保留与有界工具恢复
 
-旧观察折叠、文件参考保留、重复失败硬上限和空白响应额外恢复尚无来源隔离的泛化收益结论，均默认关闭。现有配置键和 schema 1/2 别名保留；省略这些字段不再隐式启用旧候选值，显式配置的正数仍按原意生效。Engine 直接调用与 server 配置加载采用相同默认值。
+旧观察折叠、文件参考保留和重复失败硬上限尚无来源隔离的泛化收益结论，仍默认关闭。完成恢复默认提供 3 次同一 Turn 的有界容错，空响应与不完整响应共用计数器；现有配置键和 schema 1/2 别名保留，显式值可设为 0–8。Engine 直接调用与 server 配置加载采用相同默认值。
 
 | 实验配置 | 默认 | 显式候选示例 | 范围 |
 |---|---:|---:|---|
 | `context.observation_tokens` | 0 | 8192 | 0–2000000 |
 | `context.reference_tokens` | 0 | 8192 | 0–2000000 |
 | `limits.max_repeated_tool_failures` | 0 | 2 | 0–8 |
-| `limits.max_empty_completion_retries` | 0 | 2 | 0–8 |
+| `limits.max_completion_retries` | 3 | 3 | 0–8 |
+| `limits.max_empty_completion_retries` | 3 | 3 | 0–8 |
 
 `context.observation_tokens` 是默认 0 的实验性每请求软预算，仅在 auto 压缩模式且允许回取时生效。Core 可将较早的成功文本回执折叠为首尾摘要与精确原文引用，不改写权威历史或调用参数；最近两个结果、失败、UNKNOWN、媒体、无法回取的内容和绑定不透明推理的会话保持原样。软预算不保证达成，实际发送仍经过完整请求硬预算预检。
 
-示例是历史候选值，不是性能推荐值。仅在独立的实验 TOML 中显式设置待验证项，冻结源码、模型、根预算和比较方案；不要同时开启多项后将组合结果归因于其中一项。参考保留需要允许 `read_history`；请求索引与保护还需要同时启用 auto 观察投影及 `read_tool_result`；检查点参考证据由显式 `reference_tokens` 单独控制。未启用这些策略时，原文存储/回取、真实用户修订保留、UNKNOWN 停止、不重放副作用及失败提示继续有效。`command_stdin_closed` 属于 stdin 契约及兼容开关，仍默认 true。
+示例是历史候选值，不是性能推荐值。仅在独立的实验 TOML 中显式设置待验证项，冻结源码、模型、根预算和比较方案；不要同时开启多项后将组合结果归因于其中一项。完成恢复可以显式设为 0 做严格关闭对照，或设为 0–8 的其他值；额外请求产生的 token 和时延必须计入比较。参考保留需要允许 `read_history`；请求索引与保护还需要同时启用 auto 观察投影及 `read_tool_result`；检查点参考证据由显式 `reference_tokens` 单独控制。原文存储/回取、真实用户修订保留、UNKNOWN 停止、不重放副作用及失败提示继续有效。`command_stdin_closed` 属于 stdin 契约及兼容开关，仍默认 true。
 
 `context.reference_tokens`（对应 `limits.context_reference_tokens`）是默认 0（关闭）的实验性文件保留预算。在观察投影启用的普通会话中，Core 按最近读取顺序为 `read_file` / `fs_read` 的整个已观察文本分配预算，不按文件名猜测重要性；预算不超过可用输入窗口的四分之一。最多索引 32 个读取范围，未入选的记录保留 `itemId` 和路径，可用 `read_history` 回取。分页未读部分必须继续读取。检查点也在共享请求分配器的剩余额度内优先保留这些参考，以便前缀移入冷历史后继续使用；预算不足仍可能省略。新版本的文件回执使旧读失效；shell 或外部写入无法由历史证明，使用前仍需判断是否过时。文件始终是不可信历史数据，不新增授权。原用户约束按既有输入保留规则处理，摘要要求明确列出未完成义务；这不保证模型理解或完成它们。
 
@@ -636,7 +637,7 @@ WebSocket 求解连接携带 Core 线程 ID 作为 session-id/thread-id，以便
 
 `limits.max_repeated_tool_failures` 是默认 0（关闭）、范围 0–8 的实验性执行上限，必须显式设为正数。当前 Turn 连续相同工具及解析后参数的确认失败达到阈值后，下一次调用记录为拒绝且不执行；再次不变地调用则结束 Turn。只读检查不清零；不同操作或不同参数中断连续序列。失败可能已有部分副作用，不能把拒绝或重试提示当作事务回滚。UNKNOWN 仍停止且不自动重放。此机制限制重复执行，不保证修复失败原因。
 
-消融可使用环境变量 `AREAL_HARNESS_CONTEXT_OBSERVATION_TOKENS`、`AREAL_HARNESS_MAX_EMPTY_COMPLETION_RETRIES`、`AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS`、`AREAL_HARNESS_COMMAND_STDIN_CLOSED`、`AREAL_HARNESS_MAX_REPEATED_TOOL_FAILURES`。实际新增输入与恢复费用仍记入根预算，不能将估算压缩量当作实际节省。
+消融可使用环境变量 `AREAL_HARNESS_CONTEXT_OBSERVATION_TOKENS`、`AREAL_HARNESS_MAX_COMPLETION_RETRIES`、`AREAL_HARNESS_MAX_EMPTY_COMPLETION_RETRIES`、`AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS`、`AREAL_HARNESS_COMMAND_STDIN_CLOSED`、`AREAL_HARNESS_MAX_REPEATED_TOOL_FAILURES`。实际新增输入与恢复费用仍记入根预算，不能将估算压缩量当作实际节省。
 
 ## Hooks 配置
 
