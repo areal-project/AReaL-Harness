@@ -2232,36 +2232,42 @@ async function runFullModelSelection() {
   await page.locator(".provider-catalog-row").filter({ hasText: "arena" }).click();
   await page.getByRole("textbox", { name: "API Key", exact: true }).fill("fixture-key");
   // 真实 Core 完成保存/同步后暂留回执，稳定覆盖目录已刷新但设置操作尚未结算的窗口。
-  await app.evaluate(({ app }) => {
-    const { ServiceConnection } = process.mainModule.require(
-      `${app.getAppPath()}/src/core/service-client.cjs`,
-    );
-    const original = ServiceConnection.prototype.request;
-    let reached, release;
-    const ready = new Promise((resolve) => {
-      reached = resolve;
-    });
-    const held = new Promise((resolve) => {
-      release = resolve;
-    });
-    globalThis.modelApplyReceipt = {
-      ready,
-      release,
-      restore: () => {
-        ServiceConnection.prototype.request = original;
-      },
+  await page.evaluate(() => {
+    const send = WebSocket.prototype.send;
+    const gate = (globalThis.modelApplyReceipt = { ready: false });
+    let socket, onmessage;
+    gate.restore = () => {
+      WebSocket.prototype.send = send;
+      if (socket) socket.onmessage = onmessage;
     };
-    ServiceConnection.prototype.request = async function (method, params, mutation) {
-      const result = await original.call(this, method, params, mutation);
-      if (
-        method === "command" &&
-        params.name === "providers" &&
-        params.request.operation === "save"
-      ) {
-        reached();
-        await held;
+    WebSocket.prototype.send = function (data) {
+      let frame;
+      try {
+        frame = JSON.parse(data);
+      } catch {
+        return send.call(this, data);
       }
-      return result;
+      if (frame.method === "providers.command" && frame.params?.operation === "save") {
+        WebSocket.prototype.send = send;
+        socket = this;
+        onmessage = this.onmessage;
+        this.onmessage = (event) => {
+          let reply;
+          try {
+            reply = JSON.parse(event.data);
+          } catch {
+            return onmessage?.call(this, event);
+          }
+          if (reply.id !== frame.id) return onmessage?.call(this, event);
+          gate.ready = true;
+          gate.release = () => {
+            gate.release = null;
+            gate.restore();
+            onmessage?.call(this, event);
+          };
+        };
+      }
+      return send.call(this, data);
     };
   });
   await button("保存").click();
@@ -2269,7 +2275,7 @@ async function runFullModelSelection() {
     (s) => fixtureProject(s).models.every((m) => m.available === true),
     "both models available",
   );
-  await app.evaluate(() => globalThis.modelApplyReceipt.ready);
+  await page.waitForFunction(() => globalThis.modelApplyReceipt?.ready);
   assert.equal(
     await button("返回应用").isDisabled(),
     true,
@@ -2284,7 +2290,7 @@ async function runFullModelSelection() {
     path: join(scratch, "apply-pending-navigation.png"),
     animations: "disabled",
   });
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.modelApplyReceipt.release();
     globalThis.modelApplyReceipt.restore();
     delete globalThis.modelApplyReceipt;
@@ -2621,10 +2627,10 @@ try {
     process.exitCode = 1;
   };
   if (app) {
-    await app
-      .evaluate(() => {
-        globalThis.modelApplyReceipt?.release();
-        globalThis.modelApplyReceipt?.restore();
+    await page
+      ?.evaluate(() => {
+        globalThis.modelApplyReceipt?.release?.();
+        globalThis.modelApplyReceipt?.restore?.();
       })
       .catch((error) => cleanupFailure("release receipt", error));
     // 失败时保留原始断言；销毁本次测试窗口避免未保存设置的 beforeunload 阻塞清理。
