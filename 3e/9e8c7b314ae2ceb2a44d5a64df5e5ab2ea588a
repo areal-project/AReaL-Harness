@@ -1,0 +1,20 @@
+core/engine/tests/workgroup.rs
+  s_bb838eb6844682::t_b76ba3e4a055b5 1698-1699
+  s_bb838eb6844682::t_9a2ffe365bc138 1696-1697
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3e9e8c7b314ae2ceb2a44d5a64df5e5ab2ea588a",
+  "prompts": {},
+  "sessions": {
+    "s_bb838eb6844682": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1cedb-956c-7e51-8a1c-38ea9a4e2553",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
