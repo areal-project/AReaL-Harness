@@ -12,7 +12,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
-import { closeRecordedSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeRecordedSmokeApplication,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
@@ -1364,19 +1368,31 @@ try {
       process.exitCode = 1;
     }
   }
+  let cleanupConfirmed = true;
   try {
     await stopService(env);
-    await cp(serviceRegistry, join(scratch, "service-registry"), { recursive: true });
-    await rm(serviceRegistry, { recursive: true, force: true });
   } catch (error) {
+    cleanupConfirmed = false;
     events.push({ cleanupFailed: error.message, retainedRegistry: serviceRegistry });
     failure ??= error.stack ?? String(error);
     passed = false;
     process.exitCode = 1;
-    await cp(serviceRegistry, join(scratch, "service-registry"), { recursive: true }).catch(
-      (copyError) => events.push({ registryEvidenceCopyError: copyError.message }),
-    );
   }
+  try {
+    const receipt = await stopFixtureHost(binary, serviceRegistry, scratch);
+    if (receipt) await assertApplicationStopped(binary, env, null);
+    else cleanupConfirmed = false;
+  } catch (error) {
+    cleanupConfirmed = false;
+    events.push({ hostCleanupFailed: error.message, retainedRegistry: serviceRegistry });
+    failure ??= error.stack ?? String(error);
+    passed = false;
+    process.exitCode = 1;
+  }
+  await cp(serviceRegistry, join(scratch, "service-registry"), { recursive: true }).catch((error) =>
+    events.push({ registryEvidenceCopyError: error.message }),
+  );
+  if (cleanupConfirmed) await rm(serviceRegistry, { recursive: true, force: true });
   if (server) {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

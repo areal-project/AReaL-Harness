@@ -1,12 +1,56 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { execFile, spawnSync } from "node:child_process";
-import { readFile, readdir, realpath } from "node:fs/promises";
+import { readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { join, relative, isAbsolute } from "node:path";
 import { promisify } from "node:util";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
 const executeFile = promisify(execFile);
+const require = createRequire(new URL("../app/package.json", import.meta.url));
+
+export async function stopFixtureHost(binary, home, evidence) {
+  const descriptor = await readFile(join(home, "host", "host.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
+  if (!descriptor) return null;
+  const { HostClient } = require("@areal/client/node");
+  const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
+  const reference = {
+    kind: "stopHost",
+    requestId: randomUUID(),
+    home,
+    hostId: descriptor.hostId,
+    generation: descriptor.generation,
+    strategy: "cancel",
+  };
+  await writeFile(join(evidence, "host-stop-reference.json"), JSON.stringify(reference, null, 2));
+  const host = new HostClient();
+  try {
+    let receipt;
+    try {
+      await host.connect(home);
+      assert.equal(host.hostId, reference.hostId);
+      assert.equal(host.generation, reference.generation);
+      receipt = readHostReceipt(
+        reference,
+        await host.stop(reference.requestId, reference.generation, reference.strategy),
+      );
+    } catch {
+      host.close();
+      receipt = await readOfflineHostReceipt(binary, reference);
+    }
+    await writeFile(join(evidence, "host-stop.json"), JSON.stringify(receipt ?? null, null, 2));
+    assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
+    return receipt;
+  } finally {
+    host.close();
+  }
+}
 
 export async function cleanupSyntheticHostKeychain(hostHome, isolatedRoot) {
   if (process.platform !== "darwin") return [];
@@ -118,6 +162,8 @@ export async function closeSmokeApplication(application, timeoutMs = 20000) {
     throw error;
   } finally {
     child.removeListener("exit", onExit);
+    // 子进程已退出时，后代继承的 stderr 写端仍可能让 Playwright 管道保持打开。
+    if (child.exitCode !== null || child.signalCode !== null) child.stderr?.destroy();
   }
 }
 
