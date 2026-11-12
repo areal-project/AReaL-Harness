@@ -1845,14 +1845,22 @@ try {
     assert.equal(received.length, beforeSideFollowUp, "existing Side plugin selection never sends");
     await sideInput.locator('[data-mention-category="plugins"]').waitFor();
     await sidePane.getByRole("button", { name: "发送", exact: true }).click();
-    const sideFollowUpCompleted = await until(
-      (s) =>
-        received.length > beforeSideFollowUp &&
-        project(s).state.threads[sidePluginThread.id]?.turns.length === sideTurnsBefore + 1 &&
-        project(s).state.threads[sidePluginThread.id]?.turns.at(-1)?.status === "completed" &&
-        !project(s).pending.length,
-      "existing Side plugin follow-up completed",
-    );
+    let sideFollowUpTurn;
+    const sideFollowUpCompleted = await until(async (s) => {
+      const authoritative = await readPasteThread(sidePluginThread.id);
+      if (
+        received.length <= beforeSideFollowUp ||
+        authoritative.turns.length !== sideTurnsBefore + 1 ||
+        authoritative.turns.at(-1)?.status !== "completed" ||
+        project(s).pending.length
+      )
+        return false;
+      sideFollowUpTurn = authoritative.turns.at(-1);
+      return true;
+    }, "existing Side plugin follow-up completed");
+    await sidePane
+      .locator(`[data-turn-id="${sideFollowUpTurn.id}"][data-turn-status="completed"]`)
+      .waitFor();
     const sideFollowUpMessage = received
       .at(-1)
       .messages.filter(
