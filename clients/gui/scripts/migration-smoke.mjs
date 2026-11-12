@@ -60,7 +60,7 @@ await writeFile(
         displayName: "标准",
         instructions: "Complete the task",
         allowThreadProcesses: true,
-        ...(terminalMode ? { allowConnectionProcesses: true } : {}),
+        allowConnectionProcesses: true,
         approvalTools: ["fs_create"],
         skills: [{ id: "fixture-skill", revision: "v1" }],
       },
