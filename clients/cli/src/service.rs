@@ -316,6 +316,21 @@ pub async fn execute(command: ServiceCommand) -> Result<()> {
                             && project.workspace == service.identity.workspace
                     })
                     .context("Host-owned service registration is unavailable")?;
+                if let Some(request_id) = &request_id
+                    && client.operation(request_id).await?.is_none()
+                    && areal_local_service::operation(&root, &id, generation, request_id)
+                        .await?
+                        .is_some()
+                {
+                    let value = serde_json::to_value(
+                        areal_local_service::stop_operation(
+                            &root, &id, generation, request_id, cancel,
+                        )
+                        .await?,
+                    )?;
+                    println!("{}", serde_json::to_string_pretty(&value)?);
+                    return Ok(());
+                }
                 let receipt = client
                     .stop_project(
                         request_id

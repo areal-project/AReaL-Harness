@@ -21,6 +21,7 @@ import {
   captureSmokeFailure,
   createProjectConversation,
   selectConversation,
+  selectCreatedConversation,
 } from "./smoke-navigation.mjs";
 import { assertApplicationStopped } from "./application-cleanup.mjs";
 import { pageToolsEditorHtml } from "./fixtures/mcp-page-tools-bundle.mjs";
@@ -939,15 +940,12 @@ try {
       projectId: initialOwner.projectId,
     });
     assert(created.ok, JSON.stringify(created));
-    await selectConversation(page, created.value.threadId);
+    await selectCreatedConversation(page, initialOwner.projectId, created.value.threadId);
     initialOwner = await selected();
   }
   await setPermission("完全访问");
   await settings();
-  await button("核对来源并安装").click();
-  await page
-    .getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要", exact: true })
-    .check();
+  await button("检查安装内容").click();
   await button("安装到用户").click();
   await button("审阅并连接").click();
   await page
@@ -1137,7 +1135,7 @@ try {
       projectId: ownerA.projectId,
     });
     assert(created.ok, JSON.stringify(created));
-    await selectConversation(page, created.value.threadId);
+    await selectCreatedConversation(page, ownerA.projectId, created.value.threadId);
     otherOwner = await selected();
   }
   const other = await beginCase("other-thread", [], (tools) =>

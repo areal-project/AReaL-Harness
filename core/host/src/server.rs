@@ -2289,28 +2289,6 @@ impl Host {
         self.admission()?;
         self.check_pending(id, &input.request_id).await?;
         let instance = Self::service_id(&self.slots.borrow()[id].registration);
-        if let Some(expected_generation) = input.service_generation.as_deref()
-            && let Some(operation) = areal_local_service::operation(
-                &self.home,
-                &instance,
-                expected_generation,
-                &input.request_id,
-            )
-            .await
-            .map_err(|cause| error("requestConflict", cause.to_string()))?
-        {
-            ensure!(
-                operation.cancel == input.strategy.cancel(),
-                error(
-                    "requestConflict",
-                    "stop request conflict: cancel strategy changed"
-                )
-            );
-            let operation = self
-                .wait_stop(&instance, expected_generation, &input.request_id, operation)
-                .await?;
-            return Ok(stop_receipt(id, input.strategy, &operation));
-        }
         let service = areal_local_service::status(&self.home, &instance).await?;
         if input.service_generation.as_deref() != Some(&service.identity.generation) {
             return Err(error("generationMismatch", "service generation changed"));

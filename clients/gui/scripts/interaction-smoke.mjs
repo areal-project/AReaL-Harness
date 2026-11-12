@@ -727,11 +727,11 @@ try {
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
   await until((s) => project(s)?.state?.connected, "project ready");
   pid = project(await state()).id;
+  await page.waitForFunction(
+    (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === id,
+    pid,
+  );
   if (forcedProfile) {
-    await page.waitForFunction(
-      (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === id,
-      pid,
-    );
     assert.ok(
       project(await state()).profiles.some(
         (item) => item.id === "standard" && item.revision === "v1",

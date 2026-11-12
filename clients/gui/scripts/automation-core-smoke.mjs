@@ -11,7 +11,11 @@ import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { arch, cpus, loadavg, platform, release } from "node:os";
-import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
+import {
+  selectConversation,
+  selectCreatedConversation,
+  captureSmokeFailure,
+} from "./smoke-navigation.mjs";
 import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
 import { checkBrowserStartup } from "./browser-startup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
@@ -821,7 +825,7 @@ async function newThread(selectSkill = true) {
     profile: { id: "fixture", revision: "v1" },
   });
   threadId = created.threadId;
-  await selectConversation(page, threadId);
+  await selectCreatedConversation(page, projectId, threadId);
   return threadId;
 }
 async function computerSettings() {
