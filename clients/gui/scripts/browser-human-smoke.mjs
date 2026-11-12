@@ -261,6 +261,7 @@ const startedAt = new Date().toISOString(),
   errors = [];
 let app,
   page,
+  coreReader,
   passed = false,
   projectId,
   threadId,
@@ -278,6 +279,25 @@ async function command(name, params) {
   return result.value;
 }
 async function thread() {
+  if (faultMode === "navigation") {
+    if (!coreReader) {
+      const services = [];
+      for (const directory of await readdir(join(env.AREAL_HARNESS_SERVICE_HOME, "services"))) {
+        const descriptor = JSON.parse(
+          await readFile(
+            join(env.AREAL_HARNESS_SERVICE_HOME, "services", directory, "service.json"),
+            "utf8",
+          ),
+        );
+        if (descriptor.workspace === workspace && descriptor.state === "ready")
+          services.push(descriptor);
+      }
+      assert.equal(services.length, 1, "one isolated Core owns the browser workspace");
+      const { connect } = await import("../../../examples/desktop-api/client.mjs");
+      coreReader = await connect(services[0].endpoint, services[0].authFile);
+    }
+    return (await coreReader.call("thread/read", { threadId, includeTurns: true })).thread;
+  }
   return (await snapshot()).projects.find((item) => item.id === projectId)?.state?.threads?.[
     threadId
   ];
@@ -290,6 +310,8 @@ async function terminalTurn(previous) {
       ? last
       : null;
   }, `terminal ${phase} turn`);
+  if (faultMode === "navigation")
+    await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="${turn.status}"]`).waitFor();
   return readTurnToolDetails({ command, readThread: thread, projectId, threadId, turnId: turn.id });
 }
 function browserItem(turn) {
@@ -1881,6 +1903,7 @@ try {
   if (page) await captureSmokeFailure(page, scratch, error);
   throw error;
 } finally {
+  await coreReader?.close();
   if (pausedHostPid) {
     try {
       process.kill(pausedHostPid, "SIGCONT");
