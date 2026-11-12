@@ -438,9 +438,7 @@ async function composeText(input, text, label, append = false) {
   }
 }
 async function send(text, threadId) {
-  const previousCount = threadId
-    ? (project(await state())?.state?.threads?.[threadId]?.turns?.length ?? 0)
-    : 0;
+  const previousCount = threadId ? ((await readCoreThread(threadId))?.turns?.length ?? 0) : 0;
   const previousRequests = requests.length;
   await page.getByTestId("chat-input").fill(text);
   await page
@@ -454,17 +452,28 @@ async function send(text, threadId) {
   const activeId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
   assert.ok(activeId);
   if (threadId) assert.equal(activeId, threadId);
-  const snapshot = await until((s) => {
-    const turns = project(s)?.state?.threads?.[activeId]?.turns;
+  let turns;
+  await until(async () => {
+    turns = (await readCoreThread(activeId))?.turns;
     return (
       turns?.length > previousCount &&
       turns.at(-1)?.status === "completed" &&
       requests.length > previousRequests
     );
   }, `completed send ${text}`);
-  const turns = project(snapshot).state.threads[activeId].turns;
   assert.ok(turns.at(-1)?.id);
+  await page.locator(`[data-turn-id="${turns.at(-1).id}"][data-turn-status="completed"]`).waitFor();
   return { threadId: activeId, turnId: turns.at(-1).id };
+}
+async function readCoreThread(threadId) {
+  try {
+    return JSON.parse(
+      await readFile(join(scratch, "core", projectId, "state", `${threadId}.json`), "utf8"),
+    ).thread;
+  } catch (error) {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 async function stopService(env) {
   const { ServiceConnection } = require(join(desktop, "src/core/service-client.cjs"));
