@@ -1,0 +1,43 @@
+core/engine/src/permissions/scopes.rs
+  s_bf83cab8355b2b::t_534e1c123825a2 160,163-167,214-219
+core/service-host/src/launcher.rs
+  s_bf83cab8355b2b::t_534e1c123825a2 51-53,786-790
+core/engine/tests/tools.rs
+  s_bf83cab8355b2b::t_ce27e3d5256021 376-389
+  s_bf83cab8355b2b::t_b707dcf93d50df 297,309,313,340,348,351,375,395
+  s_bf83cab8355b2b::t_2876ae3b7cd6ae 220-223,336-339,396-399
+  s_bf83cab8355b2b::t_f85708808d73cf 67,207-208,219,224,292,298-308,310-312,314-335,341-347,349-350,352-374,390-394,400
+  s_bf83cab8355b2b::t_9e6ce0c118b227 401
+core/engine/tests/process_settlement.rs
+  s_bf83cab8355b2b::t_b707dcf93d50df 113-125,222
+core/engine/src/lib.rs
+  s_bf83cab8355b2b::t_534e1c123825a2 64-71,114,180
+  s_bf83cab8355b2b::t_726a342fc5f37a 113
+core/server/src/lib.rs
+  s_bf83cab8355b2b::t_534e1c123825a2 180-182,436-440,652,655-657
+  s_bf83cab8355b2b::t_ce27e3d5256021 913-927,929-942
+  s_bf83cab8355b2b::t_ce2e8f49cba991 928
+  s_bf83cab8355b2b::t_cb4d4295265c5d 912
+docs/development/testing.en.md
+  s_bf83cab8355b2b::t_726a342fc5f37a 5-6
+docs/development/testing.md
+  s_bf83cab8355b2b::t_726a342fc5f37a 16-17
+scripts/launch.py
+  s_bf83cab8355b2b::t_534e1c123825a2 115-117,441-445
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "68535ebfb55714abd260c7e10a15edeb65cd267a",
+  "prompts": {},
+  "sessions": {
+    "s_bf83cab8355b2b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1b762-a656-77e3-8207-4616a7d39e2b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
