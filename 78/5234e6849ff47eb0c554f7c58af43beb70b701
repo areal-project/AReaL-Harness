@@ -1,0 +1,114 @@
+core/engine/tests/skill_loading.rs
+  s_a751ebab980466::t_7eb6b8f6d68c83 45,48-49,65,67,112-118,120-126,137-138,140,169,203,226,231,234,292-295,400-403,410,414-418,439,475,479-480,485,553,599,612,621,662,672-678,680-683,685-689,712-717,720-723,726-733,743-775
+  s_a751ebab980466::t_553ef65318c7a5 258
+  s_a751ebab980466::t_6a188214bd0494 31,41-43,47,50,68-69,74-75,82,85,96,99,105,109,132-133,143-144,148,150,173,177,218,220,229,237-240,250-252,254,262,264,266,268,279-282,284-287,289,302,308,384,390,392,408,419,423,431,433,468,470,487,505,507,512,514-517,525,537,546-549,554-556,558,587,602,633-634,636,643,668-671,679,684,690-711,718-719,724-725,734-742,776-779
+  s_a751ebab980466::t_d93610f986ca80 312-383,407,427-428
+  s_a751ebab980466::t_3d6e3ac6e1bcf4 1-30,32-40,44,46,51-64,66,70-73,76-81,83-84,86-95,97-98,100-104,106-108,110-111,119,127-131,134-136,139,141-142,145-147,149,151-168,170-172,174-176,178-202,204-217,219,221-225,227-228,230,232-233,235-236,241-249,253,255-257,259-261,263,265,267,269-278,283,288,290-291,296-301,303-307,309-311,385-389,391,393-399,404-406,409,411-413,420-422,424-426,429-430,432,434-438,440-467,469,471-474,476-478,481-484,486,488-504,506,508-511,513,518-524,526-536,538-545,550-552,557,559-586,588-598,600-601,603-611,613-620,622-632,635,637-642,644-661,663-667
+core/engine/src/generation.rs
+  s_a751ebab980466::t_af62ed10dd452f 698-708,990-993
+docs/guides/skills.en.md
+  s_a751ebab980466::t_bde34275ca2acf 30,32,40,48
+  s_a751ebab980466::t_af62ed10dd452f 5,28,34-39,41-47
+examples/desktop-api/fixtures/claude-text-output.jsonl
+  s_a751ebab980466::t_3e9e5f855c6946 1
+core/engine/tests/fixtures/model-input-budget.json
+  s_a751ebab980466::t_3e2e04803d0664 5,97-100,103
+  s_a751ebab980466::t_af62ed10dd452f 92-93,95-96
+docs/features.md
+  s_a751ebab980466::t_af62ed10dd452f 32
+core/engine/src/desktop/tools.rs
+  s_a751ebab980466::t_af62ed10dd452f 24,211-217
+  s_a751ebab980466::t_d93610f986ca80 25,219
+clients/gui/scripts/context-usage-smoke.mjs
+  s_a751ebab980466::t_8fd697fbacec7f 178
+docs/api/desktop.md
+  s_a751ebab980466::t_af62ed10dd452f 265,267-268,270
+  s_a751ebab980466::t_ae0c065922e070 269,271
+examples/desktop-api/run.mjs
+  s_a751ebab980466::t_7f60d1bd6f9ecd 152,402
+core/engine/src/tools/results.rs
+  s_a751ebab980466::t_af62ed10dd452f 22-38
+core/engine/src/desktop/mcp_tools.rs
+  s_a751ebab980466::t_d93610f986ca80 251-252
+clients/gui/renderer/src/conversationPresentation.ts
+  s_a751ebab980466::t_203fa89969990a 16-17,99-100
+core/engine/src/desktop/catalog.rs
+  s_a751ebab980466::t_af62ed10dd452f 900,910-911,926,1012-1024,1034,1037,1052-1060,1070
+core/engine/tests/plugin_refresh.rs
+  s_a751ebab980466::t_d93610f986ca80 37
+core/engine/src/desktop/mod.rs
+  s_a751ebab980466::t_af62ed10dd452f 20
+docs/guides/plugins.md
+  s_a751ebab980466::t_ef0f38804c6a2c 49
+core/engine/tests/skills.rs
+  s_a751ebab980466::t_d93610f986ca80 860-861,892
+core/engine/src/desktop/skills.rs
+  s_a751ebab980466::t_af62ed10dd452f 31,35,107-117,159-165,176,202-206,211-212,214-223,228-239
+  s_a751ebab980466::t_8906a255825ba1 240-241
+docs/api/desktop.en.md
+  s_a751ebab980466::t_c538d578b28d5b 273
+  s_a751ebab980466::t_ae0c065922e070 271
+  s_a751ebab980466::t_af62ed10dd452f 267,269-270,272
+docs/design/architecture.md
+  s_a751ebab980466::t_af62ed10dd452f 59
+docs/features.en.md
+  s_a751ebab980466::t_af62ed10dd452f 36
+core/engine/src/desktop/skill_loading.rs
+  s_a751ebab980466::t_553ef65318c7a5 40
+  s_a751ebab980466::t_d93610f986ca80 34,36,47,63,71-229
+  s_a751ebab980466::t_7eb6b8f6d68c83 33,35,44,46,60-62,64-70
+  s_a751ebab980466::t_bda77b6d3193dd 1-32,37-39,41-43,45,48-59,230-236
+clients/gui/renderer/src/permissions.ts
+  s_a751ebab980466::t_fbe76ac78234a4 4-11,14-28,30-48,54-61,71-75,79-87,94-103
+core/engine/src/tools.rs
+  s_a751ebab980466::t_af62ed10dd452f 10,15,827-839,843,1002-1005,1574-1584,1603-1607,1636-1643,1702-1709
+clients/gui/app/src/core/analytics.cjs
+  s_a751ebab980466::t_8fd697fbacec7f 113
+clients/gui/scripts/plugin-concepts-smoke.mjs
+  s_a751ebab980466::t_82784a7f3a678e 233-239,247-249
+  s_a751ebab980466::t_fbe76ac78234a4 240-246,260-261
+  s_a751ebab980466::t_7f60d1bd6f9ecd 1901,1924,2089
+core/engine/src/permissions.rs
+  s_a751ebab980466::t_af62ed10dd452f 324
+  s_a751ebab980466::t_d93610f986ca80 323,587,591-592
+core/engine/src/context.rs
+  s_a751ebab980466::t_d93610f986ca80 638
+  s_a751ebab980466::t_af62ed10dd452f 950-963,1038
+docs/design/architecture.en.md
+  s_a751ebab980466::t_af62ed10dd452f 61
+core/engine/src/lib.rs
+  s_a751ebab980466::t_af62ed10dd452f 230-231
+examples/desktop-api/fixture.mjs
+  s_a751ebab980466::t_f823dbad6231c9 324-327
+  s_a751ebab980466::t_7f60d1bd6f9ecd 312,434
+core/engine/tests/codex_plugins.rs
+  s_a751ebab980466::t_af62ed10dd452f 374
+  s_a751ebab980466::t_d93610f986ca80 1087,1130,1152
+core/engine/src/context_usage.rs
+  s_a751ebab980466::t_d93610f986ca80 243
+docs/guides/skills.md
+  s_a751ebab980466::t_af62ed10dd452f 5,28,34-39,41-47
+  s_a751ebab980466::t_33e36a2521b0b9 30,32,40,48
+core/engine/tests/context_usage.rs
+  s_a751ebab980466::t_d93610f986ca80 171-172
+core/engine/src/turns.rs
+  s_a751ebab980466::t_af62ed10dd452f 306
+docs/guides/plugins.en.md
+  s_a751ebab980466::t_a7076cd41c3214 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "785234e6849ff47eb0c554f7c58af43beb70b701",
+  "prompts": {},
+  "sessions": {
+    "s_a751ebab980466": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1cdb8-fdcd-7421-9ff0-5af3de1e1937",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
