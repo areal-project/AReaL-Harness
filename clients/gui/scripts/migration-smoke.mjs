@@ -10,12 +10,13 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { stripVTControlCharacters } from "node:util";
+import { isDeepStrictEqual, stripVTControlCharacters } from "node:util";
 import { connect as connectCore } from "../../../examples/desktop-api/client.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
+const { HostClient } = require("@areal/client/node");
 const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
 const root = resolve(gui, "../..");
 const binary = process.env.AREAL_GUI_EXECUTABLE
@@ -1570,9 +1571,24 @@ try {
       checks.push(
         "window close preserves the application and running Core turn; reopen restores history/draft without replay",
       );
-      const transport = JSON.parse(
-        await readFile(join(scratch, "core/subscription-transport.json"), "utf8"),
-      );
+      const subscription = (await state()).subscription;
+      assert.equal(subscription.owner, "nativeV1");
+      assert.ok(subscription.sourceId);
+      const readTransport = async () => {
+        const host = new HostClient();
+        try {
+          await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+          const result = await host.vaultRead({
+            kind: "subscriptionTransport",
+            sourceId: subscription.sourceId,
+          });
+          return result.value;
+        } finally {
+          host.close();
+        }
+      };
+      const transport = await readTransport();
+      assert.ok(transport && typeof transport.token === "string" && transport.token.length > 0);
       process.kill(adapter.pid, "SIGKILL");
       for (let i = 0; i < 100; i++) {
         try {
@@ -1596,10 +1612,11 @@ try {
         const next = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
         return next.pid !== adapter.pid && project(s)?.state?.connected;
       }, "recover after adapter exit");
-      const restored = JSON.parse(
-        await readFile(join(scratch, "core/subscription-transport.json"), "utf8"),
+      const restored = await readTransport();
+      assert.ok(
+        isDeepStrictEqual(restored, transport),
+        "Host retains the same subscription transport",
       );
-      assert.deepEqual(restored, transport);
       await send("适配器重连后继续");
       await waitForSnapshot(
         (s) =>
