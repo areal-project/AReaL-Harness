@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 
 import { createRequire } from "node:module";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { watch } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -374,6 +375,77 @@ async function waitForApplicationStop(records) {
   }
   throw new Error("Application exit did not stop its original service generations and processes");
 }
+async function hostIdentity() {
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    return { hostId: host.hostId, generation: host.generation };
+  } finally {
+    host.close();
+  }
+}
+async function stopFixtureHost(identity, records) {
+  const host = new HostClient();
+  const descriptor = join(env.AREAL_HARNESS_SERVICE_HOME, "host", "host.json");
+  let checkDescriptor, failWatcher;
+  const removed = new Promise((resolve, reject) => {
+    failWatcher = reject;
+    checkDescriptor = async () => {
+      try {
+        const current = JSON.parse(await readFile(descriptor, "utf8"));
+        assert.equal(current.hostId, identity.hostId);
+        assert.equal(current.generation, identity.generation);
+      } catch (error) {
+        if (error.code === "ENOENT") resolve();
+        else reject(error);
+      }
+    };
+  });
+  // completed 先结算项目；原描述符在 Host 等待工作台退出后移除。
+  const watcher = watch(dirname(descriptor), () => void checkDescriptor());
+  watcher.on("error", failWatcher);
+  removed.catch(() => {});
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.deepEqual({ hostId: host.hostId, generation: host.generation }, identity);
+    const requestId = randomUUID();
+    await writeFile(
+      join(scratch, `host-stop-${requestId}-reference.json`),
+      JSON.stringify({ ...identity, requestId, services: records }, null, 2),
+    );
+    const stop = await host.stop(requestId, identity.generation, "cancel");
+    await writeFile(
+      join(scratch, `host-stop-${requestId}-receipt.json`),
+      JSON.stringify(stop, null, 2),
+    );
+    assert.equal(stop.requestId, requestId);
+    assert.equal(stop.hostId, identity.hostId);
+    assert.equal(stop.generation, identity.generation);
+    assert.equal(stop.state, "completed");
+    for (const original of records) {
+      const item = stop.projects.find((value) => value.serviceId === original.serviceId);
+      assert.equal(item?.serviceGeneration, original.generation);
+      assert.equal(item?.receipt?.state, "completed");
+      const cleanup = JSON.parse(
+        await readFile(
+          join(env.AREAL_HARNESS_SERVICE_HOME, "services", original.serviceId, "cleanup.json"),
+          "utf8",
+        ),
+      );
+      assert.equal(cleanup.identity.generation, original.generation);
+      assert.equal(cleanup.cleanupConfirmed, true);
+    }
+    await checkDescriptor();
+    await withSmokeDeadline(
+      "original Host and project cleanup",
+      () => Promise.all([removed, waitForApplicationStop(records)]),
+      30000,
+    );
+  } finally {
+    watcher.close();
+    host.close();
+  }
+}
 async function waitForPopupMotion(selector) {
   // Base UI 先移除起始样式，之后才创建过渡；此前 getAnimations() 可能为空。
   await page.locator(`${selector}:not([data-starting-style]):not([data-ending-style])`).waitFor();
@@ -453,7 +525,7 @@ async function quit() {
         "quit confirmation fixture",
         () =>
           current.evaluate(({ dialog }) => {
-            dialog.showMessageBox = async () => ({ response: 1 });
+            dialog.showMessageBox = async () => ({ response: 0 });
           }),
         5000,
       );
@@ -1660,15 +1732,45 @@ try {
         (record) => record.workspace === workspace && record.state !== "stopped",
       );
       assert.ok(beforeQuit.length > 0, "cold reopen starts from a real live GUI service");
+      const beforeQuitHost = await hostIdentity();
+      const beforeQuitThread = JSON.parse(
+        await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
+      ).thread;
+      assert.equal(beforeQuitThread.turns.length, turnCount + 1);
       const requestsBeforeQuit = received.length;
       await input().fill("冷启动保留草稿");
       await quit();
-      await waitForApplicationStop(beforeQuit);
+      assert.deepEqual(await hostIdentity(), beforeQuitHost, "GUI exit retains the original Host");
+      const afterQuit = await services();
+      for (const original of beforeQuit) {
+        const current = afterQuit.find((item) => item.serviceId === original.serviceId);
+        assert.equal(current?.generation, original.generation);
+        assert.notEqual(current?.state, "stopped");
+        assert.equal(current?.hostPid, original.hostPid);
+        assert.equal(current?.corePid, original.corePid);
+        for (const pid of [original.hostPid, original.corePid].filter(
+          (value) => Number.isSafeInteger(value) && value > 1,
+        ))
+          process.kill(pid, 0);
+      }
+      await stopFixtureHost(beforeQuitHost, beforeQuit);
       await launch();
       await waitForSnapshot(
-        (s) => project(s)?.state?.connected && current(s)?.turns.length === turnCount + 1,
-        "cold application reopen restores history",
+        (s) => project(s)?.state?.connected,
+        "cold application reconnects to the project",
       );
+      await page.locator(`[data-testid="areal-workbench"][data-thread-id="${tid}"]`).waitFor();
+      const reopenedThread = JSON.parse(
+        await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
+      ).thread;
+      assert.deepEqual(
+        reopenedThread.turns.map(({ id, status }) => ({ id, status })),
+        beforeQuitThread.turns.map(({ id, status }) => ({ id, status })),
+      );
+      const lastTurn = beforeQuitThread.turns.at(-1);
+      await page
+        .locator(`[data-turn-id="${lastTurn.id}"][data-turn-status="${lastTurn.status}"]`)
+        .waitFor();
       assert.equal(
         received.length,
         requestsBeforeQuit,
@@ -1676,7 +1778,7 @@ try {
       );
       assert.equal(await input().textContent(), "冷启动保留草稿");
       checks.push(
-        "application exit stops its original service generations and processes; cold reopen restores history and draft without replay",
+        "application exit retains its Host and Core; explicit stop cleans original generations and cold reopen restores history and draft without replay",
       );
       const scheduledOwner = await call("projectless", {
         operation: "prepare",
@@ -1875,14 +1977,24 @@ try {
     }
   } else {
     try {
-      await quit();
-      await waitForApplicationStop(await services());
+      const originalServices = (await services()).filter((item) => item.state !== "stopped");
+      const descriptorExists = await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"),
+      )
+        .then(() => true)
+        .catch((error) => {
+          if (error.code === "ENOENT") return false;
+          throw error;
+        });
+      const originalHost = descriptorExists ? await hostIdentity() : null;
       const metadata = await readFile(join(scratch, "core/service.json"), "utf8")
         .then(JSON.parse)
         .catch((error) => {
           if (error.code === "ENOENT") return null;
           throw error;
         });
+      await quit();
+      if (originalHost) await stopFixtureHost(originalHost, originalServices);
       if (metadata)
         assert.throws(
           () => process.kill(metadata.pid, 0),
