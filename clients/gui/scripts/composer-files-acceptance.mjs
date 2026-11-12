@@ -131,7 +131,10 @@ export async function runComposerFilesAcceptance({
     await page.waitForFunction(
       () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
     );
-    return (await current()).turns.at(-1);
+    const turn = (await current()).turns.at(-1);
+    await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+    await page.getByTestId("pending-message").waitFor({ state: "hidden" });
+    return turn;
   };
   const users = (body) =>
     (body.messages ?? body.input)
