@@ -60,6 +60,8 @@ async fn delayed_response(phase: DelayedPhase) -> Thread {
             model_request_timeout: Duration::from_secs(5),
             stream_idle_timeout: Duration::from_secs(1),
             watchdog_disable: true,
+            max_completion_retries: 0,
+            max_empty_completion_retries: 0,
             ..Limits::default()
         },
     )

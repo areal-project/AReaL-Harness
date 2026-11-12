@@ -446,7 +446,7 @@ fn platform_identity_never_changes_native_budgets_or_experimental_defaults() {
     let temp = tempfile::tempdir().unwrap();
     for explicit in [false, true] {
         let settings = if explicit {
-            "schema_version=2\n[model]\nmax_output_tokens=12345\ncontext_window_tokens=180000\n[context]\nobservation_tokens=4096\nreference_tokens=2048\n[limits]\ncontext_window_bytes=2000000\ncontext_recent_bytes=90000\ncontext_output_reserve_tokens=16000\nmax_empty_completion_retries=1\nmax_repeated_tool_failures=3\n"
+            "schema_version=2\n[model]\nmax_output_tokens=12345\ncontext_window_tokens=180000\n[context]\nobservation_tokens=4096\nreference_tokens=2048\n[limits]\ncontext_window_bytes=2000000\ncontext_recent_bytes=90000\ncontext_output_reserve_tokens=16000\nmax_completion_retries=1\nmax_empty_completion_retries=1\nmax_repeated_tool_failures=3\n"
         } else {
             "schema_version=2\n"
         };
@@ -482,13 +482,17 @@ fn platform_identity_never_changes_native_budgets_or_experimental_defaults() {
             } else {
                 baseline = Some(projection);
             }
-            for (field, value) in [
-                ("context_observation_tokens", 4096),
-                ("context_reference_tokens", 2048),
-                ("max_empty_completion_retries", 1),
-                ("max_repeated_tool_failures", 3),
+            for (field, value, default) in [
+                ("context_observation_tokens", 4096, 0),
+                ("context_reference_tokens", 2048, 0),
+                ("max_completion_retries", 1, 3),
+                ("max_empty_completion_retries", 1, 3),
+                ("max_repeated_tool_failures", 3, 0),
             ] {
-                assert_eq!(actual["limits"][field], if explicit { value } else { 0 });
+                assert_eq!(
+                    actual["limits"][field],
+                    if explicit { value } else { default }
+                );
             }
             if explicit {
                 assert_eq!(actual["model"]["max_output_tokens"], 12345);

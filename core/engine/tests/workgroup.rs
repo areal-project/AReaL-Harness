@@ -1693,6 +1693,10 @@ async fn real_runtime_checkpoint_settles_writers_and_requires_independent_checks
             None,
         )
         .unwrap();
+        // 此夹具刻意触发模型终止失败；关闭完成恢复，以验证单次失败请求的
+        // checkpoint 结算与用量统计语义。
+        executor.worker_limits.max_completion_retries = 0;
+        executor.worker_limits.max_empty_completion_retries = 0;
         executor.watchdog_disable = true;
         let record = group
             .run(

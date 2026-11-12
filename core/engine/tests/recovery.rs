@@ -319,6 +319,7 @@ async fn empty_visible_stop_recovers_but_reasoning_is_not_a_final_answer() {
             data.path(),
             model.clone(),
             Limits {
+                max_completion_retries: 0,
                 max_empty_completion_retries: 2,
                 ..Limits::default()
             },
@@ -353,14 +354,23 @@ async fn empty_visible_stop_recovers_but_reasoning_is_not_a_final_answer() {
 struct ConfirmedWriteThenEmpty(AtomicUsize);
 
 #[tokio::test]
-async fn empty_recovery_is_disabled_by_default() {
+async fn empty_recovery_can_be_disabled_explicitly() {
     let data = tempfile::tempdir().unwrap();
     let model = Arc::new(EmptyThenAnswer {
         requests: AtomicUsize::new(0),
         always_empty: true,
         media: false,
     });
-    let engine = Engine::open(data.path(), model.clone(), Limits::default()).unwrap();
+    let engine = Engine::open(
+        data.path(),
+        model.clone(),
+        Limits {
+            max_completion_retries: 0,
+            max_empty_completion_retries: 0,
+            ..Limits::default()
+        },
+    )
+    .unwrap();
     let thread = engine.create("/workspace".into()).await.unwrap();
     engine
         .start(&thread.id, vec![Input::text("inspect")])
@@ -370,6 +380,39 @@ async fn empty_recovery_is_disabled_by_default() {
     assert_eq!(result.turns[0].status, TurnStatus::Failed);
     assert_eq!(model.requests.load(Ordering::SeqCst), 1);
     engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn default_completion_recovery_allows_three_retries_and_counts_all_usage() {
+    for limits in [
+        Limits {
+            max_empty_completion_retries: 0,
+            ..Limits::default()
+        },
+        Limits {
+            max_completion_retries: 0,
+            ..Limits::default()
+        },
+    ] {
+        let data = tempfile::tempdir().unwrap();
+        let model = Arc::new(EmptyThenAnswer {
+            requests: AtomicUsize::new(0),
+            always_empty: true,
+            media: false,
+        });
+        let engine = Engine::open(data.path(), model.clone(), limits).unwrap();
+        let thread = engine.create("/workspace".into()).await.unwrap();
+        engine
+            .start(&thread.id, vec![Input::text("inspect")])
+            .await
+            .unwrap();
+        let result = engine.wait(&thread.id).await.unwrap();
+        assert_eq!(result.turns[0].status, TurnStatus::Failed);
+        assert_eq!(model.requests.load(Ordering::SeqCst), 4);
+        assert_eq!(result.turns[0].usage.as_ref().unwrap().input_tokens, 40);
+        assert_eq!(result.turns[0].usage.as_ref().unwrap().output_tokens, 12);
+        engine.shutdown().await;
+    }
 }
 
 struct InterleavedEmpty(AtomicUsize);
@@ -416,6 +459,7 @@ async fn blank_recovery_is_bounded_across_successful_tools_and_charges_all_attem
         data.path(),
         model.clone(),
         Limits {
+            max_completion_retries: 0,
             max_empty_completion_retries: 2,
             ..Limits::default()
         },

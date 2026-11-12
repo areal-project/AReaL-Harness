@@ -890,6 +890,8 @@ async fn idle_timeout_and_capacity_are_explicit_errors() {
         max_threads: 1,
         stream_idle_timeout: Duration::from_millis(50),
         watchdog_disable: true,
+        max_completion_retries: 0,
+        max_empty_completion_retries: 0,
         ..Limits::default()
     });
     let thread = engine.create("/a".into()).await.unwrap();

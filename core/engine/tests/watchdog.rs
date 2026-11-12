@@ -480,6 +480,7 @@ async fn watchdog_disable_preserves_finite_recovery_and_semantic_errors_still_fa
             Limits {
                 watchdog_disable: disabled,
                 max_completion_retries: finite,
+                max_empty_completion_retries: 0,
                 ..Limits::default()
             },
         )
@@ -1314,6 +1315,9 @@ async fn default_http_retries_release_nested_capacity_and_preserve_budget_and_ca
             Limits {
                 model_concurrency: 1,
                 watchdog_disable: true,
+                // 仅验证 HTTP 内部重试的许可与预算，不叠加 Core 完成恢复。
+                max_completion_retries: 0,
+                max_empty_completion_retries: 0,
                 ..Limits::default()
             },
         )

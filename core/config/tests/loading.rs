@@ -20,21 +20,23 @@ fn observation_and_empty_recovery_budgets_have_independent_validated_controls() 
     let mut i = inputs(root.path());
     let defaults = load_config(&i).unwrap();
     assert_eq!(defaults.context_observation_tokens, 0);
-    assert_eq!(defaults.max_empty_completion_retries, 0);
-    assert_eq!(defaults.max_completion_retries, 0);
+    assert_eq!(defaults.max_empty_completion_retries, 3);
+    assert_eq!(defaults.max_completion_retries, 3);
     assert_eq!(defaults.max_goal_report_rounds, 0);
     assert!(!defaults.goal_recover_unknown_model_usage);
     write(
         &mut i,
-        "schema_version=2\n[context]\nobservation_tokens=4096\n[limits]\nmax_empty_completion_retries=2\n",
+        "schema_version=2\n[context]\nobservation_tokens=4096\n[limits]\nmax_completion_retries=2\nmax_empty_completion_retries=1\n",
     );
     let config = load_config(&i).unwrap();
     assert_eq!(config.context_observation_tokens, 4096);
-    assert_eq!(config.max_empty_completion_retries, 2);
+    assert_eq!(config.max_completion_retries, 2);
+    assert_eq!(config.max_empty_completion_retries, 1);
     assert_eq!(config.context_reference_tokens, 0);
     assert_eq!(config.max_repeated_tool_failures, 0);
     for text in [
         "schema_version=2\n[context]\nobservation_tokens=-1\n",
+        "schema_version=2\n[limits]\nmax_completion_retries=9\n",
         "schema_version=2\n[limits]\nmax_empty_completion_retries=9\n",
         "schema_version=2\n[limits]\nmax_goal_report_rounds=9\n",
     ] {
@@ -1415,7 +1417,7 @@ fn reference_and_tool_recovery_configuration_is_bounded_and_diagnostic() {
 }
 
 #[test]
-fn experimental_policies_require_explicit_values_and_keep_legacy_aliases() {
+fn recovery_defaults_and_experimental_policies_keep_explicit_values_and_legacy_aliases() {
     let root = tempfile::tempdir().unwrap();
     let mut i = inputs(root.path());
     for schema in [1, 2] {
@@ -1424,33 +1426,45 @@ fn experimental_policies_require_explicit_values_and_keep_legacy_aliases() {
         assert_eq!(defaults.context_observation_tokens, 0);
         assert_eq!(defaults.context_reference_tokens, 0);
         assert_eq!(defaults.max_repeated_tool_failures, 0);
-        assert_eq!(defaults.max_empty_completion_retries, 0);
+        assert_eq!(defaults.max_completion_retries, 3);
+        assert_eq!(defaults.max_empty_completion_retries, 3);
         assert_eq!(defaults.max_goal_report_rounds, 0);
         assert!(defaults.context_compaction_enabled);
         assert!(defaults.command_stdin_closed);
         write(
             &mut i,
             &format!(
-                "schema_version={schema}\n[limits]\ncontext_observation_tokens=4096\ncontext_reference_tokens=2048\nmax_repeated_tool_failures=3\nmax_empty_completion_retries=1\nmax_goal_report_rounds=4\n"
+                "schema_version={schema}\n[limits]\ncontext_observation_tokens=4096\ncontext_reference_tokens=2048\nmax_repeated_tool_failures=3\nmax_completion_retries=2\nmax_empty_completion_retries=1\nmax_goal_report_rounds=4\n"
             ),
         );
         let configured = load_config(&i).unwrap();
         assert_eq!(configured.context_observation_tokens, 4096);
         assert_eq!(configured.context_reference_tokens, 2048);
         assert_eq!(configured.max_repeated_tool_failures, 3);
+        assert_eq!(configured.max_completion_retries, 2);
         assert_eq!(configured.max_empty_completion_retries, 1);
         assert_eq!(configured.max_goal_report_rounds, 4);
         let diagnostic = configured.diagnostic(false);
         assert_eq!(diagnostic["context"]["observation_tokens"], 4096);
         assert_eq!(diagnostic["context"]["reference_tokens"], 2048);
         assert_eq!(diagnostic["limits"]["max_repeated_tool_failures"], 3);
+        assert_eq!(diagnostic["limits"]["max_completion_retries"], 2);
         assert_eq!(diagnostic["limits"]["max_empty_completion_retries"], 1);
         assert_eq!(diagnostic["limits"]["max_goal_report_rounds"], 4);
+        write(
+            &mut i,
+            &format!(
+                "schema_version={schema}\n[limits]\nmax_completion_retries=0\nmax_empty_completion_retries=0\n"
+            ),
+        );
+        let strict = load_config(&i).unwrap();
+        assert_eq!(strict.max_completion_retries, 0);
+        assert_eq!(strict.max_empty_completion_retries, 0);
     }
 }
 
 #[test]
-fn experimental_environment_values_enable_and_disable_each_policy() {
+fn recovery_and_experimental_environment_values_override_files_including_zero() {
     let root = tempfile::tempdir().unwrap();
     for (name, field, value) in [
         (
@@ -1462,6 +1476,11 @@ fn experimental_environment_values_enable_and_disable_each_policy() {
             "AREAL_HARNESS_CONTEXT_REFERENCE_TOKENS",
             "context_reference_tokens",
             "2048",
+        ),
+        (
+            "AREAL_HARNESS_MAX_COMPLETION_RETRIES",
+            "max_completion_retries",
+            "2",
         ),
         (
             "AREAL_HARNESS_MAX_EMPTY_COMPLETION_RETRIES",
@@ -1480,6 +1499,7 @@ fn experimental_environment_values_enable_and_disable_each_policy() {
         ),
     ] {
         let mut i = inputs(root.path());
+        write(&mut i, &format!("schema_version=2\n[limits]\n{field}=1\n"));
         set(&mut i, name, value);
         let c = load_config(&i).unwrap();
         assert_eq!(
