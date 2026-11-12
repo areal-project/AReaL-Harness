@@ -1321,16 +1321,17 @@ try {
       const goalTurnId = current(await state()).turns.at(-1).id;
       finishBackground();
       let settledGoalTurn;
-      await waitForSnapshot(async (s) => {
+      await waitForSnapshot(async () => {
         const record = JSON.parse(
           await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
         );
         settledGoalTurn = record.thread.turns.find((turn) => turn.id === goalTurnId);
         return (
-          current(s).goals?.goal?.status === "paused" &&
-          !current(s).goals.goal.settling &&
+          record.thread.goals?.goal?.status === "paused" &&
+          !record.thread.goals.goal.settling &&
           settledGoalTurn &&
-          settledGoalTurn.status !== "inProgress"
+          settledGoalTurn.status !== "inProgress" &&
+          (await button("清除目标").isEnabled())
         );
       }, "goal paused and settled");
       await page
