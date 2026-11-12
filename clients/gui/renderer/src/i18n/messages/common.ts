@@ -1065,11 +1065,11 @@ export const commonMessages = {
   },
   "chat.side.restoring": { "zh-CN": "正在恢复侧边聊天…", en: "Restoring Side Chat…" },
   "chat.side.checkingOwner": {
-    "zh-CN": "正在核对侧边聊天归属…",
+    "zh-CN": "正在确认这个侧边聊天属于哪段对话…",
     en: "Checking Side Chat ownership…",
   },
   "chat.side.staleSource": {
-    "zh-CN": "来源在侧边聊天创建后已推进；以下文字仍依据旧快照。",
+    "zh-CN": "原对话之后又有了新内容，下面的文字还是创建时的版本。",
     en: "The source has moved on since this Side Chat was created; the text below still reflects the earlier snapshot.",
   },
   "chat.side.retryRestore": { "zh-CN": "重试恢复侧边聊天", en: "Retry restoring Side Chat" },
