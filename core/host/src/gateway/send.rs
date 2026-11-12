@@ -585,3 +585,7 @@ fn message_input(params: &Message) -> Result<Vec<areal_protocol::Input>> {
 }
 /// 桌面每块 64 KiB、最多 32 块；经 Host 时整条命令要放进 1 MiB 帧，所以总量另设上限。
 pub(crate) const MCP_CONTENT_BYTES: usize = 512 * 1024;
+
+pub(crate) fn write_limits() -> Value {
+    json!({"commandTextBytes":64 * 1024,"commandPendingBytes":super::GUI_WRITE_PENDING_BYTES,"attachments":16,"quotes":8,"quoteUnits":16000,"mcpBlocks":32,"mcpBlockBytes":64 * 1024,"mcpContentBytes":MCP_CONTENT_BYTES,"uploadChunkBytes":super::uploads::CHUNK_BYTES,"uploadBytes":crate::server::conversation_media::MAX_BYTES})
+}

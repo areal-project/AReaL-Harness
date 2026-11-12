@@ -27,7 +27,7 @@ mod stop;
 pub(super) mod tasks;
 #[path = "uploads.rs"]
 mod uploads;
-use super::{error_code, wire};
+use super::wire;
 use crate::server::{Host, gateway_owner};
 use anyhow::{Context, Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -173,13 +173,36 @@ impl RequestBudget {
     }
 }
 
+/// 远程与本机写入口共用的错误码；其余一律归为 CORE_UNAVAILABLE。
+pub(crate) fn error_code(message: &str) -> &str {
+    match message {
+        "INVALID_PARAMS"
+        | "ATTACHMENT_UNSUPPORTED"
+        | "PROVIDER_CREDENTIAL_REQUIRED"
+        | "FORBIDDEN"
+        | "GRANT_CHANGED"
+        | "RESYNC_REQUIRED"
+        | "REVIEW_INCOMPLETE"
+        | "TARGET_CHANGED"
+        | "COMMAND_CONFLICT"
+        | "CAPABILITY_UNAVAILABLE"
+        | "RESOURCE_UNAVAILABLE"
+        | "CORE_INCOMPATIBLE"
+        | "LIMIT_EXCEEDED"
+        | "CAPACITY_EXCEEDED"
+        | "TURN_BUSY"
+        | "TASK_CONTROL_REQUIRED"
+        | "MIGRATION_PENDING"
+        | "migrationBlocked"
+        | "SUBMISSION_UNKNOWN" => message,
+        _ => "CORE_UNAVAILABLE",
+    }
+}
 pub(crate) const LOCAL_PEER: &str = "local-desktop";
 /// gui-write-v1 的输入上限与桌面 Main 一致（正文 64 KiB、16 个附件、8 段引用、32 块 MCP），
 /// 另加 MCP 总量上限，保证整条命令放得进 1 MiB 帧。
 pub(crate) const GUI_WRITE_PENDING_BYTES: usize = 704 * 1024;
-pub(crate) fn write_limits() -> Value {
-    json!({"commandTextBytes":64 * 1024,"commandPendingBytes":GUI_WRITE_PENDING_BYTES,"attachments":16,"quotes":8,"quoteUnits":16000,"mcpBlocks":32,"mcpBlockBytes":64 * 1024,"mcpContentBytes":send::MCP_CONTENT_BYTES,"uploadChunkBytes":uploads::CHUNK_BYTES,"uploadBytes":crate::server::conversation_media::MAX_BYTES})
-}
+pub(crate) use send::write_limits;
 
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
