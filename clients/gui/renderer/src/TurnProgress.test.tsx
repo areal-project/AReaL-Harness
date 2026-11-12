@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { TurnProgress } from "./TurnProgress.js";
 
 vi.mock("./i18n/IntlProvider.js", () => ({
@@ -19,6 +19,14 @@ vi.mock("./i18n/IntlProvider.js", () => ({
 }));
 
 describe("TurnProgress heading", () => {
+  // 时长按“现在 − 开始时刻”算，用真实时钟会在跨秒时多出一秒。
+  beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it.each(["completed", "failed", "inProgress"])(
     "keeps only the duration and disclosure for %s",
     (status) => {
