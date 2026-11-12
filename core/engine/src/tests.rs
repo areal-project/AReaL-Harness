@@ -209,6 +209,15 @@ async fn fork_unknown_hook_requires_source_inspection_and_keeps_unknown() {
         matches!(engine.fork_thread("owner".into(), request("before-inspect")).await,
         Err(Error::Invalid(reason)) if reason == "HISTORY_UNRESOLVED")
     );
+    let cell = engine.raw_cell(&source.id).await.unwrap();
+    let mut events = cell.events.subscribe();
+    assert!(
+        engine
+            .acknowledge_tool(source.id.clone(), tool_id.clone(), String::new())
+            .await
+            .is_err()
+    );
+    assert!(events.try_recv().is_err());
     engine
         .acknowledge_tool(
             source.id.clone(),
@@ -217,6 +226,17 @@ async fn fork_unknown_hook_requires_source_inspection_and_keeps_unknown() {
         )
         .await
         .unwrap();
+    let event = events
+        .try_recv()
+        .expect("acknowledgement publishes the updated thread");
+    assert_eq!(event["method"], "areal/thread/edited");
+    assert_eq!(event["params"]["threadId"], source.id);
+    let execution = &event["params"]["thread"]["turns"][0]["items"][1]["execution"];
+    assert_eq!(
+        execution["inspection"],
+        "Checked the actual operation and audit hook"
+    );
+    assert_eq!(execution["hooks"][0]["outcome"], "unknown");
     let fork = engine
         .fork_thread("owner".into(), request("after-inspect"))
         .await

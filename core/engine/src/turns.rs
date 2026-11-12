@@ -664,6 +664,10 @@ impl Engine {
             }
             engine.persist(&candidate).await?;
             state.thread = candidate;
+            cell.emit(
+                "areal/thread/edited",
+                json!({"threadId":cell.id,"thread":state.thread}),
+            );
             engine.finish_side_close(&cell, &mut state).await?;
             Ok(())
         })
