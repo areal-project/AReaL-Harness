@@ -1,0 +1,239 @@
+integrations/gameagent/README.md
+  s_f0b7318bf98084::t_64c8024ae8adb9 3-6,8-11
+  s_f0b7318bf98084::t_33ef51bd200ee2 1-2,7,12-30
+integrations/gameagent/test_preflight.py
+  s_f0b7318bf98084::t_b0301237f284c5 1-76
+integrations/gameagent/prepare_profile.py
+  s_f0b7318bf98084::t_0158d0b1e20582 7,49-70
+  s_f0b7318bf98084::t_f4bb5bb8c8515b 1-6,8-48,71-105
+docs/design/architecture.en.md
+  s_f0b7318bf98084::t_362769fc616160 19-20
+integrations/gameagent/skills/game-delivery/SKILL.md
+  s_f0b7318bf98084::t_64c8024ae8adb9 1-23
+docs/design/architecture.md
+  s_f0b7318bf98084::t_d36105d8036f2d 17-18
+docs/guides/skills.en.md
+  s_f0b7318bf98084::t_4d1de35e0dec2d 45-48
+docs/guides/skills.md
+  s_f0b7318bf98084::t_8cae3e8c3eaf3f 45-48
+integrations/gameagent/README.en.md
+  s_f0b7318bf98084::t_474981e2a53b6b 1-30
+integrations/gameagent/adapter_integration.py
+  s_f0b7318bf98084::t_b00c188708b62e 1-69
+integrations/gameagent/native_config_append.py
+  s_f0b7318bf98084::t_f9e60634816f93 1-102
+integrations/gameagent/runtime/gameharness/capabilities/__init__.py
+  s_f0b7318bf98084::t_86e82de1f1649f 1
+integrations/gameagent/runtime/gameharness/capabilities/ask_user.py
+  s_f0b7318bf98084::t_d67cacac4f6331 1-401
+integrations/gameagent/runtime/gameharness/capabilities/board.py
+  s_f0b7318bf98084::t_e3498a6fe199a3 1-310
+integrations/gameagent/runtime/gameharness/capabilities/delivery.py
+  s_f0b7318bf98084::t_a5a003f23bbe76 1-259
+integrations/gameagent/runtime/gameharness/capabilities/delivery_policy.py
+  s_f0b7318bf98084::t_149e1bd2771246 1-111
+integrations/gameagent/runtime/gameharness/capabilities/dependencies.py
+  s_f0b7318bf98084::t_b9ea67ba2bb73d 1-537
+integrations/gameagent/runtime/gameharness/capabilities/evidence_loop.py
+  s_f0b7318bf98084::t_1de0077c0c4656 1-412
+integrations/gameagent/runtime/gameharness/capabilities/galacean_textures.py
+  s_f0b7318bf98084::t_86e1051088b57a 1-88
+integrations/gameagent/runtime/gameharness/capabilities/image_understanding.py
+  s_f0b7318bf98084::t_a512eb362ffae7 1-495
+integrations/gameagent/runtime/gameharness/capabilities/media/__init__.py
+  s_f0b7318bf98084::t_aea5d00e66fc71 1-275
+integrations/gameagent/runtime/gameharness/capabilities/media_registry.py
+  s_f0b7318bf98084::t_81947a8ab4aaa4 1-225
+integrations/gameagent/runtime/gameharness/capabilities/media_tools.py
+  s_f0b7318bf98084::t_668b9709bcbae0 1-317
+integrations/gameagent/runtime/gameharness/capabilities/prd.py
+  s_f0b7318bf98084::t_477e18c1f353a5 1-523
+integrations/gameagent/runtime/gameharness/capabilities/process_assets/__init__.py
+  s_f0b7318bf98084::t_5764c92f12fd3b 1-40
+integrations/gameagent/runtime/gameharness/capabilities/process_assets/client.py
+  s_f0b7318bf98084::t_bace7e2dbcf21e 1-317
+integrations/gameagent/runtime/gameharness/capabilities/process_assets/schema.py
+  s_f0b7318bf98084::t_9ea6f3a8398e3b 1-204
+integrations/gameagent/runtime/gameharness/capabilities/process_assets/target.py
+  s_f0b7318bf98084::t_93308cae05209d 1-45
+integrations/gameagent/runtime/gameharness/capabilities/process_assets/tools.py
+  s_f0b7318bf98084::t_ca9fd18e573e9c 1-216
+integrations/gameagent/runtime/gameharness/capabilities/prompt_protocol.py
+  s_f0b7318bf98084::t_c76c5eda31c601 1-12
+integrations/gameagent/runtime/gameharness/capabilities/release_metadata.py
+  s_f0b7318bf98084::t_83d199b7e575ac 1-433
+integrations/gameagent/runtime/gameharness/capabilities/runtime_context.py
+  s_f0b7318bf98084::t_c03d0606fa8755 1-123
+integrations/gameagent/runtime/gameharness/capabilities/service.py
+  s_f0b7318bf98084::t_ee08850f98264e 1-1321
+integrations/gameagent/runtime/gameharness/capabilities/verification.py
+  s_f0b7318bf98084::t_0c2d6372b32bc5 1-143
+integrations/gameagent/runtime/gameharness/constraints/__init__.py
+  s_f0b7318bf98084::t_66745e106eafc6 1-15
+integrations/gameagent/runtime/gameharness/constraints/acceptance.py
+  s_f0b7318bf98084::t_9a0586941786ae 1-1437
+integrations/gameagent/runtime/gameharness/constraints/generated_media_reference.py
+  s_f0b7318bf98084::t_cb2941f7c6c1a4 1-152
+integrations/gameagent/runtime/gameharness/constraints/invariants.py
+  s_f0b7318bf98084::t_99f24a37fd086c 1-630
+integrations/gameagent/runtime/gameharness/constraints/javascript_lint.py
+  s_f0b7318bf98084::t_3be756f69e84c6 1-427
+integrations/gameagent/runtime/gameharness/constraints/orientation_declaration.py
+  s_f0b7318bf98084::t_8b2d204c6d9ef3 1-100
+integrations/gameagent/runtime/gameharness/constraints/packaging.py
+  s_f0b7318bf98084::t_2eeec56eae422f 1-43
+integrations/gameagent/runtime/gameharness/constraints/prd_contract.py
+  s_f0b7318bf98084::t_f387504c18325e 1-846
+integrations/gameagent/runtime/gameharness/constraints/prd_runtime_paths.py
+  s_f0b7318bf98084::t_4a6e905cb47a0f 1-633
+integrations/gameagent/runtime/gameharness/constraints/template_registry.py
+  s_f0b7318bf98084::t_6f9de3e8abcdc3 1-138
+integrations/gameagent/runtime/gameharness/constraints/web_release.py
+  s_f0b7318bf98084::t_9b43c2c63d8982 1-651
+integrations/gameagent/runtime/gameharness/constraints/web_runtime_playability.py
+  s_f0b7318bf98084::t_005ca5cbbd734d 1-629
+integrations/gameagent/runtime/gameharness/constraints/web_runtime_probe.py
+  s_f0b7318bf98084::t_a8ff546cce40b3 1-2539
+integrations/gameagent/runtime/gameharness/constraints/web_runtime_source.py
+  s_f0b7318bf98084::t_64851bc9459c5b 1-147
+integrations/gameagent/runtime/gameharness/core/__init__.py
+  s_f0b7318bf98084::t_2b05eb2b457b25 1
+integrations/gameagent/runtime/gameharness/core/charter.md
+  s_f0b7318bf98084::t_3561008ff66abf 1-14
+integrations/gameagent/runtime/gameharness/core/context.py
+  s_f0b7318bf98084::t_db855b9bb93216 1-681
+integrations/gameagent/runtime/gameharness/core/delivery_feedback.py
+  s_f0b7318bf98084::t_6fc7b0b80c6e1b 1-108
+integrations/gameagent/runtime/gameharness/core/diagnostic_payload.py
+  s_f0b7318bf98084::t_4167266303d3f1 1-235
+integrations/gameagent/runtime/gameharness/core/galacean_project_index.py
+  s_f0b7318bf98084::t_b07baf9a212b68 1-833
+integrations/gameagent/runtime/gameharness/core/input_attachments.py
+  s_f0b7318bf98084::t_1771957f74672d 1-487
+integrations/gameagent/runtime/gameharness/core/limits.py
+  s_f0b7318bf98084::t_dd239ddccc9672 1-18
+integrations/gameagent/runtime/gameharness/core/lite_workspace.py
+  s_f0b7318bf98084::t_51438c4cf029e2 1-938
+integrations/gameagent/runtime/gameharness/core/prompt_charter.py
+  s_f0b7318bf98084::t_469dcb57a04632 1-112
+integrations/gameagent/runtime/gameharness/core/prompt_templates.py
+  s_f0b7318bf98084::t_34b1803cd541d2 1-59
+integrations/gameagent/runtime/gameharness/core/prompts/identity.md
+  s_f0b7318bf98084::t_9d2826cc360d87 1-7
+integrations/gameagent/runtime/gameharness/core/prompts/interactive.md
+  s_f0b7318bf98084::t_a3957331ab200b 1-48
+integrations/gameagent/runtime/gameharness/core/prompts/mcp_reminder_interactive_model_only.md
+  s_f0b7318bf98084::t_d10566ec7f80b4 1
+integrations/gameagent/runtime/gameharness/core/runner.py
+  s_f0b7318bf98084::t_9fdcbf39a79cc8 1-66
+integrations/gameagent/runtime/gameharness/core/sensitive_values.py
+  s_f0b7318bf98084::t_cba772aeceec97 1-314
+integrations/gameagent/runtime/gameharness/core/skill_policy.py
+  s_f0b7318bf98084::t_058d9e865f8ba4 1-77
+integrations/gameagent/runtime/gameharness/gateway/intake.py
+  s_f0b7318bf98084::t_56abcb3f58283c 1-287
+integrations/gameagent/runtime/gameharness/knowledge/__init__.py
+  s_f0b7318bf98084::t_b84e4e255a7e80 1-6
+integrations/gameagent/runtime/gameharness/knowledge/catalog_health.py
+  s_f0b7318bf98084::t_9cd7249a3ad157 1-195
+integrations/gameagent/runtime/gameharness/knowledge/materializer.py
+  s_f0b7318bf98084::t_348feef0f00639 1-56
+integrations/gameagent/runtime/gameharness/knowledge/resolver.py
+  s_f0b7318bf98084::t_4b061b67aa0c91 1-363
+integrations/gameagent/runtime/gameharness/profiles/defs/game.yaml
+  s_f0b7318bf98084::t_48468b8765c07e 1-10
+integrations/gameagent/runtime/gameharness/profiles/loader.py
+  s_f0b7318bf98084::t_9709a42f9e2dbe 1-32
+integrations/gameagent/runtime/gameharness/profiles/schema.py
+  s_f0b7318bf98084::t_1af6d0015f199c 1-98
+integrations/gameagent/runtime/gameharness/runtime_context.py
+  s_f0b7318bf98084::t_a5cec0c43755ef 1-293
+integrations/gameagent/runtime/render_prompt.py
+  s_f0b7318bf98084::t_5f0fab724d258c 1-17
+integrations/gameagent/runtime/scaffold/docker/Dockerfile
+  s_f0b7318bf98084::t_94930e805f0bb7 1-280
+integrations/gameagent/runtime/scaffold/docker/Dockerfile.agent
+  s_f0b7318bf98084::t_10ce48b14b67b0 1-75
+integrations/gameagent/runtime/scaffold/docker/Dockerfile.local
+  s_f0b7318bf98084::t_c31824bdd9a410 1-164
+integrations/gameagent/runtime/scaffold/docker/expand-warmup-extra.py
+  s_f0b7318bf98084::t_1576902cb827d6 1-32
+integrations/gameagent/runtime/scaffold/docker/install-browser-ca.sh
+  s_f0b7318bf98084::t_447534af7ee42a 1-27
+integrations/gameagent/runtime/scaffold/docker/select-agent.sh
+  s_f0b7318bf98084::t_e810228ecd5581 1-35
+integrations/gameagent/runtime/scaffold/docker/warmup-deps.json
+  s_f0b7318bf98084::t_e7f50daf4f67e6 1-139
+integrations/gameagent/runtime/scaffold/docker/warmup-extra-versions.json
+  s_f0b7318bf98084::t_7a70f98ab54557 1-229
+integrations/gameagent/runtime/scaffold/docker/warmup-galacean-builder/package.json
+  s_f0b7318bf98084::t_1678c9b057b644 1-18
+integrations/gameagent/runtime/scaffold/docker/warmup-galacean-builder/pnpm-lock.yaml
+  s_f0b7318bf98084::t_3743f67be5659b 1-501
+integrations/gameagent/runtime/scaffold/runtime/__init__.py
+  s_f0b7318bf98084::t_7c584fdfa8443a 1-3
+integrations/gameagent/runtime/scaffold/runtime/adapters/tsc_error_triage.py
+  s_f0b7318bf98084::t_701c397e6ad2a2 1-26
+integrations/gameagent/runtime/scaffold/runtime/archive.py
+  s_f0b7318bf98084::t_09b0250a0ecbdc 1-45
+integrations/gameagent/runtime/scaffold/runtime/config.py
+  s_f0b7318bf98084::t_b2aa83ef8cabab 1-56
+integrations/gameagent/runtime/scaffold/runtime/env.py
+  s_f0b7318bf98084::t_dc1f7b50bae80b 1-37
+integrations/gameagent/runtime/scaffold/runtime/gateway/__init__.py
+  s_f0b7318bf98084::t_e2608228c4608b 1-29
+integrations/gameagent/runtime/scaffold/runtime/gateway/base.py
+  s_f0b7318bf98084::t_ff306a60a3248d 1-404
+integrations/gameagent/runtime/scaffold/runtime/gateway/error_observability.py
+  s_f0b7318bf98084::t_03fe194e495486 1-137
+integrations/gameagent/runtime/scaffold/runtime/gateway/metrics.py
+  s_f0b7318bf98084::t_d9b1ebee05bed4 1-782
+integrations/gameagent/runtime/scaffold/runtime/gateway/otlp_metrics.py
+  s_f0b7318bf98084::t_3018fec1c6d33f 1-540
+integrations/gameagent/runtime/scaffold/runtime/gateway/otlp_traces.py
+  s_f0b7318bf98084::t_89afe22760953e 1-628
+integrations/gameagent/runtime/scaffold/runtime/gateway/platform_web_contract.py
+  s_f0b7318bf98084::t_66699a767dc032 1-62
+integrations/gameagent/runtime/scaffold/runtime/gateway/playwright_screenshot_script.py
+  s_f0b7318bf98084::t_2b9ad8405e1d6a 1-606
+integrations/gameagent/runtime/scaffold/runtime/gateway/release.py
+  s_f0b7318bf98084::t_b5d4ecfb8da8dc 1-304
+integrations/gameagent/runtime/scaffold/runtime/gateway/release_executor.py
+  s_f0b7318bf98084::t_ffe085c4731fd1 1-1087
+integrations/gameagent/runtime/scaffold/runtime/gateway/release_screenshot.py
+  s_f0b7318bf98084::t_7c8a47920e552d 1-311
+integrations/gameagent/runtime/scaffold/runtime/gateway/trace_context.py
+  s_f0b7318bf98084::t_a7759086f9b481 1-51
+integrations/gameagent/runtime/scaffold/runtime/tools/finalize_common.py
+  s_f0b7318bf98084::t_2ad56a2fad8cbd 1-444
+integrations/gameagent/runtime/scaffold/runtime/tools/project_root.py
+  s_f0b7318bf98084::t_a03cacc4252701 1-87
+integrations/gameagent/runtime/skills/3d-game/references/threejs-gameplay-systems/assets/threejs-vite-game/package.json
+  s_f0b7318bf98084::t_5a06d7874f91ca 1-38
+integrations/gameagent/runtime/skills/game-delivery/SKILL.md
+  s_f0b7318bf98084::t_e4b1f29b49e27d 1-23
+integrations/gameagent/runtime/tool_server.py
+  s_f0b7318bf98084::t_4f46f8cf43c0fe 1-137
+integrations/gameagent/skills_install.py
+  s_f0b7318bf98084::t_b29cc66e6a0089 1-60
+integrations/gameagent/test_adapter_integration.py
+  s_f0b7318bf98084::t_342a5272094b63 1-73
+integrations/gameagent/upstream.json
+  s_f0b7318bf98084::t_8311e2d35d586e 1-1154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e3a5535c5baca67f17e597fd0285865aee64fabc",
+  "prompts": {},
+  "sessions": {
+    "s_f0b7318bf98084": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d080-b4c3-7ed0-91bb-6cf2f4aefe98",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
