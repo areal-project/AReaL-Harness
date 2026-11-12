@@ -971,7 +971,10 @@ try {
   );
   assert.ok(lostResult?.accepted && lostResult.resultThreadId && lostResult.requestId);
   assert.equal(requests.length, beforeCreation.modelRequests);
-  assert.equal(Object.keys(project(await state()).state.threads).length, 2);
+  const storedThreads = (await readdir(join(scratch, "core", projectId, "state")))
+    .filter((name) => /^[a-f0-9-]{36}\.json$/i.test(name))
+    .map((name) => name.slice(0, -5));
+  assert.deepEqual(storedThreads.sort(), [sourceThreadId, lostResult.resultThreadId].sort());
   await shot("01b-fork-response-unknown.png");
   await page.keyboard.press("Escape");
   await forkDialog.waitFor({ state: "hidden" });
@@ -1034,10 +1037,11 @@ try {
     return current && current !== id;
   }, targetThreadId);
   nestedThreadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-  const nestedFork = project(await state()).state.threads[nestedThreadId];
+  const nestedFork = await readCoreThread(nestedThreadId);
   assert.equal(nestedFork.conversation.origin.sourceThreadId, targetThreadId);
   assert.equal(nestedFork.conversation.historySeed.turnCount, 1);
   assert.equal(nestedFork.turns.length, 0);
+  await page.locator(`[data-turn-id="${anchorTurnId}"] .user-bubble`).waitFor();
   assert.equal(requests.length, requestsBeforeNested);
   await selectConversation(page, targetThreadId);
   checks.push(
@@ -1275,11 +1279,12 @@ try {
   });
   await sideInput.fill(sideQuestion);
   await sidePane.getByRole("button", { name: "发送", exact: true }).click();
-  const sideAnswered = await until(
-    (snapshot) =>
-      project(snapshot).state.threads[sideThreadId]?.turns.at(-1)?.status === "completed",
-    "current Side answer completed",
-  );
+  let sideTurn;
+  const sideAnswered = await until(async () => {
+    sideTurn = (await readCoreThread(sideThreadId))?.turns.at(-1);
+    return sideTurn?.status === "completed";
+  }, "current Side answer completed");
+  await sidePane.locator(`[data-turn-id="${sideTurn.id}"][data-turn-status="completed"]`).waitFor();
   const sourceAfter = project(sideAnswered).state.threads[sourceThreadId];
   assert.deepEqual(
     sourceAfter.turns.map((turn) => turn.id),
@@ -1304,11 +1309,11 @@ try {
   );
   await shot("05-current-side-answered.png");
   await writeFile(toolRelease, "release\n");
-  await until(
-    (snapshot) =>
-      project(snapshot).state.threads[sourceThreadId].turns.at(-1)?.status === "completed",
-    "source Runtime command settled",
-  );
+  await until(async () => {
+    const thread = await readCoreThread(sourceThreadId);
+    return thread?.turns.find((turn) => turn.id === activeTurnId)?.status === "completed";
+  }, "source Runtime command settled");
+  await page.locator(`[data-turn-id="${activeTurnId}"][data-turn-status="completed"]`).waitFor();
   checks.push(
     "current selection-to-Side creates an idle executable child, sends verified Unicode context only on explicit send, and preserves source identity/configuration while its real Runtime command is active",
   );
