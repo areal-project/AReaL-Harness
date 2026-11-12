@@ -2333,13 +2333,13 @@ async function runFullModelSelection() {
   );
   await page.getByTestId("chat-input").fill("Use the other configured model");
   await button("发送").click();
-  await until(
-    (s) =>
-      Object.values(fixtureProject(s).state.threads).some(
-        (t) => t.turns?.length === 2 && t.turns.at(-1).status === "completed",
-      ),
-    "selected model turn completes",
-  );
+  let selectedTurn;
+  await until(async () => {
+    const thread = await readCoreThread(selectedThreadId);
+    selectedTurn = thread.turns.at(-1);
+    return thread.turns.length === 2 && selectedTurn?.status === "completed";
+  }, "selected model turn completes");
+  await page.locator(`[data-turn-id="${selectedTurn.id}"][data-turn-status="completed"]`).waitFor();
   assert.deepEqual(requests.at(-1), {
     model: "arena-model",
     authenticated: true,
