@@ -267,51 +267,6 @@ require(${JSON.stringify(join(desktop, "src/main.cjs"))});
 `,
   );
 }
-if (filesRegression) {
-  launchApp = join(scratch, "files-app");
-  await mkdir(launchApp);
-  await writeFile(
-    join(launchApp, "package.json"),
-    JSON.stringify({ name: "composer-files-fixture", main: "bootstrap.cjs" }),
-  );
-  await writeFile(
-    join(launchApp, "bootstrap.cjs"),
-    `
-const { ipcMain } = require("electron");
-const handle = ipcMain.handle.bind(ipcMain);
-globalThis.filesHoldList = false;
-globalThis.filesListEntered = false;
-globalThis.filesListCompleted = false;
-globalThis.filesHoldSearch = null;
-globalThis.filesSearchEntered = false;
-globalThis.filesSearchCompleted = false;
-ipcMain.handle = function(channel, listener) {
-  if (channel !== "areal-core:command") return handle(channel, listener);
-  return handle(channel, async (event, name, params) => {
-    if (name === "workspace" && params?.operation === "search" && params.query === globalThis.filesFailSearch) {
-      globalThis.filesFailSearch = null;
-      return { ok: false, error: { code: "INTERNAL", message: "FILE_SEARCH_FIXTURE_FAILURE" } };
-    }
-    if (name === "workspace" && params?.operation === "search" && params.query === globalThis.filesHoldSearch) {
-      globalThis.filesHoldSearch = null;
-      globalThis.filesSearchEntered = true;
-      await new Promise(resolve => { globalThis.filesReleaseSearch = () => { globalThis.filesReleaseSearch = null; resolve(); }; });
-      try { return await listener(event, name, params); }
-      finally { globalThis.filesSearchCompleted = true; }
-    }
-    const held = name === "workspace" && params?.operation === "list" && !params.path && globalThis.filesHoldList;
-    if (!held) return listener(event, name, params);
-    globalThis.filesHoldList = false;
-    globalThis.filesListEntered = true;
-    await new Promise(resolve => { globalThis.filesReleaseList = () => { globalThis.filesReleaseList = null; resolve(); }; });
-    try { return await listener(event, name, params); }
-    finally { globalThis.filesListCompleted = true; }
-  });
-};
-require(${JSON.stringify(join(desktop, "src/main.cjs"))});
-`,
-  );
-}
 let app,
   page,
   passed = false;
@@ -378,6 +333,74 @@ async function launch() {
     if (String(d).includes("Error")) process.stderr.write(d);
   });
   page = await app.firstWindow();
+  if (filesRegression)
+    await page.addInitScript(() => {
+      const NativeWebSocket = WebSocket;
+      class FixtureWebSocket extends NativeWebSocket {
+        constructor(...args) {
+          super(...args);
+          this.addEventListener("message", (event) => {
+            let reply;
+            try {
+              reply = JSON.parse(event.data);
+            } catch {
+              return;
+            }
+            if (reply.id === this.filesSearchId) globalThis.filesSearchCompleted = true;
+            if (reply.id === this.filesListId) globalThis.filesListCompleted = true;
+          });
+        }
+        send(data) {
+          let frame;
+          try {
+            frame = JSON.parse(data);
+          } catch {
+            return super.send(data);
+          }
+          const request =
+            frame.method === "desktop.command" && frame.params?.command === "workspace"
+              ? frame.params.request
+              : null;
+          if (request?.operation === "search" && request.query === globalThis.filesFailSearch) {
+            globalThis.filesFailSearch = null;
+            queueMicrotask(() =>
+              this.dispatchEvent(
+                new MessageEvent("message", {
+                  data: JSON.stringify({
+                    version: 1,
+                    id: frame.id,
+                    error: { code: "INTERNAL", message: "FILE_SEARCH_FIXTURE_FAILURE" },
+                  }),
+                }),
+              ),
+            );
+            return;
+          }
+          if (request?.operation === "search" && request.query === globalThis.filesHoldSearch) {
+            globalThis.filesHoldSearch = null;
+            globalThis.filesSearchEntered = true;
+            this.filesSearchId = frame.id;
+            globalThis.filesReleaseSearch = () => {
+              globalThis.filesReleaseSearch = null;
+              super.send(data);
+            };
+            return;
+          }
+          if (request?.operation === "list" && !request.path && globalThis.filesHoldList) {
+            globalThis.filesHoldList = false;
+            globalThis.filesListEntered = true;
+            this.filesListId = frame.id;
+            globalThis.filesReleaseList = () => {
+              globalThis.filesReleaseList = null;
+              super.send(data);
+            };
+            return;
+          }
+          super.send(data);
+        }
+      }
+      globalThis.WebSocket = FixtureWebSocket;
+    });
   page.setDefaultTimeout(15000);
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (message) => {
@@ -2128,8 +2151,8 @@ try {
 } finally {
   await writeFile(join(scratch, "model-requests.json"), JSON.stringify(received, null, 2));
   await pasteCore?.close();
-  if (filesRegression && app)
-    await app.evaluate(() => {
+  if (filesRegression && page)
+    await page.evaluate(() => {
       globalThis.filesReleaseList?.();
       globalThis.filesReleaseSearch?.();
     });

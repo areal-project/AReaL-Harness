@@ -341,22 +341,22 @@ export async function runComposerFilesAcceptance({
     "R-COMPOSERSURFACE-007 main chat restores and sends inline file identifiers with full absolute hover paths, no upload cards or file payload, and canonical workspace-relative Markdown",
   );
 
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesHoldSearch = "mention-files/nested";
     globalThis.filesSearchEntered = false;
     globalThis.filesSearchCompleted = false;
   });
   await input().fill("@mention-files/nested");
   await until(
-    async () => app.evaluate(() => globalThis.filesSearchEntered),
+    async () => page.evaluate(() => globalThis.filesSearchEntered),
     "file search held at privileged boundary",
   );
   await input().fill("@mention-files/other");
   await fileOptions().filter({ hasText: "other.ts" }).waitFor();
   assert.equal(await nestedFile().count(), 0);
-  await app.evaluate(() => globalThis.filesReleaseSearch());
+  await page.evaluate(() => globalThis.filesReleaseSearch());
   await until(
-    async () => app.evaluate(() => globalThis.filesSearchCompleted),
+    async () => page.evaluate(() => globalThis.filesSearchCompleted),
     "old file search completed",
   );
   assert.equal(await nestedFile().count(), 0);
@@ -365,7 +365,7 @@ export async function runComposerFilesAcceptance({
   await input().fill("");
   checks.push("late query response cannot replace current selectable file results");
 
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesFailSearch = "mention-files/nested";
   });
   await input().fill("@mention-files/nested");
@@ -596,7 +596,7 @@ export async function runComposerFilesAcceptance({
     "native-path directory drag and synthetic paste of its native DataTransfer resolve a workspace reference through Electron",
   );
 
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesHoldList = true;
     globalThis.filesListEntered = false;
     globalThis.filesListCompleted = false;
@@ -605,7 +605,7 @@ export async function runComposerFilesAcceptance({
   const beforePending = received.length;
   await dropReference(payload);
   await until(
-    async () => app.evaluate(() => globalThis.filesListEntered),
+    async () => page.evaluate(() => globalThis.filesListEntered),
     "workspace validation boundary held",
   );
   assert.equal(await button("发送").isDisabled(), true);
@@ -613,9 +613,9 @@ export async function runComposerFilesAcceptance({
   assert.equal(received.length, beforePending);
   await createProjectConversation(page, "workspace");
   await selectConversation(page, tid);
-  await app.evaluate(() => globalThis.filesReleaseList());
+  await page.evaluate(() => globalThis.filesReleaseList());
   await until(
-    async () => app.evaluate(() => globalThis.filesListCompleted),
+    async () => page.evaluate(() => globalThis.filesListCompleted),
     "delayed privileged workspace listing completed",
   );
   await page.getByText("正在核对工作区引用…", { exact: true }).waitFor({ state: "hidden" });
@@ -658,14 +658,14 @@ export async function runComposerFilesAcceptance({
   };
   await input().fill("FILES_NORMAL_DRAFT");
   await editQueued();
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesHoldList = true;
     globalThis.filesListEntered = false;
     globalThis.filesListCompleted = false;
   });
   await dropReference(payload);
   await until(
-    async () => app.evaluate(() => globalThis.filesListEntered),
+    async () => page.evaluate(() => globalThis.filesListEntered),
     "queue reference validation held",
   );
   await button("取消").click();
@@ -673,9 +673,9 @@ export async function runComposerFilesAcceptance({
     (key) => !localStorage.getItem(`${key}:queue-edit`),
     `areal-gui:draft:${pid}:${tid}`,
   );
-  await app.evaluate(() => globalThis.filesReleaseList());
+  await page.evaluate(() => globalThis.filesReleaseList());
   await until(
-    async () => app.evaluate(() => globalThis.filesListCompleted),
+    async () => page.evaluate(() => globalThis.filesListCompleted),
     "delayed privileged workspace listing completed",
   );
   await page.getByText("正在核对工作区引用…", { exact: true }).waitFor({ state: "hidden" });
@@ -840,23 +840,23 @@ export async function runComposerFilesAcceptance({
     "files-inline-worktree-sent-path-hover",
   );
   assert(users(received.at(-1)).at(-1).includes("[shared.ts](./mention-route-worktree/shared.ts)"));
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesHoldSearch = "mention-route-";
     globalThis.filesSearchEntered = false;
     globalThis.filesSearchCompleted = false;
   });
   await input().fill("@mention-route-");
   await until(
-    async () => app.evaluate(() => globalThis.filesSearchEntered),
+    async () => page.evaluate(() => globalThis.filesSearchEntered),
     "worktree search held before switching threads",
   );
   await selectConversation(page, tid);
   await input().fill("@mention-route-");
   await fileOptions().filter({ hasText: "mention-route-main" }).waitFor();
   assert.equal(await fileOptions().filter({ hasText: "mention-route-worktree" }).count(), 0);
-  await app.evaluate(() => globalThis.filesReleaseSearch());
+  await page.evaluate(() => globalThis.filesReleaseSearch());
   await until(
-    async () => app.evaluate(() => globalThis.filesSearchCompleted),
+    async () => page.evaluate(() => globalThis.filesSearchCompleted),
     "old worktree search completed after switching",
   );
   assert.equal(await fileOptions().filter({ hasText: "mention-route-worktree" }).count(), 0);
