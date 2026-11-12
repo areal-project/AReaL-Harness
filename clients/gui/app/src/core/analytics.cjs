@@ -110,7 +110,7 @@ class UsageAnalytics {
       !turnId ||
       !threadId ||
       item?.type !== "dynamicToolCall" ||
-      item.tool !== "skill_read" ||
+      !["skill_load", "skill_read"].includes(item.tool) ||
       item.status !== "completed" ||
       item.success !== true
     )

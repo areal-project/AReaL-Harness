@@ -2,7 +2,7 @@
   "fixedEnvironmentUtf8Bytes": 592,
   "profile": "desktop-default-no-runtime-or-plugins",
   "protocol": "chatCompletions",
-  "systemInstructionsUtf8Bytes": 15707,
+  "systemInstructionsUtf8Bytes": 16012,
   "tools": {
     "agent_artifact": {
       "descriptionUtf8Bytes": 391,
@@ -89,11 +89,11 @@
       "nameUtf8Bytes": 10,
       "parametersJsonUtf8Bytes": 76
     },
-    "skill_read": {
-      "descriptionUtf8Bytes": 206,
+    "skill_load": {
+      "descriptionUtf8Bytes": 264,
       "nameUtf8Bytes": 10,
-      "parametersJsonUtf8Bytes": 359
+      "parametersJsonUtf8Bytes": 233
     }
   },
-  "toolsJsonUtf8Bytes": 12686
+  "toolsJsonUtf8Bytes": 12618
 }

@@ -240,7 +240,7 @@ impl Engine {
                 if sources.next().is_some() {
                     parts.push(part(Kind::Other, "无法唯一归属的工具返回", cost));
                 } else if let Some((name, arguments, success)) = source {
-                    if name == "skill_read"
+                    if name == "skill_load"
                         && *success == Some(true)
                         && registry
                             .and_then(|registry| registry.get(name).ok())

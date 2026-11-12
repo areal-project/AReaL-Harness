@@ -230,17 +230,22 @@ const creatorResources = await Promise.all(
     };
   }),
 );
-const creatorReadSteps = creatorResources.flatMap((file) =>
-  Array.from({ length: Math.ceil(file.size / 8192) }, (_, index) => [
-    "skill_read",
-    {
-      skill: { id: fixture.creatorId, revision: `builtin-${creatorSource.contentDigest}` },
-      resource: file.resource,
-      offset: index * 8192,
-      maxBytes: 8192,
-    },
-  ]),
-);
+const creatorReadSteps = [
+  [
+    "skill_load",
+    { skill: { id: fixture.creatorId, revision: `builtin-${creatorSource.contentDigest}` } },
+  ],
+  ...creatorResources.flatMap((file) =>
+    Array.from({ length: Math.ceil(file.size / 8192) }, (_, index) => [
+      "fs_read",
+      {
+        path: `areal://skill/${fixture.creatorId}/builtin-${creatorSource.contentDigest}/${file.resource}`,
+        offset: index * 8192,
+        maxBytes: 8192,
+      },
+    ]),
+  ),
+];
 const creatorToolCount = creatorReadSteps.length + 8;
 function creatorResourceText(payload, file) {
   const calls = new Map(
@@ -251,23 +256,22 @@ function creatorResourceText(payload, file) {
   const pages = (payload.messages ?? [])
     .filter(
       (message) =>
-        message.role === "tool" && calls.get(message.tool_call_id)?.function.name === "skill_read",
+        message.role === "tool" && calls.get(message.tool_call_id)?.function.name === "fs_read",
     )
     .map((message) => ({
       args: JSON.parse(calls.get(message.tool_call_id).function.arguments),
       result: JSON.parse(message.content),
     }))
-    .filter((page) => page.args.resource === file.resource)
+    .filter((page) => page.args.path.endsWith(`/${file.resource}`))
     .sort((a, b) => a.args.offset - b.args.offset);
   let offset = 0;
   const chunks = pages.map(({ args, result }) => {
     assert.equal(args.offset, offset);
-    assert.equal(result.resource, file.resource);
-    assert.equal(result.revision, `builtin-${creatorSource.contentDigest}`);
-    const bytes =
-      typeof result.text === "string"
-        ? Buffer.from(result.text, "utf8")
-        : Buffer.from(result.dataBase64, "base64");
+    assert.equal(
+      args.path,
+      `areal://skill/${fixture.creatorId}/builtin-${creatorSource.contentDigest}/${file.resource}`,
+    );
+    const bytes = Buffer.from(result.dataBase64, "base64");
     offset += bytes.length;
     assert.equal(result.nextOffset, offset);
     return bytes;
@@ -1889,10 +1893,7 @@ try {
         if (await allow.count()) throw error;
       }
       if (enabled) {
-        assert.match(
-          await approval.innerText(),
-          /run_command|fs_create|fs_write|fs_read|skill_read/,
-        );
+        assert.match(await approval.innerText(), /run_command|fs_create|fs_write|fs_read/);
         await allow.click();
         assert.ok(
           ++creatorApprovals <= creatorToolCount,
@@ -1914,7 +1915,7 @@ try {
       "Runtime script copy retains the pinned official bytes",
     );
   checks.push(
-    "official Creator resources are paginated through skill_read and copied by Runtime with pinned SHA-256 equality",
+    "official Creator resources are paginated through fs_read and copied by Runtime with pinned SHA-256 equality",
   );
   assert.equal(
     await readFile(join(creatorWorkspace, ".agents/skills", createdSkillId, "SKILL.md"), "utf8"),
@@ -2079,7 +2080,7 @@ try {
       : "source Electron/Main/Core plugin workspace, reviewed portable local and ZIP plugins, standalone resources, stdio MCP, native App iframe before and after cold Desktop/Core restart, official bundled Creator ordinary chat turn in a separate unoccupied project; deterministic loopback model; no packaged or remote-provider acceptance",
     creatorPython,
     injectedBoundary:
-      "native directory and ZIP selection return isolated fixture paths; explicit Python with PyYAML; auxiliary model requests are fixtures; deterministic loopback model reads official resources with skill_read, materializes those returned bytes through Runtime into authorized workspace scratch, then emits official Creator init, project read/write and validation tool calls, then the literal response",
+      "native directory and ZIP selection return isolated fixture paths; explicit Python with PyYAML; auxiliary model requests are fixtures; deterministic loopback model loads the main skill and reads official resources with fs_read, materializes those returned bytes through Runtime into authorized workspace scratch, then emits official Creator init, project read/write and validation tool calls, then the literal response",
   };
   await json(join(scratch, "manifest.json"), manifest);
   await json(join(scratch, "model-requests.json"), requests);

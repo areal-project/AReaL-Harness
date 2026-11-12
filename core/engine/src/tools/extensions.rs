@@ -763,6 +763,19 @@ impl Invocation<'_> {
                     .map_err(invalid);
             }
             Backend::Builtin => {
+                if crate::desktop::skill_resources::is_skill_resource_path(&self.call.name, args) {
+                    return self
+                        .engine
+                        .read_skill_resource_file(
+                            self.thread_id,
+                            self.turn_id,
+                            &self.call.name,
+                            args,
+                        )
+                        .await
+                        .map(|value| (true, value))
+                        .map_err(invalid);
+                }
                 let runtime = self
                     .engine
                     .runtime

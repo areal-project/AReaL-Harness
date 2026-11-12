@@ -2,7 +2,7 @@
 
 # Skill 发现与读取
 
-CLI、TUI、serve 和直接 Core 共用发现规则；连接既有服务时使用服务端目录。自动发现和显式部署（包括 Profile 引用）都只登记元信息，正文与附件按需读取当前文件，不创建内容快照。
+CLI、TUI、serve 和直接 Core 共用发现规则；连接既有服务时使用服务端目录。自动发现和显式部署（包括 Profile 引用）都只登记元信息，正文与附件按需读取当前文件；发现阶段不缓存正文，成功加载的主体作为工具结果保留在会话历史中。
 
 | 优先级 | 目录 |
 |---|---|
@@ -25,13 +25,21 @@ GUI 与 Core 的单次部署最多登记 512 个 Skill 版本引用。GUI 把当
 
 Skill 根目录软链接可解析到授权的项目或全局 Skill 根；SKILL.md 入口不允许软链接。可信启动器也可直接注入已解析的元信息，见[桌面契约](../api/desktop.md#skills)。
 
-## 按需读取当前文件
+## 完整加载主体与按需读取附件
 
-`skill_list` 与 `skill_read` 默认无需人工或模型审批，“请求审批”和“帮我审批”均适用。显式 `permissions.deny`、`permissions.ask` 和 Profile／会话的强制审批规则仍优先；工具允许列表、当前 Turn 的 Skill 范围、插件撤权与资源路径检查保持不变。读取 Skill 不授予执行脚本、访问网络或读取任意宿主文件的权限，后续操作仍按各自工具的权限规则执行。
+`skill_list` 与 `skill_load` 默认无需人工或模型审批。附件使用已有只读工具 `read_file` 与 `fs_read`，沿用各自的普通文件权限规则；显式 `permissions.deny`、`permissions.ask`、Profile／会话审批、工具允许列表、当前 Turn 的 Skill 范围和插件撤权仍优先。读取 Skill 不授予执行脚本、访问网络或读取任意宿主文件的权限。
 
-`skill_list` 返回名称、描述与引用，不枚举附件；`resources` 为 null。Agent 按需要通过 `skill_read` 读取 SKILL.md，再跟随其中的相对路径读取资源。每次异步读取最多 8192 字节，使用 offset/nextOffset 分页；文件大小不受该分页上限限制。模型工具对完整 UTF-8 页只返回 text，避免同页明文与 Base64 重复占用上下文；公共读取 API 仍返回 dataBase64 与可解码的 text。二进制或跨字符的非 UTF-8 分页以 base64 返回，不自动变成模型图像输入；附带脚本不自动执行。
+`skill_list` 返回名称、描述与引用，不枚举附件；`resources` 为 null，`resourceRoot` 是受控的 `areal://skill/<id>/<revision>` 前缀。模型选定 Skill 后，先调用 `skill_load {skill:{id,revision}}` 完整加载 `SKILL.md`，再应用其中的指令。附件路径应拼接到 `resourceRoot`：文本用 `read_file` 的行/列读取，二进制或原始字节用 `fs_read`。这些 URI 只由 Core 解析，读取范围仍绑定当前 Turn 的 Skill，且始终只读；`SKILL.md` 通过普通读取工具访问会明确失败。
 
-非插件 Skill 每次读取都从登记后的规范路径重新打开根目录，因此同路径目录或祖先目录替换后，旧引用读取当前文件。根路径逐段打开，拒绝更新后引入的根目录或祖先目录软链接。插件继续读取固定安装包。资源读取拒绝绝对路径、父目录跳转、内部文件/目录软链接和特殊文件。坏附件仅使该次读取失败，不影响其他 Skill。正文与附件的编辑、新增、删除在后续读取生效；元信息索引在重新登记或重启后更新。跨页读取不保证文件内容不变；需一致内容时由部署方提供只读版本目录。
+`skill_load` 从一次打开的文件读取完整 UTF-8 主体，返回 `{id,revision,resource:"SKILL.md",resourceRoot,sizeBytes,sha256,complete:true,text}`。包含 JSON 转义和元数据的完整响应最多 64 KiB；正文无效或超限明确失败，不返回成功的前缀。详细参考资料应移到独立文件，`SKILL.md` 保留适用条件、核心约束、执行顺序和资源导航。64 KiB 是该加载入口的资源上限，不是推荐长度，也不限制附件大小。
+
+成功正文绕过通用工具的 16 KiB 头尾预览，原样计入工具输出及模型输入预算。首次求解请求消费前保护完整正文，不让自动摘要提前替代它；最终请求再次校验完整结果，放不下时明确停止，不扩充 Turn 或模型窗口预算。成功模型响应后沿用普通历史压缩；后续任务若仍需要已压缩的指令，应再次加载。完整交付不保证模型遵守规则，也不意味着正文在所有后续请求中永久保留。`skill_load` 不通过 `tool_program` 的选择性输出入口执行。
+
+`skill_list.loaded` 保留兼容语义：记录成功访问过的 Skill 引用，包括主体和附件读取，不表示主体完整。新增 `loadedMain` 只列出当前历史投影中保留完整主体回执的 Skill，值为 `{revision,sha256,sourceItemId}`；它不是模型理解或遵守指令的确认，也不表示磁盘文件仍具有相同内容。压缩后不再保留完整回执时，该条目不再列出。
+
+普通 `read_file` 对 Skill 文本附件返回标准行分页结果：`offset`/`limit`/`column` 使用 1-based 行列，`sha256` 是完整附件内容 hash，超长行用 `nextRead` 继续；结果受普通读取的有界输出预算约束。`fs_read` 返回最多 8192 字节的 `dataBase64`、完整内容 hash、`size`、`nextOffset` 与 `eof`，可用 `expectedSha256` 检查续读版本。两者都拒绝主体别名、越界路径、符号链接和写入操作。资源修改后应从新 hash 或 offset 0 重新读取，不能拼接不同版本。
+
+公共 `areal/skill/read` 与 Rust `read_skill` 保留原有字节分页契约，供客户端和历史兼容调用使用；它不是模型的默认附件入口。显式模型工具允许列表需要加入 `skill_load`，普通 `read_file`/`fs_read` 的既有 allowlist 规则保持不变。回归验证完整交付、URI 授权、主体拒绝、普通读取语义和失败状态；模型的规则遵守率及整体任务收益须独立评测。
 
 ## 引用与升级
 

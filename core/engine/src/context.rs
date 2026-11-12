@@ -635,7 +635,7 @@ impl Engine {
                 Kind::Skills,
                 "技能目录",
                 &format!(
-                    "\nAvailable skills (read using skill_read): {}",
+                    "\nAvailable skills: {}\nBefore applying a selected skill, use skill_load to load its complete SKILL.md. Use read_file for text attachments or fs_read for binary attachments through the returned resourceRoot; these ordinary reads do not activate the main skill. If loading fails, state the limitation; never assume a partial resource contains all rules.",
                     serde_json::to_string(
                         &self.skill_summaries(&self.effective_skill_refs(&config, true))
                     )?
@@ -947,6 +947,20 @@ impl Engine {
                 }
             }
         }
+        let pending_skill_loads: HashSet<String> = cell
+            .state
+            .lock()
+            .await
+            .active
+            .as_ref()
+            .map(|a| a.pending_skill_loads.keys().cloned().collect())
+            .unwrap_or_default();
+        let pending_skill = items
+            .iter()
+            .position(|item| pending_skill_loads.contains(item.id()));
+        if let Some(index) = pending_skill {
+            boundaries.retain(|(cut, _, _)| *cut <= index);
+        }
         let unresolved = items.iter().position(|item| {
             matches!(
                 item,
@@ -1021,6 +1035,7 @@ impl Engine {
             && items.len() > previous
             && matches!(items.last(), Some(Item::DynamicToolCall { status, .. }) if *status != areal_protocol::ToolStatus::InProgress)
             && unresolved.is_none()
+            && pending_skill.is_none()
         {
             candidates.push(items.len());
         }

@@ -21,7 +21,7 @@ pub(crate) fn definitions() -> Vec<ToolDefinition> {
         ("tool_search","Find authorized native tools by name or description. Load up to 8 schemas on the NEXT model request; do not guess arguments or call newly found tools in this batch. Search recovery/history, skills, services, collaboration, or low-level file operations only when needed.",json!({"query":{"type":"string","maxLength":512},"limit":{"type":"integer","minimum":1,"maximum":8}}),vec!["query"]),
         ("mcp_tool_search","Search authorized MCP tools and load matching schemas for the next model request.",json!({"query":{"type":"string","maxLength":512},"limit":{"type":"integer","minimum":1,"maximum":8}}),vec!["query"]),
         ("skill_list","List available skills with names and descriptions. Attachments are not scanned; read SKILL.md for their paths.",json!({}),vec![]),
-        ("skill_read","Read SKILL.md or a referenced resource on demand, up to 8192 bytes per call. Standalone skills read current files; plugin skills read the package revision bound to this Turn. Follow nextOffset to read more.",json!({"skill":reference,"resource":{"type":"string"},"offset":{"type":"integer","minimum":0},"maxBytes":{"type":"integer","minimum":1,"maximum":8192}}),vec!["skill"]),
+        ("skill_load","Load the complete UTF-8 SKILL.md before applying a skill. Returns its full text and content hash, or an explicit error; never a partial success. The encoded result must fit 64 KiB and the existing turn/context budgets. Does not load attachments or execute scripts.",json!({"skill":reference.clone()}),vec!["skill"]),
     ].into_iter().map(|(name, description, properties, required)|ToolDefinition {name:name.into(),description:description.into(),input_schema:json!({"type":"object","properties":properties,"required":required,"additionalProperties":false}),output_schema:None}).chain(crate::task_mode::schedule_tool_definitions()).collect()
 }
 impl Engine {
@@ -207,23 +207,13 @@ impl Engine {
                 Ok(json!(self.update_plan_inner(request).await?))
             }
             "skill_list" => self.skills_for_turn(&thread_id, Some(turn_id)).await,
-            "skill_read" => {
-                let mut page = self
-                    .read_skill_for_turn(
-                        &thread_id,
-                        Some(turn_id),
-                        serde_json::from_value(args["skill"].clone()).map_err(invalid)?,
-                        args["resource"].as_str().unwrap_or("SKILL.md"),
-                        args["offset"].as_u64().unwrap_or(0) as usize,
-                        args["maxBytes"].as_u64().unwrap_or(8192) as usize,
-                    )
-                    .await?;
-                // UTF-8 明文已经保留完整页，模型无需再次接收同一内容的 Base64。
-                // 公共读取 API 和无法解码的二进制/跨字符分页仍保留原始字节。
-                if page.get("text").is_some_and(Value::is_string) {
-                    page.as_object_mut().unwrap().remove("dataBase64");
-                }
-                Ok(page)
+            "skill_load" => {
+                self.load_skill_body(
+                    &thread_id,
+                    turn_id,
+                    serde_json::from_value(args["skill"].clone()).map_err(invalid)?,
+                )
+                .await
             }
             _ => Err(invalid("unknown Core tool")),
         }

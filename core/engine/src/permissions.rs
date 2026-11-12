@@ -303,6 +303,13 @@ impl Engine {
                     "read_file" | "search_files" | "image_read" | "fs_read" | "fs_stat" | "fs_list"
                 ) {
                     let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
+                    if crate::desktop::skill_resources::is_skill_uri(path)
+                        && matches!(tool, "read_file" | "fs_read")
+                    {
+                        // 实际 Skill 选择、版本和撤权在 Core reader 中再次校验；
+                        // 这里仅沿用普通只读工具的无审批默认，不扩大文件根权限。
+                        return "allow";
+                    }
                     if self.runtime.as_ref().is_some_and(|runtime| {
                         tools::resource_uri(path, runtime)
                             .is_ok_and(|uri| !uri.starts_with("workspace://host"))
@@ -320,7 +327,7 @@ impl Engine {
                     "ask_user_question"
                         | "development_service_inspect"
                         | "skill_list"
-                        | "skill_read"
+                        | "skill_load"
                         | "read_tool_result"
                         | "read_history"
                         | "read_conversation_context"
@@ -583,12 +590,12 @@ mod tests {
                 if rule == "client" {
                     config.options.approval_tools = vec!["*".into()];
                 } else if rule == "profile" {
-                    config.profile = Some(serde_json::from_value(json!({"id":"test","revision":"1","displayName":"test","instructions":"","approvalTools":["skill_list","skill_read"]})).unwrap());
+                    config.profile = Some(serde_json::from_value(json!({"id":"test","revision":"1","displayName":"test","instructions":"","approvalTools":["skill_list","skill_load"]})).unwrap());
                     config.options.preapproved_tools = vec!["*".into()];
                 }
                 cell.state.lock().await.thread.turns[0].configuration = Some(config);
-                for tool in ["skill_list", "skill_read"] {
-                    let args = if tool == "skill_read" {
+                for tool in ["skill_list", "skill_load"] {
+                    let args = if tool == "skill_load" {
                         json!({"skill":{"id":"fixture","revision":"v1"}})
                     } else {
                         json!({})

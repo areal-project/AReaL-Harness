@@ -897,7 +897,7 @@ impl Engine {
     ) -> Result<Value> {
         self.refresh_plugins().await?;
         let cell = self.cell(thread_id).await?;
-        let (config, loaded) = {
+        let (config, loaded, loaded_main) = {
             let state = cell.state.lock().await;
             let config = self.skill_configuration(&state.thread, turn_id)?;
             (
@@ -907,6 +907,8 @@ impl Engine {
                     .desktop
                     .as_ref()
                     .map(|d| d.loaded_skills.clone()),
+                self.skill_bodies_in_context(&state.thread)
+                    .map_err(invalid)?,
             )
         };
         let refs = self.effective_skill_refs(&config, turn_id.is_some());
@@ -921,7 +923,7 @@ impl Engine {
                 "resources":null,
                 "resourceRoot":skill.map(|s| format!("areal://skill/{}/{}",s.location.id,s.location.revision))})
         }).collect();
-        Ok(json!({"data":data,"loaded":loaded}))
+        Ok(json!({"data":data,"loaded":loaded,"loadedMain":loaded_main}))
     }
     fn skill_configuration(
         &self,
@@ -1007,6 +1009,19 @@ impl Engine {
         offset: usize,
         max_bytes: usize,
     ) -> Result<Value> {
+        let skill = self.skill_for_read(thread_id, turn_id, &reference).await?;
+        let page = self
+            .read_skill_page(skill, &reference, resource, offset, max_bytes)
+            .await?;
+        self.record_skill_access(thread_id, &reference).await?;
+        Ok(page)
+    }
+    pub(super) async fn skill_for_read(
+        &self,
+        thread_id: &str,
+        turn_id: Option<&str>,
+        reference: &VersionRef,
+    ) -> Result<Skill> {
         self.refresh_plugins().await?;
         let cell = self.cell(thread_id).await?;
         let (config, mut thread) = {
@@ -1016,14 +1031,10 @@ impl Engine {
                 state.thread.clone(),
             )
         };
-        if turn_id.is_some()
-            && !self
-                .effective_skill_refs(&config, true)
-                .contains(&reference)
-        {
+        if turn_id.is_some() && !self.effective_skill_refs(&config, true).contains(reference) {
             return Err(invalid("skill is not selected for this Turn"));
         }
-        let skill = self.selected_skill(&config, &reference)?;
+        let skill = self.selected_skill(&config, reference)?;
         if skill
             .plugin
             .as_ref()
@@ -1038,9 +1049,15 @@ impl Engine {
                 .map_err(invalid)?;
             self.check_plugin_skill_tools(&skill, &config, &registry)?;
         }
-        let page = self
-            .read_skill_page(skill, &reference, resource, offset, max_bytes)
-            .await?;
+        self.check_plugin_skill(&skill).await?;
+        Ok(skill)
+    }
+    pub(super) async fn record_skill_access(
+        &self,
+        thread_id: &str,
+        reference: &VersionRef,
+    ) -> Result<()> {
+        let cell = self.cell(thread_id).await?;
         let mut state = cell.state.lock().await;
         let mut candidate = state.thread.clone();
         candidate
@@ -1050,7 +1067,7 @@ impl Engine {
             .insert(reference.id.clone(), reference.revision.clone());
         self.persist(&candidate).await?;
         state.thread = candidate;
-        Ok(page)
+        Ok(())
     }
 }
 

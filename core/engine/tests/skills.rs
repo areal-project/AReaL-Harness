@@ -837,9 +837,9 @@ async fn explicit_deployments_accept_large_assets_and_legacy_catalogs_without_co
     engine.shutdown().await;
 }
 
-struct ReadSkillPages;
+struct LoadSkillAndList;
 #[async_trait]
-impl areal_engine::model::Model for ReadSkillPages {
+impl areal_engine::model::Model for LoadSkillAndList {
     fn name(&self) -> &str {
         "skill-pages-fixture"
     }
@@ -857,26 +857,29 @@ impl areal_engine::model::Model for ReadSkillPages {
         use areal_engine::model::{ModelEvent, ToolCall};
         let results: Vec<_> = messages.iter().filter(|m| m.role == "tool").collect();
         let events = if results.is_empty() {
-            ["SKILL.md","binary.bin"].into_iter().map(|resource|ModelEvent::ToolCall(ToolCall {
-                id:resource.into(),name:"skill_read".into(),arguments:json!({"skill":{"id":"fireworks-tech-graph","revision":"local-v1"},"resource":resource}).to_string()
-            })).chain(std::iter::once(ModelEvent::ToolCall(ToolCall {
-                id: "list".into(), name: "skill_list".into(), arguments: "{}".into(),
-            }))).collect::<Vec<_>>()
+            std::iter::once(ModelEvent::ToolCall(ToolCall {
+                id: "load".into(),
+                name: "skill_load".into(),
+                arguments: json!({"skill":{"id":"fireworks-tech-graph","revision":"local-v1"}})
+                    .to_string(),
+            }))
+            .chain(std::iter::once(ModelEvent::ToolCall(ToolCall {
+                id: "list".into(),
+                name: "skill_list".into(),
+                arguments: "{}".into(),
+            })))
+            .collect::<Vec<_>>()
         } else {
-            assert_eq!(results.len(), 3);
+            assert_eq!(results.len(), 2);
             let pages: Vec<serde_json::Value> = results
                 .iter()
                 .map(|m| serde_json::from_str(&m.text_content()).unwrap())
                 .collect();
             assert_eq!(pages[0]["text"], "完整技能页");
             assert!(pages[0].get("dataBase64").is_none());
-            assert_eq!(pages[0]["nextOffset"], "完整技能页".len());
-            assert_eq!(pages[0]["eof"], true);
-            assert_eq!(pages[1]["text"], serde_json::Value::Null);
-            assert_eq!(pages[1]["dataBase64"], "/wA=");
-            assert_eq!(pages[1]["nextOffset"], 2);
-            assert_eq!(pages[2]["data"][0]["id"], "fireworks-tech-graph");
-            vec![ModelEvent::text("verified exact text and binary pages")]
+            assert_eq!(pages[0]["complete"], true);
+            assert_eq!(pages[1]["data"][0]["id"], "fireworks-tech-graph");
+            vec![ModelEvent::text("verified complete skill loading")]
         };
         Ok(Box::pin(futures_util::stream::iter(
             events.into_iter().map(Ok),
@@ -884,12 +887,12 @@ impl areal_engine::model::Model for ReadSkillPages {
     }
 }
 #[tokio::test]
-async fn model_skill_reads_avoid_duplicate_text_bytes_while_public_api_retains_binary_contract() {
+async fn model_skill_load_is_complete_while_public_api_retains_binary_contract() {
     let state = tempfile::tempdir().unwrap();
     let root = tempfile::tempdir().unwrap();
     fs::write(root.path().join("SKILL.md"), "完整技能页").unwrap();
     fs::write(root.path().join("binary.bin"), [0xff, 0]).unwrap();
-    let engine = Engine::open(state.path(), Arc::new(ReadSkillPages), Limits::default()).unwrap();
+    let engine = Engine::open(state.path(), Arc::new(LoadSkillAndList), Limits::default()).unwrap();
     engine
         .set_permissions(
             areal_config::PermissionConfig {

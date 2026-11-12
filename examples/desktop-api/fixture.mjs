@@ -309,7 +309,7 @@ export async function fixture() {
           );
           if (result.length <= skills.length) {
             const { id, revision } = skills[result.length - 1];
-            tool = ["skill_read", { skill: { id, revision } }];
+            tool = ["skill_load", { skill: { id, revision } }];
           } else {
             const bodies = result
               .slice(1, 4)
@@ -321,9 +321,19 @@ export async function fixture() {
             ]);
             if (result.length === 4) {
               const { id, revision } = skills[0];
-              tool = ["skill_read", { skill: { id, revision }, resource: "references/check.md" }];
+              tool = [
+                "fs_read",
+                {
+                  path: `areal://skill/${id}/${revision}/references/check.md`,
+                  offset: 0,
+                  maxBytes: 8192,
+                },
+              ];
             } else {
-              assert.equal(JSON.parse(result[4].content).text, "GLOBAL_REFERENCE");
+              assert.equal(
+                Buffer.from(JSON.parse(result[4].content).dataBase64, "base64").toString(),
+                "GLOBAL_REFERENCE",
+              );
               reply = "SKILL_DISCOVERY_PASSED";
             }
           }
@@ -428,7 +438,7 @@ export async function fixture() {
             .join("\n"),
           /DESKTOP_PROFILE_FIXTURE/,
         );
-        if (result.length === 0) tool = ["skill_read", { skill: { id: "game", revision: "v1" } }];
+        if (result.length === 0) tool = ["skill_load", { skill: { id: "game", revision: "v1" } }];
         else if (result.length === 1)
           tool = [
             "plan_update",
