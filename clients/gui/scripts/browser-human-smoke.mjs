@@ -8,7 +8,11 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
+import {
+  selectConversation,
+  selectCreatedConversation,
+  captureSmokeFailure,
+} from "./smoke-navigation.mjs";
 
 // B-14–B-16: a local takeover fence and a lost native input receipt on one real Core turn.
 const faultMode = process.argv[2] ?? "full";
@@ -393,7 +397,7 @@ try {
         .configurations[threadId].revision,
       options: { permissionPreset: "fullAccess" },
     });
-  await selectConversation(page, threadId);
+  await selectCreatedConversation(page, projectId, threadId);
   await app.evaluate(({ app, BrowserWindow }) => {
     app.focus({ steal: true });
     const window = BrowserWindow.getAllWindows()[0];
@@ -1582,7 +1586,7 @@ try {
       browserEnabled: true,
       profile: { id: "fixture", revision: "v1" },
     });
-    await selectConversation(page, second.threadId);
+    await selectCreatedConversation(page, projectId, second.threadId);
     await page.keyboard.press("Meta+t");
     const beforeSecondNativeIds = await app.evaluate(({ webContents }) =>
       webContents.getAllWebContents().map((item) => item.id),
