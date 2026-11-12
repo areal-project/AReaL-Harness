@@ -162,9 +162,35 @@ fn discovery_lost(home: &Path, generation: &str) -> bool {
             .is_ok_and(|identity| identity["generation"] != generation),
     }
 }
+pub(crate) fn socket_identity(path: &Path) -> std::io::Result<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = std::fs::symlink_metadata(path)?;
+    Ok((metadata.dev(), metadata.ino()))
+}
+/// 数据目录删除后在原路径重建时，同一路径上已是继任 Host 的套接字；只撤自己绑定的那一个。
+pub(crate) fn remove_own_socket(path: &Path, bound: (u64, u64)) {
+    if socket_identity(path).is_ok_and(|current| current == bound) {
+        let _ = std::fs::remove_file(path);
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn orphan_exit_leaves_a_successor_socket_at_the_same_path() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("control.sock");
+        let mine = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let bound = socket_identity(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let _successor = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        remove_own_socket(&path, bound);
+        assert!(path.exists());
+        drop(mine);
+        let own = socket_identity(&path).unwrap();
+        remove_own_socket(&path, own);
+        assert!(!path.exists());
+    }
     #[test]
     fn discovery_is_lost_only_when_the_descriptor_is_gone_or_replaced() {
         let root = tempfile::tempdir().unwrap();

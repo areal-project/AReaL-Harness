@@ -316,6 +316,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
         std::fs::remove_file(&socket)?;
     }
     let listener = UnixListener::bind(&socket)?;
+    let bound = crate::service_run::socket_identity(&socket)?;
     std::fs::set_permissions(&socket, std::fs::Permissions::from_mode(0o600))?;
     let identity = HostIdentity {
         version: VERSION,
@@ -448,7 +449,7 @@ async fn run_local_mode(options: RunOptions, managed: bool) -> Result<HostExit> 
     // 系统凭据调用可能仍在等待用户；不能先释放 Host 锁而允许第二写者启动。
     host.migration.vault.close().await;
     if orphaned {
-        let _ = std::fs::remove_file(socket);
+        crate::service_run::remove_own_socket(&socket, bound);
         return Ok(HostExit::Stopped);
     }
     std::fs::remove_file(socket)?;
