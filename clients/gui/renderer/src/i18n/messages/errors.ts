@@ -129,6 +129,10 @@ export const errorMessages = {
     "zh-CN": "当前的模型设置不支持这个操作，请在会话设置里换一个模型。",
     en: "The current model settings don't support this. Choose another model in conversation settings.",
   },
+  "errors.PROFILE_NOT_SUPPORTED": {
+    "zh-CN": "所选执行配置不支持此操作，请选择兼容的配置。（PROFILE_NOT_SUPPORTED）",
+    en: "The selected profile does not support this operation. Choose a compatible profile. (PROFILE_NOT_SUPPORTED)",
+  },
   "errors.PAIRING_EXPIRED": {
     "zh-CN": "邀请已过期，请在桌面应用里生成新的配对码。",
     en: "This invite expired. Create a new pairing code in the desktop app.",

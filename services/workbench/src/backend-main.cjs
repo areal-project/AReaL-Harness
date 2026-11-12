@@ -75,6 +75,10 @@ const coreRejectionCodes = { [-32009]: "TARGET_CHANGED", [-32004]: "RESOURCE_UNA
 /** @param {any} error */
 const rejectedCoreCode = (error) =>
   ["rejected", "noMutation"].includes(error?.outcome?.kind) ? error.code : undefined;
+const rejectedCoreReason = (error) =>
+  rejectedCoreCode(error) === -32010 && error?.reason === "PROFILE_NOT_SUPPORTED"
+    ? "PROFILE_NOT_SUPPORTED"
+    : undefined;
 
 // 与 Host 的 error_code 白名单一致；未知内部错误仍使用原来的兜底，不回传异常详情。
 const businessErrorCodes = new Set([
@@ -558,14 +562,16 @@ async function start({ input, output }) {
                   ? { code: "SUBMISSION_UNKNOWN" }
                   : businessErrorCodes.has(error?.code)
                     ? { code: error.code }
-                    : coreRejectionCodes[rejectedCoreCode(error)]
-                      ? { code: coreRejectionCodes[rejectedCoreCode(error)] }
-                      : request.method === "desktop.command"
-                        ? {
-                            code: "COMMAND_FAILED",
-                            message: String(error?.message ?? "").slice(0, 512),
-                          }
-                        : { code: "CORE_UNAVAILABLE" },
+                    : rejectedCoreReason(error)
+                      ? { code: rejectedCoreReason(error) }
+                      : coreRejectionCodes[rejectedCoreCode(error)]
+                        ? { code: coreRejectionCodes[rejectedCoreCode(error)] }
+                        : request.method === "desktop.command"
+                          ? {
+                              code: "COMMAND_FAILED",
+                              message: String(error?.message ?? "").slice(0, 512),
+                            }
+                          : { code: "CORE_UNAVAILABLE" },
             }) + "\n",
           ),
       );

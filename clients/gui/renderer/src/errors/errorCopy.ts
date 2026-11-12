@@ -45,6 +45,7 @@ export const ERROR_CODES = {
   MIGRATION_PENDING: { action: "none", retryable: false },
   migrationBlocked: { message: "errors.MIGRATION_PENDING", action: "none", retryable: false },
   UNSUPPORTED_PROFILE: { action: "openSettings", retryable: false },
+  PROFILE_NOT_SUPPORTED: { action: "openSettings", retryable: false },
   PAIRING_EXPIRED: { action: "none", retryable: false },
   PAIRING_USED: { action: "none", retryable: false },
   PAIRING_CANCELLED: { action: "none", retryable: false },

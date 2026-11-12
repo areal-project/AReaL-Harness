@@ -183,6 +183,7 @@ pub(crate) fn error_code(message: &str) -> &str {
         | "GRANT_CHANGED"
         | "RESYNC_REQUIRED"
         | "REVIEW_INCOMPLETE"
+        | "PROFILE_NOT_SUPPORTED"
         | "TARGET_CHANGED"
         | "COMMAND_CONFLICT"
         | "CAPABILITY_UNAVAILABLE"

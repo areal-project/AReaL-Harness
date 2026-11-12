@@ -378,6 +378,27 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
 "#;
 
     #[tokio::test(flavor = "current_thread")]
+    async fn preserves_explicit_unsupported_profile_rejection() {
+        let Some(node) = node() else { return };
+        tokio::task::LocalSet::new().run_until(async {
+            let root = tempfile::tempdir().unwrap();
+            let runner = root.path().join("rejected.cjs");
+            std::fs::write(&runner, r#"
+                console.log(JSON.stringify({version:1,event:'ready',methods:['desktop.command']}));
+                require('node:readline').createInterface({input:process.stdin}).on('line', (line) => {
+                  const request = JSON.parse(line);
+                  console.log(JSON.stringify({version:1,id:request.id,error:{code:'PROFILE_NOT_SUPPORTED'}}));
+                });
+            "#).unwrap();
+            let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
+            let workbench = Workbench::start(&node, &runner, root.path(), reverse).await.unwrap();
+            let error = workbench.request("desktop.command", json!({}), json!({})).await.unwrap_err();
+            assert_eq!(error.to_string(), "PROFILE_NOT_SUPPORTED");
+            workbench.stop().await.unwrap();
+        }).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     async fn routes_requests_and_reverse_calls_and_reports_exit() {
         let Some(node) = node() else { return };
         tokio::task::LocalSet::new()

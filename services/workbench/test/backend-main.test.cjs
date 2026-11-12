@@ -38,6 +38,7 @@ async function fixture(t, retired, projectionFixture = false) {
       return { backend, adapter: { listen: async () => ({
         pid: process.pid, identity: 'fixture', desktopGeneration: 'generation', token: 'private-token'
       }), executeRemote: async (name, params) => {
+        if (params.coreFailure) throw Object.assign(Error('PROFILE_NOT_SUPPORTED'), params.coreFailure);
         if (params.errorCode) throw Object.assign(Error('private'), { code: params.errorCode, submissionUnknown: params.unknown });
         if (params.fail) throw Error('Core refused: ' + name);
         return { executed: name, params };
@@ -178,6 +179,31 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
       { code: "SUBMISSION_UNKNOWN" },
     );
   }
+  const rejected = {
+    code: -32010,
+    reason: "PROFILE_NOT_SUPPORTED",
+    data: { reason: "PROFILE_NOT_SUPPORTED", outcome: { kind: "rejected" } },
+    outcome: { kind: "rejected" },
+  };
+  assert.deepEqual(
+    (await call("profile-rejected", { command: "fork", request: { coreFailure: rejected } })).error,
+    { code: "PROFILE_NOT_SUPPORTED" },
+  );
+  for (const [id, failure] of [
+    ["unknown", { ...rejected, submissionUnknown: true }],
+    ["unconfirmed", { ...rejected, outcome: { kind: "unconfirmed" } }],
+  ])
+    assert.deepEqual(
+      (await call(`profile-${id}`, { command: "fork", request: { coreFailure: failure } })).error,
+      { code: "SUBMISSION_UNKNOWN" },
+    );
+  assert.deepEqual(
+    (await call("profile-without-outcome", {
+      command: "fork",
+      request: { coreFailure: { code: -32010, reason: "PROFILE_NOT_SUPPORTED" } },
+    })).error,
+    { code: "COMMAND_FAILED", message: "PROFILE_NOT_SUPPORTED" },
+  );
   f.child.stdin.end();
   assert.deepEqual(await f.exited, [0, null]);
 });

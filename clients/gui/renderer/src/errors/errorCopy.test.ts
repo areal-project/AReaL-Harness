@@ -39,6 +39,18 @@ test("unknown errors fall back to a generic sentence with the raw text only in d
   );
 });
 
+test("an unsupported fork profile explains the rejection without exposing backend text", () => {
+  const shown = presentError(zh, {
+    code: "PROFILE_NOT_SUPPORTED",
+    message: "private backend data",
+  });
+  expect(shown.message).toBe(
+    "所选执行配置不支持此操作，请选择兼容的配置。（PROFILE_NOT_SUPPORTED）",
+  );
+  expect(shown.message).not.toContain("private backend data");
+  expect(shown.retryable).toBe(false);
+});
+
 test("submission-unknown flags and UI-authored messages keep their meaning", () => {
   expect(presentError(zh, { submissionUnknown: true, message: "x" }).message).toBe(
     catalogs["zh-CN"]["errors.SUBMISSION_UNKNOWN"],
