@@ -80,6 +80,7 @@ const rejectedCoreCode = (error) =>
 const businessErrorCodes = new Set([
   "INVALID_PARAMS",
   "ATTACHMENT_UNSUPPORTED",
+  "PROVIDER_CREDENTIAL_REQUIRED",
   "FORBIDDEN",
   "GRANT_CHANGED",
   "RESYNC_REQUIRED",

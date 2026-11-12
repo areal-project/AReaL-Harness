@@ -178,6 +178,7 @@ pub(crate) fn error_code(message: &str) -> &str {
     match message {
         "INVALID_PARAMS"
         | "ATTACHMENT_UNSUPPORTED"
+        | "PROVIDER_CREDENTIAL_REQUIRED"
         | "FORBIDDEN"
         | "GRANT_CHANGED"
         | "RESYNC_REQUIRED"

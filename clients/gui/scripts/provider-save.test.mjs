@@ -174,6 +174,19 @@ function fixture({
   };
 }
 
+test("missing provider credentials are a definitive rejection before configuration changes", async () => {
+  const f = fixture();
+  await assert.rejects(
+    f.service.command({ ...f.request, operation: "save", authentication: "apiKey" }),
+    { code: "PROVIDER_CREDENTIAL_REQUIRED", outcome: { kind: "noMutation" } },
+  );
+  assert.deepEqual(f.service.config.value, f.original);
+  assert.equal(
+    f.calls.some(([method]) => method === "write"),
+    false,
+  );
+});
+
 test("explicit key reveal is revision-bound and never writes or publishes a secret", async () => {
   const f = fixture({ busy: true });
   f.service.config.value.data[0].apiKeyEnv = "AREAL_CREDENTIAL_fixture";

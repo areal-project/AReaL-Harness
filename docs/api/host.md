@@ -41,7 +41,7 @@ Host 发布包内与 Electron 相同的 Renderer。`areal web` 打开公开 orig
 
 `pages.command/resource` 是绑定本机已鉴权连接的 MCP Apps/Gen-UI 页面入口，要求 `gui-write-v1` 与 manage，目录查询 `catalog` 不执行工具；手动打开 MCP App 与页面 JSON-RPC 请求另需 submit。Host 注入连接 owner，事件 `pages.event` 带 `connectionId` 与 `gatewayGeneration`；资源分块只对原 owner 返回，断开撤销实例和页面工具租约。固定公开代理 `/host/pages/proxy` 不承载用户 HTML。页面请求不进入通用 journal，不得因断连自动重放。远程 Noise 和仅有 submit 的设备尚未开放。
 
-`providers.read` 读取原后台的公开供应商配置；`providers.command` 接受保存、应用、默认模型、删除、发现和探测，要求本机浏览器的 manage 授权。写入以 `commandId` 查询原回执；草稿凭据不进入 journal 参数，浏览器不能调用 `revealKey`。
+`providers.read` 读取原后台的公开供应商配置；`providers.command` 接受保存、应用、默认模型、删除、发现和探测，要求本机浏览器的 manage 授权。写入以 `commandId` 查询原回执；草稿凭据不进入 journal 参数，浏览器不能调用 `revealKey`。保存要求 API Key 但既无输入也无已配置引用时返回 `PROVIDER_CREDENTIAL_REQUIRED`，原命令确定拒绝，不留待核对的提交。
 
 工作台各域的读写（`library`、`worktree`、`tasks`、`trajectory`、`feedback`、`manage`、`providers`）与 `desktop.command` 都不需要客户端指定 `sourceId`：省略时 Host 用当前工作台后台的来源，后台未运行时返回 `CAPABILITY_UNAVAILABLE`；显式传入且不一致时返回 `FORBIDDEN`。
 

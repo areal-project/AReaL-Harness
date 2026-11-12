@@ -1314,7 +1314,10 @@ class AppProviders {
           else if (request.authentication !== "apiKey") delete item.apiKeyEnv;
         }
         if (request.authentication === "apiKey" && !item.apiKeyEnv)
-          throw new Error("请填写 API Key，或保留已配置的凭据环境变量。");
+          throw Object.assign(new Error("请填写 API Key，或保留已配置的凭据环境变量。"), {
+            code: "PROVIDER_CREDENTIAL_REQUIRED",
+            outcome: { kind: "noMutation" },
+          });
         if (request.discoverModels && !previous && item.enabled && item.models.length === 0) {
           const catalog = await this.testConnection(item, { operation: "discover" });
           if (!("models" in catalog) || !catalog.models.length)

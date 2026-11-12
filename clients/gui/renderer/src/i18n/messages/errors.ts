@@ -41,6 +41,10 @@ export const errorMessages = {
     "zh-CN": "不支持这个附件。可以附加图片、音频，或 UTF-8 编码的文本和源码文件。",
     en: "This attachment isn't supported. Attach an image, audio, or a UTF-8 text or source file.",
   },
+  "errors.PROVIDER_CREDENTIAL_REQUIRED": {
+    "zh-CN": "请填写 API Key，或保留已配置的凭据环境变量。",
+    en: "Enter an API key or keep the configured credential environment variable.",
+  },
   "errors.INVALID_RESPONSE": {
     "zh-CN": "收到的结果不完整，请重试。",
     en: "The result came back incomplete. Please try again.",

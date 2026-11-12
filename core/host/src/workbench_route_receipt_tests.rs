@@ -10,9 +10,10 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
             .map(|path| path.join("node")).find(|path| path.is_file()).expect("Node is required for the workbench boundary test");
         let runner = root.path().join("refuse.cjs");
         std::fs::write(&runner, r#"
-            console.log(JSON.stringify({version:1,event:'ready',methods:['feedback.command']}));
+            console.log(JSON.stringify({version:1,event:'ready',methods:['feedback.command','providers.command']}));
             require('node:readline').createInterface({input:process.stdin}).on('line', (line) => {
-              console.log(JSON.stringify({version:1,id:JSON.parse(line).id,error:{code:'TARGET_CHANGED'}}));
+              const request = JSON.parse(line);
+              console.log(JSON.stringify({version:1,id:request.id,error:{code:request.method === 'providers.command' ? 'PROVIDER_CREDENTIAL_REQUIRED' : 'TARGET_CHANGED'}}));
             });
         "#).unwrap();
         let reverse: Reverse = Rc::new(|_, _| Box::pin(async { bail!("FORBIDDEN") }));
@@ -29,6 +30,13 @@ async fn explicit_backend_failure_settles_as_rejection_not_unknown() {
         let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
         assert_eq!(snapshot["pending"], json!([]));
         assert_eq!(snapshot["outcomes"][&command]["admissionState"], "rejected");
+        let provider_command = uuid::Uuid::new_v4().to_string();
+        let provider = json!({"method":"providers.command","commandId":provider_command,"params":{"sourceId":"fixture","operation":"save","expectedRevision":"initial","authentication":"apiKey","provider":{"name":"fixture","baseUrl":"https://example.invalid","protocol":"responses","models":[]}}});
+        assert_eq!(backend_command(&host, "local", &provider).await.unwrap_err().to_string(), "PROVIDER_CREDENTIAL_REQUIRED");
+        assert_eq!(backend_receipt(&host, "local", &provider_command).unwrap_err().to_string(), "PROVIDER_CREDENTIAL_REQUIRED");
+        let (_, snapshot) = host.journal.native_snapshot(&scope).unwrap();
+        assert_eq!(snapshot["pending"], json!([]));
+        assert_eq!(snapshot["outcomes"][&provider_command]["admissionState"], "rejected");
         host.gateway.workbench.stop_backend().await;
     }).await;
 }

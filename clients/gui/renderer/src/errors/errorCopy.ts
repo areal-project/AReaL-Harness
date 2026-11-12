@@ -22,6 +22,7 @@ export const ERROR_CODES = {
   RESYNC_REQUIRED: { action: "refresh", retryable: false },
   INVALID_PARAMS: { action: "refresh", retryable: false },
   ATTACHMENT_UNSUPPORTED: { action: "none", retryable: false },
+  PROVIDER_CREDENTIAL_REQUIRED: { action: "none", retryable: false },
   INVALID_RESPONSE: { action: "retry", retryable: true },
   LIMIT_EXCEEDED: { action: "none", retryable: false },
   CAPACITY_EXCEEDED: { action: "retry", retryable: true },
