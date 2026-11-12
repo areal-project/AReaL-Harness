@@ -608,19 +608,15 @@ try {
   });
   await phase("web-reuse", async () => {
     const before = await status();
-    const web = await command(
-      ["web", "--json", ...localArgs(tuiProject.workspace, tuiProject.dataDir)],
-      tuiProject.workspace,
-    );
-    assert.equal(web.serviceId, tuiService.serviceId);
-    assert.equal(web.generation, tuiService.generation);
-    assert.equal(web.owner.hostId, hostIdentity.hostId);
+    // 网页由 Host 发布：只返回同一个 Host 的入口，不为它另起项目服务。
+    const web = await command(["web", "--json"], tuiProject.workspace);
+    assert.equal(web.hostId, hostIdentity.hostId);
+    assert.equal(web.generation, hostIdentity.generation);
     assert.equal((await status()).projects.length, before.projects.length);
     evidence.observations.push({
       scenario: "web-reuse",
-      serviceId: web.serviceId,
       generation: web.generation,
-      hostId: web.owner.hostId,
+      hostId: web.hostId,
     });
     for (const [name, sha256] of Object.entries(evidence.artifact.components))
       assert.equal(

@@ -285,7 +285,7 @@ try {
         s.corePid === current.corePid,
     ),
   );
-  const webEndpoint = await cli(["web", "--json", ...local]);
+  const webEndpoint = await cli(["web", "--json"]);
   assert.equal(webEndpoint.hostId, current.owner.hostId);
   assert.equal(webEndpoint.generation, current.owner.generation);
   assert.equal((await ensure(["--runtime-max-processes", "4"])).generation, current.generation);
@@ -322,7 +322,8 @@ try {
     () => ensure(["--permissions", "ASK_PERMISSIONS"]),
     /configuration conflict.*permissions/s,
   );
-  assert.equal((await fetch(current.webUrl)).status, 200);
+  // Core 不再内嵌网页，浏览器只经 Host；描述里的 webUrl 只剩用来定位本机端口。
+  assert.equal((await fetch(current.webUrl)).status, 404);
   const url = new URL("/areal/service", current.webUrl);
   assert.equal((await fetch(url)).status, 401);
   const auth = JSON.parse(await readFile(current.authFile, "utf8")).principals[0].token;
