@@ -1253,10 +1253,13 @@ try {
     assert.equal(execution.delivery.status, "notRequired");
     await button("任务操作").click();
     await page.getByRole("menuitem", { name: "查看调用轨迹", exact: true }).waitFor();
-    assert.deepEqual(await page.getByRole("menuitem").allTextContents(), ["查看调用轨迹"]);
+    assert.deepEqual(await page.getByRole("menuitem").allTextContents(), [
+      "反馈问题",
+      "查看调用轨迹",
+    ]);
     await page.keyboard.press("Escape");
     checks.push(
-      "delegation inspection preserves distinct verification/delivery states; current child resources remain navigable and task actions expose only call trace",
+      "delegation inspection preserves distinct verification/delivery states; current child resources remain navigable and task actions expose feedback and call trace",
     );
     // 已有完整验收通过后，视觉行文修正只重跑其真实资源/事件路径。
     if (!process.env.AREAL_GUI_RESOURCE_SMOKE_ONLY) {
