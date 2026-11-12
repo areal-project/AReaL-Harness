@@ -371,7 +371,7 @@ impl Model for PausedReader {
                 }),
                 ModelEvent::ToolCall(ToolCall {
                     id: "read".into(),
-                    name: "skill_read".into(),
+                    name: "skill_load".into(),
                     arguments: json!({"skill":self.reference.lock().unwrap().clone().unwrap()})
                         .to_string(),
                 }),
@@ -1084,7 +1084,7 @@ async fn blocked_historical_skill_cannot_be_selected_after_compatible_replacemen
 
 #[tokio::test]
 async fn declared_host_requirements_gate_reads_and_selected_turns() {
-    for required in ["browser_v1", "skill_read"] {
+    for required in ["browser_v1", "skill_load"] {
         let t = fixture();
         write(t.path(), "pkg/plugin.json", &json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name":"sample", "skills":["skills/one","skills/setup"], "extensions":{"org.areal":{"hostRequirements":{"version":1,"tools":[required]}}}}).to_string());
         let state = tempfile::tempdir().unwrap();
@@ -1127,7 +1127,7 @@ async fn declared_host_requirements_gate_reads_and_selected_turns() {
 #[tokio::test]
 async fn declared_host_requirements_do_not_override_profile_tool_scope() {
     let t = fixture();
-    write(t.path(), "pkg/plugin.json", &json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name":"sample", "skills":["skills/one"], "extensions":{"org.areal":{"hostRequirements":{"version":1,"tools":["skill_read"]}}}}).to_string());
+    write(t.path(), "pkg/plugin.json", &json!({"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json", "name":"sample", "skills":["skills/one"], "extensions":{"org.areal":{"hostRequirements":{"version":1,"tools":["skill_load"]}}}}).to_string());
     let state = tempfile::tempdir().unwrap();
     let e = Engine::open(
         state.path(),
@@ -1149,7 +1149,7 @@ async fn declared_host_requirements_do_not_override_profile_tool_scope() {
             .await
             .unwrap_err()
             .to_string()
-            .contains("skill_read")
+            .contains("skill_load")
     );
     let profile = VersionRef {
         id: "restricted".into(),

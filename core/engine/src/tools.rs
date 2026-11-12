@@ -7,12 +7,12 @@ use model::ToolCall;
 use serde::Deserialize;
 use std::path::PathBuf;
 
-const MAX_RESULT: usize = 16 * 1024;
+pub(crate) const MAX_RESULT: usize = 16 * 1024;
 pub(super) const MIN_TOOL_OUTPUT_BUDGET: usize = MAX_RESULT * 2 + 4096;
 pub(super) const HANDOFF_OUTPUT_RESERVE: usize = 8 * 1024;
 // Leave room for process metadata and JSON framing after stdout/stderr are
 // escaped. Control-heavy output can expand several times in the model payload.
-const MODEL_OUTPUT_HEADROOM: usize = 4096;
+pub(crate) const MODEL_OUTPUT_HEADROOM: usize = 4096;
 
 fn unexecuted_workspace_conflict(item: &Item) -> bool {
     let Item::DynamicToolCall {
@@ -824,10 +824,23 @@ impl Engine {
         } else {
             0
         };
+        let skill_load = call.name == "skill_load"
+            && cell
+                .bindings
+                .read()
+                .await
+                .registry
+                .get(&call.name)
+                .is_ok_and(|entry| matches!(entry.backend, Backend::Core));
+        let result_budget = if skill_load {
+            crate::desktop::skill_loading::MAX_SKILL_LOAD_BYTES * 2 + 4096
+        } else {
+            MIN_TOOL_OUTPUT_BUDGET
+        };
         call.arguments
             .len()
             .saturating_mul(2)
-            .saturating_add(MIN_TOOL_OUTPUT_BUDGET)
+            .saturating_add(result_budget)
             .saturating_add(plugin_budget)
     }
 
@@ -986,6 +999,10 @@ impl Engine {
         };
         let bindings = cell.bindings.read().await.clone();
         let entry = bindings.registry.get(&call.name);
+        let skill_load = call.name == "skill_load"
+            && entry
+                .as_ref()
+                .is_ok_and(|entry| matches!(entry.backend, Backend::Core));
         let native_metadata = entry
             .as_ref()
             .is_ok_and(|tool| matches!(tool.backend, Backend::Builtin));
@@ -1554,6 +1571,17 @@ impl Engine {
                 }
             }
         }
+        // 通用预算元数据也计入完整响应；最终超限必须是显式失败，不能裁剪成成功前缀。
+        if skill_load
+            && success
+            && (!crate::desktop::skill_loading::is_complete_body(&result)
+                || result.to_string().len() > crate::desktop::skill_loading::MAX_SKILL_LOAD_BYTES)
+        {
+            success = false;
+            outcome = ToolOutcome::Failed;
+            result = json!({"error":rt::Error::new(rt::ErrorCode::InvalidArgument,
+                "SKILL_NOT_LOADED: complete result including tool metadata exceeds 64 KiB or failed integrity validation; shorten SKILL.md and move details to references")});
+        }
         trajectory::record_json(
             &tracing::Span::current(),
             "gen_ai.tool.call.result",
@@ -1572,7 +1600,11 @@ impl Engine {
         {
             content.push(json!({"type":"inputText","text":format!("previousMatchingFailures={}: {note}", result["previousMatchingFailures"])}));
         }
-        let prepared = if coordination && call.name == "agent_wait_any" {
+        let complete_skill =
+            skill_load && success && crate::desktop::skill_loading::is_complete_body(&result);
+        let prepared = if complete_skill {
+            self.prepare_complete_skill_result(&result)?
+        } else if coordination && call.name == "agent_wait_any" {
             self.prepare_coordination_result(cell, &item_id, &call.name, &result)
                 .await?
         } else if call.name == "tool_program" {
@@ -1601,7 +1633,14 @@ impl Engine {
             && result["mcpServer"]["source"]["version"] == 1
             && crate::desktop::mcp_apps::tool_uri(&result["mcpServer"]["toolMetadata"]).is_some())
         .then_some(true);
-        let result = bounded_result(serde_json::to_string(&prepared.value)?);
+        let result = serde_json::to_string(&prepared.value)?;
+        let result = if complete_skill {
+            result
+        } else {
+            bounded_result(result)
+        };
+        let pending_skill =
+            (complete_skill && parent_call_id.is_none()).then(|| (call.id.clone(), result.clone()));
         let projection_ms = projection_started.elapsed().as_secs_f64() * 1000.0;
         let commit_started = std::time::Instant::now();
         let mut state = cell.state.lock().await;
@@ -1660,6 +1699,14 @@ impl Engine {
             commit_ms = commit_started.elapsed().as_secs_f64() * 1000.0,
             total_ms = started.elapsed().as_secs_f64() * 1000.0, "tool stages settled");
         state.thread = candidate;
+        if let Some(pending) = pending_skill {
+            state
+                .active
+                .as_mut()
+                .unwrap()
+                .pending_skill_loads
+                .insert(item_id.clone(), pending);
+        }
         if let Some((process, cursor)) = cursor {
             state
                 .active

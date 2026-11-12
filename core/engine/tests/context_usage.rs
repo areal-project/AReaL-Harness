@@ -168,8 +168,8 @@ impl Model for ReusedCallModel {
         } else {
             let (name, arguments) = if last.text_content() == "skill" {
                 (
-                    "skill_read",
-                    json!({"skill":{"id":"fixture","revision":"v1"},"resource":"SKILL.md","offset":0,"maxBytes":8192}),
+                    "skill_load",
+                    json!({"skill":{"id":"fixture","revision":"v1"}}),
                 )
             } else {
                 ("plan_read", json!({}))

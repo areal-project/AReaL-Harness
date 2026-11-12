@@ -13,6 +13,8 @@ type ToolKind = "read" | "edit" | "search" | "list" | "command" | "wait" | "tool
 const toolKinds: Readonly<Record<string, ToolKind>> = {
   fs_read: "read",
   read_file: "read",
+  skill_load: "read",
+  skill_resource_read: "read",
   skill_read: "read",
   plan_read: "read",
   fs_create: "edit",
@@ -94,6 +96,8 @@ export function toolActionText(item: Data, tense: Tense, t: Translate): string {
 const exploreTools = new Set([
   "fs_read",
   "read_file",
+  "skill_load",
+  "skill_resource_read",
   "skill_read",
   "plan_read",
   "fs_list",

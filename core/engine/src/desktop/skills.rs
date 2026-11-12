@@ -28,9 +28,11 @@ pub(super) struct Skill {
     package_prefix: PathBuf,
 }
 
+#[derive(Clone)]
 pub(super) struct SkillPage {
     pub bytes: Vec<u8>,
     pub size: usize,
+    pub version: String,
 }
 
 const READ_FLAGS: OFlags = OFlags::RDONLY
@@ -102,6 +104,17 @@ impl Skill {
         offset: usize,
         max_bytes: usize,
     ) -> anyhow::Result<SkillPage> {
+        self.read_versioned(resource, offset, max_bytes, None).await
+    }
+
+    pub async fn read_versioned(
+        &self,
+        resource: &str,
+        offset: usize,
+        max_bytes: usize,
+        expected_version: Option<&str>,
+    ) -> anyhow::Result<SkillPage> {
+        let expected_version = expected_version.map(str::to_owned);
         let resource = if self.package_directory.is_some() {
             let mut path = self.package_prefix.clone();
             for part in Path::new(resource).components() {
@@ -143,7 +156,13 @@ impl Skill {
                     Arc::new(directory)
                 }
             };
-            read_resource(directory, &resource, offset, max_bytes)
+            read_resource(
+                directory,
+                &resource,
+                offset,
+                max_bytes,
+                expected_version.as_deref(),
+            )
         })
         .await?
     }
@@ -154,6 +173,7 @@ fn read_resource(
     resource: &str,
     offset: usize,
     max_bytes: usize,
+    expected_version: Option<&str>,
 ) -> anyhow::Result<SkillPage> {
     let result = (|| {
         let components: Vec<_> = Path::new(resource).components().collect();
@@ -179,15 +199,44 @@ fn read_resource(
         )?);
         let metadata = file.metadata()?;
         ensure!(metadata.is_file(), "skill resource must be a regular file");
+        let version = resource_version(&metadata)?;
+        ensure!(
+            expected_version.is_none_or(|expected| expected == version),
+            "SKILL_RESOURCE_CHANGED: restart this resource from offset 0"
+        );
         let size = usize::try_from(metadata.len())?;
         ensure!(offset <= size, "offset exceeds resource size");
         file.seek(SeekFrom::Start(offset as u64))?;
         let mut bytes = Vec::new();
-        file.take(max_bytes.min(size - offset) as u64)
+        (&mut file)
+            .take(max_bytes.min(size - offset) as u64)
             .read_to_end(&mut bytes)?;
-        Ok(SkillPage { bytes, size })
+        ensure!(
+            bytes.len() == max_bytes.min(size - offset)
+                && resource_version(&file.metadata()?)? == version,
+            "SKILL_RESOURCE_CHANGED: file changed while reading; restart from offset 0"
+        );
+        Ok(SkillPage {
+            bytes,
+            size,
+            version,
+        })
     })();
     result.with_context(|| format!("read skill resource {resource}"))
+}
+
+fn resource_version(metadata: &std::fs::Metadata) -> anyhow::Result<String> {
+    use std::os::unix::fs::MetadataExt;
+    // 用打开文件的身份、长度和纳秒时间戳检测续读期间的普通写入/替换；不是内容 hash。
+    Ok(digest(&(
+        metadata.dev(),
+        metadata.ino(),
+        metadata.len(),
+        metadata.mtime(),
+        metadata.mtime_nsec(),
+        metadata.ctime(),
+        metadata.ctime_nsec(),
+    ))?)
 }
 
 #[derive(Clone)]

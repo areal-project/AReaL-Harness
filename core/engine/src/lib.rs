@@ -227,6 +227,8 @@ struct Active {
     tool_exposure: desktop::mcp_tools::ToolExposure,
     native_tool_exposure: desktop::mcp_tools::ToolExposure,
     observation_results: BTreeMap<String, String>,
+    // 首次求解请求必须含完整正文；只在成功模型响应后释放压缩保护。
+    pending_skill_loads: BTreeMap<String, (String, String)>,
     context_usage: Option<areal_protocol::context::ContextUsage>,
     context_sequence: u64,
     generation: request_meter::Generation,
