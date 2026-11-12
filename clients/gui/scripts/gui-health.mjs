@@ -466,6 +466,11 @@ function validateBaseline(baseline) {
   }
   if (!Object.values(baseline.$sourceCaps).every((value) => Number.isFinite(value) && value >= 0))
     throw new Error("Invalid source path caps");
+  if (
+    baseline.$rebaseline &&
+    !(/^[0-9a-f]{40}$/.test(baseline.$rebaseline.base) && baseline.$rebaseline.reason)
+  )
+    throw new Error("Invalid rebaseline record: needs a full base commit and a reason");
   if (baseline.mainBusinessLines) validateNativeSources(baseline.$mainNativeSources);
   return baseline;
 }
@@ -581,7 +586,13 @@ async function main() {
   const base = value("--base") ?? process.env.AREAL_DESIGN_BASE;
   const reviewedTransitions = [];
   let measuredBase;
-  if (base && baseline) {
+  // 架构迁移一次性换基线：只对登记的那一个基点提交免去“相对基点只降不升”，合入后的下一次比较自动恢复。
+  const rebaselined =
+    base && baseline?.$rebaseline
+      ? execFileSyncResult(["rev-parse", "--verify", `${base}^{commit}`], root) ===
+        baseline.$rebaseline.base
+      : false;
+  if (base && baseline && !rebaselined) {
     const gitRoot = execFileSyncResult(["rev-parse", "--show-toplevel"], root);
     if (!gitRoot) throw new Error(`Unavailable baseline base ${base}`);
     const before = JSON.parse(
@@ -723,6 +734,7 @@ async function main() {
       passed: true,
       written: write,
       reviewedTransitions,
+      rebaselinedFrom: rebaselined ? baseline.$rebaseline : null,
       allowedRegressions: failures.filter((failure) => allowed.has(failure.metric)),
       inheritedRegressions: inherited,
       metrics: metric ? { [metric]: report.metrics[metric] } : report.metrics,

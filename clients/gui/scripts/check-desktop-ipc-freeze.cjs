@@ -45,7 +45,7 @@ function main() {
     if (extract.status !== 0) throw new Error(`Cannot extract base contract: ${extract.stderr}`);
     const previous = registry(path.join(temp, contract));
     const current = registry(path.join(root, contract));
-    const added = [];
+    let added = [];
     for (const [name, operations] of current) {
       if (!previous.has(name)) {
         added.push(`command ${name}`);
@@ -55,6 +55,13 @@ function main() {
         if (!previous.get(name).has(operation)) added.push(`operation ${name}.${operation}`);
       }
     }
+    // 与 gui-health 共用同一条一次性换基线记录：只对登记的基点放行逐条列出的名字。
+    const baseline = path.join(root, "clients/gui/health-baseline.json");
+    const rebaseline = fs.existsSync(baseline)
+      ? JSON.parse(fs.readFileSync(baseline, "utf8")).$rebaseline
+      : null;
+    if (rebaseline?.base === base)
+      added = added.filter((entry) => !(rebaseline.ipcAdded ?? []).includes(entry));
     if (added.length) {
       console.error(`Desktop IPC freeze violation against ${base}:\n${added.sort().join("\n")}`);
       process.exitCode = 1;

@@ -1,8 +1,19 @@
 {
   "$schemaVersion": 1,
+  "$rebaseline": {
+    "base": "37e7cc2eb6e63ef6b38005818dc144b8da55a1b6",
+    "reason": "一套协议迁移把业务从 Electron Main 搬到工作台服务，文件路径整体变化，相对该基点的逐文件上限无法延续；集成分支上每个提交已各自对前一基点通过。",
+    "ipcAdded": [
+      "command bugReport",
+      "command hostInstallation",
+      "command hostUpdate",
+      "command recovery",
+      "operation projectless.scratch"
+    ]
+  },
   "$revision": "6d50f24d4c5db74dd005cafc693b6d2ea8d942c5",
   "mainSourceLines": {
-    "value": 24288,
+    "value": 24287,
     "direction": "down",
     "owner": "app/src"
   },
@@ -941,7 +952,7 @@
     "../../services/workbench/src/pages.cjs"
   ],
   "workbenchConvergeLines": {
-    "value": 7647,
+    "value": 7645,
     "direction": "down",
     "owner": "services/workbench/src"
   }

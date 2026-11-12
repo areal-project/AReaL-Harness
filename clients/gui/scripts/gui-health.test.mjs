@@ -285,6 +285,16 @@ test("an explicit base detects baseline relaxation in the same change", async (t
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /appLines/);
   assert.match(result.stderr, /baseline/i);
+  const head = git("rev-parse", "HEAD").stdout.trim();
+  baseline.$rebaseline = { base: head, reason: "architecture move" };
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.equal(f.run("--check", "--base=HEAD").status, 0);
+  baseline.$rebaseline.base = "0".repeat(40);
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
+  delete baseline.$rebaseline.reason;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.match(f.run("--check").stderr, /rebaseline/);
 });
 
 async function commitFixture(f) {
