@@ -800,10 +800,10 @@ function SideChatEditor({
           {sideId && !validSide && (
             <p role="status">
               {side
-                ? "侧边聊天的归属与当前来源不一致。"
+                ? t("chat.side.ownerMismatch")
                 : loading
-                  ? "正在恢复侧边聊天…"
-                  : "正在核对侧边聊天归属…"}
+                  ? t("chat.side.restoring")
+                  : t("chat.side.checkingOwner")}
             </p>
           )}
           {validSide && side.desktop?.archived && (
@@ -869,9 +869,7 @@ function SideChatEditor({
             <p>
               来源 Side：{side?.preview || sideId}；{sourceStatus}。请核对或编辑将插入的文字。
             </p>
-            {bringPreview.stale && (
-              <p role="status">来源在侧边聊天创建后已推进；以下文字仍依据旧快照。</p>
-            )}
+            {bringPreview.stale && <p role="status">{t("chat.side.staleSource")}</p>}
             <Textarea
               unstyled
               data-slot={undefined}
@@ -929,7 +927,7 @@ function SideChatEditor({
               }
             }}
           >
-            重试恢复侧边聊天
+            {t("chat.side.retryRestore")}
           </Button>
         )}
         {unsettled && !active && (
@@ -1067,7 +1065,7 @@ function SideChatEditor({
                   variant="secondary"
                   size="icon"
                   className="composer-primary-action composer-stop-action"
-                  aria-label="停止侧边聊天"
+                  aria-label={t("chat.side.stop")}
                   disabled={executionBlocked}
                   onClick={stop}
                 >

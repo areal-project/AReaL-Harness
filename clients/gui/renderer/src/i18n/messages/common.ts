@@ -1058,6 +1058,22 @@ export const commonMessages = {
   },
   "chat.side.inspectClose": { "zh-CN": "核对关闭状态", en: "Inspect close status" },
   "chat.side.reading": { "zh-CN": "正在读取侧边聊天…", en: "Loading Side Chat…" },
+  "chat.side.noneSent": { "zh-CN": "暂无已发送的侧边聊天", en: "No Side Chats sent yet" },
+  "chat.side.ownerMismatch": {
+    "zh-CN": "侧边聊天的归属与当前来源不一致。",
+    en: "This Side Chat does not belong to the current source.",
+  },
+  "chat.side.restoring": { "zh-CN": "正在恢复侧边聊天…", en: "Restoring Side Chat…" },
+  "chat.side.checkingOwner": {
+    "zh-CN": "正在核对侧边聊天归属…",
+    en: "Checking Side Chat ownership…",
+  },
+  "chat.side.staleSource": {
+    "zh-CN": "来源在侧边聊天创建后已推进；以下文字仍依据旧快照。",
+    en: "The source has moved on since this Side Chat was created; the text below still reflects the earlier snapshot.",
+  },
+  "chat.side.retryRestore": { "zh-CN": "重试恢复侧边聊天", en: "Retry restoring Side Chat" },
+  "chat.side.stop": { "zh-CN": "停止侧边聊天", en: "Stop Side Chat" },
   "chat.side.back": { "zh-CN": "返回聊天", en: "Back to chat" },
   "chat.side.openApp": { "zh-CN": "打开应用", en: "Open app" },
   "chat.side.app": { "zh-CN": "应用", en: "App" },

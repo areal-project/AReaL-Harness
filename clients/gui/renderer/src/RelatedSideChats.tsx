@@ -3,6 +3,7 @@ import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useRef, useState } from "react";
 import type { Action, Data } from "./services.js";
 import { useArchiveConfirm } from "./ArchiveConfirm.js";
+import { useI18n } from "./i18n/IntlProvider.js";
 
 export function RelatedSideChats({
   project,
@@ -20,6 +21,7 @@ export function RelatedSideChats({
   showNew?: boolean;
 }) {
   const archive = useArchiveConfirm();
+  const { t } = useI18n();
   const [archived, setArchived] = useState(false);
   const [items, setItems] = useState<Data[]>([]);
   const [cursor, setCursor] = useState<string | undefined>();
@@ -144,7 +146,7 @@ export function RelatedSideChats({
       </div>
       {error && <p role="alert">{error}</p>}
       {items.length === 0 && !busy && (
-        <p className="text-foreground-subtle">暂无已发送的侧边聊天</p>
+        <p className="text-foreground-subtle">{t("chat.side.noneSent")}</p>
       )}
       {items.map((item) => (
         <div key={item.id} className="utility-actions">
@@ -155,7 +157,7 @@ export function RelatedSideChats({
             aria-current={selectedId === item.id ? "true" : undefined}
             onClick={() => onSelect(item.id)}
           >
-            {item.preview || "侧边聊天"}
+            {item.preview || t("chat.side.title")}
             {item.desktop?.archived ? " · 已归档" : ""}
           </Button>
           <Button

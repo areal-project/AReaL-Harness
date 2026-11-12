@@ -114,7 +114,8 @@ test("native Worktree binds the Host-prepared Core without recalculating its dep
   };
   await assert.rejects(
     owner.createThread(source, { requestId }),
-    (error) => /^CREDENTIAL_UNAVAILABLE:/.test(error.message) && error.submissionUnknown === false,
+    (error) =>
+      error.message.startsWith("CREDENTIAL_UNAVAILABLE:") && error.submissionUnknown === false,
     "Core 的拒绝原文要带到界面，才能提示检查凭据",
   );
   bindError = undefined;
