@@ -1,0 +1,75 @@
+core/engine/tests/goals.rs
+  s_bb838eb6844682::t_6a37cf53bcfba4 217-218,658-662
+core/engine/tests/context_preflight.rs
+  s_bb838eb6844682::t_e21469ea651ce2 470
+core/engine/tests/process_settlement.rs
+  s_bb838eb6844682::t_a005001540c5ff 211
+docs/api/core.en.md
+  s_bb838eb6844682::t_ddb041511164ad 200
+  s_bb838eb6844682::t_5e8df73200c329 194,198
+core/engine/src/lib.rs
+  s_bb838eb6844682::t_e21469ea651ce2 107,170-171
+  s_bb838eb6844682::t_a005001540c5ff 105
+clients/cli/tests/config.rs
+  s_bb838eb6844682::t_a005001540c5ff 485-490
+  s_bb838eb6844682::t_a6d11cb967589e 492-495
+  s_bb838eb6844682::t_e21469ea651ce2 449
+docs/guides/configuration.en.md
+  s_bb838eb6844682::t_5e8df73200c329 229,620,627-628,632
+  s_bb838eb6844682::t_890a0c9a9a3b30 640
+docs/features.en.md
+  s_bb838eb6844682::t_5e8df73200c329 61
+docs/guides/configuration.md
+  s_bb838eb6844682::t_5e8df73200c329 229,620,627-628,632
+  s_bb838eb6844682::t_890a0c9a9a3b30 640
+core/config/examples/config.toml
+  s_bb838eb6844682::t_e21469ea651ce2 51-52
+  s_bb838eb6844682::t_a005001540c5ff 50
+core/engine/tests/watchdog.rs
+  s_bb838eb6844682::t_e21469ea651ce2 483
+  s_bb838eb6844682::t_a005001540c5ff 1318-1320
+core/server/src/lib.rs
+  s_bb838eb6844682::t_e21469ea651ce2 917,934-938,945-952
+docs/features.md
+  s_bb838eb6844682::t_5e8df73200c329 61
+core/engine/tests/outcomes.rs
+  s_bb838eb6844682::t_a005001540c5ff 55
+core/engine/tests/model_timeouts.rs
+  s_bb838eb6844682::t_6a37cf53bcfba4 63-64
+docs/api/core.md
+  s_bb838eb6844682::t_ddb041511164ad 195
+  s_bb838eb6844682::t_5e8df73200c329 189,193
+core/engine/tests/recovery.rs
+  s_bb838eb6844682::t_e21469ea651ce2 322,357,364-373,462
+  s_bb838eb6844682::t_5817a4b3a39541 385-417
+core/config/src/resolve.rs
+  s_bb838eb6844682::t_e21469ea651ce2 203-206,728,731
+  s_bb838eb6844682::t_a211052a9df344 202
+core/engine/tests/reasoning.rs
+  s_bb838eb6844682::t_e21469ea651ce2 264-265
+core/engine/tests/lifecycle.rs
+  s_bb838eb6844682::t_6a37cf53bcfba4 893-894
+core/engine/tests/provider_replay.rs
+  s_bb838eb6844682::t_a005001540c5ff 31
+core/config/tests/loading.rs
+  s_bb838eb6844682::t_e21469ea651ce2 23-24,29,33-34,39,1429-1430,1437,1444,1451,1480-1483
+  s_bb838eb6844682::t_a005001540c5ff 1420,1454-1455,1459-1462,1467,1502
+  s_bb838eb6844682::t_182cd5a75b9b06 1456-1458
+  s_bb838eb6844682::t_29a520673ea652 1484
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "32d80712635561f045fda919023e55d540a4c40e",
+  "prompts": {},
+  "sessions": {
+    "s_bb838eb6844682": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1cedb-956c-7e51-8a1c-38ea9a4e2553",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
