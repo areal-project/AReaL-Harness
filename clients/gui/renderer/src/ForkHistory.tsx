@@ -8,6 +8,8 @@ export function useForkHistory(projectId: string, thread: Data, action: Action) 
   const reads = usePlatformReads();
   const snapshotId =
     thread.conversation?.kind === "fork" ? thread.conversation.historySeed?.snapshotId : undefined;
+  // 重接同一分支会更换订阅；旧订阅上的失败不能阻止新订阅加载历史。
+  const viewGeneration = thread.displayHistory?.viewGeneration;
   const owner = JSON.stringify([projectId, thread.id, snapshotId]);
   const [loaded, setLoaded] = useState<{ owner: string; turns: Data[]; error?: string }>();
   useEffect(() => {
@@ -85,7 +87,7 @@ export function useForkHistory(projectId: string, thread: Data, action: Action) 
     return () => {
       cancelled = true;
     };
-  }, [action, reads, projectId, thread.id, snapshotId, owner]);
+  }, [action, reads, projectId, thread.id, snapshotId, owner, viewGeneration]);
   const current = loaded?.owner === owner ? loaded : undefined;
   return { turns: current?.turns ?? [], loading: !!snapshotId && !current, error: current?.error };
 }
