@@ -522,19 +522,19 @@ try {
         (thread.turns ?? []).map((turn) => turn.id),
       ),
     );
-    const completed = (snapshot) =>
-      Object.values(project(snapshot).state.threads)
-        .flatMap((thread) => thread.turns ?? [])
-        .find((turn) => !previous.has(turn.id) && turn.status === "completed");
     await button("发送").click();
     try {
-      const accepted = await until(
-        (s) => completed(s) && received.length > count,
-        "send completed",
-      );
-      await page
-        .locator(`[data-turn-id="${completed(accepted).id}"][data-turn-status="completed"]`)
-        .waitFor();
+      let accepted;
+      await until(async () => {
+        const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+        if (!threadId || received.length <= count) return null;
+        const thread = await readPasteThread(threadId);
+        accepted = thread.turns.find(
+          (turn) => !previous.has(turn.id) && turn.status === "completed",
+        );
+        return accepted;
+      }, "send completed");
+      await page.locator(`[data-turn-id="${accepted.id}"][data-turn-status="completed"]`).waitFor();
     } catch (error) {
       await writeFile(
         join(scratch, "send-timeout-state.json"),
@@ -1799,15 +1799,13 @@ try {
     assert.equal(received.length, beforeSidePlugin);
     await shot("plugin-mention-side-draft");
     await sidePane.getByRole("button", { name: "发送", exact: true }).click();
-    const sideCompleted = await until(
-      (s) =>
-        received.length > beforeSidePlugin &&
-        Object.values(project(s).state.threads).some(
-          (row) => row.conversation?.kind === "side" && row.turns?.at(-1)?.status === "completed",
-        ) &&
-        !project(s).pending.length,
-      "Side plugin intent completed",
-    );
+    let sidePluginThread;
+    const sideCompleted = await until(async (s) => {
+      const sideId = await sidePane.getAttribute("data-thread-id");
+      if (!sideId || received.length <= beforeSidePlugin) return false;
+      sidePluginThread = await readPasteThread(sideId);
+      return sidePluginThread.turns.at(-1)?.status === "completed" && !project(s).pending.length;
+    }, "Side plugin intent completed");
     const sidePluginMessage = received
       .at(-1)
       .messages.filter(
@@ -1824,9 +1822,6 @@ try {
       sidePluginMessage.split("COMPOSER_PLUGIN_EXACT_BODY").length - 1,
       1,
       "executable Side inherits the parent Profile Skill and resolves plugin intent once",
-    );
-    const sidePluginThread = Object.values(project(sideCompleted).state.threads).find(
-      (row) => row.conversation?.kind === "side" && row.turns?.at(-1)?.status === "completed",
     );
     await sidePane
       .locator(`[data-turn-id="${sidePluginThread.turns.at(-1).id}"][data-turn-status="completed"]`)
