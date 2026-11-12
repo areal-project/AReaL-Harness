@@ -6,7 +6,8 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, writeFile, readdir, stat, cp, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir, stat, cp, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
@@ -21,7 +22,7 @@ const { _electron: electron } = require("playwright-core");
 const binary = process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
 const evidenceRoot = join(root, ".scratch", "gui-evidence");
 await mkdir(evidenceRoot, { recursive: true });
-const scratch = await mkdtemp(join(evidenceRoot, "conversation-derivation-"));
+const scratch = await trackedMkdtemp(join(evidenceRoot, "conversation-derivation-"));
 // Unix socket 注册路径使用短的隔离目录；录屏和日志仍留在持久证据目录。
 const serviceRegistry = await makeTempDir("scf-svc-");
 const workspace = join(scratch, "workspace");

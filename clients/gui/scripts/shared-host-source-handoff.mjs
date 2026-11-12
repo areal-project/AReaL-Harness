@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, writeFile, readdir, realpath, chmod } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir, realpath, chmod } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createServer } from "node:net";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +27,7 @@ const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/hos
 const WebSocket = require("ws");
 const { CoreClient } = await import(join(gui, "packages/runtime-client/core.js"));
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
-const root = await realpath(await mkdtemp("/tmp/ah-gui-source-"));
+const root = await realpath(await trackedMkdtemp("/tmp/ah-gui-source-"));
 const save = async (path, value) => writeFile(path, JSON.stringify(value) + "\n", { mode: 0o600 });
 const delay = (ms) => new Promise((done) => setTimeout(done, ms));
 async function until(check, label) {

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +29,7 @@ const red = process.argv.includes("--red");
 const recoveryNotices = process.argv.includes("--recovery-notices");
 const scratch = await makeTempDir("apending-");
 await mkdir(join(root, ".scratch/pending-project"), { recursive: true });
-const evidence = await mkdtemp(join(root, ".scratch/pending-project/run-"));
+const evidence = await trackedMkdtemp(join(root, ".scratch/pending-project/run-"));
 const workspace = join(scratch, "workspace"),
   execution = join(scratch, "legacy-worktree");
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");

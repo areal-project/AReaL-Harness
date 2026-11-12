@@ -1,6 +1,7 @@
 // Actual Core/Store/CLI acceptance; only the external model is deterministic.
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, realpath } from "node:fs/promises";
+import { mkdir, writeFile, readFile, realpath } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { createServer } from "node:http";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
@@ -12,7 +13,7 @@ import { CoreClient } from "../clients/gui/packages/runtime-client/core.js";
 const require = createRequire(new URL("../clients/gui/app/package.json", import.meta.url));
 const WebSocket = require("ws"),
   exec = promisify(execFile);
-const scratch = await realpath(await mkdtemp("/private/tmp/areal-plugin-p0-"));
+const scratch = await realpath(await trackedMkdtemp("/private/tmp/areal-plugin-p0-"));
 const workspace = join(scratch, "workspace"),
   home = join(scratch, "config-home");
 const bin = resolve(process.env.AREAL_TEST_BIN_DIR ?? "target/debug", "areal");

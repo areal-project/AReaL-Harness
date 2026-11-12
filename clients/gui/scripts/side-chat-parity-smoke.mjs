@@ -4,7 +4,8 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, writeFile, readdir, stat, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir, stat, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
@@ -69,7 +70,7 @@ const bundleHashes = async () =>
 const bundleHashesAtStart = await bundleHashes();
 const evidenceRoot = join(root, ".scratch/side-chat-parity");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await mkdtemp(join(evidenceRoot, baseline ? "baseline-" : "run-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, baseline ? "baseline-" : "run-"));
 const stateRoot = await makeTempDir("scp-");
 const workspace = join(stateRoot, "w");
 const userHome = join(stateRoot, "u");

@@ -3,13 +3,14 @@ import { respondToSessionName } from "./model-fixture.mjs";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { spawnNative } from "./native-child.mjs";
 
-const directory = await mkdtemp(join(tmpdir(), "areal-trajectory-semantics-"));
+const directory = await trackedMkdtemp(join(tmpdir(), "areal-trajectory-semantics-"));
 const workspace = join(directory, "workspace");
 const configPath = join(directory, "config.toml");
 const spool = join(directory, "spool");

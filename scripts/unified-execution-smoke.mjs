@@ -6,12 +6,13 @@ import { once } from "node:events";
 import { createWriteStream } from "node:fs";
 import { finished } from "node:stream/promises";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, writeFile, rm, access } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm, access } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
 
-const root = await mkdtemp(join(tmpdir(), "areal-unified-execution-"));
+const root = await trackedMkdtemp(join(tmpdir(), "areal-unified-execution-"));
 const evidence = process.env.AREAL_UNIFIED_EVIDENCE_DIR
   ? resolve(process.env.AREAL_UNIFIED_EVIDENCE_DIR)
   : root;

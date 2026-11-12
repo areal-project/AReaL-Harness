@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
@@ -17,7 +18,7 @@ const { ServiceConnection } = require("../app/src/core/service-client.cjs");
 const binary = resolve(process.env.AREAL_CORE_BIN || join(root, "target/debug/areal"));
 const evidenceRoot = join(root, ".scratch/relay-service");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await mkdtemp(join(evidenceRoot, "ui-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, "ui-"));
 const state = await makeTempDir("av-");
 const owner = randomUUID();
 await writeFile(join(state, ".owner"), owner);

@@ -6,12 +6,13 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
-const root = await mkdtemp(join(tmpdir(), "areal-plugins-"));
+const root = await trackedMkdtemp(join(tmpdir(), "areal-plugins-"));
 const workspace = join(root, "workspace"),
   data = join(root, "data");
 await mkdir(join(workspace, "src"), { recursive: true });

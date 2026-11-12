@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdir, mkdtemp, realpath, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, realpath, readFile, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,7 +21,7 @@ const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const binary = process.env.AREAL_TEST_BIN_DIR
   ? join(process.env.AREAL_TEST_BIN_DIR, "areal")
   : (process.env.AREAL_CORE_BIN ?? join(repository, ".local/shared-host-bin/areal"));
-const root = await realpath(await mkdtemp("/tmp/ah-consumers-"));
+const root = await realpath(await trackedMkdtemp("/tmp/ah-consumers-"));
 const source = {
   profile: join(root, "profile"),
   coreHome: join(root, "core"),

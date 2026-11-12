@@ -1,7 +1,8 @@
 const assert = require("node:assert/strict");
 const { execFileSync } = require("node:child_process");
 const { randomUUID } = require("node:crypto");
-const { mkdtemp, mkdir, readFile, writeFile } = require("node:fs/promises");
+const { mkdir, readFile, writeFile } = require("node:fs/promises");
+const { trackedMkdtemp } = require("./support/host-cleanup.cjs");
 const { createRequire } = require("node:module");
 const { tmpdir } = require("node:os");
 const { join, resolve } = require("node:path");
@@ -12,7 +13,7 @@ const { _electron } = appRequire("playwright-core");
 const electron = appRequire("electron");
 
 (async () => {
-  const scratch = await mkdtemp(join(tmpdir(), "areal-bug-electron-"));
+  const scratch = await trackedMkdtemp(join(tmpdir(), "areal-bug-electron-"));
   const env = { ...process.env };
   for (const key of Object.keys(env))
     if (/^(AREAL_|OPENAI_|ANTHROPIC_)/.test(key) || key === "ELECTRON_RUN_AS_NODE") delete env[key];

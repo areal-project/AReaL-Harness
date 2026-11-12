@@ -2,16 +2,8 @@ import { makeTempDir } from "./support/temp.mjs";
 import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import {
-  appendFile,
-  chmod,
-  mkdtemp,
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -129,7 +121,9 @@ if (process.argv.includes("--bundle-only")) {
 }
 const evidenceRoot = join(sourceRoot, ".scratch/phase-four");
 await mkdir(evidenceRoot, { recursive: true });
-const scratch = await mkdtemp(join(evidenceRoot, baselineOnly ? "red-inventory-" : "page-tools-"));
+const scratch = await trackedMkdtemp(
+  join(evidenceRoot, baselineOnly ? "red-inventory-" : "page-tools-"),
+);
 const isolated = await makeTempDir("areal-page-tools-");
 const workspace = join(isolated, "workspace"),
   userHome = join(isolated, "user");

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { spawnNative } from "../../scripts/native-child.mjs";
-import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir, platform, arch } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,7 +40,7 @@ if (selection === "--list") {
 }
 if (selection !== "all" && !available.includes(selection))
   throw Error("unknown example; use --list");
-const directory = await mkdtemp(join(tmpdir(), "areal-desktop-"));
+const directory = await trackedMkdtemp(join(tmpdir(), "areal-desktop-"));
 const workspace = join(directory, "workspace"),
   data = join(directory, "data"),
   ready = join(directory, "ready"),

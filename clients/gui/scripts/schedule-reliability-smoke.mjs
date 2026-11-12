@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { cpus, loadavg } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -52,7 +53,7 @@ if (previous) {
 const scratch = previous?.scratch || (await makeTempDir("areal-schedule-reliability-"));
 const evidence = process.env.AREAL_SCHEDULE_EVIDENCE
   ? resolve(process.env.AREAL_SCHEDULE_EVIDENCE)
-  : await mkdtemp(join(root, ".scratch/schedule-reliability-"));
+  : await trackedMkdtemp(join(root, ".scratch/schedule-reliability-"));
 await mkdir(evidence, { recursive: true });
 const user = join(scratch, "user");
 await mkdir(user, { recursive: true });

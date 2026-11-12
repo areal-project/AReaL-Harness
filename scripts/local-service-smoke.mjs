@@ -7,12 +7,13 @@ import { createServer } from "node:http";
 import { connect as unixConnect } from "node:net";
 import { once } from "node:events";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, writeFile, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, readFile, writeFile, realpath, rm, symlink } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { basename, join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
 import { waitForFaultStatus } from "./local-service-wait.mjs";
 const exec = promisify(execFile);
-const root = await realpath(await mkdtemp("/tmp/as-"));
+const root = await realpath(await trackedMkdtemp("/tmp/as-"));
 const workspace = join(root, "workspace"),
   home = join(root, "home"),
   config = join(root, "config.toml");

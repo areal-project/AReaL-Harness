@@ -4,7 +4,6 @@ import { spawn, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import {
   mkdir,
-  mkdtemp,
   open,
   readFile,
   readdir,
@@ -13,6 +12,7 @@ import {
   lstat,
   unlink,
 } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -52,7 +52,9 @@ export async function nativeHostFixture(
     "AREAL_CORE_BIN must identify the locked verification slot",
   );
   const binary = resolve(process.env.AREAL_CORE_BIN);
-  const root = await realpath(caseRoot ?? (await mkdtemp(join(tmpdir(), "native-remote-host-"))));
+  const root = await realpath(
+    caseRoot ?? (await trackedMkdtemp(join(tmpdir(), "native-remote-host-"))),
+  );
   const home = join(root, "registry");
   await mkdir(home, { mode: 0o700 });
   const host = new HostClient();

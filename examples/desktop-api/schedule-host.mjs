@@ -1,6 +1,7 @@
 // 真实 Core/WS、持久重启和连接权限；Host 只返回配置，不实现调度。
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -8,7 +9,7 @@ import { spawnNative } from "../../scripts/native-child.mjs";
 import { connect } from "./client.mjs";
 import { fixture } from "./fixture.mjs";
 import { randomUUID } from "node:crypto";
-const root = await mkdtemp("/tmp/areal-schedule-host-"),
+const root = await trackedMkdtemp("/tmp/areal-schedule-host-"),
   state = join(root, "state"),
   ready = join(root, "ready.json");
 await mkdir(state);

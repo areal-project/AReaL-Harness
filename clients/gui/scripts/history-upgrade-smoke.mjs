@@ -2,16 +2,8 @@ import assert from "node:assert/strict";
 import { spawn, execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
-import {
-  cp,
-  lstat,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  realpath,
-  writeFile,
-} from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
@@ -100,7 +92,7 @@ for (const name of sourceFiles)
     manifest.sourceFileHashes[`source/${name}`],
     `sample changed: ${name}`,
   );
-const root = await realpath(await mkdtemp("/tmp/areal-v18-path-"));
+const root = await realpath(await trackedMkdtemp("/tmp/areal-v18-path-"));
 const profile = join(root, "profile"),
   core = join(root, "core"),
   registry = join(root, "registry"),

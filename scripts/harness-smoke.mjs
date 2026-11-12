@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -18,7 +19,7 @@ assert(
       ["native", "outer-container-perf"].includes(runtimeArgs[1])),
   "expected optional --sandbox-profile native|outer-container-perf",
 );
-const root = await mkdtemp(join(tmpdir(), "areal-harness-"));
+const root = await trackedMkdtemp(join(tmpdir(), "areal-harness-"));
 const fixtureEnv = Object.fromEntries(
   Object.entries(process.env).filter(
     ([name]) =>

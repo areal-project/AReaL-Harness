@@ -3,16 +3,8 @@ import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  rename,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdir, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -40,7 +32,7 @@ assert(
 const oldBinary = join(prefix, "lib/areal/0.1.8-macos-arm64/bin/areal");
 const newBinary = join(prefix, "lib/areal/0.1.9-macos-arm64/bin/areal");
 const entry = join(prefix, "bin/areal");
-const root = await realpath(await mkdtemp("/private/tmp/ah-update-run-"));
+const root = await realpath(await trackedMkdtemp("/private/tmp/ah-update-run-"));
 const home = join(root, "home");
 const resultPath = join(root, "result.json");
 const env = {

@@ -4,14 +4,15 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { spawnNative } from "./native-child.mjs";
 
-const directory = await realpath(await mkdtemp(join(tmpdir(), "areal-trajectory-smoke-")));
+const directory = await realpath(await trackedMkdtemp(join(tmpdir(), "areal-trajectory-smoke-")));
 const binary = await realpath(resolve(process.env.AREAL_TEST_BIN_DIR ?? "target/debug", "areal"));
 const execute = promisify(execFile);
 const configPath = join(directory, "config.toml");

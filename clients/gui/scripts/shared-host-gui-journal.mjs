@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, writeFile, realpath } from "node:fs/promises";
+import { mkdir, readFile, writeFile, realpath } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import WebSocket from "ws";
 import { CoreClient } from "../packages/runtime-client/core.js";
@@ -13,7 +14,7 @@ const { HostClient } = createRequire(new URL("../app/package.json", import.meta.
 );
 const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { isAwaitingResponse } = require("@areal/workbench-service/desktop/core/project-state.cjs");
-const root = await realpath(await mkdtemp("/tmp/ah-gui-journal-"));
+const root = await realpath(await trackedMkdtemp("/tmp/ah-gui-journal-"));
 const binary = resolve(process.env.AREAL_CORE_BIN ?? ".local/shared-host-bin/areal");
 const home = join(root, "host-home");
 const workspace = join(root, "workspace");

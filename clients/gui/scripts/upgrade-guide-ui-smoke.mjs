@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -10,7 +11,7 @@ import { findRelaunchedGui, readIsolatedDevTools } from "./upgrade-guide-relaunc
 import { cleanupSyntheticHostKeychain } from "./application-cleanup.mjs";
 
 // A synthetic unreachable descriptor causes a real Host stop receipt. It is fault injection.
-const root = await realpath(await mkdtemp("/private/tmp/areal-upgrade-ui-"));
+const root = await realpath(await trackedMkdtemp("/private/tmp/areal-upgrade-ui-"));
 const require = createRequire(resolve("clients/gui/app/package.json"));
 const dev = process.env.AREAL_UPGRADE_DEV === "1";
 const app = dev ? resolve("clients/gui/app") : resolve(process.env.AREAL_UPGRADE_APP || "");

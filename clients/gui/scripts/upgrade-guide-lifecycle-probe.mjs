@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { cleanupSyntheticHostKeychain } from "./application-cleanup.mjs";
 
 // The first stop receipt is evidence: never retry it or manufacture service state.
-const root = await realpath(await mkdtemp("/private/tmp/areal-upgrade-probe-"));
+const root = await realpath(await trackedMkdtemp("/private/tmp/areal-upgrade-probe-"));
 const gui = resolve("clients/gui");
 const binary = resolve(process.env.AREAL_UPGRADE_OLD_CORE || "target/debug/areal");
 const expected = process.env.AREAL_UPGRADE_OLD_CORE_SHA256;

@@ -6,11 +6,12 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtemp, mkdir, readFile, writeFile, rm, access } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm, access } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const root = await mkdtemp(join(tmpdir(), "areal-workgroup-smoke-"));
+const root = await trackedMkdtemp(join(tmpdir(), "areal-workgroup-smoke-"));
 const workspace = join(root, "source");
 await mkdir(workspace);
 await writeFile(join(root, "config.toml"), "schema_version = 1\n");

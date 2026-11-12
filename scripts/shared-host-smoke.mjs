@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
-import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { createServer } from "node:http";
 import { connect as unixConnect } from "node:net";
 import { dirname, join, resolve } from "node:path";
@@ -12,7 +13,7 @@ import { respondToSessionName } from "./model-fixture.mjs";
 
 const exec = promisify(execFile);
 const repository = await realpath(new URL("..", import.meta.url).pathname);
-const root = await realpath(await mkdtemp("/tmp/ah-"));
+const root = await realpath(await trackedMkdtemp("/tmp/ah-"));
 const home = join(root, "home");
 const evidencePath = resolve(
   process.env.AREAL_TEST_EVIDENCE ??
