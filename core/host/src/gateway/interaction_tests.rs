@@ -1754,6 +1754,39 @@ async fn gui_write_uploads_attachments_in_chunks_and_replays_the_final_receipt()
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn rejected_uploads_release_capacity_for_the_next_attachment() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    tokio::task::LocalSet::new().run_until(async {
+        let f = Fixture::new().await;
+        let generation = f.host.identity.generation.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        f.host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().endpoint = format!("ws://{}/", listener.local_addr().unwrap());
+        let mut session = Session::local(f.host.clone(), "local-connection".into()).unwrap();
+        for _ in 0..4 {
+            let mut request = f.request("attachment.upload", json!({"threadId":"thread","uploadId":uuid::Uuid::new_v4().to_string(),"mimeType":"text/plain","sizeBytes":1,"offset":0,"base64":"QQ=="}), None);
+            request["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+            let core = async {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut head = Vec::new();
+                while !head.ends_with(b"\r\n\r\n") {
+                    let mut byte = [0]; socket.read_exact(&mut byte).await.unwrap(); head.push(byte[0]);
+                }
+                let mut body = [0]; socket.read_exact(&mut body).await.unwrap();
+                let reply = r#"{"error":{"code":-32602}}"#;
+                socket.write_all(format!("HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{reply}", reply.len()).as_bytes()).await.unwrap();
+            };
+            let ((next, result), _) = tokio::join!(async { Fixture::dispatch(session, request).await.unwrap() }, core);
+            assert_eq!(result.unwrap_err().to_string(), "ATTACHMENT_UNSUPPORTED");
+            session = next;
+        }
+        let mut next = f.request("attachment.upload", json!({"threadId":"thread","uploadId":uuid::Uuid::new_v4().to_string(),"mimeType":"text/plain","sizeBytes":2,"offset":0,"base64":"QQ=="}), None);
+        next["context"] = json!({"projectId":"project","gatewayGeneration":generation,"grantRevision":0,"serviceGeneration":"core-generation"});
+        let (_, result) = Fixture::dispatch(session, next).await.unwrap();
+        assert_eq!(result.unwrap()["receivedBytes"], 1);
+    }).await;
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn remembered_approvals_need_gui_write_and_core_permission() {
     tokio::task::LocalSet::new()
         .run_until(async {
