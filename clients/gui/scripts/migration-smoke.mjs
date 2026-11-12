@@ -1387,6 +1387,26 @@ try {
         terminalProcess = process;
         return true;
       }, "UI terminal Runtime process running");
+      await page.waitForFunction(
+        (id) =>
+          [...document.querySelectorAll(".terminal-pane [data-terminal-id]")].some(
+            (element) => element.getAttribute("data-terminal-id") === id,
+          ),
+        terminalProcess.id,
+      );
+      await waitForSnapshot(async () => {
+        const result = await call("manage", {
+          projectId: pid,
+          threadId: tid,
+          operation: "processOutput",
+          id: terminalProcess.id,
+          maxBytes: 4096,
+        });
+        const text = (result.chunks ?? [])
+          .map((chunk) => Buffer.from(chunk.dataBase64, "base64").toString())
+          .join("");
+        return /(?:^|[\r\n])[^\r\n]*[#$%>]\s*$/.test(stripVTControlCharacters(text));
+      }, "UI terminal shell prompt ready");
       await terminal.focus();
       await terminal.pressSequentially("printf 'AREAL_TERMINAL_OK\\n'");
       await terminal.press("Enter");
