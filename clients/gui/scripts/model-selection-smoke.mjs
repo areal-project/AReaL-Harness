@@ -2408,13 +2408,13 @@ async function runFullModelSelection() {
   );
   await page.getByTestId("chat-input").fill("Use the provider without authentication");
   await button("发送").click();
-  await until(
-    (s) =>
-      Object.values(fixtureProject(s).state.threads).some(
-        (t) => t.turns?.length === 3 && t.turns.at(-1).status === "completed",
-      ),
-    "no-auth turn completes",
-  );
+  let noAuthTurn;
+  await until(async () => {
+    const thread = await readCoreThread(selectedThreadId);
+    noAuthTurn = thread.turns.at(-1);
+    return thread.turns.length === 3 && noAuthTurn?.status === "completed";
+  }, "no-auth turn completes");
+  await page.locator(`[data-turn-id="${noAuthTurn.id}"][data-turn-status="completed"]`).waitFor();
   assert.deepEqual(requests.at(-1), {
     model: "arena-model",
     authenticated: false,
