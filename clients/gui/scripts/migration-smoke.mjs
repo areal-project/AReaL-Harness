@@ -928,23 +928,25 @@ try {
     const toast = page.getByTestId("toast");
     await toast.filter({ hasText: "thread is busy or the target turn is stale" }).waitFor();
     await send("检查当前项目");
-    await waitForSnapshot(
-      (s) =>
-        Object.values(project(s).state.threads).some(
-          (t) => t.turns?.at(-1)?.status === "completed",
-        ),
-      "first send",
-    );
+    const tid = await page.locator("[data-testid=areal-workbench]").getAttribute("data-thread-id");
+    assert.ok(tid);
+    let firstTurn;
+    await waitForSnapshot(async () => {
+      const record = JSON.parse(
+        await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
+      );
+      firstTurn = record.thread.turns.at(-1);
+      return firstTurn?.status === "completed";
+    }, "first send");
+    await page.locator(`[data-turn-id="${firstTurn.id}"][data-turn-status="completed"]`).waitFor();
     await toast.waitFor({ state: "hidden" });
     assert.equal(
       await page.locator('[data-testid="feedback-notice"][data-tone="error"]').count(),
       0,
     );
-    const tid = await page.locator("[data-testid=areal-workbench]").getAttribute("data-thread-id");
     assert.equal(project(await state()).configurations[tid].profile.id, "standard");
     assert.equal(project(await state()).configurations[tid].profile.revision, "v1");
     const current = (s) => project(s).state.threads[tid];
-    assert.ok(tid);
     await shot("02-conversation");
     checks.push("sandboxed Electron; project picker; first send; real Core/Runtime and local SSE");
     checks.push(
@@ -1222,11 +1224,15 @@ try {
       .waitFor();
     assert.equal(await input().innerText(), "主对话草稿保持");
     assert.ok(finishAgentParent);
+    const parentTurnId = current(await state()).turns.at(-1).id;
     finishAgentParent();
-    await waitForSnapshot(
-      (s) => current(s).turns.at(-1)?.status === "completed",
-      "parent completes after child stop",
-    );
+    await waitForSnapshot(async () => {
+      const record = JSON.parse(
+        await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
+      );
+      return record.thread.turns.find((turn) => turn.id === parentTurnId)?.status === "completed";
+    }, "parent completes after child stop");
+    await page.locator(`[data-turn-id="${parentTurnId}"][data-turn-status="completed"]`).waitFor();
     await shot("02c-agent-interrupted");
     await button("关闭面板").click();
     await input().fill("");
@@ -1312,14 +1318,24 @@ try {
         "goal cancellation settling",
       );
       assert.equal(await button("清除目标").isDisabled(), true);
+      const goalTurnId = current(await state()).turns.at(-1).id;
       finishBackground();
-      await waitForSnapshot(
-        (s) =>
+      let settledGoalTurn;
+      await waitForSnapshot(async (s) => {
+        const record = JSON.parse(
+          await readFile(join(scratch, "core", pid, "state", `${tid}.json`), "utf8"),
+        );
+        settledGoalTurn = record.thread.turns.find((turn) => turn.id === goalTurnId);
+        return (
           current(s).goals?.goal?.status === "paused" &&
           !current(s).goals.goal.settling &&
-          current(s).turns.at(-1)?.status !== "inProgress",
-        "goal paused and settled",
-      );
+          settledGoalTurn &&
+          settledGoalTurn.status !== "inProgress"
+        );
+      }, "goal paused and settled");
+      await page
+        .locator(`[data-turn-id="${goalTurnId}"][data-turn-status="${settledGoalTurn.status}"]`)
+        .waitFor();
       await button("清除目标").click();
       await waitForSnapshot(
         (s) => current(s).goals?.goal === null && !project(s).pending.length,
