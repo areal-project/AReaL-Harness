@@ -1,7 +1,7 @@
 // 使用隔离的用户目录验证所有入口；模型 fixture 只返回工具调用，不运行第二套循环。
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { mkdir, readFile, writeFile, symlink, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile, symlink, rm } from "node:fs/promises";
 import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -34,13 +34,22 @@ async function skill(directory, text) {
     `---\nname: ${basename(directory)}\ndescription: Use ${basename(directory)} for skill discovery validation.\n---\n\n${text}`,
   );
 }
-async function assertSkillWarning(stderr) {
+async function assertSkillWarning(stderr, dataDir) {
   const serviceLog = stderr.match(/Service log: ([^\r\n]+)/)?.[1];
-  const diagnostic = serviceLog ? stderr + (await readFile(serviceLog, "utf8")) : stderr;
+  // 经共享 Host 打开的项目不在终端打印日志路径，启动日志在它的数据目录里。
+  const logs = serviceLog
+    ? [serviceLog]
+    : dataDir
+      ? (await readdir(dataDir))
+          .filter((name) => /^launch-.*\.log$/.test(name))
+          .map((name) => join(dataDir, name))
+      : [];
+  let diagnostic = stderr;
+  for (const log of logs) diagnostic += await readFile(log, "utf8");
   assert.match(diagnostic, /skipping auto-discovered skill broken-skill/);
   assert.match(diagnostic, /invalid skill frontmatter/);
 }
-async function run(binary, args) {
+async function run(binary, args, dataDir) {
   const process = spawnNative(join(bin, binary), args, {
     cwd: workspace,
     env,
@@ -55,7 +64,7 @@ async function run(binary, args) {
   clearTimeout(timer);
   assert.equal(code, 0, stdout + stderr);
   assert.match(stdout, /SKILL_DISCOVERY_PASSED/);
-  await assertSkillWarning(stderr);
+  await assertSkillWarning(stderr, dataDir);
   return stdout;
 }
 async function stop() {
@@ -270,16 +279,21 @@ try {
     "bypassPermissions",
   ]);
   console.log(JSON.stringify({ entry: "cli", status: "passed", resume: true }));
-  await run("areal", [
-    "--prompt",
-    "skill-discovery",
-    "--config",
-    config,
-    "--workspace",
-    workspace,
-    "--data-dir",
-    join(scratch, "state-tui"),
-  ]);
+  const tuiData = join(scratch, "state-tui");
+  await run(
+    "areal",
+    [
+      "--prompt",
+      "skill-discovery",
+      "--config",
+      config,
+      "--workspace",
+      workspace,
+      "--data-dir",
+      tuiData,
+    ],
+    tuiData,
+  );
   console.log(JSON.stringify({ entry: "tui", status: "passed" }));
   assert.deepEqual(model.failures, []);
 } finally {

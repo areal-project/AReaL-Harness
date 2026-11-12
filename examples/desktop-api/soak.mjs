@@ -328,7 +328,10 @@ try {
   ];
   const shared = serviceCommand(["service", "ensure", ...sharedArgs]);
   try {
-    assert.equal(serviceCommand(["web", ...sharedArgs]).generation, shared.generation);
+    // 网页由 Host 发布：打包后的 areal web 返回的是拥有这个服务的同一个 Host。
+    const web = serviceCommand(["web", "--json"]);
+    assert.equal(web.hostId, shared.owner.hostId);
+    assert.equal(web.generation, shared.owner.generation);
   } finally {
     assert.equal(
       serviceCommand(["service", "stop", "--instance", shared.serviceId, "--json"]).state,
