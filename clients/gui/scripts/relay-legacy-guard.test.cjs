@@ -25,6 +25,10 @@ test(
       `const {app}=require('electron');\nif(process.argv[2]==='--old'){app.setPath('userData',require('node:path').join(process.argv[3],'.service-user-data'));require('node:fs').mkdirSync(app.getPath('userData'),{recursive:true});if(!app.requestSingleInstanceLock())app.exit(1);else{process.stdin.once('end',()=>app.exit(0));process.stdin.resume();process.stdout.write(JSON.stringify({kind:'ready',coreHome:require('node:fs').realpathSync(process.argv[3]),pid:process.pid})+'\\n');}}else require(${JSON.stringify(mainPath)});\n`,
     );
     const electron = createRequire(resolve(__dirname, "../app/package.json"))("electron");
+    // Linux 测试机没有显示服务，也没配 Chromium 沙箱；这里只验单例锁，两者都不在被测范围。
+    // 开关放在应用参数之后，夹具按位置读 argv[2]。
+    const linuxSwitches =
+      process.platform === "linux" ? ["--no-sandbox", "--ozone-platform=headless"] : [];
     const children = [];
     t.after(async () => {
       const active = children.filter(
@@ -39,7 +43,7 @@ test(
       const args = old ? ["--old", coreHome] : [`--areal-relay-legacy-guard=${coreHome}`];
       const env = { ...process.env };
       delete env.ELECTRON_RUN_AS_NODE;
-      const child = spawn(electron, [appDir, ...args], {
+      const child = spawn(electron, [appDir, ...args, ...linuxSwitches], {
         env,
         stdio: ["pipe", "pipe", "pipe"],
       });
