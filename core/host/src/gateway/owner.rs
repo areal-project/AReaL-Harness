@@ -12,7 +12,33 @@ mod enrollment;
 mod push;
 #[path = "session.rs"]
 mod session;
-pub(crate) use session::{error_code, write_limits};
+pub(crate) use session::write_limits;
+
+/// 远程与本机写入口共用的错误码；其余一律归为 CORE_UNAVAILABLE。
+pub(crate) fn error_code(message: &str) -> &str {
+    match message {
+        "INVALID_PARAMS"
+        | "ATTACHMENT_UNSUPPORTED"
+        | "PROVIDER_CREDENTIAL_REQUIRED"
+        | "FORBIDDEN"
+        | "GRANT_CHANGED"
+        | "RESYNC_REQUIRED"
+        | "REVIEW_INCOMPLETE"
+        | "TARGET_CHANGED"
+        | "COMMAND_CONFLICT"
+        | "CAPABILITY_UNAVAILABLE"
+        | "RESOURCE_UNAVAILABLE"
+        | "CORE_INCOMPATIBLE"
+        | "LIMIT_EXCEEDED"
+        | "CAPACITY_EXCEEDED"
+        | "TURN_BUSY"
+        | "TASK_CONTROL_REQUIRED"
+        | "MIGRATION_PENDING"
+        | "migrationBlocked"
+        | "SUBMISSION_UNKNOWN" => message,
+        _ => "CORE_UNAVAILABLE",
+    }
+}
 
 /// 执行方明确报出的失败：结果已知，不记成“结果未知”，也不需要事后核对。
 /// 后台中途退出时未完成的请求也是 CAPABILITY_UNAVAILABLE，所以它和兜底的 CORE_UNAVAILABLE 不算。
