@@ -2195,7 +2195,13 @@ try {
     }
   }
   const authoritativeHistory = [];
-  for (const entry of await readdir(join(scratch, "core"), { withFileTypes: true })) {
+  const coreEntries = await readdir(join(scratch, "core"), { withFileTypes: true }).catch(
+    (error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    },
+  );
+  for (const entry of coreEntries) {
     if (!entry.isDirectory()) continue;
     const directory = join(scratch, "core", entry.name, "state");
     const names = await readdir(directory).catch((error) => {
