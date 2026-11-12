@@ -3,6 +3,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { HostClientOptions, ShellProject, SourceNavigation } from "@areal/client";
 import { createHostReadServices } from "./host-services.js";
+import { settleHostCommand } from "./host-snapshot.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import type { Action, PlatformServices, Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
 import { useConversationHistory } from "./ConversationHistory.js";
@@ -11,6 +13,24 @@ import { resolveDraftProfile } from "./ProfileDetails.js";
 import { recoveredOutcome } from "./recoveryPresentation.js";
 import { ProjectMigrationNotice } from "./views/ProjectMigrationNotice.js";
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
+it("presents a rejected oversized input with its actionable limit", () => {
+  let failure: unknown;
+  try {
+    settleHostCommand({
+      commandId: "original",
+      admissionState: "rejected",
+      error: { code: "INPUT_LIMIT_EXCEEDED" },
+    });
+  } catch (error) {
+    failure = error;
+  }
+  expect(failure).toMatchObject({
+    commandId: "original",
+    submissionUnknown: false,
+    code: "INPUT_LIMIT_EXCEEDED",
+  });
+  expect(currentErrorText(failure)).toContain("1 MiB");
+});
 const connection = {
   hostId: "host",
   hostGeneration: "host-gen",

@@ -25,6 +25,7 @@ export const ERROR_CODES = {
   PROVIDER_CREDENTIAL_REQUIRED: { action: "none", retryable: false },
   INVALID_RESPONSE: { action: "retry", retryable: true },
   LIMIT_EXCEEDED: { action: "none", retryable: false },
+  INPUT_LIMIT_EXCEEDED: { action: "none", retryable: false },
   CAPACITY_EXCEEDED: { action: "retry", retryable: true },
   COMMAND_CONFLICT: { action: "retry", retryable: false },
   RESOURCE_UNAVAILABLE: { action: "refresh", retryable: false },

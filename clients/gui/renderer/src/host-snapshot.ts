@@ -40,6 +40,16 @@ export function settleHostCommand(
 ) {
   if (result.admissionState === "accepted" || result.admissionState === "pending") return;
   const rejected = result.admissionState === "rejected";
+  const error = "error" in result ? result.error : undefined;
+  const code =
+    rejected &&
+    error &&
+    typeof error === "object" &&
+    !Array.isArray(error) &&
+    "code" in error &&
+    typeof error.code === "string"
+      ? error.code
+      : undefined;
   const outcome = rejected
     ? { kind: "rejected" }
     : operation
@@ -51,6 +61,7 @@ export function settleHostCommand(
       commandId: result.commandId,
       requestId: result.commandId,
       submissionUnknown: !rejected,
+      ...(code ? { code } : {}),
       outcome,
     },
   );

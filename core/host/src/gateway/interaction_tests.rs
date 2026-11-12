@@ -18,6 +18,24 @@ use tokio_tungstenite::tungstenite::Message;
 const ORIGINAL_DIGEST: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
 #[test]
+fn oversized_input_rejection_preserves_its_public_reason() {
+    let mut record = json!({"method":"areal/turn/start","operationId":"native-request",
+        "admissionState":"rejected","remote":{"method":"session.send","target":{"threadId":"thread"}},
+        "error":{"code":-32001,"message":"input exceeds 1 MiB",
+            "data":{"reason":"INPUT_LIMIT_EXCEEDED","outcome":{"kind":"rejected"}}}});
+    let result = Session::command_view(Some(&record), "original-command");
+    assert_eq!(result["admissionState"], "rejected");
+    assert_eq!(result["submissionUnknown"], false);
+    assert_eq!(result["error"]["code"], "INPUT_LIMIT_EXCEEDED");
+    assert_eq!(result["nativeRequestId"], "native-request");
+    record["error"]["data"]["reason"] = json!("taskHotStateCapacity");
+    assert_eq!(
+        Session::command_view(Some(&record), "original-command")["error"]["code"],
+        "CAPACITY_EXCEEDED"
+    );
+}
+
+#[test]
 fn unavailable_tool_host_retains_determinate_rejection() {
     let mut record = json!({"method":"areal/turn/start","operationId":"native-request",
         "admissionState":"rejected","remote":{"method":"session.send","target":{"threadId":"thread"}},

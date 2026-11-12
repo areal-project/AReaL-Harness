@@ -481,7 +481,7 @@ export async function runComposerFilesAcceptance({
   });
   const budgetRequests = received.length;
   await button("发送").click();
-  await page.getByRole("alert").filter({ hasText: "input exceeds 1 MiB" }).first().waitFor();
+  await page.getByRole("alert").filter({ hasText: "输入内容超过 1 MiB" }).first().waitFor();
   assert.equal(received.length, budgetRequests);
   assert.equal(await input().textContent(), "FILES_BUDGET_DRAFT");
   await button("移除附件 limit.txt").click();

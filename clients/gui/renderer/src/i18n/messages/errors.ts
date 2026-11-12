@@ -53,6 +53,10 @@ export const errorMessages = {
     "zh-CN": "内容太大，超过了上限。请减少文字或附件后再试。",
     en: "This is too large. Shorten the text or remove attachments and try again.",
   },
+  "errors.INPUT_LIMIT_EXCEEDED": {
+    "zh-CN": "输入内容超过 1 MiB，请减少文字或附件后再试。",
+    en: "Input exceeds 1 MiB. Shorten the text or remove attachments and try again.",
+  },
   "errors.CAPACITY_EXCEEDED": {
     "zh-CN": "同时进行的工作太多，请等一会儿再试。",
     en: "Too much is running at once. Wait a moment and try again.",

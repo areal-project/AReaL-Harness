@@ -199,10 +199,7 @@ pub(crate) fn error_code(message: &str) -> &str {
     }
 }
 pub(crate) const LOCAL_PEER: &str = "local-desktop";
-/// gui-write-v1 的输入上限与桌面 Main 一致（正文 64 KiB、16 个附件、8 段引用、32 块 MCP），
-/// 另加 MCP 总量上限，保证整条命令放得进 1 MiB 帧。
-pub(crate) const GUI_WRITE_PENDING_BYTES: usize = 704 * 1024;
-pub(crate) use send::write_limits;
+pub(crate) use send::{GUI_WRITE_PENDING_BYTES, write_limits};
 
 pub(crate) struct Session {
     pub(crate) host: Rc<Host>,
@@ -1419,7 +1416,9 @@ impl Session {
             let core = error["coreCode"]
                 .as_i64()
                 .or_else(|| error["code"].as_i64());
-            let code = if error["data"]["reason"] == "TOOL_HOST_UNAVAILABLE" {
+            let code = if error["data"]["reason"] == "INPUT_LIMIT_EXCEEDED" {
+                "INPUT_LIMIT_EXCEEDED"
+            } else if error["data"]["reason"] == "TOOL_HOST_UNAVAILABLE" {
                 "CAPABILITY_UNAVAILABLE"
             } else if matches!(
                 record["remote"]["method"].as_str(),
