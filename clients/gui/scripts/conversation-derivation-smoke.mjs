@@ -1352,6 +1352,17 @@ try {
   await writeFile(toolRelease, "cleanup\n");
   for (const release of heldResponses.values()) release();
   heldResponses.clear();
+  let originalAdapter = null;
+  try {
+    originalAdapter = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      events.push({ adapterIdentityError: error.message });
+      failure ??= error.stack ?? String(error);
+      passed = false;
+      process.exitCode = 1;
+    }
+  }
   if (app) {
     if (!firstMutations.length)
       try {
@@ -1377,7 +1388,7 @@ try {
     try {
       await closeRecordedSmokeApplication(app, 20000, async () => {
         await app.evaluate(({ dialog }) => {
-          dialog.showMessageBox = async () => ({ response: 1 });
+          dialog.showMessageBox = async () => ({ response: 0 });
         });
         if (videoPath) restartVideoPath = await page?.video()?.path();
         else videoPath = await page?.video()?.path();
@@ -1391,18 +1402,11 @@ try {
   }
   let cleanupConfirmed = true;
   try {
-    await stopService(env);
-  } catch (error) {
-    cleanupConfirmed = false;
-    events.push({ cleanupFailed: error.message, retainedRegistry: serviceRegistry });
-    failure ??= error.stack ?? String(error);
-    passed = false;
-    process.exitCode = 1;
-  }
-  try {
     const receipt = await stopFixtureHost(binary, serviceRegistry, scratch);
-    if (receipt) await assertApplicationStopped(binary, env, null);
-    else cleanupConfirmed = false;
+    if (receipt) {
+      await assertApplicationStopped(binary, env, originalAdapter);
+      await stopService(env);
+    } else cleanupConfirmed = false;
   } catch (error) {
     cleanupConfirmed = false;
     events.push({ hostCleanupFailed: error.message, retainedRegistry: serviceRegistry });
