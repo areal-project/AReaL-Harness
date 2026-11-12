@@ -169,6 +169,10 @@ let app,
 const checks = [],
   errors = [];
 const stoppedServices = [];
+function recordCheck(description) {
+  checks.push(description);
+  console.log(`[model-selection] completed: ${description}`);
+}
 const button = (name) => page.getByRole("button", { name, exact: true });
 async function openModelSettings() {
   await page.keyboard.press("Escape");
@@ -415,6 +419,7 @@ async function showModel(name) {
   return page.getByRole("radio", { name, exact: true });
 }
 async function stopService() {
+  console.log("[model-selection] stopping isolated Host");
   if (!stoppingHost) return;
   const home = env.AREAL_HARNESS_SERVICE_HOME;
   const reference = {
@@ -459,6 +464,7 @@ async function stopService() {
   }
 }
 async function launch() {
+  console.log("[model-selection] launching GUI");
   app = await electron.launch({
     executablePath: process.env.AREAL_GUI_EXECUTABLE || require("electron"),
     args: process.env.AREAL_GUI_EXECUTABLE ? [] : [join(gui, "app")],
@@ -490,6 +496,7 @@ async function launch() {
   }, workspace);
 }
 async function closeGui() {
+  console.log("[model-selection] closing GUI");
   const current = app;
   if (!current) return;
   const child = current.process();
@@ -555,6 +562,7 @@ async function closeGui() {
   }
 }
 async function verifyModelCapabilities() {
+  console.log("[model-selection] verifying model capabilities");
   const previous = await call("providers", { operation: "list" });
   await page.waitForFunction(async () => {
     const reply = await window.arealDesktop.command("serviceStatus", {});
@@ -909,7 +917,7 @@ async function verifyModelCapabilities() {
     effort: null,
     hasEffort: false,
   });
-  checks.push(
+  recordCheck(
     "custom model defaults, paired budget fields, persisted capabilities, historical rejection, configured effort subset, and service default reach Core",
   );
   await openModelSettings();
@@ -933,6 +941,7 @@ async function verifyModelCapabilities() {
   await button("刷新供应商").click();
 }
 async function verifyModelDefaults(projectId) {
+  console.log("[model-selection] verifying model defaults and recovery");
   await page.waitForFunction(async () => {
     const reply = await window.arealDesktop.command("serviceStatus", {});
     return (
@@ -1260,7 +1269,7 @@ async function verifyModelDefaults(projectId) {
     beforeReceiptReplay,
     "duplicate submission cannot overwrite newer preference",
   );
-  checks.push(
+  recordCheck(
     "main and queued admission update preference before completion; model failure retains it; queued execution and rejected duplicate submission cannot overwrite newer admission",
   );
   await selectConversation(page, switched);
@@ -1365,17 +1374,17 @@ async function verifyModelDefaults(projectId) {
     preference,
     "rejected submission preserves preference",
   );
-  checks.push(
+  recordCheck(
     "Side first/follow-up turns and rejected messages preserve the main preference; a new project inherits the same accepted model/effort",
   );
   await writeFile(
     join(scratch, "model-defaults-after.json"),
     JSON.stringify(await state(), null, 2),
   );
-  checks.push(
+  recordCheck(
     "New conversations inherit last admitted main model/effort; fallback settings, unsent changes and history navigation cannot override it; existing configurations and preference survive cold GUI/Core restart without replay",
   );
-  checks.push(
+  recordCheck(
     "configured high, concrete medium, explicit none, and historical unspecified labels match actual model requests; first strength is selectable",
   );
   await closeGui();
@@ -1485,11 +1494,12 @@ async function verifyModelDefaults(projectId) {
     path: join(scratch, "implicit-default-reopened.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "implicit desktop defaults pin model revision and effective effort across global default changes, effort reconfiguration and cold reopen; missing catalog entries retain historical identity",
   );
 }
 async function verifyComposerPicker() {
+  console.log("[model-selection] verifying composer model picker");
   await until(
     (s) =>
       fixtureProject(s)?.state?.connected &&
@@ -1601,11 +1611,12 @@ async function verifyComposerPicker() {
   await side.getByRole("button", { name: "选择思考强度", exact: true }).click();
   await page.getByRole("dialog", { name: "选择思考强度", exact: true }).waitFor();
   await page.keyboard.press("Escape");
-  checks.push(
+  recordCheck(
     "provider navigation and independent effort selection; unsupported effort rejected with draft retained; supported effort reaches local provider",
   );
 }
 async function verifyComposerFast() {
+  console.log("[model-selection] verifying composer fast tier");
   await until(
     (s) =>
       fixtureProject(s)?.state?.connected &&
@@ -1789,7 +1800,7 @@ async function verifyComposerFast() {
   );
   assert.equal(modelRequests.length, beforeFailure + 1, "unsupported tier is not retried");
   assert.deepEqual(wireTiers.at(-1), { value: "fast", present: true });
-  checks.push(
+  recordCheck(
     "Fast tier is independent of effort and model, reaches local provider, overrides provider default, and persists across cold restart; main and Side controls are available",
   );
 }
@@ -1802,6 +1813,7 @@ async function assertFastPressed(toggle, pressed) {
   );
 }
 async function runFullModelSelection() {
+  console.log("[model-selection] verifying unavailable models and settings");
   const ready = await until(
     (s) => fixtureProject(s)?.state?.connected && fixtureProject(s).models.length === 3,
     "unavailable Core catalog",
@@ -1882,7 +1894,7 @@ async function runFullModelSelection() {
   });
   await openModelSettings();
   await page.getByRole("heading", { name: "模型设置", exact: true }).waitFor();
-  checks.push(
+  recordCheck(
     "a missing default-provider credential permits Core connection and model settings without an upstream request",
   );
   await page.locator(".provider-catalog-row").filter({ hasText: "theta" }).click();
@@ -1928,7 +1940,7 @@ async function runFullModelSelection() {
     /缺少凭据/,
     "credential diagnostics remain in the detail pane",
   );
-  checks.push(
+  recordCheck(
     "provider navigation shows names only in separated enabled and disabled groups; credential diagnostics remain in the detail pane in both themes",
   );
 
@@ -1996,7 +2008,7 @@ async function runFullModelSelection() {
     path: join(scratch, "model-settings-models.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "provider model search precedes results, centered editor discards edits, and the same page retains the unsaved provider draft",
   );
   await page.getByRole("textbox", { name: "API Key", exact: true }).fill("fixture-key");
@@ -2034,7 +2046,7 @@ async function runFullModelSelection() {
     path: join(scratch, "connection-probe-terminal.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "The settings Test connection action succeeds and releases a gateway stream that sends a valid terminal event without closing",
   );
   await button("返回应用").click();
@@ -2070,7 +2082,7 @@ async function runFullModelSelection() {
     path: join(scratch, "open-project-entry.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "Projects + opens the existing picker directly; cancel preserves the project and draft; reopening a directory keeps one registration",
   );
   await button("定时任务").click();
@@ -2109,7 +2121,7 @@ async function runFullModelSelection() {
     path: join(scratch, "scheduled-model-recovered.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "scheduled creation explains unavailable credentials, opens model settings, and restores the same independent draft after a saved-key repair without sending input",
   );
   await button("首页").click();
@@ -2176,7 +2188,7 @@ async function runFullModelSelection() {
     path: join(scratch, "reopened-default-credential.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "the default provider's saved credential survives a cold GUI/backend reopen without replaying a request",
   );
   // 默认凭据恢复已验收；后续启停用例沿用无全局默认项的独立目录前置条件。
@@ -2213,7 +2225,7 @@ async function runFullModelSelection() {
   );
   await openModelSettings();
   await page.getByRole("heading", { name: "模型设置", exact: true }).waitFor();
-  checks.push(
+  recordCheck(
     "single save confirms persistence/Core readiness; user chooses a model in the existing Composer and Core executes it",
   );
   // 启用开关、凭据与配置应用分别验收；两个可用模型之间必须能实际切换。
@@ -2279,7 +2291,7 @@ async function runFullModelSelection() {
   });
   await button("返回应用").click();
   await page.locator('[data-testid="areal-workbench"][data-view="workspace"]').waitFor();
-  checks.push(
+  recordCheck(
     "settings navigation stays disabled while a real save receipt is pending and returns to the conversation after settlement",
   );
   await button("选择模型").click();
@@ -2383,7 +2395,7 @@ async function runFullModelSelection() {
     authorizationPresent: false,
   });
   await page.screenshot({ path: join(scratch, "no-auth-composer.png"), animations: "disabled" });
-  checks.push(
+  recordCheck(
     "one no-auth save removes the Core credential reference; explicit Composer reselection executes without Authorization",
   );
   await openModelSettings();
@@ -2429,7 +2441,7 @@ async function runFullModelSelection() {
     authenticated: true,
     authorizationPresent: true,
   });
-  checks.push(
+  recordCheck(
     "Core distinguishes environment credentials, securely stored credentials, and no authentication; Composer executes each applied mode",
   );
   await openModelSettings();
@@ -2492,7 +2504,7 @@ async function runFullModelSelection() {
     1,
     "confirmed invalidity is marked inside the model label",
   );
-  checks.push(
+  recordCheck(
     "Core credential states and saved enablement remain separate from drafts and pending apply; Composer explicitly selects and executes another available model",
   );
   // 空目录是后续场景的夹具准备；离开设置页后再写入，避免其目录刷新与管理命令竞争。
@@ -2566,7 +2578,7 @@ async function runFullModelSelection() {
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setMinimumSize(980, 620),
   );
-  checks.push(
+  recordCheck(
     "Empty model guidance stays on one line within the toolbar in dark/light themes at 1440, 980 and 640 pixels; the project bar stays attached to the composer",
   );
   assert.equal(
@@ -2577,12 +2589,14 @@ async function runFullModelSelection() {
   await assertEmptyModelIndicator();
   await assertComposerActions();
   await openModelSettings();
-  checks.push("empty catalog provides neutral guidance and Settings > Models remains accessible");
+  recordCheck("empty catalog provides neutral guidance and Settings > Models remains accessible");
   await verifyModelCapabilities();
   await verifyModelDefaults(projectId);
 }
 try {
+  console.log(`[model-selection] evidence: ${scratch}`);
   await launch();
+  console.log("[model-selection] creating project conversation");
   await button("打开项目").click();
   await createProjectConversation(page, "workspace");
   if (composerFast) {
@@ -2599,6 +2613,7 @@ try {
   if (page) await captureSmokeFailure(page, scratch, error);
   throw error;
 } finally {
+  console.log("[model-selection] cleaning up fixtures");
   releaseHeldReply?.();
   const cleanupFailure = (operation, error) => {
     errors.push(`cleanup ${operation}: ${error.message}`);
