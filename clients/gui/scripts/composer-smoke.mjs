@@ -616,6 +616,7 @@ try {
       checks,
       shot,
       fixture: filesFixture,
+      readCoreThread: readPasteThread,
     });
   } else if (referencesRegression) {
     await runComposerReferencesAcceptance({

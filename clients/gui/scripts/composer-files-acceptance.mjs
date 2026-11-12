@@ -95,6 +95,7 @@ export async function runComposerFilesAcceptance({
   checks,
   shot,
   fixture,
+  readCoreThread,
 }) {
   const input = () => page.getByTestId("chat-input");
   const button = (name) => page.getByRole("button", { name, exact: true });
@@ -103,14 +104,20 @@ export async function runComposerFilesAcceptance({
   const send = async (text) => {
     if (text !== undefined) await input().fill(text);
     const count = received.length;
+    const previous = new Set(
+      Object.values(project(await state()).state.threads).flatMap((thread) =>
+        (thread.turns ?? []).map((turn) => turn.id),
+      ),
+    );
     await button("发送").click();
-    await until(
-      async () =>
-        received.length > count &&
-        (await current())?.turns.at(-1)?.status === "completed" &&
-        !project(await state()).pending.length,
-      "file input completed",
-    ).catch(async (error) => {
+    let turn;
+    await until(async () => {
+      const id = await activeId();
+      if (!id || received.length <= count) return false;
+      const thread = await readCoreThread(id);
+      turn = thread.turns.find((item) => !previous.has(item.id) && item.status === "completed");
+      return turn && !project(await state()).pending.length;
+    }, "file input completed").catch(async (error) => {
       // 超时时带上卡在哪一步：模型请求没发出、轮次没结束，还是提交还挂着。
       const thread = await current();
       throw new Error(
@@ -131,7 +138,6 @@ export async function runComposerFilesAcceptance({
     await page.waitForFunction(
       () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
     );
-    const turn = (await current()).turns.at(-1);
     await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
     await page.getByTestId("pending-message").waitFor({ state: "hidden" });
     return turn;
