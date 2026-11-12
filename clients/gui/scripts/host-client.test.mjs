@@ -1110,6 +1110,9 @@ test("desktop writes negotiate gui-write-v1, carry the Gateway context and never
   );
   assert.equal(new Set(chunks.map((frame) => frame.params.uploadId)).size, 1);
   assert.ok(chunks.every((frame) => frame.commandId === undefined));
+  await assert.rejects(client.upload(project.projectId, "t", new Uint8Array(0), "text/plain"), {
+    code: "ATTACHMENT_UNSUPPORTED",
+  });
   await assert.rejects(client.upload(project.projectId, "t", new Uint8Array(65), "text/plain"), {
     code: "LIMIT_EXCEEDED",
   });

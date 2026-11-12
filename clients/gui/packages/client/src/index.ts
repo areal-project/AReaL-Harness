@@ -394,7 +394,9 @@ export class HostClient {
     const limits =
       this.#state.connection === "ready" ? this.#state.identity.writeLimits : undefined;
     const chunk = limits?.uploadChunkBytes ?? 256 * 1024;
-    if (bytes.length === 0 || bytes.length > (limits?.uploadBytes ?? 16 * 1024 * 1024))
+    if (bytes.length === 0)
+      throw Object.assign(new Error("Empty attachment"), { code: "ATTACHMENT_UNSUPPORTED" });
+    if (bytes.length > (limits?.uploadBytes ?? 16 * 1024 * 1024))
       throw Object.assign(new Error("Attachment too large"), { code: "LIMIT_EXCEEDED" });
     for (let offset = 0; ; offset += chunk) {
       const part = bytes.subarray(offset, offset + chunk);
