@@ -5,6 +5,7 @@ import { Messages } from "./Messages.js";
 import { AgentAvatar, agentName, agentStatus, agentAssignment } from "./AgentIdentity.js";
 import type { Action, Data } from "./services.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { usePlatformReads } from "./PlatformReadContext.js";
 
 /** 子对话复用权威投影与消息组件；标签关闭只关闭阅读视图。 */
 export function AgentConversationPane({
@@ -29,11 +30,16 @@ export function AgentConversationPane({
   onAgent: (id: string) => void;
 }) {
   const { t } = useI18n();
+  const reads = usePlatformReads();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [revision, refresh] = useState(0);
   const thread = project.state?.threads[childId];
   const connected = thread?.executionConnected ?? !!project.state?.connected;
+  useEffect(
+    () => reads?.watch?.({ projectId: project.id, threadId: childId }),
+    [reads, project.id, childId],
+  );
   // Reading a comparison refreshes the snapshot. Preserve the reader identity
   // across that refresh so file summaries can accept the pending result.
   const readTurnReview = useCallback(
