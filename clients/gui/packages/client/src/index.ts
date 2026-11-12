@@ -590,15 +590,20 @@ export class HostClient {
       throw error;
     }
   }
-  async history(options: {
-    view: "own" | "inherited" | "reference";
-    cursor?: string;
-    maxBytes?: number;
-  }) {
-    const state = this.#reads.session,
+  async history(
+    options: {
+      view: "own" | "inherited" | "reference";
+      cursor?: string;
+      maxBytes?: number;
+    },
+    target?: { projectId: string; threadId: string },
+  ) {
+    const state = target
+        ? this.#watched.view.get(`${target.projectId}:${target.threadId}`)
+        : this.#reads.session,
       transport = this.#transport,
       selection = this.#selection;
-    if (state.state !== "fresh" || !transport) throw new Error("Conversation unavailable");
+    if (state?.state !== "fresh" || !transport) throw new Error("Conversation unavailable");
     const owner = state.value;
     const result = await transport.request(
       "session.history",
@@ -609,7 +614,15 @@ export class HostClient {
       } satisfies ConversationHistoryParams,
       owner,
     );
-    if (selection !== this.#selection || transport !== this.#transport)
+    const current = target
+      ? this.#watched.view.get(`${target.projectId}:${target.threadId}`)
+      : this.#reads.session;
+    if (
+      transport !== this.#transport ||
+      (!target && selection !== this.#selection) ||
+      current?.state !== "fresh" ||
+      current.value.subscriptionId !== owner.subscriptionId
+    )
       throw new Error("History read cancelled");
     if (
       !identity(result) ||

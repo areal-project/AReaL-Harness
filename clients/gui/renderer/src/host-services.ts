@@ -66,10 +66,52 @@ export function createHostReadServices(
   const pages = createHostPages(client);
   const listeners = new Set<(snapshot: Snapshot) => void>();
   let shellExtras: ShellSnapshot | undefined;
-  const watchedThreads = createWatchedThreads(
+  const readWatchedThreads = createWatchedThreads(
     () => client.watchedSnapshot().values(),
     (value) => readObservationResult(value).thread,
   );
+  const watchedBodies = new Map<
+    string,
+    {
+      subscriptionId: string;
+      items: ReadingWindow["items"];
+      loading: Map<string, number>;
+    }
+  >();
+  function watchedThreads() {
+    const threads = readWatchedThreads();
+    for (const [projectId, values] of threads) {
+      threads.set(
+        projectId,
+        values.map((thread) => {
+          const key = `${projectId}:${thread.id}`;
+          const read = client.watchedSnapshot().get(key);
+          const bodies = watchedBodies.get(key);
+          if (
+            read?.state !== "fresh" ||
+            !bodies ||
+            bodies.subscriptionId !== read.value.subscriptionId
+          ) {
+            watchedBodies.delete(key);
+            return thread;
+          }
+          return {
+            ...thread,
+            turns: thread.turns.map((turn) => ({
+              ...turn,
+              items: turn.items.map((item) => {
+                const body = bodies.items.get(item.id);
+                return item.type === "historyDeferred" && body && body.version === item.version
+                  ? body.entry.item
+                  : item;
+              }),
+            })),
+          };
+        }),
+      );
+    }
+    return threads;
+  }
   let librarySourceId: string | undefined;
   let snapshot: Snapshot = { projects: [], connection: { state: "connecting" } };
   let session: SessionRead | undefined;
@@ -265,7 +307,12 @@ export function createHostReadServices(
         threadTargets.get(`${target.projectId}:${target.threadId}`) ??
         [...ids].find(([, alias]) => alias === target.projectId)?.[0] ??
         target.projectId;
-      return client.watchSession({ projectId, threadId: target.threadId });
+      const key = `${projectId}:${target.threadId}`;
+      const release = client.watchSession({ projectId, threadId: target.threadId });
+      return () => {
+        release();
+        if (!client.watchedSnapshot().has(key)) watchedBodies.delete(key);
+      };
     },
     async selectSession(target) {
       if (!target) return client.selectSession(null);
@@ -386,17 +433,41 @@ export function createHostReadServices(
         return current() ? "limited" : "cancelled";
       }
     },
-    async loadItem(itemId) {
-      const reading = requireWindow();
-      const owner = session;
-      const olderEntry = [...reading.pages, ...reading.stalePages]
+    async loadItem(itemId, target) {
+      const projectId =
+        target &&
+        (threadTargets.get(`${target.projectId}:${target.threadId}`) ??
+          [...ids].find(([, alias]) => alias === target.projectId)?.[0] ??
+          target.projectId);
+      const watchedTarget =
+        target &&
+        projectId &&
+        (session?.projectId !== projectId || session.threadId !== target.threadId)
+          ? { projectId, threadId: target.threadId }
+          : undefined;
+      const key = watchedTarget
+        ? `${watchedTarget.projectId}:${watchedTarget.threadId}`
+        : undefined;
+      const watched = key ? client.watchedSnapshot().get(key) : undefined;
+      if (key && watched?.state !== "fresh") throw new Error("Conversation unavailable");
+      const owner = watched?.state === "fresh" ? watched.value : session;
+      const watchedObservation =
+        watched?.state === "fresh" ? readObservationResult(watched.value.snapshot) : undefined;
+      let auxiliary = key ? watchedBodies.get(key) : undefined;
+      if (key && owner && (!auxiliary || auxiliary.subscriptionId !== owner.subscriptionId)) {
+        auxiliary = { subscriptionId: owner.subscriptionId, items: new Map(), loading: new Map() };
+        watchedBodies.set(key, auxiliary);
+      }
+      const reading = auxiliary ?? requireWindow();
+      const olderEntry = ("pages" in reading ? [...reading.pages, ...reading.stalePages] : [])
         .flatMap((page) => page.data)
         .find((entry) => entry.item.id === itemId);
-      const liveTurn = observation?.thread.turns.find((turn) =>
+      const observed = watchedObservation ?? observation;
+      const liveTurn = observed?.thread.turns.find((turn) =>
         turn.items.some((value) => value.id === itemId),
       );
       const item = liveTurn?.items.find((value) => value.id === itemId) ?? olderEntry?.item;
-      const sourceThreadId = liveTurn ? observation?.thread.id : olderEntry?.sourceThreadId;
+      const sourceThreadId = liveTurn ? observed?.thread.id : olderEntry?.sourceThreadId;
       const sourceTurnId = liveTurn?.id ?? olderEntry?.sourceTurnId;
       if (
         !item ||
@@ -408,7 +479,7 @@ export function createHostReadServices(
         throw new Error("History item unavailable");
       if (item.totalBytes > 4 * 1024 * 1024) throw new Error("History item exceeds display budget");
       if (reading.loading.has(itemId)) throw new Error("History item is already loading");
-      const reserved = [...windows.values()].reduce(
+      const reserved = [...windows.values(), ...watchedBodies.values()].reduce(
         (sum, value) =>
           sum +
           [...value.items.values()].reduce((n, item) => n + item.bytes, 0) +
@@ -424,9 +495,14 @@ export function createHostReadServices(
           offset = 0;
         while (cursor) {
           const page = readHistoryFragmentPage(
-            await history({ view: "own", cursor, maxBytes: 131072 }),
+            watchedTarget
+              ? await client.history({ view: "own", cursor, maxBytes: 131072 }, watchedTarget)
+              : await history({ view: "own", cursor, maxBytes: 131072 }),
           );
-          if (readingWindow !== reading || owner?.subscriptionId !== session?.subscriptionId)
+          if (
+            !watchedTarget &&
+            (readingWindow !== reading || owner?.subscriptionId !== session?.subscriptionId)
+          )
             throw new Error("History read cancelled");
           for (const entry of page.data) {
             const fragment = entry.fragment;

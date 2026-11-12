@@ -194,7 +194,7 @@ export interface PlatformReadServices {
     generation: string,
   ): Promise<"ready" | import("./conversationReading.js").ReadingBlock>;
   loadOlder(pageId?: string): Promise<void>;
-  loadItem(itemId: string): Promise<void>;
+  loadItem(itemId: string, target?: { projectId: string; threadId: string }): Promise<void>;
 }
 export interface PlatformServices {
   capabilities?: {

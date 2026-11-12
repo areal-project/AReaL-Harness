@@ -1008,6 +1008,119 @@ describe("Host renderer read authority", () => {
       (await services.snapshot()).projects[0].state.threads.thread.turns[0].items[0].type,
     ).toBe("historyDeferred");
   });
+  it("loads a watched child tool body through that child's subscription", async () => {
+    const body = {
+      sourceThreadId: "child",
+      sourceTurnId: "child-turn",
+      sourceItemId: "tool",
+      sourceTurnStatus: "completed",
+      turn: { id: "child-turn", status: "completed" },
+      item: { id: "tool", type: "dynamicToolCall", arguments: { path: "child" } },
+    };
+    const text = JSON.stringify(body);
+    const totalBytes = new TextEncoder().encode(text).length;
+    const child = {
+      thread: {
+        id: "child",
+        parentThreadId: "thread",
+        turns: [
+          {
+            id: "child-turn",
+            status: "completed",
+            items: [
+              {
+                id: "tool",
+                type: "historyDeferred",
+                originalType: "dynamicToolCall",
+                cursor: "body",
+                version: "v1",
+                totalBytes,
+              },
+            ],
+          },
+        ],
+      },
+      history: { snapshotId: "child-history", complete: true, nextCursor: null },
+    };
+    const wire = transport();
+    let holdHistory = false;
+    let releaseHistory: (() => void) | undefined;
+    const factory: NonNullable<HostClientOptions["transport"]> = async (lifecycle) => {
+      const base = await wire.factory(lifecycle);
+      return {
+        ...base,
+        transport: {
+          ...base.transport,
+          async request(method, params, context) {
+            if (method === "session.watch")
+              return {
+                ...identity,
+                ...context,
+                subscriptionId: "child-sub",
+                threadId: "child",
+                snapshot: child,
+              };
+            if (method === "session.history" && params.subscriptionId === "child-sub") {
+              if (holdHistory)
+                await new Promise<void>((resolve) => {
+                  releaseHistory = resolve;
+                });
+              return {
+                ...identity,
+                ...context,
+                subscriptionId: "child-sub",
+                threadId: "child",
+                page: {
+                  snapshotId: "child-history",
+                  complete: true,
+                  nextCursor: null,
+                  data: [
+                    {
+                      sourceThreadId: "child",
+                      sourceTurnId: "child-turn",
+                      sourceItemId: "tool",
+                      sourceTurnStatus: "completed",
+                      fragment: {
+                        text,
+                        offsetUtf8: 0,
+                        nextOffsetUtf8: totalBytes,
+                        totalBytes,
+                        version: "v1",
+                      },
+                    },
+                  ],
+                },
+              };
+            }
+            return base.transport.request(method, params, context);
+          },
+        },
+      };
+    };
+    const services = createHostReadServices(undefined, options(factory));
+    await until(services);
+    await services.reads!.selectSession({ projectId: "alias", threadId: "thread" });
+    const release = services.reads!.watch!({ projectId: "alias", threadId: "child" });
+    try {
+      await vi.waitFor(async () =>
+        expect((await services.snapshot()).projects[0].state.threads.child).toBeDefined(),
+      );
+      await services.reads!.loadItem("tool", { projectId: "alias", threadId: "child" });
+      expect(
+        (await services.snapshot()).projects[0].state.threads.child.turns[0].items[0],
+      ).toMatchObject({ type: "dynamicToolCall", arguments: { path: "child" } });
+      expect((await services.snapshot()).projects[0].state.threads.thread.id).toBe("thread");
+      holdHistory = true;
+      const pending = services.reads!.loadItem("tool", { projectId: "alias", threadId: "child" });
+      await vi.waitFor(() => expect(releaseHistory).toBeDefined());
+      release();
+      releaseHistory!();
+      await expect(pending).rejects.toThrow("History read cancelled");
+      expect((await services.snapshot()).projects[0].state.threads.child).toBeUndefined();
+    } finally {
+      release();
+    }
+  });
   it("uses the requested GUI source instead of another source's preferences", async () => {
     const other = {
       ...navigation,

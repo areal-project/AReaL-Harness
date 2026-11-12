@@ -82,7 +82,7 @@ export function useConversationHistory(projectId: string, thread: Data, action: 
       setFailure(undefined);
       try {
         if (reads) {
-          if (itemId) await reads.loadItem(itemId);
+          if (itemId) await reads.loadItem(itemId, { projectId, threadId: thread.id });
           else await reads.loadOlder(pageId);
           return true;
         }
