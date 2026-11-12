@@ -813,94 +813,88 @@ try {
   await page.getByRole("tab", { name: "fixture", exact: true }).click();
   await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
   await page.keyboard.press("Escape");
-  // 共享后台独立运行；在真实连接的返回边界记录 Core 已确认的创建键。
-  await app.evaluate(
-    ({ app }, connectionPath) => {
-      const read = process
-        .getBuiltinModule("module")
-        .createRequire(app.getAppPath() + "/package.json");
-      const { ServiceConnection } = read(connectionPath);
-      const original = ServiceConnection.prototype.request;
-      globalThis.__scfMutations = [];
-      ServiceConnection.prototype.request = async function (method, parameters, mutation) {
-        globalThis.__scfConnection = this;
-        if (method !== "command") {
-          return original.call(this, method, parameters, mutation);
-        }
-        // 一次性修改出站参数，拒绝结果仍由真实 Core 产生。
-        const fixture = globalThis.__scfRejectNext;
-        if (fixture === "workflow" && parameters.name === "fork") {
-          parameters = {
-            ...parameters,
-            request: {
-              ...parameters.request,
-              target: { agentProfile: { id: "zz-scf-automatic", revision: "v1" } },
-            },
-          };
-          globalThis.__scfRejectNext = null;
-        } else if (
-          fixture === "selection" &&
-          parameters.name === "side" &&
-          parameters.request.operation === "start"
-        ) {
-          parameters = {
-            ...parameters,
-            request: {
-              ...parameters.request,
-              selection: { ...parameters.request.selection, textSha256: "0".repeat(64) },
-            },
-          };
-          globalThis.__scfRejectNext = null;
-        } else if (
-          fixture === "workspace-read" &&
-          parameters.name === "side" &&
-          parameters.request.operation === "start"
-        ) {
-          parameters = {
-            ...parameters,
-            request: { ...parameters.request, workspaceAccess: "readOnly" },
-          };
-          globalThis.__scfRejectNext = null;
-        }
-        const entry = {
-          command: parameters.name,
-          parameters: parameters.request,
-          mutation: mutation === true,
-          accepted: false,
-        };
-        if (fixture && !globalThis.__scfRejectNext) entry.fixture = fixture;
-        globalThis.__scfMutations.push(entry);
-        try {
-          const result = await original.call(this, method, parameters, mutation);
-          entry.accepted = true;
-          entry.requestId = result?.requestId ?? parameters.request?.requestId ?? null;
-          entry.resultThreadId = result?.threadId ?? result?.thread?.id ?? null;
-          if (parameters.name === "media" && result?.bytes) {
-            const bytes = Buffer.from(result.bytes, "base64");
-            entry.resultSha256 = process
-              .getBuiltinModule("crypto")
-              .createHash("sha256")
-              .update(bytes)
-              .digest("hex");
-            entry.resultLength = bytes.length;
+  // 在实际 Host 通道注入参数并记录真实回执；提交后只丢弃客户端收到的结果。
+  await page.evaluate(() => {
+    const send = WebSocket.prototype.send;
+    const pendingBySocket = new WeakMap();
+    const wrapped = new WeakSet();
+    globalThis.__scfMutations = [];
+    WebSocket.prototype.send = function (data) {
+      let frame;
+      try {
+        frame = JSON.parse(data);
+      } catch {
+        return send.call(this, data);
+      }
+      if (frame.method !== "desktop.command") return send.call(this, data);
+      if (!wrapped.has(this)) {
+        wrapped.add(this);
+        const pending = new Map();
+        pendingBySocket.set(this, pending);
+        const onmessage = this.onmessage;
+        this.onmessage = function (event) {
+          let reply;
+          try {
+            reply = JSON.parse(event.data);
+          } catch {
+            return onmessage?.call(this, event);
           }
-          if (parameters.name === "fork" && globalThis.__scfLoseNextForkResponse) {
+          const entry = pending.get(reply.id);
+          if (!entry) return onmessage?.call(this, event);
+          pending.delete(reply.id);
+          entry.accepted = !reply.error;
+          entry.error = reply.error?.message;
+          entry.errorCode = reply.error?.code;
+          entry.requestId = reply.result?.requestId ?? entry.parameters?.requestId ?? null;
+          entry.resultThreadId = reply.result?.threadId ?? reply.result?.thread?.id ?? null;
+          if (entry.command === "media" && typeof reply.result?.bytes === "string")
+            entry.resultBytes = reply.result.bytes;
+          if (entry.command === "fork" && globalThis.__scfLoseNextForkResponse && entry.accepted) {
             globalThis.__scfLoseNextForkResponse = false;
             entry.fixture = "committed GUI response lost";
-            throw Object.assign(new Error("SCF fixture: committed GUI response lost"), {
-              submissionUnknown: true,
-              requestId: entry.requestId,
-            });
+            const lost = {
+              version: 1,
+              id: reply.id,
+              error: { message: "SCF fixture: committed GUI response lost" },
+            };
+            return onmessage?.call(
+              this,
+              new MessageEvent("message", { data: JSON.stringify(lost) }),
+            );
           }
-          return result;
-        } catch (error) {
-          entry.error = error.message;
-          throw error;
-        }
-      };
-    },
-    join(desktop, "src/core/service-client.cjs"),
-  );
+          return onmessage?.call(this, event);
+        };
+      }
+      const command = frame.params?.command;
+      let request = frame.params?.request;
+      const fixture = globalThis.__scfRejectNext;
+      if (fixture === "workflow" && command === "fork") {
+        request = {
+          ...request,
+          target: { agentProfile: { id: "zz-scf-automatic", revision: "v1" } },
+        };
+        frame.params.request = request;
+        globalThis.__scfRejectNext = null;
+      } else if (fixture === "selection" && command === "side" && request.operation === "start") {
+        request = { ...request, selection: { ...request.selection, textSha256: "0".repeat(64) } };
+        frame.params.request = request;
+        globalThis.__scfRejectNext = null;
+      } else if (
+        fixture === "workspace-read" &&
+        command === "side" &&
+        request.operation === "start"
+      ) {
+        request = { ...request, workspaceAccess: "readOnly" };
+        frame.params.request = request;
+        globalThis.__scfRejectNext = null;
+      }
+      const entry = { command, parameters: request, accepted: false };
+      if (fixture && !globalThis.__scfRejectNext) entry.fixture = fixture;
+      globalThis.__scfMutations.push(entry);
+      pendingBySocket.get(this).set(frame.id, entry);
+      return send.call(this, JSON.stringify(frame));
+    };
+  });
   const first = await send(`${head} ${unicodeExcerpt}`);
   sourceThreadId = first.threadId;
   anchorTurnId = first.turnId;
@@ -950,7 +944,7 @@ try {
   await forkDialog.waitFor({ state: "hidden" });
   await anchor.getByRole("button", { name: "从此轮创建聊天分支", exact: true }).click();
   await forkDialog.waitFor();
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.__scfRejectNext = "workflow";
   });
   await forkDialog.getByRole("button", { name: "创建分支", exact: true }).click();
@@ -965,14 +959,14 @@ try {
   checks.push(
     "AC15/61: compact Fork offers one inherited-config action, dismisses via Escape/outside click, and preserves retry after actual Core Workflow rejection without a target or model request",
   );
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.__scfLoseNextForkResponse = true;
   });
   await forkDialog.getByRole("button", { name: "创建分支", exact: true }).click();
   await forkDialog.getByRole("button", { name: "核对受理结果", exact: true }).waitFor();
   await forkDialog.getByRole("alert").filter({ hasText: "请先核对原提交" }).waitFor();
   assert.equal(await forkDialog.getByRole("button", { name: "创建分支", exact: true }).count(), 0);
-  const lostResult = (await app.evaluate(() => globalThis.__scfMutations)).find(
+  const lostResult = (await page.evaluate(() => globalThis.__scfMutations)).find(
     (entry) => entry.fixture === "committed GUI response lost",
   );
   assert.ok(lostResult?.accepted && lostResult.resultThreadId && lostResult.requestId);
@@ -1357,8 +1351,21 @@ try {
     if (!firstMutations.length)
       try {
         firstMutations = await withSmokeDeadline("mutation evidence", () =>
-          app.evaluate(() => globalThis.__scfMutations ?? []),
+          page.evaluate(() => globalThis.__scfMutations ?? []),
         );
+        for (const entry of firstMutations) {
+          try {
+            entry.mutation = commandSemantics(entry.command, entry.parameters).effect !== "read";
+          } catch {
+            entry.mutation = null;
+          }
+          if (entry.resultBytes) {
+            const bytes = Buffer.from(entry.resultBytes, "base64");
+            entry.resultSha256 = createHash("sha256").update(bytes).digest("hex");
+            entry.resultLength = bytes.length;
+            delete entry.resultBytes;
+          }
+        }
       } catch (error) {
         events.push({ requestCaptureError: error.message });
       }
