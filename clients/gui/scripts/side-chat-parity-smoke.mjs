@@ -1591,6 +1591,7 @@ try {
     (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === id,
     projectId,
   );
+  await page.getByRole("button", { name: "新会话工作区", exact: true }).waitFor();
   for (const [id, run] of scenarios) {
     if (scenario && scenario !== id) continue;
     const row = { id, startedAt: new Date().toISOString(), requestsBefore: requests.length };
