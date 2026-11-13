@@ -552,6 +552,24 @@ async function closeOwned() {
 }
 async function sendMain(text, complete = true) {
   const previous = await currentId();
+  if (!baseline) {
+    const before = new Set(
+      previous ? (await readCoreThread(previous)).turns.map((turn) => turn.id) : [],
+    );
+    await mainComposer().getByTestId("chat-input").fill(text);
+    await mainComposer().getByRole("button", { name: "发送", exact: true }).click();
+    const id = await until(async () => (await currentId()) || null, "main thread identity");
+    let turn;
+    await until(async () => {
+      turn = (await readCoreThread(id)).turns.find((candidate) => !before.has(candidate.id));
+      return turn && (!complete || turn.status === "completed");
+    }, `main ${text}`);
+    if (complete)
+      await mainMessages()
+        .locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`)
+        .waitFor();
+    return id;
+  }
   const before = previous ? (threads(await state())[previous]?.turns?.length ?? 0) : 0;
   await mainComposer().getByTestId("chat-input").fill(text);
   await mainComposer().getByRole("button", { name: "发送", exact: true }).click();
@@ -1153,7 +1171,7 @@ async function multipleTabs() {
   );
 }
 async function selectionReferences() {
-  await newParent("PARITY:P4_SOURCE");
+  const parent = await newParent("PARITY:P4_SOURCE");
   await sendMain("PARITY:P4_OTHER");
   const body = mainMessages()
     .locator("[data-side-item-id] .conversation-markdown")
@@ -1202,6 +1220,7 @@ async function selectionReferences() {
   await shot("P4-reference-collection");
   await main.getByRole("button", { name: "发送", exact: true }).click();
   await until(() => requests.length > before, "reference-bearing provider request");
+  const referenceTurnId = (await readCoreThread(parent)).turns.at(-1).id;
   const payload = textOf(
     requests
       .at(-1)
@@ -1218,7 +1237,9 @@ async function selectionReferences() {
     "model receives text only without source identifiers",
   );
   await until(
-    async () => threads(await state())[await currentId()]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(parent)).turns.find((turn) => turn.id === referenceTurnId)?.status ===
+      "completed",
     "reference turn completed",
   );
   assert.equal(
@@ -1242,6 +1263,7 @@ async function selectionReferences() {
     );
   };
   await sendMain("PARITY:STREAM_SELECTION", false);
+  const streamTurnId = (await readCoreThread(parent)).turns.at(-1).id;
   const streamed = mainMessages()
     .locator("[data-side-item-id] .conversation-markdown")
     .filter({ hasText: "STREAM_SELECTION_1" })
@@ -1273,9 +1295,14 @@ async function selectionReferences() {
   assert.equal(requests.length, streamRequests, "stream selection stages a draft without sending");
   streams.get("PARITY:STREAM_SELECTION")?.();
   await until(
-    async () => threads(await state())[await currentId()]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(parent)).turns.find((turn) => turn.id === streamTurnId)?.status ===
+      "completed",
     "selection stream settled",
   );
+  await mainMessages()
+    .locator(`[data-turn-id="${streamTurnId}"][data-turn-status="completed"]`)
+    .waitFor();
   await clear();
   await main.getByTestId("chat-input").fill("LIMIT_DRAFT_SURVIVES");
   await addReference(body, longC);
@@ -1346,6 +1373,7 @@ async function selectionReferences() {
 }
 async function normalComposerAndSideCommands() {
   const parent = await newParent("PARITY:P5_PARENT");
+  let busyParentTurnId;
   await openSide();
   assert.equal(
     await sidePane().locator('input[type="file"]').count(),
@@ -1386,6 +1414,7 @@ async function normalComposerAndSideCommands() {
   for (const command of ["side", "btw"]) {
     if (command === "btw") {
       await sendMain("PARITY:STREAM_P5_PARENT", false);
+      busyParentTurnId = (await readCoreThread(parent)).turns.at(-1).id;
       await until(
         () => requests.some((item) => item.prompt === "PARITY:STREAM_P5_PARENT"),
         "busy parent reached the model before command request counting",
@@ -1435,7 +1464,9 @@ async function normalComposerAndSideCommands() {
   }
   streams.get("PARITY:STREAM_P5_PARENT")?.();
   await until(
-    async () => threads(await state())[parent]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(parent)).turns.find((turn) => turn.id === busyParentTurnId)?.status ===
+      "completed",
     "busy parent settled after app command",
   );
   await mainComposer()
@@ -1502,10 +1533,10 @@ async function escapeOwnership() {
     const beforeStops = (await commandRecords()).filter((item) => item.name === "stop").length;
     await sideInput().focus();
     await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[child]?.turns.at(-1).status !== "inProgress",
-      "focused child stopped",
-    );
+    await until(async () => {
+      const turn = (await readCoreThread(child)).turns.find((item) => item.id === childTurn);
+      return turn && turn.status !== "inProgress";
+    }, "focused child stopped");
     await sideInput().focus();
     await page.keyboard.press("Escape");
     const growth = turnText(threads(await state())[parent].turns.at(-1));
@@ -1526,10 +1557,10 @@ async function escapeOwnership() {
     );
     await mainComposer().getByTestId("chat-input").focus();
     await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[parent]?.turns.at(-1).status !== "inProgress",
-      "focused main stopped",
-    );
+    await until(async () => {
+      const turn = (await readCoreThread(parent)).turns.find((item) => item.id === parentTurn);
+      return turn && turn.status !== "inProgress";
+    }, "focused main stopped");
     await until(
       async () =>
         (await commandRecords()).filter((item) => item.name === "stop").length === beforeStops + 2,
@@ -1549,10 +1580,10 @@ async function escapeOwnership() {
     const sideSecond = (await readCoreThread(child)).turns.at(-1).id;
     await mainComposer().getByTestId("chat-input").focus();
     await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[parent]?.turns.at(-1).status !== "inProgress",
-      "main-focused Esc stops main alone",
-    );
+    await until(async () => {
+      const turn = (await readCoreThread(parent)).turns.find((item) => item.id === mainSecond);
+      return turn && turn.status !== "inProgress";
+    }, "main-focused Esc stops main alone");
     await grows(child, "Side survivor keeps growing after main-focused Esc");
     await page.getByRole("button", { name: "关闭面板", exact: true }).click();
     await grows(child, "closing panel leaves Side execution running");
@@ -1597,20 +1628,20 @@ async function escapeOwnership() {
     );
     await page.getByRole("button", { name: "收起侧栏", exact: true }).focus();
     await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[parent]?.turns.at(-1).status !== "inProgress",
-      "panel-closed outside Esc falls back to main",
-    );
+    await until(async () => {
+      const turn = (await readCoreThread(parent)).turns.find((item) => item.id === closedMainTurn);
+      return turn && turn.status !== "inProgress";
+    }, "panel-closed outside Esc falls back to main");
     await grows(child, "hidden Side survivor grows after main fallback stop");
     await page.getByRole("button", { name: "展开侧边面板", exact: true }).click();
     await sideInput().waitFor();
     await grows(child, "reopened Side is still streaming");
     await sideInput().focus();
     await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[child]?.turns.at(-1).status !== "inProgress",
-      "Side survivor explicitly stopped",
-    );
+    await until(async () => {
+      const turn = (await readCoreThread(child)).turns.find((item) => item.id === sideSecond);
+      return turn && turn.status !== "inProgress";
+    }, "Side survivor explicitly stopped");
     await until(
       async () =>
         (await commandRecords()).filter((item) => item.name === "stop").length ===
