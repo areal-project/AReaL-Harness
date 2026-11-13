@@ -256,18 +256,8 @@ class SharedCoreBackend {
   ownsThread(projectId, threadId) {
     return ownsThread(this.value, projectId, threadId);
   }
-
-  /** @param {string} projectId @param {string} threadId */
   async ensureBrowserThread(projectId, threadId) {
-    if (!this.status.connected) await this.init();
-    if (this.ownsThread(projectId, threadId)) return;
-    const connection = this.requireConnection();
-    await this.command("open", { projectId, threadId });
-    const packet = await connection.request("snapshot");
-    if (connection !== this.connection || !this.status.connected)
-      throw new Error("后台连接已变化，请重试");
-    this.accept(packet);
-    if (!this.ownsThread(projectId, threadId)) throw new Error("请选择已连接 Core 的有效任务");
+    if (!this.status.connected) await this.init(); if (this.ownsThread(projectId, threadId)) return; const connection = this.requireConnection(); await this.command("open", { projectId, threadId }); const packet = await connection.request("snapshot"); if (connection !== this.connection || !this.status.connected) throw new Error("后台连接已变化，请重试"); this.accept(packet); if (!this.ownsThread(projectId, threadId)) throw new Error("请选择已连接 Core 的有效任务");
   }
   /** @param {string} projectId @param {string} threadId */
   retainsThreadResources(projectId, threadId) {
