@@ -65,7 +65,7 @@ assert.ok(
   "Signing credentials require --signing developer-id",
 );
 if (developerId) {
-  assert.ok(formats.length === 2, "Developer ID acceptance requires --formats dmg,zip");
+  assert.ok(formats.includes("dmg"), "Developer ID acceptance requires a DMG format");
   assert.ok(
     identity && profile,
     "Developer ID requires --identity and --keychain-profile (or CSC_NAME/APPLE_KEYCHAIN_PROFILE)",
@@ -333,6 +333,7 @@ if (developerId) {
         "--keychain-profile",
         profile,
         ...(options["skip-tests"] ? ["--skip-tests"] : []),
+        ...(options["dmg-only"] ? ["--dmg-only"] : []),
       ],
       { cwd: root, stdio: "inherit" },
     );
