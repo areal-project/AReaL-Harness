@@ -156,10 +156,10 @@ try {
   );
   await skill(join(userDirectory, ".agents/skills/review"), "GLOBAL_SHADOWED");
   await skill(join(workspace, ".agents/skills/review"), "PROJECT_SKILL_BODY");
-  await skill(join(workspace, "sources/linked"), "LINKED_SKILL_BODY");
+  await skill(join(scratch, "sources/linked"), "LINKED_SKILL_BODY");
   await mkdir(join(workspace, ".claude/skills"), { recursive: true });
   await symlink("../../.agents/skills/review", join(workspace, ".claude/skills/review"));
-  await symlink("../../sources/linked", join(workspace, ".claude/skills/linked"));
+  await symlink(join(scratch, "sources/linked"), join(userDirectory, ".agents/skills/linked"));
   await skill(explicitRoot, "EXPLICIT_SKILL_BODY");
   await writeFile(join(explicitRoot, "large.png"), Buffer.alloc(3 * 1024 * 1024, 0x89));
   await writeFile(

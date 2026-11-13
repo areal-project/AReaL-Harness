@@ -128,6 +128,24 @@ const read = (entry, thread, reference, resource = "SKILL.md") =>
   });
 let passed = false;
 try {
+  const linked = await fixture("linked");
+  const target = await skill(join(scratch, "external"), "linked-skill");
+  await mkdir(join(linked.userHome, ".agents/skills"), { recursive: true });
+  await symlink(target, join(linked.userHome, ".agents/skills/linked-skill"));
+  const linkedDeployment = await linked.resources.deployment(linked.project);
+  let linkedService = await start(linked, linkedDeployment);
+  const linkedThread = await create(linkedService, linkedDeployment);
+  const linkedSkill = (await list(linkedService, linkedThread)).find(
+    (s) => s.id === "linked-skill",
+  );
+  assert.ok(linkedSkill, "ordinary thread receives the linked user skill");
+  assert.match(
+    (await read(linkedService, linkedThread, linkedSkill)).text,
+    /Instructions for linked-skill/,
+  );
+  await stop(linkedService);
+  checks.push("ordinary thread lists and reads a user skill linked outside its discovery root");
+
   const history = await fixture("history");
   for (let i = 0; i < 7; i++) await skill(history.userHome, `old-${i}`);
   const previous = await history.resources.deployment(history.project);

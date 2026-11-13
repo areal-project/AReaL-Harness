@@ -271,8 +271,9 @@ fn scan(
             let skill = (|| -> Result<Skill> {
                 let directory = entry.path().canonicalize()?;
                 ensure!(
-                    roots.iter().any(|root| directory.starts_with(root))
-                        || (project && directory.starts_with(&base)),
+                    !project
+                        || roots.iter().any(|root| directory.starts_with(root))
+                        || directory.starts_with(&base),
                     "skill directory escapes trusted roots"
                 );
                 let metadata = metadata(&bounded(&directory.join("SKILL.md"), 32768)?, &id)?;
@@ -630,7 +631,7 @@ mod tests {
     }
 
     #[test]
-    fn trust_rules_allow_project_workspace_links_but_reject_user_escape_and_skill_file_links() {
+    fn trust_rules_allow_user_and_workspace_links_but_reject_skill_file_links() {
         use std::os::unix::fs::symlink;
         let fixture = Fixture::new();
         let outside = fixture.home.join("outside");
@@ -648,13 +649,14 @@ mod tests {
         let project_root = fixture.registration.workspace.join(".agents/skills");
         fs::create_dir_all(&project_root).unwrap();
         symlink(&inside, project_root.join("linked")).unwrap();
+        symlink(&outside, project_root.join("project-escape")).unwrap();
         let file_link = project_root.join("file-link");
         fs::create_dir(&file_link).unwrap();
         symlink(outside.join("SKILL.md"), file_link.join("SKILL.md")).unwrap();
         let prepared = fixture.prepare();
         assert_eq!(
             current_skills(&deployment(&prepared)),
-            ["linked", BUILTIN_SKILL_ID]
+            ["escape", "linked", BUILTIN_SKILL_ID]
         );
     }
 

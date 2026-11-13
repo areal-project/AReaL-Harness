@@ -23,7 +23,7 @@ Attachments are not traversed, hashed or cached. The former 256 KiB per-resource
 
 Each GUI and Core deployment permits up to 512 Skill version references. The GUI counts current enabled references and readable historical references after deduplication by `id/revision`, so historical versions consume the same quota. Overflow errors report the count and limit without truncating or collecting historical references. Deployment files remain limited to 1 MiB, with at most 64 Profiles per deployment and a 32 KiB total Skill description budget in model prompts. Explicit `selectedSkills` selections remain limited to 128 entries. These capacity limits do not change Profile, tool, approval, or file-read permissions.
 
-Skill-root symlinks may resolve into authorized project/global Skill roots; SKILL.md entrypoints cannot be symlinks. Trusted launchers may also inject parsed metadata; see the [desktop contract](../api/desktop.en.md#skills).
+Direct entries in user Skill search directories may be directory symlinks to another location; installing the link authorizes discovery of its target. Project Skill links remain constrained to the workspace and authorized roots. SKILL.md entrypoints cannot be symlinks. Trusted launchers may also inject parsed metadata; see the [desktop contract](../api/desktop.en.md#skills).
 
 ## Read current files on demand
 
