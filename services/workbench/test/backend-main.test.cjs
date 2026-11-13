@@ -99,7 +99,14 @@ test("creation catalog publishes the latest Core accepted model", async (t) => {
   f.start();
   await ready;
   const reply = once(f.lines, "line");
-  f.child.stdin.write(JSON.stringify({ version: 1, id: "catalog", method: "creation.catalog", params: { projectId: "p" } }) + "\n");
+  f.child.stdin.write(
+    JSON.stringify({
+      version: 1,
+      id: "catalog",
+      method: "creation.catalog",
+      params: { projectId: "p" },
+    }) + "\n",
+  );
   const frame = JSON.parse((await reply)[0]);
   assert.equal(frame.result.lastAcceptedModel.modelId, "m");
   assert.equal(frame.result.lastAcceptedModel.reasoningEffort, "xhigh");

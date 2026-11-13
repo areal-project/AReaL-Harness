@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { HostClient } from "@areal/client";
 import type { PlatformServices } from "./services.js";
-import { windowSideOwnership } from "./host-workbench.js";
+import { desktopWindowCommand, windowSideOwnership } from "./host-workbench.js";
 
 function fixture() {
   let connection: string | undefined = "first";
@@ -42,6 +42,21 @@ function fixture() {
 }
 
 describe("Side window ownership", () => {
+  it("uses the current Host source after the projection becomes ready", async () => {
+    let sourceId: string | undefined;
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "first" } }),
+      writable: () => true,
+    } as unknown as HostClient;
+    const desktop = {} as PlatformServices;
+    const host = vi.fn(async () => ({ ok: true as const, value: null }));
+    const run = desktopWindowCommand(client, desktop, host, () => sourceId);
+    expect(() => run("side", { operation: "create" })).toThrow();
+    expect(host).not.toHaveBeenCalled();
+    sourceId = "source";
+    await run("side", { operation: "create" });
+    expect(host).toHaveBeenCalledOnce();
+  });
   it("allows an offline empty window to close and fences creation until reopened", async () => {
     const f = fixture();
     f.connect(undefined);

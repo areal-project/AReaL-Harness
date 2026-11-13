@@ -265,9 +265,9 @@ export function desktopWindowCommand(
   client: HostClient,
   desktop: PlatformServices | undefined,
   hostCommand: PlatformServices["command"],
-  sourceId?: string,
+  sourceId: () => string | undefined,
 ): Run {
-  const hostReady = () => Boolean(sourceId && client.writable("desktop.command"));
+  const hostReady = () => Boolean(sourceId() && client.writable("desktop.command"));
   const routed = routeDesktopCommand(desktop, hostCommand, hostReady);
   const open = desktop?.openExternal ?? openInBrowser;
   return windowSideOwnership(

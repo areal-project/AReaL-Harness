@@ -767,7 +767,7 @@ export function createHostReadServices(
     client,
     desktop,
     hostCommand,
-    librarySourceId,
+    () => librarySourceId,
   ) as PlatformServices["command"];
   return {
     ...(desktop ?? {
