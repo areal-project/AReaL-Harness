@@ -27,6 +27,8 @@ function serviceHome(app) {
 function serviceOptions(app) {
   // 配置文件参与后台身份；环境变量选择也必须固定，避免新窗口复用另一份配置的后台。
   const config = process.env.AREAL_CORE_CONFIG || process.env.AREAL_HARNESS_CONFIG;
+  const bundledProfile = require("@areal/workbench-service/desktop/core/desktop-profile.json")
+    .profiles[0];
   const configHome = resolve(
     process.env.AREAL_HARNESS_HOME || join(process.env.AREAL_CORE_USER_HOME || homedir(), ".areal"),
   );
@@ -75,7 +77,7 @@ function serviceOptions(app) {
       require.resolve("@areal/workbench-service/desktop/core/desktop-profile.json"),
     desktopProcesses: true,
     defaultProfile: !process.env.AREAL_CORE_DESKTOP_CONFIG
-      ? { id: "areal-standard", revision: "v1" }
+      ? { id: bundledProfile.id, revision: bundledProfile.revision }
       : undefined,
   };
 }

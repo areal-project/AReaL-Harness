@@ -1365,3 +1365,21 @@ for (const supported of [false, true]) {
     );
   });
 }
+
+test("default desktop profile identity follows the bundled deployment", (t) => {
+  const { serviceOptions } = require("../app/src/core/service-config.cjs");
+  const profile = require("@areal/workbench-service/desktop/core/desktop-profile.json").profiles[0];
+  const previous = process.env.AREAL_CORE_DESKTOP_CONFIG;
+  t.after(() => {
+    if (previous === undefined) delete process.env.AREAL_CORE_DESKTOP_CONFIG;
+    else process.env.AREAL_CORE_DESKTOP_CONFIG = previous;
+  });
+  delete process.env.AREAL_CORE_DESKTOP_CONFIG;
+  const app = { isPackaged: false, getPath: () => "/tmp/areal-profile-test" };
+  assert.deepEqual(serviceOptions(app).defaultProfile, {
+    id: profile.id,
+    revision: profile.revision,
+  });
+  process.env.AREAL_CORE_DESKTOP_CONFIG = "/tmp/custom-deployment.json";
+  assert.equal(serviceOptions(app).defaultProfile, undefined);
+});
