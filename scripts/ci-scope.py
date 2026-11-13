@@ -250,7 +250,16 @@ def repository_plan(root, base=None):
     revision = git(root, "rev-parse", "HEAD").decode().strip()
     fallback = False
     try:
-        comparison = git(root, "merge-base", comparison or "HEAD", "HEAD").decode().strip()
+        # workflow_dispatch accepts a branch name for convenience, while the
+        # checkout refspec may only contain the requested head. Resolve the
+        # corresponding remote-tracking ref before calculating the merge base.
+        candidate = comparison or "HEAD"
+        try:
+            git(root, "rev-parse", "--verify", f"{candidate}^{{commit}}")
+        except subprocess.CalledProcessError:
+            if candidate and not candidate.startswith("origin/"):
+                candidate = f"origin/{candidate}"
+        comparison = git(root, "merge-base", candidate, "HEAD").decode().strip()
         paths = (
             changed_paths(root, comparison)
             if base or pr
