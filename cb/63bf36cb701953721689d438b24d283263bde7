@@ -1,0 +1,47 @@
+integrations/envarena/Dockerfile
+  s_0ec109b10851b3::t_04adabe47868ed 1-37
+integrations/envarena/arena-input-smoke.py
+  s_0ec109b10851b3::t_82e698f341faee 1-412
+integrations/envarena/bootstrap.py
+  s_0ec109b10851b3::t_32ee9b3481055b 1-56
+integrations/envarena/fetch-arena-fixtures.py
+  s_0ec109b10851b3::t_6e00268130cfa5 1-60
+integrations/envarena/graybox_collect.py
+  s_0ec109b10851b3::t_7b73a7c2bb7070 1-105
+integrations/envarena/graybox_inputs.py
+  s_0ec109b10851b3::t_8c9f68581e02a2 1-169
+integrations/envarena/outcomes.py
+  s_0ec109b10851b3::t_2b44ebf0687161 1-95
+integrations/envarena/package-arena.py
+  s_0ec109b10851b3::t_77a9a6eb87bfd3 1-124
+integrations/envarena/provenance.json
+  s_0ec109b10851b3::t_d02c9658c18a87 1-15
+integrations/envarena/public_inputs.py
+  s_0ec109b10851b3::t_b68ba9848966de 1-163
+integrations/envarena/runner.py
+  s_0ec109b10851b3::t_4c4ede12933492 1-809
+integrations/envarena/settings-original-mm.json
+  s_0ec109b10851b3::t_4993b646435427 1-14
+integrations/envarena/test_outcomes.py
+  s_0ec109b10851b3::t_521bc3e7a87b2a 1-161
+integrations/envarena/test_package_arena.py
+  s_0ec109b10851b3::t_9c4f595b90ed5c 1-65
+integrations/envarena/test_runner.py
+  s_0ec109b10851b3::t_7edbb2fe41ca8b 1-364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cb63bf36cb701953721689d438b24d283263bde7",
+  "prompts": {},
+  "sessions": {
+    "s_0ec109b10851b3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1c4a8-c58c-7531-a4be-e011950c644a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
