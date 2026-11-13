@@ -1553,9 +1553,17 @@ async function escapeOwnership() {
         snapshot
       );
     }, "both independent streams active");
-    await shot(`P6-concurrent-${order}`);
     const parentTurn = threads(both)[parent].turns.at(-1).id,
       childTurn = threads(both)[child].turns.at(-1).id;
+    await sidePane()
+      .locator(`[data-turn-id="${childTurn}"][data-turn-status="inProgress"]`)
+      .waitFor();
+    await sidePane().getByRole("button", { name: "停止", exact: true }).waitFor();
+    await until(
+      () => sidePane().getByRole("button", { name: "停止", exact: true }).isEnabled(),
+      "Side stop available",
+    );
+    await shot(`P6-concurrent-${order}`);
     const beforeStops = (await commandRecords()).filter((item) => item.name === "stop").length;
     await sideInput().focus();
     await page.evaluate(() => {

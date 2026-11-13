@@ -4,7 +4,7 @@ import type { Action } from "./services.js";
 
 vi.mock("react", () => ({ useEffect: (effect: () => void) => effect() }));
 
-it("routes an unblocked Escape from the Side pane to its own running turn", async () => {
+it.each([true, false])("routes Escape within a Side pane with running=%s", async (running) => {
   class ElementFixture {
     constructor(private side = false) {}
     matches(selector: string) {
@@ -30,7 +30,11 @@ it("routes an unblocked Escape from the Side pane to its own running turn", asyn
   const project = { id: "project", pending: [] };
   for (const [pane, thread, outsideFallback] of [
     [main, { id: "main", turns: [{ id: "main-turn", status: "inProgress" }] }, true],
-    [side, { id: "child", turns: [{ id: "child-turn", status: "inProgress" }] }, false],
+    [
+      side,
+      { id: "child", turns: running ? [{ id: "child-turn", status: "inProgress" }] : [] },
+      false,
+    ],
   ] as const) {
     useConversationEscape({
       pane: { current: pane as unknown as HTMLElement },
@@ -50,11 +54,12 @@ it("routes an unblocked Escape from the Side pane to its own running turn", asyn
   });
   page.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(true);
-  expect(action).toHaveBeenCalledOnce();
-  expect(action).toHaveBeenCalledWith(
-    "stop",
-    expect.objectContaining({ threadId: "child", turnId: "child-turn" }),
-  );
+  expect(action).toHaveBeenCalledTimes(running ? 1 : 0);
+  if (running)
+    expect(action).toHaveBeenCalledWith(
+      "stop",
+      expect.objectContaining({ threadId: "child", turnId: "child-turn" }),
+    );
 });
 
 afterEach(() => vi.unstubAllGlobals());
