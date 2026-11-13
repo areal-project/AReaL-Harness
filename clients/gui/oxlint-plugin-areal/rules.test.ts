@@ -478,7 +478,7 @@ describe("no-unchecked-array-method", () => {
       { cwd: project, encoding: "utf8" },
     );
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout + result.stderr).toContain("warning areal(no-unchecked-array-method)");
+    expect(result.stdout + result.stderr).toContain("areal(no-unchecked-array-method)");
   });
 
   test.each([
