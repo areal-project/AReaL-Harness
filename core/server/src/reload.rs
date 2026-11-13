@@ -134,7 +134,7 @@ impl Reload {
                 *revision == format!("{:x}", Sha256::digest(encoded.get().as_bytes())),
                 "model configuration archive digest mismatch"
             );
-            let previous: SelectedModelConfig = serde_json::from_str(encoded.get())?;
+            let previous = SelectedModelConfig::import_archive(encoded.get())?;
             engine.register_default_model_metadata(
                 revision.clone(),
                 previous.name.clone(),
@@ -300,7 +300,7 @@ mod tests {
     }
     #[test]
     fn model_archive_keeps_original_revision_bytes_across_optional_field_additions() {
-        for variant in 0..5 {
+        for variant in 0..7 {
             let temp = tempfile::tempdir().unwrap();
             let mut inputs = ConfigInputs {
                 cwd: temp.path().into(),
@@ -334,6 +334,12 @@ mod tests {
                     ",\"summary_preserve_prefix\":false,\"temperature\":",
                 );
             }
+            if variant >= 5 {
+                encoded = encoded.replace(
+                    "\"history_thinking\":\"preserve\"",
+                    &format!("\"replay_chat_reasoning_content\":{}", variant == 5),
+                );
+            }
             let revision = format!("{:x}", Sha256::digest(encoded.as_bytes()));
             let path = config.data_dir.join("desktop/default-models.json");
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -342,6 +348,24 @@ mod tests {
                 Engine::open(temp.path(), Arc::new(UnconfiguredModel), Default::default()).unwrap();
             let reload = Reload::open(inputs.clone(), &config, &engine).unwrap();
             assert_eq!(reload.models[&revision].get(), encoded);
+            if variant >= 5 {
+                let imported = SelectedModelConfig::import_archive(&encoded).unwrap();
+                let restored_model = model(&imported, &inputs, temp.path(), false).unwrap();
+                assert_eq!(
+                    restored_model.history_thinking(),
+                    if variant == 5 {
+                        areal_config::HistoryThinking::Preserve
+                    } else {
+                        areal_config::HistoryThinking::Omit
+                    }
+                );
+                assert!(
+                    serde_json::to_value(&imported)
+                        .unwrap()
+                        .get("replay_chat_reasoning_content")
+                        .is_none()
+                );
+            }
             let stored: BTreeMap<String, Box<RawValue>> =
                 serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
             assert_eq!(stored[&revision].get(), encoded);

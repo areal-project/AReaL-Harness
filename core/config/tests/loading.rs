@@ -15,6 +15,51 @@ fn inputs(root: &Path) -> ConfigInputs {
 }
 
 #[test]
+fn previous_thinking_option_imports_to_the_current_policy() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    for (enabled, policy) in [
+        (true, HistoryThinking::Preserve),
+        (false, HistoryThinking::Omit),
+    ] {
+        write(
+            &mut i,
+            &format!("schema_version=2\n[model]\nreplay_chat_reasoning_content={enabled}\n"),
+        );
+        assert_eq!(load_config(&i).unwrap().model.history_thinking, policy);
+        write(&mut i, "schema_version=2\n");
+        i.env.insert(
+            "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT".into(),
+            enabled.to_string().into(),
+        );
+        assert_eq!(load_config(&i).unwrap().model.history_thinking, policy);
+        i.env.remove(&OsString::from(
+            "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT",
+        ));
+    }
+    write(
+        &mut i,
+        "schema_version=2\n[model]\nreplay_chat_reasoning_content=false\nhistory_thinking='preserve'\n",
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::Conflict);
+    write(&mut i, "schema_version=2\n");
+    i.env.insert(
+        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT".into(),
+        "false".into(),
+    );
+    i.env
+        .insert("AREAL_HARNESS_HISTORY_THINKING".into(), "preserve".into());
+    assert_eq!(failure(&i).kind, ConfigErrorKind::Conflict);
+    i.env
+        .remove(&OsString::from("AREAL_HARNESS_HISTORY_THINKING"));
+    i.env.insert(
+        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT".into(),
+        "omit".into(),
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
 fn history_thinking_defaults_preserves_and_validates_file_and_env() {
     let root = tempfile::tempdir().unwrap();
     let mut i = inputs(root.path());

@@ -244,6 +244,10 @@ pub enum HistoryThinking {
     Omit,
 }
 impl HistoryThinking {
+    fn from_chat_replay(enabled: bool) -> Self {
+        if enabled { Self::Preserve } else { Self::Omit }
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Preserve => "preserve",
@@ -306,6 +310,29 @@ fn is_false(value: &bool) -> bool {
 }
 
 impl SelectedModelConfig {
+    /// 导入已校验摘要的归档；原始字节和 revision 仍由归档所有者保留。
+    pub fn import_archive(encoded: &str) -> anyhow::Result<Self> {
+        let mut value: serde_json::Value = serde_json::from_str(encoded)?;
+        if let Some(object) = value.as_object_mut()
+            && let Some(previous) = object.remove("replay_chat_reasoning_content")
+        {
+            anyhow::ensure!(
+                !object.contains_key("history_thinking"),
+                "conflicting history thinking options in model archive"
+            );
+            if !previous.is_null() {
+                let enabled = previous.as_bool().ok_or_else(|| {
+                    anyhow::anyhow!("archived replay_chat_reasoning_content must be boolean")
+                })?;
+                object.insert(
+                    "history_thinking".into(),
+                    serde_json::to_value(HistoryThinking::from_chat_replay(enabled))?,
+                );
+            }
+        }
+        Ok(serde_json::from_value(value)?)
+    }
+
     /// 只比较配置和凭据引用；密钥值不进入登记或历史。
     pub fn fingerprint(&self) -> String {
         use sha2::{Digest, Sha256};

@@ -185,6 +185,18 @@ fn walk(
         }
         return Ok(());
     }
+    if names.as_slice() == ["model", "replay_chat_reasoning_content"] {
+        let enabled = item
+            .as_bool()
+            .ok_or_else(|| error(Kind::InvalidValue, &key, &at, "expected a boolean"))?;
+        return walk(
+            &toml_edit::value(crate::HistoryThinking::from_chat_replay(enabled).as_str()),
+            &mut vec!["model".into(), "history_thinking".into()],
+            path,
+            text,
+            layer,
+        );
+    }
     // 新配置按职责分组；旧键保留原来显式设置的语义，不允许别名相互覆盖。
     let alias = match names.as_slice() {
         [
