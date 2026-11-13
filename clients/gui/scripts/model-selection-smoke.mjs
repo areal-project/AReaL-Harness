@@ -1042,6 +1042,7 @@ async function verifyModelDefaults(projectId) {
     },
   ) => {
     const catalog = await call("providers", { operation: "list" });
+    await waitForServiceIdle();
     await call("providers", {
       operation: "defaultAndApply",
       expectedRevision: catalog.revision,

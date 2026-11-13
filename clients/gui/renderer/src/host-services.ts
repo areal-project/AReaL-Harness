@@ -5,6 +5,7 @@ import {
   type ShellSnapshot,
   windowIdentity,
   hostCommandOutcome,
+  closedSidePublisher,
   settleHostCommand as settled,
   admitHostCommand as admitted,
   type ReadProject,
@@ -755,9 +756,7 @@ export function createHostReadServices(
     globalThis.document,
     () => librarySourceId,
   );
-  const unavailable = async () => {
-    throw new Error("此功能需要桌面应用");
-  };
+  const unavailable = () => Promise.reject(new Error("此功能需要桌面应用"));
   const hostCommand = hostDesktopCommand(client, hostCommandError, (next) => {
     snapshot = next as unknown as Snapshot;
     publish();
@@ -768,6 +767,7 @@ export function createHostReadServices(
     desktop,
     hostCommand,
     () => librarySourceId,
+    closedSidePublisher(client, commandOutcomes, hostTarget, publish),
   ) as PlatformServices["command"];
   return {
     ...(desktop ?? {

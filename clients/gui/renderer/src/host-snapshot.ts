@@ -13,6 +13,33 @@ import type { ReadingAnchor } from "./readingViews.js";
 import type { PlatformServices, Snapshot } from "./services.js";
 import type { Observation, HistoryPage, HistoryEntry, PageRecord } from "./host-services.js";
 
+export function closedSidePublisher(
+  client: HostClient,
+  outcomes: Map<string, Record<string, JsonObject>>,
+  target: (entry: { projectId: string; threadId: string }) => { hostProjectId: string } | undefined,
+  publish: () => void,
+) {
+  return (closed: { projectId: string; threadId: string; requestId: string }[]) => {
+    const connection = client.snapshot();
+    if (connection.connection !== "ready") return;
+    for (const entry of closed) {
+      const project = target(entry);
+      if (!project) continue;
+      const key = JSON.stringify([connection.identity.hostId, project.hostProjectId]);
+      outcomes.set(key, {
+        ...outcomes.get(key),
+        [entry.requestId]: {
+          method: "areal/side/close",
+          threadId: entry.threadId,
+          accepted: true,
+          cleanupConfirmed: true,
+        },
+      });
+    }
+    publish();
+  };
+}
+
 export type ReadingTarget = {
   revision: number;
   anchor: Pick<ReadingAnchor, "turnId" | "itemId"> | null;

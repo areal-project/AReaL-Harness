@@ -162,6 +162,7 @@ type Run = (
   name: string,
   params: Record<string, unknown>,
 ) => ReturnType<PlatformServices["command"]>;
+type ClosedSide = { projectId: string; threadId: string; requestId: string };
 
 /** 窗口仅结算原 Host 连接创建的 Side，重连后不能以新连接冒充原 owner。 */
 export function windowSideOwnership(
@@ -170,6 +171,7 @@ export function windowSideOwnership(
   hostReady: () => boolean,
   run: Run,
   host: Run,
+  publishClosed: (closed: ClosedSide[]) => void = () => {},
 ): Run {
   if (!desktop) return run;
   let connection: string | undefined;
@@ -198,9 +200,18 @@ export function windowSideOwnership(
         current() !== original ||
         !object(result) ||
         result.settled !== true ||
-        result.connection !== original
+        result.connection !== original ||
+        !Array.isArray(result.closed) ||
+        !result.closed.every(
+          (entry: unknown) =>
+            object(entry) &&
+            typeof entry.projectId === "string" &&
+            typeof entry.threadId === "string" &&
+            typeof entry.requestId === "string",
+        )
       )
         return false;
+      publishClosed(result.closed as ClosedSide[]);
       settledConnection = original;
       if (openedEpoch !== epoch) reopen();
       return true;
@@ -266,6 +277,7 @@ export function desktopWindowCommand(
   desktop: PlatformServices | undefined,
   hostCommand: PlatformServices["command"],
   sourceId: () => string | undefined,
+  publishClosed: (closed: ClosedSide[]) => void,
 ): Run {
   const hostReady = () => Boolean(sourceId() && client.writable("desktop.command"));
   const routed = routeDesktopCommand(desktop, hostCommand, hostReady);
@@ -276,6 +288,7 @@ export function desktopWindowCommand(
     hostReady,
     openingAuthorization(routed, open),
     hostCommand as Run,
+    publishClosed,
   );
 }
 

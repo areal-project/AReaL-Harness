@@ -13,7 +13,8 @@ const { readAdmission } = require("@areal/workbench/desktop-contract/shared");
 /** @typedef {{operation:string,requestId?:string,projectId?:string,sourceThreadId?:string,threadId?:string,method?:string,[key:string]:unknown}} SideParams */
 /** @typedef {{threadId?:string,requestId?:string,cleanupConfirmed?:boolean,confirmed?:boolean,status?:string,accepted?:boolean,[key:string]:unknown}} SideResult */
 /** @typedef {{requestId:string,projectId:string,sourceThreadId:string,threadId?:string,closeRequestId?:string}} SideEntry */
-/** @typedef {{closing:boolean,entries:Map<string,SideEntry>,pending:Set<Promise<SideResult>>,settlement?:Promise<{settled:true,connection:string}>}} SideOwner */
+/** @typedef {{projectId:string,threadId:string,requestId:string}} ClosedSide */
+/** @typedef {{closing:boolean,entries:Map<string,SideEntry>,pending:Set<Promise<SideResult>>,closed:ClosedSide[],settlement?:Promise<{settled:true,connection:string,closed:ClosedSide[]}>}} SideOwner */
 /** @typedef {(params:SideParams)=>Promise<SideResult>} ExecuteSide */
 
 // 每个 owner 是 Host 注入的连接身份，不能由客户端参数指定。
@@ -25,7 +26,12 @@ class SideWindowOwners {
   /** @param {string} connection @returns {SideOwner} */
   owner(connection) {
     if (!this.owners.has(connection))
-      this.owners.set(connection, { closing: false, entries: new Map(), pending: new Set() });
+      this.owners.set(connection, {
+        closing: false,
+        entries: new Map(),
+        pending: new Set(),
+        closed: [],
+      });
     return /** @type {SideOwner} */ (this.owners.get(connection));
   }
   /** @param {string} connection @param {SideParams} params @param {ExecuteSide} execute */
@@ -36,6 +42,7 @@ class SideWindowOwners {
       if (owner.pending.size || owner.entries.size || owner.settlement)
         throw new Error("窗口资源仍在结算");
       owner.closing = false;
+      owner.closed = [];
       return { settled: true, connection };
     }
     if (operation === "closeOwned") {
@@ -63,7 +70,9 @@ class SideWindowOwners {
         throw new Error("无效 Side Chat 创建身份");
       entry = owner.entries.get(requestId);
       if (entry && (entry.projectId !== projectId || entry.sourceThreadId !== sourceThreadId))
-        throw Object.assign(new Error("Side Chat 创建身份不匹配"), { code: "COMMAND_CONFLICT" });
+        throw Object.assign(new Error("Side Chat 创建身份不匹配"), {
+          code: "COMMAND_CONFLICT",
+        });
       if (!entry) {
         entry = { requestId, projectId, sourceThreadId };
         owner.entries.set(requestId, entry);
@@ -124,7 +133,7 @@ class SideWindowOwners {
       owner.pending.delete(pending);
     }
   }
-  /** @param {string} connection @param {ExecuteSide} execute @returns {Promise<{settled:true,connection:string}>} */
+  /** @param {string} connection @param {ExecuteSide} execute @returns {Promise<{settled:true,connection:string,closed:ClosedSide[]}>} */
   async close(connection, execute) {
     const owner = this.owner(connection);
     owner.closing = true;
@@ -174,12 +183,20 @@ class SideWindowOwners {
             },
       );
       if (result?.confirmed !== false)
-        readAdmission(result, { requestId: entry.closeRequestId, threadId: entry.threadId });
+        readAdmission(result, {
+          requestId: entry.closeRequestId,
+          threadId: entry.threadId,
+        });
       if (result?.cleanupConfirmed !== true)
         throw new Error("Side Chat 清理仍待核对；原请求不会重发");
+      owner.closed.push({
+        projectId: entry.projectId,
+        threadId: entry.threadId,
+        requestId: entry.closeRequestId,
+      });
       owner.entries.delete(entry.requestId);
     }
-    return { settled: true, connection };
+    return { settled: true, connection, closed: owner.closed.slice() };
   }
   /** @param {string} connection @param {ExecuteSide} execute */
   disconnect(connection, execute) {

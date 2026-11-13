@@ -16,7 +16,11 @@ test("window close waits for its own creation and cannot close another connectio
     if (request.operation === "create")
       return { threadId: "child-b", requestId: request.requestId };
     if (request.operation === "close")
-      return { cleanupConfirmed: true, requestId: request.requestId, threadId: request.threadId };
+      return {
+        cleanupConfirmed: true,
+        requestId: request.requestId,
+        threadId: request.threadId,
+      };
     throw Error("unexpected request");
   };
   const a = owners.command(
@@ -31,9 +35,12 @@ test("window close waits for its own creation and cannot close another connectio
     execute,
   );
   let settled = false;
-  const closing = owners.command("window-a", { operation: "closeOwned" }, execute).then(() => {
-    settled = true;
-  });
+  const closing = owners
+    .command("window-a", { operation: "closeOwned" }, execute)
+    .then((result) => {
+      settled = true;
+      return result;
+    });
   await Promise.resolve();
   assert.equal(settled, false);
   await assert.rejects(
@@ -57,7 +64,11 @@ test("window close waits for its own creation and cannot close another connectio
   assert.equal(calls.length, 2);
   resolveCreate({ threadId: "child-a", requestId: "a" });
   await a;
-  await closing;
+  const receipt = await closing;
+  const close = calls.find((call) => call.operation === "close");
+  assert.deepEqual(receipt.closed, [
+    { projectId: "p", threadId: "child-a", requestId: close.requestId },
+  ]);
   assert.deepEqual(
     calls.filter((call) => call.operation === "close").map((call) => call.threadId),
     ["child-a"],
@@ -158,7 +169,12 @@ test("rejects rebound create identity and preserves unknown owner on disconnect"
   await assert.rejects(
     owners.command(
       "window",
-      { operation: "create", projectId: "other", sourceThreadId: "parent", requestId: "create" },
+      {
+        operation: "create",
+        projectId: "other",
+        sourceThreadId: "parent",
+        requestId: "create",
+      },
       execute,
     ),
     /身份不匹配/,
@@ -182,7 +198,11 @@ test("disconnect fences and closes a late accepted creation on the original owne
         release = resolve;
       });
     if (request.operation === "close")
-      return { requestId: request.requestId, threadId: request.threadId, cleanupConfirmed: true };
+      return {
+        requestId: request.requestId,
+        threadId: request.threadId,
+        cleanupConfirmed: true,
+      };
     throw Error("unexpected request");
   };
   const creation = owners.command(

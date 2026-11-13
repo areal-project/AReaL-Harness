@@ -2,12 +2,17 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import type { HostClient } from "@areal/client";
 import type { PlatformServices } from "./services.js";
 import { desktopWindowCommand, windowSideOwnership } from "./host-workbench.js";
+import { closedSidePublisher } from "./host-snapshot.js";
 
 function fixture() {
   let connection: string | undefined = "first";
   let closing!: () => Promise<boolean>;
   let opened!: () => void;
-  const workbench = vi.fn(async () => ({ settled: true, connection }));
+  const workbench = vi.fn(async () => ({
+    settled: true,
+    connection,
+    closed: [] as { projectId: string; threadId: string; requestId: string }[],
+  }));
   const client = {
     snapshot: () =>
       connection
@@ -27,12 +32,14 @@ function fixture() {
   } as unknown as PlatformServices;
   const native = vi.fn(async () => ({ ok: true as const, value: null }));
   const host = vi.fn(async () => ({ ok: true as const, value: null }));
-  const run = windowSideOwnership(client, desktop, () => true, native, host);
+  const publishClosed = vi.fn();
+  const run = windowSideOwnership(client, desktop, () => true, native, host, publishClosed);
   return {
     run,
     workbench,
     native,
     host,
+    publishClosed,
     close: () => closing(),
     open: () => opened(),
     connect: (value: string | undefined) => {
@@ -42,6 +49,47 @@ function fixture() {
 }
 
 describe("Side window ownership", () => {
+  it("projects a confirmed close to its Host project and original request", () => {
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { hostId: "host" } }),
+    } as unknown as HostClient;
+    const outcomes = new Map();
+    const publish = vi.fn();
+    const target = vi.fn(() => ({ hostProjectId: "host-project" }));
+    closedSidePublisher(
+      client,
+      outcomes,
+      target,
+      publish,
+    )([{ projectId: "project", threadId: "child", requestId: "request" }]);
+    expect(target).toHaveBeenCalledWith({
+      projectId: "project",
+      threadId: "child",
+      requestId: "request",
+    });
+    expect(outcomes.get(JSON.stringify(["host", "host-project"]))["request"]).toEqual({
+      method: "areal/side/close",
+      threadId: "child",
+      accepted: true,
+      cleanupConfirmed: true,
+    });
+    expect(publish).toHaveBeenCalledOnce();
+  });
+  it("publishes only confirmed closures for the original connection", async () => {
+    const f = fixture();
+    const closed = [{ projectId: "p", threadId: "child", requestId: "close-id" }];
+    await f.run("side", { operation: "create" });
+    f.workbench.mockResolvedValueOnce({ settled: true, connection: "first", closed });
+    expect(await f.close()).toBe(true);
+    expect(f.publishClosed).toHaveBeenCalledWith(closed);
+  });
+  it("does not publish an unconfirmed close", async () => {
+    const f = fixture();
+    await f.run("side", { operation: "create" });
+    f.workbench.mockRejectedValueOnce(new Error("unknown"));
+    expect(await f.close()).toBe(false);
+    expect(f.publishClosed).not.toHaveBeenCalled();
+  });
   it("uses the current Host source after the projection becomes ready", async () => {
     let sourceId: string | undefined;
     const client = {
@@ -50,7 +98,13 @@ describe("Side window ownership", () => {
     } as unknown as HostClient;
     const desktop = {} as PlatformServices;
     const host = vi.fn(async () => ({ ok: true as const, value: null }));
-    const run = desktopWindowCommand(client, desktop, host, () => sourceId);
+    const run = desktopWindowCommand(
+      client,
+      desktop,
+      host,
+      () => sourceId,
+      () => {},
+    );
     expect(() => run("side", { operation: "create" })).toThrow();
     expect(host).not.toHaveBeenCalled();
     sourceId = "source";
@@ -71,7 +125,7 @@ describe("Side window ownership", () => {
   it("does not accept a close receipt after the connection changes", async () => {
     const f = fixture();
     await f.run("side", { operation: "create" });
-    let release!: (value: { settled: boolean; connection: string }) => void;
+    let release!: (value: { settled: boolean; connection: string; closed: [] }) => void;
     f.workbench.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -80,15 +134,16 @@ describe("Side window ownership", () => {
     );
     const closing = f.close();
     f.connect("second");
-    release({ settled: true, connection: "first" });
+    release({ settled: true, connection: "first", closed: [] });
     expect(await closing).toBe(false);
+    expect(f.publishClosed).not.toHaveBeenCalled();
     expect(await f.close()).toBe(false);
     expect(() => f.run("side", { operation: "create" })).toThrow();
   });
   it("reopens the same owner when a timed-out close later settles", async () => {
     const f = fixture();
     await f.run("side", { operation: "create" });
-    let release!: (value: { settled: boolean; connection: string }) => void;
+    let release!: (value: { settled: boolean; connection: string; closed: [] }) => void;
     f.workbench.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -97,7 +152,7 @@ describe("Side window ownership", () => {
     );
     const closing = f.close();
     f.open();
-    release({ settled: true, connection: "first" });
+    release({ settled: true, connection: "first", closed: [] });
     expect(await closing).toBe(true);
     await vi.waitFor(() => expect(f.workbench).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(() => f.run("side", { operation: "create" })).not.toThrow());
