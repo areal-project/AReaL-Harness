@@ -270,20 +270,23 @@ require(${JSON.stringify(join(desktop, "src/main.cjs"))});
 let app,
   page,
   passed = false;
-let pasteCore;
-async function readPasteThread(threadId) {
-  if (!pasteCore) {
+const pasteCores = new Map();
+async function readPasteThread(threadId, executionWorkspace = workspace) {
+  if (!pasteCores.has(executionWorkspace)) {
     const services = [];
     const root = join(env.AREAL_HARNESS_SERVICE_HOME, "services");
     for (const directory of await readdir(root)) {
       const service = JSON.parse(await readFile(join(root, directory, "service.json"), "utf8"));
-      if (service.workspace === workspace && service.state === "ready") services.push(service);
+      if (service.workspace === executionWorkspace && service.state === "ready")
+        services.push(service);
     }
     assert.equal(services.length, 1, "folded paste reads its single isolated native Core");
     const { connect } = await import("../../../examples/desktop-api/client.mjs");
-    pasteCore = await connect(services[0].endpoint, services[0].authFile);
+    pasteCores.set(executionWorkspace, await connect(services[0].endpoint, services[0].authFile));
   }
-  return (await pasteCore.call("thread/read", { threadId, includeTurns: true })).thread;
+  return (
+    await pasteCores.get(executionWorkspace).call("thread/read", { threadId, includeTurns: true })
+  ).thread;
 }
 const errors = [],
   frames = [],
@@ -2154,7 +2157,7 @@ try {
   throw error;
 } finally {
   await writeFile(join(scratch, "model-requests.json"), JSON.stringify(received, null, 2));
-  await pasteCore?.close();
+  for (const core of pasteCores.values()) await core.close();
   if (filesRegression && page)
     await page.evaluate(() => {
       globalThis.filesReleaseList?.();

@@ -105,7 +105,7 @@ export async function runComposerFilesAcceptance({
   const button = (name) => page.getByRole("button", { name, exact: true });
   const activeId = async () => page.getByTestId("areal-workbench").getAttribute("data-thread-id");
   const current = async () => project(await state()).state.threads[await activeId()];
-  const send = async (text) => {
+  const send = async (text, executionWorkspace) => {
     if (text !== undefined) await input().fill(text);
     const count = received.length;
     const previous = new Set(
@@ -118,7 +118,7 @@ export async function runComposerFilesAcceptance({
     await until(async () => {
       const id = await activeId();
       if (!id || received.length <= count) return false;
-      const thread = await readCoreThread(id);
+      const thread = await readCoreThread(id, executionWorkspace);
       turn = thread.turns.find((item) => !previous.has(item.id) && item.status === "completed");
       return turn && !project(await state()).pending.length;
     }, "file input completed").catch(async (error) => {
@@ -849,7 +849,7 @@ export async function runComposerFilesAcceptance({
     join(worktreeDirectory, "mention-route-worktree/shared.ts"),
     "files-inline-worktree-input-path-hover",
   );
-  await send();
+  await send(undefined, worktreeDirectory);
   await assertInlineFileHover(
     page
       .locator(".user-message-body .markdown-file-reference")
