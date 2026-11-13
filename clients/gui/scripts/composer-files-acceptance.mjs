@@ -3,7 +3,11 @@ import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createProjectConversation, selectConversation } from "./smoke-navigation.mjs";
+import {
+  createProjectConversation,
+  selectConversation,
+  selectCreatedConversation,
+} from "./smoke-navigation.mjs";
 
 const textOf = (message) =>
   typeof message.content === "string"
@@ -824,7 +828,7 @@ export async function runComposerFilesAcceptance({
     profile: { id: "standard", revision: "v1" },
     options: { permissionPreset: "fullAccess" },
   });
-  await selectConversation(page, worktreeThreadId);
+  await selectCreatedConversation(page, pid, worktreeThreadId);
   const worktreeDirectory = (await current()).worktree?.directory;
   assert(
     worktreeDirectory && worktreeDirectory !== workspace,
