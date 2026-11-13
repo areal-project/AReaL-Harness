@@ -896,13 +896,18 @@ async function toolAndPermission() {
   );
   await sendSide("PARITY:P1_WRITE", false);
   const writeTurnId = (await readCoreThread(child)).turns.at(-1).id;
-  const pending = await until(
-    async () =>
-      (project(await state()).state.interactions?.[child]?.data ?? []).find(
-        (item) => item.kind === "approval" && item.status === "pending",
-      ),
-    "child fs_create approval",
-  );
+  const pending = await until(async () => {
+    const interactions = baseline
+      ? (project(await state()).state.interactions?.[child]?.data ?? [])
+      : ((await readCoreThread(child)).desktop?.interactions ?? []);
+    return interactions.find(
+      (item) =>
+        item.kind === "approval" &&
+        item.status === "pending" &&
+        (baseline ||
+          (item.threadId === child && item.turnId === writeTurnId && item.tool === "fs_create")),
+    );
+  }, "child fs_create approval");
   assert.equal(pending.tool, "fs_create");
   assert.equal(
     await exists(join(workspace, "approved.txt")),
@@ -1278,7 +1283,7 @@ async function selectionReferences() {
   const streamRequests = requests.length;
   await addReference(streamed, "STREAM_SELECTION_1");
   assert.equal(
-    threads(await state())[await currentId()]?.turns.at(-1).status,
+    (await readCoreThread(parent)).turns.find((turn) => turn.id === streamTurnId)?.status,
     "inProgress",
     "the quote is staged while the response stream remains open",
   );
@@ -1529,10 +1534,12 @@ async function escapeOwnership() {
       .filter((item) => item.type === "agentMessage")
       .map((item) => item.text ?? "")
       .join("");
-  const grows = async (threadId, label) => {
-    const before = turnText(threads(await state())[threadId].turns.at(-1));
+  const readTurn = async (threadId, turnId) =>
+    (await readCoreThread(threadId)).turns.find((turn) => turn.id === turnId);
+  const grows = async (threadId, turnId, label) => {
+    const before = turnText(await readTurn(threadId, turnId));
     await until(async () => {
-      const turn = threads(await state())[threadId]?.turns.at(-1);
+      const turn = await readTurn(threadId, turnId);
       return turn?.status === "inProgress" && turnText(turn).length > before.length;
     }, label);
   };
@@ -1545,16 +1552,14 @@ async function escapeOwnership() {
       child = await sendSide(`PARITY:STREAM_SIDE_${order}`, false);
       await sendMain(`PARITY:STREAM_MAIN_${order}`, false);
     }
-    const both = await until(async () => {
-      const snapshot = await state();
-      return (
-        threads(snapshot)[parent]?.turns.at(-1)?.status === "inProgress" &&
-        threads(snapshot)[child]?.turns.at(-1)?.status === "inProgress" &&
-        snapshot
-      );
-    }, "both independent streams active");
-    const parentTurn = threads(both)[parent].turns.at(-1).id,
-      childTurn = threads(both)[child].turns.at(-1).id;
+    const parentTurn = (await readCoreThread(parent)).turns.at(-1).id,
+      childTurn = (await readCoreThread(child)).turns.at(-1).id;
+    await until(
+      async () =>
+        (await readTurn(parent, parentTurn))?.status === "inProgress" &&
+        (await readTurn(child, childTurn))?.status === "inProgress",
+      "both independent streams active",
+    );
     await sidePane()
       .locator(`[data-turn-id="${childTurn}"][data-turn-status="inProgress"]`)
       .waitFor();
@@ -1607,9 +1612,9 @@ async function escapeOwnership() {
     }, "focused child stopped");
     await sideInput().focus();
     await page.keyboard.press("Escape");
-    const growth = turnText(threads(await state())[parent].turns.at(-1));
+    const growth = turnText(await readTurn(parent, parentTurn));
     await until(async () => {
-      const turn = threads(await state())[parent]?.turns.at(-1);
+      const turn = await readTurn(parent, parentTurn);
       return turn?.status === "inProgress" && turnText(turn).length > growth.length;
     }, "main survivor keeps growing after repeated idle Side Esc");
     let stops = await until(async () => {
@@ -1621,7 +1626,7 @@ async function escapeOwnership() {
     assert.equal(stops[0].response?.errorCode, null);
     await page.getByRole("button", { name: "收起侧栏", exact: true }).focus();
     await page.keyboard.press("Escape");
-    await grows(parent, "outside focus with panel open preserves growing main stream");
+    await grows(parent, parentTurn, "outside focus with panel open preserves growing main stream");
     assert.equal(
       (await readCoreThread(parent)).turns.at(-1).status,
       "inProgress",
@@ -1656,9 +1661,9 @@ async function escapeOwnership() {
       const turn = (await readCoreThread(parent)).turns.find((item) => item.id === mainSecond);
       return turn && turn.status !== "inProgress";
     }, "main-focused Esc stops main alone");
-    await grows(child, "Side survivor keeps growing after main-focused Esc");
+    await grows(child, sideSecond, "Side survivor keeps growing after main-focused Esc");
     await page.getByRole("button", { name: "关闭面板", exact: true }).click();
-    await grows(child, "closing panel leaves Side execution running");
+    await grows(child, sideSecond, "closing panel leaves Side execution running");
     await sendMain(`PARITY:STREAM_MAIN_CLOSED_${order}`, false);
     const closedMainTurn = (await readCoreThread(parent)).turns.at(-1).id;
     await page.getByRole("button", { name: "任务资源", exact: true }).click();
@@ -1681,7 +1686,7 @@ async function escapeOwnership() {
         opacity: getComputedStyle(element).opacity,
       })),
     );
-    await grows(parent, "dismissing visible resources preserves the main stream");
+    await grows(parent, closedMainTurn, "dismissing visible resources preserves the main stream");
     // Activity 隐藏不代表 keepMounted 弹层已退出；外层仍有布局时应继续保护主任务。
     await until(
       () =>
@@ -1704,10 +1709,10 @@ async function escapeOwnership() {
       const turn = (await readCoreThread(parent)).turns.find((item) => item.id === closedMainTurn);
       return turn && turn.status !== "inProgress";
     }, "panel-closed outside Esc falls back to main");
-    await grows(child, "hidden Side survivor grows after main fallback stop");
+    await grows(child, sideSecond, "hidden Side survivor grows after main fallback stop");
     await page.getByRole("button", { name: "展开侧边面板", exact: true }).click();
     await sideInput().waitFor();
-    await grows(child, "reopened Side is still streaming");
+    await grows(child, sideSecond, "reopened Side is still streaming");
     await sideInput().focus();
     await page.keyboard.press("Escape");
     await until(async () => {
