@@ -503,6 +503,44 @@ try {
       ),
     "provider catalog",
   );
+  await page.getByRole("button", { name: "新会话工作区", exact: true }).waitFor();
+  let readyObservation;
+  try {
+    await until(async () => {
+      const model = page.getByTestId("composer-model-trigger");
+      const count = await model.count();
+      readyObservation = {
+        projectId: await page.getByTestId("areal-workbench").getAttribute("data-project-id"),
+        threadId: await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
+        modelPresent: count > 0,
+        modelVisible: count > 0 && (await model.isVisible()),
+        modelEnabled: count > 0 && (await model.isEnabled()),
+        modelTitle: count > 0 ? await model.getAttribute("title") : null,
+        modelLabel: count > 0 ? await model.textContent() : null,
+        profile: await page.evaluate(
+          (id) => localStorage.getItem(`areal-gui:draft:${id}:new:profile`),
+          pid,
+        ),
+        unavailable: await page
+          .getByText("当前会话配置已不可用，请选择可用配置。输入已保留。", { exact: true })
+          .count(),
+      };
+      return (
+        readyObservation.modelVisible &&
+        readyObservation.modelEnabled &&
+        readyObservation.modelLabel?.trim() === "fixture" &&
+        readyObservation.projectId === pid &&
+        !readyObservation.threadId &&
+        readyObservation.profile === JSON.stringify({ id: "standard", revision: "v1" }) &&
+        readyObservation.unavailable === 0
+      );
+    }, "renderer draft profile and model ready");
+  } finally {
+    await writeFile(
+      join(scratch, "draft-ready-observation.json"),
+      JSON.stringify(readyObservation, null, 2),
+    );
+  }
   const input = () => page.getByTestId("chat-view").getByTestId("chat-input");
   const tags = () => page.getByTestId("chat-view").locator(".composer-skill-tag");
   const openCatalog = async () => {

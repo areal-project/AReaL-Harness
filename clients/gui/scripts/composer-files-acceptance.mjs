@@ -107,19 +107,28 @@ export async function runComposerFilesAcceptance({
   const send = async (text, executionWorkspace) => {
     if (text !== undefined) await input().fill(text);
     const count = received.length;
+    const original = await activeId();
     const previous = new Set(
-      Object.values(project(await state()).state.threads).flatMap((thread) =>
-        (thread.turns ?? []).map((turn) => turn.id),
-      ),
+      original
+        ? (await readCoreThread(original, executionWorkspace)).turns.map((turn) => turn.id)
+        : [],
     );
     await button("发送").click();
     let turn;
     await until(async () => {
       const id = await activeId();
-      if (!id || received.length <= count) return false;
+      if (!id || (original && id !== original) || received.length <= count) return false;
       const thread = await readCoreThread(id, executionWorkspace);
-      turn = thread.turns.find((item) => !previous.has(item.id) && item.status === "completed");
-      return turn && !project(await state()).pending.length;
+      turn = thread.turns.find(
+        (item) =>
+          !previous.has(item.id) &&
+          item.status === "completed" &&
+          thread.desktop?.receipts?.some(
+            (receipt) =>
+              receipt.method === "areal/turn/start" && receipt.result?.turn?.id === item.id,
+          ),
+      );
+      return turn;
     }, "file input completed").catch(async (error) => {
       // 超时时带上卡在哪一步：模型请求没发出、轮次没结束，还是提交还挂着。
       const thread = await current();
@@ -182,21 +191,51 @@ export async function runComposerFilesAcceptance({
         { capture: true, passive: true },
       );
     });
+    await hovered.evaluate((element) => {
+      const probe = (window.__hoverPointerProbe = { events: [], point: null });
+      const onPointer = (event) => {
+        probe.point = { x: event.clientX, y: event.clientY };
+        if (probe.events.length < 12)
+          probe.events.push({
+            type: event.type,
+            targetIsReference: element === event.target || element.contains(event.target),
+          });
+      };
+      for (const name of ["pointermove", "pointerover", "pointerout"])
+        document.addEventListener(name, onPointer, true);
+      window.__hoverPointerCleanup = () => {
+        for (const name of ["pointermove", "pointerover", "pointerout"])
+          document.removeEventListener(name, onPointer, true);
+      };
+    });
     await identifier.hover();
     const tooltip = page.getByRole("tooltip").filter({ hasText: absolutePath });
     await tooltip.waitFor().catch(async (error) => {
       // 超时时带上当时实际显示的提示和悬停目标的去向，区分“没弹出”“路径不对”和“目标被重建”。
       const shown = await page.getByRole("tooltip").allTextContents();
-      const target = await hovered.evaluate((element) => ({
-        connected: element.isConnected,
-        hover: element.matches(":hover"),
-      }));
+      const target = await hovered.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const probe = window.__hoverPointerProbe;
+        const hit = probe.point && document.elementFromPoint(probe.point.x, probe.point.y);
+        return {
+          connected: element.isConnected,
+          hover: element.matches(":hover"),
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          point: probe.point,
+          hitIsReference: !!hit && (hit === element || element.contains(hit)),
+          hitTag: hit?.tagName ?? null,
+          pageFocused: document.hasFocus(),
+          activeRole: document.activeElement?.getAttribute("role"),
+          events: probe.events,
+        };
+      });
       const scrolls = await page.evaluate(() => window.__hoverScrolls);
       throw new Error(
         `expected path tooltip ${absolutePath}, shown ${JSON.stringify(shown)}, target ${JSON.stringify(target)}, scrolls ${JSON.stringify(scrolls)}`,
         { cause: error },
       );
     });
+    await page.evaluate(() => window.__hoverPointerCleanup());
     assert.equal(
       await tooltip.textContent(),
       absolutePath,
@@ -468,7 +507,7 @@ export async function runComposerFilesAcceptance({
     ["empty.txt", "text/plain", Buffer.alloc(0)],
   ]) {
     const count = received.length,
-      turns = (await current()).turns.length;
+      turns = (await readCoreThread(await activeId())).turns.length;
     await input().fill("FILES_REFUSAL_DRAFT");
     await page.locator("input[type=file]").setInputFiles({ name, mimeType, buffer });
     await button("发送").click();
@@ -478,7 +517,7 @@ export async function runComposerFilesAcceptance({
       .first()
       .waitFor();
     assert.equal(received.length, count);
-    assert.equal((await current()).turns.length, turns);
+    assert.equal((await readCoreThread(await activeId())).turns.length, turns);
     assert.equal(await input().textContent(), "FILES_REFUSAL_DRAFT");
     await button(`移除附件 ${name}`).click();
   }
@@ -637,19 +676,23 @@ export async function runComposerFilesAcceptance({
     "pending workspace validation disables sending; A-to-B-to-A navigation rejects the old completion",
   );
 
+  const beforeHold = new Set((await readCoreThread(tid)).turns.map((turn) => turn.id));
   await input().fill("FILES_HOLD");
   await button("发送").click();
-  await until(
-    async () => fixture.held.size && (await current()).turns.at(-1)?.status === "inProgress",
-    "active fixture stream",
-  );
+  let active;
+  await until(async () => {
+    const thread = await readCoreThread(tid);
+    active = thread.turns.find((turn) => !beforeHold.has(turn.id) && turn.status === "inProgress");
+    return fixture.held.size && active;
+  }, "active fixture stream");
   await injectFile("drop", "queue.json", "application/json", '{"queue":"完整"}\n');
   await input().fill("FILES_QUEUED");
   await button("发送").click();
-  const pending = () => projectSnapshotQueue();
-  async function projectSnapshotQueue() {
-    return project(await state()).state.queues[tid];
-  }
+  const pending = async () => {
+    const queue = (await readCoreThread(tid)).desktop?.queue;
+    assert.ok(queue && Array.isArray(queue.items), "Core queue is present");
+    return queue;
+  };
   await until(
     async () => (await pending()).items.some((item) => item.status === "pending"),
     "text file enqueued",
@@ -716,7 +759,6 @@ export async function runComposerFilesAcceptance({
   );
   const savedQueue = await call("queue", { projectId: pid, threadId: tid });
   assert.equal(savedQueue.paused, false, "saving the edit resumes its queue");
-  const active = (await current()).turns.at(-1);
   await call("steer", {
     projectId: pid,
     threadId: tid,
@@ -725,13 +767,19 @@ export async function runComposerFilesAcceptance({
     attachments: [{ type: "file", url: file.url, name: file.name, mimeType: "application/pdf" }],
   });
   for (const finish of fixture.held) finish();
-  await until(
-    async () =>
-      (await pending()).items.find((item) => item.id === queued.id)?.status === "completed" &&
-      (await current()).turns.at(-1)?.status === "completed" &&
-      !project(await state()).pending.length,
-    "queue activation completed",
-  );
+  await until(async () => {
+    const thread = await readCoreThread(tid);
+    const item = thread.desktop?.queue?.items?.find((entry) => entry.id === queued.id);
+    const turn = thread.turns.find((entry) => entry.id === item?.turnId);
+    return (
+      item?.status === "completed" &&
+      turn?.status === "completed" &&
+      turn.items.some(
+        (entry) => entry.type === "userMessage" && textOf(entry).includes("FILES_QUEUE_EDITED"),
+      )
+    );
+  }, "queue activation completed");
+  await page.getByTestId("pending-message").waitFor({ state: "hidden" });
   const queuedRequest = received.findLast((body) =>
     users(body).some((text) => text.includes("FILES_QUEUE_EDITED")),
   );
@@ -746,7 +794,7 @@ export async function runComposerFilesAcceptance({
     "send, steer, queue admission, edit with retained and new files, and activation share text projection and authoritative MIME",
   );
 
-  const source = await current();
+  const source = await readCoreThread(tid);
   const fork = await call("fork", {
     projectId: pid,
     sourceThreadId: tid,
@@ -796,7 +844,10 @@ export async function runComposerFilesAcceptance({
     const trigger = page.getByTestId("composer-model-trigger");
     await trigger.click();
     await page.getByRole("tab", { name: model.providerId, exact: true }).click();
-    await page.getByRole("radio", { name: model.modelId, exact: true }).click();
+    await page
+      .getByRole("tabpanel", { name: model.providerId, exact: true })
+      .getByRole("radio", { name: model.modelId, exact: true })
+      .click();
     await page.keyboard.press("Escape");
     await until(async () => {
       const label = await trigger.innerText();
@@ -1055,10 +1106,13 @@ export async function runComposerFilesAcceptance({
       "send held before admission to Core",
     );
     const heldSend = await page.evaluate(() => globalThis.composerUploadFixture.sends.at(-1));
-    assert.equal((await current()).turns.at(-1)?.status, "completed");
+    assert.equal(
+      (await readCoreThread(uploadThreadId, uploadWorkspace)).turns.at(-1)?.status,
+      "completed",
+    );
     assert.equal(project(await state()).outcomes?.[heldSend.requestId], undefined);
     assert.equal(
-      (await current()).turns.some((turn) =>
+      (await readCoreThread(uploadThreadId, uploadWorkspace)).turns.some((turn) =>
         turn.items.some(
           (item) => item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
         ),

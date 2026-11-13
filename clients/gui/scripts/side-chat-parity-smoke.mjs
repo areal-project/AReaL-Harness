@@ -1273,6 +1273,9 @@ async function selectionReferences() {
       "completed",
     "reference turn completed",
   );
+  await mainMessages()
+    .locator(`[data-turn-id="${referenceTurnId}"][data-turn-status="completed"]`)
+    .waitFor();
   assert.equal(
     await referenceCount(mainMessages()),
     2,

@@ -642,6 +642,8 @@ try {
     );
     phase = "navigationResume";
     issued = false;
+    // 核查回执先于 Renderer 投影；等原入口从“核对后发送”切回发送，再触发新请求。
+    await page.locator('[data-testid="chat-send-button"][aria-label="发送"]').waitFor();
     await page.getByTestId("chat-send-button").click();
     const resumed = await terminalTurn(previousTurns);
     assert.equal(resumed.status, "completed", JSON.stringify(resumed));

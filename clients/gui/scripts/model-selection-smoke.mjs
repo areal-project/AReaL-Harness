@@ -981,6 +981,20 @@ async function verifyModelCapabilities() {
 }
 async function verifyModelDefaults(projectId) {
   console.log("[model-selection] verifying model defaults and recovery");
+  const waitForAcceptedProjection = async (threadId, label) => {
+    const accepted = (await readCoreThread(threadId)).desktop.lastAcceptedModel;
+    await until((snapshot) => {
+      const projected = snapshotProject(snapshot)?.lastAcceptedModel;
+      return (
+        projected?.acceptedAt === accepted.acceptedAt &&
+        projected.modelId === accepted.modelId &&
+        projected.model?.providerId === accepted.model?.providerId &&
+        projected.model?.modelId === accepted.model?.modelId &&
+        projected.reasoningEffort === accepted.reasoningEffort
+      );
+    }, label);
+    return accepted;
+  };
   await waitForServiceIdle();
   const previous = await call("providers", { operation: "list" });
   const seeded = await call("providers", {
@@ -1254,7 +1268,14 @@ async function verifyModelDefaults(projectId) {
     effort: "none",
     hasEffort: true,
   });
-  const beforeQueueExecution = snapshotProject(await state()).lastAcceptedModel;
+  const beforeQueueExecution = await waitForAcceptedProjection(
+    switched,
+    "newer Beta admission reaches the shared projection",
+  );
+  assert.equal(beforeQueueExecution.model?.providerId, provider.id);
+  assert.equal(beforeQueueExecution.modelId, "beta-default");
+  assert.equal(beforeQueueExecution.reasoningEffort, "none");
+  assert.ok(beforeQueueExecution.acceptedAt > queued.lastAcceptedModel.acceptedAt);
   releaseHeldReply();
   releaseHeldReply = undefined;
   await waitForCoreTurn(alpha, {
@@ -1275,7 +1296,10 @@ async function verifyModelDefaults(projectId) {
     effort: "high",
     hasEffort: true,
   });
-  const beforeReceiptReplay = snapshotProject(await state()).lastAcceptedModel,
+  const beforeReceiptReplay = await waitForAcceptedProjection(
+      alpha,
+      "historical Alpha admission reaches the shared projection",
+    ),
     requestsBeforeReplay = modelRequests.length;
   const replayed = await page.evaluate(
     (parameters) => window.arealDesktop.command("send", parameters),
@@ -1336,19 +1360,12 @@ async function verifyModelDefaults(projectId) {
       hasEffort: true,
     },
   );
-  const accepted = (await readCoreThread(coldThread)).desktop.lastAcceptedModel;
+  const accepted = await waitForAcceptedProjection(
+    coldThread,
+    "the cold main submission's accepted model reaches the shared projection",
+  );
   assert.equal(accepted.modelId, "alpha-default");
   assert.equal(accepted.reasoningEffort, "high");
-  await until((snapshot) => {
-    const projected = snapshotProject(snapshot)?.lastAcceptedModel;
-    return (
-      projected?.acceptedAt === accepted.acceptedAt &&
-      projected.modelId === accepted.modelId &&
-      projected.model?.providerId === accepted.model?.providerId &&
-      projected.model?.modelId === accepted.model?.modelId &&
-      projected.reasoningEffort === accepted.reasoningEffort
-    );
-  }, "the cold main submission's accepted model reaches the shared projection");
   const preference = snapshotProject(await state()).lastAcceptedModel;
   assert.equal(preference.modelId, "alpha-default");
   assert.equal(preference.reasoningEffort, "high");
