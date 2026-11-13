@@ -16,7 +16,7 @@ overrides:
   undici@>=6.0.0 <6.29.1: 6.29.1
   undici@>=7.0.0 <7.30.1: 7.30.1
   '@dicebear/core@<=9.4.2': 9.4.3
-  basic-ftp@<=6.2.0: 6.2.1
+  basic-ftp@<=6.2.3: 6.2.4
   dompurify@<=3.4.16: 3.4.17
   ip-address@<=10.7.3: 10.7.4
   katex@>=0.11.0 <0.18.2: 0.18.2
@@ -1415,8 +1415,8 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@hono/node-server@2.1.5':
-    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
+  '@hono/node-server@2.1.7':
+    resolution: {integrity: sha512-Wr0E6S+v2Bw9FkpGNP5BQ5QbJvclUa06UVehd65WFZe6XeJwbrKQQ5wPDevc0IC+QyzbO7v3Llh5uo45IZcSnA==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
@@ -3142,8 +3142,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  basic-ftp@6.2.1:
-    resolution: {integrity: sha512-bK67isD+lKq46AU8vNtjvMaT2ZqAOAmNCbxUHlFBRD4k15NWxyEjmaKtZPlgce58So4BNTjITGQOVTjL9y0ECA==}
+  basic-ftp@6.2.4:
+    resolution: {integrity: sha512-6ACKOQxSlv5xka4i03ujfncNr9qp5yZNK3u0+yUFTAU4HfG5AeztCC9+R1I9dm8oq+1vt4RZ7cIRTBrdHqL2mw==}
     engines: {node: '>=10.0.0'}
 
   big-integer@1.6.52:
@@ -4021,8 +4021,8 @@ packages:
   hastscript@9.0.1:
     resolution: {integrity: sha512-g7df9rMFX/SPi34tyGCyUBREQoKkapwdY/T04Qn9TDWfHhAYt4/I0gMVirzK5wEzeUqIjEB+LXC/ypb7Aqno5w==}
 
-  hono@4.13.13:
-    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
+  hono@4.13.18:
+    resolution: {integrity: sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA==}
     engines: {node: '>=16.9.0'}
 
   hosted-git-info@4.1.0:
@@ -6930,9 +6930,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@hono/node-server@2.1.5(hono@4.13.13)':
+  '@hono/node-server@2.1.7(hono@4.13.18)':
     dependencies:
-      hono: 4.13.13
+      hono: 4.13.18
 
   '@iconify/types@2.0.0': {}
 
@@ -7352,7 +7352,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.0(zod@4.6.6)':
     dependencies:
-      '@hono/node-server': 2.1.5(hono@4.13.13)
+      '@hono/node-server': 2.1.7(hono@4.13.18)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -7362,7 +7362,7 @@ snapshots:
       eventsource-parser: 3.1.1
       express: 5.3.0
       express-rate-limit: 8.7.1(express@5.3.0)
-      hono: 4.13.13
+      hono: 4.13.18
       jose: 6.2.9
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -8698,7 +8698,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.27: {}
 
-  basic-ftp@6.2.1: {}
+  basic-ftp@6.2.4: {}
 
   big-integer@1.6.52: {}
 
@@ -9593,7 +9593,7 @@ snapshots:
 
   get-uri@6.0.5:
     dependencies:
-      basic-ftp: 6.2.1
+      basic-ftp: 6.2.4
       data-uri-to-buffer: 6.0.2
       debug: 4.4.3
     transitivePeerDependencies:
@@ -9778,7 +9778,7 @@ snapshots:
       property-information: 7.2.0
       space-separated-tokens: 2.0.2
 
-  hono@4.13.13: {}
+  hono@4.13.18: {}
 
   hosted-git-info@4.1.0:
     dependencies:
