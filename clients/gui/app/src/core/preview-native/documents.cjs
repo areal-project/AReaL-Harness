@@ -30,8 +30,9 @@ const TYPES = new Map(
     ".otf": "font/otf",
   }),
 );
+// 本地讲解页可能内嵌依赖 `new Function` 的运行时；文档 origin 仍完全隔离网络、frame、worker 和对象权限。
 const CSP =
-  "default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+  "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; frame-src 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 /** @typedef {{kind:'exactHtml',canonicalFile:string}|{kind:'workspaceDirectory',canonicalFile:string,canonicalRoot:string}} DocumentScope */
 /** @typedef {{scope:DocumentScope,entryBytes:Buffer,entryDigest:string,valid:()=>boolean}} PreparedDocument */
 /** @typedef {{origin:string,pathToken:string,entryUrl:string,prepared:PreparedDocument,contents:import('electron').WebContents,valid:()=>boolean,privateHeader:Buffer,state:'loading'|'active'|'revoked',onDestroyed:()=>void}} DocumentGrant */
