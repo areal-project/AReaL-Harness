@@ -576,6 +576,7 @@ function DraftConversation() {
         </div>
         {project ? (
           <DraftComposer
+            prepareBrowserDraft={session.prepareBrowserDraft}
             worktree={worktreeSelection}
             onWorktreeCreated={() => changeWorktreeSelection(project.id, undefined)}
             appEntries={appEntries}

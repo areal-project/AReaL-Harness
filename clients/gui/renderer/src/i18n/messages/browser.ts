@@ -1,7 +1,7 @@
 export const browserMessages = {
-  "browser.chatRequired": {
-    "zh-CN": "发送第一条消息或打开已有聊天后，即可使用浏览器。",
-    en: "Send your first message or open an existing chat to use the browser.",
+  "browser.open": {
+    "zh-CN": "打开浏览器",
+    en: "Open browser",
   },
   "browser.desktopRequired": {
     "zh-CN": "内嵌浏览器需要桌面应用。网页链接会在当前设备的浏览器中打开。",

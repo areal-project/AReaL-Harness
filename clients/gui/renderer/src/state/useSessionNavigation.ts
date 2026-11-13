@@ -29,6 +29,7 @@ export function useSessionNavigation(
   onError: (message: string) => void,
 ) {
   const resourceBrowsing = useRef(false);
+  const prepareBrowserDraft = useRef<(() => Promise<string | undefined>) | null>(null);
   const [snapshot, updateSnapshot] = useState<Snapshot>({
     projects: [],
     connection: { state: "connecting" },
@@ -438,6 +439,7 @@ export function useSessionNavigation(
   };
   return {
     resourceBrowsing,
+    prepareBrowserDraft,
     services,
     readOnly:
       services.capabilities?.mutations === false ||

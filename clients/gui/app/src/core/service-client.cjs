@@ -259,6 +259,7 @@ class SharedCoreBackend {
 
   /** @param {string} projectId @param {string} threadId */
   async ensureBrowserThread(projectId, threadId) {
+    if (!this.status.connected) await this.init();
     if (this.ownsThread(projectId, threadId)) return;
     const connection = this.requireConnection();
     await this.command("open", { projectId, threadId });

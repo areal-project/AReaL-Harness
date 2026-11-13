@@ -56,6 +56,24 @@ test("browser access observes an existing Host conversation before checking its 
   assert.equal(observed, true);
 });
 
+test("browser access waits for the Host-managed desktop connection", async () => {
+  const backend = Object.create(SharedCoreBackend.prototype);
+  let observed = false;
+  const connection = { request: async () => ({ observed: true }) };
+  backend.status = { connected: false };
+  backend.ownsThread = () => observed;
+  backend.init = async () => {
+    backend.connection = connection;
+    backend.status.connected = true;
+  };
+  backend.command = async () => {};
+  backend.accept = (packet) => {
+    observed = packet.observed;
+  };
+  await backend.ensureBrowserThread("p", "t");
+  assert.equal(observed, true);
+});
+
 test("default GUI selects Host before initializing any in-process writer", async (t) => {
   const f = await startupOwnerFixture(t);
   let starts = 0;

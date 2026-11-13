@@ -44,33 +44,56 @@ export function useWorkspacePreview(
       if (openingBrowser.current === owner) return;
       openingBrowser.current = owner;
       if (!isBrowserTab(panel)) rememberPanelTrigger();
-      if (!threadId || services.capabilities?.native === false) {
+      if (services.capabilities?.native === false) {
         workspacePanels.exposePanel();
         workspacePanels.selectPanel("预览");
         openingBrowser.current = null;
         return;
       }
+      let targetOwner = owner;
       try {
-        let value = await browserWorkspace.request({ operation: "state" });
-        if (previewOwner.current !== owner) return;
+        let targetThread = threadId;
+        if (!targetThread) {
+          const prepared = await session.prepareBrowserDraft.current?.();
+          if (!prepared || previewOwner.current !== owner) return;
+          targetThread = prepared;
+          session.recordWorkspaceLocation({ projectId: project.id, threadId: targetThread }, true);
+          await session.selectConversation(project.id, targetThread);
+        }
+        targetOwner = `${project.id}:${targetThread}`;
+        if (previewOwner.current !== targetOwner) return;
+        const request = (params: Parameters<typeof browserWorkspace.request>[0]) =>
+          threadId
+            ? browserWorkspace.request(params)
+            : services.preview({ ...params, projectId: project.id, threadId: targetThread });
+        let value = await request({ operation: "state" });
+        if (previewOwner.current !== targetOwner) return;
         if (create || !value.workspace?.selectedPageId)
-          value = await browserWorkspace.request({ operation: "newPage" });
-        if (previewOwner.current !== owner) return;
+          value = await request({ operation: "newPage" });
+        if (previewOwner.current !== targetOwner) return;
         const pageId = value.browser?.pageId;
         if (!pageId) return;
-        if (url) await browserWorkspace.request({ operation: "navigate", pageId, url });
-        if (previewOwner.current !== owner) return;
-        await browserWorkspace.request({ operation: "selectPage", pageId });
-        if (previewOwner.current !== owner) return;
+        if (url) await request({ operation: "navigate", pageId, url });
+        if (previewOwner.current !== targetOwner) return;
+        await request({ operation: "selectPage", pageId });
+        if (previewOwner.current !== targetOwner) return;
         workspacePanels.exposePanel();
         workspacePanels.selectPanel(browserTabId(pageId));
       } catch (cause) {
-        if (previewOwner.current === owner) setError((cause as Error).message);
+        if (previewOwner.current === targetOwner) setError((cause as Error).message);
       } finally {
         if (openingBrowser.current === owner) openingBrowser.current = null;
       }
     },
-    [project?.id, threadId, browserWorkspace.request, panel, rememberPanelTrigger],
+    [
+      project?.id,
+      threadId,
+      browserWorkspace.request,
+      panel,
+      rememberPanelTrigger,
+      services,
+      session,
+    ],
   );
   const onLink = useCallback(
     (url: string) => {
