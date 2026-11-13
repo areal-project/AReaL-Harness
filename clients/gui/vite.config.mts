@@ -19,6 +19,10 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ["renderer/src/**/*.{ts,tsx}"],
+        rules: { "areal/no-unchecked-array-method": "warn" },
+      },
+      {
         files: ["scripts/**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts}"],
         rules: { "areal/no-async-wait-for-function": "error" },
       },

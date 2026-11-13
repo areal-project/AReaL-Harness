@@ -459,3 +459,37 @@ describe("no-restyle", () => {
     expect(result.output).toContain("R-CHECK-022");
   });
 });
+
+describe("no-unchecked-array-method", () => {
+  test.each([
+    "function view(item: Data) { return (item.input ?? []).filter(Boolean); }",
+    "function view(item: any) { return item.input.map(render); }",
+    "function view(item: Data) { return item.input?.some(test); }",
+    "function view(item: Data) { return item.input['every'](test); }",
+    "function view(item: Data) { const input = item.input; return input.find(test); }",
+    "const value: any = external; value.reduce(sum);",
+    "(external as any).flatMap(render);",
+    "function view(item: Data | undefined) { return item?.input.map(render); }",
+    "function view(item: Data) { if (Array.isArray(item.other)) return item.input.map(render); }",
+    "function view(item: Data) { if (Array.isArray(item.input)) {} else return item.input.map(render); }",
+    "function view(item: Data, Array: any) { if (Array.isArray(item.input)) return item.input.map(render); }",
+  ])("rejects unchecked collection: %s", (source) => {
+    const result = lint("no-unchecked-array-method", source);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain("areal(no-unchecked-array-method)");
+  });
+  test.each([
+    "function view(items: Item[] | undefined) { return (items ?? []).map(render); }",
+    "function view(items: Array<Item>) { return items.filter(test); }",
+    "function view(item: Data) { return (Array.isArray(item.input) ? item.input : []).map(render); }",
+    "function view(item: Data) { if (Array.isArray(item.input)) return item.input.map(render); }",
+    "function view(item: Data) { return Array.isArray(item.input) && item.input.map(render); }",
+    "function view(item: Data) { return parsedItems(item.input).map(render); }",
+    "function view(item: Data) { return item.title.trim(); }",
+    "function view(item: Data[]) { return item.map(render); }",
+    "function outer(item: Data) { function inner(item: Item[]) { return item.map(render); } }",
+  ])("accepts typed or checked collection: %s", (source) => {
+    const result = lint("no-unchecked-array-method", source);
+    expect(result.status, result.output).toBe(0);
+  });
+});
