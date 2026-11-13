@@ -1,6 +1,12 @@
-import { recordItems, stringItems } from "./data-shapes.js";
 import type { Translate } from "./i18n/IntlProvider.js";
 import type { Data } from "./services.js";
+
+const recordItems = (value: unknown): Data[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is Data => !!item && typeof item === "object")
+    : [];
+const stringItems = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
 export function goalBudgetMessage(reason: string | null | undefined): string | undefined {
   if (reason === "GOAL_TOKEN_BUDGET") return "Token 预算不足，无法继续执行。请调整预算后恢复。";
