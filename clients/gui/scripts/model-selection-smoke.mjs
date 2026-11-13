@@ -1512,7 +1512,7 @@ async function verifyModelDefaults(projectId) {
   await selectConversation(page, implicit);
   await expectModel("legacy-alpha", "高");
   assert.equal(
-    snapshotProject(await state()).configurations[implicit].defaultModelRevision,
+    (await readCoreThread(implicit)).desktop.configuration.defaultModelRevision,
     implicitConfig.defaultModelRevision,
   );
   assert.equal(
