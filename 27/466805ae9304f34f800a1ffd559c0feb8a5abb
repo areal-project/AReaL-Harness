@@ -1,0 +1,19 @@
+integrations/gameagent/runtime/tool_server.py
+  s_bd8d5bb07c65e6::t_37c16397658323 26-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "27466805ae9304f34f800a1ffd559c0feb8a5abb",
+  "prompts": {},
+  "sessions": {
+    "s_bd8d5bb07c65e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d317-71d1-7e23-8f31-132818788694",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
