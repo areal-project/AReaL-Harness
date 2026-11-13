@@ -61,6 +61,7 @@ fn key(id: &str, revision: &str) -> String {
 #[derive(Clone, Default)]
 pub struct ConfiguredModels {
     pub responses_prompt_cache: bool,
+    pub history_thinking: model::HistoryThinking,
     pub providers: Vec<Provider>,
     pub provider_ids: BTreeSet<String>,
     pub parameters: BTreeMap<(String, String), ModelParameters>,
@@ -551,6 +552,12 @@ impl Engine {
                         .read()
                         .unwrap()
                         .responses_prompt_cache,
+                history_thinking: self
+                    .desktop
+                    .configured_models
+                    .read()
+                    .unwrap()
+                    .history_thinking,
                 capabilities: provider.model_capabilities.get(name).cloned(),
                 context_window: Some(context_window.cloned().unwrap_or_else(|| {
                     self.provider_context_window(provider, name, parameters.context_window_tokens)

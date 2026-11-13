@@ -185,6 +185,7 @@ pub async fn run(command: Command, runtime_bin: PathBuf) -> Result<()> {
                 summary_max_output_tokens: config.model.summary_max_output_tokens,
                 summary_preserve_prefix: config.model.summary_preserve_prefix,
                 summary_quoted_retry: config.model.summary_quoted_retry,
+                history_thinking: config.model.history_thinking,
                 reasoning_summary: config.model.reasoning_summary.clone(),
                 max_output_tokens: config.model.max_output_tokens,
                 temperature: config.model.temperature,

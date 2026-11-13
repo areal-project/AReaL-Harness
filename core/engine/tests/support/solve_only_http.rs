@@ -19,6 +19,9 @@ impl Model for SolveOnlyHttpModel {
     fn replay_protocol(&self) -> Option<ModelProtocol> {
         self.0.replay_protocol()
     }
+    fn history_thinking(&self) -> areal_engine::model::HistoryThinking {
+        self.0.history_thinking()
+    }
     async fn stream(&self, messages: Vec<Message>) -> anyhow::Result<ModelStream> {
         self.0.stream(messages).await
     }

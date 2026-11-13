@@ -104,6 +104,7 @@ struct ContextPlan<'a> {
     byte_target: Option<usize>,
     store: &'a store::Store,
     reference_tokens: usize,
+    history_thinking: model::HistoryThinking,
 }
 impl ContextPlan<'_> {
     fn checkpoint(
@@ -119,6 +120,7 @@ impl ContextPlan<'_> {
             byte_target,
             store,
             reference_tokens,
+            history_thinking,
         } = *self;
         let items: Vec<_> = thread.turns.iter().flat_map(|t| &t.items).collect();
         let inputs = crate::history::checkpoint_inputs(thread, count);
@@ -140,7 +142,7 @@ impl ContextPlan<'_> {
         };
         let mut projection = thread.clone();
         projection.context_checkpoint = Some(checkpoint.clone());
-        let projected = history(&projection, store)?;
+        let projected = model::project_history(history(&projection, store)?, history_thinking);
         let mut tokens = estimate_tokens(&projected).saturating_add(overhead_tokens);
         let mut bytes = message_bytes(&projected);
         // 软目标不能丢弃最新请求，也不能截断已通过验证的摘要。
@@ -920,8 +922,9 @@ impl Engine {
         // Cut only before a model round or a new user message. A round's opaque
         // reasoning, function calls and results always remain in the same group.
         for index in (previous..items.len()).rev() {
-            if matches!(items[index], Item::Reasoning { .. })
-                || matches!(items[index], Item::ModelContext { value, .. } if value["type"] == "chat_reasoning")
+            if model.history_thinking() == model::HistoryThinking::Omit
+                && (matches!(items[index], Item::Reasoning { .. })
+                    || matches!(items[index], Item::ModelContext { value, .. } if value["type"] == "chat_reasoning"))
             {
                 continue;
             }
@@ -975,6 +978,7 @@ impl Engine {
             byte_target,
             store: &self.store,
             reference_tokens: self.limits.context_reference_tokens,
+            history_thinking: model.history_thinking(),
         };
         // 用共享预算定位保留最多近期完整轮次的边界，最多进行对数次投影。
         let mut low = 0;
@@ -1110,7 +1114,7 @@ impl Engine {
                 turn.items.truncate(take);
                 left -= take;
             }
-            let summary_history = history(&prefix, &self.store)?;
+            let summary_history = crate::history::history_for(&prefix, &self.store, model.as_ref())?;
             let mut input = summary_input(&summary_history);
             if writing_target < 8000 {
                 // 这是写作目标而非硬截断；原有净缩减验证仍决定能否保存摘要。
@@ -1161,6 +1165,7 @@ impl Engine {
                         areal.capture.truncated = tracing::field::Empty,
                         areal.model.request.id = tracing::field::Empty,
                         areal.model.request.protocol = tracing::field::Empty,
+                        areal.model.request.history_thinking = tracing::field::Empty,
                         areal.model.request.transport = tracing::field::Empty,
                         areal.model.request.body = tracing::field::Empty,
                         areal.model.request.wire = tracing::field::Empty,
@@ -1348,7 +1353,7 @@ impl Engine {
             trajectory::record_text(&tracing::Span::current(), "gen_ai.output.messages", "assistant", &summary);
             let mut state = cell.state.lock().await;
             // 摘要等待期间允许 steer；净缩减必须与同一时刻的历史比较。
-            let commit_before_bytes = message_bytes(&history(&state.thread, &self.store)?);
+            let commit_before_bytes = message_bytes(&crate::history::history_for(&state.thread, &self.store, model.as_ref())?);
             let mut candidate = state.thread.clone();
             let mut cumulative_usage = snapshot
                 .context_checkpoint
@@ -1372,7 +1377,7 @@ impl Engine {
             checkpoint.usage = cumulative_usage;
             checkpoint.compactions = snapshot.context_checkpoint.as_ref().map_or(1, |c| c.compactions + 1);
             candidate.context_checkpoint = Some(checkpoint);
-            let after_history = history(&candidate, &self.store)?;
+            let after_history = crate::history::history_for(&candidate, &self.store, model.as_ref())?;
             let after_bytes = message_bytes(&after_history);
             let after_tokens = estimate_tokens(&after_history) + overhead_tokens;
             if budget.window > 0 && after_tokens > budget.input_limit {
@@ -1931,76 +1936,4 @@ mod project_instruction_tests {
 }
 
 #[cfg(test)]
-mod reference_tests {
-    use super::*;
-    struct FixtureModel;
-    #[async_trait::async_trait]
-    impl Model for FixtureModel {
-        fn name(&self) -> &str {
-            "checkpoint-reference-fixture"
-        }
-        async fn stream(&self, _: Vec<Message>) -> anyhow::Result<model::ModelStream> {
-            unreachable!()
-        }
-    }
-
-    #[tokio::test]
-    async fn checkpoint_reference_opt_in_respects_shared_allocation() {
-        let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), Arc::new(FixtureModel), Limits::default()).unwrap();
-        let mut thread = engine.create("/fixture".into()).await.unwrap();
-        let raw = json!({"path":"workspace://repo/reference.txt","sha256":"a".repeat(64),"source":"untrusted-protocol-middle".repeat(100)}).to_string();
-        thread.turns.push(serde_json::from_value(json!({"id":"turn","status":"completed","error":null,"usage":null,"items":[
-            {"type":"userMessage","id":"request","content":[{"type":"text","text":"preserve current requirements"}]},
-            {"type":"dynamicToolCall","id":"read","callId":"read-call","tool":"read_file","arguments":{"path":"reference.txt"},"status":"completed","success":true,
-            "execution":{"runtimeEpoch":"e","scopeId":"s","operationId":"read","outcome":"succeeded"},"contentItems":[{"type":"inputText","text":raw}]}
-        ]})).unwrap());
-        let original = serde_json::to_value(&thread).unwrap();
-        let budget = ContextBudget {
-            window: 16000,
-            reserve: 2000,
-            input_limit: 14000,
-            target: 10000,
-        };
-        for reference_tokens in [0, 4096] {
-            let planner = ContextPlan {
-                budget: &budget,
-                overhead_tokens: 128,
-                byte_target: None,
-                store: &engine.store,
-                reference_tokens,
-            };
-            let (checkpoint, tokens, _) = planner
-                .checkpoint(&thread, 2, "fallible summary", true)
-                .unwrap();
-            assert_eq!(
-                checkpoint
-                    .evidence
-                    .iter()
-                    .any(|s| s.contains("untrusted-protocol-middle")),
-                reference_tokens > 0
-            );
-            assert!(tokens <= budget.target);
-            assert_eq!(serde_json::to_value(&thread).unwrap(), original);
-            let tiny = ContextBudget {
-                target: 1,
-                ..budget
-            };
-            let planner = ContextPlan {
-                budget: &tiny,
-                ..planner
-            };
-            let (checkpoint, _, _) = planner
-                .checkpoint(&thread, 2, "fallible summary", true)
-                .unwrap();
-            assert!(
-                !checkpoint
-                    .evidence
-                    .iter()
-                    .any(|s| s.contains("untrusted-protocol-middle")),
-                "实验预算不能绕过共享请求分配器"
-            );
-        }
-        engine.shutdown().await;
-    }
-}
+mod reference_tests;

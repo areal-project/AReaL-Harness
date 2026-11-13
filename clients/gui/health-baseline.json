@@ -13,7 +13,7 @@
   },
   "$revision": "6d50f24d4c5db74dd005cafc693b6d2ea8d942c5",
   "mainSourceLines": {
-    "value": 24287,
+    "value": 24246,
     "direction": "down",
     "owner": "app/src"
   },
@@ -851,7 +851,7 @@
     "app/src/update/package-users.cjs": "Electron application update installation, Squirrel readiness and package occupancy"
   },
   "mainBusinessLines": {
-    "value": 7627,
+    "value": 7568,
     "direction": "down",
     "owner": "app/src"
   },

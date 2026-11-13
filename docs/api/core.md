@@ -155,7 +155,7 @@ Responses 摘要通过可选 `reasoning_summary` / `reasoningSummary` 显式开�
 
 `thread/read` 和 `thread/resume` 的快照包含已收到的思考前缀；resume 后以快照替换客户端基线，再接增量，不能把快照再次追加。停止或 steer 保留已收到内容；失败响应被重试时，`areal/model/completionDiscarded.itemIds` 同时移除其思考与正文。`item/completed` 只表示该 Item 不再更新，成功与否以 Turn 终态为准。
 
-思考文本计入现有 Turn 文本输出字节上限，不拼入 `agentMessage`，不算最终答案；仅有思考而没有正文、媒体或工具调用仍按空回复处理。展示用 `reasoning` Item 不回放为模型输入。Chat 原有不回放思考的行为保留；旧 `modelContext.value.type=chat_reasoning` 继续可读，新 Chat 请求不再重复归档这份内部上下文。Responses 原始 reasoning 对象仍独立存入 `modelContext` 并完整回放一次，保留 summary、encrypted_content 等供应商字段；客户端只展示明文段，不解密或显示加密内容。
+思考文本计入现有 Turn 文本输出字节上限，不拼入 `agentMessage`，不算最终答案；仅有思考而没有正文、媒体或工具调用仍按空回复处理。历史回放由 `model.history_thinking` 决定，默认 `preserve`：Chat 的明文 `reasoning.content` 合并到对应 assistant 的 `reasoning_content`，旧 `modelContext.value.type=chat_reasoning` 仍可读；Responses 只回放 `modelContext` 中原始 reasoning 一次，显示 Item 不重复回放。`omit` 只过滤请求中的历史 reasoning，完整输出仍存档。Responses 保留模式不改 summary、encrypted_content 等供应商字段；客户端只展示明文段，不解密或显示加密内容。
 
 这是新增的 Item 类型和通知，客户端须识别或忽略 `reasoning`，Rust 的 `Item` / `ModelEvent` 穷尽匹配需增加对应分支，`ModelOptions` / `ModelParameters` / `SelectedModelConfig` 新增可选摘要字段。字段见 [Core schema](../../schemas/areal-core-v1.json)，本地客户端显示行为见[客户端指南](../guides/clients.md)。
 
@@ -173,7 +173,7 @@ Responses 摘要通过可选 `reasoning_summary` / `reasoningSummary` 显式开�
 
 参数/schema 确定错误可返回模型修正；持久化失败或 UNKNOWN 停止自动执行。`areal/tool/acknowledge {threadId,itemId,inspection}` 只在空闲时记录 1–1024 字节检查说明，历史仍为 unknown，不重放、不扩权。
 
-`execution.backend` 为 runtime/command/client/mcp/plugin/agent/coordination/core。可选 `modelArguments` 保存 hooks 之后、Runtime ID 展开之前的模型回放参数；`effectiveArguments` 保留真实 ID 供审计，旧记录回退使用后者。回放按 completion 保留一个 assistant 文本/工具调用批次，再接有序工具结果；不合并不同 completion。工具图像在结果批次后作为关联 callId 的 user 图像。Chat reasoning 归档但不回放，Responses 不透明上下文保持顺序。
+`execution.backend` 为 runtime/command/client/mcp/plugin/agent/coordination/core。可选 `modelArguments` 保存 hooks 之后、Runtime ID 展开之前的模型回放参数；`effectiveArguments` 保留真实 ID 供审计，旧记录回退使用后者。回放按 completion 保留一个 assistant 文本/工具调用批次，再接有序工具结果；不合并不同 completion。工具图像在结果批次后作为关联 callId 的 user 图像。Chat 与 Responses 的历史 reasoning 遵循同一 `model.history_thinking` 策略，保留的 Responses 不透明上下文保持顺序。
 
 `Limits.watchdog_disable` 默认 false，Core 对已分类的网络故障无限次重试当前模型请求，包含传输错误、HTTP 408/429/5xx、提前断流、请求/流空闲超时与明确的 SSE 限流/不可用；不把长度、空回复、鉴权、额度或参数错误当成网络故障。启动配置与关闭方式见[配置指南](../guides/configuration.md)。主 Agent、子 Agent 与独立 Workgroup Engine 继承宿主开关；嵌入式调用方显式传入 Limits，Engine 不读取进程环境。Rust `Limits`、`NativeFactory` 和 `NativeExecutor` 新增 `watchdog_disable` 字段，显式结构体初始化需同步更新；`Limits::default()` 与 `NativeExecutor::new()` 默认启用。
 
@@ -478,6 +478,7 @@ Harness 使用 `service.name=areal-core` 标明自身，并通过 `service.insta
 | `areal.model.request.id`                                             | 每次 Engine 模型请求的 UUID；同一请求在收到流之前的 HTTP 重试共用身份                                                                                          |
 | `areal.model.adapter.version`                                        | `areal.model/v1`                                                                                                                                               |
 | `areal.model.request.protocol` / `.transport` / `.purpose`           | `chat-completions` 或 `responses`；`http` 或 `websocket`；`solve` 或 `summary`                                                                                 |
+| `areal.model.request.history_thinking` | 本次请求采用的 `preserve` 或 `omit`；缺少字段的历史记录保持未知 |
 | `areal.model.request.body` / `.sha256`                               | 协议适配、媒体解析、工具 schema 和采样配置应用后的完整请求 JSON **字符串**及其原始 UTF-8 SHA-256；不含认证头。字符串不转成 OTLP 嵌套对象，避免重序列化改变摘要 |
 | `areal.model.request.wire`                                           | Responses WebSocket 实际发送的 JSON 字符串，可能使用 `previous_response_id` 和增量 input；`.body` 仍保存完整有效输入                                           |
 | `gen_ai.response.id` / `.model` / `.finish_reasons`                  | 供应商实际返回的响应 ID、模型名称与结束原因；未返回则缺省，不根据请求别名推断 checkpoint                                                                       |
@@ -492,6 +493,8 @@ Harness 使用 `service.name=areal-core` 标明自身，并通过 `service.insta
 `areal.duration_ms` 按事件类型解释：模型事件记录从客户端准备请求到响应消费结束的逻辑调用耗时，包含网络、服务端排队和内部重试；工具事件记录工具执行耗时；Turn 终态记录完整 Agent 执行耗时。它们都不包含后台上传等待，且模型调用耗时不等于纯服务端推理时间。客户端状态中的模型耗时汇总范围见[配置指南](../guides/configuration.md#持久轨迹导出)。
 
 采集内容受共享预算约束，丢失时标记 `areal.capture.truncated`；完整 JSON 未展开只标记 `areal.capture.json_fallback`。接收端可保留不完整轨迹用于排障；文本 SFT 转换还需校验完整性、成功且被接受的请求、工具链、不可变来源摘要与独立质量验收。多模态外部 URI/本地文件不保证可重取，协议不包含 token logits，不能宣称支持精确多模态重放、soft-logit 蒸馏或 RL rollout。具体配置见[持久轨迹导出](../guides/configuration.md#持久轨迹导出)。
+
+模型输出 `gen_ai.output.messages` 的 `tool_call` part 同时记录检索用的 `arguments` 与原始字符串 `arguments_json`，后者保留参数空白、键序和转义；缺少该字段的历史记录不能用重序列化伪称原文。`model.history_thinking` 默认保留历史 thinking；省略模式仍需下游按相同策略构造实际 tokens，制样应区分请求快照与引擎实际输入，详见[轨迹制样与 SFT](../guides/training-data.md)。
 
 工具执行记录包含可选 `originalArguments`，旧记录可继续读取。参数语义未被 hook 改写时，历史保留原始 JSON 字节。Responses 完成响应按终态 `output` 顺序保存为内部 `modelContext`，保留 reasoning、助手消息的原始 `phase`、消息 ID 和工具调用字段；不根据展示阶段推测或补写供应商未提供的 `phase`。流式展示文字与该完成输出关联，后续请求不重复正文。匹配未改写调用时保留原始 item；hook 改写仍回放实际模型参数，未派发的调用不制造工具结果。Chat 投影保留可见文字及执行调用，不发送 Responses 元数据。旧历史保持原有兼容投影。终态校验失败不释放工具；完成输出的正文和兼容包装不重复计入上下文估算。上下文压缩将请求快照和关联输出作为同一保留单元，压缩后重新建立缓存前缀。
 

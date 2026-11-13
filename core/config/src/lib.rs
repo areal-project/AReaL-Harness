@@ -235,6 +235,23 @@ pub enum ModelProtocolConfig {
     Responses,
 }
 
+/// 历史思考的模型输入投影；不改变本轮生成、存档或训练 loss。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HistoryThinking {
+    #[default]
+    Preserve,
+    Omit,
+}
+impl HistoryThinking {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Preserve => "preserve",
+            Self::Omit => "omit",
+        }
+    }
+}
+
 // Raw endpoint/filter values may contain private query data: use diagnostic().
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -257,6 +274,8 @@ pub struct SelectedModelConfig {
     pub summary_preserve_prefix: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary_quoted_retry: Option<bool>,
+    #[serde(default)]
+    pub history_thinking: HistoryThinking,
     pub reasoning_summary: Option<String>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub responses_websocket: bool,
@@ -404,6 +423,7 @@ impl ResolvedCoreConfig {
             "model": { "provider": self.model.provider, "name": self.model.name,
                 "endpoint": endpoint.as_str(), "protocol": self.model.protocol,
                 "api_key_env": self.model.api_key_env, "reasoning_effort": self.model.reasoning_effort, "service_tier": self.model.service_tier, "summary_reasoning_effort":self.model.summary_reasoning_effort,"summary_max_output_tokens":self.model.summary_max_output_tokens,"summary_preserve_prefix":self.model.summary_preserve_prefix,"summary_quoted_retry":self.model.summary_quoted_retry,
+                "history_thinking": self.model.history_thinking,
                 "reasoning_summary": self.model.reasoning_summary,
                 "responses_websocket": self.model.responses_websocket,
                 "responses_prompt_cache": self.model.responses_prompt_cache,

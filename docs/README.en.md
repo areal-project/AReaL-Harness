@@ -31,3 +31,5 @@ Client UI implementation and design constraints: internal [design rules v1](../c
 - [Answer feedback](guides/user-feedback.en.md)
 
 - [Programmatic tool calling](guides/programmatic-tools.en.md): default composition entry, data dependencies, selected observations and recovery boundaries.
+
+- [Trajectory preparation and SFT](guides/training-data.en.md): prepare samples from actual requests or engine tokens and connect to existing AReaL training.

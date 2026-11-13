@@ -119,7 +119,11 @@ impl HttpModel {
     ) -> Result<ModelStream> {
         let owner = REQUEST_OWNER.try_with(Clone::clone).ok();
         // 摘要不共享求解连接；池只属于此模型实例，凭据变更会重建模型。
-        let reuse_owner = owner.filter(|_| purpose == RequestPurpose::Solve);
+        // omit 不能引用服务端旧响应，即使其 output 没显式返回 reasoning。
+        let reuse_owner = owner.clone().filter(|_| {
+            purpose == RequestPurpose::Solve
+                && self.options.history_thinking == HistoryThinking::Preserve
+        });
         let cached = if let Some(key) = &reuse_owner {
             let mut pool = self.websocket_pool.lock().await;
             pool.entries.retain(|_, v| v.touched.elapsed() < IDLE);
@@ -143,6 +147,7 @@ impl HttpModel {
         // 先检查实际发送封套；超限时连握手请求也不发出。
         let encoded = self.encode_request(&wire, purpose)?;
         let mut audit = audit::Audit::new(self.audit_directory.as_deref(), &body, purpose);
+        audit.value["historyThinking"] = json!(self.options.history_thinking);
         audit.endpoint(&self.endpoint);
         audit.value["transport"] = json!("responses-websocket");
         audit.value["incremental"] = json!(wire.get("previous_response_id").is_some());
@@ -161,7 +166,9 @@ impl HttpModel {
                 "responses_websockets=2026-02-06".parse().unwrap(),
             );
             // 与 Codex 的 Responses 会话标识一致；只发送 Core 生成的身份，不推断后端路由。
-            if let Some((thread, _)) = &reuse_owner {
+            if purpose == RequestPurpose::Solve
+                && let Some((thread, _)) = &owner
+            {
                 let value = thread
                     .parse()
                     .map_err(|_| anyhow::anyhow!("invalid thread identity header"))?;
@@ -601,6 +608,38 @@ mod tests {
             .collect();
         assert_eq!(rows[1]["incremental"], true);
         assert!(rows.iter().all(|v| v["usageObserved"] == true));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn omit_uses_full_input_on_new_connections_even_without_visible_reasoning() {
+        let (endpoint, mut rx, connections, server) = fixture().await;
+        let model = model(endpoint, "fixture")
+            .with_options(ModelOptions {
+                history_thinking: HistoryThinking::Omit,
+                responses_websocket: true,
+                ..Default::default()
+            })
+            .unwrap();
+        let mut history = vec![Message::text("user", "first")];
+        for turn in 0..2 {
+            assert!(
+                run(&model, ("thread", "turn"), history.clone())
+                    .await
+                    .iter()
+                    .all(Result::is_ok)
+            );
+            let wire = rx.recv().await.unwrap();
+            assert!(wire.get("previous_response_id").is_none());
+            assert_eq!(wire["input"].as_array().unwrap().len(), 1 + turn * 2);
+            assert_eq!(wire["sessionHeader"], "thread");
+            assert!(model.websocket_pool.lock().await.entries.is_empty());
+            history.extend([
+                Message::text("assistant", "ok"),
+                Message::text("user", "next"),
+            ]);
+        }
+        assert_eq!(connections.load(Ordering::SeqCst), 2);
         server.abort();
     }
 

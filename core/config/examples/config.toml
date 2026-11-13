@@ -17,6 +17,8 @@ listen = "127.0.0.1:4500"
 # data_dir defaults to <AREAL_HARNESS_HOME>/state.
 
 [model]
+# 历史思考默认保留；需要逐请求省略时设为 "omit"。
+history_thinking = "preserve"
 # 仅 Responses 且服务支持 WebSocket 时显式开启；默认 false。
 # responses_websocket = true
 # reasoning_effort = "xhigh"

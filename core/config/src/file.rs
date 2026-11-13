@@ -396,6 +396,7 @@ fn walk(
                     | "name"
                     | "reasoning_effort"
                     | "service_tier"
+                    | "history_thinking"
                     | "reasoning_summary"
                     | "summary_reasoning_effort"
             ]

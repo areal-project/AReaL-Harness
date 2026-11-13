@@ -396,6 +396,8 @@ impl Serialize for EventPart<'_> {
                 map.serialize_entry("id", &call.id)?;
                 map.serialize_entry("name", &call.name)?;
                 map.serialize_entry("arguments", &Arguments(&call.arguments))?;
+                // 结构化投影供检索；训练导出还需要模型原始参数字符串，不能重序列化代替。
+                map.serialize_entry("arguments_json", &call.arguments)?;
             }
             ModelEvent::ProviderContext(value) => {
                 map.serialize_entry("type", "provider_context")?;
@@ -966,7 +968,7 @@ mod capture_budget_tests {
         operation.observe(&ModelEvent::ToolCall(super::super::model::ToolCall {
             id: "call".into(),
             name: "read".into(),
-            arguments: "[1,{\"x\":true}]".into(),
+            arguments: "[ 1, {\"x\": true} ]".into(),
         }));
         operation.observe(&ModelEvent::ProviderContext(
             serde_json::json!({"opaque": [1,2]}),
@@ -985,6 +987,7 @@ mod capture_budget_tests {
         assert_eq!(parts[0]["content"], fragments.concat());
         assert_eq!(parts[1]["source"]["kind"], "summary");
         assert_eq!(parts[2]["arguments"], serde_json::json!([1, {"x": true}]));
+        assert_eq!(parts[2]["arguments_json"], "[ 1, {\"x\": true} ]");
         assert_eq!(parts[3]["content"]["opaque"], serde_json::json!([1, 2]));
         assert_eq!(parts[4]["content"], "AAEC/w==");
         assert_eq!(parts[5]["content"], "end");
