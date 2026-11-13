@@ -23,6 +23,52 @@ test("until returns the first accepted observation and reports the last one on t
   );
 });
 
+test("until bounds a stalled read and safely observes a late rejection", async () => {
+  let rejectRead;
+  const read = new Promise((_resolve, reject) => {
+    rejectRead = reject;
+  });
+  let guard;
+  try {
+    await assert.rejects(
+      Promise.race([
+        until(() => read, "stalled read", { timeout: 20 }),
+        new Promise((_, reject) => {
+          guard = setTimeout(() => reject(new Error("deadline did not fire")), 500);
+        }),
+      ]),
+      /Timeout: stalled read/,
+    );
+    rejectRead(new Error("late read failure"));
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    clearTimeout(guard);
+  }
+});
+
+test("until clears its deadline timer when an observation succeeds", async () => {
+  const originalSet = globalThis.setTimeout;
+  const originalClear = globalThis.clearTimeout;
+  const timers = new Set();
+  globalThis.setTimeout = (...args) => {
+    const timer = originalSet(...args);
+    timers.add(timer);
+    return timer;
+  };
+  globalThis.clearTimeout = (timer) => {
+    timers.delete(timer);
+    return originalClear(timer);
+  };
+  try {
+    assert.equal(await until(async () => "ready", "ready", { timeout: 1000 }), "ready");
+    assert.equal(timers.size, 0);
+  } finally {
+    globalThis.setTimeout = originalSet;
+    globalThis.clearTimeout = originalClear;
+    for (const timer of timers) originalClear(timer);
+  }
+});
+
 test("desktop bridge follows the current page and rejects failed commands", async () => {
   const replies = { ok: { ok: true, value: 7 }, bad: { ok: false, error: { message: "no" } } };
   let page = {

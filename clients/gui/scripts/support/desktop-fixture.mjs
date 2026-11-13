@@ -8,15 +8,34 @@ export async function until(
 ) {
   const end = Date.now() + timeout;
   let value;
+  const timeoutError = () =>
+    new Error(
+      `Timeout: ${label}. Last observation ${String(JSON.stringify(value)).slice(0, 4096)}`,
+    );
+  const beforeDeadline = async (operation) => {
+    const remaining = end - Date.now();
+    if (remaining <= 0) throw timeoutError();
+    let timer;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(operation),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(timeoutError()), remaining);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   do {
     abort?.();
-    value = await read();
-    if (await accept(value)) return value;
-    await new Promise((resolve) => setTimeout(resolve, interval));
+    value = await beforeDeadline(read);
+    if (await beforeDeadline(() => accept(value))) return value;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(interval, Math.max(0, end - Date.now()))),
+    );
   } while (Date.now() < end);
-  throw new Error(
-    `Timeout: ${label}. Last observation ${String(JSON.stringify(value)).slice(0, 4096)}`,
-  );
+  throw timeoutError();
 }
 
 // page 会在重启 GUI 后换新，所以传取值函数而不是 page 本身。

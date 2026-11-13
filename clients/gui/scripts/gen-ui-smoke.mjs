@@ -1,3 +1,4 @@
+import { until as untilObservation } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -239,15 +240,13 @@ async function _command(name, request) {
   assert(reply.ok, JSON.stringify(reply));
   return reply.value;
 }
-async function until(predicate, label) {
-  const end = Date.now() + 30000;
-  while (Date.now() < end) {
-    if (modelFailure) throw modelFailure;
-    if (await predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 75));
-  }
-  throw Error(`timeout: ${label}`);
-}
+const until = (predicate, label) =>
+  untilObservation(predicate, label, {
+    interval: 75,
+    abort() {
+      if (modelFailure) throw modelFailure;
+    },
+  });
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
 const project = (snapshot) => snapshot.projects.find((project) => project.root === workspace);
 const pane = (side) =>
