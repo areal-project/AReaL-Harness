@@ -1,0 +1,21 @@
+integrations/gameagent/prepare_profile.py
+  s_bd8d5bb07c65e6::t_e10b9bbc5483b0 35-39
+integrations/gameagent/native_config_append.py
+  s_bd8d5bb07c65e6::t_e10b9bbc5483b0 65-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "13792cfcc4bd8434799d7bc1d6d6a69264f5a334",
+  "prompts": {},
+  "sessions": {
+    "s_bd8d5bb07c65e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d317-71d1-7e23-8f31-132818788694",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
