@@ -1425,6 +1425,7 @@ export function Messages({
                                         // prettier-ignore
                                         detailsLoading={processRecords.some((record: Data) => localThread.displayHistory?.loadingItems?.[record.id])}
                                         // prettier-ignore
+                                        // raw-error-ok: 历史读取错误已在 ConversationHistory 中转为词条
                                         detailsError={processRecords.some((record: Data) => record.id === history.failure?.itemId) ? history.failure?.message : undefined}
                                         {...disclosure}
                                         onOpenResult={

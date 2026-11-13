@@ -154,9 +154,7 @@ try {
   );
   checks.push("Long service home opens a connected project through the directory picker");
   await createProjectConversation(page, "workspace");
-  const browserExplanation = page.getByText("发送第一条消息或打开已有聊天后，即可使用浏览器。", {
-    exact: true,
-  });
+  const browserExplanation = page.getByRole("heading", { name: "浏览器", exact: true });
   await page.keyboard.press("Meta+t");
   await browserExplanation.waitFor();
   assert.equal(await page.getByTestId("toast").count(), 0);
