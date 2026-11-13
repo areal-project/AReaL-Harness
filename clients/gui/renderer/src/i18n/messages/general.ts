@@ -552,6 +552,17 @@ export const generalMessages = {
     "zh-CN": "读取中…",
     en: "Loading…",
   },
+  "settings.betaUpdates.section": { "zh-CN": "软件更新", en: "Software updates" },
+  "settings.betaUpdates.advanced": { "zh-CN": "高级", en: "Advanced" },
+  "settings.betaUpdates.label": { "zh-CN": "接收 Beta 版本", en: "Get beta versions" },
+  "settings.betaUpdates.description": {
+    "zh-CN": "更早体验新功能，可能不稳定。关闭后停在当前版本，直到正式版追上。",
+    en: "Try new features earlier; they may be unstable, and the background service updates too. Turning this off keeps the current version until a stable release catches up.",
+  },
+  "settings.betaUpdates.saveFailed": {
+    "zh-CN": "更新设置保存失败",
+    en: "Failed to save update settings",
+  },
   "settings.menuBarSetting.failedToSaveMenuBarSettings": {
     "zh-CN": "菜单栏设置保存失败",
     en: "Failed to save menu bar settings",
@@ -695,6 +706,14 @@ export const generalMessages = {
   "settings.modelSettings.disabled": {
     "zh-CN": "已停用",
     en: "Disabled",
+  },
+  "settings.modelSettings.keychainLocked": {
+    "zh-CN": "钥匙串访问受限，请重新输入并保存密钥",
+    en: "Keychain access restricted; re-enter and save API key",
+  },
+  "settings.modelSettings.credentialMigrating": {
+    "zh-CN": "正在恢复凭据",
+    en: "Restoring credentials",
   },
   "settings.modelSettings.missingCredentials": {
     "zh-CN": "缺少凭据",
@@ -961,8 +980,8 @@ export const generalMessages = {
     en: "Select a provider on the left or add a new one.",
   },
   "settings.modelSettings.fallbackDefaultModel": {
-    "zh-CN": "备用默认模型",
-    en: "Fallback default model",
+    "zh-CN": "新会话默认模型",
+    en: "Default model for new sessions",
   },
   "settings.modelSettings.openSessionSettings": {
     "zh-CN": "前往会话配置",
@@ -1005,16 +1024,16 @@ export const generalMessages = {
     en: "New sessions",
   },
   "settings.newSessionModelSetting.newSessionsUseTheModelAndReasoning": {
-    "zh-CN": "新会话沿用上次使用的模型和思考强度；没有记录时用备用默认模型。",
-    en: "New sessions use the last model and reasoning effort you used, or the fallback default if there is none.",
+    "zh-CN": "新会话沿用上次使用的模型和思考强度；没有记录时用默认模型。",
+    en: "New sessions use the last model and reasoning effort you used, or the default model if there is none.",
   },
   "settings.newSessionModelSetting.commandLineOrEnvironmentSettingsOverrideFile": {
     "zh-CN": "命令行或环境配置覆盖了文件值；保存不会修改这些覆盖。",
     en: "Command-line or environment settings override file values. Saving does not change those overrides.",
   },
   "settings.newSessionModelSetting.fallbackDefaultModel": {
-    "zh-CN": "备用默认模型",
-    en: "Fallback default model",
+    "zh-CN": "新会话默认模型",
+    en: "Default model for new sessions",
   },
   "settings.newSessionModelSetting.notSet": {
     "zh-CN": "尚未设置",

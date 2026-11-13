@@ -25,10 +25,6 @@ exports: ["Card", "CardHeader", "CardFooter", "CardTitle", "CardAction", "CardDe
 
 有/无标题、有/无动作、内容增长。
 
-## 行为
-
-`R-CARD-001` 纯布局，不创建第二个滚动区或把业务状态写入卡片。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

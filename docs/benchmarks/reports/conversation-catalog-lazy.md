@@ -127,7 +127,7 @@ Codex 官方接口区分已加载会话、存储历史分页、数据库目录�
 
 保留早期一次 Workgroup 用例 5 秒超时：单独与完整重跑通过，原因未完全归因；另一次完整矩阵主动中断，不纳入通过数。保留编译/Clippy 修复、CLI 根会话断言错误及全部开发对照，没有用最终通过覆盖早期失败。最后一轮生产代码冻结，未根据确认结果调整机制。
 
-每模式每场景独立 5 个进程并轮换先后顺序；每个进程查询预热 2 次，保留 10 次（完整目录 5 次），先取进程内中位数再取 5 进程中位数。RSS 由 ps 分阶段读取，time -l 进程峰值另存原始数据；峰值若包含全部打开，不能当作初始驻留量。全部构建与功能测试在计时前完成。单机、共享宿主、5 个进程不代表稳定 p95 或跨平台结论；样本范围、所有原始值、退出状态、输入 hash、源码与程序 SHA-256 见[结果 JSON](conversation-catalog-lazy-results.json)。
+每模式每场景独立 5 个进程并轮换先后顺序；每个进程查询预热 2 次，保留 10 次（完整目录 5 次），先取进程内中位数再取 5 进程中位数。RSS 由 ps 分阶段读取，time -l 进程峰值另存原始数据；峰值若包含全部打开，不能当作初始驻留量。全部构建与功能测试在计时前完成。单机、共享宿主、5 个进程不代表稳定 p95 或跨平台结论；样本范围、所有原始值、退出状态、输入 hash、源码与程序 SHA-256 保存在 `conversation-catalog-lazy-results.json`（在提交 82f227a9 的 Git 历史里）。
 
 ```sh
 cargo test --locked --release -p areal-app-server --lib --no-run --jobs 3
@@ -146,7 +146,7 @@ AREAL_CATALOG_TEST_BACKEND=sqlite-lazy node clients/gui/scripts/large-history-sm
 
 边界回归扩为 **19 项、全部通过**，覆盖初始化五阶段、收紧上限、重复身份、缓存写者占用、符号/硬链接和事实验证完成后等待发布锁时取消。推荐模式重新完成全量回归：**873 通过、0 失败、19 显式忽略**；上一轮超时用例连续单独复测五次均通过。默认和两个按需模式的真实 TUI/Core/Runtime smoke、推荐模式的大历史/归档/序列化 Unicode 条目与重连检查、GUI 历史和刷新、Clippy 及文档检查另行复测。
 
-修复后冻结同一 release 程序，四模式、四代表场景各独立重复五次；夹具准备与观测进程分开，无构建或功能测试干扰。下表每格为**缓存复用启动 ms / 初始 Core RSS MiB**；完整样本包括构建、单事实变化、查询、首读、首执行及全打开代价，见[复核结果 JSON](conversation-catalog-lazy-audit-results.json)。原大矩阵仍对应前一冻结程序，不把两个版本的样本混合统计。
+修复后冻结同一 release 程序，四模式、四代表场景各独立重复五次；夹具准备与观测进程分开，无构建或功能测试干扰。下表每格为**缓存复用启动 ms / 初始 Core RSS MiB**；完整样本包括构建、单事实变化、查询、首读、首执行及全打开代价，保存在 `conversation-catalog-lazy-audit-results.json`（在提交 82f227a9 的 Git 历史里）。原大矩阵仍对应前一冻结程序，不把两个版本的样本混合统计。
 
 | 场景 | memory | sqlite | memory-lazy | sqlite-lazy |
 |---|---:|---:|---:|---:|
@@ -187,7 +187,7 @@ AREAL_CATALOG_TEST_BACKEND=sqlite-lazy node clients/gui/scripts/large-history-sm
 
 保留环境失败与对照：本机代理接管 loopback 时，未修改主分支同样出现 fork 用例停滞；保留原排除项并加入 loopback 后通过。下载器合同会主动切换大写代理变量，宿主小写代理与 `no_proxy` 覆盖了该夹具；仅此测试进程隔离宿主代理后原用例通过，未修改生产下载器或放宽断言。早期缺少 GUI/根依赖、失败的类型/格式尝试及静态源码行数失败均保留。GUI 旧源码基准首次因 pnpm 应用依赖搜索路径缺失而未进入测量；基准脚本改用已加载生产模块的搜索路径后完成五轮，失败尝试另存。
 
-同一最终 release 程序、四模式各四场景、每格五个独立进程；共 324 次准备及观测进程。全部构建和功能测试先于计时，OS 文件缓存已暖。表中每格为**复用缓存启动 ms / 初始 Core RSS MiB**，不包含 Runtime/Electron、进程创建或夹具准备，不与前文旧程序样本混合。大元数据夹具另含每会话 1 KiB 正文；混合夹具为每会话 12 KiB 正文与 6 KiB 元数据，含子会话及归档。完整原始值、代价、源码/二进制身份和失败记录见[集成结果 JSON](conversation-catalog-integration-results.json)。
+同一最终 release 程序、四模式各四场景、每格五个独立进程；共 324 次准备及观测进程。全部构建和功能测试先于计时，OS 文件缓存已暖。表中每格为**复用缓存启动 ms / 初始 Core RSS MiB**，不包含 Runtime/Electron、进程创建或夹具准备，不与前文旧程序样本混合。大元数据夹具另含每会话 1 KiB 正文；混合夹具为每会话 12 KiB 正文与 6 KiB 元数据，含子会话及归档。完整原始值、代价、源码/二进制身份和失败记录保存在 `conversation-catalog-integration-results.json`（在提交 82f227a9 的 Git 历史里）。
 
 | 场景 / Scenario | memory | sqlite | memory-lazy | sqlite-lazy |
 |---|---:|---:|---:|---:|

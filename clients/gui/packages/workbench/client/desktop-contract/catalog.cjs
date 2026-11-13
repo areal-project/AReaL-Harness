@@ -14,7 +14,7 @@ const tasks = require("./management-tasks.cjs");
 /** @typedef {import('./provider.cjs').AcceptedModel} AcceptedModel */
 /** @typedef {{providerId:string|null,providerName?:string,modelId:string,displayName:string,available:boolean,credentialState?:string,isDefault:boolean,parameters:ModelParameters,capabilities?:ModelCapabilities,reasoningEffortOptions:string[]}} ProjectlessModel */
 /** @typedef {{models:ProjectlessModel[],lastAcceptedModel:AcceptedModel|null}} ProjectlessCatalog */
-/** @typedef {{operation:'catalog'}|{operation:'directory',path:string}|{operation:'prepare',requestId:string,directory?:string}} ProjectlessRequest */
+/** @typedef {{operation:'catalog'}|{operation:'directory',path:string}|{operation:'prepare',requestId:string,directory?:string}|{operation:'scratch'}} ProjectlessRequest */
 /** @typedef {{limit?:number,requestId?:string,viewEpoch?:number} & ({operation:'inbox',projectId?:string,sourceThreadId?:never}|({operation:'list'|'preview'|'observe'} & ({projectId?:string,sourceThreadId?:never}|{projectId:string,sourceThreadId:string})))} TasksRequest */
 /** @typedef {{kind:'empty'|'snapshot'|'complete'|'partial'}|{kind:'requiresCore',reason:'unbound'|'legacyFormat'|'readBudgetExceeded'}} Coverage */
 /** @typedef {{projectId:string,executionProjectId?:string} & ({status:'ready',connectionGeneration:number,source?:'live',coverage?:Coverage,readAt?:number}|{status:'unobserved',source:'published',coverage:Coverage,readAt:number,connectionGeneration?:never}|{status:'error',source?:'live'|'published',coverage?:Coverage,readAt?:number,connectionGeneration?:number})} CatalogOwner */
@@ -26,7 +26,7 @@ const tasks = require("./management-tasks.cjs");
 /** @typedef {{data:(CatalogTask|CatalogInbox)[],errors:CatalogError[],hasMore:boolean,owners:CatalogOwner[],projectId?:string,requestId?:string,viewEpoch?:number,source?:'published',executionState?:'unobserved'}} TasksResponse */
 /** @typedef {{since:number,today:string,yesterday:string,days:Record<string,{activeMs:number,tokens:number,skillCalls:number}>,activeMs:number,activeDays:number,streak:number,longestStreak:number,tokens:number,undatedTokens:number,reportedTurns:number,skillCalls:number,undatedSkills:number,skills:Array<{name:string,calls:number}>,syncing:boolean,error:string|null}} AnalyticsSummary */
 /** @template {string} N @typedef {N extends 'projectless' ? ProjectlessRequest : N extends 'tasks' ? TasksRequest : N extends 'analytics' ? {operation:'read'|'sync'} : never} Request */
-/** @template {string} N @template P @typedef {N extends 'projectless' ? P extends {operation:'catalog'} ? ProjectlessCatalog : P extends {operation:'directory'} ? {directory:string} : P extends {operation:'prepare'} ? {projectId:string,cwd:string} : never : N extends 'tasks' ? P extends {operation:'list'|'inbox'|'preview'|'observe'} ? Omit<TasksResponse,'data'|'owners'> & {data:(P extends {operation:'inbox'} ? CatalogInbox : CatalogTask)[],owners:(P extends {operation:'observe'} ? ObservedCatalogOwner : P extends {operation:'preview'} ? Exclude<CatalogOwner,{status:'ready'}> : CatalogOwner)[]} & (P extends {operation:'preview'} ? {source:'published',executionState:'unobserved'} : {}) : never : N extends 'analytics' ? P extends {operation:'read'|'sync'} ? AnalyticsSummary : never : never} Response */
+/** @template {string} N @template P @typedef {N extends 'projectless' ? P extends {operation:'catalog'} ? ProjectlessCatalog : P extends {operation:'directory'} ? {directory:string} : P extends {operation:'prepare'|'scratch'} ? {projectId:string,cwd:string} : never : N extends 'tasks' ? P extends {operation:'list'|'inbox'|'preview'|'observe'} ? Omit<TasksResponse,'data'|'owners'> & {data:(P extends {operation:'inbox'} ? CatalogInbox : CatalogTask)[],owners:(P extends {operation:'observe'} ? ObservedCatalogOwner : P extends {operation:'preview'} ? Exclude<CatalogOwner,{status:'ready'}> : CatalogOwner)[]} & (P extends {operation:'preview'} ? {source:'published',executionState:'unobserved'} : {}) : never : N extends 'analytics' ? P extends {operation:'read'|'sync'} ? AnalyticsSummary : never : never} Response */
 /** @param {unknown} value @returns {value is string} */
 function text(value) {
   return typeof value === "string";
@@ -42,6 +42,8 @@ function isRequest(name, value) {
   if (name === "projectless") {
     if (value.operation === "catalog") return true;
     if (value.operation === "directory") return text(value.path);
+    if (value.operation === "scratch")
+      return Object.keys(value).every((key) => key === "operation");
     return (
       value.operation === "prepare" &&
       text(value.requestId) &&
@@ -259,6 +261,10 @@ function isResponse(name, request, value) {
       (value.lastAcceptedModel === null || isAcceptedModel(value.lastAcceptedModel))
     );
   if (request.operation === "directory") return text(value.directory);
-  return request.operation === "prepare" && identifier(value.projectId) && text(value.cwd);
+  return (
+    (request.operation === "prepare" || request.operation === "scratch") &&
+    identifier(value.projectId) &&
+    text(value.cwd)
+  );
 }
 module.exports = { isRequest, isResponse, projectlessModel, taskCatalog, analytics };

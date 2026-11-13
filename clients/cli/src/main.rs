@@ -1,12 +1,17 @@
 //! 统一产品命令；子命令只装配已有入口，历史、工具循环和队列仍属于 Core。
 mod cloud;
+mod history_snapshot;
+mod host;
 mod local;
 mod plugins;
 mod rpc;
 mod run;
 mod service;
+mod space;
+mod tasks;
 mod trajectory;
 mod upgrade;
+mod worktree;
 use anyhow::{Result, ensure};
 use clap::{CommandFactory, Parser, Subcommand};
 use std::path::PathBuf;
@@ -29,6 +34,12 @@ struct MultitoolCli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// 创建或选择隔离空间，不导入旧任务或凭据。
+    Space(space::Options),
+    /// 经 Host 管理定时任务与收件箱，无需 GUI。
+    Tasks(tasks::Options),
+    /// 经 Host 管理 Git 工作树，无需 GUI。
+    Worktree(worktree::WorktreeArgs),
     /// 在通用 Cloud 后端提交和读取无状态任务。
     Cloud(cloud::Options),
     /// 显示当前版本；等价于 --version。
@@ -47,12 +58,15 @@ enum Command {
         #[command(subcommand)]
         command: service::ServiceCommand,
     },
+    /// 管理每用户共享 Host 与项目生命周期。
+    Host {
+        #[command(subcommand)]
+        command: host::HostCommand,
+    },
     /// 管理共享 Core 的 Codex 插件包。
     Plugin(plugins::Options),
-    /// 复用本地服务并打开 Web；--json 只返回连接描述。
+    /// 打开 Host 发布的网页；--json 只返回连接描述。
     Web {
-        #[command(flatten)]
-        local: Box<areal_local_service::LocalArgs>,
         #[arg(long)]
         json: bool,
     },
@@ -217,6 +231,7 @@ async fn main() {
             println!("{}", areal_server::build_info());
             return;
         }
+        Some(Command::Space(options)) => space::run(options).await,
         Some(Command::Cloud(options)) => cloud::run(options).await,
         Some(Command::Upgrade { check }) => upgrade::run(check).await,
         Some(Command::Plugin(options)) => plugins::run(options).await,
@@ -229,19 +244,28 @@ async fn main() {
             if args.interactive.is_headless() {
                 trajectory::with_stderr_notice(notice, areal_tui::run(args.interactive)).await
             } else {
-                areal_tui::run_with_trajectory_notice(args.interactive, notice).await
+                let (sender, release) = tokio::sync::oneshot::channel();
+                tokio::spawn(async move {
+                    if let Some(notice) = upgrade::release_notice().await {
+                        let _ = sender.send(notice);
+                    }
+                });
+                areal_tui::run_with_notices(args.interactive, notice, Some(release)).await
             }
         }
         Some(Command::Exec(cli)) => {
             execute(*cli).await;
             return;
         }
+        Some(Command::Tasks(options)) => tasks::execute(options).await,
+        Some(Command::Worktree(options)) => worktree::run(options).await,
+        Some(Command::Host { command }) => host::execute(command).await,
         Some(Command::Service { command }) => {
             service_result(service::execute(command).await);
             return;
         }
-        Some(Command::Web { local, json }) => {
-            service_result(service::web(*local, json).await);
+        Some(Command::Web { json }) => {
+            service_result(service::web(json).await);
             return;
         }
         Some(Command::Serve { args }) => areal_service_host::launcher::run(args).await,
@@ -288,7 +312,7 @@ async fn execute(args: Cli) {
     let code = match result {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("AReaL: {error}");
+            eprintln!("AReaL: {error:#}");
             if args.output_format != "text" {
                 let value = serde_json::json!({"type":"result","subtype":"error_during_execution","is_error":true,"session_id":args.resume.as_deref().unwrap_or(""),"errors":[error.to_string()],"duration_ms":started.elapsed().as_millis(),"num_turns":0,"stop_reason":null,"uuid":key()});
                 let _ = run::emit(&value);

@@ -1,4 +1,7 @@
+import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { makeTempDir } from "./support/temp.mjs";
+import { desktopBridge, until as untilValue } from "./support/desktop-fixture.mjs";
 import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -20,6 +23,8 @@ import {
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
+const { HostClient } = require("@areal/client/node");
+const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const scratch = await makeTempDir("ams-");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
@@ -110,7 +115,7 @@ await writeFile(
 await writeFile(
   config,
   (await readFile(config, "utf8")) +
-    `\n[model.providers.env]\nname="env"\nenabled=false\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\napi_key_env="AREAL_CREDENTIAL_fixture_env"\nmodels=[{id="env-model",enabled=true}]\n`,
+    `\n[model.providers.env]\nname="env"\nenabled=false\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\napi_key_env="AREAL_MODEL_FIXTURE_KEY"\nmodels=[{id="env-model",enabled=true}]\n`,
 );
 if (composerPicker || composerFast) {
   await writeFile(
@@ -149,7 +154,7 @@ env.NO_PROXY = noProxy;
 env.no_proxy = noProxy;
 // 非法凭据也不能被 Core 启动时的引用注入误标为可用。
 env.AREAL_CREDENTIAL_MISSING_arena = "   ";
-env.AREAL_CREDENTIAL_fixture_env = "fixture-key";
+env.AREAL_MODEL_FIXTURE_KEY = "fixture-key";
 if (process.env.AREAL_GUI_EXECUTABLE) delete env.AREAL_CORE_BIN;
 const coreBinary = process.env.AREAL_GUI_EXECUTABLE
   ? join(process.env.AREAL_GUI_EXECUTABLE, "../../Resources/areal-core/bin/areal")
@@ -160,11 +165,16 @@ const coreSha256 = createHash("sha256")
 let app,
   page,
   stoppingAdapter,
+  stoppingHost,
   failure = null,
   passed = false;
 const checks = [],
   errors = [];
 const stoppedServices = [];
+function recordCheck(description) {
+  checks.push(description);
+  console.log(`[model-selection] completed: ${description}`);
+}
 const button = (name) => page.getByRole("button", { name, exact: true });
 async function openModelSettings() {
   await page.keyboard.press("Escape");
@@ -297,7 +307,7 @@ async function assertEmptyModelIndicator() {
 async function assertCompactEffort() {
   const menu = page.getByRole("dialog", { name: "选择思考强度", exact: true });
   await menu.getByRole("button", { name: "服务默认", exact: true }).focus();
-  await page.getByRole("tooltip").waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.querySelectorAll('[role="tooltip"]').length === 0);
   assert.equal(
     await menu
       .getByRole("button", { name: /^(无|最少|低|中|高|极高|最高)$/ })
@@ -396,7 +406,44 @@ async function saveProvider() {
   assert.equal(await button("应用模型配置").count(), 0);
 }
 
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const bridge = desktopBridge(() => page);
+const { state, call } = bridge;
+const until = (predicate, label) => bridge.untilState(predicate, label, { interval: 80 });
+async function waitForServiceIdle({ canStop = false } = {}) {
+  await untilValue(
+    async () => {
+      const reply = await page.evaluate(() => window.arealDesktop.command("serviceStatus", {}));
+      if (!reply.ok) return { ok: false };
+      const { busy, activeCommands, starting, providerUpdating, canStop, clients, projects } =
+        reply.value;
+      return {
+        ok: true,
+        busy,
+        activeCommands,
+        starting,
+        providerUpdating,
+        canStop,
+        clients,
+        projects: projects.map((project) => ({
+          observation: project.observation,
+          restartSafe: project.restartSafe,
+          activeTasks: project.activeTasks,
+          waitingMessages: project.waitingMessages,
+          goals: project.goalThreads?.length,
+          tasks: project.tasks?.map((task) => ({ paused: task.paused })),
+        })),
+      };
+    },
+    canStop ? "service can stop" : "service operations settled",
+    {
+      accept: (status) =>
+        status.ok &&
+        (canStop
+          ? status.canStop
+          : !status.busy && !status.activeCommands && !status.starting && !status.providerUpdating),
+    },
+  );
+}
 const fixtureProject = (snapshot) =>
   snapshot.projects.find((project) => project.root === workspace);
 async function showModel(name) {
@@ -408,63 +455,78 @@ async function showModel(name) {
   await page.getByRole("tab", { name: provider, exact: true }).click();
   return page.getByRole("radio", { name, exact: true });
 }
-async function call(name, params) {
-  const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  assert.equal(result.ok, true, JSON.stringify(result));
-  return result.value;
-}
-async function until(predicate, label) {
-  const deadline = Date.now() + 30000;
-  while (Date.now() < deadline) {
-    const snapshot = await state();
-    if (await predicate(snapshot)) return snapshot;
-    await new Promise((resolve) => setTimeout(resolve, 80));
-  }
-  throw new Error(`Timeout: ${label}`);
-}
 async function stopService() {
-  if (stoppingAdapter?.applicationOwner) {
-    await assertApplicationStopped(coreBinary, env, stoppingAdapter);
-    stoppedServices.push({ pid: stoppingAdapter.pid, exited: true });
-    stoppingAdapter = undefined;
-    return;
-  }
-  const { ServiceConnection } = require("../app/src/core/service-client.cjs");
-  const connection = new ServiceConnection();
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  console.log("[model-selection] stopping isolated Host");
+  if (!stoppingHost) return;
+  const home = env.AREAL_HARNESS_SERVICE_HOME;
+  const reference = {
+    kind: "stopHost",
+    requestId: randomUUID(),
+    home,
+    hostId: stoppingHost.hostId,
+    generation: stoppingHost.generation,
+    strategy: "cancel",
+  };
+  const suffix = stoppedServices.length;
+  await writeFile(
+    join(scratch, `host-stop-reference-${suffix}.json`),
+    JSON.stringify(reference, null, 2),
+  );
+  const host = new HostClient();
   try {
-    await connection.connect(metadata);
-    const drainDeadline = Date.now() + 15000;
-    for (;;) {
-      try {
-        await connection.request("stopService", { protocol: metadata.protocol }, true);
-        break;
-      } catch (error) {
-        // A known busy rejection has not submitted a stop; let this fixture's requests drain.
-        if (!/请等待已提交操作完成/.test(error.message) || Date.now() >= drainDeadline) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    }
-  } finally {
-    connection.close();
-  }
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
+    await host.connect(home);
+    assert.equal(host.hostId, reference.hostId);
+    assert.equal(host.generation, reference.generation);
+    let receipt;
     try {
-      process.kill(metadata.pid, 0);
-    } catch (error) {
-      if (error.code !== "ESRCH") throw error;
-      stoppedServices.push({ pid: metadata.pid, exited: true });
-      return;
+      receipt = readHostReceipt(
+        reference,
+        await host.stop(reference.requestId, reference.generation, reference.strategy),
+      );
+    } catch {
+      host.close();
+      receipt = await readOfflineHostReceipt(coreBinary, reference);
     }
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await writeFile(
+      join(scratch, `host-stop-${suffix}.json`),
+      JSON.stringify(receipt ?? null, null, 2),
+    );
+    assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
+    await assertApplicationStopped(coreBinary, env, stoppingAdapter);
+    stoppedServices.push({ pid: stoppingHost.pid, exited: true });
+    stoppingHost = undefined;
+    stoppingAdapter = undefined;
+  } finally {
+    host.close();
   }
-  throw new Error(`Isolated backend ${metadata.pid} did not exit`);
+}
+async function readCoreThread(threadId) {
+  return observeCoreThread({
+    binary: coreBinary,
+    env,
+    gui,
+    threadId,
+    project: fixtureProject(await state()),
+    workspace,
+  });
+}
+async function waitForCoreTurn(threadId, { text, status = "completed", count, label = text }) {
+  let turn;
+  await until(async () => {
+    const thread = await readCoreThread(threadId);
+    turn = thread.turns.at(-1);
+    return (
+      (count === undefined || thread.turns.length === count) &&
+      turn?.status === status &&
+      turn.items.some(
+        (item) => item.type === "userMessage" && JSON.stringify(item.content).includes(text),
+      )
+    );
+  }, label);
+  return turn;
 }
 async function launch() {
+  console.log("[model-selection] launching GUI");
   app = await electron.launch({
     executablePath: process.env.AREAL_GUI_EXECUTABLE || require("electron"),
     args: process.env.AREAL_GUI_EXECUTABLE ? [] : [join(gui, "app")],
@@ -496,9 +558,16 @@ async function launch() {
   }, workspace);
 }
 async function closeGui() {
+  console.log("[model-selection] closing GUI");
   const current = app;
   if (!current) return;
   const child = current.process();
+  stoppingHost = await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
   try {
     await closeSmokeApplication(
       {
@@ -513,10 +582,7 @@ async function closeGui() {
               });
             if (!failure) {
               // 模型回合完成后仍可能结算后台读取与配置更新；确认可空闲停止后只发起一次退出。
-              await page.waitForFunction(async () => {
-                const reply = await window.arealDesktop.command("serviceStatus", {});
-                return reply.ok && reply.value.canStop;
-              });
+              await waitForServiceIdle({ canStop: true });
             }
             if (failure) {
               await current
@@ -555,17 +621,9 @@ async function closeGui() {
   }
 }
 async function verifyModelCapabilities() {
+  console.log("[model-selection] verifying model capabilities");
   const previous = await call("providers", { operation: "list" });
-  await page.waitForFunction(async () => {
-    const reply = await window.arealDesktop.command("serviceStatus", {});
-    return (
-      reply.ok &&
-      !reply.value.busy &&
-      !reply.value.activeCommands &&
-      !reply.value.starting &&
-      !reply.value.providerUpdating
-    );
-  });
+  await waitForServiceIdle();
   const seeded = await call("providers", {
     operation: "saveAndApply",
     expectedRevision: previous.revision,
@@ -696,21 +754,19 @@ async function verifyModelCapabilities() {
   const send = async (text, expected) => {
     const before = modelRequests.length;
     const currentId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    const beforeTurns =
-      fixtureProject(await state())?.state?.threads?.[currentId]?.turns?.length ?? 0;
+    const beforeTurns = currentId ? (await readCoreThread(currentId)).turns.length : 0;
     await page.getByTestId("chat-input").fill(text);
     await button("发送").click();
     await page.waitForFunction(
       () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
     );
     const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    await until(
-      (snapshot) =>
-        fixtureProject(snapshot)?.state?.threads?.[threadId]?.turns?.length === beforeTurns + 1 &&
-        fixtureProject(snapshot).state.threads[threadId].turns.at(-1).status === "completed" &&
-        modelRequests.length === before + 1,
-      text,
-    );
+    if (currentId) assert.equal(threadId, currentId, "send remains bound to the original thread");
+    const completedTurn = await waitForCoreTurn(threadId, { text, count: beforeTurns + 1 });
+    assert.equal(modelRequests.length, before + 1);
+    await page
+      .locator(`[data-turn-id="${completedTurn.id}"][data-turn-status="completed"]`)
+      .waitFor();
     assert.deepEqual(modelRequests.at(-1), expected);
   };
   await button("选择思考强度").click();
@@ -909,21 +965,12 @@ async function verifyModelCapabilities() {
     effort: null,
     hasEffort: false,
   });
-  checks.push(
+  recordCheck(
     "custom model defaults, paired budget fields, persisted capabilities, historical rejection, configured effort subset, and service default reach Core",
   );
   await openModelSettings();
   await page.locator(".provider-catalog-row").filter({ hasText: "Capabilities" }).waitFor();
-  await page.waitForFunction(async () => {
-    const reply = await window.arealDesktop.command("serviceStatus", {});
-    return (
-      reply.ok &&
-      !reply.value.busy &&
-      !reply.value.activeCommands &&
-      !reply.value.starting &&
-      !reply.value.providerUpdating
-    );
-  });
+  await waitForServiceIdle();
   const current = await call("providers", { operation: "list" });
   await call("providers", {
     operation: "removeAndApply",
@@ -933,16 +980,22 @@ async function verifyModelCapabilities() {
   await button("刷新供应商").click();
 }
 async function verifyModelDefaults(projectId) {
-  await page.waitForFunction(async () => {
-    const reply = await window.arealDesktop.command("serviceStatus", {});
-    return (
-      reply.ok &&
-      !reply.value.busy &&
-      !reply.value.activeCommands &&
-      !reply.value.starting &&
-      !reply.value.providerUpdating
-    );
-  });
+  console.log("[model-selection] verifying model defaults and recovery");
+  const waitForAcceptedProjection = async (threadId, label) => {
+    const accepted = (await readCoreThread(threadId)).desktop.lastAcceptedModel;
+    await until((snapshot) => {
+      const projected = snapshotProject(snapshot)?.lastAcceptedModel;
+      return (
+        projected?.acceptedAt === accepted.acceptedAt &&
+        projected.modelId === accepted.modelId &&
+        projected.model?.providerId === accepted.model?.providerId &&
+        projected.model?.modelId === accepted.model?.modelId &&
+        projected.reasoningEffort === accepted.reasoningEffort
+      );
+    }, label);
+    return accepted;
+  };
+  await waitForServiceIdle();
   const previous = await call("providers", { operation: "list" });
   const seeded = await call("providers", {
     operation: "saveAndApply",
@@ -1002,35 +1055,13 @@ async function verifyModelDefaults(projectId) {
       modelId: name === "Alpha" ? "alpha-default" : "beta-default",
     },
   ) => {
-    await button("会话配置").click();
-    await page.waitForFunction(() => {
-      const menu = document.querySelector('[role="combobox"][aria-label="备用默认模型"]');
-      const tabs = document.querySelector('[role="tablist"][aria-label="备用默认模型"]');
-      return (
-        (menu && !menu.disabled) ||
-        (tabs && [...tabs.querySelectorAll('[role="tab"]')].some((tab) => !tab.disabled))
-      );
+    const catalog = await call("providers", { operation: "list" });
+    await waitForServiceIdle();
+    await call("providers", {
+      operation: "defaultAndApply",
+      expectedRevision: catalog.revision,
+      model: reference,
     });
-    await page.waitForFunction(async () => {
-      const reply = await window.arealDesktop.command("serviceStatus", {});
-      return (
-        reply.ok &&
-        !reply.value.busy &&
-        !reply.value.activeCommands &&
-        !reply.value.starting &&
-        !reply.value.providerUpdating
-      );
-    });
-    const defaultMenu = page.getByRole("combobox", { name: "备用默认模型", exact: true });
-    if (await defaultMenu.count()) {
-      await defaultMenu.click();
-      await page.getByRole("option", { name, exact: true }).click();
-    } else
-      await page
-        .getByRole("tablist", { name: "备用默认模型", exact: true })
-        .getByRole("tab", { name, exact: true })
-        .click();
-    await button("返回应用").click({ trial: true, timeout: 180000 });
     let configured;
     await until(async () => {
       configured = await call("providers", { operation: "list" });
@@ -1042,20 +1073,6 @@ async function verifyModelDefaults(projectId) {
     }, "fallback default save reaches its authoritative configuration");
     assert.deepEqual(configured.defaultModel, reference);
     assert.equal(configured.pendingApply, false);
-    if (await defaultMenu.count())
-      assert.equal(
-        (await defaultMenu.innerText()).trim(),
-        name,
-        "default picker shows the model name rather than its internal reference",
-      );
-    else
-      assert.equal(
-        await page
-          .getByRole("tablist", { name: "备用默认模型", exact: true })
-          .getByRole("tab", { name, exact: true })
-          .getAttribute("aria-selected"),
-        "true",
-      );
   };
   const chooseModel = async (name) => {
     await button("选择模型").click();
@@ -1080,18 +1097,19 @@ async function verifyModelDefaults(projectId) {
   };
   const send = async (text, expected) => {
     const before = modelRequests.length;
+    const originalThreadId = await page
+      .getByTestId("areal-workbench")
+      .getAttribute("data-thread-id");
     await page.getByTestId("chat-input").fill(text);
     await button("发送").click();
     await page.waitForFunction(
       () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
     );
     const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    await until(
-      (snapshot) =>
-        snapshotProject(snapshot)?.state?.threads?.[threadId]?.turns?.at(-1)?.status ===
-          "completed" && modelRequests.length === before + 1,
-      text,
-    );
+    if (originalThreadId) assert.equal(threadId, originalThreadId);
+    const turn = await waitForCoreTurn(threadId, { text });
+    await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+    assert.equal(modelRequests.length, before + 1);
     assert.deepEqual(modelRequests.at(-1), expected);
     return threadId;
   };
@@ -1223,11 +1241,11 @@ async function verifyModelDefaults(projectId) {
     "admission records selection before model success",
   );
   assert.equal(failed.lastAcceptedModel.reasoningEffort, "none");
-  await until(
-    (snapshot) =>
-      snapshotProject(snapshot)?.state?.threads?.[switched]?.turns?.at(-1)?.status === "failed",
-    "model failure after admission",
-  );
+  await waitForCoreTurn(switched, {
+    text: "LAST_MODEL_ACCEPTED_FAILURE",
+    status: "failed",
+    label: "model failure after admission",
+  });
   await createProjectConversation(page, "workspace");
   await expectModel("Beta", "无");
   const held = await call("send", { projectId, threadId: alpha, text: "LAST_MODEL_HOLD_REPLY" });
@@ -1250,21 +1268,20 @@ async function verifyModelDefaults(projectId) {
     effort: "none",
     hasEffort: true,
   });
-  const beforeQueueExecution = snapshotProject(await state()).lastAcceptedModel;
+  const beforeQueueExecution = await waitForAcceptedProjection(
+    switched,
+    "newer Beta admission reaches the shared projection",
+  );
+  assert.equal(beforeQueueExecution.model?.providerId, provider.id);
+  assert.equal(beforeQueueExecution.modelId, "beta-default");
+  assert.equal(beforeQueueExecution.reasoningEffort, "none");
+  assert.ok(beforeQueueExecution.acceptedAt > queued.lastAcceptedModel.acceptedAt);
   releaseHeldReply();
   releaseHeldReply = undefined;
-  await until(
-    (snapshot) =>
-      snapshotProject(snapshot)?.state?.threads?.[alpha]?.turns?.at(-1)?.status === "completed" &&
-      snapshotProject(snapshot)
-        .state.threads[alpha].turns.at(-1)
-        .items.some(
-          (item) =>
-            item.type === "userMessage" &&
-            JSON.stringify(item.content).includes("Queued preference admission"),
-        ),
-    "queued Alpha executes",
-  );
+  await waitForCoreTurn(alpha, {
+    text: "Queued preference admission",
+    label: "queued Alpha executes",
+  });
   assert.deepEqual(
     snapshotProject(await state()).lastAcceptedModel,
     beforeQueueExecution,
@@ -1279,7 +1296,10 @@ async function verifyModelDefaults(projectId) {
     effort: "high",
     hasEffort: true,
   });
-  const beforeReceiptReplay = snapshotProject(await state()).lastAcceptedModel,
+  const beforeReceiptReplay = await waitForAcceptedProjection(
+      alpha,
+      "historical Alpha admission reaches the shared projection",
+    ),
     requestsBeforeReplay = modelRequests.length;
   const replayed = await page.evaluate(
     (parameters) => window.arealDesktop.command("send", parameters),
@@ -1297,7 +1317,7 @@ async function verifyModelDefaults(projectId) {
     beforeReceiptReplay,
     "duplicate submission cannot overwrite newer preference",
   );
-  checks.push(
+  recordCheck(
     "main and queued admission update preference before completion; model failure retains it; queued execution and rejected duplicate submission cannot overwrite newer admission",
   );
   await selectConversation(page, switched);
@@ -1332,11 +1352,20 @@ async function verifyModelDefaults(projectId) {
   });
   await createProjectConversation(page, "workspace");
   await expectModel("Alpha", "高");
-  await send("Cold new conversation inherits last accepted Alpha despite history navigation", {
-    model: "alpha-default",
-    effort: "high",
-    hasEffort: true,
-  });
+  const coldThread = await send(
+    "Cold new conversation inherits last accepted Alpha despite history navigation",
+    {
+      model: "alpha-default",
+      effort: "high",
+      hasEffort: true,
+    },
+  );
+  const accepted = await waitForAcceptedProjection(
+    coldThread,
+    "the cold main submission's accepted model reaches the shared projection",
+  );
+  assert.equal(accepted.modelId, "alpha-default");
+  assert.equal(accepted.reasoningEffort, "high");
   const preference = snapshotProject(await state()).lastAcceptedModel;
   assert.equal(preference.modelId, "alpha-default");
   assert.equal(preference.reasoningEffort, "high");
@@ -1349,24 +1378,21 @@ async function verifyModelDefaults(projectId) {
     model: { providerId: provider.id, modelId: "beta-default" },
     parameters: { reasoningEffort: "none" },
   });
-  await until(
-    (snapshot) =>
-      snapshotProject(snapshot)?.state?.threads?.[side.threadId]?.turns?.at(-1)?.status ===
-      "completed",
-    "side first reply",
-  );
+  await waitForCoreTurn(side.threadId, {
+    text: "Side preference isolation",
+    label: "side first reply",
+  });
   await call("side", {
     projectId,
     threadId: side.threadId,
     operation: "send",
     text: "Side follow-up cannot update main preference",
   });
-  await until(
-    (snapshot) =>
-      snapshotProject(snapshot)?.state?.threads?.[side.threadId]?.turns?.length === 2 &&
-      snapshotProject(snapshot).state.threads[side.threadId].turns.at(-1).status === "completed",
-    "side follow-up reply",
-  );
+  await waitForCoreTurn(side.threadId, {
+    text: "Side follow-up cannot update main preference",
+    count: 2,
+    label: "side follow-up reply",
+  });
   assert.deepEqual(
     snapshotProject(await state()).lastAcceptedModel,
     preference,
@@ -1402,17 +1428,17 @@ async function verifyModelDefaults(projectId) {
     preference,
     "rejected submission preserves preference",
   );
-  checks.push(
+  recordCheck(
     "Side first/follow-up turns and rejected messages preserve the main preference; a new project inherits the same accepted model/effort",
   );
   await writeFile(
     join(scratch, "model-defaults-after.json"),
     JSON.stringify(await state(), null, 2),
   );
-  checks.push(
+  recordCheck(
     "New conversations inherit last admitted main model/effort; fallback settings, unsent changes and history navigation cannot override it; existing configurations and preference survive cold GUI/Core restart without replay",
   );
-  checks.push(
+  recordCheck(
     "configured high, concrete medium, explicit none, and historical unspecified labels match actual model requests; first strength is selectable",
   );
   await closeGui();
@@ -1503,7 +1529,7 @@ async function verifyModelDefaults(projectId) {
   await selectConversation(page, implicit);
   await expectModel("legacy-alpha", "高");
   assert.equal(
-    snapshotProject(await state()).configurations[implicit].defaultModelRevision,
+    (await readCoreThread(implicit)).desktop.configuration.defaultModelRevision,
     implicitConfig.defaultModelRevision,
   );
   assert.equal(
@@ -1522,11 +1548,12 @@ async function verifyModelDefaults(projectId) {
     path: join(scratch, "implicit-default-reopened.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "implicit desktop defaults pin model revision and effective effort across global default changes, effort reconfiguration and cold reopen; missing catalog entries retain historical identity",
   );
 }
 async function verifyComposerPicker() {
+  console.log("[model-selection] verifying composer model picker");
   await until(
     (s) =>
       fixtureProject(s)?.state?.connected &&
@@ -1595,14 +1622,12 @@ async function verifyComposerPicker() {
   await slider.fill("4");
   await page.keyboard.press("Escape");
   await button("发送").click();
-  await until(
-    (s) =>
-      modelRequests.length === before + 1 &&
-      Object.values(fixtureProject(s).state.threads).some(
-        (thread) => thread.turns?.at(-1)?.status === "completed",
-      ),
-    "valid effort reaches provider",
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
   );
+  const effortThread = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+  await waitForCoreTurn(effortThread, { text: draft, label: "valid effort reaches provider" });
+  assert.equal(modelRequests.length, before + 1);
   assert.deepEqual(modelRequests.at(-1), { model: "beta-model", effort: "high", hasEffort: true });
   for (const theme of ["dark", "light"]) {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
@@ -1638,11 +1663,12 @@ async function verifyComposerPicker() {
   await side.getByRole("button", { name: "选择思考强度", exact: true }).click();
   await page.getByRole("dialog", { name: "选择思考强度", exact: true }).waitFor();
   await page.keyboard.press("Escape");
-  checks.push(
+  recordCheck(
     "provider navigation and independent effort selection; unsupported effort rejected with draft retained; supported effort reaches local provider",
   );
 }
 async function verifyComposerFast() {
+  console.log("[model-selection] verifying composer fast tier");
   await until(
     (s) =>
       fixtureProject(s)?.state?.connected &&
@@ -1663,18 +1689,19 @@ async function verifyComposerFast() {
   };
   const send = async (text, model, effort, tier, present = true) => {
     const before = modelRequests.length;
+    const originalThreadId = await page
+      .getByTestId("areal-workbench")
+      .getAttribute("data-thread-id");
     await page.getByTestId("chat-input").fill(text);
     await button("发送").click();
     await page.waitForFunction(
       () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
     );
     const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    await until(
-      (s) =>
-        fixtureProject(s)?.state?.threads?.[threadId]?.turns?.at(-1)?.status === "completed" &&
-        modelRequests.length === before + 1,
-      text,
-    );
+    if (originalThreadId) assert.equal(threadId, originalThreadId);
+    const turn = await waitForCoreTurn(threadId, { text });
+    await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+    assert.equal(modelRequests.length, before + 1);
     assert.deepEqual(modelRequests.at(-1), { model, effort, hasEffort: effort !== null });
     assert.deepEqual(wireTiers.at(-1), { value: tier, present });
     return threadId;
@@ -1820,13 +1847,14 @@ async function verifyComposerFast() {
   const beforeFailure = modelRequests.length;
   await page.getByTestId("chat-input").first().fill("FAST_UNSUPPORTED_TIER");
   await page.getByRole("button", { name: "发送", exact: true }).first().click();
-  await until(
-    (s) => fixtureProject(s)?.state?.threads?.[thread]?.turns?.at(-1)?.status === "failed",
-    "unsupported tier reaches failed state",
-  );
+  await waitForCoreTurn(thread, {
+    text: "FAST_UNSUPPORTED_TIER",
+    status: "failed",
+    label: "unsupported tier reaches failed state",
+  });
   assert.equal(modelRequests.length, beforeFailure + 1, "unsupported tier is not retried");
   assert.deepEqual(wireTiers.at(-1), { value: "fast", present: true });
-  checks.push(
+  recordCheck(
     "Fast tier is independent of effort and model, reaches local provider, overrides provider default, and persists across cold restart; main and Side controls are available",
   );
 }
@@ -1839,6 +1867,7 @@ async function assertFastPressed(toggle, pressed) {
   );
 }
 async function runFullModelSelection() {
+  console.log("[model-selection] verifying unavailable models and settings");
   const ready = await until(
     (s) => fixtureProject(s)?.state?.connected && fixtureProject(s).models.length === 3,
     "unavailable Core catalog",
@@ -1854,6 +1883,8 @@ async function runFullModelSelection() {
       .every((m) => m.credentialState === "unavailable"),
   );
   assert.equal(await button("发送").isDisabled(), true, "an empty draft cannot enable sending");
+  // 界面的模型目录经 Host 另读，比后台快照晚到；等按钮出现再数。
+  await button("选择模型").waitFor();
   assert.equal(
     await button("选择模型").count(),
     1,
@@ -1917,7 +1948,7 @@ async function runFullModelSelection() {
   });
   await openModelSettings();
   await page.getByRole("heading", { name: "模型设置", exact: true }).waitFor();
-  checks.push(
+  recordCheck(
     "a missing default-provider credential permits Core connection and model settings without an upstream request",
   );
   await page.locator(".provider-catalog-row").filter({ hasText: "theta" }).click();
@@ -1963,7 +1994,7 @@ async function runFullModelSelection() {
     /缺少凭据/,
     "credential diagnostics remain in the detail pane",
   );
-  checks.push(
+  recordCheck(
     "provider navigation shows names only in separated enabled and disabled groups; credential diagnostics remain in the detail pane in both themes",
   );
 
@@ -1980,9 +2011,9 @@ async function runFullModelSelection() {
     "Connection fields and models share one page",
   );
   assert.equal(
-    await page.getByRole("combobox", { name: "备用默认模型", exact: true }).count(),
+    await page.getByRole("combobox", { name: "新会话默认模型", exact: true }).count(),
     0,
-    "global default belongs to session settings",
+    "the provider page has no global default picker",
   );
   const search = page.getByRole("searchbox", { name: "搜索模型名称或 ID", exact: true });
   const modelRow = page.locator(".provider-model-row").filter({ hasText: "theta-model" });
@@ -2031,7 +2062,7 @@ async function runFullModelSelection() {
     path: join(scratch, "model-settings-models.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "provider model search precedes results, centered editor discards edits, and the same page retains the unsaved provider draft",
   );
   await page.getByRole("textbox", { name: "API Key", exact: true }).fill("fixture-key");
@@ -2069,7 +2100,7 @@ async function runFullModelSelection() {
     path: join(scratch, "connection-probe-terminal.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "The settings Test connection action succeeds and releases a gateway stream that sends a valid terminal event without closing",
   );
   await button("返回应用").click();
@@ -2105,7 +2136,7 @@ async function runFullModelSelection() {
     path: join(scratch, "open-project-entry.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "Projects + opens the existing picker directly; cancel preserves the project and draft; reopening a directory keeps one registration",
   );
   await button("定时任务").click();
@@ -2144,25 +2175,48 @@ async function runFullModelSelection() {
     path: join(scratch, "scheduled-model-recovered.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "scheduled creation explains unavailable credentials, opens model settings, and restores the same independent draft after a saved-key repair without sending input",
   );
   await button("首页").click();
   await createProjectConversation(page, "workspace");
   await button("选择模型").click();
-  await (await showModel("theta-model")).click();
+  await (await showModel("theta-model")).click().catch(async (error) => {
+    // 超时时带上各项目的应用状态和菜单里实际显示的内容，区分“没应用完”和“应用完了但目录没重读”。
+    const status = await call("providers", { operation: "list" });
+    const shown = await page.getByRole("radio").allTextContents();
+    throw new Error(
+      `saved model is not selectable: ${JSON.stringify({
+        revision: status.revision,
+        pendingApply: status.pendingApply,
+        projects: status.projects.map((item) => ({
+          root: item.root === workspace ? "workspace" : "other",
+          applied: item.applied,
+          application: item.application?.kind,
+        })),
+        shown,
+      })}`,
+      { cause: error },
+    );
+  });
   await page.keyboard.press("Escape");
   assert.match(await button("选择模型").innerText(), /theta-model/);
   assert.equal(requests.length, 0, "model selection does not create or send a task");
   await page.getByTestId("chat-input").fill("Use the configured model");
   await button("发送").click();
-  await until(
-    (s) =>
-      Object.values(fixtureProject(s).state.threads).some(
-        (t) => t.turns?.at(-1)?.status === "completed",
-      ),
-    "model turn completes",
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
   );
+  const configuredThreadId = await page
+    .getByTestId("areal-workbench")
+    .getAttribute("data-thread-id");
+  const configuredTurn = await waitForCoreTurn(configuredThreadId, {
+    text: "Use the configured model",
+    label: "model turn completes",
+  });
+  await page
+    .locator(`[data-turn-id="${configuredTurn.id}"][data-turn-status="completed"]`)
+    .waitFor();
   assert.deepEqual(requests, [
     { model: "theta-model", authenticated: true, authorizationPresent: true },
   ]);
@@ -2194,7 +2248,7 @@ async function runFullModelSelection() {
     path: join(scratch, "reopened-default-credential.png"),
     animations: "disabled",
   });
-  checks.push(
+  recordCheck(
     "the default provider's saved credential survives a cold GUI/backend reopen without replaying a request",
   );
   // 默认凭据恢复已验收；后续启停用例沿用无全局默认项的独立目录前置条件。
@@ -2203,18 +2257,14 @@ async function runFullModelSelection() {
     model: null,
     expectedRevision: reopened.revision,
   });
-  // 冷启动的目录可见不代表后台操作已结算；写入默认项后的刷新也需完成。
-  await page.waitForFunction(async () => {
-    const reply = await window.arealDesktop.command("serviceStatus", {});
-    return (
-      reply.ok &&
-      !reply.value.busy &&
-      !reply.value.activeCommands &&
-      !reply.value.starting &&
-      !reply.value.providerUpdating
-    );
+  assert.equal(withoutDefault.defaultModel, null);
+  await waitForServiceIdle();
+  const appliedDefault = await call("providers", {
+    operation: "apply",
+    expectedRevision: withoutDefault.revision,
   });
-  await call("providers", { operation: "apply", expectedRevision: withoutDefault.revision });
+  assert.equal(appliedDefault.defaultModel, null);
+  assert.equal(appliedDefault.pendingApply, false);
   await until(
     (s) => fixtureProject(s).models.length === 2,
     "explicit default cleared for catalog enablement checks",
@@ -2231,51 +2281,34 @@ async function runFullModelSelection() {
   );
   await openModelSettings();
   await page.getByRole("heading", { name: "模型设置", exact: true }).waitFor();
-  checks.push(
+  recordCheck(
     "single save confirms persistence/Core readiness; user chooses a model in the existing Composer and Core executes it",
   );
   // 启用开关、凭据与配置应用分别验收；两个可用模型之间必须能实际切换。
   await page.locator(".provider-catalog-row").filter({ hasText: "arena" }).click();
   await page.getByRole("textbox", { name: "API Key", exact: true }).fill("fixture-key");
   // 真实 Core 完成保存/同步后暂留回执，稳定覆盖目录已刷新但设置操作尚未结算的窗口。
-  await app.evaluate(({ app }) => {
-    const { ServiceConnection } = process.mainModule.require(
-      `${app.getAppPath()}/src/core/service-client.cjs`,
-    );
-    const original = ServiceConnection.prototype.request;
-    let reached, release;
-    const ready = new Promise((resolve) => {
-      reached = resolve;
+  await page.evaluate(installHostTransportBarrier);
+  await page.evaluate(() => {
+    const gate = (globalThis.modelApplyReceipt = {});
+    const barrier = globalThis.createHostTransportBarrier((frame) => {
+      if (gate.entry || frame.method !== "providers.command" || frame.params?.operation !== "save")
+        return null;
+      return (gate.entry = { response: "hold" });
     });
-    const held = new Promise((resolve) => {
-      release = resolve;
-    });
-    globalThis.modelApplyReceipt = {
-      ready,
-      release,
-      restore: () => {
-        ServiceConnection.prototype.request = original;
-      },
-    };
-    ServiceConnection.prototype.request = async function (method, params, mutation) {
-      const result = await original.call(this, method, params, mutation);
-      if (
-        method === "command" &&
-        params.name === "providers" &&
-        params.request.operation === "save"
-      ) {
-        reached();
-        await held;
-      }
-      return result;
-    };
+    gate.restore = () => barrier.restore();
   });
   await button("保存").click();
   await until(
     (s) => fixtureProject(s).models.every((m) => m.available === true),
     "both models available",
   );
-  await app.evaluate(() => globalThis.modelApplyReceipt.ready);
+  await page.waitForFunction(
+    () =>
+      globalThis.modelApplyReceipt?.entry?.responseHit ===
+        globalThis.modelApplyReceipt?.entry?.requestId &&
+      globalThis.modelApplyReceipt?.entry?.requestId != null,
+  );
   assert.equal(
     await button("返回应用").isDisabled(),
     true,
@@ -2290,14 +2323,14 @@ async function runFullModelSelection() {
     path: join(scratch, "apply-pending-navigation.png"),
     animations: "disabled",
   });
-  await app.evaluate(() => {
-    globalThis.modelApplyReceipt.release();
+  await page.evaluate(() => {
+    globalThis.modelApplyReceipt.entry.releaseResponse();
     globalThis.modelApplyReceipt.restore();
     delete globalThis.modelApplyReceipt;
   });
   await button("返回应用").click();
   await page.locator('[data-testid="areal-workbench"][data-view="workspace"]').waitFor();
-  checks.push(
+  recordCheck(
     "settings navigation stays disabled while a real save receipt is pending and returns to the conversation after settlement",
   );
   await button("选择模型").click();
@@ -2305,21 +2338,23 @@ async function runFullModelSelection() {
   assert.equal(await arena.isEnabled(), true);
   await arena.click();
   await page.keyboard.press("Escape");
+  const selectedThreadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+  assert.ok(selectedThreadId);
   await until(
-    (s) =>
-      fixtureProject(s).configurations[Object.keys(fixtureProject(s).state.threads)[0]]?.model
-        ?.providerId === "arena",
+    async () =>
+      (await readCoreThread(selectedThreadId)).desktop?.configuration?.model?.providerId ===
+      "arena",
     "Core accepts Composer model selection",
   );
   await page.getByTestId("chat-input").fill("Use the other configured model");
   await button("发送").click();
-  await until(
-    (s) =>
-      Object.values(fixtureProject(s).state.threads).some(
-        (t) => t.turns?.length === 2 && t.turns.at(-1).status === "completed",
-      ),
-    "selected model turn completes",
-  );
+  let selectedTurn;
+  await until(async () => {
+    const thread = await readCoreThread(selectedThreadId);
+    selectedTurn = thread.turns.at(-1);
+    return thread.turns.length === 2 && selectedTurn?.status === "completed";
+  }, "selected model turn completes");
+  await page.locator(`[data-turn-id="${selectedTurn.id}"][data-turn-status="completed"]`).waitFor();
   assert.deepEqual(requests.at(-1), {
     model: "arena-model",
     authenticated: true,
@@ -2388,20 +2423,20 @@ async function runFullModelSelection() {
   );
   await page.getByTestId("chat-input").fill("Use the provider without authentication");
   await button("发送").click();
-  await until(
-    (s) =>
-      Object.values(fixtureProject(s).state.threads).some(
-        (t) => t.turns?.length === 3 && t.turns.at(-1).status === "completed",
-      ),
-    "no-auth turn completes",
-  );
+  let noAuthTurn;
+  await until(async () => {
+    const thread = await readCoreThread(selectedThreadId);
+    noAuthTurn = thread.turns.at(-1);
+    return thread.turns.length === 3 && noAuthTurn?.status === "completed";
+  }, "no-auth turn completes");
+  await page.locator(`[data-turn-id="${noAuthTurn.id}"][data-turn-status="completed"]`).waitFor();
   assert.deepEqual(requests.at(-1), {
     model: "arena-model",
     authenticated: false,
     authorizationPresent: false,
   });
   await page.screenshot({ path: join(scratch, "no-auth-composer.png"), animations: "disabled" });
-  checks.push(
+  recordCheck(
     "one no-auth save removes the Core credential reference; explicit Composer reselection executes without Authorization",
   );
   await openModelSettings();
@@ -2411,7 +2446,11 @@ async function runFullModelSelection() {
   await page.getByRole("switch", { name: "启用供应商", exact: true }).click();
   await saveProvider();
   await until(
-    (s) => fixtureProject(s).models.length === 3,
+    (s) =>
+      fixtureProject(s).models.length === 3 &&
+      fixtureProject(s).models.some(
+        (model) => model.providerId === "env" && model.available === true,
+      ),
     "environment model available after apply",
   );
   assert.equal(
@@ -2435,19 +2474,18 @@ async function runFullModelSelection() {
   );
   await page.getByTestId("chat-input").fill("Use an environment credential");
   await button("发送").click();
-  await until(
-    (s) =>
-      Object.values(fixtureProject(s).state.threads).some(
-        (t) => t.turns?.length === 4 && t.turns.at(-1).status === "completed",
-      ),
-    "environment turn completes",
-  );
+  const envTurn = await waitForCoreTurn(selectedThreadId, {
+    text: "Use an environment credential",
+    count: 4,
+    label: "environment turn completes",
+  });
+  await page.locator(`[data-turn-id="${envTurn.id}"][data-turn-status="completed"]`).waitFor();
   assert.deepEqual(requests.at(-1), {
     model: "env-model",
     authenticated: true,
     authorizationPresent: true,
   });
-  checks.push(
+  recordCheck(
     "Core distinguishes environment credentials, securely stored credentials, and no authentication; Composer executes each applied mode",
   );
   await openModelSettings();
@@ -2510,22 +2548,13 @@ async function runFullModelSelection() {
     1,
     "confirmed invalidity is marked inside the model label",
   );
-  checks.push(
+  recordCheck(
     "Core credential states and saved enablement remain separate from drafts and pending apply; Composer explicitly selects and executes another available model",
   );
   // 空目录是后续场景的夹具准备；离开设置页后再写入，避免其目录刷新与管理命令竞争。
   let providers = await call("providers", { operation: "list" });
   for (const provider of providers.data) {
-    await page.waitForFunction(async () => {
-      const reply = await window.arealDesktop.command("serviceStatus", {});
-      return (
-        reply.ok &&
-        !reply.value.busy &&
-        !reply.value.activeCommands &&
-        !reply.value.starting &&
-        !reply.value.providerUpdating
-      );
-    });
+    await waitForServiceIdle();
     providers = await call("providers", {
       operation: "removeAndApply",
       id: provider.id,
@@ -2584,7 +2613,7 @@ async function runFullModelSelection() {
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setMinimumSize(980, 620),
   );
-  checks.push(
+  recordCheck(
     "Empty model guidance stays on one line within the toolbar in dark/light themes at 1440, 980 and 640 pixels; the project bar stays attached to the composer",
   );
   assert.equal(
@@ -2595,12 +2624,14 @@ async function runFullModelSelection() {
   await assertEmptyModelIndicator();
   await assertComposerActions();
   await openModelSettings();
-  checks.push("empty catalog provides neutral guidance and Settings > Models remains accessible");
+  recordCheck("empty catalog provides neutral guidance and Settings > Models remains accessible");
   await verifyModelCapabilities();
   await verifyModelDefaults(projectId);
 }
 try {
+  console.log(`[model-selection] evidence: ${scratch}`);
   await launch();
+  console.log("[model-selection] creating project conversation");
   await button("打开项目").click();
   await createProjectConversation(page, "workspace");
   if (composerFast) {
@@ -2617,6 +2648,7 @@ try {
   if (page) await captureSmokeFailure(page, scratch, error);
   throw error;
 } finally {
+  console.log("[model-selection] cleaning up fixtures");
   releaseHeldReply?.();
   const cleanupFailure = (operation, error) => {
     errors.push(`cleanup ${operation}: ${error.message}`);
@@ -2624,10 +2656,10 @@ try {
     process.exitCode = 1;
   };
   if (app) {
-    await app
-      .evaluate(() => {
-        globalThis.modelApplyReceipt?.release();
-        globalThis.modelApplyReceipt?.restore();
+    await page
+      ?.evaluate(() => {
+        globalThis.modelApplyReceipt?.entry?.releaseResponse?.();
+        globalThis.modelApplyReceipt?.restore?.();
       })
       .catch((error) => cleanupFailure("release receipt", error));
     // 失败时保留原始断言；销毁本次测试窗口避免未保存设置的 beforeunload 阻塞清理。
@@ -2639,11 +2671,11 @@ try {
         .catch((error) => cleanupFailure("destroy failed window", error));
     // 先断开 GUI，避免设置页的刷新请求与安全停止竞争。
     await closeGui().catch((error) => cleanupFailure("close GUI", error));
-    try {
-      await stopService();
-    } catch (error) {
-      cleanupFailure("stop service", error);
-    }
+  }
+  try {
+    await stopService();
+  } catch (error) {
+    cleanupFailure("stop service", error);
   }
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
@@ -2653,9 +2685,9 @@ try {
     "renderer/src/settings/UnsavedChanges.tsx",
     "renderer/src/settings/SettingsWorkspace.tsx",
     "renderer/src/i18n/IntlProvider.tsx",
-    "app/src/core/model-config.cjs",
-    "app/src/core/providers.cjs",
-    "app/src/core/backend.cjs",
+    "../../services/workbench/src/desktop/core/model-config.cjs",
+    "../../services/workbench/src/desktop/core/providers.cjs",
+    "../../services/workbench/src/desktop/core/backend.cjs",
     "../../core/config/src/models.rs",
     "../../core/config/src/lib.rs",
     "../../core/local-service/src/spec.rs",

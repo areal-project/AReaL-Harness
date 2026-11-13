@@ -1,27 +1,9 @@
 # Feedback 反馈
 
-## 用途
-
-`R-FEEDBACK-001` 字段校验和局部操作错误在所属组件附近持续展示，状态正文沿用原位置。保留用户正在查看的对象和输入。
-
-## 不适用
-
-`R-FEEDBACK-002` 反馈文字不承担动作入口，不替代审批、恢复和结果核对。需要用户决定时使用所属流程的交互控件。
-
-## 状态
-
-`R-FEEDBACK-003` 有 `error` 时在原位置显示 `alert` 错误正文，并保留id供输入字段关联；修正或重试后由调用方清除，不派发全局Toast。否则有 `message` 时显示原位置的 `status` 正文，两者均为空时不渲染。Props 与实现以 [feedback.tsx](./feedback.tsx) 为准。明确失败与结果待核对使用不同事实描述。
-
-## 键盘与焦点
-
-`R-FEEDBACK-004` 反馈不主动移动焦点；错误文字持续可读。调用方保留原操作位置，必要动作使用独立且有名称的按钮。
-
 ## 禁用
 
 `R-FEEDBACK-005` 反馈没有禁用状态。所属动作不可用时，说明原因；提示消失后，原任务/表单仍保留当前输入和必要恢复信息。
 
 ## 示例
-
-`R-FEEDBACK-006` [查看真实反馈与控件示例](../../../design-system.html#controls)。页面顶部切换“明确失败”和“结果待核对”，检查不同反馈语义。
 
 短时通知的等级、定时与交互以[NotificationToast合同](../../../../packages/ui/src/components/notification-toast/notification-toast.md)为准。

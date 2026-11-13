@@ -1,4 +1,7 @@
-import { commandResourceLabel } from "./conversationPresentation.js";
+import { ConversationDiagramDialog } from "./ConversationDiagramDialog.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import type { MediaOwner } from "./PlatformReadContext.js";
+import { scheduledRunTask, scheduledTaskName } from "./scheduleText.js";
 import { useTranscriptSelection } from "./useTranscriptSelection.js";
 import * as readingDom from "./conversationReadingDom.js";
 import {
@@ -24,13 +27,14 @@ import {
   scheduleSaveReadingViews,
   type ResponseSpace,
 } from "./readingViews.js";
-import { usePendingMessage } from "./pendingMessage.js";
+import { pendingMessageProjected, setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import type { ConversationSelectionReference } from "./conversationSelectionReference.js";
 import { projectConversationContent, conversationContentToText } from "./conversationContent.js";
 import { ConversationContentView } from "./ConversationContentView.js";
 import { GenUiCard } from "./GenUiWorkspace.js";
 import { submitMessage, sending, markSending } from "./Composer.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { errorText } from "./errors/errorCopy.js";
 import { WorktreeStatus } from "./WorktreeStatus.js";
 import { TurnUsage } from "./TurnUsage.js";
 import { mcpResultKey, type McpResultSource, type McpResultState } from "./mcp-app-services.js";
@@ -45,6 +49,8 @@ import {
   progressGroups,
   goalContinuationLabel,
   turnFailureMessage,
+  approvalProgress,
+  commandResourceLabel,
 } from "./conversationPresentation.js";
 import { progressAutoCollapse, TurnProgress } from "./TurnProgress.js";
 import { TurnElapsed } from "./TurnElapsed.js";
@@ -59,6 +65,7 @@ import { TurnActivity, TurnExecution } from "./TurnExecution.js";
 import { SentUserMessage } from "./SentUserMessage.js";
 import {
   MemoTurn,
+  precedingTurnIssues,
   turnContextStamp,
   turnIdentity,
   useLiveFunctions,
@@ -79,7 +86,9 @@ import { Button } from "./components/ui/button.js";
 import { toast } from "./components/ui/toast.js";
 import { Popover, PopoverContent } from "./components/ui/popover.js";
 import { MessageResponse } from "./components/ai-elements/message.js";
-import { SentAttachment } from "./MessageAttachment.js";
+import type { DiagramSelection } from "./components/ai-elements/diagram-reader.js";
+
+import { mediaOwner, SentAttachment } from "./MessageAttachment.js";
 import {
   WorkspaceFileCard,
   WorkspaceImage,
@@ -111,6 +120,7 @@ export function Messages({
   embedded = false,
   showTurnNavigation = true,
   readOnly = false,
+  interactivePages = !readOnly,
   decisionShown = false,
   afterTurns,
   reserveResponseSpace = !embedded,
@@ -124,6 +134,7 @@ export function Messages({
   embedded?: boolean;
   showTurnNavigation?: boolean;
   readOnly?: boolean;
+  interactivePages?: boolean;
   /** The host renders this thread's pending decision cards (Composer); the transcript tail then does not repeat the wait. */
   decisionShown?: boolean;
   afterTurns?: ReactNode;
@@ -150,16 +161,16 @@ export function Messages({
   onReview: (turnId: string) => void;
   readTurnReview: (turnId: string, itemId?: string) => Promise<Data>;
 }) {
+  const mediaGeneration = localThread.displayHistory?.viewGeneration;
   const { t } = useI18n();
-  const outgoing = usePendingMessage(`areal-gui:draft:${project.id}:${localThread.id}`);
+  const draftKey = `areal-gui:draft:${project.id}:${localThread.id}`;
+  const outgoing = usePendingMessage(draftKey);
   const outgoingVisible =
-    !readOnly &&
-    outgoing &&
-    !(localThread.turns ?? []).some((turn: Data) =>
-      (turn.items ?? []).some(
-        (item: Data) => item.type === "userMessage" && !outgoing.previousUserIds.includes(item.id),
-      ),
-    );
+    !readOnly && outgoing && !pendingMessageProjected(localThread.turns, outgoing);
+  useEffect(() => {
+    // 回执先于历史投影到达时保留预览，真实用户消息出现后才释放本地文件。
+    if (!readOnly && outgoing?.accepted && !outgoingVisible) setPendingMessage(draftKey);
+  }, [draftKey, readOnly, outgoing, outgoingVisible]);
   hydrateReadingViews();
   const inherited = useForkHistory(project.id, localThread, action);
   const history = useConversationHistory(project.id, localThread, action);
@@ -175,7 +186,9 @@ export function Messages({
     ordinary && !readOnly
       ? (localThread.turns ?? [])
           .flatMap((turn: Data) =>
-            turn.continuedFromTurnId || goalContinuationLabel(turn)
+            turn.continuedFromTurnId ||
+            goalContinuationLabel(turn) ||
+            scheduledRunTask(project.state?.tasks, turn.goal?.goalId)
               ? []
               : (turn.items ?? []).filter((item: Data) => item.type === "userMessage"),
           )
@@ -190,6 +203,9 @@ export function Messages({
   const touchReading = useRef<{ y: number; requested: boolean } | undefined>(undefined);
   const readingViewport = useRef<{ width: number; height: number } | undefined>(undefined);
   const owner = JSON.stringify([project.id, thread.id, embedded]);
+  // 历史投影可能重挂消息，阅读器由对话按消息身份持有。
+  const [diagram, setDiagram] = useState<(DiagramSelection & { owner: string }) | null>(null);
+  useEffect(() => setDiagram(null), [owner]);
   const reading = useRef(createReadingState(owner, history.generation));
   const [, refreshReading] = useState(0);
   const readingFrame = useRef<number | undefined>(undefined);
@@ -245,6 +261,7 @@ export function Messages({
   const prefixIssue = (thread.turns ?? []).map((turn: Data) =>
     turn.status === "inProgress" || unresolved(turn) ? turn.id : "",
   );
+  const earlierIssues = precedingTurnIssues(prefixIssue);
   const activeOwner = useRef<string | undefined>(undefined);
   const seenTurn = useRef({ owner, id: latestTurnId });
   const reservation = useRef<ResponseSpace | undefined>(readingViews.get(owner)?.responseSpace);
@@ -468,9 +485,10 @@ export function Messages({
     updateReading();
   };
   const renderImage = useCallback(
-    (uri: string, name: string) =>
+    (uri: string, name: string, mediaSource?: MediaOwner) =>
       /^areal:\/\/blob\/[A-Za-z0-9_-]+$/.test(uri) ? (
         <SentAttachment
+          mediaSource={mediaSource}
           part={{ type: "image", uri, name: name || "回复图片" }}
           projectId={project.id}
           threadId={thread.id}
@@ -510,9 +528,7 @@ export function Messages({
           projectId: project.id,
           threadId: thread.id,
           path,
-        }).catch((error: unknown) =>
-          toast(error instanceof Error ? error.message : String(error), "error"),
-        );
+        }).catch((error: unknown) => toast(errorText(t, error), "error"));
         return;
       }
       if (fileOpen && opensOutside(path))
@@ -564,8 +580,10 @@ export function Messages({
       >
         <ConversationContentView
           blocks={blocks}
-          markdown={(text) => (
+          markdown={(text, offset) => (
             <MessageResponse
+              diagramScope={JSON.stringify([owner, turn.id, entry.id, offset])}
+              onExpandDiagram={(selection) => setDiagram({ ...selection, owner })}
               className="conversation-markdown"
               preserveLineBreaks
               streaming={
@@ -581,7 +599,9 @@ export function Messages({
               theme={dark ? "dark" : "light"}
               onOpenExternalUrl={onLink}
               onOpenFileLink={openReplyFile}
-              onRenderImage={renderImage}
+              onRenderImage={(uri, name) =>
+                renderImage(uri, name, mediaOwner(entry, turn.id, mediaGeneration))
+              }
               onRenderFileCard={renderFileCard}
               fileLinks
               webPreviews
@@ -590,7 +610,7 @@ export function Messages({
             </MessageResponse>
           )}
           interactive={(part) =>
-            !inheritedIds.has(turn.id) ? (
+            interactivePages && !inheritedIds.has(turn.id) ? (
               <GenUiCard
                 key={`${entry.id}:${part.offset}`}
                 source={{
@@ -678,26 +698,32 @@ export function Messages({
       user &&
       !goalContinuationLabel(latest) &&
       ((requested && requested.afterTurnId !== latestTurnId) || firstMountedTurn);
+    // 续发沿自然尾部衔接，避免先补一屏空白置顶，再随受理和回复重排。
+    const continuation = (thread.turns?.length ?? 0) > 1 || !!requested?.afterTurnId;
     if (accepted) {
       cancelTurnStart(requested);
       reading.current = changeReadingIntent(reading.current, {
         kind: "following",
-        target: { kind: "turnStart", turnId: latestTurnId },
+        target: continuation ? undefined : { kind: "turnStart", turnId: latestTurnId },
       });
       reservation.current =
-        reserveResponseSpace && section
+        !continuation && reserveResponseSpace && section
           ? { turnId: latestTurnId, height: 0, contentHeight: 0 }
           : undefined;
     } else if (
       requested?.afterTurnId === latestTurnId &&
       readingDom.responseSection(element, readingDom.pendingTurnTarget)
     ) {
-      // 点发送即定位待发消息，不等 Core 受理；受理后的真实消息出现在同一位置，不再跳动。
+      // 点发送即显示待发消息；首轮预留回应区，续发直接沿尾部跟随。
       reading.current = changeReadingIntent(reading.current, {
         kind: "following",
-        target: { kind: "turnStart", turnId: readingDom.pendingTurnTarget },
+        target: continuation
+          ? undefined
+          : { kind: "turnStart", turnId: readingDom.pendingTurnTarget },
       });
-      reservation.current = { turnId: readingDom.pendingTurnTarget, height: 0, contentHeight: 0 };
+      reservation.current = continuation
+        ? undefined
+        : { turnId: readingDom.pendingTurnTarget, height: 0, contentHeight: 0 };
     } else if (!switched && previous.id !== latestTurnId) reservation.current = undefined;
     // 自然流布局由父容器滚动；自身高度包含占位，
     // 用它计算预留空间会在下一次尺寸变化时形成反馈增长。
@@ -861,7 +887,18 @@ export function Messages({
   const turnStamp = turnContextStamp(
     project,
     localThread,
-    [owner, dark, readOnly, decisionShown, embedded, canFork, forking, ordinary, editable],
+    [
+      owner,
+      dark,
+      readOnly,
+      interactivePages,
+      decisionShown,
+      embedded,
+      canFork,
+      forking,
+      ordinary,
+      editable,
+    ],
     live,
   ).concat(
     JSON.stringify([
@@ -875,6 +912,12 @@ export function Messages({
   );
   return (
     <div className={embedded ? "messages-embedded" : "messages-shell"}>
+      <ConversationDiagramDialog
+        diagram={diagram?.owner === owner ? diagram : null}
+        dark={dark}
+        container={container}
+        onClose={() => setDiagram(null)}
+      />
       {!embedded && showTurnNavigation && (
         <TurnNavigation
           key={owner}
@@ -1010,7 +1053,7 @@ export function Messages({
           )}
           {history.failure && !history.failure.itemId && (
             <div>
-              <p role="alert">{history.failure.message}</p>
+              <p role="alert">{history.failure.message /* raw-error-ok: 已是词条 */}</p>
               <Button
                 type="button"
                 variant="ghost"
@@ -1032,14 +1075,14 @@ export function Messages({
           )}
           {(thread.turns ?? []).map((turn: Data, turnIndex: number) => {
             const isInherited = inheritedIds.has(turn.id);
-            const earlierIssue = prefixIssue.slice(0, turnIndex).find(Boolean);
+            const earlierIssue = earlierIssues[turnIndex];
             const currentIssue = prefixIssue[turnIndex];
             const inspectTurn = earlierIssue || (turn.status === "inProgress" ? "" : currentIssue);
             return (
               <MemoTurn
                 key={JSON.stringify([owner, turn.id])}
                 turn={turn}
-                stamp={`${turnStamp}${JSON.stringify([inspectTurn, isInherited, turn.id === latestTurnId, forkError?.turnId === turn.id && forkError?.message])}`}
+                stamp={`${turnStamp}${JSON.stringify([inspectTurn, isInherited, turn.id === latestTurnId, forkError?.turnId === turn.id && forkError?.message])}`} // raw-error-ok: 渲染缓存键
                 render={() => {
                   const forkReason = inspectTurn
                     ? "历史包含未结算或未核查的操作；请在来源核查或选择更早轮次"
@@ -1058,7 +1101,7 @@ export function Messages({
                               ? "来源历史有未结算或未核查的操作；请在来源核查 UNKNOWN，或选择更早轮次。"
                               : reason === "ANCHOR_NOT_FOUND"
                                 ? "轮次位置已变化；请刷新来源后重新选择。"
-                                : cause.message;
+                                : currentErrorText(cause);
                         setForkError({ turnId: turn.id, message });
                       })
                       .finally(() => setForking(false));
@@ -1121,6 +1164,7 @@ export function Messages({
                   const pendingInput = project.state?.interactions?.[thread.id]?.data?.some(
                     (item: Data) => item.status === "pending" && item.turnId === turn.id,
                   );
+                  const approval = approvalProgress(project, thread.id);
                   const legacyReply =
                     turn.status === "completed" &&
                     tail?.type === "agentMessage" &&
@@ -1214,7 +1258,7 @@ export function Messages({
                                 loading={localThread.displayHistory?.loadingItems?.[item.id]}
                                 error={
                                   history.failure?.itemId === item.id
-                                    ? history.failure?.message
+                                    ? history.failure?.message // raw-error-ok: 已是词条
                                     : undefined
                                 }
                                 onLoad={() => {
@@ -1253,10 +1297,24 @@ export function Messages({
                             ) {
                               return <TimelineNotice key={item.id}>{continuation}</TimelineNotice>;
                             }
+                            const scheduled =
+                              turn.goal?.origin === "initial" &&
+                              item.id ===
+                                turn.items?.find((entry: Data) => entry.type === "userMessage")?.id
+                                ? scheduledRunTask(project.state?.tasks, turn.goal.goalId)
+                                : undefined;
                             return (
                               <Fragment key={item.id}>
+                                {scheduled && (
+                                  <TimelineNotice data-scheduled-run={scheduled.id}>
+                                    {t("operations.schedules.runNotice", {
+                                      name: scheduledTaskName(scheduled),
+                                    })}
+                                  </TimelineNotice>
+                                )}
                                 <SentUserMessage
                                   item={item}
+                                  mediaSource={mediaOwner(item, turn.id, mediaGeneration)}
                                   owner={owner}
                                   project={project}
                                   localThread={localThread}
@@ -1264,7 +1322,7 @@ export function Messages({
                                   dark={dark}
                                   editable={item.id === editable}
                                   onLink={live.onLink}
-                                  onFile={live.onFile}
+                                  onFile={readOnly ? undefined : live.onFile}
                                   onExpand={() => {
                                     if (reading.current.kind === "following")
                                       reading.current = changeReadingIntent(reading.current, {
@@ -1293,6 +1351,7 @@ export function Messages({
                             return (
                               <div className="assistant-media flex flex-wrap gap-2" key={item.id}>
                                 <SentAttachment
+                                  mediaSource={mediaOwner(item, turn.id, mediaGeneration)}
                                   part={{
                                     type: item.modality,
                                     uri: item.media.uri,
@@ -1334,7 +1393,8 @@ export function Messages({
                                   return (
                                     <div data-side-item-id={entry.id} key={entry.id}>
                                       <ToolEvent
-                                        item={entry}
+                                        item={approval.mark(entry)}
+                                        mediaGeneration={localThread.displayHistory?.viewGeneration}
                                         onLoadDetails={
                                           (entry.processRecords ?? [entry]).some(
                                             (record: Data) => record.deferredHistory,
@@ -1360,7 +1420,7 @@ export function Messages({
                                           (entry.processRecords ?? [entry]).some(
                                             (record: Data) => record.id === history.failure?.itemId,
                                           )
-                                            ? history.failure?.message
+                                            ? history.failure?.message // raw-error-ok: 已是词条
                                             : undefined
                                         }
                                         {...disclosure}
@@ -1368,7 +1428,7 @@ export function Messages({
                                           (ordinary ||
                                             localThread.conversation?.policy?.kind ===
                                               "sideExecutableV2") &&
-                                          !readOnly &&
+                                          interactivePages &&
                                           !isInherited &&
                                           !localThread.desktop?.archived
                                             ? live.onOpenResult
@@ -1384,8 +1444,8 @@ export function Messages({
                                             })
                                           ]
                                         }
-                                        onFile={live.onFile}
-                                        onAgent={isInherited ? undefined : live.onAgent}
+                                        onFile={readOnly ? undefined : live.onFile}
+                                        onAgent={readOnly || isInherited ? undefined : live.onAgent}
                                         agents={isInherited ? undefined : project.state?.threads}
                                         agentTaskOf={(id) => agentAssignment(thread, id)}
                                         turnId={turn.id}
@@ -1393,7 +1453,7 @@ export function Messages({
                                         projectId={project.id}
                                         threadId={thread.id}
                                         readTurnReview={
-                                          turn.status === "completed"
+                                          !readOnly && turn.status === "completed"
                                             ? live.readTurnReview
                                             : undefined
                                         }
@@ -1429,7 +1489,7 @@ export function Messages({
                                 turn={
                                   !thread.cloud && groupIndex === firstProgress ? turn : undefined
                                 }
-                                connected={!!project.state?.connected}
+                                {...approval.elapsed}
                                 label={legacyReply ? "早前消息与活动" : "本轮过程"}
                                 settled={
                                   turn.status === "completed" &&
@@ -1448,7 +1508,7 @@ export function Messages({
                               ({ item }) => !thread.cloud && item === initialUser,
                             ) &&
                               firstProgress < 0 && (
-                                <TurnElapsed turn={turn} connected={!!project.state?.connected} />
+                                <TurnElapsed turn={turn} {...approval.elapsed} />
                               )}
                           </Fragment>
                         );
@@ -1476,6 +1536,7 @@ export function Messages({
                         latest={latestSchedules}
                       />
                       <TurnFileSummary
+                        nativeActions={!readOnly}
                         turn={turn}
                         readTurnReview={live.readTurnReview}
                         onFile={live.onFile}
@@ -1547,7 +1608,7 @@ export function Messages({
                       )}
                       {canFork && forkError?.turnId === turn.id && (
                         <p role="alert" className="notice">
-                          {forkError?.message}
+                          {forkError?.message /* raw-error-ok: 已呈现 */}
                         </p>
                       )}
                       {showTurnStatus(turn, hasInterruption, hasReadingSummary) && (

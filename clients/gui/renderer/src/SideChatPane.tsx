@@ -1,9 +1,5 @@
-import {
-  sideSelection,
-  sideAnchor,
-  type SideSelection,
-  type SideAnchor,
-} from "@areal/workbench/desktop-contract/conversation";
+import { sideSelection, sideAnchor, type SideSelection, type SideAnchor } from "./services.js";
+import { errorText } from "./errors/errorCopy.js";
 import { Textarea } from "@areal/ui";
 import { useComposerPrediction } from "./useComposerPrediction.js";
 import { ContextMeter } from "./ContextMeter.js";
@@ -27,6 +23,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./components/ui/popover
 import { RelatedSideChats } from "./RelatedSideChats.js";
 import { SideDraftWorkspace } from "./side-draft-owner.js";
 import { insertSideAnswer, makeBringBackPreview, sideSourceAdvanced } from "./side-bring-back.js";
+import { composerDraftStorage } from "./composerDraftStorage.js";
 import { sideStartConfiguration } from "./side-model-intent.js";
 import { createSideRestore, type SideRestoreState } from "./side-restore.js";
 import type { Action, Data } from "./services.js";
@@ -38,7 +35,6 @@ export function SideChatPane({
   executionBlocked,
   action,
   dark,
-  onReturn,
   onPanel,
 }: {
   project: Data;
@@ -46,7 +42,6 @@ export function SideChatPane({
   executionBlocked: boolean;
   action: Action;
   dark: boolean;
-  onReturn: () => void;
   onPanel: (name: string) => void;
 }) {
   const workspace = useMemo(
@@ -83,12 +78,8 @@ export function SideChatPane({
     };
   }, [workspace]);
   return (
-    <section className="side-chat-pane" aria-label="旁路讨论">
+    <section className="side-chat-pane" aria-label="侧边聊天">
       <div className="side-chat-toolbar">
-        <span className="side-chat-heading">
-          <SideChatIcon />
-          侧边聊天
-        </span>
         <Button
           type="button"
           variant="ghost"
@@ -152,16 +143,6 @@ export function SideChatPane({
               ))}
           </PopoverContent>
         </Popover>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="返回主会话"
-          title="关闭侧边聊天"
-          onClick={onReturn}
-        >
-          <CloseIcon />
-        </Button>
       </div>
       <SideChatEditor
         key={`${workspace.owner(selected)}:${project.core?.connectionGeneration ?? 0}`}
@@ -320,7 +301,7 @@ function SideChatEditor({
     }
     setBringPreview(
       makeBringBackPreview({
-        storage: localStorage,
+        storage: composerDraftStorage,
         owner: {
           instanceId: project.core?.instanceId ?? "unknown",
           projectId: project.id,
@@ -339,7 +320,7 @@ function SideChatEditor({
   const confirmBringBack = () => {
     if (!bringPreview) return;
     const result = insertSideAnswer({
-      storage: localStorage,
+      storage: composerDraftStorage,
       preview: bringPreview,
       current: {
         owner: {
@@ -473,6 +454,13 @@ function SideChatEditor({
         setError("首问结果仍待核对；不会自动重复提交。");
         return;
       }
+      if (result.status === "failed" || result.accepted === false) {
+        localStorage.removeItem(pendingKey);
+        setPendingId("");
+        setError(result.message || "首问未完成，输入已保留。");
+        return;
+      }
+      if (!result.threadId) return;
       workspace.acceptCreated(token, result.threadId, generation);
       localStorage.removeItem(selectionKey);
       localStorage.removeItem(anchorKey);
@@ -585,7 +573,7 @@ function SideChatEditor({
         localStorage.removeItem(pendingKey);
         setPendingId("");
       }
-      setError(failure.message);
+      setError(errorText(t, failure));
     } finally {
       if (mounted.current && workspace.isCurrent(token, generation)) setBusy(false);
     }
@@ -673,7 +661,7 @@ function SideChatEditor({
         threadId: sideId,
         turnId: turn.id,
         requestId: crypto.randomUUID(),
-      }).catch((cause: Error) => setError(cause.message));
+      }).catch((cause: Error) => setError(errorText(t, cause)));
   };
   const editorDisabled =
     !project.state?.connected ||
@@ -812,10 +800,10 @@ function SideChatEditor({
           {sideId && !validSide && (
             <p role="status">
               {side
-                ? "旁路归属与当前来源不一致。"
+                ? t("chat.side.ownerMismatch")
                 : loading
-                  ? "正在恢复旁路讨论…"
-                  : "正在核对旁路归属…"}
+                  ? t("chat.side.restoring")
+                  : t("chat.side.checkingOwner")}
             </p>
           )}
           {validSide && side.desktop?.archived && (
@@ -827,8 +815,7 @@ function SideChatEditor({
         {!sideId && (
           <div className="side-chat-empty">
             <SideChatIcon size={30} />
-            <h2>侧边聊天</h2>
-            <p>岔开一个问题，主聊天留在原处。</p>
+            <h2>岔开一个问题，主聊天留在原处。</h2>
             <small>讨论会保留，可从相关讨论中恢复。</small>
           </div>
         )}
@@ -841,12 +828,12 @@ function SideChatEditor({
             action={action}
             dark={dark}
             reserveResponseSpace={false}
-            onLink={() => setError("旁路不提供链接预览；可复制链接后从主会话打开。")}
+            onLink={() => setError("侧边聊天不提供链接预览；可复制链接后从主会话打开。")}
             onFile={() =>
               setError(
                 side.conversation.policy?.workspaceAccess === "readOnly"
-                  ? "旁路模型可只读查询当前工作区；请在问题中指定文件路径。"
-                  : "此旁路仅能读取冻结会话证据。",
+                  ? "侧边聊天的模型可只读查询当前工作区；请在问题中指定文件路径。"
+                  : "此侧边聊天仅能读取冻结会话证据。",
               )
             }
             onReview={() => {}}
@@ -882,9 +869,7 @@ function SideChatEditor({
             <p>
               来源 Side：{side?.preview || sideId}；{sourceStatus}。请核对或编辑将插入的文字。
             </p>
-            {bringPreview.stale && (
-              <p role="status">来源在旁路创建后已推进；以下文字仍依据旧快照。</p>
-            )}
+            {bringPreview.stale && <p role="status">{t("chat.side.staleSource")}</p>}
             <Textarea
               unstyled
               data-slot={undefined}
@@ -942,7 +927,7 @@ function SideChatEditor({
               }
             }}
           >
-            重试恢复旁路
+            {t("chat.side.retryRestore")}
           </Button>
         )}
         {unsettled && !active && (
@@ -954,7 +939,7 @@ function SideChatEditor({
               type="button"
               onClick={() => {
                 void action("reconcile", { projectId: project.id }).catch((cause: Error) =>
-                  setError(cause.message),
+                  setError(errorText(t, cause)),
                 );
               }}
             >
@@ -1045,9 +1030,10 @@ function SideChatEditor({
             }
             pluginMentionCatalog={plugins.catalog}
             composerCatalog={{ entries: [], refresh: () => {} }}
-            placeholder="随心输入"
+            placeholder={t("chat.composer.placeholder")}
             disabled={editorDisabled}
             submitDisabled={disabled || !!active || (!text.trim() && !selection)}
+            hasDraftContent={!!selection && !sideId}
             allowSubmitWhenEmpty={!!selection && !sideId}
             submitting={busy}
             submitLabel="发送"
@@ -1079,7 +1065,7 @@ function SideChatEditor({
                   variant="secondary"
                   size="icon"
                   className="composer-primary-action composer-stop-action"
-                  aria-label="停止旁路"
+                  aria-label={t("chat.side.stop")}
                   disabled={executionBlocked}
                   onClick={stop}
                 >

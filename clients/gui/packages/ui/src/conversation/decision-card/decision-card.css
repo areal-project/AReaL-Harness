@@ -1,9 +1,9 @@
 .decision-card {
   margin-bottom: var(--spacing-inline);
-  padding: 12px;
+  padding: var(--composer-inset);
   border: var(--border-width-default) solid var(--color-border);
-  border-radius: var(--radius-overlay);
-  background: var(--color-composer-catalog, var(--color-composer));
+  border-radius: var(--radius-card);
+  background: var(--color-composer-catalog);
   color: var(--color-foreground);
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
@@ -14,7 +14,7 @@
   justify-content: space-between;
   gap: var(--spacing-field);
   min-height: var(--line-height-ui);
-  margin-bottom: 4px;
+  margin-bottom: calc(var(--spacing-inline) / 2);
 }
 .decision-card-label {
   display: flex;
@@ -24,8 +24,8 @@
   font-size: var(--text-ui-base);
 }
 .decision-card-label > svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   flex-shrink: 0;
 }
 .decision-card-header-actions {
@@ -43,7 +43,7 @@
 .decision-card-title {
   margin: 0 0 var(--spacing-inline);
   font-size: var(--text-ui-base);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: var(--line-height-ui);
   outline: none;
 }
@@ -56,7 +56,7 @@
 }
 .decision-card .decision-button {
   height: var(--spacing-control);
-  padding: 0 9px;
+  padding: 0 var(--spacing-inline);
   border-radius: var(--radius-pill);
   font-size: var(--text-ui-base);
   line-height: var(--line-height-ui);
@@ -74,21 +74,21 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 18px;
-  padding: 0 5px;
+  height: var(--line-height-ui-sm);
+  padding: 0 calc(var(--spacing-inline) / 2);
   border-radius: var(--radius-micro);
-  background: var(--color-hover);
+  background: var(--color-surface-tertiary);
   font: inherit;
   font-size: var(--text-ui-sm);
 }
 .decision-card .ui-feedback {
-  margin: 10px 0 0;
+  margin: var(--spacing-inline) 0 0;
 }
 .approval-preview {
   margin: 0;
   padding: var(--spacing-inline) var(--spacing-field);
   border-radius: var(--radius-inset);
-  background: var(--color-surface);
+  background: var(--color-surface-elevated);
   color: var(--color-foreground);
   font-family: var(--font-mono);
   font-size: var(--text-ui-caption);
@@ -174,10 +174,10 @@
   outline-offset: var(--focus-offset);
 }
 .decision-card-details {
-  margin-top: 4px;
+  margin-top: calc(var(--spacing-inline) / 2);
 }
 .decision-card-details > div {
-  padding-top: 4px;
+  padding-top: calc(var(--spacing-inline) / 2);
 }
 .approval-target {
   margin: 0 0 var(--spacing-inline);

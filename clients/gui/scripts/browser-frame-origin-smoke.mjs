@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -172,12 +173,21 @@ async function thread(id) {
   );
 }
 async function nextTurn(id, previous = 0) {
-  return until(async () => {
+  const turn = await until(async () => {
     const value = await thread(id);
     return value?.turns?.length > previous && value.turns.at(-1)?.status === "completed"
       ? value.turns.at(-1)
       : null;
   }, "Core browser turn");
+  const owner = (await state()).projects.find((project) => project.state?.threads?.[id]);
+  assert.ok(owner, "the browser Thread retains its original project");
+  return readTurnToolDetails({
+    command,
+    readThread: () => thread(id),
+    projectId: owner.id,
+    threadId: id,
+    turnId: turn.id,
+  });
 }
 function toolResult(turn) {
   const item = turn.items.find(
@@ -808,9 +818,9 @@ try {
     new Promise((resolve) => model.close(resolve)),
   ]);
   const files = [
-    "app/src/core/browser-tool.cjs",
-    "app/src/core/backend.cjs",
-    "app/src/core/service-protocol.cjs",
+    "../../services/workbench/src/desktop/core/browser-tool.cjs",
+    "../../services/workbench/src/desktop/core/backend.cjs",
+    "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",
     "renderer/src/Messages.tsx",

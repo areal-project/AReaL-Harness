@@ -1,0 +1,805 @@
+import { describe, expect, it, vi } from "vite-plus/test";
+import type { HostClient } from "@areal/client";
+import { call } from "./services.js";
+import {
+  createWorkbenchRoutes,
+  hostDesktopCommand,
+  hostPlatformCapabilities,
+  openingAuthorization,
+  outcomeUnknown,
+} from "./host-workbench.js";
+import { hostCommandError } from "./desktop-response.js";
+import type { PlatformServices } from "./services.js";
+import { refreshModelCatalogs } from "./host-auxiliary-reads.js";
+
+function setup(answer: (method: string, params: unknown) => unknown) {
+  const calls: Array<[string, unknown]> = [];
+  const client = {
+    writable: () => true,
+    workbench: async (method: string, params: unknown) => {
+      calls.push([method, params]);
+      return answer(method, params);
+    },
+  } as unknown as HostClient;
+  const desktop = {
+    command: async () => ({
+      ok: true,
+      value: {
+        since: 7,
+        days: { "2026-11-04": { activeMs: 60000 }, "2026-11-05": { activeMs: 0 } },
+      },
+    }),
+  } as unknown as PlatformServices;
+  const routes = createWorkbenchRoutes(client, desktop, undefined, undefined, () => "fixture")!;
+  return { routes, calls };
+}
+
+describe("workbench routes", () => {
+  it("keeps native process controls with the desktop connection owner", async () => {
+    const client = {
+      writable: () => true,
+      workbench: async () => {
+        throw new Error("Native process reached the public Host manage route");
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(
+      client,
+      {} as PlatformServices,
+      undefined,
+      undefined,
+      () => "fixture",
+    )!;
+    for (const operation of [
+      "processStart",
+      "processSubmission",
+      "processOutput",
+      "processWrite",
+      "processResize",
+      "processTerminate",
+    ]) {
+      expect(
+        await routes.call("manage", {
+          operation,
+          projectId: "project",
+          threadId: "thread",
+          id: "process",
+          ...(operation === "processStart" || operation === "processSubmission"
+            ? { guiOwned: true }
+            : {}),
+        }),
+      ).toBeUndefined();
+    }
+  });
+
+  it("reads analytics through Host without importing desktop history", async () => {
+    const { routes, calls } = setup((method) => (method === "analytics.read" ? { tokens: 1 } : {}));
+    expect(await routes.call("analytics", { operation: "read" })).toEqual({ value: { tokens: 1 } });
+    expect(calls.map(([method]) => method)).toEqual(["analytics.read"]);
+  });
+
+  it("falls back to the desktop path when the service is unavailable", async () => {
+    const { routes } = setup((method) => {
+      if (method === "analytics.sync")
+        throw Object.assign(new Error("down"), { code: "CAPABILITY_UNAVAILABLE" });
+      return {};
+    });
+    expect(await routes.call("analytics", { operation: "sync" })).toBeUndefined();
+  });
+});
+
+describe("library routes without a desktop adapter", () => {
+  const state = {
+    projects: {},
+    threads: {},
+    projectOrder: [],
+    sections: [{ id: "inbox", title: "Inbox" }],
+    sidebarThreadOrder: [],
+    sidebarRevision: 1,
+    settings: {},
+  };
+  function library(answer: (commandId: string) => unknown) {
+    const commands: string[] = [];
+    const client = {
+      writable: () => true,
+      workbench: async (_method: string, _params: unknown, commandId: string) => {
+        commands.push(commandId);
+        return answer(commandId);
+      },
+    } as unknown as HostClient;
+    return {
+      commands,
+      routes: createWorkbenchRoutes(client, undefined, undefined, undefined, () => "fixture")!,
+    };
+  }
+
+  it("returns a confirmed receipt and leaves unrelated commands to their owner", async () => {
+    const { routes, commands } = library((commandId) => ({
+      commandId,
+      method: "library.command",
+      admissionState: "accepted",
+      submissionUnknown: false,
+      receipt: state,
+    }));
+    expect(
+      await call({ workbench: routes } as PlatformServices, "library", {
+        operation: "createSection",
+        title: "Inbox",
+      }),
+    ).toEqual(state);
+    expect(await routes.call("library", { operation: "settings" })).toBeUndefined();
+    expect(commands).toHaveLength(1);
+  });
+
+  it("routes navigation preferences but does not expose native library settings", async () => {
+    const { routes, commands } = library((commandId) => ({
+      commandId,
+      method: "library.command",
+      admissionState: "accepted",
+      submissionUnknown: false,
+      receipt: state,
+    }));
+    expect(
+      await routes.call("library", { operation: "settings", key: "sidebarSort", value: "manual" }),
+    ).toEqual({ value: state });
+    expect(
+      await routes.call("library", {
+        operation: "settings",
+        key: "computerControlEnabled",
+        value: true,
+      }),
+    ).toBeUndefined();
+    expect(commands).toHaveLength(1);
+  });
+
+  it("keeps a definite rejection distinct from an unknown result without retrying", async () => {
+    const { routes, commands } = library(() => {
+      throw Object.assign(new Error("Denied"), { code: "FORBIDDEN", submissionUnknown: false });
+    });
+    await expect(
+      routes.call("library", { operation: "createSection", title: "Inbox" }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN", submissionUnknown: false });
+    expect(commands).toHaveLength(1);
+  });
+
+  it.each([
+    [{ code: "TARGET_CHANGED" }, false],
+    [{ code: "TARGET_CHANGED", submissionUnknown: true }, true],
+    [{ code: "SUBMISSION_UNKNOWN" }, true],
+    [new Error("socket closed"), true],
+  ])("treats only a missing reply as an unknown result: %j", (failure, unknown) => {
+    expect(outcomeUnknown(failure)).toBe(unknown);
+  });
+
+  it.each([null, {}, { submissionUnknown: false }, { submissionUnknown: true }])(
+    "does not report an invalid or unconfirmed receipt as success: %j",
+    async (receipt) => {
+      const { routes, commands } = library(() => receipt);
+      await expect(
+        routes.call("library", { operation: "createSection", title: "Inbox" }),
+      ).rejects.toMatchObject({ submissionUnknown: true });
+      expect(commands).toHaveLength(1);
+    },
+  );
+});
+
+describe("Worktree Host routing", () => {
+  it("preserves the domain request ID and validates the result through the shared workspace contract", async () => {
+    const calls: Array<{ method: string; params: unknown; commandId?: string }> = [];
+    const settings = {
+      worktreeRoot: "/isolated/worktrees",
+      branchPrefix: "web",
+      fetchBeforeCreate: false,
+      autoCleanup: false,
+      keepCount: 10,
+    };
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: unknown, commandId?: string) => {
+        calls.push({ method, params, commandId });
+        return {
+          commandId,
+          method,
+          admissionState: "accepted",
+          submissionUnknown: false,
+          receipt: settings,
+        };
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    expect(
+      await call({ workbench: routes } as PlatformServices, "workspace", {
+        operation: "worktreeSettings",
+        worktreeRoot: settings.worktreeRoot,
+        branchPrefix: "web",
+        expectedRevision: 3,
+      }),
+    ).toEqual(settings);
+    expect(calls[0].params).toMatchObject({ expectedRevision: 3 });
+    expect(calls[0].commandId).toMatch(/^[a-f0-9-]{36}$/);
+    expect(await routes.call("workspace", { operation: "gitPush" })).toBeUndefined();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("does not replay a lost Worktree creation or discard its original request ID", async () => {
+    const calls: unknown[] = [];
+    const client = {
+      writable: () => true,
+      workbench: async (_method: string, params: unknown) => {
+        calls.push(params);
+        throw new Error("Connection lost");
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    await expect(
+      routes.call("workspace", {
+        operation: "worktreeCreate",
+        projectId: "p",
+        requestId: "original",
+      }),
+    ).rejects.toMatchObject({ submissionUnknown: true });
+    expect(calls).toEqual([{ operation: "worktreeCreate", projectId: "p", requestId: "original" }]);
+  });
+});
+
+describe("task directory Host routing", () => {
+  const catalog = {
+    data: [],
+    errors: [],
+    hasMore: false,
+    owners: [
+      {
+        projectId: "project",
+        status: "unobserved",
+        source: "published",
+        coverage: { kind: "empty" },
+        readAt: 1,
+      },
+    ],
+    source: "published",
+    executionState: "unobserved",
+  };
+
+  it("preserves preview identity and uses the shared response validator", async () => {
+    const requests: unknown[] = [];
+    let response: unknown = catalog;
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: unknown) => {
+        requests.push([method, params]);
+        return response;
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    const params = {
+      operation: "preview" as const,
+      projectId: "project",
+      requestId: crypto.randomUUID(),
+      viewEpoch: 4,
+      limit: 30,
+    };
+    response = {
+      ...catalog,
+      projectId: params.projectId,
+      requestId: params.requestId,
+      viewEpoch: params.viewEpoch,
+    };
+    expect(await call({ workbench: routes } as PlatformServices, "tasks", params)).toEqual(
+      response,
+    );
+    expect(requests).toEqual([["tasks.read", params]]);
+    response = {
+      ...(response as object),
+      owners: [{ projectId: "project", status: "unobserved" }],
+    };
+    await expect(
+      call({ workbench: routes } as PlatformServices, "tasks", params),
+    ).rejects.toThrow();
+  });
+
+  it("does not dispatch without negotiated permission, nor writes before the backend is ready", async () => {
+    let allowed = false;
+    const client = {
+      writable: () => allowed,
+      workbench: async () => {
+        throw new Error("must not dispatch");
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => undefined)!;
+    expect(await routes.call("tasks", { operation: "preview" })).toBeUndefined();
+    allowed = true;
+    await expect(routes.call("trajectory", { operation: "retry" })).rejects.toMatchObject({
+      message: "工作台后台尚未就绪，请稍后再试",
+      submissionUnknown: false,
+    });
+  });
+});
+
+describe("trajectory and feedback Host routing", () => {
+  it("checks feedback preferences through the shared contract and preserves uncertain submissions", async () => {
+    const status = {
+      enabled: false,
+      connected: false,
+      installation: null,
+      account: null,
+      destination: null,
+      opted_in: false,
+    };
+    const calls: Array<{ method: string; params: unknown; commandId?: string }> = [];
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: unknown, commandId?: string) => {
+        calls.push({ method, params, commandId });
+        if (method === "trajectory.command") throw new Error("lost reply");
+        if (!commandId) return status;
+        return {
+          method,
+          commandId,
+          admissionState: "accepted",
+          submissionUnknown: false,
+          receipt: status,
+        };
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    const services = { workbench: routes } as PlatformServices;
+    expect(await call(services, "feedback", { operation: "preference", enabled: false })).toEqual(
+      status,
+    );
+    expect(await call(services, "feedback", { operation: "status" })).toEqual(status);
+    await expect(routes.call("trajectory", { operation: "retry" })).rejects.toMatchObject({
+      submissionUnknown: true,
+    });
+    expect(calls.map((entry) => entry.method)).toEqual([
+      "feedback.command",
+      "feedback.read",
+      "trajectory.command",
+    ]);
+    expect(calls.some((entry) => "sourceId" in (entry.params as object))).toBe(false);
+  });
+});
+
+describe("plugin store Host routing", () => {
+  it("reads and writes the plugin store through Host with only the fields Host owns", async () => {
+    const requests: Array<{ method: string; params: unknown; commandId?: string }> = [];
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: unknown, commandId?: string) => {
+        requests.push({ method, params, commandId });
+        return commandId
+          ? {
+              commandId,
+              method,
+              admissionState: "accepted",
+              submissionUnknown: false,
+              receipt: { ok: 1 },
+            }
+          : { revision: 1, data: [] };
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    await routes.call("manage", { operation: "plugins", projectId: "project" });
+    const install = await routes.call("manage", {
+      operation: "pluginInstall",
+      projectId: "project",
+      requestId: "r",
+      scope: "project",
+      id: "web-search@areal-official",
+      expectedRevision: 1,
+      source: "/market/web-search",
+      expectedDigest: "a".repeat(64),
+    });
+    await routes.call("manage", {
+      operation: "pluginConfigure",
+      projectId: "project",
+      requestId: "r",
+      scope: "user",
+      id: "web-search@areal-official",
+      enabled: false,
+      expectedRevision: 2,
+    });
+    await routes.call("manage", {
+      operation: "pluginConfigure",
+      projectId: "project",
+      requestId: "r",
+      scope: "project",
+      id: "web-search@areal-official",
+      enabled: true,
+      expectedRevision: 3,
+    });
+    expect(install).toEqual({ value: { ok: 1 } });
+    expect(requests.map(({ method, params }) => [method, params])).toEqual([
+      ["plugins.read", { operation: "plugins", projectId: "project" }],
+      [
+        "plugins.command",
+        {
+          operation: "pluginInstall",
+          id: "web-search@areal-official",
+          expectedRevision: 1,
+          source: "/market/web-search",
+          expectedDigest: "a".repeat(64),
+          projectId: "project",
+        },
+      ],
+      [
+        "plugins.command",
+        {
+          operation: "pluginConfigure",
+          id: "web-search@areal-official",
+          enabled: false,
+          expectedRevision: 2,
+        },
+      ],
+      [
+        "plugins.command",
+        {
+          operation: "pluginConfigure",
+          id: "web-search@areal-official",
+          enabled: true,
+          expectedRevision: 3,
+          projectId: "project",
+        },
+      ],
+    ]);
+  });
+});
+
+describe("task management Host routing", () => {
+  it("routes management reads without admitting picker or task submission operations", async () => {
+    const requests: Array<{ method: string; params: unknown; commandId?: string }> = [];
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: unknown, commandId?: string) => {
+        requests.push({ method, params, commandId });
+        return { fixture: true };
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    for (const operation of [
+      "server",
+      "profile",
+      "skills",
+      "skill",
+      "pluginComponents",
+      "pluginHooks",
+      "pluginMcp",
+      "processes",
+      "process",
+      "processWait",
+      "processOutput",
+      "executions",
+      "execution",
+      "executionWait",
+      "executionTrace",
+      "workgroups",
+      "workgroupPolicy",
+      "workgroup",
+      "workgroupWait",
+      "workflows",
+      "workflow",
+      "tasks",
+      "taskInbox",
+      "taskRuns",
+      "taskRun",
+    ]) {
+      expect(await routes.call("manage", { operation, projectId: "project" })).toEqual({
+        value: { fixture: true },
+      });
+      expect(requests.at(-1)).toEqual({
+        method: "manage.read",
+        params: { operation, projectId: "project" },
+        commandId: undefined,
+      });
+    }
+    const count = requests.length;
+    for (const operation of ["pluginArchivePick", "taskReply", "taskCreate", "unknown"]) {
+      expect(await routes.call("manage", { operation, projectId: "project" })).toBeUndefined();
+    }
+    expect(requests).toHaveLength(count);
+  });
+
+  it.each(["processStart", "taskRunNow", "taskResumeRun"])(
+    "preserves %s request identity and does not replay an uncertain submission",
+    async (operation) => {
+      const requests: Array<{ method: string; params: unknown; commandId?: string }> = [];
+      const client = {
+        writable: () => true,
+        workbench: async (method: string, params: unknown, commandId?: string) => {
+          requests.push({ method, params, commandId });
+          throw new Error("Connection lost");
+        },
+      } as unknown as HostClient;
+      const routes = createWorkbenchRoutes(
+        client,
+        undefined,
+        undefined,
+        undefined,
+        () => "source",
+      )!;
+      const input = {
+        operation,
+        projectId: "project",
+        requestId: crypto.randomUUID(),
+        ...(operation === "processStart"
+          ? { threadId: "thread", argv: ["/bin/echo", "fixture"], lifetime: "turn" }
+          : {
+              taskId: "task",
+              expectedRevision: 2,
+              ...(operation === "taskResumeRun" ? { expectedRunId: "run" } : {}),
+            }),
+      };
+      await expect(routes.call("manage", input)).rejects.toMatchObject({ submissionUnknown: true });
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        method: "manage.command",
+        params: input,
+      });
+      expect(requests[0].commandId).toMatch(/^[a-f0-9-]{36}$/);
+      expect(requests[0].commandId).not.toBe(input.requestId);
+    },
+  );
+
+  it("returns the Core task shape for pause and resume while preserving a supplied domain request ID", async () => {
+    const requests: Array<{ method: string; params: unknown; commandId?: string }> = [];
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: { operation: string }, commandId?: string) => {
+        requests.push({ method, params, commandId });
+        return {
+          method,
+          commandId,
+          admissionState: "accepted",
+          submissionUnknown: false,
+          receipt: {
+            id: "task",
+            revision: 2,
+            channelSequence: 0,
+            owner: "desktop-owner",
+            mode: "scheduled",
+            interactionMode: "interactive",
+            objective: "fixture",
+            paused: params.operation === "taskPause",
+            cancelled: false,
+            runs: [],
+            runCount: 0,
+            archivedRunCount: 0,
+            runsComplete: true,
+            pendingQuestions: 0,
+          },
+        };
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    const services = { workbench: routes } as PlatformServices;
+    const requestId = crypto.randomUUID();
+    expect(
+      await call(services, "manage", {
+        operation: "taskPause",
+        projectId: "project",
+        taskId: "task",
+        expectedRevision: 1,
+        requestId,
+      }),
+    ).toMatchObject({ paused: true });
+    expect(
+      await call(services, "manage", {
+        operation: "taskResume",
+        projectId: "project",
+        taskId: "task",
+        expectedRevision: 2,
+      }),
+    ).toMatchObject({ paused: false });
+    expect(requests[0].params).toMatchObject({ requestId });
+    expect(
+      requests.every((request) => request.method === "manage.command" && request.commandId),
+    ).toBe(true);
+    expect(await routes.call("manage", { operation: "providerSave" })).toBeUndefined();
+  });
+});
+
+describe("provider Host routing", () => {
+  it.each(["list", "saveAndApply"])(
+    "refreshes the same-generation model catalog after providers %s confirms a saved credential",
+    async (operation) => {
+      let saved = false;
+      const query = vi.fn(async () => ({
+        models: [{ providerId: "theta", modelId: "theta-model", available: saved }],
+      }));
+      const status = () => ({
+        revision: saved ? "saved" : "initial",
+        credentialStates: { theta: saved ? "available" : "unavailable" },
+        projects: [{ projectId: "project", applied: saved }],
+      });
+      const client = {
+        writable: () => true,
+        snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+        query,
+        workbench: async (method: string, _params: unknown, commandId?: string) =>
+          method === "providers.read"
+            ? status()
+            : {
+                method,
+                commandId,
+                admissionState: "accepted",
+                submissionUnknown: false,
+                receipt: status(),
+              },
+      } as unknown as HostClient;
+      const routes = createWorkbenchRoutes(
+        client,
+        undefined,
+        undefined,
+        undefined,
+        () => "source",
+      )!;
+      const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
+      const refresh = () =>
+        refreshModelCatalogs(
+          client,
+          [{ projectId: "project", state: "ready", serviceGeneration: "generation" }],
+          catalogs,
+          refresh,
+        );
+      await routes.call("providers", { operation: "list" });
+      refresh();
+      await vi.waitFor(() => expect(query).toHaveBeenCalledOnce());
+      expect(catalogs.get("project")?.value?.models).toMatchObject([{ available: false }]);
+      saved = true;
+      await routes.call("providers", { operation });
+      await vi.waitFor(() => expect(query).toHaveBeenCalledTimes(2));
+      expect(catalogs.get("project")?.value?.models).toMatchObject([{ available: true }]);
+    },
+  );
+
+  it("keeps discovery credentials on the managed command route and never exposes revealKey", async () => {
+    const calls: Array<{ method: string; params: unknown; commandId?: string }> = [];
+    const client = {
+      writable: () => true,
+      workbench: async (method: string, params: unknown, commandId?: string) => {
+        calls.push({ method, params, commandId });
+        return {
+          method,
+          commandId,
+          admissionState: "accepted",
+          submissionUnknown: false,
+          receipt: { models: ["fixture"] },
+        };
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => "source")!;
+    const request = {
+      operation: "discover",
+      connection: {
+        baseUrl: "https://example.invalid",
+        protocol: "responses",
+        credential: { kind: "draft", value: "synthetic-key" },
+      },
+    };
+    expect(await routes.call("providers", request)).toEqual({ value: { models: ["fixture"] } });
+    expect(calls[0]).toMatchObject({
+      method: "providers.command",
+      params: request,
+    });
+    expect(calls[0].commandId).toBeTruthy();
+    expect(
+      await routes.call("providers", {
+        operation: "revealKey",
+        id: "provider",
+        expectedRevision: "revision",
+      }),
+    ).toBeUndefined();
+    expect(calls).toHaveLength(1);
+  });
+});
+
+describe("MCP Apps catalog without a desktop adapter", () => {
+  it("routes the normal manage directory action through pages without command submission", async () => {
+    const calls: unknown[][] = [];
+    const catalog = { data: [{ serverId: "fixture" }], requestEpoch: "epoch" };
+    const client = {
+      writable: () => true,
+      workbench: async (...args: unknown[]) => {
+        calls.push(args);
+        return catalog;
+      },
+    } as unknown as HostClient;
+    const routes = createWorkbenchRoutes(client, undefined, undefined, undefined, () => undefined)!;
+    expect(
+      await routes.call("manage", {
+        operation: "mcpApps",
+        projectId: "project",
+        threadId: "thread",
+      }),
+    ).toEqual({ value: catalog });
+    expect(calls).toEqual([
+      ["pages.command", { operation: "catalog", projectId: "project", threadId: "thread" }],
+    ]);
+    expect(
+      await routes.call("manage", { operation: "mcpForms", projectId: "project" }),
+    ).toBeUndefined();
+  });
+});
+
+describe("authorization pages", () => {
+  it("opens plugin and ChatGPT authorization pages and cancels a login it cannot open", async () => {
+    const calls: unknown[] = [];
+    const run = async (name: string, params: Record<string, unknown>) => {
+      calls.push([name, params.operation]);
+      if (name === "manage")
+        return { ok: true as const, value: { status: "pending", authorizationUrl: "https://a" } };
+      if (params.operation === "login")
+        return { ok: true as const, value: { authUrl: "https://b" } };
+      return { ok: true as const, value: null };
+    };
+    const opened: string[] = [];
+    const command = openingAuthorization(run, async (url) => {
+      opened.push(url);
+      if (url === "https://b") throw new Error("blocked");
+    });
+    await command("manage", { operation: "pluginAuth", authOperation: "start" });
+    await command("manage", { operation: "pluginAuth", authOperation: "status" });
+    await expect(command("chatgpt", { operation: "login", provider: "p" })).rejects.toThrow(
+      "blocked",
+    );
+    expect(opened).toEqual(["https://a", "https://b"]);
+    expect(calls.at(-1)).toEqual(["chatgpt", "cancel"]);
+  });
+});
+
+describe("local web desktop commands", () => {
+  it("forwards only listed commands and opens desktop settings except computer control", async () => {
+    const calls: unknown[] = [];
+    const client = {
+      writable: () => true,
+      workbench: async (
+        method: string,
+        params: { command: string; request: { fail?: boolean } },
+      ) => {
+        calls.push([method, params]);
+        if (params.request.fail) throw Object.assign(new Error("Core refused"), { code: "x" });
+        // JSON 通道把后台的 Uint8Array 变成按下标排的对象。
+        if (params.command === "media") return { bytes: { 0: 137, 1: 80 }, mime: "image/png" };
+        return { done: true };
+      },
+    } as unknown as HostClient;
+    const command = hostDesktopCommand(client, hostCommandError);
+    expect(await command("list", { projectId: "p" })).toEqual({ ok: true, value: { done: true } });
+    expect(await command("recovery", { operation: "inspect" })).toEqual({
+      ok: true,
+      value: { done: true },
+    });
+    expect(await command("list", { fail: true } as never)).toEqual({
+      ok: false,
+      error: { code: "x", message: "Core refused" },
+    });
+    await expect(command("computerControl", {} as never)).rejects.toThrow("需要桌面应用");
+    expect(await command("media", { projectId: "p", operation: "read" } as never)).toEqual({
+      ok: true,
+      value: { bytes: new Uint8Array([137, 80]), mime: "image/png" },
+    });
+    expect(calls[0]).toEqual(["desktop.command", { command: "list", request: { projectId: "p" } }]);
+    expect(calls[1]).toEqual([
+      "desktop.command",
+      { command: "recovery", request: { operation: "inspect" } },
+    ]);
+    const capabilities = hostPlatformCapabilities(client, undefined, "source");
+    expect(capabilities?.mutations).toBe(true);
+    expect(capabilities?.settings).toContain("模型服务");
+    expect(capabilities?.settings).not.toContain("电脑控制");
+    expect(hostPlatformCapabilities(client, undefined, undefined)?.mutations).toBe(false);
+  });
+
+  it("preserves a migration block for read-only history recovery", async () => {
+    const client = {
+      writable: () => true,
+      workbench: async () => {
+        throw Object.assign(new Error("blocked"), { code: "MIGRATION_PENDING" });
+      },
+    } as unknown as HostClient;
+    expect(
+      await hostDesktopCommand(client, hostCommandError)("connect", { projectId: "p" }),
+    ).toEqual({
+      ok: false,
+      error: { code: "MIGRATION_PENDING", message: "blocked" },
+    });
+  });
+});

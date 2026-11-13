@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { errorText } from "./errors/errorCopy.js";
 import { JumpToFileIcon } from "./GitPaneChangeCard.js";
 import {
   views,
@@ -12,6 +13,7 @@ import {
 import { observeResize } from "@areal/ui/observe-resize";
 // Toolbar, empty state and change-card layout adapted from ZCode GitPane.
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useOperation } from "./useOperation.js";
 import { Button } from "./components/ui/button.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import {
@@ -165,20 +167,14 @@ export function GitPane({
     () => localStorage.getItem("areal-gui:review-ignore-whitespace") === "true",
   );
   const [commentError, setCommentError] = useState("");
-  const [fileError, setFileError] = useState("");
-  const [openingFile, setOpeningFile] = useState(false);
-  const openOutside = async (file: FileChange, operation: "open" | "reveal") => {
-    if (!fileOpen || openingFile) return;
-    setOpeningFile(true);
-    setFileError("");
-    try {
-      await fileOpen({ operation, projectId, threadId, path: file.workspaceRelativePath });
-    } catch (cause) {
-      setFileError((cause as Error).message);
-    } finally {
-      setOpeningFile(false);
-    }
-  };
+  const opening = useOperation();
+  const openingFile = opening.running;
+  const fileError = opening.state.message ?? "";
+  const openOutside = (file: FileChange, operation: "open" | "reveal") =>
+    fileOpen &&
+    opening.run(() =>
+      fileOpen({ operation, projectId, threadId, path: file.workspaceRelativePath }),
+    );
   const [version, setVersion] = useState<ReviewVersion>();
   const [selection, setSelection] = useState<{ path: string; range: SelectedLineRange }>();
   const disabled = commentsDisabled || !!storageError;
@@ -209,7 +205,9 @@ export function GitPane({
   const [treeQuery, setTreeQuery] = useState(remembered?.treeQuery ?? "");
   const [treeCollapsed, setTreeCollapsed] = useState(remembered?.treeCollapsed ?? []);
   const [scope, setScope] = useState<ReviewScope>(
-    remembered?.scope ?? (turnId ? "last-turn" : "unstaged"),
+    remembered?.scope === "last-turn" && !turnId
+      ? "unstaged"
+      : (remembered?.scope ?? (turnId ? "last-turn" : "unstaged")),
   );
   const [ref, setRef] = useState(remembered?.ref ?? "HEAD");
   const [applied, setApplied] = useState(ref);
@@ -491,7 +489,7 @@ export function GitPane({
       })
       .catch((e) => {
         if (active) {
-          setError(e.message);
+          setError(errorText(t, e));
           setReference(undefined);
           setFiles([]);
         }
@@ -695,8 +693,12 @@ export function GitPane({
       enableLineSelection: !disabled,
       enableGutterUtility: !disabled,
       lineHoverHighlight: "both",
+      unmodifiedLinesLabel: (count) =>
+        count === undefined
+          ? t("common.review.moreContext")
+          : t("common.review.unmodifiedLines", { count }),
     }),
-    [disabled],
+    [disabled, t],
   );
   const optionsByPath = useMemo(
     () =>
@@ -762,7 +764,7 @@ export function GitPane({
     ],
   );
   const copy = (path: string) =>
-    void navigator.clipboard.writeText(path).catch((e) => setError(e.message));
+    void navigator.clipboard.writeText(path).catch((e) => setError(errorText(t, e)));
   const setPreview = (value: boolean) => {
     setSelection(undefined);
     setRenderPreview(value);
@@ -814,7 +816,7 @@ export function GitPane({
                 </span>
                 <ChevronDown />
               </DropdownMenuTrigger>
-              <DropdownMenuContent className="min-w-[200px]">
+              <DropdownMenuContent className="min-w-[calc(var(--spacing-field)*12.5)]">
                 {availableScopes.map(({ value, label }) => (
                   <DropdownMenuGroup key={value}>
                     {["uncommitted", "commit", "task"].includes(value) && <DropdownMenuSeparator />}
@@ -873,6 +875,7 @@ export function GitPane({
                       </DropdownMenuSub>
                     ) : (
                       <DropdownMenuItem
+                        disabled={value === "last-turn" && !turnId}
                         onClick={() => {
                           setManualRef(false);
                           setScope(value);

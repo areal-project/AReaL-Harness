@@ -56,33 +56,6 @@ fn connection_failure_state(error: &anyhow::Error) -> &'static str {
     }
 }
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Connector {
-    plugin: String,
-    connector_id: String,
-    digest: String,
-    credential_ref: String,
-}
-impl Connector {
-    fn credential_environment_key(&self) -> String {
-        format!(
-            "AREAL_PLUGIN_CONNECTOR_{}",
-            server_id(&self.plugin, &self.connector_id).replace('-', "_")
-        )
-    }
-    fn mcp_document(&self) -> Value {
-        json!({"mcpServers":{"github":{"url":"https://api.githubcopilot.com/mcp/","bearer_token_env_var":self.credential_environment_key()}}})
-    }
-    fn private_input(
-        &self,
-        credentials: &BTreeMap<String, String>,
-    ) -> Option<(OsString, OsString)> {
-        credentials
-            .get(&self.credential_ref)
-            .map(|value| (self.credential_environment_key().into(), value.into()))
-    }
-}
-#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct AuthConfiguration {
     plugin: String,
@@ -103,7 +76,6 @@ pub(crate) struct Manager {
     states: std::sync::RwLock<BTreeMap<String, String>>,
     server_states: std::sync::RwLock<ServerStates>,
     trusted: std::sync::RwLock<BTreeMap<String, String>>,
-    connectors: std::sync::RwLock<BTreeMap<String, Connector>>,
     auth_configurations: std::sync::RwLock<BTreeMap<String, AuthConfiguration>>,
     // Private startup challenges are scoped to installed snapshot and named server.
     auth_challenges: std::sync::RwLock<BTreeMap<(String, String, String), String>>,
@@ -136,7 +108,6 @@ impl Manager {
             states: Default::default(),
             server_states: Default::default(),
             trusted: std::sync::RwLock::new(serde_json::from_value(load("plugin-trust")?)?),
-            connectors: std::sync::RwLock::new(serde_json::from_value(load("plugin-connectors")?)?),
             auth_configurations: std::sync::RwLock::new(serde_json::from_value(load(
                 "plugin-auth-configurations",
             )?)?),
@@ -272,14 +243,7 @@ impl Engine {
                 return Ok(tool.clone());
             }
         }
-        self.desktop
-            .mcp
-            .tools()
-            .into_iter()
-            .find(|tool| {
-                tool.server_name() == server && tool.original_name() == name && !tool.is_stale()
-            })
-            .ok_or_else(|| anyhow::anyhow!("hook MCP target unavailable; no reconnect"))
+        anyhow::bail!("hook MCP target unavailable; no reconnect")
     }
     pub async fn plugin_component_summary(&self, id: String) -> Result<Value> {
         self.refresh_plugins().await?;
@@ -312,12 +276,9 @@ impl Engine {
         let apps_needing_auth: Vec<_> = apps
             .iter()
             .filter(|app| {
-                app["id"].as_str().is_some_and(|id| {
-                    matches!(
-                        self.connector_state(&component.id, &component.digest, id),
-                        "missingMapping" | "authRequired"
-                    )
-                })
+                app["id"]
+                    .as_str()
+                    .is_some_and(|id| self.connector_state(&component, id) == "missingMapping")
             })
             .cloned()
             .collect();
@@ -407,23 +368,6 @@ impl Engine {
                     return Err(invalid("duplicate plugin MCP server"));
                 }
             }
-        }
-        let mappings = self.desktop.plugin_mcp.connectors.read().unwrap();
-        for mapping in mappings
-            .values()
-            .filter(|m| m.plugin == c.id && m.digest == c.digest)
-        {
-            let config = mapping.mcp_document();
-            let mut normalized =
-                areal_mcp::normalize_plugin_document(false, &config, &c.root, &c.data_root)
-                    .map_err(invalid)?;
-            result.insert(
-                server_id(&c.id, &mapping.connector_id),
-                normalized
-                    .servers
-                    .remove("github")
-                    .ok_or_else(|| invalid("GitHub adapter configuration rejected"))?,
-            );
         }
         for (name, config) in &mut result {
             config.restrict_enabled(!c.disabled_mcp_servers.contains(name));
@@ -809,7 +753,7 @@ impl Engine {
             rows.push(json!({"pluginId":c.id,"installedDigest":c.digest,"state":state,"authenticationTiming":c.policy["authentication"],"trusted":self.desktop.plugin_mcp.trusted.read().unwrap().get(&c.id)==Some(&c.digest),"servers":configs.iter().map(|(name,cfg)|{
                 let state=if !cfg.policy().enabled {"disabled"} else if installation_auth.contains(name) {"authRequired"} else if let Some(server)=live.as_ref().and_then(|g|g.servers.iter().find(|s|s.name()==name)){if server.authentication_required(){"authRequired"}else{"connected"}}else{match outcomes.get(name).map(String::as_str).unwrap_or("disconnected") {"startup"|"discovery"=>"failed","authentication"=>"authRequired",state=>state}};
                 json!({"serverId":name,"projectEnabled":!c.disabled_mcp_servers.contains(name),"state":state,"config":cfg.redacted_view(),"policy":cfg.policy(),"authenticationTiming":c.policy["authentication"],"authentication":match cfg.auth_policy().map(|p|p.mode()){Some("mixed")=>"optional",Some(_)=>"required",None=>"none"}})
-            }).collect::<Vec<_>>(),"connectors":connector_ids(&c).iter().map(|id|json!({"id":id,"state":self.connector_state(&c.id,&c.digest,id)})).collect::<Vec<_>>(),"diagnostics":diagnostics}));
+            }).collect::<Vec<_>>(),"connectors":connector_ids(&c).iter().map(|id|json!({"id":id,"state":self.connector_state(&c,id)})).collect::<Vec<_>>(),"diagnostics":diagnostics}));
         }
         Ok(json!({"data":rows}))
     }
@@ -883,12 +827,12 @@ impl Engine {
         // while admitted Turns and Apps retain the previous generation until drain.
         let (configs, configuration_diagnostics) =
             self.component_configuration(&component, true)?;
-        if configs.keys().any(|name| {
-            self.extensions.mcp_servers.contains_key(name)
-                || self.desktop.mcp.contains_definition(name)
-        }) {
+        if configs
+            .keys()
+            .any(|name| self.extensions.mcp_servers.contains_key(name))
+        {
             return Err(invalid(
-                "plugin MCP server ID is owned by deployment or manual configuration",
+                "plugin MCP server ID is owned by deployment configuration",
             ));
         }
         if configs.is_empty() {
@@ -974,30 +918,7 @@ impl Engine {
             }
             eligible.insert(server.clone(), config.clone());
         }
-        let mappings: Vec<_> = self
-            .desktop
-            .plugin_mcp
-            .connectors
-            .read()
-            .unwrap()
-            .values()
-            .filter(|m| m.plugin == id && m.digest == expected_digest)
-            .cloned()
-            .collect();
-        let mut env: BTreeMap<OsString, OsString> = std::env::vars_os().collect();
-        for mapping in mappings {
-            let server = server_id(&id, &mapping.connector_id);
-            if !eligible.contains_key(&server) {
-                continue;
-            }
-            let input = mapping.private_input(&self.desktop.credentials.read().unwrap());
-            let Some((key, credential)) = input else {
-                outcomes.insert(server.clone(), "authRequired".into());
-                eligible.remove(&server);
-                continue;
-            };
-            env.insert(key, credential);
-        }
+        let env: BTreeMap<OsString, OsString> = std::env::vars_os().collect();
         let (broker, receiver) = areal_mcp::ElicitationBroker::channel();
         options.elicitation = Some(broker);
         self.desktop
@@ -1136,14 +1057,13 @@ impl Engine {
             return Err(Error::Conflict);
         }
         let tools = connection.tools();
-        let mut combined = self.desktop.mcp.tools();
-        combined.extend(
-            self.desktop
-                .plugin_mcp
-                .tools()
-                .into_iter()
-                .filter(|t| !configs.contains_key(t.server_name())),
-        );
+        let mut combined: Vec<_> = self
+            .desktop
+            .plugin_mcp
+            .tools()
+            .into_iter()
+            .filter(|t| !configs.contains_key(t.server_name()))
+            .collect();
         combined.extend(tools.clone());
         if self.registry.clone().with_mcp(combined).is_err() {
             if connection.shutdown().await.is_err() {
@@ -1441,58 +1361,6 @@ impl Engine {
             _ => Err(invalid("unsupported authentication operation")),
         }
     }
-    pub async fn connector_configure(
-        self: &Arc<Self>,
-        id: String,
-        connector_id: String,
-        provider: String,
-        credential_ref: String,
-        expected_digest: String,
-    ) -> Result<Value> {
-        let c = self.plugin_component(&id).await?;
-        if c.digest != expected_digest {
-            return Err(Error::Conflict);
-        }
-        if provider != "github" {
-            return Err(invalid("connector provider unsupported"));
-        }
-        if !connector_ids(&c).contains(&connector_id) {
-            return Err(invalid(
-                "connector missingMapping: original App ID is not declared",
-            ));
-        }
-        if !valid_id(&credential_ref) {
-            return Err(invalid("invalid credential reference"));
-        }
-        let _guard = self.desktop.plugin_mcp.operation.lock().await;
-        if self
-            .desktop
-            .plugin_mcp
-            .live
-            .read()
-            .unwrap()
-            .contains_key(&id)
-        {
-            return Err(invalid(
-                "disconnect plugin before changing connector mapping",
-            ));
-        }
-        self.desktop.plugin_mcp.connectors.write().unwrap().insert(
-            format!("{id}/{connector_id}"),
-            Connector {
-                plugin: id.clone(),
-                connector_id: connector_id.clone(),
-                digest: expected_digest,
-                credential_ref,
-            },
-        );
-        let mappings = self.desktop.plugin_mcp.connectors.read().unwrap().clone();
-        self.store
-            .save_metadata("plugin-connectors", &mappings)
-            .await
-            .map_err(invalid)?;
-        Ok(json!({"pluginId":id,"connectorId":connector_id,"provider":provider,"state":"mapped"}))
-    }
     pub(crate) async fn mcp_result_source(
         &self,
         tool: &McpTool,
@@ -1725,45 +1593,46 @@ impl Engine {
     }
 }
 impl Engine {
-    fn connector_state(&self, plugin: &str, digest: &str, id: &str) -> &'static str {
-        let mapping = self
-            .desktop
-            .plugin_mcp
-            .connectors
-            .read()
-            .unwrap()
-            .get(&format!("{plugin}/{id}"))
-            .cloned();
-        let Some(mapping) = mapping.filter(|m| m.digest == digest) else {
+    /// 运行中登记一批插件凭据；先全部校验再写入，避免半批生效。
+    pub fn register_credentials(&self, credentials: BTreeMap<String, String>) -> Result<Value> {
+        if credentials.is_empty()
+            || credentials.len() > 32
+            || credentials.iter().any(|(reference, value)| {
+                !valid_id(reference) || value.trim().is_empty() || value.len() > 65536
+            })
+        {
+            return Err(invalid("invalid credential registration"));
+        }
+        {
+            let current = self.desktop.credentials.read().unwrap();
+            if credentials
+                .iter()
+                .any(|(reference, value)| current.get(reference).is_some_and(|v| v != value))
+            {
+                return Err(invalid("credential references are immutable"));
+            }
+        }
+        let count = credentials.len();
+        for (reference, value) in credentials {
+            self.register_credential(reference, value)?;
+        }
+        Ok(json!({"registered":count}))
+    }
+    /// 连接器只是市场 connectors.json 收录的远程 MCP 别名；状态跟随解析出的那个服务。
+    fn connector_state(&self, c: &areal_plugins::InstalledComponents, id: &str) -> &'static str {
+        let Some(service) = c.connectors.get(id) else {
             return "missingMapping";
         };
-        if !self
-            .desktop
-            .credentials
-            .read()
-            .unwrap()
-            .contains_key(&mapping.credential_ref)
-        {
-            return "authRequired";
-        }
-        if self
+        let server = server_id(&c.id, service);
+        let connected = self
             .desktop
             .plugin_mcp
             .live
             .read()
             .unwrap()
-            .get(plugin)
-            .is_some_and(|g| {
-                g.digest == digest
-                    && g.servers
-                        .iter()
-                        .any(|server| server.name() == server_id(plugin, id))
-            })
-        {
-            "connected"
-        } else {
-            "mapped"
-        }
+            .get(&c.id)
+            .is_some_and(|g| g.digest == c.digest && g.servers.iter().any(|s| s.name() == server));
+        if connected { "connected" } else { "mapped" }
     }
 }
 
@@ -1995,50 +1864,5 @@ mod connector_input_tests {
             state, "cleanupUnknown",
             "disconnect erased the reconnect gate"
         );
-    }
-    #[test]
-    fn connector_transport_inputs_do_not_cross_accounts() {
-        let first = Connector {
-            plugin: "multi@apps".into(),
-            connector_id: "opaque-one".into(),
-            digest: "digest".into(),
-            credential_ref: "first-ref".into(),
-        };
-        let second = Connector {
-            connector_id: "opaque-two".into(),
-            credential_ref: "second-ref".into(),
-            ..first.clone()
-        };
-        let credentials = BTreeMap::from([
-            ("first-ref".into(), "synthetic-account-one".into()),
-            ("second-ref".into(), "synthetic-account-two".into()),
-        ]);
-        let inputs: BTreeMap<OsString, OsString> = [
-            first.private_input(&credentials).unwrap(),
-            second.private_input(&credentials).unwrap(),
-        ]
-        .into();
-        for connector in [&first, &second] {
-            let document = connector.mcp_document();
-            let key = OsString::from(
-                document["mcpServers"]["github"]["bearer_token_env_var"]
-                    .as_str()
-                    .unwrap(),
-            );
-            assert!(
-                inputs.get(&key) == Some(&OsString::from(&credentials[&connector.credential_ref])),
-                "connector resolves another account's credential"
-            );
-            let normalized = areal_mcp::normalize_plugin_document(
-                false,
-                &document,
-                Path::new("/tmp"),
-                Path::new("/tmp"),
-            )
-            .unwrap();
-            let public = normalized.servers["github"].redacted_view().to_string();
-            assert!(credentials.values().all(|value| !public.contains(value)));
-        }
-        assert_eq!(inputs.len(), 2);
     }
 }

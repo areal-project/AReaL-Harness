@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { SettingsRow } from "@areal/ui/compositions";
 import { useI18n, UiMessageError, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import { useRef, useState } from "react";
@@ -30,7 +31,7 @@ export function ProjectlessDirectorySetting({
         cause instanceof UiMessageError
           ? cause.descriptor
           : cause instanceof Error
-            ? cause.message
+            ? currentErrorText(cause)
             : { id: "settings.projectlessDirectorySetting.directorySettingWasNotSaved" },
       );
     } finally {
@@ -44,9 +45,9 @@ export function ProjectlessDirectorySetting({
         label={t("settings.projectlessDirectorySetting.folderForTasksOutsideProjects")}
         description={t("settings.projectlessDirectorySetting.newTasksOutsideProjectsAreSavedIn")}
         control={
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 items-center gap-inline">
             <TitleTooltip title={directory}>
-              <span className="max-w-60 truncate text-compact-caption">
+              <span className="max-w-[calc(var(--reading-width)*5/16)] truncate text-ui-sm/(--line-height-ui-sm)">
                 {directory ?? t("settings.projectlessDirectorySetting.disconnected")}
               </span>
             </TitleTooltip>

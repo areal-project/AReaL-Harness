@@ -2,11 +2,13 @@
 
 # 共享 Host 实施规格
 
+状态为目标设计，实施中。H0 固定契约；H1 至 H4 的完成需要各自的运行证据。契约见 [Host API](../api/host.md)，所有权决策见 [ADR 0016](../adr/0016-shared-host.md)。
+
 ## 结论
 
 每个 OS 用户只运行一个 AReaL Host。CLI、TUI、GUI、`areal web` 和手机都是连到它的客户端，没有哪个客户端拥有它。任何客户端退出或崩溃都不影响正在运行的工作。Host 由 Rust 实现，放进现有 `areal` 二进制。它负责项目登记、各项目 Core 的启停与监督、凭据、Remote Gateway 和定时任务激活；对话、Turn、Task 的权威仍在各项目 Core。
 
-本规格取代 [独立开发环境服务设计](../design/environment-service.md) 与 [实施计划](environment-service-plan.md) 中“GUI 托管 / 后台托管”双模式和模式转换回执的方案。那两篇里的权威边界、Host 身份、显式启动项目、停止意图和不重放规则继续有效，下文直接沿用。
+本规格取代 [独立开发环境服务设计](../design/environment-service.md) 中“GUI 托管 / 后台托管”双模式及其模式转换机制。那两篇里的权威边界、Host 身份、显式启动项目、停止意图和不重放规则继续有效，下文直接沿用。
 
 对照基线：AReaL-Harness main `62a8f02`；T3 Code `8760d063`（`apps/server/src/serverOwnership.ts`、`docs/user/background-service.md`）；ZCode `3c5b2276`（`docs/architecture/r2-server-cli-and-daemon.md`）。本文中的命令、协议方法、字段和退出码都是提案，实现并通过验收前不能在其他文档写成已支持能力。
 
@@ -23,7 +25,7 @@
 
 ## 交给 Codex 的方式
 
-按 H0 → H4 顺序，每个工作包一个 Codex 任务、一个 PR。提示词四段即可，正文引用本文对应小节：
+按 H0 → H4 顺序连续实施，以各工作包的完成条件作为验证边界。每阶段形成可审查的本地提交；发布和 push 单独授权。提示词可引用本文对应小节：
 
 ```text
 目标：实现 docs/development/shared-host-spec.md 的工作包 H1。
@@ -32,7 +34,7 @@
 完成条件：该小节的“完成条件”全部满足，并在 PR 中给出证据。
 ```
 
-- 推理强度：全部用 high。H0 和 H3 先用 Plan 模式出设计说明，维护者确认后再实现。
+- H0 的受控重启、迁移契约与连续实施策略是已确定设计，无需重新设置阶段审批。H3 按既有 Remote wire 兼容实现；重大协议变化仍需维护者确认。
 - 仓库通用规则（分层、中英文文档配对、测试分层、PR 模板）以 AGENTS.md 为准，本文不重复。
 - 工作包范围内、可回退的实现选择由 Codex 自行决定并在 PR 说明理由；只有“需要停下来问的情况”需要先问。
 
@@ -83,6 +85,22 @@ areal web ─┘               ▼
 - 凭据、token、配对密钥不进命令行参数、plist、日志或诊断。
 - 不支持 Windows；不做 SSH 远端部署（`areal up`）、多用户、T3 Connect 式云账号。
 
+## 项目与迁移契约
+
+客户端启动与局部能力恢复分离。单个项目、模型参数、凭据槽或 Remote 入口失败时，故障限制在依赖它的最小功能单元；客户端仍应可进入，保留项目、历史和设置的可见性，其余可用工作空间继续服务。迁移与版本适配由现有权威 owner 自动完成；不可自动恢复的项目在对应位置显示原因及恢复入口，不以全页恢复门禁代替局部错误处理。只有客户端安全运行所必需的共享边界不可建立时，才限制依赖该边界的操作。不得吞掉错误、清空用户配置、隐藏项目或将 UNKNOWN 改为成功来满足启动要求。本节是验收约束，不代表所有初始化路径已实现局部降级。
+
+GUI 已取得共享连接与权威项目选择后，初始选中项目的恢复失败在会话区域显示不可用状态和重试入口；侧栏及设置继续可用。该状态不视为会话已加载，也不显示可提交的空白草稿。重试期间保留加载状态，项目连接与恢复完成后才显示草稿。全局连接未建立、项目发现未完成或生命周期结算阻塞仍使用原启动门禁。
+
+旧 GUI 缺少历史清理回执时，不以永久禁用项目或新建 Store 分叉历史作为升级结果。macOS 的受限跨启动恢复可在可信本机系统时钟下核对当前内核启动身份、原服务描述符身份与文件时间、原 Store 的完整元数据清单、服务与 Store 独占锁及来源单实例保护；只有这些证据一致表明原本机进程生命周期已跨整机启动结束、且 Store 未在本次启动中修改，才允许继续原地迁移。当前启动内的失败、活跃 writer、身份冲突或不可核验的时间仍拒绝接管。新迁移回执独立记录接管依据，不补造旧 Runtime 清理成功，不改写旧停止回执，不重放 UNKNOWN 请求。该策略不证明历史外部副作用的结果，也不以管理员篡改或系统时钟回拨后的文件时间作为可靠来源。
+
+`ProjectRegistration` 独立持久化 `projectId`、`workspace`、`dataDir`、`source` 与 `defaultBinding`，不复用运行中服务列表。CLI 同工作区出现多个候选且无唯一默认绑定时显式返回 `projectAmbiguous`。GUI 旧 `(profile,projectId)` 映射连同 Remote 授权、Worktree 与回执定位一起提交；同工作区不同 Store 保留为独立项目。完整形状见 [Host API](../api/host.md)。
+
+GUI 根目录的 `<projectId>-pending.json` 与 `<projectId>-outcomes.json` 不属于 Core Store。迁移必须保留旧请求 ID、语义摘要、UNKNOWN 与已受理结果。旧 writer 停止准入并完成 flush 后，Host 在独占锁下导入，写入包含来源身份和摘要的持久迁移回执，再切换为单一新 writer。中断恢复按迁移阶段核查，不重发旧请求。H2 验收必须覆盖升级前已受理但回复丢失，升级后只发生一次副作用。
+
+Host 监督身份与 Remote Noise peer 身份独立。仅单旧 GUI profile 自动迁移配对、grants、撤销状态和 Noise 密钥；多个不同 Noise 身份明确冲突，保留各自原数据，不能覆盖或合并。Host 凭据包含 API keys、OAuth 与 provider subscription 会话。H3 必须迁移订阅传输 owner，GUI 退出后仍可刷新和流式传输。
+
+停止逐项目保存持久回执，汇总 `partial` 保留每项目的 completed、blocked 与 UNKNOWN。Host 崩溃或响应丢失后用 `host.operation` 查询原请求；null 不证明未受理。跨项目停止没有全局原子性。原 service-host 没有 EOF 管道时只能保持 `legacyPending`，经排空、清理证明和锁释放，或满足上述受限跨启动接管条件后，启动新 Host-owned generation。
+
 ## 工作包 H0：ADR 与协议契约
 
 ### 目标
@@ -92,7 +110,7 @@ areal web ─┘               ▼
 ### 现状
 
 - [ADR 0008](../adr/0008-remote-host-ownership.md) 说“正常 GUI 退出仍保留后台 Remote”，但 `docs/api/local-service.md` 写的是“退出应用或 ⌘Q 则停止本应用全部 Desktop、Host、Core 和 Runtime”。代码与后者一致：`clients/gui/app/src/core/application-owner.cjs` 的 `watchApplicationLifetime` 在没有 GUI 管道时直接报错，管道 EOF 时 `service-main.cjs` 调用 `exitProcess(1)`；`main.cjs` 的 `requestQuit` 经 `startup-recovery.cjs` 的 `recoverConnectedService` 停掉整条链。
-- CLI 登记在 `~/.areal`（`core/local-service/src/lib.rs` 的 `home()`）；GUI 登记在 GUI userData 下的 `areal-core`（`service-config.cjs` 的 `serviceHome`）。
+- CLI 服务登记在 `~/.areal`。GUI 项目索引和 Store 在 userData 下的 `areal-core`，运行服务发现默认在 `~/.areal/gui/<serviceHome 摘要>`。对应入口为 `core/local-service/src/lib.rs` 的 `home()` 和 `service-config.cjs` 的 `serviceOptions`。
 - owner 只有一种：JS `{kind:"gui",appRunId,profile}`（`application-owner.cjs`）与 Rust `Owner::Gui`（`core/local-service/src/gui_owner.rs`、`areal_protocol::service`）。
 
 ### 要做的
@@ -101,7 +119,7 @@ areal web ─┘               ▼
 2. 在 `docs/api/` 新增 Host 契约（中英文），至少定义：
    - 本机传输：`~/.areal` 下的 Unix socket，目录 0700，沿用 `control.sock` 的路径长度派生规则；认证沿用同 UID 加 authFile 的现有做法。
    - 方法：`hello`（版本与能力协商）、`host.status`、`host.stop`（`ifIdle` / `cancel`）、`projects.list`、`projects.register`（仅本机）、`project.ensure`（返回该客户端可用的 Core 描述）、`project.stop`、`host.subscribe`（状态推送）、`host.update`（H4 用）。方法名可调整，语义必须覆盖这些。
-   - owner：新增 `{kind:"host", hostId, generation}`，JS 与 Rust 两端同时定义；`Owner::Gui` 只保留解码，用于识别并拒绝旧实例。
+   - owner：新增 `{kind:"host", hostId, generation}`，JS 与 Rust 两端同时定义；H1 与 H2 保留 `Owner::Gui` 运行支持，直到 GUI 迁移完成；之后仅用于识别旧实例，不能接管 Host-owned 服务。
    - 退出码：“home 已被另一个 Host 持有”的专用退出码；macOS 上用 0 退出（launchd `KeepAlive.SuccessfulExit=false` 不重启），Linux 用非零码并写进 systemd `RestartPreventExitStatus`。
 3. 修正 `docs/api/local-service.md`、`docs/design/architecture.md`、`docs/design/remote-control.md` 中与上述矛盾的句子，标明“目标设计，实施中”。
 
@@ -133,10 +151,11 @@ areal web ─┘               ▼
 ### 要做的
 
 1. 新 crate（建议 `core/host`）和 `areal host run|status|stop` 子命令。`run` 取得 `~/.areal/host.lock`，失败按 H0 的退出码退出。
-2. 项目登记：读写 `~/.areal` 现有 registry；`project.ensure` 内部复用 `core/local-service` 的 `ensure_with_lifetime`，由 Host 持有各 service-host 的生命期管道写端。
-3. 接管已在运行、没有 owner 的 CLI service-host：按现有身份、锁和代际核对后直接纳入监督，不重启。
-4. 客户端发现：`areal`、TUI、`areal web` 先连 Host，没有就启动一个脱离自己的 Host 再连；拿到 Core 描述后直连 Core。保留 `areal service ...` 命令作为兼容入口，内部改走 Host。
-5. `host.stop`：复用 Core 现有 `drain(ifIdle|cancel)`；记录停止意图。
+2. 项目登记：在 `~/.areal` 持久化独立 `ProjectRegistration`，现有运行服务 registry 仅保存实例发现事实；`project.ensure` 内部复用 `core/local-service` 的 `ensure_with_lifetime`，由 Host 持有各 service-host 的生命期管道写端。
+3. 对旧无 owner 的 CLI service-host 执行受控重启迁移。旧进程无法补接启动时未继承的 EOF 管道，登记为 `legacyPending`；原工作继续运行。空闲或显式 `cancel` 排空后，核对持久停止回执、Runtime 清理证明、服务锁和 Store 锁释放，再以 Host owner 启动新 generation。
+4. 所有普通本地入口接入 Host，包括 `areal exec`、旧 `-p`、headless TUI，以及交互 TUI 和 Web。CLI 生成的 deployment、MCP、skills 输入移入 Host 持久 launch inputs；临时客户端目录不能成为运行任务的生命期依赖。客户端解析绝对路径和配置上下文，Host 在边界校验；禁止通过改变 Host 全局 cwd 或环境模拟客户端。
+5. 客户端发现：`areal`、TUI、`areal web` 先连 Host，没有就启动一个脱离自己的 Host 再连；拿到 Core 描述后直连 Core。保留 `areal service ...` 命令作为兼容入口，内部改走 Host。
+6. `host.stop` 复用 Core `drain(ifIdle|cancel)`。逐项目保存持久回执并汇总 `partial`，记录停止意图。响应丢失后仅查询原操作，不重放 UNKNOWN；跨项目没有全局原子停止。
 
 ### 约束
 
@@ -145,7 +164,7 @@ areal web ─┘               ▼
 
 ### 需要停下来问的情况
 
-- 接管运行中的 service-host 需要改变它的锁或代际语义。
+- 受控重启需要改变现有锁、代际或清理证明语义。
 - 需要让 Host 转发 Core 流量才能让 TUI 工作。
 
 ### 完成条件
@@ -153,7 +172,7 @@ areal web ─┘               ▼
 - 集成测试（隔离 `AREAL_HARNESS_HOME`）：两个进程并发 `areal host run`，只有一个持锁，另一个以约定退出码退出。
 - 在终端 A 用 TUI 开会话并发起 Turn，强杀 TUI，终端 B 重开 TUI，看到同一 Turn 仍在运行或已完成，副作用只发生一次。
 - `areal host stop` 在有活动 Turn 时拒绝；`--cancel` 后进程、锁全部释放，清理证明齐全。
-- 已运行的 CLI service-host 在 Host 启动后保持同一 generation。
+- 旧 CLI service-host 有活动任务时保持原 generation 并报告 `legacyPending`；排空和清理后新 generation 带 Host owner。杀 Host 能触发新监督链 EOF 清理；旧 pending 进程不宣称具备此保证。
 
 ## 工作包 H2：GUI 变客户端
 
@@ -170,7 +189,7 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 ### 要做的
 
 1. GUI Main 连 Host（没有就拉起）。项目列表、打开项目、停止项目都改走 Host；Renderer 与 Core 的连接方式不变，只是 Core 描述来自 Host。
-2. 登记合并：首次连接时 GUI 把自己的 userData 路径告诉 Host，Host 导入 GUI registry 中的项目、worktree 映射和 Host 身份，按原 `dataDir` 登记，不移动 Store。写完成标记；中断后重做必须安全。同一工作区在两边都登记过时保留两份，作为两个项目展示。
+2. 登记合并：首次连接时 GUI 把自己的 userData 路径告诉 Host，Host 导入 GUI registry 中的项目与 Worktree 映射，按原 `dataDir` 登记，不移动 Store。激活前持久化旧项目 ID、授权和回执映射；Remote 身份按上文单 profile 冲突规则迁移，Host 监督 ID 独立。写持久迁移回执，中断恢复逐阶段核查。同一工作区不同 dataDir 保留独立项目，等价同源导入复用已保存绑定。
 3. 凭据迁移：Host 提供密钥库（macOS 用钥匙串，`security-framework` 已在 `Cargo.lock`；Linux 用 0600 文件）。GUI 用 `safeStorage` 解密旧密文，经本机 socket 交给 Host 写入，确认后才删除旧密文。失败保留旧密文，提示重新登录，不用空凭据启动。
 4. ⌘Q：按“生命周期契约”实现提示与两个选项；没有任务在跑时直接退出，不提示。GUI 菜单栏或设置里显示“后台运行中，N 个任务”，并提供“停止后台”。
 5. 桌面专属工具：GUI 连接期间按现有动态 ToolHost 语义向对应 Core 发布浏览器预览、Computer Use、GUI 终端；断开即撤销并报告不可用。
@@ -178,13 +197,13 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 
 ### 约束
 
-- 不删除旧 GUI 数据目录；导入只读旧登记。
+- 保留旧 GUI 数据目录。登记快照只读导入；journal 切换通过独占 writer 和持久迁移回执进行，旧 writer 必须先停写。
 - 旧版 GUI 遇到 Host 持有的 Core 时必须拒绝接管（`Owner::Gui` 不匹配），不能停止它。
 
 ### 需要停下来问的情况
 
 - 钥匙串访问需要用户反复授权，或签名身份变化导致无法读取旧条目。
-- 导入时发现两个登记引用同一 `dataDir`。
+- 不同工作区或不同旧授权身份指向同一 `dataDir`，且无法通过已保存的同源映射核对。冲突项目保留原状态，不自动合并。
 
 ### 完成条件
 
@@ -192,8 +211,9 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 - 终端里用 `areal` 开的会话出现在 GUI 项目里，反之亦然。
 - ⌘Q 两个选项分别验证：保持运行后 `areal host status` 仍显示任务；停止任务后任务结算、Core 退出。
 - 凭据迁移中断（迁移中杀 GUI）后重开，凭据可用或明确提示重新登录。
+- 升级前已受理但回复丢失的创建请求跨升级仍核查原回执，副作用一次；迁移中断后旧、新 journal 不同时写入。
 
-## 工作包 H3：Gateway、定时激活、推送迁入 Host
+## 工作包 H3：Gateway、定时激活、推送与订阅传输迁入 Host
 
 ### 目标
 
@@ -201,8 +221,9 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 
 ### 现状
 
-- Gateway：`clients/gui/app/src/core/remote*.cjs`；Noise 与线格式：`clients/gui/packages/remote`（`channel.mjs`、`wire.mjs`、`relay-codec.mjs`）。
-- 定时激活：`schedule-owner-activation.cjs`；Core 侧触发不变。
+- Gateway：`core/host/src/gateway/`、`remote_state.rs` 与 `journal.rs`；原 JS 行为对照位于 `clients/gui/app/src/core/remote*.cjs`，Noise 与线格式对照位于 `clients/gui/packages/remote`（`channel.mjs`、`wire.mjs`、`relay-codec.mjs`）。
+- 定时激活与准备：`core/host/src/schedules.rs`、`schedule_connection.rs`、`schedule_admission.rs` 与 `schedule_resources.rs`；Core 侧触发不变。
+- 订阅来源 owner：`core/host/src/subscription/`；原账号与传输行为对照位于 `clients/gui/packages/chatgpt-provider/`。
 - 现有端到端测试：`pnpm --dir clients/gui test:remote-relay`、`test:remote-command-e2e`、`test:remote-interaction`、`test:remote-review`、`test:mobile-command`、`test:mobile-workspace-state`、`test:remote-gui-quit`、`test:schedule-reliability-lifecycle`。
 
 ### 要做的
@@ -210,23 +231,41 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 1. 在 Host 中用 Rust 实现 Gateway：配对、设备授权、Relay 与 Direct 两种传输、命令关联与 journal、撤权即时生效、推送。线协议与现有实现逐字节兼容。
 2. 把上面列出的 JS 端到端测试改为可对 Rust Host 运行（以测试为行为对照），全部通过后再删除 JS 实现。
 3. 定时激活迁入 Host：登录后或 Host 启动后只拉起定时任务需要的项目；尊重项目停止意图与 Host 停止意图。
-4. 删除 Desktop Service 进程及 `AREAL_GUI_DESKTOP_LIFETIME_FD` 路径；通知改为 GUI 在线时由 GUI 弹，GUI 不在时只发手机推送。防休眠由 Host 在有活动任务时启动 `caffeinate -w <host pid>`（macOS）或 `systemd-inhibit`（Linux）。
+4. 迁移 provider subscription transport owner，包括 ChatGPT 订阅登录、刷新、账户切换、注销、Core 重连凭据注入，以及正在使用的流式连接。凭据迁移覆盖 API keys、OAuth token 与订阅会话；Core 保留模型执行权威。GUI 退出后这些传输继续，由 Host 监督，身份或凭据版本不匹配不得恢复旧账户。
+5. 删除 Desktop Service 进程及 `AREAL_GUI_DESKTOP_LIFETIME_FD` 路径；通知改为 GUI 在线时由 GUI 弹，GUI 不在时只发手机推送。防休眠由 Host 在有活动任务时启动 `caffeinate -w <host pid>`（macOS）或 `systemd-inhibit`（Linux）。
 
 ### 约束
 
-- 先并行、后切换：Rust Gateway 通过全部对照测试之前，JS Gateway 保持可用。
-- 已配对设备、Host Noise 身份与授权原样保留，不要求重新配对。
+- 在隔离环境并行对照后切换。生产身份、grant 与 journal 始终只有一个 writer；Rust Gateway 通过对照前保留 JS 实现，不让两个 Gateway 同时承接同一身份。
+- 单旧 profile 的已配对设备、Remote Noise 身份与授权原样保留，无需重新配对。多个 profile 的不同身份报告冲突，不能覆盖或伪装为同一个 peer。
+
+### 本机 Relay 的后台所有权
+
+本机 Relay 服务端由 Host 监督为独立子进程，复用 `services/remote-relay` 的 HTTP/WebSocket 协议、SQLite Store 与静态资源。Rust Gateway 继续拥有 Noise 身份、授权、命令与 journal。GUI 的 `relayServiceStartLocal`、`relayServiceStopLocal` 只表达意图，不在 Main 中恢复旧服务端 owner。
+
+- 运行时和 Relay bundle 随受控发行产物绑定，启动前核验清单、路径与完整性。GUI 安装包可复用经验证支持 `node:sqlite` 的包内 Electron 无头 Node 模式；子进程由 Host 启动，不连接 GUI IPC，也不依赖 GUI 存活。未交付这些组件的 CLI 布局明确返回本机 Relay 不可用，不回退到系统 PATH。
+- 私有启动通道传递配置和固定 room，标准输出仅承载有界的就绪状态，诊断不包含 capability、Noise 私钥或请求内容。Host vault 保留秘密，命令行参数不传秘密。父通道 EOF 触发启动取消或服务排空；独占锁在子进程退出前持续有效，防止 Host 换代后出现两个 Store writer。
+- 启停沿用来源级 Remote revision、持久意图和原 requestId 回执。GUI 退出不停止 Relay；Host 正常停止与受控升级必须等待 Relay 关闭和进程退出，再结算停止。Host 崩溃后，新 owner 在旧生命周期及锁释放前不得启动替代实例。显式停止意图继续生效；不通过重试不确定请求恢复服务。
+- 本机 HTTP origin 仅限明确启用且确由该 Host 监督的内网 Relay。Gateway 连接受控本机端点并校验公开 authority；外部 Relay 仍要求 HTTPS/WSS。不能将任意 HTTP 配置标记成本机服务来放宽校验。
+- 单旧来源沿用原 Noise identity、device grants、room 和 capability。旧 Relay Store 在来源迁移已获准、旧 writer 已退出且锁可独占后使用原路径；不以新建 Store、重新配对或新身份替代迁移证明。缺少原清理证明的项目仍遵守来源迁移阻塞规则。
+
+验收包括原 GUI 启停入口、真实 Relay 健康与 Noise 通道、GUI 完全退出后继续服务、Host stop 后原回执与子进程退出、崩溃换代不越过旧锁、端口冲突、原未决请求查询、撤销 room 不复活，以及隔离旧来源的配对身份连续。源码、解压安装包、正式签名包和真机分别记录；本节是实施契约，不表示已完成这些验收。
+
+### 对照观察与停止结算
+
+- JS 私有派发参数缓存、保存次数和连接对象，可替换为同一原请求的 Host 回执、持久结果、真实连接状态和实际副作用；替代证据必须保留原身份与授权，不能宣称测量了底层物理调用次数。
+- T24 按原 Tool 的 `id`、`runtimeEpoch`、`scopeId`、`operationId` 核对结算。只有原 Runtime 结果明确证明 `terminated`、`exited`、输出关闭等终止事实时，才接受对应的已终止工具与 `interrupted` Turn；不能仅凭 Turn 状态判断。缺少确定结果时继续执行原 UNKNOWN 强断言；`null`、超时和断连都不证明未执行。授权、目标拒绝、原请求关联和单次副作用约束始终保留。
 
 ### 需要停下来问的情况
 
-- 任何对照测试需要修改断言才能通过。
+- 除上述明确的观察迁移和有原始证据的停止结算分支外，对照测试需要修改业务断言才能通过。
 - 需要改变 Relay 服务端（`services/remote-relay`）的协议。
 
 ### 完成条件
 
 - 上述端到端测试全部对 Rust Host 通过，PR 中附运行记录。
 - GUI 完全退出后，手机经 Relay 连上并完成一次审批；定时任务按时触发。
-- 已配对的真机在升级后无需重新配对即可连接。
+- 单旧 profile 的已配对真机升级后无需重新配对；第二个不同 Noise 身份的 profile 导入失败且保留原授权。GUI 退出后 ChatGPT 订阅任务继续，刷新和重连不恢复已注销账户。
 
 ## 工作包 H4：系统服务与升级
 
@@ -267,6 +306,12 @@ GUI 不再启动 Desktop Service 管项目生命周期，而是连 Host；⌘Q �
 | HOST-08 | 登录自启、停止意图不被自动拉起 | H4 |
 | HOST-09 | 升级有任务时拒绝、空闲时成功、身份不变 | H4 |
 | HOST-10 | Host 崩溃后有界重启，不越过旧锁 | H1、H4 |
+| HOST-11 | 旧服务忙碌时 pending，清理后才启动新 Host-owned generation | H1 |
+| HOST-12 | 已受理回复丢失请求跨 journal 迁移副作用一次 | H2 |
+| HOST-13 | 不同旧 Noise 身份冲突，不覆盖 grants | H2、H3 |
+| HOST-14 | GUI 退出后 provider subscription 流式传输与刷新继续 | H3 |
+| HOST-15 | 部分停止与回复丢失只核查，不重放 UNKNOWN | H1、H4 |
+| HOST-16 | exec、旧 -p、headless TUI 在客户端退出和临时输入清理后继续 | H1 |
 
 ## 不在本规格内
 

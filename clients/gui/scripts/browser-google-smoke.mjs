@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -307,7 +308,14 @@ async function run(kind, text) {
   }, kind);
   evidence.turns.push({ scenario: kind, turn });
   assert.equal(turn.status, "completed", JSON.stringify(turn.error));
-  return turn;
+  return readTurnToolDetails({
+    command,
+    readThread: async () =>
+      (await state()).projects.find((project) => project.id === projectId).state.threads[threadId],
+    projectId,
+    threadId,
+    turnId: turn.id,
+  });
 }
 function calls(turn) {
   return turn.items.filter((i) => i.type === "dynamicToolCall");

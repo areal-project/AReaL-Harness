@@ -4,25 +4,24 @@ import type {
   ManagementResponseMap,
   ManagementResponse,
   PluginMutation,
-} from "@areal/workbench/desktop-contract/management";
+  PluginStoreOperation,
+} from "../services.js";
 export type PluginDetail = ManagementResponseMap["plugin"];
 export type PluginReadiness = ManagementResponseMap["pluginReadiness"];
 export type PluginList = ManagementResponseMap["plugins"];
 export type PluginCommand = <P extends ManagementRequest>(
   request: P,
 ) => Promise<ManagementResponse<P>>;
-type WithoutSubmission<R> = R extends { projectId: string }
-  ? Omit<R, "projectId" | "requestId">
-  : never;
-export type PluginMutationRequest = WithoutSubmission<
-  ManagementRequestMap[PluginMutation | "pluginAuth"]
->;
+type WithoutSubmission<R> = R extends unknown ? Omit<R, "projectId" | "requestId"> : never;
+/** 插件库登记写入（Host 完成）与项目里的插件操作（Core 完成）。 */
+export type PluginWrite = PluginMutation | "pluginAuth" | Exclude<PluginStoreOperation, "mcp">;
+export type PluginMutationRequest = WithoutSubmission<ManagementRequestMap[PluginWrite]>;
 export type PluginMutate = (
   request: PluginMutationRequest,
-) => Promise<ManagementResponseMap[PluginMutation | "pluginAuth"] | undefined>;
+) => Promise<ManagementResponseMap[PluginWrite] | undefined>;
 export type PluginSubmission = { mutation: PluginMutation; requestId: string; projectId: string };
 export type PluginOperation = Omit<PluginSubmission, "mutation"> & {
-  mutation: PluginMutation | "pluginAuth";
+  mutation: PluginWrite;
   pluginId?: string;
 };
 export type PluginActivity = PluginOperation & { kind: "submit" | "check" };

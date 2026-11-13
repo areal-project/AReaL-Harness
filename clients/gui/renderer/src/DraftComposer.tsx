@@ -1,34 +1,41 @@
+import { composerDraftStorage } from "./composerDraftStorage.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { useDraftComposerState } from "./draftComposerState.js";
+import {
+  useReadOnly,
+  useConversationSubmitReadOnly,
+  useConversationCreateReadOnly,
+} from "./PlatformReadContext.js";
 import { snapShotCommandEntries } from "./snapshots/shortcut.js";
 import { useSnapShotCapture } from "./snapshots/captureContext.js";
 import { useSnapShotDraft } from "./snapshots/activeDraft.js";
-import { consumeSnapShotFiles, moveSnapShotDraft } from "./snapshots/drafts.js";
+import { moveSnapShotDraft } from "./snapshots/drafts.js";
 import { requestTurnStart, cancelTurnStart, type TurnStartRequest } from "./readingViews.js";
 import { composerUploadOwner } from "./ComposerUploadState.js";
 import type { DraftComposerProps } from "./draftComposerTypes.js";
 import { PendingMessageView } from "./UserMessageBody.js";
-import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
+import { acceptPendingMessage, setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { Input } from "@areal/ui";
 import { useComposerWorkspaceFiles } from "./lib/workspaceFileComposer.js";
 import { imageAnnotationBlocked, useImageAnnotationRevision } from "./imageAnnotations.js";
 import { resolveDraftProfile } from "./ProfileDetails.js";
-import { draftModelSelection, draftModelOptions, modelValue } from "./lib/draftModelSelection.js";
+import { draftModelSelection, draftModelChoices, modelValue } from "./lib/draftModelSelection.js";
 import {
   setApplicationPreferences,
   useApplicationPreferences,
 } from "./settings/applicationPreferences.js";
 import { ComposerModelMenu } from "./ComposerModelMenu.js";
 import { ComposerPermissionMenu } from "./ComposerPermissionMenu.js";
-import { permissionOptions, planModeOptions, type PermissionPreset } from "./permissions.js";
-import { ComposerPlanMode } from "./ComposerPlanMode.js";
-import { FileTree, AttachmentIcon, GoalIcon, PlanModeIcon as Lightbulb } from "./interfaceIcons.js";
+import { permissionOptions, planModeOptions } from "./permissions.js";
+import { ComposerGoalMode, ComposerPlanMode } from "./ComposerPlanMode.js";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
+
 import {
-  ComposerAttachment,
+  ComposerFileList,
   composerInput,
   composerPaste,
-  isComposerFile,
-  type ComposerDraftAttachment,
+  hasMissingComposerFiles,
 } from "./ComposerAttachments.js";
 import {
   useComposerPlugins,
@@ -42,8 +49,8 @@ import {
   clearComposerSkills,
   readComposerSkills,
 } from "./ComposerSkills.js";
-import { ComposerMcpIcon } from "./ComposerIcons.js";
 import { ComposerMcp } from "./ComposerMcp.js";
+import { composerFeatureEntries } from "./composerFeatures.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { CircleAlert } from "lucide-react";
 import {
@@ -58,7 +65,6 @@ import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
 import type { Data } from "./services.js";
 import { conversationReferenceEntries } from "./ConversationReferences.js";
 import {
-  isIndependentCreation,
   isTechnicalErrorMessage,
   recoveredOutcome,
   recoveryMessage,
@@ -101,6 +107,9 @@ export function DraftComposer({
   worktree,
   onWorktreeCreated,
 }: DraftComposerProps) {
+  const readOnly = useReadOnly();
+  const conversationSubmitReadOnly = useConversationSubmitReadOnly();
+  const conversationCreateReadOnly = useConversationCreateReadOnly();
   const workspaceFiles = useComposerWorkspaceFiles(readAction, project, draftKey ?? "new");
   const { t } = useI18n();
   const referenceEntries = conversationReferenceEntries(
@@ -119,64 +128,33 @@ export function DraftComposer({
   const api = useRef<LexicalChatInputHandle | null>(null);
   const [workspaceReferencePending, setWorkspaceReferencePending] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  const [text, setText] = useState(() => localStorage.getItem(key) ?? "");
-  const [draftError, setDraftError] = useState("");
-  useEffect(() => {
-    const refreshDraft = (event: Event) => {
-      if ((event as CustomEvent<string>).detail !== key || sending.has(key)) return;
-      const draft = localStorage.getItem(key) ?? "";
-      setProfileSelection(localStorage.getItem(`${key}:profile`) ?? "");
-      api.current?.setText(draft);
-      setText(draft);
-      setFiles(attachmentDrafts.get(key) ?? []);
-      api.current?.focus();
-    };
-    window.addEventListener("areal-draft-change", refreshDraft);
-    return () => window.removeEventListener("areal-draft-change", refreshDraft);
-  }, [key]);
-  const [files, setFiles] = useState<ComposerDraftAttachment[]>(
-    () => attachmentDrafts.get(key) ?? [],
-  );
+  const {
+    text,
+    setText,
+    draftError,
+    setDraftError,
+    files,
+    setFiles,
+    profileSelection,
+    setProfileSelection,
+    efforts,
+    setEfforts,
+    requestedServiceTier,
+    setRequestedServiceTier,
+    mounted,
+    permission,
+    setPermission,
+    plan,
+    setPlan,
+    goalMode,
+    changeGoalMode,
+  } = useDraftComposerState(key, api, prefs.defaultPermissionPreset);
   const input = composerInput(text, files);
   useImageAnnotationRevision();
   const annotationBlocked = imageAnnotationBlocked(key, input.files);
-  const [permission, setPermission] = useState<PermissionPreset>(() => {
-    const saved = localStorage.getItem(`${key}:permission`);
-    return saved === "ask" || saved === "autoReview" || saved === "fullAccess"
-      ? saved
-      : prefs.defaultPermissionPreset;
-  });
-  const [plan, setPlan] = useState(() => localStorage.getItem(`${key}:plan`) === "true");
-  const [profileSelection, setProfileSelection] = useState(
-    () => localStorage.getItem(`${key}:profile`) ?? "",
-  );
   const chosenProfile = resolveDraftProfile(project, profileSelection);
   const [menuAnchor, setMenuAnchor] = useState<HTMLDivElement | null>(null);
   const [mcpOpen, setMcpOpen] = useState(false);
-  const [goalMode, setGoalMode] = useState(() => localStorage.getItem(`${key}:goal`) === "true");
-  const changeGoalMode = (enabled: boolean) => {
-    setGoalMode(enabled);
-    localStorage.setItem(`${key}:goal`, String(enabled));
-    api.current?.focus();
-  };
-  const [efforts, setEfforts] = useState<Record<string, string>>(() =>
-    localStorage.getItem(`${key}:model`) !== null
-      ? JSON.parse(localStorage.getItem(`${key}:efforts`) ?? "{}")
-      : {},
-  );
-  const [requestedServiceTier, setRequestedServiceTier] = useState<"fast" | "default" | undefined>(
-    () => {
-      const saved = localStorage.getItem(`${key}:service-tier`);
-      return saved === "fast" || saved === "default" ? saved : undefined;
-    },
-  );
   const unavailableProfile = !!(profileSelection || project.defaultProfile) && !chosenProfile;
   const setPlanMode = (enabled: boolean) => {
     setPlan(enabled);
@@ -209,11 +187,12 @@ export function DraftComposer({
   const executionReady = backendReady && !!project.state?.connected;
   const modelReady = executionReady || (backendReady && !!prepareProject && modelCatalogReady);
   const modelSelectionDisabled = editLocked || !modelReady || unavailableProfile;
-  const blockingPending = project.pending.filter(
-    (entry: Data) => !isIndependentCreation(entry, [unknown, activeCreation?.requestId]),
-  );
-  const submitDisabled = modelSelectionDisabled || !!blockingPending.length || !effectiveModel;
-  const desktopUnsupported = project.desktopCapabilities?.currentCommands === false;
+  const submitDisabled = modelSelectionDisabled || !effectiveModel;
+  const models = draftModelChoices(project, effectiveModel, currentModel);
+  const desktopUnsupported =
+    conversationSubmitReadOnly ||
+    conversationCreateReadOnly ||
+    (!readOnly && project.desktopCapabilities?.currentCommands === false);
   const skills = useComposerSkills({
     project: executionReady
       ? project
@@ -246,7 +225,7 @@ export function DraftComposer({
     stageThreadDraft(
       project.id,
       id,
-      localStorage.getItem(key) ?? "",
+      composerDraftStorage.getItem(key) ?? "",
       attachmentDrafts.get(key) ?? [],
     );
     await moveSnapShotDraft(key, `areal-gui:draft:${project.id}:${id}`);
@@ -271,7 +250,11 @@ export function DraftComposer({
         throw new Error(t("worktree.recoveryMismatch"));
       const result = await readAction("reconcile", { projectId: project.id, requestId });
       if (!mounted.current || localStorage.getItem(`${key}:pending-create`) !== requestId) return;
-      const outcome = recoveredOutcome({ ...project, outcomes: result.outcomes }, requestId, "");
+      const outcome = recoveredOutcome({ ...project, outcomes: result.outcomes }, requestId, "", {
+        requestId,
+        method: "areal/thread/start",
+        target: { kind: "project" },
+      });
       const creationOutcome =
         outcome && (!outcome.operation || outcome.operation.method === "areal/thread/start")
           ? outcome
@@ -345,7 +328,7 @@ export function DraftComposer({
   }, [key, files]);
   const clear = () => {
     detachReviewComments(reviewKey);
-    localStorage.removeItem(key);
+    composerDraftStorage.removeItem(key);
     localStorage.removeItem(`${key}:permission`);
     localStorage.removeItem(`${key}:plan`);
     localStorage.removeItem(`${key}:model`);
@@ -368,7 +351,11 @@ export function DraftComposer({
   };
   useEffect(() => {
     if (!unknown || stoppedCreation.current.has(unknown)) return;
-    const outcome = recoveredOutcome(project, unknown, "");
+    const outcome = recoveredOutcome(project, unknown, "", {
+      requestId: unknown,
+      method: "areal/thread/start",
+      target: { kind: "project" },
+    });
     if (!outcome || (outcome.operation && outcome.operation.method !== "areal/thread/start"))
       return;
     if (outcome.status === "failed" || outcome.accepted === false) {
@@ -396,9 +383,14 @@ export function DraftComposer({
   }, [unknown, project.pending.length, project.outcomes, project.worktreeOperations]);
   const submit = async (value: string, selection = worktree) => {
     if (workspaceReferencePending) return;
+    if (hasMissingComposerFiles(files)) {
+      setDraftError(t("chat.composer.missingAttachmentsBlockSend"));
+      return;
+    }
     const submittedInput = composerInput(value, files);
     if (
-      (desktopUnsupported && !goalMode) ||
+      desktopUnsupported ||
+      (readOnly && goalMode) ||
       submitDisabled ||
       annotationBlocked ||
       sending.has(key) ||
@@ -425,7 +417,7 @@ export function DraftComposer({
     const creationRequestId = crypto.randomUUID();
     try {
       const owner = prepareProject ? await prepareProject() : project;
-      if (owner.desktopCapabilities?.currentCommands === false && !goalMode)
+      if (!readOnly && owner.desktopCapabilities?.currentCommands === false && !goalMode)
         throw new Error("更新后台后可发送消息，草稿已保留。");
       const profile = resolveDraftProfile(owner, profileSelection);
       if ((profileSelection || owner.defaultProfile) && !profile)
@@ -563,17 +555,19 @@ export function DraftComposer({
         else attachmentDrafts.delete(targetKey);
         clearComposerSkills(targetKey);
         clearComposerPlugins(targetKey);
+        acceptPendingMessage(targetKey);
       }
-      localStorage.removeItem(targetKey);
+      composerDraftStorage.removeItem(targetKey);
       window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: targetKey }));
     } catch (e) {
+      if (targetKey) setPendingMessage(targetKey);
       const failure = e as RecoveryFailure;
       if (stoppedCreation.current.has(creationRequestId)) return;
       if (!sendStarted || !failure.submissionUnknown) cancelTurnStart(turnStart);
       if (!failure.submissionUnknown) {
         localStorage.removeItem(`${key}:pending-create-request`);
         if (targetKey) {
-          attachmentErrors.set(targetKey, failure.message);
+          attachmentErrors.set(targetKey, currentErrorText(failure));
         } else setDraftError(recoveryMessage(failure));
       }
       const requestId = failure.requestId ?? (!targetKey ? creationRequestId : undefined);
@@ -595,7 +589,6 @@ export function DraftComposer({
     } finally {
       setPendingMessage(key);
       if (targetKey) {
-        setPendingMessage(targetKey);
         markSending(targetKey, false);
       }
       markSending(key, false);
@@ -782,6 +775,7 @@ export function DraftComposer({
         <ChatPromptEditor
           key={outgoing || (activeCreation?.worktree && busy) ? "waiting" : "draft"}
           surfaceLayout={surfaceLayout}
+          surfacePlacement="home"
           triggerPanelContainer={menuAnchor}
           shellClassName="@container/composer"
           workspacePath={project.root}
@@ -796,6 +790,9 @@ export function DraftComposer({
           inputApiRef={api}
           inputTestId="chat-input"
           submitTestId="chat-send-button"
+          hasDraftContent={
+            !outgoing && (!!files.length || !!comments.length || !!skills.selected.length)
+          }
           placeholder={
             activeCreation?.worktree && busy
               ? t("worktree.waitSetup")
@@ -803,14 +800,15 @@ export function DraftComposer({
                 ? "描述目标，明确可衡量的结果"
                 : plan
                   ? "描述任务，生成计划…"
-                  : "随心输入"
+                  : t("chat.composer.placeholder")
           }
           disabled={editLocked}
           submitDisabled={
             workspaceReferencePending ||
             submitDisabled ||
             annotationBlocked ||
-            (desktopUnsupported && !goalMode) ||
+            desktopUnsupported ||
+            (readOnly && goalMode) ||
             (goalMode
               ? !input.text.trim()
               : !input.text.trim() &&
@@ -842,69 +840,47 @@ export function DraftComposer({
             },
             entries: [
               ...snapShotCommandEntries(snapshotCapture, t, setDraftError),
-              {
-                value: "upload",
-                label: "上传文件",
-                description: "添加图片、文档或其他文件",
-                group: "功能",
-                icon: <AttachmentIcon />,
-                disabled: editLocked,
-                run: () => {
-                  if (!editLocked) upload.current?.click();
+              ...composerFeatureEntries(t, {
+                upload: {
+                  disabled: editLocked,
+                  run: () => {
+                    if (!editLocked) upload.current?.click();
+                  },
                 },
-              },
-              ...(project.id !== "projectless"
-                ? [
-                    {
-                      value: "mcp",
-                      label: "MCP",
-                      description: "查看服务器与连接状态",
-                      group: "功能" as const,
-                      icon: <ComposerMcpIcon />,
-                      disabled: !executionReady,
-                      run: () => {
-                        if (executionReady) setMcpOpen(true);
-                      },
-                    },
-                  ]
-                : []),
-              ...(project.root
-                ? [
-                    {
-                      value: "files",
-                      label: t("chat.composer.workspaceFiles"),
-                      description: t("chat.composer.workspaceFilesDescription"),
-                      group: "功能" as const,
-                      icon: <FileTree />,
+                mcp:
+                  project.id !== "projectless"
+                    ? {
+                        disabled: !executionReady,
+                        run: () => {
+                          if (executionReady) setMcpOpen(true);
+                        },
+                      }
+                    : undefined,
+                files: project.root
+                  ? {
                       disabled: !executionReady,
                       run: () => {
                         if (executionReady) onPanel("文件");
                       },
-                    },
-                  ]
-                : []),
-              {
-                value: "plan",
-                label: "计划模式",
-                description: plan ? "关闭计划模式" : "先规划，再开始执行",
-                group: "功能",
-                icon: <Lightbulb />,
-                disabled: editLocked || chosenProfile?.readOnly === true,
-                run: () => {
-                  if (!editLocked) setPlanMode(!plan);
+                    }
+                  : undefined,
+                plan: {
+                  active: plan,
+                  disabled: editLocked || chosenProfile?.readOnly === true,
+                  run: () => {
+                    if (!editLocked) setPlanMode(!plan);
+                  },
                 },
-              },
-              {
-                value: "goal",
-                label: "设置目标",
-                description: goalMode ? "关闭目标模式" : "设置持续目标与停止条件",
-                group: "功能",
-                icon: <GoalIcon />,
-                disabled: editLocked,
-                run: () => {
-                  if (!editLocked) changeGoalMode(!goalMode);
-                },
-              },
+                goal: !readOnly
+                  ? {
+                      active: goalMode,
+                      disabled: editLocked,
+                      run: () => {
+                        if (!editLocked) changeGoalMode(!goalMode);
+                      },
+                    }
+                  : undefined,
+              }),
               ...referenceEntries,
               ...appEntries.map((entry) => ({
                 ...entry,
@@ -919,7 +895,7 @@ export function DraftComposer({
           onChange={(value) => {
             if (outgoing || (activeCreation?.worktree && busy)) return;
             setText(value);
-            localStorage.setItem(key, value);
+            composerDraftStorage.scheduleItem(key, value);
           }}
           onSubmit={(value) => {
             void submit(value);
@@ -930,47 +906,20 @@ export function DraftComposer({
               composerPaste(event, (pasted) => setFiles((current) => [...current, ...pasted]));
           }}
           topContent={
-            <div hidden={!!outgoing && !files.length}>
+            <div hidden={!!outgoing}>
               {skills.tags}
               <div className="composer-attachment-row">
-                {files.length ? (
-                  <div className="composer-attachments" data-testid="composer-attachments">
-                    {files.map((file, i) => (
-                      <ComposerAttachment
-                        disabled={editLocked}
-                        key={
-                          isComposerFile(file)
-                            ? `${file.name}-${file.lastModified}-${i}`
-                            : `pasted-text-${i}`
-                        }
-                        file={file}
-                        onAnnotate={
-                          onAnnotate
-                            ? (file) => {
-                                if (!editLocked)
-                                  onAnnotate({
-                                    draftKey: key,
-                                    file,
-                                    returnFocus: () => api.current?.focus(),
-                                  });
-                              }
-                            : undefined
-                        }
-                        onRemove={() => {
-                          if (!editLocked)
-                            setFiles((current) => current.filter((_, at) => at !== i));
-                          if (isComposerFile(file)) void consumeSnapShotFiles([file]);
-                        }}
-                        onExpand={(content) => {
-                          if (editLocked) return;
-                          api.current?.appendText(`${text.length ? "\n\n" : ""}${content}`);
-                          setFiles((current) => current.filter((item) => item !== file));
-                          if (isComposerFile(file)) void consumeSnapShotFiles([file]);
-                        }}
-                      />
-                    ))}
-                  </div>
-                ) : null}
+                <ComposerFileList
+                  files={files}
+                  onChange={setFiles}
+                  disabled={editLocked}
+                  editor={api}
+                  onAnnotate={
+                    onAnnotate &&
+                    ((file) =>
+                      onAnnotate({ draftKey: key, file, returnFocus: () => api.current?.focus() }))
+                  }
+                />
                 <ReviewCommentAttachment
                   comments={comments}
                   disabled={editLocked}
@@ -1031,16 +980,7 @@ export function DraftComposer({
                 />
               )}
               {goalMode && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={editLocked}
-                  aria-label="退出目标模式"
-                  onClick={() => changeGoalMode(false)}
-                >
-                  <GoalIcon size={16} />
-                  目标
-                </Button>
+                <ComposerGoalMode disabled={editLocked} onExit={() => changeGoalMode(false)} />
               )}
               {plan && (
                 <ComposerPlanMode
@@ -1068,7 +1008,7 @@ export function DraftComposer({
                   setEfforts(next);
                   localStorage.setItem(`${key}:efforts`, JSON.stringify(next));
                 }}
-                options={draftModelOptions(project, effectiveModel, currentModel)}
+                options={models.options}
                 onChange={(value) => {
                   setModel(value);
                   localStorage.setItem(`${key}:model`, value);

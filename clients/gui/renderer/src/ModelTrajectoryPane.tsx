@@ -26,6 +26,7 @@ import { TrajectorySectionTitle } from "./ModelTrajectorySectionTitle.js";
 import { CopyTextAction } from "./MessageActions.js";
 import { trajectoryRoleTextClass } from "./ModelTrajectoryRoleStyles.js";
 import { useI18n, type MessageId } from "./i18n/IntlProvider.js";
+import { errorText, presentError } from "./errors/errorCopy.js";
 
 const statusKeys: Record<string, MessageId> = {
   inProgress: "trace.running",
@@ -83,7 +84,7 @@ function OriginalResult({
         : await action("media", { projectId, threadId: node.threadId, operation: "read", uri });
       setText(new TextDecoder().decode(new Uint8Array(value.bytes)));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(errorText(t, cause));
     } finally {
       setBusy(false);
     }
@@ -171,8 +172,7 @@ export function ModelTrajectoryPane({
         setRoot(value);
         setError("");
       } catch (cause) {
-        if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : String(cause));
+        if (!controller.signal.aborted) setError(errorText(t, cause));
       } finally {
         if (!controller.signal.aborted) {
           setBusy(false);
@@ -267,7 +267,7 @@ export function ModelTrajectoryPane({
   const thresholdMs = Math.max(0, Number(threshold === "custom" ? custom : threshold) || 0) * 1000;
   const filtered = candidates.filter(({ node, turn, entry, duration: ms }) => {
     const matches =
-      `${node.title} ${turn.id} ${turn.configuration?.model?.modelId ?? ""} ${status(turn.status)} ${JSON.stringify(turn.error ?? null)} ${label(entry)} ${entry.text}`
+      `${node.title} ${turn.id} ${turn.configuration?.model?.modelId ?? ""} ${status(turn.status)} ${JSON.stringify(turn.error ?? null)} ${label(entry)} ${entry.text}` // raw-error-ok: 搜索索引
         .toLocaleLowerCase()
         .includes(query.trim().toLocaleLowerCase());
     return (
@@ -606,7 +606,9 @@ export function ModelTrajectoryPane({
               .map((child) => childView(node, child))}
             {turn.error && (
               <pre className="trajectory-error" role="alert">
-                {turn.error.message ?? JSON.stringify(turn.error)}
+                {[presentError(t, turn.error).message, presentError(t, turn.error).detail]
+                  .filter(Boolean)
+                  .join("\n")}
               </pre>
             )}
           </article>

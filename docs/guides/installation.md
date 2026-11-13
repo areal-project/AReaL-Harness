@@ -56,7 +56,7 @@ brew test areal-project/tap/areal-beta
 从同一 Release 下载安装器和清单，校验后执行。固定版本避免在未知版本之间静默升级：
 
 ```sh
-version=0.1.7
+version=0.1.8
 base="https://github.com/areal-project/AReaL-Harness/releases/download/v${version}"
 curl -fL "$base/install.py" -o install.py
 curl -fL "$base/SHA256SUMS" -o SHA256SUMS
@@ -79,12 +79,12 @@ areal build-info
 离线安装先下载平台 tar.gz 与同一 Release 的 SHA256SUMS：
 
 ```sh
-python3 install.py --version 0.1.7 --prefix "$HOME/.local" \
-  --archive areal-harness-v0.1.7-x86_64-unknown-linux-gnu.tar.gz \
+python3 install.py --version 0.1.8 --prefix "$HOME/.local" \
+  --archive areal-harness-v0.1.8-x86_64-unknown-linux-gnu.tar.gz \
   --checksums SHA256SUMS
 ```
 
-macOS 离线安装将归档名改为 `areal-harness-v0.1.7-aarch64-apple-darwin.tar.gz`。`python3 install.py --version latest --check` 仅查询最新已公开 Release，不安装；`--version latest` 可在明确选择时安装最新版。
+macOS 离线安装将归档名改为 `areal-harness-v0.1.8-aarch64-apple-darwin.tar.gz`。`python3 install.py --version latest --check` 仅查询最新已公开 Release，不安装；`--version latest` 可在明确选择时安装最新版。
 
 安装器在执行任何包内程序前校验归档和全部文件，拒绝链接、设备和路径逃逸归档。SHA256 校验提供与发布清单的一致性，不替代发布源的身份验证。
 
@@ -112,7 +112,7 @@ areal build-info
 
 按[配置指南](configuration.md)在 `~/.areal/config.toml` 配置模型，然后在工作区启动 `areal`。旧配置必须删除已移除的 `limits.turn_timeout_seconds` 和 `AREAL_HARNESS_TURN_TIMEOUT_SECONDS`。`areal config validate` 可检查配置。旧 `~/.areal-harness` 不会自动迁移。
 
-`areal version` 与 `areal --version` 等价。`areal upgrade --check` 查询原安装渠道版本，不安装（独立安装查询最新正式 CLI，Homebrew 查询原 formula）。`areal upgrade` 按原安装来源执行；源码构建或非安装器管理的复制品拒绝自升级。
+`areal version` 与 `areal --version` 等价。`areal upgrade --check` 查询原安装渠道版本，不安装（独立安装的正式版查询最新正式 CLI，Beta 版查询最新 Beta 与正式版中较高者；Homebrew 查询原 formula）。交互式 TUI 启动时也会在后台按同样渠道检查，24 小时内最多联网一次，有新版本时在页眉第二行提示运行 `areal upgrade`，从不自动安装；设置 `AREAL_NO_UPDATE_CHECK=1` 可关闭，源码构建不检查。TUI 连到比自身旧的后台时同样提示：任务空闲后运行 `areal host stop`，再重开即由新版本拉起后台。`areal upgrade` 按原安装来源执行；源码构建或非安装器管理的复制品拒绝自升级。
 
 - **独立安装**先校验完整新包，再原子切换命令入口，不要求停止共享服务。升级命令不停止或重启后台，也不迁移运行中的会话。旧版本目录保持不变，供原有进程及其 Runtime 继续使用；新命令入口指向新版本。不应手动删除仍被运行中进程使用的版本目录。
 - **Homebrew 安装**使用 formula 并核对安装版本，tap 尚未更新会报错。此渠道仍要求所有共享服务停止后才能执行 `areal upgrade`，因为该命令不控制 Homebrew 对旧版本目录的清理。先用 `areal service list` 检查服务，再在各工作区执行 `areal service stop --workspace /absolute/workspace`。忙碌任务默认拒绝停止，应先完成或显式暂停任务，不要为了升级强制取消任务。
@@ -124,6 +124,18 @@ areal build-info
 卸载先停止服务。Homebrew 用 `brew uninstall areal`；Linux 删除安装器管理的入口链接及选定版本目录。两种方式都不自动删除 `~/.areal` 的配置与历史。
 
 符号链接入口先解析到真实版本目录，再定位 `libexec/areal`，适用于 Homebrew Cellar 和 Linux 版本化安装。
+
+## 桌面 GUI（macOS Apple Silicon）
+
+从 GitHub Release 下载 DMG，或用 Homebrew：
+
+```sh
+brew install --cask areal-project/tap/areal-harness
+# 可选 Beta（与正式版互斥）
+brew install --cask areal-project/tap/areal-harness@beta
+```
+
+GUI 自带同版本的后台程序并自行更新，`brew upgrade` 默认不覆盖它。默认只接收正式版；在 设置 → 通用 → 软件更新 → 高级 打开“接收 Beta 版本”后改为接收 Beta，后台也随之更新。关闭后不会降级，停在当前版本直到正式版追上。通过 `areal-harness@beta` 安装的也需打开这个开关才会继续收到 Beta。
 
 ## 源码安装
 

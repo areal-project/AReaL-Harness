@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { TrajectoryApply } = require("../app/src/core/trajectory-apply.cjs");
-const { TrajectoryExport } = require("../app/src/core/trajectory.cjs");
+const { TrajectoryApply } = require("@areal/workbench-service/trajectory-apply");
+const { TrajectoryExport } = require("@areal/workbench-service/trajectory");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
 const revision = "a".repeat(64);
 const snapshot = (enabled = false, extra = {}) => ({

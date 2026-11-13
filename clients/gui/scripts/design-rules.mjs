@@ -122,6 +122,15 @@ export function validateRuleDocuments({
     assert.ok(rule.title && rule.owner && rule.textSha256, `incomplete rule: ${rule.id}`);
     rules.set(rule.id, rule);
   }
+  // R-CHECK-023：组件合同只留需要判断的强制规则；超过上限说明该拆组件或把规则写成检查。
+  const mustByContract = new Map();
+  for (const rule of rules.values()) {
+    const owner = rule.owner.split("#")[0];
+    if (rule.strength !== "must" || !/\/packages\/ui\/src\/.+\.md$/.test(owner)) continue;
+    mustByContract.set(owner, (mustByContract.get(owner) ?? 0) + 1);
+  }
+  for (const [owner, count] of mustByContract)
+    assert.ok(count <= 10, `too many must rules in component contract ${owner}: ${count} > 10`);
   const definitions = new Map();
   for (const [path, document] of documents) {
     const item = index.get(path);

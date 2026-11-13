@@ -28,9 +28,7 @@ export function SettingsRow({
       >
         <div className="min-w-0 flex-1">
           <div className="settings-field-label">{label}</div>
-          {description ? (
-            <div className="settings-field-description">{description}</div>
-          ) : null}
+          {description ? <div className="settings-field-description">{description}</div> : null}
         </div>
         <div className="settings-field-control">
           {controlLayout === "wide" ? detail : null}

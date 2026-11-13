@@ -51,9 +51,6 @@ export async function stageCoreApp({ root, destination }) {
   // Small desktop resources stay intact; no global docs/spec/README deletion.
   for (const path of ["src", "assets"])
     await cp(join(desktop, path), join(destination, path), { recursive: true });
-  await mkdir(join(destination, "bridge"));
-  for (const path of ["filetree.js", "package.json"])
-    await cp(join(desktop, "bridge", path), join(destination, "bridge", path));
   await cp(join(root, "../../LICENSE"), join(destination, "LICENSE"));
   await cp(join(desktop, "LICENSE"), join(destination, "CAXSON-LICENSE"));
   await cp(join(root, "renderer/ZCODE-LICENSE"), join(destination, "ZCODE-LICENSE"));
@@ -104,7 +101,12 @@ export async function stageCoreApp({ root, destination }) {
                 "__tests__",
                 "examples",
               ].includes(part),
-            ) && !/\.(map|d\.ts|d\.mts|d\.cts|tsbuildinfo)$/.test(rel)
+            ) &&
+          !/\.(map|d\.ts|d\.mts|d\.cts|tsbuildinfo)$/.test(rel) &&
+          (pkg.name.startsWith("@areal/") || !/\.(ts|mts|cts|wat|flow)$/i.test(rel)) &&
+          (pkg.name.startsWith("@areal/") ||
+            !/\.md$/i.test(rel) ||
+            /^(licen[cs]e|notice|copying)(\.|$)/i.test(rel.split("/").pop()))
         );
       },
     });
@@ -170,7 +172,12 @@ export async function verifyCoreApp(appRoot) {
     }
   }
   await visit(join(appRoot, "package.json"));
-  assert.ok(existsSync(join(appRoot, "bridge/filetree.js")), "Missing workspace file listing");
+  assert.ok(
+    existsSync(
+      join(appRoot, "node_modules/@areal/workbench-service/src/desktop/bridge/filetree.js"),
+    ),
+    "Missing workspace file listing",
+  );
   assert.ok(
     existsSync(join(appRoot, "node_modules/@areal/chatgpt-provider/oauth-worker.js")),
     "Missing OAuth worker",
@@ -201,8 +208,8 @@ export async function verifyCoreApp(appRoot) {
       "-e",
       `const { createRequire } = require("node:module");
 const stagedRequire = createRequire(process.argv[1]);
-stagedRequire("./src/core/cloud-settings.cjs");
-const { CloudConversations } = stagedRequire("./src/core/cloud-conversations.cjs");
+stagedRequire("@areal/workbench-service/desktop/core/cloud-settings.cjs");
+const { CloudConversations } = stagedRequire("@areal/workbench-service/desktop/core/cloud-conversations.cjs");
 const cloud = new CloudConversations({ library: { command: async (request) => request } });
 cloud.route("library", { operation: "readThread", projectId: "project", threadId: "thread", read: true })
   .catch((error) => { console.error(error); process.exitCode = 1; });`,

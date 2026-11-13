@@ -1,14 +1,20 @@
+import { readCoreThread as observeCoreThread, listCoreSides } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, writeFile, readdir, stat, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir, stat, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
-import { closeSmokeApplication, assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  assertApplicationStopped,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
   captureSmokeFailure,
@@ -25,8 +31,6 @@ const gui = process.env.AREAL_GUI_SOURCE_ROOT
   : runnerGui;
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const WebSocket = require("ws");
-const { CoreClient } = await import(pathToFileURL(join(gui, "packages/runtime-client/core.js")));
 const { ServiceConnection, waitForServiceExit } = require(
   join(gui, "app/src/core/service-client.cjs"),
 );
@@ -69,7 +73,7 @@ const bundleHashes = async () =>
 const bundleHashesAtStart = await bundleHashes();
 const evidenceRoot = join(root, ".scratch/side-chat-parity");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await mkdtemp(join(evidenceRoot, baseline ? "baseline-" : "run-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, baseline ? "baseline-" : "run-"));
 const stateRoot = await makeTempDir("scp-");
 const workspace = join(stateRoot, "w");
 const userHome = join(stateRoot, "u");
@@ -240,17 +244,16 @@ Object.assign(env, {
   LANG: "zh_CN.UTF-8",
 });
 const commandLog = join(evidence, "commands.jsonl");
+const transportTrace = [];
+const composerTrace = [];
+const escapeTrace = [];
+let traceSocket = 0;
 const fixture = await applicationFixture(
   gui,
   join(stateRoot, "app"),
   `
 const { appendFileSync } = require('node:fs');
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
-const closeWindow = SharedCoreBackend.prototype.closeWindowSideChats;
-SharedCoreBackend.prototype.closeWindowSideChats = async function(...args) {
-  appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ observed: 'windowSideClose', stack: new Error().stack }) + '\\n');
-  return closeWindow.apply(this, args);
-};
 require('electron').app.on('browser-window-created', (_event, window) => {
   for (const event of ['show', 'hide', 'close']) window.on(event, () => {
     appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ observed: event, at: Date.now() }) + '\\n');
@@ -259,7 +262,6 @@ require('electron').app.on('browser-window-created', (_event, window) => {
 const original = SharedCoreBackend.prototype.command;
 SharedCoreBackend.prototype.command = async function(name, request) {
   try {
-    if (name === 'side' && request.operation === 'create') appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ observed: 'sideCreateGate', closed: this.guiWindowClosed, at: Date.now() }) + '\\n');
     const value = await original.call(this, name, request);
     appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ name, request, ok: true }) + '\\n');
     return value;
@@ -336,9 +338,10 @@ const mainComposer = () =>
     .first();
 const sidePane = () =>
   baseline
-    ? page.getByRole("region", { name: "旁路讨论", exact: true })
+    ? page.getByRole("region", { name: "侧边聊天", exact: true })
     : page.getByTestId("side-chat-pane").filter({ visible: true });
-const sideInput = () => sidePane().getByRole("textbox", { name: "随心输入", exact: true });
+const sideInput = () =>
+  sidePane().getByRole("textbox", { name: "描述要做的事，@ 引用文件，/ 查看命令", exact: true });
 const sideTabs = () => page.locator('[data-side-pane-tab-id^="side:"]');
 const mainMessages = () => page.getByTestId("chat-view").locator(".messages").first();
 const referenceTrigger = (pane) => pane.locator("[data-conversation-selection-reference-count]");
@@ -391,36 +394,16 @@ async function shot(name) {
   await writeFile(join(evidence, `${name}.aria.txt`), await page.locator("body").ariaSnapshot());
 }
 async function readCoreThread(threadId) {
-  const owner = project(await state());
-  const execution = owner.state?.threads?.[threadId];
-  const instance = execution?.executionCore?.instanceId ?? owner.core.instanceId;
-  const descriptor = JSON.parse(
-    execFileSync(binary, ["service", "status", "--instance", instance, "--json"], {
-      env,
-      encoding: "utf8",
-      timeout: 20000,
-    }),
-  );
-  assert.equal(descriptor.state, "ready");
-  assert.equal(descriptor.workspace, execution?.worktree?.directory ?? workspace);
-  const auth = JSON.parse(await readFile(descriptor.authFile, "utf8"));
-  const principal = auth.principals.find((item) => item.permissions.includes("observe"));
-  assert.ok(principal?.token);
-  const client = new CoreClient({
-    createSocket: () =>
-      new WebSocket(descriptor.endpoint, {
-        headers: { Authorization: `Bearer ${principal.token}` },
-        followRedirects: false,
-      }),
+  const thread = await observeCoreThread({
+    binary,
+    env,
+    gui,
+    threadId,
+    project: project(await state()),
+    workspace,
   });
-  try {
-    await client.connect();
-    const thread = (await client.request("thread/read", { threadId, includeTurns: true })).thread;
-    coreReads.push({ at: new Date().toISOString(), threadId, thread });
-    return thread;
-  } finally {
-    client.close();
-  }
+  coreReads.push({ at: new Date().toISOString(), threadId, thread });
+  return thread;
 }
 async function launch() {
   app = await electron.launch({
@@ -438,6 +421,42 @@ async function launch() {
     );
   page = await app.firstWindow();
   ctx.page = page;
+  page.on("websocket", (socket) => {
+    const socketId = ++traceSocket;
+    const pending = new Set();
+    socket.on("framesent", ({ payload }) => {
+      try {
+        const frame = JSON.parse(String(payload));
+        const side = frame.method === "desktop.command" && frame.params?.command === "side";
+        if (!["session.send", "turn.stop"].includes(frame.method) && !side) return;
+        pending.add(frame.id);
+        transportTrace.push({
+          direction: "sent",
+          socketId,
+          id: frame.id,
+          method: frame.method,
+          ...(side ? { operation: frame.params?.request?.operation } : {}),
+          commandId: frame.commandId,
+          projectId: frame.context?.projectId,
+          threadId: frame.params?.threadId,
+          turnId: frame.params?.expectedTurnId,
+        });
+      } catch {}
+    });
+    socket.on("framereceived", ({ payload }) => {
+      try {
+        const frame = JSON.parse(String(payload));
+        if (!pending.delete(frame.id)) return;
+        transportTrace.push({
+          direction: "received",
+          socketId,
+          id: frame.id,
+          errorCode: frame.error?.code ?? null,
+          settled: frame.result?.settled,
+        });
+      } catch {}
+    });
+  });
   page.setDefaultTimeout(12000);
   page.on("pageerror", (error) => errors.push(error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
@@ -480,15 +499,41 @@ async function closeOwned() {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  let closeError;
   if (app) {
     await app
-      .evaluate(({ dialog }) => {
-        dialog.showMessageBox = async () => ({ response: 1 });
-      })
+      .evaluate(({ dialog }, isBaseline) => {
+        dialog.showMessageBox = async () => ({ response: isBaseline ? 1 : 0 });
+      }, baseline)
       .catch(() => {});
-    await closeSmokeApplication(app);
+    try {
+      await closeSmokeApplication(app);
+    } catch (error) {
+      closeError = error;
+      facts.electronCleanupError = error.stack ?? String(error);
+    }
     app = null;
     ctx.app = null;
+  }
+  if (!baseline) {
+    const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, evidence);
+    assert.ok(receipt, "the original fixture Host stop is confirmed");
+    assert.equal(receipt.state, "completed");
+    for (const item of receipt.projects) {
+      assert.equal(item.receipt?.state, "completed");
+      const cleanup = JSON.parse(
+        await readFile(
+          join(env.AREAL_HARNESS_SERVICE_HOME, "services", item.serviceId, "cleanup.json"),
+          "utf8",
+        ),
+      );
+      assert.equal(cleanup.identity.generation, item.serviceGeneration);
+      assert.equal(cleanup.cleanupConfirmed, true);
+    }
+    await assertApplicationStopped(binary, env, metadata);
+    facts.cleanup.push({ pid: metadata?.pid ?? null, serviceExited: true, hostStop: receipt });
+    if (closeError) throw closeError;
+    return;
   }
   try {
     await assertApplicationStopped(binary, env, metadata);
@@ -509,9 +554,28 @@ async function closeOwned() {
     await assertApplicationStopped(binary, env, metadata);
   }
   facts.cleanup.push({ pid: metadata?.pid ?? null, serviceExited: true });
+  if (closeError) throw closeError;
 }
 async function sendMain(text, complete = true) {
   const previous = await currentId();
+  if (!baseline) {
+    const before = new Set(
+      previous ? (await readCoreThread(previous)).turns.map((turn) => turn.id) : [],
+    );
+    await mainComposer().getByTestId("chat-input").fill(text);
+    await mainComposer().getByRole("button", { name: "发送", exact: true }).click();
+    const id = await until(async () => (await currentId()) || null, "main thread identity");
+    let turn;
+    await until(async () => {
+      turn = (await readCoreThread(id)).turns.find((candidate) => !before.has(candidate.id));
+      return turn && (!complete || turn.status === "completed");
+    }, `main ${text}`);
+    if (complete)
+      await mainMessages()
+        .locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`)
+        .waitFor();
+    return id;
+  }
   const before = previous ? (threads(await state())[previous]?.turns?.length ?? 0) : 0;
   await mainComposer().getByTestId("chat-input").fill(text);
   await mainComposer().getByRole("button", { name: "发送", exact: true }).click();
@@ -531,7 +595,19 @@ async function newParent(prompt) {
   return sendMain(prompt);
 }
 async function openSide() {
-  const before = new Set(Object.keys(threads(await state())));
+  const parent = await currentId();
+  const before = baseline
+    ? new Set(Object.keys(threads(await state())))
+    : new Set(
+        await listCoreSides({
+          binary,
+          env,
+          gui,
+          threadId: parent,
+          project: project(await state()),
+          workspace,
+        }),
+      );
   if (!baseline) {
     await openSideChat(page);
     await until(async () => {
@@ -539,7 +615,15 @@ async function openSide() {
       return id && !before.has(id);
     }, "new empty child becomes the active pane");
     await sideInput().waitFor();
-    return { before, id: await sidePane().getAttribute("data-thread-id") };
+    const id = await sidePane().getAttribute("data-thread-id");
+    const created = await readCoreThread(id);
+    assert.equal(
+      created.conversation?.origin?.sourceThreadId,
+      parent,
+      "new Side belongs to the original parent",
+    );
+    assert.equal(created.turns.length, 0, "new Side has no turns");
+    return { before, id };
   }
   const launcher = page.locator(
     baseline
@@ -589,6 +673,61 @@ async function closeTab(id) {
   );
 }
 async function sendSide(text, complete = true) {
+  if (!baseline) {
+    const originalId = await sidePane().getAttribute("data-thread-id");
+    assert.ok(originalId, "the Side owns a Core thread before sending");
+    const before = new Set((await readCoreThread(originalId)).turns.map((turn) => turn.id));
+    await sideInput().fill(text);
+    if (text === "PARITY:P1_WRITE") {
+      composerTrace.push(
+        await sidePane().evaluate((pane, expected) => {
+          const input = pane.querySelector('[data-testid="side-chat-input"]');
+          const button = pane.querySelector('[data-testid="side-chat-send"]');
+          if (input) input.dataset.sideDiagnostic = "before-click";
+          return {
+            phase: "before",
+            threadId: pane.getAttribute("data-thread-id"),
+            matches: input?.textContent === expected,
+            disabled: button?.disabled,
+          };
+        }, text),
+      );
+    }
+    await sidePane().getByRole("button", { name: "发送", exact: true }).click();
+    if (text === "PARITY:P1_WRITE") {
+      composerTrace.push(
+        await sidePane().evaluate((pane, expected) => {
+          const input = pane.querySelector('[data-testid="side-chat-input"]');
+          const button = pane.querySelector('[data-testid="side-chat-send"]');
+          return {
+            phase: "after",
+            threadId: pane.getAttribute("data-thread-id"),
+            matches: input?.textContent === expected,
+            sameInput: input?.dataset.sideDiagnostic === "before-click",
+            disabled: button?.disabled,
+          };
+        }, text),
+      );
+    }
+    let turn;
+    await until(async () => {
+      assert.equal(await sidePane().getAttribute("data-thread-id"), originalId);
+      const thread = await readCoreThread(originalId);
+      turn = thread.turns.find((candidate) => !before.has(candidate.id));
+      if (turn && complete && turn.status !== "inProgress")
+        assert.equal(
+          turn.status,
+          "completed",
+          `child ${text} must complete successfully: ${JSON.stringify(turn.error)}`,
+        );
+      return turn && (!complete || turn.status === "completed");
+    }, `child ${text}`);
+    if (complete)
+      await sidePane()
+        .locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`)
+        .waitFor();
+    return originalId;
+  }
   const before = new Map(
     Object.values(threads(await state()))
       .filter((thread) => thread.conversation?.kind === "side")
@@ -724,7 +863,7 @@ async function addReference(body, text, target = "main", keyboard = false) {
     "selection actions finished their open transition",
   );
   const action = actions.getByRole("button", {
-    name: target === "main" ? "添加到聊天" : "在旁路中询问所选内容",
+    name: target === "main" ? "添加到聊天" : "在侧边聊天中询问所选内容",
     exact: true,
   });
   if (keyboard) await shot("P4-keyboard-selection");
@@ -742,7 +881,7 @@ async function addReference(body, text, target = "main", keyboard = false) {
     await page.keyboard.press("Enter");
   } else await action.click();
   record.stage = "activated";
-  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  if (target === "main") await page.evaluate(() => window.getSelection()?.removeAllRanges());
 }
 async function toolAndPermission() {
   const parent = await newParent("PARITY:P1_PARENT");
@@ -761,7 +900,7 @@ async function toolAndPermission() {
     "real parent configuration enables the approvalTools fixture",
   );
   await until(
-    async () => project(await state()).configurations[parent]?.profile?.id === "standard",
+    async () => (await readCoreThread(parent)).desktop?.configuration?.profile?.id === "standard",
     "fixture profile configured",
   );
   const before = await readCoreThread(parent);
@@ -776,13 +915,19 @@ async function toolAndPermission() {
     "child-owned real fs_read returns seeded bytes",
   );
   await sendSide("PARITY:P1_WRITE", false);
-  const pending = await until(
-    async () =>
-      (project(await state()).state.interactions?.[child]?.data ?? []).find(
-        (item) => item.kind === "approval" && item.status === "pending",
-      ),
-    "child fs_create approval",
-  );
+  const writeTurnId = (await readCoreThread(child)).turns.at(-1).id;
+  const pending = await until(async () => {
+    const interactions = baseline
+      ? (project(await state()).state.interactions?.[child]?.data ?? [])
+      : ((await readCoreThread(child)).desktop?.interactions ?? []);
+    return interactions.find(
+      (item) =>
+        item.kind === "approval" &&
+        item.status === "pending" &&
+        (baseline ||
+          (item.threadId === child && item.turnId === writeTurnId && item.tool === "fs_create")),
+    );
+  }, "child fs_create approval");
   assert.equal(pending.tool, "fs_create");
   assert.equal(
     await exists(join(workspace, "approved.txt")),
@@ -792,14 +937,17 @@ async function toolAndPermission() {
   await shot("P1-approval");
   await sidePane().getByRole("button", { name: "允许一次", exact: true }).click();
   await until(
-    async () => threads(await state())[child]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(child)).turns.find((turn) => turn.id === writeTurnId)?.status ===
+      "completed",
     "approved Runtime completion",
   );
+  await sidePane().getByText("DONE PARITY:P1_WRITE", { exact: true }).waitFor();
   assert.equal(await readFile(join(workspace, "approved.txt"), "utf8"), "CHILD_APPROVED_BYTES\n");
   const written = await readCoreThread(child);
   assert.ok(
     written.turns
-      .at(-1)
+      .find((turn) => turn.id === writeTurnId)
       .items.some(
         (item) =>
           item.type === "dynamicToolCall" &&
@@ -809,9 +957,12 @@ async function toolAndPermission() {
     "authoritative child history records successful fs_create",
   );
   await sendSide("PARITY:P1_DENY", false);
+  const denyTurnId = (await readCoreThread(child)).turns.at(-1).id;
   await sidePane().getByRole("button", { name: "拒绝 Esc", exact: true }).click();
   await until(
-    async () => threads(await state())[child]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(child)).turns.find((turn) => turn.id === denyTurnId)?.status ===
+      "completed",
     "denied operation settled",
   );
   assert.equal(await exists(join(workspace, "denied.txt")), false);
@@ -821,7 +972,7 @@ async function toolAndPermission() {
   await page.keyboard.press("Escape");
   await until(
     async () =>
-      project(await state()).configurations[child]?.model?.modelId === "fixture-alternate",
+      (await readCoreThread(child)).desktop?.configuration?.model?.modelId === "fixture-alternate",
     "independent child model",
   );
   const parentAfter = await readCoreThread(parent);
@@ -843,6 +994,7 @@ async function hiddenStableHistory() {
   release = join(executionRoot, "release-parent-tool");
   await sendMain("PARITY:P2_ACTIVE", false);
   await until(() => exists(marker), "held Runtime parent tool started");
+  const parentTurnId = !baseline ? (await readCoreThread(parent)).turns.at(-1).id : null;
   const before = requests.length;
   await openSide();
   assert.equal(requests.length, before, "empty Side makes no model request");
@@ -883,10 +1035,15 @@ async function hiddenStableHistory() {
     "inherited parent content is hidden from the child timeline",
   );
   await writeFile(release, "release");
-  await until(
-    async () => threads(await state())[parent]?.turns.at(-1).status === "completed",
-    "parent tool completes",
-  );
+  await until(async () => {
+    if (baseline) return threads(await state())[parent]?.turns.at(-1).status === "completed";
+    return (
+      (await readCoreThread(parent)).turns.find((turn) => turn.id === parentTurnId)?.status ===
+      "completed"
+    );
+  }, "parent tool completes");
+  if (!baseline)
+    await page.locator(`[data-turn-id="${parentTurnId}"][data-turn-status="completed"]`).waitFor();
   const childTurns = (await readCoreThread(child)).turns.length;
   await sendMain("PARITY:P2_LATER_PARENT");
   assert.equal(
@@ -917,7 +1074,7 @@ async function multipleTabs() {
   const opened = await openSide();
   const first = await sidePane().getAttribute("data-thread-id");
   assert.ok(first && !opened.before.has(first), "panel entry creates a distinct empty Core child");
-  assert.equal(threads(await state())[first].turns.length, 0);
+  assert.equal((await readCoreThread(first)).turns.length, 0);
   await sideInput().fill("FIRST_CHILD_DRAFT");
   await openSide();
   const second = await sidePane().getAttribute("data-thread-id");
@@ -935,6 +1092,7 @@ async function multipleTabs() {
     async () => (await referenceCount(sidePane())) === 1,
     "selection attaches to active child after public read",
   );
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   assert.equal(
     await sideTabs().count(),
     2,
@@ -951,6 +1109,7 @@ async function multipleTabs() {
     async () => (await sideTabs().count()) === 3 && (await referenceCount(sidePane())) === 1,
     "resource-tab selection creates and reveals child",
   );
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   assert.equal(
     await sideTabs().count(),
     3,
@@ -981,10 +1140,18 @@ async function multipleTabs() {
     "child never appears as a normal sidebar conversation",
   );
   assert.equal(requests.length, countBefore + 1, "tab entries and drafts make no model requests");
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
-  await until(
-    () => app.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].isVisible()),
+  await withSmokeDeadline(
     "window closes to background",
+    () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        if (!window.isVisible()) throw new Error("window must be visible before close");
+        return new Promise((resolve) => {
+          window.once("hide", () => resolve());
+          window.close();
+        });
+      }),
+    30000,
   );
   const closed = await readCoreThread(second);
   assert.equal(closed.desktop.archived, true, "window close fences owned child");
@@ -995,10 +1162,18 @@ async function multipleTabs() {
     ),
     "window close confirms owned child cleanup",
   );
-  await app.evaluate(({ app }) => app.emit("activate"));
-  await until(
-    () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
+  await withSmokeDeadline(
     "same window reopens",
+    () =>
+      app.evaluate(({ app, BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        if (window.isVisible()) throw new Error("window must be hidden before reopening");
+        return new Promise((resolve) => {
+          window.once("show", () => resolve());
+          app.emit("activate");
+        });
+      }),
+    30000,
   );
   await until(
     async () => (await sideTabs().count()) === 0,
@@ -1027,7 +1202,7 @@ async function multipleTabs() {
   );
 }
 async function selectionReferences() {
-  await newParent("PARITY:P4_SOURCE");
+  const parent = await newParent("PARITY:P4_SOURCE");
   await sendMain("PARITY:P4_OTHER");
   const body = mainMessages()
     .locator("[data-side-item-id] .conversation-markdown")
@@ -1076,6 +1251,7 @@ async function selectionReferences() {
   await shot("P4-reference-collection");
   await main.getByRole("button", { name: "发送", exact: true }).click();
   await until(() => requests.length > before, "reference-bearing provider request");
+  const referenceTurnId = (await readCoreThread(parent)).turns.at(-1).id;
   const payload = textOf(
     requests
       .at(-1)
@@ -1092,9 +1268,14 @@ async function selectionReferences() {
     "model receives text only without source identifiers",
   );
   await until(
-    async () => threads(await state())[await currentId()]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(parent)).turns.find((turn) => turn.id === referenceTurnId)?.status ===
+      "completed",
     "reference turn completed",
   );
+  await mainMessages()
+    .locator(`[data-turn-id="${referenceTurnId}"][data-turn-status="completed"]`)
+    .waitFor();
   assert.equal(
     await referenceCount(mainMessages()),
     2,
@@ -1116,6 +1297,7 @@ async function selectionReferences() {
     );
   };
   await sendMain("PARITY:STREAM_SELECTION", false);
+  const streamTurnId = (await readCoreThread(parent)).turns.at(-1).id;
   const streamed = mainMessages()
     .locator("[data-side-item-id] .conversation-markdown")
     .filter({ hasText: "STREAM_SELECTION_1" })
@@ -1124,7 +1306,7 @@ async function selectionReferences() {
   const streamRequests = requests.length;
   await addReference(streamed, "STREAM_SELECTION_1");
   assert.equal(
-    threads(await state())[await currentId()]?.turns.at(-1).status,
+    (await readCoreThread(parent)).turns.find((turn) => turn.id === streamTurnId)?.status,
     "inProgress",
     "the quote is staged while the response stream remains open",
   );
@@ -1147,9 +1329,14 @@ async function selectionReferences() {
   assert.equal(requests.length, streamRequests, "stream selection stages a draft without sending");
   streams.get("PARITY:STREAM_SELECTION")?.();
   await until(
-    async () => threads(await state())[await currentId()]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(parent)).turns.find((turn) => turn.id === streamTurnId)?.status ===
+      "completed",
     "selection stream settled",
   );
+  await mainMessages()
+    .locator(`[data-turn-id="${streamTurnId}"][data-turn-status="completed"]`)
+    .waitFor();
   await clear();
   await main.getByTestId("chat-input").fill("LIMIT_DRAFT_SURVIVES");
   await addReference(body, longC);
@@ -1220,6 +1407,7 @@ async function selectionReferences() {
 }
 async function normalComposerAndSideCommands() {
   const parent = await newParent("PARITY:P5_PARENT");
+  let busyParentTurnId;
   await openSide();
   assert.equal(
     await sidePane().locator('input[type="file"]').count(),
@@ -1260,19 +1448,22 @@ async function normalComposerAndSideCommands() {
   for (const command of ["side", "btw"]) {
     if (command === "btw") {
       await sendMain("PARITY:STREAM_P5_PARENT", false);
+      busyParentTurnId = (await readCoreThread(parent)).turns.at(-1).id;
       await until(
         () => requests.some((item) => item.prompt === "PARITY:STREAM_P5_PARENT"),
         "busy parent reached the model before command request counting",
       );
     }
     const parentBefore = await readCoreThread(parent);
-    const queueBefore = structuredClone(project(await state()).state.queues[parent]);
+    const queueBefore = parentBefore.desktop?.queue;
+    assert.ok(queueBefore && Array.isArray(queueBefore.items), "parent Core queue is present");
     const count = requests.length,
       tabs = await sideTabs().count();
     if (command === "side") {
       await mainComposer().getByTestId("chat-input").fill("/");
       await page.getByRole("option").filter({ hasText: "/side" }).waitFor();
-      await page.getByRole("option").filter({ hasText: "/btw" }).waitFor();
+      // /btw 是 /side 的别名，菜单只列一项。
+      assert.equal(await page.getByRole("option").filter({ hasText: "/btw" }).count(), 0);
       await shot("P5-main-slash-menu");
     }
     await mainComposer().getByTestId("chat-input").fill(`/${command}`);
@@ -1301,14 +1492,16 @@ async function normalComposerAndSideCommands() {
       "app command creates no parent turn",
     );
     assert.deepEqual(
-      project(await state()).state.queues[parent],
+      parentAfter.desktop?.queue,
       queueBefore,
       "app command never queues or steers the running parent",
     );
   }
   streams.get("PARITY:STREAM_P5_PARENT")?.();
   await until(
-    async () => threads(await state())[parent]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(parent)).turns.find((turn) => turn.id === busyParentTurnId)?.status ===
+      "completed",
     "busy parent settled after app command",
   );
   await mainComposer()
@@ -1339,18 +1532,93 @@ async function escapeOwnership() {
   const parent = await newParent("PARITY:P6_PARENT");
   await openSide();
   const commandRecords = async () =>
-    (await readFile(commandLog, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
+    baseline
+      ? (await readFile(commandLog, "utf8"))
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map(JSON.parse)
+          .filter((entry) => entry.name === "stop")
+          .map((entry) => ({ ...entry, response: { errorCode: entry.ok ? null : "error" } }))
+      : transportTrace
+          .filter((entry) => entry.direction === "sent" && entry.method === "turn.stop")
+          .map((entry) => ({
+            name: "stop",
+            request: { turnId: entry.turnId },
+            id: entry.id,
+            response: transportTrace.find(
+              (item) =>
+                item.direction === "received" &&
+                item.socketId === entry.socketId &&
+                item.id === entry.id,
+            ),
+          }));
   const turnText = (turn) =>
     (turn?.items ?? [])
       .filter((item) => item.type === "agentMessage")
       .map((item) => item.text ?? "")
       .join("");
-  const grows = async (threadId, label) => {
-    const before = turnText(threads(await state())[threadId].turns.at(-1));
+  const readTurn = async (threadId, turnId) =>
+    (await readCoreThread(threadId)).turns.find((turn) => turn.id === turnId);
+  const grows = async (threadId, turnId, label) => {
+    const before = turnText(await readTurn(threadId, turnId));
     await until(async () => {
-      const turn = threads(await state())[threadId]?.turns.at(-1);
+      const turn = await readTurn(threadId, turnId);
       return turn?.status === "inProgress" && turnText(turn).length > before.length;
     }, label);
+  };
+  const stopReady = async (messages, composer, turnId, buttonName) => {
+    await messages.locator(`[data-turn-id="${turnId}"][data-turn-status="inProgress"]`).waitFor();
+    const button = composer.getByRole("button", { name: buttonName, exact: true });
+    await button.waitFor();
+    await until(() => button.isEnabled(), `${buttonName} available`);
+  };
+  const traceEscape = async (label, threadId, turnId) => {
+    await page.evaluate(
+      ({ label, threadId, turnId }) => {
+        window.__sideEscapeTrace = undefined;
+        const capture = (event) => {
+          if (event.key !== "Escape") return;
+          const path = event.composedPath();
+          const element = document.activeElement;
+          const entry = {
+            label,
+            threadId,
+            turnId,
+            activeRole: element?.getAttribute("role"),
+            activeInSide: !!element?.closest(".side-chat-pane"),
+            pathInSide: path.some(
+              (item) => item instanceof Element && item.matches(".side-chat-pane"),
+            ),
+            visibleOverlay: [
+              ...document.querySelectorAll(
+                '[role="dialog"], [data-slot="dialog-content"], [data-slot="select-content"], [data-slot="popover-content"], [data-slot="dropdown-menu-content"], [data-slot="context-menu-content"]',
+              ),
+            ].some((item) => item.getClientRects().length > 0),
+            defaultPreventedBefore: event.defaultPrevented,
+          };
+          window.__sideEscapeTrace = entry;
+        };
+        const bubble = (event) => {
+          if (event.key === "Escape" && window.__sideEscapeTrace)
+            window.__sideEscapeTrace.defaultPreventedAfter = event.defaultPrevented;
+        };
+        window.__sideEscapeCleanup = () => {
+          window.removeEventListener("keydown", capture, true);
+          window.removeEventListener("keydown", bubble);
+        };
+        window.addEventListener("keydown", capture, true);
+        window.addEventListener("keydown", bubble);
+      },
+      { label, threadId, turnId },
+    );
+    await page.keyboard.press("Escape");
+    escapeTrace.push(
+      await page.evaluate(() => {
+        window.__sideEscapeCleanup();
+        return window.__sideEscapeTrace;
+      }),
+    );
   };
   for (const order of ["MAIN_FIRST", "SIDE_FIRST"]) {
     let child;
@@ -1361,56 +1629,60 @@ async function escapeOwnership() {
       child = await sendSide(`PARITY:STREAM_SIDE_${order}`, false);
       await sendMain(`PARITY:STREAM_MAIN_${order}`, false);
     }
-    const both = await until(async () => {
-      const snapshot = await state();
-      return (
-        threads(snapshot)[parent]?.turns.at(-1)?.status === "inProgress" &&
-        threads(snapshot)[child]?.turns.at(-1)?.status === "inProgress" &&
-        snapshot
-      );
-    }, "both independent streams active");
+    const parentTurn = (await readCoreThread(parent)).turns.at(-1).id,
+      childTurn = (await readCoreThread(child)).turns.at(-1).id;
+    await until(
+      async () =>
+        (await readTurn(parent, parentTurn))?.status === "inProgress" &&
+        (await readTurn(child, childTurn))?.status === "inProgress",
+      "both independent streams active",
+    );
+    await stopReady(sidePane(), sidePane(), childTurn, "停止");
     await shot(`P6-concurrent-${order}`);
-    const parentTurn = threads(both)[parent].turns.at(-1).id,
-      childTurn = threads(both)[child].turns.at(-1).id;
     const beforeStops = (await commandRecords()).filter((item) => item.name === "stop").length;
     await sideInput().focus();
-    await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[child]?.turns.at(-1).status !== "inProgress",
-      "focused child stopped",
-    );
-    await sideInput().focus();
-    await page.keyboard.press("Escape");
-    const growth = turnText(threads(await state())[parent].turns.at(-1));
+    await traceEscape(`${order}: focused child`, child, childTurn);
     await until(async () => {
-      const turn = threads(await state())[parent]?.turns.at(-1);
+      const turn = (await readCoreThread(child)).turns.find((item) => item.id === childTurn);
+      return turn && turn.status !== "inProgress";
+    }, "focused child stopped");
+    await sideInput().focus();
+    await traceEscape(`${order}: idle child`, child, childTurn);
+    const growth = turnText(await readTurn(parent, parentTurn));
+    await until(async () => {
+      const turn = await readTurn(parent, parentTurn);
       return turn?.status === "inProgress" && turnText(turn).length > growth.length;
     }, "main survivor keeps growing after repeated idle Side Esc");
-    let stops = (await commandRecords()).filter((item) => item.name === "stop").slice(beforeStops);
+    let stops = await until(async () => {
+      const records = (await commandRecords()).slice(beforeStops);
+      return records.length === 1 && records[0].response ? records : null;
+    }, "focused child stop response");
     assert.equal(stops.length, 1, "repeated idle child Esc never stops main or replays stop");
     assert.equal(stops[0].request.turnId, childTurn);
+    assert.equal(stops[0].response?.errorCode, null);
     await page.getByRole("button", { name: "收起侧栏", exact: true }).focus();
-    await page.keyboard.press("Escape");
-    await grows(parent, "outside focus with panel open preserves growing main stream");
+    await traceEscape(`${order}: outside with panel`, parent, parentTurn);
+    await grows(parent, parentTurn, "outside focus with panel open preserves growing main stream");
     assert.equal(
       (await readCoreThread(parent)).turns.at(-1).status,
       "inProgress",
       "outside focus with panel open stops neither pane",
     );
+    await stopReady(mainMessages(), mainComposer(), parentTurn, "暂停执行");
     await mainComposer().getByTestId("chat-input").focus();
-    await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[parent]?.turns.at(-1).status !== "inProgress",
-      "focused main stopped",
-    );
-    await until(
-      async () =>
-        (await commandRecords()).filter((item) => item.name === "stop").length === beforeStops + 2,
-      "both original stop receipts observed",
-    );
+    await traceEscape(`${order}: focused main`, parent, parentTurn);
+    await until(async () => {
+      const turn = (await readCoreThread(parent)).turns.find((item) => item.id === parentTurn);
+      return turn && turn.status !== "inProgress";
+    }, "focused main stopped");
+    await until(async () => {
+      const records = (await commandRecords()).slice(beforeStops);
+      return records.length === 2 && records.every((item) => item.response);
+    }, "both original stop receipts observed");
     stops = (await commandRecords()).filter((item) => item.name === "stop").slice(beforeStops);
     assert.equal(stops.length, 2);
     assert.equal(stops[1].request.turnId, parentTurn);
+    assert.equal(stops[1].response?.errorCode, null);
     const finalChild = await readCoreThread(child),
       finalParent = await readCoreThread(parent);
     assert.notEqual(finalChild.turns.at(-1).status, "inProgress");
@@ -1420,15 +1692,16 @@ async function escapeOwnership() {
     const beforeMainStop = (await commandRecords()).filter((item) => item.name === "stop").length;
     const mainSecond = (await readCoreThread(parent)).turns.at(-1).id;
     const sideSecond = (await readCoreThread(child)).turns.at(-1).id;
+    await stopReady(mainMessages(), mainComposer(), mainSecond, "暂停执行");
     await mainComposer().getByTestId("chat-input").focus();
-    await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[parent]?.turns.at(-1).status !== "inProgress",
-      "main-focused Esc stops main alone",
-    );
-    await grows(child, "Side survivor keeps growing after main-focused Esc");
+    await traceEscape(`${order}: second main`, parent, mainSecond);
+    await until(async () => {
+      const turn = (await readCoreThread(parent)).turns.find((item) => item.id === mainSecond);
+      return turn && turn.status !== "inProgress";
+    }, "main-focused Esc stops main alone");
+    await grows(child, sideSecond, "Side survivor keeps growing after main-focused Esc");
     await page.getByRole("button", { name: "关闭面板", exact: true }).click();
-    await grows(child, "closing panel leaves Side execution running");
+    await grows(child, sideSecond, "closing panel leaves Side execution running");
     await sendMain(`PARITY:STREAM_MAIN_CLOSED_${order}`, false);
     const closedMainTurn = (await readCoreThread(parent)).turns.at(-1).id;
     await page.getByRole("button", { name: "任务资源", exact: true }).click();
@@ -1441,7 +1714,7 @@ async function escapeOwnership() {
           .evaluate((element) => getComputedStyle(element).opacity === "1"),
       "resources open transition completed",
     );
-    await page.keyboard.press("Escape");
+    await traceEscape(`${order}: dismiss resources`, parent, closedMainTurn);
     await resources.waitFor({ state: "hidden" });
     (facts.resourceInnerHiddenProbes ??= []).push(
       await page.locator(".task-resources-popup").evaluate((element) => ({
@@ -1451,7 +1724,7 @@ async function escapeOwnership() {
         opacity: getComputedStyle(element).opacity,
       })),
     );
-    await grows(parent, "dismissing visible resources preserves the main stream");
+    await grows(parent, closedMainTurn, "dismissing visible resources preserves the main stream");
     // Activity 隐藏不代表 keepMounted 弹层已退出；外层仍有布局时应继续保护主任务。
     await until(
       () =>
@@ -1468,28 +1741,28 @@ async function escapeOwnership() {
         opacity: getComputedStyle(element).opacity,
       })),
     );
+    await stopReady(mainMessages(), mainComposer(), closedMainTurn, "暂停执行");
     await page.getByRole("button", { name: "收起侧栏", exact: true }).focus();
-    await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[parent]?.turns.at(-1).status !== "inProgress",
-      "panel-closed outside Esc falls back to main",
-    );
-    await grows(child, "hidden Side survivor grows after main fallback stop");
+    await traceEscape(`${order}: panel closed fallback`, parent, closedMainTurn);
+    await until(async () => {
+      const turn = (await readCoreThread(parent)).turns.find((item) => item.id === closedMainTurn);
+      return turn && turn.status !== "inProgress";
+    }, "panel-closed outside Esc falls back to main");
+    await grows(child, sideSecond, "hidden Side survivor grows after main fallback stop");
     await page.getByRole("button", { name: "展开侧边面板", exact: true }).click();
     await sideInput().waitFor();
-    await grows(child, "reopened Side is still streaming");
+    await grows(child, sideSecond, "reopened Side is still streaming");
+    await stopReady(sidePane(), sidePane(), sideSecond, "停止");
     await sideInput().focus();
-    await page.keyboard.press("Escape");
-    await until(
-      async () => threads(await state())[child]?.turns.at(-1).status !== "inProgress",
-      "Side survivor explicitly stopped",
-    );
-    await until(
-      async () =>
-        (await commandRecords()).filter((item) => item.name === "stop").length ===
-        beforeMainStop + 3,
-      "focused and fallback stop receipts observed",
-    );
+    await traceEscape(`${order}: Side survivor`, child, sideSecond);
+    await until(async () => {
+      const turn = (await readCoreThread(child)).turns.find((item) => item.id === sideSecond);
+      return turn && turn.status !== "inProgress";
+    }, "Side survivor explicitly stopped");
+    await until(async () => {
+      const records = (await commandRecords()).slice(beforeMainStop);
+      return records.length === 3 && records.every((item) => item.response);
+    }, "focused and fallback stop receipts observed");
     const secondStops = (await commandRecords())
       .filter((item) => item.name === "stop")
       .slice(beforeMainStop);
@@ -1498,6 +1771,7 @@ async function escapeOwnership() {
       [mainSecond, closedMainTurn, sideSecond],
       "focused and fallback stops keep exact original turn ownership without replay",
     );
+    assert.ok(secondStops.every((item) => item.response?.errorCode === null));
   }
   await shot("P6-focus-scoped-stop");
   await closeMotion.evaluate((element) => element.remove());
@@ -1540,6 +1814,11 @@ try {
   );
   projectId = project(await state()).id;
   ctx.projectId = projectId;
+  await page.waitForFunction(
+    (id) => document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === id,
+    projectId,
+  );
+  await page.getByRole("button", { name: "新会话工作区", exact: true }).waitFor();
   for (const [id, run] of scenarios) {
     if (scenario && scenario !== id) continue;
     const row = { id, startedAt: new Date().toISOString(), requestsBefore: requests.length };
@@ -1560,10 +1839,23 @@ try {
       await writeFile(release, "release");
       for (const settle of Array.from(streams.values())) settle();
       await until(
-        async () =>
-          !Object.values(threads(await state())).some(
-            (thread) => thread.turns?.at(-1)?.status === "inProgress",
-          ),
+        async () => {
+          if (baseline)
+            return !Object.values(threads(await state())).some(
+              (thread) => thread.turns?.at(-1)?.status === "inProgress",
+            );
+          const directory = join(env.AREAL_CORE_HOME, projectId, "state");
+          const names = (await readdir(directory)).filter((name) =>
+            /^[a-f0-9-]{36}\.json$/i.test(name),
+          );
+          if (!names.length) return false;
+          const stored = await Promise.all(
+            names.map(
+              async (name) => JSON.parse(await readFile(join(directory, name), "utf8")).thread,
+            ),
+          );
+          return stored.every((thread) => thread.turns?.at(-1)?.status !== "inProgress");
+        },
         "scenario streams and tools settled",
         20000,
       ).catch((error) => {
@@ -1578,7 +1870,7 @@ try {
         tabs.map((tab) => tab.getAttribute("data-side-pane-tab-id")?.slice(5)).filter(Boolean),
       );
       for (const id of childIds) await closeTab(id).catch(() => {});
-      const oldReturn = sidePane().getByRole("button", { name: "返回主会话", exact: true });
+      const oldReturn = sidePane().getByRole("button", { name: "关闭面板", exact: true });
       if (await oldReturn.isVisible()) await oldReturn.click();
     }
   }
@@ -1587,6 +1879,10 @@ try {
   facts.error = error.stack ?? String(error);
   if (page) await captureSmokeFailure(page, evidence, error);
 } finally {
+  await writeFile(
+    join(evidence, "transport-trace.json"),
+    JSON.stringify({ transportTrace, composerTrace, escapeTrace }, null, 2),
+  );
   await writeFile(release, "release");
   for (const settle of Array.from(streams.values())) settle();
   await closeOwned().catch((error) => {

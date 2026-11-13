@@ -25,10 +25,6 @@ exports: ["WorkbenchShell", "WorkspaceHeader", "WorkSurface", "NavigationSidebar
 
 引用 [R-UI-COMMON-009](../../../README.md#共同合同)。
 
-## 行为
-
-`R-WORKBENCHSHELL-001` 侧栏测量、拖动/键盘调整及布局动效沿原实现。reducedMotion和本地化resizeLabel由宿主提供。持久化宽度、面板身份和导航仍归原业务所有者。
-
 ## 内容
 
 引用 [R-UI-COMMON-011](../../../README.md#共同合同)。

@@ -4,7 +4,8 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -50,7 +51,7 @@ async function until(check, label, timeoutMs = 20000) {
 }
 
 async function trial(kind, capacity) {
-  const root = await realpath(await mkdtemp("/tmp/ar-"));
+  const root = await realpath(await trackedMkdtemp("/tmp/ar-"));
   const workspace = join(root, "repo");
   const config = join(root, "config.toml");
   const env = {

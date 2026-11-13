@@ -501,7 +501,7 @@ function FirstTurnReadingPreview({ dark }: { dark: boolean }) {
         id: "history-answer",
         type: "agentMessage",
         phase: "final_answer",
-        text: "此前的回复保留完整阅读空间。\n\n".repeat(50),
+        text: "此前的回复保留完整阅读空间。\n\n".repeat(scenario === "short-history" ? 1 : 50),
       },
     ],
   };
@@ -528,7 +528,10 @@ function FirstTurnReadingPreview({ dark }: { dark: boolean }) {
   };
   const thread = {
     id: threadId,
-    turns: [...(scenario === "history" ? [historyTurn] : []), ...(accepted ? [turn] : [])],
+    turns: [
+      ...(["history", "short-history"].includes(scenario) ? [historyTurn] : []),
+      ...(accepted ? [turn] : []),
+    ],
   };
   const project = {
     id: projectId,
@@ -542,7 +545,7 @@ function FirstTurnReadingPreview({ dark }: { dark: boolean }) {
     setPendingMessage(key, {
       text: "首轮发送锚点验收。",
       files: [],
-      previousUserIds: scenario === "history" ? ["history-user"] : [],
+      previousUserIds: ["history", "short-history"].includes(scenario) ? ["history-user"] : [],
     });
     setStarted(true);
   };
@@ -572,6 +575,7 @@ function FirstTurnReadingPreview({ dark }: { dark: boolean }) {
             <option value="before-mount">受理先于挂载</option>
             <option value="unknown">UNKNOWN 后快照到达</option>
             <option value="history">回看后主动发送</option>
+            <option value="short-history">短回复后续发</option>
             <option value="cold">冷打开历史</option>
           </select>
         </label>

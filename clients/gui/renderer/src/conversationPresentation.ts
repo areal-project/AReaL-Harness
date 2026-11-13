@@ -296,7 +296,10 @@ export function toolPresentation(item: Data) {
   const processRunning =
     ["run_command", "verify_command"].includes(name) &&
     (result.commandStatus === "running" || result.state === "running");
-  const running = !stopped && !unsettled && (item.status === "inProgress" || processRunning);
+  // 等待审批的调用还没开始执行，不能说“正在运行”。
+  const awaiting = item.awaitingApproval === true && !stopped;
+  const running =
+    !awaiting && !stopped && !unsettled && (item.status === "inProgress" || processRunning);
   const search = args.pattern ?? args.query;
   // 对象只取人能认的参数；拿不到时留空，只显示动作，不回退成工具的内部名称。
   const target =
@@ -345,29 +348,33 @@ export function toolPresentation(item: Data) {
           ? ""
           : String(target),
     // 状态的语义值；文字由 chat.activity.status 按界面语言给出。status 保留中文供既有数据属性使用。
-    state: running
-      ? "running"
-      : failed
-        ? "failed"
-        : unsettled
-          ? "unsettled"
-          : stopped
-            ? "stopped"
-            : "completed",
+    state: awaiting
+      ? "awaiting"
+      : running
+        ? "running"
+        : failed
+          ? "failed"
+          : unsettled
+            ? "unsettled"
+            : stopped
+              ? "stopped"
+              : "completed",
     // 文件与目录类行只显示末段名称，完整路径在悬停提示里。
     path:
       ["read", "edit", "list"].includes(kind) && typeof (args.path ?? args.file_path) === "string"
         ? String(args.path ?? args.file_path)
         : undefined,
-    status: running
-      ? "执行中"
-      : failed
-        ? "失败"
-        : unsettled
-          ? "结果待确认"
-          : stopped
-            ? "已停止"
-            : "已完成",
+    status: awaiting
+      ? "等待你批准"
+      : running
+        ? "执行中"
+        : failed
+          ? "失败"
+          : unsettled
+            ? "结果待确认"
+            : stopped
+              ? "已停止"
+              : "已完成",
   };
 }
 
@@ -645,7 +652,7 @@ const turnOutcomeLabels: Readonly<Record<string, string>> = {
 
 /** 图片 400 只给检查建议；结构化 code 优先，旧历史保持原展示。 */
 export function turnFailureMessage(turn: Data): string {
-  const message = turn.error?.message;
+  const message = turn.error?.message; // raw-error-ok: 模型服务原话，按已知情况改写
   const outcome = turn.error?.outcome;
   if (outcome?.code === "GOAL_TOKEN_BUDGET" && outcome.source === "core_goal_token_budget")
     return goalBudgetMessage("GOAL_TOKEN_BUDGET")!;
@@ -676,7 +683,7 @@ export function turnFailureMessage(turn: Data): string {
     )
   )
     return `${message}。这条消息包含图片，请确认所选模型支持图片输入，或移除图片后重试。`;
-  return message ?? JSON.stringify(turn.error);
+  return message ?? "这一轮没有完成。";
 }
 
 const settledLabels: Record<string, string> = {
@@ -730,4 +737,18 @@ export function commandResourceLabel(tool: Data) {
   if (outcome === "interrupted" || outcome === "cancelled") return "命令资源已停止";
   if (outcome === "succeeded" || outcome === "success") return "命令资源已结束";
   return null;
+}
+
+/** 正等用户审批的工具调用：对应工具行显示“等你审批”，本轮计时暂停。 */
+export function approvalProgress(project: Data, threadId: string) {
+  const calls = new Set<string>(
+    (project.state?.interactions?.[threadId]?.data ?? [])
+      .filter((item: Data) => item.status === "pending" && item.kind === "approval")
+      .map((item: Data) => item.callId),
+  );
+  return {
+    mark: (item: Data): Data =>
+      calls.has(item.callId) ? { ...item, awaitingApproval: true } : item,
+    elapsed: { connected: !!project.state?.connected, awaiting: calls.size > 0 },
+  };
 }

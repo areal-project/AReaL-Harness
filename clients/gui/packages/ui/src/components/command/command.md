@@ -25,10 +25,6 @@ exports: ["Command", "CommandDialog", "CommandInput", "CommandList", "CommandEmp
 
 查询、无结果、分组、选中、禁用。
 
-## 行为
-
-`R-COMMAND-001` 复用现有cmdk，候选与执行由宿主提供；不自动把匹配项当作已执行。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

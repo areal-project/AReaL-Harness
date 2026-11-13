@@ -1,6 +1,6 @@
 # Settings stage one: interaction-family migration
 
-Validate whether interaction-family guidance can shape an existing production page with fewer ad hoc decisions. This is not pixel parity with Codex, complete settings-center migration, frozen Base acceptance or cross-platform approval. [Canonical Chinese contract](../../../../clients/gui/design-system/exercises/settings-stage1.md).
+Validate whether interaction-family guidance can shape an existing production page with fewer ad hoc decisions. This is not pixel parity with Codex, complete settings-center migration, frozen Base acceptance or cross-platform approval. [Canonical Chinese contract](settings-stage1.md).
 
 Primary families: I-MANAGE, I-DECIDE and I-READ. Existing navigation, input, return and recovery paths support them. [Design brief](../../../../clients/gui/design-system/templates/interaction-brief.json) records rules and choices.
 
@@ -29,4 +29,4 @@ Assess declaration validity, interaction outcomes, visual quality and platform b
 
 Both old and new selected journeys passed on macOS source Electron with actual Core and isolated synthetic state, including quit/reopen. Eight raw state pairs, ARIA, events and independent-run videos are retained locally. Type/build/catalog/public-boundary/docs checks are reported separately. The user accepted the scoped visual result; no Base admission is promoted. Initial selector/editor-input/restoration-readiness failures remain retained and are not counted as product defects or passing evidence.
 
-The user accepted the scoped stage-one result and authorized [conversation stage two](../../../../clients/gui/design-system/exercises/conversation-stage2.en.md). This does not freeze Base or accept the entire settings center.
+The user accepted the scoped stage-one result and authorized [conversation stage two](conversation-stage2.en.md). This does not freeze Base or accept the entire settings center.

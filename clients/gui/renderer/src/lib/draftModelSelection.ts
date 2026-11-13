@@ -75,6 +75,18 @@ export function draftModelOptions(
   ];
 }
 
+/** 模型菜单选项，以及没选到模型时发送按钮的原因：一个可用模型都没有，还是有但没选。 */
+export function draftModelChoices(project: Data, effectiveModel: string, currentModel: unknown) {
+  const options = draftModelOptions(project, effectiveModel, currentModel);
+  const missing: "chat.composer.chooseModelReason" | "chat.composer.noModelsReason" | undefined =
+    effectiveModel
+      ? undefined
+      : options.some((option) => !option.unavailableReason && !option.historical)
+        ? "chat.composer.chooseModelReason"
+        : "chat.composer.noModelsReason";
+  return { options, missing };
+}
+
 /** 可用性直接投影 Core 目录，不在 Renderer 重新判断凭据。 */
 export function composerModelOption(model: {
   providerId?: string | null;
@@ -86,6 +98,7 @@ export function composerModelOption(model: {
   available?: boolean;
   availability?: "checking" | "available" | "unavailable";
   credentialState?: string;
+  unavailableReason?: string;
 }): ComposerModelOption {
   return {
     value: model.providerId ? `${model.providerId}/${model.modelId}` : "",
@@ -98,11 +111,14 @@ export function composerModelOption(model: {
       model.capabilities?.reasoningEffortOptions !== undefined ||
       !!model.reasoningEffortOptions?.length,
     unavailableReason:
+      model.unavailableReason === "storageLocked" ||
       model.availability === "unavailable" ||
       (model.available === false && model.availability !== "checking")
-        ? model.credentialState === "unavailable"
-          ? "缺少 API Key"
-          : "模型不可用"
+        ? model.unavailableReason === "storageLocked"
+          ? "钥匙串访问受限，请重新保存密钥"
+          : model.credentialState === "unavailable"
+            ? "缺少 API Key"
+            : model.unavailableReason || "模型不可用"
         : undefined,
   };
 }

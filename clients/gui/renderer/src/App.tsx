@@ -1,20 +1,18 @@
-import { WorkbenchProviders } from "./app-shell/WorkbenchProviders.js";
-import React, { useEffect, useState, useSyncExternalStore } from "react";
+import { AppProviders, WorkbenchProviders } from "./app-shell/WorkbenchProviders.js";
+import React, { useEffect, useSyncExternalStore } from "react";
 import { WorkSurface, WorkbenchShell } from "./app-shell/WorkbenchShell.js";
 import { BackendStatusNotice } from "./BackendStatusNotice.js";
 import { Button } from "./components/ui/button.js";
 import { sending, subscribeSending } from "./Composer.js";
-import { GenUiWorkspace } from "./GenUiWorkspace.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { Inbox } from "./Inbox.js";
 import { useMcpAppsWorkspace } from "./McpAppsWorkspace.js";
-import { QuitProgressDialog } from "./QuitProgressDialog.js";
 import { recoverySettings } from "./recoveryPresentation.js";
-import { type Data, type PlatformServices, type QuitProgress } from "./services.js";
+import { type Data, type PlatformServices } from "./services.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
 import { settingsNavigationGroups } from "./settings/settingsNavigation.js";
 import { SettingsNavigation } from "./settings/SettingsWorkspace.js";
-import { UnsavedChangesProvider, useGuardedNavigation } from "./settings/UnsavedChanges.js";
+import { useGuardedQuit } from "./settings/UnsavedChanges.js";
 import { useTrajectoryPolling } from "./settings/useTrajectoryPolling.js";
 import { useNavigationWorkspace } from "./state/navigationWorkspace.js";
 import { projectExecutionBlocked } from "./state/projectExecution.js";
@@ -39,6 +37,7 @@ import { useWorkspacePreview } from "./state/useWorkspacePreview.js";
 import { terminalOwner, useTerminalWorkspace } from "./terminal/terminalWorkspace.js";
 import { ToastHost } from "./ToastHost.js";
 import { UpdateIndicator } from "./UpdateIndicator.js";
+import { UpgradeGuide } from "./views/UpgradeGuide.js";
 import { useConversationEscape } from "./useConversationEscape.js";
 import { ConversationNavigation } from "./views/ConversationNavigation.js";
 import { ConversationWorkspace } from "./views/ConversationWorkspace.js";
@@ -52,29 +51,22 @@ import {
   WorkspaceTaskActions,
 } from "./views/WorkbenchChrome.js";
 import { WorkbenchPlugins } from "./views/WorkbenchPlugins.js";
-import { WorkbenchSettings } from "./views/WorkbenchSettings.js";
-import { WorkspacePanelContent } from "./views/WorkspacePanelContent.js";
+import { WorkbenchSettings } from "./views/LazyWorkbenchSettings.js";
+import { WorkspacePanelContent } from "./views/LazyWorkspacePanelContent.js";
 import { WorkspacePanels } from "./views/WorkspacePanels.js";
 import { WorkspaceFileTree } from "./workspace-file-tree/WorkspaceFileTree.js";
 export function App({ services }: { services: PlatformServices }) {
-  const [quitProgress, setQuitProgress] = useState<QuitProgress>({ state: "idle" });
-  useEffect(() => services.onQuitProgress?.(setQuitProgress), [services]);
   return (
-    <UnsavedChangesProvider>
-      <GenUiWorkspace services={services}>
-        <AppContent services={services} />
-      </GenUiWorkspace>
-      <QuitProgressDialog progress={quitProgress} />
-    </UnsavedChangesProvider>
+    <AppProviders services={services}>
+      <AppContent services={services} />
+    </AppProviders>
   );
 }
 function AppContent({ services }: { services: PlatformServices }) {
   const { t } = useI18n();
-  const requestNavigation = useGuardedNavigation();
-  useEffect(
-    () => services.onQuitRequested?.(() => requestNavigation(() => {})),
-    [services, requestNavigation],
-  );
+  const [upgradeAvailable, setUpgradeAvailable] = React.useState(false);
+  const [upgradeOpenRequest, setUpgradeOpenRequest] = React.useState(0);
+  const requestNavigation = useGuardedQuit(services);
   const { terminalLocation, nextPromptSuggestions } = useApplicationPreferences();
   const session = useSessionNavigation(services, (message) => setError(message));
   const {
@@ -167,10 +159,11 @@ function AppContent({ services }: { services: PlatformServices }) {
     startupLifecycle,
     startupLifecycleBlocked,
     startupReady,
+    projectFailureReady,
   } = startup;
   const { shellReady, initialReleased, startupDelayed } = useStartupPresentation(
     services,
-    { themeReady, startupReady, restorationFailed },
+    { themeReady, startupReady, restorationFailed, projectFailureReady },
     restoration,
     restorationOwner,
   );
@@ -236,6 +229,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     action,
     onError: setError,
     enabled:
+      !session.readOnly &&
       initialReleased &&
       !settingsOpen &&
       !taskCenterOpen &&
@@ -248,7 +242,7 @@ function AppContent({ services }: { services: PlatformServices }) {
   useEffect(side.reconcileClosedTabs, [snapshot.projects, sideChats.tabs]);
   // 状态只更新设置入口，不阻塞启动、不反复弹窗，也不进入聊天错误栏。
   useTrajectoryPolling(resourceAction, {
-    connected: snapshot.connection?.state === "ready",
+    connected: !session.readOnly && snapshot.connection?.state === "ready",
     intervalMs: 15000,
     onResult: onTrajectoryStatus,
     onError: () => onTrajectoryStatus(null),
@@ -280,7 +274,7 @@ function AppContent({ services }: { services: PlatformServices }) {
     } else await resourceAction("connectService", {});
   };
   const backend = useBackendRecovery(snapshot, resourceAction, reconnectService, () => {
-    setSettingsTab("后台服务");
+    setSettingsTab("高级诊断");
     setSettingsOpen(true);
   });
   const { backendActionPending, backendActionError, runBackendAction, quitStartup } = backend;
@@ -433,7 +427,9 @@ function AppContent({ services }: { services: PlatformServices }) {
     !(thread && admitting) &&
     thread?.conversation?.kind !== "fork" &&
     !thread?.turns?.some((turn: Data) => turn.items?.length || turn.status === "inProgress");
-  const taskActions = <WorkspaceTaskActions session={session} workspacePanels={workspacePanels} />;
+  const taskActions = (
+    <WorkspaceTaskActions session={session} workspacePanels={workspacePanels} services={services} />
+  );
   const pluginCenterActive = surfaces.pluginCenterActive;
   const applicationRail = (
     <WorkbenchRail
@@ -477,10 +473,7 @@ function AppContent({ services }: { services: PlatformServices }) {
       bridge={services.snapShots}
       settings={library.settings}
       ready={startupReady && snapshot.connection?.state === "ready"}
-      openSettings={(tab) => {
-        setSettingsTab(tab);
-        showPanel("设置");
-      }}
+      openSettings={panelNavigation.openSettings}
     >
       <WorkbenchShell
         data-view={
@@ -498,6 +491,16 @@ function AppContent({ services }: { services: PlatformServices }) {
         data-startup-ready={startupReady}
         data-shell-ready={shellReady}
       >
+        <UpgradeGuide
+          services={services}
+          ready={snapshot.connection?.state === "ready"}
+          onAvailable={setUpgradeAvailable}
+          openRequest={upgradeOpenRequest}
+          onModels={() => {
+            setSettingsTab("模型服务");
+            setSettingsOpen(true);
+          }}
+        />
         <ToastHost />
         {snapshot.computerControl?.active === true && (
           <div
@@ -517,19 +520,21 @@ function AppContent({ services }: { services: PlatformServices }) {
             </Button>
           </div>
         )}
-        <BackendStatusNotice
-          summary={snapshot.serviceSummary}
-          connection={snapshot.connection}
-          update={snapshot.backendUpdate}
-          lifecycle={snapshot.lifecycle}
-          currentCommands={
-            snapshot.desktopCapabilities?.currentCommands ??
-            project?.desktopCapabilities?.currentCommands
-          }
-          pending={backendActionPending}
-          error={backendActionError}
-          onAction={(kind) => void runBackendAction(kind)}
-        />
+        {!session.readOnly && (
+          <BackendStatusNotice
+            summary={snapshot.serviceSummary}
+            connection={snapshot.connection}
+            update={snapshot.backendUpdate}
+            lifecycle={snapshot.lifecycle}
+            currentCommands={
+              snapshot.desktopCapabilities?.currentCommands ??
+              project?.desktopCapabilities?.currentCommands
+            }
+            pending={backendActionPending}
+            error={backendActionError}
+            onAction={(kind) => void runBackendAction(kind)}
+          />
+        )}
         {!initialReleased ? (
           <StartupScreen
             services={services}
@@ -551,7 +556,7 @@ function AppContent({ services }: { services: PlatformServices }) {
             onRetry={() => void retryRestoration()}
             onBackendAction={(kind) => void runBackendAction(kind)}
             onSettings={() => {
-              setSettingsTab((viewFailure && recoverySettings(viewFailure)) || "后台服务");
+              setSettingsTab((viewFailure && recoverySettings(viewFailure)) || "高级诊断");
               setSettingsOpen(true);
             }}
             onQuit={() => void quitStartup()}
@@ -570,18 +575,27 @@ function AppContent({ services }: { services: PlatformServices }) {
                 activeId={["Skills", "MCP"].includes(settingsTab) ? "插件" : settingsTab}
                 onSelect={setSettingsTab}
                 onBack={() => setSettingsOpen(false)}
-                groups={settingsNavigationGroups.map((group) => ({
-                  ...group,
-                  label: t(group.label),
-                  items: group.items.map((item) => ({
-                    ...item,
-                    label: t(
-                      item.id === "数据飞轮" && trajectoryAttention
-                        ? "settings.trajectory.attentionTitle"
-                        : item.label,
-                    ),
-                  })),
-                }))}
+                groups={settingsNavigationGroups
+                  .map((group) => ({
+                    ...group,
+                    label: t(group.label),
+                    items: group.items
+                      .filter(
+                        (item) =>
+                          services.capabilities?.settings === undefined ||
+                          services.capabilities.settings.includes(item.id),
+                      )
+                      .map((item) => ({
+                        ...item,
+                        keywords: "keywords" in item ? t(item.keywords) : undefined,
+                        label: t(
+                          item.id === "数据飞轮" && trajectoryAttention
+                            ? "settings.trajectory.attentionTitle"
+                            : item.label,
+                        ),
+                      })),
+                  }))
+                  .filter((group) => group.items.length > 0)}
               />
             )}
             <ConversationNavigation
@@ -610,6 +624,9 @@ function AppContent({ services }: { services: PlatformServices }) {
               requestNavigation={requestNavigation}
               choose={choose}
               newTask={newTask}
+              onUpgradeHistory={
+                upgradeAvailable ? () => setUpgradeOpenRequest((value) => value + 1) : undefined
+              }
               open={open}
               closePanels={() => workspacePanels.selectPanel("")}
               onOpenProjectTasks={(pid) => {

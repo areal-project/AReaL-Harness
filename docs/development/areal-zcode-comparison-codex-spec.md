@@ -227,7 +227,7 @@ ZCode 的 Node REPL、`<webview>` 和全局持久账号分区是它选用的实�
 
 - `core/engine/src/tools/extensions.rs`：现有 act/wait 即可复用 prepare+approval；除必要契约字段外不重写执行链。
 
-- `clients/gui/scripts/browser-read-contract.test.mjs`、`browser-actions-smoke.mjs`、`browser-action-invalidation-smoke.mjs`：扩展现有夹具/入口。
+- `clients/gui/scripts/browser-read-contract.test.mjs`、`browser-actions-smoke.mjs`：扩展现有夹具/入口。
 
 - `docs/api/browser.md/.en.md`、`docs/development/browser-testing.md/.en.md`，必要时 `docs/features.md/.en.md`。
 

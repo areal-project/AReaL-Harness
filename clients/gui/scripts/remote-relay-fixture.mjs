@@ -1,19 +1,36 @@
-import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, rm, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer as tlsServer } from "node:tls";
 import { createServer as netServer, connect } from "node:net";
-import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { CoreClient } from "../packages/runtime-client/core.js";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
-import { RemoteControl } from "../app/src/core/remote.cjs";
 
 export async function certificates(commonName = "RC12 isolated test CA") {
   const home = await mkdtemp(join(tmpdir(), "rc12-tls-"));
   const run = (args) => execFileSync("openssl", args, { cwd: home, stdio: "pipe" });
+  // 扩展写在自带的配置里：macOS 自带的 LibreSSL 会把 -addext 和默认配置里的同名扩展
+  // 各写一份，rustls 不接受带重复扩展的根证书。
+  await writeFile(
+    join(home, "ca.cnf"),
+    [
+      "[req]",
+      "distinguished_name=dn",
+      "x509_extensions=ca",
+      "prompt=no",
+      "[dn]",
+      `CN=${commonName}`,
+      "[ca]",
+      "basicConstraints=critical,CA:TRUE",
+      "keyUsage=critical,keyCertSign,cRLSign",
+      "subjectKeyIdentifier=hash",
+      "",
+    ].join("\n"),
+  );
   run([
     "req",
     "-x509",
@@ -26,10 +43,8 @@ export async function certificates(commonName = "RC12 isolated test CA") {
     "ca.key",
     "-out",
     "ca.pem",
-    "-subj",
-    `/CN=${commonName}`,
-    "-addext",
-    "basicConstraints=critical,CA:TRUE",
+    "-config",
+    "ca.cnf",
   ]);
   run([
     "req",
@@ -123,6 +138,7 @@ export async function relayFixture(
     certificate = "server.pem",
     relayOptions = {},
     tlsHome = process.env.RC12_TLS_HOME,
+    observeHostFrames = false,
   } = {},
 ) {
   const home = await mkdtemp(join(tmpdir(), "rc12-relay-"));
@@ -132,6 +148,12 @@ export async function relayFixture(
   await new Promise((r) => probe.close(r));
   const sockets = new Set();
   let acceptedTlsConnections = 0;
+  let tlsHandshakeErrors = 0;
+  const hostFrames = [];
+  const hostRegistrations = [];
+  const hostPongs = [];
+  let observedSockets = 0;
+  let frameObservationErrors = 0;
   const proxy = tlsServer(
     {
       key: await readFile(join(tlsHome, "server.key")),
@@ -139,6 +161,58 @@ export async function relayFixture(
     },
     (socket) => {
       acceptedTlsConnections += 1;
+      if (observeHostFrames) {
+        const socketId = ++observedSockets;
+        const receiver = new WebSocket.Receiver({ isServer: true, maxPayload: 524288 });
+        let header = Buffer.alloc(0);
+        let upgraded = false;
+        let ignored = false;
+        let host = false;
+        receiver.on("error", () => frameObservationErrors++);
+        receiver.on("message", (bytes, binary) => {
+          if (binary) return;
+          try {
+            const value = JSON.parse(bytes.toString("utf8"));
+            if (value.protocol === "areal.relay.v1" && value.role === "host") {
+              host = true;
+              hostRegistrations.push({ socketId, at: performance.now() });
+              return;
+            }
+            if (host)
+              hostFrames.push({
+                socketId,
+                at: performance.now(),
+                bytes: bytes.length,
+                type: value.type,
+                channel: value.channel,
+              });
+          } catch {
+            frameObservationErrors++;
+          }
+        });
+        receiver.on("pong", () => {
+          if (host) hostPongs.push({ socketId, at: performance.now() });
+        });
+        socket.on("data", (chunk) => {
+          if (ignored) return;
+          if (upgraded) {
+            receiver.write(Buffer.from(chunk));
+            return;
+          }
+          header = Buffer.concat([header, chunk]);
+          const end = header.indexOf("\r\n\r\n");
+          if (end < 0) {
+            if (header.length > 32768) ignored = true;
+            return;
+          }
+          upgraded = /upgrade:\s*websocket/i.test(header.subarray(0, end).toString("ascii"));
+          ignored = !upgraded;
+          if (upgraded && header.length > end + 4)
+            receiver.write(Buffer.from(header.subarray(end + 4)));
+          header = Buffer.alloc(0);
+        });
+        socket.once("close", () => receiver.destroy());
+      }
       const upstream = connect(backendPort, "127.0.0.1");
       sockets.add(socket);
       sockets.add(upstream);
@@ -156,6 +230,7 @@ export async function relayFixture(
       }
     },
   );
+  proxy.on("tlsClientError", () => tlsHandshakeErrors++);
   await new Promise((r) => proxy.listen(0, "127.0.0.1", r));
   const origin = `https://127.0.0.1:${proxy.address().port}`;
   const config = join(home, "config.json");
@@ -186,6 +261,15 @@ export async function relayFixture(
     config,
     get acceptedTlsConnections() {
       return acceptedTlsConnections;
+    },
+    get tlsHandshakeErrors() {
+      return tlsHandshakeErrors;
+    },
+    hostFrames,
+    hostRegistrations,
+    hostPongs,
+    get frameObservationErrors() {
+      return frameObservationErrors;
     },
     logs: () => logs,
     admin: (...args) =>
@@ -237,92 +321,14 @@ export async function relayFixture(
   }
   return f;
 }
-export async function hostFixture(t, { config, commands = false } = {}) {
-  const home = await mkdtemp(join(tmpdir(), "rc12-host-"));
-  const key = randomBytes(32);
-  let rejectSave = false;
-  const savedWrites = [];
-  const encryption = {
-    isEncryptionAvailable: () => true,
-    getSelectedStorageBackend: () => "fixture-aes-gcm",
-    encryptString(value) {
-      const iv = randomBytes(12),
-        cipher = createCipheriv("aes-256-gcm", key, iv);
-      const data = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
-      return Buffer.concat([iv, cipher.getAuthTag(), data]);
-    },
-    decryptString(value) {
-      const cipher = createDecipheriv("aes-256-gcm", key, value.subarray(0, 12));
-      cipher.setAuthTag(value.subarray(12, 28));
-      return Buffer.concat([cipher.update(value.subarray(28)), cipher.final()]).toString();
-    },
-  };
-  const service = {
-    schedule() {},
-    backend: {
-      home,
-      saved: [{ id: "project", root: "/fixture/Project" }],
-      projects: new Map(),
-      async save(name, value) {
-        if (rejectSave) throw new Error("fixture storage unavailable");
-        savedWrites.push(name);
-        await writeFile(join(home, name), JSON.stringify(value));
-      },
-    },
-  };
-  if (commands) {
-    const { CoreBackend } = require("../app/src/core/backend.cjs");
-    const backend = new CoreBackend({ home, binary: "/unused-source-fixture" });
-    backend.saved = service.backend.saved;
-    const save = backend.save.bind(backend);
-    backend.save = (name, value) => {
-      if (rejectSave) return Promise.reject(new Error("fixture storage unavailable"));
-      savedWrites.push(name);
-      return save(name, value);
-    };
-    backend.start =
-      backend.launch =
-      backend.connect =
-      backend.openThread =
-        () => {
-          throw new Error("forbidden source-fixture lifecycle effect");
-        };
-    service.backend = backend;
-  }
-  if (config)
-    await service.backend.save("remote.json", {
-      encrypted: encryption.encryptString(JSON.stringify(config)).toString("base64"),
-    });
-  const instances = [];
-  const make = async () => {
-    const remote = new RemoteControl(service, encryption);
-    instances.push(remote);
-    await remote.init();
-    return remote;
-  };
-  t.after(async () => {
-    for (const remote of instances) remote.close();
-    await rm(home, { recursive: true, force: true });
-  });
-  return {
-    remote: await make(),
-    make,
-    home,
-    service,
-    savedWrites,
-    rejectSave: (value) => {
-      rejectSave = value;
-    },
-    persisted: async () =>
-      JSON.parse(
-        encryption.decryptString(
-          Buffer.from(
-            JSON.parse(await readFile(join(home, "remote.json"), "utf8")).encrypted,
-            "base64",
-          ),
-        ),
-      ),
-  };
+export async function nativeRelayHostFixture(t, options = {}) {
+  const { nativeHostFixture } = await import("./remote-native-host-fixture.mjs");
+  const fixture = await nativeHostFixture(t, options);
+  const workspace = join(fixture.evidence.root, "Project");
+  await mkdir(workspace);
+  const projectAlias = randomUUID().replaceAll("-", "").slice(0, 24);
+  await fixture.source.register(randomUUID(), { id: projectAlias, root: workspace });
+  return { ...fixture, projectAlias };
 }
 
 // Native-shaped RPC 边界夹具；真实 CoreClient 连接，可选命令回应，绝不启动原生 Core。

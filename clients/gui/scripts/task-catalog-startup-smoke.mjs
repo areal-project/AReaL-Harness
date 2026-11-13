@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -16,12 +16,12 @@ const binarySha256 = createHash("sha256")
   .update(await readFile(binary))
   .digest("hex");
 const scratch = await makeTempDir("areal-task-catalog-startup-");
-const workspace = join(scratch, "workspace"),
-  primaryWorkspace = join(scratch, "primary-workspace"),
+const primaryWorkspace = join(scratch, "primary-workspace"),
   userHome = join(scratch, "user");
 const gate = join(scratch, "hold-provider-sync"),
   traceFile = join(scratch, "startup-trace.jsonl");
 const handshakeGate = join(scratch, "hold-handshake");
+const targetFile = join(scratch, "target-project");
 const slowHandshake = process.env.AREAL_TASK_CATALOG_SLOW_HANDSHAKE === "1";
 const launchApp = join(scratch, "app");
 const objective = "STARTUP_CATALOG_SAVED_TASK";
@@ -63,16 +63,14 @@ let app,
   failure,
   passed = false;
 await Promise.all([
-  mkdir(workspace),
   mkdir(primaryWorkspace),
   mkdir(join(userHome, ".areal"), { recursive: true }),
   mkdir(launchApp),
 ]);
-execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
 await writeFile(traceFile, "");
 await writeFile(
   join(userHome, ".areal/config.toml"),
-  'schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\napi_key_env="AREAL_CREDENTIAL_task_fixture"\nendpoint="http://127.0.0.1:9/v1/chat/completions"\n[permissions]\nmode="YOLO"\n',
+  'schema_version=1\n[model]\nprovider="fixture"\nname="fixture"\n[model.providers.fixture]\nprotocol="chat-completions"\nendpoint="http://127.0.0.1:9/v1/chat/completions"\n[permissions]\nmode="YOLO"\n',
 );
 const deployment = join(scratch, "desktop.json");
 await writeFile(
@@ -96,7 +94,6 @@ const env = {
   AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_CORE_BIN: binary,
-  AREAL_CREDENTIAL_task_fixture: "task-fixture-key",
 };
 for (const key of [
   "AREAL_CORE_WORKSPACE",
@@ -117,17 +114,18 @@ if (${JSON.stringify(baselineSource || null)}) {
  const Module = require('node:module');
  const compile = Module._extensions['.cjs'] ?? Module._extensions['.js'];
  Module._extensions['.cjs'] = function(module, file) {
-  if (file === ${JSON.stringify(join(gui, "app/src/core/task-catalog.cjs"))}) return module._compile(fs.readFileSync(${JSON.stringify(baselineSource || "")}, 'utf8'), file);
+  if (file === ${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/task-catalog.cjs"))}) return module._compile(fs.readFileSync(${JSON.stringify(baselineSource || "")}, 'utf8'), file);
   return compile(module, file);
  };
 }
-const {CoreBackend} = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
-const {AppProviders} = require(${JSON.stringify(join(gui, "app/src/core/providers.cjs"))});
+const {CoreBackend} = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
+const {AppProviders} = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/providers.cjs"))});
+const {ProjectConnections} = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/project-connections.cjs"))});
 const record = (kind, fields = {}) => fs.appendFileSync(${JSON.stringify(traceFile)}, JSON.stringify({kind, at:Date.now(), pid:process.pid, ...fields})+'\\n');
 process.on('uncaughtExceptionMonitor', (error, origin) => record('uncaught', {origin, message:error.message}));
-const connectProject = CoreBackend.prototype.connect;
-CoreBackend.prototype.connect = async function(project, ...args) {
- if (project.root === ${JSON.stringify(workspace)} && fs.existsSync(${JSON.stringify(handshakeGate)})) {
+const connectProject = ProjectConnections.prototype.connect;
+ProjectConnections.prototype.connect = async function(project, ...args) {
+ if (fs.existsSync(${JSON.stringify(targetFile)}) && project.id === fs.readFileSync(${JSON.stringify(targetFile)}, "utf8") && fs.existsSync(${JSON.stringify(handshakeGate)})) {
   record('handshake_held', {projectId:project.id});
   const deadline = Date.now()+20000;
   while (fs.existsSync(${JSON.stringify(handshakeGate)}) && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,25));
@@ -137,7 +135,7 @@ CoreBackend.prototype.connect = async function(project, ...args) {
 const sync = AppProviders.prototype.reconcileProject;
 if (typeof sync !== 'function') throw new Error('Provider reconciliation startup boundary is unavailable');
 AppProviders.prototype.reconcileProject = async function(project, ...args) {
- if (project.root === ${JSON.stringify(workspace)} && fs.existsSync(${JSON.stringify(gate)})) {
+ if (fs.existsSync(${JSON.stringify(targetFile)}) && project.id === fs.readFileSync(${JSON.stringify(targetFile)}, "utf8") && fs.existsSync(${JSON.stringify(gate)})) {
   record('provider_sync_held', {projectId:project.id, clientReady:project.client?.ready, generation:project.connectionGeneration});
   const deadline = Date.now()+20000;
   while (fs.existsSync(${JSON.stringify(gate)}) && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,25));
@@ -163,7 +161,7 @@ CoreBackend.prototype.executeCommand = async function(name, request, context) {
  const connect=CoreClient.prototype.connect, request=CoreClient.prototype.request;
  CoreClient.prototype.connect=async function(...args) {const result=await connect.apply(this,args);record('client_authenticated',{ready:this.ready});return result;};
  CoreClient.prototype.request=async function(method,params,...args) {
-  if (method!=='areal/task/list') return request.call(this,method,params,...args);
+  if (method!=='areal/task/directory/list') return request.call(this,method,params,...args);
   record('task_list_begin',{params});
   const result=await request.call(this,method,params,...args);
   record('task_list_end',{rows:result.data.map(task=>task.id)});
@@ -235,19 +233,28 @@ async function closeApplication() {
     .catch(() => null);
   await app
     .evaluate(({ dialog }) => {
-      dialog.showMessageBox = async (...args) => ({
-        response: ["确认取消后台任务？", "退出 AReaL Harness？"].includes(args.at(-1).message)
-          ? 1
-          : (args.at(-1).cancelId ?? 0),
-      });
+      dialog.showMessageBox = async () => ({ response: 0 });
     })
     .catch(() => {});
-  await app.evaluate(({ app }) => app.quit()).catch(() => {});
-  await app.close().catch(() => {});
+  const stop = JSON.parse(
+    execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+      env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+      encoding: "utf8",
+    }),
+  );
+  assert.equal(stop.state, "completed");
+  assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+  await writeFile(join(scratch, `host-stop-${cleanup.length}.json`), JSON.stringify(stop, null, 2));
+  await closeSmokeApplication(app);
   app = undefined;
   page = undefined;
   await assertApplicationStopped(binary, env, metadata);
-  cleanup.push({ at: new Date().toISOString(), stopped: true, adapterPid: metadata?.pid });
+  cleanup.push({
+    at: new Date().toISOString(),
+    stopped: true,
+    adapterPid: metadata?.pid,
+    receipt: stop,
+  });
 }
 async function capture(name) {
   await writeFile(join(scratch, `${name}-state.json`), JSON.stringify(await snapshot(), null, 2));
@@ -259,17 +266,17 @@ try {
   const prepared = await call("projectless", {
     operation: "prepare",
     requestId: randomUUID(),
-    directory: workspace,
   });
   await call("connect", { projectId: prepared.projectId });
   const project = await until(
     async () =>
       (await snapshot()).projects.find(
-        (owner) => owner.root === workspace && owner.state?.connected,
+        (owner) => owner.id === prepared.projectId && owner.state?.connected,
       ),
     "fixture project fully ready",
   );
   projectId = project.id;
+  await writeFile(targetFile, projectId);
   savedTask = await call("manage", {
     projectId,
     operation: "taskCreate",
@@ -282,7 +289,7 @@ try {
   assert.equal(
     (await call("tasks", { operation: "list", projectId })).data.find(
       (task) => task.id === savedTask.id,
-    )?.objective,
+    )?.objectivePreview,
     objective,
   );
   checks.push("Scheduled fixture persists through the production bridge and real Core");
@@ -299,8 +306,9 @@ try {
       "primary owner fully ready",
     )
   ).id;
+  const second = await call("projectless", { operation: "prepare", requestId: randomUUID() });
   workspaceTask = await call("manage", {
-    projectId: primaryProjectId,
+    projectId: second.projectId,
     operation: "taskCreate",
     requestId: randomUUID(),
     mode: "scheduled",
@@ -333,19 +341,58 @@ try {
   );
   const openedAt = Date.now();
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  await until(
-    async () =>
-      (await trace()).some(
-        (event) => event.kind === "catalog_command_begin" && event.projectId === projectId,
-      ),
-    "catalog begins waiting before handshake",
+  const row = page.getByRole("button", { name: `打开定时任务 ${objective}`, exact: true });
+  const batch = await until(
+    () => catalogEvents.find((event) => event.kind === "begin"),
+    "catalog request begins while handshake held",
   );
+  await until(
+    () =>
+      catalogEvents.some(
+        (event) =>
+          event.kind === "response_received" &&
+          event.requestId === batch.requestId &&
+          event.projectId === projectId,
+      ),
+    "target catalog response while handshake held",
+  );
+  await row.waitFor();
+  assert.equal(
+    (await trace()).some(
+      (event) => event.kind === "provider_sync_held" && event.projectId === projectId,
+    ),
+    false,
+    "target response precedes authentication",
+  );
+  assert.equal(
+    (await snapshot()).projects.find((owner) => owner.id === projectId)?.state?.connected,
+    false,
+  );
+  await capture("catalog-awaiting-authentication");
+  await row.click();
+  const spinner = page.getByLabel("正在更新任务状态…", { exact: true });
+  await spinner.waitFor();
+  assert.equal(await page.getByRole("alert").count(), 0, "pending detail does not hide an error");
+  await capture("task-detail-loading");
   if (slowHandshake) {
-    await new Promise((resolve) => setTimeout(resolve, 6500));
+    const heldAt = (await trace()).find(
+      (event) => event.kind === "handshake_held" && event.projectId === projectId,
+    ).at;
+    const remaining = 6500 - (Date.now() - heldAt);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
     startupObservation = {
       alerts: await page.getByRole("alert").allTextContents(),
       events: await trace(),
+      catalogEvents: [...catalogEvents],
     };
+    assert.equal(
+      startupObservation.events.some(
+        (event) => event.kind === "provider_sync_held" && event.projectId === projectId,
+      ),
+      false,
+      "target handshake remains held through observation",
+    );
+    assert.equal(await spinner.isVisible(), true);
     await capture("startup-awaiting-authentication");
   }
   await rm(handshakeGate);
@@ -357,7 +404,6 @@ try {
     "provider configuration held after handshake",
   );
   assert.equal(held.clientReady, true, "Barrier follows an authenticated Core client");
-  const row = page.getByRole("button", { name: `打开自动化 ${objective}`, exact: true });
   let visibleAt;
   await until(
     async () => {
@@ -365,8 +411,8 @@ try {
         visibleAt = Date.now();
         return true;
       }
-      return (await trace()).some(
-        (event) => event.kind === "catalog_command_end" && event.errors?.length,
+      return catalogEvents.some(
+        (event) => event.kind === "abandoned" && event.requestId === batch.requestId,
       );
     },
     "saved task row or catalog failure while provider startup is held",
@@ -386,6 +432,36 @@ try {
     catalogEvents: [...catalogEvents],
   };
   await capture("startup-held");
+  const liveDirectoryStartedAt = Date.now();
+  const liveDirectory = await call("tasks", {
+    operation: "list",
+    projectId,
+    requestId: randomUUID(),
+    viewEpoch: 1,
+  });
+  const liveDirectoryFinishedAt = Date.now();
+  const providerReleasedAtRead = (await trace()).some(
+    (event) => event.kind === "provider_sync_released" && event.projectId === projectId,
+  );
+  assert.equal(
+    providerReleasedAtRead,
+    false,
+    "Provider barrier remains held during directory read",
+  );
+  await writeFile(
+    join(scratch, "live-directory.json"),
+    JSON.stringify(
+      {
+        startedAt: liveDirectoryStartedAt,
+        finishedAt: liveDirectoryFinishedAt,
+        providerReleasedAtRead,
+        result: liveDirectory,
+      },
+      null,
+      2,
+    ),
+  );
+  heldObservation.liveDirectory = liveDirectory;
   const holdRemaining = 6500 - (Date.now() - held.at);
   if (holdRemaining > 0) await new Promise((resolve) => setTimeout(resolve, holdRemaining));
   assert.equal(
@@ -410,12 +486,62 @@ try {
     visibleLatencyMs: (visibleAt ?? eventuallyVisibleAt) - openedAt,
     earlyVisibleLatencyMs: visibleAt ? visibleAt - openedAt : null,
     alertCountWhileHeld: heldObservation.alerts.length,
-    catalogErrorsWhileHeld: heldObservation.events
-      .filter((event) => event.kind === "catalog_command_end")
-      .flatMap((event) => event.errors ?? []),
+    catalogEventsWhileHeld: heldObservation.catalogEvents,
     events: await trace(),
   };
   await capture("startup-ready");
+  await spinner.waitFor({ state: "hidden" });
+  await page.getByLabel("定时任务会话").waitFor();
+  assert.equal(await page.getByRole("alert").count(), 0);
+  await capture("task-detail");
+  checks.push("Scheduled task detail opens after owner readiness");
+  if (process.env.AREAL_TASK_CATALOG_WEB_HANDOFF === "1") {
+    await writeFile(
+      join(scratch, "web-handoff.json"),
+      JSON.stringify({ home: env.AREAL_HARNESS_SERVICE_HOME, projectId, taskId: savedTask.id }),
+    );
+    console.log(JSON.stringify({ webHandoff: scratch }));
+    await until(
+      async () =>
+        readFile(join(scratch, "web-done"), "utf8")
+          .then(() => true)
+          .catch(() => false),
+      "Web handoff completion",
+      180000,
+    );
+  }
+  assert.ok(
+    liveDirectory.owners.some(
+      (owner) =>
+        owner.projectId === projectId &&
+        owner.status === "unobserved" &&
+        owner.source === "published" &&
+        owner.coverage?.kind === "snapshot",
+    ),
+    "Held owner reports a published snapshot, not a live read",
+  );
+  assert.ok(
+    liveDirectory.data.some((task) => task.id === savedTask.id),
+    "Published snapshot contains the saved task",
+  );
+  const readyDirectory = await call("tasks", {
+    operation: "list",
+    projectId,
+    requestId: randomUUID(),
+    viewEpoch: 2,
+  });
+  await writeFile(join(scratch, "ready-directory.json"), JSON.stringify(readyDirectory, null, 2));
+  assert.ok(
+    readyDirectory.owners.some(
+      (owner) =>
+        owner.projectId === projectId && owner.status === "ready" && owner.source === "live",
+    ),
+    "Ready owner reports a live directory read",
+  );
+  assert.ok(
+    readyDirectory.data.some((task) => task.id === savedTask.id),
+    "Live directory contains the saved task",
+  );
   assert.equal(
     (await call("tasks", { operation: "list", projectId })).data.filter(
       (task) => task.id === savedTask.id,
@@ -430,15 +556,17 @@ try {
       0,
       "Startup exceeding five seconds must stay pending without catalog timeout",
     );
-    assert.equal(
-      startupObservation.events.some(
-        (event) => event.kind === "catalog_command_end" && event.projectId === projectId,
+    assert.ok(
+      startupObservation.catalogEvents.some(
+        (event) =>
+          event.kind === "response_received" &&
+          event.requestId === batch.requestId &&
+          event.projectId === projectId,
       ),
-      false,
-      "Catalog waits for authentication before its page deadline begins",
+      "catalog snapshot arrives while authentication is held",
     );
     checks.push(
-      "Startup exceeding five seconds stays pending and recovers without catalog timeout",
+      "Snapshot and loading detail remain usable during a handshake exceeding five seconds",
     );
   }
   const registeredOwners = (await snapshot()).projects.map((owner) => owner.id).sort();
@@ -446,22 +574,24 @@ try {
   assert.ok(registeredOwners.includes(primaryProjectId));
   const queriedOwners = [
     ...new Set(
-      heldObservation.events
-        .filter((event) => event.kind === "catalog_command_begin")
+      heldObservation.catalogEvents
+        .filter(
+          (event) => event.kind === "response_received" && event.requestId === batch.requestId,
+        )
         .map((event) => event.projectId),
     ),
   ].sort();
   assert.deepEqual(
     queriedOwners,
     registeredOwners,
-    "Global scheduled-task navigation queries all registered owners",
+    "Global catalog responds for all registered owners",
   );
   await page
-    .getByRole("button", { name: `打开自动化 ${workspaceTask.objective}`, exact: true })
+    .getByRole("button", { name: `打开定时任务 ${workspaceTask.objective}`, exact: true })
     .waitFor();
   assert.equal(
     await page
-      .getByRole("button", { name: `打开自动化 ${workspaceTask.objective}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 ${workspaceTask.objective}`, exact: true })
       .count(),
     1,
     "Global scheduled-task navigation includes ready workspace-owned rows",
@@ -476,8 +606,8 @@ try {
   );
   assert.equal(
     heldObservation.disabled,
-    true,
-    "Task management remains disabled before full owner readiness",
+    false,
+    "Cached task remains openable before full owner readiness",
   );
   assert.equal(
     heldObservation.projectConnected,
@@ -485,19 +615,20 @@ try {
     "Catalog reads must not mark execution ready",
   );
   assert.ok(
-    heldObservation.events.some(
-      (event) => event.kind === "task_list_end" && event.rows.includes(savedTask.id),
-    ),
-    "Visible row comes from a real Core task list before warmup release",
+    heldObservation.liveDirectory.owners.some(
+      (owner) => owner.projectId === projectId && owner.source === "published",
+    ) && heldObservation.liveDirectory.data.some((task) => task.id === savedTask.id),
+    "Published directory snapshot includes the saved task before warmup release",
   );
   assert.ok(
-    heldObservation.events.some(
+    heldObservation.catalogEvents.some(
       (event) =>
-        event.kind === "catalog_command_end" &&
-        event.rows.includes(savedTask.id) &&
-        !event.errors?.length,
+        event.kind === "owner_committed" &&
+        event.requestId === batch.requestId &&
+        event.projectId === projectId &&
+        event.rows > 0,
     ),
-    "Desktop catalog returns the saved task before warmup release",
+    "Target owner catalog response is committed before warmup release",
   );
   assert.equal(
     heldObservation.alerts.length,
@@ -510,37 +641,35 @@ try {
     false,
     "No fixture or Main process errors",
   );
-  checks.push(
-    "Real catalog response and visible disabled row precede unrelated startup completion",
-  );
+  checks.push("Catalog response and visible row precede unrelated startup completion");
   for (let index = 0; index < 5; index++) {
     await page.getByRole("button", { name: "首页", exact: true }).click();
-    const offset = (await trace()).length;
+    const offset = catalogEvents.length;
     const openedAt = Date.now();
     await page.getByRole("button", { name: "定时任务", exact: true }).click();
     await until(async () => {
-      const events = (await trace()).slice(offset);
+      const events = catalogEvents.slice(offset);
       return registeredOwners.every((id) =>
-        events.some((event) => event.kind === "catalog_command_end" && event.projectId === id),
+        events.some((event) => event.kind === "response_received" && event.projectId === id),
       );
     }, "registered owner catalog responses after reopening");
     await row.waitFor();
     await page
-      .getByRole("button", { name: `打开自动化 ${workspaceTask.objective}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 ${workspaceTask.objective}`, exact: true })
       .waitFor();
     assert.equal(
       await page
-        .getByRole("button", { name: `打开自动化 ${workspaceTask.objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${workspaceTask.objective}`, exact: true })
         .count(),
       1,
       "Ready workspace task remains included in the global catalog",
     );
-    const events = (await trace()).slice(offset);
+    const events = catalogEvents.slice(offset);
     assert.deepEqual(
       [
         ...new Set(
           events
-            .filter((event) => event.kind === "catalog_command_begin")
+            .filter((event) => event.kind === "response_received")
             .map((event) => event.projectId),
         ),
       ].sort(),
@@ -551,7 +680,7 @@ try {
       openedAt,
       visibleAt: Date.now(),
       visibleLatencyMs: Date.now() - openedAt,
-      queryCount: events.filter((event) => event.kind === "catalog_command_begin").length,
+      queryCount: events.filter((event) => event.kind === "response_received").length,
     });
   }
   checks.push(
@@ -611,7 +740,7 @@ try {
         errors,
         boundaries: [
           "Real isolated source Electron, preload, Desktop adapter and Core",
-          "Production bridge creates independent and workspace future tasks; no model response or task list is mocked",
+          "Production bridge creates independent future tasks; no model response or task list is mocked",
           "Native folder picker selects only the isolated workspace",
           "Filesystem barrier holds AppProviders.reconcileProject after authenticated Core handshake for at least 6.5 seconds",
           "Controlled startup delay verifies catalog responsiveness and does not predict real-account latency",

@@ -7,7 +7,6 @@ import {
   ArchiveChatIcon as Archive,
   PinChatIcon as Pin,
   MoreOptionsIcon as MoreHorizontal,
-  EditMessageIcon as PenLine,
 } from "../../icons.js";
 import { cn } from "../../lib/utils.js";
 import { TaskTitleOverflowText } from "../task-title-overflow/task-title-overflow.js";
@@ -38,6 +37,7 @@ export const MemoTaskItem = memo(function TaskListItem({
   worktreeLabel,
   worktreeTitle,
   organizationActions,
+  readOnly = false,
   onSelect,
   onRename,
   onPin,
@@ -61,10 +61,11 @@ export const MemoTaskItem = memo(function TaskListItem({
   worktreeLabel?: string;
   worktreeTitle?: string;
   organizationActions?: ReactNode;
+  readOnly?: boolean;
   onSelect: () => void;
   onRename: () => void;
   onPin: () => void;
-  onArchive: () => void;
+  onArchive?: () => void;
 }) {
   const surface = (
     <li
@@ -96,11 +97,15 @@ export const MemoTaskItem = memo(function TaskListItem({
               </span>
             </TitleTooltip>
           ) : running ? (
-            <LoaderIcon className="size-4 animate-spin motion-reduce:animate-none text-foreground-subtle" />
+            <LoaderIcon
+              role="img"
+              aria-label="运行中"
+              className="size-4 animate-spin motion-reduce:animate-none text-foreground-subtle"
+            />
           ) : attention ? (
-            <span className="size-1.5 rounded-full bg-warning" />
+            <span className="size-1.5 rounded-full bg-warning" role="img" aria-label="等待处理" />
           ) : unread ? (
-            <span className="size-1.5 rounded-full bg-primary" aria-label="未读" />
+            <span className="size-1.5 rounded-full bg-primary" role="img" aria-label="未读" />
           ) : pinned ? (
             <Pin className="size-3.5 text-foreground-subtle" />
           ) : archived ? (
@@ -132,55 +137,58 @@ export const MemoTaskItem = memo(function TaskListItem({
           </span>
         </TitleTooltip>
       )}
-      <HoverActions
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
-        className="task-row-actions"
-      >
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={`${pinned ? "取消置顶" : "置顶"} ${title}`}
-          disabled={disabled}
-          onClick={onPin}
+      {!readOnly && (
+        <HoverActions
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="task-row-actions"
         >
-          <Pin className="size-4" />
-        </Button>
-        {/* 运行中仍交给 Core 拒绝并显示原因，不在本地提前禁用或移走。 */}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label={`归档 ${title}`}
-          disabled={disabled || archived}
-          onClick={onArchive}
-        >
-          <Archive className="size-4" />
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" size="icon-xs" aria-label={`任务操作 ${title}`}>
-                <MoreHorizontal className="size-4" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={onRename} disabled={disabled}>
-              <PenLine />
-              重命名
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onPin} disabled={disabled}>
-              <Pin />
-              {pinned ? "取消置顶" : "置顶"}
-            </DropdownMenuItem>
-            {organizationActions}
-            <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
-              <Archive />
-              归档
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </HoverActions>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`${pinned ? "取消置顶" : "置顶"} ${title}`}
+            disabled={disabled}
+            onClick={onPin}
+          >
+            <Pin className="size-4" />
+          </Button>
+          {/* 运行中仍交给 Core 拒绝并显示原因，不在本地提前禁用或移走。 */}
+          {onArchive && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`归档 ${title}`}
+              disabled={disabled || archived}
+              onClick={onArchive}
+            >
+              <Archive className="size-4" />
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="ghost" size="icon-xs" aria-label={`任务操作 ${title}`}>
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={onRename} disabled={disabled}>
+                重命名
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onPin} disabled={disabled}>
+                {pinned ? "取消置顶" : "置顶"}
+              </DropdownMenuItem>
+              {organizationActions}
+              {onArchive && (
+                <DropdownMenuItem onClick={onArchive} disabled={disabled || archived}>
+                  归档
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </HoverActions>
+      )}
     </li>
   );
   return renderSurface ? renderSurface(surface.props) : surface;

@@ -1,4 +1,7 @@
 import { DelayedVisible } from "@areal/ui";
+import { taskUserState } from "./state/userStates.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
 import { Input } from "@areal/ui";
@@ -11,14 +14,13 @@ import {
   describeSchedule,
   scheduledTaskName,
   scheduledTaskState,
-  scheduledTaskStateLabel,
-  scheduledTaskSummary,
 } from "./scheduleText.js";
 import { scheduleZone, runZone } from "./TaskRunConversations.js";
 import { useI18n, type MessageId, type Translate } from "./i18n/IntlProvider.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "./components/ui/button.js";
+import { Spinner } from "./components/ui/spinner.js";
 import { Textarea } from "./components/ui/textarea.js";
 import {
   Select,
@@ -40,12 +42,19 @@ import {
   Activity,
 } from "lucide-react";
 import { SidebarToggleIcon } from "./homeChromeIcons.js";
+import { NavigationBackIcon } from "./interfaceIcons.js";
 import { TaskDraft, triggerExplanation, type TaskConversationRenderer } from "./TaskDraft.js";
+import {
+  modelParameters,
+  ScheduledTaskDialog,
+  type ScheduledTaskValues,
+} from "./ScheduledTaskEditDialog.js";
+import { ScheduledTaskConversation } from "./ScheduledTaskConversation.js";
 import { stageComposerDraft } from "./composerDraftStorage.js";
 import "./TaskCenter.css";
 import { TaskCatalogNotice } from "./TaskCatalogNotice.js";
 import type { Action, Data } from "./services.js";
-import type { ObservedCatalogOwner } from "@areal/workbench/desktop-contract/catalog";
+import type { ObservedCatalogOwner } from "./services.js";
 import { GoalUsageSummary } from "./GoalUsage.js";
 import { goalBudgetMessage } from "./conversationPresentation.js";
 
@@ -96,9 +105,15 @@ type OwnerRows = {
   coverage: { kind: string; reason?: string };
 } & ({ source: "published" } | { source: "live"; connectionGeneration: number });
 type OwnerRead =
-  | { status: "pending"; identity: CatalogIdentity; previous?: OwnerRows }
+  | { status: "pending"; identity: CatalogIdentity; previous?: OwnerRows; explicit?: boolean }
   | { status: "ready"; identity: CatalogIdentity; value: OwnerRows }
-  | { status: "error"; identity: CatalogIdentity; message: string; previous?: OwnerRows };
+  | {
+      status: "error";
+      identity: CatalogIdentity;
+      message: string;
+      previous?: OwnerRows;
+      explicit?: boolean;
+    };
 const ownerRows = (read?: OwnerRead) => (read?.status === "ready" ? read.value : read?.previous);
 const catalogTrace = (
   kind: "begin" | "response_received" | "epoch_discarded" | "owner_committed" | "end" | "abandoned",
@@ -153,34 +168,26 @@ const date = (seconds: number | null, zone?: string) => {
 };
 // Shutdown can retain a paused flag on finished tasks. Preserve the outcome;
 // a recurring schedule with another run still has a meaningful paused state.
+// 列表只显示用户状态（state/userStates.ts）；停止或暂停还在结算时如实说“正在…”。
 const taskStatus = (task: Data, t: Translate) =>
   t(
     stopping(task)
       ? task.cancelled
         ? "operations.schedules.statusCancelling"
         : "operations.schedules.statusPausing"
-      : task.cancelled
-        ? "operations.schedules.statusCancelled"
-        : missedOnce(task)
-          ? "operations.schedules.statusMissed"
-          : finished(task)
-            ? statusLabels[(task.latestRun ?? task.runs?.at(-1))?.status]
-            : task.paused
-              ? "operations.schedules.pausedGroup"
-              : (statusLabels[(task.latestRun ?? task.runs?.at(-1))?.status] ??
-                "operations.schedules.statusScheduled"),
+      : taskUserState(task).message,
   );
 const runReasons: Record<string, string> = {
   "task token budget exhausted":
     "任务总 Token 预算已用完。本次运行不能增加额度；如需更多预算，请创建新任务。",
   approvalExpired: "审批已过期，执行已受阻。继续本次运行将重新检查并申请批准。",
-  hostUnavailable: "桌面 Host 已断开，需要明确继续本次运行。",
-  stopRequested: "正在停止本次运行，等待资源结算。",
+  hostUnavailable: "桌面应用断开过，这次运行已暂停。需要你点继续才会接着运行。",
+  stopRequested: "正在停止这次运行。",
   resumeRequested: "正在准备继续本次运行。",
-  usageUnknown: "用量尚未确认，运行已受阻。",
+  usageUnknown: "还没确认这次用了多少额度，运行先停下了。",
   goalBudget: "已达到运行预算，请在执行会话中调整目标后恢复。",
   // Core 打开持久化任务时，把未结束 Run 记为 serverRestarted。这是重启事实，不能把内部代码直接给用户。
-  serverRestarted: "Core 重启后这次运行已暂停。需要明确恢复后才会继续。",
+  serverRestarted: "应用重新启动过，这次运行已暂停。需要你点继续才会接着运行。",
 };
 const scheduledTokenLimit = (task: Data, reason: string) =>
   task.mode === "scheduled" && reason === "GOAL_TOKEN_BUDGET";
@@ -191,14 +198,21 @@ const runReason = (reason: string, task: Data) =>
 type Props = {
   projects: Data[];
   connected: boolean;
-  initialProjectId?: string;
-  defaultProjectId?: string;
   action: Action;
   onOpenThread: (projectId: string, id: string) => void;
   onOpenModelSettings: () => void;
-  onStartDraft: (projectId: string | undefined, text: string) => void;
 };
 const taskKey = (task: Data) => `${task.projectId}:${task.id}`;
+/** 无项目任务的子目录名：日期、指令开头几个字和短 id，例如 2026-11-03-每天review代码-1a2b3c4d。 */
+export function taskFolderName(objective: string, requestId: string, now = new Date()) {
+  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const words = objective
+    .split(/\r?\n/, 1)[0]
+    .replace(/[\\/:*?"<>|.\s]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24);
+  return [date, words, requestId.replace(/-/g, "").slice(0, 8)].filter(Boolean).join("-");
+}
 const projectLabel = (project: Data) =>
   project.name ?? project.root?.split(/[\\/]/).pop() ?? "项目";
 
@@ -611,12 +625,9 @@ export function ChannelQuestion({
 export function TaskCenter({
   projects: allProjects,
   connected,
-  initialProjectId,
-  defaultProjectId,
   action,
   onOpenThread,
   onOpenModelSettings,
-  onStartDraft,
   navigation,
   target,
   renderConversation,
@@ -649,6 +660,7 @@ export function TaskCenter({
   const [creationTone, setCreationTone] = useState<"warning" | "error">("error");
   const [creationRequestId, setCreationRequestId] = useState<string>();
   const [creationChecked, setCreationChecked] = useState(false);
+  const [composer, setComposer] = useState<{ text: string; requestId: string } | null>(null);
   const creatingRequest = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -736,7 +748,8 @@ export function TaskCenter({
   const [channelError, setChannelError] = useState("");
   const [confirmedWatch, setConfirmedWatch] = useState<{
     owner: string;
-    generation: number;
+    generation: number | string;
+    task?: Data;
   } | null>(null);
   const listed: Data[] = [];
   let projectedHasMore = false;
@@ -776,9 +789,13 @@ export function TaskCenter({
   // The control receipt is the Core response for this pause or cancel. Keep it
   // visible until the following read returns, including when a newer snapshot
   // has already settled the same workers.
-  const watchedTask = projects.find((owner) => owner.id === listedTask?.projectId)?.state?.tasks?.[
-    listedTask?.id
-  ];
+  const watchedProject = projects.find((owner) => owner.id === listedTask?.projectId);
+  const watchedTask =
+    watchedProject?.state?.tasks?.[listedTask?.id] ??
+    (confirmedWatch?.owner === selected &&
+    confirmedWatch?.generation === (watchedProject?.core?.connectionGeneration ?? 0)
+      ? confirmedWatch?.task
+      : undefined);
   const task =
     controlView && taskKey(controlView) === selected
       ? controlView
@@ -798,7 +815,7 @@ export function TaskCenter({
     confirmedWatch?.generation === (project?.core?.connectionGeneration ?? 0);
   const detailsReady =
     !!task &&
-    !!project?.state?.tasks?.[task.id] &&
+    Boolean(project?.state?.tasks?.[task.id] || (watchConfirmed && confirmedWatch?.task)) &&
     watchConfirmed &&
     connected &&
     !!project?.state?.connected &&
@@ -958,7 +975,7 @@ export function TaskCenter({
           selection.current.selected === history.owner &&
           selection.current.target === target
         )
-          setTargetRead({ target, epoch, status: "error", error: cause.message });
+          setTargetRead({ target, epoch, status: "error", error: currentErrorText(cause) });
       });
   }, [action, target, targetRead, selected, history.enabled, history.owner, displayedRuns]);
   const pending =
@@ -1069,6 +1086,7 @@ export function TaskCenter({
             const owner = queue.shift();
             if (!owner) continue;
             const quiet = !!quietOwners && catalogState.current[owner.id]?.status === "ready";
+            const explicit = !!retryProjectId || explicitRefresh;
             if (!quiet)
               setCatalog((previous) => ({
                 ...previous,
@@ -1076,82 +1094,37 @@ export function TaskCenter({
                   status: "pending",
                   identity,
                   previous: ownerRows(previous[owner.id]),
+                  explicit,
                 },
               }));
-            let observed = quiet;
-            if (!quiet)
-              void action("tasks", {
-                operation: "preview",
-                projectId: owner.id,
-                limit: Math.min(1024, 30 * pages.current),
-                ...identity,
-              })
-                .then((result) => {
-                  if (
-                    !active ||
-                    observed ||
-                    result.errors.length ||
-                    result.projectId !== owner.id ||
-                    result.requestId !== identity.requestId ||
-                    result.viewEpoch !== viewEpoch
-                  )
-                    return;
-                  const observation = result.owners[0];
-                  if (observation.status !== "unobserved") return;
-                  setCatalog((previous) => {
-                    const read = previous[owner.id];
-                    if (
-                      (read?.status !== "pending" && read?.status !== "error") ||
-                      read.identity !== identity ||
-                      (!result.data.length && read.previous)
-                    )
-                      return previous;
-                    return {
-                      ...previous,
-                      [owner.id]: {
-                        ...read,
-                        previous: {
-                          source: "published",
-                          data: result.data,
-                          hasMore: result.hasMore,
-                          readAt: observation.readAt,
-                          coverage: observation.coverage,
-                        },
-                      },
-                    };
-                  });
-                })
-                .catch(() => {});
             try {
               if (retryProjectId)
                 await action("connect", { projectId: owner.id, resumeScheduling: true });
-              const result =
-                retryProjectId || explicitRefresh
-                  ? await action("tasks", {
-                      operation: "list",
-                      projectId: owner.id,
-                      limit: Math.min(1024, 30 * pages.current),
-                      ...identity,
-                    }).then((result) => ({
-                      ...result,
-                      owners: result.owners.map((observation): ObservedCatalogOwner =>
-                        observation.status === "ready"
-                          ? {
-                              ...observation,
-                              source: "live",
-                              coverage: { kind: "complete" },
-                              readAt: Date.now(),
-                            }
-                          : observation,
-                      ),
-                    }))
-                  : await action("tasks", {
-                      operation: "observe",
-                      projectId: owner.id,
-                      limit: Math.min(1024, 30 * pages.current),
-                      ...identity,
-                    });
-              observed = result.errors.length === 0;
+              const result = explicit
+                ? await action("tasks", {
+                    operation: "list",
+                    projectId: owner.id,
+                    limit: Math.min(1024, 30 * pages.current),
+                    ...identity,
+                  }).then((result) => ({
+                    ...result,
+                    owners: result.owners.map((observation): ObservedCatalogOwner =>
+                      observation.status === "ready"
+                        ? {
+                            ...observation,
+                            source: "live",
+                            coverage: { kind: "complete" },
+                            readAt: Date.now(),
+                          }
+                        : observation,
+                    ),
+                  }))
+                : await action("tasks", {
+                    operation: "observe",
+                    projectId: owner.id,
+                    limit: Math.min(1024, 30 * pages.current),
+                    ...identity,
+                  });
               catalogTrace("response_received", identity, owner.id, result.data.length);
               if (!active) {
                 catalogTrace("epoch_discarded", identity, owner.id);
@@ -1171,8 +1144,9 @@ export function TaskCenter({
                   [owner.id]: {
                     status: "error",
                     identity,
-                    message: result.errors.map((error) => error.message).join("\n"),
+                    message: result.errors.map((error) => currentErrorText(error)).join("\n"),
                     previous: ownerRows(previous[owner.id]),
+                    explicit,
                   },
                 }));
                 continue;
@@ -1199,6 +1173,7 @@ export function TaskCenter({
                   identity,
                   message: (cause as Error).message,
                   previous: ownerRows(previous[owner.id]),
+                  explicit,
                 },
               }));
             }
@@ -1260,13 +1235,22 @@ export function TaskCenter({
       taskId: task.id,
       viewId,
     })
-      .then(() => {
-        if (live) setConfirmedWatch(confirmation);
+      .then((watched) => {
+        if (!live) return;
+        const watchedRecord =
+          watched && typeof watched === "object"
+            ? "task" in watched && watched.task && typeof watched.task === "object"
+              ? (watched.task as Data)
+              : "id" in watched
+                ? (watched as Data)
+                : task
+            : task;
+        setConfirmedWatch({ ...confirmation, task: watchedRecord });
       })
       .catch((cause) => {
         if (live) {
           setConfirmedWatch(null);
-          setError(cause.message);
+          setError(errorText(t, cause));
         }
       });
     return () => {
@@ -1419,6 +1403,35 @@ export function TaskCenter({
     setCreationError("");
     setCreationChecked(false);
   };
+  // 定时页新建的任务不关联项目：放进共用的无项目工作区，每个任务一个子目录和一个专属对话。
+  const createScheduled = async (values: ScheduledTaskValues, requestId: string) => {
+    const scratch = (await action("projectless", { operation: "scratch" })) as {
+      projectId: string;
+      cwd: string;
+    };
+    const separator = scratch.cwd.includes("/") ? "/" : "\\";
+    const created = (await action("manage", {
+      projectId: scratch.projectId,
+      operation: "taskCreate",
+      requestId,
+      mode: "scheduled",
+      objective: values.objective,
+      scheduleV2: values.scheduleV2,
+      interactionMode: "interactive",
+      delivery: values.delivery,
+      ...(values.model
+        ? { model: values.model, parameters: modelParameters(values.reasoningEffort) }
+        : {}),
+      cwd: `${scratch.cwd}${separator}${taskFolderName(values.objective, requestId)}`,
+    })) as Data;
+    window.dispatchEvent(
+      new CustomEvent("areal-scheduled-tasks-changed", { detail: scratch.projectId }),
+    );
+    setSelected(`${scratch.projectId}:${created.id}`);
+    setAllRunsShown(false);
+    setError("");
+    void refresh(false, scratch.projectId);
+  };
   const beginCreate = async (text = "") => {
     if (creatingRequest.current || !connected) return;
     creatingRequest.current = true;
@@ -1435,10 +1448,7 @@ export function TaskCenter({
     if (!saved) {
       creatingRequest.current = false;
       setCreating(false);
-      onStartDraft(
-        initialProjectId ?? defaultProjectId,
-        `${t("operations.schedules.creationIntent")}${text}`,
-      );
+      setComposer({ text, requestId: crypto.randomUUID() });
       return;
     }
     const draft = saved;
@@ -1966,7 +1976,7 @@ export function TaskCenter({
                     onClick={() => {
                       setError("");
                       void action("reconcile", { projectId: project?.id }).catch((cause) =>
-                        setError(cause.message),
+                        setError(errorText(t, cause)),
                       );
                     }}
                   >
@@ -1982,12 +1992,20 @@ export function TaskCenter({
             {!connected && <p role="status">{t("operations.schedules.disconnectedCatalog")}</p>}
             {projects.map((owner) => {
               const read = catalog[owner.id];
+              const relevant =
+                (read?.status === "error" && read.explicit) ||
+                Boolean(owner.state?.connected) ||
+                Boolean(owner.hasTaskHistory) ||
+                Boolean(ownerRows(read)?.data.length) ||
+                Object.values<Data>(owner.state?.tasks ?? {}).some(
+                  (entry) => entry.mode === "scheduled",
+                );
               return (
                 <TaskCatalogNotice
                   key={owner.id}
                   projectName={projectLabel(owner)}
                   error={
-                    catalogSupported && read?.status === "error"
+                    catalogSupported && read?.status === "error" && relevant
                       ? read.message || t("operations.schedules.readFailed")
                       : undefined
                   }
@@ -2146,20 +2164,27 @@ export function TaskCenter({
             data-task-id={task.id}
           >
             <header>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t("operations.schedules.backToList")}
+                onClick={closeDetails}
+              >
+                <NavigationBackIcon />
+              </Button>
               <TitleTooltip title={task.objective}>
                 <h2>{scheduledTaskName(task)}</h2>
               </TitleTooltip>
-              <Button size="sm" variant="ghost" onClick={closeDetails}>
-                {t("operations.schedules.closeDetails")}
-              </Button>
             </header>
-            <p role="status" className="task-plan-note">
-              {t(
-                ownerFailed
-                  ? "operations.schedules.unconfirmedStatus"
-                  : "operations.schedules.updatingStatus",
-              )}
-            </p>
+            {ownerFailed ? (
+              <p role="status" className="task-plan-note">
+                {t("operations.schedules.unconfirmedStatus")}
+              </p>
+            ) : !error ? (
+              <div className="task-conversation-pending flex items-center justify-center">
+                <Spinner label={t("operations.schedules.updatingStatus")} className="size-5" />
+              </div>
+            ) : null}
             {error && (
               <p role="alert" className="task-plan-note">
                 {error}
@@ -2167,160 +2192,71 @@ export function TaskCenter({
             )}
           </main>
         )}
-        {task && project && !creating && detailsReady && task.sourceThreadId && (
-          <ScheduledTaskConversation
-            task={task}
-            project={project}
+        {composer && (
+          <ScheduledTaskDialog
+            initialObjective={composer.text}
             action={action}
-            history={runHistory}
-            onClose={closeDetails}
-            onOpenThread={onOpenThread}
-            renderConversation={renderConversation}
-            renderResources={(owner, thread) =>
-              renderResources(owner, thread, { ...task, controlDisabled: disabled }, revealKey)
-            }
+            onClose={() => setComposer(null)}
+            onSubmit={(values) => createScheduled(values, composer.requestId)}
           />
         )}
-        {task && project && !creating && detailsReady && !task.sourceThreadId && (
-          <TaskDraft
-            key={selected}
-            projects={projects}
-            initialProjectId={project.id}
-            task={task}
-            action={action}
-            disabled={disabled}
-            onClose={closeDetails}
-            onCreated={updatedTask}
-            onOpenModelSettings={onOpenModelSettings}
-            renderConversation={renderConversation}
-            renderResources={(owner, thread) =>
-              renderResources(
-                owner,
-                thread,
-                {
-                  ...task,
-                  controlDisabled: disabled,
-                  displayStatus:
-                    task.paused || task.cancelled || finished(task)
-                      ? taskStatus(task, t)
-                      : t("operations.schedules.enabledGroup"),
-                },
-                revealKey,
-              )
-            }
-          />
-        )}
+        {task &&
+          project &&
+          !creating &&
+          detailsReady &&
+          (task.sourceThreadId ||
+            task.delivery === "thread" ||
+            project.projectlessRequestId === "00000000-0000-4000-a000-5c4a7c400001") && (
+            <ScheduledTaskConversation
+              task={task}
+              project={project}
+              action={action}
+              disabled={disabled}
+              history={runHistory}
+              onClose={closeDetails}
+              onOpenThread={onOpenThread}
+              renderConversation={renderConversation}
+              renderResources={(owner, thread) =>
+                renderResources(owner, thread, { ...task, controlDisabled: disabled }, revealKey)
+              }
+            />
+          )}
+        {task &&
+          project &&
+          !creating &&
+          detailsReady &&
+          !task.sourceThreadId &&
+          task.delivery !== "thread" &&
+          project.projectlessRequestId !== "00000000-0000-4000-a000-5c4a7c400001" && (
+            <TaskDraft
+              key={selected}
+              projects={projects}
+              initialProjectId={project.id}
+              task={task}
+              action={action}
+              disabled={disabled}
+              onClose={closeDetails}
+              onCreated={updatedTask}
+              onOpenModelSettings={onOpenModelSettings}
+              renderConversation={renderConversation}
+              renderResources={(owner, thread) =>
+                renderResources(
+                  owner,
+                  thread,
+                  {
+                    ...task,
+                    controlDisabled: disabled,
+                    displayStatus:
+                      task.paused || task.cancelled || finished(task)
+                        ? taskStatus(task, t)
+                        : t("operations.schedules.enabledGroup"),
+                  },
+                  revealKey,
+                )
+              }
+            />
+          )}
       </ScheduledWorkspace>
     </section>
-  );
-}
-
-function ScheduledTaskConversation({
-  task,
-  project,
-  action,
-  history,
-  onClose,
-  onOpenThread,
-  renderConversation,
-  renderResources,
-}: {
-  task: Data;
-  project: Data;
-  action: Action;
-  history: ReactNode;
-  onClose: () => void;
-  onOpenThread: (projectId: string, threadId: string) => void;
-  renderConversation: TaskConversationRenderer;
-  renderResources: (project: Data, thread: Data) => ReactNode;
-}) {
-  const { t } = useI18n();
-  const [read, setRead] = useState<{ status: "pending" | "ready" | "error"; error?: string }>({
-    status: "pending",
-  });
-  const [retry, setRetry] = useState(0);
-  const state = scheduledTaskState(task, project, t);
-  useEffect(() => {
-    if (!project.state?.connected) return;
-    let live = true;
-    setRead({ status: "pending" });
-    void action("open", { projectId: project.id, threadId: task.sourceThreadId })
-      .then(() => {
-        if (live) setRead({ status: "ready" });
-      })
-      .catch((cause) => {
-        if (live) setRead({ status: "error", error: cause.message });
-      });
-    return () => {
-      live = false;
-    };
-  }, [
-    action,
-    project.id,
-    project.state?.connected,
-    project.core?.connectionGeneration,
-    task.sourceThreadId,
-    retry,
-  ]);
-  const thread = project.state?.threads?.[task.sourceThreadId];
-  return (
-    <main
-      className="task-conversation"
-      aria-label={t("operations.schedules.conversation")}
-      data-task-id={task.id}
-    >
-      <header className="scheduled-task-header">
-        <TitleTooltip title={task.objective}>
-          <h2>{scheduledTaskName(task)}</h2>
-        </TitleTooltip>
-        <ScheduledWorkspace.Status state={state.kind} label={scheduledTaskStateLabel(state, t)} />
-        <TitleTooltip title={project.root}>
-          <span className="scheduled-task-header-summary">
-            {state.kind === "attention" ? state.reason : scheduledTaskSummary(task, t)}
-          </span>
-        </TitleTooltip>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={read.status !== "ready" || !thread}
-          onClick={() => onOpenThread(project.id, task.sourceThreadId)}
-        >
-          {t("operations.schedules.openSource")}
-        </Button>
-        {thread && renderResources(project, thread)}
-        <Button size="sm" variant="ghost" onClick={onClose}>
-          {t("operations.schedules.closeDetails")}
-        </Button>
-      </header>
-      {read.status === "error" && (
-        <p role="alert" className="task-plan-note">
-          {t("operations.schedules.sourceUnavailable")}
-          {read.error}
-          <Button size="sm" variant="ghost" onClick={() => setRetry((value) => value + 1)}>
-            {t("operations.schedules.retrySource")}
-          </Button>
-        </p>
-      )}
-      {read.status === "pending" && (
-        <p role="status" className="task-plan-note">
-          {t("operations.schedules.readingSource")}
-        </p>
-      )}
-      {thread && read.status === "ready" && (
-        <div className="task-conversation-body">
-          <section className="task-chat-pane">
-            {renderConversation(project, thread, undefined, {
-              readOnly: !!thread.desktop?.archived,
-            })}
-          </section>
-        </div>
-      )}
-      {!thread && read.status !== "pending" && (
-        <div className="task-plan-note">
-          <p>{t("operations.schedules.sourceMissing")}</p>
-          {history}
-        </div>
-      )}
-    </main>
   );
 }

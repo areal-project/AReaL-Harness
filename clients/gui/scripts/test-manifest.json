@@ -1,5 +1,69 @@
 [
   {
+    "script": "test:workbench-errors",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["protocol", "provider"],
+    "requires": ["gui-build"],
+    "notes": "Actual Workbench process framing and typed error mapping, including the Host error-code inventory."
+  },
+  {
+    "script": "test:core-observation",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["testing", "conversation"],
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "Create and observe a real isolated Core thread, then verify cleanup of its original service generation."
+  },
+  {
+    "script": "test:workbench-backend",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["service", "lifecycle", "library"],
+    "requires": ["core-binary", "gui-build"],
+    "notes": "Isolated source Host and Node backend; WebSocket receipts, Main attach, crash recovery and Host shutdown. No Electron window or package; native secure storage remains a separate check."
+  },
+  {
+    "script": "test:conversation-baseline-provider",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "conversation"],
+    "requires": [],
+    "notes": "Checks identical gated ACP/SSE baseline content and auxiliary-request isolation; does not certify UI or performance."
+  },
+  {
+    "script": "test:observability",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["diagnostics", "feedback", "provider", "service"],
+    "requires": [],
+    "notes": "Local recorder concurrency, privacy projection, operation outcomes and immutable feedback evidence."
+  },
+  {
+    "script": "test:observability-desktop",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["diagnostics", "feedback", "desktop", "provider", "lifecycle"],
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git"],
+    "notes": "Isolated desktop startup, model configuration, task admission, history, injected Core loss/recovery and local feedback."
+  },
+  {
+    "script": "test:advanced-diagnostics",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["desktop", "service", "provider", "lifecycle"],
+    "requires": ["electron", "core-binary", "native-runtime"],
+    "notes": "Isolated desktop configuration, task execution, automatic Core recovery, and advanced diagnostics navigation/export."
+  },
+  {
+    "script": "test:shared-host-consumers",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["service", "provider", "lifecycle"],
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "Real isolated Host/Core startup with dummy environment credentials and CLI/GUI ownership."
+  },
+  {
     "script": "test:worktree",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
@@ -14,32 +78,11 @@
     "requires": ["browser", "git", "gui-build"]
   },
   {
-    "script": "test:worktree-core",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
-  },
-  {
-    "script": "test:worktree-environment",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
-  },
-  {
     "script": "test:worktree-environment-ui",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["worktree", "git"],
     "requires": ["electron", "core-binary", "git", "gui-build"]
-  },
-  {
-    "script": "test:worktree-schedule-interactions",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["worktree", "git"],
-    "requires": ["core-binary", "git"]
   },
   {
     "script": "test:macos-dmg",
@@ -70,7 +113,7 @@
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["recovery", "lifecycle"],
-    "requires": ["core-binary"]
+    "requires": []
   },
   {
     "script": "test:creation-recovery",
@@ -203,6 +246,23 @@
     "requires": ["electron", "core-binary", "gui-build", "git", "python3"]
   },
   {
+    "script": "test:host-quit",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["lifecycle", "desktop", "remote"],
+    "requires": ["electron", "core-binary", "gui-build", "git", "python3"],
+    "notes": "Isolated shared Host quit and reconnect. Remote identity recovery is opt-in and requires authorization for test Keychain writes on macOS."
+  },
+  {
+    "script": "test:host-handoff",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Uses the macOS fixed Core bundle, /private/tmp and the system Python PTY runner.",
+    "areas": ["lifecycle", "conversation"],
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git", "python3"],
+    "notes": "Isolated GUI-to-TUI approval handoff and shared history through a real PTY and local model. On macOS, requires authorized test Keychain writes and AREAL_TEST_HOST_KEYCHAIN=1, including for empty GUI configuration."
+  },
+  {
     "script": "test:legacy-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -316,13 +376,6 @@
     "notes": "Exercises the history runner cleanup with owned child processes; service inventory is a separate boundary, and full Electron/Core cleanup requires history-compat."
   },
   {
-    "script": "test:connection",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["service"],
-    "requires": ["core-binary"]
-  },
-  {
     "script": "test:history-navigation-ui",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -416,6 +469,14 @@
     "ciSmoke": "conversation-derivation"
   },
   {
+    "script": "test:content-reading",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["conversation", "design"],
+    "requires": ["electron", "core-binary", "native-runtime", "gui-build", "git"],
+    "notes": "Isolated desktop with deterministic SSE: streaming diagrams, zoom/pan/focus, table scrolling, Markdown copy and CSV download."
+  },
+  {
     "script": "test:conversation-flow",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -460,29 +521,6 @@
     "platforms": ["darwin", "linux"],
     "areas": ["trajectory"],
     "requires": ["browser", "gui-build"]
-  },
-  {
-    "script": "test:remote-observation",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-pairing-e2e",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["electron", "browser", "core-binary", "git", "gui-build", "python3"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
-  },
-  {
-    "script": "test:remote-observation-e2e",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["browser", "core-binary", "git", "gui-build"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
   },
   {
     "script": "test:e2e",
@@ -559,59 +597,30 @@
     "requires": []
   },
   {
-    "script": "test:remote-command",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-command-e2e",
+    "script": "test:remote-crash-recovery",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["remote"],
-    "requires": ["browser", "core-binary", "gui-build", "git"]
+    "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl"]
   },
   {
-    "script": "test:remote-session",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-gui-e2e",
+    "script": "test:remote-crash-recovery-lldb",
     "layer": "e2e",
     "platforms": ["darwin"],
+    "platformReason": "The deterministic barrier uses macOS LLDB attachment.",
     "areas": ["remote"],
-    "requires": ["browser", "core-binary", "gui-build"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
+    "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl", "lldb"]
+  },
+  {
+    "script": "test:remote-outcome-recovery-lldb",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "The deterministic barrier uses macOS LLDB attachment.",
+    "areas": ["remote"],
+    "requires": ["core-binary", "native-runtime", "node-24.22.1", "openssl", "lldb"]
   },
   {
     "script": "test:remote-session-body",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-session-e2e",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["electron", "browser", "core-binary", "git", "gui-build", "python3"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
-  },
-  {
-    "script": "test:remote-work-overview",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "areas": ["remote"],
-    "requires": ["browser", "core-binary", "git", "gui-build"],
-    "platformReason": "Browser executable is the installed macOS Google Chrome application."
-  },
-  {
-    "script": "test:remote-interaction",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["remote"],
@@ -630,20 +639,6 @@
     "platforms": ["darwin", "linux"],
     "areas": ["remote"],
     "requires": ["gui-build"]
-  },
-  {
-    "script": "test:remote-task-pause",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-task-question",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote"],
-    "requires": []
   },
   {
     "script": "test:remote-gui-quit",
@@ -679,7 +674,8 @@
     "layer": "contract",
     "platforms": ["darwin", "linux"],
     "areas": ["remote"],
-    "requires": ["gui-build"]
+    "requires": ["core-binary", "gui-build"],
+    "notes": "Host fixtures start the real Core binary named by AREAL_CORE_BIN."
   },
   {
     "script": "test:design",
@@ -693,7 +689,7 @@
     "script": "test:regressions",
     "layer": "contract",
     "platforms": ["darwin", "linux"],
-    "areas": ["regression", "bundle", "design"],
+    "areas": ["regression", "bundle", "design", "provider", "desktop"],
     "requires": ["python3"]
   },
   {
@@ -756,26 +752,34 @@
     "requires": ["electron", "core-binary", "gui-build", "git"]
   },
   {
+    "script": "test:bug-report",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback", "diagnostics"],
+    "requires": []
+  },
+  {
+    "script": "test:bug-report-electron",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback", "diagnostics"],
+    "requires": ["electron", "gui-build"],
+    "notes": "Isolated Main IPC and filesystem; Core is deliberately absent; native save picker is injected."
+  },
+  {
+    "script": "test:bug-report-ui",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["feedback"],
+    "requires": ["browser", "gui-build"]
+  },
+  {
     "script": "test:feedback",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
     "areas": ["feedback"],
     "requires": ["browser", "gui-build"],
     "notes": "Mixed command; classified by highest browser or Electron boundary."
-  },
-  {
-    "script": "test:feedback-native",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["feedback"],
-    "requires": ["core-binary", "native-runtime"]
-  },
-  {
-    "script": "test:trajectory-native",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["trajectory"],
-    "requires": ["core-binary", "native-runtime"]
   },
   {
     "script": "test:i18n",
@@ -790,13 +794,6 @@
     "platforms": ["darwin", "linux"],
     "areas": ["i18n"],
     "requires": ["electron", "core-binary", "git", "macos-tools", "gui-build"]
-  },
-  {
-    "script": "test:core-crash-recovery",
-    "layer": "contract",
-    "platforms": ["darwin", "linux"],
-    "areas": ["core", "lifecycle"],
-    "requires": ["core-binary"]
   },
   {
     "script": "test:recovery-electron",
@@ -844,6 +841,14 @@
     "requires": ["git"]
   },
   {
+    "script": "test:script-units",
+    "layer": "unit",
+    "platforms": ["darwin", "linux"],
+    "areas": ["testing"],
+    "requires": [],
+    "notes": "脚本单测覆盖任务目录、隔离 Electron 身份、打包、开发服务路由、性能、Core 观察与 Host 传输屏障；不启动应用或调用供应商。"
+  },
+  {
     "script": "test:manifest",
     "layer": "unit",
     "platforms": ["darwin", "linux"],
@@ -872,6 +877,13 @@
     "requires": []
   },
   {
+    "script": "test:ui-honesty",
+    "layer": "contract",
+    "platforms": ["darwin", "linux", "win32"],
+    "areas": ["design"],
+    "requires": []
+  },
+  {
     "script": "test:cloud-lifecycle",
     "layer": "e2e",
     "platforms": ["darwin", "linux", "win32"],
@@ -886,67 +898,7 @@
     "requires": []
   },
   {
-    "script": "test:mobile-handshake",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode and the iOS Simulator WKWebView.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator"]
-  },
-  {
-    "script": "test:mobile-pairing",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode and the iOS Simulator with native Keychain.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator"]
-  },
-  {
     "script": "test:mobile-storage",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote", "mobile"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-push",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:remote-project-models",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote"],
-    "requires": []
-  },
-  {
-    "script": "test:mobile-workspace",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode, iOS Simulator and the fixed native Core/Runtime bundle.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator", "core-binary"]
-  },
-  {
-    "script": "test:mobile-workspace-state",
-    "layer": "contract",
-    "platforms": ["darwin", "linux", "win32"],
-    "areas": ["remote", "mobile"],
-    "requires": []
-  },
-  {
-    "script": "test:mobile-command",
-    "layer": "e2e",
-    "platforms": ["darwin"],
-    "platformReason": "Requires Xcode, iOS Simulator and the fixed native Core/Runtime bundle.",
-    "areas": ["remote", "mobile"],
-    "requires": ["ios-simulator", "core-binary"]
-  },
-  {
-    "script": "test:mobile-commands",
     "layer": "contract",
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["remote", "mobile"],
@@ -1003,27 +955,6 @@
     "requires": ["gui-build", "node-24.22.1"]
   },
   {
-    "script": "test:mobile-browser",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote", "mobile"],
-    "requires": [
-      "node-24.22.1",
-      "relay-node-24.2.0",
-      "openssl",
-      "playwright-chromium",
-      "playwright-webkit"
-    ],
-    "notes": "Production mobile UI, encrypted pairing and reload in Chromium/WebKit; browser memory and fixture Host only."
-  },
-  {
-    "script": "test:mobile-android",
-    "layer": "e2e",
-    "platforms": ["darwin", "linux"],
-    "areas": ["remote", "mobile"],
-    "requires": ["android-sdk", "android-emulator", "node-24.22.1", "relay-node-24.2.0", "openssl"]
-  },
-  {
     "script": "test:mobile-android-storage",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -1036,6 +967,14 @@
     "platforms": ["darwin", "linux"],
     "areas": ["remote", "mobile"],
     "requires": ["gui-build", "openssl", "node-24.2.0"]
+  },
+  {
+    "script": "test:relay-legacy-guard",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "lifecycle"],
+    "requires": ["electron"],
+    "notes": "Host passes --areal-relay-legacy-guard (local_relay.rs); the guard keeps the old Desktop singleton lock until the Host pipe closes."
   },
   {
     "script": "test:relay-service-ui",
@@ -1074,5 +1013,96 @@
     "platforms": ["darwin", "linux", "win32"],
     "areas": ["composer"],
     "requires": []
+  },
+  {
+    "script": "test:host-protocol-conformance",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "protocol", "service"],
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "A0 schema parity against actual Host/Core over local socket and Relay Noise; uses isolated homes and synthetic vault authorization."
+  },
+  {
+    "script": "test:desktop-ipc-freeze",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["desktop", "protocol"],
+    "requires": [],
+    "notes": "A0 base-registry subset checks and isolated added-command/operation rejection evidence. Native bridge channels remain outside this freeze."
+  },
+  {
+    "script": "test:host-client",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["remote", "protocol"],
+    "requires": [],
+    "notes": "A1 shared client over an actual WebSocket server: ticket refresh, stale state, identity rejection, close cancellation and URL boundaries."
+  },
+  {
+    "script": "test:host-seed-copy",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["service", "development"],
+    "requires": [],
+    "notes": "Development-only read-only snapshot, native test registration, and operational-state exclusion. Packaged real-data acceptance is separate."
+  },
+  {
+    "script": "test:ux-checks",
+    "layer": "unit",
+    "platforms": ["darwin", "linux"],
+    "areas": ["health"],
+    "requires": []
+  },
+  {
+    "script": "test:ux-journeys",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "settings", "conversation"],
+    "requires": ["electron", "core-binary", "git", "gui-build"],
+    "notes": "High-frequency journeys (no model → settings, send and queue during approval, task summary) with five deterministic UX checks: feedback within 400ms, no raw errors, no mixed language, no overlapping layers, no running status while awaiting approval."
+  },
+  {
+    "script": "test:web-journeys",
+    "layer": "e2e",
+    "platforms": ["darwin", "linux"],
+    "areas": ["composer", "settings", "conversation", "provider"],
+    "requires": ["electron", "browser", "core-binary", "git", "gui-build"],
+    "notes": "Business journeys in Chromium against the real Host web endpoint: browser approval, open project by path, send, approval with queued input, completion, reload, settings. Electron only bootstraps the library source once and is closed before the web journeys run."
+  },
+  {
+    "script": "test:history-upgrade",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "areas": ["lifecycle", "conversation"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "notes": "Isolated legacy GUI data restored progressively through Host; real-data upgrade still needs Mac acceptance."
+  },
+  {
+    "script": "test:upgrade-guide-ui",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "areas": ["lifecycle", "settings"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "notes": "Upgrade guide UI against an isolated old Core and a relaunched GUI profile."
+  },
+  {
+    "script": "test:upgrade-guide-lifecycle",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "areas": ["lifecycle", "service"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "notes": "Old Core stop receipt and Host takeover probe used by the upgrade guide; set AREAL_UPGRADE_OLD_CORE."
+  },
+  {
+    "script": "test:web-partial-migration",
+    "layer": "e2e",
+    "platforms": ["darwin"],
+    "platformReason": "Upgrade acceptance from 0.1.18 to 0.1.19 uses /private/tmp, packaged Electron and real legacy data layouts on macOS.",
+    "areas": ["lifecycle", "service"],
+    "requires": ["electron", "core-binary", "gui-build"],
+    "notes": "Web client against a partially migrated Host; needs AREAL_PARTIAL_CORE_SHA256 of the old Core."
   }
 ]

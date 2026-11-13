@@ -1,6 +1,6 @@
 // @ts-check
 "use strict";
-const { record } = require("./service-transport-contract.cjs");
+const { record } = require("@areal/workbench-service/desktop/core/service-transport-contract.cjs");
 const { access } = require("node:fs/promises");
 const { constants } = require("node:fs");
 const { isAbsolute } = require("node:path");
@@ -255,7 +255,7 @@ class ExternalCua {
       owner.turnId,
     ]);
   }
-  /** @param {import("./service-transport-contract.cjs").ToolHostInput} raw @returns {Promise<import("@modelcontextprotocol/sdk/types.js").CallToolResult>} */
+  /** @param {import("@areal/workbench-service/desktop/core/service-transport-contract.cjs").ToolHostInput} raw @returns {Promise<import("@modelcontextprotocol/sdk/types.js").CallToolResult>} */
   async call(raw) {
     const request = readCall(raw);
     const generation = this.generation;
@@ -464,7 +464,6 @@ class ExternalCua {
     return this.stop("closed");
   }
 }
-module.exports = { ExternalCua, upstream };
 
 /** @param {Record<string,unknown>} value @param {boolean} [thread] @returns {CuaOwner} */
 function readOwner(value, thread = true) {
@@ -490,7 +489,7 @@ function readOwner(value, thread = true) {
     ...(typeof value.callId === "string" ? { callId: value.callId } : {}),
   };
 }
-/** @param {import('./service-transport-contract.cjs').ToolHostInput} value @returns {CuaCall} */
+/** @param {import('@areal/workbench-service/desktop/core/service-transport-contract.cjs').ToolHostInput} value @returns {CuaCall} */
 function readCall(value) {
   const owner = readOwner(value);
   if (
@@ -518,3 +517,51 @@ function readCall(value) {
     signal: value.signal,
   };
 }
+
+/** @param {import('electron').App} app @param {()=>boolean} getAvailable @param {()=>import('electron').BrowserWindow|undefined} getWindow @param {(options:import('electron').MessageBoxOptions)=>Promise<import('electron').MessageBoxReturnValue>} showMessageBox */
+function nativeAppElicitation(app, getAvailable, getWindow, showMessageBox) {
+  /** @param {Elicitation} params @param {{signal:AbortSignal,owner:CuaCall}} context @returns {Promise<ElicitationResult>} */
+  return async (params, { signal, owner }) => {
+    const { nativeAppApprovalOptions, nativeAppApprovalResponse } = await upstream();
+    const { declineAgentHostApp, detectHostApps, appBundleOf, plistBundleId } =
+      await import("../vendor/lcu/host-guard.mjs");
+    const bundle = appBundleOf(process.execPath),
+      bundleId = bundle && plistBundleId(bundle);
+    const refusal = declineAgentHostApp(params, {
+      env: {},
+      report() {},
+      hosts: [...detectHostApps(), ...(bundleId ? [{ bundleId, name: app.getName() }] : [])],
+    });
+    const { ElicitResultSchema } = await import("@modelcontextprotocol/sdk/types.js");
+    if (refusal) return ElicitResultSchema.parse(refusal);
+    const window = getWindow();
+    const approval = nativeAppApprovalOptions(params);
+    if (!approval || signal.aborted || !getAvailable() || !window || window.isDestroyed())
+      return { action: "cancel" };
+    const choices = [...approval.choices, { value: "cancel", label: "Cancel" }];
+    const result = await showMessageBox({
+      type: "question",
+      title: "External computer control",
+      message: approval.message,
+      detail: [
+        approval.resource,
+        typeof params._meta?.warning === "string" ? params._meta.warning : "",
+        `Chat ${owner.threadId}`,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      buttons: choices.map((choice) => choice.label),
+      defaultId: choices.length - 1,
+      cancelId: choices.length - 1,
+      noLink: true,
+      signal,
+    });
+    return signal.aborted
+      ? { action: "cancel" }
+      : ElicitResultSchema.parse(
+          nativeAppApprovalResponse(params, choices[result.response]?.value),
+        );
+  };
+}
+
+module.exports = { ExternalCua, upstream, nativeAppElicitation };

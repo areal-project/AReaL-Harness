@@ -6,7 +6,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-gutter: stable;
-  padding: 64px 32px;
+  padding: calc(var(--spacing-field) * 4) calc(var(--spacing-field) * 2);
   background: var(--color-background);
   box-sizing: border-box;
 }
@@ -14,37 +14,37 @@
 .settings-workspace .settings-page {
   padding: 0;
   overflow: visible;
-  max-width: 728px;
+  max-width: var(--reading-width);
   width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 40px;
+  gap: calc(var(--spacing-field) * 2.5);
 }
 
 .settings-workspace .settings-page-header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 0;
+  gap: calc(var(--spacing-inline) / 2);
+  padding: calc(var(--spacing-inline) * 1.5) 0;
   margin-bottom: 0;
 }
 
 .settings-workspace .settings-page-title,
 .settings-workspace .settings-page > h1 {
   font-size: var(--text-fixed-page-title);
-  font-weight: 500;
-  line-height: 33.6px;
-  letter-spacing: -0.015em;
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-title);
+  letter-spacing: var(--tracking-heading-tight);
   color: var(--color-foreground);
   margin: 0;
 }
 
 .settings-workspace .settings-page-subtitle {
   font-size: var(--text-ui-caption);
-  color: var(--color-muted-foreground);
+  color: var(--color-settings-secondary);
   margin: 0;
-  line-height: 1.5;
+  line-height: var(--line-height-ui);
 }
 
 @media (max-width: 640px) {
@@ -81,4 +81,12 @@
   .settings-page {
     padding: 0 24px 32px;
   }
+}
+
+.settings-workspace[data-width="wide"] {
+  padding-top: var(--spacing-panel);
+}
+.settings-workspace[data-width="wide"] > .settings-page {
+  max-width: 1200px;
+  gap: var(--spacing-panel);
 }

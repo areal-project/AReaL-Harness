@@ -448,6 +448,7 @@ mod completion_tests {
             .goal_create(
                 "fixture".into(),
                 GoalCreate {
+                    model_override: None,
                     infer_limits: false,
                     request_id: "completion-fixture".into(),
                     thread_id: thread.id.clone(),

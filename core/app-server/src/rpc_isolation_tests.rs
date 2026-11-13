@@ -132,7 +132,7 @@ async fn slow_derivation_does_not_starve_same_connection_control() {
     socket.send(Wire::Text(json!({"id":200,"method":"areal/conversation/history","params":{"threadId":source.id,"view":"inherited"}}).to_string().into())).await.unwrap();
     socket
         .send(Wire::Text(
-            json!({"id":201,"method":"areal/mcp/list","params":{}})
+            json!({"id":201,"method":"areal/host/status","params":{}})
                 .to_string()
                 .into(),
         ))
@@ -179,7 +179,7 @@ async fn slow_derivation_does_not_starve_same_connection_control() {
     release.notify_waiters();
     let replies = replies.expect("reserved MCP control was starved by derivation saturation");
     assert!(replies[&200]["error"].is_object());
-    assert!(replies[&201]["result"].is_object());
+    assert!(replies[&201].get("result").is_some(), "{}", replies[&201]);
     for id in 202..=204 {
         assert!(
             !replies[&id]["error"]["message"]
@@ -224,6 +224,327 @@ impl areal_engine::model::Model for CompletedModel {
             "fixture answer".into()
         )])))
     }
+}
+
+struct DraftModel;
+#[async_trait::async_trait]
+impl areal_engine::model::Model for DraftModel {
+    fn name(&self) -> &str {
+        "draft-fixture"
+    }
+    async fn stream(
+        &self,
+        _: Vec<areal_engine::model::Message>,
+    ) -> anyhow::Result<areal_engine::model::ModelStream> {
+        Ok(Box::pin(futures_util::stream::iter([Ok(areal_engine::model::ModelEvent::TextDelta(json!({"kind":"proposal","objective":"fixture","schedule":{"at":"2099-01-01T09:00:00+08:00"}}).to_string()))])))
+    }
+}
+
+#[tokio::test]
+async fn draft_confirm_callback_allows_same_socket_reads() {
+    let root = tempfile::tempdir().unwrap();
+    let engine = Engine::open(
+        root.path(),
+        Arc::new(DraftModel),
+        areal_engine::Limits::default(),
+    )
+    .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let stop = CancellationToken::new();
+    let server = tokio::spawn(serve(listener, engine.clone(), stop.clone()));
+    let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}"))
+        .await
+        .unwrap();
+    socket.send(Wire::Text(json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"draft-isolation","version":"1"}}}).to_string().into())).await.unwrap();
+    socket.next().await.unwrap().unwrap();
+    socket
+        .send(Wire::Text(
+            json!({"method":"initialized"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    socket
+        .send(Wire::Text(
+            json!({"id":2,"method":"areal/task/host/ready","params":{"prepareCreate":true}})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    let ready: Value =
+        serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+    assert_eq!(ready["result"]["ready"], true);
+    let owner = "trusted-embedded-host".to_string();
+    let draft=engine.task_draft(owner.clone(),serde_json::from_value(json!({"operation":"taskDraftStart","draftId":uuid::Uuid::new_v4().to_string(),"timeZone":"Asia/Shanghai","cwd":root.path()})).unwrap()).await.unwrap();
+    let thread = draft["threadId"].as_str().unwrap();
+    engine.task_draft(owner.clone(),serde_json::from_value(json!({"operation":"taskDraftSend","requestId":uuid::Uuid::new_v4().to_string(),"threadId":thread,"timeZone":"Asia/Shanghai","text":"schedule fixture"})).unwrap()).await.unwrap();
+    engine.wait(thread).await.unwrap();
+    let view = engine
+        .task_draft(
+            owner.clone(),
+            serde_json::from_value(json!({"operation":"taskDraftRead","threadId":thread})).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert!(view["proposal"].is_object(), "{view}");
+    assert_eq!(view["running"], false);
+    assert_eq!(view["preview"]["timeZone"], "Asia/Shanghai");
+    assert_eq!(view["preview"]["occurrences"][0]["at"], 4070912400_i64);
+    assert_eq!(
+        view["preview"]["occurrences"][0]["localTime"],
+        "2099-01-01T09:00:00+08:00"
+    );
+    let params = json!({"operation":"taskDraftConfirm","threadId":thread,"turnId":view["turnId"],"digest":view["digest"]});
+    socket
+        .send(Wire::Text(
+            json!({"id":10,"method":"areal/task/draft","params":params})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    let callback: Value = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let frame = socket.next().await.unwrap().unwrap();
+            let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+            if value["method"] == "areal/task/prepare" {
+                break value;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(callback["params"]["intent"], "create");
+    socket
+        .send(Wire::Text(
+            json!({"id":20,"method":"areal/task/list","params":{}})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    let read = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let frame = socket.next().await.unwrap().unwrap();
+            let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+            if value["id"] == 20 {
+                break value;
+            }
+        }
+    })
+    .await;
+    socket
+        .send(Wire::Text(
+            json!({"id":callback["id"],"result":{}}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        read.expect("draft callback blocked same socket read")["result"]["data"],
+        json!([])
+    );
+    let result: Value = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let frame = socket.next().await.unwrap().unwrap();
+            let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+            if value["id"] == 10 {
+                break value;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert!(result["result"]["id"].is_string(), "{result}");
+    socket
+        .send(Wire::Text(
+            json!({"id":11,"method":"areal/task/draft","params":params})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    let repeated: Value = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let frame = socket.next().await.unwrap().unwrap();
+            let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+            assert_ne!(value["method"], "areal/task/prepare");
+            if value["id"] == 11 {
+                break value;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(repeated["result"], result["result"]);
+    let created_view = engine
+        .task_draft(
+            owner,
+            serde_json::from_value(json!({"operation":"taskDraftRead","threadId":thread})).unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(created_view["task"]["id"], result["result"]["id"]);
+    assert!(
+        created_view["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|message| message["text"] == "已创建任务。")
+    );
+    socket.close(None).await.unwrap();
+    stop.cancel();
+    server.await.unwrap().unwrap();
+    engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn schedule_create_callback_allows_same_socket_reads_and_original_receipt() {
+    let root = tempfile::tempdir().unwrap();
+    let engine = Engine::open(
+        root.path(),
+        Arc::new(CompletedModel),
+        areal_engine::Limits::default(),
+    )
+    .unwrap();
+    let anchor = engine
+        .create(root.path().to_string_lossy().into_owned())
+        .await
+        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let stop = CancellationToken::new();
+    let server = tokio::spawn(serve(listener, engine.clone(), stop.clone()));
+    let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}"))
+        .await
+        .unwrap();
+    socket.send(Wire::Text(json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"schedule-isolation","version":"1"}}}).to_string().into())).await.unwrap();
+    socket.next().await.unwrap().unwrap();
+    socket
+        .send(Wire::Text(
+            json!({"method":"initialized"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    socket
+        .send(Wire::Text(
+            json!({"id":2,"method":"areal/task/host/ready","params":{"prepareCreate":true}})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    let ready: Value =
+        serde_json::from_str(socket.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+    assert_eq!(ready["result"]["ready"], true);
+    for (index, reject) in [true, false].into_iter().enumerate() {
+        let request_id = format!("schedule-isolation-{index}");
+        let params = json!({"requestId":request_id,"mode":"scheduled","objective":"fixture","threadId":anchor.id,"schedule":{"at":4102444800u64}});
+        socket
+            .send(Wire::Text(
+                json!({"id":10,"method":"areal/task/create","params":params})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+        let callback: Value = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let frame = socket.next().await.unwrap().unwrap();
+                let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+                if value["method"] == "areal/task/prepare" {
+                    break value;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(callback["params"]["intent"], "create");
+        assert_eq!(callback["params"]["requestId"], request_id);
+        assert_eq!(callback["params"]["threadId"], anchor.id);
+        socket
+            .send(Wire::Text(
+                json!({"id":20,"method":"areal/task/list","params":{}})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+        socket
+            .send(Wire::Text(
+                json!({"id":21,"method":"thread/read","params":{"threadId":anchor.id}})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+        let reads = tokio::time::timeout(Duration::from_secs(2), async {
+            let mut values = std::collections::BTreeMap::new();
+            while values.len() < 2 {
+                let frame = socket.next().await.unwrap().unwrap();
+                let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+                if let Some(id @ 20..=21) = value["id"].as_u64() {
+                    values.insert(id, value);
+                }
+            }
+            values
+        })
+        .await;
+        let reply = if reject {
+            json!({"id":callback["id"],"error":{"code":-32000,"message":"refused"}})
+        } else {
+            json!({"id":callback["id"],"result":{}})
+        };
+        socket
+            .send(Wire::Text(reply.to_string().into()))
+            .await
+            .unwrap();
+        let reads = reads.expect("same socket reads blocked by create callback");
+        assert_eq!(reads[&20]["result"]["data"], json!([]));
+        assert!(reads[&21]["result"].is_object());
+        let result: Value = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let frame = socket.next().await.unwrap().unwrap();
+                let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+                if value["id"] == 10 {
+                    break value;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        if reject {
+            assert!(result["error"].is_object());
+            assert!(engine.task_list().await.is_empty());
+        } else {
+            assert!(result["result"]["id"].is_string(), "{result}");
+            socket
+                .send(Wire::Text(
+                    json!({"id":11,"method":"areal/task/create","params":params})
+                        .to_string()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+            let repeated: Value = tokio::time::timeout(Duration::from_secs(2), async {
+                loop {
+                    let frame = socket.next().await.unwrap().unwrap();
+                    let value: Value = serde_json::from_str(frame.to_text().unwrap()).unwrap();
+                    assert_ne!(value["method"], "areal/task/prepare");
+                    if value["id"] == 11 {
+                        break value;
+                    }
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(repeated["result"], result["result"]);
+        }
+    }
+    socket.close(None).await.unwrap();
+    stop.cancel();
+    server.await.unwrap().unwrap();
+    engine.shutdown().await;
 }
 #[tokio::test]
 async fn real_fork_commit_lock_does_not_stop_socket_control() {
@@ -299,12 +620,12 @@ async fn check_real_lock(stage: &str) {
         } else {
             None
         };
-        // history/interrupt 都带 threadId；后接无 threadId 的 MCP 控制必须被接收。
+        // history/interrupt 都带 threadId；后接无 threadId 的管理读取必须被接收。
         socket.send(Wire::Text(json!({"id":20,"method":"areal/conversation/history","params":{"threadId":source.id,"view":"inherited"}}).to_string().into())).await.unwrap();
         socket.send(Wire::Text(json!({"id":21,"method":"turn/interrupt","params":{"threadId":source.id,"turnId":"not-running"}}).to_string().into())).await.unwrap();
         socket
             .send(Wire::Text(
-                json!({"id":22,"method":"areal/mcp/list","params":{}})
+                json!({"id":22,"method":"areal/host/status","params":{}})
                     .to_string()
                     .into(),
             ))

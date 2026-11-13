@@ -23,7 +23,7 @@ export function CommandDetails({ item }: { item: Data }) {
       .filter(Boolean)
       .join("") ||
     (output.error
-      ? JSON.stringify(output.error, null, 2)
+      ? JSON.stringify(output.error, null, 2) // raw-error-ok: 工具输出详情
       : typeof output.prefix === "string"
         ? output.prefix
         : !Object.keys(output).length

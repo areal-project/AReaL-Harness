@@ -10,8 +10,9 @@ import { stageCoreApp } from "./stage-app.mjs";
 import { stageMacOSService } from "./stage-macos-service.mjs";
 import { buildMacOSDmg } from "./macos-dmg.mjs";
 import { parseArgs } from "node:util";
-import relayResources from "../app/src/core/relay-resources.cjs";
+import relayResources from "@areal/workbench-service/desktop/core/relay-resources.cjs";
 import { signLocalMacOSApp } from "./macos-signing-paths.mjs";
+import { buildWorkbenchResources } from "./workbench-resources.mjs";
 const gui = fileURLToPath(new URL("..", import.meta.url));
 const root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
@@ -104,9 +105,11 @@ const appStage = join(staged, "app");
 const dependencies = await stageCoreApp({ root: gui, destination: appStage });
 if (process.env.AREAL_GUI_RELAY_CA_CERT) {
   const caPath = resolve(process.env.AREAL_GUI_RELAY_CA_CERT);
-  const { normalizeNetworkSetting } = require(join(gui, "app/src/core/desktop-network.cjs"));
+  const {
+    normalizeNetworkSetting,
+  } = require("@areal/workbench-service/desktop/core/desktop-network.cjs");
   normalizeNetworkSetting("httpProxyCaCertPath", caPath);
-  await cp(caPath, join(appStage, "assets/relay-ca.pem"));
+  await cp(caPath, join(appStage, "node_modules/@areal/workbench-service/src/assets/relay-ca.pem"));
 }
 const { githubFeedUrl } = require(join(gui, "app/src/update/config.cjs"));
 const updateConfig = join(staged, "areal-update.json");
@@ -151,7 +154,9 @@ if (process.env.AREAL_GUI_CORE_BUNDLE) {
     { cwd: root, stdio: "inherit" },
   );
 }
-const { verifyCoreBundle } = require(join(gui, "app/src/core/bundle.cjs"));
+const { verifyCoreBundle } = require(
+  join(gui, "../../services/workbench/src/desktop/core/bundle.cjs"),
+);
 const coreBundle = verifyCoreBundle(output, { hashes: true });
 if (release)
   assert.equal(
@@ -185,6 +190,10 @@ const relayBundle = await relayResources.buildRelayResources({
   site: join(gui, "renderer/dist"),
   destination: join(output, "areal-relay"),
 });
+const workbenchBundle = await buildWorkbenchResources({
+  source: join(root, "services/workbench"),
+  destination: join(output, "areal-workbench"),
+});
 await build({
   publish: "never",
   targets: Platform.MAC.createTarget(["dir"], Arch.arm64),
@@ -205,8 +214,17 @@ await build({
     files: ["**/*"],
     extraResources: [
       { from: bundle, to: "areal-core" },
-      { from: relayBundle.bundleDir, to: "areal-relay" },
-      { from: join(gui, "renderer/dist"), to: "areal-gui" },
+      { from: relayBundle.bundleDir, to: "areal-relay", filter: ["**/*", "!assets{,/**}"] },
+      {
+        from: join(relayBundle.bundleDir, "node_modules"),
+        to: "areal-relay/node_modules",
+      },
+      { from: workbenchBundle.bundleDir, to: "areal-workbench" },
+      {
+        from: join(gui, "renderer/dist"),
+        to: "areal-gui",
+        filter: ["**/*", "!bundle-analysis.json"],
+      },
       {
         from: join(gui, "native/computer-helper/build/AReaL Computer Helper.app"),
         to: "computer-helper/AReaL Computer Helper.app",

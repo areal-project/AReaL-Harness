@@ -51,18 +51,10 @@ target/debug/areal --workspace ../areal-example-workspace
 
 To request approvals, set `ASK_PERMISSIONS=1` before launch or configure `[permissions] mode = "ASK_PERMISSIONS"`; see [permissions](configuration.en.md#permissions). TUI `/permissions` shows the effective policy. Existing shared services require explicit restart after permission changes.
 
-Open Web through the shared service entry point to sign in automatically:
+Open the web interface:
 
 ```sh
-target/debug/areal web --workspace ../areal-example-workspace
+target/debug/areal web
 ```
 
-Run the same command again if the one-time link or session expires. For a foreground owned service on a fixed port:
-
-```sh
-target/debug/areal serve \
-  --workspace ../areal-example-workspace \
-  --data-dir ../areal-example-state --listen 127.0.0.1:4500
-```
-
-Open `http://127.0.0.1:4500/ui` and enter the local token from `../areal-example-state/security/auth.json` in its login form. This credential file belongs to the local deployment and must not be committed. Terminal `Ctrl-C` shuts down the service and managed tasks. See the [client guide](clients.en.md) for more operations.
+It opens the interface served by Host, the same one as the desktop app; a browser needs local approval the first time it connects. See the [client guide](clients.en.md) for more operations.

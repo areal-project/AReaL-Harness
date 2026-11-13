@@ -61,28 +61,21 @@ Thread 快照和 Item 通知支持可选 `agentMessage.phase`，生命周期、�
 | pending 时 Host 断开 | Run 暂停为 hostUnavailable；拒绝旧 requestId，恢复后回答新问题。 |
 | 取消、已完成、错误 Session/锚点或过期交互 | 拒绝，不消费另一个有效 pending 交互。 |
 
-`node clients/gui/scripts/worktree-schedule-interactions.mjs` 从仓库根验证真实 Core 协议，使用本地确定性模型而不启动 Electron。manifest 区分协议验证和 Runtime payload；原生文件执行未成功时不能据协议通过宣称写入已验证。目录、分支、旧快照兼容性、并发和隔离边界见[Worktree 指南](../guides/worktrees.md)。
+目录、分支、旧快照兼容性、并发和隔离边界见[Worktree 指南](../guides/worktrees.md)。
 
 ## 认证与连接
 
-产品服务监听 loopback，WebSocket 和 Blob 使用启动器认证。可信 Main 从 ready 元数据的 authFile 读取 Bearer token；Renderer 不持有该文件或模型密钥。内置 Web 使用独立的 HttpOnly、SameSite=Strict 会话 Cookie，并验证 Origin；本地启动自动登录见下文。
+产品服务监听 loopback，WebSocket 和 Blob 使用启动器认证。可信 Main 从 ready 元数据的 authFile 读取 Bearer token；Renderer 不持有该文件或模型密钥。Core 不发布网页，带 Origin 的请求一律返回 403；浏览器经 Host 发布的网页访问。
 
 认证文件 `{version:1,principals:[{id,token,permissions,threadIds?}]}` 必须为 0600。权限为 observe/interact/manage/tools；显式 threadIds 限制观察与交互。客户端名称和 Thread ID 不等于认证。
 
 initialize → initialized → areal/capabilities（可带 apiVersion）。请求 ID 双向独立，item/tool/call 是须应答的服务器请求。恢复用 thread/resume 替换基线；订阅、发送队列与背压见 [Core](core.md)。
 
-<a id="browser-auth"></a>
-### 浏览器登录
+### Host 待重启状态
 
-- `POST /areal/auth/bootstrap`：可信本地客户端携带 `Authorization: Bearer <本地 token>`，不发送 Origin；成功返回 `200 {code,expiresIn:60}`。Cookie 不能签发登录码，带 Origin 的请求返回 403。
-- `POST /areal/auth/bootstrap/exchange`：网页发送 JSON `{code}`，Origin 必须与当前服务完全一致；最多 1 KiB，请求拒绝未知字段。成功返回 204 并设置会话 Cookie；无效、过期、已使用或其他服务实例的 code 返回 401，缺失或不匹配的 Origin 返回 403。
-- `POST /areal/auth/session`：保留手工 Bearer 登录，成功同样返回 204 并设置独立会话 Cookie；已有 Cookie 不能续签。提供 Origin 时必须匹配服务。
+`areal/host/status {}` 是只读方法，按当前连接的 `areal/capabilities.features.hostUpdateStatus` 与方法列表发现。响应为 `null`，或 `{hostId,generation,executableVersion,capabilities,restartPending,targetVersion}`；`targetVersion` 可为 `null`。Web 沿既有刷新周期显示已登记 Host 的待重启状态；旧 Core 缺此 feature、Host 缺 `updates` 或没有当前在线 owner 时隐藏提示。
 
-登录码使用 244 位随机熵，60 秒有效且原子消费一次。CLI 将其放入 `/ui#bootstrap=<code>`；片段不进入 HTTP 请求目标，网页先用 `history.replaceState` 清除当前历史记录中的片段，再通过 POST 兑换，不写入 localStorage/sessionStorage。自动登录失败提示重新运行 `areal web` 或手工登录。认证响应使用 `Cache-Control: no-store`；客户端禁用代理和重定向，启动器长期 token 不进入 URL、服务描述、日志或 Cookie。
-
-Cookie 名为 `areal_session_<origin摘要>`，不指定 Domain，使用 `HttpOnly; SameSite=Strict; Path=/; Max-Age=3600`。当前传输仅限 HTTP loopback，不设置依赖 HTTPS 的 Secure 属性。名称区分本机端口，不能将 Cookie 当作对同机不可信进程的隔离边界。独立会话继承原身份权限和 threadIds；服务端保存登录码和会话 ID 的 SHA-256 摘要，1 小时绝对期限到达后拒绝 HTTP/新 WebSocket 并断开已有浏览器连接，不取消后台任务。服务重启使所有登录码和浏览器会话失效。每服务最多保留 64 个有效登录码和 1024 个有效会话；满额返回 429，不驱逐已有会话。
-
-兼容性：原始 Bearer 客户端与认证文件格式不变，旧的 `areal_session=<长期 token>` Cookie 不再接受；升级后重新运行 `areal web` 或手工登录。`areal web --json` 的服务描述保持原样，既不打开浏览器，也不签发登录码。请求/响应类型见 [local-service-v1.json](../../schemas/local-service-v1.json) 的 browserBootstrap / browserBootstrapExchange。
+Core 只经当前认证 principal 已登记的宿主连接读取。调用前后核对原连接与 owner 是否仍当前；断线或替换期间的结果不转给后继连接。客户端不能提交 owner、版本或路径等权威字段，读取不启动 Host 或项目，不读取 Host 私有文件。未登记调度宿主的 Core 返回 `null`；这包括当前未建立该登记的受抑制项目连接。
 
 ## 方法目录
 
@@ -200,7 +193,11 @@ thread/configure 使用 expectedRevision，仅空闲且不压缩时生效。rese
 
 `areal/provider/upsert` 接受可选 `Provider.modelParameters`，以目录中的模型 ID 映射既有 `ModelParameters`。原 `models` 仍为字符串数组。未知映射键或无效参数拒绝整次更新。生成参数依次采用显式 Thread 配置、已配置模型默认、Provider 模型元数据、Provider 全局默认；上下文报告与用户预算按下文单独解析。选定的 Provider 快照保留该元数据；省略映射保持原契约。端点 `context_window` 表示默认容量，`max_context_window` 不会自动启用更大窗口。 `contextSource:"account"` 标明账号目录，其余报告默认为 `provider`。
 
+模型目录提交后，Core 向有项目观察权限的连接发送 `areal/model/catalogChanged {revision}`；版本只在当前 Core 代内有效。客户端应重新读取 `areal/model/list`，不能把通知当作目录快照。
+
 自定义模型可声明可选 `capabilities:{tools,vision,reasoning,reasoningEffortOptions?}`，经 `Provider.modelCapabilities` 按模型 ID 传入；未知模型键或无效声明拒绝更新。省略声明保留原协议行为。关闭工具后不发送工具定义，也不受理返回的工具调用；关闭视觉后拒绝图片输入；关闭推理后不发送推理参数。`reasoningEffortOptions` 为不重复的允许值子集，可选 `none/minimal/low/medium/high/xhigh/max`。空列表或省略采用原有六档，关闭推理时目录选项为空。
+
+`areal/model/list` 的供应商模型项可附带 `displayName`，取自 Core 已应用配置中同一 `providerId` 与 `modelId` 的非空显示名。启动安装和模型配置热应用同步更新此字段；仅修改配置文件不改变当前目录。未配置显示名时省略该字段，客户端仍以 `modelId` 回退。旧 Core 可省略此加法字段。
 
 `areal/model/list` 的每项 `parameters` 是 Core 按模型默认、Provider 默认合并的参数；`isDefault` 标识新会话的服务默认选择。显式 Profile 模型仍优先于全局默认。Composer 在发送前显示具体模型与有效思考强度，完全未设置强度时显示“供应商默认”，显式 `none` 显示“无”。“使用模型默认”只清除当前强度覆盖，不绕过模型或 Provider 已保存的默认值。新会话只保留本次未发送草稿的选择，创建成功后清除；历史使用会话当前已保存的选择，已有 Turn 快照不变。
 
@@ -250,15 +247,17 @@ Desktop 首先按相同 generation 查询状态并尝试重连。仅在 `status 
 
 `credentials` 是目标文件所引用的 `AREAL_CREDENTIAL_` 名称到秘密值的有界映射。只允许追加不可变引用，同引用异值拒绝；旧引用继续供已有任务使用。秘密只在可信请求与执行内存中存在，不写入配置、历史、摘要、日志或回执。普通启动环境变量不能通过此入口更新。
 
-响应包含 `{serviceId,generation,applied:{revision,sequence},modelRevision,credentialStates,operation?}`。`applied.revision` 是实际提交的整个配置文件版本，`sequence` 在本代际成功应用后递增；它们不同于默认模型的 `modelRevision`。首次装配从序号 0 开始。Core 复用同一次受控文件快照进行版本与配置校验，拒绝过期目标、已变化的非模型部署、活动工作和凭据冲突，不调用 drain、不重启 Core 或 Runtime。现有 Thread、Turn 和队列保留原配置与凭据引用。
+响应包含 `{serviceId,generation,applied:{revision,sequence},modelRevision,credentialStates,operation?}`。`applied.revision` 是实际提交的整个配置文件版本，`sequence` 在本代际成功应用后递增；它们不同于默认模型的 `modelRevision`。首次装配从序号 0 开始。Core 复用同一次受控文件快照进行版本与配置校验，拒绝过期目标、已变化的非模型部署、活动工作和凭据冲突，不调用 drain、不重启 Core 或 Runtime。默认配置首次写入既定的 `home/config.toml` 不属于部署变更；实际非模型配置或来源路径变化仍需重启。现有 Thread、Turn 和队列保留原配置与凭据引用。
 
 `operation` 使用原 `requestId`，状态为 `running`、`applied`、`rejected` 或 `unknown`，终态可带脱敏的 `result` 或 `error`。受理后的操作由 Core 持有，断线不取消提交。重复请求返回原结果，不重复发布配置；响应丢失先读取原请求。进程内回执有容量边界，代际改变或记录不可用不证明原请求失败，不能自动重发。客户端可核对新实例的当前就绪状态，但不能将其当成旧请求的回执。
 
-多个 Core 各自应用并确认。GUI 的供应商“保存”使用已有持久化命令，按文件 CAS 保存后即可完成；运行中的任务不阻止保存，应用失败也不撤销已经保存的修改。桌面服务在任务结束或重连后尝试应用，忙碌时每两秒核对一次；明确的非忙碌失败停止自动重试，结果未知时只查询原请求。页面区分保存和生效状态，并保留新草稿的原始 CAS 版本。备用默认模型和删除供应商继续使用严格协调操作；已知部分失败可按文件 CAS 补偿，再应用恢复产生的实际版本，未知请求未查清前不得回滚。外部写入或新任务可能阻止补偿，此时保留实际应用版本与待应用状态。文件监听与显式应用共享已应用基线，非模型配置继续遵循安全重启边界。
+多个 Core 各自应用并确认。GUI 的供应商“保存”使用已有持久化命令，按文件 CAS 保存后即可完成；运行中的任务不阻止保存，应用失败也不撤销已经保存的修改。桌面服务在任务结束或重连后尝试应用，忙碌时每两秒核对一次；明确的非忙碌拒绝停止自动重试，显式 `apply` 失败保留具体脱敏原因，结果未知时只查询原请求。已确认版本及凭据后，目录刷新失败按同项目、同服务代际、同配置版本记录为可恢复核对状态，对外沿用 `application.kind: unknown`；既有两秒恢复循环重新核对权威证明并刷新目录，不重启或重复热应用。显式 `apply` 仅剩此类读取失败时返回当前待确认快照，成功刷新后清除暂时失败；连接换代后的迟到结果不能覆盖新连接。页面区分保存和生效状态，并保留新草稿的原始 CAS 版本。备用默认模型和删除供应商继续使用严格协调操作；已知部分失败可按文件 CAS 补偿，再应用恢复产生的实际版本，未知请求未查清前不得回滚。外部写入或新任务可能阻止补偿，此时保留实际应用版本与待应用状态。文件监听与显式应用共享已应用基线，非模型配置继续遵循安全重启边界。
 
 ## Skill 元信息与资源
 
 可信部署清单的 skills 接受 `{id,revision,root,metadata?:{name,description}}`；root 相对清单目录。省略 metadata 时只解析 SKILL.md 的有界文件头，不扫描附件；显式部署和自动发现使用同一种按需读取行为。
+
+相同 `id/revision` 同时由显式部署和自动发现提供时，使用显式部署的资源根目录。发现刷新不覆盖该根目录；不同 revision 仍可发现，显式重新部署可以更新资源根目录。共享 Host 的部署指向已转移的 Skill 快照，客户端源目录移除不影响该快照。
 
 `areal/skill/list` 接受 `{threadId}`；新草稿可用 `{agentProfile:{id,revision}}` 观察已登记 Profile 的技能，两者互斥。Profile 目录查询不创建 Thread、不读取正文；`areal/skill/read` 同样接受两种互斥上下文，以便草稿预览当前 Profile 允许的资源。Profile 读取不登记 Thread 加载状态，发送前仍在所属 Thread 中重新读取。Composer 保存技能引用与来源，发送前读取 SKILL.md 并附加到当前消息；读取失败保留草稿。
 
@@ -286,6 +285,12 @@ contentItems 按顺序保存 inputText 或 arealMedia，实际字节进入模型
 
 ## 进程与保留
 
+`features.connectionProcesses=true` 表示支持 `lifetime="connection"`。该生命周期要求有效 Profile 显式设置 `allowConnectionProcesses=true`，缺省为 false；写资源仍要求部署允许并发写入。Core 从已认证 WebSocket 生成连接身份，拒绝客户端传入 `connectionId`。连接进程继承原 command/task Scope 的权限与预算，不使用 thread 服务的祖先时长提升。
+
+Main 为 GUI 终端持有专用 Core 连接。Desktop 仍负责 Host 提交 journal、登录 shell 参数及原回执恢复；启动、输出、输入、resize、停止和恢复经原 Main 连接执行。Core 描述与凭据只在特权进程间传递。Main 断连会撤销对应连接资源，已受理启动与清理共用资源门，Runtime 的 `cleanupConfirmed` 继续作为结算证据。其它连接及普通 thread/turn 进程不随之结束。重连只读取原请求和进程，不重新创建终端。
+
+新的标准桌面 Profile v2 显式开启连接进程。旧 Profile 与已有会话不自动获得该权限；未授权时终端启动明确拒绝。`ManagedProcess.connectionId` 仅在连接资源中出现，普通资源和旧记录省略该字段。
+
 process/start 默认 lifetime=turn；thread 生命周期需 Profile allowThreadProcesses，写服务还需部署 allow-concurrent-writes。根 Thread 的受管服务使用 Runtime 已授予的桌面进程时长，普通 Turn 进程保留命令时长限制；只有可信命令 Scope 与 Runtime 根权限及其他预算一致时才分离两种时长。子任务、hooks 的任务 Scope 及额外收窄的 Scope 保留原祖先，不通过服务接口扩大授权。GUI 终端与手动启动的 GUI 进程默认继承父 Runtime 限额；显式 `timeoutMs` 只能收窄相应父限额，已知超额在持久受理前拒绝，不生成未知启动回执。受理后的 UNKNOWN 仍查询原记录，不自动重放。输入归因到认证身份，输出游标与清理沿用 Runtime。PTY resize 为实际 ioctl；pipe EOF 关闭 FD，canonical PTY 使用 VEOF，raw mode 不支持。
 
 GUI 终端选择账户中可执行的登录 shell，缺失时依次尝试 `SHELL` 和 `/bin/sh`。桌面适配器提交交互登录会话的具体 argv，并通过字面 `/usr/bin/env` 参数设置 `SHELL`、`USER`、`LOGNAME` 和 `TERM=xterm-256color`。登录和交互初始化文件负责建立用户工具链环境。Runtime 保留现有环境过滤与权限。恢复读取原托管进程 argv。运行中的终端隐藏常规清理诊断，已退出或状态不确定的进程继续显示退出与清理事实。
@@ -311,6 +316,20 @@ features.goals=true 表示服务支持 Goal，无需单独配置开关；Goal �
 共享服务的 `server/status.configuration` 返回 `{modelRevision,applied,appliedRevision,applySequence,currentFileRevision,credentialStates,pendingApply,restartRequired,error}`，其他部署为 null。`applied={revision,sequence}` 是 Core 已确认的文件版本。GUI 模型配置使用上面的显式热应用接口；普通 CLI 模型热更新缺失环境凭据时可同时返回 `restartRequired=true` 和 `error`，表示需要由持有有效凭据的本地客户端安全重启；其他加载错误不触发自动重启。`areal/server/configurationChanged` 向已订阅会话发布 `{threadId,configuration}`。`server/drain` 增加 `strategy="ifIdle"`：在同一准入锁内检查空闲并关闭准入，忙碌拒绝时保留任务运行。见[配置热更新](../guides/configuration.md)。
 
 ### Desktop 适配器生命周期
+
+普通退出查询共享 Host 的 `host.activity`。完整空闲观察允许直接退出 GUI；活动或未知时默认保持后台，也可二次确认后停止全部 Host 项目。安装退出继续走 Desktop 更新与安装包占用检查。
+
+Main 把全 Host 停止意图作为 `kind="stopHost"` 引用写入原 `service-control.json` v3，与旧 Desktop 引用并存。引用绑定 home、hostId、generation、requestId 和 strategy，文件与目录同步后才分发。恢复只查询 `host.operation` 或离线 `areal host operation`；缺失、部分、清理未确认均保留原 ID。已完成请求不证明后继代际已停止，新明确停止意图须核对当前认证 Host。界面只展示回执投影，不接收 Host 凭据或路径。保持后台退出保留未决引用。
+
+`stopService` 的 Host 响应以 `operation` 返回 `stopHost` 投影，包含请求 ID、阶段和项目目标；旧 Desktop 路径仍返回其生命周期回执。当前连接发起的停止完成后，Main 断开该 GUI 的观察连接，仅在用户显式重连后恢复。
+
+已完成或明确阻止的 Host 停止允许用户显式重新连接；未知请求只允许核查。若 Desktop 仍存活，Main 通过固定 `hostReconnect` 请求恢复其 Host 客户端；该请求仅接受当前 Main socket。重连核对原 sourceId 并读取项目绑定，不重新导入旧数据、不启动项目 Core、不重放提交。重连成功后才移除已核查的控制引用。
+
+Host 断连会关闭 Desktop 的独立 Remote Gateway。显式重连等待旧 Gateway 的持久写入和本地监听资源关闭，再创建新实例。新实例先取得 Host execution lease，核查原 Remote 写入回执，再读取身份、grants 和配置。健康 Gateway 不替换；原请求未知、持久化失败或 lease 被占用时，恢复返回错误并保留原控制引用。
+
+Desktop 的动态工具连接归属已认证并声明 `computerHost:1` 的 Main socket。Main 断开时，Desktop 关闭该归属的 Core 连接，使 Core 撤销 ToolHost；共享 Core 与正在执行的 Turn 继续运行。普通观察客户端断开不撤销 Main 的工具。
+
+Desktop 自动重连只恢复观察，不恢复活动 Turn 的工具归属。没有 Main 时，新会话与定时准备不声明浏览器、Computer Use 或外部 CUA 工具。后继 Main 接入时先撤销旧观察连接，避免旧连接的工具重新可用；空闲会话通过显式发送、页面认领或应用打开重新绑定。连接丢失后的未知调用沿原 journal 核查，不向后继 Main 重发。
 
 这是 GUI 适配器协议，独立于 `areal.core.v1`。认证 snapshot 的 `service.lifecycle` 声明 `{version:2,desktopGeneration,capabilities:{request,read,reconcile,kinds},activeRequestId}`，支持 stopDesktop、updateDesktop、stopProject、updateProject、interruptTurn。
 
@@ -354,6 +373,8 @@ GUI 的 `tasks` 只读命令支持 `operation: list | inbox`、可选 `projectId
 
 新 GUI 使用 `areal/side/create {requestId,sourceThreadId,firstInput?}` 创建辅助对话。`firstInput` 是可选的普通输入数组；省略时创建空会话，不创建用户 Turn，也不请求模型。提供首条输入时，Core 将子会话、冻结历史、首轮和原始请求收据一起持久化，再启动执行。相同身份、请求键和参数返回同一子会话及可选首轮；结果未知时查询原收据，不重建会话或重发首问。Desktop 的 `side` 命令使用 `operation:"create"`，文字命令参数通过 `firstInput:{text}` 传入。
 
+侧边聊天在原请求去重后、准入持久化前的前置条件失败返回 `outcome.kind="rejected"` 和 `recovery.kind="none"`；持久化结果不确定仍核对原回执。Desktop 的 `side/recover` 共用提交恢复器：仅在原请求的权威回执确认后结算 pending；已受理但执行失败返回 `confirmed:true,status:"failed",accepted:true,message`，不能再显示为结果未知。
+
 新会话保存 `conversation.kind=side`、`version=2` 和 `policy.kind=sideExecutableV2`。Core 继承来源当前已生效的模型、模式与权限配置，创建独立队列、交互、执行状态和收据。模型使用完整的稳定来源历史，界面只显示子会话自己的消息。来源正在生成时，只保留当前轮已提交的用户输入，排除其后尚未完成的助手与工具增量。来源继续推进不改变该快照，也不自动推进子会话。继承历史不复制 Goal、活动工具、审批或后台任务。后续输入、附件、工具、权限交互和压缩复用普通会话路径与限额。Goal、编辑重试和 fork 仍被拒绝。旧的只读 Side 不自动升级。
 
 每个辅助对话有独立临时标签。划词只追加到同一来源当前激活的辅助标签；其他资源标签激活时创建新的辅助对话。主、辅 Composer 共享结构化引用，按来源与原文去重，单条最多 8,000 个 JavaScript 字符、每份草稿最多 8 条、总计最多 16,000 个字符。超限原子拒绝，已有正文与附件保留。发送只包含 `# userselect:` 和 `userselect` 代码块中的 `{text}` 数组，来源标识留在发送前 UI。裸 `/side` 与 `/btw` 创建空标签，带纯文字参数时创建并发送首问；含附件或结构化上下文时按主会话原路径提交。辅助对话不提供再次创建辅助对话的命令。
@@ -387,7 +408,7 @@ Turn 显示投影保留 Core 的 `goal.origin`、`goal.sequence` 与 `durationMs
 
 正文、推理和工具文本通过 `session.body {threadId, turnId, itemId, cursor?}` 完整读取并交给同一 GUI 消息流渲染，长回复不再只显示预览。该只读入口要求当前项目的 observe 授权和已打开的精确会话订阅；每页重新校验设备授权、连接与 Core 代际。公共消息正文超过内联额度时按最多 32 KiB 的 UTF-8 页读取，每位观察者只保留一个有效期 45 秒、最多 4 MiB 的临时冻结正文版本；游标不能跨消息或订阅使用。媒体与 Core 已归档、不可访问的历史仍不提供。工具参数、文本输出和公开执行状态可以展开；modelContext、凭据、完整配置、instructionSnapshot、钩子负载和私有执行元数据不传输。浏览器仅缓存当前显示范围的正文，切换会话或断开后清空；读取失败可显式重试，不重放发送或工具操作。现有原生历史接收上限仍适用。
 
-`session.send` 可附带 `enqueue: true, expectedTurnId`，映射 `areal/turn/enqueue`，要求 `turnEnqueueAdmissionGuard`；Core 在锁内确认普通归属与配置版本。`session.control {threadId, operation, expectedRevision, values}` 使用 submit 能力和既有 commandId journal，仅支持 configure、goalCreate/goalPause/goalResume/goalClear、queueUpdate/queueRemove/queueReorder/queuePause/queueResume/queueSteer、steer。字段严格限定；不接受路径、原生方法名、连接信息或凭据。Task 归属拒绝这些普通会话控制。
+`session.send` 不带 `enqueue` 时由 Host 按会话当前状态选择：有活动轮次就映射 `areal/turn/enqueue` 并填入该轮次，否则映射 `areal/turn/start`。也可显式附带 `enqueue: true, expectedTurnId`。排队要求 `turnEnqueueAdmissionGuard`；Core 在锁内确认普通归属与配置版本。队列的 pause、resume、remove 不比对 `expectedRevision`，只有 update、reorder、steer 在版本过期时拒绝。`session.control {threadId, operation, expectedRevision, values}` 使用 submit 能力和既有 commandId journal，仅支持 configure、goalCreate/goalPause/goalResume/goalClear、queueUpdate/queueRemove/queueReorder/queuePause/queueResume/queueSteer、steer。字段严格限定；不接受路径、原生方法名、连接信息或凭据。Task 归属拒绝这些普通会话控制。
 
 快照包含脱敏模型目录、配置、目标与队列显示投影；队列至多 128 项，每项文本 1024 UTF-8 字节，含附件或截断项不可在 Remote 编辑。模型目录至多 200 项。发送和控制共享 Session 未确认门；结果未知只查原 commandId，不重发。配置/目标/队列及 enqueue 使用原生持久收据核对。直接 `turn/steer` 无可查询原生请求键，回应丢失时保持 UNKNOWN，不将消息回显当作受理证明。
 
@@ -406,18 +427,14 @@ MCP 清理失败保持 cleanupFailed，并持久保存 cleanupUnconfirmed。无�
 
 ## 插件包管理
 
-以下部署级方法要求无限制的 `manage` 身份；限制到 Thread 的身份不能调用。Core 持有工作区、安装状态和范围选择，客户端不得自行改写安装文件。固定格式和阶段边界见[插件指南](../guides/plugins.md)与[实施计划](../development/codex-plugins-plan.md)。
+插件登记（市场来源、解析、安装、启用、卸载、直接添加的 MCP）归 Host：客户端调用 Host 的 `plugins.read`（`plugins`、`plugin`、`mcp`）与 `plugins.command`（`pluginInstall`、`pluginUninstall`、`pluginResolve`、`pluginConfigure`、`marketplaceAdd/AddGit/Remove/Update/SyncDefault`、`mcpSave`、`mcpRemove`），需本机 GUI 写授权和 `manage`。Host 写插件库后通知在线 Core 重新读取。以下 Core 方法要求无限制的 `manage` 身份；限制到 Thread 的身份不能调用。客户端不得自行改写安装文件。固定格式和阶段边界见[插件指南](../guides/plugins.md)与[实施计划](../development/codex-plugins-plan.md)。
 
 | 方法 | 参数 | 结果/约束 |
 |---|---|---|
 | `areal/plugin/list` | `{}` | `revision/data/marketplaces/errors`；条目错误隔离 |
 | `areal/plugin/read` | `id` | 包详情；候选版本/摘要与已安装版本/摘要/Skills 分开 |
-| `areal/marketplace/add` | `root, expectedRevision, requestId` | 添加本地目录，更新安装目录版本 |
 | `areal/plugin/importArchive` | `path, expectedRevision, requestId` | 导入本机 ZIP 为候选来源；返回包详情，不安装或执行 |
-| `areal/plugin/install` | `id, scope, expectedRevision, source, expectedDigest, requestId` | `scope=user/project`；摘要必须匹配用户选中的来源快照 |
-| `areal/plugin/configure` | `id, scope, enabled, expectedRevision, requestId` | 项目明确选择覆盖用户默认；停用撤销后续读取 |
 | `areal/plugin/component/configure` | `id, component, enabled, expectedRevision, expectedDigest, requestId` | 当前项目的独立 Skill/MCP 选择；摘要绑定已安装副本，版本 CAS；返回包详情 |
-| `areal/plugin/uninstall` | `id, expectedRevision, requestId` | 撤权；保留历史缓存 |
 | `areal/plugin/setup` | `id, threadId?, requestId` | `{thread,turn,requestId}`；仅普通会话；显式选择已安装 onboarding Skill |
 
 目录条目的 `version/sourceDigest/admissionDigest/skills/onboardingSkill` 描述当前候选；`installedVersion/installedDigest/installedSourceDigest/installedSkills/installedOnboardingSkill` 描述持久安装副本。`sourceDigest` 与 `installedSourceDigest` 是原包字节摘要。可空 `admissionDigest` 绑定已消费的市场条目定义和原包；候选审阅身份取 `admissionDigest ?? sourceDigest`。`installedDigest` 是已安装有效定义身份。安装必须同时提交选中 `source` 和审阅身份作为 64 位十六进制 `expectedDigest`。上下文候选拒绝仅提交原包摘要的旧客户端，不降级审阅。范围变更采用目录 `revision` 的 CAS；冲突或来源变化后重新读取，不隐式重试写入。
@@ -428,7 +445,7 @@ MCP 清理失败保持 cleanupFailed，并持久保存 cleanupUnconfirmed。无�
 
 写操作复用现有部署管理提交账本。同身份、同 `requestId`、同方法和参数返回原结果，异参数拒绝；结果未知通过 `areal/request/read {requestId}` 查询对应 `method` 的 completed `response`，不带 `threadId`，不重放。setup 另通过普通 Turn 准入固定权威 Skill 引用；包正文不能制造其他显式 Skill 选择。未支持组件只报告能力诊断，安装不启动 MCP/hooks/apps。AReaL 管理方法与已实现的实验 Codex 管理 wire adapter 共用 Store/Engine；两者保留各自的 wire 契约。
 
-`areal/marketplace/add`、`areal/marketplace/addGit`、`areal/marketplace/remove`、`areal/marketplace/update` 和 `areal/plugin/uninstall` 在完整 `{"result":catalog}` 回执不超过 256 KiB 时返回原完整目录。超限的成功返回 `{"revision":N,"catalogRefreshRequired":true}`，表示变更已在目录版本 N 完成。相同请求重试和回执查询保留这个原始结果，即使目录随后变化或 Core 重启。`areal/plugin/list` 另行读取完整当前目录，版本可能晚于 N；它不替换历史回执。失败仍返回原错误。
+Host `plugins.command` 返回已受理回执，`receipt` 是插件目录或包详情；`marketplaceSyncDefault` 在没登记过时登记内置默认市场（用户移除过则不再加回），已登记时最多每小时拉新一次，拉取失败沿用上次快照。目录与详情每行带后端算出的 `status`（`state`、`nextAction`、`reason`），界面按它决定卡片主按钮；安装用户级一份，`pluginConfigure` 带 `scope:"project"` 与 `projectId` 时只改该项目的选择，项目按项目身份识别，同仓库 worktree 共享。
 
 ### 组件支持报告
 
@@ -458,7 +475,7 @@ Desktop 在同一配置目录内保存 `{modelContent,privateContent}`，按真�
 
 ## 插件来源、MCP 与桌面 Apps
 
-新增方法保留无限制 `manage` 授权要求，参数类型见生成 schema。来源变更使用目录 CAS 与管理回执：`areal/plugin/resolve {id,expectedRevision,requestId}`；`areal/marketplace/addGit {url,refName?,sparsePaths?,expectedRevision,requestId}`；`areal/marketplace/remove {root,expectedRevision,requestId}`；`areal/marketplace/update {expectedRevision,requestId}`。
+新增方法保留无限制 `manage` 授权要求，参数类型见生成 schema。来源解析与市场变更走 Host `plugins.command`，使用目录 CAS。
 
 `areal/plugin/connection {id,expectedDigest,connect,requestId}` 明确信任/断开已安装版本；`areal/plugin/mcp/list` 区分连接、认证、可选失败与清理状态。`areal/plugin/auth {id,server,operation}` 的操作为 `start/status/cancel`，返回瞬时认证状态，不是管理回执。`areal/plugin/connector/configure {id,connectorId,provider,credentialRef,expectedDigest,requestId}` 仅支持显式 GitHub 映射；凭据值只由可信启动器注入。
 
@@ -529,6 +546,22 @@ GUI 服务的窄命令 `trajectory` 支持 `{operation:"status"}`、`{operation:
 
 ## 桌面供应商连接诊断
 
+### 客户端运行观测
+
+本机导出仍使用 `format: areal-harness-diagnostics-v1`。新增 `monitoring` 接入描述：`schemaVersion: 1`、`source: desktop-diagnostics`、`transport: local-only`；`data.path: runs` 引用同一报告的 `header/events/incident`，`incidents` 按 `runId/incidentId/failureSeq` 索引现场。它是供监控平台适配器消费的本地数据契约，尚无网络传输、上传队列或服务端。消费者应忽略新增字段；旧记录缺少环境或操作字段时保持未知。
+
+`runs[].header` 在运行开始时记录 OS 版本、平台/架构、应用/Electron/Node 版本、源码或安装包模式、语言地区、可用逻辑 CPU 数和总/可用内存。字段按固定格式校验；不读取环境变量、主机名、用户名或配置内容。故障资源样本是 GUI Main 进程的内存和运行时长，不代表 Core/Runtime 的内存。
+
+`type: operation` 使用 `name: startup | model-configuration | task-send | history-load | reconnect`，记录 `started/ok/failed/unknown`、耗时与可选项目/代际/请求关联。`operationId` 绑定异步作用域，嵌套调用用 `parentOperationId` 关联；作用域结束后，延迟回调不继承已结束的操作。模型应用继续保留 `read-proof/apply/refresh-catalog` 阶段与原 Core `requestId`，自动核对使用独立操作。
+
+`ok` 只表示该边界成功：任务发送表示准入调用返回，不表示模型任务执行完成；历史加载表示本次权威读取完成，不表示整个历史都已下载。模型配置根据实际应用状态分类，待确认/推迟应用记 `unknown`。重连流程仍有异步历史刷新，连接与核对流程返回后保守记 `unknown`；后续 `history-load` 和任务发送结果分别证明相应路径恢复。异常记 `failed` 并保留白名单错误码/原因；`SUBMISSION_UNKNOWN` 不表示未受理，不授权重放写入。
+
+错误级事件拥有 `incidentId`，并触发即时资源样本。每次导出为每个保留运行提取最近错误及其前 24、后 7 条已记录事件，保存到 `incident`。`windowTruncated` 表示窗口外仍有事件，`rotationGap` 表示发生过日志轮转；现场由仍保留的日志派生，无法保证轮转后仍保留全部故障历史。缺失、非法记录与读取预算限制仍由报告的 `incomplete/omissions` 表达。
+
+本机反馈沿用 `bugReport.prepare` 冻结这份上下文，并将 operation、parent、incident、run 和 request 身份一致替换成报告内别名。预览、保存和导出引用同一份冻结数据；诊断默认不附带，联系方式不采集。接口没有增加 Renderer 任意写日志或读取文件的能力。测试入口为 `test:observability` 与 `test:observability-desktop`。
+
+本机诊断包的 `schemaVersion: 1` 事件新增 `type/component: model-configuration`，不改变供应商命令契约。`phase` 为 `read-proof/apply/refresh-catalog`，`outcome` 为 `started/ok/failed`，附 `durationMs`、项目/代际别名与可选 `requestId`；失败附白名单 `code/reason`，未知值归为 `OTHER`，不附异常正文、配置或凭据。反馈附件再次将请求身份转为报告内别名。旧事件继续可读；读取器应忽略未知事件类型和新增字段。RPC 阶段成功不等同于完整应用成功。
+
 桌面 `providers` 命令的 `discover` 与 `probe` 在网络初始化或请求失败时返回固定的 `error.code` 和操作提示。
 
 | `error.code` | 诊断 |
@@ -580,3 +613,15 @@ SnapShots 是 Electron 本地能力，不新增 Core 或 Runtime RPC。主窗口
 macOS 原生后端拥有捕获权限、系统全局快捷键、辅助进程和透明捕获窗口。其它桌面平台报告 `unavailable`，Web 和 Remote 不暴露本机桌面捕获。该能力为增量接口，没有 `snapShots` 的调用方继续使用既有附件路径。
 
 应用图标只写入图片附件的 `_meta["areal.snapShot"]` 展示信息，经既有同 URI 的资源 sidecar 保存到历史；模型文本剔除图标，历史卡片仅合并同条消息图片 URI 匹配的图标。
+
+## Electron 本机问题反馈
+
+`bugReport` 是 GUI Main 所有的窄桌面命令，不是 Core WebSocket 方法，也不通过 Remote 暴露。契约所有者为 `clients/gui/packages/workbench/client/desktop-contract/bug-report.cjs`；沿用可信 renderer 的 sender 校验与请求/响应校验，拒绝未知字段、任意路径、超限描述/图片和服务端调用。
+
+- `prepare {}` 返回 `{token, diagnostics}`，冻结有界隐私投影，最多保留 8 份易失预览、有效期 30 分钟。
+- `save {id, description, screenshots, diagnosticsToken?}` 返回 `{id}`。`id` 为 UUID；截图为有界 PNG data URL，在 Main 再次解码/重编码。保存为 `schemaVersion: 1`、`state: local-only`，诊断正文由 Main 持有的预览取得，renderer 不能注入诊断正文。同一 ID 的相同输入恢复原记录，冲突输入拒绝覆盖。
+- `list {}` 返回 `{reports}`（ID、时间、截图数、有无诊断）；`read {id}` 返回 `{report}`，含描述、截图和诊断 JSON 字符串或 `null`。
+- `submit {id}` 上传已保存的不可变报告并返回 `{report}`。最多 15 MiB；成功持久化 `state: submitted`、`submittedId` 与 `submittedAt`，`list` 也返回可选 `submittedId`。相同 ID 重试由 PlayForge 去重；失败保留本机副本。原有 `local-only` 记录仍可读取。接收 URL 由 Main 环境配置提供，IPC 不接收 URL。
+- `export {id}` 仅经原生保存框选择位置，返回 `{path}` 或 `{canceled:true}`；导出已保存内容，不重新采集。`delete {id}` 返回 `{deleted:true}`，仅移除该本机记录。
+
+该新增命令不改变已有模型回复评价 `feedback` 或数据飞轮契约。问题反馈不包含联系方式；提交状态表示服务端接收回执，不表示修复状态。目录、限制、隐私与使用流程见 [GUI 指南](../../clients/gui/README.md#本机问题反馈)。

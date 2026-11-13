@@ -1,4 +1,5 @@
 import { Input } from "@areal/ui";
+import { errorText } from "../errors/errorCopy.js";
 // ZCode WorkspaceFileTree header and row composition, adapted to Core's workspace service.
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -145,7 +146,7 @@ export function WorkspaceFileTree({
         if (alive) setDirectories(Object.fromEntries(entries));
       })
       .catch((e) => {
-        if (alive) setError(e.message);
+        if (alive) setError(errorText(t, e));
       })
       .finally(() => {
         if (alive) setBusy(false);
@@ -177,7 +178,7 @@ export function WorkspaceFileTree({
           }
         })
         .catch((e) => {
-          if (alive) setError(e.message);
+          if (alive) setError(errorText(t, e));
         })
         .finally(() => {
           if (alive) setBusy(false);
@@ -330,7 +331,7 @@ export function WorkspaceFileTree({
             <DropdownMenuContent align="end">
               <DropdownMenuItem
                 onClick={() =>
-                  void navigator.clipboard.writeText(root).catch((e) => setError(e.message))
+                  void navigator.clipboard.writeText(root).catch((e) => setError(errorText(t, e)))
                 }
               >
                 <Copy className="size-4" />

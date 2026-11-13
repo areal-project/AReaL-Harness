@@ -1,5 +1,5 @@
 // @ts-check
-const { record } = require("./service-transport-contract.cjs");
+const { record } = require("@areal/workbench-service/desktop/core/service-transport-contract.cjs");
 const { spawn } = require("node:child_process");
 const { createHash, randomUUID } = require("node:crypto");
 const { existsSync } = require("node:fs");
@@ -118,13 +118,13 @@ class ComputerControl {
     );
   }
 
-  /** @param {import("./service-transport-contract.cjs").ToolHostInput} request */
+  /** @param {import("@areal/workbench-service/desktop/core/service-transport-contract.cjs").ToolHostInput} request */
   async prepare(request) {
     const params = await this._admit(request);
     return this._rpc("prepare", params, { signal: request.signal, timeoutMs: 15_000 });
   }
 
-  /** @param {import("./service-transport-contract.cjs").ToolHostInput} request */
+  /** @param {import("@areal/workbench-service/desktop/core/service-transport-contract.cjs").ToolHostInput} request */
   async discard(request) {
     const params = this._request(request);
     if (!params.computerApproval?.plan)
@@ -132,7 +132,7 @@ class ComputerControl {
     return this._rpc("discard", params, { timeoutMs: 2_000 });
   }
 
-  /** @param {import("./service-transport-contract.cjs").ToolHostInput} request */
+  /** @param {import("@areal/workbench-service/desktop/core/service-transport-contract.cjs").ToolHostInput} request */
   async execute(request) {
     const params = await this._admit(request);
     const operation = params.arguments?.operation;
@@ -182,7 +182,7 @@ class ComputerControl {
     }
   }
 
-  /** @param {import("./service-transport-contract.cjs").ToolHostInput} request */
+  /** @param {import("@areal/workbench-service/desktop/core/service-transport-contract.cjs").ToolHostInput} request */
   async _admit(request) {
     const params = this._request(request);
     const stop = params.arguments?.operation === "stop_computer_control";
@@ -241,7 +241,7 @@ class ComputerControl {
     if (this.nativeEpoch === null || epoch > this.nativeEpoch) this.nativeEpoch = epoch;
   }
 
-  /** @param {import("./service-transport-contract.cjs").ToolHostInput} request @returns {ComputerRequest} */
+  /** @param {import("@areal/workbench-service/desktop/core/service-transport-contract.cjs").ToolHostInput} request @returns {ComputerRequest} */
   _request(request) {
     if (!request || typeof request !== "object")
       throw controlError("invalid_request", "Missing trusted computer request");
@@ -534,4 +534,19 @@ class ComputerControl {
   }
 }
 
-module.exports = { ComputerControl };
+/** @param {{library?: {settings?: Record<string,unknown>}}|undefined} snapshot */
+function readComputerSelection(snapshot) {
+  const settings = snapshot?.library?.settings ?? {};
+  return {
+    enabled: settings.computerControlEnabled === true,
+    provider:
+      typeof settings.computerControlProvider === "string"
+        ? settings.computerControlProvider
+        : "native",
+    executable:
+      typeof settings.computerControlExecutable === "string"
+        ? settings.computerControlExecutable
+        : "",
+  };
+}
+module.exports = { ComputerControl, readComputerSelection };

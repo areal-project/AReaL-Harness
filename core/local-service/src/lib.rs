@@ -4,17 +4,19 @@ mod client;
 pub use catalog::{CatalogTarget, catalog_target};
 pub mod gui_owner;
 pub mod native_process;
+pub use gui_owner::{LifetimeWriter, OwnerLifetime};
 mod spec;
 pub mod storage;
 
 pub use client::{
-    bind, browser_login_url, capabilities, ensure, ensure_with_lifetime, ensure_without_restart,
-    list, operation, probe, reconnect, recover_crashed, restart, rpc, select, status,
-    status_with_recovery, stop, stop_operation, stop_with_generation,
+    CONFIGURATION_CONFLICT, bind, capabilities, ensure, ensure_with_lifetime,
+    ensure_with_lifetime_checked, ensure_without_restart, list, operation, probe, reconnect,
+    recover_crashed, restart, rpc, select, status, status_with_recovery, stop, stop_operation,
+    stop_with_generation,
 };
-pub use spec::{LaunchSpec, LocalArgs, parse_agent_profile};
+pub use spec::{LaunchContext, LaunchSpec, LocalArgs, parse_agent_profile};
 
-pub fn home() -> anyhow::Result<std::path::PathBuf> {
+pub fn raw_home() -> anyhow::Result<std::path::PathBuf> {
     // 服务登记可单独隔离；配置位置继续由 core/config 的 home 规则决定。
     let service_home = std::env::var_os("AREAL_HARNESS_SERVICE_HOME");
     if let Some(path) = &service_home {
@@ -29,7 +31,11 @@ pub fn home() -> anyhow::Result<std::path::PathBuf> {
             .ok_or_else(|| anyhow::anyhow!("home unavailable"))?
             .join(".areal"),
     };
-    storage::canonical_pending(&path)
+    Ok(path)
+}
+
+pub fn home() -> anyhow::Result<std::path::PathBuf> {
+    storage::canonical_pending(&raw_home()?)
 }
 
 /// 发行包将隔离执行组件放在 libexec；源码构建仍使用同目录的 Cargo 产物。

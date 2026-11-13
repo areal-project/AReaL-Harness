@@ -12,6 +12,7 @@ SCOPES = {
     "gui": [
         "design/**",
         "services/remote-relay/**",
+        "services/workbench/**",
         "clients/**",
         "core/**",
         "runtime/**",
@@ -25,6 +26,7 @@ SCOPES = {
     ],
     "release": [
         "design/tokens/**",
+        "services/workbench/**",
         "clients/**",
         "core/**",
         "runtime/**",
@@ -111,17 +113,34 @@ def impact(paths):
     code = [
         path
         for path in paths
-        # 仅明确的说明文档可跳过；内置 SKILL.md、设计合同等仍是产品输入。
+        # 仅明确的说明文档、仓库非运行时元数据与独立 workflow 站点可跳过；内置 SKILL.md、设计合同等仍是产品输入。
         if not (
-            path.startswith("docs/")
+            path.startswith(("docs/", "website/", ".github/ISSUE_TEMPLATE/"))
+            or path.startswith("tests/guides/")
+            and path.endswith(".md")
             or path
             in {
-                "README.md",
-                "README.en.md",
-                "CONTRIBUTING.md",
+                ".editorconfig",
+                ".gitattributes",
+                ".github/PULL_REQUEST_TEMPLATE.md",
+                ".gitignore",
+                ".worktreeinclude",
+                "AGENTS.md",
+                "CHANGELOG.en.md",
+                "CHANGELOG.md",
                 "CONTRIBUTING.en.md",
-                "SECURITY.md",
+                "CONTRIBUTING.md",
+                "DESIGN.md",
+                "GLOSSARY.en.md",
+                "GLOSSARY.md",
+                "LEGAL.md",
+                "LICENSE",
+                "PRODUCT.md",
+                "README.en.md",
+                "README.md",
+                "REVIEW.md",
                 "SECURITY.en.md",
+                "SECURITY.md",
             }
             or path.endswith(".md")
             and path.startswith(("design/", "clients/gui/design-system/"))
@@ -142,10 +161,10 @@ def impact(paths):
                 "core/",
                 "runtime/",
                 "schemas/",
+                "services/workbench/",
                 "scripts/",
                 ".github/",
                 ".githooks/",
-                "clients/web/",
                 "clients/cli/",
                 "clients/tui/",
                 "upstream/",
@@ -366,6 +385,12 @@ def build_plan(paths, source, manifest):
         )
     if affected["gui"]:
         add(
+            "workbench-core-boundary",
+            ["node", "clients/gui/scripts/workbench-boundary.mjs"],
+            "gui-portable",
+            phase="commit",
+        )
+        add(
             "manifest",
             ["node", "--test", "clients/gui/scripts/test-manifest.test.mjs"],
             "gui-portable",
@@ -407,29 +432,21 @@ def build_plan(paths, source, manifest):
             expected=portable,
         )
         add("gui-audit", ["pnpm", "--dir", "clients/gui", "audit"], "gui-portable")
-        mobile = next(entry for entry in manifest if entry["script"] == "test:mobile-browser")
+        # 手机浏览器专项已随旧远程网关删除；这里只保留类型检查和中继依赖安装。
         add(
             "mobile-types",
             ["pnpm", "--dir", "clients/gui", "mobile:typecheck"],
             "mobile",
             requires=("node-24.22.1",),
             phase="commit",
-            platforms=tuple(mobile["platforms"]),
+            platforms=("darwin", "linux"),
         )
         add(
             "mobile-relay-install",
             ["npm", "ci", "--ignore-scripts", "--prefix", "services/remote-relay"],
             "mobile",
             requires=("node-24.2.0",),
-            platforms=tuple(mobile["platforms"]),
-        )
-        add(
-            "mobile-browser",
-            ["pnpm", "--dir", "clients/gui", mobile["script"]],
-            "mobile",
-            ("mobile-relay-install",),
-            tuple(mobile["requires"]),
-            platforms=tuple(mobile["platforms"]),
+            platforms=("darwin", "linux"),
         )
     if affected["relay"]:
         _, _, renderer = gui_builds("relay:", "relay-build")

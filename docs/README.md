@@ -10,7 +10,7 @@
 
 | 分类 | 文档 |
 |---|---|
-| 使用指南 | [快速开始](guides/quickstart.md) · [CLI、TUI 与 Web](guides/clients.md) · [配置](guides/configuration.md) · [Runtime 部署](guides/runtime.md) · [桌面 Worktree](guides/worktrees.md) |
+| 使用指南 | [快速开始](guides/quickstart.md) · [CLI/TUI 下载安装与使用](guides/cli-tui.md) · [CLI、TUI 与 Web](guides/clients.md) · [配置](guides/configuration.md) · [Runtime 部署](guides/runtime.md) · [桌面 Worktree](guides/worktrees.md) |
 | 扩展与协作 | [工具与 hooks](guides/tools.md) · [MCP](guides/mcp.md) · [Skill](guides/skills.md) · [Workgroup](guides/workgroups.md) |
 | API 契约 | [Core](api/core.md) · [桌面 API](api/desktop.md) · [Task Mode 与频道](api/tasks.md) · [Browser](api/browser.md) · [电脑控制](api/computer.md) · [Runtime](api/runtime.md) · [TypeScript SDK](api/typescript-sdk.md) · [Native Host](api/native-host.md) · [Claude CLI](api/claude-cli.md) · [本地服务](api/local-service.md) |
 | 架构设计 | [分层与目录](design/architecture.md) · [上下文管理](design/context-management.md) · [Agent 委派](design/multi-agent.md) · [Workgroup](design/workgroups.md) · [插件](design/plugins.md) · [TUI](design/tui.md) · [图表规范](design/STYLE_GUIDE.md) |
@@ -24,7 +24,7 @@
 
 Remote v2 设计与实施边界：[架构](design/remote-control.md) · [API](api/remote-control.md) · [连接与部署](guides/remote-control.md) · [验收计划](development/remote-control-testing.md) · [Host 所有权](adr/0008-remote-host-ownership.md) · [iOS v1 实施规格](development/ios-remote-v1-spec.md)。各专题区分已实现的切片与后续设计，不代表完整 P0 已交付。
 
-共享 Host（待实施）：[实施规格](development/shared-host-spec.md)。每个 OS 用户一个 Host，CLI、TUI、GUI、Web 与手机都是客户端，取代此前的[独立开发环境服务设计](design/environment-service.md)与[分阶段计划](development/environment-service-plan.md)。
+共享 Host（已实现）：[实施规格](development/shared-host-spec.md) · [Host API](api/host.md) · [ADR 0016](adr/0016-shared-host.md)。一套协议与一份界面（已实现）：[实施规格](development/one-protocol-spec.md) · [ADR 0017](adr/0017-one-protocol-one-ui.md)。每个 OS 用户一个 Host，CLI、TUI、GUI、Web 与手机都是客户端，取代此前的[独立开发环境服务设计](design/environment-service.md)。
 
 客户端 UI 实现与设计约束：[设计规则 v1](../clients/gui/design-system/README.md) · [@areal/ui 组件与 Token](../clients/gui/packages/ui/README.md)。
 

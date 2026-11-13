@@ -37,19 +37,19 @@ pub struct Args {
     /// Connect to an existing Core instead of starting a local Harness.
     #[arg(long, visible_alias = "remote", conflicts_with = "LocalArgs")]
     endpoint: Option<String>,
-    /// 交互式默认 shared；脚本默认 owned，保持原有退出清理行为。
+    /// 本地连接使用共享 Host；owned 保留为 shared 的兼容参数。
     #[arg(long, value_parser = ["shared", "owned"], conflicts_with = "endpoint")]
     local_mode: Option<String>,
     /// 可信启动器提供的认证文件，不把 token 放入 URL。
     #[arg(long, requires = "endpoint")]
     auth_file: Option<std::path::PathBuf>,
-    /// 仅由 owned launcher 为其本地子 TUI 传递；普通远端连接不检查本地轨迹。
+    /// 仅由显式 launcher 为其本地子 TUI 传递；普通远端连接不检查本地轨迹。
     #[arg(long, hide = true, requires = "endpoint")]
     local_trajectory_monitor: bool,
     #[arg(long, hide = true, requires = "local_trajectory_monitor")]
     local_trajectory_config: Option<std::path::PathBuf>,
     #[arg(skip)]
-    shared_service: Option<areal_local_service::LaunchSpec>,
+    host_project: Option<local::HostProject>,
     #[command(flatten)]
     local: local::LocalArgs,
     /// 选择已部署的 Agent Profile，格式为 id@revision。
@@ -83,20 +83,21 @@ impl Args {
         self.prompt.is_some() || self.goal.is_some() || self.input_file.is_some()
     }
 
-    fn owns_local_service(&self) -> bool {
-        self.local_mode
-            .as_deref()
-            .map_or(self.is_headless(), |mode| mode == "owned")
+    fn selects_default_profile(&self) -> bool {
+        self.endpoint.is_some()
+            || self
+                .local_mode
+                .as_deref()
+                .map_or(self.is_headless(), |mode| mode == "owned")
     }
 
-    /// 外层 owned 入口即将 exec；只有 launcher 派生的最终子 TUI 持有检测器。
     pub fn trajectory_monitor_config(&self) -> Option<Option<std::path::PathBuf>> {
         if self.endpoint.is_some() {
             return self
                 .local_trajectory_monitor
                 .then(|| self.local_trajectory_config.clone());
         }
-        (!self.owns_local_service()).then(|| self.local.config.clone())
+        Some(self.local.config.clone())
     }
 }
 
@@ -123,8 +124,17 @@ pub async fn run(args: Args) -> Result<()> {
 }
 
 pub async fn run_with_trajectory_notice(
+    args: Args,
+    trajectory_notice: Option<tokio::sync::oneshot::Receiver<String>>,
+) -> Result<()> {
+    run_with_notices(args, trajectory_notice, None).await
+}
+
+/// `release_notice` 来自后台的版本检查；只显示提示，升级仍由用户运行 `areal upgrade`。
+pub async fn run_with_notices(
     mut args: Args,
     mut trajectory_notice: Option<tokio::sync::oneshot::Receiver<String>>,
+    mut release_notice: Option<tokio::sync::oneshot::Receiver<String>>,
 ) -> Result<()> {
     anyhow::ensure!(
         !args.no_session_name || args.prompt.is_some() || args.input_file.is_some(),
@@ -151,26 +161,34 @@ pub async fn run_with_trajectory_notice(
     } else {
         None
     };
+    let selects_default_profile = args.selects_default_profile();
     if args.endpoint.is_none() {
-        if args.owns_local_service() {
-            return local::launch(&args);
-        }
-        let spec = areal_local_service::LaunchSpec::resolve(&args.local)?;
-        let service = areal_local_service::ensure(&spec).await?;
+        let input = areal_host::ResolveProject::from_local_args(&args.local)?;
+        let host = areal_host::Client::connect_or_start().await?;
+        let opened = if !args.local.task_credential_command.is_empty() {
+            host.restart(input, areal_host::StopStrategy::IfIdle)
+                .await?
+        } else {
+            host.open(input).await?
+        };
+        let service = opened.service()?;
         eprintln!(
             "Shared Harness: {} · instance {}",
             service.identity.workspace.display(),
             service.identity.service_id
         );
-        args.endpoint = Some(service.endpoint);
-        args.auth_file = Some(service.auth_file);
-        args.shared_service = Some(spec);
+        args.endpoint = Some(service.endpoint.clone());
+        args.auth_file = Some(service.auth_file.clone());
+        args.host_project = Some(local::HostProject {
+            client: host,
+            project_id: opened.project.registration.project_id,
+        });
     }
     let endpoint = args.endpoint.as_ref().unwrap();
     let mut client = Client::connect(endpoint, args.auth_file.as_deref()).await.with_context(|| {
         format!("Cannot connect to Core at {endpoint}. Start the server first, or omit --endpoint to start a local Harness.")
     })?;
-    if agent_profile.is_none() && args.resume.is_none() && args.shared_service.is_none() {
+    if agent_profile.is_none() && args.resume.is_none() && selects_default_profile {
         agent_profile = client.default_profile().await?;
     }
     if let Some(goal) = args.goal {
@@ -208,7 +226,7 @@ pub async fn run_with_trajectory_notice(
     }
     let mut app = App::new(prefs.unwrap());
     app.agent_profile = agent_profile;
-    app.monitor_configuration = args.shared_service.is_some();
+    app.monitor_configuration = args.host_project.is_some();
     app.bootstrap(args.resume.clone(), true)?;
     let mut terminal = ratatui::init();
     let _guard = TerminalGuard;
@@ -224,6 +242,7 @@ pub async fn run_with_trajectory_notice(
         &mut terminal,
         &args,
         &mut trajectory_notice,
+        &mut release_notice,
     )
     .await
 }
@@ -234,6 +253,7 @@ async fn interactive(
     terminal: &mut ratatui::DefaultTerminal,
     args: &Args,
     trajectory_notice: &mut Option<tokio::sync::oneshot::Receiver<String>>,
+    release_notice: &mut Option<tokio::sync::oneshot::Receiver<String>>,
 ) -> Result<()> {
     let mut initial_prompt = args.initial_prompt.clone();
     let mut events = EventStream::new();
@@ -244,6 +264,7 @@ async fn interactive(
     let mut clock = tokio::time::interval(Duration::from_secs(1));
     let mut reconnect: Option<tokio::task::JoinHandle<Result<Client>>> = None;
     let mut updating: Option<tokio::task::JoinHandle<Result<()>>> = None;
+    let mut host_updates: Option<tokio::task::JoinHandle<Result<Option<String>>>> = None;
     let mut next_retry = Instant::now();
     let mut retry_seconds = 1;
     loop {
@@ -260,12 +281,11 @@ async fn interactive(
         if app.connected
             && app.restart_ready
             && updating.is_none()
-            && let Some(spec) = args.shared_service.clone()
+            && let Some(project) = args.host_project.clone()
         {
             app.restart_ready = false;
             updating = Some(tokio::spawn(async move {
-                let current = areal_local_service::LaunchSpec::in_bin(&spec.args, spec.bin_dir)?;
-                areal_local_service::reconnect(&current).await?;
+                project.observe_service().await?;
                 Ok(())
             }));
         }
@@ -281,12 +301,10 @@ async fn interactive(
         {
             let endpoint = args.endpoint.clone().unwrap();
             let auth_file = args.auth_file.clone();
-            let service_spec = args.shared_service.clone();
+            let host_project = args.host_project.clone();
             reconnect = Some(tokio::spawn(async move {
-                if let Some(spec) = service_spec {
-                    let current =
-                        areal_local_service::LaunchSpec::in_bin(&spec.args, spec.bin_dir)?;
-                    let service = areal_local_service::reconnect(&current).await?;
+                if let Some(project) = host_project {
+                    let service = project.observe_service().await?;
                     Client::connect(&service.endpoint, Some(&service.auth_file)).await
                 } else {
                     Client::connect(&endpoint, auth_file.as_deref()).await
@@ -299,15 +317,23 @@ async fn interactive(
             app.disconnect(&e.to_string());
         }
         tokio::select! {
+            result = async { host_updates.as_mut().unwrap().await }, if host_updates.is_some() => {
+                host_updates = None;
+                if let Ok(Ok(notice)) = result { app.host_update_notice = notice; app.dirty = true; }
+            }
             notice = async { trajectory_notice.as_mut().unwrap().await }, if trajectory_notice.is_some() => {
                 *trajectory_notice = None;
                 if let Ok(notice) = notice { app.set_trajectory_notice(notice); }
             }
+            notice = async { release_notice.as_mut().unwrap().await }, if release_notice.is_some() => {
+                *release_notice = None;
+                if let Ok(notice) = notice { app.release_notice = Some(safe_text(&notice)); app.dirty = true; }
+            }
             result = async { updating.as_mut().unwrap().await }, if updating.is_some() => {
                 updating = None;
                 match result {
-                    Ok(Ok(())) => { app.disconnect("Configuration updated · reconnecting"); next_retry = Instant::now(); }
-                    Ok(Err(error)) => { app.configuration_notice = Some(format!("Restart pending: {error:#}")); app.dirty = true; }
+                    Ok(Ok(())) => { app.configuration_notice = Some("Configuration update pending · explicitly reopen the project to apply".into()); app.dirty = true; }
+                    Ok(Err(error)) => { app.configuration_notice = Some(format!("Configuration update pending · explicitly reopen the project to apply: {error:#}")); app.dirty = true; }
                     Err(error) => { app.status = error.to_string(); app.dirty = true; }
                 }
             }
@@ -333,7 +359,12 @@ async fn interactive(
             _ = redraw.tick() => {
                 if app.dirty { terminal.draw(|frame| ui::draw(frame, app))?; app.dirty = false; }
             }
-            _ = refresh.tick() => { if let Err(e) = app.refresh() { app.status = e.to_string(); app.dirty = true; } }
+            _ = refresh.tick() => {
+                if let Err(e) = app.refresh() { app.status = e.to_string(); app.dirty = true; }
+                if host_updates.is_none() && let Some(project) = args.host_project.clone() {
+                    host_updates = Some(tokio::spawn(async move { project.update_notice().await }));
+                }
+            }
             _ = clock.tick() => { if app.active().is_some() || app.view == View::Agents { app.dirty = true; } }
             event = events.next() => {
                 let Some(Ok(event)) = event else { break; };

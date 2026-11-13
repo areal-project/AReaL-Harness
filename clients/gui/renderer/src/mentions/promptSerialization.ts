@@ -9,6 +9,8 @@ import {
   $isTextNode,
   type LexicalNode,
   type RangeSelection,
+  type EditorState,
+  $getNodeByKey,
 } from "lexical";
 import {
   $createPromptMentionNode,
@@ -19,17 +21,48 @@ import { decodeFilePathUriEscapes, isAbsoluteFilePath } from "@/lib/path.js";
 import { parsePluginStableId, parseSessionThreadId } from "./mentionMarkdown.js";
 
 /** 编辑器文本用于光标；业务输出显式读取 canonical，不能覆写 TextNode 文本语义。 */
-export function $getPromptMarkdown(node: LexicalNode = $getRoot()): string {
+export function $getPromptMarkdown(
+  node: LexicalNode = $getRoot(),
+  cache?: WeakMap<LexicalNode, string>,
+): string {
+  const cached = cache?.get(node);
+  if (cached !== undefined) return cached;
   if ($isPromptMentionNode(node)) return node.getMarkdown();
   if (!$isElementNode(node)) return node.getTextContent();
   const children = node.getChildren();
-  return children
+  const text = children
     .map(
       (child, index) =>
-        $getPromptMarkdown(child) +
+        $getPromptMarkdown(child, cache) +
         ($isElementNode(child) && !child.isInline() && index < children.length - 1 ? "\n\n" : ""),
     )
     .join("");
+  cache?.set(node, text);
+  return text;
+}
+
+export function createPromptMarkdownReader() {
+  // Lexical 的 dirtyElements 包括变更叶子的祖先，未变段落可以直接复用。
+  let cache = new WeakMap<LexicalNode, string>();
+  return {
+    invalidate(state: EditorState, keys: Iterable<string>) {
+      const changed = [...keys];
+      // 整体状态恢复只标记 root；撤销时共享的段落节点不能沿用另一状态的缓存。
+      if (changed.length === 1 && changed[0] === "root") {
+        cache = new WeakMap();
+        return;
+      }
+      state.read(() => {
+        for (const key of changed) {
+          const node = $getNodeByKey(key);
+          if (node) cache.delete(node);
+        }
+      });
+    },
+    read(state: EditorState) {
+      return state.read(() => $getPromptMarkdown($getRoot(), cache));
+    },
+  };
 }
 
 /** 与 Lexical RangeSelection 的段落/端点规则一致，仅将实际选中的 token 换为 canonical。 */

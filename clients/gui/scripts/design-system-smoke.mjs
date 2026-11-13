@@ -201,8 +201,27 @@ async function settingsChecks() {
     await page.getByLabel("面板宽度", { exact: true }).selectOption(sample.width);
     await settle();
     const observations = {};
+    // 按 settings-page 规格解析角色令牌，字号变化时不沿用旧的固定几何值。
+    const settingsTokens = await page.evaluate(() => {
+      const probe = document.body.appendChild(document.createElement("div"));
+      probe.style.borderRadius = "var(--radius-panel)";
+      probe.style.lineHeight = "var(--line-height-ui)";
+      probe.style.minHeight = "calc(var(--spacing-control-sm) + var(--spacing-section))";
+      probe.style.maxHeight = "calc(var(--spacing-control-sm) + var(--spacing-field))";
+      probe.style.width = "calc(var(--reading-width) * 3 / 8)";
+      const css = getComputedStyle(probe);
+      const values = {
+        radius: css.borderRadius,
+        titleLine: css.lineHeight,
+        rowMinHeight: css.minHeight,
+        compactMinHeight: css.maxHeight,
+        wideControlWidth: css.width,
+      };
+      probe.remove();
+      return values;
+    });
     const assertCard = (value, name) => {
-      assert.equal(value.radius, "20px", `${name} uses the overlay radius`);
+      assert.equal(value.radius, settingsTokens.radius, `${name} uses the panel radius`);
       assert.equal(
         value.background,
         value.semantic.background,
@@ -211,11 +230,11 @@ async function settingsChecks() {
       assert.equal(value.title.font, `${sample.font}px`);
       assert.equal(value.title.weight, "500");
       assert.equal(value.title.margin, "0px");
-      assert.equal(value.title.line, "21px");
+      assert.equal(value.title.line, settingsTokens.titleLine);
       assert.equal(value.description.font, `${Number(sample.font) - 2}px`);
       assert.equal(value.description.color, value.semantic.secondary);
       assert.equal(value.description.margin, "2px 0px 0px");
-      assert.equal(value.row.minHeight, "48px");
+      assert.equal(value.row.minHeight, settingsTokens.rowMinHeight);
       assert.equal(value.row.padding, "12px 16px");
       assert.deepEqual(value.separator, {
         height: "0.5px",
@@ -230,7 +249,11 @@ async function settingsChecks() {
       );
       assert.equal(value.wideColumns.length, sample.width === "wide" ? 2 : 1);
       if (sample.width === "wide")
-        assert.equal(value.wideColumns[1], "280px", `${name} keeps the wide control column`);
+        assert.equal(
+          value.wideColumns[1],
+          settingsTokens.wideControlWidth,
+          `${name} keeps the wide control column`,
+        );
       assert.deepEqual(value.nativeText, {
         font: `${Number(sample.font) - 1}px`,
         height: `${Number(sample.font) + 14}px`,
@@ -255,7 +278,11 @@ async function settingsChecks() {
         top: getComputedStyle(el).paddingTop,
         bottom: getComputedStyle(el).paddingBottom,
       }));
-    assert.deepEqual(compact, { minHeight: "40px", top: "8px", bottom: "8px" });
+    assert.deepEqual(compact, {
+      minHeight: settingsTokens.compactMinHeight,
+      top: "8px",
+      bottom: "8px",
+    });
     const mobile = await host("mobile")
       .locator(".remote-access-panel")
       .evaluate((el) => {
@@ -301,7 +328,7 @@ async function settingsChecks() {
     samples.push({ settings: sample, observations, compact, mobile });
   }
   checks.push(
-    "settings standalone, production SettingsPage and portal SettingsDialog share literal 20px radius, semantic backgrounds and section typography across themes/font sizes/widths; compact density, dividers, responsive stacking and Mobile content slot/padding are preserved",
+    "settings standalone, production SettingsPage and portal SettingsDialog share semantic radius, backgrounds, section typography and row geometry across themes/font sizes/widths; compact density, dividers, responsive stacking and Mobile content slot/padding are preserved",
   );
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByLabel("主题", { exact: true }).selectOption("light");
@@ -678,8 +705,12 @@ try {
         await settleLayout();
         const after = await position(control);
         const clamped = collapsing ? Math.max(0, before.top - after.max) : 0;
+        // 收起后内容变短、滚动被压到末尾时，控件只能下移，最多下移被压掉的距离；
+        // 吸顶的过程标题收起后回到自然位置，下移量会小于被压掉的距离。
+        const shift = after.y - before.y;
         assert.ok(
-          Math.abs(after.y - before.y - clamped) <= 1,
+          Math.abs(shift - clamped) <= 1 ||
+            (clamped > 0 && after.top >= after.max - 1 && shift >= -1 && shift <= clamped + 1),
           `${label} retains the activated control position: ${JSON.stringify({ before, after, clamped })}`,
         );
       };
@@ -688,14 +719,16 @@ try {
       await settleLayout();
       await reading.getByRole("button", { name: "接受新轮次", exact: true }).click();
       await settleLayout();
-      assert.ok(
+      // R-MESSAGES-012：续发沿自然尾部衔接，不能重新垫出整屏响应占位。
+      assert.equal(
         await reading
           .locator(".message-response-space")
-          .evaluate((el) => el.getBoundingClientRect().height > 0),
-        "a mounted accepted follow-up reserves response space",
+          .evaluate((el) => el.getBoundingClientRect().height),
+        0,
+        "an accepted follow-up adds no response-space reservation",
       );
       await page.evaluate(() => {
-        window.readingResize.phase = "reserved response";
+        window.readingResize.phase = "follow-up response";
       });
       await reading.getByRole("button", { name: "延迟追加输出", exact: true }).click();
       await liveTurn
@@ -703,17 +736,17 @@ try {
         .getByText("后续回复 1", { exact: false })
         .waitFor();
       await settleLayout();
-      const reservedResize = await page.evaluate(() => {
+      const responseResize = await page.evaluate(() => {
         window.readingResize.phase = null;
         return window.readingResize;
       });
-      samples.push({ reservedResize });
+      samples.push({ responseResize });
       assert.ok(
-        reservedResize.samples.some((sample) => sample.output?.includes("后续回复 1")),
-        "reserved response growth reaches the production ResizeObserver",
+        responseResize.samples.some((sample) => sample.output?.includes("后续回复 1")),
+        "follow-up response growth reaches the production ResizeObserver",
       );
       assert.deepEqual(
-        reservedResize.errors,
+        responseResize.errors,
         [],
         "response-space reconciliation does not defer undelivered ResizeObserver notifications",
       );
@@ -984,7 +1017,7 @@ try {
       );
       const earlier = timeline.locator('[data-side-item-id="timeline-progress"]');
       const durationToggle = timeline.getByRole("button", {
-        name: "执行过程：Worked for 19s",
+        name: "执行过程：工作了 19 秒 · 1 个失败",
         exact: true,
       });
       assert.equal(await durationToggle.getAttribute("aria-expanded"), "false");
@@ -1358,10 +1391,15 @@ try {
               height: el.getBoundingClientRect().height,
             };
           };
+          // 圆角按规格取令牌 radius-card，不写死像素值。
+          const probe = document.body.appendChild(document.createElement("div"));
+          probe.style.borderRadius = "var(--radius-card)";
+          const cardRadius = getComputedStyle(probe).borderRadius;
+          probe.remove();
           return {
+            cardRadius,
             card: style(".decision-card"),
             feedback: style(".ui-feedback"),
-            sideHeading: style(".side-chat-heading"),
             sideInfo: style(".side-chat-information"),
             composer: style(".composer-editor [contenteditable]"),
             response: style(".assistant-message"),
@@ -1373,10 +1411,9 @@ try {
         });
         assert.equal(measured.overflow, false, "preview panels must not overflow horizontally");
         assert.equal(measured.card.fontSize, `${sample.font}px`);
-        assert.equal(measured.card.radius, "20px");
+        assert.equal(measured.card.radius, measured.cardRadius);
         assert.equal(measured.feedback.fontSize, `${sample.font}px`);
         if (!baseline) {
-          assert.equal(measured.sideHeading.fontSize, `${Math.max(12, Number(sample.font) - 2)}px`);
           assert.equal(measured.sideInfo.fontSize, `${Math.max(11, Number(sample.font) - 3)}px`);
         }
         assert.equal(
@@ -1524,11 +1561,20 @@ try {
             duration: Number(animation.effect.getTiming().duration),
           }));
         });
+        // 扫光周期取动效令牌 motion-cycle-slow，不写死毫秒数。
+        const cycle = await page.evaluate(() => {
+          const probe = document.body.appendChild(document.createElement("div"));
+          probe.style.transitionDuration = "var(--motion-cycle-slow)";
+          const seconds = parseFloat(getComputedStyle(probe).transitionDuration);
+          probe.remove();
+          return Math.round(seconds * 1000);
+        });
+        assert.ok(cycle > 0, "motion-cycle-slow resolves to a duration");
         assert.deepEqual(
           animations,
           [
-            { name: "areal-thinking-sweep", duration: 1800 },
-            { name: "areal-thinking-sweep", duration: 1800 },
+            { name: "areal-thinking-sweep", duration: cycle },
+            { name: "areal-thinking-sweep", duration: cycle },
           ],
           "phase sampling controls the band and its counter-moving text after screenshot replay cleanup",
         );

@@ -91,7 +91,7 @@ export function ScheduledWorkspaceExample() {
               state={state}
               stateLabel={label}
               onOpen={() => setSelected(state)}
-              openLabel={`打开自动化 ${title}`}
+              openLabel={`打开定时任务 ${title}`}
               actions={
                 <Button size="icon-sm" variant="ghost" aria-label="更多操作">
                   <MoreHorizontal />

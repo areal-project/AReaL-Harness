@@ -5,10 +5,35 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { freezeContext } = require("../app/src/core/feedback-context.cjs");
-const { UserFeedback } = require("../app/src/core/feedback.cjs");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { freezeContext } = require("@areal/workbench-service/feedback-context");
+const { UserFeedback } = require("@areal/workbench-service/feedback");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
+
+test("feedback refreshes Host credentials first and does not call Host after refresh fails", async () => {
+  let credential = "stale-fixture",
+    calls = 0;
+  const backend = {
+    hostCall: async () => {
+      calls++;
+      return { credential };
+    },
+    providers: {
+      config: {
+        refreshCredentials: async () => {
+          credential = "rotated-fixture";
+        },
+      },
+    },
+  };
+  const feedback = new UserFeedback(backend);
+  assert.deepEqual(await feedback.cli("feedback-status"), { credential: "rotated-fixture" });
+  backend.providers.config.refreshCredentials = async () => {
+    throw new Error("Host unavailable");
+  };
+  await assert.rejects(feedback.cli("feedback-status"), /Host unavailable/);
+  assert.equal(calls, 1);
+});
 
 const thread = () => ({
   id: "main",

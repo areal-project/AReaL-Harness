@@ -30,7 +30,7 @@ export function UiLibraryPreview({ dark, fontSize }: { dark: boolean; fontSize: 
         <p>保留现有视觉，先贯通基础值、组件、文档、Agent入口与守卫，再通过真实组合迭代。</p>
       </div>
       <nav className="design-preview-navigation" aria-label="UI包入口">
-        <a href={url("clients/gui/packages/ui/agent-guide.md")}>Agent 使用入口</a>
+        <a href={url("clients/gui/packages/ui/README.md")}>Agent 使用入口</a>
         <a href="./components.json" target="_blank" rel="noreferrer">
           组件索引 JSON
         </a>
@@ -65,7 +65,7 @@ export function UiLibraryPreview({ dark, fontSize }: { dark: boolean; fontSize: 
                   : component.layer === "settings"
                     ? "设置组合"
                     : component.layer === "worktree"
-                      ? "Worktree组合"
+                      ? "工作树组合"
                       : component.layer === "workbench"
                         ? "工作台组合"
                         : "基础控件"}{" "}

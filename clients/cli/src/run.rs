@@ -174,11 +174,8 @@ pub async fn execute(args: &Cli) -> Result<i32> {
             "unsupported effort"
         );
     }
-    let mut local = local::Local::start(args).await?;
-    let result = execute_connected(args, &local).await;
-    let cleanup = local.close().await;
-    cleanup?;
-    let (code, results) = result?;
+    let local = local::Local::start(args).await?;
+    let (code, results) = execute_connected(args, &local).await?;
     for value in results {
         output_result(args, &value)?;
     }
@@ -216,27 +213,6 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
         !args.no_session_name || capabilities["features"]["automaticSessionName"] == true,
         "Core does not support --no-session-name; upgrade Core before submitting the task"
     );
-    for (id, config) in &local.mcp {
-        let catalog = rpc.call("areal/mcp/list", json!({})).await?;
-        let revision = catalog["data"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|s| s["id"] == *id)
-            .and_then(|s| s["revision"].as_u64())
-            .unwrap_or(0);
-        let result = rpc
-            .call(
-                "areal/mcp/configure",
-                json!({"id":id,"expectedRevision":revision,"config":config}),
-            )
-            .await?;
-        rpc.call(
-            "areal/mcp/connect",
-            json!({"id":id,"expectedRevision":result["data"].as_array().and_then(|entries|entries.iter().find(|r|r["id"]==*id)).and_then(|r|r["revision"].as_u64()).context("missing MCP configuration revision")?}),
-        )
-        .await?;
-    }
     let mut profile = local.profile.clone();
     // 唯一 Profile 自动绑定；多个候选沿用服务端默认值，不替调用方猜选。
     if args.endpoint.is_some() && args.resume.is_none() && profile.is_none() {
@@ -308,16 +284,6 @@ async fn execute_connected(args: &Cli, local: &local::Local) -> Result<(i32, Vec
         .iter()
         .filter_map(|t| t["function"]["name"].as_str().map(str::to_owned))
         .collect();
-    let mcp = rpc.call("areal/mcp/list", json!({})).await?;
-    for server in mcp["data"].as_array().unwrap() {
-        if let Some(tools) = server["tools"].as_array() {
-            available.extend(
-                tools
-                    .iter()
-                    .filter_map(|t| t["name"].as_str().map(str::to_owned)),
-            );
-        }
-    }
     available.sort();
     available.dedup();
     let denied = names(&args.disallowed_tools);

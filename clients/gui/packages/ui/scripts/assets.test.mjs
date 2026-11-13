@@ -7,7 +7,7 @@ import { renderFoundations, writeOrCheck } from "./foundations.mjs";
 import { parseComponentMetadata } from "./documents.mjs";
 
 const tokens = JSON.parse(await readFile(new URL("../tokens.json", import.meta.url), "utf8"));
-test("component contracts require discoverable metadata and a usage/behavior/accessibility structure", async () => {
+test("component contracts require discoverable metadata and a usage and example structure without empty sections", async () => {
   const valid = await readFile(
     new URL("../src/conversation/thinking-status/thinking-status.md", import.meta.url),
     "utf8",
@@ -19,15 +19,20 @@ test("component contracts require discoverable metadata and a usage/behavior/acc
     /missing category/,
   );
   assert.throws(
-    () => parseComponentMetadata(valid.replace("## 可访问性", "## 其他"), "broken.md"),
-    /missing section.*可访问性/,
+    () => parseComponentMetadata(valid.replace("## 示例", "## 其他"), "broken.md"),
+    /missing section.*示例/,
+  );
+  assert.throws(
+    () => parseComponentMetadata(`${valid}\n## 状态\n\n`, "broken.md"),
+    /empty section 状态/,
   );
 });
 test("existing control geometry and default palette remain explicit", () => {
   const result = renderFoundations(tokens);
   assert.match(result.foundation, /--spacing-field: 16px;/);
   assert.match(result.tailwind, /--text-ui-base: var\(--ui-font-size\);/);
-  assert.match(result.tailwind, /--radius-button: 8px;/);
+  assert.match(result.tailwind, /--radius-button: var\(--radius-md\);/);
+  assert.match(result.tailwind, /--radius-md: calc\(8px \* var\(--corner-radius-scale\)\);/);
   assert.deepEqual(result.themes.light, {
     background: "#ffffff",
     foreground: "#1a1c1f",
@@ -48,6 +53,11 @@ test("two tokens cannot claim the same CSS role", () => {
     $extensions: { "build.areal.ui": { name: "spacing-field" } },
   };
   assert.throws(() => renderFoundations(broken), /duplicate.*spacing-field/);
+});
+test("purpose tokens may only reference a primitive scale step", () => {
+  const broken = structuredClone(tokens);
+  broken.foundation["radius-button"].$value = "{radius-control}";
+  assert.throws(() => renderFoundations(broken), /radius-button must reference a primitive/);
 });
 test("CSS expressions require an explicit extension", () => {
   const broken = structuredClone(tokens);

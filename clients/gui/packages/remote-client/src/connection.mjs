@@ -2,7 +2,15 @@ import { secureChannel } from "@areal/remote";
 import { createRemoteWire } from "@areal/remote/wire";
 
 export class RemoteConnection {
-  constructor({ socket, identity, host, room = null, hello, isCurrent, onClose }) {
+  constructor({
+    socket,
+    identity,
+    host,
+    room = /** @type {string | null} */ (null),
+    hello,
+    isCurrent,
+    onClose,
+  }) {
     this.socket = socket;
     this.identity = identity;
     this.host = host;
@@ -43,12 +51,14 @@ export class RemoteConnection {
         maxBufferedBytes: 2 * 1024 * 1024,
       });
       this.check();
-      this.secure.send({
+      /** @type {import('../generated/host-protocol').RemoteHello} */
+      const hello = {
         method: "hello",
         apiVersion: "areal.remote.v2",
         clientVersion: "0.1.0",
         ...this.hello,
-      });
+      };
+      this.secure.send(hello);
       this.hello = null;
       onHandshake("hello");
       const messages = this.secure.messages();
@@ -70,6 +80,7 @@ export class RemoteConnection {
         throw Object.assign(new Error("Host 身份不匹配"), { code: "HOST_MISMATCH" });
       await onReady(first.value);
       this.check();
+      /** @type {import('../generated/host-protocol').RemoteReady} */
       this.ready = first.value;
       void this.receive(messages, onSession).catch(() => this.socket.close());
       return this.ready;
@@ -91,7 +102,9 @@ export class RemoteConnection {
       }, 15000);
       this.pending.set(id, { resolve, reject, timer, onResult });
       try {
-        this.secure.send({ id, ...envelope });
+        /** @type {import('../generated/host-protocol').RemoteRequest} */
+        const request = { id, ...envelope };
+        this.secure.send(request);
       } catch (error) {
         clearTimeout(timer);
         this.pending.delete(id);
@@ -103,7 +116,11 @@ export class RemoteConnection {
     try {
       for await (const message of messages) {
         if (this.closed || !this.isCurrent()) continue;
-        if (message.event?.startsWith("session.")) {
+        if (
+          message.event?.startsWith("session.") ||
+          (this.ready?.negotiatedCapabilities?.includes("gui-read-v1") &&
+            message.event?.startsWith("shell."))
+        ) {
           onSession(message);
           continue;
         }

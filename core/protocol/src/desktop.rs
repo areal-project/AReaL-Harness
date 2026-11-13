@@ -7,6 +7,17 @@ pub const MAX_SUBSCRIPTIONS: usize = 128;
 pub const BROWSER_V1_BUNDLE: &str = "areal.browser.v1";
 pub const COMPUTER_V1_BUNDLE: &str = "areal.computer.v1";
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostUpdateStatus {
+    pub host_id: String,
+    pub generation: String,
+    pub executable_version: String,
+    pub capabilities: Vec<String>,
+    pub restart_pending: bool,
+    pub target_version: Option<String>,
+}
+
 /// 本机电脑工具与浏览器分别启用，操作仍由 Core 审批和记录。
 pub fn computer_v1_tool() -> super::ToolDefinition {
     super::ToolDefinition {
@@ -92,6 +103,7 @@ crate::method_catalog! {
     "turn/steer" => Mutation;
     "turn/interrupt" => Mutation;
     "areal/capabilities" => Read;
+    "areal/host/status" => Read;
     "areal/subscription/remove" => Subscription;
     "areal/thread/tools/attach" => Mutation, Thread;
     "areal/agent/spawn" => Mutation;
@@ -327,6 +339,7 @@ pub enum ThreadOwnership {
     },
 }
 pub const SERVER_REQUESTS: &[&str] = &[
+    "areal/host/status",
     "item/tool/call",
     "areal/task/prepare",
     "areal/browser/prepare",
@@ -335,6 +348,7 @@ pub const SERVER_REQUESTS: &[&str] = &[
 ];
 
 pub const NOTIFICATIONS: &[&str] = &[
+    "areal/model/catalogChanged",
     "areal/mcp/app/notification",
     "areal/mcp/tool/result",
     "areal/mcp/form/requested",
@@ -471,6 +485,8 @@ pub struct AgentProfile {
     pub approval_tools: Vec<String>,
     #[serde(default)]
     pub allow_thread_processes: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_connection_processes: bool,
     #[serde(default)]
     pub workflow: Option<VersionRef>,
 }
@@ -817,6 +833,8 @@ pub struct CreationAdmission {
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ThreadStart {
+    #[serde(default, skip_serializing_if = "task_directory_preparation_disabled")]
+    pub prepare_task_directory: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub creation_admission: Option<CreationAdmission>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -832,6 +850,10 @@ pub struct ThreadStart {
     #[serde(default)]
     pub dynamic_tools: Vec<super::ToolDefinition>,
 }
+fn task_directory_preparation_disabled(value: &Option<bool>) -> bool {
+    *value != Some(true)
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TurnStart {
@@ -994,6 +1016,8 @@ pub struct ManagedProcess {
     pub process_id: Option<String>,
     pub lifetime: String,
     pub turn_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_id: Option<String>,
     pub owner: String,
     pub argv: Vec<String>,
     pub state: String,

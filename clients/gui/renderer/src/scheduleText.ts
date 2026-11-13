@@ -122,6 +122,7 @@ const settled = (run?: Data) =>
 export type ScheduledTaskState =
   | { kind: "enabled" }
   | { kind: "running" }
+  | { kind: "waiting" }
   | { kind: "paused" }
   | { kind: "attention"; reason: string; retryRunId?: string }
   | { kind: "finished" }
@@ -164,7 +165,9 @@ export function scheduledTaskState(task: Data, project: Data | undefined, t: Tra
           ? t("operations.schedules.reasonInterrupted")
           : t("operations.schedules.reasonFailed"),
       } as const;
+    // queued 只是已受理：绑定对话正忙或尚未开始，不能显示成运行中。
     case "queued":
+      return { kind: "waiting" } as const;
     case "running":
     case "waitingForAgents":
       return { kind: "running" } as const;
@@ -178,12 +181,28 @@ export function scheduledTaskStateLabel(state: ScheduledTaskState, t: Translate)
       {
         enabled: "operations.schedules.enabled",
         running: "operations.schedules.running",
+        waiting: "operations.schedules.waitingToStart",
         paused: "operations.schedules.paused",
         attention: "operations.schedules.attention",
         finished: "operations.schedules.finishedGroup",
         deleted: "operations.schedules.deleted",
       } as const
     )[state.kind],
+  );
+}
+
+/** 接收运行的对话：对话里建的任务是来源对话，定时页建的任务是它的专属对话。 */
+export function scheduledTaskConversation(task: Data): string | undefined {
+  if (task.delivery !== "thread") return undefined;
+  return task.sourceThreadId ?? task.threadId ?? undefined;
+}
+
+/** 由 Goal 找到发起这次运行的定时任务，用于在对话流里标注运行消息。 */
+export function scheduledRunTask(tasks: Record<string, Data> | undefined, goalId?: string) {
+  if (!goalId) return undefined;
+  return Object.values(tasks ?? {}).find(
+    (task) =>
+      task.mode === "scheduled" && (task.runs ?? []).some((run: Data) => run.goalId === goalId),
   );
 }
 

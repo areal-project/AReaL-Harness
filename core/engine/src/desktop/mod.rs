@@ -26,6 +26,7 @@ use super::*;
 use areal_protocol::desktop::*;
 pub use catalog::{ConfiguredModels, Deployment};
 pub use model_configuration::PreparedModelConfiguration;
+pub use processes::ProcessConnection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 pub use skills::{SkillLocation, SkillMetadata};
@@ -42,11 +43,12 @@ pub(crate) struct Desktop {
     worker_model: std::sync::atomic::AtomicBool,
     submissions: submissions::Submissions,
     pub(crate) lifecycle: server::Lifecycle,
-    pub(crate) mcp: mcp::Manager,
     pub(crate) plugin_mcp: plugin_mcp::Manager,
     pub(crate) mcp_apps: mcp_apps::Manager,
     catalog: std::sync::RwLock<catalog::Catalog>,
     catalog_write: Mutex<()>,
+    model_events: broadcast::Sender<Value>,
+    model_revision: std::sync::atomic::AtomicU64,
     creation: Mutex<()>,
     credentials: std::sync::RwLock<BTreeMap<String, String>>,
 }
@@ -61,15 +63,28 @@ impl Desktop {
             default_profile: Default::default(),
             worker_model: std::sync::atomic::AtomicBool::new(false),
             submissions: submissions::Submissions::open(root)?,
-            mcp: mcp::Manager::open(root)?,
             plugin_mcp: plugin_mcp::Manager::open(root)?,
             mcp_apps: mcp_apps::Manager::open(root)?,
             lifecycle: Default::default(),
             catalog: std::sync::RwLock::new(catalog::Catalog::load(root)?),
             catalog_write: Mutex::new(()),
+            model_events: broadcast::channel(128).0,
+            model_revision: std::sync::atomic::AtomicU64::new(0),
             creation: Mutex::new(()),
             credentials: std::sync::RwLock::new(BTreeMap::new()),
         })
+    }
+}
+impl Engine {
+    pub fn subscribe_model_catalog(&self) -> broadcast::Receiver<Value> {
+        self.desktop.model_events.subscribe()
+    }
+    fn emit_model_catalog_changed(&self) {
+        let revision = self.desktop.model_revision.fetch_add(1, Ordering::Relaxed) + 1;
+        let _ = self.desktop.model_events.send(notification(
+            "areal/model/catalogChanged",
+            json!({"revision":revision}),
+        ));
     }
 }
 fn invalid(error: impl std::fmt::Display) -> Error {

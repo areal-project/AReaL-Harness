@@ -1,5 +1,6 @@
 import { useI18n } from "./i18n/IntlProvider.js";
-import type { ManagementRequestMap } from "@areal/workbench/desktop-contract/management";
+import { errorText } from "./errors/errorCopy.js";
+import type { ManagementRequestMap } from "./services.js";
 import { Input } from "@areal/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "./components/ui/button.js";
@@ -248,7 +249,7 @@ export function WorkgroupsPane({ project, action }: { project: Data; action: Act
           if (live) setWorkflow(value);
         })
         .catch((cause) => {
-          if (live) setError(cause.message);
+          if (live) setError(errorText(t, cause));
         });
     return () => {
       live = false;

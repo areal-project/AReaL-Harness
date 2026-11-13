@@ -6,6 +6,7 @@
 
 | 能力 | 实现与入口 |
 |---|---|
+| 共享 Host | `areal host` 提供认证本机控制、项目登记、停止回执和状态订阅。CLI/TUI/Web 通过 Host 激活项目，客户端退出后原任务继续；旧服务空闲排空后受控换代。GUI 项目连接、提交 journal、凭据与 Remote 配置也使用 Host；Remote Gateway、定时激活、订阅传输及防休眠由 Host 持有；已实现系统服务安装和受控更新接口，真机、真实登录与签名包等完整验收仍未完成。[Host API](api/host.md) |
 | 程序化工具调用 | 默认与原生工具共存；有界 JavaScript 数据依赖、串行叶子、选择观察与父子审计，无跨轮状态恢复；真实质量与效率须独立评测。[执行边界](guides/programmatic-tools.md) |
 | 关联文件编辑 | `edit_files` 直接表达有界多文件创建/修改，保留逐文件版本检查、收据和部分失败；可在既有程序里顺接验证。[工具合同](guides/tools.md#关联文件编辑与环境事实) |
 | 会话目录 | 默认内存索引、正确的授权后分页与 GUI 刷新合并；显式 SQLite 索引可回退内存，两者均可显式启用轻量元数据目录与按需历史加载。文件保持事实，复杂恢复仍全量；无自动历史淘汰或全文检索。[配置](guides/configuration.md#会话目录后端) |
@@ -22,7 +23,7 @@
 | Workgroup | DAG、隔离写工作区、制品检查与集成，fixed/auto/adaptive 准入；CLI 和服务接口。[使用指南](guides/workgroups.md) |
 | 权限模式 | 本地默认 YOLO，可配置 ASK_PERMISSIONS；TUI/Web 审批、会话/项目精确授权与自动 Thread scratch。[配置](guides/configuration.md#permissions) |
 | 桌面接口 | 认证、Profile/Skill/Plan、`--agent id@revision` 选择、Profile 绑定 Workflow 自动启动、审批/追问、提交去重与队列、共享终端、配置 CAS、模型切换、媒体 Blob、归档与 GC。[桌面 API](api/desktop.md) |
-| 桌面 GUI | `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；聊天模型选择器按供应商分组展示模型，直接选择所需模型；当前模型入口和思考强度页保留来源，区分不同供应商的同名模型。普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。公共服务连接使 GUI 退出不终止 Core 任务；启动恢复支持二次确认后取消活动轮次并重启后台。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md)  SnapShots 支持 macOS 前台窗口捕获、可选应用文本、系统全局快捷键、音效、闪光与原生附件动画；截图草稿可跨重启恢复。 |
+| 桌面 GUI | `clients/gui` 提供 React/Electron、原生文件/差异/终端/浏览器面板、模型与资源设置、手机配对和定时任务界面；聊天模型选择器按供应商分组展示模型，直接选择所需模型；当前模型入口和思考强度页保留来源，区分不同供应商的同名模型。普通会话支持暂停后在原会话手动继续，最后一条用户消息可编辑后作为新消息发送并保留原记录。启用 Browser 的聊天可在用户授权后让 Core 读取该聊天当前原生网页的可访问性文本。人工批注支持冻结原生截图、元素/区域选择、多条 Composer 附件与含裁图和说明的消息，不要求启用模型 Browser 工具包。关闭窗口保留应用；普通退出 GUI 保留共享 Host、Core 和已受理任务，桌面工具连接随 GUI 关闭；停止后台使用显式 Host 操作。支持独立公开依赖构建与 macOS arm64 本地包。[GUI](../clients/gui/README.md)  SnapShots 支持 macOS 前台窗口捕获、可选应用文本、系统全局快捷键、音效、闪光与原生附件动画；截图草稿可跨重启恢复。 |
 | iOS Remote | `clients/mobile` 使用 Capacitor 与共享 Remote 协议，提供钥匙串身份、扫码/粘贴配对、前后台重连、授权项目、会话历史、实时消息，以及普通会话创建、模型/权限选择、发送、排队和停止。未知命令通过原 ID 核对。Task 详情只读，审批问答和 App 推送尚未接入。原生下限为 iOS 17.4，开发门禁在 iOS 17.5 模拟器运行；真机验收尚未完成。[iOS 开发指南](development/ios-development.md) |
 | Android Remote | 复用当前 iOS 移动 UI、配对、重连、浏览与命令恢复，原生存储使用 Android Keystore。最低安装 API 26，WebView、真机与 Release 分别验收。[Android 开发指南](development/android-development.md) |
 | 生成式交互回答 | 主会话和 Side 显示 Core 发布的不可变 HTML 制品，复用 MCP Apps 沙箱。状态在同一 Desktop 配置中有界保存，后续输入只附加模型可见参数，私有状态不进入模型请求。页面后续问题经宿主确认发送。[桌面 API](api/desktop.md#生成式交互回答) |
@@ -71,3 +72,7 @@ Remote 的 Direct 与 Relay 已接入共同 Host 授权和 PWA 协议，Direct �
 桌面手机连接支持启动本机 Relay、自动生成私有网络配对二维码、系统 SSH 部署 Linux Relay，以及手工配置外部 HTTPS Relay。内网可达的公司 VPN 可复用本机入口；不内置公网连接服务。SSH 路径包含 ACME 证书续期、升级和移除，公网、真机及安装包验收独立报告。
 
 显式精简工具及重复观察候选、环境来源与验证绑定见[工具](guides/tools.md)和[组合执行](guides/programmatic-tools.md)。上下文审计分开记录原始/校准估计、provider usage、输出预留及压缩触发原因；校准不等于减少输入。
+
+## 本机问题反馈
+
+右上角更多菜单提供问题描述、截图、可选隐私诊断预览、本机记录、JSON 导出和匿名提交至 PlayForge；成功保存反馈编号，失败保留本机副本。开发者通过 PlayForge 管理员 Token 查询和更新生命周期。见 [GUI 指南](../clients/gui/README.md#本机问题反馈)。

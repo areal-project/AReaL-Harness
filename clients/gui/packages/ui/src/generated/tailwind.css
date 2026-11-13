@@ -10,20 +10,19 @@
   --spacing-field: 16px;
   --spacing-section: 24px;
   --spacing-panel: 16px;
-  --radius-control: 10px;
-  --radius-button: 8px;
+  --radius-control: var(--radius-lg);
+  --radius-button: var(--radius-md);
   --color-button-surface: color-mix(in srgb, var(--color-foreground) 10%, var(--color-card));
   --color-button-hover: color-mix(in srgb, var(--color-foreground) 14%, var(--color-card));
-  --radius-inset: 8px;
+  --radius-inset: var(--radius-md);
   --radius-pill: 999px;
-  --radius-overlay: 20px;
-  --radius-navigation: 12.5px;
-  --radius-composer: 18px;
-  --radius-panel: 12px;
-  --radius-dialog: 16px;
+  --radius-overlay: var(--radius-3xl);
+  --radius-navigation: var(--radius-md);
+  --radius-composer: var(--radius-2xl);
+  --radius-panel: var(--radius-xl);
+  --radius-dialog: var(--radius-2xl);
   --shadow-menu: 0 0 0 0.5px var(--color-menu-border, var(--color-border)), 0 8px 16px -4px rgb(0 0 0 / 12%);
   --shadow-overlay: 0 4px 12px rgb(0 0 0 / 10%), 0 14px 40px rgb(0 0 0 / 8%);
-  --shadow-composer: var(--composer-shadow-light);
   --shadow-dialog: 0 12px 32px rgb(0 0 0 / 20%);
   --font-sans: -apple-system, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", monospace;
@@ -68,8 +67,31 @@
   --text-compact-caption--line-height: 1rem;
   --text-compact-body: 0.875rem;
   --text-compact-body--line-height: 1.25rem;
+  --blur-header: 18px;
+  --blur-popover: 24px;
+  --radius-2xs: calc(2px * var(--corner-radius-scale));
+  --radius-xs: calc(4px * var(--corner-radius-scale));
+  --radius-sm: calc(6px * var(--corner-radius-scale));
+  --radius-md: calc(8px * var(--corner-radius-scale));
+  --radius-lg: calc(10px * var(--corner-radius-scale));
+  --radius-xl: calc(12px * var(--corner-radius-scale));
+  --radius-2xl: calc(16px * var(--corner-radius-scale));
+  --radius-3xl: calc(20px * var(--corner-radius-scale));
+  --radius-4xl: calc(24px * var(--corner-radius-scale));
+  --height-toolbar: 46px;
+  --tracking-conversation: 0.025em;
+  --tracking-heading-tight: -0.02em;
 }
 @theme {
+  --color-surface-elevated: color-mix(in oklab, #1a1c1f 4%, #ffffff);
+  --color-surface-tertiary: color-mix(in oklab, #1a1c1f 6.5%, #ffffff);
+  --color-surface-glass: color-mix(in oklab, color-mix(in oklab, #1a1c1f 4%, #ffffff) 86%, transparent);
+  --color-border-subtle: color-mix(in oklab, #1a1c1f 5.5%, transparent);
+  --color-activity-summary: color-mix(in oklab, #1a1c1f 60.5%, transparent);
+  --color-activity-child: color-mix(in oklab, #1a1c1f 60.5%, transparent);
+  --color-diff-added-surface: color-mix(in oklab, #16a45d 10%, transparent);
+  --color-diff-removed-surface: color-mix(in oklab, #df515b 10%, transparent);
+  --color-focus-ring-soft: color-mix(in oklab, #3a83f7 22%, transparent);
   --color-background: #ffffff;
   --color-foreground: #1a1c1f;
   --color-brand: #3a83f7;
@@ -97,7 +119,7 @@
   --color-sidebar: color-mix(in srgb, #ffffff 70%, transparent);
   --color-sidebar-item: color-mix(in srgb, #1a1c1f 5.5%, transparent);
   --color-composer: color-mix(in srgb, #ffffff 86.4706%, transparent);
-  --shadow-composer: var(--composer-shadow-light);
+  --shadow-composer: 0 0 0 1px #0000000a, 0 2px 8px 0 #0000000a, 0 4px 80px 8px #00000006;
   --color-background-alt: color-mix(in srgb, #1a1c1f 3%, #ffffff);
   --color-card: #ffffff;
   --color-settings-card: #ffffff;
@@ -108,6 +130,7 @@
   --color-menu-border: color-mix(in srgb, #1a1c1f 8%, transparent);
   --color-menu-hover: color-mix(in srgb, #1a1c1f 5.5%, transparent);
   --color-composer-catalog: #ffffff;
+  --color-markdown-inline-code: color-mix(in oklab, #1a1c1f 6.5%, #ffffff);
   --color-input: #ffffff;
   --color-input-focused: #ffffff;
   --color-input-border: var(--color-border);
@@ -148,4 +171,8 @@
   --color-slider-selected-track: #ffffff80;
   --color-annotation-selected-foreground: #91c5ff;
   --color-annotation-selected-surface: #4795ff26;
+  --color-tooltip: #f0f0f0;
+  --color-tooltip-foreground: #0d0d0d;
+  --color-tooltip-tag: #e6e6e6;
+  --color-tooltip-tag-foreground: #5c5c5c;
 }

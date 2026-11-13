@@ -20,6 +20,8 @@ Use locked dependencies and do not bypass failing sandbox tests with unsandboxed
 
 ## Feature comparisons and review
 
+Use the root [REVIEW.md](REVIEW.md) to verify candidate defects, calibrate severity, and select relevant historical regression checks. Load this file explicitly for local reviews.
+
 Use a table with feature, observed behavior in both products, difference or gap, recommendation, and source evidence. Omit equivalent capabilities. Treat an undiscovered entry point as unverified until the actual entry, callers, and capability conditions have been traced. Performance conclusions require measurements and conditions; source mechanisms identify candidates only. Reviewers check that recommendations answer the user's decision and that gap claims account for the actual call chain.
 
 Record the revision and relevant file hashes for reviews. When HEAD changes, check the target files before invalidating evidence. Source GUI acceptance first passes the existing build identity doctor with matching Core, Runtime, and Renderer artifacts, as described in the testing guide.

@@ -11,6 +11,7 @@ import {
 } from "./components/ui/dropdown-menu.js";
 import type { Action, Data } from "./services.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
+import { errorText } from "./errors/errorCopy.js";
 
 /** Acknowledgement locks this request; only a Core projection removes it or advances execution. */
 export function ApprovalRequest({
@@ -50,11 +51,7 @@ export function ApprovalRequest({
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
       if (failure.submissionUnknown) setUnknown(true);
-      setError(
-        failure.submissionUnknown
-          ? "审批结果未确认。请先读取 Core 当前待处理状态，不会自动重复提交。"
-          : failure.message || "审批提交失败，请重试。",
-      );
+      setError(failure.submissionUnknown ? t("errors.approvalUnknown") : errorText(t, cause));
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -67,7 +64,7 @@ export function ApprovalRequest({
       setUnknown(false);
       setError("");
     } catch (cause) {
-      setError(`无法核对审批状态。${(cause as Error).message}`);
+      setError(`${t("errors.approvalRefreshFailed")}${errorText(t, cause)}`);
     } finally {
       setBusy(false);
     }

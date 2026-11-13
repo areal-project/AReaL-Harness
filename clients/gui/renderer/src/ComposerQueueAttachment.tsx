@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { errorText } from "./errors/errorCopy.js";
 import { AttachmentCard } from "@areal/ui/experimental";
 import { useEffect, useState } from "react";
 import { ScanText } from "lucide-react";
@@ -46,7 +47,7 @@ export function ComposerQueueAttachment({
         setUrl(preview);
       })
       .catch((cause) => {
-        if (active) setError(cause.message);
+        if (active) setError(errorText(t, cause));
       });
     return () => {
       active = false;

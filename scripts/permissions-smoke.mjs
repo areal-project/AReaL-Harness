@@ -5,13 +5,14 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
-const root = await mkdtemp(join(tmpdir(), "areal-permissions-"));
+const root = await trackedMkdtemp(join(tmpdir(), "areal-permissions-"));
 const target = createServer((req, res) => res.end("NETWORK_FIXTURE_REACHABLE"));
 target.listen(0, "127.0.0.1");
 await once(target, "listening");

@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vite-plus/test";
-import { turnContextStamp, withHistoryTopology } from "./conversationTurns.js";
+import { precedingTurnIssues, turnContextStamp, withHistoryTopology } from "./conversationTurns.js";
+
+describe("precedingTurnIssues", () => {
+  it("keeps the first unresolved owner without blocking that owner's earlier history", () => {
+    expect(precedingTurnIssues(["", "first", "", "second", ""])).toEqual([
+      "",
+      "",
+      "first",
+      "first",
+      "first",
+    ]);
+    expect(precedingTurnIssues(["", "", ""])).toEqual(["", "", ""]);
+    expect(precedingTurnIssues([])).toEqual([]);
+  });
+});
 
 const page = () => [{ items: [{ turnId: "t1", itemId: "old", type: "agentMessage" }] }];
 const thread = (turns: object[], extra = {}) => ({

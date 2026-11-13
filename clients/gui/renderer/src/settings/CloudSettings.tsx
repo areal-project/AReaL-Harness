@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { errorText } from "../errors/errorCopy.js";
 import { useI18n, formatUiMessage, type UiMessage } from "../i18n/IntlProvider.js";
 import type { Action } from "../services.js";
 import { Button } from "../components/ui/button.js";
@@ -25,7 +26,7 @@ export function CloudSettings({ action }: { action: Action }) {
         }
       })
       .catch((error) => {
-        if (active) setMessage(error.message);
+        if (active) setMessage(errorText(t, error));
       })
       .finally(() => {
         if (active) setBusy(false);

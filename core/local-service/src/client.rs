@@ -1,6 +1,6 @@
 use crate::{
     LaunchSpec,
-    gui_owner::{self, GuiLifetime},
+    gui_owner::{self, OwnerLifetime},
     storage,
 };
 use anyhow::{Context, Result, bail, ensure};
@@ -36,27 +36,46 @@ impl std::error::Error for ControlTransportError {
 }
 
 pub async fn ensure(spec: &LaunchSpec) -> Result<Service> {
-    ensure_inner(spec, None, false, true, None).await
+    ensure_inner(spec, None, false, true, None, || Ok(())).await
 }
 
 pub async fn ensure_without_restart(spec: &LaunchSpec) -> Result<Service> {
-    ensure_inner(spec, None, false, false, None).await
+    ensure_inner(spec, None, false, false, None, || Ok(())).await
 }
 
 pub async fn restart(spec: &LaunchSpec, cancel: bool) -> Result<Service> {
-    ensure_inner(spec, Some(cancel), false, true, None).await
+    ensure_inner(spec, Some(cancel), false, true, None, || Ok(())).await
 }
 
 pub async fn ensure_with_lifetime(
     spec: &LaunchSpec,
-    lifetime: &GuiLifetime,
+    lifetime: &OwnerLifetime,
     no_auto_restart: bool,
 ) -> Result<Service> {
-    ensure!(
-        spec.owner.is_some(),
-        "GUI lifetime requires an application owner"
-    );
-    ensure_inner(spec, None, false, !no_auto_restart, Some(lifetime)).await
+    ensure!(spec.owner.is_some(), "service lifetime requires an owner");
+    ensure_inner(spec, None, false, !no_auto_restart, Some(lifetime), || {
+        Ok(())
+    })
+    .await
+}
+
+/// 在既有启动门内核对外部接管依据；回调只在需要新启动时执行。
+pub async fn ensure_with_lifetime_checked(
+    spec: &LaunchSpec,
+    lifetime: &OwnerLifetime,
+    no_auto_restart: bool,
+    before_launch: impl Fn() -> Result<()>,
+) -> Result<Service> {
+    ensure!(spec.owner.is_some(), "service lifetime requires an owner");
+    ensure_inner(
+        spec,
+        None,
+        false,
+        !no_auto_restart,
+        Some(lifetime),
+        before_launch,
+    )
+    .await
 }
 
 async fn ensure_inner(
@@ -64,11 +83,12 @@ async fn ensure_inner(
     restart: Option<bool>,
     reconnect: bool,
     allow_automatic_restart: bool,
-    lifetime: Option<&GuiLifetime>,
+    lifetime: Option<&OwnerLifetime>,
+    before_launch: impl Fn() -> Result<()>,
 ) -> Result<Service> {
     ensure!(
         spec.owner.is_some() == lifetime.is_some(),
-        "GUI application services require an inherited lifetime descriptor"
+        "owned services require an inherited lifetime descriptor"
     );
     if let Some(lifetime) = lifetime {
         lifetime.check_open()?;
@@ -103,6 +123,9 @@ async fn ensure_inner(
         );
         gui_owner::check(spec.owner.as_ref(), service.owner.as_ref())?;
         if restart.is_none() && check_compatible(spec, &service, &directory).is_ok() {
+            if spec.model_catalog_managed {
+                return Ok(service);
+            }
             // 优先等待热更新；超时后只为有效配置走既有的空闲重启流程。
             let deadline = Instant::now() + Duration::from_secs(3);
             loop {
@@ -115,7 +138,12 @@ async fn ensure_inner(
                 if Instant::now() >= deadline {
                     check_model_restart(&state)?;
                     // 重连可持有旧 LaunchSpec；停止前重新校验文件和当前环境，避免停掉可用服务。
-                    let current = LaunchSpec::in_bin(&spec.args, spec.bin_dir.clone())?;
+                    let current = match &spec.context {
+                        Some(context) => {
+                            LaunchSpec::in_context(&spec.args, spec.bin_dir.clone(), context)?
+                        }
+                        None => LaunchSpec::in_bin(&spec.args, spec.bin_dir.clone())?,
+                    };
                     ensure!(
                         current.service_id == spec.service_id
                             && current.fingerprint == spec.fingerprint
@@ -168,12 +196,13 @@ async fn ensure_inner(
             bound.display()
         );
     }
+    before_launch()?;
     launch_unlocked(spec, lifetime, &directory).await
 }
 
 async fn launch_unlocked(
     spec: &LaunchSpec,
-    lifetime: Option<&GuiLifetime>,
+    lifetime: Option<&OwnerLifetime>,
     directory: &Path,
 ) -> Result<Service> {
     let deadline = Instant::now() + Duration::from_secs(65);
@@ -195,18 +224,38 @@ async fn launch_unlocked(
     let mut command = match lifetime {
         Some(lifetime) => {
             let mut command =
-                crate::native_process::TrustedCommand::gui_host(&binary, lifetime.as_raw_fd())?;
+                crate::native_process::TrustedCommand::owned_host(&binary, lifetime.as_raw_fd())?;
             command
-                .env(gui_owner::LIFETIME_FD_ENV, lifetime.as_raw_fd().to_string())
                 .env(
-                    gui_owner::OWNER_ENV,
+                    gui_owner::SERVICE_LIFETIME_FD_ENV,
+                    lifetime.as_raw_fd().to_string(),
+                )
+                .env(
+                    gui_owner::SERVICE_OWNER_ENV,
                     serde_json::to_string(spec.owner.as_ref().unwrap())?,
                 );
             command
         }
         None => crate::native_process::TrustedCommand::persistent(&binary)?,
     };
-    command.arg("service-host");
+    if let Some(context) = &spec.context {
+        command.env_clear().envs(&context.environment);
+        if let Some(lifetime) = lifetime {
+            command
+                .env(
+                    gui_owner::SERVICE_LIFETIME_FD_ENV,
+                    lifetime.as_raw_fd().to_string(),
+                )
+                .env(
+                    gui_owner::SERVICE_OWNER_ENV,
+                    serde_json::to_string(spec.owner.as_ref().unwrap())?,
+                );
+        }
+    }
+    command
+        .env_remove(gui_owner::OWNER_ENV)
+        .env_remove(gui_owner::LIFETIME_FD_ENV)
+        .arg("service-host");
     command
         .current_dir(&spec.launch_cwd)
         .stdin(Stdio::piped())
@@ -335,7 +384,7 @@ fn check_recovery_spec(
 pub async fn recover_crashed(
     spec: &LaunchSpec,
     expected_generation: &str,
-    lifetime: &GuiLifetime,
+    lifetime: &OwnerLifetime,
 ) -> Result<Service> {
     ensure!(spec.owner.is_some(), "crash recovery requires a GUI owner");
     lifetime.check_open()?;
@@ -428,10 +477,19 @@ fn check_model_restart(state: &Value) -> Result<()> {
 }
 
 async fn startup_lock(directory: &Path) -> Result<std::fs::File> {
+    startup_guard(directory, false).await
+}
+
+async fn startup_guard(directory: &Path, shared: bool) -> Result<std::fs::File> {
     let startup = storage::open_private(&directory.join("start.lock"), true)?;
     let deadline = Instant::now() + Duration::from_secs(65);
     loop {
-        match startup.try_lock_exclusive() {
+        let acquired = if shared {
+            FileExt::try_lock_shared(&startup)
+        } else {
+            startup.try_lock_exclusive()
+        };
+        match acquired {
             Ok(()) => break,
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
                 tokio::time::sleep(Duration::from_millis(50)).await
@@ -443,8 +501,11 @@ async fn startup_lock(directory: &Path) -> Result<std::fs::File> {
 }
 
 pub async fn reconnect(spec: &LaunchSpec) -> Result<Service> {
-    ensure_inner(spec, None, true, true, None).await
+    ensure_inner(spec, None, true, true, None, || Ok(())).await
 }
+
+/// 运行中的服务与本次启动参数不一致时的报错前缀；独占会话的客户端据此改走显式重启。
+pub const CONFIGURATION_CONFLICT: &str = "service configuration conflict";
 
 fn check_compatible(spec: &LaunchSpec, service: &Service, directory: &Path) -> Result<()> {
     gui_owner::check(spec.owner.as_ref(), service.owner.as_ref())?;
@@ -469,7 +530,7 @@ fn check_compatible(spec: &LaunchSpec, service: &Service, directory: &Path) -> R
             .map(|(k, _)| k.as_str())
             .collect();
         bail!(
-            "service configuration conflict ({}) for instance {}; run `{}` using the same binary and environment as this client, or use another --data-dir",
+            "{CONFIGURATION_CONFLICT} ({}) for instance {}; run `{}` using the same binary and environment as this client, or use another --data-dir",
             changed.join(", "),
             spec.service_id,
             spec.restart_command()
@@ -701,8 +762,8 @@ async fn stop_operation_unlocked(
 
 pub async fn status(root: &Path, id: &str) -> Result<Service> {
     let directory = storage::registry(root, id)?;
-    // 外部状态探测与启动串行，避免暂持实例锁时被新宿主误认成另一个 owner。
-    let _startup = startup_lock(&directory).await?;
+    // 状态与活动探测共享读取，但仍阻止启动，避免暂持实例锁时被新宿主误认成 owner。
+    let _startup = startup_guard(&directory, true).await?;
     status_unlocked(root, id).await
 }
 
@@ -915,47 +976,6 @@ pub async fn probe(service: &Service) -> Result<()> {
     Ok(())
 }
 
-/// 返回仅供打开浏览器的一次性 URL；调用方不得写入日志或发现描述。
-pub async fn browser_login_url(service: &Service) -> Result<String> {
-    probe(service).await?;
-    let mut url = http_endpoint(service)?;
-    url.set_path("/areal/auth/bootstrap");
-    let mut response = reqwest::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(5))
-        .build()?
-        .post(url.clone())
-        .bearer_auth(token(service)?)
-        .send()
-        .await?;
-    ensure!(
-        response.status().is_success(),
-        "browser login could not be prepared; rerun areal web or sign in manually at {}",
-        service.web_url
-    );
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await? {
-        ensure!(
-            bytes.len() + chunk.len() <= 4096,
-            "invalid browser login response"
-        );
-        bytes.extend_from_slice(&chunk);
-    }
-    let ticket: areal_protocol::service::BrowserBootstrap = serde_json::from_slice(&bytes)
-        .map_err(|_| anyhow::anyhow!("invalid browser login response"))?;
-    ensure!(
-        ticket.code.len() == 64
-            && ticket.code.bytes().all(|c| c.is_ascii_hexdigit())
-            && (1..=60).contains(&ticket.expires_in),
-        "invalid browser login response"
-    );
-    // 固定已校验的 loopback origin 和路径，不信任服务返回的跳转地址。
-    url.set_path("/ui");
-    url.set_fragment(Some(&format!("bootstrap={}", ticket.code)));
-    Ok(url.into())
-}
-
 pub async fn rpc(service: &Service, method: &str, params: Value) -> Result<Value> {
     use tokio_tungstenite::tungstenite::{Message, client::IntoClientRequest};
     let mut request = service.endpoint.as_str().into_client_request()?;
@@ -1083,6 +1103,9 @@ mod tests {
             socket.write_all(&bytes).await.unwrap();
         });
         drop(startup);
+        // 活动核查持有共享启动锁时，另一条只读状态查询仍须完成。
+        let observer = storage::open_private(&directory.join("start.lock"), true).unwrap();
+        FileExt::try_lock_shared(&observer).unwrap();
         let observed = timeout(Duration::from_secs(5), pending)
             .await
             .unwrap()

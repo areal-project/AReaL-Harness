@@ -110,8 +110,8 @@ struct Handler {
     sent_credentials: http::SentCredentials,
 }
 impl ClientHandler for Handler {
-    fn get_info(&self) -> ClientInfo {
-        ClientInfo::new(
+    fn get_info(&self) -> ClientConfig {
+        ClientConfig::new(
             {
                 let mut capabilities = ClientCapabilities::default();
                 capabilities.extensions = Some(

@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { errorText } from "./errors/errorCopy.js";
 import { FileChanges } from "./interfaceIcons.js";
 import { useEffect, useId, useState } from "react";
 import { Button } from "./components/ui/button.js";
@@ -70,11 +71,13 @@ export function verifiedWrittenFiles(items: Data[]): Map<string, { path: string;
 }
 
 export function TurnFileSummary({
+  nativeActions = true,
   turn,
   readTurnReview,
   onFile,
   onReview,
 }: {
+  nativeActions?: boolean;
   turn: Data;
   readTurnReview: (turnId: string) => Promise<Data>;
   onFile: (path: string) => void;
@@ -88,7 +91,7 @@ export function TurnFileSummary({
   useEffect(() => setExpanded(false), [turn.id]);
   const [review, setReview] = useState<ReviewState>();
   useEffect(() => {
-    if (turn.status !== "completed" || !files.size) return;
+    if (!nativeActions || turn.status !== "completed" || !files.size) return;
     let active = true;
     setReview({ kind: "loading", identity });
     void readTurnReview(turn.id)
@@ -125,13 +128,13 @@ export function TurnFileSummary({
           setReview({
             kind: "unavailable",
             identity,
-            error: cause instanceof Error ? cause.message : String(cause),
+            error: errorText(t, cause),
           });
       });
     return () => {
       active = false;
     };
-  }, [identity, readTurnReview]);
+  }, [identity, nativeActions, readTurnReview]);
   if (turn.status !== "completed" || !files.size) return null;
   const current: ReviewState =
     review?.identity === identity ? review : { kind: "loading", identity };
@@ -178,7 +181,7 @@ export function TurnFileSummary({
               {t(totals ? "chat.files.partial" : "chat.files.unavailable")}
             </span>
           )}
-          {current.kind !== "ready" && (
+          {nativeActions && current.kind !== "ready" && (
             <TitleTooltip title={current.kind === "unavailable" ? current.error : undefined}>
               <span className="turn-file-summary-meta" role="status">
                 {current.kind === "loading" ? "统计中" : "行数不可用"}
@@ -186,14 +189,16 @@ export function TurnFileSummary({
             </TitleTooltip>
           )}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="turn-file-summary-review-action"
-          onClick={() => onReview(turn.id)}
-        >
-          查看变更
-        </Button>
+        {nativeActions && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="turn-file-summary-review-action"
+            onClick={() => onReview(turn.id)}
+          >
+            查看变更
+          </Button>
+        )}
       </div>
       <div
         id={filesId}
@@ -210,7 +215,11 @@ export function TurnFileSummary({
               ? (counts.get(file.path) ?? { additions: 0, deletions: 0 })
               : undefined;
           const nameStart = file.path.lastIndexOf("/") + 1;
-          return (
+          return !nativeActions ? (
+            <span key={file.path} className="turn-file-summary-title">
+              {file.path}
+            </span>
+          ) : (
             <Button
               key={file.path}
               variant="ghost"

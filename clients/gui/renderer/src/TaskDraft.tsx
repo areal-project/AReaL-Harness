@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { errorText } from "./errors/errorCopy.js";
 import { CalendarClock, X } from "lucide-react";
+import { NavigationBackIcon } from "./interfaceIcons.js";
 import { Button } from "./components/ui/button.js";
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
@@ -7,6 +9,7 @@ import { useApplicationPreferences } from "./settings/applicationPreferences.js"
 import type { Action, Data } from "./services.js";
 import { TaskRunConversations } from "./TaskRunConversations.js";
 import { useI18n } from "./i18n/IntlProvider.js";
+import { composerDraftStorage } from "./composerDraftStorage.js";
 
 export function taskFrequency(seconds?: number) {
   if (!seconds) return "仅一次";
@@ -33,6 +36,10 @@ function SchedulePreview({ value }: { value?: Data }) {
   const { t } = useI18n();
   if (!value) return null;
   const policy = value.schedule.misfire;
+  const showSeconds =
+    (typeof value.schedule?.rule?.intervalSeconds === "number" &&
+      value.schedule.rule.intervalSeconds % 60 !== 0) ||
+    value.occurrences.some((item: Data) => item.localTime.slice(16, 19) !== ":00");
   return (
     <section aria-label={t("operations.schedulePreview")} className="task-plan-summary">
       <p>
@@ -42,7 +49,9 @@ function SchedulePreview({ value }: { value?: Data }) {
       <ol>
         {value.occurrences.map((item: Data) => (
           <li key={item.at}>
-            <time dateTime={item.localTime}>{item.localTime.slice(0, 16).replace("T", " ")}</time>
+            <time dateTime={item.localTime}>
+              {item.localTime.slice(0, showSeconds ? 19 : 16).replace("T", " ")}
+            </time>
           </li>
         ))}
       </ol>
@@ -217,8 +226,8 @@ export function TaskDraft({
       const latest = retainedDraft(storageKey, current.current);
       const text = latest.text ?? "";
       const inputKey = `areal-gui:draft:${projectId}:${result.thread.id}`;
-      const retained = localStorage.getItem(inputKey);
-      if (retained == null) localStorage.setItem(inputKey, text);
+      const retained = composerDraftStorage.getItem(inputKey);
+      if (retained == null) composerDraftStorage.setItem(inputKey, text);
       if (preparingElement.current?.contains(document.activeElement))
         focusAfterHandoff.current = inputKey;
       persist({ text: retained == null || retained === text || !text ? undefined : text });
@@ -313,7 +322,7 @@ export function TaskDraft({
       .catch((cause) => {
         starts.delete(draft.draftId);
         if (live) {
-          setError(cause.message);
+          setError(errorText(t, cause));
           const latest = retainedDraft(storageKey, current.current);
           current.current = latest;
           setSaved(latest);
@@ -394,7 +403,7 @@ export function TaskDraft({
               pending: failure.submissionUnknown ? "confirm" : undefined,
               failedTurn: result.turnId ?? undefined,
             });
-            setError(failure.message);
+            setError(errorText(t, failure));
           } finally {
             if (live) setSaving(false);
           }
@@ -453,7 +462,7 @@ export function TaskDraft({
             onClick={() => {
               if (project && thread) {
                 const key = `areal-gui:draft:${project.id}:${thread.id}`;
-                localStorage.setItem(key, text);
+                composerDraftStorage.setItem(key, text);
                 window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
               } else {
                 persist({ text });
@@ -487,16 +496,23 @@ export function TaskDraft({
   return (
     <main className="task-conversation" aria-label={task ? "定时任务会话" : "新建定时任务"}>
       <header>
+        {task && (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t("operations.schedules.backToList")}
+            onClick={onClose}
+          >
+            <NavigationBackIcon />
+          </Button>
+        )}
         <h2>{task?.objective ?? "新建任务"}</h2>
         {task && project && thread && renderResources?.(project, thread)}
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          aria-label={task ? "关闭任务详情" : "关闭创建对话"}
-          onClick={onClose}
-        >
-          <X size={16} />
-        </Button>
+        {!task && (
+          <Button size="icon-sm" variant="ghost" aria-label="关闭创建对话" onClick={onClose}>
+            <X size={16} />
+          </Button>
+        )}
       </header>
       {(error || readError || view?.error) && (
         <p role="alert" className="task-plan-note task-draft-error">
@@ -533,7 +549,7 @@ export function TaskDraft({
                       setRetry((n) => n + 1);
                     }
                   })
-                  .catch((cause) => setError(cause.message));
+                  .catch((cause) => setError(errorText(t, cause)));
               }}
             >
               核对受理状态
@@ -632,7 +648,10 @@ export function TaskDraft({
             variant="ghost"
             onClick={() => {
               const key = `areal-gui:draft:${project.id}:${thread.id}`;
-              localStorage.setItem(key, retainedDraft(storageKey, current.current).text ?? "");
+              composerDraftStorage.setItem(
+                key,
+                retainedDraft(storageKey, current.current).text ?? "",
+              );
               persist({ text: undefined });
               window.dispatchEvent(new CustomEvent("areal-draft-change", { detail: key }));
             }}

@@ -13,18 +13,83 @@ import {
   stat,
   symlink,
   utimes,
+  chmod,
 } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { once } from "node:events";
+import { createServer as createNetServer } from "node:net";
 
 const require = createRequire(import.meta.url);
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
-const { PROTOCOL, COMMAND_CONTRACT } = require("../app/src/core/service-protocol.cjs");
+const { ServiceConnection } = require("../app/src/core/service-connection.cjs");
+const {
+  PROTOCOL,
+  COMMAND_CONTRACT,
+} = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 const { serviceIdentity } = require("../app/src/core/service-config.cjs");
 const { WebSocketServer } = require("../app/node_modules/ws");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("default GUI selects Host before initializing any in-process writer", async (t) => {
+  const f = await startupOwnerFixture(t);
+  let starts = 0;
+  f.backend.initializeHostBackend = async () => {
+    starts++;
+  };
+  f.backend.prerequisiteCheck = async () => assert.fail("must not initialize Main backend");
+  await f.backend.initialize();
+  assert.equal(starts, 1);
+});
+
+test("Host startup failure never falls back to a Main writer", async (t) => {
+  const f = await startupOwnerFixture(t);
+  const failure = new Error("fixture Host owner unavailable");
+  f.backend.initializeHostBackend = async () => {
+    throw failure;
+  };
+  f.backend.prerequisiteCheck = async () => assert.fail("must not initialize Main backend");
+  await assert.rejects(f.backend.initialize(), (error) => error === failure);
+});
+
+/** 进程内适配器的连接步骤，与 Host 后台 attach 之后的握手一致。 */
+async function connectAdapter(backend, adapter) {
+  const connection = backend.createConnection();
+  const metadata = connection.connectMain(adapter);
+  backend.connection?.close();
+  backend.connection = connection;
+  backend.metadata = metadata;
+  backend.identity = metadata.identity;
+  backend.foreignOwner = null;
+  backend.sequence = -1;
+  backend.exitConfirmation = null;
+  try {
+    const packet = await connection.request("hello", {
+      protocol: PROTOCOL,
+      identity: metadata.identity,
+      notifications: !!backend.onNotification,
+      capabilities: { computerHost: 1 },
+    });
+    backend.computerHostOwned = packet?.computerHostOwned === true;
+    backend.accept(packet, metadata);
+    if (backend.lastActivity) await connection.request("activity", backend.lastActivity);
+  } catch (error) {
+    backend.connection = null;
+    connection.close();
+    throw error;
+  }
+}
+
+async function startupOwnerFixture(t) {
+  const home = await realpath(await mkdtemp(join(tmpdir(), "areal-startup-owner-")));
+  const backend = new SharedCoreBackend({ app: { getPath: () => home }, home });
+  t.after(async () => {
+    await backend.shutdown();
+    await rm(home, { recursive: true, force: true });
+  });
+  return { home, backend };
+}
 
 for (const fails of [false, true]) {
   test(`concurrent initialization shares control read and ${fails ? "failure" : "connection"}`, async (t) => {
@@ -88,121 +153,6 @@ test("disposal during control read prevents initialization", async (t) => {
   await pending;
   assert.equal(starts, 0);
   assert.equal(f.backend.connecting, null);
-});
-
-test("application shutdown preserves registered historical project identity and rejects crossed bindings", async () => {
-  const local = require("../app/src/core/local-service.cjs");
-  const original = local.serviceRequest;
-  const owner = {
-    kind: "gui",
-    appRunId: "5c450fa8-b0af-492c-9c7b-2233736efbed",
-    profile: "/fixture/profile",
-  };
-  const home = "/fixture/core",
-    id = "111111111111111111111111",
-    root = "/fixture/restored-workspace";
-  const project = { id, root };
-  const descriptor = {
-    owner,
-    serviceId: "instance",
-    generation: "generation",
-    configFingerprint: "fixture",
-    workspace: root,
-    dataDir: join(home, id, "state"),
-    state: "running",
-  };
-  let descriptors = [descriptor];
-  local.serviceRequest = async () => descriptors;
-  const backend = Object.assign(Object.create(CoreBackend.prototype), {
-    home,
-    applicationOwner: owner,
-    saved: [project],
-    projects: new Map([[id, project]]),
-    ownedEngines: new Map(),
-    starting: new Map(),
-  });
-  try {
-    await backend.refreshOwnedEngines();
-    assert.equal(
-      backend.ownedEngines.get(id).service,
-      descriptor,
-      "the registered ID owns its original data",
-    );
-    assert.equal(backend.ownedEngines.size, 1);
-    for (const changed of [
-      { dataDir: join(home, "another-project", "state") },
-      { workspace: "/fixture/other-workspace" },
-    ]) {
-      descriptors = [{ ...descriptor, ...changed }];
-      await assert.rejects(backend.refreshOwnedEngines(), /数据目录与登记不匹配/);
-      assert.equal(
-        backend.ownedEngines.get(id).service,
-        descriptor,
-        "invalid binding cannot replace the original generation",
-      );
-    }
-    descriptors = [{ ...descriptor, generation: "replacement" }];
-    await assert.rejects(backend.refreshOwnedEngines(), { code: "CONFIRMATION_STALE" });
-    assert.equal(backend.ownedEngines.get(id).service, descriptor);
-    descriptors = [
-      {
-        ...descriptor,
-        owner: { ...owner, appRunId: "another-app" },
-        dataDir: "/another-profile/state",
-      },
-    ];
-    await backend.refreshOwnedEngines();
-    assert.equal(backend.ownedEngines.size, 1, "another application remains outside this owner");
-  } finally {
-    local.serviceRequest = original;
-  }
-});
-
-test("completed original shutdown clears GUI terminals after the transport disconnects", async (t) => {
-  const f = await fixture(t);
-  await f.publish();
-  await f.backend.attach();
-  f.backend.guiTerminals.set("terminal", { projectId: "p", threadId: "thread", id: "terminal" });
-  f.backend.reconnectBlocked = true;
-  f.drop();
-  await until(() => !f.backend.status.connected);
-  const reference = {
-    requestId: "41b2ce45-08df-4b60-a2f7-cbbfdb6c12cb",
-    kind: "stopDesktop",
-    mode: "ifIdle",
-    desktopGeneration: f.metadata.desktopGeneration,
-    desktop: f.metadata,
-    targets: [],
-  };
-  const receipt = {
-    version: 1,
-    ...reference,
-    desktopExit: "notRequested",
-    phase: "admissionUnconfirmed",
-  };
-  try {
-    await f.backend.acceptLifecycleReceipt(reference, receipt);
-    assert.equal(f.backend.guiTerminals.size, 1, "unknown shutdown never clears a terminal handle");
-    const completed = await f.backend.acceptLifecycleReceipt(reference, {
-      ...receipt,
-      phase: "acceptedPending",
-      desktopExit: "requested",
-    });
-    assert.equal(completed.phase, "completed");
-    assert.equal(
-      f.backend.guiTerminals.size,
-      0,
-      "the matching exited generation has already cleaned its terminals",
-    );
-    await f.backend.prepareQuit();
-    assert.equal(
-      f.calls.some((call) => call.method === "lifecycleRequest"),
-      false,
-      "receipt reconciliation never sends another stop",
-    );
-  } finally {
-    f.backend.guiTerminals.clear();
-  }
 });
 
 async function until(predicate) {
@@ -476,6 +426,61 @@ async function fixture(
     });
   });
   const backend = new SharedCoreBackend({ app: { getPath: () => home }, home });
+  // 夹具直接接上进程内适配器，覆盖连接、恢复与回执语义；后台归属由 Host 测试单独覆盖。
+  let mainFailure;
+  const hostCapabilityChecks = [];
+  const connectMain = async () => {
+    let closed = false;
+    const transports = new Set();
+    const mainBackend = new CoreBackend({ binary: process.execPath, home });
+    mainBackend.host.client.capabilities = ["workbenchUtilities"];
+    const requireCapability = mainBackend.host.client.requireCapability.bind(
+      mainBackend.host.client,
+    );
+    mainBackend.host.client.requireCapability = (capability) => {
+      requireCapability(capability);
+      hostCapabilityChecks.push(capability);
+    };
+    mainBackend.hostCall = async () =>
+      assert.fail("Capability preflight must not dispatch a Core action");
+    const desktop = {
+      backend: mainBackend,
+      adapter: {
+        connectMain(onMessage, onClose) {
+          const transport = new ServiceConnection(
+            (params) => onMessage({ method: "state", params }),
+            onClose,
+          );
+          transports.add(transport);
+          const failure = mainFailure;
+          mainFailure = undefined;
+          const ready = failure ? Promise.reject(failure) : transport.connect(metadata);
+          return {
+            metadata: { ...metadata },
+            request: async (method, params) => {
+              await ready;
+              return transport.request(method, params, method === "command");
+            },
+            close: () => {
+              transports.delete(transport);
+              transport.close();
+            },
+          };
+        },
+      },
+      get closed() {
+        return closed;
+      },
+      async close() {
+        closed = true;
+        for (const transport of transports) transport.close();
+        transports.clear();
+      },
+    };
+    backend.mainDesktop = desktop;
+    backend.initializeHostBackend = () => connectAdapter(backend, desktop.adapter);
+    await backend.initialize();
+  };
   const publish = () =>
     writeFile(join(home, "service.json"), JSON.stringify(metadata), { mode: 0o600 });
   const drop = () => {
@@ -490,6 +495,11 @@ async function fixture(
   return {
     home,
     backend,
+    connectMain,
+    hostCapabilityChecks,
+    failNextMain: (error) => {
+      mainFailure = error;
+    },
     metadata,
     calls,
     publish,
@@ -508,315 +518,13 @@ async function fixture(
   };
 }
 
-async function journalFixture(t) {
-  const home = await realpath(await mkdtemp(join(tmpdir(), "areal-correlated-receipt-")));
-  t.after(() => rm(home, { recursive: true, force: true }));
-  const calls = [];
-  const reload = async () => {
-    const backend = new CoreBackend({ binary: process.execPath, home });
-    backend.saved = [{ id: "p", root: home }];
-    const project = await backend.loadProjectJournal("p");
-    project.client = {
-      ready: true,
-      request: async (method, params) => {
-        calls.push({ method, params });
-        if (["thread/list", "areal/request/read"].includes(method)) return { data: [] };
-        assert.ok(
-          ["areal/turn/start", "areal/turn/enqueue"].includes(method),
-          `unexpected Core request ${method}`,
-        );
-        return { turn: { id: "accepted-turn" } };
-      },
-    };
-    return { backend, project };
-  };
-  return { home, calls, reload, ...(await reload()) };
-}
-
-for (const method of ["areal/turn/start", "areal/turn/enqueue"]) {
-  test(`caller-correlated ${method} survives a lost outer response and journal reload`, async (t) => {
-    const f = await journalFixture(t);
-    const requestId = "f12a0dbc-3375-43f8-a3f1-36f204ed4e8a";
-    const parameters = { threadId: "t", input: [{ type: "text", text: "send once" }] };
-    await assert.rejects(
-      async () => {
-        await f.backend.submit(f.project, method, parameters, { requestId });
-        throw Object.assign(Error("outer response lost"), { submissionUnknown: true, requestId });
-      },
-      (error) => error.submissionUnknown === true && error.requestId === requestId,
-    );
-    const expectedOutcome = {
-      accepted: true,
-      status: "completed",
-      method,
-      threadId: "t",
-      turnId: "accepted-turn",
-      operation: { method, requestId, target: { kind: "thread", threadId: "t" } },
-    };
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-outcomes.json"), "utf8")), {
-      [requestId]: expectedOutcome,
-    });
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), []);
-    const recovered = await f.reload();
-    assert.deepEqual(await recovered.backend.command("reconcile", { projectId: "p" }), {
-      outcomes: { [requestId]: expectedOutcome },
-    });
-    assert.deepEqual(f.calls, [
-      { method, params: { ...parameters, requestId } },
-      { method: "thread/list", params: { limit: 100 } },
-    ]);
-  });
-
-  test(`caller-correlated ${method} returns known acceptance and retains its journal when local outcome cannot persist`, async (t) => {
-    const f = await journalFixture(t);
-    const requestId = "f12a0dbc-3375-43f8-a3f1-36f204ed4e8a";
-    const parameters = { threadId: "t", input: [{ type: "text", text: "send once" }] };
-    await mkdir(join(f.home, "p-outcomes.json"));
-    assert.deepEqual(await f.backend.submit(f.project, method, parameters, { requestId }), {
-      turn: { id: "accepted-turn" },
-    });
-    const createdAt = f.project.pending[0].createdAt;
-    assert.equal(new Date(createdAt).toISOString(), createdAt);
-    assert.equal(f.project.refreshErrors[requestId].refreshPending, true);
-    assert.equal(f.project.refreshErrors[requestId].operation.requestId, requestId);
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), [
-      {
-        method,
-        createdAt,
-        params: { ...parameters, requestId },
-        operation: { method, requestId, target: { kind: "thread", threadId: "t" } },
-      },
-    ]);
-    await rm(join(f.home, "p-outcomes.json"), { recursive: true });
-    const recovered = await f.reload();
-    assert.deepEqual(await recovered.backend.command("reconcile", { projectId: "p" }), {
-      outcomes: {},
-    });
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), [
-      {
-        method,
-        createdAt,
-        params: { ...parameters, requestId },
-        operation: { method, requestId, target: { kind: "thread", threadId: "t" } },
-      },
-    ]);
-    assert.deepEqual(f.calls, [
-      { method, params: { ...parameters, requestId } },
-      { method: "areal/request/read", params: { requestId, threadId: "t" } },
-      { method: "thread/list", params: { limit: 100 } },
-    ]);
-  });
-
-  test(`uncorrelated ${method} does not retain a generated acceptance receipt`, async (t) => {
-    const f = await journalFixture(t);
-    const parameters = { threadId: "t", input: [{ type: "text", text: "send once" }] };
-    assert.deepEqual(await f.backend.submit(f.project, method, parameters), {
-      turn: { id: "accepted-turn" },
-    });
-    assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), []);
-    await assert.rejects(readFile(join(f.home, "p-outcomes.json"), "utf8"), { code: "ENOENT" });
-    assert.equal(f.calls.length, 1);
-    assert.equal(f.calls[0].method, method);
-    assert.deepEqual(f.calls[0].params.input, [{ type: "text", text: "send once" }]);
-  });
-}
-
-test("subscription refresh unknown retains only its dispatched provider request across journal reload", async (t) => {
-  const f = await journalFixture(t);
-  const parameters = {
-    threadId: "t",
-    expectedConfigRevision: 1,
-    intent: { type: "message", input: [{ type: "text", text: "keep my draft" }] },
-  };
-  const models = [{ id: "gpt", parameters: { contextWindowTokens: 500000 } }];
-  const service = {
-    id: "areal_openai",
-    endpoint: "http://fixture.invalid/responses",
-    models,
-    ready: async () => {},
-    account: {
-      revision: 1,
-      lifetime: new AbortController(),
-      status: async () => ({ authenticated: true, state: "ready", models }),
-      track: (promise) => promise,
-    },
-  };
-  f.backend.providers.openaiPromise = Promise.resolve(service);
-  f.project.configurations.t = { revision: 1, model: { providerId: service.id, modelId: "gpt" } };
-  let recovered = false,
-    providerRequest;
-  const transport = async (method, params) => {
-    f.calls.push({ method, params });
-    if (method === "areal/provider/list")
-      return {
-        data: [
-          {
-            id: service.id,
-            revision: 1,
-            protocol: "responses",
-            endpoint: service.endpoint,
-            models: ["gpt"],
-            parameters: {},
-            modelParameters: { gpt: { contextWindowTokens: 1000000 } },
-          },
-        ],
-      };
-    if (method === "areal/provider/upsert") {
-      providerRequest = {
-        method,
-        params,
-        operation: { method, requestId: params.requestId, target: { kind: "project" } },
-      };
-      throw Object.assign(new Error("provider receipt unavailable after write"), { code: -32603 });
-    }
-    if (method === "areal/request/read") {
-      if (!recovered) throw new Error("Core connection lost during receipt lookup");
-      return {
-        data:
-          params.requestId === providerRequest.params.requestId
-            ? [
-                {
-                  method: "areal/provider/upsert",
-                  requestId: params.requestId,
-                  state: "completed",
-                  response: { result: { applied: true } },
-                },
-              ]
-            : [],
-      };
-    }
-    if (["areal/model/list", "thread/list"].includes(method)) return { data: [] };
-    if (method === "areal/turn/submit") return { turn: { id: "accepted-turn" } };
-    assert.fail(`unexpected Core request ${method}`);
-  };
-  f.project.client.request = transport;
-  await assert.rejects(f.backend.providers.syncSubscription(f.project, service), (error) => {
-    assert.equal(error.submissionUnknown, true);
-    assert.equal(error.requestId, providerRequest.params.requestId);
-    assert.deepEqual(error.outcome, { kind: "unconfirmed", operation: providerRequest.operation });
-    assert.deepEqual(error.recovery, { kind: "queryOriginal" });
-    return true;
-  });
-  assert.equal(
-    f.calls.some((call) => call.method === "areal/turn/submit"),
-    false,
-    "explicit refresh never dispatches a turn",
-  );
-  providerRequest.createdAt = f.project.pending[0].createdAt;
-  assert.equal(new Date(providerRequest.createdAt).toISOString(), providerRequest.createdAt);
-  assert.deepEqual(
-    f.project.pending,
-    [providerRequest],
-    "only the dispatched provider request needs recovery",
-  );
-  assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), [
-    providerRequest,
-  ]);
-  assert.deepEqual(f.project.outcomes, {}, "an unknown refresh cannot fabricate acceptance");
-
-  recovered = true;
-  const restored = await f.reload();
-  restored.project.client.request = transport;
-  await restored.backend.reconcile(restored.project);
-  assert.deepEqual(restored.project.pending, []);
-  assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), []);
-  assert.equal(
-    f.calls.filter((call) => call.method === "areal/provider/upsert").length,
-    1,
-    "recovery reads the original receipt without resubmission",
-  );
-  assert.deepEqual(
-    f.calls.filter((call) => call.method === "areal/request/read").map((call) => call.params),
-    [
-      { requestId: providerRequest.params.requestId },
-      { requestId: providerRequest.params.requestId },
-    ],
-  );
-  assert.equal(
-    f.calls.some((call) => call.method === "areal/turn/submit"),
-    false,
-    "recovery never sends the preserved draft",
-  );
-  await restored.backend.submit(restored.project, "areal/turn/submit", parameters, {
-    requestId: "22222222-2222-2222-2222-222222222222",
-  });
-  assert.equal(
-    f.calls.filter((call) => call.method === "areal/turn/submit").length,
-    1,
-    "the user can explicitly send after provider recovery",
-  );
-});
-
-test("subscription-selected turn submission uses its original receipt without refreshing the catalog or provider", async (t) => {
-  const f = await journalFixture(t);
-  const requestId = "11111111-1111-1111-1111-111111111111";
-  const parameters = {
-    threadId: "t",
-    expectedConfigRevision: 1,
-    intent: { type: "message", input: [{ type: "text", text: "send once" }] },
-  };
-  f.project.configurations.t = {
-    revision: 1,
-    model: { providerId: "areal_openai", modelId: "gpt" },
-  };
-  f.backend.providers.openaiPromise = Promise.resolve({
-    account: {
-      revision: 1,
-      lifetime: new AbortController(),
-      track: (promise) => promise,
-      status: async () =>
-        assert.fail("sending a message must not consult the subscription catalog"),
-    },
-  });
-  const result = { turn: { id: "accepted-turn" } };
-  f.project.client.request = async (method, params) => {
-    f.calls.push({ method, params });
-    assert.equal(
-      method,
-      "areal/turn/submit",
-      "sending a message must not read or mutate providers",
-    );
-    return result;
-  };
-  assert.deepEqual(
-    await f.backend.submit(f.project, "areal/turn/submit", parameters, { requestId }),
-    result,
-  );
-  assert.deepEqual(f.calls, [
-    { method: "areal/turn/submit", params: { ...parameters, requestId } },
-  ]);
-  assert.deepEqual(f.project.pending, []);
-  assert.deepEqual(JSON.parse(await readFile(join(f.home, "p-pending.json"), "utf8")), []);
-  assert.deepEqual(f.project.outcomes[requestId], {
-    accepted: true,
-    status: "completed",
-    method: "areal/turn/submit",
-    threadId: "t",
-    turnId: "accepted-turn",
-    operation: {
-      method: "areal/turn/submit",
-      requestId,
-      target: { kind: "thread", threadId: "t" },
-    },
-  });
-  await assert.rejects(
-    f.backend.submit(f.project, "areal/turn/submit", parameters, { requestId }),
-    (error) => {
-      assert.notEqual(error.submissionUnknown, true);
-      return true;
-    },
-  );
-  assert.equal(f.calls.length, 1, "reusing a settled request ID never repeats the turn");
-});
-
 test("legacy task catalog is blocked without starting owners and recovers with the current contract", async (t) => {
   const result = { data: [], errors: [], owners: [], hasMore: false };
   const f = await fixture(t, {
     commandContract: "areal.desktop-commands.v2",
     commandResult: result,
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   assert.equal(f.backend.snapshot().desktopCapabilities.currentCommands, false);
   for (const operation of ["preview", "observe"]) {
     await assert.rejects(f.backend.command("tasks", { operation, projectId: "p" }), {
@@ -845,34 +553,9 @@ test("legacy task catalog is blocked without starting owners and recovers with t
   );
 });
 
-test("public command availability comes only from the current service contract", async (t) => {
-  const f = await fixture(t, { commandContract: null });
-  await f.publish();
-  await f.backend.attach();
-  const capabilities = () => {
-    const snapshot = f.backend.snapshot();
-    return [snapshot.desktopCapabilities, snapshot.projects[0].desktopCapabilities];
-  };
-  assert.deepEqual(capabilities(), [{ currentCommands: false }, { currentCommands: false }]);
-  f.updateContract(COMMAND_CONTRACT);
-  await until(() => f.backend.status.commandContract === COMMAND_CONTRACT);
-  assert.deepEqual(capabilities(), [{ currentCommands: true }, { currentCommands: true }]);
-  f.updateContract("areal.desktop-commands.future");
-  await until(() => f.backend.status.commandContract === "areal.desktop-commands.future");
-  assert.deepEqual(capabilities(), [{ currentCommands: false }, { currentCommands: false }]);
-  f.updateContract(null);
-  await until(() => f.backend.status.commandContract === undefined);
-  assert.deepEqual(capabilities(), [{ currentCommands: false }, { currentCommands: false }]);
-  assert.deepEqual(
-    f.calls.map((c) => c.method),
-    ["hello"],
-  );
-});
-
 test("legacy Desktop contract cannot accept writes requiring original recovery identities", async (t) => {
   const f = await fixture(t, { commandContract: "areal.desktop-commands.v1" });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   assert.equal(f.backend.snapshot().desktopCapabilities.currentCommands, false);
   for (const [name, request] of [
     ["create", { projectId: "p" }],
@@ -895,8 +578,7 @@ test("legacy Desktop contract cannot accept writes requiring original recovery i
 
 test("an unadvertised backend rejects current commands before sending or inventing a receipt", async (t) => {
   const f = await fixture(t, { commandContract: null });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const thread = { projectId: "p", threadId: "t" };
   const requests = [
     ["send", { ...thread, text: "keep my draft" }],
@@ -945,20 +627,6 @@ test("an unadvertised backend rejects current commands before sending or inventi
       "mcpExtensionCall",
       "mcpToolResult",
     ].map((operation) => ["manage", { ...thread, operation }]),
-    ...["connectorConfigure", "connectorCredential"].map((operation) => [
-      "manage",
-      {
-        ...thread,
-        operation,
-        id: "plugin",
-        connectorId: "github",
-        provider: "github",
-        expectedDigest: "a".repeat(64),
-        requestId: "connector-request",
-        credentialRef: "saved-ref",
-        secret: "fixture-secret",
-      },
-    ]),
     [
       "manage",
       {
@@ -991,8 +659,7 @@ test("an unadvertised backend rejects current commands before sending or inventi
 
 test("an unadvertised backend keeps compatible observation and control commands", async (t) => {
   const f = await fixture(t, { commandContract: null, commandResult: { accepted: true } });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const thread = { projectId: "p", threadId: "t" };
   const requests = [
     ["list", { projectId: "p" }],
@@ -1020,7 +687,7 @@ test("an unadvertised backend keeps compatible observation and control commands"
 test("legacy queue edits retain the original receipt after disconnect without replay", async (t) => {
   const f = await fixture(t, { commandContract: null });
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const requestId = "62bedfab-f198-4d6a-b66d-46760b04e214";
   const request = {
     projectId: "p",
@@ -1041,77 +708,6 @@ test("legacy queue edits retain the original receipt after disconnect without re
     [{ name: "queueEdit", request }],
   );
   assert.equal(f.calls.filter((c) => c.method === "hello").length, 2);
-});
-
-test("a backend published after startup timeout attaches without launching again", async (t) => {
-  const f = await fixture(t);
-  let launches = 0;
-  // 启动器的外部边界注入超时；之后的发现、认证和快照使用真实 WebSocket。
-  f.backend.initialize = async () => {
-    launches++;
-    f.backend.identity = "fixture";
-    throw Object.assign(Error("not ready yet"), { code: "SERVICE_NOT_READY" });
-  };
-  await assert.rejects(f.backend.init(), /not ready yet/);
-  await f.publish();
-  await until(() => f.backend.status.connected);
-  assert.equal(launches, 1);
-  assert.deepEqual(
-    f.calls.map((c) => c.method),
-    ["hello"],
-  );
-});
-
-test("passive reconnect publishes connecting until the original observer is ready", async (t) => {
-  const f = await fixture(t);
-  await f.publish();
-  await f.backend.attach();
-  const states = [];
-  f.backend.onChange = () => states.push(f.backend.snapshot().connection.state);
-  f.drop();
-  await until(() => !f.backend.status.connected);
-  assert.equal(f.backend.snapshot().connection.state, "connecting");
-  assert.ok(f.backend.reconnectTimer);
-  await until(() => f.backend.status.connected);
-  assert.deepEqual([...new Set(states)], ["connecting", "ready"]);
-  assert.equal(
-    f.calls.some((call) => call.method === "command"),
-    false,
-  );
-});
-
-test("a read-only hello timeout recovers without a manual reconnect or command replay", async (t) => {
-  const helloErrors = [];
-  const f = await fixture(t, { helloErrors });
-  await f.publish();
-  await f.backend.attach();
-  helloErrors.push({
-    code: "TIMEOUT",
-    message: "Injected hello read timeout",
-    submissionUnknown: false,
-    recovery: { kind: "retryRead" },
-  });
-  f.drop();
-  await until(() => f.calls.filter((call) => call.method === "hello").length >= 2);
-  await until(() => f.backend.status.connected);
-  assert.equal(f.calls.filter((call) => call.method === "hello").length, 3);
-  assert.notEqual(f.backend.reconnectBlocked, true);
-  assert.equal(
-    f.calls.some((call) => call.method === "command"),
-    false,
-  );
-});
-
-test("a persisted user stop discovered during retry ends connecting with an actionable state", async (t) => {
-  const f = await fixture(t);
-  await f.publish();
-  await f.backend.attach();
-  await writeFile(f.backend.controlPath, JSON.stringify({ home: f.home, state: "stopped" }));
-  f.drop();
-  await until(() => f.backend.reconnectBlocked);
-  assert.equal(f.backend.snapshot().connection.state, "unavailable");
-  assert.equal(f.backend.snapshot().connection.recovery, "check");
-  assert.equal(f.connections(), 1);
 });
 
 for (const mismatch of [null, "request", "target", "generation", "instance"]) {
@@ -1142,8 +738,7 @@ for (const mismatch of [null, "request", "target", "generation", "instance"]) {
         outcomes: { [requestId]: { status: "completed", accepted: true, operation } },
       },
     });
-    await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     await assert.rejects(
       f.backend.command("send", { projectId: "p", threadId: "t", text: "once", requestId }),
       (error) => {
@@ -1210,8 +805,7 @@ for (const scenario of [
       },
       deferredCommandState: true,
     });
-    await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     await assert.rejects(
       f.backend.command("send", { projectId: "p", threadId: "t", text: "once", requestId }),
       (error) => {
@@ -1231,7 +825,7 @@ for (const scenario of [
 test("an unknown command is never replayed when its observer reconnects", async (t) => {
   const f = await fixture(t);
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const requestId = "e99d906b-7912-4e95-81dc-a3fd3c967779";
   const request = { projectId: "p", threadId: "t", text: "once", requestId };
   await assert.rejects(
@@ -1246,40 +840,11 @@ test("an unknown command is never replayed when its observer reconnects", async 
   assert.equal(f.calls.filter((c) => c.method === "hello").length, 2);
 });
 
-for (const state of ["stopped", "unconfirmed"]) {
-  test(`persisted ${state} intent prevents passive reconnection`, async (t) => {
-    const f = await fixture(t);
-    await f.publish();
-    await f.backend.attach();
-    await f.backend.saveControl(state);
-    f.drop();
-    await sleep(700);
-    assert.equal(f.backend.status.connected, false);
-    assert.equal(f.backend.snapshot().connection.state, "unavailable");
-    assert.equal(f.connections(), 1);
-  });
-}
-
-test("a changed backend identity needs explicit recovery instead of automatic retirement", async (t) => {
-  const f = await fixture(t);
-  await f.publish();
-  await f.backend.attach();
-  f.metadata.identity = "other-build";
-  await f.publish();
-  f.drop();
-  await until(() => f.connections() === 2);
-  await sleep(700);
-  assert.equal(f.backend.status.connected, false);
-  assert.equal(f.connections(), 2);
-  assert.equal(f.backend.snapshot().connection.state, "unavailable");
-  assert.equal(f.calls.filter((c) => c.method !== "hello").length, 0);
-});
-
 for (const forUpdate of [false, true]) {
   test(`confirmed explicit stop (forUpdate=${forUpdate}) blocks automatic attachment`, async (t) => {
     const f = await fixture(t);
     await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     assert.equal((await f.backend.stopService(forUpdate)).stopped, true);
     await f.publish();
     f.drop();
@@ -1295,42 +860,11 @@ for (const forUpdate of [false, true]) {
   });
 }
 
-test("closing the GUI cancels pending observer recovery", async (t) => {
-  const f = await fixture(t);
-  await f.publish();
-  await f.backend.attach();
-  f.drop();
-  await sleep(25);
-  await f.backend.shutdown();
-  await sleep(700);
-  assert.equal(f.connections(), 1);
-});
-
-test("an explicit reconnect can reopen observation after a persisted user stop", async (t) => {
-  const f = await fixture(t);
-  await f.publish();
-  await f.backend.attach();
-  await f.backend.saveControl("stopped");
-  f.drop();
-  await sleep(25);
-  let starts = 0;
-  f.backend.initialize = async () => {
-    starts++;
-    assert.equal(await f.backend.attach(), true);
-  };
-  await f.backend.init({ automatic: true });
-  assert.equal(f.backend.status.connected, false);
-  assert.equal(starts, 0);
-  await f.backend.init();
-  assert.equal(f.backend.status.connected, true);
-  assert.equal(starts, 1);
-});
-
 for (const automatic of [false, true]) {
   test(`completed update resumes after GUI reopen (automatic=${automatic})`, async (t) => {
     const f = await fixture(t);
     await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     const stopped = await f.backend.stopService(true);
     assert.equal(stopped.operation.phase, "completed");
     const journal = join(f.home, "lifecycle-operations", `${stopped.operation.requestId}.json`);
@@ -1351,63 +885,15 @@ for (const automatic of [false, true]) {
   });
 }
 
-for (const scenario of [
-  "stopped",
-  "missing receipt",
-  "unfinished target",
-  "live Desktop",
-  "mixed unknown",
-]) {
-  test(`GUI reopen retains ${scenario} lifecycle intent without starting a replacement`, async (t) => {
-    const f = await fixture(t, {
-      service:
-        scenario === "unfinished target"
-          ? { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] }
-          : {},
-    });
-    if (scenario === "live Desktop") {
-      f.metadata.pid = process.pid;
-      f.setStop("crashed");
-    }
-    if (scenario === "unfinished target") f.setStop("pending");
-    await f.publish();
-    await f.backend.attach();
-    const stopped = await f.backend.stopService(scenario !== "stopped");
-    if (scenario === "missing receipt")
-      await rm(join(f.home, "lifecycle-operations", `${stopped.operation.requestId}.json`));
-    if (scenario === "mixed unknown") {
-      const control = JSON.parse(await readFile(f.backend.controlPath, "utf8"));
-      control.references.push({
-        ...control.references[0],
-        requestId: "7af130a1-5a89-4c9b-9001-7592bc2166c5",
-      });
-      await writeFile(f.backend.controlPath, JSON.stringify(control));
-    }
-    await f.backend.shutdown();
-    const reopened = new SharedCoreBackend({ app: { getPath: () => f.home }, home: f.home });
-    t.after(() => reopened.shutdown());
-    let starts = 0;
-    reopened.initialize = async () => {
-      starts++;
-    };
-    await reopened.init({ automatic: true });
-    assert.equal(starts, 0);
-    assert.ok(reopened.lifecycleReferences.size > 0);
-    assert.ok(JSON.parse(await readFile(reopened.controlPath, "utf8")).references.length > 0);
-    assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
-  });
-}
-
 async function startupFixture(t, options = {}) {
   let replacementIdentity, controlAtStop;
   const f = await fixture(t, {
     ...options,
     onStop: async ({ home, metadata }) => {
       controlAtStop = JSON.parse(await readFile(join(home, "service-control.json"), "utf8"));
-      const capabilities = await readFile(join(home, "capabilities.log"), "utf8");
       assert.ok(
-        capabilities.includes("config models --help"),
-        "inspect the replacement before stopping the retained service",
+        f.hostCapabilityChecks.includes("workbenchUtilities"),
+        "inspect Host configuration capability before stopping the retained service",
       );
       metadata.identity = replacementIdentity;
     },
@@ -1480,15 +966,15 @@ test("deployment identity tracks actual executable content and ignores mtime alo
   }
 });
 
-test("deployment identity includes split desktop contract content", async (t) => {
+test("deployment identity includes split contracts and relocated workbench domains", async (t) => {
   const f = await startupFixture(t);
   const deployment = join(f.home, "deployment");
   const core = join(deployment, "src/core");
   await mkdir(core, { recursive: true });
-  for (const name of ["bundle.cjs", "service-config.cjs"])
+  for (const name of ["service-config.cjs", "space-bootstrap.cjs"])
     await cp(require.resolve("../app/src/core/" + name), join(core, name));
   await cp(
-    require.resolve("../app/src/workspace-files"),
+    require.resolve("@areal/workbench-service/desktop/workspace-files.js"),
     join(deployment, "src/workspace-files.js"),
   );
   const modules = join(deployment, "node_modules/@areal");
@@ -1502,6 +988,10 @@ test("deployment identity includes split desktop contract content", async (t) =>
       await cp(join(originalModules, name, "client"), join(modules, name, "client"), {
         recursive: true,
       });
+      await cp(join(originalModules, name, "package.json"), join(modules, name, "package.json"));
+    } else if (name === "workbench-service") {
+      await mkdir(join(modules, name));
+      await cp(join(originalModules, name, "src"), join(modules, name, "src"), { recursive: true });
       await cp(join(originalModules, name, "package.json"), join(modules, name, "package.json"));
     } else await symlink(join(originalModules, name), join(modules, name), "dir");
   }
@@ -1517,135 +1007,18 @@ test("deployment identity includes split desktop contract content", async (t) =>
   );
   await writeFile(catalog, content);
   assert.equal(await identity(f.backend.options), before);
-});
-
-test("automatic same-deployment reopen silently retains the existing service", async (t) => {
-  const f = await startupFixture(t);
-  f.metadata.identity = f.identity;
-  await f.publish();
-  await f.backend.init({ automatic: true });
-  assert.deepEqual(f.backend.snapshot().connection, { state: "ready" });
-  assert.equal(f.backend.snapshot().backendUpdate, undefined);
-  assert.equal(await f.launches(), 0);
-  assert.deepEqual(
-    f.calls.map((call) => call.method),
-    ["hello"],
-  );
-});
-
-test("automatic idle reopen retains the old deployment with an explicit update pending", async (t) => {
-  const f = await startupFixture(t);
-  await f.backend.init({ automatic: true });
-  assert.equal(f.backend.metadata.identity, "fixture");
-  assert.equal(await f.launches(), 0);
-  assert.deepEqual(f.backend.snapshot().connection, { state: "ready" });
-  assert.deepEqual(f.backend.snapshot().backendUpdate, { state: "pending" });
-  assert.deepEqual(
-    f.calls.map((call) => call.method),
-    ["hello"],
-  );
-  await assert.rejects(readFile(f.backend.controlPath), { code: "ENOENT" });
-});
-
-test("explicit update persists its reference and launches only after confirmed exit", async (t) => {
-  const f = await startupFixture(t);
-  await f.backend.init({ automatic: true });
-  assert.equal(
-    (
-      await f.backend.applyUpdate({
-        notify: async () => {
-          throw Error("idle update needs no dialog");
-        },
-      })
-    ).stopped,
-    true,
-  );
-  assert.equal(f.controlAtStop().references[0].kind, "updateDesktop");
-  assert.equal(f.backend.metadata.identity, f.identity);
-  assert.equal(await f.launches(), 1);
-  assert.deepEqual(f.backend.snapshot().connection, { state: "ready" });
-  assert.equal(f.backend.snapshot().backendUpdate, undefined);
-  assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
-  await assert.rejects(readFile(f.backend.controlPath), { code: "ENOENT" });
-});
-
-for (const [label, service, resources] of [
-  ["active Turn", { busy: true }, []],
-  ["other GUI", { clients: 2 }, []],
-  [
-    "pending Queue",
-    {},
-    [{ projectId: "p", root: "/fixture", restartSafe: true, resources: [], waitingMessages: 1 }],
-  ],
-  [
-    "UNKNOWN",
-    {},
-    [{ projectId: "p", root: "/fixture", restartSafe: false, resources: [], unresolvedTools: 1 }],
-  ],
-]) {
-  test(`automatic changed deployment retains ${label} and never watches for idle`, async (t) => {
-    const f = await startupFixture(t, { service, resources });
-    await f.backend.init({ automatic: true });
-    assert.equal(f.backend.status.connected, true);
-    assert.deepEqual(f.backend.snapshot().backendUpdate, { state: "pending" });
-    assert.equal(f.backend.metadata.identity, "fixture");
-    Object.assign(f.service, { busy: false, clients: 1 });
-    await f.backend.init({ automatic: true });
-    await sleep(30);
-    assert.equal(
-      f.calls.some((call) => call.method === "stopService"),
-      false,
-    );
-    assert.equal(await f.launches(), 0);
-  });
-}
-
-test("explicit connect observes a changed deployment without automatic replacement", async (t) => {
-  const f = await startupFixture(t);
-  await f.backend.init();
-  assert.equal(f.backend.status.connected, true);
-  assert.deepEqual(f.backend.snapshot().backendUpdate, { state: "pending" });
-  assert.equal(
-    f.calls.some((call) => call.method === "stopService"),
-    false,
-  );
-  assert.equal(await f.launches(), 0);
-});
-
-test("replacement capability failure keeps the original connected service", async (t) => {
-  const f = await startupFixture(t);
-  await writeFile(f.binary, '#!/bin/sh\nprintf "unrecognized subcommand\\n"\n');
-  await f.backend.init({ automatic: true });
-  await assert.rejects(f.backend.applyUpdate(), /当前 Core 不支持/);
-  assert.equal(f.backend.status.connected, true);
-  assert.equal(f.backend.snapshot().connection.state, "ready");
-  assert.equal(f.backend.snapshot().backendUpdate.state, "failed");
-  assert.match(f.backend.snapshot().backendUpdate.message, /当前 Core 不支持/);
-  assert.equal(
-    f.calls.some((call) => call.method === "stopService"),
-    false,
-  );
-  assert.equal(await f.launches(), 0);
-});
-
-test("identity read failure leaves a retained observer usable with an update error", async (t) => {
-  const f = await startupFixture(t);
-  await rm(f.binary);
-  await f.backend.init({ automatic: true });
-  assert.equal(f.backend.status.connected, true);
-  assert.equal(f.backend.snapshot().connection.state, "ready");
-  assert.equal(f.backend.snapshot().backendUpdate.state, "failed");
-  assert.equal(
-    f.calls.some((call) => call.method === "stopService"),
-    false,
-  );
-  assert.equal(await f.launches(), 0);
+  const domain = join(modules, "workbench-service/src/domains/feedback.cjs");
+  const original = await readFile(domain, "utf8");
+  await writeFile(domain, original + "\n// 兼容性回归：迁出领域仍参与后台身份。\n");
+  assert.notEqual(await identity(f.backend.options), before);
+  await writeFile(domain, original);
+  assert.equal(await identity(f.backend.options), before);
 });
 
 test("known blocked update stays connected and permits unrelated reads and writes", async (t) => {
   const f = await startupFixture(t, { commandResult: { accepted: true } });
   f.setStop("refused");
-  await f.backend.init({ automatic: true });
+  await f.connectMain();
   const result = await f.backend.applyUpdate();
   assert.equal(result.operation.phase, "blocked");
   assert.equal(f.backend.status.connected, true);
@@ -1658,54 +1031,9 @@ test("known blocked update stays connected and permits unrelated reads and write
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
 });
 
-test("lost update response reads the original receipt and never replays on startup", async (t) => {
-  const f = await startupFixture(t, {
-    service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
-  });
-  f.setStop("unknown");
-  await f.backend.init({ automatic: true });
-  const result = await f.backend.applyUpdate();
-  assert.equal(result.operation.phase, "acceptedPending");
-  const control = JSON.parse(await readFile(f.backend.controlPath, "utf8"));
-  assert.equal(control.references[0].kind, "updateDesktop");
-  assert.equal(control.references[0].requestId, result.operation.requestId);
-  await f.backend.init({ automatic: true });
-  assert.equal(f.backend.status.connected, true);
-  assert.equal(f.backend.snapshot().lifecycle.phase, "acceptedPending");
-  assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
-  assert.equal(await f.launches(), 0);
-  f.drop();
-  await until(() => !f.backend.status.connected);
-  await rm(join(f.home, "service.json"));
-  await f.backend.checkLifecycle();
-  assert.equal(f.backend.snapshot().lifecycle.phase, "acceptedPending");
-  assert.equal(await f.launches(), 0);
-});
-
-test("confirmed update exit followed by launch failure retains the update reference", async (t) => {
-  const f = await startupFixture(t);
-  await f.backend.init({ automatic: true });
-  const appPath = f.backend.app.getAppPath;
-  f.backend.app.getAppPath = () => {
-    throw Error("replacement launch unavailable");
-  };
-  await assert.rejects(f.backend.applyUpdate(), /replacement launch unavailable/);
-  const control = JSON.parse(await readFile(f.backend.controlPath, "utf8"));
-  assert.equal(control.references[0].kind, "updateDesktop");
-  await f.backend.init({ automatic: true });
-  assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
-  assert.equal(await f.launches(), 0);
-  assert.equal(JSON.parse(await readFile(f.backend.controlPath, "utf8")).references.length, 1);
-  f.backend.app.getAppPath = appPath;
-  await f.backend.init();
-  assert.equal(await f.launches(), 1);
-  assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
-});
-
 test("legacy lifecycle stays readable but unsupported stop never probes or persists intent", async (t) => {
   const f = await fixture(t, { lifecycle: false });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   await assert.rejects(f.backend.stopService(), (error) => error.code === "LIFECYCLE_UNSUPPORTED");
   assert.equal(f.backend.snapshot().connection.state, "ready");
   assert.equal((await f.backend.serviceStatus()).connected, true);
@@ -1720,7 +1048,7 @@ test("single-turn cancellation persists fixed identity without blocking unrelate
   const target = { projectId: "p", serviceId: "s", generation: "g" };
   const f = await fixture(t, { commandResult: { accepted: true }, service: { targets: [target] } });
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("unknown");
   const result = await f.backend.command("stop", {
     projectId: "p",
@@ -1729,6 +1057,7 @@ test("single-turn cancellation persists fixed identity without blocking unrelate
     requestId: "db7fbfc7-161c-4bf1-a633-cc8421518571",
   });
   assert.equal(result.operation.phase, "acceptedPending");
+  await f.connectMain();
   await f.backend.checkLifecycle();
   assert.deepEqual(
     await f.backend.command("send", {
@@ -1756,51 +1085,11 @@ test("single-turn cancellation persists fixed identity without blocking unrelate
   );
 });
 
-test("legacy unconfirmed startup attaches for observation without a permanent global freeze", async (t) => {
-  const f = await fixture(t, { commandResult: { accepted: true } });
-  await f.publish();
-  await f.backend.saveControl("unconfirmed");
-  await f.backend.init({ automatic: true });
-  assert.equal(f.backend.status.connected, true);
-  assert.equal(f.backend.snapshot().connection.state, "ready");
-  assert.equal(f.backend.snapshot().lifecycle.phase, "admissionUnconfirmed");
-  assert.deepEqual(await f.backend.command("list", { projectId: "p" }), { accepted: true });
-  assert.equal(
-    f.calls.some((call) => ["stopService", "lifecycleRequest"].includes(call.method)),
-    false,
-  );
-});
-
-test("restoring a project on a connected legacy backend does not restart connection recovery", async (t) => {
-  const f = await fixture(t, { commandResult: { accepted: true } });
-  await f.publish();
-  await f.backend.saveControl("unconfirmed");
-  await f.backend.init({ automatic: true });
-  const states = [];
-  f.backend.onChange = () => states.push(f.backend.snapshot().connection.state);
-  const original = await readFile(f.backend.controlPath, "utf8");
-  assert.deepEqual(await f.backend.command("connect", { projectId: "p" }), { accepted: true });
-  assert.deepEqual(await f.backend.command("open", { projectId: "p", threadId: "t" }), {
-    accepted: true,
-  });
-  assert.deepEqual(states, [], "project restoration must not invalidate its own ready connection");
-  assert.equal(f.calls.filter((call) => call.method === "hello").length, 1);
-  assert.equal(
-    await readFile(f.backend.controlPath, "utf8"),
-    original,
-    "legacy outcome remains unacknowledged",
-  );
-  assert.equal(
-    f.calls.some((call) => ["stopService", "lifecycleRequest"].includes(call.method)),
-    false,
-  );
-});
-
 test("a completed target receipt and original Desktop exit settle the crash before exit intent", async (t) => {
   const target = { projectId: "p", serviceId: "s", generation: "g" };
   const f = await fixture(t, { service: { targets: [target] } });
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("crashed");
   const result = await f.backend.stopService();
   assert.equal(result.stopped, true);
@@ -1815,7 +1104,7 @@ test("a missing descriptor and completed target never prove a live Desktop has e
   });
   f.metadata.pid = process.pid;
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("crashed");
   const result = await f.backend.stopService();
   assert.equal(result.stopped, false);
@@ -1831,8 +1120,7 @@ test("a corrupted immediate receipt is reconciled against the original request i
       requestId: "0de45cd4-1d08-4390-afb6-5cef5633b838",
     }),
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("pending");
   const result = await f.backend.stopService();
   const request = f.calls.find((call) => call.method === "lifecycleRequest").params;
@@ -1845,8 +1133,7 @@ test("a fixed single-turn request ID cannot be rebound to a later turn", async (
   const f = await fixture(t, {
     service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("pending");
   const request = {
     projectId: "p",
@@ -1862,56 +1149,12 @@ test("a fixed single-turn request ID cannot be rebound to a later turn", async (
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
 });
 
-test("known incomplete update permits a fresh explicit intent after rechecking remaining targets", async (t) => {
-  const target = { projectId: "p", serviceId: "s", generation: "g" };
-  const f = await startupFixture(t, { service: { targets: [target] } });
-  await f.backend.init({ automatic: true });
-  f.setStop("partial");
-  assert.equal((await f.backend.applyUpdate()).operation.phase, "partial");
-  assert.equal(f.backend.snapshot().lifecycle.targets[0].message, "fixture cleanup pending");
-  f.setStop("success");
-  assert.equal((await f.backend.applyUpdate()).stopped, true);
-  const requests = f.calls.filter((call) => call.method === "lifecycleRequest");
-  assert.equal(requests.length, 2);
-  assert.notEqual(requests[0].params.requestId, requests[1].params.requestId);
-  assert.equal(await f.launches(), 1);
-});
-
-test("completed single-turn references do not prevent an explicit reconnect after Desktop stop", async (t) => {
-  const f = await fixture(t, {
-    service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
-  });
-  await f.publish();
-  await f.backend.attach();
-  assert.equal(
-    (
-      await f.backend.command("stop", {
-        projectId: "p",
-        threadId: "t",
-        turnId: "finished",
-        requestId: "6b1f801e-d322-45a1-af47-5fc07c1664e7",
-      })
-    ).operation.phase,
-    "completed",
-  );
-  assert.equal((await f.backend.stopService()).stopped, true);
-  await f.publish();
-  let starts = 0;
-  f.backend.initialize = async () => {
-    starts++;
-    assert.equal(await f.backend.attach(), true);
-  };
-  await f.backend.init();
-  assert.equal(starts, 1);
-  assert.equal(f.backend.status.connected, true);
-});
-
 test("explicit update finalizes a live Desktop after read-only reconciliation completes every target", async (t) => {
   const target = { projectId: "p", serviceId: "s", generation: "g" };
   const f = await startupFixture(t, { service: { targets: [target] } });
   f.metadata.pid = process.pid;
   await f.publish();
-  await f.backend.init({ automatic: true });
+  await f.connectMain();
   f.setStop("pending");
   const first = await f.backend.applyUpdate();
   const receipt = f.receipts.get(first.operation.requestId);
@@ -1932,8 +1175,7 @@ test("receipt persistence failure after admission retains and reads the original
   const f = await fixture(t, {
     service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("receipt-failed");
   const result = await f.backend.stopService();
   assert.equal(result.operation.phase, "acceptedPending");
@@ -1957,27 +1199,77 @@ test("offline recovery queries the original Host receipt without relaunching or 
   const originalRegistry = join(f.home, "original-harness");
   f.service.harnessHome = originalRegistry;
   await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("pending");
   const first = await f.backend.stopService();
   const target = first.operation.targets[0];
   const path = join(f.home, "lifecycle-operations", `${first.operation.requestId}.json`);
   const original = await readFile(path, "utf8");
-  const binary = join(f.home, "areal-receipt");
   const operation = {
     version: 1,
     requestId: target.requestId,
     serviceId: target.serviceId,
-    generation: target.generation,
-    cancel: false,
+    serviceGeneration: target.generation,
+    strategy: "ifIdle",
     state: "completed",
   };
+  // 沿用 host-lifecycle 的有限本机 Host socket；原 ID 只读核查，不启动 CLI。
+  const socketRoot = await realpath(await mkdtemp("/tmp/ah-receipt-"));
+  const socketPath = join(socketRoot, "host.sock");
+  const hostId = "fixture-original-host",
+    generation = "fixture-original-generation";
+  const authFile = join(originalRegistry, "host/auth.json");
+  await mkdir(join(originalRegistry, "host"), { recursive: true, mode: 0o700 });
+  await writeFile(authFile, JSON.stringify("original-host-token"), { mode: 0o600 });
   await writeFile(
-    binary,
-    `#!${process.execPath}\nconst fs=require('node:fs');\nfs.appendFileSync(${JSON.stringify(join(f.home, "host-reads.jsonl"))}, JSON.stringify({args:process.argv.slice(2),registry:process.env.AREAL_HARNESS_SERVICE_HOME})+'\\n');\nprocess.stdout.write(${JSON.stringify(JSON.stringify({ operation }))});\n`,
-    { mode: 0o700 },
+    join(originalRegistry, "host/host.json"),
+    JSON.stringify({
+      version: 1,
+      hostId,
+      generation,
+      socketPath,
+      authFile,
+      pid: process.pid,
+    }),
+    { mode: 0o600 },
   );
-  f.backend.options.binary = binary;
+  const hostCalls = [],
+    hostSockets = new Set();
+  const hostServer = createNetServer((socket) => {
+    hostSockets.add(socket);
+    socket.on("close", () => hostSockets.delete(socket));
+    socket.on("error", () => {});
+    let bytes = "";
+    socket.on("data", (chunk) => {
+      bytes += chunk;
+      for (;;) {
+        const end = bytes.indexOf("\n");
+        if (end < 0) break;
+        const request = JSON.parse(bytes.slice(0, end));
+        bytes = bytes.slice(end + 1);
+        hostCalls.push(request);
+        let result;
+        if (request.method === "hello") {
+          assert.equal(request.params.authToken, "original-host-token");
+          result = { version: 1, hostId, generation, capabilities: ["stopOperations"] };
+        } else {
+          assert.equal(request.method, "host.operation", "Recovery never dispatches stop/ensure");
+          assert.deepEqual(request.params, { requestId: target.requestId });
+          result = { operation };
+        }
+        socket.write(JSON.stringify({ version: 1, id: request.id, result }) + "\n");
+      }
+    });
+  });
+  hostServer.listen(socketPath);
+  await once(hostServer, "listening");
+  await chmod(socketPath, 0o600);
+  t.after(async () => {
+    for (const socket of hostSockets) socket.destroy();
+    await new Promise((done) => hostServer.close(done));
+    await rm(socketRoot, { recursive: true, force: true });
+  });
+  f.backend.options.binary = process.execPath;
   f.backend.options.harnessHome = join(f.home, "harness");
   f.backend.reconnectBlocked = true;
   f.drop();
@@ -1985,20 +1277,11 @@ test("offline recovery queries the original Host receipt without relaunching or 
   await rm(join(f.home, "service.json"));
   const checked = await f.backend.checkLifecycle();
   assert.equal(checked.phase, "completed");
-  assert.deepEqual(JSON.parse((await readFile(join(f.home, "host-reads.jsonl"), "utf8")).trim()), {
-    args: [
-      "service",
-      "operation",
-      "--instance",
-      "s",
-      "--expected-generation",
-      "g",
-      "--request-id",
-      target.requestId,
-      "--json",
-    ],
-    registry: originalRegistry,
-  });
+  assert.deepEqual(
+    hostCalls.map((request) => request.method),
+    ["hello", "host.operation"],
+  );
+  assert.deepEqual(hostCalls[1].params, { requestId: target.requestId });
   assert.equal(await readFile(path, "utf8"), original);
   assert.equal(f.calls.filter((call) => call.method === "lifecycleRequest").length, 1);
   assert.equal(f.backend.status.connected, false);
@@ -2008,8 +1291,7 @@ test("proven initial admission failure releases its reference and allows a new e
   const f = await fixture(t, {
     service: { targets: [{ projectId: "p", serviceId: "s", generation: "g" }] },
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   f.setStop("admission-failed");
   await assert.rejects(
     f.backend.stopService(),
@@ -2036,8 +1318,7 @@ test("single-turn cancellation uses the healthy target snapshot when another Cor
     service: { targets: [healthy, disconnected] },
     resourceError: { code: "DISCONNECTED", message: "unrelated Core is disconnected" },
   });
-  await f.publish();
-  await f.backend.attach();
+  await f.connectMain();
   const requestId = "79a29f4e-a52a-439d-8e2b-336406883293";
   const result = await f.backend.command("stop", {
     projectId: "p",
@@ -2075,8 +1356,7 @@ for (const supported of [false, true]) {
       commandResult: { accepted: true },
       service: supported ? { selectedThreadObservation: true } : {},
     });
-    await f.publish();
-    await f.backend.attach();
+    await f.connectMain();
     await f.backend.command("connect", { projectId: "p", threadId: "t" });
     const command = f.calls.find((call) => call.method === "command");
     assert.deepEqual(
@@ -2085,3 +1365,21 @@ for (const supported of [false, true]) {
     );
   });
 }
+
+test("default desktop profile identity follows the bundled deployment", (t) => {
+  const { serviceOptions } = require("../app/src/core/service-config.cjs");
+  const profile = require("@areal/workbench-service/desktop/core/desktop-profile.json").profiles[0];
+  const previous = process.env.AREAL_CORE_DESKTOP_CONFIG;
+  t.after(() => {
+    if (previous === undefined) delete process.env.AREAL_CORE_DESKTOP_CONFIG;
+    else process.env.AREAL_CORE_DESKTOP_CONFIG = previous;
+  });
+  delete process.env.AREAL_CORE_DESKTOP_CONFIG;
+  const app = { isPackaged: false, getPath: () => "/tmp/areal-profile-test" };
+  assert.deepEqual(serviceOptions(app).defaultProfile, {
+    id: profile.id,
+    revision: profile.revision,
+  });
+  process.env.AREAL_CORE_DESKTOP_CONFIG = "/tmp/custom-deployment.json";
+  assert.equal(serviceOptions(app).defaultProfile, undefined);
+});

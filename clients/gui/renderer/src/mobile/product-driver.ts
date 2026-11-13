@@ -1,4 +1,5 @@
 import { App } from "@capacitor/app";
+import { RemoteConnection } from "@areal/remote-client";
 import type { ProbeBridge } from "../mobile.js";
 import { keychain } from "./platform.js";
 
@@ -27,8 +28,18 @@ export async function runProduct(
   config: { mode: string; link?: string; projectId?: string; threadId?: string },
   bridge: ProbeBridge,
 ) {
+  let restoreRequest: (() => void) | undefined;
   try {
     const observations: {
+      requests?: {
+        method: string;
+        commandId?: string;
+        operationId?: string;
+        turnId?: string;
+        admissionState?: string;
+        subscriptionId?: string;
+        closed?: boolean;
+      }[];
       projects?: number;
       history?: boolean;
       historyAutoload?: boolean;
@@ -41,6 +52,33 @@ export async function runProduct(
       viewport?: { width: number; height: number; scale: number };
       touchTargets?: { name: string; width: number; height: number }[];
     } = {};
+    if (["unknown", "recover", "release"].includes(config.mode)) {
+      observations.requests = [];
+      const request = RemoteConnection.prototype.request;
+      restoreRequest = () => {
+        RemoteConnection.prototype.request = request;
+      };
+      RemoteConnection.prototype.request = async function (envelope, onResult) {
+        const dropped =
+          config.mode === "unknown" &&
+          envelope.method === "session.send" &&
+          envelope.params.text === "MOBILE_UNKNOWN_ONCE";
+        const result = await request.call(this, envelope, onResult);
+        observations.requests!.push({
+          method: envelope.method,
+          commandId: envelope.commandId ?? envelope.params?.commandId,
+          operationId: result.operationId,
+          turnId: result.turnId,
+          admissionState: result.admissionState,
+          subscriptionId: result.subscriptionId ?? envelope.params?.subscriptionId,
+          closed: result.closed,
+        });
+        if (!dropped) return result;
+        restoreRequest?.();
+        if (result.admissionState !== "accepted") throw new Error("OriginalSendNotAccepted");
+        throw Object.assign(new Error("ProductReplyDeliveryLost"), { submissionUnknown: true });
+      };
+    }
     if (config.mode === "pair") {
       await wait(() => state("unpaired"));
       await click("paste");
@@ -133,6 +171,13 @@ export async function runProduct(
           if (config.mode === "release") {
             await click("workspace-back");
             await wait(() => document.querySelector('[data-page="work"]'));
+            await wait(
+              () =>
+                observations.requests?.some(
+                  (request) => request.method === "subscription.close" && request.closed === true,
+                ),
+              "SubscriptionReleaseUnconfirmed",
+            );
           }
         }
       }
@@ -362,10 +407,12 @@ export async function runProduct(
         mode: config.mode,
         state: document.querySelector("[data-state]")?.getAttribute("data-state"),
         error:
-          error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,64}$/.test(error.message)
-            ? error.message
+          error instanceof Error && /^[A-Za-z][A-Za-z0-9]{0,64}$/.test(error.message) // raw-error-ok: 取错误码
+            ? error.message // raw-error-ok: 取错误码
             : "UnknownError",
       },
     });
+  } finally {
+    restoreRequest?.();
   }
 }

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { chromium, _electron: electron } = require("playwright-core");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommandResponse } = require("../packages/workbench/client/desktop-contract.cjs");
 const { CoreTaskModel } = await import("../packages/workbench/client/core-model.js");
 const dist = process.env.AREAL_RENDERER_DIST || join(gui, "renderer/dist");
@@ -1096,8 +1096,8 @@ try {
     ),
   );
   for (const file of [
-    "app/src/core/backend.cjs",
-    "app/src/core/history-observation.cjs",
+    "../../services/workbench/src/desktop/core/backend.cjs",
+    "../../services/workbench/src/desktop/core/history-observation.cjs",
     "packages/workbench/client/desktop-contract/conversation.cjs",
   ]) {
     hashes[file] = createHash("sha256")

@@ -1,13 +1,11 @@
 // @ts-check
 "use strict";
-
-const { basename } = require("node:path");
-const { serviceName } = require("./core/desktop-executables.cjs");
-
-// 只装配当前桌面客户端；不提供旧 GUI 或其他后端回退入口。
-require(
-  process.argv.some((value) => value.startsWith("--areal-core-service")) ||
-    (process.platform === "darwin" && basename(process.execPath) === serviceName)
-    ? "./core/service-main.cjs"
-    : "./core/main.cjs",
-);
+const guard = process.argv.find((arg) => arg.startsWith("--areal-relay-legacy-guard="));
+if (guard) {
+  const { app } = require("electron");
+  void require("./core/relay-legacy-guard.cjs")
+    .holdLegacyRelayGuard(app, guard.slice("--areal-relay-legacy-guard=".length))
+    .catch(() => app.exit(1));
+} else {
+  require("./core/main.cjs");
+}

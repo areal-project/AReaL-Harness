@@ -49,7 +49,7 @@ try {
   page.on("pageerror", (e) => errors.push(e.message));
   const url = `http://127.0.0.1:${vite.httpServer.address().port}/__scheduled.html`;
   await page.goto(url + "?legacy");
-  await page.getByText("后台版本过旧，无法读取任务目录。", { exact: false }).waitFor();
+  await page.getByText("当前版本无法读取任务目录。", { exact: false }).waitFor();
   assert.equal(
     (await page.evaluate(() => window.calls)).filter((call) => call.name === "tasks").length,
     0,
@@ -58,9 +58,9 @@ try {
   assert.equal(await page.getByRole("button", { name: "重新加载任务", exact: true }).count(), 0);
   await page.screenshot({ path: join(evidence, "00-legacy-catalog.png") });
   await page.evaluate(() => window.publishContract(true));
-  await page.getByRole("button", { name: "打开自动化 每日进展", exact: true }).waitFor();
+  await page.getByRole("button", { name: "打开定时任务 每日进展", exact: true }).waitFor();
   await page.evaluate(() => window.publishContract(false));
-  await page.getByText("后台版本过旧，无法读取任务目录。", { exact: false }).waitFor();
+  await page.getByText("当前版本无法读取任务目录。", { exact: false }).waitFor();
   const readsBeforeFocus = (await page.evaluate(() => window.calls)).filter(
     (call) => call.name === "tasks",
   ).length;
@@ -70,22 +70,22 @@ try {
     readsBeforeFocus,
   );
   assert.equal(
-    await page.getByRole("button", { name: "打开自动化 每日进展", exact: true }).count(),
+    await page.getByRole("button", { name: "打开定时任务 每日进展", exact: true }).count(),
     1,
     "loaded tasks survive an incompatible backend",
   );
   await page.goto(url);
-  await page.getByRole("button", { name: "打开自动化 每日进展", exact: true }).waitFor();
+  await page.getByRole("button", { name: "打开定时任务 每日进展", exact: true }).waitFor();
   assert.equal(await page.getByRole("combobox", { name: "运行位置筛选" }).count(), 0);
   assert.equal(await page.getByLabel("筛选任务", { exact: true }).count(), 0);
   assert.equal(await page.getByText("项目加载状态", { exact: true }).count(), 0);
   await page
     .getByRole("group", { name: "已开启", exact: true })
-    .getByRole("button", { name: "打开自动化 每日进展" })
+    .getByRole("button", { name: "打开定时任务 每日进展" })
     .waitFor();
   await page
     .getByRole("group", { name: "已暂停", exact: true })
-    .getByRole("button", { name: "打开自动化 每周回顾" })
+    .getByRole("button", { name: "打开定时任务 每周回顾" })
     .waitFor();
   assert.equal(
     await page.locator(".scheduled-workspace").evaluate((el) => getComputedStyle(el).display),
@@ -97,60 +97,64 @@ try {
   await page.screenshot({ path: join(evidence, "01-groups.png") });
   await page.getByRole("button", { name: "搜索定时任务", exact: true }).click();
   await page.getByRole("textbox", { name: "搜索定时任务", exact: true }).fill("每周");
-  assert.equal(await page.getByRole("button", { name: "打开自动化 每日进展" }).count(), 0);
-  await page.getByRole("button", { name: "打开自动化 每周回顾" }).click();
+  assert.equal(await page.getByRole("button", { name: "打开定时任务 每日进展" }).count(), 0);
+  await page.getByRole("button", { name: "打开定时任务 每周回顾" }).click();
   await page.getByRole("heading", { name: "每周回顾", exact: true }).waitFor();
   await page.setViewportSize({ width: 480, height: 800 });
   await page.getByTestId("task-center-list").waitFor({ state: "hidden" });
-  await page.getByRole("button", { name: "关闭任务详情", exact: true }).click();
+  await page.getByRole("button", { name: "返回任务列表", exact: true }).click();
   await page.getByTestId("task-center-list").waitFor();
   await page.goto(url + "?empty");
   await page.getByText("尚无定时任务", { exact: true }).waitFor();
   await page.screenshot({ path: join(evidence, "02-narrow-empty.png") });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-  for (const scope of ["global", "project"]) {
-    await page.goto(url + "?empty" + (scope === "project" ? "&project" : ""));
-    await page.getByRole("button", { name: "整理每日计划", exact: false }).click();
-    const drafts = await page.evaluate(() => window.drafts);
-    assert.deepEqual(drafts, [
-      {
-        projectId: scope === "project" ? "00000000-0000-4000-a000-000000000001" : undefined,
-        text: "帮我创建一个定时任务：回顾我提供的计划，整理当天待办和需要关注的事项。",
-      },
-    ]);
-    assert.equal(
-      (await page.evaluate(() => window.calls)).filter((call) =>
-        ["create", "projectless", "reconcile"].includes(call.name),
-      ).length,
-      0,
-    );
-    assert.equal(
-      await page.evaluate(() => localStorage.getItem("areal-gui:ordinary-schedule-creation")),
-      null,
-    );
-  }
+  // 定时页新建打开弹框，不跳到对话页；创建直接提交到无项目工作区，接在任务自己的对话里运行。
+  await page.goto(url + "?empty");
+  await page.getByRole("button", { name: "整理每日计划", exact: false }).click();
+  const objective = page.getByRole("textbox", { name: "指令", exact: true });
+  assert.equal(await objective.inputValue(), "回顾我提供的计划，整理当天待办和需要关注的事项。");
+  assert.equal(
+    await page.getByText("跟随当前默认", { exact: true }).count(),
+    0,
+    "advanced starts collapsed",
+  );
+  await page.screenshot({ path: join(evidence, "02-new-dialog.png") });
+  await page.getByRole("button", { name: "创建", exact: true }).click();
+  await page.waitForFunction(() =>
+    window.calls.some((call) => call.name === "manage" && call.params.operation === "taskCreate"),
+  );
+  const created = (await page.evaluate(() => window.calls)).find(
+    (call) => call.name === "manage" && call.params.operation === "taskCreate",
+  ).params;
+  assert.equal(created.mode, "scheduled");
+  assert.equal(created.delivery, "thread");
+  assert.match(created.cwd, /^\/scratch\/\d{4}-\d{2}-\d{2}-/);
+  assert.equal(
+    (await page.evaluate(() => window.calls)).filter((call) =>
+      ["create", "reconcile"].includes(call.name),
+    ).length,
+    0,
+  );
+  assert.equal(
+    await page.evaluate(() => localStorage.getItem("areal-gui:ordinary-schedule-creation")),
+    null,
+  );
   await page.goto(url + "?fail");
   await page.getByRole("button", { name: "重新加载任务", exact: true }).waitFor();
   assert.equal(await page.getByText("尚无定时任务", { exact: true }).count(), 0);
   await page.evaluate(() => (window.fail = false));
   await page.getByRole("button", { name: "重新加载任务", exact: true }).click();
-  await page.getByRole("button", { name: "打开自动化 每日进展" }).waitFor();
+  await page.getByRole("button", { name: "打开定时任务 每日进展" }).waitFor();
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.goto(url + "?empty");
   await page.getByRole("button", { name: "整理每日计划", exact: false }).click();
-  assert.deepEqual(await page.evaluate(() => window.drafts), [
-    {
-      projectId: "00000000-0000-4000-a000-000000000001",
-      text: "帮我创建一个定时任务：回顾我提供的计划，整理当天待办和需要关注的事项。",
-    },
-  ]);
+  await page.getByRole("textbox", { name: "指令", exact: true }).waitFor();
   assert.equal(
-    (await page.evaluate(() => window.calls)).filter((call) =>
-      ["create", "projectless"].includes(call.name),
-    ).length,
+    (await page.evaluate(() => window.calls)).filter((call) => call.name === "create").length,
     0,
-    "new creation only stages a draft without allocating a Thread",
+    "opening the dialog does not allocate a Thread",
   );
+  await page.keyboard.press("Escape");
   for (const mode of ["unresolved", "completed", "observed-completed"]) {
     const result = { mode, passed: false };
     try {

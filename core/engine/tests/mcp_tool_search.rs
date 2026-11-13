@@ -36,7 +36,7 @@ impl Model for SearchModel {
         let mcp: Vec<_> = names.iter().filter(|n| n.starts_with("mcp__")).collect();
         let calls =
             if !self.lazy {
-                assert_eq!(mcp.len(), 20);
+                assert_eq!(mcp.len(), 21);
                 assert!(!names.contains(&"mcp_tool_search"));
                 vec![ModelEvent::text("eager")]
             } else if round == 0 {
@@ -90,7 +90,7 @@ for line in sys.stdin:
  if m=='server/discover':
   print(json.dumps({'jsonrpc':'2.0','id':r['id'],'error':{'code':-32601,'message':'Method not found'}}),flush=True); continue
  if m=='initialize': out={'protocolVersion':'2025-11-25','capabilities':{'tools':{}},'serverInfo':{'name':'fixture','version':'1'}}
- elif m=='tools/list': out={'tools':[{'name':'tool'+str(i),'description':'Fixture action '+str(i),'inputSchema':{'type':'object','properties':{},'additionalProperties':False}} for i in range(20)]}
+ elif m=='tools/list': out={'tools':[{'name':'tool'+str(i),'description':'Fixture action '+str(i),'inputSchema':{'type':'object','properties':{},'additionalProperties':False}} for i in range(21)]}
  elif m=='tools/call':
   with open(sys.argv[1],'a') as f: f.write(p['name']+'\n')
   out={'content':[{'type':'text','text':'called-'+p['name']}]}

@@ -1136,6 +1136,32 @@ export const remoteMessages = {
     "zh-CN": "后台服务管理",
     en: "Background service management",
   },
+  "settings.host.login": { "zh-CN": "登录后运行后台", en: "Run background service at login" },
+  "settings.host.loginDescription": {
+    "zh-CN": "从系统服务状态读取。开启前请先完成工作并明确停止当前后台。",
+    en: "Shows the system service state. Finish your work and explicitly stop the current service before enabling.",
+  },
+  "settings.host.update": { "zh-CN": "后台更新", en: "Background service update" },
+  "settings.host.updateDescription": {
+    "zh-CN": "应用本机已安装的版本。",
+    en: "Apply a version already installed on this computer.",
+  },
+  "settings.host.restartPending": {
+    "zh-CN": "版本 {value0} 等待后台重启。",
+    en: "Version {value0} is waiting for the background service to restart.",
+  },
+  "settings.host.checkUpdate": { "zh-CN": "检查原请求", en: "Check original request" },
+  "settings.host.targetVersion": { "zh-CN": "目标版本", en: "Target version" },
+  "settings.host.prepareUpdate": { "zh-CN": "准备更新", en: "Prepare update" },
+  "settings.host.applyUpdate": { "zh-CN": "空闲时重启并更新", en: "Restart and update when idle" },
+  "settings.host.idleUpdate": {
+    "zh-CN": "后台忙碌时会拒绝此次重启，可稍后检查状态。",
+    en: "A busy service rejects this restart. You can check its state later.",
+  },
+  "settings.host.originalUpdatePending": {
+    "zh-CN": "原升级请求尚未结算，请检查原请求。",
+    en: "The original update request is unsettled. Check that request.",
+  },
   "settings.serviceStatusSettings.sharedBackgroundService": {
     "zh-CN": "共享后台",
     en: "Shared background service",
@@ -1172,17 +1198,17 @@ export const remoteMessages = {
     "zh-CN": "退出应用",
     en: "Quit application",
   },
-  "settings.serviceStatusSettings.stopsAllBackgroundServicesForThisApp": {
-    "zh-CN": "停止本应用的所有后台服务。有活动任务时先确认，清理完成后退出。",
-    en: "Stops all background services for this app. Active tasks require confirmation. The app quits after cleanup.",
+  "settings.serviceStatusSettings.keepsBackgroundRunningByDefault": {
+    "zh-CN": "默认保持共享后台运行。有任务时可停止任务并退出，需再次确认。",
+    en: "Keeps the shared backend running by default. When tasks are active, you can choose to stop them and quit after a second confirmation.",
   },
   "settings.serviceStatusSettings.quitAReaLHarness": {
     "zh-CN": "退出 AReaL Harness",
     en: "Quit AReaL Harness",
   },
   "settings.serviceStatusSettings.quitRequirements": {
-    "zh-CN": "退出条件",
-    en: "Quit requirements",
+    "zh-CN": "桌面服务停止条件",
+    en: "Desktop service stop requirements",
   },
   "settings.serviceStatusSettings.theBackgroundServiceIsConfirmedStopped": {
     "zh-CN": "后台已确认停止。",
@@ -2161,6 +2187,14 @@ export const remoteMessages = {
   "settings.mobileConnect.canOperateDescription": {
     "zh-CN": "还能发送、停止、回答",
     en: "Also send, stop and answer",
+  },
+  "settings.mobileConnect.canManage": {
+    "zh-CN": "允许管理",
+    en: "Allow managing",
+  },
+  "settings.mobileConnect.canManageDescription": {
+    "zh-CN": "还能改项目设置、插件和定时任务",
+    en: "Also change project settings, plugins and scheduled tasks",
   },
   "settings.mobileConnect.doneTitle": {
     "zh-CN": "“{device}”已连接",

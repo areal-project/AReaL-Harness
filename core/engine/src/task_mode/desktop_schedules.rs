@@ -3,9 +3,72 @@ use super::*;
 use areal_protocol::desktop::ThreadStart;
 
 impl Engine {
+    pub async fn register_schedule_tools(
+        &self,
+        request: TaskToolsReady,
+        host: Arc<dyn tools::DynamicToolHost>,
+    ) -> Result<()> {
+        if host.is_closed() {
+            return Err(Error::Closed);
+        }
+        let mut definitions = Vec::new();
+        for bundle in request.bundles {
+            let definition = match bundle {
+                DesktopToolBundle::Browser => areal_protocol::desktop::browser_v1_tool(),
+                DesktopToolBundle::Computer => areal_protocol::desktop::computer_v1_tool(),
+            };
+            if definitions
+                .iter()
+                .any(|tool: &areal_protocol::ToolDefinition| tool.name == definition.name)
+            {
+                return Err(invalid("duplicate desktop tool bundle"));
+            }
+            definitions.push(definition);
+        }
+        let mut providers = self.task_modes.desktop_tools.lock().await;
+        if definitions.is_empty() {
+            if providers
+                .get(host.identity())
+                .is_some_and(|old| old.host.id() == host.id())
+            {
+                providers.remove(host.identity());
+            }
+            return Ok(());
+        }
+        if providers
+            .get(host.identity())
+            .is_some_and(|old| old.host.id() != host.id() && !old.host.is_closed())
+        {
+            return Err(Error::Conflict);
+        }
+        providers.insert(
+            host.identity().into(),
+            DesktopScheduleTools { host, definitions },
+        );
+        Ok(())
+    }
+
+    pub(super) async fn schedule_tools(&self, owner: &str) -> Option<DesktopScheduleTools> {
+        self.task_modes
+            .desktop_tools
+            .lock()
+            .await
+            .get(owner)
+            .filter(|provider| !provider.host.is_closed())
+            .cloned()
+    }
+
     pub async fn register_schedule_host(
         self: &Arc<Self>,
         host: Arc<dyn tools::DynamicToolHost>,
+    ) -> Result<()> {
+        self.register_schedule_host_capabilities(host, false).await
+    }
+
+    pub async fn register_schedule_host_capabilities(
+        self: &Arc<Self>,
+        host: Arc<dyn tools::DynamicToolHost>,
+        prepare_create: bool,
     ) -> Result<()> {
         if host.is_closed() {
             return Err(Error::Closed);
@@ -13,11 +76,17 @@ impl Engine {
         let mut hosts = self.task_modes.hosts.lock().await;
         if hosts
             .get(host.identity())
-            .is_some_and(|old| old.id() != host.id() && !old.is_closed())
+            .is_some_and(|old| old.host.id() != host.id() && !old.host.is_closed())
         {
             return Err(Error::Conflict);
         }
-        hosts.insert(host.identity().into(), host);
+        hosts.insert(
+            host.identity().into(),
+            ScheduleHost {
+                host,
+                prepare_create,
+            },
+        );
         drop(hosts);
         self.start_task_scheduler();
         self.wake_tasks();
@@ -33,8 +102,40 @@ impl Engine {
             .lock()
             .await
             .get(owner)
-            .filter(|h| !h.is_closed())
-            .cloned()
+            .filter(|h| !h.host.is_closed())
+            .map(|h| h.host.clone())
+    }
+
+    pub(super) async fn schedule_create_host(
+        &self,
+        owner: &str,
+    ) -> Option<Arc<dyn tools::DynamicToolHost>> {
+        self.task_modes
+            .hosts
+            .lock()
+            .await
+            .get(owner)
+            .filter(|h| h.prepare_create && !h.host.is_closed())
+            .map(|h| h.host.clone())
+    }
+
+    pub async fn host_update_status(
+        &self,
+        owner: &str,
+    ) -> Option<areal_protocol::desktop::HostUpdateStatus> {
+        let host = self.schedule_host(owner).await?;
+        if !self.host_current(&host).await {
+            return None;
+        }
+        let status = host
+            .host_status(tokio_util::sync::CancellationToken::new())
+            .await
+            .ok()
+            .flatten();
+        if !self.host_current(&host).await {
+            return None;
+        }
+        status
     }
 
     pub(super) async fn host_current(&self, host: &Arc<dyn tools::DynamicToolHost>) -> bool {
@@ -84,7 +185,7 @@ impl Engine {
                 let goal: Goal = serde_json::from_value(view["goal"].clone()).map_err(invalid)?;
                 let stop = task.cancelled || run.reason.as_deref() == Some("stopRequested");
                 let cell = self.cell(thread_id).await?;
-                let bound = cell.bindings.read().await.host.clone();
+                let bound = cell.bindings.read().await.schedule_host.clone();
                 let online = bound.as_ref().is_some_and(|h| !h.is_closed());
                 if goal.status == GoalStatus::Active && (stop || !online) {
                     if !stop {
@@ -121,7 +222,7 @@ impl Engine {
                     if !self.host_current(&host).await {
                         return Ok(());
                     }
-                    // 空工具集也绑定 Host，执行不能因没有浏览器工具而变成脱离桌面的任务。
+                    let provider = self.schedule_tools(&task.owner).await;
                     {
                         let state = cell.state.lock().await;
                         if state.active.is_some() {
@@ -129,13 +230,18 @@ impl Engine {
                         }
                         let mut bindings = cell.bindings.write().await;
                         if bindings
-                            .host
+                            .schedule_host
                             .as_ref()
                             .is_some_and(|old| !old.is_closed() && old.id() != host.id())
                         {
                             return Err(Error::Conflict);
                         }
-                        bindings.host = Some(host);
+                        bindings.schedule_host = Some(host);
+                        if bindings.host.as_ref().is_none_or(|old| old.is_closed()) {
+                            bindings.host = provider.and_then(|provider| {
+                                provider.for_tools(&state.thread.dynamic_tools)
+                            });
+                        }
                     }
                     self.control_goal_from_task(&task, run, "resume", &view)
                         .await?;
@@ -245,6 +351,39 @@ impl Engine {
                 {
                     self.goals.request(thread_id);
                 }
+                // 接在普通对话里的运行结束后清掉目标，对话回到普通状态；暂停/受阻的保留以便恢复。
+                if task.delivery == TaskDelivery::Thread
+                    && matches!(goal.status, GoalStatus::Completed | GoalStatus::Failed)
+                    && goal.active_turn_id.is_none()
+                    && !goal.settling
+                    && run.workers.iter().all(|w| w.settled)
+                    && self
+                        .task_read(task_id)
+                        .await?
+                        .runs
+                        .iter()
+                        .any(|r| r.id == run.id && r.status.terminal())
+                {
+                    match self
+                        .goal_control(
+                            task.owner.clone(),
+                            "clear".into(),
+                            GoalControl {
+                                request_id: format!("task-settled-{}", run.id),
+                                thread_id: thread_id.clone(),
+                                goal_id: goal_id.clone(),
+                                expected_revision: view["revision"]
+                                    .as_u64()
+                                    .ok_or(Error::Conflict)?,
+                            },
+                            None,
+                        )
+                        .await
+                    {
+                        Ok(_) | Err(Error::Conflict) => {}
+                        Err(error) => return Err(error),
+                    }
+                }
             } else if task.cancelled || run.reason.as_deref() == Some("stopRequested") {
                 self.edit_task(task_id, |t| {
                     let r = t.runs.last_mut().unwrap();
@@ -280,6 +419,10 @@ impl Engine {
         let Some(host) = host else {
             return Ok(());
         };
+        if task.delivery == TaskDelivery::Thread {
+            return self.start_bound_schedule_run(&task, &run, host).await;
+        }
+        let provider = self.schedule_tools(&task.owner).await;
         let prepared = self
             .task_modes
             .state
@@ -312,7 +455,15 @@ impl Engine {
             );
             object.insert("cwd".into(), json!(anchor.cwd));
             object.insert("admissionGuard".into(), json!({"ordinarySession":true}));
-            let p: ThreadStart = serde_json::from_value(value).map_err(invalid)?;
+            let mut p: ThreadStart = serde_json::from_value(value).map_err(invalid)?;
+            if let Some(model) = &task.model {
+                p.model = Some(model.clone());
+                p.parameters = task.parameters.clone().unwrap_or_default();
+            }
+            p.dynamic_tools = provider
+                .as_ref()
+                .map(|provider| provider.definitions.clone())
+                .unwrap_or_default();
             let mut state = self.task_modes.state.lock().await;
             let mut candidate = state.clone();
             let current = candidate.tasks.get(task_id).ok_or(Error::NotFound)?;
@@ -332,11 +483,16 @@ impl Engine {
         if !self.host_current(&host).await {
             return Ok(());
         }
+        let tool_host = provider.and_then(|provider| provider.for_tools(&request.dynamic_tools));
         let thread = if let Some(thread) = &run.thread_id {
             self.read(thread, false).await?
         } else {
-            self.create_configured(task.owner.clone(), request, host.clone())
-                .await?
+            self.create_configured(
+                task.owner.clone(),
+                request,
+                tool_host.clone().unwrap_or_else(|| host.clone()),
+            )
+            .await?
         };
         self.edit_task(task_id, |t| {
             let r = t.runs.last_mut().unwrap();
@@ -357,13 +513,18 @@ impl Engine {
             }
             let mut bindings = cell.bindings.write().await;
             if bindings
-                .host
+                .schedule_host
                 .as_ref()
                 .is_some_and(|h| !h.is_closed() && h.id() != host.id())
             {
                 return Err(Error::Conflict);
             }
-            bindings.host = Some(host);
+            bindings.schedule_host = Some(host);
+            if bindings.host.as_ref().is_none_or(|old| {
+                old.is_closed() || old.id() == bindings.schedule_host.as_ref().unwrap().id()
+            }) {
+                bindings.host = tool_host;
+            }
         }
         {
             let cell = self.cell(&thread.id).await?;
@@ -400,6 +561,7 @@ impl Engine {
             .goal_create(
                 task.owner.clone(),
                 GoalCreate {
+                    model_override: None,
                     infer_limits: false,
                     request_id: format!("task-run-{}", run.id),
                     thread_id: thread.id,
@@ -419,5 +581,246 @@ impl Engine {
             }
             Err(error) => Err(error),
         }
+    }
+}
+
+impl Engine {
+    /// 定时任务固定模型：取对话当前所选模型，未选时取服务当前默认模型。
+    pub(super) fn fixed_schedule_model(
+        &self,
+        configuration: &areal_protocol::desktop::EffectiveConfig,
+    ) -> (
+        Option<areal_protocol::desktop::ModelRef>,
+        Option<areal_protocol::desktop::ModelParameters>,
+    ) {
+        let model = configuration
+            .model
+            .clone()
+            .or_else(|| self.configured_default_model());
+        let parameters = model
+            .as_ref()
+            .map(|_| areal_protocol::desktop::ModelParameters {
+                reasoning_effort: configuration.parameters.reasoning_effort.clone(),
+                service_tier: configuration.parameters.service_tier.clone(),
+                ..Default::default()
+            });
+        (model, parameters)
+    }
+
+    /// 绑定对话的运行：对话空闲时作为一个 Goal 接在对话末尾；忙碌时保持 queued 等下一次唤醒。
+    async fn start_bound_schedule_run(
+        self: &Arc<Self>,
+        task: &Task,
+        run: &TaskRun,
+        host: Arc<dyn tools::DynamicToolHost>,
+    ) -> Result<()> {
+        let Some(thread_id) = bound_thread(task) else {
+            return Err(Error::Conflict);
+        };
+        let settle = |reason: &'static str| {
+            let run_id = run.id.clone();
+            move |t: &mut Task| {
+                let r = t.runs.last_mut().unwrap();
+                if r.id == run_id && !r.status.terminal() {
+                    r.status = RunStatus::Failed;
+                    r.reason = Some(reason.into());
+                    r.completed_at = Some(now());
+                }
+            }
+        };
+        let cell = match self.cell(&thread_id).await {
+            Ok(cell) => cell,
+            Err(Error::NotFound) => {
+                return self.edit_task(&task.id, settle("threadMissing")).await;
+            }
+            Err(error) => return Err(error),
+        };
+        {
+            let state = cell.state.lock().await;
+            if state.thread.desktop.as_ref().is_some_and(|d| d.archived) {
+                drop(state);
+                return self.edit_task(&task.id, settle("threadArchived")).await;
+            }
+            if bound_thread_busy(&state) {
+                return Ok(());
+            }
+        }
+        let mut view = self.goal_get(&thread_id).await?;
+        if let Some(goal_id) = view["goal"]["id"].as_str().map(str::to_owned) {
+            let status = view["goal"]["status"].as_str().unwrap_or_default();
+            let ours = task
+                .runs
+                .iter()
+                .any(|r| r.goal_id.as_deref() == Some(goal_id.as_str()));
+            // 用户自己的未结束目标优先；只清理本任务的旧目标或已结束的目标。
+            if status == "active" || (!ours && !matches!(status, "completed" | "failed")) {
+                return Ok(());
+            }
+            self.goal_control(
+                task.owner.clone(),
+                "clear".into(),
+                GoalControl {
+                    request_id: format!("task-clear-{}", run.id),
+                    thread_id: thread_id.clone(),
+                    goal_id,
+                    expected_revision: view["revision"].as_u64().ok_or(Error::Conflict)?,
+                },
+                None,
+            )
+            .await?;
+            view = self.goal_get(&thread_id).await?;
+        }
+        if !self.host_current(&host).await {
+            return Ok(());
+        }
+        let provider = self.schedule_tools(&task.owner).await;
+        {
+            let state = cell.state.lock().await;
+            if bound_thread_busy(&state) {
+                return Ok(());
+            }
+            let mut bindings = cell.bindings.write().await;
+            if bindings
+                .schedule_host
+                .as_ref()
+                .is_some_and(|h| !h.is_closed() && h.id() != host.id())
+            {
+                return Err(Error::Conflict);
+            }
+            bindings.schedule_host = Some(host);
+            if bindings.host.as_ref().is_none_or(|old| old.is_closed()) {
+                bindings.host =
+                    provider.and_then(|provider| provider.for_tools(&state.thread.dynamic_tools));
+            }
+        }
+        self.edit_task(&task.id, |t| {
+            let r = t.runs.last_mut().unwrap();
+            if r.id == run.id && r.thread_id.is_none() {
+                r.thread_id = Some(thread_id.clone());
+            }
+        })
+        .await?;
+        let current = self.task_read(&task.id).await?;
+        if current.cancelled
+            || current
+                .runs
+                .last()
+                .is_none_or(|r| r.id != run.id || r.reason.as_deref() == Some("stopRequested"))
+        {
+            return Ok(());
+        }
+        let usage = self.task_modes.state.lock().await.usage(&task.id);
+        let used = usage.tokens_used.saturating_add(usage.reserved_tokens);
+        let budget = task.token_budget.map(|n| n.saturating_sub(used));
+        if budget == Some(0) {
+            return Err(invalid("task token budget exhausted"));
+        }
+        match self
+            .goal_create(
+                task.owner.clone(),
+                GoalCreate {
+                    model_override: task.model.clone().map(|model| GoalModel {
+                        model,
+                        parameters: task.parameters.clone().unwrap_or_default(),
+                    }),
+                    infer_limits: false,
+                    request_id: format!("task-run-{}", run.id),
+                    thread_id,
+                    expected_revision: view["revision"].as_u64().ok_or(Error::Conflict)?,
+                    objective: run.objective.clone().unwrap_or(task.objective.clone()),
+                    token_budget: budget,
+                    max_turns: task.max_turns,
+                    max_active_seconds: task.max_active_seconds,
+                    interaction_mode: Some(InteractionMode::Interactive),
+                },
+            )
+            .await
+        {
+            Ok(_) | Err(Error::Conflict) => Ok(()),
+            Err(Error::Exhausted(ref reason)) if reason.starts_with("active Turn capacity") => {
+                Ok(())
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// 归档绑定对话时暂停接在它上面的任务；恢复归档不自动开启，由用户在定时页决定。
+    pub(crate) async fn pause_tasks_bound_to(self: &Arc<Self>, thread_id: &str) -> Result<()> {
+        let bound: Vec<(String, u64, String)> = {
+            let state = self.task_modes.state.lock().await;
+            state
+                .tasks
+                .values()
+                .filter(|t| {
+                    t.mode == TaskMode::Scheduled
+                        && t.delivery == TaskDelivery::Thread
+                        && !t.paused
+                        && !t.cancelled
+                        && t.deleted_at.is_none()
+                        && bound_thread(t).as_deref() == Some(thread_id)
+                })
+                .map(|t| (t.id.clone(), t.revision, t.owner.clone()))
+                .collect()
+        };
+        for (task_id, revision, owner) in bound {
+            match self
+                .task_control(
+                    owner,
+                    "pause".into(),
+                    TaskControl {
+                        expected_run_id: None,
+                        request_id: format!("archive-pause-{thread_id}-{task_id}-{revision}"),
+                        task_id,
+                        expected_revision: revision,
+                    },
+                )
+                .await
+            {
+                Ok(_) | Err(Error::Conflict) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
+}
+
+/// 接收运行的对话：对话里建的任务是来源对话，定时页建的任务是它的专属对话。
+pub(crate) fn bound_thread(task: &Task) -> Option<String> {
+    task.source_thread_id
+        .clone()
+        .or_else(|| task.thread_id.clone())
+}
+
+fn bound_thread_busy(state: &crate::State) -> bool {
+    state.active.is_some()
+        || state.compacting
+        || state.thread.desktop.as_ref().is_some_and(|d| {
+            d.queue
+                .items
+                .iter()
+                .any(|i| matches!(i.status.as_str(), "pending" | "running"))
+                || d.interactions.iter().any(|i| i.status == "pending")
+        })
+}
+
+impl DesktopScheduleTools {
+    fn for_tools(
+        self,
+        definitions: &[areal_protocol::ToolDefinition],
+    ) -> Option<Arc<dyn tools::DynamicToolHost>> {
+        if self.host.is_closed()
+            || definitions.is_empty()
+            || definitions.iter().any(|tool| {
+                !self.definitions.iter().any(|known| {
+                    tool.name == known.name
+                        && tool.description == known.description
+                        && tool.input_schema == known.input_schema
+                        && tool.output_schema == known.output_schema
+                })
+            })
+        {
+            return None;
+        }
+        Some(self.host)
     }
 }

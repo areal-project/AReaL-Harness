@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { access, mkdir, mkdtemp, readFile, writeFile, rm, realpath } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile, rm, realpath } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { constants } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -197,8 +198,8 @@ if (command === "doctor") {
   });
   const evidenceRoot = join(localRoot, ".scratch/execution-trace");
   await mkdir(evidenceRoot, { recursive: true });
-  const evidence = await mkdtemp(join(evidenceRoot, "run-"));
-  const state = await mkdtemp(join(tempRoot, "av-"));
+  const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
+  const state = await trackedMkdtemp(join(tempRoot, "av-"));
   const run = { evidence, state, owner: randomUUID() };
   await writeFile(join(state, ".owner"), run.owner);
   await json(join(evidence, "run.json"), run);

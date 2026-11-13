@@ -1,4 +1,5 @@
-import { readLibraryRequest } from "@areal/workbench/desktop-contract/library-media";
+import { readLibraryRequest } from "../services.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { useI18n, UiMessageError, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsSelect } from "./SettingsPageParts.js";
@@ -33,7 +34,7 @@ export function NotificationSettings({
         cause instanceof UiMessageError
           ? cause.descriptor
           : cause instanceof Error
-            ? cause.message
+            ? currentErrorText(cause)
             : { id: "settings.notificationSettings.failedToSaveNotificationSettings" },
       );
     } finally {

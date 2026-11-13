@@ -5,8 +5,13 @@ const { once } = require("node:events");
 const { setImmediate } = require("node:timers/promises");
 const { createRequire } = require("node:module");
 const { WebSocket, WebSocketServer } = createRequire(require.resolve("../app/package.json"))("ws");
-const { OwnerTasks, taskCatalog } = require("../app/src/core/task-catalog.cjs");
-const { TaskNotificationMonitor } = require("../app/src/core/notifications.cjs");
+const {
+  OwnerTasks,
+  taskCatalog,
+} = require("@areal/workbench-service/desktop/core/task-catalog.cjs");
+const {
+  TaskNotificationMonitor,
+} = require("@areal/workbench-service/desktop/core/notifications.cjs");
 const deferred = () => {
   let resolve;
   const promise = new Promise((yes) => {
@@ -177,6 +182,26 @@ async function fixture(t, ids = ["owner"], timeoutMs = 1000) {
     },
   };
   backend.ownerTasks = new OwnerTasks(backend);
+  // 目录读取归 Host；这里只替身 Host 的目录投影，Core 元数据仍走真实连接。
+  backend.hostCall = async (method, params) => {
+    if (method === "tasks.observe") {
+      const owner = owners[params.projectId];
+      owner.calls.push({ method });
+      return {
+        data: owner.rows,
+        generation: owner.generation,
+        sequence: owner.sequence,
+        connectionId: owner.id + "-connection",
+        connectionGeneration: 1,
+      };
+    }
+    assert.equal(method, "tasks.read");
+    const selected = Object.values(owners).filter(
+      (owner) => !params.projectId || owner.id === params.projectId,
+    );
+    await Promise.all(selected.map((owner) => owner.monitor.start()));
+    return { data: selected.flatMap((owner) => owner.rows) };
+  };
   for (const owner of Object.values(owners)) {
     const client = new CoreClient({
       createSocket: () => new WebSocket(`ws://127.0.0.1:${server.address().port}/${owner.id}`),
@@ -207,19 +232,20 @@ async function fixture(t, ids = ["owner"], timeoutMs = 1000) {
       },
     );
     owner.publish = (extra = {}) =>
-      owner.socket.send(
-        JSON.stringify({
-          method: "areal/owner/invalidated",
-          params: {
-            generation: owner.generation,
-            sequence: ++owner.sequence,
-            changedTasks: [],
-            changedThreads: [],
-            facts: [],
-            ...extra,
-          },
-        }),
-      );
+      backend.ownerTasks.hostEvent({
+        projectId: owner.id,
+        connectionId: owner.id + "-connection",
+        connectionGeneration: 1,
+        method: "areal/owner/invalidated",
+        params: {
+          generation: owner.generation,
+          sequence: ++owner.sequence,
+          changedTasks: [],
+          changedThreads: [],
+          facts: [],
+          ...extra,
+        },
+      });
   }
   t.after(async () => {
     backend.ownerTasks.stop();
@@ -230,313 +256,14 @@ async function fixture(t, ids = ["owner"], timeoutMs = 1000) {
   return { backend, owners };
 }
 
-test("display requests share one owner baseline without starting Core or using legacy full lists", async (t) => {
-  const { backend, owners } = await fixture(t);
-  const entered = deferred(),
-    release = deferred();
-  owners.owner.read = async (method, _params, base) => {
-    if (method === "areal/task/directory/list") {
-      entered.resolve();
-      await release.promise;
-    }
-    return base();
-  };
-  const first = taskCatalog(backend, { operation: "list", projectId: "owner" });
-  const second = taskCatalog(backend, { operation: "observe", projectId: "owner", limit: 60 });
-  await entered.promise;
-  assert.equal(owners.owner.calls.filter((call) => call.method === "areal/owner/watch").length, 1);
-  release.resolve();
-  const [a, b] = await Promise.all([first, second]);
-  assert.equal(a.data[0].id, "owner");
-  assert.deepEqual(a.data, b.data);
-  assert.deepEqual(backend.starts, []);
-  assert.ok(
-    !owners.owner.calls.some((call) =>
-      ["areal/task/list", "areal/inbox/list", "areal/work/overview"].includes(call.method),
-    ),
-  );
-  assert.equal(a.data[0].runs, undefined);
-});
-test("CoreClient timeout retains the last complete owner and independent healthy sources", async (t) => {
-  const { backend, owners } = await fixture(t, ["blocked", "healthy"], 40);
-  await taskCatalog(backend, { operation: "observe" });
-  owners.blocked.read = (method, _params, base) =>
-    method === "areal/task/directory/list" ? undefined : base();
-  owners.blocked.monitor.observation.resetNeeded = true;
-  const result = await taskCatalog(backend, { operation: "list" });
-  assert.deepEqual(
-    result.data.map((row) => row.id),
-    ["blocked", "healthy"],
-  );
-  assert.equal(result.errors.length, 1);
-  assert.equal(result.errors[0].projectId, "blocked");
-  assert.ok(owners.blocked.errors.some((error) => error.code === "TIMEOUT"));
-  assert.equal(result.owners.find((owner) => owner.projectId === "blocked").status, "error");
-});
-test("differing display limits use the same full bounded cache and exact source filtering", async (t) => {
-  const { backend, owners } = await fixture(t);
-  owners.owner.rows = [
-    scheduled("ordinary", { mode: "foreground" }),
-    scheduled("a"),
-    scheduled("b"),
-    scheduled("other", { sourceThreadId: "different" }),
-  ];
-  const [small, large] = await Promise.all([
-    taskCatalog(backend, { operation: "list", limit: 1 }),
-    taskCatalog(backend, {
-      operation: "observe",
-      projectId: "owner",
-      sourceThreadId: "source",
-      limit: 3,
-    }),
-  ]);
-  assert.deepEqual(
-    small.data.map((row) => row.id),
-    ["a"],
-  );
-  assert.equal(small.hasMore, true);
-  assert.deepEqual(
-    large.data.map((row) => row.id),
-    ["a", "b"],
-  );
-  assert.equal(large.hasMore, false);
-  assert.equal(
-    owners.owner.calls.filter((call) => call.method === "areal/task/directory/list").length,
-    1,
-  );
-});
-test("metadata and partial errors keep project identity, request identity, and redaction", async (t) => {
-  const { backend, owners } = await fixture(t, ["named", "independent", "broken"]);
-  backend.library.value.projects.named = { title: "Project title" };
-  backend.saved[1].projectless = true;
-  owners.broken.read = (method, _params, base) => {
-    if (method === "areal/task/directory/list") throw new Error("cannot list secret");
-    return base();
-  };
-  const result = await taskCatalog(backend, { operation: "list" });
-  assert.deepEqual(
-    result.data.map((row) => [row.id, row.projectId, row.projectName, row.scope]),
-    [
-      ["named", "named", "Project title", "project"],
-      ["independent", "independent", "独立任务", "independent"],
-    ],
-  );
-  assert.match(result.errors[0].message, /cannot list \[redacted\]/);
-  const scoped = await taskCatalog(backend, {
-    operation: "observe",
-    projectId: "independent",
-    requestId: "11111111-1111-4111-a111-111111111111",
-    viewEpoch: 9,
-  });
-  assert.equal(scoped.projectId, "independent");
-  assert.equal(scoped.viewEpoch, 9);
-  assert.equal(scoped.requestId, "11111111-1111-4111-a111-111111111111");
-});
-for (const change of ["replace", "close", "shutdown"])
-  test(`connection ${change} cannot install a late baseline`, async (t) => {
-    const { backend, owners } = await fixture(t, ["stale", "healthy"]);
-    const entered = deferred(),
-      release = deferred();
-    owners.stale.read = async (method, _params, base) => {
-      if (method === "areal/task/directory/list") {
-        entered.resolve();
-        await release.promise;
-      }
-      return base();
-    };
-    const pending = taskCatalog(backend, { operation: "list" });
-    await entered.promise;
-    if (change === "replace") owners.stale.project.client = { closed: false };
-    if (change === "close") owners.stale.project.client.close();
-    if (change === "shutdown") backend.closing = true;
-    release.resolve();
-    const result = await pending;
-    assert.ok(!result.data.some((row) => row.id === "stale"));
-    assert.ok(result.errors.some((error) => error.projectId === "stale"));
-    assert.deepEqual(owners.stale.observed, []);
-  });
-test("repeated cursors and mixed directory generations never replace previous rows", async (t) => {
-  const { backend, owners } = await fixture(t);
-  await taskCatalog(backend, { operation: "list" });
-  for (const kind of ["cursor", "revision", "generation"]) {
-    const observation = owners.owner.monitor.observation;
-    clearTimeout(observation.retryTimer);
-    observation.retryTimer = undefined;
-    observation.error = null;
-    observation.resetNeeded = true;
-    owners.owner.read = (method, params, base) =>
-      method === "areal/task/directory/list"
-        ? {
-            generation: kind === "generation" ? "wrong" : owners.owner.generation,
-            revision: kind === "revision" && params.cursor ? 2 : 1,
-            data: [scheduled("uncommitted")],
-            nextCursor: "same",
-          }
-        : base();
-    const result = await taskCatalog(backend, { operation: "list" });
-    assert.equal(result.data[0].id, "owner");
-    assert.equal(result.errors.length, 1);
-  }
-});
-test("in-flight dirty ID replay preserves every completion and installs the newest row", async (t) => {
-  const { backend, owners } = await fixture(t);
-  await taskCatalog(backend, { operation: "observe" });
-  const owner = owners.owner,
-    entered = deferred(),
-    release = deferred();
-  let reads = 0;
-  owner.read = async (method, _params, base) => {
-    if (method === "areal/task/directory/read" && ++reads === 1) {
-      const result = base();
-      entered.resolve();
-      await release.promise;
-      return result;
-    }
-    return base();
-  };
-  owner.rows = [scheduled("owner", { revision: 2 })];
-  owner.publish({ changedTasks: ["owner"], facts: [completion("first")] });
-  await entered.promise;
-  owner.rows = [scheduled("owner", { revision: 3 })];
-  owner.publish({ changedTasks: ["owner"], facts: [completion("second")] });
-  await until(() => owner.monitor.observation.sequence === 2);
-  release.resolve();
-  await until(() => owner.monitor.observation.rows.get("owner").revision === 3);
-  assert.equal(owner.notices.length, 2);
-  assert.ok(reads >= 2);
-  owner.publish({ sequence: 2, facts: [completion("second")] });
-  await setImmediate();
-  assert.equal(owner.notices.length, 2);
-});
-test("watch facts during baseline are delivered once and reconciliation waits for host-ready", async (t) => {
-  const { backend, owners } = await fixture(t);
-  const owner = owners.owner;
-  owner.read = (method, _params, base) => {
-    if (method === "areal/task/directory/list")
-      owner.publish({ changedTasks: ["owner"], facts: [completion("during-baseline")] });
-    return base();
-  };
-  await taskCatalog(backend, { operation: "observe" });
-  assert.equal(owner.notices.length, 1);
-  assert.equal(owner.reconciled.length, 0);
-  await owner.monitor.ready();
-  assert.equal(owner.reconciled.flatMap((row) => row.facts).length, 1);
-});
-test("completion reconciliation drains facts arriving while reconciliation is pending", async (t) => {
-  const { backend, owners } = await fixture(t);
-  const owner = owners.owner,
-    entered = deferred(),
-    release = deferred();
-  await taskCatalog(backend, { operation: "observe" });
-  await owner.monitor.ready();
-  owner.monitor.reconcile = async (_rows, facts) => {
-    if (facts.length) {
-      owner.reconciled.push({ facts });
-      if (facts[0].runId === "first") {
-        entered.resolve();
-        await release.promise;
-      }
-    }
-  };
-  owner.publish({ changedTasks: ["owner"], facts: [completion("first")] });
-  await entered.promise;
-  owner.publish({ changedTasks: ["owner"], facts: [completion("second")] });
-  await until(() => owner.monitor.completions.size === 1);
-  release.resolve();
-  await until(() =>
-    owner.reconciled.flatMap((row) => row.facts).some((fact) => fact.runId === "second"),
-  );
-  assert.equal(owner.monitor.completions.size, 0);
-});
-test("explicit removal and sequence gaps rebuild from a new barrier", async (t) => {
-  const { backend, owners } = await fixture(t);
-  const owner = owners.owner;
-  await taskCatalog(backend, { operation: "observe" });
-  owner.rows = [];
-  owner.publish({ changedTasks: ["owner"] });
-  await until(() => owner.monitor.observation.rows.size === 0);
-  owner.rows = [scheduled("replacement")];
-  owner.sequence += 1;
-  owner.publish({ changedTasks: ["replacement"] });
-  await until(() => owner.monitor.observation.rows.has("replacement"));
-  assert.ok(owner.calls.filter((call) => call.method === "areal/owner/watch").length >= 2);
-});
-test("Inbox expands pending attention channels and separates message and task identity", async (t) => {
-  const { backend, owners } = await fixture(t);
-  const owner = owners.owner;
-  owner.attention = [
-    {
-      id: "attention",
-      kind: "asyncQuestion",
-      taskId: "owner",
-      runId: "run",
-      threadId: null,
-      questionId: "message",
-      interactionId: null,
-      objectivePreview: "Question task",
-      summary: "Question",
-      expiresAt: null,
-    },
-  ];
-  owner.messages = [
-    {
-      id: "message",
-      runId: "run",
-      sequence: 1,
-      author: "assistant",
-      kind: "question",
-      status: "pending",
-      createdAt: 1,
-      expiresAt: null,
-      questions: [],
-      required: true,
-      inReplyTo: null,
-      answers: null,
-      text: "Question",
-    },
-  ];
-  const result = await taskCatalog(backend, { operation: "inbox", limit: 1 });
-  assert.deepEqual(
-    result.data.map((row) => [row.taskId, row.message.runId, row.message.id]),
-    [["owner", "run", "message"]],
-  );
-  assert.equal(owner.calls.filter((call) => call.method === "areal/channel/read").length, 1);
-  assert.ok(!owner.calls.some((call) => call.method === "areal/inbox/list"));
-});
-test("display limit keeps all 1024 cached rows without subscriptions per Task", async (t) => {
-  const { backend, owners } = await fixture(t);
-  const owner = owners.owner;
-  owner.rows = Array.from({ length: 1024 }, (_, index) => scheduled(String(index)));
-  const result = await taskCatalog(backend, { operation: "list", limit: 30 });
-  assert.equal(result.data.length, 30);
-  assert.equal(result.hasMore, true);
-  assert.equal(owner.monitor.observation.rows.size, 1024);
-  assert.equal(owner.calls.filter((call) => call.method === "areal/owner/watch").length, 1);
-  assert.ok(!owner.calls.some((call) => call.method === "areal/task/subscribe"));
-});
-test("invalid requests and unknown owners are rejected without starting or reading Core", async (t) => {
-  const { backend, owners } = await fixture(t);
-  const before = owners.owner.calls.length;
-  for (const request of [
-    { operation: "delete" },
-    ...[0, -1, 1025, 1.2, "2"].map((limit) => ({ operation: "list", limit })),
-  ])
-    await assert.rejects(taskCatalog(backend, request), /无效任务列表请求/);
-  await assert.rejects(
-    taskCatalog(backend, { operation: "list", projectId: "missing" }),
-    /任务所有者不存在/,
-  );
-  assert.equal(owners.owner.calls.length, before);
-  assert.deepEqual(backend.starts, []);
-});
-
 test("baseline completion metadata recovers older hot Runs after host-ready without blocking directory reads", async (t) => {
-  const { HistoryObservation } = require("../app/src/core/history-observation.cjs");
+  const {
+    HistoryObservation,
+  } = require("@areal/workbench-service/desktop/core/history-observation.cjs");
   const { backend, owners } = await fixture(t);
   const owner = owners.owner,
     entered = deferred(),
     release = deferred(),
-    recorded = [],
     notices = [];
   const usage = {
     accountingComplete: true,
@@ -606,13 +333,7 @@ test("baseline completion metadata recovers older hot Runs after host-ready with
       };
     return base();
   };
-  const library = {
-    value: { threads: {} },
-    async recordScheduledCompletion(projectId, run, completionId) {
-      this.value.threads[`${projectId}:${run.threadId}`] = { scheduledCompletionId: run.id };
-      recorded.push([run.id, completionId]);
-    },
-  };
+  const library = { value: { threads: {} } };
   const history = new HistoryObservation({
     ownerTasks: backend.ownerTasks,
     currentConnection: backend.currentConnection.bind(backend),
@@ -633,13 +354,8 @@ test("baseline completion metadata recovers older hot Runs after host-ready with
   await entered.promise;
   const displayed = await taskCatalog(backend, { operation: "observe", projectId: "owner" });
   assert.equal(displayed.data[0].latestRun.status, "running");
-  assert.deepEqual(recorded, []);
   release.resolve();
-  await until(() => recorded.length === 2);
-  assert.deepEqual(
-    recorded.map(([id]) => id),
-    ["run-1", "run-2"],
-  );
+  await until(() => owner.project.taskNotificationMonitor.pending === null);
   assert.deepEqual(notices, []);
   assert.equal(owner.calls.filter((call) => call.method === "areal/task/read").length, 1);
 });
@@ -648,9 +364,7 @@ test("failed completion metadata retries without a new owner event or directory 
   const { backend, owners } = await fixture(t);
   const owner = owners.owner;
   await taskCatalog(backend, { operation: "observe" });
-  const baselineReads = owner.calls.filter(
-    (call) => call.method === "areal/task/directory/list",
-  ).length;
+  const baselineReads = owner.calls.filter((call) => call.method === "tasks.observe").length;
   let attempts = 0;
   owner.monitor.reconcile = async () => {
     attempts++;
@@ -661,10 +375,7 @@ test("failed completion metadata retries without a new owner event or directory 
   assert.equal(owner.monitor.observation.ready, true);
   await until(() => attempts === 2);
   assert.equal(owner.sequence, 0, "no new event is required for retry");
-  assert.equal(
-    owner.calls.filter((call) => call.method === "areal/task/directory/list").length,
-    baselineReads,
-  );
+  assert.equal(owner.calls.filter((call) => call.method === "tasks.observe").length, baselineReads);
   assert.equal(owner.monitor.baselineTasks.size, 0);
   assert.deepEqual(owner.notices, []);
 });
@@ -690,10 +401,11 @@ test("stopping the completion monitor cancels its pending retry", async (t) => {
 
 for (const mode of ["scheduled", "foreground"])
   test(`a completion fact resolves tombstone ${mode} mode after its directory row is removed`, async (t) => {
-    const { HistoryObservation } = require("../app/src/core/history-observation.cjs");
+    const {
+      HistoryObservation,
+    } = require("@areal/workbench-service/desktop/core/history-observation.cjs");
     const { backend, owners } = await fixture(t);
     const owner = owners.owner;
-    const recorded = [];
     const fact = completion("compacted-completion");
     owner.rows = [];
     owner.project.summaries = [{ id: fact.threadId }];
@@ -733,12 +445,7 @@ for (const mode of ["scheduled", "foreground"])
       },
       notifications: { publish() {} },
       providers: backend.providers,
-      library: {
-        value: { threads: {} },
-        async recordScheduledCompletion(_projectId, run, completionId) {
-          recorded.push([run.id, run.threadId, completionId]);
-        },
-      },
+      library: { value: { threads: {} } },
     });
     await history.startTaskMonitor(owner.project, owner.project.client);
     owner.project.taskNotificationMonitor.ready();
@@ -746,10 +453,6 @@ for (const mode of ["scheduled", "foreground"])
     await until(() => owner.calls.some((call) => call.method === "areal/task/read"));
     await until(() => owner.project.taskNotificationMonitor.pending === null);
     assert.equal(owner.project.taskNotificationMonitor.observation.rows.size, 0);
-    assert.deepEqual(
-      recorded,
-      mode === "scheduled" ? [[fact.runId, fact.threadId, "completed-turn"]] : [],
-    );
     assert.equal(owner.calls.filter((call) => call.method === "areal/task/read").length, 1);
     assert.ok(!owner.calls.some((call) => call.method === "areal/task/run/read"));
   });
@@ -758,9 +461,7 @@ test("completion metadata retry backs off and keeps each retry delay within thir
   const { backend, owners } = await fixture(t);
   const owner = owners.owner;
   await taskCatalog(backend, { operation: "observe" });
-  const baselineReads = owner.calls.filter(
-    (call) => call.method === "areal/task/directory/list",
-  ).length;
+  const baselineReads = owner.calls.filter((call) => call.method === "tasks.observe").length;
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let attempts = 0;
   owner.monitor.reconcile = async () => {
@@ -783,10 +484,7 @@ test("completion metadata retry backs off and keeps each retry delay within thir
     );
   }
   assert.equal(owner.monitor.observation.ready, true);
-  assert.equal(
-    owner.calls.filter((call) => call.method === "areal/task/directory/list").length,
-    baselineReads,
-  );
+  assert.equal(owner.calls.filter((call) => call.method === "tasks.observe").length, baselineReads);
   owner.monitor.stop();
 });
 

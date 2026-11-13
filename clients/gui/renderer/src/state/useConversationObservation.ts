@@ -12,6 +12,7 @@ export function useConversationObservation(
   const { project, thread, threadId, snapshot, library, resourceAction } = session;
   const cancelledPredictions = useRef(new Set<string>());
   const cancelDisabledPredictions = () => {
+    if (session.readOnly) return;
     if (nextPromptSuggestions) {
       cancelledPredictions.current.clear();
       return;
@@ -68,6 +69,7 @@ export function useConversationObservation(
     // A new completion visible in the foreground is read. A manual unread mark
     // does not change completionId, so it survives until the user opens it again.
     if (
+      session.readOnly ||
       !initialReleased ||
       !project?.id ||
       !project.state?.connected ||

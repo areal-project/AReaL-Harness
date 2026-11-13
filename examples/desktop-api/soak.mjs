@@ -2,13 +2,14 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, writeFile, readFile, rm, rename, readdir } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm, rename, readdir } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { fixture, png } from "./fixture.mjs";
 import { connect } from "./client.mjs";
 // macOS Unix socket 路径有长度上限；共享服务夹具使用较短的临时根目录。
-const root = await mkdtemp("/tmp/ap-");
+const root = await trackedMkdtemp("/tmp/ap-");
 const workspace = join(root, "workspace with spaces"),
   data = join(root, "state"),
   home = join(root, "home");
@@ -327,7 +328,10 @@ try {
   ];
   const shared = serviceCommand(["service", "ensure", ...sharedArgs]);
   try {
-    assert.equal(serviceCommand(["web", ...sharedArgs]).generation, shared.generation);
+    // 网页由 Host 发布：打包后的 areal web 返回的是拥有这个服务的同一个 Host。
+    const web = serviceCommand(["web", "--json"]);
+    assert.equal(web.hostId, shared.owner.hostId);
+    assert.equal(web.generation, shared.owner.generation);
   } finally {
     assert.equal(
       serviceCommand(["service", "stop", "--instance", shared.serviceId, "--json"]).state,

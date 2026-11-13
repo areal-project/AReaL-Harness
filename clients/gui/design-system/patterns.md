@@ -1,7 +1,5 @@
 # 页面模式与有限选择
 
-`R-LAYOUT-001` 先从[用户交互模式](interactions.md)识别用户意图与约束，再选下列业务组合。同一页面可组合内容模式，但沿用一个壳层和主滚动区。以下是 v1 默认；既有未迁移页面不构成新增自由变体的依据。
-
 <!-- BEGIN GENERATED: patterns -->
 
 完整组合、允许变化和验收重点归 [registry.json](registry.json) 的 `patterns`。
@@ -19,8 +17,6 @@
 
 `R-LAYOUT-002` P-RESOURCES 沿现有 PluginCenter 领域布局组合搜索、分类、列表、详情与反馈，不建立通用列表框架。共享意图与状态边界见[插件资源管理](../../../design/patterns/plugin-resources.md)，实际准入范围与运行证据见[Base](base.md)。目录成员仅表示列明的有限复用，不能扩大为完整插件安装、认证或连接生命周期。
 
-`R-LAYOUT-003` 定时任务沿用 P-CONVERSATION 的普通 Composer 和既有 ScheduledWorkspace 列表。全局新建立即进入无项目草稿，项目入口保留所选项目，当前会话添加只追加意图并聚焦。导航归用户点击，异步准备或创建回执不改变当前页面。运行环境在发送时准备，准备期间保留草稿和附件，成功只来自 Core 回执。
-
 `R-LAYOUT-004` 定时目录使用 P-STATUS 的局部状态反馈。冷 owner 的已发布快照显示“上次记录”和本次读取时间，不能把读取时间当作发布时间；完整性未知不能显示“没有任务”。缓存和成功的局部行在刷新失败时保留，显式“刷新这个项目”才可启动对应 Core。目录读取不扩大到启动其他聊天。
 
 ## 控件选择
@@ -29,7 +25,7 @@
 
 ## 设置组合布局
 
-组件专属合同由[R-SETTINGSPAGE-007 等规则](../packages/ui/src/settings/settings-page/settings-page.md#设置组合布局)维护。
+组件专属合同见[设置组合布局](../packages/ui/src/settings/settings-page/settings-page.md#设置组合布局)。
 
 ### 设置控件与反馈
 
@@ -49,37 +45,31 @@
 
 ## 对话信息流
 
-组件专属合同由[R-LAYOUT-005 等规则](../renderer/src/Messages.md#对话信息流)维护。
+组件专属合同见[对话信息流](../renderer/src/Messages.md#对话信息流)。
 
 ### 输入区与面板组合
 
-组件专属合同由[R-LAYOUT-011 等规则](../packages/ui/src/conversation/composer-surface/composer-surface.md#输入区与面板组合)维护。
+组件专属合同见[输入区与面板组合](../packages/ui/src/conversation/composer-surface/composer-surface.md#输入区与面板组合)。
 
 ### Electron 宿主与输入边界
 
-以下细化已有 `CONV-INPUT-01`、`CONV-RESOURCE-01` 与 `CONV-PARALLEL-01`，不新建页面模式或执行状态机。验证入口与取证边界见 [E3 专项](exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)及[E4原生补充](exercises/conversation-flow.md#原生宿主补充-e4)。
+以下细化已有 `CONV-INPUT-01`、`CONV-RESOURCE-01` 与 `CONV-PARALLEL-01`，不新建页面模式或执行状态机。验证入口与取证边界见 [E3 专项](../../../design/archive/gui/exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)及[E4原生补充](../../../design/archive/gui/exercises/conversation-flow.md#原生宿主补充-e4)。
 
 - `R-LAYOUT-014` **焦点和阅读分开保留**：打开子对话或原生浏览器面板时记住实际入口及所属项目/会话。关闭后优先回该入口；入口已卸载时才回同会话 Composer。恢复使用 `preventScroll`，不能为了键盘可达性把读者拉到另一段历史。跨会话的旧入口不得抢焦点。设置页替换聊天子树时，返回可解析同会话重挂的 Composer，不能只保留已断开的 DOM 引用。
 - `R-LAYOUT-015` **输入法先于应用动作**：组合输入期间的 Enter/Space 属于确认上屏，Escape 属于取消组合；不能发送、取消消息编辑或关闭工作区。检查 `isComposing` 及 Chromium `keyCode=229`；非组合状态的下一次 Enter/Escape 才按原提交/取消合同执行。不要把中文粘贴、CDP `insertText` 或合成 composition 当作原生候选验证。
-- `R-LAYOUT-016` **缩放不改变业务**：记录真实 BrowserWindow content bounds、CSS viewport、DPR 和 webContents zoom。变更后 Composer/关闭入口仍可达，草稿与权威轮次/工具身份保留，不重新请求模型。宽窄布局沿原宿主所有者；renderer viewport 模拟与真实窗口尺寸分别标注。
-- `R-LAYOUT-017` **快捷键逐层验收**：Shift+Enter 换行、Cmd+, 进入设置、Escape 返回分别核对可见目标、焦点和草稿。CDP 键盘事件只能证明实际到达的路径；Electron 原生菜单未被触发时记录未覆盖，不把按键已发送写成快捷键已通过。
-
-`R-LAYOUT-018` 焦点恢复和组合 Escape 是本产品采纳的可达性/输入正确性要求。E3 的 Codex 子面板关闭样本落在 BODY，CDP Cmd+, 未打开原生设置；不把本产品的修复反写成 Codex 已观察行为。E4另观察到Codex网页按钮交互后宿主焦点为WEBVIEW，隐藏页签面板后回到Composer；这只支持该路径，不证明任意入口都恢复。
 
 - `R-LAYOUT-019` **窗口激活独立核对**：记录真实窗口身份与 focus/blur 事件；离开再返回后，同一草稿、可见阅读锚点和预期焦点分别核对。BrowserWindow API 激活自有辅助窗口能覆盖该切片，不能冒充物理 Cmd+Tab、跨应用、多显示器或后台自动抢焦点测试。
 - `R-LAYOUT-020` **原生网页独立核对**：宿主工具栏、独立 WebContents 的可见内容/交互、视图隐藏分别有证据。主 renderer 截图空白不能推断网页未渲染；隐藏后AX仍列出旧页面，也不能推断它仍可见。关闭面板保留原聊天草稿与阅读位置，不重新调用模型。未触发的候选列表和仅上屏的英文文字，均不得记作原生中文候选通过。
 
 ### 从证据回溯到规则和组件
 
-`R-LAYOUT-021` 这里拥有对话组合的设计决策；结构化引用在[信息流合同](surfaces/conversation-flow.json)，观察事实在[参考观察索引](references.md#对话信息流的动态观察)。正文规则不复制到JSON。调用方选择P-CONVERSATION后必须声明全部规则ID和必需检查点；目录检查只能阻断遗漏或虚构引用，不能证明实现遵守。
+`R-LAYOUT-021` 这里拥有对话组合的设计决策；结构化引用在[信息流合同](surfaces/conversation-flow.json)，观察事实在[参考观察索引](../../../design/archive/gui/reference-observations.md#对话信息流的动态观察)。正文规则不复制到JSON。调用方选择P-CONVERSATION后必须声明全部规则ID和必需检查点；目录检查只能阻断遗漏或虚构引用，不能证明实现遵守。
 
 | 规则 | 依据与判断强度 | 修改所有者 | 合同检查点 |
 | --- | --- | --- | --- |
 | CONV-OWNER-01 | 本仓既有执行权威和[职责分层](architecture.md#分层与所有权)，不是从Codex外观推断其架构 | 原Core投影 / Messages / 所属详情组件 | ready、busy、failed、unknown |
 | CONV-INPUT-01 | OBS-CONV-INPUT：可见建议及用户说明；不推断预测机制 | ConversationComposer输入边界 / Messages已受理内容 | ready |
 | CONV-CONTENT-01 | OBS-CONV-TOOL：真实运行与成功输出；内容顺序仍服从本仓投影 | Messages / TurnExecution / ToolEvent | busy、failed、unknown |
-| `R-LAYOUT-022` CONV-GROUP-01 | OBS-CONV-GROUP：参考终态层级；采纳为本产品正常完成的默认组合 | Messages既有过程总组 / TurnExecution | completed；同时保留failed、unknown反例 |
-| `R-LAYOUT-023` CONV-DISCLOSURE-01 | OBS-CONV-OPEN-GAP：跨完成保留未实测；明确的产品选择，不是参考事实 | 同身份过程总组、活动组和ToolEvent | tool-details、completed |
 | CONV-READ-01 | OBS-CONV-READ：生成中可见锚点和返回后的连续样本；目标规则不复制测量常量 | Messages既有阅读逻辑 | reading-history、following-latest |
 | CONV-RESOURCE-01 | OBS-CONV-RESOURCE：图片/子对话入口直接观察；独立网页面板仍未知 | ToolEvent及既有父聊天/资源面板所有者 | busy、completed；资源返回按复验题追加 |
 | CONV-COMMAND-01 | OBS-CONV-TOOL支持Shell输入/输出与终态；分批读取的节奏由本仓公开进程投影构造，不声称参考已连续采齐 | processItems / ToolEvent / CommandDetails | command-streaming、tool-details、completed |
@@ -89,29 +79,14 @@
 
 ### 组合与变化边界
 
-`R-LAYOUT-024` 引用本页的 CONV-OWNER-01、CONV-GROUP-01、CONV-DISCLOSURE-01、CONV-READ-01 和 CONV-RESOURCE-01。页面允许变化的是任务文案、消息内容、真实资源、业务上下文与合法动作绑定。分组条件、人工展开保留、跟随/回看规则、反馈语义和设计数值都回到公共所有者；新增任务不另写一套页面CSS或折叠/滚动策略。
-
 `R-LAYOUT-025` 结构化合同的states是验收检查点，不能拿它替代Core状态、重连快照或真实用户操作。
 
 ### 当前实现差异
 
 | 所有者 | 当前源码事实 | 迁移/验收缺口 |
 | --- | --- | --- |
-| `R-LAYOUT-026` Messages / TurnProgress | 带phase与legacy均复用从运行期挂载的过程总组；正常完成时默认收敛，final独立 | 动态renderer题与选定E1真实Electron旅程已验；全恢复/原生宿主仍未覆盖 |
-| `R-LAYOUT-027` TurnExecution / ToolEvent | 同一命令归并分批输出；人工详情由原组件保留；失败/未知/未结算不默认收敛 | 复合题之外，E1覆盖真实进程、子对话及图片；网页/原生宿主另验 |
-| `R-LAYOUT-028` ConversationTimelinePreview | 切换整份live/completed fixture，并关闭回复占位 | 不证明接受消息→逐项追加→完成，也不证明真实聊天的阅读占位行为 |
 | ConversationFlowExercise / Messages阅读逻辑 | 同一任务串接命令、子代理、图片、正文与收敛；可自动播放或暂停逐事件推进 | 复合题在生产renderer中验收；不是Core或桌面验收 |
 | AgentConversationPane / SentAttachment | 复合题挂载生产子对话与图片预览，读取仅由隔离fixture响应 | 本题仍为fixture；E1另验选定生产子对话、图片返回和GUI重开，原生面板及完整重连矩阵仍未覆盖 |
-
-## 按钮与表面
-
-`R-LAYOUT-029` 普通行内操作采用 `ActionButton`；其现有默认是紧凑的次要操作。页面级主要提交才使用 `Button` 的主要变体，次要动作使用 outline / secondary / ghost 的已有用途。危险动作使用 destructive / destructive-subtle 并保留原确认合同。Composer 的发送/停止沿用 composer 变体，不推广到设置页。
-
-`R-LAYOUT-030` 一个外框对应一个功能关系；只读详情与工具过程优先轻量展示。不要把每一行、每段状态、每个按钮再装进独立大卡片。选中、hover、focus、disabled、busy 与 error 使用组件状态，业务页面不重新描边或覆盖控件圆角。
-
-## 状态必须先于样式决定
-
-`R-LAYOUT-031` 共享状态的展示与动作统一见[反馈与恢复](../../../design/patterns/feedback-and-recovery.md)。本端使用 Feedback、原表单与业务状态投影落实，不维护另一张状态语义表。具体 GUI 规则 ID 与验收状态仍在本目录定义。
 
 ## 最小实现说明
 

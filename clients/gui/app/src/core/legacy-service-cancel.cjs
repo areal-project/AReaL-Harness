@@ -6,8 +6,11 @@ const { join } = require("node:path");
 const { isDeepStrictEqual } = require("node:util");
 const WebSocket = require("ws");
 const { desktopError } = require("@areal/workbench/desktop-contract");
-const { readRecoveryService, readResourceInspections } = require("./resource-observation.cjs");
-const { record } = require("./service-transport-contract.cjs");
+const {
+  readRecoveryService,
+  readResourceInspections,
+} = require("@areal/workbench-service/desktop/core/resource-observation.cjs");
+const { record } = require("@areal/workbench-service/desktop/core/service-transport-contract.cjs");
 /** @typedef {InstanceType<typeof import('./service-connection.cjs').ServiceConnection>} Connection */
 /** @typedef {{connection:Connection,home:string}} ConnectedHome */
 /** @typedef {ConnectedHome & {metadata:{pid:number,identity:string}}} SourceHome */
@@ -521,7 +524,7 @@ function scheduleJournal(value) {
     typeof value.source.identity === "string"
   );
 }
-/** @param {Connection} connection @returns {Promise<{service:import('./resource-observation.cjs').RecoveryService & {browserControlEndpoints:string[]},snapshot:{projects:Array<{id:string,root:string}>}}>} */
+/** @param {Connection} connection @returns {Promise<{service:import('@areal/workbench-service/desktop/core/resource-observation.cjs').RecoveryService & {browserControlEndpoints:string[]},snapshot:{projects:Array<{id:string,root:string}>}}>} */
 async function legacySnapshot(connection) {
   const value = await connection.request("snapshot");
   if (!record(value)) throw new Error("旧后台快照无效");

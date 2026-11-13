@@ -1,9 +1,13 @@
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createProjectConversation, selectConversation } from "./smoke-navigation.mjs";
+import {
+  createProjectConversation,
+  selectConversation,
+  selectCreatedConversation,
+} from "./smoke-navigation.mjs";
 
 const textOf = (message) =>
   typeof message.content === "string"
@@ -81,7 +85,6 @@ export function composerFilesResponse(body, response, fixture) {
 }
 
 export async function runComposerFilesAcceptance({
-  app,
   page,
   pid,
   workspace,
@@ -95,26 +98,61 @@ export async function runComposerFilesAcceptance({
   checks,
   shot,
   fixture,
+  readCoreThread,
 }) {
   const input = () => page.getByTestId("chat-input");
   const button = (name) => page.getByRole("button", { name, exact: true });
   const activeId = async () => page.getByTestId("areal-workbench").getAttribute("data-thread-id");
   const current = async () => project(await state()).state.threads[await activeId()];
-  const send = async (text) => {
+  const send = async (text, executionWorkspace) => {
     if (text !== undefined) await input().fill(text);
     const count = received.length;
-    await button("发送").click();
-    await until(
-      async () =>
-        received.length > count &&
-        (await current())?.turns.at(-1)?.status === "completed" &&
-        !project(await state()).pending.length,
-      "file input completed",
+    const original = await activeId();
+    const previous = new Set(
+      original
+        ? (await readCoreThread(original, executionWorkspace)).turns.map((turn) => turn.id)
+        : [],
     );
+    await button("发送").click();
+    let turn;
+    await until(async () => {
+      const id = await activeId();
+      if (!id || (original && id !== original) || received.length <= count) return false;
+      const thread = await readCoreThread(id, executionWorkspace);
+      turn = thread.turns.find(
+        (item) =>
+          !previous.has(item.id) &&
+          item.status === "completed" &&
+          thread.desktop?.receipts?.some(
+            (receipt) =>
+              receipt.method === "areal/turn/start" && receipt.result?.turn?.id === item.id,
+          ),
+      );
+      return turn;
+    }, "file input completed").catch(async (error) => {
+      // 超时时带上卡在哪一步：模型请求没发出、轮次没结束，还是提交还挂着。
+      const thread = await current();
+      throw new Error(
+        `file input did not complete: ${JSON.stringify({
+          requests: received.length - count,
+          thread: await activeId(),
+          turns: thread?.turns.length,
+          last: thread?.turns.at(-1)?.status,
+          pending: project(await state()).pending.length,
+          draft: await input().textContent(),
+          sendDisabled: await button("发送")
+            .isDisabled()
+            .catch(() => null),
+        })}`,
+        { cause: error },
+      );
+    });
     await page.waitForFunction(
       () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
     );
-    return (await current()).turns.at(-1);
+    await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+    await page.getByTestId("pending-message").waitFor({ state: "hidden" });
+    return turn;
   };
   const users = (body) =>
     (body.messages ?? body.input)
@@ -135,9 +173,69 @@ export async function runComposerFilesAcceptance({
   const nestedFile = () => fileOptions().filter({ hasText: "nested.ts" });
   const assertInlineFileHover = async (identifier, absolutePath, screenshot) => {
     await identifier.waitFor();
+    const hovered = await identifier.elementHandle();
+    // 悬停提示遇到任何滚动都会收起；记下悬停后的滚动，超时时一并报出。
+    await page.evaluate(() => {
+      const start = performance.now();
+      const scrolls = (window.__hoverScrolls = []);
+      document.addEventListener(
+        "scroll",
+        (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          if (scrolls.length < 8)
+            scrolls.push({
+              ms: Math.round(performance.now() - start),
+              target: target ? `${target.tagName}.${target.className}`.slice(0, 120) : "document",
+            });
+        },
+        { capture: true, passive: true },
+      );
+    });
+    await hovered.evaluate((element) => {
+      const probe = (window.__hoverPointerProbe = { events: [], point: null });
+      const onPointer = (event) => {
+        probe.point = { x: event.clientX, y: event.clientY };
+        if (probe.events.length < 12)
+          probe.events.push({
+            type: event.type,
+            targetIsReference: element === event.target || element.contains(event.target),
+          });
+      };
+      for (const name of ["pointermove", "pointerover", "pointerout"])
+        document.addEventListener(name, onPointer, true);
+      window.__hoverPointerCleanup = () => {
+        for (const name of ["pointermove", "pointerover", "pointerout"])
+          document.removeEventListener(name, onPointer, true);
+      };
+    });
     await identifier.hover();
     const tooltip = page.getByRole("tooltip").filter({ hasText: absolutePath });
-    await tooltip.waitFor();
+    await tooltip.waitFor().catch(async (error) => {
+      // 超时时带上当时实际显示的提示和悬停目标的去向，区分“没弹出”“路径不对”和“目标被重建”。
+      const shown = await page.getByRole("tooltip").allTextContents();
+      const target = await hovered.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const probe = window.__hoverPointerProbe;
+        const hit = probe.point && document.elementFromPoint(probe.point.x, probe.point.y);
+        return {
+          connected: element.isConnected,
+          hover: element.matches(":hover"),
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          point: probe.point,
+          hitIsReference: !!hit && (hit === element || element.contains(hit)),
+          hitTag: hit?.tagName ?? null,
+          pageFocused: document.hasFocus(),
+          activeRole: document.activeElement?.getAttribute("role"),
+          events: probe.events,
+        };
+      });
+      const scrolls = await page.evaluate(() => window.__hoverScrolls);
+      throw new Error(
+        `expected path tooltip ${absolutePath}, shown ${JSON.stringify(shown)}, target ${JSON.stringify(target)}, scrolls ${JSON.stringify(scrolls)}`,
+        { cause: error },
+      );
+    });
+    await page.evaluate(() => window.__hoverPointerCleanup());
     assert.equal(
       await tooltip.textContent(),
       absolutePath,
@@ -157,14 +255,8 @@ export async function runComposerFilesAcceptance({
   const mentionCount = received.length;
   await input().fill("@");
   await page.getByTestId("composer-catalog").waitFor();
-  assert.equal(await fileOptions().count(), 0);
-  assert.equal(
-    await page
-      .getByTestId("composer-catalog")
-      .getByRole("group", { name: "文件", exact: true })
-      .count(),
-    0,
-  );
+  // R-COMPOSERSURFACE-007：裸 @ 直接列出项目根目录。
+  await fileGroup().waitFor();
   assert.equal(await page.getByTestId("composer-catalog").getByRole("textbox").count(), 0);
   assert.equal(await input().textContent(), "@");
   await shot("files-at-empty-query-draft");
@@ -177,7 +269,7 @@ export async function runComposerFilesAcceptance({
     "文件",
   );
   await input().fill("@");
-  await fileGroup().waitFor({ state: "hidden" });
+  await fileGroup().waitFor();
   assert.equal(await input().textContent(), "@");
   await input().pressSequentially("mention-root");
   await rootFile().waitFor();
@@ -300,22 +392,22 @@ export async function runComposerFilesAcceptance({
     "R-COMPOSERSURFACE-007 main chat restores and sends inline file identifiers with full absolute hover paths, no upload cards or file payload, and canonical workspace-relative Markdown",
   );
 
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesHoldSearch = "mention-files/nested";
     globalThis.filesSearchEntered = false;
     globalThis.filesSearchCompleted = false;
   });
   await input().fill("@mention-files/nested");
   await until(
-    async () => app.evaluate(() => globalThis.filesSearchEntered),
+    async () => page.evaluate(() => globalThis.filesSearchEntered),
     "file search held at privileged boundary",
   );
   await input().fill("@mention-files/other");
   await fileOptions().filter({ hasText: "other.ts" }).waitFor();
   assert.equal(await nestedFile().count(), 0);
-  await app.evaluate(() => globalThis.filesReleaseSearch());
+  await page.evaluate(() => globalThis.filesReleaseSearch());
   await until(
-    async () => app.evaluate(() => globalThis.filesSearchCompleted),
+    async () => page.evaluate(() => globalThis.filesSearchCompleted),
     "old file search completed",
   );
   assert.equal(await nestedFile().count(), 0);
@@ -324,7 +416,7 @@ export async function runComposerFilesAcceptance({
   await input().fill("");
   checks.push("late query response cannot replace current selectable file results");
 
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesFailSearch = "mention-files/nested";
   });
   await input().fill("@mention-files/nested");
@@ -415,7 +507,7 @@ export async function runComposerFilesAcceptance({
     ["empty.txt", "text/plain", Buffer.alloc(0)],
   ]) {
     const count = received.length,
-      turns = (await current()).turns.length;
+      turns = (await readCoreThread(await activeId())).turns.length;
     await input().fill("FILES_REFUSAL_DRAFT");
     await page.locator("input[type=file]").setInputFiles({ name, mimeType, buffer });
     await button("发送").click();
@@ -425,7 +517,7 @@ export async function runComposerFilesAcceptance({
       .first()
       .waitFor();
     assert.equal(received.length, count);
-    assert.equal((await current()).turns.length, turns);
+    assert.equal((await readCoreThread(await activeId())).turns.length, turns);
     assert.equal(await input().textContent(), "FILES_REFUSAL_DRAFT");
     await button(`移除附件 ${name}`).click();
   }
@@ -437,7 +529,7 @@ export async function runComposerFilesAcceptance({
   });
   const budgetRequests = received.length;
   await button("发送").click();
-  await page.getByRole("alert").filter({ hasText: "input exceeds 1 MiB" }).first().waitFor();
+  await page.getByRole("alert").filter({ hasText: "输入内容超过 1 MiB" }).first().waitFor();
   assert.equal(received.length, budgetRequests);
   assert.equal(await input().textContent(), "FILES_BUDGET_DRAFT");
   await button("移除附件 limit.txt").click();
@@ -555,7 +647,7 @@ export async function runComposerFilesAcceptance({
     "native-path directory drag and synthetic paste of its native DataTransfer resolve a workspace reference through Electron",
   );
 
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesHoldList = true;
     globalThis.filesListEntered = false;
     globalThis.filesListCompleted = false;
@@ -564,7 +656,7 @@ export async function runComposerFilesAcceptance({
   const beforePending = received.length;
   await dropReference(payload);
   await until(
-    async () => app.evaluate(() => globalThis.filesListEntered),
+    async () => page.evaluate(() => globalThis.filesListEntered),
     "workspace validation boundary held",
   );
   assert.equal(await button("发送").isDisabled(), true);
@@ -572,9 +664,9 @@ export async function runComposerFilesAcceptance({
   assert.equal(received.length, beforePending);
   await createProjectConversation(page, "workspace");
   await selectConversation(page, tid);
-  await app.evaluate(() => globalThis.filesReleaseList());
+  await page.evaluate(() => globalThis.filesReleaseList());
   await until(
-    async () => app.evaluate(() => globalThis.filesListCompleted),
+    async () => page.evaluate(() => globalThis.filesListCompleted),
     "delayed privileged workspace listing completed",
   );
   await page.getByText("正在核对工作区引用…", { exact: true }).waitFor({ state: "hidden" });
@@ -584,19 +676,23 @@ export async function runComposerFilesAcceptance({
     "pending workspace validation disables sending; A-to-B-to-A navigation rejects the old completion",
   );
 
+  const beforeHold = new Set((await readCoreThread(tid)).turns.map((turn) => turn.id));
   await input().fill("FILES_HOLD");
   await button("发送").click();
-  await until(
-    async () => fixture.held.size && (await current()).turns.at(-1)?.status === "inProgress",
-    "active fixture stream",
-  );
+  let active;
+  await until(async () => {
+    const thread = await readCoreThread(tid);
+    active = thread.turns.find((turn) => !beforeHold.has(turn.id) && turn.status === "inProgress");
+    return fixture.held.size && active;
+  }, "active fixture stream");
   await injectFile("drop", "queue.json", "application/json", '{"queue":"完整"}\n');
   await input().fill("FILES_QUEUED");
   await button("发送").click();
-  const pending = () => projectSnapshotQueue();
-  async function projectSnapshotQueue() {
-    return project(await state()).state.queues[tid];
-  }
+  const pending = async () => {
+    const queue = (await readCoreThread(tid)).desktop?.queue;
+    assert.ok(queue && Array.isArray(queue.items), "Core queue is present");
+    return queue;
+  };
   await until(
     async () => (await pending()).items.some((item) => item.status === "pending"),
     "text file enqueued",
@@ -617,14 +713,14 @@ export async function runComposerFilesAcceptance({
   };
   await input().fill("FILES_NORMAL_DRAFT");
   await editQueued();
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesHoldList = true;
     globalThis.filesListEntered = false;
     globalThis.filesListCompleted = false;
   });
   await dropReference(payload);
   await until(
-    async () => app.evaluate(() => globalThis.filesListEntered),
+    async () => page.evaluate(() => globalThis.filesListEntered),
     "queue reference validation held",
   );
   await button("取消").click();
@@ -632,9 +728,9 @@ export async function runComposerFilesAcceptance({
     (key) => !localStorage.getItem(`${key}:queue-edit`),
     `areal-gui:draft:${pid}:${tid}`,
   );
-  await app.evaluate(() => globalThis.filesReleaseList());
+  await page.evaluate(() => globalThis.filesReleaseList());
   await until(
-    async () => app.evaluate(() => globalThis.filesListCompleted),
+    async () => page.evaluate(() => globalThis.filesListCompleted),
     "delayed privileged workspace listing completed",
   );
   await page.getByText("正在核对工作区引用…", { exact: true }).waitFor({ state: "hidden" });
@@ -657,7 +753,12 @@ export async function runComposerFilesAcceptance({
   const edited = (await pending()).items.find((item) => item.id === queued.id);
   assert(edited.input.some((part) => part.type === "file" && part.url === originalQueueFile.url));
   assert(edited.input.some((part) => part.name === "edit.yaml"));
-  const active = (await current()).turns.at(-1);
+  await page.waitForFunction(
+    (key) => !localStorage.getItem(`${key}:queue-edit`),
+    `areal-gui:draft:${pid}:${tid}`,
+  );
+  const savedQueue = await call("queue", { projectId: pid, threadId: tid });
+  assert.equal(savedQueue.paused, false, "saving the edit resumes its queue");
   await call("steer", {
     projectId: pid,
     threadId: tid,
@@ -666,13 +767,19 @@ export async function runComposerFilesAcceptance({
     attachments: [{ type: "file", url: file.url, name: file.name, mimeType: "application/pdf" }],
   });
   for (const finish of fixture.held) finish();
-  await until(
-    async () =>
-      (await pending()).items.find((item) => item.id === queued.id)?.status === "completed" &&
-      (await current()).turns.at(-1)?.status === "completed" &&
-      !project(await state()).pending.length,
-    "queue activation completed",
-  );
+  await until(async () => {
+    const thread = await readCoreThread(tid);
+    const item = thread.desktop?.queue?.items?.find((entry) => entry.id === queued.id);
+    const turn = thread.turns.find((entry) => entry.id === item?.turnId);
+    return (
+      item?.status === "completed" &&
+      turn?.status === "completed" &&
+      turn.items.some(
+        (entry) => entry.type === "userMessage" && textOf(entry).includes("FILES_QUEUE_EDITED"),
+      )
+    );
+  }, "queue activation completed");
+  await page.getByTestId("pending-message").waitFor({ state: "hidden" });
   const queuedRequest = received.findLast((body) =>
     users(body).some((text) => text.includes("FILES_QUEUE_EDITED")),
   );
@@ -687,7 +794,7 @@ export async function runComposerFilesAcceptance({
     "send, steer, queue admission, edit with retained and new files, and activation share text projection and authoritative MIME",
   );
 
-  const source = await current();
+  const source = await readCoreThread(tid);
   const fork = await call("fork", {
     projectId: pid,
     sourceThreadId: tid,
@@ -734,9 +841,18 @@ export async function runComposerFilesAcceptance({
     "Responses model catalog",
   );
   const configureModel = async (model) => {
-    const expectedRevision = project(await state()).configurations[tid].revision;
-    assert(Number.isSafeInteger(expectedRevision));
-    await call("configure", { projectId: pid, threadId: tid, expectedRevision, model });
+    const trigger = page.getByTestId("composer-model-trigger");
+    await trigger.click();
+    await page.getByRole("tab", { name: model.providerId, exact: true }).click();
+    await page
+      .getByRole("tabpanel", { name: model.providerId, exact: true })
+      .getByRole("radio", { name: model.modelId, exact: true })
+      .click();
+    await page.keyboard.press("Escape");
+    await until(async () => {
+      const label = await trigger.innerText();
+      return label.includes(model.modelId) && (await trigger.isEnabled());
+    }, `Composer applies ${model.modelId}`);
   };
   await configureModel({ providerId: "files-responses", modelId: "files-responses" });
   await page.locator("input[type=file]").setInputFiles({
@@ -768,7 +884,7 @@ export async function runComposerFilesAcceptance({
     profile: { id: "standard", revision: "v1" },
     options: { permissionPreset: "fullAccess" },
   });
-  await selectConversation(page, worktreeThreadId);
+  await selectCreatedConversation(page, pid, worktreeThreadId);
   const worktreeDirectory = (await current()).worktree?.directory;
   assert(
     worktreeDirectory && worktreeDirectory !== workspace,
@@ -789,7 +905,7 @@ export async function runComposerFilesAcceptance({
     join(worktreeDirectory, "mention-route-worktree/shared.ts"),
     "files-inline-worktree-input-path-hover",
   );
-  await send();
+  await send(undefined, worktreeDirectory);
   await assertInlineFileHover(
     page
       .locator(".user-message-body .markdown-file-reference")
@@ -799,23 +915,23 @@ export async function runComposerFilesAcceptance({
     "files-inline-worktree-sent-path-hover",
   );
   assert(users(received.at(-1)).at(-1).includes("[shared.ts](./mention-route-worktree/shared.ts)"));
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.filesHoldSearch = "mention-route-";
     globalThis.filesSearchEntered = false;
     globalThis.filesSearchCompleted = false;
   });
   await input().fill("@mention-route-");
   await until(
-    async () => app.evaluate(() => globalThis.filesSearchEntered),
+    async () => page.evaluate(() => globalThis.filesSearchEntered),
     "worktree search held before switching threads",
   );
   await selectConversation(page, tid);
   await input().fill("@mention-route-");
   await fileOptions().filter({ hasText: "mention-route-main" }).waitFor();
   assert.equal(await fileOptions().filter({ hasText: "mention-route-worktree" }).count(), 0);
-  await app.evaluate(() => globalThis.filesReleaseSearch());
+  await page.evaluate(() => globalThis.filesReleaseSearch());
   await until(
-    async () => app.evaluate(() => globalThis.filesSearchCompleted),
+    async () => page.evaluate(() => globalThis.filesSearchCompleted),
     "old worktree search completed after switching",
   );
   assert.equal(await fileOptions().filter({ hasText: "mention-route-worktree" }).count(), 0);
@@ -828,67 +944,66 @@ export async function runComposerFilesAcceptance({
   checks.push(
     "real Git worktree file search uses the active thread root, distinguishes same-name files by parent path, sends the selected relative path, and rejects old-worktree responses after switching",
   );
-  await app.evaluate(
-    (_, clientPath) => {
-      const { ServiceConnection } = process.mainModule.require(clientPath);
-      const original = ServiceConnection.prototype.request;
-      const fixture = {
-        uploads: [],
-        sends: [],
-        rejectSecond: true,
-        dropSend: false,
-        dropUpload: false,
-      };
-      globalThis.composerUploadFixture = fixture;
-      fixture.restore = () => {
-        fixture.releaseSendResponse?.();
-        ServiceConnection.prototype.request = original;
-      };
-      ServiceConnection.prototype.request = async function (method, params, mutation) {
-        const command = method === "command" ? params : null;
-        const upload = command?.name === "media" && command.request.operation === "upload";
-        if (upload) {
-          fixture.uploads.push({ threadId: command.request.threadId });
-          if (fixture.rejectSecond && fixture.uploads.length === 2) {
-            fixture.rejectSecond = false;
-            throw Object.assign(new Error("fixture second upload denied"), {
-              submissionUnknown: false,
-            });
-          }
-        }
-        const send = command?.name === "send" && command.request.text.includes("FILES_UPLOAD_");
-        if (send) fixture.sends.push({ ...command.request });
-        if (send && fixture.dropSend) {
-          fixture.sendResponseHeld = true;
-          await new Promise((resolve) => {
-            fixture.releaseSendResponse = resolve;
-          });
-        }
-        const result = await original.call(this, method, params, mutation);
-        if (upload) fixture.uploads.at(-1).uri = result.uri;
-        if (upload && fixture.dropUpload) {
+  await page.evaluate(installHostTransportBarrier);
+  await page.evaluate(() => {
+    const fixture = (globalThis.composerUploadFixture = {
+      uploads: [],
+      sends: [],
+      rejectSecond: true,
+      dropSend: false,
+      dropUpload: false,
+    });
+    const barrier = globalThis.createHostTransportBarrier((frame) => {
+      const upload = frame.method === "attachment.upload" && frame.params?.offset === 0;
+      const send = frame.method === "session.send" && frame.params?.text?.includes("FILES_UPLOAD_");
+      if (!upload && !send) return null;
+      const entry = {};
+      if (upload) {
+        const record = { threadId: frame.params.threadId, id: frame.id };
+        fixture.uploads.push(record);
+        entry.onResponse = (reply) => {
+          if (reply.result?.attachment?.uri) record.uri = reply.result.attachment.uri;
+        };
+        if (fixture.rejectSecond && fixture.uploads.length === 2) {
+          fixture.rejectSecond = false;
+          entry.reject = { code: "FIXTURE_REJECTED", message: "fixture second upload denied" };
+          fixture.rejected = entry;
+        } else if (fixture.dropUpload) {
           fixture.dropUpload = false;
-          throw Object.assign(new Error("fixture dropped accepted upload response"), {
+          entry.response = "replace";
+          entry.error = {
+            code: "FIXTURE_LOST",
+            message: "fixture dropped accepted response",
             submissionUnknown: true,
-          });
+          };
+          fixture.lostUpload = entry;
         }
-        if (send && fixture.dropSend) {
+      }
+      if (send) {
+        fixture.sends.push({ ...frame.params, requestId: frame.commandId, id: frame.id });
+        if (fixture.dropSend) {
           fixture.dropSend = false;
-          throw Object.assign(new Error("fixture dropped accepted send response"), {
+          entry.holdRequest = true;
+          entry.response = "replace";
+          entry.error = {
+            clientCode: "DISCONNECTED",
+            message: "fixture dropped accepted response",
             submissionUnknown: true,
-            requestId: command.request.requestId,
-          });
+          };
+          fixture.heldSend = entry;
         }
-        return result;
-      };
-    },
-    fileURLToPath(new URL("../app/src/core/service-client.cjs", import.meta.url)),
-  );
+      }
+      return entry;
+    });
+    fixture.restore = () => barrier.restore();
+  });
   try {
     await createProjectConversation(page, "workspace");
+    // 执行工作树使用同一启动配置；此前直接写入源 Core 的测试供应商不会随之复制。
+    await configureModel({ providerId: "fixture", modelId: "fixture" });
     await button("新会话工作区").click();
     const worktreeToggle = page.getByRole("switch", {
-      name: "在新 Worktree 中工作",
+      name: "在新工作树中工作",
       exact: true,
     });
     await until(async () => !(await worktreeToggle.isDisabled()), "upload worktree options ready");
@@ -901,30 +1016,48 @@ export async function runComposerFilesAcceptance({
     ]);
     await input().fill("FILES_UPLOAD_TRANSFER");
     await button("发送").click();
+    await page.waitForFunction(() => {
+      const fixture = globalThis.composerUploadFixture;
+      return (
+        fixture.rejected?.rejectHit != null && fixture.rejected.rejectHit === fixture.uploads[1]?.id
+      );
+    });
     await page.locator('[data-upload-state="failed"]').waitFor();
     assert.equal(await page.locator('[data-upload-state="ready"]').count(), 1);
     const uploadThreadId = await activeId();
-    assert((await current()).worktree?.directory !== workspace);
+    const uploadWorkspace = (await current()).worktree?.directory;
+    assert(uploadWorkspace !== workspace);
     assert(
       (await current()).worktree?.directory,
       "first send created an actual execution worktree",
     );
-    assert.equal((await app.evaluate(() => globalThis.composerUploadFixture.sends)).length, 0);
+    assert.deepEqual(
+      (await readCoreThread(uploadThreadId, uploadWorkspace)).desktop.configuration.model,
+      {
+        providerId: "fixture",
+        modelId: "fixture",
+      },
+    );
+    assert.equal((await page.evaluate(() => globalThis.composerUploadFixture.sends)).length, 0);
     await shot("files-upload-partial-failure-worktree");
     await selectConversation(page, tid);
-    await selectConversation(page, uploadThreadId);
+    await selectCreatedConversation(page, pid, uploadThreadId);
     assert.equal(await page.locator('[data-upload-state="ready"]').count(), 1);
     await page.getByRole("button", { name: "重试此附件", exact: true }).click();
     await until(
       async () => (await page.locator('[data-upload-state="ready"]').count()) === 2,
       "only failed attachment retry reaches ready",
     );
-    await send();
-    const uploaded = await app.evaluate(() => globalThis.composerUploadFixture.uploads);
+    await send(undefined, uploadWorkspace);
+    const uploaded = await page.evaluate(() => globalThis.composerUploadFixture.uploads);
+    assert.equal(
+      await page.evaluate(() => globalThis.composerUploadFixture.rejected.rejectHit),
+      uploaded[1].id,
+    );
     assert.equal(uploaded.length, 3, "retry and final Send reuse the first worktree receipt");
     assert.equal(uploaded.filter((entry) => entry.uri).length, 2);
     assert(uploaded.every((entry) => entry.threadId === uploadThreadId));
-    const sent = await app.evaluate(() => globalThis.composerUploadFixture.sends);
+    const sent = await page.evaluate(() => globalThis.composerUploadFixture.sends);
     assert.equal(sent.length, 1);
     assert.equal(sent[0].attachments[0].url, uploaded[0].uri);
     assert.equal(sent[0].attachments[1].url, uploaded[2].uri);
@@ -957,25 +1090,29 @@ export async function runComposerFilesAcceptance({
       buffer: Buffer.from("UNKNOWN_RECEIPT"),
     });
     await input().fill("FILES_UPLOAD_UNKNOWN");
-    await app.evaluate(() => {
+    await page.evaluate(() => {
       globalThis.composerUploadFixture.dropSend = true;
     });
     await button("发送").click();
     await until(
       () =>
-        app.evaluate(() => {
+        page.evaluate(() => {
           const fixture = globalThis.composerUploadFixture;
-          return fixture.sendResponseHeld && fixture.sends.at(-1)?.requestId
+          return fixture.heldSend?.requestHit === fixture.sends.at(-1)?.id &&
+            fixture.sends.at(-1)?.requestId
             ? fixture.sends.at(-1)
             : null;
         }),
       "send held before admission to Core",
     );
-    const heldSend = await app.evaluate(() => globalThis.composerUploadFixture.sends.at(-1));
-    assert.equal((await current()).turns.at(-1)?.status, "completed");
+    const heldSend = await page.evaluate(() => globalThis.composerUploadFixture.sends.at(-1));
+    assert.equal(
+      (await readCoreThread(uploadThreadId, uploadWorkspace)).turns.at(-1)?.status,
+      "completed",
+    );
     assert.equal(project(await state()).outcomes?.[heldSend.requestId], undefined);
     assert.equal(
-      (await current()).turns.some((turn) =>
+      (await readCoreThread(uploadThreadId, uploadWorkspace)).turns.some((turn) =>
         turn.items.some(
           (item) => item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
         ),
@@ -985,29 +1122,33 @@ export async function runComposerFilesAcceptance({
     );
     await call("reconcile", { projectId: pid });
     await call("open", { projectId: pid, threadId: uploadThreadId });
-    await app.evaluate(() => globalThis.composerUploadFixture.releaseSendResponse());
+    await page.evaluate(() => globalThis.composerUploadFixture.heldSend.releaseRequest());
     try {
-      await page.waitForFunction(
-        () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
-      );
       await until(async () => {
         const snapshot = await state();
         const activeThreadId = await activeId();
-        const restored = project(snapshot).state.threads[uploadThreadId];
-        const outcome = project(snapshot).outcomes?.[heldSend.requestId];
+        const outcome = Object.values(project(snapshot).outcomes ?? {}).find(
+          (entry) => entry.remote?.commandId === heldSend.requestId,
+        );
+        const authoritative = await readCoreThread(uploadThreadId, uploadWorkspace);
         return (
           activeThreadId === uploadThreadId &&
           !project(snapshot).pending.length &&
           outcome?.accepted === true &&
-          outcome.operation?.target?.threadId === uploadThreadId &&
-          restored?.turns.some((turn) =>
-            turn.items.some(
-              (item) =>
-                item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
-            ),
+          outcome.remote?.target?.threadId === uploadThreadId &&
+          authoritative.turns.some(
+            (turn) =>
+              turn.status === "completed" &&
+              turn.items.some(
+                (item) =>
+                  item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
+              ),
           )
         );
       }, "accepted send restored in the original thread");
+      await page.waitForFunction(
+        () => !document.querySelector('[data-testid="chat-input"]')?.textContent,
+      );
       await page.evaluate(async () => {
         for (let frame = 0; frame < 4; frame++)
           await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -1065,14 +1206,18 @@ export async function runComposerFilesAcceptance({
       throw error;
     }
     await page.evaluate(() => globalThis.__stopComposerRecoveryChanges());
-    const unknownSends = await app.evaluate(() => globalThis.composerUploadFixture.sends);
+    assert.equal(
+      await page.evaluate(() => globalThis.composerUploadFixture.heldSend.responseHit),
+      heldSend.id,
+    );
+    const unknownSends = await page.evaluate(() => globalThis.composerUploadFixture.sends);
     assert.equal(
       unknownSends.filter((entry) => entry.text.includes("FILES_UPLOAD_UNKNOWN")).length,
       1,
     );
-    assert.equal((await app.evaluate(() => globalThis.composerUploadFixture.uploads)).length, 4);
+    assert.equal((await page.evaluate(() => globalThis.composerUploadFixture.uploads)).length, 4);
     assert.equal(
-      (await current()).turns
+      (await readCoreThread(uploadThreadId, uploadWorkspace)).turns
         .flatMap((turn) => turn.items)
         .filter(
           (item) => item.type === "userMessage" && textOf(item).includes("FILES_UPLOAD_UNKNOWN"),
@@ -1089,7 +1234,7 @@ export async function runComposerFilesAcceptance({
       buffer: Buffer.from("UNKNOWN_UPLOAD"),
     });
     await input().fill("FILES_UPLOAD_UNKNOWN_MEDIA");
-    await app.evaluate(() => {
+    await page.evaluate(() => {
       globalThis.composerUploadFixture.dropUpload = true;
     });
     await button("发送").click();
@@ -1101,8 +1246,12 @@ export async function runComposerFilesAcceptance({
     );
     await button("发送").click();
     await until(async () => !(await button("发送").isDisabled()), "unknown upload draft unlocked");
-    assert.equal((await app.evaluate(() => globalThis.composerUploadFixture.uploads)).length, 5);
-    assert.equal((await app.evaluate(() => globalThis.composerUploadFixture.sends)).length, 2);
+    assert.equal(
+      await page.evaluate(() => globalThis.composerUploadFixture.lostUpload.responseHit),
+      await page.evaluate(() => globalThis.composerUploadFixture.uploads.at(-1).id),
+    );
+    assert.equal((await page.evaluate(() => globalThis.composerUploadFixture.uploads)).length, 5);
+    assert.equal((await page.evaluate(() => globalThis.composerUploadFixture.sends)).length, 2);
     assert.equal(await input().textContent(), "FILES_UPLOAD_UNKNOWN_MEDIA");
     await shot("files-upload-unknown-retained");
     await button("移除附件 unknown-upload.txt").click();
@@ -1112,7 +1261,7 @@ export async function runComposerFilesAcceptance({
       "lost actual Core upload response keeps the file and body, removes retry, blocks another upload on Send, and permits explicit file removal",
     );
   } finally {
-    await app.evaluate(() => globalThis.composerUploadFixture.restore());
+    await page.evaluate(() => globalThis.composerUploadFixture.restore());
   }
   await shot("files-complete");
 }

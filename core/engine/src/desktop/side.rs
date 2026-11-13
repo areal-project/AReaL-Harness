@@ -550,6 +550,7 @@ impl Engine {
                         .clone()
                         .side_only(request.workspace_access == "readOnly"),
                     host: None,
+                    schedule_host: None,
                 },
                 None,
             );
@@ -635,179 +636,189 @@ impl Engine {
                     return Ok((state.thread.clone(), turn));
                 }
             }
-            if !engine.accepting_work() {
-                return Err(Error::Closed);
-            }
-            if host
-                .as_ref()
-                .is_some_and(|host| host.is_closed() || host.identity() != identity)
-            {
-                return Err(Error::Conflict);
-            }
-            let source_cell = engine.cell(&request.source_thread_id).await?;
-            let source_state = source_cell.state.lock().await;
-            if source_state.thread.is_side()
-                || source_state.thread.parent_thread_id.is_some()
-                || source_state
-                    .thread
-                    .desktop
+            // 准入持久化之前的失败确定没有创建聊天；持久化失败仍需核对原回执。
+            let (thread_id, thread, turn, cell, admission, _creation) = async {
+                if !engine.accepting_work() {
+                    return Err(Error::Closed);
+                }
+                if host
                     .as_ref()
-                    .is_some_and(|d| d.workflow_run.is_some())
-            {
-                return Err(invalid("SOURCE_KIND_UNSUPPORTED"));
-            }
-            let config =
-                engine.next_request_configuration(desktop(&source_state.thread).configuration);
-            if config
-                .profile
-                .as_ref()
-                .is_some_and(|profile| profile.workflow.is_some())
-            {
-                return Err(invalid("PROFILE_NOT_SUPPORTED"));
-            }
-            let source = engine
-                .store
-                .read_thread(&request.source_thread_id)
-                .await
-                .map_err(invalid)?;
-            drop(source_state);
-            let (mut prefix, mut sources) = match source.model_history_seed() {
-                Some(seed) => engine
+                    .is_some_and(|host| host.is_closed() || host.identity() != identity)
+                {
+                    return Err(Error::Conflict);
+                }
+                let source_cell = engine.cell(&request.source_thread_id).await?;
+                let source_state = source_cell.state.lock().await;
+                if source_state.thread.is_side()
+                    || source_state.thread.parent_thread_id.is_some()
+                    || source_state
+                        .thread
+                        .desktop
+                        .as_ref()
+                        .is_some_and(|d| d.workflow_run.is_some())
+                {
+                    return Err(invalid("SOURCE_KIND_UNSUPPORTED"));
+                }
+                let config =
+                    engine.next_request_configuration(desktop(&source_state.thread).configuration);
+                if config
+                    .profile
+                    .as_ref()
+                    .is_some_and(|profile| profile.workflow.is_some())
+                {
+                    return Err(invalid("PROFILE_NOT_SUPPORTED"));
+                }
+                let source = engine
                     .store
-                    .read_fork_snapshot_with_sources(&seed.snapshot_id)
-                    .map_err(invalid)?,
-                None => (Vec::new(), Vec::new()),
-            };
-            for mut turn in source.turns.clone() {
-                if turn.status == TurnStatus::InProgress {
-                    turn.items
-                        .retain(|item| matches!(item, Item::UserMessage { .. }));
-                    if turn.items.is_empty() {
+                    .read_thread(&request.source_thread_id)
+                    .await
+                    .map_err(invalid)?;
+                drop(source_state);
+                let (mut prefix, mut sources) = match source.model_history_seed() {
+                    Some(seed) => engine
+                        .store
+                        .read_fork_snapshot_with_sources(&seed.snapshot_id)
+                        .map_err(invalid)?,
+                    None => (Vec::new(), Vec::new()),
+                };
+                for mut turn in source.turns.clone() {
+                    if turn.status == TurnStatus::InProgress {
+                        turn.items
+                            .retain(|item| matches!(item, Item::UserMessage { .. }));
+                        if turn.items.is_empty() {
+                            break;
+                        }
+                        turn.status = TurnStatus::Completed;
+                        turn.error = None;
+                        turn.generation = None;
+                        turn.instruction_snapshot = None;
+                        turn.instruction_attribution = None;
+                        prefix.push(turn);
+                        sources.push(source.id.clone());
                         break;
                     }
-                    turn.status = TurnStatus::Completed;
-                    turn.error = None;
-                    turn.generation = None;
-                    turn.instruction_snapshot = None;
-                    turn.instruction_attribution = None;
                     prefix.push(turn);
                     sources.push(source.id.clone());
-                    break;
                 }
-                prefix.push(turn);
-                sources.push(source.id.clone());
-            }
-            let model = engine
-                .configured_model(&config)
-                .map_err(|_| invalid("MODEL_CONTEXT_INCOMPATIBLE"))?;
-            engine.validate_fork_replay(&prefix, model.as_ref()).await?;
-            let limit = if engine.limits.max_history_bytes == 0 {
-                64 * 1024 * 1024
-            } else {
-                engine.limits.max_history_bytes.min(64 * 1024 * 1024)
-            };
-            let (snapshot_id, logical_bytes) = engine
-                .store
-                .write_fork_snapshot(prefix.clone(), sources, limit)
-                .await
-                .map_err(invalid)?;
-            let thread_id = id();
-            let base = Thread {
-                conversation: Some(areal_protocol::Conversation::Side {
-                    version: 2,
-                    origin: areal_protocol::ConversationOrigin {
-                        source_thread_id: source.id,
-                        source_turn_id: prefix
-                            .last()
-                            .map(|turn| turn.id.clone())
-                            .unwrap_or_default(),
-                        boundary: "stableInput".into(),
-                        snapshot_id: snapshot_id.clone(),
-                    },
-                    reference_snapshot: areal_protocol::HistorySeed {
-                        snapshot_id,
-                        turn_count: prefix.len(),
-                        item_count: prefix.iter().map(|turn| turn.items.len()).sum(),
-                        logical_bytes,
-                    },
-                    policy: areal_protocol::SidePolicy::ExecutableV2,
-                    selection: None,
-                }),
-                goals: Default::default(),
-                goal_owner: None,
-                desktop: Some(DesktopState {
-                    configuration: config,
-                    ..Default::default()
-                }),
-                id: thread_id.clone(),
-                session_id: thread_id.clone(),
-                parent_thread_id: None,
-                preview: String::new(),
-                name: None,
-                name_attempt_turn_id: None,
-                model_provider: engine.model_provider(),
-                created_at: now(),
-                updated_at: now(),
-                status: ThreadStatus::Idle,
-                cwd: source.cwd,
-                cli_version: env!("CARGO_PKG_VERSION").into(),
-                source: "appServer".into(),
-                ephemeral: false,
-                turns: Vec::new(),
-                history_archive: None,
-                context_checkpoint: None,
-                dynamic_tools: host
+                let model = engine
+                    .configured_model(&config)
+                    .map_err(|_| invalid("MODEL_CONTEXT_INCOMPATIBLE"))?;
+                engine.validate_fork_replay(&prefix, model.as_ref()).await?;
+                let limit = if engine.limits.max_history_bytes == 0 {
+                    64 * 1024 * 1024
+                } else {
+                    engine.limits.max_history_bytes.min(64 * 1024 * 1024)
+                };
+                let (snapshot_id, logical_bytes) = engine
+                    .store
+                    .write_fork_snapshot(prefix.clone(), sources, limit)
+                    .await
+                    .map_err(invalid)?;
+                let thread_id = id();
+                let base = Thread {
+                    conversation: Some(areal_protocol::Conversation::Side {
+                        version: 2,
+                        origin: areal_protocol::ConversationOrigin {
+                            source_thread_id: source.id,
+                            source_turn_id: prefix
+                                .last()
+                                .map(|turn| turn.id.clone())
+                                .unwrap_or_default(),
+                            boundary: "stableInput".into(),
+                            snapshot_id: snapshot_id.clone(),
+                        },
+                        reference_snapshot: areal_protocol::HistorySeed {
+                            snapshot_id,
+                            turn_count: prefix.len(),
+                            item_count: prefix.iter().map(|turn| turn.items.len()).sum(),
+                            logical_bytes,
+                        },
+                        policy: areal_protocol::SidePolicy::ExecutableV2,
+                        selection: None,
+                    }),
+                    goals: Default::default(),
+                    goal_owner: None,
+                    desktop: Some(DesktopState {
+                        configuration: config,
+                        ..Default::default()
+                    }),
+                    id: thread_id.clone(),
+                    session_id: thread_id.clone(),
+                    parent_thread_id: None,
+                    preview: String::new(),
+                    name: None,
+                    name_attempt_turn_id: None,
+                    model_provider: engine.model_provider(),
+                    created_at: now(),
+                    updated_at: now(),
+                    status: ThreadStatus::Idle,
+                    cwd: source.cwd,
+                    cli_version: env!("CARGO_PKG_VERSION").into(),
+                    source: "appServer".into(),
+                    ephemeral: false,
+                    turns: Vec::new(),
+                    history_archive: None,
+                    context_checkpoint: None,
+                    dynamic_tools: host
+                        .as_ref()
+                        .map(|_| {
+                            let mut tools = vec![areal_protocol::desktop::browser_v1_tool()];
+                            let computer = areal_protocol::desktop::computer_v1_tool();
+                            if source.dynamic_tools.iter().any(|tool| {
+                                tool.name == computer.name
+                                    && tool.description == computer.description
+                                    && tool.input_schema == computer.input_schema
+                                    && tool.output_schema == computer.output_schema
+                            }) {
+                                tools.push(computer);
+                            }
+                            tools
+                        })
+                        .unwrap_or_default(),
+                    toolset_revision: u64::from(host.is_some()),
+                };
+                let (mut thread, turn) = match request.first_input {
+                    Some(input) => {
+                        let (thread, turn) = engine.prepare_turn(&base, input)?;
+                        (thread, Some(turn))
+                    }
+                    None => (base, None),
+                };
+                let mut result = json!({"threadId":thread_id});
+                if let Some(turn) = &turn {
+                    result["turnId"] = json!(turn.id);
+                }
+                remember(
+                    thread.desktop.as_mut().unwrap(),
+                    &identity,
+                    &request.request_id,
+                    method,
+                    hash.clone(),
+                    result,
+                );
+                let admission = turn
                     .as_ref()
-                    .map(|_| {
-                        let mut tools = vec![areal_protocol::desktop::browser_v1_tool()];
-                        let computer = areal_protocol::desktop::computer_v1_tool();
-                        if source.dynamic_tools.iter().any(|tool| {
-                            tool.name == computer.name
-                                && tool.description == computer.description
-                                && tool.input_schema == computer.input_schema
-                                && tool.output_schema == computer.output_schema
-                        }) {
-                            tools.push(computer);
-                        }
-                        tools
-                    })
-                    .unwrap_or_default(),
-                toolset_revision: u64::from(host.is_some()),
-            };
-            let (mut thread, turn) = match request.first_input {
-                Some(input) => {
-                    let (thread, turn) = engine.prepare_turn(&base, input)?;
-                    (thread, Some(turn))
+                    .map(|_| engine.reserve_active_turn())
+                    .transpose()?;
+                let registry = engine.managed_registry(&thread, false).map_err(invalid)?;
+                let cell = Cell::new(
+                    thread.clone(),
+                    0,
+                    crate::tools::Bindings {
+                        registry,
+                        host,
+                        schedule_host: None,
+                    },
+                    None,
+                );
+                let _creation = engine.thread_creation.lock().await;
+                if engine.threads.read().await.len() >= engine.limits.max_threads {
+                    return Err(Error::Exhausted("thread capacity reached".into()));
                 }
-                None => (base, None),
-            };
-            let mut result = json!({"threadId":thread_id});
-            if let Some(turn) = &turn {
-                result["turnId"] = json!(turn.id);
+                Ok((thread_id, thread, turn, cell, admission, _creation))
             }
-            remember(
-                thread.desktop.as_mut().unwrap(),
-                &identity,
-                &request.request_id,
-                method,
-                hash.clone(),
-                result,
-            );
-            let admission = turn
-                .as_ref()
-                .map(|_| engine.reserve_active_turn())
-                .transpose()?;
-            let registry = engine.managed_registry(&thread, false).map_err(invalid)?;
-            let cell = Cell::new(
-                thread.clone(),
-                0,
-                crate::tools::Bindings { registry, host },
-                None,
-            );
-            let _creation = engine.thread_creation.lock().await;
-            if engine.threads.read().await.len() >= engine.limits.max_threads {
-                return Err(Error::Exhausted("thread capacity reached".into()));
-            }
+            .await
+            .map_err(|error| Error::Rejected(Box::new(error)))?;
             if let Err(error) = engine.persist(&thread).await {
                 if engine
                     .store

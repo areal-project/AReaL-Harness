@@ -6,208 +6,62 @@ import {
   type ComponentPropsWithoutRef,
   type ElementType,
 } from "react";
+import { TitleTooltip } from "../../components/tooltip/tooltip.js";
 import { cn } from "../../lib/utils.js";
 
 const overflowFadeClassName =
-  "[mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)] [-webkit-mask-image:linear-gradient(to_right,black_calc(100%_-_1.5rem),transparent)]";
-const marqueeGapPx = 24;
-const marqueePixelsPerSecond = 40;
-const minimumMarqueeDurationSeconds = 6;
-const marqueePauseSeconds = 2;
-const marqueeHoverDelayMs = 1_000;
-const marqueeMaskFadeInSeconds = 0.15;
-const rightFadeMask =
-  "linear-gradient(to right, black 0, black calc(100% - 1.5rem), transparent 100%)";
-const bothEdgesFadeMask =
-  "linear-gradient(to right, transparent 0, black 1.5rem, black calc(100% - 1.5rem), transparent 100%)";
-
-function createMaskKeyframe(maskImage: string, offset: number): Keyframe {
-  return { maskImage, offset, webkitMaskImage: maskImage };
-}
+  "[mask-image:linear-gradient(to_right,black_calc(100%_-_var(--spacing-control-sm)),transparent)] [-webkit-mask-image:linear-gradient(to_right,black_calc(100%_-_var(--spacing-control-sm)),transparent)]";
 
 type TaskTitleOverflowTextProps = ComponentPropsWithoutRef<"p"> & {
   as?: "p" | "span";
+  /** 已不再滚动，保留参数以兼容旧调用。 */
   reducedMotion?: boolean;
 };
 
+/** 长标题截断并在右侧渐隐，悬停时用应用提示显示全名；不再走马灯，避免扫视列表时文字在动。 */
 export function TaskTitleOverflowText({
   as = "p",
-  reducedMotion = false,
+  reducedMotion: _reducedMotion,
   children,
   className,
-  // 原生 title 提示框会在 hover 走马灯时遮挡正在滚动的任务名称。
-  // 在组件边界统一消费该属性，避免各个 task row 漏掉后再次引入 tooltip。
-  title: _nativeTitle,
+  title,
   ...props
 }: TaskTitleOverflowTextProps) {
   const Component = as as ElementType;
   const textRef = useRef<HTMLElement | null>(null);
   const originalTextRef = useRef<HTMLSpanElement | null>(null);
-  const marqueeTrackRef = useRef<HTMLSpanElement | null>(null);
-  const [overflowState, setOverflowState] = useState({
-    distance: 0,
-    duration: minimumMarqueeDurationSeconds,
-    isOverflowing: false,
-  });
-  const { distance, duration, isOverflowing } = overflowState;
+  const [isOverflowing, setOverflowing] = useState(false);
 
   useEffect(() => {
     const textElement = textRef.current;
     const originalTextElement = originalTextRef.current;
     if (!textElement || !originalTextElement) return;
-
-    const updateOverflow = () => {
-      // 标题过去无条件挂载 mask，完整可见的短标题也带有渐隐样式。
-      // 以单份标题的真实排版宽度为准，避免走马灯副本撑大 scrollWidth 后无法退出溢出状态。
-      const contentWidth = originalTextElement.scrollWidth;
-      const nextIsOverflowing = contentWidth > textElement.clientWidth;
-      const nextDistance = nextIsOverflowing ? contentWidth + marqueeGapPx : 0;
-      const nextDuration = nextIsOverflowing
-        ? Math.max(minimumMarqueeDurationSeconds, nextDistance / marqueePixelsPerSecond)
-        : minimumMarqueeDurationSeconds;
-      setOverflowState((current) =>
-        current.isOverflowing === nextIsOverflowing &&
-        current.distance === nextDistance &&
-        current.duration === nextDuration
-          ? current
-          : {
-              distance: nextDistance,
-              duration: nextDuration,
-              isOverflowing: nextIsOverflowing,
-            },
-      );
-    };
-
+    const updateOverflow = () =>
+      setOverflowing(originalTextElement.scrollWidth > textElement.clientWidth);
     updateOverflow();
-
     if (typeof ResizeObserver === "undefined") {
       window.addEventListener("resize", updateOverflow);
       return () => window.removeEventListener("resize", updateOverflow);
     }
-
-    const stopObserving = observeResize([textElement, originalTextElement], updateOverflow);
-    return () => stopObserving();
+    return observeResize([textElement, originalTextElement], updateOverflow);
   }, [children]);
 
-  useEffect(() => {
-    const textElement = textRef.current;
-    const marqueeTrack = marqueeTrackRef.current;
-    if (
-      !isOverflowing ||
-      !textElement ||
-      !marqueeTrack ||
-      typeof marqueeTrack.animate !== "function"
-    ) {
-      return;
-    }
-
-    // 走马灯事件原本绑在文字节点上，鼠标位于 task item 的时间、
-    // 状态或操作区域时不会滚动。统一绑到最近的普通或 grouped task 行边界。
-    const hoverTarget =
-      textElement.closest<HTMLElement>("[data-task-item-key], [data-grouped-task-key]") ??
-      textElement;
-    let animations: Animation[] = [];
-    let startTimer: number | null = null;
-
-    const stopMarquee = () => {
-      if (startTimer !== null) {
-        window.clearTimeout(startTimer);
-        startTimer = null;
-      }
-      animations.forEach((animation) => animation.cancel());
-      animations = [];
-    };
-    const startMarquee = () => {
-      if (reducedMotion) return;
-
-      stopMarquee();
-      const totalDuration = duration + marqueePauseSeconds;
-      // 纯 CSS infinite 动画只能按百分比停顿，标题宽度变化时无法保证
-      // 副本头部对齐后固定等待 2 秒。Web Animation 用动态 offset 分离移动与停留时长。
-      const movementEndOffset = duration / totalDuration;
-      const maskFadeInEndOffset = marqueeMaskFadeInSeconds / totalDuration;
-      // 左侧 mask 在 24px 间距内继续淡出，会让已经离场的主体标题
-      // 仍留下一段无内容的渐变。主体尾部到达左边缘时直接切换为仅右侧 mask。
-      const originalTailArrivalTime = duration * ((distance - marqueeGapPx) / distance);
-      const originalTailArrivalOffset = originalTailArrivalTime / totalDuration;
-      const animationOptions: KeyframeAnimationOptions = {
-        duration: totalDuration * 1_000,
-        easing: "linear",
-        iterations: Infinity,
-      };
-      const trackAnimation = marqueeTrack.animate(
-        [
-          { offset: 0, transform: "translate3d(0, 0, 0)" },
-          {
-            offset: movementEndOffset,
-            transform: `translate3d(-${distance}px, 0, 0)`,
-          },
-          {
-            offset: 1,
-            transform: `translate3d(-${distance}px, 0, 0)`,
-          },
-        ],
-        animationOptions,
-      );
-      // 滚动期间始终使用双侧 mask，会让副本对齐后的 2 秒停留画面
-      // 仍然看不清标题开头。mask 与位移动画共用时长，在到达前淡出左侧并保持到下一轮。
-      const maskAnimation = textElement.animate(
-        [
-          createMaskKeyframe(rightFadeMask, 0),
-          createMaskKeyframe(bothEdgesFadeMask, maskFadeInEndOffset),
-          createMaskKeyframe(bothEdgesFadeMask, originalTailArrivalOffset),
-          createMaskKeyframe(rightFadeMask, originalTailArrivalOffset),
-          createMaskKeyframe(rightFadeMask, 1),
-        ],
-        animationOptions,
-      );
-      animations = [trackAnimation, maskAnimation];
-    };
-    const scheduleMarquee = () => {
-      if (reducedMotion) return;
-      stopMarquee();
-      // 交互规则：短暂划过 task row 不应立即触发运动；停留满 1 秒才开始。
-      startTimer = window.setTimeout(() => {
-        startTimer = null;
-        startMarquee();
-      }, marqueeHoverDelayMs);
-    };
-
-    hoverTarget.addEventListener("mouseenter", scheduleMarquee);
-    hoverTarget.addEventListener("mouseleave", stopMarquee);
-
-    return () => {
-      hoverTarget.removeEventListener("mouseenter", scheduleMarquee);
-      hoverTarget.removeEventListener("mouseleave", stopMarquee);
-      stopMarquee();
-    };
-  }, [distance, duration, isOverflowing, reducedMotion]);
-
+  // clip 而不是 hidden：hidden 仍是滚动容器，点击或聚焦会把标题开头横向滚出视野。
   return (
-    <Component
-      ref={textRef}
-      className={cn(
-        "min-w-0 flex-1 overflow-hidden whitespace-nowrap",
-        isOverflowing && overflowFadeClassName,
-        isOverflowing && "task-title-marquee",
-        className,
-      )}
-      {...props}
-    >
-      <span
-        ref={marqueeTrackRef}
-        data-task-title-marquee-track="true"
-        className="task-title-marquee-track inline-flex w-max min-w-max items-center gap-6"
+    <TitleTooltip title={isOverflowing ? title : undefined}>
+      <Component
+        ref={textRef}
+        className={cn(
+          "min-w-0 flex-1 overflow-clip whitespace-nowrap",
+          isOverflowing && overflowFadeClassName,
+          className,
+        )}
+        {...props}
       >
-        <span ref={originalTextRef} data-task-title-copy="original" className="shrink-0">
+        <span ref={originalTextRef} data-task-title-copy="original">
           {children}
         </span>
-        {isOverflowing ? (
-          <span aria-hidden="true" data-task-title-copy="duplicate" className="shrink-0">
-            {children}
-          </span>
-        ) : null}
-      </span>
-    </Component>
+      </Component>
+    </TitleTooltip>
   );
 }

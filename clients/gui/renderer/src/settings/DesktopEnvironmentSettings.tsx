@@ -1,4 +1,5 @@
-import { readLibraryRequest } from "@areal/workbench/desktop-contract/library-media";
+import { readLibraryRequest } from "../services.js";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -61,7 +62,7 @@ function SavedSetting({
         cause instanceof UiMessageError
           ? cause.descriptor
           : cause instanceof Error
-            ? cause.message
+            ? currentErrorText(cause)
             : { id: "settings.desktop.saveFailed" },
       );
     } finally {

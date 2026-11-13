@@ -93,7 +93,7 @@ SQLite 版与内存版接收完全相同的授权条件。表 `entries(id PRIMAR
 
 旧性能入口 `catalog_performance_comparison` 的 `all` 样本保留 5 次、未单独预热，仅作附加记录；主表完整分页统一采用新后端入口的预热方案，不跨入口择优拼接。RSS 还包含两侧相同的系统 Python 启动包装。
 
-历史 R3 冻结二进制另跑 5 次稀疏授权对照，作为继续优化的参考；主结论来自两种后端共用当前可执行文件的比较。所有原始样本、进程退出码、源码与二进制 SHA256、索引状态及失败尝试保存在[结果 JSON](conversation-catalog-sqlite-results.json)。
+历史 R3 冻结二进制另跑 5 次稀疏授权对照，作为继续优化的参考；主结论来自两种后端共用当前可执行文件的比较。所有原始样本、进程退出码、源码与二进制 SHA256、索引状态及失败尝试保存在 `conversation-catalog-sqlite-results.json`（在提交 82f227a9 的 Git 历史里）。
 
 ## 功能保护与验收边界
 

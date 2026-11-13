@@ -2,19 +2,19 @@
 
 # Remote Control 架构
 
-本文定义计划中的 Remote v2。本页不把设计写成已实现能力；当前模块职责见[架构与目录](architecture.md)，验证入口见[测试计划](../development/remote-control-testing.md)。
+共享 Host 的实施与验收边界见[实施规格](../development/shared-host-spec.md)，所有权以 [ADR 0016](../adr/0016-shared-host.md)为准。当前 Rust Host 持有 Gateway、授权、Store 外提交 journal、定时激活及 provider subscription transport。GUI 普通退出释放自身连接，后台 Remote 继续由 Host 承载；明确停止后台按原回执结算。完整 H3 对照与真机验收尚未完成。Host 监督身份与 Remote Noise peer 独立，多 profile 的不同 Noise 身份不能覆盖。
 
-后续[独立环境服务设计](environment-service.md)和[实施计划](../development/environment-service-plan.md)细化 Desktop Service 的 owner 与登录后台演进，复用本页 Gateway/Core/Runtime/Relay 分工。以下包含早期切片和目标描述；当前方法范围以 [Remote API](../api/remote-control.md)及源码为准，GUI 退出存活能力以实际生命周期验收为准。
+本文定义 Remote v2 的架构与边界，协议设计不等于全部场景已验收；当前模块职责见[架构与目录](architecture.md)，验证入口见[测试计划](../development/remote-control-testing.md)。
 
-## RC-01 实现范围
+## Direct 入口与实现范围
 
-只读 Direct 入口由 `RemoteControl` 随现有桌面后台管理，独立监听 loopback；它不接入 DesktopService 的高权限请求分发器。浏览器 shell 复用现有 GUI 构建，使用共享 `@areal/remote` Noise 实现；只发送 v2 hello 和两个只读方法，不持有 Core 连接或执行循环。v2 在解码 JSON 前使用收紧的消息与缓冲限额，旧本地服务继续沿用其所有者。
+Direct 入口由 Rust Host Gateway 独立监听 loopback；它不代理 Main 的高权限请求分发器。浏览器 shell 复用现有 GUI 构建，使用共享 `@areal/remote` Noise 实现；方法按实际能力和设备授权开放，不持有 Core 连接或执行循环。v2 在解码 JSON 前使用收紧的消息与缓冲限额，旧本地服务继续沿用其所有者。旧 JS `RemoteControl` 保留为迁移对照，完整对照通过后再退役。
 
-本机开关默认关闭。测试夹具提供隔离授权，真实配对及公网/Relay 部署尚不可用。运行入口和证据范围见[测试计划](../development/remote-control-testing.md)。现有 Shared Browser、原生预览和浏览器工具不属于本票改动。
+本机开关默认关闭。Direct 与 Relay 共用配对和设备授权；本地隔离测试不证明公网部署或旧配对真机升级已通过。运行入口和证据范围见[测试计划](../development/remote-control-testing.md)。现有 Shared Browser、原生预览和浏览器工具不属于本票改动。
 
 ## 目标与决策
 
-桌面电脑是 Host；现有桌面后台适配器提供 Remote Gateway。Core 是 Thread、Turn、Task、TaskRun、交互与历史的唯一权威；Runtime 仍只负责执行边界与操作事实。Web/PWA 保存可重建投影和未发送草稿。
+桌面电脑运行共享 Rust Host，并由它持有 Remote Gateway。Core 是 Thread、Turn、Task、TaskRun、交互与历史的唯一权威；Runtime 仍只负责执行边界与操作事实。Web/PWA 保存可重建投影和未发送草稿。
 
 首发提供 Direct 与 Relay 两种网络实现。两者共享配对、授权、命令及投影契约；详细方法只定义于 [Remote API](../api/remote-control.md)。关键决策见 ADR 0002–0005。
 
@@ -23,7 +23,7 @@
 | 组件 | 所有者与职责 | 禁止承担 |
 |---|---|---|
 | Desktop GUI | 本地启用、网络配置、配对确认、设备撤销、故障诊断 | 成为 Remote 存活条件 |
-| 现有桌面后台适配器 | Project 连接、凭据保管、Gateway 生命周期、Core 提交关联 | 第二个 Agent/任务调度引擎 |
+| 共享 Rust Host | Project 监督与连接、凭据保管、Gateway 生命周期、Core 提交关联 | 第二个 Agent/任务调度引擎 |
 | Remote Gateway | 当前设备授权、方法白名单、受限投影、业务命令映射、审计元数据 | 通用 RPC 或任意文件/终端代理 |
 | SecureChannel / Transport | 复用 Noise；Direct 或 Relay 的字节收发与背压 | 执行权限判定 |
 | Core | 业务准入、持久收据、会话状态、审批裁决、Task 协调 | 信任客户端自己宣称的权限 |
@@ -58,7 +58,7 @@ Host 与 Client 均向组织 Relay 建立出站 WSS。Relay 关联 room/channel 
 
 一台 Host 可聚合多个已保存项目，每个项目绑定已发现的 Core serviceId/generation。Host 身份、Gateway 进程代际、Core 服务代际、Runtime epoch 和工具 Host generation 分开处理。
 
-关闭页面或 GUI 窗口只释放观察连接。现有独立桌面适配器继续维持 Remote 与 Core 工具宿主；Remote 订阅释放不能关闭 GUI 仍在使用的订阅。停止 Gateway 不隐含取消 Core 已受理的工作。系统休眠、注销、断电、显式停止服务时不承诺在线或任务继续。
+关闭页面释放对应观察连接。普通 GUI 退出不结束 Host-owned 监督链或 Gateway；Main 独占的桌面工具连接随 GUI 退出撤销。Remote 订阅释放不能关闭其他客户端仍在使用的订阅。停止 Gateway 不隐含取消 Core 已受理的工作。系统休眠、注销、断电、显式停止服务时不承诺在线或任务继续。
 
 被动重连只发现兼容运行中的 Core；不启动已停止项目，不触发安全重启，不提升权限。Project 不可用显示其具体状态；Host 的其他项目继续工作。
 

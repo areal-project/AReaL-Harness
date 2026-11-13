@@ -1,4 +1,5 @@
 import { BrowserDetails } from "./BrowserDetails.js";
+import { errorText, rawText } from "./errors/errorCopy.js";
 import { browserLabel, devicePresets, deviceDimension } from "./browserPreview.js";
 import { observeResize } from "@areal/ui/observe-resize";
 import { Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@areal/ui";
@@ -32,7 +33,7 @@ import "./BrowserFileHandoff.layout.css";
 import { BrowserStyleTrial, type StyleTrialDraft } from "./BrowserStyleTrial.js";
 import { BrowserKeyboardElementPicker } from "./BrowserKeyboardElementPicker.js";
 import type { Action } from "./services.js";
-import type { PreviewViewport, PreviewRequest } from "@areal/workbench/desktop-contract";
+import type { PreviewViewport, PreviewRequest } from "./services.js";
 import type { BrowserWorkspaceRequest } from "./app-shell/useBrowserWorkspace.js";
 type WithoutPage<Request> = Request extends unknown ? Omit<Request, "pageId"> : never;
 type PagePreviewRequest = WithoutPage<BrowserWorkspaceRequest>;
@@ -522,7 +523,7 @@ export function Preview({
       if (mounted.current && current.current === owner) {
         setError(previewFailure(e));
         const latest = styleTrialRef.current;
-        if (latest?.trialId === draft.trialId && /失效|已修改|已替换/.test(String(e)))
+        if (latest?.trialId === draft.trialId && /失效|已修改|已替换/.test(rawText(e) ?? ""))
           updateStyleTrial({ ...latest, stale: true });
       }
     } finally {
@@ -790,7 +791,7 @@ export function Preview({
           })
           .catch(() => {});
       if (mounted.current && current.current === owner)
-        setAnnotationErrorState({ owner, message: e instanceof Error ? e.message : String(e) });
+        setAnnotationErrorState({ owner, message: errorText(t, e) });
     } finally {
       setAnnotationBusyOwner((value) => (value === owner ? null : value));
     }
@@ -1053,7 +1054,7 @@ export function Preview({
                     : "browser.failure.operation",
               )}
             </strong>{" "}
-            {error.message}
+            {error.message /* raw-error-ok: previewFailure 已呈现 */}
           </span>
           <span>
             {t(

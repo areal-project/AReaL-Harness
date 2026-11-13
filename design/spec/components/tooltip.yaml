@@ -1,0 +1,48 @@
+id: tooltip
+name: 提示
+status: draft
+purpose: 鼠标停在图标按钮上时，说出它是做什么的，有快捷键就一起给出。
+why: 图标按钮省地方但不说话；提示补上名字和快捷键，又不常驻占位。
+
+layout:
+  material: overlay
+  layer: layer-tooltip
+  position: 默认在触发控件正上方、水平居中，间隔 spacing-inline 的四分之一；上方放不下时翻到下方
+  width: 按内容撑开，最宽为 reading-width 的一半与可用宽度两者取小，超出时换行
+
+anatomy:
+  - part: popup
+    role: 提示浮层，一行文字
+  - part: shortcut
+    optional: true
+    role: 文字右侧的快捷键标签
+
+parts:
+  popup:
+    surface: color-tooltip（实色）
+    border: border-width-default 的 color-border
+    radius: radius-overlay
+    shadow: shadow-overlay
+    padding: 上下 spacing-inline 的一半，左右 spacing-inline 的一倍半；有快捷键时右侧内边距改为 spacing-inline 的一半
+    gap: 文字与快捷键之间 spacing-inline
+    text: text-ui-sm，行高 line-height-ui-sm，font-weight-medium，color-tooltip-foreground；显式换行保留
+  shortcut:
+    height: icon-size-control
+    padding: 左右 spacing-inline 的四分之三
+    radius: radius-compact
+    surface: color-tooltip-tag
+    text: text-ui-xs，font-weight-medium，color-tooltip-tag-foreground；等宽字体（苹果键盘平台用系统字体）
+
+accessible-names:
+  popup: 角色为提示
+
+behavior:
+  - 鼠标停在触发控件上片刻后出现（平台默认的提示延迟）；在相邻控件之间移动时立即切换，不再等待
+  - 键盘聚焦触发控件时出现
+  - 鼠标离开、触发控件失去焦点或按 Esc 时消失
+
+instances:
+  send:
+    trigger: 输入框主按钮“发送”
+    text: 发送
+    shortcut: 回车发送时为 Enter，否则为 ⌘/Ctrl+Enter；不能发送时文字换成原因，不带快捷键

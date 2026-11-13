@@ -54,6 +54,7 @@ async fn default_desktop_request(prompt: &str) -> Value {
         .create_configured(
             "input-budget".into(),
             ThreadStart {
+                prepare_task_directory: None,
                 creation_admission: None,
                 request_id: "create".into(),
                 cwd: Some(data.path().to_string_lossy().into_owned()),

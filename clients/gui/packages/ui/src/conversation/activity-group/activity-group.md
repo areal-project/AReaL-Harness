@@ -20,8 +20,6 @@ related: ["activity-row", "disclosure", "image-disclosure", "thinking-status"]
 
 ## 组成
 
-`R-ACTIVITYGROUP-002` 具名摘要、可聚焦的有界滚动区、折叠外的 status 插槽。children 是 [ActivityRow](../activity-row/activity-row.md) 或图片入口，保留原顺序；实际分组与事件身份归宿主投影。
-
 `R-ACTIVITYGROUP-032` 摘要与活动行同为一行对话文字高（`--text-conversation` × `--conversation-line`），相邻活动组之间隔 `--conversation-gap`。摘要不加底色，展开与否只由箭头方向表达。展开后子项与摘要左缘对齐，子项之间隔 `--spacing-inline`；每个子项保留自己的行首图标，混合的读取、搜索与命令靠图标区分。
 
 `R-ACTIVITYGROUP-033` 行首图标使用 `ActivityIcon` 活动图形集，尺寸为 `--activity-icon-size`，箭头为 `--activity-chevron-size`。没有语义类别的插件或 MCP 工具使用通用工具图形，名称仍显示真实工具名。
@@ -34,15 +32,9 @@ related: ["activity-row", "disclosure", "image-disclosure", "thinking-status"]
 
 ## 行为
 
-`R-ACTIVITYGROUP-004` 列表只纵向滚动，高度上限为 `--activity-list-max-height`，摘要不随列表滚走。每个区域只有一个滚动所有者；长命令和输出按需进入既有详情区域，不再套多层滚动。
-
 `R-ACTIVITYGROUP-028` 活动摘要可截断，展开详情必须能读全；长命令、路径、URL 和无空格输出在可用宽度内换行。**为什么：**截断是为了扫读，不能以丢失内容为代价。**推广：**新增的详情部件同样只纵向增长。**检查：**`clients/gui/scripts/design-system-conversation-system.mjs`
 
 `R-ACTIVITYGROUP-029` 不能仅隐藏横向滚动条而裁掉内容；活动列表及其内嵌命令正文不产生横向滚动，也不撑宽主聊天。**为什么：**隐藏滚动条会让超出部分永远读不到。**推广：**适用于活动组内的所有嵌套内容。**检查：**`clients/gui/scripts/design-system-conversation-system.mjs`
-
-## 内容
-
-`R-ACTIVITYGROUP-005` 摘要使用真实类型和数量（如“已探索 · 4 个文件，1 个目录”“已运行 3 条命令”），没有准确计数就省略那一项。模型过程摘要使用 [ThinkingStatus](../thinking-status/thinking-status.md)，不替代执行结果。
 
 ## 可访问性
 

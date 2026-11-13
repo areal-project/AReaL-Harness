@@ -5,9 +5,11 @@ import { createMobileSocket } from "./local-socket.mjs";
 
 /** @typedef {{kind:"loading"|"connecting"|"offline"|"background"|"revoked"|"blocked"}|{kind:"unpaired",cleared?:boolean,error?:"invalidLink"|"pairFailed"}|{kind:"pairing",fingerprint:string}|{kind:"connected",ready:{capabilities:string[],grantRevision:number,hostId:string,gatewayGeneration:string},remembered:boolean,fingerprint:string}} MobileConnectionState */
 export class MobileClient {
-  /** @param {{keychain: import("./device-store.mjs").DeviceStore["keychain"], clientKind:"ios"|"android", socket?:(url:string)=>WebSocket}} options */
-  constructor({ keychain, clientKind, socket = createMobileSocket }) {
+  /** @param {{keychain: import("./device-store.mjs").DeviceStore["keychain"], clientKind:"ios"|"android", socket?:(url:string)=>WebSocket, capabilities?:string[]}} options */
+  constructor({ keychain, clientKind, socket = createMobileSocket, capabilities }) {
     this.clientKind = clientKind;
+    // 共享界面模式在同一条连接上协商 gui-read-v1/gui-write-v1；旧页面不声明，按原方法表工作。
+    this.capabilities = capabilities;
     this.store = new DeviceStore(keychain);
     this.identities = new ClientState({ createIdentity, identityId, store: this.store });
     this.socket = socket;
@@ -17,6 +19,7 @@ export class MobileClient {
     this.epoch = 0;
     this.active = false;
     this.attempts = 0;
+    /** @type {(message: unknown) => void} */
     this.onSession = () => {};
     this.onReady = async () => {};
   }
@@ -103,6 +106,7 @@ export class MobileClient {
       hello: {
         clientKind: this.clientKind,
         displayName: deviceName,
+        ...(this.capabilities ? { capabilities: this.capabilities } : {}),
         ...(target.invite ? { inviteSecret: target.invite } : {}),
       },
       isCurrent: () => epoch === this.epoch && this.active,

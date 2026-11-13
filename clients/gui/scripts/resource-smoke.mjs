@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -52,7 +53,22 @@ export async function verifyResourceSlice({
     (thread) => thread.turns?.length,
   );
   setThread(thread.id);
-  const turn = thread.turns.at(-1);
+  const readDetails = (turnId) =>
+    readTurnToolDetails({
+      command: async (name, params) => {
+        const result = await page.evaluate(
+          ({ name, params }) => window.arealDesktop.command(name, params),
+          { name, params },
+        );
+        assert.equal(result.ok, true, JSON.stringify(result));
+        return result.value;
+      },
+      readThread: async () => project(await state()).state.threads[thread.id],
+      projectId: project(completed).id,
+      threadId: thread.id,
+      turnId,
+    });
+  const turn = await readDetails(thread.turns.at(-1).id);
   const receipts = turn.items.filter(
     (item) => item.type === "dynamicToolCall" && item.tool === "fs_create",
   );
@@ -100,7 +116,7 @@ export async function verifyResourceSlice({
     .locator(".messages")
     .evaluate((element) => element.getBoundingClientRect().width);
   await contextTrigger.click();
-  await context.getByRole("button", { name: /^Changes/ }).waitFor();
+  await context.getByRole("button", { name: /^改动/ }).waitFor();
   const sources = context.getByRole("region", { name: "输入来源", exact: true });
   await sources.getByRole("button", { name: "https://example.com/one", exact: true }).waitFor();
   assert.equal(
@@ -114,10 +130,10 @@ export async function verifyResourceSlice({
     "context popup does not reserve timeline width",
   );
   await fullShot("task-context-desktop-sources");
-  await sources.getByRole("button", { name: "折叠来源 Sources 收起", exact: true }).click();
+  await sources.getByRole("button", { name: "来源 收起", exact: true }).click();
   assert.equal(
     await sources
-      .getByRole("button", { name: "展开来源 Sources 展开", exact: true })
+      .getByRole("button", { name: "来源 展开", exact: true })
       .getAttribute("aria-expanded"),
     "false",
   );
@@ -126,7 +142,7 @@ export async function verifyResourceSlice({
     false,
     "collapsed sources leave the visible interaction path",
   );
-  await sources.getByRole("button", { name: "展开来源 Sources 展开", exact: true }).click();
+  await sources.getByRole("button", { name: "来源 展开", exact: true }).click();
   await sources.getByRole("button", { name: "查看全部来源（4）", exact: true }).click();
   await context.getByRole("button", { name: "https://example.com/four", exact: true }).waitFor();
   await button("返回来源概览").click();
@@ -175,7 +191,7 @@ export async function verifyResourceSlice({
       "resource navigation creates no turn",
     );
     assert.equal(
-      project(snapshot).state.threads[thread.id].turns[0].items.filter(
+      (await readDetails(turn.id)).items.filter(
         (item) => item.type === "dynamicToolCall" && item.tool === "fs_create",
       ).length,
       1,

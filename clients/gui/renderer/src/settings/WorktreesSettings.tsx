@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { errorText } from "../errors/errorCopy.js";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { LoaderCircle, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "../components/ui/button.js";
@@ -208,7 +209,7 @@ export function WorktreesSettings({
       setLoading(true);
       void refresh()
         .catch((cause) => {
-          if (active.current) setError(cause.message);
+          if (active.current) setError(errorText(t, cause));
         })
         .finally(() => {
           if (active.current) setLoading(false);
@@ -257,7 +258,7 @@ export function WorktreesSettings({
     }
   };
   const refreshAfterWrite = async () => {
-    await refresh().catch((cause) => setError(cause.message));
+    await refresh().catch((cause) => setError(errorText(t, cause)));
   };
   const validDefaults =
     !!defaults &&
@@ -335,7 +336,7 @@ export function WorktreesSettings({
     setLoading(true);
     setError("");
     void refresh()
-      .catch((cause) => setError(cause.message))
+      .catch((cause) => setError(errorText(t, cause)))
       .finally(() => setLoading(false));
   };
   const deleteWorktree = async (item: Data, name: string) => {
@@ -490,7 +491,6 @@ export function WorktreesSettings({
         </>
       ) : (
         <div className="worktrees-overview">
-          <p className="settings-section-desc">{t("worktree.settings.description")}</p>
           <SettingsSegmentedTabs
             ariaLabel={t("settings.worktrees.title")}
             value={tab}

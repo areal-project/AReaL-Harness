@@ -7,12 +7,13 @@ import { createServer } from "node:http";
 import { connect as unixConnect } from "node:net";
 import { once } from "node:events";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, writeFile, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, readFile, writeFile, realpath, rm, symlink } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { basename, join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
 import { waitForFaultStatus } from "./local-service-wait.mjs";
 const exec = promisify(execFile);
-const root = await realpath(await mkdtemp("/tmp/as-"));
+const root = await realpath(await trackedMkdtemp("/tmp/as-"));
 const workspace = join(root, "workspace"),
   home = join(root, "home"),
   config = join(root, "config.toml");
@@ -246,6 +247,29 @@ async function discardControlResponse(s, request) {
 let current;
 try {
   await mkdir(workspace);
+  setPhase("managed-model-reconnect");
+  const managedWorkspace = join(root, "managed-workspace");
+  const managedConfig = join(root, "managed-config.toml");
+  await mkdir(managedWorkspace);
+  const managedModel = (name) =>
+    `schema_version = 1\n[model]\ncatalog_version = 1\nprovider = "fixture"\nname = "${name}"\n[model.providers.fixture]\nprotocol = "chat-completions"\nendpoint = "http://127.0.0.1:${model.address().port}"\nmodels = [{id="first",enabled=true},{id="second",enabled=true}]\n`;
+  await writeFile(managedConfig, managedModel("first"));
+  const managedArgs = ["--workspace", managedWorkspace, "--config", managedConfig];
+  const managed = await cli(["service", "ensure", "--json", ...managedArgs]);
+  await writeFile(managedConfig, managedModel("second"));
+  const reconnected = await cli([
+    "service",
+    "ensure",
+    "--json",
+    ...managedArgs,
+    "--no-auto-restart",
+  ]);
+  assert.equal(
+    reconnected.generation,
+    managed.generation,
+    "托管模型目录尚未应用时，重新连接必须保留现有 Core",
+  );
+  await stop(managed);
   await writeFile(
     config,
     `schema_version = 1\n[model]\nname = "fixture"\n[model.providers.default]\nprotocol = "chat-completions"\nendpoint = "http://127.0.0.1:${model.address().port}"\n`,
@@ -261,7 +285,9 @@ try {
         s.corePid === current.corePid,
     ),
   );
-  assert.equal((await cli(["web", "--json", ...local])).generation, current.generation);
+  const webEndpoint = await cli(["web", "--json"]);
+  assert.equal(webEndpoint.hostId, current.owner.hostId);
+  assert.equal(webEndpoint.generation, current.owner.generation);
   assert.equal((await ensure(["--runtime-max-processes", "4"])).generation, current.generation);
   assert.equal((await ensure(["--no-auto-restart"])).generation, current.generation);
   await rejected(
@@ -296,7 +322,8 @@ try {
     () => ensure(["--permissions", "ASK_PERMISSIONS"]),
     /configuration conflict.*permissions/s,
   );
-  assert.equal((await fetch(current.webUrl)).status, 200);
+  // Core 不再内嵌网页，浏览器只经 Host；描述里的 webUrl 只剩用来定位本机端口。
+  assert.equal((await fetch(current.webUrl)).status, 404);
   const url = new URL("/areal/service", current.webUrl);
   assert.equal((await fetch(url)).status, 401);
   const auth = JSON.parse(await readFile(current.authFile, "utf8")).principals[0].token;
@@ -390,7 +417,7 @@ try {
   assert.notEqual(other.serviceId, current.serviceId);
   await rejected(
     () => ensure(["--workspace", ws2, "--data-dir", current.dataDir]),
-    /bound to a different workspace/s,
+    /bound to a different workspace|dataDir already registered/s,
   );
   await stop(other);
   // 没有配置模型的 Web 管理入口仍须能启动并输出发现信息。

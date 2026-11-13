@@ -7,8 +7,8 @@ const {
   blockerMessage,
   describe,
 } = require("./lifecycle.cjs");
-const { nativeText } = require("./native-i18n.cjs");
-const { PROTOCOL } = require("./service-protocol.cjs");
+const { nativeText } = require("@areal/workbench-service/desktop/core/native-i18n.cjs");
+const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
 
 /** @param {{metadata:{identity?:unknown},home:string}} options */
 async function recoverStartupService({ metadata, home }) {
@@ -23,7 +23,7 @@ async function recoverStartupService({ metadata, home }) {
   }
 }
 
-/** @param {{backend:InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>,notify?:import('./resource-recovery.cjs').Notify,purpose?:string,forUpdate?:boolean,migration?:unknown}} options */
+/** @param {{backend:InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>,notify?:import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify,purpose?:string,forUpdate?:boolean,migration?:unknown}} options */
 async function recoverConnectedService({
   backend,
   notify,

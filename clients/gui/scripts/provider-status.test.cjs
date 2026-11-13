@@ -1,12 +1,13 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { AppProviders } = require("../app/src/core/providers.cjs");
+const { AppProviders } = require("@areal/workbench-service/desktop/core/providers.cjs");
+const { legacyOpenAI } = require("./fixtures/legacy-subscription-owner.cjs");
 const { mkdtemp, readFile, rm, stat } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 
-test("optional desktop audit preserves routing presence without persisting opaque state", async (t) => {
+test("legacy Desktop reference audit preserves routing presence without persisting opaque state", async (t) => {
   const previous = process.env.AREAL_CORE_PROVIDER_AUDIT;
   process.env.AREAL_CORE_PROVIDER_AUDIT = "1";
   t.after(() => {
@@ -15,9 +16,9 @@ test("optional desktop audit preserves routing presence without persisting opaqu
   });
   const home = await mkdtemp(join(tmpdir(), "areal-provider-audit-"));
   t.after(() => rm(home, { recursive: true, force: true }));
-  const providers = new AppProviders({ home }, {});
+  const providers = new AppProviders({ home, host: { sourceId: "fixture" } }, {});
   providers.transport = { port: 0 };
-  const service = await providers.openai();
+  const service = await legacyOpenAI.call(providers);
   t.after(() => service.close());
   await service.onRequest({
     providerId: "fixture",
@@ -43,9 +44,9 @@ test("optional desktop audit preserves routing presence without persisting opaqu
   assert(!text.includes("fixture-secret"));
   assert.equal((await stat(filename)).mode & 0o077, 0);
   delete process.env.AREAL_CORE_PROVIDER_AUDIT;
-  const disabled = new AppProviders({ home }, {});
+  const disabled = new AppProviders({ home, host: { sourceId: "fixture" } }, {});
   disabled.transport = { port: 0 };
-  const quiet = await disabled.openai();
+  const quiet = await legacyOpenAI.call(disabled);
   t.after(() => quiet.close());
   assert.equal(quiet.onRequest, undefined);
 });
@@ -63,6 +64,7 @@ function fixture() {
     reads = [],
     tracked = [];
   const backend = {
+    host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
     submit: async (project, method, params) => {
       applications.push({ projectId: project.id, method, params });
       if (method === "areal/provider/upsert")
@@ -522,4 +524,53 @@ test("subscription publication supplies account effort constraints to Core witho
   });
   await f.providers.publishSubscription(f.providers.subscriptionScope(f.first, f.service));
   assert.deepEqual(f.providers.subscription.models[0].reasoningEffortOptions, ["low", "max"]);
+});
+
+test("settled native service remains available to passive subscription refresh", async () => {
+  const f = fixture();
+  f.providers.nativeService = f.service;
+  f.providers.openaiPromise = null;
+  f.providers.openai = () => assert.fail("passive refresh must not create a service");
+  let observed;
+  f.providers.syncSubscription = async (_project, service) => {
+    observed = service;
+  };
+  f.providers.publishSubscription = async () => {};
+  await f.providers.refreshSubscription(f.first);
+  assert.equal(observed, f.service);
+});
+
+test("settled native service remains available to Goal transport refresh", async () => {
+  const f = fixture();
+  f.providers.nativeService = f.service;
+  f.providers.openaiPromise = null;
+  f.providers.openai = () => assert.fail("Goal refresh must not create a service");
+  f.providers.backend.refreshConfiguration = async () => ({
+    configuration: {
+      model: { providerId: "areal_openai", modelId: "model-v1" },
+      provider: { endpoint: f.service.endpoint },
+    },
+  });
+  f.first.client.request = async () => ({
+    data: [{ id: "areal_openai", endpoint: f.service.endpoint, models: ["model-v1"] }],
+  });
+  let observed;
+  f.providers.syncSubscription = async (_project, service) => {
+    observed = service;
+  };
+  await f.providers.refreshGoalTransport(f.first, "thread");
+  assert.equal(observed, f.service);
+});
+
+test("close settles the initialized service exactly once during promise handoff", async () => {
+  const f = fixture();
+  f.providers.nativeService = f.service;
+  f.providers.openaiPromise = Promise.resolve(f.service);
+  f.providers.openai = () => assert.fail("shutdown must not create a service");
+  let closed = 0;
+  f.service.close = async () => {
+    closed++;
+  };
+  await f.providers.close();
+  assert.equal(closed, 1);
 });

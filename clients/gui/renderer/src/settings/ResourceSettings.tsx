@@ -1,21 +1,12 @@
 import { TitleTooltip } from "@areal/ui";
-import type { ResourceRequest, Scope } from "@areal/workbench/desktop-contract/resource";
-import { normalizeMcp } from "@areal/workbench/desktop-contract/resource";
-import {
-  useI18n,
-  UiMessageError,
-  type UiMessage,
-  type MessageId,
-  formatUiMessage,
-} from "../i18n/IntlProvider.js";
-import { SettingsDisclosure } from "./SettingsDisclosure.js";
+import type { ManagementRequest } from "../services.js";
+import { useI18n, UiMessageError, type UiMessage, formatUiMessage } from "../i18n/IntlProvider.js";
 import { useSettingsOperation } from "./useSettingsOperation.js";
 import { useDraftBlocker, useGuardedNavigation } from "./UnsavedChanges.js";
 import { useEffect, useRef, useState } from "react";
-import { BookOpen, Plug, Settings, Monitor } from "lucide-react";
+import { BookOpen, Plug, Settings, Monitor, Trash2 } from "lucide-react";
 import { Button } from "../components/ui/button.js";
 import { Input } from "../components/ui/input.js";
-import { Switch } from "../components/ui/switch.js";
 import { SettingsSearchInput } from "./SettingsSearchInput.js";
 import { SettingsBadge } from "./SettingsPageParts.js";
 import {
@@ -29,26 +20,24 @@ import {
 import { McpConfigEditor } from "./McpConfigEditor.js";
 import { SettingsSegmentedTabs } from "./SettingsSegmentedTabs.js";
 import { MessageResponse } from "../components/ai-elements/message.js";
-import { ResourceScope, CatalogEmpty, type ScopedProps } from "./ScopedSkillsSettings.js";
+import { CatalogEmpty, type ScopedProps } from "./ScopedSkillsSettings.js";
 import type { Data } from "../services.js";
 import {
   pluginSourceLabel,
   pluginMcpStateLabel,
   type PluginMcpResource,
 } from "./pluginResources.js";
-const resourceMcpStateMessages: Record<string, MessageId> = {
-  notApplied: "settings.resourceSettings.notApplied",
-  connected: "settings.resourceSettings.connected",
-  disconnected: "settings.resourceSettings.disconnected",
-  failed: "settings.resourceSettings.connectionFailed",
-  stale: "settings.resourceSettings.toolCatalogExpired",
-  connecting: "settings.resourceSettings.connecting",
-};
+const LOCAL_MCP = "@local-mcp";
+type LocalMcp = { name: string; id: string; server: Data };
+function mcpTarget(server: Data) {
+  return typeof server.url === "string"
+    ? `http · ${server.url}`
+    : `stdio · ${[server.command, ...(server.args ?? [])].join(" ")}`;
+}
+/** 直接添加的 MCP 是只含一个服务的本地插件：这里只编辑声明，启用与连接在插件页管理。 */
 export function McpSettings({
   project,
   action,
-  scope: controlledScope,
-  onScopeChange,
   pluginServers = [],
   onManagePlugin,
   onRefreshPlugins,
@@ -60,34 +49,23 @@ export function McpSettings({
   onRefreshPlugins?: () => Promise<void>;
 }) {
   const { t, intl } = useI18n();
-  const [localScope, setLocalScope] = useState("user");
-  const scope = controlledScope ?? localScope;
-  const setScope = (value: string) => {
-    setLocalScope(value);
-    onScopeChange?.(value);
-  };
-  const owner: Scope =
-    scope === "user"
-      ? { scope: "user", projectId: project?.id }
-      : { scope: "project", projectId: project?.id };
-  const api = <P extends ResourceRequest>(request: P) => action("resources", request);
-  const state = useResource(() => api({ ...owner, operation: "mcp" }), `${scope}:${project?.id}`);
+  const api = <P extends ManagementRequest>(request: P) => action("manage", request);
+  const state = useResource(
+    () => api({ operation: "mcp", ...(project?.id ? { projectId: project.id } : {}) }),
+    `${project?.id}`,
+  );
   const [query, setQuery] = useState("");
-  const [draft, setDraft] = useState<Data | null>(null);
+  const [draft, setDraft] = useState<{ name: string; existing: boolean } | null>(null);
   const [config, setConfig] = useState("");
   const navigate = useGuardedNavigation();
-  const baseline = useRef({ id: "", config: "" });
+  const baseline = useRef({ name: "", config: "" });
   const operation = useSettingsOperation();
   const { busy, error, message, setError, setMessage } = operation;
-  const disabled =
-    busy ||
-    state.loading ||
-    (scope === "project" && (!project?.state?.connected || project?.pending?.length > 0));
-  const run = (task: () => Promise<void>) =>
-    operation.run(async () => {
-      await task();
-      await state.refresh();
-    });
+  const disabled = busy || state.loading;
+  const refresh = async () => {
+    await state.refresh();
+    await onRefreshPlugins?.();
+  };
   const discard = () => {
     setDraft(null);
     setError("");
@@ -95,110 +73,84 @@ export function McpSettings({
   const save = async () => {
     if (!draft || disabled)
       throw new UiMessageError({ id: "settings.resourceSettings.cannotSaveRightNowTryAgainLater" });
-    if (!draft.id.trim())
-      throw new UiMessageError({ id: "settings.resourceSettings.serverIDCannotBeEmpty" });
-    let parsed: Data;
+    const name = draft.name.trim();
+    if (!name) throw new UiMessageError({ id: "settings.resourceSettings.serverIDCannotBeEmpty" });
+    let server: Data;
     try {
-      parsed = JSON.parse(config);
+      server = JSON.parse(config);
     } catch {
       throw new UiMessageError({
         id: "settings.resourceSettings.theMCPConfigurationIsNotValidJSON",
       });
     }
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object" || !parsed.transport)
+    if (!server || Array.isArray(server) || typeof server !== "object")
       throw new UiMessageError({
-        id: "settings.resourceSettings.provideAnMCPConfigurationContainingTransport",
+        id: "settings.resourceSettings.theMCPConfigurationIsNotValidJSON",
       });
-    const transport = parsed.transport;
-    if (transport.type === "stdio" && !transport.command?.trim())
+    if (typeof server.url !== "string" && !String(server.command ?? "").trim())
       throw new UiMessageError({ id: "settings.resourceSettings.commandCannotBeEmpty" });
-    if (transport.type === "streamableHttp") {
+    if (typeof server.url === "string") {
       try {
-        if (!["http:", "https:"].includes(new URL(transport.url).protocol)) throw new Error();
+        if (!["http:", "https:"].includes(new URL(server.url).protocol)) throw new Error();
       } catch {
         throw new UiMessageError({ id: "settings.resourceSettings.theServerURLMustBeAValid" });
       }
     }
-    const result = await api({
-      ...owner,
+    await api({
       operation: "mcpSave",
-      id: draft.id.trim(),
-      expectedRevision: scope === "user" ? state.value?.revision : draft.revision,
-      config: normalizeMcp(parsed),
+      name,
+      server,
+      expectedRevision: state.value?.revision ?? 0,
     });
     setDraft(null);
-    await state.refresh();
-    setMessage(
-      ("warning" in result && result.warning) || {
-        id: "settings.resourceSettings.configurationSaved",
-      },
-    );
+    await refresh();
+    setMessage({ id: "settings.resourceSettings.configurationSaved" });
   };
   useDraftBlocker({
     label: { id: "settings.resourceSettings.mcpConfiguration" },
-    dirty: !!draft && (draft.id !== baseline.current.id || config !== baseline.current.config),
+    dirty: !!draft && (draft.name !== baseline.current.name || config !== baseline.current.config),
     busy,
     discard,
     save: () => operation.execute(save),
   });
-  const edit = (
-    item: Data = {
-      id: "",
-      revision: 0,
-      config: { transport: { type: "stdio", command: "", args: [] } },
-    },
-  ) => {
-    baseline.current = { id: item.id, config: JSON.stringify(item.config, null, 2) };
-    setDraft(item);
-    setConfig(baseline.current.config);
+  const edit = (item?: { name: string; server: Data }) => {
+    const text = JSON.stringify(item?.server ?? { command: "", args: [] }, null, 2);
+    baseline.current = { name: item?.name ?? "", config: text };
+    setDraft({ name: item?.name ?? "", existing: !!item });
+    setConfig(text);
     setError("");
   };
   useEffect(() => {
     if (addRequest) edit();
   }, [addRequest]);
-  const source = t("settings.resourceSettings.standaloneResourcesValue", {
-    value0:
-      scope === "user"
-        ? t("settings.resourceSettings.user")
-        : t("settings.resourceSettings.currentProject"),
-  });
-  const packageItems = pluginServers.filter((item) =>
-    `${item.serverId} ${pluginSourceLabel(item.owner, t)}`
-      .toLowerCase()
-      .includes(query.toLowerCase()),
+  const remove = (name: string) =>
+    operation.run(async () => {
+      await api({ operation: "mcpRemove", name, expectedRevision: state.value?.revision ?? 0 });
+      await refresh();
+      setMessage({ id: "settings.resourceSettings.mcpRemoved", values: { value0: name } });
+    });
+  const matches = (text: string) => text.toLowerCase().includes(query.toLowerCase());
+  const local = (state.loading ? [] : (state.value?.data ?? [])).filter((item: LocalMcp) =>
+    matches(`${item.name} ${mcpTarget(item.server)}`),
   );
-  const items = (state.loading ? [] : (state.value?.data ?? [])).filter((item: Data) =>
-    [
-      item.id,
-      source,
-      item.config?.transport?.command,
-      item.config?.transport?.url,
-      ...(item.tools ?? []).map((tool: Data) => tool.name),
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(query.toLowerCase()),
+  const packageItems = pluginServers.filter(
+    (item) =>
+      !item.owner.pluginId.endsWith(LOCAL_MCP) &&
+      matches(`${item.serverId} ${pluginSourceLabel(item.owner, t)}`),
   );
+  const localState = (id: string) => pluginServers.find((item) => item.owner.pluginId === id);
   return (
     <div className="resource-settings">
       {!draft && (
         <>
           <div className="resource-catalog-bar">
-            <ResourceScope
-              value={scope}
-              onChange={(v) => {
-                setScope(v);
-                setQuery("");
-                setError("");
-                setMessage("");
-              }}
-              project={project}
-              disabled={busy}
-            />
             <strong>
               MCP{" "}
               <small>
-                {intl.formatNumber((state.value?.data?.length ?? 0) + pluginServers.length)}
+                {intl.formatNumber(
+                  (state.value?.data?.length ?? 0) +
+                    pluginServers.filter((item) => !item.owner.pluginId.endsWith(LOCAL_MCP)).length,
+                )}
               </small>
             </strong>
             <SettingsSearchInput
@@ -211,111 +163,57 @@ export function McpSettings({
             />
           </div>
           <SettingsToolbar
-            description={
-              scope === "user"
-                ? t("settings.resourceSettings.reusableAcrossAllProjectsTheConnectionToggle")
-                : t("settings.resourceSettings.onlyForTheCurrentProject")
-            }
+            description={t("settings.resourceSettings.directMcpIsAPlugin")}
             loading={state.loading}
             disabled={disabled}
-            onRefresh={() => {
-              void state.refresh();
-              void onRefreshPlugins?.();
-            }}
+            onRefresh={() => void refresh()}
             onAdd={() => edit()}
             addLabel={t("settings.resourceSettings.addMCP")}
           />
-          <Feedback error={state.error || (!draft ? error : "")} message={message} />
+          <Feedback error={state.error || error} message={message} />
           <div className="settings-resource-list">
-            {items.map((item: Data) => (
-              <article key={`standalone:${scope}:${item.id}`} aria-label={`${item.id} · ${source}`}>
-                <div className="resource-title">
-                  <Plug size={20} />
-                  <div>
-                    <strong>{item.id}</strong>
-                    <p>{source}</p>
-                    {/* MCP 启动命令／URL 单行截断，长命令看不到后半段；补完整值的原生 title。 */}
-                    <TitleTooltip
-                      title={`${item.config.transport?.type ?? ""} ${
-                        item.config.transport?.command ?? item.config.transport?.url ?? ""
-                      }`.trim()}
+            {local.map((item: LocalMcp) => {
+              const live = localState(item.id);
+              return (
+                <article key={item.id} aria-label={item.name}>
+                  <div className="resource-title">
+                    <Plug size={20} />
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>{t("settings.resourceSettings.addedDirectly")}</p>
+                      {/* 启动命令／URL 单行截断，补完整值的原生 title。 */}
+                      <TitleTooltip title={mcpTarget(item.server)}>
+                        <p>{mcpTarget(item.server)}</p>
+                      </TitleTooltip>
+                    </div>
+                    {live && <SettingsBadge>{pluginMcpStateLabel(live.state, t)}</SettingsBadge>}
+                    <Button
+                      variant="ghost"
+                      aria-label={t("settings.resourceSettings.editMCPValue", {
+                        value0: item.name,
+                      })}
+                      disabled={disabled}
+                      onClick={() => edit(item)}
                     >
-                      <p>
-                        {item.config.transport?.type} ·{" "}
-                        {item.config.transport?.command ?? item.config.transport?.url ?? ""}
-                      </p>
-                    </TitleTooltip>
+                      <Settings />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      aria-label={t("settings.resourceSettings.removeMCPValue", {
+                        value0: item.name,
+                      })}
+                      disabled={disabled}
+                      onClick={() => void remove(item.name)}
+                    >
+                      <Trash2 />
+                    </Button>
+                    <Button variant="outline" onClick={() => onManagePlugin?.(item.id)}>
+                      {t("settings.resourceSettings.managePlugin")}
+                    </Button>
                   </div>
-                  <SettingsBadge>
-                    {resourceMcpStateMessages[item.state]
-                      ? t(resourceMcpStateMessages[item.state])
-                      : item.state}
-                  </SettingsBadge>
-                  <Button
-                    variant="ghost"
-                    aria-label={t("settings.resourceSettings.editMCPValue", { value0: item.id })}
-                    disabled={
-                      disabled || !["disconnected", "failed", "notApplied"].includes(item.state)
-                    }
-                    onClick={() => edit(item)}
-                  >
-                    <Settings />
-                  </Button>
-                  <Switch
-                    checked={!["disconnected", "failed", "notApplied"].includes(item.state)}
-                    disabled={disabled || !project || item.state === "connecting"}
-                    aria-label={
-                      ["disconnected", "failed", "notApplied"].includes(item.state)
-                        ? t("settings.resourceSettings.connectValue", { value0: item.id })
-                        : t("settings.resourceSettings.disconnectValue", { value0: item.id })
-                    }
-                    onCheckedChange={() =>
-                      void run(async () => {
-                        const connecting = ["disconnected", "failed", "notApplied"].includes(
-                          item.state,
-                        );
-                        await api({
-                          ...owner,
-                          operation: connecting ? "mcpConnect" : "mcpDisconnect",
-                          projectId: project?.id,
-                          id: item.id,
-                          expectedRevision: item.revision,
-                        });
-                        setMessage({
-                          id: "settings.resourceSettings.connectionStatusRefreshedForValue",
-                          values: { value0: item.id },
-                        });
-                      })
-                    }
-                  />
-                </div>
-                {item.error && <Feedback error={item.error} />}
-                <SettingsDisclosure
-                  className="mt-3"
-                  title={
-                    <>
-                      {" "}
-                      {t("settings.resourceSettings.toolCount", {
-                        count: item.tools?.length ?? 0,
-                      })}{" "}
-                    </>
-                  }
-                >
-                  {item.tools?.length ? (
-                    item.tools.map((tool: Data) => (
-                      <div className="settings-tool" key={tool.name}>
-                        <strong>{tool.name}</strong>
-                        <p>{tool.description}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="settings-muted">
-                      {t("settings.resourceSettings.noToolsAvailableYetConnectAndRefresh")}
-                    </p>
-                  )}
-                </SettingsDisclosure>
-              </article>
-            ))}
+                </article>
+              );
+            })}
             {packageItems.map((item) => (
               <article
                 key={item.key}
@@ -342,8 +240,8 @@ export function McpSettings({
               </article>
             ))}
           </div>
-          {!state.loading && !items.length && !packageItems.length && (
-            <CatalogEmpty kind="mcp" query={query} scope={scope} onAdd={() => edit()} />
+          {!state.loading && !local.length && !packageItems.length && (
+            <CatalogEmpty kind="mcp" query={query} scope="user" onAdd={() => edit()} />
           )}
         </>
       )}
@@ -353,7 +251,7 @@ export function McpSettings({
             {t("settings.resourceSettings.backToMCPServers")}
           </Button>
           <h2>
-            {draft.revision || draft.runtimeId
+            {draft.existing
               ? t("settings.resourceSettings.editMCPServer")
               : t("settings.resourceSettings.addMCPServer")}
           </h2>
@@ -372,9 +270,9 @@ export function McpSettings({
                 {t("settings.resourceSettings.serverID")}
                 <Input
                   required
-                  value={draft.id}
-                  disabled={!!draft.revision || !!draft.runtimeId}
-                  onChange={(e) => setDraft({ ...draft, id: e.target.value })}
+                  value={draft.name}
+                  disabled={draft.existing}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 />
               </label>
               <McpConfigEditor value={config} onChange={setConfig} />

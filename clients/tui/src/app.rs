@@ -106,7 +106,9 @@ pub struct App {
     pub monitor_configuration: bool,
     pub restart_ready: bool,
     pub configuration_notice: Option<String>,
+    pub host_update_notice: Option<String>,
     pub trajectory_notice: Option<String>,
+    pub release_notice: Option<String>,
     configuration: Value,
     pub threads: BTreeMap<String, Thread>,
     pub selected: Option<String>,
@@ -174,7 +176,9 @@ impl App {
             monitor_configuration: false,
             restart_ready: false,
             configuration_notice: None,
+            host_update_notice: None,
             trajectory_notice: None,
+            release_notice: None,
             configuration: Value::Null,
             threads: BTreeMap::new(),
             selected: None,
@@ -618,7 +622,10 @@ impl App {
     }
 
     pub fn status_notice(&self) -> &str {
-        self.configuration_notice.as_deref().unwrap_or(&self.status)
+        self.configuration_notice
+            .as_deref()
+            .or(self.host_update_notice.as_deref())
+            .unwrap_or(&self.status)
     }
 
     fn configuration_changed(&mut self, configuration: &Value) -> Result<()> {
@@ -631,7 +638,7 @@ impl App {
         self.configuration_notice = if let Some(error) = configuration["error"].as_str() {
             Some(format!("Configuration unchanged: {}", safe_text(error)))
         } else if configuration["restartRequired"] == true {
-            Some("Configuration update pending · restarting when background work settles".into())
+            Some("Configuration update pending · explicitly reopen the project to apply".into())
         } else {
             None
         };

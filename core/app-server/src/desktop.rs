@@ -3,6 +3,8 @@ use super::*;
 use areal_protocol::desktop::*;
 
 areal_protocol::method_catalog! {
+    "areal/worktree/read" => Read;
+    "areal/worktree/command" => Mutation, Management;
     "areal/side/start" => Mutation, Thread;
     "areal/side/create" => Mutation, Thread;
     "areal/side/close" => Mutation, Thread;
@@ -32,24 +34,11 @@ areal_protocol::method_catalog! {
     "areal/server/status" => Read;
     "areal/server/drain" => Mutation;
     "areal/model/list" => Read;
-    "areal/mcp/list" => Read;
-    "areal/mcp/read" => Read;
-    "areal/mcp/configure" => Mutation, Management;
-    "areal/mcp/connect" => Mutation, Management;
-    "areal/mcp/disconnect" => Mutation, Management;
     "areal/plugin/list" => Read;
     "areal/plugin/read" => Read;
     "areal/plugin/importArchive" => Mutation, Management;
-    "areal/plugin/install" => Mutation, Management;
-    "areal/plugin/configure" => Mutation, Management;
     "areal/plugin/component/configure" => Mutation, Management;
-    "areal/plugin/uninstall" => Mutation, Management;
     "areal/plugin/setup" => Mutation, Management;
-    "areal/marketplace/add" => Mutation, Management;
-    "areal/marketplace/addGit" => Mutation, Management;
-    "areal/marketplace/remove" => Mutation, Management;
-    "areal/marketplace/update" => Mutation, Management;
-    "areal/plugin/resolve" => Mutation, Management;
     "areal/thread/start" => Mutation, Thread;
     "areal/thread/configure" => Mutation, Thread;
     "areal/thread/prediction" => Mutation;
@@ -115,6 +104,7 @@ struct Id {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RequestRead {
+    expected_submission: Option<areal_protocol::submissions::ExpectedSubmission>,
     creation_admission: Option<CreationAdmission>,
     thread_id: Option<String>,
     request_id: String,
@@ -127,30 +117,6 @@ struct QueueEdit {
     queue_item_id: Option<String>,
     input: Option<Vec<Input>>,
     queue_item_ids: Option<Vec<String>>,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CatalogRefreshRequired {
-    revision: u64,
-    catalog_refresh_required: bool,
-}
-
-fn plugin_catalog_mutation_result(catalog: Value) -> areal_engine::Result<Value> {
-    let size = serde_json::to_vec(&json!({"result": &catalog}))
-        .map_err(|error| Error::Invalid(error.to_string()))?
-        .len();
-    if size <= Engine::MANAGEMENT_RECEIPT_MAX_BYTES {
-        return Ok(catalog);
-    }
-    let revision = catalog["revision"]
-        .as_u64()
-        .ok_or_else(|| Error::Invalid("invalid plugin directory revision".into()))?;
-    serde_json::to_value(CatalogRefreshRequired {
-        revision,
-        catalog_refresh_required: true,
-    })
-    .map_err(|error| Error::Invalid(error.to_string()))
 }
 
 pub(crate) async fn dispatch_with_budget(
@@ -208,23 +174,13 @@ pub(crate) async fn dispatch(
     }
     let mutation = matches!(
         method,
-        "areal/plan/update"
+        "areal/worktree/command"
+            | "areal/plan/update"
             | "areal/provider/upsert"
             | "areal/provider/remove"
-            | "areal/mcp/configure"
-            | "areal/mcp/connect"
-            | "areal/mcp/disconnect"
             | "areal/plugin/importArchive"
-            | "areal/plugin/install"
-            | "areal/plugin/configure"
             | "areal/plugin/component/configure"
-            | "areal/plugin/uninstall"
             | "areal/plugin/setup"
-            | "areal/marketplace/add"
-            | "areal/marketplace/addGit"
-            | "areal/marketplace/remove"
-            | "areal/marketplace/update"
-            | "areal/plugin/resolve"
             | "areal/queue/update"
             | "areal/queue/steer"
             | "areal/queue/remove"
@@ -244,7 +200,7 @@ pub(crate) async fn dispatch(
         return Err(RpcError::invalid("requestId is required for unarchive"));
     }
     if mutation
-        && (method.starts_with("areal/plugin/") || method.starts_with("areal/marketplace/"))
+        && method.starts_with("areal/plugin/")
         && params
             .get("requestId")
             .and_then(Value::as_str)
@@ -266,7 +222,10 @@ pub(crate) async fn dispatch(
         let method = method.to_owned();
         let owner = identity.to_owned();
         let snapshot = params.clone();
-        if method == "areal/plugin/setup" || method == "areal/queue/steer" {
+        if method == "areal/plugin/setup"
+            || method == "areal/queue/steer"
+            || method == "areal/worktree/command"
+        {
             params["requestId"] = json!(request);
         }
         let reply = engine
@@ -632,76 +591,6 @@ async fn dispatch_inner(
             let p: Id = parse(params)?;
             engine.plugin_read(p.id).await
         }
-        "areal/marketplace/add" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Add {
-                root: std::path::PathBuf,
-                expected_revision: u64,
-            }
-            let p: Add = parse(params)?;
-            engine
-                .plugin_add_marketplace(p.root, p.expected_revision)
-                .await
-                .and_then(plugin_catalog_mutation_result)
-        }
-        "areal/plugin/resolve" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Resolve {
-                id: String,
-                expected_revision: u64,
-            }
-            let p: Resolve = parse(params)?;
-            engine.plugin_resolve(p.id, p.expected_revision).await
-        }
-        "areal/marketplace/addGit" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct AddGit {
-                url: String,
-                #[serde(default)]
-                ref_name: Option<String>,
-                #[serde(default)]
-                sparse_paths: Vec<String>,
-                expected_revision: u64,
-            }
-            let p: AddGit = parse(params)?;
-            engine
-                .plugin_add_git_marketplace_sparse(
-                    p.url,
-                    p.ref_name,
-                    p.sparse_paths,
-                    p.expected_revision,
-                )
-                .await
-                .and_then(plugin_catalog_mutation_result)
-        }
-        "areal/marketplace/remove" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Remove {
-                root: std::path::PathBuf,
-                expected_revision: u64,
-            }
-            let p: Remove = parse(params)?;
-            engine
-                .plugin_remove_marketplace(p.root, p.expected_revision)
-                .await
-                .and_then(plugin_catalog_mutation_result)
-        }
-        "areal/marketplace/update" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Update {
-                expected_revision: u64,
-            }
-            let p: Update = parse(params)?;
-            engine
-                .plugin_update_marketplaces(p.expected_revision)
-                .await
-                .and_then(plugin_catalog_mutation_result)
-        }
         "areal/plugin/importArchive" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -712,41 +601,6 @@ async fn dispatch_inner(
             let p: Import = parse(params)?;
             engine
                 .plugin_import_archive(p.path, p.expected_revision)
-                .await
-        }
-        "areal/plugin/install" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Install {
-                id: String,
-                scope: String,
-                expected_revision: u64,
-                source: std::path::PathBuf,
-                expected_digest: String,
-            }
-            let p: Install = parse(params)?;
-            engine
-                .plugin_install(
-                    p.id,
-                    p.scope,
-                    p.expected_revision,
-                    p.source,
-                    p.expected_digest,
-                )
-                .await
-        }
-        "areal/plugin/configure" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Configure {
-                id: String,
-                scope: String,
-                enabled: bool,
-                expected_revision: u64,
-            }
-            let p: Configure = parse(params)?;
-            engine
-                .plugin_configure(p.id, p.scope, p.enabled, p.expected_revision)
                 .await
         }
         "areal/plugin/component/configure" => {
@@ -770,19 +624,6 @@ async fn dispatch_inner(
                 )
                 .await
         }
-        "areal/plugin/uninstall" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Uninstall {
-                id: String,
-                expected_revision: u64,
-            }
-            let p: Uninstall = parse(params)?;
-            engine
-                .plugin_uninstall(p.id, p.expected_revision)
-                .await
-                .and_then(plugin_catalog_mutation_result)
-        }
         "areal/plugin/setup" => {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -795,39 +636,6 @@ async fn dispatch_inner(
             let p: Setup = parse(params)?;
             engine
                 .plugin_setup(identity.into(), p.id, p.thread_id, p.request_id)
-                .await
-        }
-        "areal/mcp/list" => {
-            let _: ModelList = parse(params)?;
-            Ok(engine.mcp_list())
-        }
-        "areal/mcp/read" => {
-            let p: Id = parse(params)?;
-            engine.mcp_list()["data"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|r| r["id"] == p.id)
-                .cloned()
-                .ok_or(Error::NotFound)
-        }
-        "areal/mcp/configure" => {
-            #[derive(Deserialize)]
-            #[serde(rename_all = "camelCase", deny_unknown_fields)]
-            struct Configure {
-                id: String,
-                expected_revision: u64,
-                config: areal_engine::desktop::McpConfig,
-            }
-            let p: Configure = parse(params)?;
-            engine
-                .mcp_configure(p.id, p.expected_revision, p.config)
-                .await
-        }
-        "areal/mcp/connect" | "areal/mcp/disconnect" => {
-            let p: ProviderRemove = parse(params)?;
-            engine
-                .mcp_connection(p.id, p.expected_revision, method == "areal/mcp/connect")
                 .await
         }
         "areal/profile/list" => {
@@ -966,14 +774,51 @@ async fn dispatch_inner(
             if !valid {
                 return Err(RpcError::invalid("queue fields do not match operation"));
             }
-            engine
+            // 队列编辑先在副本上校验，持久化之前的这几类错误保证没有变更：
+            // 标成明确拒绝，调用方不必再按“结果未知”核对。
+            return engine
                 .edit_queue(p.thread_id, p.expected_revision, action.into(), params)
                 .await
                 .map(|q| json!(q))
+                .map_err(|error| {
+                    let unchanged =
+                        matches!(error, Error::Conflict | Error::NotFound | Error::Invalid(_));
+                    let error = map_error(error);
+                    if unchanged {
+                        rejected(error, "REQUEST_REJECTED")
+                    } else {
+                        error
+                    }
+                });
+        }
+        "areal/worktree/read" => engine
+            .worktree_read(params)
+            .await
+            .map_err(|error| Error::Invalid(error.to_string())),
+        "areal/worktree/command" => {
+            // 参数形状错误属于调用方错误，在触达存储前拒绝。
+            if !params.is_object() {
+                return Err(RpcError::invalid("params must be an object"));
+            }
+            engine
+                .worktree_command(params)
+                .await
+                .map_err(|error| Error::Storage(error.to_string()))
         }
         "areal/request/read" => {
             let p: RequestRead = parse(params)?;
-            if let Some(original) = p.creation_admission {
+            if p.expected_submission.as_ref().is_some_and(|expected| {
+                expected.params["requestId"] != p.request_id
+                    || !expected.params.is_object()
+                    || expected.method.is_empty()
+            }) {
+                return Err(RpcError::invalid(
+                    "expected submission does not match original request",
+                ));
+            }
+            let expected = p.expected_submission;
+            let scoped = p.thread_id.clone();
+            let result = if let Some(original) = p.creation_admission {
                 if p.thread_id.is_some() {
                     return Err(RpcError::invalid(
                         "creationAdmission requires unscoped request lookup",
@@ -988,6 +833,21 @@ async fn dispatch_inner(
                     .await
             } else {
                 engine.find_request(identity, &p.request_id).await
+            };
+            match (result, expected) {
+                (Ok(mut result), Some(expected)) => {
+                    let coverage = serde_json::to_value(engine.creation_admission(identity).await)
+                        .unwrap_or(Value::Null);
+                    result["matchedReceipt"] = areal_protocol::submissions::reconcile(
+                        &expected,
+                        &result,
+                        &coverage,
+                        scoped.as_deref(),
+                    )
+                    .unwrap_or(Value::Null);
+                    Ok(result)
+                }
+                (result, _) => result,
             }
         }
         _ => return Err(RpcError::method()),

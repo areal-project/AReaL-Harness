@@ -3,8 +3,10 @@
 const { readFileSync, existsSync } = require("node:fs");
 const { join } = require("node:path");
 const githubRepository = "areal-project/AReaL-Harness";
-const githubFeedUrl = `https://github.com/${githubRepository}/releases/download/gui-update-channel/`;
 const githubReleaseUrl = `https://github.com/${githubRepository}/releases/download`;
+const githubFeedUrl = `${githubReleaseUrl}/gui-update-channel/`;
+// Beta 频道清单指向最新 Beta 与最新正式版中较高者；客户端只切换固定地址。
+const githubBetaFeedUrl = `${githubReleaseUrl}/gui-beta-channel/`;
 const githubTestFeedUrl = `${githubReleaseUrl}/update-test-channel/`;
 const githubSparkleTestFeedUrl = `${githubReleaseUrl}/update-test-sparkle-channel/`;
 /** @typedef {{feedUrl:string,development:boolean,engine?:string}} UpdateConfig */
@@ -19,10 +21,11 @@ function validateFeedUrl(value, { development = false } = {}) {
   const testTag = url.href.startsWith(`${githubReleaseUrl}/`) ? url.pathname.split("/").at(-2) : "";
   const github =
     url.href === githubFeedUrl ||
+    url.href === githubBetaFeedUrl ||
     url.href === githubTestFeedUrl ||
     url.href === githubSparkleTestFeedUrl ||
     (testTag?.startsWith("update-test-v") &&
-      stableVersion(testTag.slice("update-test-v".length)) &&
+      releaseVersion(testTag.slice("update-test-v".length)) &&
       url.href === `${githubReleaseUrl}/${testTag}/`);
   if ((!local && !github) || url.username || url.password || url.search || url.hash) {
     throw new Error("更新源必须是 areal-project/AReaL-Harness 的 GUI 更新频道或隔离测试 Release");
@@ -66,23 +69,32 @@ function readUpdateConfig({ packaged, resourcesPath, env = process.env }) {
     engine: typeof engine === "string" ? engine : undefined,
   };
 }
+const versionPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-beta\.([1-9]\d*))?$/;
+/** 只接受 X.Y.Z 与 X.Y.Z-beta.N。 @param {unknown} value @returns {value is string} */
+const releaseVersion = (value) => typeof value === "string" && versionPattern.test(value);
 /** @param {unknown} value @returns {value is string} */
-function stableVersion(value) {
-  return typeof value === "string" && /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value);
-}
+const stableVersion = (value) => releaseVersion(value) && !value.includes("-");
+/** @param {string} value semver 顺序：同号 Beta 低于正式版。 */
+const order = (value) => {
+  const [, ...parts] = /** @type {RegExpExecArray} */ (versionPattern.exec(value));
+  return [parts[0], parts[1], parts[2], parts[3] ? "0" : "1", parts[3] ?? "0"].map(BigInt);
+};
 /** @param {unknown} version @param {unknown} current */
 function newer(version, current) {
-  if (!stableVersion(version) || !stableVersion(current)) return false;
-  const a = version.split(".").map(BigInt),
-    b = current.split(".").map(BigInt);
-  for (let i = 0; i < 3; i++) {
-    if (a[i] !== b[i]) return a[i] > b[i];
-  }
-  return false;
+  if (!releaseVersion(version) || !releaseVersion(current)) return false;
+  const a = order(version),
+    b = order(current);
+  const index = a.findIndex((part, i) => part !== b[i]);
+  return index >= 0 && a[index] > b[index];
 }
+/** @param {UpdateConfig} config @param {'stable'|'beta'} channel 正式包切到 Beta 频道；测试与本地源保持原地址。 */
+const channelFeedUrl = (config, channel) =>
+  channel === "beta" && config.feedUrl === githubFeedUrl ? githubBetaFeedUrl : config.feedUrl;
 /** @param {import('electron-updater').UpdateInfo} info @param {string} feedUrl @param {{engine?:string}} [options] */
 function validateUpdate(info, feedUrl, { engine } = {}) {
-  if (!stableVersion(info?.version)) throw new Error("更新清单版本无效");
+  if (!releaseVersion(info?.version)) throw new Error("更新清单版本无效");
+  if (feedUrl === githubFeedUrl && !stableVersion(info.version))
+    throw new Error("正式更新频道只接受正式版本");
   const expected = releaseAssetUrl(validateFeedUrl(feedUrl, { development: true }), info.version);
   if (
     info.files?.length !== 1 ||
@@ -99,12 +111,15 @@ function validateUpdate(info, feedUrl, { engine } = {}) {
 module.exports = {
   githubRepository,
   githubFeedUrl,
+  githubBetaFeedUrl,
   githubReleaseUrl,
   githubTestFeedUrl,
   githubSparkleTestFeedUrl,
   validateFeedUrl,
   readUpdateConfig,
+  releaseVersion,
   stableVersion,
+  channelFeedUrl,
   newer,
   validateUpdate,
 };

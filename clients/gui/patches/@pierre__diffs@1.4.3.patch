@@ -1,5 +1,5 @@
 diff --git a/dist/components/FileDiff.js b/dist/components/FileDiff.js
-index 6758a7b9d07f2f971f971afbf52b831a7388e999..dca1518eae78fbb1ca7579d9bdce2d227a5604f8 100644
+index 6758a7b9d07f2f971f971afbf52b831a7388e999..0b4ad865396a248da9c4d69057d8368f1b5fa8a4 100644
 --- a/dist/components/FileDiff.js
 +++ b/dist/components/FileDiff.js
 @@ -315,6 +315,7 @@ var FileDiff = class {
@@ -10,3 +10,49 @@ index 6758a7b9d07f2f971f971afbf52b831a7388e999..dca1518eae78fbb1ca7579d9bdce2d22
  		if (typeof this.options.hunkSeparators === "function") return true;
  		return overflow === "scroll" && (this.getLatestAnnotations().length > 0 || this.pre?.hasAttribute("data-has-merge-conflict") === true);
  	}
+diff --git a/dist/renderers/DiffHunksRenderer.js b/dist/renderers/DiffHunksRenderer.js
+index ded610e2282cfc8d00dfd39d41190d6b8cca84ed..e030e7af77c8561aebee3abb3b3d6d87e5eb3a58 100644
+--- a/dist/renderers/DiffHunksRenderer.js
++++ b/dist/renderers/DiffHunksRenderer.js
+@@ -650,6 +650,7 @@ var DiffHunksRenderer = class {
+ 		const context = {
+ 			rowCount: 0,
+ 			hunkSeparators,
++			unmodifiedLinesLabel: this.options.unmodifiedLinesLabel,
+ 			additionsContentAST,
+ 			deletionsContentAST,
+ 			unifiedContentAST,
+@@ -1164,7 +1165,7 @@ function pushSeparator(type, { hunkIndex, collapsedLines, rangeSize, hunkSpecs,
+ 	const slotName = getHunkSeparatorSlotName(type, hunkIndex);
+ 	const chunked = rangeSize > context.expansionLineCount;
+ 	const expandIndex = isExpandable ? hunkIndex : void 0;
+-	const content = typeof collapsedLines === "number" ? getModifiedLinesString(collapsedLines) : "More unchanged context may be available";
++	const content = context.unmodifiedLinesLabel?.(typeof collapsedLines === "number" ? collapsedLines : void 0) ?? (typeof collapsedLines === "number" ? getModifiedLinesString(collapsedLines) : "More unchanged context may be available");
+ 	context.pushToGutter(type, createSeparator({
+ 		type: context.hunkSeparators,
+ 		content,
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+index e8d3cc9285661c7da562e27df270c031da74a8be..8f84d27d341d20f4cc2c413b9ac4cc64f2a11559 100644
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -350,6 +350,8 @@ interface BaseDiffOptions extends BaseCodeOptions {
+   diffIndicators?: DiffIndicators;
+   disableBackground?: boolean;
+   hunkSeparators?: HunkSeparators;
++  /** Label for collapsed unchanged lines; undefined means the count is unknown. */
++  unmodifiedLinesLabel?: (lines: number | undefined) => string;
+   expandUnchanged?: boolean;
+   /**
+    * Fetches full file contents for partial changed/renamed diffs parsed from
+diff --git a/dist/utils/getDiffHunksRendererOptions.js b/dist/utils/getDiffHunksRendererOptions.js
+index abb59633fcc08bef5b3d078e94fc9aa320120c8f..fc5bde101f2f979daf1bf17088615ea5ef8ff3de 100644
+--- a/dist/utils/getDiffHunksRendererOptions.js
++++ b/dist/utils/getDiffHunksRendererOptions.js
+@@ -18,6 +18,7 @@ function getDiffHunksRendererOptions(options) {
+ 		diffIndicators: options?.diffIndicators,
+ 		disableBackground: options?.disableBackground,
+ 		hunkSeparators: typeof options?.hunkSeparators === "function" ? "custom" : options?.hunkSeparators,
++		unmodifiedLinesLabel: options?.unmodifiedLinesLabel,
+ 		expandUnchanged: options?.expandUnchanged,
+ 		loadDiffFiles: options?.loadDiffFiles,
+ 		collapsedContextThreshold: options?.collapsedContextThreshold,

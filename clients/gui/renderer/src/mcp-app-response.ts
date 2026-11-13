@@ -6,7 +6,7 @@ import {
   ToolSchema,
 } from "@modelcontextprotocol/core";
 import { McpUiHostContextSchema } from "@modelcontextprotocol/ext-apps/app-bridge";
-import type { DesktopError } from "@areal/workbench/desktop-contract";
+import type { DesktopError } from "./services.js";
 import type {
   McpAppCommand,
   McpAppEvent,
@@ -20,11 +20,11 @@ const fields = z.record(z.string(), z.unknown());
 const resultSource = z
   .object({ projectId: z.string(), threadId: z.string(), turnId: z.string(), itemId: z.string() })
   .passthrough();
+const frameFields = { token: z.string(), frameUrl: z.string(), frameHtml: z.string().optional() };
 const mcpApp = z
   .object({
     kind: z.literal("mcp"),
-    token: z.string(),
-    frameUrl: z.string(),
+    ...frameFields,
     instanceId: z.string(),
     serverId: z.string(),
     generation: z.union([z.string(), z.number()]),
@@ -45,8 +45,7 @@ const mcpApp = z
 const genUi = z
   .object({
     kind: z.literal("genUi"),
-    token: z.string(),
-    frameUrl: z.string(),
+    ...frameFields,
     projectId: z.string(),
     threadId: z.string(),
     source: resultSource.extend({ referenceOffset: z.number().int().nonnegative() }),
@@ -136,11 +135,11 @@ function unavailableResponse(readOnly: boolean, requestId?: string) {
   const error: DesktopError = {
     message: readOnly
       ? "MCP response data is invalid"
-      : "MCP operation result is unavailable; check the original operation before trying again",
+      : "MCP result unavailable; check the original operation before retrying",
     delivery: "resultUnavailable",
     recovery: { kind: readOnly ? "retryRead" : "needsUser" },
     ...(!readOnly ? { submissionUnknown: true } : {}),
     ...(requestId ? { requestId } : {}),
   };
-  return Object.assign(new Error(error.message), error);
+  return Object.assign(new Error(error.message), error); // raw-error-ok: 传输层解码，不上屏
 }

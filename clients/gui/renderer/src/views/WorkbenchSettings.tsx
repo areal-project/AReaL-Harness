@@ -2,12 +2,18 @@ import { SnapShotSettings } from "../snapshots/SnapShotSettings.js";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
-import type { Action, PlatformServices } from "../services.js";
+import type {
+  Action,
+  ManagementRequest,
+  ManagementResponse,
+  PlatformServices,
+} from "../services.js";
 import { BrowserSettings } from "../settings/BrowserSettings.js";
 import { CloudSettings } from "../settings/CloudSettings.js";
 import { ComputerSettings } from "../settings/ComputerSettings.js";
 import { CreationRecoverySettings } from "../settings/CreationRecoverySettings.js";
 import { CoreCapabilitiesSettings } from "../settings/CoreCapabilitiesSettings.js";
+import { PluginDoctorSummary } from "../settings/PluginDoctorSummary.js";
 import { AppearanceSettings, GeneralSettings } from "../settings/DisplaySettings.js";
 import { HooksSettings } from "../settings/HooksSettings.js";
 import { MobileSettings } from "../settings/MobileSettings.js";
@@ -17,7 +23,7 @@ import { ServiceStatusSettings } from "../settings/ServiceStatusSettings.js";
 import { SettingsPage } from "../settings/SettingsWorkspace.js";
 import { TrajectorySettings } from "../settings/TrajectorySettings.js";
 import { WorktreesSettings } from "../settings/WorktreesSettings.js";
-import { settingsLabel } from "../settings/settingsNavigation.js";
+import { settingsLabel, settingsSubtitle } from "../settings/settingsNavigation.js";
 import type { useTaskWorkspace } from "../state/taskWorkspace.js";
 import type { useBackendRecovery } from "../state/useBackendRecovery.js";
 import type { useSessionNavigation } from "../state/useSessionNavigation.js";
@@ -76,18 +82,18 @@ export function WorkbenchSettings({
   const library = snapshot.library ?? {};
   const { theme, setTheme, uiFontSize, setUiFontSize } = appearance;
   const { backendActionPending, backendActionError, runBackendAction } = backend;
+  const pageClass = ["插件", "Skills", "MCP"].includes(settingsTab)
+    ? "plugins-settings-page"
+    : settingsTab === "模型服务"
+      ? "model-settings-page"
+      : undefined;
   return (
     <SettingsPage
       key={settingsTab}
-      className={
-        ["插件", "Skills", "MCP"].includes(settingsTab)
-          ? "plugins-settings-page"
-          : settingsTab === "模型服务"
-            ? "model-settings-page"
-            : undefined
-      }
+      width={pageClass === "model-settings-page" ? "wide" : "default"}
+      className={pageClass}
       title={settingsLabel(settingsTab, t)}
-      subtitle={settingsTab === "浏览器" ? t("settings.browser.subtitle") : undefined}
+      subtitle={settingsSubtitle(settingsTab, t)}
     >
       {settingsTab === "外观" ? (
         <AppearanceSettings
@@ -106,6 +112,8 @@ export function WorkbenchSettings({
           fileOpen={contextualFileOpen}
           action={resourceAction}
           connected={snapshot.connection?.state === "ready"}
+          updates={Boolean(services.updateState)}
+          onDiagnostics={() => setSettingsTab("高级诊断")}
         />
       ) : settingsTab === "SnapShots" ? (
         <SnapShotSettings
@@ -147,11 +155,7 @@ export function WorkbenchSettings({
           onConnect={reconnectService}
         />
       ) : settingsTab === "模型服务" ? (
-        <ModelSettings
-          action={action}
-          subscription={snapshot.subscription}
-          onOpenSessionSettings={() => setSettingsTab("会话配置")}
-        />
+        <ModelSettings action={action} subscription={snapshot.subscription} />
       ) : settingsTab === "会话配置" ? (
         <SessionSettings
           key={`${project?.id}:${thread?.id}`}
@@ -167,8 +171,12 @@ export function WorkbenchSettings({
           connected={snapshot.connection?.state === "ready"}
           onStatus={onTrajectoryStatus}
         />
-      ) : settingsTab === "后台服务" ? (
+      ) : ["高级诊断", "后台服务"].includes(settingsTab) ? (
         <>
+          <Button variant="ghost" onClick={() => setSettingsTab("常规")}>
+            {t("settings.diagnostics.back")}
+          </Button>
+          <p className="settings-section-desc">{t("settings.diagnostics.description")}</p>
           <ServiceStatusSettings
             backendStatus={{
               connection: snapshot.connection,
@@ -199,6 +207,11 @@ export function WorkbenchSettings({
           <CoreCapabilitiesSettings
             projects={snapshot.projects}
             connected={snapshot.connection?.state === "ready"}
+          />
+          <PluginDoctorSummary
+            command={<P extends ManagementRequest>(request: P) =>
+              resourceAction("manage", request) as Promise<ManagementResponse<P>>
+            }
           />
         </>
       ) : settingsTab === "用量" ? (

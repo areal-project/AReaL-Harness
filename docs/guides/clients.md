@@ -31,27 +31,38 @@ target/debug/areal exec --workspace /absolute/task 'Describe the task'
 target/debug/areal --endpoint ws://127.0.0.1:4500 --auth-file /absolute/core-data/security/auth.json
 ```
 
-省略 endpoint 时，交互式 TUI 连接共享 Core/Runtime，监听随机 loopback 端口。同一工作区多个窗口复用服务，关闭窗口保留后台服务和任务。`--prompt`、`--goal`、`--input-file` 默认使用 owned 模式，退出后清理所拥有的服务；`--local-mode shared|owned` 可覆盖默认选择。显式 endpoint（别名 `--remote`）只连接已有服务，不能与本地部署参数混用。
+省略 endpoint 时，交互式 TUI 与 `--prompt`、`--goal`、`--input-file` 无界面入口都通过共享 Host 打开项目。客户端退出后，Host-owned Core/Runtime 与任务继续运行。`--local-mode owned` 保留为兼容写法，使用共享生命周期并沿用原默认 Profile 选择；`--local-mode shared` 同样使用 Host。显式 `--endpoint`（别名 `--remote`）只连接已有服务，不能与本地部署参数混用。
 
-共享模式默认在 `~/.areal/instances/` 下按工作区保存数据；显式数据目录配置保持优先级。旧 `~/.areal-harness/state` 历史须使用 `--data-dir`，或停止旧 Core 后绑定。模型 TOML 配置自动热更新；其他 TOML 变化等待后台工作结算后重启，权限/部署参数变化需显式 restart。发现、迁移、日志和 Desktop 接入见[本地服务契约](../api/local-service.md)。
+本地 TUI 与 Web 默认在 `~/.areal/instances/` 下按工作区保存数据，显式数据目录配置优先。旧 `~/.areal-harness/state` 历史须使用 `--data-dir`，或停止旧 Core 后绑定。模型 TOML 自动热更新；其他配置变化需显式重新打开或执行 `areal service restart`，并遵守既有空闲检查。自动重连与 `Ctrl-R` 只观察已有服务、恢复快照，不激活项目或重放请求。详见[本地服务契约](../api/local-service.md)。
 
 TUI 的模型凭据来自 Core 启动时的环境。先在终端导出密钥变量，再通过供应商 TOML 的 `api_key_env = "MY_MODEL_KEY"`、`AREAL_HARNESS_API_KEY_ENV=MY_MODEL_KEY` 或 `--api-key-env MY_MODEL_KEY` 指定变量名；优先级为 CLI、环境覆盖、TOML。GUI 保存的加密密钥不会自动进入独立 TUI 的环境，共享模型目录也不共享这些密钥。缺少或无效的凭据会显示环境变量名，会话创建失败后可退出修正配置。
 
 修改终端环境不会改变已运行 Core 的环境。已有共享服务需要使用相同配置、工作区和部署参数执行 `areal service restart`，再启动 TUI；有后台任务时先等待结算，不要为更新密钥自动取消工作。`Ctrl-R` 只重连，不能注入新密钥。使用 `--endpoint` 时，应在远端 Core 的启动环境中配置凭据。密钥值不要放入命令行参数或 TOML。配置示例见[模型配置](configuration.md#gui-与-cli-共享模型目录)。
 
 ```sh
-target/debug/areal web --workspace /absolute/task
+target/debug/areal web
 target/debug/areal service list --json
 target/debug/areal service status --json
 target/debug/areal service restart --json
 target/debug/areal service stop --json
 ```
 
-`areal exec 'prompt' --output-format stream-json --verbose` 提供非交互 CLI，`areal serve` 启动持续服务；参数、认证、恢复与退出码见 [CLI 契约](../api/claude-cli.md)。Web 位于服务的 `/ui`；通过 `areal web` 打开会自动登录，无需复制 token。直接打开地址且没有有效会话时，可在设置中填写服务数据目录 `security/auth.json` 中的本地 token。
+`areal exec 'prompt' --output-format stream-json --verbose` 提供非交互 CLI，`areal serve` 启动持续服务；参数、认证、恢复与退出码见 [CLI 契约](../api/claude-cli.md)。`areal web` 打开 Host 发布的网页，与桌面是同一份界面；浏览器第一次连接需要在本机批准。
 
-本地 `areal exec` 通过受监督的 launcher 拥有 Core/Runtime；macOS 复用可信服务启动适配，需要可用的 `/usr/bin/python3`，Linux 直接启动。CLI 退出时等待实际 launcher 的清理回执；启动阶段提前退出会报告其退出状态，就绪或认证文件无效也会先回收已启动的 owned 服务。显式 `--endpoint` 连接不拥有远端服务生命周期。
+本地 `areal exec` 与 `-p` 将启动所有权交给共享 Host。每个 run 继续使用 `<home>/cli/runs/<runId>/state` 与 `<home>/cli/sessions/` 会话映射，`--resume` 重新打开原 run。Host 在 ready 前保存临时部署和 Skill 输入快照，并在内存保存项目凭据。CLI 退出只断开连接，不停止 Core/Runtime。显式 `--endpoint` 也由服务宿主管理生命周期。macOS 可信服务链需要 `/usr/bin/python3`。GUI 迁移完成前仍使用独立的应用生命周期。
 
 TUI 的 `--input-file /absolute/input.json` 与 `--prompt` 互斥，接受最多 2 MiB 的 Core Input 数组，如 `[{"type":"text","text":"Inspect the image"},{"type":"localImage","path":"/absolute/image.png"}]`。本地模式和显式 endpoint 均支持，可信 launcher 可用 `--tui --input-file` 透传；媒体路径与字段仍按 [Core API](../api/core.md) 验证。
+
+使用 `areal host list --json` 查询持久项目 ID，包括已停止项目。`status` 观察运行中的 Host；`ensure` 显式启动或打开项目。`stop` 默认只在空闲时结算，`--cancel` 显式取消工作。响应丢失后使用原 request ID 查询。
+
+```sh
+areal host run
+areal host status --json
+areal host list --json
+areal host ensure --workspace /absolute/task --json
+areal host stop --request-id UUID --expected-generation GENERATION --json
+areal host operation UUID --json
+```
 
 ## Web 操作与外观
 
@@ -216,5 +227,9 @@ token 文件只包含原始 token；Unix 权限须为 `0600` 或更严格。也�
 GUI 文件链接支持 `path:line` 与 `path#Lline` 定位，重复点击会重新定位。文件正文和文件树按当前执行工作区隔离；外部定位暂时显示完整文件树，可以返回原搜索。任务资源显示执行目录和当前分支，打开目录使用当前会话的执行工作区。Diff 审查按范围保存阅读位置和文件筛选，返回该范围时恢复。
 
 CSV 和 TSV 可切换表格与源码。表格保留引号内换行、转义引号和空列，最多显示前 200 行、100 列；截断会明确提示，源码保留已读取的内容。`.mmd` 和 `.mermaid` 文件可切换图形与源码，解析失败时提供错误状态与源码入口。
+
+对话中的 Mermaid 图形提供“放大查看”：可适应窗口、按原始尺寸阅读、缩放、拖动或滚动，并下载 SVG。聚焦画布后，`+`/`-` 缩放、`0` 适应窗口、`1` 原始尺寸；`Escape` 关闭并返回消息入口。图形围栏闭合后即可预览，后续正文生成和回复完成不关闭已打开的图形阅读器。解析失败时可重试或返回查看源码。
+
+对话表格提供带文字的放大入口。宽表提示横向滚动，聚焦内联表格后可用左右方向键查看其余列；放大预览保持表头，并提供复制 Markdown 和下载 CSV。源码可用时，Markdown 复制保留列对齐、链接、代码与强调；完整回答中的引用式链接包含所用定义，嵌套表格移除外层缩进。CSV 使用显示文本，带 UTF-8 BOM 和公式防护。
 
 PDF 文件在文件面板中以只读方式预览，提供翻页、50% 至 200% 缩放和外部打开。桌面仅从当前执行工作区读取不超过 20 MiB 的普通文件，拒绝越界路径和工作区外符号链接。损坏或加密而无法打开的文件显示错误，可使用外部应用；关闭文件、重新读取或切换执行根时释放解析 worker。

@@ -1,4 +1,5 @@
 import { Play } from "lucide-react";
+import { errorText } from "../errors/errorCopy.js";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -14,7 +15,7 @@ import {
   type SnapShotServices,
   type DesktopSnapShotState,
   type SnapShotShortcut,
-} from "@areal/workbench/desktop-contract/snapshots";
+} from "../services.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { SettingsSwitch } from "../settings/SettingsPageParts.js";
 import { Button } from "../components/ui/button.js";
@@ -57,9 +58,9 @@ export function SnapShotSettings({
   };
   useEffect(() => {
     if (!bridge) return;
-    void refresh().catch((cause: Error) => setError(cause.message));
+    void refresh().catch((cause: Error) => setError(errorText(t, cause)));
     const visible = () => {
-      void refresh().catch((cause: Error) => setError(cause.message));
+      void refresh().catch((cause: Error) => setError(errorText(t, cause)));
     };
     window.addEventListener("focus", visible);
     const unsubscribe = bridge.onSnapShotEvent(visible);

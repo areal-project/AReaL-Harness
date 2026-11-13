@@ -46,15 +46,7 @@ import "./ModelSettings.css";
 import type { Action, CommandParams, Data } from "../services.js";
 
 const CHATGPT = "chatgpt";
-export function ModelSettings({
-  action,
-  subscription,
-  onOpenSessionSettings,
-}: {
-  action: Action;
-  subscription?: Data;
-  onOpenSessionSettings: () => void;
-}) {
+export function ModelSettings({ action, subscription }: { action: Action; subscription?: Data }) {
   const { t } = useI18n();
   const navigate = useGuardedNavigation();
   const api = <P extends CommandParams<"providers">>(request: P) => action("providers", request);
@@ -190,14 +182,21 @@ export function ModelSettings({
   const apiKeyConfigured =
     !!provider?.id && state.value?.credentialStates?.[provider.id] === "available";
   // 开关与输入框是草稿；状态只投影 Core 的已保存目录和凭据诊断。
+  const credentialErrors = (
+    state.value as typeof state.value & { credentialErrors?: Record<string, string> }
+  )?.credentialErrors;
   const savedStatus = (item?: Data) =>
     !item
       ? t("settings.modelSettings.unsaved")
       : !item.enabled
         ? t("settings.modelSettings.disabled")
-        : state.value?.credentialStates?.[item.id] === "unavailable"
-          ? t("settings.modelSettings.missingCredentials")
-          : t("settings.modelSettings.available");
+        : credentialErrors?.[item.id] === "migrationPending"
+          ? t("settings.modelSettings.credentialMigrating")
+          : credentialErrors?.[item.id] === "storageLocked"
+            ? t("settings.modelSettings.keychainLocked")
+            : state.value?.credentialStates?.[item.id] === "unavailable"
+              ? t("settings.modelSettings.missingCredentials")
+              : t("settings.modelSettings.available");
   const dirty =
     key !== undefined ||
     (draft !== null &&
@@ -653,6 +652,14 @@ export function ModelSettings({
                 </div>
                 {authentication === "apiKey" && (
                   <div>
+                    {provider.id &&
+                      credentialErrors?.[provider.id] === "migrationPending" &&
+                      !key && (
+                        <p role="status">{t("settings.modelSettings.credentialMigrating")}</p>
+                      )}
+                    {provider.id && credentialErrors?.[provider.id] === "storageLocked" && !key && (
+                      <p role="status">{t("settings.modelSettings.keychainLocked")}</p>
+                    )}
                     <ProviderApiKeySection
                       apiKeyConfigured={apiKeyConfigured}
                       apiKeyLoading={reveal.loading}
@@ -1019,12 +1026,6 @@ export function ModelSettings({
                 : t("settings.modelSettings.selectAProviderOnTheLeftOr")}
             </EmptySettings>
           )}
-          <footer className="provider-default-link">
-            <span>{t("settings.modelSettings.fallbackDefaultModel")}</span>
-            <Button variant="link" disabled={busy} onClick={onOpenSessionSettings}>
-              {t("settings.modelSettings.openSessionSettings")}
-            </Button>
-          </footer>
         </div>
       </div>
       {modelDraft && provider && (

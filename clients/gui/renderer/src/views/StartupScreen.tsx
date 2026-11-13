@@ -50,7 +50,7 @@ export function StartupScreen({
     !state.lifecycleBlocked;
   const details =
     state.backend.error ||
-    state.restoration.failure?.message ||
+    state.restoration.failure?.message || // raw-error-ok: 只进详情
     state.restoration.error ||
     state.lifecycle?.error ||
     state.lifecycle?.recovery?.message ||
@@ -95,35 +95,39 @@ export function StartupScreen({
                         {t("recovery.retryView")}
                       </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => onBackendAction(reconnect ? "reconnect" : "check")}
-                    >
-                      {t(reconnect ? "startup.reconnect" : "startup.check")}
-                    </Button>
-                    {state.lifecycle?.recovery && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => onBackendAction("recover")}
-                      >
-                        {t("startup.recover")}
-                      </Button>
+                    {services.capabilities?.native !== false && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => onBackendAction(reconnect ? "reconnect" : "check")}
+                        >
+                          {t(reconnect ? "startup.reconnect" : "startup.check")}
+                        </Button>
+                        {state.lifecycle?.recovery && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => onBackendAction("recover")}
+                          >
+                            {t("startup.recover")}
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={onSettings}>
+                          {t("recovery.checkSettings")}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={state.backend.pending}
+                          onClick={onQuit}
+                        >
+                          {t("startup.quit")}
+                        </Button>
+                      </>
                     )}
-                    <Button variant="ghost" size="sm" onClick={onSettings}>
-                      {t("recovery.checkSettings")}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={state.backend.pending}
-                      onClick={onQuit}
-                    >
-                      {t("startup.quit")}
-                    </Button>
                   </div>
                   {details && (
                     <SettingsDisclosure title={t("recovery.details")}>

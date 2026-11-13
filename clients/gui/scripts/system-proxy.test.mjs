@@ -11,10 +11,13 @@ import { fileURLToPath } from "node:url";
 import { proxyForUrl, subscriptionNetwork } from "../packages/chatgpt-provider/network.js";
 
 const require = createRequire(import.meta.url);
-const { parseSystemProxy, systemProxyEnvironment } = require("../app/src/core/system-proxy.cjs");
-const { AppHooks } = require("../app/src/core/hooks.cjs");
+const {
+  parseSystemProxy,
+  systemProxyEnvironment,
+} = require("@areal/workbench-service/desktop/core/system-proxy.cjs");
+const { AppHooks } = require("@areal/workbench-service/desktop/core/hooks.cjs");
 const { proxyRelay } = require("../app/src/core/proxy-relay.cjs");
-const { AppProviders } = require("../app/src/core/providers.cjs");
+const { AppProviders } = require("@areal/workbench-service/desktop/core/providers.cjs");
 const settings = (entries) => `<dictionary> {\n${entries}\n}\n`;
 
 test("constructing and closing an unused transport never loads system certificates", () => {
@@ -134,8 +137,7 @@ function responsesProviders(t, endpoint, environment = {}) {
     { hooks: { environment: () => environment } },
     { decryptString: (bytes) => bytes.toString() },
   );
-  providers.config.vault.keys.AREAL_CREDENTIAL_fixture =
-    Buffer.from(responsesKey).toString("base64");
+  providers.config.vault.keys.AREAL_CREDENTIAL_fixture = responsesKey;
   providers.config.value = {
     data: [
       {
@@ -631,7 +633,7 @@ for (const kind of ["http", "socks"])
         t.after(() => relay.close());
         const proxyEnv = relay.environment;
         const code = `
-      const { AppProviders } = await import(${JSON.stringify(new URL("../app/src/core/providers.cjs", import.meta.url).href)});
+      const { AppProviders } = await import(${JSON.stringify(new URL("../../../services/workbench/src/desktop/core/providers.cjs", import.meta.url).href)});
       const backend = { hooks: { environment: () => ({ ...process.env }) } };
       const providers = new AppProviders(backend);
       providers.config.value = { data: [{ id: 'fixture', endpoint: process.env.FIXTURE_ENDPOINT, protocol: 'chat-completions', models: [{ id: 'fixture-model', enabled: true }] }] };

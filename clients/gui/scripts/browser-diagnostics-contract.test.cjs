@@ -1,7 +1,8 @@
 "use strict";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { validToolInput } = require("../app/src/core/browser-tool.cjs");
+const { validToolInput } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
+const { browserHostFailure } = require("../app/src/core/browser-host-request.cjs");
 
 test("browser_v1 exposes a bounded diagnostics read without script or unbounded options", () => {
   const pageId = "12345678-1234-1234-1234-123456789abc";
@@ -461,15 +462,37 @@ test("native targets use hit-tested fragments of wrapped inline elements", async
     { quads: [first, second], hit: () => 22, expected: [383.5, 107.5] },
     { quads: [first, second], hit: ({ x }) => (x < 100 ? 22 : 21), expected: [78, 126.5] },
     { quads: [block], hit: () => 22, expected: [60, 25] },
-    { quads: [first, second], hit: () => 21, expected: null },
-    { quads: [], hit: () => assert.fail("missing fragments cannot be hit-tested"), expected: null },
+    { quads: [first, second], hit: () => 21, reason: "hit_target_mismatch" },
+    { quads: [], reason: "content_quads_unavailable" },
+    { quads: [[1, 2]], reason: "content_quads_unavailable" },
+    { quads: [[NaN, 0, 0, 0, 0, 0, 0, 0]], reason: "content_quads_unavailable" },
+    { quads: [[600, 0, 700, 0, 700, 20, 600, 20]], reason: "target_outside_viewport" },
+    {
+      quads: [first, [600, 0, 700, 0, 700, 20, 600, 20]],
+      hit: () => 21,
+      reason: "hit_target_mismatch",
+    },
+    ...[
+      [],
+      [{ backendDOMNodeId: 22, ignored: true }],
+      [{ backendDOMNodeId: 22, properties: [{ name: "disabled", value: { value: true } }] }],
+    ].map((nodes) => ({
+      nodes,
+      reason: "ax_target_invalid",
+    })),
   ]) {
     const debuggerApi = Object.assign(new EventEmitter(), {
       isAttached: () => true,
       sendCommand: async (method, parameters) => {
         if (method === "Accessibility.getPartialAXTree")
           return {
-            nodes: [{ backendDOMNodeId: 22, role: { value: "link" }, name: { value: "Details" } }],
+            nodes: scenario.nodes ?? [
+              {
+                backendDOMNodeId: 22,
+                role: { value: "link" },
+                name: { value: "Details" },
+              },
+            ],
           };
         if (method === "DOM.describeNode") return { node: { nodeName: "A" } };
         if (method === "DOM.getContentQuads") return { quads: scenario.quads };
@@ -489,7 +512,16 @@ test("native targets use hit-tested fragments of wrapped inline elements", async
     });
     const resolve = () => new NativePageTargets().actionTarget(page, c, "r2");
     if (!scenario.expected) {
-      await assert.rejects(resolve, /target_unavailable/);
+      await assert.rejects(resolve, (error) => {
+        assert.equal(error.message, "target_unavailable");
+        assert.equal(error.reason, scenario.reason);
+        const failure = browserHostFailure({ phase: "prepare" }, error);
+        assert.equal(failure.error, "not_sent");
+        assert.equal(failure.dispatch, "not_sent");
+        assert.equal(failure.reason, scenario.reason);
+        assert.ok(!JSON.stringify(failure).includes("Details"));
+        return true;
+      });
       continue;
     }
     const target = await resolve();
@@ -497,6 +529,29 @@ test("native targets use hit-tested fragments of wrapped inline elements", async
     assert.equal(target.backendNodeId, 22);
     assert.deepEqual(target.viewport, viewport);
   }
+});
+
+test("browser host failures whitelist reasons and preserve unknown dispatch", () => {
+  for (const reason of ["secret page content", { name: "secret page content" }, undefined]) {
+    const failure = browserHostFailure(
+      { phase: "prepare" },
+      Object.assign(new Error("target_unavailable"), { reason }),
+    );
+    assert.equal(failure.reason, "target_unavailable");
+    assert.equal(failure.dispatch, "not_sent");
+    assert.ok(!JSON.stringify(failure).includes("secret"));
+  }
+  const unknown = browserHostFailure(
+    {},
+    Object.assign(new Error("outcome_unknown"), { reason: "navigation_timeout" }),
+  );
+  assert.equal(unknown.dispatch, "unknown");
+  assert.equal(unknown.reason, "navigation_timeout");
+  assert.equal(browserHostFailure({}, new Error("stale_ref")).error, "stale_ref");
+  assert.equal(
+    browserHostFailure({ phase: "prepare" }, new Error("not_sent")).reason,
+    "action_not_sent",
+  );
 });
 
 function inputFixture(options = {}) {
@@ -836,7 +891,10 @@ test("hidden Agent view ignores pointer motion and release without an owned gest
     requestedVisible: true,
     pageGeneration: 1,
     documentGeneration: 1,
-    view: { getBounds: () => ({ x: 10, y: 20, width: 100, height: 100 }), getVisible: () => false },
+    view: {
+      getBounds: () => ({ x: 10, y: 20, width: 100, height: 100 }),
+      getVisible: () => false,
+    },
   };
   preview.presentation.owner = "owner";
   preview.workspace.pages.set("owner", page);

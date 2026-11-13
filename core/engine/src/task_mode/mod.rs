@@ -1,6 +1,7 @@
 //! 任务身份与通信独立持久化；执行继续复用 Goal、Thread 和 Runtime 的准入边界。
 mod catalog;
 mod channel;
+mod draft;
 pub use catalog::{
     PublishedTaskCatalog, PublishedTaskCatalogFallback, read_published_task_catalog,
 };
@@ -56,6 +57,17 @@ struct Snapshot {
     fault: Arc<std::sync::Mutex<Option<TaskCommitFault>>>,
 }
 
+#[derive(Clone)]
+struct DesktopScheduleTools {
+    host: Arc<dyn tools::DynamicToolHost>,
+    definitions: Vec<areal_protocol::ToolDefinition>,
+}
+
+struct ScheduleHost {
+    host: Arc<dyn tools::DynamicToolHost>,
+    prepare_create: bool,
+}
+
 pub(crate) struct Tasks {
     state: Mutex<Snapshot>,
     pub(crate) directory: directory::OwnerDirectory,
@@ -65,7 +77,8 @@ pub(crate) struct Tasks {
     #[cfg(feature = "test-support")]
     clock: std::sync::atomic::AtomicI64,
     frozen: AtomicBool,
-    hosts: Mutex<BTreeMap<String, Arc<dyn tools::DynamicToolHost>>>,
+    hosts: Mutex<BTreeMap<String, ScheduleHost>>,
+    desktop_tools: Mutex<BTreeMap<String, DesktopScheduleTools>>,
     dispatching: Arc<std::sync::Mutex<HashSet<String>>>,
 }
 
@@ -81,6 +94,7 @@ impl Tasks {
         Ok(Self {
             directory,
             hosts: Mutex::new(BTreeMap::new()),
+            desktop_tools: Mutex::new(BTreeMap::new()),
             dispatching: Arc::new(std::sync::Mutex::new(HashSet::new())),
             state: Mutex::new(state),
             events: broadcast::channel(256).0,
@@ -480,16 +494,35 @@ impl Engine {
                 if request.mode == TaskMode::Background && !state.thread.dynamic_tools.is_empty() { return Err(invalid("detached tasks require server-owned tools")); }
             }
             if request.mode == TaskMode::Background && request.interaction_mode == Some(InteractionMode::Interactive) { return Err(invalid("detached tasks require asynchronous or headless interactions")); }
+            if request.mode != TaskMode::Scheduled && (request.delivery.is_some() || request.model.is_some() || request.parameters.is_some()) {
+                return Err(invalid("delivery and model apply only to scheduled tasks"));
+            }
+            if request.parameters.is_some() && request.model.is_none() { return Err(invalid("parameters require a model")); }
+            if let Some(model) = &request.model {
+                engine.resolve_config(None, Some(model.clone()), request.parameters.clone().unwrap_or_default(), 1)?;
+            }
             engine.validate_schedule_source(&owner, &request).await?;
+            let captured_now = engine.schedule_now();
+            let schedule_v2 = request.schedule_v2.clone().map(|input| schedule::resolve(input, captured_now)).transpose()?;
+            let next_run_at = if let Some(value) = &schedule_v2 { Some(schedule::Plan::versioned(value)?.first(captured_now, false)?) } else { request.schedule.as_ref().map(|s|s.at) };
+            {
+                let state = engine.task_modes.state.lock().await;
+                if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
+                if state.tasks.len() >= MAX_TASKS { return Err(Error::Exhausted("task capacity reached".into())); }
+            }
+            if request.mode == TaskMode::Scheduled
+                && let Some(host) = engine.schedule_create_host(&owner).await {
+                    let mut prepare = json!({"intent":"create", "requestId":request.request_id, "requestDigest":hash, "threadId":request.thread_id});
+                    if let Some(source) = &request.source_thread_id { prepare["sourceThreadId"] = json!(source); }
+                    host.prepare_schedule(prepare, engine.shutdown.child_token()).await.map_err(invalid)?;
+                    if !engine.host_current(&host).await { return Err(Error::Closed); }
+                }
             let mut state = engine.task_modes.state.lock().await;
             if let Some(result) = receipt(&state, &owner, "create", &request.request_id, &hash)? { return Ok(result); }
-            let captured_now = engine.schedule_now();
-            let schedule_v2 = request.schedule_v2.map(|input| schedule::resolve(input, captured_now)).transpose()?;
-            let next_run_at = if let Some(value) = &schedule_v2 { Some(schedule::Plan::versioned(value)?.first(captured_now, false)?) } else { request.schedule.as_ref().map(|s|s.at) };
-            if state.tasks.len() >= MAX_TASKS { return Err(Error::Exhausted("task capacity reached".into())); }
             let mut candidate = state.clone();
             let task = Task {
                 source_thread_id: request.source_thread_id, deleted_at: None,
+                delivery: request.delivery.unwrap_or_default(), model: request.model, parameters: request.parameters,
                 run_count: 0, archived_run_count: 0, runs_complete: true,
                 skipped_runs: 0, last_skipped_at: None,
                 id: id(), revision: 1, channel_sequence: 0, owner: owner.clone(), mode: request.mode,
@@ -547,8 +580,12 @@ impl Engine {
             }
             if authorized_revision.is_some_and(|revision|state.tasks.get(&request.task_id).is_none_or(|task|task.revision!=revision)) {return Err(Error::Conflict);}
             if !engine.accepting_work() { return Err(Error::Closed); }
-            if request.objective.is_none() && request.schedule.is_none() && request.schedule_v2.is_none() {
-                return Err(invalid("provide an objective or schedule to update"));
+            if request.objective.is_none() && request.schedule.is_none() && request.schedule_v2.is_none() && request.delivery.is_none() && request.model.is_none() {
+                return Err(invalid("provide an objective, schedule, delivery or model to update"));
+            }
+            if request.parameters.is_some() && request.model.is_none() { return Err(invalid("parameters require a model")); }
+            if let Some(model) = &request.model {
+                engine.resolve_config(None, Some(model.clone()), request.parameters.clone().unwrap_or_default(), 1)?;
             }
             if request.objective.as_ref().is_some_and(|s| s.trim().is_empty() || s.chars().count() > 4000) {
                 return Err(invalid("objective must contain 1..4000 characters"));
@@ -566,6 +603,8 @@ impl Engine {
                 return Err(Error::Conflict);
             }
             if let Some(objective) = request.objective { task.objective = objective; }
+            if let Some(delivery) = request.delivery { task.delivery = delivery; }
+            if let Some(model) = request.model { task.model = Some(model); task.parameters = request.parameters; }
             if let Some(schedule) = request.schedule {
                 task.next_run_at = Some(schedule.at);
                 task.schedule = Some(schedule);
@@ -886,7 +925,7 @@ impl Engine {
                 .bindings
                 .read()
                 .await
-                .host
+                .schedule_host
                 .clone()
                 .ok_or(Error::Conflict)?;
             if !self.host_current(&host).await {
@@ -923,6 +962,9 @@ impl Engine {
                 task_id.clone(),
                 Task {
                     source_thread_id: None,
+                    delivery: Default::default(),
+                    model: None,
+                    parameters: None,
                     deleted_at: None,
                     run_count: 0,
                     archived_run_count: 0,
@@ -1000,7 +1042,7 @@ impl Engine {
         let Ok(cell) = self.raw_cell(&thread.id).await else {
             return Ok(false);
         };
-        let Some(host) = cell.bindings.read().await.host.clone() else {
+        let Some(host) = cell.bindings.read().await.schedule_host.clone() else {
             return Ok(false);
         };
         drop(state);
@@ -1152,7 +1194,7 @@ impl Engine {
         let Ok(cell) = self.raw_cell(thread).await else {
             return Ok(false);
         };
-        let Some(host) = cell.bindings.read().await.host.clone() else {
+        let Some(host) = cell.bindings.read().await.schedule_host.clone() else {
             return Ok(false);
         };
         drop(state);

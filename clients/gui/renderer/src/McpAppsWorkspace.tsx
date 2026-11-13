@@ -1,4 +1,6 @@
 import { observeResize } from "@areal/ui/observe-resize";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { useI18n, formatUiMessage, UiMessageError, type UiMessage } from "./i18n/IntlProvider.js";
 import { Button } from "./components/ui/button.js";
@@ -10,7 +12,7 @@ import {
   type McpAppMessage,
   type McpAppModelContext,
   type McpAppPlacement,
-} from "./McpAppHost.js";
+} from "./LazyMcpAppHost.js";
 import { McpAppForm, type McpFormResponse } from "./McpAppForm.js";
 import {
   mcpResultKey,
@@ -31,7 +33,7 @@ import {
   type McpAppsCommand,
 } from "./settings/McpAppsSettings.js";
 import type { Action, Data, PlatformServices } from "./services.js";
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "./services.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 export type McpWorkspaceServer = McpAppServer;
 type AppThreadIntent = "reuse-or-create" | "require-current" | "new";
@@ -59,7 +61,7 @@ export function useMcpAppsWorkspace({
 }: {
   services: Pick<
     PlatformServices,
-    "mcpApp" | "onMcpAppEvent" | "onMcpAppDeepLink" | "mcpFormResource"
+    "mcpApp" | "onMcpAppEvent" | "onMcpAppDeepLink" | "mcpFormResource" | "capabilities"
   >;
   project?: Data;
   deepLinksEnabled: boolean;
@@ -74,11 +76,20 @@ export function useMcpAppsWorkspace({
 }) {
   const { t } = useI18n();
   const { mcpApp, onMcpAppEvent, onMcpAppDeepLink, mcpFormResource } = services;
-  const hostSupported = !!mcpApp && !!onMcpAppEvent;
+  const hostSupported = !!mcpApp && !!onMcpAppEvent && services.capabilities?.pages !== false;
   const desktopSupported = hostSupported && project?.desktopCapabilities?.currentCommands !== false;
   const loadMetadataImage = useMemo<McpMetadataImageLoader | undefined>(
-    () => (mcpApp ? (source) => mcpApp({ operation: "metadataImage", source }) : undefined),
-    [mcpApp],
+    () =>
+      mcpApp && project
+        ? (source) =>
+            mcpApp({
+              operation: "metadataImage",
+              source,
+              projectId: project.id,
+              ...(threadId ? { threadId } : {}),
+            })
+        : undefined,
+    [mcpApp, project?.id, threadId],
   );
   const [servers, setServers] = useState<McpWorkspaceServer[]>([]),
     [loading, setLoading] = useState(false),
@@ -133,14 +144,10 @@ export function useMcpAppsWorkspace({
   const refresh = useCallback(async () => {
     const { project, threadId, action } = current.current;
     const epoch = ++readEpoch.current;
-    if (
-      !hostSupported ||
-      !project?.state?.connected ||
-      project.desktopCapabilities?.currentCommands === false
-    ) {
+    if (!hostSupported || !project?.state?.connected) {
       setServers([]);
       setLoading(false);
-      setError(project?.desktopCapabilities?.currentCommands === false ? compatibilityHint : "");
+      setError(!hostSupported ? compatibilityHint : "");
       return;
     }
     setLoading(true);
@@ -162,7 +169,7 @@ export function useMcpAppsWorkspace({
           cause instanceof UiMessageError
             ? cause.descriptor
             : cause instanceof Error
-              ? cause.message
+              ? currentErrorText(cause)
               : { id: "settings.mcpAppsWorkspace.appDirectoryUnavailable" },
         );
       }
@@ -175,7 +182,7 @@ export function useMcpAppsWorkspace({
     return () => {
       readEpoch.current++;
     };
-  }, [project?.id, project?.state?.connected, desktopSupported, threadId, refresh]);
+  }, [project?.id, project?.state?.connected, hostSupported, threadId, refresh]);
   const removeApps = useCallback((tokens: Set<string>) => {
     const removed = appsRef.current.filter((app) => tokens.has(app.token));
     if (!removed.length) return;
@@ -220,7 +227,7 @@ export function useMcpAppsWorkspace({
         stale.add(app.token);
         continue;
       }
-      if (!owner.state?.connected || owner.desktopCapabilities?.currentCommands === false) continue;
+      if (!owner.state?.connected || !hostSupported) continue;
       const key = `${app.projectId}:${app.threadId}`;
       owners.set(key, [...(owners.get(key) ?? []), app]);
     }
@@ -257,7 +264,7 @@ export function useMcpAppsWorkspace({
         });
     }
     removeApps(stale);
-  }, [removeApps, close]);
+  }, [removeApps, close, hostSupported]);
   const ownerVersion = JSON.stringify(
     apps.map((app) => {
       const owner = projects.find((project) => project.id === app.projectId);
@@ -325,8 +332,7 @@ export function useMcpAppsWorkspace({
     const { project, threadId, action, onOpenThread } = current.current;
     if (!project?.state?.connected)
       throw Error(t("settings.mcpAppsWorkspace.connectTheProjectFirst"));
-    if (!hostSupported || project.desktopCapabilities?.currentCommands === false)
-      throw Error(t(compatibilityHint.id));
+    if (!hostSupported) throw Error(t(compatibilityHint.id));
     if (intent !== "new" && threadId) {
       if (!project.state.threads[threadId] || project.state.threads[threadId].desktop?.archived)
         throw Error(t("settings.mcpAppsWorkspace.theAppConversationIsNoLongerAvailable"));
@@ -353,8 +359,7 @@ export function useMcpAppsWorkspace({
   ) {
     const { project } = current.current;
     if (!project) throw Error(t("settings.mcpAppsWorkspace.chooseAProjectFirst"));
-    if (!mcpApp || !onMcpAppEvent || project.desktopCapabilities?.currentCommands === false)
-      throw Error(t(compatibilityHint.id));
+    if (!mcpApp || !onMcpAppEvent || !hostSupported) throw Error(t(compatibilityHint.id));
     const global = options.kind === "global";
     const existing = appsRef.current.find(
       (app) =>
@@ -425,8 +430,7 @@ export function useMcpAppsWorkspace({
         throw Error(t("settings.mcpAppsWorkspace.theAppSProjectHasChangedOpen"));
       if (!selectedProject.state?.connected)
         throw Error(t("settings.mcpAppsWorkspace.connectTheProjectFirst"));
-      if (selectedProject.desktopCapabilities?.currentCommands === false)
-        throw Error(t(compatibilityHint.id));
+      if (!hostSupported) throw Error(t(compatibilityHint.id));
       if (
         current.current.threadId !== owner.threadId ||
         !selectedProject.state.threads[owner.threadId] ||
@@ -457,12 +461,7 @@ export function useMcpAppsWorkspace({
       if (pending) return pending;
       const task = (async () => {
         const owner = current.current.projects.find((project) => project.id === source.projectId);
-        if (
-          !mcpApp ||
-          !onMcpAppEvent ||
-          !owner?.state?.connected ||
-          owner.desktopCapabilities?.currentCommands === false
-        ) {
+        if (!mcpApp || !onMcpAppEvent || !owner?.state?.connected || !hostSupported) {
           resultState(key, { message: "交互结果暂不可用，原始记录仍可查看。" });
           return;
         }
@@ -556,7 +555,7 @@ export function useMcpAppsWorkspace({
       void task.finally(() => resultPending.current.delete(key));
       return task;
     },
-    [close, removeApps, mcpApp, onMcpAppEvent],
+    [close, removeApps, mcpApp, onMcpAppEvent, hostSupported],
   );
   const resultPageFailed = (app: McpAppDescriptor) => {
     if (!app.resultSource) return;
@@ -650,12 +649,7 @@ export function useMcpAppsWorkspace({
     );
   }
   async function clearContext(app: McpAppDescriptor) {
-    if (
-      !mcpApp ||
-      !onMcpAppEvent ||
-      current.current.project?.desktopCapabilities?.currentCommands === false
-    )
-      throw Error(t(compatibilityHint.id));
+    if (!mcpApp || !onMcpAppEvent || !hostSupported) throw Error(t(compatibilityHint.id));
     const reply = await mcpApp({
       operation: "request",
       token: app.token,
@@ -726,7 +720,7 @@ export function useMcpAppsWorkspace({
             cause instanceof UiMessageError
               ? cause.descriptor
               : cause instanceof Error
-                ? cause.message
+                ? currentErrorText(cause)
                 : { id: "settings.mcpAppsWorkspace.couldNotReadPendingForms" },
           );
       } finally {
@@ -846,9 +840,9 @@ export function useMcpAppsWorkspace({
     return context?.content?.filter(visible) ?? [];
   };
   return {
-    supported: desktopSupported,
+    supported: hostSupported,
     loadMetadataImage,
-    servers: desktopSupported ? servers : [],
+    servers: hostSupported ? servers : [],
     loading,
     error: formatUiMessage(t, error),
     refresh,
@@ -865,7 +859,7 @@ export function useMcpAppsWorkspace({
         : undefined;
     },
     render: (tab: string) => {
-      if (!desktopSupported) return <p role="status">{formatUiMessage(t, compatibilityHint)}</p>;
+      if (!hostSupported) return <p role="status">{formatUiMessage(t, compatibilityHint)}</p>;
       return apps.some((app) => appTab(app) === tab) ? (
         <div data-mcp-app-slot={tab} ref={displaySlot} style={{ height: "100%", minHeight: 0 }} />
       ) : (
@@ -888,14 +882,14 @@ export function useMcpAppsWorkspace({
         onMessage={message}
         onModelContext={modelContext}
         onClose={() => {
-          void close(appTab(app)).catch((cause) => current.current.onError(cause.message));
+          void close(appTab(app)).catch((cause) => current.current.onError(errorText(t, cause)));
         }}
         onError={app.resultSource ? () => resultPageFailed(app) : onError}
       />
     )),
     contexts: (
       <div aria-label={t("settings.mcpAppsWorkspace.appContext")}>
-        {(desktopSupported ? apps : [])
+        {(hostSupported ? apps : [])
           .filter(
             (app) =>
               app.projectId === project?.id &&
@@ -915,7 +909,9 @@ export function useMcpAppsWorkspace({
                 unstyled
                 data-slot={undefined}
                 type="submit"
-                onClick={() => void clearContext(app).catch((cause) => onError(cause.message))}
+                onClick={() =>
+                  void clearContext(app).catch((cause) => onError(errorText(t, cause)))
+                }
               >
                 {t("settings.mcpAppsWorkspace.removeAppContext")}
               </Button>
@@ -1097,9 +1093,7 @@ export function McpAppsHub({
         onOpen={(server, tool) =>
           void workspace
             .openApp(server, tool, { kind: "global" })
-            .catch((cause) =>
-              setFeedback(cause instanceof UiMessageError ? cause.descriptor : cause.message),
-            )
+            .catch((cause) => setFeedback(errorText(t, cause)))
         }
       />
       {settingsServers.length === 1 && !server && (
@@ -1131,11 +1125,7 @@ export function McpAppsHub({
             data-slot={undefined}
             type="submit"
             onClick={() =>
-              void workspace
-                .ensureThread()
-                .catch((cause) =>
-                  setFeedback(cause instanceof UiMessageError ? cause.descriptor : cause.message),
-                )
+              void workspace.ensureThread().catch((cause) => setFeedback(errorText(t, cause)))
             }
           >
             {t("settings.mcpAppsWorkspace.createAppConversation")}

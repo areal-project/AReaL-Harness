@@ -54,7 +54,6 @@ async function signCoreTools({ directory, manifest, identity, run }) {
 }
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-let repo = resolve(desktop, "../..");
 const require = createRequire(join(desktop, "app/package.json"));
 const readJSON = (path) => JSON.parse(readFileSync(path, "utf8"));
 const hash = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -345,7 +344,7 @@ async function main() {
     });
     assertApp();
     // 外层签名不得改变已签 Core 的字节；在任何 Apple 上传前检查，失败保留现场。
-    require(join(desktop, "app/src/core/bundle.cjs")).verifyCoreBundle(
+    require(join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs")).verifyCoreBundle(
       join(app, "Contents/Resources"),
       { hashes: true },
     );
@@ -472,7 +471,7 @@ async function main() {
     run("/usr/bin/xcrun", ["stapler", "validate", app]);
     assertApp();
     run("/usr/sbin/spctl", ["--assess", "--type", "execute", "--verbose=2", app]);
-    require(join(desktop, "app/src/core/bundle.cjs")).verifyCoreBundle(
+    require(join(desktop, "../../services/workbench/src/desktop/core/bundle.cjs")).verifyCoreBundle(
       join(app, "Contents/Resources"),
       { hashes: true },
     );
@@ -481,21 +480,28 @@ async function main() {
       state.packagedModelSelection = "skipped-by-request";
     } else {
       run(process.execPath, [join(desktop, "scripts/migration-smoke.mjs")], {
-        env: { ...process.env, AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI") },
+        env: {
+          ...process.env,
+          AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI"),
+        },
       });
       state.packagedGui = "passed";
       run(process.execPath, [join(desktop, "scripts/model-selection-smoke.mjs")], {
-        env: { ...process.env, AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI") },
+        env: {
+          ...process.env,
+          AREAL_GUI_EXECUTABLE: join(app, "Contents/MacOS/AReaL Harness GUI"),
+        },
       });
       state.packagedModelSelection = "passed";
     }
     save();
     // These paths belong to this locked run and may contain interrupted output.
-    for (const path of [zip, dmg])
-      rmSync(path, { recursive: true, force: true });
+    for (const path of [zip, dmg]) rmSync(path, { recursive: true, force: true });
     run("/usr/bin/ditto", ["-c", "-k", "--keepParent", app, zip]);
     state.dmgExport = await buildMacOSDmg({
-      app, destination: dmg, volumeName: "AReaL Harness " + state.version,
+      app,
+      destination: dmg,
+      volumeName: "AReaL Harness " + state.version,
     });
     run("/usr/bin/codesign", ["--force", "--sign", state.identity, "--timestamp", dmg]);
     run("/usr/bin/codesign", ["--verify", "--strict", dmg]);

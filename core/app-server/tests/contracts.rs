@@ -42,6 +42,142 @@ impl Model for TextModel {
     }
 }
 type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+
+#[tokio::test]
+async fn host_update_status_fences_authenticated_socket_disconnect_and_replacement() {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    async fn connect(addr: std::net::SocketAddr, token: &str) -> Socket {
+        let mut request = format!("ws://{addr}").into_client_request().unwrap();
+        request
+            .headers_mut()
+            .insert("Authorization", format!("Bearer {token}").parse().unwrap());
+        let (mut socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+        assert!(
+            call(
+                &mut socket,
+                1,
+                "initialize",
+                json!({"clientInfo":{"name":"host-status-fixture","version":"1"}})
+            )
+            .await
+            .0["error"]
+                .is_null()
+        );
+        socket
+            .send(Wire::Text(
+                json!({"method":"initialized"}).to_string().into(),
+            ))
+            .await
+            .unwrap();
+        socket
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(TextModel), Limits::default()).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let stop = CancellationToken::new();
+    let token = "a".repeat(64);
+    let foreign_token = "b".repeat(64);
+    let authentication = serde_json::from_value(json!({"version":1,"principals":[
+        {"id":"owner","token":token,"permissions":["observe","interact","manage","tools"]},
+        {"id":"foreign","token":foreign_token,"permissions":["observe","interact","manage","tools"]}
+    ]}))
+    .unwrap();
+    let server = tokio::spawn(areal_app_server::serve_authenticated(
+        listener,
+        engine.clone(),
+        stop.clone(),
+        Some(authentication),
+    ));
+    let mut reader = connect(addr, &token).await;
+    let (capabilities, _) = call(&mut reader, 2, "areal/capabilities", json!({})).await;
+    assert_eq!(capabilities["result"]["features"]["hostUpdateStatus"], true);
+    assert!(
+        capabilities["result"]["methods"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("areal/host/status"))
+    );
+    assert_eq!(
+        call(&mut reader, 3, "areal/host/status", json!({})).await.0["result"],
+        Value::Null
+    );
+    let mut original = connect(addr, &token).await;
+    assert_eq!(
+        call(&mut original, 2, "areal/task/host/ready", json!({}))
+            .await
+            .0["result"]["ready"],
+        true
+    );
+    let mut successor = connect(addr, &token).await;
+    assert!(
+        call(&mut successor, 2, "areal/task/host/ready", json!({}))
+            .await
+            .0["error"]
+            .is_object()
+    );
+    let reading = tokio::spawn(async move {
+        let response = call(&mut reader, 4, "areal/host/status", json!({})).await.0;
+        (reader, response)
+    });
+    let request = receive(&mut original).await;
+    assert_eq!(request["method"], "areal/host/status");
+    assert_eq!(request["params"], json!({}));
+    original.close(None).await.unwrap();
+    let (mut reader, response) = reading.await.unwrap();
+    assert_eq!(
+        response["result"],
+        Value::Null,
+        "a disconnected original read cannot adopt its successor"
+    );
+    assert_eq!(
+        call(&mut successor, 3, "areal/task/host/ready", json!({}))
+            .await
+            .0["result"]["ready"],
+        true
+    );
+    let expected = json!({"hostId":"host","generation":"new-generation","executableVersion":"0.1.9","capabilities":["updates"],"restartPending":true,"targetVersion":"0.2.0"});
+    let reading = tokio::spawn(async move {
+        let response = call(&mut reader, 5, "areal/host/status", json!({})).await.0;
+        (reader, response)
+    });
+    let request = receive(&mut successor).await;
+    assert_eq!(request["method"], "areal/host/status");
+    successor
+        .send(Wire::Text(
+            json!({"id":request["id"],"result":expected})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    let (mut reader, response) = reading.await.unwrap();
+    assert_eq!(response["result"], expected);
+    assert!(
+        call(
+            &mut reader,
+            6,
+            "areal/host/status",
+            json!({"hostId":"forged","executableVersion":"forged"})
+        )
+        .await
+        .0["error"]
+            .is_object()
+    );
+    let mut foreign = connect(addr, &foreign_token).await;
+    assert_eq!(
+        call(&mut foreign, 2, "areal/host/status", json!({}))
+            .await
+            .0["result"],
+        Value::Null
+    );
+    foreign.close(None).await.unwrap();
+    reader.close(None).await.unwrap();
+    successor.close(None).await.unwrap();
+    stop.cancel();
+    server.await.unwrap().unwrap();
+    engine.shutdown().await;
+}
 fn validate(name: &str, value: &Value) {
     let schemas: Value = serde_json::from_str(include_str!(
         "../../../schemas/app-server/codex-0.145.0.json"
@@ -132,6 +268,52 @@ async fn call(socket: &mut Socket, id: u64, method: &str, params: Value) -> (Val
         }
         events.push(value);
     }
+}
+
+#[tokio::test]
+async fn initialized_observer_receives_model_catalog_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(TextModel), Limits::default()).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let stop = CancellationToken::new();
+    let server = tokio::spawn(areal_app_server::serve(
+        listener,
+        engine.clone(),
+        stop.clone(),
+    ));
+    let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{addr}"))
+        .await
+        .unwrap();
+    let _ = call(
+        &mut socket,
+        1,
+        "initialize",
+        json!({"clientInfo":{"name":"catalog-observer","version":"1"}}),
+    )
+    .await;
+    socket
+        .send(Wire::Text(
+            json!({"method":"initialized"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    let _ = call(&mut socket, 2, "areal/model/list", json!({})).await;
+    let provider = serde_json::from_value(json!({"id":"other-client","revision":0,"endpoint":"http://127.0.0.1:1/","protocol":"responses","models":["fixture"]})).unwrap();
+    engine.upsert_provider(provider, 0).await.unwrap();
+    let event = receive(&mut socket).await;
+    assert_eq!(event["method"], "areal/model/catalogChanged");
+    assert_eq!(event["params"]["revision"], 1);
+    let (models, _) = call(&mut socket, 3, "areal/model/list", json!({})).await;
+    assert!(
+        models["result"]["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|model| model["providerId"] == "other-client")
+    );
+    stop.cancel();
+    server.await.unwrap().unwrap();
 }
 
 #[tokio::test]
@@ -257,7 +439,7 @@ async fn websocket_lifecycle_matches_pinned_upstream_schemas() {
 }
 
 #[tokio::test]
-async fn browser_origin_is_limited_to_the_served_loopback_ui() {
+async fn core_serves_no_browser_ui_and_rejects_every_origin() {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine::open(dir.path(), Arc::new(TextModel), Limits::default()).unwrap();
@@ -270,40 +452,18 @@ async fn browser_origin_is_limited_to_the_served_loopback_ui() {
         stop.clone(),
     ));
     let http = reqwest::Client::new();
-    let page = http.get(format!("http://{addr}/ui")).send().await.unwrap();
-    assert!(page.status().is_success());
-    assert!(
-        page.headers()["content-security-policy"]
-            .to_str()
-            .unwrap()
-            .contains("frame-ancestors 'none'")
-    );
-    assert_eq!(page.headers()["x-content-type-options"], "nosniff");
-    assert!(page.text().await.unwrap().contains("/ui/app.js"));
-    for (path, mime) in [("app.js", "text/javascript"), ("style.css", "text/css")] {
-        let asset = http
-            .get(format!("http://{addr}/ui/{path}"))
+    for path in ["ui", "ui/app.js", "areal/auth/bootstrap"] {
+        let response = http
+            .get(format!("http://{addr}/{path}"))
             .send()
             .await
             .unwrap();
-        assert!(asset.status().is_success());
-        assert!(
-            asset.headers()["content-type"]
-                .to_str()
-                .unwrap()
-                .starts_with(mime)
-        );
+        assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND, "{path}");
     }
-    let mut request = format!("ws://{addr}").into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("Origin", "https://example.com".parse().unwrap());
-    let err = tokio_tungstenite::connect_async(request).await.unwrap_err();
-    assert!(err.to_string().contains("403"));
     for origin in [
         "null".to_owned(),
-        format!("https://{addr}"),
-        format!("http://{addr}.example.com"),
+        format!("http://{addr}"),
+        "https://example.com".to_owned(),
     ] {
         let mut request = format!("ws://{addr}").into_client_request().unwrap();
         request
@@ -317,20 +477,18 @@ async fn browser_origin_is_limited_to_the_served_loopback_ui() {
                 .contains("403")
         );
     }
-    let mut request = format!("ws://{addr}").into_client_request().unwrap();
-    request
-        .headers_mut()
-        .insert("Origin", format!("http://{addr}").parse().unwrap());
-    let (mut browser, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    let (mut local, _) = tokio_tungstenite::connect_async(format!("ws://{addr}"))
+        .await
+        .unwrap();
     let (response, _) = call(
-        &mut browser,
+        &mut local,
         1,
         "initialize",
-        json!({"clientInfo":{"name":"browser","version":"1"}}),
+        json!({"clientInfo":{"name":"local","version":"1"}}),
     )
     .await;
     assert!(response.get("result").is_some());
-    browser.close(None).await.unwrap();
+    local.close(None).await.unwrap();
     engine.shutdown().await;
     stop.cancel();
     server.await.unwrap().unwrap();
@@ -580,6 +738,7 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         "taskRequestReceipts",
         "atomicConfigureReceipt",
         "automaticSessionName",
+        "connectionProcesses",
     ] {
         assert_eq!(caps["result"]["features"][feature], true, "{caps}");
     }
@@ -593,6 +752,24 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
     assert_eq!(semantics["areal/plugin/read"]["effect"], "read");
     assert_eq!(semantics["areal/task/subscribe"]["effect"], "subscription");
     assert_eq!(semantics["areal/thread/configure"]["receipt"], "thread");
+    let (owner_override, _) = call(
+        &mut socket,
+        199,
+        "areal/process/start",
+        json!({
+            "requestId":"client-owner-override", "threadId":"not-created", "lifetime":"connection",
+            "connectionId":"client-selected-owner", "argv":["shell"]
+        }),
+    )
+    .await;
+    assert_eq!(owner_override["error"]["code"], -32602, "{owner_override}");
+    assert!(
+        owner_override["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("connectionId")
+    );
+
     for (request_id, configuration, expected_code) in [
         (
             "missing-profile",
@@ -603,6 +780,11 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
             "missing-provider",
             json!({"model":{"providerId":"missing","modelId":"test"}}),
             -32602,
+        ),
+        (
+            "missing-profile-and-provider",
+            json!({"agentProfile":{"id":"missing","revision":"1"},"model":{"providerId":"missing","modelId":"test"}}),
+            -32004,
         ),
     ] {
         let mut request = configuration;
@@ -717,6 +899,33 @@ async fn ordinary_admission_capabilities_and_rpc_errors_are_explicit() {
         stale["error"]["data"]["outcome"]["kind"], "rejected",
         "{stale}"
     );
+    // 队列编辑的版本冲突在持久化前判定，同样是保证没有变更的明确拒绝。
+    let (stale, _) = call(
+        &mut socket,
+        105,
+        "areal/queue/reorder",
+        json!({"threadId":id,"expectedRevision":99,"queueItemIds":[]}),
+    )
+    .await;
+    assert_eq!(stale["error"]["code"], -32009, "{stale}");
+    assert_eq!(
+        stale["error"]["data"]["outcome"]["kind"], "rejected",
+        "{stale}"
+    );
+    // 暂停和继续不覆盖任何内容，版本过期也照常执行。
+    for (request, method, paused) in [
+        (106, "areal/queue/pause", true),
+        (107, "areal/queue/resume", false),
+    ] {
+        let (done, _) = call(
+            &mut socket,
+            request,
+            method,
+            json!({"threadId":id,"expectedRevision":99}),
+        )
+        .await;
+        assert_eq!(done["result"]["paused"], paused, "{done}");
+    }
     let mut req = req;
     req["admissionGuard"]["configRevision"] = json!(1);
     req["requestId"] = json!("false-send");

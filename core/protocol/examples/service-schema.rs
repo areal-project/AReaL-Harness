@@ -10,8 +10,6 @@ fn main() {
             "stopOperation": schemars::schema_for!(StopOperation),
             "request": schemars::schema_for!(Request),
             "response": schemars::schema_for!(Response),
-            "browserBootstrap": schemars::schema_for!(BrowserBootstrap),
-            "browserBootstrapExchange": schemars::schema_for!(BrowserBootstrapExchange),
         }))
         .unwrap()
     );

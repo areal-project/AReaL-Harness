@@ -155,6 +155,76 @@ fn git_marketplace_and_bad_component_sibling() {
             .any(|v| v.contains("hook definition trust"))
     );
 }
+#[test]
+fn default_marketplace_registers_once_and_stays_removed() {
+    let t = tempfile::tempdir().unwrap();
+    let repo = t.path().join("repo");
+    fs::create_dir(&repo).unwrap();
+    write(
+        &repo,
+        ".agents/plugins/marketplace.json",
+        r#"{"name":"official","plugins":[{"name":"sample","source":"pkg","category":"Coding","tags":["featured"]}]}"#,
+    );
+    write(
+        &repo,
+        "pkg/.codex-plugin/plugin.json",
+        r#"{"name":"sample"}"#,
+    );
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git(&repo, &["add", "."]);
+    git(
+        &repo,
+        &[
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@invalid",
+            "commit",
+            "-qm",
+            "initial",
+        ],
+    );
+    let url = repo.to_str().unwrap();
+    let store = Store::open(t.path().join("state"), t.path().into(), None).unwrap();
+    let list = store.sync_default_marketplace(url, "main", 0).unwrap();
+    assert_eq!(list.marketplaces.len(), 1);
+    assert_eq!(list.data[0].id, "sample@official");
+    // 卡片状态与推荐标记由后端给出：本地来源可一键安装，装后即可用。
+    let card = &list.data[0];
+    assert_eq!(card.interface.as_ref().unwrap()["featured"], true);
+    assert_eq!(card.interface.as_ref().unwrap()["category"], "Coding");
+    let status = card.status.as_ref().unwrap();
+    assert_eq!(
+        (status.state.as_str(), status.next_action.as_str()),
+        ("notInstalled", "install")
+    );
+    let installed = store
+        .install(
+            &card.id,
+            "user",
+            list.revision,
+            &card.source,
+            &card.source_digest,
+        )
+        .unwrap();
+    assert_eq!(installed.status.unwrap().state, "available");
+    let list = store.list().unwrap();
+    // 一小时内重复同步不再拉取，登记版本不变。
+    let again = store
+        .sync_default_marketplace(url, "main", list.revision)
+        .unwrap();
+    assert_eq!(again.revision, list.revision);
+    let root = list.marketplaces[0].root.clone();
+    let removed = store.remove_marketplace(&root, list.revision).unwrap();
+    assert!(removed.marketplaces.is_empty());
+    let kept = store
+        .sync_default_marketplace(url, "main", removed.revision)
+        .unwrap();
+    assert!(
+        kept.marketplaces.is_empty(),
+        "removed default marketplace came back"
+    );
+}
 fn archive(link: bool) -> Vec<u8> {
     let mut tar = tar::Builder::new(Vec::new());
     for (path, body) in [

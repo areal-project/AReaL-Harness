@@ -1,4 +1,6 @@
-import type { Attachment } from "@areal/workbench/desktop-contract/conversation";
+import type { Attachment } from "./services.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { DraftAttachment } from "./MessageAttachment.js";
 import { AttachmentIcon } from "./interfaceIcons.js";
 import { forgetComposerUploads } from "./ComposerUploadState.js";
@@ -12,6 +14,8 @@ import { useI18n, formatUiMessage, type UiMessage } from "./i18n/IntlProvider.js
 import { ChatPromptEditor } from "./prompt-editor/ChatPromptEditor.js";
 import type { LexicalChatInputHandle } from "./LexicalChatInput.js";
 import { useApplicationPreferences } from "./settings/applicationPreferences.js";
+import { FeedbackNotice } from "./FeedbackNotice.js";
+import { isTechnicalErrorMessage } from "./recoveryPresentation.js";
 
 const fileDrafts = new Map<string, File[]>();
 const uploadReceipts = new Map<string, Map<File, Attachment>>();
@@ -118,7 +122,7 @@ export function CloudComposer({
       if (!thread) await onOpen?.(project.id, target);
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean };
-      setError(failure.message);
+      setError(errorText(t, failure));
       if (failure.submissionUnknown) {
         setUnknown(true);
         localStorage.setItem(`${key}:unknown`, "true");
@@ -129,7 +133,7 @@ export function CloudComposer({
         const targetKey = `areal-cloud-draft:${project.id}:${target}`;
         localStorage.setItem(targetKey, text);
         fileDrafts.set(targetKey, files);
-        draftErrors.set(targetKey, failure.message);
+        draftErrors.set(targetKey, currentErrorText(failure));
         // 创建已完成，失败草稿归属该会话；后续新聊天必须生成独立的创建标识。
         localStorage.removeItem(key);
         localStorage.removeItem(`${key}:create`);
@@ -142,25 +146,22 @@ export function CloudComposer({
       setBusy(false);
     }
   };
+  const failureMessage = formatUiMessage(t, error || thread?.cloud?.error || "");
   return (
     <div className="composer-dock cloud-composer flex flex-col gap-2">
-      <span
-        role="status"
-        className="cloud-connection-status inline-flex items-center gap-2 text-ui-sm text-foreground-subtle"
-        data-state={thread?.cloud?.connected ? "connected" : "idle"}
-      >
-        <span
-          className={`size-2 rounded-full ${thread?.cloud?.connected ? "bg-[var(--color-success)]" : "bg-foreground-subtle"}`}
-          aria-hidden="true"
+      {!thread?.cloud?.connected && !busy && !unknown && !failureMessage && (
+        <FeedbackNotice
+          tone="warning"
+          message={t("cloud.disconnected")}
+          actions={
+            thread && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => void reconnect()}>
+                {t("cloud.reconnect")}
+              </Button>
+            )
+          }
         />
-        {t(
-          thread?.cloud?.connected
-            ? "cloud.connected"
-            : busy
-              ? "cloud.connecting"
-              : "cloud.disconnected",
-        )}
-      </span>
+      )}
       <Input
         ref={upload}
         type="file"
@@ -185,6 +186,7 @@ export function CloudComposer({
         submitting={busy}
         enterSubmits={prefs.sendShortcut === "enter"}
         enableMentionPanel={false}
+        hasDraftContent={files.length > 0}
         allowSubmitWhenEmpty={files.length > 0}
         enableExternalFileDrop
         onPaste={(event) => {
@@ -247,7 +249,7 @@ export function CloudComposer({
                   projectId: project.id,
                   threadId: thread?.id,
                   turnId: running.id,
-                }).catch((cause) => setError(cause.message));
+                }).catch((cause) => setError(errorText(t, cause)));
               }}
             >
               {t("cloud.stop")}
@@ -256,8 +258,12 @@ export function CloudComposer({
         }
       />
       {unknown && (
-        <p role="alert" className="px-3 py-2 text-ui-sm text-destructive">
-          {t("cloud.submissionUnknown")}
+        <>
+          <FeedbackNotice
+            tone="warning"
+            message={t("cloud.submissionUnknown")}
+            detail={failureMessage || undefined}
+          />
           <Button
             type="button"
             onClick={() => {
@@ -267,17 +273,21 @@ export function CloudComposer({
           >
             {t("cloud.acknowledgeUnknown")}
           </Button>
-        </p>
+        </>
       )}
       {thread && !thread.cloud?.connected && (
         <Button type="button" disabled={busy} onClick={() => void reconnect()}>
           {t("cloud.reconnect")}
         </Button>
       )}
-      {(error || thread?.cloud?.error) && (
-        <p role="alert" className="px-3 py-2 text-ui-sm text-destructive">
-          {formatUiMessage(t, error || thread?.cloud?.error)}
-        </p>
+      {!unknown && failureMessage && (
+        <FeedbackNotice
+          tone="error"
+          message={
+            isTechnicalErrorMessage(failureMessage) ? t("recovery.operationFailed") : failureMessage
+          }
+          detail={isTechnicalErrorMessage(failureMessage) ? failureMessage : undefined}
+        />
       )}
     </div>
   );

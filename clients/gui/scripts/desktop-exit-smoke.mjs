@@ -15,7 +15,7 @@ const gui = resolve(dirname(script), ".."),
   root = resolve(gui, "../..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { executeCore } = require("../app/src/core/core-process.cjs");
+const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
 const binary = process.env.AREAL_CORE_BIN;
 assert.ok(binary && isAbsolute(binary), "Set AREAL_CORE_BIN to an absolute fixed Core path");
 const executable = process.env.AREAL_GUI_EXECUTABLE || require("electron");
@@ -292,10 +292,10 @@ const sourceHashes = Object.fromEntries(
     [
       "app/src/core/main.cjs",
       "app/src/core/startup-recovery.cjs",
-      "app/src/core/service-main.cjs",
+      "../../services/workbench/src/desktop/core/service-main.cjs",
       "app/src/core/service-client.cjs",
-      "app/src/core/backend.cjs",
-      "app/src/core/core-process.cjs",
+      "../../services/workbench/src/desktop/core/backend.cjs",
+      "scripts/support/core-process-fixture.cjs",
       "scripts/desktop-exit-smoke.mjs",
       "renderer/dist/index.html",
     ].map(async (path) => [path, sha(await readFile(join(gui, path)))]),

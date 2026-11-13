@@ -7,7 +7,7 @@ import { Input } from "../components/ui/input.js";
 import { SettingsSegmentedTabs } from "./SettingsSegmentedTabs.js";
 import type { Data } from "../services.js";
 
-/** ZCode 的表单/JSON 交互，字段严格映射到 Core ServerConfig。 */
+/** 表单与 JSON 两种写法，字段与插件 `.mcp.json` 里 mcpServers 的单个服务一致。 */
 export function McpConfigEditor({
   value,
   onChange,
@@ -20,11 +20,14 @@ export function McpConfigEditor({
   let config: Data | null = null;
   try {
     const parsed = JSON.parse(value);
-    if (parsed?.transport && typeof parsed.transport === "object") config = parsed;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) config = parsed;
   } catch {}
-  const update = (patch: Data) => onChange(JSON.stringify({ ...config, ...patch }, null, 2));
-  const transport = config?.transport ?? {};
-  const updateTransport = (patch: Data) => update({ transport: { ...transport, ...patch } });
+  const update = (patch: Data) => {
+    const next: Data = { ...config, ...patch };
+    for (const key of Object.keys(next)) if (next[key] === undefined) delete next[key];
+    onChange(JSON.stringify(next, null, 2));
+  };
+  const http = typeof config?.url === "string";
   return (
     <>
       <SettingsSegmentedTabs
@@ -54,28 +57,29 @@ export function McpConfigEditor({
             {t("settings.mcpConfigEditor.type")}
             <SettingsSelect
               aria-label={t("settings.mcpConfigEditor.type")}
-              value={transport.type}
+              value={http ? "streamableHttp" : "stdio"}
               onValueChange={(selectedValue) =>
-                update({
-                  transport:
-                    selectedValue === "stdio"
-                      ? { type: "stdio", command: "", args: [] }
-                      : { type: "streamableHttp", url: "" },
-                })
+                onChange(
+                  JSON.stringify(
+                    selectedValue === "stdio" ? { command: "", args: [] } : { url: "" },
+                    null,
+                    2,
+                  ),
+                )
               }
             >
               <option value="stdio">{t("settings.mcpConfigEditor.stdioLocalCommand")}</option>
               <option value="streamableHttp">{t("settings.mcpConfigEditor.streamableHttp")}</option>
             </SettingsSelect>
           </div>
-          {transport.type === "stdio" ? (
+          {!http ? (
             <>
               <label>
                 {t("settings.mcpConfigEditor.command")}
                 <Input
                   required
-                  value={transport.command ?? ""}
-                  onChange={(e) => updateTransport({ command: e.target.value })}
+                  value={config.command ?? ""}
+                  onChange={(e) => update({ command: e.target.value })}
                   placeholder="npx"
                 />
               </label>
@@ -85,9 +89,9 @@ export function McpConfigEditor({
                   unstyled
                   data-slot={undefined}
                   rows={2}
-                  value={(transport.args ?? []).join("\n")}
+                  value={(config.args ?? []).join("\n")}
                   onChange={(e) =>
-                    updateTransport({
+                    update({
                       args: e.target.value ? e.target.value.split("\n") : [],
                     })
                   }
@@ -102,16 +106,16 @@ export function McpConfigEditor({
                 <Input
                   required
                   type="url"
-                  value={transport.url ?? ""}
-                  onChange={(e) => updateTransport({ url: e.target.value })}
+                  value={config.url ?? ""}
+                  onChange={(e) => update({ url: e.target.value })}
                   placeholder="https://example.com/mcp"
                 />
               </label>
               <label>
                 {t("settings.mcpConfigEditor.authenticationEnvironmentVariableOptional")}
                 <Input
-                  value={transport.bearerTokenEnv ?? ""}
-                  onChange={(e) => updateTransport({ bearerTokenEnv: e.target.value || null })}
+                  value={config.bearer_token_env_var ?? ""}
+                  onChange={(e) => update({ bearer_token_env_var: e.target.value || undefined })}
                   placeholder="MY_SERVICE_TOKEN"
                 />
               </label>
@@ -119,13 +123,13 @@ export function McpConfigEditor({
           )}
           <SettingsDisclosure title={<> {t("settings.mcpConfigEditor.advancedSettings")}</>}>
             <div className="settings-form mt-3">
-              {transport.type === "stdio" && (
+              {!http && (
                 <>
                   <label>
                     {t("settings.mcpConfigEditor.workingDirectoryOptional")}
                     <Input
-                      value={transport.cwd ?? ""}
-                      onChange={(e) => updateTransport({ cwd: e.target.value || null })}
+                      value={config.cwd ?? ""}
+                      onChange={(e) => update({ cwd: e.target.value || undefined })}
                     />
                   </label>
                   <label>
@@ -134,10 +138,10 @@ export function McpConfigEditor({
                       unstyled
                       data-slot={undefined}
                       rows={2}
-                      value={(transport.envVars ?? []).join("\n")}
+                      value={(config.env_vars ?? []).join("\n")}
                       onChange={(e) =>
-                        updateTransport({
-                          envVars: e.target.value ? e.target.value.split("\n") : [],
+                        update({
+                          env_vars: e.target.value ? e.target.value.split("\n") : undefined,
                         })
                       }
                       placeholder="MY_SERVICE_TOKEN"
@@ -154,10 +158,10 @@ export function McpConfigEditor({
                   type="number"
                   min={1}
                   placeholder="30000"
-                  value={config.startupTimeoutMs ?? ""}
+                  value={config.startup_timeout_ms ?? ""}
                   onChange={(e) =>
                     update({
-                      startupTimeoutMs: e.target.value ? Number(e.target.value) : undefined,
+                      startup_timeout_ms: e.target.value ? Number(e.target.value) : undefined,
                     })
                   }
                 />
@@ -168,10 +172,12 @@ export function McpConfigEditor({
                   type="number"
                   min={1}
                   placeholder="120000"
-                  value={config.callTimeoutMs ?? ""}
+                  value={
+                    config.tool_timeout_sec === undefined ? "" : config.tool_timeout_sec * 1000
+                  }
                   onChange={(e) =>
                     update({
-                      callTimeoutMs: e.target.value ? Number(e.target.value) : undefined,
+                      tool_timeout_sec: e.target.value ? Number(e.target.value) / 1000 : undefined,
                     })
                   }
                 />

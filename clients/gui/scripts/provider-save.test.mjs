@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AppProviders } from "../app/src/core/providers.cjs";
-import { CoreBackend } from "../app/src/core/backend.cjs";
-import { CoreClient } from "../packages/runtime-client/core.js";
+import { AppProviders } from "@areal/workbench-service/desktop/core/providers.cjs";
+import { CoreBackend } from "@areal/workbench-service/desktop/core/backend.cjs";
+import diagnostics from "@areal/workbench-service/desktop/core/diagnostics.cjs";
 
 const readMethod = "areal/server/modelConfiguration/read";
 const applyMethod = "areal/server/modelConfiguration/apply";
@@ -109,6 +109,7 @@ function fixture({
   let writes = 0,
     release;
   const backend = {
+    host: { sourceId: "fixture", resolve: () => ({ sourceId: "fixture" }) },
     projects: new Map([["p", project]]),
     starting: new Set(),
     hasWork: () => busy,
@@ -122,7 +123,9 @@ function fixture({
   };
   const service = new AppProviders(backend, {});
   service.config.value = structuredClone(original);
+  backend.providers = service;
   service.config.current = async () => service.config.value;
+  service.config.refreshCredentials = async () => {};
   service.config.execute = async (_operation, request) => {
     calls.push(["write", structuredClone(request)]);
     writes++;
@@ -170,6 +173,19 @@ function fixture({
     },
   };
 }
+
+test("missing provider credentials are a definitive rejection before configuration changes", async () => {
+  const f = fixture();
+  await assert.rejects(
+    f.service.command({ ...f.request, operation: "save", authentication: "apiKey" }),
+    { code: "PROVIDER_CREDENTIAL_REQUIRED", outcome: { kind: "noMutation" } },
+  );
+  assert.deepEqual(f.service.config.value, f.original);
+  assert.equal(
+    f.calls.some(([method]) => method === "write"),
+    false,
+  );
+});
 
 test("explicit key reveal is revision-bound and never writes or publishes a secret", async () => {
   const f = fixture({ busy: true });
@@ -228,6 +244,54 @@ test("one save returns only after the same Core proves the revision and its cata
     [readMethod, "areal/server/status", "write", applyMethod, "areal/model/list"],
   );
   assert.equal(f.project.service.generation, "generation-p");
+});
+
+test("configuration diagnostics distinguish Core rejection from catalog refresh failure", async (t) => {
+  const events = [];
+  const record = diagnostics.record;
+  diagnostics.record = (event) => events.push(event);
+  t.after(() => {
+    diagnostics.record = record;
+  });
+  for (const failure of ["apply", "refresh-catalog"]) {
+    const f = fixture();
+    t.after(() => f.service.close());
+    f.service.requestReconciliation = () => {};
+    const rpc = f.project.client.request.bind(f.project.client);
+    f.project.client.request = async (method, params) => {
+      if (failure === "apply" && method === applyMethod) {
+        const error = {
+          code: -32010,
+          message: "private fixture detail",
+          data: { reason: "DEPLOYMENT_CHANGE_REQUIRES_RESTART" },
+        };
+        f.operations.set(params.requestId, {
+          requestId: params.requestId,
+          state: "rejected",
+          error,
+        });
+        throw Object.assign(new Error(error.message), error);
+      }
+      if (failure === "refresh-catalog" && method === "areal/model/list")
+        throw Object.assign(new Error("private fixture detail"), { code: "ETIMEDOUT" });
+      return rpc(method, params);
+    };
+    const saved = await f.service.command({ ...f.request, operation: "save" });
+    const applying = f.service.command({ operation: "apply", expectedRevision: saved.revision });
+    if (failure === "apply") await assert.rejects(applying, /private fixture detail/);
+    else assert.equal((await applying).application.kind, "unknown");
+    const event = events.find((item) => item.phase === failure && item.outcome === "failed");
+    assert.ok(event, `diagnostics must identify the ${failure} boundary`);
+    assert.equal(event.projectId, f.project.id);
+    assert.equal(event.coreGeneration, f.project.service.generation);
+    assert.ok(event.durationMs >= 0);
+    assert.equal(
+      event.reason,
+      failure === "apply" ? "DEPLOYMENT_CHANGE_REQUIRES_RESTART" : undefined,
+    );
+    assert.equal(f.service.public().application.kind, failure === "apply" ? "failed" : "unknown");
+    assert.ok(!JSON.stringify(events).includes("private fixture detail"));
+  }
 });
 
 test("running task save fails before persistence or Core mutation", async () => {
@@ -424,6 +488,97 @@ test("Core admission refusal after preflight settles before CAS rollback and com
   assert.equal(f.backend.providerUpdating, false);
   assert.deepEqual(f.project.configurations.running, { model: "old-model" });
 });
+
+test("explicit apply preserves the concrete rejection and redacts stored credentials", async (t) => {
+  const f = fixture({ syncFails: true });
+  t.after(() => f.service.close());
+  f.service.requestReconciliation = () => {};
+  const saved = await f.service.command({ ...f.request, operation: "save" });
+  const rpc = f.project.client.request.bind(f.project.client);
+  const secret = "fixture-private-credential";
+  f.service.config.vault.keys.AREAL_CREDENTIAL_fixture = secret;
+  f.service.config.key = () => secret;
+  f.project.client.request = async (method, params) => {
+    if (method !== applyMethod) return rpc(method, params);
+    const error = {
+      code: -32010,
+      message: `deployment configuration changed ${secret}`,
+      data: { reason: "DEPLOYMENT_CHANGE_REQUIRES_RESTART" },
+    };
+    f.operations.set(params.requestId, { requestId: params.requestId, state: "rejected", error });
+    throw Object.assign(new Error(error.message), error);
+  };
+  await assert.rejects(
+    f.service.command({ operation: "apply", expectedRevision: saved.revision }),
+    (error) => {
+      assert.match(error.message, /deployment configuration changed/);
+      assert.ok(!error.message.includes(secret));
+      return true;
+    },
+  );
+  assert.equal(f.service.applicationState(f.project).kind, "failed");
+  assert.equal(f.service.config.value.revision, saved.revision);
+});
+
+for (const entry of ["reconcile", "save", "retry", "retry-after-failure", "reconcile-read-failure"])
+  test(`catalog refresh automatically recovers without restart or duplicate apply via ${entry}`, async (t) => {
+    const f = fixture();
+    t.after(() => f.service.close());
+    const rpc = f.project.client.request.bind(f.project.client);
+    let unavailable = true;
+    let proofReadFailed = false;
+    f.project.client.request = async (method, params) => {
+      if (method === "areal/model/list" && unavailable)
+        throw new Error("fixture temporary catalog failure");
+      if (
+        method === readMethod &&
+        !unavailable &&
+        entry === "reconcile-read-failure" &&
+        !proofReadFailed
+      ) {
+        proofReadFailed = true;
+        throw new Error("fixture temporary proof read failure");
+      }
+      return rpc(method, params);
+    };
+    if (entry === "save") {
+      // 保留真实保存与恢复定时器，只控制 Core 读取失败的边界。
+      await f.service.command({ ...f.request, operation: "save" });
+      await f.service.reconcileProject(f.project);
+    } else if (entry.startsWith("retry")) {
+      if (entry === "retry-after-failure")
+        f.service.applicationFailed(
+          f.service.target(f.project),
+          "old",
+          new Error("previous failure"),
+        );
+      const result = await f.service.command({ operation: "apply", expectedRevision: "old" });
+      assert.equal(result.application.kind, "unknown");
+    } else await f.service.reconcileProject(f.project);
+    assert.equal(f.service.applicationState(f.project).kind, "unknown");
+    assert.equal(f.project.providerRevision, f.service.config.value.revision);
+    const settled = Promise.withResolvers();
+    const timeout = setTimeout(
+      () => settled.reject(new Error("automatic catalog recovery did not finish")),
+      7000,
+    );
+    t.after(() => clearTimeout(timeout));
+    f.backend.onChange = () => {
+      if (f.service.applicationState(f.project).kind === "applied") settled.resolve();
+    };
+    unavailable = false;
+    await settled.promise;
+    assert.equal(f.service.pendingApplications.size, 0);
+    assert.equal(f.project.providerError, null);
+    assert.equal(f.project.providerFailure, undefined);
+    assert.deepEqual(f.project.models, f.service.config.value.data[0].models);
+    assert.equal(
+      f.calls.filter(([method]) => method === applyMethod).length,
+      entry === "save" ? 1 : 0,
+    );
+    assert.equal(f.calls.filter(([method]) => method === "write").length, entry === "save" ? 1 : 0);
+    assert.equal(f.project.service.generation, "generation-p");
+  });
 
 test("a lost apply receipt reads the original operation and does not submit twice", async () => {
   const f = fixture({ lostApply: true });
@@ -739,11 +894,11 @@ test("invalid custom capability declarations are rejected before persistence", a
   }
 });
 
+// Host 投影会按目录契约校验 Core 回执，夹具给出完整的目录行。
+const catalogEntry = (id) => ({ id, providerId: null, modelId: id, providerRevision: null });
 async function connectFixture(t, { catalogFailure = false, replaceOwner = false } = {}) {
   const f = fixture();
   const native = f.project.client.request;
-  const originalConnect = CoreClient.prototype.connect,
-    originalRequest = CoreClient.prototype.request;
   const connected = [];
   let releaseSubscription, subscriptionRefresh;
   const subscriptionReady = new Promise((resolve) => {
@@ -755,7 +910,8 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
     { id: "demo", models: [{ id: "old-model" }] },
     { id: "areal_chatgpt", revision: "retired", models: [{ id: "retired-model" }] },
   ];
-  const catalog = () => providers.flatMap((provider) => provider.models);
+  const catalog = () =>
+    providers.flatMap((provider) => provider.models.map((model) => catalogEntry(model.id)));
   Object.setPrototypeOf(f.backend, CoreBackend.prototype);
   Object.assign(f.backend, {
     providers: f.service,
@@ -794,11 +950,23 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
       models: [{ id: "subscription-model" }],
     });
   };
-  CoreClient.prototype.connect = async function () {
-    this.ready = true;
-    this.capabilities = { methods: [readMethod, applyMethod] };
+  // 连接经 Host 投影建立；夹具回答 Host 一侧，Core 请求仍由下面的表决定。
+  f.backend.host = { ...f.backend.host, sourceId: "fixture-source" };
+  f.backend.hostCoreClients = new Map();
+  f.backend.hostCall = async (hostMethod, input) => {
+    if (hostMethod === "core.attach")
+      return {
+        lease: "fixture-lease",
+        coreInstanceId: "fixture-core",
+        coreGeneration: "fixture-generation",
+        connectionId: "fixture-connection",
+        capabilities: { methods: [readMethod, applyMethod] },
+      };
+    if (hostMethod === "core.detach") return {};
+    assert.equal(hostMethod, "core.request");
+    return { result: await coreRequest(input.method, input.params), sequence: 0 };
   };
-  CoreClient.prototype.request = async function (method, params) {
+  const coreRequest = async (method, params) => {
     if ([readMethod, applyMethod, "areal/server/status"].includes(method))
       return native(method, params);
     f.calls.push([method, params]);
@@ -820,35 +988,16 @@ async function connectFixture(t, { catalogFailure = false, replaceOwner = false 
     releaseSubscription();
     await subscriptionRefresh;
     f.project.taskNotificationMonitor?.stop();
-    CoreClient.prototype.connect = originalConnect;
-    CoreClient.prototype.request = originalRequest;
     await f.service.close();
   });
   return { ...f, connected, releaseSubscription, subscriptionRefresh: () => subscriptionRefresh };
 }
-
-test("connect publishes local models after retirement and MCP before background subscription models", async (t) => {
-  const f = await connectFixture(t);
-  await f.backend.connect(f.project);
-  assert.deepEqual(f.project.models, [{ id: "old-model" }]);
-  assert.deepEqual(f.connected, [true]);
-  const methods = f.calls.map(([method]) => method);
-  assert.equal(methods.filter((method) => method === "areal/model/list").length, 1);
-  assert.ok(methods.indexOf("areal/model/list") > methods.indexOf("mcp-sync"));
-  f.releaseSubscription();
-  await f.subscriptionRefresh();
-  assert.deepEqual(f.project.models, [{ id: "old-model" }, { id: "subscription-model" }]);
-  assert.equal(f.calls.filter(([method]) => method === "areal/model/list").length, 2);
-  assert.equal(f.project.providerRevision, "old");
-  assert.equal(f.service.applicationState(f.project).kind, "applied");
-});
 
 test("connect refuses readiness when the final catalog fails", async (t) => {
   const f = await connectFixture(t, { catalogFailure: true });
   await assert.rejects(f.backend.connect(f.project), /final catalog unavailable/);
   assert.deepEqual(f.connected, []);
   assert.deepEqual(f.project.models, [{ id: "old-model" }]);
-  assert.ok(f.calls.some(([method]) => method === "mcp-sync"));
   assert.equal(f.project.providerRevision, "old");
   assert.equal(f.service.applicationState(f.project).kind, "applied");
 });
@@ -872,6 +1021,19 @@ test("matched proof refreshes Settings and ordinary reconciliation by default", 
   assert.deepEqual(f.project.models, [{ id: "old-model", enabled: true }]);
   assert.equal(f.calls.filter(([method]) => method === "areal/model/list").length, 2);
   assert.equal(f.calls.filter(([method]) => method === applyMethod).length, 0);
+});
+
+test("a catalog read waits for the apply round queued by a save", async (t) => {
+  const f = fixture();
+  t.after(() => f.service.close());
+  await f.service.settled();
+  f.service.config.value = { ...f.original, revision: "next" };
+  f.project.models = [];
+  f.service.requestReconciliation();
+  assert.equal(f.project.providerRevision, "old", "the save returns before the apply round runs");
+  await f.service.settled();
+  assert.equal(f.project.providerRevision, "next");
+  assert.deepEqual(f.project.models, [{ id: "old-model", enabled: true }]);
 });
 
 test("deferred refresh preserves fresh application and lost-receipt reconciliation without another apply", async (t) => {

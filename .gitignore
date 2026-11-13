@@ -19,6 +19,7 @@ __pycache__/
 # GUI workspace package cache
 .pnpm-store/
 .scratch/
+/.worktrees/
 
 # 本地跨仓轨迹互通夹具
 /out/trajectory-semantics/
@@ -27,4 +28,9 @@ __pycache__/
 /.loopx/
 /.local/
 out
-.claude
+.claude/*
+!.claude/skills
+
+/services/workbench/node_modules/
+
+/services/workbench/src/generated/

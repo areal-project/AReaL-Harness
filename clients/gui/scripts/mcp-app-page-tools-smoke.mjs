@@ -1,16 +1,9 @@
 import { makeTempDir } from "./support/temp.mjs";
+import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import {
-  appendFile,
-  chmod,
-  mkdtemp,
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { appendFile, chmod, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -20,6 +13,7 @@ import {
   captureSmokeFailure,
   createProjectConversation,
   selectConversation,
+  selectCreatedConversation,
 } from "./smoke-navigation.mjs";
 import { assertApplicationStopped } from "./application-cleanup.mjs";
 import { pageToolsEditorHtml } from "./fixtures/mcp-page-tools-bundle.mjs";
@@ -127,7 +121,9 @@ if (process.argv.includes("--bundle-only")) {
 }
 const evidenceRoot = join(sourceRoot, ".scratch/phase-four");
 await mkdir(evidenceRoot, { recursive: true });
-const scratch = await mkdtemp(join(evidenceRoot, baselineOnly ? "red-inventory-" : "page-tools-"));
+const scratch = await trackedMkdtemp(
+  join(evidenceRoot, baselineOnly ? "red-inventory-" : "page-tools-"),
+);
 const isolated = await makeTempDir("areal-page-tools-");
 const workspace = join(isolated, "workspace"),
   userHome = join(isolated, "user");
@@ -361,7 +357,10 @@ await writeFile(
   join(fixtureApp, "bootstrap.cjs"),
   `global.pageToolServiceModule=require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});process.on('uncaughtExceptionMonitor',(error,origin)=>require('node:fs').appendFileSync(${JSON.stringify(mainErrorsPath)},JSON.stringify({pid:process.pid,origin,message:error.message,stack:error.stack})+'\\n'));require(${JSON.stringify(join(gui, "app/src/main.cjs"))});`,
 );
-const { builtinSkill, BUILTIN_SKILL_ID } = require("../app/src/core/builtin-skills.cjs");
+const {
+  builtinSkill,
+  BUILTIN_SKILL_ID,
+} = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
 await builtinSkill(join(isolated, "core"), BUILTIN_SKILL_ID);
 let app,
   page,
@@ -370,17 +369,15 @@ let app,
   passed = false;
 const button = (name) => page.getByRole("button", { name, exact: true });
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
-async function eventually(read, predicate, label, timeout = 30000) {
-  const end = Date.now() + timeout;
-  let value;
-  do {
-    if (modelFailure) throw modelFailure;
-    value = await read();
-    if (predicate(value)) return value;
-    await new Promise((resolve) => setTimeout(resolve, 75));
-  } while (Date.now() < end);
-  throw Error(`Timeout ${label}. Last observation ${String(JSON.stringify(value)).slice(0, 4096)}`);
-}
+const eventually = (read, predicate, label, timeout = 30000) =>
+  until(read, label, {
+    accept: predicate,
+    timeout,
+    interval: 75,
+    abort: () => {
+      if (modelFailure) throw modelFailure;
+    },
+  });
 async function transportEvents() {
   try {
     return (await readFile(transportLog, "utf8"))
@@ -937,15 +934,12 @@ try {
       projectId: initialOwner.projectId,
     });
     assert(created.ok, JSON.stringify(created));
-    await selectConversation(page, created.value.threadId);
+    await selectCreatedConversation(page, initialOwner.projectId, created.value.threadId);
     initialOwner = await selected();
   }
   await setPermission("完全访问");
   await settings();
-  await button("核对来源并安装").click();
-  await page
-    .getByRole("checkbox", { name: "我已核对以上来源、版本和内容摘要", exact: true })
-    .check();
+  await button("检查安装内容").click();
   await button("安装到用户").click();
   await button("审阅并连接").click();
   await page
@@ -1135,7 +1129,7 @@ try {
       projectId: ownerA.projectId,
     });
     assert(created.ok, JSON.stringify(created));
-    await selectConversation(page, created.value.threadId);
+    await selectCreatedConversation(page, ownerA.projectId, created.value.threadId);
     otherOwner = await selected();
   }
   const other = await beginCase("other-thread", [], (tools) =>

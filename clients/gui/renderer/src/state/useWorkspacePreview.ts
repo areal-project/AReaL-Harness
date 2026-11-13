@@ -1,4 +1,5 @@
 import React, { useCallback } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import {
   browserPageId,
   browserTabId,
@@ -43,6 +44,12 @@ export function useWorkspacePreview(
       if (openingBrowser.current === owner) return;
       openingBrowser.current = owner;
       if (!isBrowserTab(panel)) rememberPanelTrigger();
+      if (!threadId || services.capabilities?.native === false) {
+        workspacePanels.exposePanel();
+        workspacePanels.selectPanel("预览");
+        openingBrowser.current = null;
+        return;
+      }
       try {
         let value = await browserWorkspace.request({ operation: "state" });
         if (previewOwner.current !== owner) return;
@@ -67,6 +74,14 @@ export function useWorkspacePreview(
   );
   const onLink = useCallback(
     (url: string) => {
+      if (services.capabilities?.native === false) {
+        try {
+          const target = new URL(url);
+          if (["http:", "https:", "mailto:"].includes(target.protocol))
+            window.open(target.href, "_blank", "noopener,noreferrer");
+        } catch {}
+        return;
+      }
       if (!project) return;
       const owner = `${project.id}:${threadId}`;
       void services
@@ -77,7 +92,7 @@ export function useWorkspacePreview(
           void openBrowser(false, result.url);
         })
         .catch((cause) => {
-          if (previewOwner.current === owner) setError(cause.message);
+          if (previewOwner.current === owner) setError(currentErrorText(cause));
         });
     },
     [services, project?.id, threadId, openBrowser],

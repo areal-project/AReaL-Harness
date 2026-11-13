@@ -1,3 +1,5 @@
+import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
+import { desktopBridge } from "./support/desktop-fixture.mjs";
 import {
   createFolderVisionFixture,
   composerFolderVisionResponse,
@@ -10,7 +12,11 @@ import {
   composerReferencesResponse,
   runComposerReferencesAcceptance,
 } from "./composer-references-acceptance.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
   captureSmokeFailure,
@@ -219,6 +225,7 @@ const env = {
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: join(scratch, "user-home"),
   AREAL_HARNESS_HOME: join(scratch, "runtime"),
+  AREAL_HARNESS_SERVICE_HOME: join(scratch, "registry"),
   AREAL_CORE_CONFIG: config,
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
@@ -265,79 +272,37 @@ require(${JSON.stringify(join(desktop, "src/main.cjs"))});
 `,
   );
 }
-if (filesRegression) {
-  launchApp = join(scratch, "files-app");
-  await mkdir(launchApp);
-  await writeFile(
-    join(launchApp, "package.json"),
-    JSON.stringify({ name: "composer-files-fixture", main: "bootstrap.cjs" }),
-  );
-  await writeFile(
-    join(launchApp, "bootstrap.cjs"),
-    `
-const { ipcMain } = require("electron");
-const handle = ipcMain.handle.bind(ipcMain);
-globalThis.filesHoldList = false;
-globalThis.filesListEntered = false;
-globalThis.filesListCompleted = false;
-globalThis.filesHoldSearch = null;
-globalThis.filesSearchEntered = false;
-globalThis.filesSearchCompleted = false;
-ipcMain.handle = function(channel, listener) {
-  if (channel !== "areal-core:command") return handle(channel, listener);
-  return handle(channel, async (event, name, params) => {
-    if (name === "workspace" && params?.operation === "search" && params.query === globalThis.filesFailSearch) {
-      globalThis.filesFailSearch = null;
-      return { ok: false, error: { code: "INTERNAL", message: "FILE_SEARCH_FIXTURE_FAILURE" } };
-    }
-    if (name === "workspace" && params?.operation === "search" && params.query === globalThis.filesHoldSearch) {
-      globalThis.filesHoldSearch = null;
-      globalThis.filesSearchEntered = true;
-      await new Promise(resolve => { globalThis.filesReleaseSearch = () => { globalThis.filesReleaseSearch = null; resolve(); }; });
-      try { return await listener(event, name, params); }
-      finally { globalThis.filesSearchCompleted = true; }
-    }
-    const held = name === "workspace" && params?.operation === "list" && !params.path && globalThis.filesHoldList;
-    if (!held) return listener(event, name, params);
-    globalThis.filesHoldList = false;
-    globalThis.filesListEntered = true;
-    await new Promise(resolve => { globalThis.filesReleaseList = () => { globalThis.filesReleaseList = null; resolve(); }; });
-    try { return await listener(event, name, params); }
-    finally { globalThis.filesListCompleted = true; }
-  });
-};
-require(${JSON.stringify(join(desktop, "src/main.cjs"))});
-`,
-  );
-}
 let app,
   page,
   passed = false;
+async function readPasteThread(threadId, executionWorkspace = workspace) {
+  const source = project(await state());
+  const execution = source?.state?.threads?.[threadId];
+  const binding =
+    executionWorkspace === workspace ||
+    (execution?.worktree?.directory === executionWorkspace &&
+      execution.executionCore?.serviceGeneration)
+      ? source
+      : undefined;
+  return observeCoreThread({
+    binary,
+    env,
+    gui,
+    threadId,
+    project: binding,
+    workspace: executionWorkspace,
+  });
+}
 const errors = [],
   frames = [],
   checks = [];
 const pasteEvidence = { uploadedFile: null, folded: [] };
 const skillCatalogEvents = [];
 const button = (name) => page.getByRole("button", { name, exact: true });
-const state = () => page.evaluate(() => window.arealDesktop.snapshot());
+const bridge = desktopBridge(() => page);
+const { state, call } = bridge;
+const until = (predicate, label) => bridge.untilState(predicate, label, { interval: 80 });
 const project = (snapshot) => snapshot.projects.find((p) => p.root === workspace && !p.projectless);
-async function call(name, params) {
-  const result = await page.evaluate(
-    async ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  if (!result.ok) throw Error(result.error.message);
-  return result.value;
-}
-async function until(predicate, label) {
-  const end = Date.now() + 30000;
-  while (Date.now() < end) {
-    const s = await state();
-    if (await predicate(s)) return s;
-    await new Promise((r) => setTimeout(r, 80));
-  }
-  throw Error("Timeout: " + label);
-}
 async function shot(name) {
   const clip = await page.evaluate(() => {
     const boxes = [
@@ -376,6 +341,74 @@ async function launch() {
     if (String(d).includes("Error")) process.stderr.write(d);
   });
   page = await app.firstWindow();
+  if (filesRegression)
+    await page.addInitScript(() => {
+      const NativeWebSocket = WebSocket;
+      class FixtureWebSocket extends NativeWebSocket {
+        constructor(...args) {
+          super(...args);
+          this.addEventListener("message", (event) => {
+            let reply;
+            try {
+              reply = JSON.parse(event.data);
+            } catch {
+              return;
+            }
+            if (reply.id === this.filesSearchId) globalThis.filesSearchCompleted = true;
+            if (reply.id === this.filesListId) globalThis.filesListCompleted = true;
+          });
+        }
+        send(data) {
+          let frame;
+          try {
+            frame = JSON.parse(data);
+          } catch {
+            return super.send(data);
+          }
+          const request =
+            frame.method === "desktop.command" && frame.params?.command === "workspace"
+              ? frame.params.request
+              : null;
+          if (request?.operation === "search" && request.query === globalThis.filesFailSearch) {
+            globalThis.filesFailSearch = null;
+            queueMicrotask(() =>
+              this.dispatchEvent(
+                new MessageEvent("message", {
+                  data: JSON.stringify({
+                    version: 1,
+                    id: frame.id,
+                    error: { code: "INTERNAL", message: "FILE_SEARCH_FIXTURE_FAILURE" },
+                  }),
+                }),
+              ),
+            );
+            return;
+          }
+          if (request?.operation === "search" && request.query === globalThis.filesHoldSearch) {
+            globalThis.filesHoldSearch = null;
+            globalThis.filesSearchEntered = true;
+            this.filesSearchId = frame.id;
+            globalThis.filesReleaseSearch = () => {
+              globalThis.filesReleaseSearch = null;
+              super.send(data);
+            };
+            return;
+          }
+          if (request?.operation === "list" && !request.path && globalThis.filesHoldList) {
+            globalThis.filesHoldList = false;
+            globalThis.filesListEntered = true;
+            this.filesListId = frame.id;
+            globalThis.filesReleaseList = () => {
+              globalThis.filesReleaseList = null;
+              super.send(data);
+            };
+            return;
+          }
+          super.send(data);
+        }
+      }
+      globalThis.WebSocket = FixtureWebSocket;
+    });
   page.setDefaultTimeout(15000);
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (message) => {
@@ -389,9 +422,11 @@ async function launch() {
 async function quit() {
   if (!app) return;
   await app.evaluate(({ dialog }) => {
-    dialog.showMessageBox = async () => ({ response: 1 });
+    dialog.showMessageBox = async (...args) => ({
+      response: args.at(-1).message === "退出 AReaL Harness？" ? 0 : 1,
+    });
   });
-  await app.close();
+  await closeSmokeApplication(app, 10000);
   app = null;
 }
 console.log("GUI evidence:", scratch);
@@ -468,6 +503,44 @@ try {
       ),
     "provider catalog",
   );
+  await page.getByRole("button", { name: "新会话工作区", exact: true }).waitFor();
+  let readyObservation;
+  try {
+    await until(async () => {
+      const model = page.getByTestId("composer-model-trigger");
+      const count = await model.count();
+      readyObservation = {
+        projectId: await page.getByTestId("areal-workbench").getAttribute("data-project-id"),
+        threadId: await page.getByTestId("areal-workbench").getAttribute("data-thread-id"),
+        modelPresent: count > 0,
+        modelVisible: count > 0 && (await model.isVisible()),
+        modelEnabled: count > 0 && (await model.isEnabled()),
+        modelTitle: count > 0 ? await model.getAttribute("title") : null,
+        modelLabel: count > 0 ? await model.textContent() : null,
+        profile: await page.evaluate(
+          (id) => localStorage.getItem(`areal-gui:draft:${id}:new:profile`),
+          pid,
+        ),
+        unavailable: await page
+          .getByText("当前会话配置已不可用，请选择可用配置。输入已保留。", { exact: true })
+          .count(),
+      };
+      return (
+        readyObservation.modelVisible &&
+        readyObservation.modelEnabled &&
+        readyObservation.modelLabel?.trim() === "fixture" &&
+        readyObservation.projectId === pid &&
+        !readyObservation.threadId &&
+        readyObservation.profile === JSON.stringify({ id: "standard", revision: "v1" }) &&
+        readyObservation.unavailable === 0
+      );
+    }, "renderer draft profile and model ready");
+  } finally {
+    await writeFile(
+      join(scratch, "draft-ready-observation.json"),
+      JSON.stringify(readyObservation, null, 2),
+    );
+  }
   const input = () => page.getByTestId("chat-view").getByTestId("chat-input");
   const tags = () => page.getByTestId("chat-view").locator(".composer-skill-tag");
   const openCatalog = async () => {
@@ -478,17 +551,39 @@ try {
     await openCatalog();
     await page.getByRole("option", { name: /Deterministic test skill/ }).click();
   };
-  const sendAndWait = async () => {
-    const count = received.length;
-    await button("发送").click();
+  const acceptedTurn = (thread, turn) =>
+    thread.desktop?.receipts?.some(
+      (receipt) => receipt.method === "areal/turn/start" && receipt.result?.turn?.id === turn.id,
+    );
+  const waitForSend = async (threadId, previous, count, label, expectedText) => {
     try {
-      await until(
-        (s) =>
-          Object.values(project(s).state.threads).some(
-            (t) => t.turns?.at(-1)?.status === "completed",
-          ) && received.length > count,
-        "send completed",
-      );
+      let accepted;
+      await until(async () => {
+        const active = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+        if (!active || (threadId && active !== threadId) || received.length <= count) return null;
+        const thread = await readPasteThread(active);
+        accepted = thread.turns.find(
+          (turn) =>
+            !previous.has(turn.id) &&
+            turn.status === "completed" &&
+            (!expectedText ||
+              turn.items.some(
+                (item) =>
+                  item.type === "userMessage" &&
+                  item.content?.some((part) => part.type === "text" && part.text === expectedText),
+              )) &&
+            acceptedTurn(thread, turn),
+        );
+        return accepted;
+      }, label);
+      await page.locator(`[data-turn-id="${accepted.id}"][data-turn-status="completed"]`).waitFor();
+      await page.waitForFunction(() => {
+        const input = document.querySelector(
+          '[data-testid="chat-view"] [data-testid="chat-input"]',
+        );
+        return input?.getAttribute("contenteditable") === "true" && input.textContent === "";
+      });
+      return accepted;
     } catch (error) {
       await writeFile(
         join(scratch, "send-timeout-state.json"),
@@ -509,6 +604,15 @@ try {
       );
       throw error;
     }
+  };
+  const sendAndWait = async () => {
+    const count = received.length;
+    const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    const previous = new Set(
+      threadId ? (await readPasteThread(threadId)).turns.map((turn) => turn.id) : [],
+    );
+    await button("发送").click();
+    return waitForSend(threadId, previous, count, "send completed");
   };
   if (folderVisionRegression) {
     await runComposerFolderVisionAcceptance({
@@ -570,6 +674,7 @@ try {
       checks,
       shot,
       fixture: filesFixture,
+      readCoreThread: readPasteThread,
     });
   } else if (referencesRegression) {
     await runComposerReferencesAcceptance({
@@ -895,6 +1000,25 @@ try {
       await input().fill("");
     };
     await checkComposition(`areal-gui:draft:${pid}:new`, "draft");
+    await input().focus();
+    await page.keyboard.type("undo-draft");
+    await page.waitForFunction(
+      (key) => localStorage.getItem(key) === "undo-draft",
+      `areal-gui:draft:${pid}:new`,
+    );
+    await input().press("ControlOrMeta+z");
+    await page.waitForFunction(
+      (key) => (localStorage.getItem(key) ?? "") === "",
+      `areal-gui:draft:${pid}:new`,
+    );
+    assert.equal(await input().textContent(), "", "undo updates visible and persisted draft");
+    await page.keyboard.type("after-undo");
+    await page.waitForFunction(
+      (key) => localStorage.getItem(key) === "after-undo",
+      `areal-gui:draft:${pid}:new`,
+    );
+    await input().fill("");
+    checks.push("undo and subsequent typing update visible and persisted draft");
     // 草稿目录不创建 Thread，+/slash 同视图并保留正文与同名来源。
     await input().fill("正文保留");
     await chooseFirst();
@@ -920,7 +1044,7 @@ try {
     assert.equal(await tags().count(), 2);
     assert.equal(project(await state()).summaries?.length ?? 0, 0);
     const slashRefreshStart = skillCatalogEvents.length;
-    await input().fill("正文保留 /fixture");
+    await input().fill("正文保留 $fixture");
     const slashCatalog = page.getByRole("listbox", { name: "功能与 Skills" });
     // 打开 slash 会刷新目录；旧行可见不代表本轮 Core 读取已经结束。
     await until(() => {
@@ -947,14 +1071,22 @@ try {
           ?.getAttribute("aria-activedescendant") === id,
       await slashCatalog.getByRole("option").first().getAttribute("id"),
     );
-    await input().press("ArrowDown");
+    const nextSlashId = await nextSlashOption.getAttribute("id");
+    const slashIds = await slashCatalog
+      .getByRole("option")
+      .evaluateAll((options) => options.map((option) => option.id));
+    // 键盘逐行移到目标；目标在首行时先下后上，仍走一遍方向键。
+    const steps = slashIds.indexOf(nextSlashId);
+    if (steps === 0) await input().press("ArrowDown");
+    for (let index = 0; index < Math.max(steps, 1); index += 1)
+      await input().press(steps === 0 ? "ArrowUp" : "ArrowDown");
     await page.waitForFunction(
       (id) =>
         document.getElementById(id)?.getAttribute("aria-selected") === "true" &&
         document
           .querySelector('[data-testid="chat-input"]')
           ?.getAttribute("aria-activedescendant") === id,
-      await nextSlashOption.getAttribute("id"),
+      nextSlashId,
     );
     await input().press("Enter");
     await page.waitForFunction(
@@ -1009,11 +1141,72 @@ try {
       ctx.fillRect(0, 0, 64, 64);
       return canvas.toDataURL("image/png").split(",")[1];
     });
+    const imageFixture = {
+      name: "image.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(png, "base64"),
+    };
+    const checkAttachmentReload = async (label, text, pastedText, threadId) => {
+      const requestCount = received.length;
+      await page.reload();
+      await page.waitForFunction(
+        ({ projectId, threadId }) => {
+          const workbench = document.querySelector('[data-testid="areal-workbench"]');
+          return (
+            workbench?.dataset.projectId === projectId &&
+            (workbench.dataset.threadId || null) === threadId
+          );
+        },
+        { projectId: pid, threadId },
+      );
+      await input().waitFor();
+      await page.getByTestId("chat-view").getByText("image.png", { exact: true }).waitFor();
+      const missing = page
+        .getByTestId("chat-view")
+        .locator('[data-testid="composer-attachment"][data-attachment-state="needs-reattach"]')
+        .filter({ hasText: "image.png" });
+      await missing.getByRole("status").filter({ hasText: "文件尚未恢复，请重新添加" }).waitFor();
+      assert.equal(await missing.count(), 1, `${label}: missing file remains visible`);
+      await button("发送").click();
+      await page
+        .getByText("请重新添加或移除未恢复的附件后再发送。草稿已保留。", { exact: true })
+        .waitFor();
+      assert.equal(received.length, requestCount, `${label}: reload did not send`);
+      assert.match(await input().textContent(), text);
+      await shot(`${label}-missing-attachment`);
+      await page.getByRole("button", { name: "在文本框中显示 ›" }).click();
+      await page.waitForFunction(
+        (value) =>
+          document.querySelector('[data-testid="chat-input"]')?.textContent.includes(value),
+        pastedText,
+      );
+      assert.ok(
+        (await input().textContent()).includes(pastedText),
+        `${label}: pasted text survives in full`,
+      );
+      if (threadId === null) {
+        await missing.getByLabel("重新添加").setInputFiles(imageFixture);
+      } else {
+        await button("移除附件 image.png").click();
+        await page
+          .getByTestId("chat-view")
+          .locator("input[type=file]")
+          .setInputFiles([imageFixture]);
+      }
+      await page.getByRole("button", { name: "预览图片 image.png" }).waitFor();
+      assert.equal(await missing.count(), 0, `${label}: missing state clears after replacement`);
+      assert.equal(
+        await button("发送").isEnabled(),
+        true,
+        `${label}: restored file permits sending`,
+      );
+      assert.equal(received.length, requestCount, `${label}: replacing the file did not send`);
+    };
     await page
       .getByTestId("chat-view")
       .locator("input[type=file]")
       .setInputFiles([
-        { name: "image.png", mimeType: "image/png", buffer: Buffer.from(png, "base64") },
+        imageFixture,
         { name: "note.txt", mimeType: "text/plain", buffer: Buffer.from("文本附件内容") },
       ]);
     await page.getByRole("button", { name: "在文本框中显示 ›" }).click();
@@ -1035,10 +1228,7 @@ try {
     }, pasted);
     await page.getByRole("button", { name: "在文本框中显示 ›" }).waitFor();
     await shot("02-attachments");
-    await page.getByRole("button", { name: "在文本框中显示 ›" }).click();
-    await page.waitForFunction(() =>
-      document.querySelector('[data-testid="chat-input"]')?.textContent.includes("粘贴正文"),
-    );
+    await checkAttachmentReload("new-draft", /正文保留.*文本附件内容/s, pasted, null);
     assert.match(await input().textContent(), /粘贴正文/);
     const beforeRemove = await input().textContent();
     await button("移除附件 image.png").click();
@@ -1062,7 +1252,6 @@ try {
     const tid = await page.locator("[data-testid=areal-workbench]").getAttribute("data-thread-id");
     assert.equal(project(await state()).configurations[tid].profile.id, "standard");
     assert.equal(project(await state()).configurations[tid].profile.revision, "v1");
-    const current = (s) => project(s).state.threads[tid];
     const sentBody = received.at(-1);
     assert.equal(sentBody.model, "fixture-alt");
     assert.equal(sentBody.reasoning_effort, "high");
@@ -1070,7 +1259,6 @@ try {
     assert.ok(sentText.includes("PAGED_SKILL_END"));
     assert.ok(sentText.includes("SECOND_SKILL_CONTENT"));
     assert.ok(sentText.includes("正文保留"));
-    await until((s) => !project(s).pending.length, "submission settled");
     assert.equal(await tags().count(), 0);
     checks.push(
       "real paged Core Skill read (multibyte >8192 bytes) reaches model request; independent model/effort selection reaches provider",
@@ -1202,13 +1390,14 @@ try {
       await shot(`03b-folded-${label}`);
       const beforePaste = {
         requests: received.length,
-        turns: pasteThread(await state())?.turns.length ?? 0,
+        turns: newDraft ? 0 : (await readPasteThread(pasteTid)).turns.length,
         uploads: newDraft ? [] : pasteUploads,
       };
       const evidence = { label, expectedText, before: beforePaste };
       pasteEvidence.folded.push(evidence);
+      let acceptedThread;
       await button("发送").click();
-      const accepted = await until(async (s) => {
+      await until(async (s) => {
         if (newDraft)
           pasteTid = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
         const refusal = await page
@@ -1234,14 +1423,32 @@ try {
             `${label}: folded clipboard text was sent as File; expected exact Text input`,
           );
         }
+        const native = pasteTid ? await readPasteThread(pasteTid) : undefined;
+        evidence.waiting = {
+          requests: received.length,
+          turns: native?.turns.map((turn) => ({ id: turn.id, status: turn.status })),
+          backendTurns: pasteThread(s)?.turns.map((turn) => ({ id: turn.id, status: turn.status })),
+          pending: project(s).pending.map((entry) => ({
+            method: entry.method,
+            requestId: entry.params?.requestId,
+          })),
+        };
+        acceptedThread = native;
         return (
           received.length === beforePaste.requests + 1 &&
-          pasteThread(s)?.turns.length === beforePaste.turns + 1 &&
-          pasteThread(s)?.turns.at(-1)?.status === "completed" &&
-          !project(s).pending.length
+          native?.turns.length === beforePaste.turns + 1 &&
+          native?.turns.at(-1)?.status === "completed" &&
+          acceptedTurn(native, native.turns.at(-1))
         );
       }, `${label}: folded paste direct Send completes as Text`);
-      const turn = pasteThread(accepted).turns.at(-1);
+      const turn = acceptedThread.turns.at(-1);
+      await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+      await page.waitForFunction(() => {
+        const editor = document.querySelector(
+          '[data-testid="chat-view"] [data-testid="chat-input"]',
+        );
+        return editor?.getAttribute("contenteditable") === "true" && editor.textContent === "";
+      });
       const userMessages = turn.items.filter((item) => item.type === "userMessage");
       assert.equal(userMessages.length, 1);
       assert.deepEqual(
@@ -1297,14 +1504,9 @@ try {
         mimeType: "application/typescript",
         buffer: Buffer.from(uploadedText),
       });
-    await sendAndWait();
-    await until(
-      (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
-      "text file accepted",
-    );
-    const filePart = current(await state())
-      .turns.at(-1)
-      .items.find((item) => item.type === "userMessage")
+    const fileTurn = await sendAndWait();
+    const filePart = fileTurn.items
+      .find((item) => item.type === "userMessage")
       .content.find((part) => part.type === "file");
     assert.equal(filePart.name, "中文源文件.ts");
     assert.equal(filePart.mime_type, "text/plain");
@@ -1448,6 +1650,13 @@ try {
     );
     await shot("plugin-mention-chip");
     const pluginDraftKey = `areal-gui:draft:${pid}:${tid}`;
+    await page.waitForFunction(
+      (key) =>
+        /before \[@composer-plugin\]\(plugin:\/\/composer-plugin@composer-fixture\)  after/.test(
+          localStorage.getItem(key) ?? "",
+        ),
+      pluginDraftKey,
+    );
     const canonical = await page.evaluate((key) => localStorage.getItem(key), pluginDraftKey);
     assert.match(
       canonical,
@@ -1488,11 +1697,8 @@ try {
       expectedRevision: pluginList.revision,
       expectedDigest: plugin.installedDigest,
     });
+    await page.evaluate(() => window.dispatchEvent(new Event("areal-plugins-changed")));
     await sendAndWait();
-    await until(
-      (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
-      "plugin mention sent",
-    );
     const pluginMessage = received
       .at(-1)
       .messages.filter(
@@ -1599,15 +1805,8 @@ try {
     await input().locator('[data-mention-category="plugins"]').waitFor();
     await shot("plugin-mention-new-draft-reloaded");
     await sendAndWait();
-    let firstPluginTid;
-    await until(async (s) => {
-      firstPluginTid = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-      return (
-        firstPluginTid &&
-        project(s).state.threads[firstPluginTid]?.turns.at(-1)?.status === "completed" &&
-        !project(s).pending.length
-      );
-    }, "first plugin message accepted in created Thread");
+    const firstPluginTid = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    assert.ok(firstPluginTid, "first plugin message has a created Thread");
     const firstPluginMessage = received
       .at(-1)
       .messages.filter(
@@ -1621,12 +1820,19 @@ try {
       .at(-1).content;
     assert.equal(firstPluginMessage.split("COMPOSER_PLUGIN_EXACT_BODY").length - 1, 1);
     await selectConversation(page, tid);
-    const parentConfiguration = project(await state()).configurations[tid];
+    const parentConfiguration = (await readPasteThread(tid)).desktop?.configuration;
+    assert.ok(parentConfiguration, "parent Core configuration is present");
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1024, 768));
     await page.waitForFunction(() => innerWidth <= 1024);
     await openSideChat(page);
     const sidePane = page.getByTestId("side-chat-pane").filter({ visible: true });
-    const sideInput = sidePane.getByRole("textbox", { name: "随心输入", exact: true });
+    const sideId = await sidePane.getAttribute("data-thread-id");
+    assert.ok(sideId, "Side has an original Core thread");
+    const sideBefore = new Set((await readPasteThread(sideId)).turns.map((turn) => turn.id));
+    const sideInput = sidePane.getByRole("textbox", {
+      name: "描述要做的事，@ 引用文件，/ 查看命令",
+      exact: true,
+    });
     await sideInput.fill("side plugin @composer");
     const beforeSidePlugin = received.length;
     await page.getByRole("option", { name: /composer-plugin.*Composer plugin fixture/ }).waitFor();
@@ -1644,15 +1850,22 @@ try {
     assert.equal(received.length, beforeSidePlugin);
     await shot("plugin-mention-side-draft");
     await sidePane.getByRole("button", { name: "发送", exact: true }).click();
-    const sideCompleted = await until(
-      (s) =>
-        received.length > beforeSidePlugin &&
-        Object.values(project(s).state.threads).some(
-          (row) => row.conversation?.kind === "side" && row.turns?.at(-1)?.status === "completed",
-        ) &&
-        !project(s).pending.length,
-      "Side plugin intent completed",
-    );
+    let sidePluginThread;
+    await until(async () => {
+      if (
+        (await sidePane.getAttribute("data-thread-id")) !== sideId ||
+        received.length <= beforeSidePlugin
+      )
+        return false;
+      sidePluginThread = await readPasteThread(sideId);
+      const turn = sidePluginThread.turns.at(-1);
+      return (
+        turn &&
+        !sideBefore.has(turn.id) &&
+        turn.status === "completed" &&
+        acceptedTurn(sidePluginThread, turn)
+      );
+    }, "Side plugin intent completed");
     const sidePluginMessage = received
       .at(-1)
       .messages.filter(
@@ -1670,11 +1883,11 @@ try {
       1,
       "executable Side inherits the parent Profile Skill and resolves plugin intent once",
     );
-    const sidePluginThread = Object.values(project(sideCompleted).state.threads).find(
-      (row) => row.conversation?.kind === "side" && row.turns?.at(-1)?.status === "completed",
-    );
+    await sidePane
+      .locator(`[data-turn-id="${sidePluginThread.turns.at(-1).id}"][data-turn-status="completed"]`)
+      .waitFor();
     assert.equal(sidePluginThread.conversation.policy.kind, "sideExecutableV2");
-    assert.deepEqual(project(sideCompleted).configurations[tid], parentConfiguration);
+    assert.deepEqual((await readPasteThread(tid)).desktop?.configuration, parentConfiguration);
     await page.waitForFunction(
       (editor) => editor.getAttribute("contenteditable") === "true" && editor.textContent === "",
       await sideInput.elementHandle(),
@@ -1687,13 +1900,25 @@ try {
     assert.equal(received.length, beforeSideFollowUp, "existing Side plugin selection never sends");
     await sideInput.locator('[data-mention-category="plugins"]').waitFor();
     await sidePane.getByRole("button", { name: "发送", exact: true }).click();
-    const sideFollowUpCompleted = await until(
-      (s) =>
-        received.length > beforeSideFollowUp &&
-        project(s).state.threads[sidePluginThread.id]?.turns.length === sideTurnsBefore + 1 &&
-        project(s).state.threads[sidePluginThread.id]?.turns.at(-1)?.status === "completed" &&
-        !project(s).pending.length,
-      "existing Side plugin follow-up completed",
+    let sideFollowUpTurn;
+    await until(async () => {
+      const authoritative = await readPasteThread(sidePluginThread.id);
+      if (
+        received.length <= beforeSideFollowUp ||
+        authoritative.turns.length !== sideTurnsBefore + 1 ||
+        authoritative.turns.at(-1)?.status !== "completed" ||
+        !acceptedTurn(authoritative, authoritative.turns.at(-1))
+      )
+        return false;
+      sideFollowUpTurn = authoritative.turns.at(-1);
+      return true;
+    }, "existing Side plugin follow-up completed");
+    await sidePane
+      .locator(`[data-turn-id="${sideFollowUpTurn.id}"][data-turn-status="completed"]`)
+      .waitFor();
+    await page.waitForFunction(
+      (editor) => editor.getAttribute("contenteditable") === "true" && editor.textContent === "",
+      await sideInput.elementHandle(),
     );
     const sideFollowUpMessage = received
       .at(-1)
@@ -1715,10 +1940,10 @@ try {
       "executable Side follow-up retains its inherited Profile Skill without duplication",
     );
     assert.equal(
-      project(sideFollowUpCompleted).state.threads[sidePluginThread.id].conversation.policy.kind,
+      (await readPasteThread(sidePluginThread.id)).conversation.policy.kind,
       "sideExecutableV2",
     );
-    assert.deepEqual(project(sideFollowUpCompleted).configurations[tid], parentConfiguration);
+    assert.deepEqual((await readPasteThread(tid)).desktop?.configuration, parentConfiguration);
 
     // 完整视图和分屏共用标签关闭键；窄窗中的面板按钮只负责切换视图。
     await page
@@ -1732,6 +1957,22 @@ try {
       "canonical paste resolves Core metadata; removing chip preserves manual Skill; first-message plugin draft survives navigation/reload; new and existing executable Side send reference intent without modifying parent configuration",
     );
     await checkComposition(`areal-gui:draft:${pid}:${tid}`, "chat");
+    await input().fill("已有会话正文");
+    await page.getByTestId("chat-view").locator("input[type=file]").setInputFiles([imageFixture]);
+    const existingPasted = "已有会话粘贴文本".repeat(40);
+    await input().evaluate((el, text) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData("text/plain", text);
+      el.dispatchEvent(
+        new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+      );
+    }, existingPasted);
+    await page.getByRole("button", { name: "在文本框中显示 ›" }).waitFor();
+    await checkAttachmentReload("existing-thread", /已有会话正文/, existingPasted, tid);
+    await sendAndWait();
+    checks.push(
+      "new and existing drafts restore missing-file notices and folded text; removal and reattachment unblock sending",
+    );
     // 使用原生打字验证发送后焦点和选区，避免程序化填充修复选区而掩盖问题。
     for (const theme of ["dark", "light"]) {
       await button("设置").click();
@@ -1748,16 +1989,20 @@ try {
       );
       await button("返回应用").click();
       const requestCount = received.length;
+      const previous = new Set((await readPasteThread(tid)).turns.map((turn) => turn.id));
       await input().focus();
       await page.keyboard.type(`Enter caret ${theme}`);
       await input().press("Enter");
-      await until(
-        (s) =>
-          received.length > requestCount &&
-          current(s).turns.at(-1)?.status === "completed" &&
-          !project(s).pending.length,
+      const turn = await waitForSend(
+        tid,
+        previous,
+        requestCount,
         `${theme}: Enter send completed`,
+        `Enter caret ${theme}`,
       );
+      const rendered = page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`);
+      await rendered.getByText(`Enter caret ${theme}`, { exact: true }).waitFor();
+      await rendered.getByText("COMPOSER_OK", { exact: true }).waitFor();
       await page.waitForFunction(() => {
         const element = document.querySelector('[data-testid="chat-input"]');
         return element?.getAttribute("contenteditable") === "true" && element.textContent === "";
@@ -1794,26 +2039,55 @@ try {
     // 已有聊天发送前读取失败不丢标签或正文，不发缺失技能请求。
     await chooseFirst();
     await input().fill("技能失败保留草稿");
-    await rename(join(skill, "SKILL.md"), join(skill, "SKILL.unavailable"));
+    const launchRoot = join(scratch, "registry", "host", "launch");
+    const matchingDeployments = [];
+    for (const directory of await readdir(launchRoot)) {
+      const launch = JSON.parse(await readFile(join(launchRoot, directory, "inputs.json"), "utf8"));
+      if (launch.workspace === workspace) matchingDeployments.push(launch.deploymentPath);
+    }
+    assert.equal(matchingDeployments.length, 1, "one isolated launch owns the project");
+    const deployed = JSON.parse(await readFile(matchingDeployments[0], "utf8"));
+    const deployedSkill = deployed.skills.find(
+      (entry) => entry.id === "fixture-skill" && entry.revision === "v1",
+    );
+    assert.ok(deployedSkill?.root.startsWith(launchRoot + "/"));
+    const resource = join(deployedSkill.root, "SKILL.md");
+    const readSkill = () =>
+      call("manage", {
+        projectId: pid,
+        threadId: tid,
+        operation: "skill",
+        skill: { id: "fixture-skill", revision: "v1" },
+        resource: "SKILL.md",
+        offset: 0,
+        maxBytes: 8192,
+      });
+    assert.ok((await readSkill()).dataBase64, "Core reads the deployed skill before injection");
+    await rename(resource, `${resource}.unavailable`);
     const requestCount = received.length;
-    await button("发送").click();
-    await page.getByRole("alert").filter({ hasText: "无法读取技能" }).waitFor();
-    assert.equal(received.length, requestCount);
-    assert.equal(await tags().count(), 1);
-    assert.equal(
-      await page
-        .getByTestId("chat-view")
-        .locator('[data-testid="feedback-notice"][data-tone="error"]')
-        .count(),
-      0,
-    );
-    assert.equal(await input().textContent(), "技能失败保留草稿");
-    await rename(join(skill, "SKILL.unavailable"), join(skill, "SKILL.md"));
+    try {
+      await assert.rejects(readSkill(), "Core must fail to read the injected resource");
+      await button("发送").click();
+      // 失败走顶部提示，具体原因在“查看详情”里。
+      await page.getByRole("alert").getByRole("button", { name: "查看详情" }).click();
+      await page.getByText("无法读取技能").waitFor();
+      await page.keyboard.press("Escape");
+      assert.equal(received.length, requestCount);
+      assert.equal(await tags().count(), 1);
+      assert.equal(
+        await page
+          .getByTestId("chat-view")
+          .locator('[data-testid="feedback-notice"][data-tone="error"]')
+          .count(),
+        0,
+      );
+      assert.equal(await input().textContent(), "技能失败保留草稿");
+    } finally {
+      await rename(`${resource}.unavailable`, resource);
+    }
+    assert.ok((await readSkill()).dataBase64, "Core reads the same restored resource");
     await sendAndWait();
-    await until(
-      (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
-      "second send",
-    );
+    assert.equal(received.length, requestCount + 1, "retry sends exactly once");
     checks.push(
       "existing Composer Skill failure blocks send and retains draft; retry reads real resource",
     );
@@ -1872,6 +2146,7 @@ try {
       .locator("[data-testid=areal-workbench]")
       .getAttribute("data-thread-id");
     assert.equal(project(await state()).state.threads[goalTid].goals.goal.objective, foldedGoal);
+    await button("移除附件 完成").waitFor({ state: "detached" });
     assert.equal(await button("移除附件 完成").count(), 0);
     await until(
       (s) => project(s).state.threads[goalTid]?.goals?.goal?.status !== "active",
@@ -1938,8 +2213,8 @@ try {
   throw error;
 } finally {
   await writeFile(join(scratch, "model-requests.json"), JSON.stringify(received, null, 2));
-  if (filesRegression && app)
-    await app.evaluate(() => {
+  if (filesRegression && page)
+    await page.evaluate(() => {
       globalThis.filesReleaseList?.();
       globalThis.filesReleaseSearch?.();
     });
@@ -1954,9 +2229,30 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
-  await quit();
+  try {
+    await quit();
+  } catch (error) {
+    passed = false;
+    process.exitCode = 1;
+    errors.push(`Electron cleanup: ${error.message}`);
+  }
+  try {
+    const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, scratch);
+    assert.ok(receipt, "the original fixture Host stop is confirmed");
+    checks.push("explicit fixture Host stop completes with matching original project receipts");
+  } catch (error) {
+    passed = false;
+    process.exitCode = 1;
+    errors.push(`Host cleanup: ${error.message}`);
+  }
   const authoritativeHistory = [];
-  for (const entry of await readdir(join(scratch, "core"), { withFileTypes: true })) {
+  const coreEntries = await readdir(join(scratch, "core"), { withFileTypes: true }).catch(
+    (error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    },
+  );
+  for (const entry of coreEntries) {
     if (!entry.isDirectory()) continue;
     const directory = join(scratch, "core", entry.name, "state");
     const names = await readdir(directory).catch((error) => {
@@ -1974,36 +2270,12 @@ try {
   );
   try {
     await assertApplicationStopped(binary, env, stoppingAdapter);
-    checks.push(
-      "application quit stops the isolated adapter and all Core generations, including projectless",
-    );
+    checks.push("explicit Host stop leaves the isolated adapter and all Core generations stopped");
   } catch (error) {
     console.error("Adapter fixture cleanup:", error.message);
-    if (passed) {
-      passed = false;
-      process.exitCode = 1;
-      errors.push(`Explicit safe stop failed: ${error.message}`);
-    }
-    // 仅清理本次隔离 home 中的服务；失败不遗留模型任务或后台进程。
-    try {
-      const instances = JSON.parse(
-        execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
-      );
-      for (const instance of instances)
-        if (instance.workspace === workspace && instance.state !== "stopped") {
-          execFileSync(
-            binary,
-            ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
-            { env, timeout: 120000, stdio: "pipe" },
-          );
-        }
-    } catch (failure) {
-      console.error("Core fixture cleanup:", failure.message);
-    }
-    try {
-      const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-      process.kill(metadata.pid, "SIGTERM");
-    } catch {}
+    passed = false;
+    process.exitCode = 1;
+    errors.push(`Explicit safe stop failed: ${error.message}`);
   }
   server.closeAllConnections();
   await new Promise((r) => server.close(r));

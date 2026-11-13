@@ -1,4 +1,5 @@
 import { DelayedVisible } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { Button } from "@areal/ui";
 import { composerDraftStorage } from "./composerDraftStorage.js";
 import { useEffect, useState } from "react";
@@ -159,7 +160,7 @@ export function useComposerSkills({
       })
       .catch((cause) => {
         if (!active) return;
-        setError(`无法读取 Skills：${cause.message}`);
+        setError(`无法读取 Skills：${currentErrorText(cause)}`);
         setLoading(false);
         trace("failed");
         stage = undefined;
@@ -303,7 +304,7 @@ function ComposerSkillTag({
           setLoading(true);
           void read()
             .then(setContent)
-            .catch((cause) => setError(cause.message))
+            .catch((cause) => setError(currentErrorText(cause)))
             .finally(() => setLoading(false));
         }}
       >

@@ -1,6 +1,7 @@
 // Pinned Codex management contract checks against actual authenticated Core.
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, access } from "node:fs/promises";
+import { mkdir, writeFile, readFile, access } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { resolve, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
@@ -11,7 +12,7 @@ import { CoreClient } from "../clients/gui/packages/runtime-client/core.js";
 const require = createRequire(new URL("../clients/gui/app/package.json", import.meta.url)),
   WebSocket = require("ws"),
   exec = promisify(execFile);
-const scratch = await mkdtemp("/private/tmp/areal-plugin-wire-"),
+const scratch = await trackedMkdtemp("/private/tmp/areal-plugin-wire-"),
   workspace = join(scratch, "workspace"),
   bin = resolve(process.env.AREAL_TEST_BIN_DIR ?? "target/debug", "areal");
 const env = {

@@ -144,34 +144,7 @@ test("dependency failure reaches the connection snapshot before any background o
   await assert.rejects(backend.init(), { code: "HOST_PREREQUISITE_UNAVAILABLE" });
   assert.equal(backend.snapshot().connection.state, "unavailable");
   assert.equal(backend.snapshot().connection.prerequisite.reason, "developer-tools-unavailable");
-  assert.equal(backend.desktopLifetimes.size, 0);
+  assert.equal(backend.mainDesktop, undefined);
   await assert.rejects(stat(join(home, "service.log")), { code: "ENOENT" });
   assert.equal(backend.reconnectTimer, null, "dependency failures wait for an explicit retry");
-});
-
-test("reattaching an existing backend does not require a new interpreter launch", async (t) => {
-  const home = await mkdtemp(join(tmpdir(), "areal-prerequisite-attach-"));
-  t.after(() => rm(home, { recursive: true, force: true }));
-  let probes = 0;
-  const backend = new SharedCoreBackend({
-    app: { isPackaged: false, getPath: () => home },
-    home,
-    binary: join(home, "absent-core"),
-    prerequisiteCheck: async () => {
-      probes++;
-      throw new Error("must not probe");
-    },
-  });
-  backend.attach = async () => {
-    backend.status.connected = true;
-    return true;
-  };
-  await backend.init();
-  assert.equal(probes, 0);
-  assert.equal(backend.status.connected, true);
-  assert.equal(
-    backend.backendUpdate.state,
-    "failed",
-    "an unavailable update identity does not interrupt the existing backend",
-  );
 });

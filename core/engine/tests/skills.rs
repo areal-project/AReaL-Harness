@@ -177,6 +177,7 @@ async fn profile_without_workflow_exposes_its_deployed_tool_allowlist() {
         .create_configured(
             "test-client".into(),
             areal_protocol::desktop::ThreadStart {
+                prepare_task_directory: None,
                 creation_admission: None,
                 options: None,
                 admission_guard: None,
@@ -231,6 +232,7 @@ async fn profile_without_workflow_exposes_its_deployed_tool_allowlist() {
         .create_configured(
             "test-client".into(),
             areal_protocol::desktop::ThreadStart {
+                prepare_task_directory: None,
                 creation_admission: None,
                 options: None,
                 admission_guard: None,
@@ -417,6 +419,93 @@ fn local_skill(root: &std::path::Path) -> SkillLocation {
 }
 
 #[tokio::test]
+async fn deployed_skill_roots_survive_discovery_refresh_and_source_removal() {
+    let state = tempfile::tempdir().unwrap();
+    let original = tempfile::tempdir().unwrap();
+    let snapshot = tempfile::tempdir().unwrap();
+    let replacement = tempfile::tempdir().unwrap();
+    for (root, text) in [
+        (original.path(), "original source"),
+        (snapshot.path(), "deployed snapshot"),
+        (replacement.path(), "replacement deployment"),
+    ] {
+        fs::write(root.join("SKILL.md"), text).unwrap();
+    }
+    let deployment = snapshot.path().join("deployment.json");
+    fs::write(
+        &deployment,
+        serde_json::to_vec(&json!({"skills": [local_skill(snapshot.path())]})).unwrap(),
+    )
+    .unwrap();
+    let engine =
+        Engine::open(state.path(), Arc::new(UnconfiguredModel), Limits::default()).unwrap();
+    engine.install_deployment(&deployment).unwrap();
+    let discovered = local_skill(original.path());
+    let reference = VersionRef {
+        id: discovered.id.clone(),
+        revision: discovered.revision.clone(),
+    };
+    engine
+        .install_default_skills(vec![discovered.clone()])
+        .unwrap();
+    let thread = engine.create("/workspace".into()).await.unwrap();
+    original.close().unwrap();
+    assert_eq!(
+        engine
+            .read_skill(&thread.id, reference.clone(), "SKILL.md", 0, 8192)
+            .await
+            .unwrap()["text"],
+        "deployed snapshot"
+    );
+    engine.install_default_skills(vec![discovered]).unwrap();
+    let refreshed = engine.create("/workspace".into()).await.unwrap();
+    assert_eq!(
+        engine
+            .read_skill(&refreshed.id, reference.clone(), "SKILL.md", 0, 8192)
+            .await
+            .unwrap()["text"],
+        "deployed snapshot"
+    );
+    let next = SkillLocation {
+        revision: "local-v2".into(),
+        ..local_skill(replacement.path())
+    };
+    engine.install_default_skills(vec![next.clone()]).unwrap();
+    let next_thread = engine.create("/workspace".into()).await.unwrap();
+    assert_eq!(
+        engine
+            .read_skill(
+                &next_thread.id,
+                VersionRef {
+                    id: next.id,
+                    revision: next.revision,
+                },
+                "SKILL.md",
+                0,
+                8192,
+            )
+            .await
+            .unwrap()["text"],
+        "replacement deployment"
+    );
+    fs::write(
+        &deployment,
+        serde_json::to_vec(&json!({"skills": [local_skill(replacement.path())]})).unwrap(),
+    )
+    .unwrap();
+    engine.install_deployment(&deployment).unwrap();
+    fs::write(replacement.path().join("SKILL.md"), "live resource update").unwrap();
+    assert_eq!(
+        engine
+            .read_skill(&thread.id, reference, "SKILL.md", 0, 8192)
+            .await
+            .unwrap()["text"],
+        "live resource update"
+    );
+    engine.shutdown().await;
+}
+
+#[tokio::test]
 async fn old_thread_and_profile_read_current_files_after_skill_root_replacement() {
     let state = tempfile::tempdir().unwrap();
     let resources = tempfile::tempdir().unwrap();
@@ -447,6 +536,9 @@ async fn old_thread_and_profile_read_current_files_after_skill_root_replacement(
         id: profile.id.clone(),
         revision: profile.revision.clone(),
     };
+    let listing = engine.profile_skills(&profile).unwrap();
+    assert!(listing["data"].is_array());
+    assert!(listing.as_object().unwrap()["loaded"].is_null());
     let old_root = resources.path().join("old-skill");
     fs::rename(&root, &old_root).unwrap();
     fs::create_dir(&root).unwrap();

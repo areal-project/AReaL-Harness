@@ -24,22 +24,6 @@ related: ["settings-section", "settings-group-card"]
 
 有标题、无标题，宽窗、窄窗。加载、保存、失败、结果待核对是宿主内容，不属于页面容器状态。
 
-## 行为
-
-`R-SETTINGSPAGE-002` 页面只在外层纵向滚动，内容列不建立第二个滚动区。标题存在时提供区域可读名称；切换页、恢复阅读位置和未保存导航守卫由宿主负责。
-
-## 内容
-
-`R-SETTINGSPAGE-003` 标题使用设置任务名，副标题说明范围。不要把示例保存回执当作真实配置已落盘的依据。
-
-## 可访问性
-
-`R-SETTINGSPAGE-004` 外层可通过Tab聚焦，使用原生滚动键；有标题时aria-labelledby关联唯一h1。宿主应保持页面标题层级，并在实际路由切换时管理焦点。
-
-## 规则
-
-`R-SETTINGSPAGE-005` 导入@areal/ui/settings.css。普通列保持728px、桌面内边距64px/32px、窄窗16px；模型设置的1080px例外留在生产适配。包不拥有导航、IPC或偏好存储。
-
 ## 示例
 
 组件目录提供同一设置组合的独立实例，可切换反馈并保留本地输入。生产通过原SettingsWorkspace路径转接，不创建第二条设置路由。
@@ -48,21 +32,13 @@ related: ["settings-section", "settings-group-card"]
 
 ## 设置组合布局
 
-`R-SETTINGSPAGE-007` Worktree 的配置菜单、准备状态和项目环境按[领域设计规范](../../../../../design-system/worktrees.md)组合既有模式。脚本平台标签、设置子页导航与目录层级 Chevron 的有限例外见[例外表](../../../../../design-system/worktrees.md#有限例外与共享规则)；不改变普通设置的默认控件选择；迁移与验收范围见 [Worktree 验收题](../../../../../design-system/exercises/worktrees.md)。
-
-`SET-LAYOUT-01`：复用 SettingsPage → SettingsSection → SettingsGroupCard → SettingsRow。宽组共享控件右边缘；窄组由 SettingsWorkspace.css 的容器规则切为上下排列，控件在完整标签/说明之后左对齐。页面不重新定义断点，不以缩字号、固定行高或偏移隐藏长文案。
-
-`SET-CONTENT-01`：标签、说明、值和反馈沿用生产语义角色，行高随内容增长。控件尺寸的唯一规则见 [设置控件与反馈](../../../../../design-system/patterns.md#设置控件与反馈)，页面不自行选择紧凑档。选项过长时由共享 Select 的截断和完整菜单承担，不为页面另造控件。参考与本产品组合不同的布局需要有界内容验证后决定采纳或保留；单次参考截图不覆盖现有共享规则。
-
 ### 设置控件与反馈
 
 `R-SETTINGSPAGE-008` 本节是新增、修改和评审客户端 UI 必须遵循的约束。设置页通过外框表达功能分组，行内展示简短名称和当前状态，控件按交互语义选择；不能只统一圆角而保留错误的交互。
 
 #### 按功能分组并保持对齐
 
-- `R-SETTINGSPAGE-009` 使用 `SettingsSection` 标记功能组、`SettingsGroupCard` 的外框包住相关设置；同组行以细分隔线连接。一个卡片只表达一个功能关系，不按实现模块机械堆叠信息。
 - 使用 `SettingsRow`：名称和必要的一行说明在左，当前值与控件在右；同组的内容边缘、控件右边缘保持一致。窄窗口空间不足时，控件移到说明下方，不截断或挤出边界。
-- `R-SETTINGSPAGE-010` 对普通用户无帮助的完整目录、实例编号与实现说明移入明确的详情入口。主页面保留完成当前操作所需的信息。
 
 #### 按交互类型选择控件
 
@@ -81,14 +57,9 @@ related: ["settings-section", "settings-group-card"]
 
 #### 用状态反馈代替大段操作说明
 
-- `R-SETTINGSPAGE-017` 常驻信息按[设置与管理](../../../../../../../design/patterns/settings.md)组织。普通开关不配“开启 / 关闭”文字按钮，不在控件下堆叠连接、恢复和实现流程说明。
-- `R-SETTINGSPAGE-018` 共享状态与动作见[反馈与恢复](../../../../../../../design/patterns/feedback-and-recovery.md)。GUI 沿用“已开启”“已关闭”“处理中”“待确认”等本端文案，绑定所属业务状态。
 - 按[设置与管理](../../../../../../../design/patterns/settings.md#值动作与生效范围)说明实际影响；GUI 使用所属确认或管理面板呈现。
-- `R-SETTINGSPAGE-019` 普通操作按钮采用紧凑圆角矩形、轻填充和克制的边框；危险操作通过文字及语义色区别。尺寸、圆角和明暗填充由公共 Token 及组件变体统一管理。图标仅用于有明确识别价值的独立图标操作，不给每个文字按钮机械配图标。
 
-
-
-[设置迁移题](../../../../../design-system/exercises/settings-reflow.md)固定内容和反证，用于探索这两条规则；题目不自行创建新设计值。
+[设置迁移题](../../../../../../../design/archive/gui/exercises/settings-reflow.md)固定内容和反证，用于探索这两条规则；题目不自行创建新设计值。
 
 ## 生产上下文
 

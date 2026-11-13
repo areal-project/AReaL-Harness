@@ -83,7 +83,7 @@ GUI 验收的服务清理检查复用产品的原生 Core 启动适配，并异�
 |---|---|
 | 格式 | `make fmt` / `make fmt-check` |
 | 静态检查 | `make lint` |
-| 本地改动快检 | `make check-changed CI_BASE=<ref>`；`ARGS=--plan` 仅输出计划，所选检查的结果与未执行条件分别报告 |
+| 本地改动检查 | `make check-changed CI_BASE=<ref>`；`ARGS=--phase=push` 运行推送快检，`ARGS=--phase=full` 运行完整计划，`ARGS=--plan` 仅列计划；未执行项单独报告 |
 | Rust / SDK / 脚本 | `make test` / `make sdk-test` / `make script-test` |
 | 常规回归 | `make verify` |
 | 原生集成 | `make verify-harness`，包含常规回归 |
@@ -99,11 +99,9 @@ GUI 验收的服务清理检查复用产品的原生 Core 启动适配，并异�
 
 `make integration-boundaries` 检查产品、发行入口和默认 Make 依赖图不加载可选平台适配器；它也随 `make script-test` 执行。
 
-测试范围见[测试指南](testing.md)。附加参数使用 `make tui ARGS='--prompt hello'`。`make release` 输出至 `target/release`，`make docs` 生成 Rust API 文档。
+测试范围见[测试指南](testing.md)；云端能验证到哪一步、哪些留到 Mac，见[Agent 工作环境与验证分层](agent-environment.md)。附加参数使用 `make tui ARGS='--prompt hello'`。`make release` 输出至 `target/release`，`make docs` 生成 Rust API 文档。
 
 `make smoke` 还验证可选轨迹导出：本地接收端返回 503 时 Agent 正常返回，Core 退出后独立上传器继续补传，并验证关闭开关。测试还覆盖 401 失败记录在停用后 5 秒自动节流窗口内重新启用、worker 被强杀后的首次显式重试，以及并发重试保持单一 worker、串行发送和无重复接收。可单独运行 `node scripts/trajectory-smoke.mjs`；设置 `AREAL_TRAJECTORY_FIXTURE_OUTPUT` 可保存真实 OTLP protobuf 供接收端互通测试，内容仅为本地测试数据。设置 `AREAL_TRAJECTORY_SMOKE_OUTPUT` 可保存 JSON 验收记录，包含真实启动时间、重试时距和并发观察。
-
-`pnpm --dir clients/gui run test:trajectory-native` 使用隔离的本地模型/接收端，验证真实桌面后端、Core、Runtime 和上传器：从关闭启动后启用，等待当前任务完成再安全重启；停用保留失败副本；重新开启自动补传。回归证明启停和送达不变量，不用于推断整体 Agent 能力提升。
 
 `node scripts/trajectory-semantics-smoke.mjs` 使用真实 owned Core/Runtime 与本地模型、接收端，覆盖多轮工具、子 Agent、同线程换模型、失败和流式取消。`make smoke` 包含此检查；HTTP 模型输入与 OTLP protobuf 默认保存到 `out/trajectory-semantics/`，可用 `AREAL_TRAJECTORY_SEMANTICS_OUTPUT` 改写目录，供接收端逐条核对。脚本使用独立临时 home、状态和工作区，不读取用户配置。
 
@@ -157,16 +155,31 @@ mbx setup
 共享缓存不会限制普通 `target` 的增长。临时工作树使用同一清理入口的预算模式，默认预览：
 
 ```sh
-make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-free-gib 30 --report /private/tmp/worktree-cache-preview.json'
+make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-free-gib 30 --min-idle-hours 72 --report /private/tmp/worktree-cache-preview.json'
 ```
 
-审阅后追加 `--apply`，并为每次运行指定独立报告路径。该模式只选择本仓 Git 登记中仍存在的次级工作树，主工作树始终排除，不接受 `--root` 或 `--no-worktrees` 覆盖。它只回收已识别 Cargo profile 下的 `deps`、`incremental`、`build` 和 `.fingerprint`；保留 profile 中的可执行文件、shell、完整包、delivery 目录、依赖和符号链接。失效工作树登记只跳过，不移除。
+审阅后追加 `--apply`，并为每次运行指定独立报告路径。该模式只选择本仓 Git 登记中仍存在的次级工作树，包括 Codex、T3 Code 等工具创建的工作树，不按工具目录名猜测范围；主工作树始终排除，不接受 `--root` 或 `--no-worktrees` 覆盖。它回收已识别 Cargo profile 下的 `deps`、`incremental`、`build` 和 `.fingerprint` 中的非可执行文件，以及有 `.cargo-lock` 的 profile 根部遗留的非可执行 `.rlib`、`.rmeta`、`.o`、`.d`，即使缓存目录已经清空也能识别。可执行文件、动态库、shell、完整包、delivery 目录、依赖和符号链接始终保留，缓存目录内也适用。失效工作树登记只跳过，不移除。报告的 `worktree_targets` 列出各工作树默认 target 的扫描状态和候选路径数，零候选不代表整个 target 没有占用。
 
-40 GiB 是所有次级工作树缓存的分配块估算总预算，独立于 mbx 共享缓存的 40 GiB。超预算或磁盘低于 30 GiB 时，按 profile 目录最近修改时间优先选择旧缓存；预算内保留，避免每轮全清。目录时间不是精确 LRU，APFS 共享块也使估算不同于实际释放量。删除前持有 Cargo 锁并重新检查占用；同一 profile 内任何打开文件或该工作树中的构建/调试进程都会阻止整组回收。单个 profile 无法统计时保留并记录，不阻断其他组。活动缓存和不属于本模式的数据可能使预算或空闲线无法满足，报告会列出剩余压力。
+40 GiB 是所有次级工作树缓存的分配块估算总预算，独立于 mbx 共享缓存的 40 GiB。先保护可复用缓存：有暂存、未暂存或未忽略的新文件的工作树整组保留；干净工作树的 profile 只有连续闲置至少 72 小时才参与预算回收，窗口可用 `--min-idle-hours` 调整。最近活动取 profile 内文件和目录的最新写入时间，以及该工作树 Git index、HEAD reflog 的修改时间，覆盖目录时间未改变的文件重写及近期提交/切换。检查 Git 时禁用可选锁，避免扫描自身刷新 index。它不是精确的读取 LRU。
+
+仅在超预算或磁盘低于 30 GiB 时，按最近活动从旧到新选择符合条件的冷缓存。磁盘压力不覆盖闲置窗口或开发改动保护，避免在构建间隙删除依赖与 fingerprint、导致下次完整重编译。删除前持有 Cargo 锁并再次检查复用状态和占用；同一 profile 内任何打开文件或该工作树中的构建/调试进程都会阻止整组回收。单个 profile 无法统计时保留并记录；无法确认 Git 或文件活动时保留并以非零退出。报告的 `cache_policy.min_idle_hours` 和 `retained-recent`、`retained-worktree-dirty` 状态说明保留原因。受保护缓存和范围外数据可能使预算或空闲线无法满足，报告会列出剩余压力。APFS 共享块使分配块估算不同于实际释放量。
 
 可在 Codex 为本聊天配置每 30 分钟调用一次该命令的心跳，追加 `--apply` 并保存独立报告；无删除或无需处理的占用跳过保持安静，仅通知实际回收、失败或无法缓解的磁盘告急。自动化复用此模式，不调用全量包清理，也不停止构建或服务。它不会自动迁移 target；主工作树缓存和完整 GUI/Core 包继续使用下述按需清理入口。
 
 ## 验证产物保留
+
+### 按需回收主工作树和自定义 target
+
+磁盘压力来自主工作树、自定义 `CARGO_TARGET_DIR` 或未登记的构建副本时，临时工作树模式不会覆盖这些目录。使用独立的中间文件模式预览，默认只选当前清理脚本所属主仓的 `target`：
+
+```sh
+make artifact-cleanup ARGS='--rust-intermediates --report /private/tmp/rust-primary-preview.json'
+make artifact-cleanup ARGS='--rust-intermediates --target-root /path/to/checkout/custom-target --report /private/tmp/rust-custom-preview.json'
+```
+
+`--target-root` 可重复，每个路径必须是 Cargo checkout 内的真实目录；只识别带 `.cargo-lock` 的 profile。该模式不运行 GUI/Core 包保留和散装产物删除，也不隐式扫描其他工作树；与 `--temporary-worktrees`、`--root`、`--no-worktrees` 互斥。审阅后用新的报告路径追加 `--apply`。它逐文件回收四类缓存中的普通中间文件，保留可执行位文件、动态/静态库、shell、发布归档、带 manifest 的包、应用、依赖目录和符号链接；profile 顶层文件保留。整个 profile 的打开文件、构建/调试进程和 Cargo 锁仍会阻止回收，删除前复核文件身份，保留项变化或删除失败时停止并记录部分结果。
+
+报告列出所选范围、排除范围及 `free_before_bytes`、`free_after_bytes`；前后空闲读数受并发写入影响，不能用分配块估算替代。所有模式拒绝覆盖已有报告。自动回收继续只使用临时工作树模式；主仓、自定义构建目录、Codex 会话/取证文件、依赖、安装目录及发布包需要各自的保留规则和显式范围授权。
 
 运行 `make artifact-cleanup` 预览 `~/Documents/Codex` 及本仓已登记工作树中的 AReaL 产物，默认只读。GUI 以打包记录识别轮次并检查可执行文件及 Core 的完整性，匹配的应用和 ZIP 副本归入同轮。独立 Core 则保留最新 5 个完整且通过清单校验的版本包，以构建身份和文件哈希去重。Cargo profile 是可变构建输出，不作为历史轮次计数。只有某 profile 的三个二进制均匹配已知完整包、且已有至少 5 个校验通过的版本包时，才清理其散装产物；无法识别的产物保留。
 

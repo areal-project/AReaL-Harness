@@ -66,8 +66,23 @@ for line in sys.stdin:
     )
     .unwrap();
     engine.install_plugin_store(store.clone()).unwrap();
+    // 运行中登记：整批校验，改写已有引用时整批拒绝、不留半批。
     engine
-        .register_credential("private-ref".into(), "secret-canary-721".into())
+        .register_credentials([("private-ref".into(), "secret-canary-721".into())].into())
+        .unwrap();
+    assert!(
+        engine
+            .register_credentials(
+                [
+                    ("fresh-ref".into(), "other".into()),
+                    ("private-ref".into(), "changed".into()),
+                ]
+                .into()
+            )
+            .is_err()
+    );
+    engine
+        .register_credentials([("fresh-ref".into(), "kept".into())].into())
         .unwrap();
     let missing = engine.plugin_mcp_list().await.unwrap();
     assert!(missing.to_string().contains("configurationRequired"));

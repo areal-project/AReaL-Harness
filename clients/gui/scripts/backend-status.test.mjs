@@ -67,19 +67,33 @@ test("backend service settings keep lifecycle details and controls outside chat"
         "ready services need no extra status panel",
       );
     }
-    for (const [props, message, action] of [
-      [{ connection: { state: "unavailable" } }, "暂时无法连接后台", "重新连接"],
-      [{ update: { state: "pending" } }, "更新可稍后应用", "更新后台…"],
-      [{ update: { state: "applying" } }, "正在更新后台…"],
-      [{ update: { state: "failed" } }, "后台更新失败", "更新后台…"],
-      [{ currentCommands: false }, "更新后台后再发送", "更新后台…"],
-      [{ lifecycle: { error: "生命周期操作失败" } }, "生命周期操作失败", "检查后台"],
-      [{ lifecycle: { recovery: { message: "需要恢复原后台" } } }, "需要恢复原后台", "恢复后台…"],
-      [{ connection: undefined, summary: { state: "stopped", busy: false } }, "后台已停止"],
-      [{ connection: { state: "ready", recovery: "check" } }, "后台操作结果尚未确认", "检查后台"],
+    for (const [props, message, actions = [], diagnostic] of [
+      [{ connection: { state: "unavailable" } }, "backend.unavailable", ["backend.reconnect"]],
+      [{ update: { state: "pending" } }, "backend.updatePending", ["backend.update"]],
+      [{ update: { state: "applying" } }, "backend.updating", ["backend.updatingAction"]],
+      [{ update: { state: "failed" } }, "backend.updateFailed", ["backend.update"]],
+      [{ currentCommands: false }, "backend.updateRequired", ["backend.update"]],
+      [
+        { lifecycle: { error: "生命周期操作失败" } },
+        "backend.operationFailed",
+        ["backend.check"],
+        "生命周期操作失败",
+      ],
+      [
+        { lifecycle: { recovery: { message: "需要恢复原后台" } } },
+        "backend.operationUnconfirmed",
+        ["backend.recover", "backend.check"],
+        "需要恢复原后台",
+      ],
+      [{ connection: undefined, summary: { state: "stopped", busy: false } }, "backend.stopped"],
+      [
+        { connection: { state: "ready", recovery: "check" } },
+        "backend.operationUnconfirmed",
+        ["backend.check"],
+      ],
     ]) {
       const html = render(props);
-      assert.ok(html.includes(message), message);
+      assert.ok(html.includes(catalogs["zh-CN"][message]), message);
       assert.match(
         html,
         props.update?.state === "failed" || props.lifecycle?.error
@@ -87,7 +101,8 @@ test("backend service settings keep lifecycle details and controls outside chat"
           : /role="status"/,
       );
 
-      if (action) assert.ok(html.includes(action), action);
+      for (const action of actions) assert.ok(html.includes(catalogs["zh-CN"][action]), action);
+      if (diagnostic) assert.ok(html.includes(diagnostic), diagnostic);
     }
   } finally {
     await vite.close();

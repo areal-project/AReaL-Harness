@@ -6,6 +6,7 @@ type PresentationGate = {
   themeReady: boolean;
   startupReady: boolean | undefined;
   restorationFailed: boolean;
+  projectFailureReady: boolean;
 };
 
 export function useStartupPresentation(
@@ -14,7 +15,7 @@ export function useStartupPresentation(
   restoration: (RecoveryOwner & { pending: boolean; error: string }) | undefined,
   restorationOwner: RecoveryOwner,
 ) {
-  const { themeReady, startupReady, restorationFailed } = gate;
+  const { themeReady, startupReady, restorationFailed, projectFailureReady } = gate;
   const [shellReady, setShellReady] = useState(false);
   const [initialPresentation, setInitialPresentation] = useState<"pending" | "failed" | "ready">(
     "pending",
@@ -22,11 +23,11 @@ export function useStartupPresentation(
   const initialReleased = initialPresentation === "ready";
   const [startupDelayed, setStartupDelayed] = useState(false);
   useEffect(() => {
-    if (restorationFailed || startupReady)
+    if (restorationFailed || startupReady || projectFailureReady)
       setInitialPresentation((previous) =>
-        previous === "ready" ? previous : startupReady ? "ready" : "failed",
+        previous === "ready" ? previous : startupReady || projectFailureReady ? "ready" : "failed",
       );
-  }, [startupReady, restorationFailed]);
+  }, [startupReady, restorationFailed, projectFailureReady]);
   useEffect(() => {
     setStartupDelayed(false);
     if (initialReleased) return;

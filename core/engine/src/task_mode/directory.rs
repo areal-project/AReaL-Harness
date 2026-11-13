@@ -34,6 +34,7 @@ pub(super) fn row(task: &Task) -> Result<TaskDirectoryRow> {
         revision: task.revision,
         channel_sequence: task.channel_sequence,
         mode: task.mode,
+        delivery: task.delivery,
         source_thread_id: task.source_thread_id.clone(),
         thread_id: task.thread_id.clone(),
         objective_preview: bounded(&task.objective, 512),

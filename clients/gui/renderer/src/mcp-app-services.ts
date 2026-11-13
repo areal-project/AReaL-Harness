@@ -5,6 +5,7 @@ export type McpAppDescriptor = {
   kind: "mcp";
   token: string;
   frameUrl: string;
+  frameHtml?: string;
   instanceId: string;
   serverId: string;
   generation: string | number;
@@ -34,6 +35,7 @@ export type GenUiDescriptor = {
   kind: "genUi";
   token: string;
   frameUrl: string;
+  frameHtml?: string;
   projectId: string;
   threadId: string;
   source: GenUiSource;
@@ -66,12 +68,15 @@ export type McpResultReply =
 
 export type McpResultState = { opening?: boolean; message?: string };
 export type McpAppEvent = { token: string; notification: JSONRPCMessage };
-export type { McpAppDeepLink } from "@areal/workbench/desktop-contract";
+export type { McpAppDeepLink } from "./services.js";
 export type McpMetadataImageLoader = (source: string) => Promise<string>;
 export type McpAppOperations = {
   openGenUi: { request: GenUiSource; response: GenUiDescriptor };
   genUiVisibility: { request: { token: string; visible: boolean }; response: unknown };
-  metadataImage: { request: { source: string }; response: string };
+  metadataImage: {
+    request: { source: string; projectId: string; threadId?: string };
+    response: string;
+  };
   open: {
     request: {
       projectId: string;

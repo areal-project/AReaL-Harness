@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { spawnNative } from "../../scripts/native-child.mjs";
-import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm, stat } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { tmpdir, platform, arch } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,9 +38,9 @@ if (selection === "--list") {
   console.log(available.join("\n"));
   process.exit(0);
 }
-if (selection !== "all" && selection !== "--serve" && !available.includes(selection))
+if (selection !== "all" && !available.includes(selection))
   throw Error("unknown example; use --list");
-const directory = await mkdtemp(join(tmpdir(), "areal-desktop-"));
+const directory = await trackedMkdtemp(join(tmpdir(), "areal-desktop-"));
 const workspace = join(directory, "workspace"),
   data = join(directory, "data"),
   ready = join(directory, "ready"),
@@ -246,6 +247,22 @@ try {
           timeoutMs: 10000,
         },
       },
+      // 部署 MCP 是 Core 里唯一不经插件登记的 MCP 来源；用户添加的 MCP 由 Host 登记成插件。
+      mcpServers: {
+        fixture: {
+          transport: {
+            type: "stdio",
+            command: "/usr/bin/python3",
+            args: [
+              join(repo, "tests/fixtures/mcp-server.py"),
+              join(directory, "mcp.jsonl"),
+              "normal",
+            ],
+          },
+          startupTimeoutMs: 5000,
+          callTimeoutMs: 5000,
+        },
+      },
     }),
   );
   await writeFile(
@@ -317,21 +334,7 @@ try {
       await new Promise((r) => setTimeout(r, 25));
     }
   }
-  if (selection === "--serve") {
-    console.log(
-      JSON.stringify({
-        endpoint,
-        authFile,
-        workspace,
-        url: endpoint.replace("ws:", "http:").replace(/\/$/, "") + "/ui",
-      }),
-    );
-    await new Promise((resolve) => {
-      process.once("SIGTERM", resolve);
-      process.once("SIGINT", resolve);
-    });
-  }
-  for (const name of selection === "--serve" ? [] : selection === "all" ? available : [selection]) {
+  for (const name of selection === "all" ? available : [selection]) {
     const c = await client();
     if (name === "desktop-minimal" || name === "desktop-launcher") {
       const cap = await c.call("areal/capabilities", { apiVersion: "areal.core.v1" });
@@ -452,30 +455,10 @@ try {
         ),
       );
     } else if (name === "mcp-management") {
-      await c.call("areal/mcp/configure", {
-        id: "fixture",
-        expectedRevision: 0,
-        config: {
-          transport: {
-            type: "stdio",
-            command: "/usr/bin/python3",
-            args: [
-              join(repo, "tests/fixtures/mcp-server.py"),
-              join(directory, "mcp.jsonl"),
-              "normal",
-            ],
-          },
-          startupTimeoutMs: 5000,
-          callTimeoutMs: 5000,
-        },
-      });
-      const view = await c.call("areal/mcp/connect", { id: "fixture", expectedRevision: 1 });
-      assert.equal(view.data[0].state, "connected");
-      assert.equal(view.data[0].tools.length, 2);
       const target = await startThread(c, "mcp");
       await done(c, target);
-      await c.call("areal/mcp/disconnect", { id: "fixture", expectedRevision: 1 });
-      assert.equal((await c.call("areal/mcp/read", { id: "fixture" })).state, "disconnected");
+      const calls = (await readFile(join(directory, "mcp.jsonl"), "utf8")).trim().split("\n");
+      assert(calls.some((line) => line.includes("managed")));
     } else if (name === "adaptive-agents") {
       const target = await startThread(c, "agents");
       await done(c, target);

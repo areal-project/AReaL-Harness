@@ -6,12 +6,13 @@ import { createServer } from "node:http";
 import { connect as unixConnect } from "node:net";
 import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
-import { mkdtemp, mkdir, readFile, writeFile, realpath, rename, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, realpath, rename, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { connect } from "../examples/desktop-api/client.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 const exec = promisify(execFile);
-const root = await realpath(await mkdtemp("/tmp/ar-"));
+const root = await realpath(await trackedMkdtemp("/tmp/ar-"));
 const workspace = join(root, "workspace"),
   home = join(root, "home"),
   profile = join(root, "profile"),

@@ -308,14 +308,7 @@ fn runtime_env(
         command.env("SSH_AUTH_SOCK", socket);
     }
     if credentials {
-        for name in [
-            "MULTICA_TOKEN",
-            "MULTICA_TASK_ID",
-            "MULTICA_AGENT_ID",
-            "MULTICA_WORKSPACE_ID",
-            "MULTICA_SERVER_URL",
-            "MULTICA_RUNTIME_PROVIDER",
-        ] {
+        for name in areal_runtime_host_tools::TASK_CREDENTIAL_ENVIRONMENT {
             if let Some(value) = std::env::var_os(name) {
                 command.env(name, value);
             }
@@ -843,8 +836,7 @@ async fn launch(
             let runtime_status = runtime_status?;
             let runtime_settlement =
                 RuntimeSettlement::classify(&runtime_status, &runtime_cleanup_path);
-            if unexpected_core_exit
-                && runtime_settlement.cleanup_confirmed()
+            if runtime_settlement.cleanup_confirmed()
                 && let Some(info) = &args.service_info
             {
                 let identity = areal_local_service::storage::read(info)?;
@@ -855,7 +847,7 @@ async fn launch(
                         .join("cleanup.json"),
                     &areal_local_service::storage::LauncherCleanup {
                         identity,
-                        unexpected_core_exit: true,
+                        unexpected_core_exit,
                         runtime_cleanup_confirmed: true,
                     },
                 )?;
@@ -1032,6 +1024,36 @@ fn owner_alive(pid: Option<u32>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::process::ExitStatusExt;
+
+    #[test]
+    fn runtime_cleanup_requires_receipt_and_supported_exit() {
+        let directory = tempfile::tempdir().unwrap();
+        let receipt = directory.path().join("runtime-cleanup.json");
+        let success = std::process::ExitStatus::from_raw(0);
+        assert!(!RuntimeSettlement::classify(&success, &receipt).cleanup_confirmed());
+        for value in [
+            serde_json::json!({"cleanupConfirmed":false}),
+            serde_json::json!({"cleanupConfirmed":true,"incomplete":true}),
+        ] {
+            areal_local_service::storage::write(&receipt, &value).unwrap();
+            assert!(!RuntimeSettlement::classify(&success, &receipt).cleanup_confirmed());
+        }
+        areal_local_service::storage::write(
+            &receipt,
+            &serde_json::json!({"cleanupConfirmed":true}),
+        )
+        .unwrap();
+        for status in [success, std::process::ExitStatus::from_raw(1 << 8)] {
+            assert!(RuntimeSettlement::classify(&status, &receipt).cleanup_confirmed());
+        }
+        for status in [
+            std::process::ExitStatus::from_raw(2 << 8),
+            std::process::ExitStatus::from_raw(libc::SIGKILL),
+        ] {
+            assert!(!RuntimeSettlement::classify(&status, &receipt).cleanup_confirmed());
+        }
+    }
 
     #[test]
     fn naming_opt_out_is_scoped_to_script_clients() {

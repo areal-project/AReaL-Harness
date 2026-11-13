@@ -54,6 +54,9 @@ export async function startConformanceTransport(transport) {
       childEnv: { NODE_EXTRA_CA_CERTS: caPath },
       socketOptions: { ca },
       evidence,
+      stateDirectory: relay.home,
+      caDirectory: tlsHome,
+      stopRelay: () => relay.stop(),
       close,
     };
   } catch (error) {

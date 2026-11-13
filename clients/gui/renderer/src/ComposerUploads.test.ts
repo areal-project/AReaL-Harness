@@ -19,7 +19,7 @@ describe("composer attachment preparation", () => {
       .mockRejectedValueOnce(new Error("upload denied"));
     await expect(
       uploadComposerFiles(invoke, "project", "thread", files, undefined, owner),
-    ).rejects.toThrow("second.txt: upload denied");
+    ).rejects.toThrow("second.txt: 操作没有完成，请重试。");
     expect(composerUploads(owner).states.get(files[0])?.state).toBe("ready");
     expect(composerUploads(owner).states.get(files[1])?.state).toBe("failed");
     action.mockResolvedValueOnce(receipt("second"));
@@ -82,13 +82,19 @@ describe("composer attachment preparation", () => {
     const createdProject = {
       id: "logical-project",
       root: "/source",
-      core: { instanceId: "source-core" },
-      state: { threads: { thread: { executionCore: { instanceId: "worktree-core" } } } },
+      core: { instanceId: "source-core", serviceGeneration: "source-core" },
+      state: {
+        threads: {
+          thread: {
+            executionCore: { instanceId: "worktree-core", serviceGeneration: "worktree-core" },
+          },
+        },
+      },
     };
     const openedProject = {
       ...createdProject,
       root: "/new-worktree",
-      core: { instanceId: "worktree-core" },
+      core: { instanceId: "worktree-core", serviceGeneration: "worktree-core" },
     };
     const action = vi.fn<Action>();
     action.mockResolvedValueOnce(receipt("worktree"));
@@ -112,6 +118,65 @@ describe("composer attachment preparation", () => {
     );
     expect(result[0].url).toBe("core-media:worktree");
     expect(action).toHaveBeenCalledTimes(1);
+    forgetComposerUploads(initialOwner, [file]);
+    forgetComposerUploads(openedOwner, [file]);
+  });
+
+  it("keeps worktree upload receipts across public and shared Core projections", async () => {
+    const file = new File(["content"], "document.txt");
+    const createdProject = {
+      id: "project",
+      core: { instanceId: "source", serviceGeneration: "source" },
+      state: {
+        threads: {
+          thread: { executionCore: { instanceId: "service", serviceGeneration: "generation" } },
+        },
+      },
+    };
+    const openedProject = {
+      id: "project",
+      core: { instanceId: "generation", serviceGeneration: "generation" },
+      state: {
+        threads: {
+          thread: { executionCore: { instanceId: "generation", serviceGeneration: "generation" } },
+        },
+      },
+    };
+    const action = vi.fn<Action>().mockResolvedValue(receipt("worktree"));
+    const initialOwner = composerUploadOwner(createdProject, "thread");
+    const openedOwner = composerUploadOwner(openedProject, "thread");
+    await uploadComposerFiles(
+      action as Action,
+      "project",
+      "thread",
+      [file],
+      undefined,
+      initialOwner,
+    );
+    await uploadComposerFiles(
+      action as Action,
+      "project",
+      "thread",
+      [file],
+      undefined,
+      openedOwner,
+    );
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(
+      composerUploadOwner(
+        {
+          ...openedProject,
+          state: {
+            threads: {
+              thread: {
+                executionCore: { instanceId: "replacement", serviceGeneration: "replacement" },
+              },
+            },
+          },
+        },
+        "thread",
+      ),
+    ).not.toBe(openedOwner);
     forgetComposerUploads(initialOwner, [file]);
     forgetComposerUploads(openedOwner, [file]);
   });
@@ -149,11 +214,19 @@ describe("composer attachment preparation", () => {
   it("does not reuse an old Core instance's media receipt", async () => {
     const file = new File(["content"], "document.txt");
     const firstOwner = composerUploadOwner(
-      { id: "project", root: "/worktree", core: { instanceId: "first" } },
+      {
+        id: "project",
+        root: "/worktree",
+        core: { instanceId: "first", serviceGeneration: "first" },
+      },
       "thread",
     );
     const secondOwner = composerUploadOwner(
-      { id: "project", root: "/worktree", core: { instanceId: "second" } },
+      {
+        id: "project",
+        root: "/worktree",
+        core: { instanceId: "second", serviceGeneration: "second" },
+      },
       "thread",
     );
     const action = vi.fn<Action>();

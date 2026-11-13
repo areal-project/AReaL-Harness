@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { execFileSync } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "../../clients/gui/scripts/support/host-cleanup.cjs";
 import { isAbsolute, join, resolve } from "node:path";
 import { spawnNative } from "../../scripts/native-child.mjs";
 import { connect } from "./client.mjs";
@@ -14,7 +15,7 @@ assert.ok(
   "AREAL_COMPAT_OLD_BIN must select the qualified v4 Core",
 );
 assert.ok(newBinary && isAbsolute(newBinary), "AREAL_CORE_BIN must select the qualified new Core");
-const scratch = await mkdtemp("/private/tmp/areal-calendar-storage-");
+const scratch = await trackedMkdtemp("/private/tmp/areal-calendar-storage-");
 console.log(`Evidence: ${scratch}`);
 const state = join(scratch, "state");
 await mkdir(state);

@@ -49,6 +49,7 @@ struct Control {
 pub(crate) async fn dispatch(
     engine: &Arc<Engine>,
     identity: &str,
+    connection: areal_engine::desktop::ProcessConnection,
     method: &str,
     params: Value,
 ) -> Result<Value, RpcError> {
@@ -68,7 +69,9 @@ pub(crate) async fn dispatch(
         }
         "areal/process/start" => {
             let p: ProcessStart = parse(params)?;
-            engine.process_start(identity.into(), p).await
+            engine
+                .process_start_on_connection(identity.into(), p, connection)
+                .await
         }
         "areal/process/list" => {
             let p: ThreadId = parse(params)?;

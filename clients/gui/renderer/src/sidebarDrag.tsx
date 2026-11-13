@@ -1,3 +1,4 @@
+import { useLibraryReadOnly } from "./PlatformReadContext.js";
 import { useRef, useState, type HTMLAttributes } from "react";
 import {
   PointerSensor,
@@ -130,6 +131,7 @@ export function SidebarDragSurface({
   style,
   ...props
 }: SidebarSurfaceDragProps & HTMLAttributes<HTMLElement> & { as?: "li" | "div" }) {
+  const readOnly = useLibraryReadOnly();
   const id =
     dragId ??
     (dragSource
@@ -138,12 +140,12 @@ export function SidebarDragSurface({
   const draggable = useDraggable({
     id,
     data: { source: dragSource },
-    disabled: !dragSource || dragDisabled,
+    disabled: readOnly || !dragSource || dragDisabled,
   });
   const droppable = useDroppable({
     id: dropTarget?.id ?? `source:${id}`,
     data: { drop: dropTarget },
-    disabled: !dropTarget,
+    disabled: readOnly || !dropTarget,
   });
   const { active } = useDndContext();
   return (

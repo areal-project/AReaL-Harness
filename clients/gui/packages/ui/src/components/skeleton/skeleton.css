@@ -4,7 +4,7 @@
   height: 1em;
   border-radius: var(--radius-micro);
   background: var(--color-muted);
-  animation: areal-skeleton 2.4s var(--motion-loop);
+  animation: areal-skeleton calc(var(--motion-cycle) * 2) var(--motion-loop);
 }
 .areal-skeleton[data-shape="block"] {
   height: auto;

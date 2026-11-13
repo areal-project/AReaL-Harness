@@ -1,11 +1,11 @@
 import { TitleTooltip } from "@areal/ui";
-import { isRequest } from "@areal/workbench/desktop-contract/conversation";
-import { modelRecord } from "@areal/workbench/desktop-contract/shared";
+import { errorText } from "./errors/errorCopy.js";
+import { isRequest } from "./services.js";
+import { modelRecord } from "./services.js";
 import { Button } from "@areal/ui";
 import { useState } from "react";
 import {
   GripVertical,
-  ListEnd,
   CornerDownRight,
   Trash2,
   Ellipsis,
@@ -25,6 +25,10 @@ import {
 import { queueText, type QueueEditInput } from "./Queue.js";
 import { imageAnnotationTitle } from "./imageAnnotations.js";
 import type { Action, Data } from "./services.js";
+import { useI18n } from "./i18n/IntlProvider.js";
+import { FeedbackNotice } from "./FeedbackNotice.js";
+import { useAutoReconcile } from "./errors/autoReconcile.js";
+import { wasReported } from "./errors/reported.js";
 import { recoveredOutcome } from "./recoveryPresentation.js";
 
 const queueLabel = (item: Data) => imageAnnotationTitle(queueText(item));
@@ -45,9 +49,14 @@ export function ComposerQueue({
   editingId?: string;
   onEdit: (item: Data) => void;
 }) {
+  const { t } = useI18n();
   const queue = project.state?.queues?.[thread.id];
   const items: Data[] = (queue?.items ?? []).filter((item: Data) => item.status === "pending");
   const [busy, setBusy] = useState(false);
+  // 原请求还在路上时不核对；答复确实没回来才开始自动核对。
+  const [awaiting, setAwaiting] = useState(false);
+  const [unresolved, setUnresolved] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState<{ owner: string; revision: number } | null>(null);
   const [error, setError] = useState("");
   const operationKey = `areal-gui:draft:${project.id}:${thread.id}:queue-operation`;
   const [unknown, setUnknown] = useState<{
@@ -65,7 +74,12 @@ export function ComposerQueue({
   const [drag, setDrag] = useState<{ id: string; ids: string[]; revision: number } | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const running = thread.turns?.find((turn: Data) => turn.status === "inProgress");
-  const locked = disabled || busy || !!editingId || !!unknown;
+  const locked =
+    disabled ||
+    busy ||
+    !!editingId ||
+    !!unknown ||
+    (confirmed?.owner === operationKey && queue?.revision < confirmed.revision);
   const edit = async (request: QueueEditInput, revision = queue.revision) => {
     if (locked) return;
     setBusy(true);
@@ -73,13 +87,18 @@ export function ComposerQueue({
     const unresolved = { requestId: crypto.randomUUID(), operation: request.operation };
     localStorage.setItem(operationKey, JSON.stringify(unresolved));
     setUnknown(unresolved);
+    setAwaiting(true);
     try {
-      await action("queueEdit", {
+      const result = await action("queueEdit", {
         projectId: project.id,
         threadId: thread.id,
         expectedRevision: revision,
         requestId: unresolved.requestId,
         ...request,
+      });
+      setConfirmed({
+        owner: operationKey,
+        revision: "revision" in result ? result.revision : result.queueRevision,
       });
       localStorage.removeItem(operationKey);
       setUnknown(null);
@@ -89,13 +108,13 @@ export function ComposerQueue({
         const unresolved = { requestId: failure.requestId, operation: request.operation };
         localStorage.setItem(operationKey, JSON.stringify(unresolved));
         setUnknown(unresolved);
-        setError("队列操作结果尚未确认，条目以 Core 状态为准，不会自动重发。");
       } else {
         localStorage.removeItem(operationKey);
         setUnknown(null);
-        setError(failure.message);
+        if (!wasReported(failure)) setError(errorText(t, failure));
       }
     } finally {
+      setAwaiting(false);
       setBusy(false);
     }
   };
@@ -124,18 +143,22 @@ export function ComposerQueue({
       if (outcome) {
         localStorage.removeItem(operationKey);
         setUnknown(null);
-        setError(
-          outcome.status === "failed" || outcome.accepted === false
-            ? (outcome.message ?? "队列操作执行失败，请核对当前队列。")
-            : "队列操作已确认。",
-        );
+        setUnresolved(null);
+        if (outcome.status === "failed" || outcome.accepted === false)
+          setError(outcome.message ?? "队列操作没有执行，当前显示的是最新队列。");
       }
-    } catch (cause) {
-      setError((cause as Error).message);
     } finally {
       setBusy(false);
     }
   };
+  useAutoReconcile(
+    unknown && !awaiting ? unknown.requestId : null,
+    project.state?.connected === true,
+    reconcile,
+    () => {
+      setUnresolved(unknown?.requestId ?? null);
+    },
+  );
   const move = (id: string, offset: number) => {
     const ids = items.map((item) => item.id),
       at = ids.indexOf(id);
@@ -155,26 +178,40 @@ export function ComposerQueue({
     setDrag(null);
     setOver(null);
   };
-  if (!queue || (!items.length && !error && !unknown)) return null;
+  const unresolvedNotice = unresolved && (
+    <FeedbackNotice
+      transient
+      tone="warning"
+      requestId={unresolved}
+      message={t("recovery.operationUnresolved")}
+      onDismiss={() => setUnresolved(null)}
+    />
+  );
+  const checkOriginal = unknown && (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={busy || !project.state?.connected}
+      onClick={() => void reconcile()}
+    >
+      {t("recovery.checkOriginal")}
+    </Button>
+  );
+  if (!queue || (!items.length && !error && !unresolved && !unknown)) return null;
   if (!items.length)
     return (
       <div className="composer-queue-feedback">
-        {error && <p role="alert">{error}</p>}
-        {unknown && (
-          <Button
-            unstyled
-            data-slot={undefined}
-            type="submit"
-            disabled={busy || !project.state?.connected}
-            onClick={() => void reconcile()}
-          >
-            核对队列操作
-          </Button>
+        {error && (
+          <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
         )}
+        {unresolvedNotice}
+        {checkOriginal}
       </div>
     );
   return (
     <section className="composer-queue" aria-label="待发送消息">
+      {checkOriginal}
       {queue.paused && items.length > 0 && (
         <div className="composer-queue-pause">
           <Pause size={12} />
@@ -193,21 +230,9 @@ export function ComposerQueue({
         </div>
       )}
       {error && (
-        <p role="alert" className="composer-queue-feedback">
-          {error}
-        </p>
+        <FeedbackNotice transient tone="error" message={error} onDismiss={() => setError("")} />
       )}
-      {unknown && (
-        <Button
-          unstyled
-          data-slot={undefined}
-          type="submit"
-          disabled={busy || !project.state?.connected}
-          onClick={() => void reconcile()}
-        >
-          核对队列操作
-        </Button>
-      )}
+      {unresolvedNotice}
       <div className="composer-queue-rows">
         {items.map((item, index) => (
           <div
@@ -215,54 +240,58 @@ export function ComposerQueue({
             data-queue-id={item.id}
             className={`composer-queue-row${editingId === item.id ? " editing" : ""}${over === item.id ? " drop-target" : ""}`}
           >
-            <Button
-              unstyled
-              data-slot={undefined}
-              type="submit"
-              className="composer-queue-grip"
-              disabled={locked}
-              aria-label={`调整顺序 ${queueLabel(item)}`}
-              title="拖动调整顺序，或按上下方向键"
-              onKeyDown={(event) => {
-                if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+            <span className="composer-queue-handle">
+              <span className="composer-queue-index" aria-hidden="true">
+                {index + 1}
+              </span>
+              <Button
+                unstyled
+                data-slot={undefined}
+                type="submit"
+                className="composer-queue-grip"
+                disabled={locked}
+                aria-label={`调整顺序 ${queueLabel(item)}`}
+                title="拖动调整顺序，或按上下方向键"
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                    event.preventDefault();
+                    move(item.id, event.key === "ArrowUp" ? -1 : 1);
+                  }
+                }}
+                onPointerDown={(event) => {
+                  if (event.button !== 0) return;
                   event.preventDefault();
-                  move(item.id, event.key === "ArrowUp" ? -1 : 1);
-                }
-              }}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                event.preventDefault();
-                event.currentTarget.focus();
-                event.currentTarget.setPointerCapture(event.pointerId);
-                setDrag({
-                  id: item.id,
-                  ids: items.map((row) => row.id),
-                  revision: queue.revision,
-                });
-              }}
-              onPointerMove={(event) => {
-                if (!drag) return;
-                const row = document
-                  .elementFromPoint(event.clientX, event.clientY)
-                  ?.closest<HTMLElement>("[data-queue-id]");
-                setOver(row?.dataset.queueId ?? null);
-              }}
-              onPointerUp={(event) => {
-                const row = document
-                  .elementFromPoint(event.clientX, event.clientY)
-                  ?.closest<HTMLElement>("[data-queue-id]");
-                drop(row?.dataset.queueId);
-                if (event.currentTarget.hasPointerCapture(event.pointerId))
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-              }}
-              onPointerCancel={() => {
-                setDrag(null);
-                setOver(null);
-              }}
-            >
-              <GripVertical size={13} />
-            </Button>
-            <ListEnd size={17} className="composer-queue-glyph" />
+                  event.currentTarget.focus();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setDrag({
+                    id: item.id,
+                    ids: items.map((row) => row.id),
+                    revision: queue.revision,
+                  });
+                }}
+                onPointerMove={(event) => {
+                  if (!drag) return;
+                  const row = document
+                    .elementFromPoint(event.clientX, event.clientY)
+                    ?.closest<HTMLElement>("[data-queue-id]");
+                  setOver(row?.dataset.queueId ?? null);
+                }}
+                onPointerUp={(event) => {
+                  const row = document
+                    .elementFromPoint(event.clientX, event.clientY)
+                    ?.closest<HTMLElement>("[data-queue-id]");
+                  drop(row?.dataset.queueId);
+                  if (event.currentTarget.hasPointerCapture(event.pointerId))
+                    event.currentTarget.releasePointerCapture(event.pointerId);
+                }}
+                onPointerCancel={() => {
+                  setDrag(null);
+                  setOver(null);
+                }}
+              >
+                <GripVertical size={13} />
+              </Button>
+            </span>
             <TitleTooltip title={queueLabel(item)}>
               <span className="composer-queue-copy">{queueLabel(item)}</span>
             </TitleTooltip>
@@ -274,8 +303,8 @@ export function ComposerQueue({
                 type="submit"
                 className="composer-queue-steer"
                 disabled={locked || !running}
-                aria-label={`引导 ${queueLabel(item)}`}
-                title="现在发送到正在进行的任务"
+                aria-label={t("chat.queue.sendNowItem", { item: queueLabel(item) })}
+                title={t("chat.queue.sendNowHint")}
                 onClick={() =>
                   void edit({
                     operation: "steer",
@@ -284,8 +313,8 @@ export function ComposerQueue({
                   })
                 }
               >
-                <CornerDownRight size={16} />
-                <span>引导</span>
+                <CornerDownRight size={15} />
+                <span>{t("chat.queue.sendNow")}</span>
               </Button>
               <Button
                 unstyled

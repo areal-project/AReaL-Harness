@@ -1,0 +1,2060 @@
+[
+  {
+    "file": "renderer/src/i18n/messages/apps.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mcpAppsWorkspace.theOriginalFormResponseIsBeingChecked: 核对",
+    "fingerprint": "de120a7256c2cea8baf158b68f398c62255793c8c8efd87973d07758b9720be5"
+  },
+  {
+    "file": "renderer/src/i18n/messages/automation.ts",
+    "kind": "internal-term",
+    "snippet": "settings.computer.screenRecordingDescription: 观察",
+    "fingerprint": "3bd30312385123bb576ec99969ab01bd7f73b373c7bd2b9886274f36f37c9482"
+  },
+  {
+    "file": "renderer/src/i18n/messages/automation.ts",
+    "kind": "internal-term",
+    "snippet": "settings.computer.helperDescription: 观察",
+    "fingerprint": "d4162b2b444716fc40dce93306aef49be26eec208a4bb37a4dcc6ed59286d6d9"
+  },
+  {
+    "file": "renderer/src/i18n/messages/browser.ts",
+    "kind": "internal-term",
+    "snippet": "browser.details.reconcile: 核对",
+    "fingerprint": "0f6521cbac90e7e7216333c0f4cd0b42000ed771861cffebfd9d24118e7afaee"
+  },
+  {
+    "file": "renderer/src/i18n/messages/browser.ts",
+    "kind": "internal-term",
+    "snippet": "browser.loadError.hint: 核对",
+    "fingerprint": "b4eeca8710869f18567036fb000c86f5ab41381252d53541a77af3c81da11381"
+  },
+  {
+    "file": "renderer/src/i18n/messages/browser.ts",
+    "kind": "internal-term",
+    "snippet": "browser.failure.operationHint: 核对",
+    "fingerprint": "81f8a785286f8cd0d1321fd5c6fe1e8d46d920e539e7129d70ee3a5b29e882b3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/browser.ts",
+    "kind": "internal-term",
+    "snippet": "browser.failure.unknownHint: 核对",
+    "fingerprint": "059069b211e9cc47f16b3fdb5cf926d519f6cd1aed801494eb8b9abe046c2267"
+  },
+  {
+    "file": "renderer/src/i18n/messages/browser.ts",
+    "kind": "internal-term",
+    "snippet": "browser.failure.inspectAction: 核对",
+    "fingerprint": "0cb269946531cf8a682e9029f9f1e86c9f4a04c193881ef479a8999383032641"
+  },
+  {
+    "file": "renderer/src/i18n/messages/browserHost.ts",
+    "kind": "internal-term",
+    "snippet": "browserHost.unavailable: Host",
+    "fingerprint": "811d22d1107750a811504f5d2dfd7df065077a7b9ef5b8f4c5d10fe5f8b4f88d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/browserHost.ts",
+    "kind": "internal-term",
+    "snippet": "hostRead.status: Host",
+    "fingerprint": "311e63b75438bbc72def2ea365a8e6b91d98ca4c09bfdd425d2d514d570b67d9"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "common.browserVerification.trialActive: 观察",
+    "fingerprint": "5527452d6ed4e259db16d5c4fb33d77b40df27bac75949340462cd9040398962"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "common.inspection.help: 核对",
+    "fingerprint": "a3a04506a98281b2195430e976c87811e13a6788d75dde249e8c66749fb6a758"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "common.update.installingHelp: 核对",
+    "fingerprint": "e3011a055b9ccff6b83ef57b1dc219fed2564f1e8851b49705f52699ee4832a6"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "common.update.reopenHelp: 核对",
+    "fingerprint": "1d509ee08cd99f9905f2f4aab339a20fed30c898b1f5d7a895be26d7c567317c"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "common.processes.scriptHelp: Core",
+    "fingerprint": "98c6731eaaa25ac9fb29cdfa94c06adfcc40ad287dc1a1f54be38d9347286d2d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "common.workgroups.compatibilityHelp: 核对",
+    "fingerprint": "17331a57cc88d702043d62bbb123d8e8b6dfd4fcf458a214c10078e1e18d1d2e"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "chat.usage.confirmedNote: Core",
+    "fingerprint": "560b753bc0500c1aeb52a1ecbdf3aee53ec4eef2f1d1eff8ae0243d48cfae328"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "backend.operationUnconfirmed: 核对",
+    "fingerprint": "aa7d5acb3833e9cde05c2428d4b0b4330984b044fa9aa1f8ce283798937395b6"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "recovery.creationNotAdmitted: Core",
+    "fingerprint": "63faf26ed6b79aef8309cd9381c1b0d7917fb127421f7d5287fc9d7a62902dc2"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "recovery.creationRecords: 核对",
+    "fingerprint": "4bdff42432b41cc2c48196181b39fe7c764c8ba9887375b92a84120e61fa64a0"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "recovery.creationRecordDescription: 核对",
+    "fingerprint": "dc7228999c4bebd22b13df7cba74b0e8bb644d16111d1fafde33960a5ce739e7"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "chat.composer.workspaceReferencePending: 核对",
+    "fingerprint": "c1aa718f37ab6c969f8e7b1c58b4aee1cb52b3968ef971e13aa592cae949832d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "chat.side.inspectCreation: 核对",
+    "fingerprint": "056d51f376597b7ecddd1f1fe6022053ec33cf0a2d102acb39b0d810514d5575"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "chat.side.pendingCreation: 核对",
+    "fingerprint": "0f209ef71901e135d34adc8c236b2f0fe7916e869e315f0188197508e3ab1b9a"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "chat.side.missingIdentity: 回执",
+    "fingerprint": "98055b92032782154fabd4ed65a6d3de8116bea78ab2ef2d822a063dba7c43e4"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "chat.side.closeUnconfirmed: 核对",
+    "fingerprint": "96ddebe833431c08bef4b8e4a72837b5943fdec0abccd761d86c90d007591b14"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "chat.side.inspectClose: 核对",
+    "fingerprint": "77a2dbf2698c9f56782a322d5e88312fefca3bfab73ad9fe57cd34f63c76b63e"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "cloud.submissionUnknown: 核对",
+    "fingerprint": "4190678dfa4980a6872bbd231b7bed3d4b750b7329682083c552e67af3018cb2"
+  },
+  {
+    "file": "renderer/src/i18n/messages/common.ts",
+    "kind": "internal-term",
+    "snippet": "cloud.acknowledgeUnknown: 核对",
+    "fingerprint": "d8f758fd44d60781004842ade7cb634c40c817277a1f33132a87d60b1376876f"
+  },
+  {
+    "file": "renderer/src/i18n/messages/composerPriority.ts",
+    "kind": "internal-term",
+    "snippet": "chat.composer.attachmentUnknown: 核对",
+    "fingerprint": "9ddba3d76141274d510f0827e96df64ee6ea6bfec82adc11a4dcadf9b4a174f3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/general.ts",
+    "kind": "internal-term",
+    "snippet": "settings.chatGPTSubscription.refreshToCheckConnectionStatus: 核对",
+    "fingerprint": "0515b17dbeaad7d15cf83c821369a039d5eee3f142c54cbc6ec54b1414ef9e8d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/general.ts",
+    "kind": "internal-term",
+    "snippet": "settings.sessionSettings.theConfigurationResultNeedsCheckingItWill: 核对",
+    "fingerprint": "229c03a9a4eac1a9ef111f782e105faa2b559b1f34fe900543be97528409d136"
+  },
+  {
+    "file": "renderer/src/i18n/messages/general.ts",
+    "kind": "internal-term",
+    "snippet": "settings.sessionSettings.theConfigurationResultNeedsCheckingYourDraft: 核对",
+    "fingerprint": "8d74d4f962425303a6d4e514651e008ded92f001a6d19ebfd3c93b6df9d6fde7"
+  },
+  {
+    "file": "renderer/src/i18n/messages/general.ts",
+    "kind": "internal-term",
+    "snippet": "settings.sessionSettings.reviewSessionSettings: 核对",
+    "fingerprint": "711c15118a5abb3b5114723f052b1c89d4e02563b449faf89d28460b9fb2c1d7"
+  },
+  {
+    "file": "renderer/src/i18n/messages/general.ts",
+    "kind": "internal-term",
+    "snippet": "settings.chatGPTSubscription.statusNeedsChecking: 核对",
+    "fingerprint": "ef109b56264afa8fa100a238a998c1d5bc9d7d93e74e0cc24cac4cd98f445851"
+  },
+  {
+    "file": "renderer/src/i18n/messages/mobile.ts",
+    "kind": "internal-term",
+    "snippet": "mobile.fingerprint: 核对",
+    "fingerprint": "5826bc0727b287cd2a7c5274316278da61fdcaf0244b1c42b53b10d99ca7371a"
+  },
+  {
+    "file": "renderer/src/i18n/messages/mobile.ts",
+    "kind": "internal-term",
+    "snippet": "mobile.notSent: 核对",
+    "fingerprint": "2cd314be4c61ddca66d164601a0586afa1ef612f4bdd7eddd8f2782fb8fde944"
+  },
+  {
+    "file": "renderer/src/i18n/messages/mobile.ts",
+    "kind": "internal-term",
+    "snippet": "mobile.commandUnknown: 核对",
+    "fingerprint": "9427c4cbfedf546609392b289afdc4864ad7da2a967c16d67b02fcff063f4b5b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/mobile.ts",
+    "kind": "internal-term",
+    "snippet": "mobile.commandRecoveryFailed: 核对",
+    "fingerprint": "3344de5bdf58bff90fd1abb128e02c5f3456a52b0312223ee1b292e30487b1a5"
+  },
+  {
+    "file": "renderer/src/i18n/messages/mobile.ts",
+    "kind": "internal-term",
+    "snippet": "mobile.queryCommand: 核对",
+    "fingerprint": "d1bb31ef00dfa57e510108e031de20f840bed14d5bbc6a0a73f1791d531a549c"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.browserUnconfirmed: 核对",
+    "fingerprint": "4a4d4e6d422a952ea8ff49cbcc3c01faf74692d81a8298b894ee5be7b766ed43"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.browserInspected: 核对",
+    "fingerprint": "6106c5600ddc3a5225e2afee4d4ad7cee20f2e30f183f205fb6a234767c0d4be"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.browserInspect: 核对",
+    "fingerprint": "411695cd3975cdf004a23caa503390f0111a3a8e282a8d45b2b6bb5a4b033963"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.browserInspectionHelp: 核对",
+    "fingerprint": "5c5036b255dc8d3d905c1c3abe301708e6d985aef01eccba6f57719795558a4b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.browserInspectionChecked: 核对",
+    "fingerprint": "ae39b1ce64de759b3e578c0561e78f53705af7fe7989d189b182a2d721cf4172"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.browserRecovery: 核对",
+    "fingerprint": "8f4819e5c56fe13380685cc8f3ee633da03c3edbd77bc2e5ebc8e66580b62d59"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.toolRecovery: 核对",
+    "fingerprint": "0027b906112f91af3a1cdd0fb0fc32707c9942b62c3ce30c3b944327f35af968"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.inspectToContinue: 核对",
+    "fingerprint": "781e3582b7bac514452d620bf49ffb17e0f0a2edb6269cc779698ab480b74676"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.inspectBeforeSend: 核对",
+    "fingerprint": "ad624d6e3fa4bedea5b8f6b100624848991332db12dfeb6b7e0f94f219436189"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.runNowUnsupported: Core",
+    "fingerprint": "e2e83c4f668468b2c50e15cc539ed148e9f78c88ddcb6701924fd74e7393f708"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.recentOnly: Core",
+    "fingerprint": "b849fc2f18f9e6bcd4f0d1ab4a9779577a1aea9414265c8fb4c2bf4b47d7daef"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.admissionUnknown: 受理",
+    "fingerprint": "d588d32c47f7208edd6d1b6c22d7821bc525bb491a59b470b4e5b8e71504decb"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.checkAdmission: 受理",
+    "fingerprint": "431081c37bd2f0671b7cb5593c90d093095a5f976a44cfecf1c5217b1576a5ae"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.installSnapshot: 快照",
+    "fingerprint": "1229c2aa2088afb7232dc774be85301ea52750e6f4b3b1a08496b4fd106a0abb"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.unverifiedSupport: 快照",
+    "fingerprint": "e0ea8a75f8ff2d776cb638b222beff65a60853991788b746aabd6e0eba3fe3b3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.blockedSnapshot: 快照",
+    "fingerprint": "d6000b24a360d0a81d1b42fb0b44d86d082c1f853248bbac78886c3f23c4cd36"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.snapshot: 快照",
+    "fingerprint": "d82f31cfb1a2ec400bfdad63355dde3568a2d72c38992c44521b56f7a2ed6a27"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.noComponents: 快照",
+    "fingerprint": "f3c82ba410846872a9f11e763d9fb6234942f3dd842f0296452ba4f5a6d1d877"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.schedules.check: 受理",
+    "fingerprint": "36a16de4fd7f9ba3c8b1334e490d8eeeb291c0103b686d40494e00f2c9bb5eff"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.schedules.retryCreation: 核对",
+    "fingerprint": "344d02dca198aeb2cf23cf85c3ab619202007aef74a1bcaccf56c30583254bf9"
+  },
+  {
+    "file": "renderer/src/i18n/messages/operations.ts",
+    "kind": "internal-term",
+    "snippet": "operations.schedules.statusQueued: 受理",
+    "fingerprint": "ffbb4b5922d5a72b6bb69b3f8db3224a7c4dc5962fc2ae5048c763be94c8358a"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.developmentLinkExplanation: 快照",
+    "fingerprint": "535746513ef288b1154dbd12418c0cfbc09cc707577fdf03c6b38ce41c18cd24"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.installTrustBoundary: 快照",
+    "fingerprint": "81f95f9075bd817eac9302ac039af44d9159ce38f21ac3d964c5176eba971c9b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.pluginNotInSnapshot: 快照",
+    "fingerprint": "6835c75b50d1ca107b3310f307645371a60b63c4c507c97cec03ca701ae7edf3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.refreshSnapshot: 快照",
+    "fingerprint": "202b2c39fccfecb86dff366be48a8314e6a0e8d463595351a0f53cd8c01ed363"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.previousCreationRecords: 核对",
+    "fingerprint": "c6c9788e41f2dc562303d44e6c6e888e37e91ca40401bfb97615efd8b06e75a4"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.unrelatedCreationUnconfirmed: 核对",
+    "fingerprint": "fe8a758aece4ffdf0f4bf6b246e7331175068994ffd19737962d04a5ab36983d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.projectOperationStillUnconfirmed: 核对",
+    "fingerprint": "46a565f701817a3bbc2a89a04376a40a16c0683f34ef0fe65d8fed918e3a9d8b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.originalRequestIdUnavailable: 核对",
+    "fingerprint": "0191499177dfbc3983068d28ddad07264961dbd62eacdfdf78c9bfdcd09f0603"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.hostReadinessUnavailable: 快照",
+    "fingerprint": "d6b8ddf45b5ccb292e97ef595b6ce9d4d941cbb0af4d68287fdddcfa78209941"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.theOriginalAuthenticationSubmissionIsStillUnconfirmed: 核对",
+    "fingerprint": "c2439c43aee2738a04bbb7f2ddbbbc0fddcbc9a4e27193481bb54aac17d57aeb"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.theOriginalSubmissionIsStillProcessingCheck: 核对",
+    "fingerprint": "da4a890328fda452357436d3f4c25c5dfbed03d4ab4b28419be95c4c5481dcdb"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.theOriginalSubmissionResultIsStillUnconfirmed: 核对",
+    "fingerprint": "f27dbb326c28d85508532e1b04916420bd9e10e53c6dfd3d4dd99464f39f4962"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.couldNotCheckTheOriginalSubmissionValue: 核对",
+    "fingerprint": "1b2107f2e43be32de94a440da6343900b49c0032ba52023d64ff1341553b4e11"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.checkConnectionResult: 核对",
+    "fingerprint": "bcef1f68c1de3dc5b81b2869d83a1291c73240c8c5c151210fdf97bc52d02fd0"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.checkPluginSubmission: 核对",
+    "fingerprint": "e180e9f2e2e21d764e2fc3ea226678d65222f1b8c9c79e8475ad488e82572fa5"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.aProjectOperationHasAnUnconfirmedResult: 核对",
+    "fingerprint": "75d5367d575b4a400735f2c99c9f84f988008210acb1bc1b6793169502b0b087"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.checkProjectOperation: 核对",
+    "fingerprint": "650d90a4bcca381740ebf3bd9d71736d4a2e6aacf8a9e44d8e836b6c39e23524"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.checkingProjectOperation: 核对",
+    "fingerprint": "38e5969a68b9c1d35b6b9d3839b221df9e5c77974f9d549f8b15c609f88cdc0d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.theOriginalPluginSubmissionResultIsUnconfirmed: 核对",
+    "fingerprint": "3aea4afc84b9bb8038862b9ce416307c59b6e77e3cb2277fcfa9eb866962d852"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.checkingTheOriginalSourceResolution: 核对",
+    "fingerprint": "95458bf9d14fc24bdd987d01092748efe92d86750b7a681402792f53b1fd195a"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.theSourceResolutionResultIsUnconfirmedAnd: 核对",
+    "fingerprint": "b67436f3aed055cb53bbc2a2c540548c120de9834ad9a58c989965f3da8f10d6"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.preservingTheOriginalSubmissionForProjectValue: 核对",
+    "fingerprint": "5b6257145334fa76f8a703785020c0f5012ae62216314a02ac22c3703382aa8a"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.thePluginCatalogIsManagedByThe: Core",
+    "fingerprint": "fa96d2d8f141e34573743eed95ab8fd37d8d1ef001175ff0ef94b525d5e5d9f0"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.theProjectSCoreIsDisconnectedCurrent: Core",
+    "fingerprint": "286c15c827f0d31abe320356ad37234fd742f76859618a23e68edbc283a9f999"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.thisCoreDoesNotSupportThePlugin: Core",
+    "fingerprint": "6867b28c16d04fb6da1f5b78491b6855c3c7cfed0c98e3a502176f7c4cccc378"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.refreshGitSourceSnapshot: 快照",
+    "fingerprint": "ee4865f2a69f171b9763361959250c709362424d34f7901f20f7e78dcb4a18b5"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.connectionResultUnconfirmed: 核对",
+    "fingerprint": "975d0a2dc24af9cd1e3c0850dfeb1f75bb2ef7efda7a9193597993e3f10adfcf"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.operationResultUnconfirmed: 核对",
+    "fingerprint": "aa1f4bef2b04599375ef1173768ad5e17dabcbe3c0f597011faed3a9b0e75e91"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.thePreviousOperationIsNotConfirmedComplete: 核对",
+    "fingerprint": "406c690a43c54cea3d515f1db5d0dd520da18e9a19ddcd4a4503d876eaa54469"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.resultUnconfirmed: 核对",
+    "fingerprint": "6179986da38a3fd13e48e517be460ac8b82c9239f75b0eee4557138eef5d3d1c"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.checkTheResultBeforeResubmittingOrChanging: 核对",
+    "fingerprint": "bcb02db918f96a4a75a8e0c641ad58fda43a1bcf8edfbbdc0ed84e3c61272201"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.checkingOriginalSubmission: 核对",
+    "fingerprint": "2f0f8f6bd24e30a386424d322bf055b0af4c02a5a889e526dfa1af0b183af550"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.reviewNewInstallationSnapshot: 快照",
+    "fingerprint": "e2f4da764aad1222757a0e9b2c6fa48ed4f6fb1f8225fbf38efd1761418a7572"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.reviewTheSourceThenChooseAnInstallation: 核对",
+    "fingerprint": "bfc12883046e4a8d01cdc78b3695d805d42fd3a3063a8ea191f201ef75aa5902"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.reviewTheSourceBeforeInstalling: 核对",
+    "fingerprint": "d055b70468747c3a4ddc71d30904907e02803cb417f6b396c82ad09d397e09b8"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.reviewSourceAndInstall: 核对",
+    "fingerprint": "0e318de214cb553694d05f12dc621998391c10415b7ce30ce4868c6ae84cf342"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.installedSnapshotDigest: 快照",
+    "fingerprint": "50683b4e182e8ce59a3813f31951ce39b0c1508134f89a8e9e6b8798a28ebc2e"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.iHaveReviewedTheSourceVersionAnd: 核对",
+    "fingerprint": "f814433c28dff1e85c92c923c28258a47bd29f8fccd403313d2f6282ee260441"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.installReviewedSnapshot: 快照",
+    "fingerprint": "b7da00c4968cb071960d524df04a2562580b1de7a9eb273b912fd4e9579b5d62"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.currentExecutionAndSettingsStillUseThe: 快照",
+    "fingerprint": "d4ea116c230914c1b6074251f6ce3aed64f660706f73cfa315dc1ccd7e2a7daa"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.reviewNewSnapshot: 快照",
+    "fingerprint": "924949c15404bb7f1c81312fdc9110acdcfa01142941efd6f082a685b63dc924"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.currentInstallationSnapshot: 快照",
+    "fingerprint": "e609f81976be9d4d713d1b91df9e00afe3fe40c42df3ef130232aff375e38723"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.matchesInstalledSnapshot: 快照",
+    "fingerprint": "fd790cd1616160e7bcfd4b762cba4f7b050cae03d4a943af165cd681997e4771"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.differsFromInstalledSnapshot: 快照",
+    "fingerprint": "132e79038d70c5252b8490cae372149a5820a0f3e5eba7684459ca4db45263d3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.sourceSnapshotPath: 快照",
+    "fingerprint": "d63ce7228c62e32add6f8b83d33e23ccc009e2bb61c39533be9ec5ee9e9636a2"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.authenticationStatusCouldNotBeConfirmedCheck: 核对",
+    "fingerprint": "e503a8e88691a1c1f72fef0b14a5d1f223f2b6ab2759f688fd8d6af48f208d98"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.theAuthenticationResultIsUnconfirmedCheckAuthentication: 核对",
+    "fingerprint": "22023b326e24905c5fe19a145c1013e560135e183755e27c9184ad54a3a0f6c3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.cleanupResultUnconfirmed: 核对",
+    "fingerprint": "a6930691d09c1500ed44baac2046b293fac80a6bff9c63abbb87bb8a49068c43"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.connectionStatusUnconfirmed: 核对",
+    "fingerprint": "41516bf905f973685cab1a344aa6877276e40ef7360a4efb6aac98664b8373a5"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.authenticationResultUnconfirmed: 核对",
+    "fingerprint": "f3be39bd64144ff3516ed098cce2c1bb8904414f1687ba54ba18c359c1b05702"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.theAuthenticationResultHasNotBeenConfirmed: 核对",
+    "fingerprint": "86fb86f163c15f74c4ccf97b022a5c4dacdcb3775652f70c6abbbb43146e2727"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.completeAuthenticationAndCheckItsStatusDisconnected: 核对",
+    "fingerprint": "6c759bc1792864d3cdd143d78242fe273edda4cad698abab00735fa997a95477"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.confirmThatYouTrustTheCurrentInstallation: 快照",
+    "fingerprint": "e333740e7627579227ccba64a4db7eb0461d0a77f00e04c39034711c446f2ebd"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.checkAuthenticationStatus: 核对",
+    "fingerprint": "813023044a455201cb700c93acfcdeed4e71efd57b8e28434850f8bf471f33a2"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.checkConnectionStatus: 核对",
+    "fingerprint": "7901ae4605fcf5252471e5200796a004d7f51a42deecca531616da9ff9596024"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.installationSnapshot: 快照",
+    "fingerprint": "5d4828fa78753aadbbfe532a57e036c82d7992d48ad963fa9deecf301b15f80b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.iTrustTheCurrentInstallationSnapshotAnd: 快照",
+    "fingerprint": "fb770a9cc16042364752e4ab046f7a9579f1d4d9f12c6f3697f40c7fed252feb"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginConnectionPanel.confirmThatYouTrustTheCurrentInstallation2: 快照",
+    "fingerprint": "9e33cc67162c4776e44fea6289c6af11240d699bb7f7fd37496bf5dbd48a18a9"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginHookSettings.hookConfigurationIsIncompleteCheckSubmissionStatus: 核对",
+    "fingerprint": "2656f1ce443eb4ab455825e43b7970946458318f2f42b2eb646057099e4f84b8"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginAuthConfiguration.authenticationConfigurationSavedEnableAuthenticationAndCheck: 核对",
+    "fingerprint": "4699f60e3cc7a06081ce00a3b9a9a14302e3216a6edf01abf52287dbca1102eb"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginAuthConfiguration.theResultIsStillUnconfirmedCheckAgain: 核对",
+    "fingerprint": "468f03597f189b883f883ae8db662d117082fd235f7f39fafb28da179eb81a54"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginAuthConfiguration.checkAuthenticationSubmission: 核对",
+    "fingerprint": "3457334828fb8344e71a6444df50ea69e5a3c8f56810603e8a2d589264a124fa"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mcpAppsSettings.theSettingsUpdateIsUnconfirmedRefreshAnd: 核对",
+    "fingerprint": "13068d2f20643280ef2cc9d30099c1e95465bf3b8cfc25499b97dcc74ce1d466"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.hooksSettings.theBackendReconnectedCheckTheLoadStatus: 核对",
+    "fingerprint": "67d3f4363f6cd3f9af73efe235d4efd0840ad2158978f677aefae04e6845d68f"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.hooksSettings.manageCoreExtensionHooksOtherFormatsFrom: Core",
+    "fingerprint": "ad25cd7299480799464c0452880666ae8c3063675b0ea1bd485167bcc84aad11"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.hooksSettings.commandsReceiveOneLineOfEventJSON: Core",
+    "fingerprint": "80df7d01d173d4c8f69f74cb648f268d815eef4c4cb22725de253794abeaaca6"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginResources.thePluginCatalogIsDisabledInThis: Core",
+    "fingerprint": "807ced2bfcae68672fff9b6102f86ba6d977b23496570fc9021e892cc74a0b52"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginResources.theInstallationSnapshotForPluginValueChanged: 快照",
+    "fingerprint": "8abea3dad76b162fe744927716379da913fb15871a22654fe544611aa6152145"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginResources.theProjectIsDisconnectedConnectCoreTo: Core",
+    "fingerprint": "924588b226ff54e66229ea5f93c275c329e36bcf348c2d12fb5fee2dbc6b36aa"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.pluginOperationFailed: 核对",
+    "fingerprint": "5f9419adcc7ba0604d8535ec12364dd37830ad3d649179091219cb3c34e89752"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.submissionResultUnconfirmed: 核对",
+    "fingerprint": "1f5fd01568617ced708b942a900646d87c8439b33c8bb433a771ebbbec5d1f57"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginResources.cleanupUnknownState: 核对",
+    "fingerprint": "19bf87085135c1c437a0dcb59df3ab88c4df29752fa0d7c7b8c0911491836eda"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginResources.unknownState: 核对",
+    "fingerprint": "d25806f4a56867589aa5811d4db1d456204d85693e694a299f2f66362007a661"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginResources.unknownStateDetails: 核对",
+    "fingerprint": "6dfbdabb4d60ea28e303326867401ce6dd1a9e16a14a74e18009367e99dd37de"
+  },
+  {
+    "file": "renderer/src/i18n/messages/plugins.ts",
+    "kind": "internal-term",
+    "snippet": "settings.pluginCenter.installDoesNotConnect: 核对",
+    "fingerprint": "025a448c2c709f36299c439ca3c92ef95eac276e9b9e92ce741820a656c04cb8"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.relayService.pending: 核对",
+    "fingerprint": "3c7421db10b9515c58e26000c4b63c3fdc3f7559bd046ca44f8d247a063353de"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.onceConfirmedItCanAccessTheProjects: 核对",
+    "fingerprint": "2d96a89ce669c2c2a4d3d842546d876fd967f2f3df75ff1afe589677796b987c"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.checkTheFullDeviceFingerprint: 核对",
+    "fingerprint": "14bfea3046f0a09bb2cbcf6c786062646939926612fd2521706bb69e47cae350"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.compareEveryCharacterWithTheFingerprintShown: 核对",
+    "fingerprint": "03b79b167a6703118213a066bf1c01a0c3712677cdcd86aee86b3636196b21c9"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.theHostIsOfflineOrTheBackground: Host",
+    "fingerprint": "41a84f70cc22fe1906f2d6a13c8fdae8f0f11c72ccedace9b2525865ca5ffb3b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.checkTheFingerprintAndAccessScope: 核对",
+    "fingerprint": "88fe28d9208fe26590c4fd40a57a21fcc5b772574a08e2f3a58b280b92e3bd8f"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.ifTheHostIsOfflineCheckThe: Host",
+    "fingerprint": "a1b981f0b172886cabcdd4f3ae9832b67d1b26ed19cd2205ba4046d96aa9ffbe"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.hostHTTPSSupportIsEnabledThePhone: Host",
+    "fingerprint": "703ba06dcfebc62ce89d137401e5d70d2a1afe2b856a59106b83879c553f0c36"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.needsVerification: 核对",
+    "fingerprint": "2947c54a0191e32699ce999d698d43af35f120b81b8cf2ad3c052dba5fd5ab5e"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.restoreChecksTheActualScopeOfThe: 核对",
+    "fingerprint": "20ef2f54e14205cef5087fe4865e9783c4210e909c916c94980fe714d29af630"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.verifyAndRestore: 核对",
+    "fingerprint": "69b2c261a06403171d3248fa79b9a7fe0af36ecd346f4b303964ac49a168c9e3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.yourOrganizationProvidesASameOriginHTTPS: 核对",
+    "fingerprint": "31b9e434d410833c5dadd23007522a70b2bc9d9170dce1fca5f7052cd3717109"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.trajectorySettings.uploadControlsAppliedCaptureSettingsWillApply: Core",
+    "fingerprint": "cff009f24f35bbaac93207c29695f96d600e8f3f09ca3bbb0e604c7d68782623"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.trajectorySettings.backgroundUploadsAreOnNewCaptureSettings: Core",
+    "fingerprint": "75c36260cc9b6e87a7cfa4060a31be534a88333a3a5b7546a7fde2a7f6125532"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.trajectorySettings.thisCoreDoesNotProvideAControl: Core",
+    "fingerprint": "29d4d2bcc37e445603690867e3b1190074a4af8173931486f096f2abe0218325"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.trajectorySettings.thisCoreDoesNotProvideAModel: Core",
+    "fingerprint": "63fd2d08fc1cd168af2248110c528d64a59f62751e4c91544c9fd234ebca3dfc"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.coreConnectionAndCapabilities: Core",
+    "fingerprint": "bcd8f277f87adc1434395719a4ac2a1740c93cd5217c24c8d81e9f2cc31520ec"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.coreConnected: Core",
+    "fingerprint": "d1573a9176b2782f50b6e75bd907c1881069faa01c4b3faef5ea09bf97e5a06b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.coreDisconnectedPreviousCapabilityInformationMayBe: Core",
+    "fingerprint": "c47392f59f9e1c30f437644ec9d44ea16616d1c0acb473eb517eaf55d277f82f"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.coreExecutable: Core",
+    "fingerprint": "433efb75fb7dd7a6d09a58309d7217653b98a60f0620649108dca396a0dc550c"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.coreAPIVersion: Core",
+    "fingerprint": "c4a36b2ccd12c7c5b37d8960175eeec5183c94d4757a32d7f0f1c96e53e936e7"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.runtimeInstance: 实例",
+    "fingerprint": "3c6aa7595b0d219ba0f78f01101dd1329c3d62de71398631551a00e4c8c7184b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.coreCapabilitiesAreNotAvailableYetCheck: Core",
+    "fingerprint": "ffc4732bc38f1280989308d4b3da0a6f1dcc182058e7af28e532ee98cfd50123"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideConversationExecution: Core",
+    "fingerprint": "09ec110f7429a0d13600fe753de49a8849bafef12d88ebe0bf2c76a6637f82fb"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideOngoingGoals: Core",
+    "fingerprint": "01b82accdee1ce204a698137210f83ff7683cb8880d92a733324a6d2fecb70b2"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideTasksAnd: Core",
+    "fingerprint": "5388b93f3386caf8f2e31af4b2c8e2d255457f0ac5dda44f581f90ed33807ce4"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.thisCoreIsNotConnectedToRuntime: Core",
+    "fingerprint": "9715db4d5bf1abb50a0008d7bdbd585f6163f6de6249da44730d7061072c105e"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideFullManaged: Core",
+    "fingerprint": "15fa72641921ca11bde8896ab463ed2558ac5c85a6bad80217f3d48e5bc0bdbb"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.coreSchedulesSubtasksAndReturnsTheirProgress: Core",
+    "fingerprint": "6674933daa4b5bfb0c73539665c7dc2b96388339418009af290da8b55c6abd59"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.coreCapabilitiesSettings.thisCoreDoesNotProvideTheUnified: Core",
+    "fingerprint": "efb4ad8b29b2207b17a8d67d2d7767f8d7607ec5d8839979c6c17db74dd01a84"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.spaceReclamation.coreHasNotFinishedDrainingCheckExecution: Core",
+    "fingerprint": "498e3f73e3c2941da3f970cf407d2aabf02463618cfa58a56042bc6cc1c530e2"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.spaceReclamation.reclamationResultsAreIncompleteVerifyTheSpace: 核对",
+    "fingerprint": "1dd0376950818298f64c42e916277b9e3b8318e37c6e7d9e821e21bc81f7428b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.spaceReclamation.theMaintenanceResultNeedsVerificationItWill: 核对",
+    "fingerprint": "a421e4e6aaa64ef6d6eaf7744618eeaf8169a2f5c81439a4ff1a647af291a87d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.spaceReclamation.thePreviousMaintenanceResultNeedsVerificationIt: 核对",
+    "fingerprint": "48f63860ef84c880ee054f072c128e79a3ee83259de4a343a5976f8da882dfcd"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.reconciliationReview: 核对",
+    "fingerprint": "63ff8e59d75239023cf2a0c3de258475382d16bf6255917ca577c7dc79ba40d3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkDiagnostic.funnelCapabilityUnknown: 核对",
+    "fingerprint": "6603663c67fb43f27c04b6f7b3ca7af6f9f24785d1ef35717f80506257639406"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkDiagnostic.unavailable: Host",
+    "fingerprint": "4d3116f160d293ecab9b0919477c054fe0b9ad78a97c07a8dc58442533ebc422"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkDiagnostic.notLoggedIn: Host",
+    "fingerprint": "d29a7d900b18313e3eb6df905f6ffa96b847b1954b4d07c08136caf2e27f2fc1"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkDiagnostic.httpsDisabled: Host",
+    "fingerprint": "8cdc5ab113cb8e7b827d3c42f513b2a61ac6c9178a75dc168077f08afab42d27"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkDiagnostic.mappingChanged: 核对",
+    "fingerprint": "ef5e47d990377b0231e4c590edd3f33657b5458b8bba1b9e6e93ba9aabe02a2d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkDiagnostic.networkChanged: Host",
+    "fingerprint": "c3c7407cff74e12b94821f136275f72c5fbd55850a60bcc7309f9a8cc7cf51d9"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkDiagnostic.reconciliationRequired: 核对",
+    "fingerprint": "8a674b69d5115004c51db7915f43a8b4cd07646a337baaafa786a5ca1231b271"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkLogin.loggedIn: Host",
+    "fingerprint": "dd5a07ff7d773912672e08d0b3e875aeb6d6f1797ef15d501ccba4bd514e1423"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkLogin.notLoggedIn: Host",
+    "fingerprint": "e5679740a0533f71d7cbafa1b4f2985193c81428a1799744f5cec78dc9ac72d5"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkLogin.approvalRequired: Host",
+    "fingerprint": "927aa16cdd2416b0c910fd5f87551a0384bce69d3c9450113484142351f00da1"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkLogin.stopped: Host",
+    "fingerprint": "33a7887cd0796345411041f7cd45cc6f3c2584f518e7cc2ff8fe72a3389c444b"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkLogin.starting: Host",
+    "fingerprint": "fcf6967a0a439cf41ed46f5658fa7af4e34422dfe4026a2a11cdd5475e89e6a3"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileSettings.networkLogin.unknown: Host",
+    "fingerprint": "b260fe10b35f987cab1c0f6a922c7855857b9f31f9a5f7df757b4f69bedd35aa"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileConnect.requestDescription: 核对",
+    "fingerprint": "d9f2002e45139cb22783b098208f048b40641e0467e34a59da487c3c91a4e261"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileConnect.reviewRequest: 核对",
+    "fingerprint": "950a7df2cd520a333396f7b6064a051bfceba5188060aae672d9f8eb848da3c5"
+  },
+  {
+    "file": "renderer/src/i18n/messages/remote.ts",
+    "kind": "internal-term",
+    "snippet": "settings.mobileConnect.stepReview: 核对",
+    "fingerprint": "670f8ed5520f7d6b9e5085da9ed2921c4817de5d6db9cad175d2d675c3cdbd9d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/snapshots.ts",
+    "kind": "internal-term",
+    "snippet": "snapshots.localCleanupFailed: 核对",
+    "fingerprint": "03a770075508277979635b748c0b359855e81223841ead1600777d20356e4b24"
+  },
+  {
+    "file": "renderer/src/i18n/messages/timeline.ts",
+    "kind": "internal-term",
+    "snippet": "chat.timeline.interruption.coreRecovery: Core",
+    "fingerprint": "17ce4cee9a1117849c8603ad3c40fa5e598c0f5081a69f812df5363763cad31d"
+  },
+  {
+    "file": "renderer/src/i18n/messages/worktrees.ts",
+    "kind": "internal-term",
+    "snippet": "worktree.unknown: 核对",
+    "fingerprint": "5469101ca6572dde91c799bdf8eab216663dd3b5842072fe6b442fabe787160e"
+  },
+  {
+    "file": "renderer/src/App.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "高级诊断",
+    "fingerprint": "fa75e6703ff2f141061813639852d0ba27c69dda61ec0b09d354465c508c07a0"
+  },
+  {
+    "file": "renderer/src/App.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "模型服务",
+    "fingerprint": "d93f2386cc203274796f9474ca2fc37bdcdd230a5e4f065a041674b9649ee755"
+  },
+  {
+    "file": "renderer/src/App.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "b0c355094a314d4b5e7103fdc155844b57d0b282944c1c74fef1f0962e0c850f"
+  },
+  {
+    "file": "renderer/src/App.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "数据飞轮",
+    "fingerprint": "839f68944d599567911a7039aa77e1fe1b010996c2d3451daebbd717b5d9e1c1"
+  },
+  {
+    "file": "renderer/src/BugReportDialog.tsx",
+    "kind": "unlocalized-date",
+    "snippet": ".toLocaleString()",
+    "fingerprint": "7d3d47e6930e046cd464e64e96144517d2826750cf15bcd1a4a5a8971a161efc"
+  },
+  {
+    "file": "renderer/src/Composer.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "1ab747cfc8f32bec1a216029dbf0538668b0326cf87b58a5a7e61a7d6c2018bf"
+  },
+  {
+    "file": "renderer/src/Composer.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "编辑目标",
+    "fingerprint": "49c0ae153e591aeff7f3b37a66865ad93170b833a1ac5ce5bacda67bcaad8364"
+  },
+  {
+    "file": "renderer/src/Composer.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "工作组",
+    "fingerprint": "6d8b3c112c81be3117dbf84f861adba845ea40c9210756f1b9a867f97011b377"
+  },
+  {
+    "file": "renderer/src/Composer.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "会话",
+    "fingerprint": "2e52c30b97b498746eea4d11456e93da3b4cb9b591b92dc92db866fb4062a5c0"
+  },
+  {
+    "file": "renderer/src/ContextPane.tsx",
+    "kind": "unlocalized-date",
+    "snippet": ".toLocaleString()",
+    "fingerprint": "f72dd3084124d2b531fc77407cdbd4a80061e16d228f54ad2d9f3355eb7cec7f"
+  },
+  {
+    "file": "renderer/src/ContextPane.tsx",
+    "kind": "unlocalized-date",
+    "snippet": ".toLocaleString()",
+    "fingerprint": "ad48f03c4f232ae6f23971d0f31af7cc8d423e1ea24421190eb42c12497fafac"
+  },
+  {
+    "file": "renderer/src/ConversationStatusCard.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "3886ea683372d1b64a4e95175df08158e005f83f4ecbf00e1a58f0c0f8ad2917"
+  },
+  {
+    "file": "renderer/src/ConversationStatusCard.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "b9d3e2691865c934cc963f376205f9b9fb3db165c247fb26111fc64cfc4b5b1b"
+  },
+  {
+    "file": "renderer/src/ConversationStatusCard.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "子代理",
+    "fingerprint": "cc377cc82272c68ef48a78408e881a1a2269a1b7a59a6e93a3fca597f440b80e"
+  },
+  {
+    "file": "renderer/src/ConversationStatusCard.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "进程",
+    "fingerprint": "7a0de0a8725ed145bdc5b1c1dd19e5d5467f6d9dd87d90b585bbb3427aaa31b5"
+  },
+  {
+    "file": "renderer/src/DraftComposer.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "会话配置",
+    "fingerprint": "fd5169aa4b8cca3268efc131c8c3610f845c419f9dcaf086e70e8f176af83fed"
+  },
+  {
+    "file": "renderer/src/DraftComposer.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "cf58fa417ed334e32a08ce6caab8403c55cb9cdb21ba9308a4e338a36751a995"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "6dde0d86aceffd98336a4a8ed9dbdadd7dbe54ef5f537cae1abab46c30d4f2b8"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "7a5d707104029bc9a5109fda1e607a804094941cb0a9c25e2d0877804b2d4a7f"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "上下文",
+    "fingerprint": "5c640c98fe22e4dda73661b2351e86979483c4c29afecd223acde68dffee2779"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "进程",
+    "fingerprint": "309574ee40be42ec5b24fb37e592bad616719b920bb1f6e2271ef1517104c59b"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "执行计划",
+    "fingerprint": "bc83d1dfdf1da5813d39bff286c428b1d38b51211eec3d3c81d415e9e221352c"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "已保存授权",
+    "fingerprint": "5939b2778656cabb688d7a3f64a255e4321cef80ff49fe7b4904569558648d76"
+  },
+  {
+    "file": "renderer/src/ExecutableSideChatPane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "预览",
+    "fingerprint": "1e254e3fb878dbe1568107af664c47711d7711ef2a9bc9318e489a4d31c6c7b7"
+  },
+  {
+    "file": "renderer/src/GitPaneChangeCard.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "在默认应用中打开",
+    "fingerprint": "19436c37502dc0b2432950cf0a504a19c0b1493f6221916e0d8e926cf6d112fb"
+  },
+  {
+    "file": "renderer/src/GitPaneChangeCard.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "在文件管理器中显示",
+    "fingerprint": "3656f31b2f9b7acd4f049e466a646f074cdc4a986e8b4b5643704a50a09d8c27"
+  },
+  {
+    "file": "renderer/src/GitPaneChangeCard.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "在默认应用中打开",
+    "fingerprint": "4cf2ac709658da6cafc6f611da17333fb287eddb860a1f4e965bce58049e41a6"
+  },
+  {
+    "file": "renderer/src/GitPaneChangeCard.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "在文件管理器中显示",
+    "fingerprint": "4d1d4abc1d87237915a7dc04125b6f554ab4bba1f3e41ad72a5efb73cc4c476d"
+  },
+  {
+    "file": "renderer/src/Goal.tsx",
+    "kind": "unlocalized-date",
+    "snippet": ".toLocaleString()",
+    "fingerprint": "e5a1443196cec08671399ee164d92b66607c5a3660b277c7a79581b857f85cb2"
+  },
+  {
+    "file": "renderer/src/GoalUsage.tsx",
+    "kind": "unlocalized-date",
+    "snippet": ".toLocaleString()",
+    "fingerprint": "a574242b8d89172321ecf6f223d958aa79203ff870238b634eaea9ff2ec9b25d"
+  },
+  {
+    "file": "renderer/src/TaskCenter.tsx",
+    "kind": "unlocalized-date",
+    "snippet": ".toLocaleString()",
+    "fingerprint": "2b5085ad00a3d3a617994936ec4381f63d94fe764d0b5028a287ba2d69c62ee1"
+  },
+  {
+    "file": "renderer/src/TurnExecution.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "结果待确认",
+    "fingerprint": "fde73a516d689531fd68fb8188e81f20daaf1b4df2316ee5c7eb60759e1ac05d"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "功能",
+    "fingerprint": "3b01d5b4e1c08cb4e9a7105b6e3b64f9e9063e0658435b0041be08e1db1c1802"
+  },
+  {
+    "file": "renderer/src/app-shell/SidePane.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "功能",
+    "fingerprint": "d6e62048bf5dbbc79373b2cb21a06152f8ccd0fe7c9f8e5e1ca196f38596ed6e"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "修改文件",
+    "fingerprint": "3bfa630defc6265da0d2b83c9e17d231102bbdfa9bea9d2ddd1d67be203b478d"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "探索",
+    "fingerprint": "4b7f378b73b75f898babee7132c3bfd26027b0fead8290a4191b99d84915cb75"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "运行命令",
+    "fingerprint": "2ee43f67b9a54bfc3c824685dae4b2957ee07128e3f8905426a00af03b2a3e77"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "修改文件",
+    "fingerprint": "6ac11549d8b16e49b1ce6fe4eb5856acf6f49a0fa66baa73078b373e3258b395"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "探索",
+    "fingerprint": "71ec46930ad8a618f4f1c873172ca2ee071986cf043ac2d07187ff185d5f37f8"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "运行命令",
+    "fingerprint": "8eb5521943adc060bd88558eeb01d38b3a39f1cffec253014feb87de205cf39b"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "等待任务",
+    "fingerprint": "bc7c4376fc9dcf52d0f6180e2d7fd250b2db0908f26942b638cb874bd920e39f"
+  },
+  {
+    "file": "renderer/src/conversationPresentation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "结果待确认",
+    "fingerprint": "e427288558ec438d5cf88415c1b58df3f892b21da779d5f95a599fa47d89fa46"
+  },
+  {
+    "file": "renderer/src/mobile/product-driver.ts",
+    "kind": "cjk-identifier",
+    "snippet": "高",
+    "fingerprint": "7ffb1c8daa3f17c9281b49fadbc5db919dd06f376ac611918359d11bf96ce561"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "会话",
+    "fingerprint": "d2138e0b21d7c2a90ff1a892f15808147c6e82cfb74e8e2a540ab2cb0c64ab25"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "会话",
+    "fingerprint": "09f571fb868f9971c9433d4aa654ceee94ca28eb012ee94ab1e9e66c36028cbd"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "应用",
+    "fingerprint": "426b92cf8d7f9956f27f818ab15a3c23c08785c61afd0cd0b30d233027d6ae5f"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "功能",
+    "fingerprint": "9c171e10d6ea42820de313ace1d6efeb1a51b590387df2f6403458d53f136fe9"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "会话",
+    "fingerprint": "15c66bb7d7480a4c93646fe97e5889aac935a8bd9b3e2157df59c4193b2bd646"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "应用",
+    "fingerprint": "48ce2b060c0db485032d9859f28d0b88ea5b7475cca325ba15445d710b576271"
+  },
+  {
+    "file": "renderer/src/prompt-editor/ComposerCatalog.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "功能",
+    "fingerprint": "73a25a9f574b2218a0950db9c85025424e5b07a2dff61ca93c8359d93b3d652d"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error?.message",
+    "fingerprint": "3bb922579ba3a3fd0989c36367d323c8ad801fcef6096728d2175331bac47b52"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "b14941a9b12725a5505e1eec94621b57e3ef4cab896e9f5a268204bcbaa1b04d"
+  },
+  {
+    "file": "renderer/src/remote/RemoteWorkbench.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "f0cf03154ded8104c434a9bb1d47973250229cd2666ce0fedb58d8315c705cbc"
+  },
+  {
+    "file": "renderer/src/reviewComments.ts",
+    "kind": "cjk-identifier",
+    "snippet": "新版",
+    "fingerprint": "36b907a332b99a53d644b445e41ab42ae70530760d7332dcc2984026ef3d3824"
+  },
+  {
+    "file": "renderer/src/settings/MobileAdvancedNetwork.tsx",
+    "kind": "internal-state-in-view",
+    "snippet": "state.connected",
+    "fingerprint": "613a586b07f3d00cbe74a73a5baf8424f95c15b73a4010e5608defe09302e7b9"
+  },
+  {
+    "file": "renderer/src/settings/MobileSettings.tsx",
+    "kind": "internal-state-in-view",
+    "snippet": "state.connected",
+    "fingerprint": "c8241c3b5abf15655cfc846fafb8af1572beef96149a100203c13211607bb246"
+  },
+  {
+    "file": "renderer/src/settings/MobileSettings.tsx",
+    "kind": "internal-state-in-view",
+    "snippet": "state.connected",
+    "fingerprint": "0b8be403043cf9aa21ebc3a19544b82ba74f60eda4d595d929ccc881b50e1ee6"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "功能",
+    "fingerprint": "d431ff2dc22fcf17ff9db54179bb66c1b38bea155e0aa9a729b21965416d167e"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "设置",
+    "fingerprint": "70543e5187c5bf2169a4d6307e7ae8e4eaf3983d27dcdd34338600ce38647775"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "旁路讨论",
+    "fingerprint": "ec0b11dcfbebcc02fa03599b37acd13f6eec7c3edb347709ae3a0d9493d5380e"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "历史旁路讨论",
+    "fingerprint": "a636090a9e289928b691db48de93e06c3813caa8a13ab46e9d8a84f3b3352126"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "子代理",
+    "fingerprint": "b3c093828b1887c1d566b8d9af20ea617254dbe0091d0ebd7d9e045ce2b63020"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "3f86d7c532dbc60cdfd379663f1e03cf394df451f498fe2ce8e52845521bc5aa"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "子代理",
+    "fingerprint": "a12532d8134ea6e99718d6aeb42ad72a85fe944e36154db130833564ebf040fc"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "设置",
+    "fingerprint": "b389afe8ee28a9abeb9fd6129f7d710e640baae897874d01f15c6ef67b46206f"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "后台服务",
+    "fingerprint": "394aecf4112fbf62219a4b9f596bc6e5cc796abf60ce892499dc1eaf2ad7e7b8"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "预览",
+    "fingerprint": "6b738b7e25743276f7226c20a540b36aa19b054b6e16de3643e91bba062dad48"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "旁路讨论",
+    "fingerprint": "787a7cf03a2473d93d64f75322e9067584a37d915de8b6f9e3f1603f4404aef2"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "6d9d04a0fcc01651d044dba5bc3a8afa34eae491e853692eb05939061e908dda"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "旁路讨论",
+    "fingerprint": "509e642c6a7597f6f76a60f3c9b6dea6e19b6c28f53a21dfe8eb4d84d2d3a0a9"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "子代理",
+    "fingerprint": "66960974db8add016e1d2faf2f840bd3039b34829de0e9ef5498193fa0c206c0"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "旁路讨论",
+    "fingerprint": "0c5ee95df3fb1a9885cb3e40e0de5e7e8a4daeac2ed945ff14c87a4b818a37d1"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "e92ddbd528f6484f24a3d46971766025c81e015e1535558992d1356279544c15"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "终端",
+    "fingerprint": "2e60ca3f10ea0bf48a130e1c26ac3839fc7c631c99e6e09e0448b909262ac0b8"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "终端",
+    "fingerprint": "74fb005af0fa60ebc2e375cd99c5bcd2cf44a8af846dab3f649fbb9a1483c3f5"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "旁路讨论",
+    "fingerprint": "53e95fad77c3e34379a311450b02099b95f804331d75eb8d35bf13b13f209325"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "终端",
+    "fingerprint": "14b9c8649db6287478a886017dd16fe6bcbc71955fa2bd72dfeb99edc05ddaa7"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "预览",
+    "fingerprint": "a75a01a0eab7f728887566a8f5ccf00629cb32d259faa9cabdf09a5da64cae5d"
+  },
+  {
+    "file": "renderer/src/state/usePanelNavigation.ts",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "d2da2b84d22cbea310fd1d61d0bc8bdc60a3cdd7f109bc35e4ae6a54a1b1b91b"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePanels.ts",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "e25d54aadf693819fc140d8c0534f4ebf70dfc841b8ea9ea8686ecbf12d65be8"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePanels.ts",
+    "kind": "cjk-identifier",
+    "snippet": "功能",
+    "fingerprint": "706c043e4c6f99acf00689e581452ea643a8130ac3acf14934cfd6a7018962fa"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePanels.ts",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "c7d50d2bd72eb6cf581f339090456086e8a376ef2c5cb68fc5ba1656dd604b35"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePanels.ts",
+    "kind": "cjk-identifier",
+    "snippet": "终端",
+    "fingerprint": "aed97234afe725b5383ecc1485c0ee9122773129e3a080f62a2ec4a589cb0ef8"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePanels.ts",
+    "kind": "cjk-identifier",
+    "snippet": "预览",
+    "fingerprint": "9f01dbceabab82aaa6e5fad3a449894e2902066ae4e847277ac0c4e685c27bb6"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePanels.ts",
+    "kind": "cjk-identifier",
+    "snippet": "任务资源",
+    "fingerprint": "1cd378ac2b69a5baf5fb3de774100adb55c1636033309abd47c48cdc3c0bcea5"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePanels.ts",
+    "kind": "cjk-identifier",
+    "snippet": "任务资源",
+    "fingerprint": "9755a2a1c3946e2bb98c70afa9d9b4063b95b44d204c457ef7f7331e262451e1"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePanels.ts",
+    "kind": "cjk-identifier",
+    "snippet": "功能",
+    "fingerprint": "02155afc5596ba6adc301acbe84acc93478c594229c1f553fffebe600c591fb5"
+  },
+  {
+    "file": "renderer/src/state/useWorkspacePreview.ts",
+    "kind": "cjk-identifier",
+    "snippet": "预览",
+    "fingerprint": "9e6b49417e7c84681a58fe5c5590ca1ff8206b30140e9057af747f0ff5868675"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalSession.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "b943e585687df619df8deb47886be61ff9e799f2d1584c7bec02471b43726d6a"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalSession.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "318f1a7c6d8c0501b1f62648e94e8a3bdd7fd1b74f064d23dc70cae3a0d90c5b"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalSession.tsx",
+    "kind": "raw-error-text",
+    "snippet": "error.message",
+    "fingerprint": "226c7ffd2739c96022580d504be04998f2279d6b3b1ca3e8a177c67b3d6379b1"
+  },
+  {
+    "file": "renderer/src/terminal/TerminalSession.tsx",
+    "kind": "raw-error-text",
+    "snippet": "String(error)",
+    "fingerprint": "c649c384a1b50d63da8a00a92c8ed49dc415a8a51102b94869335d502bbc30b3"
+  },
+  {
+    "file": "renderer/src/views/ConversationWorkspace.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "3488b0cb8b52e9567eec44b3b7d9564c965cf4f2b8d0d530048adb0e5b422928"
+  },
+  {
+    "file": "renderer/src/views/RecoveryNotices.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "模型服务",
+    "fingerprint": "7135b995c4cd9b87ab0e7dee8c41aa40c7b211a15b7a63ece26624b75837a93a"
+  },
+  {
+    "file": "renderer/src/views/TaskResourcesPopover.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "子代理",
+    "fingerprint": "3820994f9404550f906945924c6d49e99e936c667e3005fd9fe57e12decd28a3"
+  },
+  {
+    "file": "renderer/src/views/TaskWorkspace.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "设置",
+    "fingerprint": "8bed470e7486423623da0937816c2bbb84923bc0e42086ecadbe104fcc17fe49"
+  },
+  {
+    "file": "renderer/src/views/TaskWorkspace.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "设置",
+    "fingerprint": "7b33b4d8403279ea8fc253a72d76de91d1d50a2795ad8dacd5257fc88a96781b"
+  },
+  {
+    "file": "renderer/src/views/TaskWorkspace.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "设置",
+    "fingerprint": "93d9a3eef18ed1b3defda62e8ede2c6d5101c13a60bb811d86669e973fc52ebd"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "设置",
+    "fingerprint": "65019eb5effcb09866c84f96a3668ef151d89d0d240dc50383a093314607b9d0"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "调用轨迹",
+    "fingerprint": "4d07677f94299a42fb554d18a5a571585fc52ee1dd86ea010947efd373473525"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "子代理",
+    "fingerprint": "f9f07398d7f56569e851914cd5a26353ba9857577847b03a5c7749bcd7ee0dcd"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchChrome.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "95b2857f387e2c548e973fcd38a4a42252c207313c0c297cd310a4728d7447ef"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "高级诊断",
+    "fingerprint": "a72f0e0e7a2aba76643ee1c2a70977fdb7356fbeccbaef3f0c7a5471867b89e6"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "常规",
+    "fingerprint": "1d7c380f63911d92799f1a1f702e799086d10a5e4151a97bbd0f76de37695dfc"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "模型服务",
+    "fingerprint": "63cfb69e73c2b79ea3f39f19ebf7b1179babd6f241a2c47a023e0a95993698a3"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "外观",
+    "fingerprint": "c2d32f8a6c39bd4eab613b3505fb921c127cbebe99a6598c728ba13ca21503f0"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "常规",
+    "fingerprint": "b4082f2461c0e593a1a025c912a2db28419a2beaa679d48fa3957da9986a6c02"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "浏览器",
+    "fingerprint": "c823e316a15c1c4e560d92995a2adef382c1f92ded14ca72c36deb4fa69a4abb"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "电脑控制",
+    "fingerprint": "12616322f3534644436da2fb47f41dcf90b8c2f2db3b74539a72ceefa6e7e090"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "钩子",
+    "fingerprint": "d36c0a42d1cfe167e4dbd45cd23aa0a29946db9947c175ddb93a35cfe757a4eb"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "模型服务",
+    "fingerprint": "ab1d5100a11dfd56835238a5c5793583d63b2af5b8380d0657dd5f1599278b00"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "会话配置",
+    "fingerprint": "d5abddedb1d57c871e3ea1881afb7a49b6141bcf93dd83db175f46c28715f78d"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "手机连接",
+    "fingerprint": "36cd9a70ce903599d062d9cfd5024c392cf70fc0e5950e551f84225b5decef2f"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "数据飞轮",
+    "fingerprint": "bbbe71647f27ecad57913d7e7058387a7b2bdc3b95de5699343b1e3352acfdc1"
+  },
+  {
+    "file": "renderer/src/views/WorkbenchSettings.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "用量",
+    "fingerprint": "abffe5af10bc613c1b3f5142ba5b61623633336b3a5966401fe3333d975876d8"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "3e4cd734446b0664f8e1943db61795809342fb1ecb17ce54b0485b4ebc25a8b0"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "1b651a20de5c1bb69a2c5bb2af84794c4ef6c37161ce7e3f7f34547636de6dce"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "旁路讨论",
+    "fingerprint": "37f000ef32360fa0671ca15f7ae4244527ad706d3acf2bab1352b616d93aa8d7"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "历史旁路讨论",
+    "fingerprint": "871d76719007ab89b188cdde15ad2b6c616ddf3d4490a1ef2e4d17a52bcafa29"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "子代理",
+    "fingerprint": "26bb23c83b9cd3567b50339c6962a96351bbbfb8a143f7c8e5845aa5271a1139"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "编辑目标",
+    "fingerprint": "a2acfac5fcf9a291a62dfca176cccbae0a026978bd5036902850ac8dbe3c1abb"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "04fbc41d7088b37092aeecd356ca0a9b0c9b62c931399a630dcd2ffc72431689"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "改动",
+    "fingerprint": "6adcb34d4c3ce11c35602cf29e547ff6e36c9e08c6bbefa151e894adb1ddb50a"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "设置",
+    "fingerprint": "567429ff016c30c88946a18b4675fba896242e08b6601015dea8f60b4d4dee52"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "预览",
+    "fingerprint": "2da84f82eeac3870c7f1c420b846d6b66eabbf0a50b87c1c94f7a52fe0c75374"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "工作组",
+    "fingerprint": "fcd5ae6ba8b9b3d0786a60c54437608606ba9f3a79a09388d31dd050c1cc975d"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "执行计划",
+    "fingerprint": "fcf2327204a359e0e77221f43285223bc6864b4fb2da361a9ab58a0faab46d2f"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "已保存授权",
+    "fingerprint": "0139c8774cb79dd1ac4d3c6e481f297a3e5b3a11b32a795a0feed02dffff1735"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "上下文",
+    "fingerprint": "85cb27b51e2bb3451a89b32dbbe934e24148ebff4a93629303f237705725d3d6"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "进程",
+    "fingerprint": "cb72f9591c1a47dd6fe4d714f9ba5eccc259a95ba0c211d6a3f1ffd7e32173ad"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "调用轨迹",
+    "fingerprint": "f71f4da4b80a2c72e5d72790de6831b74e777cb477485f2c62ddece46e3fa5b1"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "子任务",
+    "fingerprint": "5e6034add2dfe5a699735680441f7aaa1bd32da36dbbff41a1f670716a681012"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "用量",
+    "fingerprint": "46960e6aa8b2ef2991bd53c4d4e6869e2c87f0c9a4b1f71c57f92b67b5b4ab85"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanelContent.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "队列",
+    "fingerprint": "ff1b388e18777a26650c68ab5e0195ee9d2d71002b26866f1ffaedc593fb16b0"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "功能",
+    "fingerprint": "6d3185abb9a4749e181d7c99c45942fc53dcd32fb56201ca20cd52daec92e5d5"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "cb2d518e5d2e3a3133c5f73884db39a3e55af954d5e26d0b8a68c11279b101c0"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "终端",
+    "fingerprint": "2bdff709d1364e4c92323cd865e686030436ced0bf9517392c1a1baa8dd16b1a"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "预览",
+    "fingerprint": "f7c8d4407d588f07160a1fe99a7ad2fdc6fd7fa22fcc0d83c7bef93395ba79b4"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "旁路讨论",
+    "fingerprint": "d1524319b5db23edbee1ee04a28ba73b13244508d13be49082bd222bb1522b53"
+  },
+  {
+    "file": "renderer/src/views/WorkspacePanels.tsx",
+    "kind": "cjk-identifier",
+    "snippet": "文件",
+    "fingerprint": "98f094f978cbced769c4a4973978fc6dd2d961f145cd3dd4e3485e3f14ff3ca4"
+  },
+  {
+    "file": "scripts/conversation-derivation-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "在新工作树中创建",
+    "fingerprint": "d68c643cfa534b50ea7a1b8fc6b28e420780b72160c5a15abd3d79b5f89a657d"
+  },
+  {
+    "file": "scripts/feedback-ui-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "正在理解你的意见…",
+    "fingerprint": "c0eaae7a5a25c37803e2eb7aba176cbcae040f93a09e557a4183577a48449985"
+  },
+  {
+    "file": "scripts/gui-host-quit-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "默认保持共享后台运行。有活动任务时可选择停止任务并退出，停止需要再次确认。",
+    "fingerprint": "3eba6fcf368690fc1fc69704df4f949f2b0ba72daa0ce6e0e92e53a8879242a1"
+  },
+  {
+    "file": "scripts/observability-desktop-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "已保存到本机，尚未发送。请检查内容后导出。",
+    "fingerprint": "ec11e74aced90c992b6bea2074ce1f118aa3a27f50f8a4b77e945dad73e295c4"
+  },
+  {
+    "file": "scripts/plugin-detail-ui-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "尚未观察当前项目的运行状态。目录与支持信息来自本地 Store 快照。",
+    "fingerprint": "e88926104e28afd6578fe2d747fe09d6e27aff336832be66a87fb6605bee3db2"
+  },
+  {
+    "file": "scripts/plugin-p1-auth-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "已复制隐私政策链接。",
+    "fingerprint": "839e1a5f0a1b23410c46882f01d0bd137306173f458fdcebd5192f85cc369af4"
+  },
+  {
+    "file": "scripts/plugin-p1-p3-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "我已核对以上来源、版本和内容摘要",
+    "fingerprint": "52bdcfc68f144670584f9cb77b03a82ee0b5317d73241445855a739bf9f5c294"
+  },
+  {
+    "file": "scripts/plugin-p1-p3-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "我信任此已安装快照并允许启动其 MCP 服务器",
+    "fingerprint": "fb2252c4922aacc5116b46c755dfdd3bdc5c09a59b219509438563df098e32d4"
+  },
+  {
+    "file": "scripts/plugin-p3-uploads-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "我已核对以上来源、版本和内容摘要",
+    "fingerprint": "57dcd81f6fd8bc01803b043792dc226902d5a66b4000a195fde631c589d5101e"
+  },
+  {
+    "file": "scripts/plugin-p3-uploads-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "我信任此已安装快照并允许启动其 MCP 服务器",
+    "fingerprint": "61c18174db959a27bbc4658d2e43d00dcae9fe664b1f0011d914f0ac824a5d2d"
+  },
+  {
+    "file": "scripts/plugin-resource-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "【插件第48段】",
+    "fingerprint": "519c534b58418c286e83e656c3c029418414b104bd57f757b94a3499f67f3963"
+  },
+  {
+    "file": "scripts/task-conversation-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "读取失败 · 上次读取",
+    "fingerprint": "9854fecf8f5b12c03f42d13f4dd8f7adf88410480a1e0d32ca84fd001beecd4e"
+  },
+  {
+    "file": "scripts/trajectory-ui-smoke.mjs",
+    "kind": "stale-text-assertion",
+    "snippet": "0毫秒 / 0毫秒 / 0毫秒",
+    "fingerprint": "0ecc433b0bb0d63e6e4c60810cbd86f72637d3cf21e75342bdbca096519a70e0"
+  }
+]

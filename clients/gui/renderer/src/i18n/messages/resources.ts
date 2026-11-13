@@ -29,5 +29,6 @@ export const resourceMessages = {
   "resources.openWorkspace": { "zh-CN": "打开工作区", en: "Open workspace" },
   "resources.local": { "zh-CN": "本地环境", en: "Local environment" },
   "resources.cloud": { "zh-CN": "云端环境", en: "Cloud environment" },
+  "resources.worktree": { "zh-CN": "工作树（独立副本）", en: "Worktree (separate copy)" },
   "resources.branch": { "zh-CN": "分支", en: "Branch" },
 } as const;

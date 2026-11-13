@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { rawText } from "../errors/errorCopy.js";
+import { scheduleReconcile } from "../errors/autoReconcile.js";
+import { markReported } from "../errors/reported.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { call, type Action, type Data, type PlatformServices, type Snapshot } from "../services.js";
 import {
@@ -57,6 +60,7 @@ export function useRecoveryNotices(
           if (
             !requestId ||
             isIndependentCreation(entry, []) ||
+            entry.method === "areal/side/create" ||
             entry.awaitingResponse ||
             observed.some(
               (notice) => notice.projectId === owner.id && notice.requestId === requestId,
@@ -111,11 +115,48 @@ export function useRecoveryNotices(
       return changed ? next : previous;
     });
   }, [snapshot.projects, notices]);
+  // 所有“结果未知”的操作走同一条出路：用原编号自动核对，核对期间不提示；
+  // 查到结果由上面的 effect 结算，几次都查不到才提示一次。
+  const [unresolved, setUnresolved] = useState<Set<string>>(() => new Set());
+  const reconciling = useRef(new Map<string, () => void>());
+  useEffect(() => {
+    const open = new Map(
+      notices
+        .filter((notice) => notice.kind === "unconfirmed" && notice.requestId)
+        .map((notice) => [notice.id, notice]),
+    );
+    for (const [id, stop] of reconciling.current)
+      if (!open.has(id)) {
+        stop();
+        reconciling.current.delete(id);
+      }
+    for (const [id, notice] of open) {
+      if (reconciling.current.has(id) || unresolved.has(id)) continue;
+      reconciling.current.set(
+        id,
+        scheduleReconcile(
+          async () => {
+            const target = { projectId: notice.projectId };
+            await call(services, "reconcile", { ...target, requestId: notice.requestId }).catch(
+              () => {},
+            );
+            await call(services, "reconcile", target).catch(() => {});
+          },
+          () => setUnresolved((previous) => new Set(previous).add(id)),
+        ),
+      );
+    }
+  }, [notices, unresolved, services]);
+  useEffect(() => {
+    const timers = reconciling.current;
+    return () => timers.forEach((stop) => stop());
+  }, []);
   const operationNotices = notices.filter(
     (notice) =>
       notice.projectId === selection.projectId &&
       notice.threadId === selection.threadId &&
-      !dismissedNotices.has(notice.id),
+      !dismissedNotices.has(notice.id) &&
+      (notice.kind !== "unconfirmed" || unresolved.has(notice.id)),
   );
   const action: Action = useCallback<Action>(
     async (name, params) => {
@@ -155,6 +196,8 @@ export function useRecoveryNotices(
         const composerRefusal = name === "send" && failure.outcome?.kind === "rejected";
         if (
           !composerRefusal &&
+          // 核对请求本身失败不提示：它由下面的自动核对按次数重试。
+          name !== "reconcile" &&
           !["providers", "chatgpt", "prediction", "history"].includes(name) &&
           !(name === "respond" && "answers" in params && params.answers) &&
           name !== "media" &&
@@ -189,6 +232,7 @@ export function useRecoveryNotices(
             const pendingOperation = latest?.pending?.find(
               (entry: Data) => entry.params?.requestId === requestId,
             )?.operation;
+            markReported(failure);
             setNotices((previous) => [
               ...previous.filter((notice) => notice.id !== id),
               {
@@ -197,9 +241,9 @@ export function useRecoveryNotices(
                 requestId,
                 operation: operation ?? pendingOperation,
                 kind: unconfirmed ? "unconfirmed" : "error",
-                message: recoveryMessage(failure),
+                message: recoveryMessage(failure, "operation", t),
                 settings: recoverySettings(failure),
-                detail: [failure.message, failure.code, failure.reason, operation?.method]
+                detail: [rawText(failure), failure.code, failure.reason, operation?.method]
                   .filter((value) => value !== undefined)
                   .join("\n"),
               },
@@ -209,7 +253,7 @@ export function useRecoveryNotices(
         throw cause;
       }
     },
-    [services, selection.projectId, selection.threadId],
+    [services, selection.projectId, selection.threadId, t],
   );
   return { operationNotices, dismissedNotices, dismissNotice, setError, action };
 }

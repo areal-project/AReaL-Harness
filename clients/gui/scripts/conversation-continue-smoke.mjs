@@ -1,10 +1,12 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { cp, mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
@@ -25,7 +27,7 @@ const { ServiceConnection, waitForServiceProcessExit } = require(
 const { DesktopLifecycle } = require(join(sourceDesktop, "src/core/lifecycle.cjs"));
 const binary = process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
 await mkdir(join(root, ".scratch/gui-evidence"), { recursive: true });
-const scratch = await mkdtemp(join(root, ".scratch/gui-evidence/conversation-continue-"));
+const scratch = await trackedMkdtemp(join(root, ".scratch/gui-evidence/conversation-continue-"));
 const desktop = join(scratch, "application/app");
 const renderer = join(scratch, "application/renderer/dist");
 const registry = await makeTempDir("continue-svc-");
@@ -565,7 +567,20 @@ try {
   }, "Runtime command actually started");
   await page.getByRole("button", { name: "暂停执行", exact: true }).click();
   await until((s) => thread(s)?.turns?.at(-1)?.status !== "inProgress", "Runtime pause settled");
-  const runtimePaused = (await turns()).at(-1);
+  const runtimePaused = await readTurnToolDetails({
+    command: async (name, params) => {
+      const result = await page.evaluate(
+        ({ name, params }) => window.arealDesktop.command(name, params),
+        { name, params },
+      );
+      assert.equal(result.ok, true, JSON.stringify(result));
+      return result.value;
+    },
+    readThread: async () => thread(await snapshot()),
+    projectId,
+    threadId,
+    turnId: (await turns()).at(-1).id,
+  });
   await writeFile(join(scratch, "runtime-pause-turn.json"), JSON.stringify(runtimePaused, null, 2));
   await shot("00-runtime-paused.png");
   assert.equal(

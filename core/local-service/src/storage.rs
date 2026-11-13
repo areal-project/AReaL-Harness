@@ -27,6 +27,51 @@ pub fn canonical_pending(path: &Path) -> Result<PathBuf> {
     )
 }
 
+pub fn prepare_host_home(path: &Path) -> Result<PathBuf> {
+    if let Err(error) = std::fs::symlink_metadata(path) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(error.into());
+        }
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)?;
+    }
+    let directory = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(path)?;
+    let meta = directory.metadata()?;
+    ensure!(
+        meta.is_dir() && meta.uid() == unsafe { libc::geteuid() },
+        "Host home must be owned by the current user"
+    );
+    let mode = meta.permissions().mode() & 0o7777;
+    if mode == 0o755 {
+        directory.set_permissions(std::fs::Permissions::from_mode(0o700))?;
+        eprintln!(
+            "Restricted legacy Host home permissions to 700: {}",
+            path.display()
+        );
+    } else {
+        ensure!(
+            mode & 0o7077 == 0,
+            "Host home must be private or legacy mode 755"
+        );
+    }
+    let after = directory.metadata()?;
+    let named = std::fs::symlink_metadata(path)?;
+    ensure!(
+        named.is_dir()
+            && after.uid() == unsafe { libc::geteuid() }
+            && after.mode() & 0o7077 == 0
+            && after.dev() == named.dev()
+            && after.ino() == named.ino(),
+        "Host home changed during initialization"
+    );
+    Ok(path.canonicalize()?)
+}
+
 pub fn private_dir(path: &Path) -> Result<()> {
     if !path.exists() {
         std::fs::DirBuilder::new()
@@ -81,15 +126,97 @@ pub fn read<T: DeserializeOwned>(path: &Path) -> Result<T> {
 }
 
 pub fn write(path: &Path, value: &impl Serialize) -> Result<()> {
-    let mut file = tempfile::NamedTempFile::new_in(path.parent().context("missing parent")?)?;
+    let mut bytes = serde_json::to_vec(value)?;
+    bytes.push(b'\n');
+    write_bytes(path, &bytes)
+}
+
+/// 同目录临时文件 + fsync + 改名 + fsync 目录；临时文件名以 `.tmp` 开头，见 `json_records`。
+pub fn write_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    let parent = path.parent().context("missing parent")?;
+    let mut file = tempfile::NamedTempFile::new_in(parent)?;
     file.as_file()
         .set_permissions(std::fs::Permissions::from_mode(0o600))?;
-    serde_json::to_writer(&mut file, value)?;
-    file.write_all(b"\n")?;
+    file.write_all(bytes)?;
     file.as_file().sync_all()?;
     file.persist(path)?;
-    File::open(path.parent().unwrap())?.sync_all()?;
+    File::open(parent)?.sync_all()?;
     Ok(())
+}
+
+/// 读当前用户拥有的普通文件，不限大小、不要求 0600；不存在返回 None。
+pub fn read_bytes(path: &Path) -> Result<Option<Vec<u8>>> {
+    let mut file = match OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.into()),
+    };
+    let metadata = file.metadata()?;
+    ensure!(
+        metadata.is_file() && metadata.uid() == unsafe { libc::geteuid() },
+        "source must be a regular file owned by current user"
+    );
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut file, &mut bytes)?;
+    Ok(Some(bytes))
+}
+
+/// `read_bytes` 再按 JSON 解析。
+pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
+    read_bytes(path)?
+        .map(|bytes| serde_json::from_slice(&bytes).map_err(Into::into))
+        .transpose()
+}
+
+/// 列出目录里的 `*.json` 记录。`write` 崩溃时留下的 `.tmp*` 临时文件不是记录，
+/// `clean` 为真时顺手删掉；只在持有目录写权的启动阶段传真。
+pub fn json_records(directory: &Path, clean: bool) -> Result<Vec<PathBuf>> {
+    let entries = match std::fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    let mut records = Vec::new();
+    for entry in entries {
+        let path = entry?.path();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if name.starts_with(".tmp") {
+            if clean {
+                match std::fs::remove_file(&path) {
+                    Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                        return Err(error.into());
+                    }
+                    _ => {}
+                }
+            }
+        } else if path
+            .extension()
+            .is_some_and(|extension| extension == "json")
+        {
+            records.push(path);
+        }
+    }
+    records.sort();
+    Ok(records)
+}
+
+/// 已结算回执的保留期：重试同一 requestId 在这段时间内仍得到原回执。
+pub const SETTLED_RECEIPT_RETENTION: std::time::Duration =
+    std::time::Duration::from_secs(24 * 60 * 60);
+
+/// 文件最后一次写入早于保留期。回执每次改状态都整份重写，所以 mtime 就是结算时间。
+pub fn past_retention(path: &Path) -> Result<bool> {
+    let modified = std::fs::symlink_metadata(path)?.modified()?;
+    Ok(modified
+        .elapsed()
+        .is_ok_and(|age| age >= SETTLED_RECEIPT_RETENTION))
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -152,6 +279,16 @@ pub struct CrashReceipt {
     pub cleanup_confirmed: bool,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CleanupReceipt {
+    pub version: u32,
+    pub identity: areal_protocol::service::Identity,
+    pub owner: Option<areal_protocol::service::Owner>,
+    pub components: std::collections::BTreeMap<String, String>,
+    pub cleanup_confirmed: bool,
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LauncherCleanup {
@@ -199,11 +336,7 @@ pub fn has_admitted_stop_receipt(
         return Ok(false);
     }
     private_dir(&operations)?;
-    for entry in std::fs::read_dir(&operations)? {
-        let path = entry?.path();
-        if path.extension().is_none_or(|ext| ext != "json") {
-            continue;
-        }
+    for path in json_records(&operations, false)? {
         let receipt: StopReceipt = read(&path)?;
         if receipt.operation.generation != identity.generation {
             continue;
@@ -222,8 +355,9 @@ pub fn has_admitted_stop_receipt(
 }
 
 pub fn available(path: &Path) -> Result<bool> {
+    // 这里只观察独占 owner；真正启动或打开数据仍须取得独占锁。
     let file = open_private(path, true)?;
-    match file.try_lock_exclusive() {
+    match FileExt::try_lock_shared(&file) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
         Err(e) => Err(e.into()),
@@ -232,7 +366,7 @@ pub fn available(path: &Path) -> Result<bool> {
 
 pub fn store_available(data: &Path) -> Result<bool> {
     let file = store_lock(data)?;
-    match file.try_lock_exclusive() {
+    match FileExt::try_lock_shared(&file) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => Ok(false),
         Err(e) => Err(e.into()),
@@ -334,6 +468,54 @@ pub fn file_digest(path: &Path) -> Result<String> {
 mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
+
+    #[test]
+    fn availability_observers_share_reads_but_reject_live_owners() {
+        let root = tempfile::tempdir().unwrap();
+        for name in ["service.lock", "owner.lock"] {
+            let path = root.path().join(name);
+            let reader = open_private(&path, true).unwrap();
+            FileExt::try_lock_shared(&reader).unwrap();
+            assert!(available(&path).unwrap());
+            if name == "owner.lock" {
+                assert!(store_available(root.path()).unwrap());
+            }
+            let owner = open_private(&path, true).unwrap();
+            assert!(owner.try_lock_exclusive().is_err());
+            drop(reader);
+            owner.try_lock_exclusive().unwrap();
+            assert!(!available(&path).unwrap());
+            if name == "owner.lock" {
+                assert!(!store_available(root.path()).unwrap());
+            }
+        }
+    }
+
+    #[test]
+    fn host_home_restricts_legacy_directory_without_changing_children() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("legacy");
+        std::fs::create_dir(&home).unwrap();
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let child = home.join("child");
+        std::fs::create_dir(&child).unwrap();
+        std::fs::set_permissions(&child, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(home.join("config.toml"), b"original").unwrap();
+        prepare_host_home(&home).unwrap();
+        assert_eq!(std::fs::metadata(&home).unwrap().mode() & 0o7777, 0o700);
+        assert_eq!(std::fs::metadata(&child).unwrap().mode() & 0o7777, 0o755);
+        assert_eq!(
+            std::fs::read(home.join("config.toml")).unwrap(),
+            b"original"
+        );
+        prepare_host_home(&home).unwrap();
+        let alias = root.path().join("alias");
+        symlink(&home, &alias).unwrap();
+        assert!(prepare_host_home(&alias).is_err());
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o775)).unwrap();
+        assert!(prepare_host_home(&home).is_err());
+        assert_eq!(std::fs::metadata(&home).unwrap().mode() & 0o7777, 0o775);
+    }
 
     #[test]
     fn canonical_identity_and_private_records_reject_symlinks() {

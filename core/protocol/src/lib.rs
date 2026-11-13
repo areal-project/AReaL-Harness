@@ -1,8 +1,11 @@
 pub mod context;
 pub mod delegation;
 pub mod goals;
+#[path = "../generated/host_protocol.rs"]
+pub mod host;
 pub mod plugin_runtime;
 pub mod service;
+pub mod submissions;
 pub mod tasks;
 pub mod work;
 use serde::{Deserialize, Serialize};
@@ -800,5 +803,22 @@ mod turn_outcome_tests {
         }});
         let decoded: TurnError = serde_json::from_value(value.clone()).unwrap();
         assert_eq!(serde_json::to_value(decoded).unwrap(), value);
+    }
+}
+
+#[cfg(test)]
+mod host_manage_read_tests {
+    use serde_json::json;
+    #[test]
+    fn skills_reads_accept_a_thread_or_an_agent_profile() {
+        for params in [
+            json!({"projectId":"p","operation":"skills","threadId":"t"}),
+            json!({"projectId":"p","operation":"skills","agentProfile":{"id":"standard","revision":"v1"}}),
+            json!({"projectId":"p","operation":"skill","skill":{"id":"s","revision":"r"},"agentProfile":{"id":"standard","revision":"v1"}}),
+        ] {
+            let decoded: crate::host::WorkbenchManageReadParams =
+                serde_json::from_value(params.clone()).unwrap();
+            assert_eq!(serde_json::to_value(decoded).unwrap(), params);
+        }
     }
 }

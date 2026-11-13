@@ -11,7 +11,7 @@ A Task owns identity, objective, schedule, total token budget and a persistent C
 | mode | threadId | Default interactionMode | Trigger |
 |---|---|---|---|
 | foreground | Required root Thread | interactive | Queued after acceptance |
-| scheduled | Required root Thread locating the execution environment | interactive | UTC trigger with a connected desktop Host; fresh Thread per Run |
+| scheduled | Required root Thread locating the execution environment | interactive | UTC trigger with a connected schedule Host; `delivery=thread` continues the bound conversation, `newThread` (default) starts a fresh Thread per Run |
 | background | Optional; Core creates a coordinator Thread | asynchronous | Queued after acceptance; workers may use independent Sessions |
 
 `areal/goal/create` still atomically admits its first Turn and also registers a foreground Task; its response adds `taskId/runId`. `areal/task/create` persists acceptance before asynchronous dispatch; success does not mean the model has started. An existing Goal, active Turn or user queue on the bound Thread delays admission. Each Task has at most one unfinished Run.
@@ -26,7 +26,7 @@ Task identity is independent of the client connection, and communication does no
 | asynchronous | Forces a persistent asynchronous question and returns immediately | Immediate PermissionDenied |
 | headless | Immediately returns `status="unavailable", reason="headless", waiting=false`; creates no question | Immediate PermissionDenied |
 
-Headless never awaits users or automatically approves operations. The model can continue with justified assumptions or report a concrete blocker. Tools already permitted by effective policy still execute. background rejects interactive mode and client dynamic-tool Threads. scheduled fixes interactive mode and uses current configuration/tools from the desktop Host under existing Runtime and Profile permissions.
+Headless never awaits users or automatically approves operations. The model can continue with justified assumptions or report a concrete blocker. Tools already permitted by effective policy still execute. background rejects interactive mode and client dynamic-tool Threads. scheduled fixes interactive mode and receives current configuration from the schedule Host. An online GUI separately supplies desktop tools. Existing Runtime and Profile permissions still apply.
 
 Set policy through `GoalCreate.interactionMode` or `ClientOptions.interactionMode`. The optional `interactionMode` on `areal/turn/start/enqueue` overrides that submission; queued items freeze it without changing Thread defaults. TUI headless and Claude CLI without a bidirectional response channel explicitly select headless. Explicit bidirectional stream-json CLI sessions retain the interactive host protocol; dontAsk still selects headless. Interaction policy cannot expand tool permissions.
 
@@ -49,18 +49,19 @@ The table omits the `areal/` prefix. create/update/control/reply require interac
 
 | Method | Parameters | Response |
 |---|---|---|
-| task/create | `requestId, mode, objective, threadId?, sourceThreadId?, interactionMode?, schedule?, scheduleV2?, tokenBudget?, maxTurns?, maxActiveSeconds?` | Task projection |
+| task/create | `requestId, mode, objective, threadId?, sourceThreadId?, interactionMode?, schedule?, scheduleV2?, tokenBudget?, maxTurns?, maxActiveSeconds?, delivery?, model?, parameters?` | Task projection |
 | task/schedule/context | `timeZone` | `{coreNow,timeZone,localDate,localTime}` |
 | task/schedule/preview | `schedule: ScheduleIntent, from?, count: 1..10` | `{coreNow,from,schedule,timeZone,occurrences,warnings}` |
 | task/list | `after?, limit?` | `{data: Task[], nextCursor}` |
 | task/read | `taskId` | Task projection |
 | task/runs/list | `taskId, cursor?, limit?` | `{data: TaskRun[], nextCursor, hasMore, runCount}` |
 | task/run/read | `taskId, runId` | One complete TaskRun |
-| task/update | `requestId, taskId, expectedRevision, objective?, schedule?, scheduleV2?` | Updated Task projection |
+| task/update | `requestId, taskId, expectedRevision, objective?, schedule?, scheduleV2?, delivery?, model?, parameters?` | Updated Task projection |
 | task/runNow | `requestId, taskId, expectedRevision` | `{taskId, runId, revision, accepted:true}` |
 | task/pause, task/resume, task/cancel, task/delete | `requestId, taskId, expectedRevision` | Task projection after persisting control intent |
 | task/stopRun, task/resumeRun | `requestId, taskId, expectedRevision, expectedRunId` | Current Run stop/resume intent without changing recurrence |
-| task/host/ready | `{}`; unrestricted manage + tools required | `{ready:true}`; register current desktop connection |
+| task/host/ready | `{}`; unrestricted manage + tools required | `{ready:true}`; register current schedule-host connection |
+| task/tools/ready | `{bundles:("areal.browser.v1"\|"areal.computer.v1")[]}`; unrestricted manage + tools required | `{ready:true}`; publish this connection's desktop tools; an empty array withdraws its publication |
 | task/subscribe | `taskId` | Atomic snapshot and subsequent task/updated notifications |
 | task/unsubscribe | `taskId` | `{removed:true}`; does not cancel execution |
 | channel/read | `taskId, afterSequence?, limit?` | `{taskId, channelSequence, data, nextSequence, hasMore}` |
@@ -69,11 +70,19 @@ The table omits the `areal/` prefix. create/update/control/reply require interac
 
 `task/pause` also accepts optional `expectedRunId`, advertised by `features.taskPauseRunGuard`. After receipt lookup, Core checks it against the latest Run together with `expectedRevision` under the same Task lock; a missing or changed Run conflicts. Supplying it to resume, cancel, or delete is invalid. An identical accepted duplicate returns its original receipt even after revision/Run changes or restart; changing the Run under the same request key conflicts. Omission preserves existing callers and receipt digests. For scheduled Tasks pause affects future triggers only; stopRun stops current work. Run and worker settlement determine when execution has stopped.
 
-Task projections contain `id, revision, channelSequence, owner, mode, interactionMode, objective, threadId, sourceThreadId?, deletedAt?, schedule, nextRunAt, paused, cancelled, tokenBudget, maxTurns, maxActiveSeconds, runs, runCount, archivedRunCount, runsComplete, skippedRuns, lastSkippedAt, pendingQuestions`, without embedded messages. A Run contains `id, threadId, goalId, status, reason, objective?, trigger, scheduledAt, startedAt, completedAt, usage, waitRequested, workers`. Workers contain `threadId, turnId, status, settled`, with running/completed/cancelled/failed status.
+`Task.revision` versions control state. A monotonic increase solely in `usage.timeUsedSeconds` for the same Run is still persisted and published through `task/updated`, but does not change this version; the directory has its own revision. Clients must accept the latest projection at an equal version to retain clock updates. Changes to Run identity, state, configuration, or other usage still advance the control version. Writes continue to check `expectedRevision` and the applicable `expectedRunId` strictly.
+
+Task projections contain `id, revision, channelSequence, owner, mode, interactionMode, objective, threadId, sourceThreadId?, delivery?, model?, parameters?, deletedAt?, schedule, nextRunAt, paused, cancelled, tokenBudget, maxTurns, maxActiveSeconds, runs, runCount, archivedRunCount, runsComplete, skippedRuns, lastSkippedAt, pendingQuestions`, without embedded messages. A Run contains `id, threadId, goalId, status, reason, objective?, trigger, scheduledAt, startedAt, completedAt, usage, waitRequested, workers`. Workers contain `threadId, turnId, status, settled`, with running/completed/cancelled/failed status.
 
 Run status is `queued/running/waitingForInput/waitingForAgents/paused/blocked/completed/failed/cancelled`; the last three are terminal. Task paused/cancelled fields express control intent; the Run can remain running during cleanup. Determine settlement from Run termination and worker.settled, not a control response or coordinator Turn completion.
 
 Cancelling a Task removes future dispatches and terminates unfinished Runs. Runs that have already ended retain their status, completion time and usage ledger as history, including after restart.
+
+### Delivery and fixed model
+
+`delivery` and `model/parameters` apply only to scheduled Tasks. Omitted `delivery` and older snapshots mean `newThread`, a fresh Thread per Run. With `delivery=thread`, Runs continue the bound conversation: `sourceThreadId` when present, otherwise `threadId`. A due Run is accepted as `queued` and stays queued while the conversation has an active Turn, compaction, pending queue items, pending interactions, or the user's own unfinished Goal; once idle, the full objective starts one Goal at the end of the conversation. This Task's previous Goal and finished Goals are cleared first; after completion or failure the Goal is cleared so the conversation returns to normal, while paused or blocked Goals stay for `resumeRun`.
+
+`model` must resolve at creation, and `parameters` requires `model`. newThread uses it for the Run Thread; thread applies it to that Goal's Turns only (`Goal.modelOverride`) without changing the conversation's default configuration. Archiving a bound conversation pauses Tasks delivered to it; unarchiving does not resume them.
 
 ChannelMessage contains `id, sequence, runId, author, kind, status, createdAt, expiresAt, questions, required, inReplyTo, answers, text`. kind is question/reply/workerReport/report. Question status is pending/answered/expired/cancelled; other messages are published. questionId references the question message id. answers maps each question ID to one nonempty string of at most 4096 bytes, covering exactly all questions; closed-choice answers must match an offered option.
 
@@ -101,7 +110,7 @@ Clients register the watch before building directory and attention baselines and
 
 ## Schedules in ordinary conversations
 
-Writable ordinary desktop root Threads expose `scheduled_task_list/create/update/control/receipt`. Core checks the source Thread's bound Host against the currently registered identity and connection ID. Side conversations, children, workers, Task execution anchors and Run Threads, read-only Threads, and Workflow Threads cannot use these tools. The immutable Turn tool allowlist still applies. Knowing a Task ID does not grant access to another source conversation's tasks.
+Writable ordinary desktop root Threads expose `scheduled_task_list/create/update/control/receipt`. Core requires a live source tool connection and a registered schedule Host under the same authenticated principal. Creation still checks connection ownership of the source and execution anchor. Side conversations, children, workers, Task execution anchors and Run Threads, read-only Threads, and Workflow Threads cannot use these tools. The immutable Turn tool allowlist still applies. Knowing a Task ID does not grant access to another source conversation's tasks.
 
 | Tool | Arguments | Result |
 |---|---|---|
@@ -113,9 +122,11 @@ Writable ordinary desktop root Threads expose `scheduled_task_list/create/update
 
 Core derives the requestId from durable Thread, Turn, and tool-call IDs. The model cannot choose it. Error results retain `error.reason`, `error.outcome.kind`, and `error.recovery`. Stale revisions return `REVISION_CONFLICT`, denied access returns `PERMISSION_DENIED`, and uncertain storage returns `UNKNOWN` with the original requestId. UNKNOWN permits receipt inspection, not another write with a new tool-call ID. An empty receipt does not prove rejection.
 
-Creation binds the source Thread and cwd, creates a separate execution anchor, and calls the existing task_create owner. Public `TaskCreate.sourceThreadId` also requires an existing ordinary source, the same cwd and registered Host connection, and a separate anchor. The objective contains the complete execution method, required references, and output requirements. Runs do not continuously read the source conversation. Each Run still gets an independent Thread and the current default model, while its workspace may be shared.
+Creation binds the source Thread and cwd, creates a separate execution anchor, and calls the existing task_create owner. Public `TaskCreate.sourceThreadId` also requires an existing ordinary source, the same cwd, and a separate anchor. The anchor must bind to the source's live connection or the current schedule connection under the same authenticated principal. The objective contains the complete execution method, required references, and output requirements, and every Run sends the full objective. Tool-created Tasks use `delivery=thread`: Runs continue in the source conversation with the model the source used at creation.
 
 Chat cards bind the Task identity and receipt from an actual successful tool result. On reload they read the current Task, keeping historical success separate from paused, deleted, or unavailable current state. The source list in Thread resources and the global center read the same Core Task. Direct pause, enable, run-now, and delete commands do not require a model. Historical task-draft management conversations remain readable and retain their existing management path.
+
+Absolute-time and interval previews for historical task-draft conversations use the `timeZone` saved when the draft started. Calendar rules retain their own time zone. Public `task/schedule/preview` continues to use UTC for non-calendar previews. Display time zones do not change execution instants.
 
 `task/delete` uses the existing cancellation settlement path and persists a `deletedAt` UTC Unix seconds tombstone. It sets `cancelled=true` and `nextRunAt=null`, rejecting later updates, enabling, and run-now. Success confirms durable deletion intent. A nonterminal Run or unsettled worker keeps the deletion pending and its history reachable. Tasks, Channels, Runs, and original receipts are retained. Tombstones still count toward the 1024-Task limit. `task/list` and `task/read` include tombstones; active catalogs may hide them only after all execution settles. Restore and physical purge are unsupported.
 
@@ -133,7 +144,7 @@ limit is 1–100, defaulting to 30 for Task/Inbox and 50 for Channel. Use nextCu
 
 ## Run a saved Task immediately
 
-`areal/task/runNow` admits a real manual Run for a scheduled Task. It requires interact permission, an unrestricted Thread scope, an accepting Core, and a live desktop Host registered through `task/host/ready`. The workspace remains shared. The caller does not need to be the Task creator.
+`areal/task/runNow` admits a real manual Run for a scheduled Task. It requires interact permission, an unrestricted Thread scope, an accepting Core, and a live schedule Host registered through `task/host/ready`. The workspace remains shared. The caller does not need to be the Task creator.
 
 Core atomically persists the queued Run, its objective snapshot, and the original request receipt before Host preparation. `accepted:true` confirms this durable admission. Preparation, credentials, model availability, and execution can still fail. Preparation failure blocks the same Run. `task/resumeRun` continues that Run with its existing identity and budget.
 
@@ -169,11 +180,15 @@ The v5 root retains index_version3. Upgrade preserves the complete original v1..
 
 ## Scheduling, budgets and recovery
 
-schedule is `{at: UTC Unix seconds, intervalSeconds?: 1..31536000, timeZone?: IANA time zone}` and is valid only for scheduled Tasks. timeZone records the interpretation zone without changing UTC/fixed-interval semantics. One-time, daily (86400 seconds) and fixed intervals are supported. Core and the registered desktop Host must be online. Missed offline triggers coalesce into one catch-up; triggers overlapping active or unsettled work are skipped and counted. Each Run creates a fresh Thread using current environment configuration; model history is not inherited and workspace files remain shared. Interrupted Runs retain their original Run and Thread without a completion timestamp and require explicit resumeRun; reconnecting never automatically resumes the interrupted Run; a separately due trigger may start a fresh Run. Manual recovery before the next due trigger keeps that Run/Thread and starts a fresh Turn, with old interaction answers rejected. Once a later trigger supersedes the settled stalled Run, the old terminal Run cannot be resumed. The legacy field always remains fixed seconds. RRULE and OS power-on wakeup are unsupported.
+schedule is `{at: UTC Unix seconds, intervalSeconds?: 1..31536000, timeZone?: IANA time zone}` and is valid only for scheduled Tasks. timeZone records the interpretation zone without changing UTC/fixed-interval semantics. One-time, daily (86400 seconds) and fixed intervals are supported. Core and the registered schedule Host must be online. Missed offline triggers coalesce into one catch-up; triggers overlapping active or unsettled work are skipped and counted. Each Run creates a fresh Thread using current environment configuration; model history is not inherited and workspace files remain shared. Interrupted Runs retain their original Run and Thread without a completion timestamp and require explicit resumeRun; reconnecting never automatically resumes the interrupted Run; a separately due trigger may start a fresh Run. Manual recovery before the next due trigger keeps that Run/Thread and starts a fresh Turn, with old interaction answers rejected. Once a later trigger supersedes the settled stalled Run, the old terminal Run cannot be resumed. The legacy field always remains fixed seconds. RRULE and OS power-on wakeup are unsupported.
 
 Task tokenBudget covers confirmed and reserved consumption across all Runs. maxTurns/maxActiveSeconds apply per Run, retaining Goal conservative admission and unknown-usage handling. Active time is the union of coordinator and detached-worker execution intervals; overlapping work is not counted twice. Waiting for a user after all execution releases capacity adds no active time. Workers inherit frozen configuration, permissions and the same Goal budget. Their cumulative count per Run is bounded by deployment maxChildrenPerTurn; maxModelRounds defaults to the smaller of 16 and the parent limit; explicit values cannot exceed the parent configuration. Workers of interactive coordinators use asynchronous mode; headless remains headless. Workers cannot recursively spawn Task workers or change the root Goal. Shared-workspace writers still need explicit file ownership.
 
 For scheduled tasks, pause/resume affects future triggers only, including while current coordinators and workers continue. stopRun settles current work without cancelling recurrence. resumeRun requires the latest Run ID, keeps its Thread/configuration and checks Host readiness, permissions and unknown operations. Approval defaults to 300 seconds; expiry records approvalExpired, settles Turn/resources and retains a blocked Run. Continuing requests fresh approval. foreground/background keep their existing controls; cancel removes future triggers and stops current work.
+
+In shared local deployments, Rust Host registers the schedule connection. The ordinary conversation may use a separate GUI tool connection under the same authenticated principal. At schedule creation, the execution anchor must belong to the current schedule connection or the same live connection as the source conversation. Creation does not rebind anchors held by other connections. Actual Runs and explicit recovery still validate the schedule connection generation.
+
+GUI publishes fixed Browser/Computer bundles through `areal/task/tools/ready`. Registration belongs to the authenticated connection. Another live connection cannot replace it, and an empty array withdraws only the caller's registration. Core freezes the current catalog for each new Run and sends desktop calls to the actual GUI connection. Schedule and tool connections have separate bindings. After GUI exits, the schedule connection determines Run liveness, and subsequent model requests omit unavailable desktop tools. Existing UNKNOWN results still require inspection and are not redispatched to a new connection. This API does not publish LCU `js/js_reset`.
 
 Core requests `areal/task/prepare {taskId,runId,threadId,scheduledAt,intent:"start"|"resume"}` from the authenticated live Host. Start replies provide ThreadStart configuration fields (model, agentProfile, parameters, dynamicTools); Core fixes cwd, business request key and new Thread identity. Resume preserves frozen configuration. Preparation and Thread receipts are durable; unknown responses never cause a new-key replay, and retired connections cannot admit execution. Already-started legacy scheduled Runs settle under their original rules; later Runs use the new Host admission.
 

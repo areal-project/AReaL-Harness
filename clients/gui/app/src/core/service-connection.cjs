@@ -2,8 +2,8 @@
 "use strict";
 const WebSocket = require("ws");
 const { ProjectionReader } = require("@areal/workbench/state-projection");
-const { PROTOCOL } = require("./service-protocol.cjs");
-const diagnostics = require("./diagnostics.cjs");
+const { PROTOCOL } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
+const diagnostics = require("@areal/workbench-service/desktop/core/diagnostics.cjs");
 let diagnosticsConnectionGeneration = 0;
 /** @typedef {Record<string,unknown> & {protocol:string,endpoint:string,token:string,identity:string,pid:number}} ServiceMetadata */
 /** @typedef {{resolve:(value:unknown)=>void,reject:(error:unknown)=>void,timer:NodeJS.Timeout,mutation:boolean,requestId:unknown}} PendingRequest */
@@ -37,7 +37,8 @@ class ServiceConnection {
    * @param {((value:Record<string,unknown>&{requestId:number})=>unknown)|null} [onBrowserRequest]
    * @param {((value:unknown)=>void)|null} [onBrowserCancel]
    * @param {(value:unknown)=>void} [onMcpAppNotification] @param {(value:unknown)=>void} [onMcpPageToolNotice]
-   * @param {(value:unknown)=>void} [onMcpPageToolsRevoked] */
+   * @param {(value:unknown)=>void} [onMcpPageToolsRevoked]
+   * @param {((value:unknown)=>Promise<unknown>)|null} [onTerminalRequest] */
   constructor(
     onState = () => {},
     onClose = () => {},
@@ -48,7 +49,9 @@ class ServiceConnection {
     onMcpAppNotification = () => {},
     onMcpPageToolNotice = () => {},
     onMcpPageToolsRevoked = () => {},
+    onTerminalRequest = null,
   ) {
+    this.onTerminalRequest = onTerminalRequest;
     this.onNotification = onNotification;
     this.onNotificationOpen = onNotificationOpen;
     this.onBrowserRequest = onBrowserRequest;
@@ -62,7 +65,70 @@ class ServiceConnection {
     this.pending = new Map();
     /** @type {import("ws")|undefined} */
     this.socket = undefined;
+    /** @type {ReturnType<InstanceType<typeof import('@areal/workbench-service/desktop/core/service-protocol.cjs').DesktopService>['connectMain']>|undefined} */
+    this.direct = undefined;
     this.nextId = 0;
+  }
+  /** @param {InstanceType<typeof import('@areal/workbench-service/desktop/core/service-protocol.cjs').DesktopService>} adapter */
+  connectMain(adapter) {
+    if (this.socket || this.direct) throw new Error("GUI 连接已建立");
+    const direct = adapter.connectMain(
+      (value) => {
+        if (this.direct !== direct) return;
+        const message = structuredClone(value);
+        const handlers = {
+          state: this.onState,
+          notification: this.onNotification,
+          notificationOpen: this.onNotificationOpen,
+          browserCancel: this.onBrowserCancel,
+          mcpAppNotification: this.onMcpAppNotification,
+          mcpPageToolNotice: this.onMcpPageToolNotice,
+          mcpPageToolsRevoked: this.onMcpPageToolsRevoked,
+        };
+        const method = message.method;
+        if (typeof method !== "string") return;
+        if (method !== "browserRequest" && method !== "terminalRequest") {
+          handlers[/** @type {keyof typeof handlers} */ (method)]?.(message.params);
+          return;
+        }
+        const request = message.params;
+        if (!browserRequest(request)) throw new Error("GUI 工具请求身份无效");
+        const handle = method === "browserRequest" ? this.onBrowserRequest : this.onTerminalRequest;
+        const reply = method === "browserRequest" ? "browserResult" : "terminalResult";
+        void Promise.resolve()
+          .then(() => {
+            if (this.direct !== direct || !handle) throw new Error("GUI 工具所有者已断开");
+            return handle(request);
+          })
+          .then(
+            (result) => {
+              if (this.direct === direct)
+                void direct
+                  .request(reply, { requestId: request.requestId, result })
+                  .catch(() => {});
+            },
+            (error) => {
+              if (this.direct === direct)
+                void direct
+                  .request(reply, {
+                    requestId: request.requestId,
+                    error:
+                      reply === "terminalResult"
+                        ? require("@areal/workbench/desktop-contract").desktopError(error)
+                        : "host_failed",
+                  })
+                  .catch(() => {});
+            },
+          );
+      },
+      () => {
+        if (this.direct !== direct) return;
+        this.direct = undefined;
+        this.onClose();
+      },
+    );
+    this.direct = direct;
+    return direct.metadata;
   }
   /** @param {unknown} metadata @returns {Promise<ServiceMetadata>} */
   async connect(metadata) {
@@ -90,7 +156,7 @@ class ServiceConnection {
       maxPayload: 256 * 1024 * 1024,
     }));
     const projection = new ProjectionReader();
-    /** @satisfies {import("./diagnostics.cjs").SocketTarget} */
+    /** @satisfies {import("@areal/workbench-service/desktop/core/diagnostics.cjs").SocketTarget} */
     const target = Object.freeze({
       boundary: "main-desktop",
       hostPid: metadata.pid,
@@ -156,6 +222,69 @@ class ServiceConnection {
       }
       if (message.method === "browserCancel") {
         this.onBrowserCancel?.(message.params);
+        return;
+      }
+      if (message.method === "encryptionRequest") {
+        const request = message.params;
+        if (
+          !browserRequest(request) ||
+          typeof request.value !== "string" ||
+          request.value.length > 131072 ||
+          !["encrypt", "decrypt"].includes(String(request.operation))
+        ) {
+          socket.terminate();
+          return;
+        }
+        // 只在拥有本次后台连接的 Main 内调用原生安全存储，明文不写日志或投影。
+        try {
+          const storage = require("electron").safeStorage;
+          if (
+            !storage.isEncryptionAvailable() ||
+            storage.getSelectedStorageBackend?.() === "basic_text"
+          )
+            throw new Error("系统安全存储不可用");
+          const result =
+            request.operation === "encrypt"
+              ? storage.encryptString(request.value).toString("base64")
+              : storage.decryptString(Buffer.from(request.value, "base64"));
+          void this.request("encryptionResult", { requestId: request.requestId, result }).catch(
+            () => {},
+          );
+        } catch {
+          void this.request("encryptionResult", {
+            requestId: request.requestId,
+            error: true,
+          }).catch(() => {});
+        }
+        return;
+      }
+      if (message.method === "terminalRequest") {
+        const request = message.params;
+        if (!browserRequest(request) || !this.onTerminalRequest) {
+          socket.terminate();
+          return;
+        }
+        const requestId = request.requestId;
+        const onTerminalRequest = this.onTerminalRequest;
+        void Promise.resolve()
+          .then(() => onTerminalRequest(request))
+          .then(
+            (result) => {
+              if (this.socket === socket && socket.readyState === WebSocket.OPEN)
+                void this.request("terminalResult", { requestId, result }, true).catch(() => {});
+            },
+            (error) => {
+              if (this.socket === socket && socket.readyState === WebSocket.OPEN)
+                void this.request(
+                  "terminalResult",
+                  {
+                    requestId,
+                    error: require("@areal/workbench/desktop-contract").desktopError(error),
+                  },
+                  true,
+                ).catch(() => {});
+            },
+          );
         return;
       }
       if (message.method === "browserRequest") {
@@ -243,6 +372,10 @@ class ServiceConnection {
   }
   /** @param {string} method @param {Record<string,unknown>} [params] @param {boolean} [mutation] @returns {Promise<unknown>} */
   request(method, params, mutation = false) {
+    if (this.direct)
+      return this.direct
+        .request(method, structuredClone(params))
+        .then((value) => structuredClone(value));
     const socket = this.socket;
     if (socket?.readyState !== WebSocket.OPEN)
       return Promise.reject(
@@ -289,6 +422,9 @@ class ServiceConnection {
     });
   }
   close() {
+    const direct = this.direct;
+    this.direct = undefined;
+    direct?.close();
     this.socket?.close();
   }
 }

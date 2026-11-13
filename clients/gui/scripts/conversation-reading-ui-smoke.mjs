@@ -1,3 +1,4 @@
+import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
@@ -168,8 +169,16 @@ try {
     );
   });
   const checkDisclosures = async () => {
-    for (const control of [disclosure(), reasoning(), activity(), tool()])
-      assert.equal(await control.getAttribute("aria-expanded"), "true");
+    const controls = { disclosure, reasoning, activity, tool };
+    const expanded = {};
+    for (const [name, control] of Object.entries(controls))
+      expanded[name] = await control().getAttribute("aria-expanded");
+    assert.deepEqual(expanded, {
+      disclosure: "true",
+      reasoning: "true",
+      activity: "true",
+      tool: "true",
+    });
   };
   await checkDisclosures();
   await messages.focus();
@@ -352,8 +361,10 @@ try {
   await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
   const ensureHttp = await ensureRequest;
   const ensure = ensureHttp.postDataJSON();
-  await page.waitForFunction(
-    async () => (await (await fetch("/__reading/state")).json()).held.length > 0,
+  await until(
+    () =>
+      page.evaluate(async () => (await (await fetch("/__reading/state")).json()).held.length > 0),
+    "history restore request held",
   );
   report.heldRestore = fixture.snapshot().held;
   await page.locator(".messages").hover();

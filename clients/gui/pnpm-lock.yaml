@@ -16,7 +16,7 @@ overrides:
   undici@>=6.0.0 <6.29.1: 6.29.1
   undici@>=7.0.0 <7.30.1: 7.30.1
   '@dicebear/core@<=9.4.2': 9.4.3
-  basic-ftp@<=6.2.0: 6.2.1
+  basic-ftp@<=6.2.3: 6.2.4
   dompurify@<=3.4.16: 3.4.17
   ip-address@<=10.7.3: 10.7.4
   katex@>=0.11.0 <0.18.2: 0.18.2
@@ -35,7 +35,7 @@ packageExtensionsChecksum: sha256-fr6f2C5O5Fq2CHyXY+DzAl644NjYthV7Iu7e/rnVvrw=
 patchedDependencies:
   '@chainsafe/libp2p-noise@17.0.0': 841879fcdebfd0b261887a7f322b30ff03c264d644ac8acafd7ec95a43db9e4d
   '@electron/asar@3.4.1': 0088af14998a8e46fd44ceb50c03df2103abb2c33d52b9a28569f12b823a1763
-  '@pierre/diffs@1.4.3': 91e9a21f88013ffc1524479868940ff3838e4ee68f3f3220ed95d8da0a74df45
+  '@pierre/diffs@1.4.3': a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a
   app-builder-lib@26.15.3: 5a5d9484824c78b1949e9c9e9c8129515a84416daa6a992e70fe042520ec8c12
   dir-compare@4.2.0: b273e70a8999f3344e54e3c0f4cd99f1d2b74e8e7f1cdacd803d30f662984c1e
   electron-updater@6.8.9: a9461757ba817cd32de6e6c8e3e2204cef79abca0e02c0cdd6a9073752489707
@@ -48,15 +48,73 @@ importers:
       '@areal/remote-client':
         specifier: workspace:*
         version: link:packages/remote-client
+      '@areal/workbench-service':
+        specifier: workspace:*
+        version: link:../../services/workbench
       '@axe-core/playwright':
         specifier: 4.14.0
         version: 4.14.0(playwright-core@1.59.1)
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       fake-indexeddb:
         specifier: 6.2.4
         version: 6.2.4
       vite-plus:
         specifier: 1.4.0
         version: 1.4.0(@types/node@26.6.4)(@vitest/ui@5.0.5)(esbuild@0.28.2)(jiti@2.7.0)(typescript@7.0.2)(yaml@2.9.0)
+
+  ../../services/workbench:
+    dependencies:
+      '@areal/browser-automation':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/browser-automation
+      '@areal/chatgpt-provider':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/chatgpt-provider
+      '@areal/client':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/client
+      '@areal/gen-ui':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/gen-ui
+      '@areal/provider-config':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/provider-config
+      '@areal/remote':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/remote
+      '@areal/runtime-client':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/runtime-client
+      '@areal/workbench':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/workbench
+      '@areal/workspace-git':
+        specifier: workspace:*
+        version: link:../../clients/gui/packages/workspace-git
+      'pkijs':
+        specifier: 3.4.1
+        version: 3.4.1
+      'qrcode':
+        specifier: 1.5.4
+        version: 1.5.4
+      'ws':
+        specifier: 8.21.3
+        version: 8.21.3
+      'yaml':
+        specifier: 2.9.0
+        version: 2.9.0
+    devDependencies:
+      '@types/node':
+        specifier: 24.10.1
+        version: 24.10.1
+      '@types/qrcode':
+        specifier: 1.5.6
+        version: 1.5.6
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
 
   ../mobile:
     dependencies:
@@ -91,6 +149,9 @@ importers:
       '@areal/chatgpt-provider':
         specifier: workspace:*
         version: link:../packages/chatgpt-provider
+      '@areal/client':
+        specifier: workspace:*
+        version: link:../packages/client
       '@areal/gen-ui':
         specifier: workspace:*
         version: link:../packages/gen-ui
@@ -106,6 +167,9 @@ importers:
       '@areal/workbench':
         specifier: workspace:*
         version: link:../packages/workbench
+      '@areal/workbench-service':
+        specifier: workspace:*
+        version: link:../../../services/workbench
       '@areal/workspace-git':
         specifier: workspace:*
         version: link:../packages/workspace-git
@@ -218,6 +282,12 @@ importers:
         specifier: 6.5.0
         version: 6.5.0
 
+  packages/client:
+    dependencies:
+      '@areal/remote-client':
+        specifier: workspace:*
+        version: link:../remote-client
+
   packages/gen-ui:
     dependencies:
       '@modelcontextprotocol/ext-apps':
@@ -275,7 +345,7 @@ importers:
         version: 1.8.0(@types/react@19.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@pierre/diffs':
         specifier: 1.4.3
-        version: 1.4.3(patch_hash=91e9a21f88013ffc1524479868940ff3838e4ee68f3f3220ed95d8da0a74df45)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.4.3(patch_hash=a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -334,6 +404,9 @@ importers:
 
   renderer:
     dependencies:
+      '@areal/client':
+        specifier: workspace:*
+        version: link:../packages/client
       '@areal/gen-ui':
         specifier: workspace:*
         version: link:../packages/gen-ui
@@ -408,7 +481,7 @@ importers:
         version: 2.0.3(@modelcontextprotocol/client@2.3.0)(@modelcontextprotocol/core@2.3.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.6.6)
       '@pierre/diffs':
         specifier: 1.4.3
-        version: 1.4.3(patch_hash=91e9a21f88013ffc1524479868940ff3838e4ee68f3f3220ed95d8da0a74df45)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.4.3(patch_hash=a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@streamdown/cjk':
         specifier: 1.0.3
         version: 1.0.3(@types/mdast@4.0.4)(micromark-util-types@2.0.3)(micromark@4.0.3)(react@19.2.8)(unified@11.0.5)
@@ -1342,8 +1415,8 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
-  '@hono/node-server@2.1.5':
-    resolution: {integrity: sha512-MgP/I06GdvsilDspMk/qmRzpk8LOUStP6jFAbSRi40W09DhoyUn+Mj7eyKICPqeYKybOjVFLVIAQzvu1bfIa7Q==}
+  '@hono/node-server@2.1.7':
+    resolution: {integrity: sha512-Wr0E6S+v2Bw9FkpGNP5BQ5QbJvclUa06UVehd65WFZe6XeJwbrKQQ5wPDevc0IC+QyzbO7v3Llh5uo45IZcSnA==}
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4 || ^5.0.0-0
@@ -3069,8 +3142,8 @@ packages:
     engines: {node: '>=6.0.0'}
     hasBin: true
 
-  basic-ftp@6.2.1:
-    resolution: {integrity: sha512-bK67isD+lKq46AU8vNtjvMaT2ZqAOAmNCbxUHlFBRD4k15NWxyEjmaKtZPlgce58So4BNTjITGQOVTjL9y0ECA==}
+  basic-ftp@6.2.4:
+    resolution: {integrity: sha512-6ACKOQxSlv5xka4i03ujfncNr9qp5yZNK3u0+yUFTAU4HfG5AeztCC9+R1I9dm8oq+1vt4RZ7cIRTBrdHqL2mw==}
     engines: {node: '>=10.0.0'}
 
   big-integer@1.6.52:
@@ -3948,8 +4021,8 @@ packages:
   hastscript@9.0.1:
     resolution: {integrity: sha512-g7df9rMFX/SPi34tyGCyUBREQoKkapwdY/T04Qn9TDWfHhAYt4/I0gMVirzK5wEzeUqIjEB+LXC/ypb7Aqno5w==}
 
-  hono@4.13.13:
-    resolution: {integrity: sha512-CQ46U0ZkAGmbT/4UxdzzGJpacP2IeKgY4a5/tOI9AABbpOMfK739wfDXmv1usCk+3RkKj1hQy4/fjhiwa2xlrA==}
+  hono@4.13.18:
+    resolution: {integrity: sha512-H9q/E1XizaWstJxUW881dmLxEj+t/TrGGnyxINkm4+sK0qUwsMtFdo2BWI9Vs3cIS19MU6b6iCijoUoEf4f3DA==}
     engines: {node: '>=16.9.0'}
 
   hosted-git-info@4.1.0:
@@ -6857,9 +6930,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@hono/node-server@2.1.5(hono@4.13.13)':
+  '@hono/node-server@2.1.7(hono@4.13.18)':
     dependencies:
-      hono: 4.13.13
+      hono: 4.13.18
 
   '@iconify/types@2.0.0': {}
 
@@ -7279,7 +7352,7 @@ snapshots:
 
   '@modelcontextprotocol/sdk@1.32.0(zod@4.6.6)':
     dependencies:
-      '@hono/node-server': 2.1.5(hono@4.13.13)
+      '@hono/node-server': 2.1.7(hono@4.13.18)
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       content-type: 1.0.5
@@ -7289,7 +7362,7 @@ snapshots:
       eventsource-parser: 3.1.1
       express: 5.3.0
       express-rate-limit: 8.7.1(express@5.3.0)
-      hono: 4.13.13
+      hono: 4.13.18
       jose: 6.2.9
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
@@ -7489,7 +7562,7 @@ snapshots:
       tslib: 2.8.1
       webcrypto-core: 1.9.2
 
-  '@pierre/diffs@1.4.3(patch_hash=91e9a21f88013ffc1524479868940ff3838e4ee68f3f3220ed95d8da0a74df45)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@pierre/diffs@1.4.3(patch_hash=a590d3e3f3235fceb199592460197a66cef75259193e33960c5a684f2c175b7a)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@pierre/theme': 2.0.0
       '@pierre/theming': 1.0.1(@pierre/theme@2.0.0)(@shikijs/themes@4.4.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.3)
@@ -8625,7 +8698,7 @@ snapshots:
 
   baseline-browser-mapping@2.11.27: {}
 
-  basic-ftp@6.2.1: {}
+  basic-ftp@6.2.4: {}
 
   big-integer@1.6.52: {}
 
@@ -9520,7 +9593,7 @@ snapshots:
 
   get-uri@6.0.5:
     dependencies:
-      basic-ftp: 6.2.1
+      basic-ftp: 6.2.4
       data-uri-to-buffer: 6.0.2
       debug: 4.4.3
     transitivePeerDependencies:
@@ -9705,7 +9778,7 @@ snapshots:
       property-information: 7.2.0
       space-separated-tokens: 2.0.2
 
-  hono@4.13.13: {}
+  hono@4.13.18: {}
 
   hosted-git-info@4.1.0:
     dependencies:

@@ -1,6 +1,6 @@
 # 对话第二阶段：交互分类迁移
 
-English: [stage two](../../../../clients/gui/design-system/exercises/conversation-stage2.en.md)。设置第一阶段已获用户认可；本阶段把分类用于真实生产对话，而非重新制作模拟页面。主要交互族为 I-INPUT、I-OBSERVE、I-RETURN，I-READ 支持历史阅读和收敛；[页面合同](../../../../clients/gui/design-system/surfaces/conversation-stage2.json)引用既有 P-CONVERSATION 规则。
+English: [stage two](conversation-stage2.en.md)。设置第一阶段已获用户认可；本阶段把分类用于真实生产对话，而非重新制作模拟页面。主要交互族为 I-INPUT、I-OBSERVE、I-RETURN，I-READ 支持历史阅读和收敛；[页面合同](../../../../clients/gui/design-system/surfaces/conversation-stage2.json)引用既有 P-CONVERSATION 规则。
 
 ## 设计裁决与所有者
 

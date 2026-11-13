@@ -1,3 +1,4 @@
+import { until as untilObservation } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -202,7 +203,10 @@ for (const file of execFileSync(
   source.files[file] = sha(await readFile(join(root, file)));
 }
 let app, page, failure, owner, cleanup;
-const { builtinSkill, BUILTIN_SKILL_ID } = require("../app/src/core/builtin-skills.cjs");
+const {
+  builtinSkill,
+  BUILTIN_SKILL_ID,
+} = require("@areal/workbench-service/desktop/core/builtin-skills.cjs");
 await builtinSkill(env.AREAL_CORE_HOME, BUILTIN_SKILL_ID);
 async function launch() {
   app = await electron.launch({
@@ -215,8 +219,12 @@ async function launch() {
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await page.waitForFunction(
-    async () => (await window.arealDesktop.snapshot()).connection?.state === "ready",
+  await until(
+    () =>
+      page.evaluate(
+        async () => (await window.arealDesktop.snapshot()).connection?.state === "ready",
+      ),
+    "desktop connection ready",
   );
   await app.evaluate(({ BrowserWindow, dialog }) => {
     BrowserWindow.getAllWindows()[0].setSize(1440, 960);
@@ -232,15 +240,13 @@ async function _command(name, request) {
   assert(reply.ok, JSON.stringify(reply));
   return reply.value;
 }
-async function until(predicate, label) {
-  const end = Date.now() + 30000;
-  while (Date.now() < end) {
-    if (modelFailure) throw modelFailure;
-    if (await predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 75));
-  }
-  throw Error(`timeout: ${label}`);
-}
+const until = (predicate, label) =>
+  untilObservation(predicate, label, {
+    interval: 75,
+    abort() {
+      if (modelFailure) throw modelFailure;
+    },
+  });
 const state = () => page.evaluate(() => window.arealDesktop.snapshot());
 const project = (snapshot) => snapshot.projects.find((project) => project.root === workspace);
 const pane = (side) =>
@@ -473,7 +479,7 @@ try {
     "native publication, copied offline D3, literal HTML, sandbox, state-only save, reload/restart, typed and confirmed main context, preserved draft, stale and tool rejection",
   );
   await page.getByRole("button", { name: "任务操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "旁路讨论", exact: true }).click();
+  await page.getByRole("menuitem", { name: "侧边聊天", exact: true }).click();
   await page.getByTestId("side-chat-input").waitFor();
   await send("CREATE_GEN_UI_SIDE", true, null);
   let sideId;

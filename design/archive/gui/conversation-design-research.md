@@ -5,7 +5,7 @@
 ## 研究后的优化选择
 
 <!-- rule:R-CONVERSATION-005 -->
-再调研资料及事实/推断边界见[参考记录](../../../clients/gui/design-system/references.md#2026-10-24-过程摘要上下文卡片与组件文档再调研)。这版是基于反馈与研究的候选改进，不代表完整或最佳Codex复刻。
+再调研资料及事实/推断边界见[参考记录](reference-observations.md#2026-10-24-过程摘要上下文卡片与组件文档再调研)。这版是基于反馈与研究的候选改进，不代表完整或最佳Codex复刻。
 
 | 问题 | 优化决定 | 可观察结果 |
 | --- | --- | --- |
@@ -14,7 +14,7 @@
 | <!-- rule:R-CONVERSATION-007 --> 连续更新打断阅读或混淆权限 | 摘要不抢焦点、不定时生成、不推断执行结果；原活动记录独立保留 | 更新不提交/重试，来源/草稿/子任务选择不随文字变化重置 |
 | <!-- rule:R-CONVERSATION-008 --> MD存在但像薄说明书、在站点不可见 | 实现旁MD维护完整结构与元数据；站点显示关联、原文与该组件的独立示例 | 每份目录组件可找到同目录MD、用途与状态、类型API和可操作例子，生成检查拒绝缺失结构 |
 
-引用 [R-CONVERSATION-009](../../../clients/gui/packages/ui/src/conversation/task-context/task-context.md#非模态阅读)。
+引用 [R-CONVERSATION-009](../../../clients/gui/packages/ui/src/conversation/task-context/task-context.md)。
 
 <!-- rule:R-CONVERSATION-010 -->
 宿主适配位于 [ConversationSystemPreview](../../../clients/gui/renderer/src/design-system/ConversationSystemPreview.tsx)，固定数据位于 [conversationSystemScenario](../../../clients/gui/renderer/src/design-system/conversationSystemScenario.ts)。活动、图片和右侧基本外观已由私有包的实验对话组件提供；本地 CSS 仅保留页面布局与 ToolEvent/SentAttachment 适配。复用原 CommandDetails、ConversationComposer 和 WorkbenchShell。图片来自既有仓库示例，文件/网页/变更/子任务详情是本地说明，不读取真实项目、不执行命令、不连接 Core 或供应商。
@@ -38,7 +38,7 @@
 | --- | --- | --- |
 | <!-- rule:R-CONVERSATION-016 --> 用户提供的图一及六条标注 | 读取、运行命令、图片、子代理、编辑活动需要可辨识；活动图片与命令组默认收起；命令组可纵向滚动，不可横向滚动 | 图片实际展开过程、动效时长、精确尺寸、跨重启行为 |
 | <!-- rule:R-CONVERSATION-017 --> 图二及四条标注 | 右侧包含 Changes、当前 Worktree 下关联的其他项目、Subagents、Sources；Sources 可折叠，默认列出三项并可查看全部；来源可以是图片、网页及其他输入 | 关联项目的数据合同、网页摄取与存储机制、来源删除权限 |
-| <!-- rule:R-CONVERSATION-018 --> [Raft 本地源码核对](../../../clients/gui/design-system/references.md#raft设计知识组件与产品分层) | 通用控件与领域组件分层；模式和产品布局分开；文档、参数、示例各有真实来源 | Raft 的聊天领域、字体和数值不自动成为 AReaL 规范 |
+| <!-- rule:R-CONVERSATION-018 --> [Raft 本地源码核对](reference-observations.md#raft设计知识组件与产品分层) | 通用控件与领域组件分层；模式和产品布局分开；文档、参数、示例各有真实来源 | Raft 的聊天领域、字体和数值不自动成为 AReaL 规范 |
 | <!-- rule:R-CONVERSATION-019 --> 当前生产源码 | 已有活动、详情、资源与父子对话的所有者，见下文映射 | 已有组件不代表本草案已经实现或通过验收 |
 
 <!-- rule:R-CONVERSATION-020 -->

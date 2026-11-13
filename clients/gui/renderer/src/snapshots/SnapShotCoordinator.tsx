@@ -1,5 +1,6 @@
 import { SnapShotCaptureContext } from "./captureContext.js";
-import { readSnapShotSettings } from "@areal/workbench/desktop-contract/snapshots";
+import { errorText } from "../errors/errorCopy.js";
+import { readSnapShotSettings } from "../services.js";
 import { sending } from "../composerDraftAttachments.js";
 import { composerDraftStorage } from "../composerDraftStorage.js";
 import {
@@ -9,10 +10,7 @@ import {
   waitForSnapShotAnimation,
 } from "./animation.js";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type {
-  SnapShotServices,
-  SnapShotSettings,
-} from "@areal/workbench/desktop-contract/snapshots";
+import type { SnapShotServices, SnapShotSettings } from "../services.js";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { currentSnapShotDraft } from "./activeDraft.js";
@@ -95,7 +93,7 @@ export function SnapShotCoordinator({
         } while (rerun && active);
       })()
         .catch((cause: Error) => {
-          if (active) setError(cause.message);
+          if (active) setError(errorText(t, cause));
         })
         .finally(() => {
           draining.current = null;
@@ -110,7 +108,7 @@ export function SnapShotCoordinator({
           const pin = pinSnapShot(event.id, key);
           pins.current.set(event.id, pin);
           void pin.catch((cause: Error) => {
-            if (active) setError(cause.message);
+            if (active) setError(errorText(t, cause));
           });
         }
       }

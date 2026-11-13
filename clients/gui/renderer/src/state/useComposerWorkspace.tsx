@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { errorText } from "../errors/errorCopy.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { McpAppIcon } from "../McpAppIcon.js";
 import type { useMcpAppsWorkspace } from "../McpAppsWorkspace.js";
@@ -44,7 +45,7 @@ export function useComposerWorkspace(
       run: () => {
         void mcpWorkspace
           .openApp(server, tool, { kind: "thread" })
-          .catch((cause) => setError(cause.message));
+          .catch((cause) => setError(errorText(t, cause)));
       },
     }),
   );

@@ -45,7 +45,7 @@ export function SettingsSearchInput({
           data-testid={clearTestId}
           onClick={onClear}
         >
-          <X className="size-3.5" aria-hidden="true" />
+          <X className="size-(--icon-size-control)" aria-hidden="true" />
         </Button>
       ) : null}
     </div>

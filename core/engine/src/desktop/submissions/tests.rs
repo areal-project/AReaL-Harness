@@ -361,3 +361,93 @@ async fn creation_crash_worker() {
         .unwrap();
     panic!("requested crash point was not reached");
 }
+
+#[tokio::test]
+async fn task_directory_preparation_is_bound_to_original_creation() {
+    let store = tempfile::tempdir().unwrap();
+    let engine = open(store.path());
+    let workspace = std::path::PathBuf::from(engine.default_cwd())
+        .canonicalize()
+        .unwrap();
+    let target = tempfile::Builder::new()
+        .prefix("areal-task-cwd-")
+        .tempdir_in(&workspace)
+        .unwrap();
+    std::fs::remove_dir(target.path()).unwrap();
+    let binding = engine.creation_admission("owner").await;
+    let mut input = request(&binding);
+    let before = serde_json::to_value(&input).unwrap();
+    input.prepare_task_directory = Some(false);
+    assert_eq!(
+        serde_json::to_value(&input).unwrap(),
+        before,
+        "old request digests stay unchanged"
+    );
+    input.prepare_task_directory = Some(true);
+    input.cwd = Some(target.path().to_string_lossy().into_owned());
+    let created = engine
+        .create_configured("owner".into(), input.clone(), Arc::new(Host))
+        .await
+        .unwrap();
+    assert!(target.path().is_dir());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(target.path())
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+    }
+    std::fs::remove_dir(target.path()).unwrap();
+    let original = engine
+        .create_configured("owner".into(), input, Arc::new(Host))
+        .await
+        .unwrap();
+    assert_eq!(original.id, created.id);
+    assert!(
+        !target.path().exists(),
+        "reading the original creation cannot repeat mkdir"
+    );
+    let mut ordinary = request(&binding);
+    ordinary.request_id = "ordinary-create".into();
+    ordinary.cwd = Some(target.path().to_string_lossy().into_owned());
+    engine
+        .create_configured("owner".into(), ordinary, Arc::new(Host))
+        .await
+        .unwrap();
+    assert!(
+        !target.path().exists(),
+        "ordinary thread starts never create directories"
+    );
+    engine.shutdown().await;
+}
+
+#[test]
+fn task_directory_preparation_rejects_links_and_non_child_paths() {
+    let workspace = tempfile::tempdir().unwrap();
+    let root = workspace.path().canonicalize().unwrap();
+    for cwd in [
+        root.clone(),
+        root.join("../escape"),
+        root.join("nested/child"),
+        root.join(".hidden"),
+    ] {
+        assert!(super::super::state::task_directory_target(&root, cwd.to_str().unwrap()).is_err());
+    }
+    #[cfg(unix)]
+    {
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.join("linked")).unwrap();
+        assert!(
+            super::super::state::task_directory_target(
+                &root,
+                root.join("linked").to_str().unwrap()
+            )
+            .is_err()
+        );
+    }
+}

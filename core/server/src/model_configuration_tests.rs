@@ -10,19 +10,35 @@ struct Fixture {
 }
 impl Fixture {
     async fn open() -> Self {
+        Self::open_with_providers(None).await
+    }
+    async fn open_with_providers(providers: Option<Value>) -> Self {
+        Self::open_with_file(providers, true).await
+    }
+    async fn open_with_file(providers: Option<Value>, existing_file: bool) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let mut inputs = ConfigInputs {
             cwd: directory.path().into(),
             homedir: Some(directory.path().into()),
             ..Default::default()
         };
-        inputs.config_file = Some(directory.path().join("config.toml"));
         inputs.overrides.data_dir = Some(directory.path().join("data"));
-        std::fs::write(
-            inputs.config_file.as_ref().unwrap(),
-            "schema_version = 2\n[model]\ncatalog_version = 1\n",
-        )
-        .unwrap();
+        if existing_file {
+            inputs.config_file = Some(directory.path().join("config.toml"));
+            std::fs::write(
+                inputs.config_file.as_ref().unwrap(),
+                "schema_version = 2\n[model]\ncatalog_version = 1\n",
+            )
+            .unwrap();
+        }
+        if let Some(data) = providers {
+            let current = areal_config::models::read(&inputs, &[]).unwrap();
+            let update = serde_json::from_value(
+                json!({"expectedRevision":current.revision,"data":data,"defaultModel":null}),
+            )
+            .unwrap();
+            areal_config::models::write(&inputs, update, &[]).unwrap();
+        }
         let (document, config) = areal_config::models::read_resolved(&inputs, &[]).unwrap();
         let engine = Engine::open(
             &config.data_dir,
@@ -30,6 +46,8 @@ impl Fixture {
             Default::default(),
         )
         .unwrap();
+        let (catalog, _) = configured_models(&config, &inputs.env).unwrap();
+        engine.install_configured_models(catalog).unwrap();
         let reload = Reload::open(inputs.clone(), &config, &engine).unwrap();
         let identity = areal_protocol::service::Identity {
             protocol_version: 1,
@@ -74,6 +92,109 @@ impl Fixture {
             .await
             .unwrap()
     }
+}
+
+#[tokio::test]
+async fn model_display_names_follow_applied_configuration_and_provider_identity() {
+    let providers = |name: &str| {
+        json!([
+            {"id":"first","name":"First","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":name,"enabled":true,"parameters":{}}],"parameters":{}},
+            {"id":"second","name":"Second","endpoint":"http://127.0.0.1:1/v1/chat/completions","protocol":"chat-completions","enabled":true,"models":[{"id":"shared","displayName":"Second model","enabled":true,"parameters":{}},{"id":"unnamed","enabled":true,"parameters":{}}],"parameters":{}}
+        ])
+    };
+    let fixture = Fixture::open_with_providers(Some(providers("First model"))).await;
+    let names = |catalog: &Value| {
+        catalog["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|model| {
+                (
+                    (model["providerId"].clone(), model["modelId"].clone()),
+                    model.get("displayName").cloned(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let before = fixture.control.engine.model_catalog().await;
+    assert!(names(&before).contains(&(
+        (json!("first"), json!("shared")),
+        Some(json!("First model"))
+    )));
+    assert!(names(&before).contains(&(
+        (json!("second"), json!("shared")),
+        Some(json!("Second model"))
+    )));
+    assert!(names(&before).contains(&((json!("second"), json!("unnamed")), None)));
+    let current = areal_config::models::read(&fixture.inputs, &[]).unwrap();
+    let update = serde_json::from_value(json!({"expectedRevision":current.revision,"data":providers("Renamed model"),"defaultModel":null})).unwrap();
+    let saved = areal_config::models::write(&fixture.inputs, update, &[]).unwrap();
+    assert_eq!(
+        names(&fixture.control.engine.model_catalog().await),
+        names(&before)
+    );
+    let mut intent = fixture.intent("rename", saved.revision.clone());
+    intent.credentials.clear();
+    let receipt = fixture.control.clone().apply(intent).await.unwrap();
+    assert_eq!(receipt["applied"]["revision"], saved.revision);
+    let after = fixture.control.engine.model_catalog().await;
+    assert!(names(&after).contains(&(
+        (json!("first"), json!("shared")),
+        Some(json!("Renamed model"))
+    )));
+    assert!(names(&after).contains(&(
+        (json!("second"), json!("shared")),
+        Some(json!("Second model"))
+    )));
+    assert!(names(&after).contains(&((json!("second"), json!("unnamed")), None)));
+    fixture.control.engine.shutdown().await;
+}
+
+#[tokio::test]
+async fn first_default_model_file_applies_without_restarting_but_permissions_still_require_restart()
+{
+    let fixture = Fixture::open_with_file(None, false).await;
+    let path = areal_config::models::read(&fixture.inputs, &[])
+        .unwrap()
+        .path;
+    assert!(!path.exists());
+    let revision = fixture.write("AREAL_CREDENTIAL_first");
+    assert!(path.is_file());
+    let result = fixture
+        .control
+        .clone()
+        .apply(fixture.intent("first-save", revision.clone()))
+        .await
+        .unwrap();
+    assert_eq!(
+        result["applied"],
+        json!({"revision": revision, "sequence": 1})
+    );
+    assert_eq!(result["credentialStates"]["fixture"], "available");
+    assert_eq!(
+        fixture.read("first-save").await["operation"]["state"],
+        "applied"
+    );
+
+    let mut text = std::fs::read_to_string(&path).unwrap();
+    text.push_str("\n[permissions]\nmode = \"ASK_PERMISSIONS\"\n");
+    std::fs::write(path, text).unwrap();
+    let changed = areal_config::models::read(&fixture.inputs, &[]).unwrap();
+    let error = fixture
+        .control
+        .clone()
+        .apply(fixture.intent("permissions-change", changed.revision))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.data.unwrap()["reason"],
+        "DEPLOYMENT_CHANGE_REQUIRES_RESTART"
+    );
+    assert_eq!(
+        fixture.control.engine.model_configuration_status()["applied"],
+        result["applied"]
+    );
+    fixture.control.engine.shutdown().await;
 }
 
 #[tokio::test]

@@ -1672,3 +1672,40 @@ fn reported_context_defaults_round_trip_separately_from_user_overrides() {
         assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
     }
 }
+
+#[test]
+fn provider_catalog_can_clear_and_restore_the_default_model() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    i.overrides = ConfigOverrides::default();
+    write(
+        &mut i,
+        "schema_version=2\n[model]\nprovider='default'\nname='fixture'\n[model.providers.default]\nendpoint='http://127.0.0.1:9/v1/responses'\nprotocol='responses'\nmodels=[{id='fixture',parameters={}}]\n",
+    );
+    let original = models::read(&i, &[]).unwrap();
+    let cleared = models::write(
+        &i,
+        models::ModelConfigurationUpdate {
+            expected_revision: original.revision,
+            data: original.data.clone(),
+            default_model: None,
+        },
+        &[],
+    )
+    .unwrap();
+    assert!(cleared.default_model.is_none());
+    assert!(models::read(&i, &[]).unwrap().default_model.is_none());
+    assert_eq!(cleared.data[0].models[0].id, "fixture");
+    let restored = models::write(
+        &i,
+        models::ModelConfigurationUpdate {
+            expected_revision: cleared.revision,
+            data: cleared.data,
+            default_model: original.default_model,
+        },
+        &[],
+    )
+    .unwrap();
+    assert_eq!(restored.default_model.unwrap().model_id, "fixture");
+    assert_eq!(load_config(&i).unwrap().model.name, "fixture");
+}

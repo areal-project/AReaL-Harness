@@ -82,6 +82,10 @@ impl Store {
             component_cache: Default::default(),
             #[cfg(test)]
             component_reads: Default::default(),
+            project: workspace
+                .as_deref()
+                .map(|w| crate::project_key(w).to_string_lossy().into_owned())
+                .unwrap_or_default(),
             workspace: workspace.clone().unwrap_or_default(),
             root,
             user_home,

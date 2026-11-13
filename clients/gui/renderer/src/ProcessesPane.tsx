@@ -1,7 +1,10 @@
 import { DelayedVisible } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
+import { errorText } from "./errors/errorCopy.js";
 import { useI18n } from "./i18n/IntlProvider.js";
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import type { ManagementResponseMap } from "./services.js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useOperation } from "./useOperation.js";
 import { Textarea } from "./components/ui/textarea.js";
 import { Button } from "./components/ui/button.js";
 import {
@@ -58,10 +61,18 @@ export function ProcessesPane({
     [stopError, setStopError] = useState("");
   const draftKey = `areal-gui:process-command:${project.id}:${thread.id}`;
   const cleanupKey = `${draftKey}:cleanup-pending`;
-  const [cleanupPending, setCleanupPending] = useState(() => !!localStorage.getItem(cleanupKey));
-  const [cleanupOpen, setCleanupOpen] = useState(false),
-    [cleanupError, setCleanupError] = useState("");
-  const [cleanupComplete, setCleanupComplete] = useState(false);
+  // 清理是一次带“结果未知”的操作：unknown 持久化在 cleanupKey，只能核对不能重发。
+  const cleanup = useOperation(
+    localStorage.getItem(cleanupKey) ? { status: "unknown" } : { status: "idle" },
+  );
+  const cleanupPending = cleanup.state.status === "running" || cleanup.state.status === "unknown";
+  const cleanupError =
+    cleanup.state.status === "failed" || cleanup.state.status === "unknown"
+      ? (cleanup.state.message ?? "")
+      : "";
+  const clearCleanupError = () =>
+    cleanup.set(({ status }) => ({ status: status === "unknown" ? "unknown" : "idle" }));
+  const [cleanupOpen, setCleanupOpen] = useState(false);
   const [command, setCommand] = useState(() => localStorage.getItem(draftKey) ?? "");
   const [lifetime, setLifetime] = useState(
     () => localStorage.getItem(`${draftKey}:lifetime`) ?? "thread",
@@ -197,7 +208,12 @@ export function ProcessesPane({
   }, [selected, connected, action, project.id, thread.id]);
   const current = items.find((p) => p.id === selected);
   const disabled =
-    busy || cleanupPending || loading || !connected || !!error || !!project.pending?.length;
+    busy ||
+    cleanupPending ||
+    loading ||
+    !connected ||
+    !!error ||
+    project.pending?.some((entry: Data) => entry.params?.threadId === thread.id);
   const create = async (recover = false) => {
     if (locked.current || !connected || (!recover && (disabled || unknown || !command.trim())))
       return;
@@ -250,7 +266,7 @@ export function ProcessesPane({
         localStorage.removeItem(`${draftKey}:pending`);
         setUnknown(false);
       }
-      setCreateError(failure.message);
+      setCreateError(errorText(t, failure));
     } finally {
       locked.current = false;
       setCreating(false);
@@ -347,8 +363,7 @@ export function ProcessesPane({
     if (locked.current || !connected || (!inspect && disabled)) return;
     locked.current = true;
     setBusy(true);
-    setCleanupError("");
-    setCleanupComplete(false);
+    cleanup.set({ status: "running" });
     let dispatched = false,
       acknowledged = false;
     try {
@@ -359,7 +374,6 @@ export function ProcessesPane({
           cleanupKey,
           JSON.stringify(items.filter((p) => !p.cleanupConfirmed).map((p) => p.id)),
         );
-        setCleanupPending(true);
         dispatched = true;
         const result = await action("manage", {
           projectId: project.id,
@@ -387,29 +401,28 @@ export function ProcessesPane({
         ) ||
         result.data.some((p: Process) => !p.cleanupConfirmed)
       ) {
-        throw Object.assign(new Error("仍有资源未确认清理，请保留阻塞并在后台服务中核查旧资源。"), {
+        throw Object.assign(new Error("仍有资源未确认清理，请在高级诊断中核查旧资源。"), {
           submissionUnknown: true,
         });
       }
       localStorage.removeItem(cleanupKey);
-      setCleanupPending(false);
       setCleanupOpen(false);
-      setCleanupComplete(true);
+      cleanup.set({ status: "succeeded" });
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean; code?: number };
       // A known Core refusal can follow partial cleanup. Refresh records, but
       // never turn refusal or a missing response into a successful completion.
-      if (
+      const refused =
         dispatched &&
         !acknowledged &&
         !failure.submissionUnknown &&
         typeof failure.code === "number" &&
-        failure.code !== -32603
-      ) {
-        localStorage.removeItem(cleanupKey);
-        setCleanupPending(false);
-      }
-      setCleanupError(`资源处理未完成。${failure.message}`);
+        failure.code !== -32603;
+      if (refused) localStorage.removeItem(cleanupKey);
+      cleanup.set({
+        status: refused || !localStorage.getItem(cleanupKey) ? "failed" : "unknown",
+        message: `资源处理未完成。${currentErrorText(failure)}`,
+      });
       await read();
     } finally {
       locked.current = false;
@@ -444,7 +457,7 @@ export function ProcessesPane({
           variant="outline"
           disabled={disabled || creating || !items.some((p) => !p.cleanupConfirmed)}
           onClick={() => {
-            setCleanupError("");
+            clearCleanupError();
             setCleanupOpen(true);
           }}
         >
@@ -472,7 +485,7 @@ export function ProcessesPane({
             </Button>
           </div>
         )}
-        {cleanupComplete && !items.some((p) => !p.cleanupConfirmed) && (
+        {cleanup.state.status === "succeeded" && !items.some((p) => !p.cleanupConfirmed) && (
           <p role="status">会话资源已确认清理。</p>
         )}
         {cleanupError && !cleanupOpen && <p role="alert">{cleanupError}</p>}

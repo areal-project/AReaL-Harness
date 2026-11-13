@@ -47,7 +47,7 @@ GUI 默认开启，可在“预测下一条提示词”设置中关闭。关闭�
 |---|---|
 | `model/list` | `{}` |
 | `thread/start` | `{cwd?,model?,dynamicTools?}` |
-| `areal/thread/start` | `{requestId,agentProfile?:{id,revision},cwd?,model?,parameters?,options?,dynamicTools?}`；原子保存初始配置，自动启动 Profile 绑定的 Workflow |
+| `areal/thread/start` | `{requestId,agentProfile?:{id,revision},cwd?,prepareTaskDirectory?,model?,parameters?,options?,dynamicTools?}`；原子保存初始配置，自动启动 Profile 绑定的 Workflow |
 | `thread/list` | `{cursor?,limit?}`; 1–100, default 30 |
 | `thread/read` | `{threadId,includeTurns?}` |
 | `thread/resume` | `{threadId,mode?:"bounded",maxBytes?}` |
@@ -67,6 +67,10 @@ Core 拥有 Thread/Turn/Item 的稳定 ID 与历史。read 不订阅，resume �
 `areal/thread/fork` 的 `anchor:{turnId,boundary}` 必须明确选择 `before` 或 `after`，并使用 `workspaceMode:"sharedCurrent"`。`before` 排除所选轮次及之后的全部历史，包括活动轮次；`after` 只接受已终结轮次。纳入前缀中的失败、中断状态按原样保留；未结算工具或 hook、未经来源核查的工具、hook 或插件 UNKNOWN 返回 `HISTORY_UNRESOLVED`。核查只记录事实，历史 UNKNOWN 不改写为成功。锚点不存在返回 `ANCHOR_NOT_FOUND`，委派 Worker 或 Side 来源返回 `SOURCE_KIND_UNSUPPORTED`，活动轮次的 `after` 返回 `TURN_NOT_TERMINAL`；错误的 `data.reason` 可用于呈现恢复路径。分支只继承对话历史，项目文件仍是当前共享工作区。完整请求与来源元数据见[桌面 API](desktop.md)。
 
 Fork 的模型兼容检查同时接受旧版 Responses 单项上下文与 `areal_response_output` 完整输出封装，按原顺序保留供应商字段。它们只允许 Responses 适配器回放；切换到无法保留该上下文的协议仍返回 `MODEL_CONTEXT_INCOMPATIBLE`，不通过丢弃不透明历史放行。
+
+`features.taskPrepareCreate` 表示 Host 可在 `areal/task/host/ready` 中发送 `prepareCreate: true`。该能力绑定登记的 Host 连接及主体；Host 为 GUI 来源启用目录预约，CLI 来源继续使用原准入。省略时保留原行为。启用后，Core 在定时任务校验之后、持久化与发布之前发送 `areal/task/prepare {intent:"create",requestId,requestDigest,threadId,sourceThreadId?}`。`requestDigest` 为完整规范化创建参数的摘要；Host 以原请求和执行锚点预约目录，冲突或断连会阻止本次创建。已完成原请求直接返回保存的回执，不重复预约。`start` 与 `resume` 回调合同不变。`areal/task/create` 与 `areal/task/draft` 使用现有有界并发槽处理，等待回调时同一连接仍可读取状态并响应回调；已受理写入在连接断开后仍结算原记录。
+
+`features.taskDirectoryPreparation` 表示 `areal/thread/start` 支持可选 `prepareTaskDirectory: true`。Host 仅为已核对固定无项目任务工作区归属的任务创建设置它；Core 要求 `cwd` 为工作区的直接子目录（名称最多 128 个 UTF-16 单元，不以点开头，不含路径分隔符），拒绝符号链接和越界。目录在原请求准入后以私有权限创建；查询相同已完成请求不重复创建。省略或 `false` 不改变原请求摘要，也不自动准备目录。
 
 input 为有序 text/image/audio/file 等内容，UTF-8 文本合计最多 1 MiB，仍受历史预算约束；认证客户端上传媒体 Blob，不传宿主 localImage/localAudio 路径。模态由 adapter/模型能力校验。原有 thread/start 的 model 需匹配服务默认；产品模型选择使用 areal/thread/start/configure。
 
@@ -159,7 +163,7 @@ Responses 摘要通过可选 `reasoning_summary` / `reasoningSummary` 显式开�
 统一委派的结算回执若已通过工具结果完整提供给当前模型请求，Core 不因自动汇总再次出现相同回执而额外请求一次最终答复。比较只忽略等待标记与剩余工具额度；执行身份、状态、资源清退、正文、验证、制品和交付事实仍须一致。新结果、失败、未知状态或未完成交付继续走原有收尾检查，不重放工具。
 
 
-`features.operationOutcomes` 声明结构化受理事实。错误的 `data.outcome.kind` 为 `noMutation`、`rejected`、`unconfirmed` 或 `admitted`。后两者携带 `operation:{method,requestId,target}`，其中 target 指向项目、Thread 或 Task。`admitted` 证明已受理，但不保证执行成功或没有部分副作用。`data.recovery.kind` 为 `retryRead`、`queryOriginal`、`needsUser` 或 `none`。管理操作最终回执落盘失败保留原始身份并返回已受理；初次保存若不能确认发布结果则保持未确认。完成的错误回执记录执行失败，不能作为零副作用证明。缺失回执、超时和普通 mutation RPC 错误均不能证明未受理。客户端仅从后两种 outcome 派生 `submissionUnknown`，不自动重放。已确认未受理的拒绝包装保留原始 `data.reason` 和诊断字段，同时补充结构化 rejected 事实；例如 `SIDE_POLICY_VIOLATION` 仍可与普通请求拒绝区分。 回执重放还须在 JSON 持久化往返后精确保留有限浮点用量值。
+`features.operationOutcomes` 声明结构化受理事实。错误的 `data.outcome.kind` 为 `noMutation`、`rejected`、`unconfirmed` 或 `admitted`。后两者携带 `operation:{method,requestId,target}`，其中 target 指向项目、Thread 或 Task。`admitted` 证明已受理，但不保证执行成功或没有部分副作用。`data.recovery.kind` 为 `retryRead`、`queryOriginal`、`needsUser` 或 `none`。管理操作最终回执落盘失败保留原始身份并返回已受理；初次保存若不能确认发布结果则保持未确认。完成的错误回执记录执行失败，不能作为零副作用证明。缺失回执、超时和普通 mutation RPC 错误均不能证明未受理。客户端仅从后两种 outcome 派生 `submissionUnknown`，不自动重放。已确认未受理的拒绝包装保留原始 `data.reason` 和诊断字段，同时补充结构化 rejected 事实；例如 `SIDE_POLICY_VIOLATION` 仍可与普通请求拒绝区分。工具宿主断开导致的新请求拒绝保留 `-32602`，并以 `data.reason: TOOL_HOST_UNAVAILABLE` 区分，客户端不能把它解释为参数错误。 回执重放还须在 JSON 持久化往返后精确保留有限浮点用量值。
 
 `areal/capabilities.methodSemantics` 为每个已声明方法提供 `effect:read|subscription|mutation`，可恢复写入还声明 `receipt:thread|task|management`。Core 的方法定义同时生成这些语义。协商成功后客户端以此分类，未知方法保持保守；只有初始化和明确的旧版兼容路径使用本地分类。读取失败仅在传输故障或明确可重试时自动重试；权限、参数及 `RESPONSE_TOO_LARGE` 等确定性错误不触发重试。`delivery:resultUnavailable` 仍只描述响应无法取得。
 

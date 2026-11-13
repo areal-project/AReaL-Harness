@@ -1,3 +1,4 @@
+import type { MediaOwner } from "./PlatformReadContext.js";
 import type { Data, Action } from "./services.js";
 import { isSnapShotDecoration, sentSnapShots } from "./snapshots/source.js";
 import { sentReviewFeedback } from "./reviewComments.js";
@@ -27,6 +28,7 @@ export function SentUserMessage({
   onLink,
   onFile,
   onExpand,
+  mediaSource,
 }: {
   item: Data;
   owner: string;
@@ -38,6 +40,7 @@ export function SentUserMessage({
   onLink?: (url: string) => void;
   onFile?: (path: string, line?: number) => void;
   onExpand: () => void;
+  mediaSource?: MediaOwner;
 }) {
   const { t } = useI18n();
   const content = item.content ?? [];
@@ -75,6 +78,7 @@ export function SentUserMessage({
           </div>
         )}
         <SentBrowserAnnotations
+          mediaSource={mediaSource}
           notes={browserFeedback.notes}
           attachments={attachments}
           projectId={project.id}
@@ -88,6 +92,7 @@ export function SentUserMessage({
               return (
                 <div key={`${index}:${part.url ?? part.uri}`} className="flex flex-col gap-2">
                   <SentAttachment
+                    mediaSource={mediaSource}
                     part={part}
                     annotation={note}
                     snapShotSource={
@@ -119,9 +124,9 @@ export function SentUserMessage({
             </CollapsibleText>
           </div>
         ) : null}
-        <MessageTime createdAt={item.createdAt} />
-        {(text.trim() || editable) && (
+        {text.trim() || editable ? (
           <MessageActions text={text}>
+            <MessageTime createdAt={item.createdAt} />
             {editable && (
               <UserPromptEdit
                 key={`${owner}:${item.id}`}
@@ -132,6 +137,8 @@ export function SentUserMessage({
               />
             )}
           </MessageActions>
+        ) : (
+          <MessageTime createdAt={item.createdAt} />
         )}
       </div>
     </div>

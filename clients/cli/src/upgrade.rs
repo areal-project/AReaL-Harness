@@ -180,6 +180,9 @@ async fn upgrade_homebrew(source: Homebrew, check: bool) -> Result<()> {
     let latest = formula_version(&source)?;
     println!("areal {current} ({}: {latest})", source.formula);
     if current == latest || check {
+        if !check {
+            prepare_host(&latest).await?;
+        }
         return Ok(());
     }
     ensure!(
@@ -198,6 +201,36 @@ async fn upgrade_homebrew(source: Homebrew, check: bool) -> Result<()> {
         output.status.success()
             && String::from_utf8_lossy(&output.stdout).trim() == format!("areal {latest}"),
         "Homebrew did not install areal {latest}"
+    );
+    prepare_host(&latest).await?;
+    Ok(())
+}
+
+async fn prepare_host(target: &str) -> Result<()> {
+    let Ok(client) = areal_host::Client::connect().await else {
+        return Ok(());
+    };
+    let running = &client.identity().executable_version;
+    if !newer_release(target, running)? {
+        if running != target {
+            eprintln!(
+                "Host {running} is newer than target {target}; retaining the newer Host without downgrade."
+            );
+        }
+        return Ok(());
+    }
+    let status = client.status().await?;
+    if !status.capabilities.iter().any(|c| c == "updates") {
+        return Ok(());
+    }
+    let request_id = uuid::Uuid::new_v4().to_string();
+    eprintln!("Host update prepare requestId: {request_id}");
+    let receipt = client
+        .prepare_update(&request_id, &client.identity().generation, target)
+        .await?;
+    println!("{}", serde_json::to_string_pretty(&receipt)?);
+    println!(
+        "Host update prepared. Apply explicitly: areal host update apply --target-version {target} --strategy ifIdle"
     );
     Ok(())
 }
@@ -221,22 +254,100 @@ fn python(args: &[&str]) -> Result<String> {
     Ok(String::from_utf8(output.stdout)?.trim().to_owned())
 }
 
-fn published_version() -> Result<String> {
-    python(&["--version", "latest", "--check"])
+fn published_version(beta: bool) -> Result<String> {
+    // Beta 安装取最新 Beta 与最新正式版中较高者；正式安装只看正式版。
+    python(&[
+        "--version",
+        if beta { "latest-beta" } else { "latest" },
+        "--check",
+    ])
+}
+
+/// 发布版本只能是 X.Y.Z 或 X.Y.Z-beta.N；当前版本的其他预览后缀视为低于同号正式版。
+fn release_order(version: &str, strict: bool) -> Result<(u64, u64, u64, bool, u64)> {
+    let (base, suffix) = version
+        .split_once('-')
+        .map_or((version, None), |(base, suffix)| (base, Some(suffix)));
+    let parts: Vec<_> = base.split('.').collect();
+    ensure!(parts.len() == 3, "invalid release version");
+    let beta = match suffix {
+        None => None,
+        Some(suffix) => match suffix
+            .strip_prefix("beta.")
+            .and_then(|n| n.parse::<u64>().ok())
+            .filter(|n| *n > 0 && !suffix.contains('+'))
+        {
+            Some(n) => Some(n),
+            None => {
+                ensure!(!strict, "invalid release version");
+                Some(0)
+            }
+        },
+    };
+    Ok((
+        parts[0].parse()?,
+        parts[1].parse()?,
+        parts[2].parse()?,
+        beta.is_none(),
+        beta.unwrap_or(0),
+    ))
 }
 
 fn newer_release(latest: &str, current: &str) -> Result<bool> {
-    let parse = |version: &str| -> Result<(u64, u64, u64)> {
-        let parts: Vec<_> = version.split('.').collect();
-        ensure!(parts.len() == 3, "invalid release version");
-        Ok((parts[0].parse()?, parts[1].parse()?, parts[2].parse()?))
+    Ok(release_order(latest, true)? > release_order(current, false)?)
+}
+
+fn latest_for_installation() -> Result<String> {
+    match installation(&std::env::current_exe()?)? {
+        Installation::Homebrew(source) => formula_version(&source),
+        Installation::Standalone(_) => {
+            published_version(env!("CARGO_PKG_VERSION").contains("-beta."))
+        }
+    }
+}
+
+/// TUI 启动时在后台调用：24 小时内最多联网查一次，任何失败都不提示。
+/// `AREAL_NO_UPDATE_CHECK=1` 关闭；源码构建没有可升级的安装，不提示。
+pub async fn release_notice() -> Option<String> {
+    if std::env::var_os("AREAL_NO_UPDATE_CHECK").is_some_and(|v| v != "0") {
+        return None;
+    }
+    let current = env!("CARGO_PKG_VERSION");
+    let home = areal_local_service::raw_home().ok()?;
+    let cache = home.join("update-check.json");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    let saved: Option<serde_json::Value> = std::fs::read(&cache)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    let fresh = saved.as_ref().and_then(|saved| {
+        (saved["current"] == current
+            && saved["checkedAt"]
+                .as_u64()
+                .is_some_and(|at| now.saturating_sub(at) < 24 * 60 * 60))
+        .then(|| saved["latest"].as_str().map(str::to_owned))
+        .flatten()
+    });
+    let latest = match fresh {
+        Some(latest) => latest,
+        None => {
+            let latest = tokio::task::spawn_blocking(latest_for_installation)
+                .await
+                .ok()?
+                .ok()?;
+            if home.is_dir() {
+                let record =
+                    serde_json::json!({"checkedAt": now, "current": current, "latest": latest});
+                let _ = std::fs::write(&cache, record.to_string());
+            }
+            latest
+        }
     };
-    let (base, preview) = current
-        .split_once('-')
-        .map_or((current, false), |(base, _)| (base, true));
-    let latest = parse(latest)?;
-    let current = parse(base)?;
-    Ok(latest > current || latest == current && preview)
+    newer_release(&latest, current)
+        .ok()?
+        .then(|| format!("areal {latest} is available · run areal upgrade"))
 }
 
 pub async fn run(check: bool) -> Result<()> {
@@ -247,9 +358,12 @@ pub async fn run(check: bool) -> Result<()> {
         Installation::Standalone(prefix) => prefix,
     };
     let current = env!("CARGO_PKG_VERSION");
-    let latest = published_version()?;
+    let latest = published_version(current.contains("-beta."))?;
     println!("areal {current} (latest published: {latest})");
     if current == latest || check {
+        if !check {
+            prepare_host(&latest).await?;
+        }
         return Ok(());
     }
     ensure!(
@@ -260,6 +374,7 @@ pub async fn run(check: bool) -> Result<()> {
         .to_str()
         .context("installation prefix is not UTF-8")?;
     println!("{}", python(&["--version", &latest, "--prefix", prefix])?);
+    prepare_host(&latest).await?;
     Ok(())
 }
 
@@ -297,6 +412,12 @@ mod tests {
 
     #[test]
     fn release_order_accepts_preview_to_same_release_but_never_downgrades() {
+        let versions = ["0.1.8", "0.1.18", "0.1.19-beta.1", "0.1.19"];
+        for (i, running) in versions.iter().enumerate() {
+            for (j, target) in versions.iter().enumerate() {
+                assert_eq!(newer_release(target, running).unwrap(), j > i);
+            }
+        }
         assert!(newer_release("0.1.7", "0.1.7-beta.10").unwrap());
         assert!(!newer_release("0.1.6", "0.1.7-beta.1").unwrap());
         assert!(newer_release("0.1.7", "0.1.7-test.1").unwrap());
@@ -305,6 +426,10 @@ mod tests {
         assert!(!newer_release("0.1.7", "0.1.7").unwrap());
         assert!(newer_release("0.1.10", "0.1.9").unwrap());
         assert!(newer_release("0.1.8-test.1", "0.1.7").is_err());
+        assert!(newer_release("0.1.8-beta.2", "0.1.8-beta.1").unwrap());
+        assert!(newer_release("0.1.8-beta.1", "0.1.7").unwrap());
+        assert!(!newer_release("0.1.8-beta.1", "0.1.8").unwrap());
+        assert!(newer_release("0.1.8-beta.0", "0.1.7").is_err());
     }
 
     #[test]

@@ -29,8 +29,6 @@ Markdown表格、虚拟横向阅读及复制导出，沿现有生产用途。
 
 `R-MARKDOWNTABLE-001` 横向滚动属于表格内部；隐藏的虚拟滑块也被轨道裁切，宽容器缩窄后不能撑宽页面。
 
-`R-MARKDOWNTABLE-002` 保留原虚拟滚动、列测量和预览。文案labels及onNotify由宿主注入；原路径保留翻译与全局Toast通道，不在包内读Intl或应用事件。
-
 ## 内容
 
 引用 [R-UI-COMMON-011](../../../README.md#共同合同)。

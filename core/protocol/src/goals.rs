@@ -62,6 +62,9 @@ pub enum GoalReportStatus {
 pub struct Goal {
     #[serde(default)]
     pub interaction_mode: crate::tasks::InteractionMode,
+    /// 只作用于本 Goal 各轮的模型，不改变 Thread 默认配置（定时任务固定模型）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_override: Option<GoalModel>,
     pub id: String,
     pub thread_id: String,
     pub objective: String,
@@ -84,6 +87,14 @@ pub struct Goal {
     pub unreported_turns: u64,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct GoalModel {
+    pub model: crate::desktop::ModelRef,
+    #[serde(default)]
+    pub parameters: crate::desktop::ModelParameters,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GoalOwner {
@@ -103,6 +114,8 @@ pub struct GoalTurn {
 pub struct GoalCreate {
     #[serde(default)]
     pub infer_limits: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_override: Option<GoalModel>,
     #[serde(default)]
     pub interaction_mode: Option<crate::tasks::InteractionMode>,
     pub request_id: String,

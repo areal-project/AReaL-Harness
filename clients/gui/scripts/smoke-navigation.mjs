@@ -26,6 +26,23 @@ export async function selectConversation(page, threadId) {
   await page.getByTestId("chat-input").waitFor();
 }
 
+export async function selectCreatedConversation(page, projectId, threadId) {
+  // 空对话默认不出现在侧栏；给测试夹具命名后再通过真实导航打开。
+  await page.evaluate(
+    async ({ projectId, threadId }) => {
+      const result = await window.arealDesktop.command("library", {
+        operation: "renameThread",
+        projectId,
+        threadId,
+        title: "Smoke fixture",
+      });
+      if (!result.ok) throw new Error(JSON.stringify(result));
+    },
+    { projectId, threadId },
+  );
+  await selectConversation(page, threadId);
+}
+
 export async function openSideChat(page) {
   const addTab = page.getByRole("button", { name: "打开侧边面板标签页", exact: true });
   if (await addTab.isVisible()) {

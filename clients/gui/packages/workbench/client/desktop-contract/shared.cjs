@@ -8,7 +8,7 @@ const {
   isCoreInteractions,
 } = require("../core-model-contract.js");
 /** The consumed part of protocol::desktop::EffectiveConfig; extensions stay unknown. */
-/** @typedef {Record<string,unknown> & {revision?:number,model?:({providerId:string,modelId:string,[key:string]:unknown})|null,options?:ClientOptions,defaultModelRevision?:string|null,modelName?:string|null,provider?:(Record<string,unknown>&{endpoint?:string})|null,parameters?:import('./provider.cjs').ModelParameters}} Configuration */
+/** @typedef {Record<string,unknown> & {revision?:number,model?:({providerId:string,modelId:string,[key:string]:unknown})|null,options?:ClientOptions & {automaticSessionName?:boolean|null},defaultModelRevision?:string|null,modelName?:string|null,provider?:(Record<string,unknown>&{endpoint?:string})|null,parameters?:import('./provider.cjs').ModelParameters}} Configuration */
 /** @typedef {Record<string,unknown> & {configuration:Configuration & {revision:number},activeTurnId?:string|null,modelName?:string|null,resolvedParameters?:import('./provider.cjs').ModelParameters|null}} Inspection */
 /** @param {unknown} value @returns {value is Configuration} */
 function isConfiguration(value) {
@@ -20,13 +20,22 @@ function isConfiguration(value) {
       (modelRecord(value.model) &&
         typeof value.model.providerId === "string" &&
         typeof value.model.modelId === "string")) &&
-    (value.options === undefined || clientOptions(value.options)) &&
+    (value.options === undefined || configurationOptions(value.options)) &&
     (value.modelName == null || typeof value.modelName === "string") &&
     (value.defaultModelRevision == null || typeof value.defaultModelRevision === "string") &&
     (value.provider == null ||
       (modelRecord(value.provider) &&
         (value.provider.endpoint === undefined || typeof value.provider.endpoint === "string"))) &&
     (value.parameters === undefined || require("./provider.cjs").parameters(value.parameters))
+  );
+}
+/** @param {unknown} value @returns {value is ClientOptions & {automaticSessionName?:boolean|null}} */
+function configurationOptions(value) {
+  if (!modelRecord(value)) return false;
+  const { automaticSessionName, ...options } = value;
+  return (
+    (automaticSessionName == null || typeof automaticSessionName === "boolean") &&
+    clientOptions(options)
   );
 }
 /** @param {unknown} value @returns {Inspection} */
@@ -63,9 +72,13 @@ function readConfigured(value) {
 
 /** Consumed identities from Core thread/turn admission receipts; payload extensions stay opaque. */
 /** @typedef {Record<string,unknown> & {thread?:import("../core-model-contract.js").CoreThread,turn?:import("../core-model-contract.js").CoreTurn|null,threadId?:string,turnId?:string,requestId?:string,queueItemId?:string|null,queueRevision?:number,configRevision?:number,accepted?:boolean,cleanupConfirmed?:boolean}} Admission */
-/** @param {unknown} value @returns {Admission} */
-function readAdmission(value) {
-  if (!admission(value))
+/** @param {unknown} value @param {{requestId?:string,threadId?:string}} [expected] @returns {Admission} */
+function readAdmission(value, expected) {
+  if (
+    !admission(value) ||
+    (expected?.requestId !== undefined && value.requestId !== expected.requestId) ||
+    (expected?.threadId !== undefined && (value.threadId ?? value.thread?.id) !== expected.threadId)
+  )
     throw Object.assign(new Error("Core 受理结果不完整，请查询原请求"), {
       code: "ADMISSION_RESULT_INVALID",
       submissionUnknown: true,
@@ -201,7 +214,10 @@ function readReceipts(value) {
     throw Object.assign(new Error("Invalid creation admission result"), {
       code: "RECEIPT_INVALID",
     });
-  return { data: value.data, ...(admission !== undefined ? { creationAdmission: admission } : {}) };
+  return {
+    data: value.data,
+    ...(admission !== undefined ? { creationAdmission: admission } : {}),
+  };
 }
 
 /** @param {unknown} value @returns {value is CreationAdmissionResult} */
@@ -317,9 +333,9 @@ function readLifecycleReceipt(value) {
   return value;
 }
 /** @typedef {{projectId:string,phase:string,message?:string}} LifecycleViewTarget */
-/** @typedef {{requestId:string,kind:LifecycleKind,phase:string,targets:LifecycleViewTarget[],threadId?:string,turnId?:string,desktopExit?:'notRequested'|'requested',message?:string}} LifecycleViewOperation */
+/** @typedef {{requestId:string,kind:LifecycleKind|'stopHost',phase:string,targets:LifecycleViewTarget[],threadId?:string,turnId?:string,desktopExit?:'notRequested'|'requested',message?:string}} LifecycleViewOperation */
 /** @typedef {{canRecover:boolean,message:string,projects:Array<{projectId:string,root:string,state:string,message:string}>}} RecoveryView */
-/** @typedef {{supported:boolean,operations:LifecycleViewOperation[],phase?:string,message?:string,error?:string,requestId?:string,kind?:LifecycleKind,desktopExit?:'notRequested'|'requested',targets?:LifecycleViewTarget[],recovery?:RecoveryView}} LifecycleProjection */
+/** @typedef {{supported:boolean,operations:LifecycleViewOperation[],phase?:string,message?:string,error?:string,requestId?:string,kind?:LifecycleKind|'stopHost',desktopExit?:'notRequested'|'requested',targets?:LifecycleViewTarget[],recovery?:RecoveryView}} LifecycleProjection */
 /** @param {unknown} value @returns {value is LifecycleViewTarget} */
 function lifecycleViewTarget(value) {
   return (
@@ -334,7 +350,7 @@ function lifecycleViewOperation(value) {
   return (
     modelRecord(value) &&
     typeof value.requestId === "string" &&
-    KINDS.some((kind) => value.kind === kind) &&
+    (value.kind === "stopHost" || KINDS.some((kind) => value.kind === kind)) &&
     typeof value.phase === "string" &&
     ["threadId", "turnId", "message"].every(
       (key) => value[key] === undefined || typeof value[key] === "string",
@@ -370,7 +386,9 @@ function isLifecycleProjection(value) {
     ["phase", "message", "error", "requestId"].every(
       (key) => value[key] === undefined || typeof value[key] === "string",
     ) &&
-    (value.kind === undefined || KINDS.some((kind) => value.kind === kind)) &&
+    (value.kind === undefined ||
+      value.kind === "stopHost" ||
+      KINDS.some((kind) => value.kind === kind)) &&
     (value.desktopExit === undefined ||
       value.desktopExit === "requested" ||
       value.desktopExit === "notRequested") &&
@@ -379,7 +397,7 @@ function isLifecycleProjection(value) {
     (value.recovery === undefined || isRecoveryView(value.recovery))
   );
 }
-/** @typedef {{id:string,revision:string,displayName:string,instructions:string,skills: Array<{id:string,revision:string}>,toolAllowlist:string[]|null,model:import('./provider.cjs').ModelRef|null,requiredModalities:string[],readOnly:boolean,approvalTools:string[],allowThreadProcesses:boolean,workflow:{id:string,revision:string}|null,allowPluginSkills?:boolean}} AgentProfile */
+/** @typedef {{id:string,revision:string,displayName:string,instructions:string,skills: Array<{id:string,revision:string}>,toolAllowlist:string[]|null,model:import('./provider.cjs').ModelRef|null,requiredModalities:string[],readOnly:boolean,approvalTools:string[],allowThreadProcesses:boolean,allowConnectionProcesses?:boolean,workflow:{id:string,revision:string}|null,allowPluginSkills?:boolean}} AgentProfile */
 /** @param {unknown} value @returns {value is AgentProfile} */
 function agentProfile(value) {
   const provider = require("./provider.cjs");
@@ -396,13 +414,15 @@ function agentProfile(value) {
     typeof value.readOnly === "boolean" &&
     provider.strings(value.approvalTools) &&
     typeof value.allowThreadProcesses === "boolean" &&
+    (value.allowConnectionProcesses === undefined ||
+      typeof value.allowConnectionProcesses === "boolean") &&
     (value.workflow === null || resourceRef(value.workflow)) &&
     (value.allowPluginSkills === undefined || typeof value.allowPluginSkills === "boolean")
   );
 }
 /** @typedef {import('../core-model-contract.js').CoreThread & {executionCore?:{instanceId:string|null,[key:string]:unknown}|null}} ServiceThread */
-/** @typedef {{binary:string,apiVersion:string|null,runtimeEpoch:string|null,runtimeAvailable:boolean|null,features:Record<string,boolean>|null,instanceId:string|null,connectionGeneration:number}} ProjectCapabilities */
-/** @typedef {{state:'connecting'|'ready'|'unavailable',message?:string,recovery?:'check',prerequisite?:{kind:'macos-command-line-tools',reason:'developer-tools-unavailable'|'python-unavailable',title:string,detail:string,installLabel:string,retryLabel:string,requestedMessage:string}}} DesktopConnection */
+/** @typedef {{binary:string,apiVersion:string|null,runtimeEpoch:string|null,runtimeAvailable:boolean|null,features:Record<string,boolean>|null,instanceId:string|null,serviceGeneration?:string|null,connectionGeneration:number}} ProjectCapabilities */
+/** @typedef {{state:'connecting'|'ready'|'unavailable',message?:string,recovery?:'check'|'reconnect',prerequisite?:{kind:'macos-command-line-tools',reason:'developer-tools-unavailable'|'python-unavailable',title:string,detail:string,installLabel:string,retryLabel:string,requestedMessage:string}}} DesktopConnection */
 /** @typedef {{id:string,root:string,state:null|{threads:Record<string,ServiceThread>,connected?:boolean,error?:string|null,queues?:Record<string,Queue>,interactions?:Record<string,import('../core-model-contract.js').CoreInteractions>,[key:string]:unknown},logicalProjectId?:string,worktreeRequestId?:string,worktreeResources?:string,projectless?:boolean,projectlessRequestId?:string,hasTaskHistory?:boolean,backend?:'areal',core?:ProjectCapabilities,pending?:Array<PendingSubmission & {awaitingResponse:boolean}>,outcomes?:Record<string,SubmissionOutcome>,models?:import('./provider.cjs').ModelCatalogEntry[],profiles?:AgentProfile[],lastAcceptedModel?:import('./provider.cjs').AcceptedModel|null,defaultProfile?:{id:string,revision:string}|null,configurations?:Record<string,Configuration|undefined>,summaries?:import('../core-model-contract.js').CoreThread[],summariesLoaded?:boolean,observationErrors?:Record<string,{message:string,retryable:boolean,code:unknown,threadId?:string,projectId?:string,connectionGeneration?:number,[key:string]:unknown}>,refreshErrors?:Record<string,{id:string,projectId:string,message:string,refreshPending:boolean,threadId?:string,[key:string]:unknown}>,error?:string|null,desktopCapabilities?:{currentCommands:boolean},[key:string]:unknown}} ServiceProject */
 /** @typedef {{projects:ServiceProject[],subscription?:import('./provider.cjs').ChatGPTStatus,library:import('./library-media.cjs').LibraryState,projectless?:{directory:string},power?:{enabled:boolean,active:boolean,error:string|null}|null,menuBar?:{supported:boolean,active:boolean,error:string|null}|null,revision?:number,desktopCapabilities?:{currentCommands:boolean},serviceSummary?:{state:'running'|'stopped'|'unknown',busy:boolean},connection?:DesktopConnection,backendUpdate?:{state:'applying'|'pending'|'failed',message?:string},lifecycle?:LifecycleProjection,computerControl?:import('./desktop-control.cjs').ComputerStatus|null,[key:string]:unknown}} DesktopSnapshot */
 /** @param {unknown} value @returns {value is ServiceThread} */
@@ -425,6 +445,9 @@ function projectCapabilities(value) {
     ) &&
     (value.runtimeAvailable === null || typeof value.runtimeAvailable === "boolean") &&
     count(value.connectionGeneration) &&
+    (value.serviceGeneration === undefined ||
+      value.serviceGeneration === null ||
+      typeof value.serviceGeneration === "string") &&
     (value.features === null ||
       (modelRecord(value.features) &&
         Object.values(value.features).every((flag) => typeof flag === "boolean")))
@@ -518,7 +541,9 @@ function desktopConnection(value) {
     modelRecord(value) &&
     ["connecting", "ready", "unavailable"].some((state) => value.state === state) &&
     (value.message === undefined || typeof value.message === "string") &&
-    (value.recovery === undefined || value.recovery === "check") &&
+    (value.recovery === undefined ||
+      value.recovery === "check" ||
+      value.recovery === "reconnect") &&
     (value.prerequisite === undefined ||
       (modelRecord(value.prerequisite) &&
         value.prerequisite.kind === "macos-command-line-tools" &&
@@ -586,14 +611,13 @@ function readDesktopSnapshot(value) {
   if (!isDesktopSnapshot(value)) throw new Error("Invalid Desktop snapshot envelope");
   return value;
 }
-/** @typedef {{automaticSessionName?:boolean,externalCua?:boolean,permissionPreset?:'ask'|'autoReview'|'fullAccess'|null,interactionMode?:'interactive'|'asynchronous'|'headless',readOnly?:boolean,systemPrompt?:string|null,appendInstructions?:string,toolAllowlist?:string[]|null,approvalTools?:string[],preapprovedTools?:string[],maxModelRounds?:number|null}} ClientOptions */
+/** @typedef {{externalCua?:boolean,permissionPreset?:'ask'|'autoReview'|'fullAccess'|null,interactionMode?:'interactive'|'asynchronous'|'headless',readOnly?:boolean,systemPrompt?:string|null,appendInstructions?:string,toolAllowlist?:string[]|null,approvalTools?:string[],preapprovedTools?:string[],maxModelRounds?:number|null}} ClientOptions */
 /** @param {unknown} value @returns {value is ClientOptions} */
 function clientOptions(value) {
   return (
     modelRecord(value) &&
     Object.keys(value).every((key) =>
       [
-        "automaticSessionName",
         "externalCua",
         "permissionPreset",
         "interactionMode",
@@ -606,7 +630,7 @@ function clientOptions(value) {
         "maxModelRounds",
       ].includes(key),
     ) &&
-    ["automaticSessionName", "externalCua", "readOnly"].every(
+    ["externalCua", "readOnly"].every(
       (key) => value[key] === undefined || typeof value[key] === "boolean",
     ) &&
     (value.permissionPreset == null ||
@@ -706,6 +730,7 @@ module.exports = {
   isReceipt,
   KINDS,
   isLifecycleReceipt,
+  lifecycleViewOperation,
   readLifecycleReceipt,
   isLifecycleProjection,
   isRecoveryView,

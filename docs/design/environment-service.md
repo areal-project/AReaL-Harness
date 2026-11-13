@@ -2,9 +2,9 @@
 
 # 独立开发环境服务设计
 
-> 已被[共享 Host 实施规格](../development/shared-host-spec.md)取代：不再采用“GUI 托管 / 后台托管”双模式与转换回执。本文的权威边界、Host 身份、显式启动项目、停止意图和不重放规则仍由新规格沿用。
+> 已被[共享 Host 实施规格](../development/shared-host-spec.md)取代：不再采用“GUI 托管 / 后台托管”双模式；受控重启、提交 journal 单 writer 切换和迁移回执改由新规格定义。本文的权威边界、Host 身份、显式启动项目、停止意图和不重放规则仍由新规格沿用。
 
-状态：目标设计，待实施。本文确定 Desktop Service 的演进边界，不表示后台独立启动、GUI 退出后继续执行或手机完整开发路径已经交付。分阶段交付与证据门槛见[实施计划](../development/environment-service-plan.md)。现行协议仍以[本地服务](../api/local-service.md)、[桌面 API](../api/desktop.md)和 [Remote API](../api/remote-control.md)为准；新增能力须在对应阶段更新契约后才能启用。
+状态：已被[共享 Host 实施规格](../development/shared-host-spec.md)取代，仅作历史参考。现行协议仍以[本地服务](../api/local-service.md)、[桌面 API](../api/desktop.md)和 [Remote API](../api/remote-control.md)为准；新增能力须在对应阶段更新契约后才能启用。
 
 ## 1. 目标与范围
 
@@ -184,4 +184,4 @@ Direct 与 Relay 继续共用业务命令和权限。手机与 Host 均主动连
 
 ZCode 的 Source 身份和连接线路分离、T3 的客户端与环境生命周期分离是参考；不照搬它们的部署或 Provider 架构。参考材料：[ZCode Source Server](https://github.com/zai-org/ZCode/blob/3c5b2276/docs/architecture/r3-source-server-remote-architecture.md)、[T3 Remote architecture](https://github.com/pingdotgg/t3code/blob/c8a606c7b7/docs/internals/remote.md)。实现选择以本仓所有者和验收证据为准。
 
-详见[分阶段实施计划](../development/environment-service-plan.md)。本设计对 ADR 0008 的“复用后台、不另建 Agent daemon”方向做生命周期细化；旧模式及现行 API 在对应阶段完成前仍然有效。
+本设计对 ADR 0008 的“复用后台、不另建 Agent daemon”方向做生命周期细化；旧模式及现行 API 在对应阶段完成前仍然有效。

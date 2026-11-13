@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +29,7 @@ const red = process.argv.includes("--red");
 const recoveryNotices = process.argv.includes("--recovery-notices");
 const scratch = await makeTempDir("apending-");
 await mkdir(join(root, ".scratch/pending-project"), { recursive: true });
-const evidence = await mkdtemp(join(root, ".scratch/pending-project/run-"));
+const evidence = await trackedMkdtemp(join(root, ".scratch/pending-project/run-"));
 const workspace = join(scratch, "workspace"),
   execution = join(scratch, "legacy-worktree");
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -173,8 +174,8 @@ const application = await applicationFixture(
   join(scratch, "app"),
   `
 if (process.argv.includes('--areal-core-service')) {
-  const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
-  const { SubmissionRecovery } = require(${JSON.stringify(join(gui, "app/src/core/submission-recovery.cjs"))});
+  const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
+  const { SubmissionRecovery } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/submission-recovery.cjs"))});
   const fs = require('node:fs');
   const trace = value => require('node:fs').appendFileSync(${JSON.stringify(tracePath)}, JSON.stringify(value) + '\\n');
   const loss = () => fs.existsSync(${JSON.stringify(responseLossPath)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(responseLossPath)}, 'utf8')) : undefined;
@@ -456,7 +457,7 @@ try {
     "Unrelated retained creation must not disable new-chat workspace settings",
   );
   await workspaceSettings.click();
-  const worktreeToggle = page.getByRole("switch", { name: "在新 Worktree 中工作", exact: true });
+  const worktreeToggle = page.getByRole("switch", { name: "在新工作树中工作", exact: true });
   await worktreeToggle.waitFor();
   assert.equal(await worktreeToggle.isChecked(), false, "Opening settings keeps worktree opt-in");
   await page.keyboard.press("Escape");
@@ -509,7 +510,8 @@ try {
     "Plugin management has no unrelated project recovery action",
   );
   await button("设置").click();
-  await button("后台服务").click();
+  await button("常规").click();
+  await button("打开高级诊断").click();
   await page.getByRole("heading", { name: "待核对的会话创建", exact: true }).waitFor();
   await page.getByText(requestId, { exact: false }).waitFor();
   const beforeCheck = (await trace()).length;

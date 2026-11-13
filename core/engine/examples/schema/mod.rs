@@ -3,6 +3,7 @@ use areal_protocol::{desktop::*, *};
 use serde_json::{Value, json};
 pub mod plugins;
 pub(super) mod standalone;
+pub mod worktrees;
 fn schema<T: schemars::JsonSchema>() -> Value {
     serde_json::to_value(schemars::schema_for!(T)).unwrap()
 }
@@ -66,9 +67,6 @@ pub fn projections() -> (Value, Value) {
         json!({"id":string,"record":record,"historyCount":number,"verificationCount":number,"recordPath":string,"candidatePath":string}),
     );
     group["properties"]["elapsedMs"] = nullable(number.clone());
-    let mcp = object(
-        json!({"id":string,"revision":number,"directoryRevision":number,"config":schema::<areal_mcp::ServerConfig>(),"state":{"enum":["disconnected","connecting","connected","failed","stale","cleanupFailed"]},"error":nullable(string.clone()),"tools":nullable(array(schema::<ToolDefinition>()))}),
-    );
     let resource = json!({"anyOf":[
         object(json!({"threadId":string,"id":string,"state":string,"epoch":string})),
         object(json!({"kind":{"const":"runtime"},"state":string,"epoch":string})),
@@ -100,6 +98,7 @@ pub fn projections() -> (Value, Value) {
         json!({"budget":nullable(context_budget),"threadId":string,"view":{"const":"historyProjectionForNextRequest"},"systemInstructionsIncluded":boolean,"instructionSnapshot":nullable(string.clone()),"checkpoint":nullable(schema::<ContextCheckpoint>()),"offset":number,"nextOffset":nullable(number.clone()),"data":array(object(json!({"role":string,"text":string,"toolCalls":array(any_object.clone()),"toolCallId":nullable(string.clone()),"opaqueProviderContextOmitted":boolean,"media":array(string.clone())})))}),
     );
     let mut responses = serde_json::Map::new();
+    responses.extend(worktrees::responses());
     let mut insert = |names: &[&str], value: Value| {
         for name in names {
             responses.insert(format!("areal/{name}"), value.clone());
@@ -155,6 +154,16 @@ pub fn projections() -> (Value, Value) {
         ],
         task_view.clone(),
     );
+    insert(
+        &["task/draft"],
+        json!({"anyOf":[
+            task_view.clone(),
+            object(json!({"threadId":string,"requestId":string})),
+            object(json!({"threadId":string,"turnId":string})),
+            object(json!({"messages":array(object(json!({"id":string,"role":{"enum":["user","assistant"]},"text":string})))})),
+            object(json!({"threadId":string,"turnId":nullable(string.clone()),"running":boolean,"messages":array(any_object.clone()),"proposal":nullable(any_object.clone()),"digest":nullable(string.clone()),"error":string,"timeZone":string,"thread":thread}))
+        ]}),
+    );
     let mut run_now = schema::<areal_protocol::tasks::TaskRunNowAccepted>();
     run_now["properties"]["accepted"] = json!({"const":true});
     insert(&["task/runNow"], run_now.clone());
@@ -185,7 +194,10 @@ pub fn projections() -> (Value, Value) {
         schema::<areal_protocol::tasks::OwnerWatch>(),
     );
     insert(&["owner/unwatch"], object(json!({"removed":boolean})));
-    insert(&["task/host/ready"], object(json!({"ready":boolean})));
+    insert(
+        &["task/host/ready", "task/tools/ready"],
+        object(json!({"ready":boolean})),
+    );
     insert(&["task/unsubscribe"], object(json!({"removed":boolean})));
     insert(
         &["task/list"],
@@ -348,12 +360,8 @@ pub fn projections() -> (Value, Value) {
             json!({"cleanupConfirmed":boolean,"source":{"const":"operatorAttestation"},"executionOutcomeUnchanged":boolean}),
         ),
     );
-    insert(
-        &["mcp/list", "mcp/configure", "mcp/connect", "mcp/disconnect"],
-        data(mcp.clone()),
-    );
-    insert(&["mcp/read"], mcp);
     insert(&["server/status", "server/drain"], status);
+    insert(&["host/status"], nullable(schema::<HostUpdateStatus>()));
     let model_configuration_proof = object(json!({
         "serviceId":string,"generation":string,"applied":schema::<AppliedModelConfiguration>(),
         "modelRevision":string,"credentialStates":{"type":"object","additionalProperties":{"enum":["notRequired","available","unavailable"]}}
@@ -500,9 +508,11 @@ pub fn projections() -> (Value, Value) {
             json!({"oneOf":[object(json!({"threadId":string,"turnId":string,"status":schema::<TurnStatus>(),"error":nullable(schema::<TurnError>()),"text":string,"truncated":boolean,"configuration":nullable(any_object.clone())})),object(json!({"agentId":string,"workspaceMode":{"const":"isolatedWrite"},"result":any_object}))]}),
         ),
     );
+    let matched_receipt = nullable(receipt.clone());
     let mut request_receipts = object(
         json!({"data":array(receipt),"retention":{"enum":["threadLifetime","deploymentLifetime","threadAndDeploymentLifetime"]},"capacity":number}),
     );
+    request_receipts["properties"]["matchedReceipt"] = matched_receipt;
     request_receipts["properties"]["creationAdmission"] = json!({"type":"object","additionalProperties":false,
         "required":["status","identity","requestId","method","journalEpoch","coreInstanceId"],
         "properties":{"status":{"enum":["admitted","unconfirmed","notAdmitted"]},"identity":string,"requestId":string,
@@ -595,6 +605,10 @@ pub fn projections() -> (Value, Value) {
     let mut notifications = serde_json::Map::new();
     notifications.insert("areal/server/configurationChanged".into(), object(json!({"threadId":string,"configuration":object(json!({"modelRevision":string,"restartRequired":boolean,"error":nullable(string.clone())}))})));
     notifications.insert("areal/task/updated".into(), task_event);
+    notifications.insert(
+        "areal/model/catalogChanged".into(),
+        object(json!({"revision":{"type":"integer","minimum":1}})),
+    );
     notifications.insert(
         "areal/owner/invalidated".into(),
         schema::<areal_protocol::tasks::OwnerInvalidation>(),

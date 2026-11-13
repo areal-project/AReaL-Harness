@@ -1,14 +1,14 @@
 .goal-dock {
-  margin: 0 12px -12px;
-  padding: 4px 8px 16px;
-  border: 1px solid var(--color-border);
+  margin: 0 calc(var(--spacing-inline) * 3 / 2) calc(calc(var(--spacing-inline) * 3 / 2) * -1);
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline) var(--spacing-field);
+  border: var(--border-width-default) solid var(--color-border);
   border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
   background: var(--color-secondary);
 }
 .goal-strip {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   min-width: 0;
 }
 .goal-summary {
@@ -16,9 +16,9 @@
   align-items: center;
   flex: 1;
   min-width: 0;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   padding: 0;
-  height: 24px;
+  height: var(--spacing-control-sm);
   border: 0;
   background: transparent;
   text-align: left;
@@ -43,19 +43,19 @@
 }
 .goal-strip > button,
 .goal-strip [data-slot="tooltip-trigger"] {
-  width: 24px;
-  height: 24px;
+  width: var(--spacing-control-sm);
+  height: var(--spacing-control-sm);
   padding: 0;
 }
 .goal-strip > .goal-summary {
   width: auto;
 }
 .goal-strip > button svg {
-  width: 14px;
-  height: 14px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
 }
 .goal-detail {
-  margin: 4px 0;
+  margin: calc(var(--spacing-inline) / 2) 0;
   font-size: var(--text-ui-sm);
   overflow-wrap: anywhere;
 }
@@ -64,8 +64,9 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding: 20px 16px 12px;
-  gap: 12px;
+  padding: calc(var(--spacing-inline) * 5 / 2) var(--spacing-field)
+    calc(var(--spacing-inline) * 3 / 2);
+  gap: calc(var(--spacing-inline) * 3 / 2);
 }
 .goal-editor > textarea {
   flex: 1;
@@ -82,13 +83,13 @@
   line-height: 1.35;
 }
 .goal-editor > textarea:focus-visible {
-  outline: 1px solid var(--color-ring);
+  outline: var(--border-width-default) solid var(--color-ring);
   outline-offset: 4px;
 }
 .goal-editor footer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .goal-editor footer > span {
   flex: 1;
@@ -96,7 +97,7 @@
   color: var(--color-foreground-subtle);
 }
 .goal-editor footer button {
-  height: 28px;
+  height: var(--spacing-control);
 }
 .goal-editor-notice,
 .goal-editor > [role="alert"] {
@@ -111,10 +112,10 @@
   overflow-wrap: anywhere;
 }
 .goal-editor-report p {
-  margin: 4px 0;
+  margin: calc(var(--spacing-inline) / 2) 0;
 }
 .goal-editor-report ul {
-  padding-left: 16px;
+  padding-left: var(--spacing-field);
   list-style: disc;
 }
 @media (max-width: 640px) {

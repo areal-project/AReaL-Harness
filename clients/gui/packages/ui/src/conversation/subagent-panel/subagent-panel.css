@@ -128,3 +128,12 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.areal-subagent-panel[data-embedded] {
+  flex: 1;
+  border: 0;
+}
+.areal-subagent-panel[data-embedded] .areal-subagent-history {
+  padding: 0;
+  overflow: hidden;
+}

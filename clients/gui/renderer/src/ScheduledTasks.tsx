@@ -1,3 +1,5 @@
+import { useTaskReadOnly } from "./PlatformReadContext.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScheduledWorkspace } from "@areal/ui/experimental";
 import { DelayedVisible } from "@areal/ui";
@@ -99,7 +101,7 @@ export function useScheduledTaskControl(
     setBusy(true);
     void action("reconcile", { projectId: project.id })
       .then(() => changed(project.id))
-      .catch((cause) => setError(cause.message))
+      .catch((cause) => setError(currentErrorText(cause)))
       .finally(() => setBusy(false));
   };
   return { control, reconcile, busy, error, pending, blocked, run };
@@ -330,12 +332,14 @@ export function ThreadScheduledTasks({
   thread,
   action,
   onAdd,
+  hideWhenEmpty = false,
   onOpen,
 }: {
   project: Data;
   thread: Data;
   action: Action;
   onAdd?: () => void;
+  hideWhenEmpty?: boolean;
   onOpen?: (task: Data) => void;
 }) {
   const { t } = useI18n();
@@ -393,6 +397,9 @@ export function ThreadScheduledTasks({
     if (!previous || task.revision >= previous.revision) tasks.set(task.id, task);
   }
   const visible = [...tasks.values()].filter(activeScheduledTask);
+  // 摘要卡只列有内容的行；没有安排时由卡片底部的“添加”入口承担。
+  // 读取中也不占位，避免摘要卡打开后先出现“读取中”再消失。
+  if (hideWhenEmpty && !visible.length && read.status !== "error") return null;
   return (
     <section className="task-resources-section" aria-label={t("operations.schedules.threadLabel")}>
       <h3 className="task-resources-heading">
@@ -490,13 +497,14 @@ export function ScheduledTaskCards({
   latest?: Set<string>;
   onOpen?: (task: Data) => void;
 }) {
+  const readOnly = useTaskReadOnly();
   return (
     <>
       {items.flatMap((item) => {
         const saved = savedSchedule(item);
         if (!saved) return [];
         return [
-          !latest || latest.has(item.id) ? (
+          !readOnly && (!latest || latest.has(item.id)) ? (
             <ScheduledTaskCard
               key={item.id}
               saved={saved}
@@ -587,7 +595,7 @@ function ScheduledTaskCard({
   ]);
   const pushed = project.state?.tasks?.[saved.task.id];
   const task =
-    pushed && read.task && pushed.revision > read.task.revision ? pushed : (read.task ?? pushed);
+    pushed && read.task && pushed.revision >= read.task.revision ? pushed : (read.task ?? pushed);
   const ready = !!project.state?.connected && read.status === "ready" && !!task;
   return (
     <div

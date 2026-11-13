@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 
 const gui = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const require = createRequire(join(gui, "app/package.json"));
-const modulePath = join(gui, "app/src/core/diagnostics.cjs");
+const modulePath = join(gui, "../../services/workbench/src/desktop/core/diagnostics.cjs");
 const scratch = await makeTempDir("areal-diagnostics-storage-");
 const mainRoot = join(scratch, "diagnostics/main"),
   desktopRoot = join(scratch, "desktop/diagnostics/desktop");

@@ -37,7 +37,7 @@ export function useStartupRecovery(
       ].includes(String(viewFailure.code)) ||
       (!viewFailure.code &&
         /连接中断|已断开|正在恢复|disconnect|timeout|connection|transport/i.test(
-          viewFailure.message,
+          viewFailure.message, // raw-error-ok: 只进详情
         )));
   const viewRefreshing =
     !!currentObservationFailure?.refreshPending || !!currentRestoration?.pending;
@@ -56,6 +56,13 @@ export function useStartupRecovery(
     !restorationFailed &&
     !startupLifecycleBlocked &&
     (!project || (currentRestoration && !currentRestoration.pending && (!threadId || !!thread)));
+  const projectFailureReady =
+    themeReady &&
+    snapshot.connection?.state === "ready" &&
+    selectionReady &&
+    !!project &&
+    restorationFailed &&
+    !startupLifecycleBlocked;
   const restorationNoticeId =
     currentObservationFailure?.id ??
     currentRestoration?.failureId ??
@@ -70,6 +77,7 @@ export function useStartupRecovery(
     startupLifecycle,
     startupLifecycleBlocked,
     startupReady,
+    projectFailureReady,
     restorationNoticeId,
   };
 }

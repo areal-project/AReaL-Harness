@@ -15,7 +15,9 @@ export const ceilings = Object.freeze({ maxHosts: 100, maxRooms: 10000, maxEnrol
   framesPerSecond: 80, bytesPerSecond: 2097152, upgradePerSecond: 50, enrollPerSecond: 10,
   handshakeTimeoutMs: 15000, idleTimeoutMs: 45000 });
 export function readConfig(file) {
-  const input = JSON.parse(readFileSync(file, 'utf8'));
+  return parseConfig(JSON.parse(readFileSync(file, 'utf8')));
+}
+export function parseConfig(input) {
   const origin = new URL(input.publicOrigin);
   const development = input.development === true;
   const local = input.local === true;

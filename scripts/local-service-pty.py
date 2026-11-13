@@ -97,16 +97,21 @@ try:
             subprocess.check_output([binary, "service", "ensure", *sys.argv[2:]], text=True)
         )
         assert after["generation"] == before["generation"]
-        # 文件限额变化由仍打开的 TUI 等待空闲后重启，并重建已有会话快照。
+        # 文件限额变化由 TUI 提示待应用；显式重新打开项目后重启，仍打开的 TUI 自动重连并重建会话快照。
         changed, count = re.subn(
             r"^max_threads = \d+$", "max_threads = 1235", changed, count=1, flags=re.MULTILINE
         )
         assert count == 1
+        pending.write_text(changed)
+        pending.replace(config)
+        expect(second, b"Configuration update pending")
         with second[3]:
             second[2].clear()
             second[4].clear()
-        pending.write_text(changed)
-        pending.replace(config)
+        reopened = json.loads(
+            subprocess.check_output([binary, "service", "ensure", *sys.argv[2:]], text=True)
+        )
+        assert reopened["generation"] != before["generation"]
         # 重连提示可能在绘制前被会话快照覆盖；检查只读状态及恢复后的实际请求。
         end = time.monotonic() + 30
         while True:

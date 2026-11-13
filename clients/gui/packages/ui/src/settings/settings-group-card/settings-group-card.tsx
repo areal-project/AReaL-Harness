@@ -12,7 +12,9 @@ export function SettingsGroupCard({
 }) {
   return (
     <div data-density={density} className={cn("settings-group-card", className)}>
-      <div data-slot="card-content" className="settings-group-content">{children}</div>
+      <div data-slot="card-content" className="settings-group-content">
+        {children}
+      </div>
     </div>
   );
 }

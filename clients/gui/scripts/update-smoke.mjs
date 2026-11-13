@@ -168,6 +168,8 @@ try {
     await page.screenshot({ path: join(scratch, `check-recovered-${targetVersion}.png`) });
     if (targetVersion === "0.1.12") {
       await page.getByRole("button", { name: "下载更新 0.1.12", exact: true }).click();
+      await page.locator('[data-testid="areal-update-status"][data-state="ready"]').waitFor();
+      await page.getByRole("button", { name: "重启并安装 0.1.12", exact: true }).click();
       await page.locator('[data-testid="areal-update-status"][data-state="deferred"]').waitFor();
       assert.equal(await app.evaluate(() => globalThis.updateRetrySmoke.downloads), 1);
       assert.equal(await app.evaluate(() => globalThis.updateRetrySmoke.recoveries), 0);
@@ -184,7 +186,7 @@ try {
   }
   checks.push(
     "real update controller through preload/IPC: network-change check failure retries; new offer needs a second click to download; current version clears the error",
-    "fast download completion keeps the newer deferred event over its stale downloading reply and exposes explicit recovery without re-downloading or automatically requesting recovery",
+    "download completion waits for an explicit restart; a busy backend then defers and exposes explicit recovery without re-downloading or automatically requesting recovery",
   );
   await app.evaluate(({ ipcMain, BrowserWindow }) => {
     ipcMain.removeHandler("areal-core:update-download");
@@ -232,8 +234,9 @@ try {
       id: "deferred",
       status: "deferred",
       downloaded: "0.1.16",
-      detail: "还有活动任务，空闲后将自动重启安装。",
+      detail: "还有活动任务，完成后再重启安装。",
     },
+    { id: "ready", status: "ready", downloaded: "0.1.16", version: "0.1.16" },
     { id: "installing", status: "installing", downloaded: "0.1.16", installing: true },
     { id: "error", status: "error", detail: "下载连接中断，请重试。" },
     {
@@ -337,8 +340,10 @@ try {
   assert.equal(
     await page
       .locator(".areal-update-ring:visible")
-      .evaluate((node) => getComputedStyle(node).animationName),
-    "none",
+      .evaluate((node) =>
+        node.getAnimations().some((animation) => animation.playState === "running"),
+      ),
+    false,
   );
   await page.screenshot({
     path: join(scratch, "update-narrow-reduced-motion.png"),

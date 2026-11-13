@@ -721,7 +721,7 @@ class SourceIdentityTests(unittest.TestCase):
                 "tests/perf/runner/runtime_client.py",
                 "core/engine/src/lib.rs",
                 "runtime/sdk-typescript/package-lock.json",
-                "clients/web/app.js",
+                "clients/cli/src/main.rs",
             ):
                 path = root / name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -733,7 +733,7 @@ class SourceIdentityTests(unittest.TestCase):
                     "runtime/sdk-typescript/dist/index.js",
                     "tests/perf/runner/__pycache__/client.pyc",
                     "core/.venv/pyvenv.cfg",
-                    "clients/web/.DS_Store",
+                    "clients/cli/.DS_Store",
                     "runtime/scratch.tmp",
                 ):
                     path = root / name

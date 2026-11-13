@@ -487,6 +487,34 @@ class ChangedChecks(unittest.TestCase):
         self.assertIn("smoke:test:model-selection", {item["id"] for item in plan["items"]})
         self.assertEqual(checks.select_checks(plan, "full", {}), plan["items"])
 
+    def test_push_selection_runs_static_checks_and_defers_slow_failed_smoke(self):
+        plan = self.plan(["clients/gui/renderer/src/Composer.tsx", "core/host/src/lib.rs"])
+        selected = checks.select_checks(plan, "push", {"smoke:test:composer": ["failed"]})
+        names = {item["id"] for item in selected}
+        self.assertTrue(
+            {"format", "workflow", "schema", "gui-health", "gui-check", "rust-lint"} <= names
+        )
+        self.assertNotIn("rust-types", names)
+        self.assertNotIn("gui-public", names)
+        self.assertNotIn("plan-contracts", names)
+        self.assertNotIn("smoke:test:composer", names)
+        with (
+            patch.object(checks, "ROOT", self.root),
+            patch.object(checks.ci_scope, "repository_plan", return_value=plan),
+            patch.object(
+                checks, "failure_checks", return_value={"smoke:test:composer": ["failed"]}
+            ),
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            self.assertEqual(checks.main(["--base", self.base, "--phase", "push", "--plan"]), 0)
+        printed = json.loads(output.getvalue())
+        self.assertIn("rust-lint", printed["selected"])
+        self.assertIn("rust-types", printed["pendingFull"])
+        self.assertNotIn("rust-types", printed["selected"])
+        self.assertEqual(printed["failureChecks"], {"smoke:test:composer": ["failed"]})
+        for item in selected:
+            self.assertTrue(set(item["dependsOn"]) <= names)
+
     def test_quick_command_executes_failed_special_with_dependencies_and_propagates_failure(self):
         plan = self.plan([])
         plan["items"] = [
@@ -687,7 +715,9 @@ class ChangedChecks(unittest.TestCase):
             check=True,
         )
         selected = json.loads(result.stdout)
-        self.assertIn("test:feedback-native", {item["script"] for item in selected["unexecuted"]})
+        self.assertIn(
+            "test:shared-host-consumers", {item["script"] for item in selected["unexecuted"]}
+        )
         self.assertIn("test:composer", selected["deferred"])
 
 

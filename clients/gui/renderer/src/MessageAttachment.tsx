@@ -1,6 +1,8 @@
+import { usePlatformReads, useReadOnly, type MediaOwner } from "./PlatformReadContext.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { TitleTooltip } from "@areal/ui";
 import { observeResize } from "@areal/ui/observe-resize";
-import type { SnapShotSource } from "@areal/workbench/desktop-contract/snapshots";
+import type { SnapShotSource } from "./services.js";
 import { SnapShotAttachment } from "./snapshots/SnapShotAttachment.js";
 import { useI18n } from "./i18n/IntlProvider.js";
 import { useEffect, useRef, useState } from "react";
@@ -186,7 +188,11 @@ function AttachmentTile({
           aria-label={image ? `预览图片 ${name}` : `下载附件 ${name}`}
         >
           {image ? (
-            <img className="task-resource-thumbnail" src={url} alt="" />
+            url ? (
+              <img className="task-resource-thumbnail" src={url} alt="" />
+            ) : (
+              <span className="task-resource-thumbnail" aria-hidden="true" />
+            )
           ) : (
             <DocumentPanelIcon />
           )}
@@ -209,7 +215,11 @@ function AttachmentTile({
           }
         >
           {image ? (
-            <AttachmentPreview className="size-full rounded-none" />
+            url ? (
+              <AttachmentPreview className="size-full rounded-none" />
+            ) : (
+              <span className="sr-only">{name}</span>
+            )
           ) : (
             <>
               <AttachmentPreview />
@@ -337,14 +347,22 @@ export function ImagePreview({
   );
 }
 
-export function DraftAttachment({ file, onRemove }: { file: File; onRemove: () => void }) {
+export function DraftAttachment({ file, onRemove }: { file: File; onRemove?: () => void }) {
   const [url, setUrl] = useState("");
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
-  return <AttachmentTile name={file.name} mime={file.type} url={url} onRemove={onRemove} />;
+  return (
+    <AttachmentTile
+      name={file.name}
+      mime={file.type}
+      url={url}
+      onRemove={onRemove}
+      sent={!onRemove}
+    />
+  );
 }
 
 export function SentAttachment({
@@ -356,6 +374,7 @@ export function SentAttachment({
   annotation,
   onError,
   snapShotSource,
+  mediaSource,
 }: {
   part: Data;
   projectId: string;
@@ -365,14 +384,33 @@ export function SentAttachment({
   annotation?: SentImageAnnotation;
   onError?: (message: string) => void;
   snapShotSource?: SnapShotSource;
+  mediaSource?: MediaOwner;
 }) {
+  const reads = usePlatformReads();
+  const source = mediaSource;
+  const readOnly = useReadOnly();
   const [media, setMedia] = useState<{ url: string; mime: string } | null>(null);
   const [failure, setFailure] = useState("");
   useEffect(() => {
     let active = true;
     let objectUrl = "";
+    const abort = new AbortController();
     setFailure("");
-    void action("media", { projectId, threadId, operation: "read", uri: part.url ?? part.uri })
+    setMedia(null);
+    const reading = reads
+      ? source
+        ? reads.media(
+            {
+              turnId: source.turnId,
+              itemId: source.itemId,
+              sourceThreadId: source.sourceThreadId,
+              uri: part.url ?? part.uri,
+            },
+            abort.signal,
+          )
+        : Promise.reject(new Error("Media source unavailable"))
+      : action("media", { projectId, threadId, operation: "read", uri: part.url ?? part.uri });
+    void reading
       .then((value) => {
         if (!active) return;
         const blobMime = value.mime ?? "application/octet-stream";
@@ -385,16 +423,29 @@ export function SentAttachment({
       })
       .catch((cause) => {
         if (active) {
-          const message = cause instanceof Error ? cause.message : "读取附件失败";
+          const message = cause instanceof Error ? currentErrorText(cause) : "读取附件失败";
           setFailure(message);
           onError?.(message);
         }
       });
     return () => {
       active = false;
+      abort.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [part.url, part.uri, projectId, threadId, action, onError]);
+  }, [
+    part.url,
+    part.uri,
+    projectId,
+    threadId,
+    action,
+    onError,
+    reads,
+    source?.turnId,
+    source?.itemId,
+    source?.sourceThreadId,
+    source?.generation,
+  ]);
   const name =
     annotation?.name ??
     part.name ??
@@ -406,7 +457,12 @@ export function SentAttachment({
         {failure}
       </span>
     );
-  if (!media) return <span className="text-ui-sm text-foreground-subtle">读取附件…</span>;
+  if (!media)
+    return part.type === "image" ? (
+      <AttachmentTile name={name} mime="image/*" url="" sent compact={compact} />
+    ) : (
+      <span className="text-ui-sm text-foreground-subtle">读取附件…</span>
+    );
   if (part.type === "audio" && !compact)
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -421,7 +477,7 @@ export function SentAttachment({
         </Button>
       </div>
     );
-  if (snapShotSource && part.type === "image")
+  if (!readOnly && snapShotSource && part.type === "image")
     return <SnapShotAttachment source={snapShotSource} url={media.url} name={name} />;
   return (
     <AttachmentTile
@@ -433,4 +489,13 @@ export function SentAttachment({
       annotation={annotation}
     />
   );
+}
+
+export function mediaOwner(item: Data, turnId: string, generation?: string): MediaOwner {
+  return {
+    generation,
+    turnId: item.historySource?.turnId ?? turnId,
+    itemId: item.historySource?.itemId ?? item.id,
+    sourceThreadId: item.historySource?.threadId,
+  };
 }

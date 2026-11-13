@@ -229,7 +229,7 @@ function assertCommands(file) {
   const declared = commandNames(file).map((property) => property.name.text);
   const dispatched = union(
     commandBranches(mainSource()),
-    commandBranches(source(resolve("app/src/core/backend.cjs"))),
+    commandBranches(source(resolve("../../services/workbench/src/desktop/core/backend.cjs"))),
   );
   assert.deepEqual(
     sorted(declared),
@@ -315,7 +315,21 @@ function coreTargets(file, checker) {
     });
   };
   visit(file, (node) => {
-    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) return;
+    if (!ts.isCallExpression(node)) return;
+    const callee = node.expression;
+    if (
+      ts.isParenthesizedExpression(callee) &&
+      ts.isBinaryExpression(callee.expression) &&
+      callee.expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+      ts.isCallExpression(callee.expression.right) &&
+      ts.isPropertyAccessExpression(callee.expression.right.expression) &&
+      callee.expression.right.expression.name.text === "bind" &&
+      ts.isPropertyAccessExpression(callee.expression.right.expression.expression) &&
+      callee.expression.right.expression.expression.name.text === "request" &&
+      node.arguments[0]
+    )
+      strings(node.arguments[0]);
+    if (!ts.isPropertyAccessExpression(node.expression)) return;
     if (node.expression.name.text === "request" && node.arguments[0]) strings(node.arguments[0]);
     if (["submit", "readSubmission"].includes(node.expression.name.text) && node.arguments[1])
       strings(node.arguments[1]);
@@ -323,17 +337,42 @@ function coreTargets(file, checker) {
   return { methods, templates };
 }
 
+test("Core target scanner recognizes a bound request without collecting unrelated callbacks", () => {
+  const root = mkdtempSync(join(tmpdir(), "areal-ipc-targets-"));
+  try {
+    const path = join(root, "fixture.cjs");
+    writeFileSync(
+      path,
+      'const method = "areal/thread/read";\n' +
+        "(terminalRequest ?? current.request.bind(current))(method);\n" +
+        'unrelated("areal/unrelated/read");\n' +
+        '(callback ?? current.other.bind(current))("areal/other/read");\n',
+    );
+    const program = ts.createProgram([path], { allowJs: true, noResolve: true, noLib: true });
+    assert.deepEqual(
+      sorted(coreTargets(program.getSourceFile(path), program.getTypeChecker()).methods),
+      ["areal/thread/read"],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Desktop commands map to their own dispatch layer and Core catalog through actual RPC targets", () => {
   const main = commandBranches(mainSource()),
-    backend = commandBranches(source(resolve("app/src/core/backend.cjs")));
+    backend = commandBranches(
+      source(resolve("../../services/workbench/src/desktop/core/backend.cjs")),
+    );
   for (const [name, [owner]] of Object.entries(commandDefinitions))
     assert.ok(
       (owner === "main" ? main : backend).has(name),
       `${owner} command lacks a dispatch branch: ${name}`,
     );
-  const files = readdirSync(resolve("app/src/core"))
-    .filter((name) => name.endsWith(".cjs"))
-    .map((name) => resolve("app/src/core", name));
+  const files = ["app/src/core", "../../services/workbench/src/desktop/core"].flatMap((directory) =>
+    readdirSync(resolve(directory))
+      .filter((name) => name.endsWith(".cjs"))
+      .map((name) => resolve(directory, name)),
+  );
   const program = ts.createProgram(files, {
       allowJs: true,
       noResolve: true,
@@ -355,9 +394,93 @@ test("Desktop commands map to their own dispatch layer and Core catalog through 
   );
   const unmapped = [...core].filter(
     (method) =>
+      // Web 经 Core 查询 Host；GUI Main 直接调用 Host，不经过此 Core 代理。
+      method !== "areal/host/status" &&
       !targets.has(method) &&
       !templates.some(({ prefix, suffix }) => method.startsWith(prefix) && method.endsWith(suffix)),
   );
-  // Core exposes individual detail reads to other clients; the GUI consumes the corresponding lists.
-  assert.deepEqual(unmapped, ["areal/mcp/read", "areal/provider/read"]);
+  // Worktree 执行由 Host 直接调用 Core；GUI 只调用 Host 目录，模型详情由列表提供。
+  assert.deepEqual(unmapped, [
+    "areal/worktree/read",
+    "areal/worktree/command",
+    "areal/provider/read",
+  ]);
+});
+
+test("window close confirmation belongs to the original frame and request", async () => {
+  const { EventEmitter } = require("node:events");
+  const { runInNewContext } = require("node:vm");
+  const compiled = ts.transpileModule(
+    readFileSync(resolve("app/src/ipc/window-close.ts"), "utf8"),
+    {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    },
+  ).outputText;
+  const exports = {};
+  runInNewContext(compiled, { exports, setTimeout, clearTimeout });
+  const owner = Object.assign(new EventEmitter(), {
+    mainFrame: { url: "areal-ui://app/" },
+    isDestroyed: () => false,
+  });
+  const sent = [];
+  const gate = new exports.WindowCloseGate((_owner, id) => sent.push(id), 30);
+  const first = gate.request(owner);
+  assert.equal(gate.request(owner), first);
+  gate.decide({ sender: {}, senderFrame: owner.mainFrame }, { id: sent[0], allowed: true });
+  gate.decide({ sender: owner, senderFrame: {} }, { id: sent[0], allowed: true });
+  owner.emit("did-start-navigation", {}, "areal-ui://app/", false, true);
+  assert.equal(await first, false);
+  const second = gate.request(owner);
+  gate.decide({ sender: owner, senderFrame: owner.mainFrame }, { id: sent[0], allowed: true });
+  gate.decide({ sender: owner, senderFrame: owner.mainFrame }, { id: sent[1], allowed: true });
+  assert.equal(await second, true);
+  assert.deepEqual(owner.eventNames(), []);
+  assert.equal(await gate.request(owner), false, "an unacknowledged window stays open");
+  assert.deepEqual(owner.eventNames(), []);
+});
+
+test("preload window close rejects detached listeners and ignores their late success", async () => {
+  const { EventEmitter } = require("node:events");
+  const { runInNewContext } = require("node:vm");
+  const ipc = new EventEmitter();
+  const replies = [];
+  ipc.send = (channel, value) => replies.push({ channel, ...value });
+  let bridge;
+  runInNewContext(readFileSync(preloadPath, "utf8"), {
+    require: (name) => {
+      assert.equal(name, "electron");
+      return {
+        ipcRenderer: ipc,
+        contextBridge: {
+          exposeInMainWorld(_name, api) {
+            bridge = api;
+          },
+        },
+      };
+    },
+  });
+  let complete;
+  const stop = bridge.onWindowClosing(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  ipc.emit("areal-core:window-closing", {}, 1);
+  await Promise.resolve();
+  stop();
+  complete(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(replies, [
+    { channel: "areal-core:window-close-decision", id: 1, allowed: false },
+  ]);
+  bridge.onWindowClosing(() => true);
+  ipc.emit("areal-core:window-closing", {}, 2);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(replies.at(-1), {
+    channel: "areal-core:window-close-decision",
+    id: 2,
+    allowed: true,
+  });
 });

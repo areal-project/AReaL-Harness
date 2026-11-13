@@ -1,7 +1,7 @@
 //! 已压缩历史按不可变分段追加；先同步分段，再提交引用它的当前状态快照。
 use super::*;
 use areal_protocol::{HistoryArchive, Turn};
-mod own;
+pub(crate) mod own;
 
 const MAX_SEGMENT_BYTES: u64 = 64 * 1024 * 1024;
 
@@ -29,11 +29,15 @@ pub(super) fn read_segment(root: &Path, digest: &str) -> Result<Segment> {
         "history segment exceeds size limit"
     );
     let bytes = std::fs::read(path)?;
+    decode_segment(&bytes, digest)
+}
+
+pub(super) fn decode_segment(bytes: &[u8], digest: &str) -> Result<Segment> {
     anyhow::ensure!(
-        format!("{:x}", Sha256::digest(&bytes)) == digest,
+        format!("{:x}", Sha256::digest(bytes)) == digest,
         "history segment integrity check failed"
     );
-    let segment: Segment = serde_json::from_slice(&bytes)?;
+    let segment: Segment = serde_json::from_slice(bytes)?;
     anyhow::ensure!(segment.version == 1, "unsupported history segment version");
     Ok(segment)
 }
@@ -59,7 +63,7 @@ fn append_segment(root: &Path, bytes: &[u8]) -> Result<String> {
     Ok(digest)
 }
 
-fn merge_turns(result: &mut Vec<Turn>, turns: Vec<Turn>) {
+pub(super) fn merge_turns(result: &mut Vec<Turn>, turns: Vec<Turn>) {
     for mut turn in turns {
         if result.last().is_some_and(|old| old.id == turn.id) {
             let mut previous = result.pop().unwrap().items;

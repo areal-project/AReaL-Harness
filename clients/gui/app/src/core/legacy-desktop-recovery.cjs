@@ -5,12 +5,18 @@ const { readFile, mkdir, open, rename, rm } = require("node:fs/promises");
 const { join, resolve } = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { isDeepStrictEqual } = require("node:util");
-const { inspectOriginalService, serviceRequest } = require("./local-service.cjs");
+const {
+  inspectOriginalService,
+  serviceRequest,
+} = require("@areal/workbench-service/desktop/core/local-service.cjs");
 const { coreLifecycle, desktopBlockers, blockerMessage, describe } = require("./lifecycle.cjs");
 const { desktopError } = require("@areal/workbench/desktop-contract");
-const { readServicePacket } = require("./service-state.cjs");
-const { readRecoveryService, readResourceStatus } = require("./resource-observation.cjs");
-const { record } = require("./service-transport-contract.cjs");
+const { readServicePacket } = require("@areal/workbench-service/desktop/core/service-state.cjs");
+const {
+  readRecoveryService,
+  readResourceStatus,
+} = require("@areal/workbench-service/desktop/core/resource-observation.cjs");
+const { record } = require("@areal/workbench-service/desktop/core/service-transport-contract.cjs");
 /** @typedef {InstanceType<typeof import('./service-client.cjs').SharedCoreBackend>} Backend */
 /** @typedef {{pid:number,identity:string,endpoint:string}} DesktopSource */
 /** @typedef {{projectId:string,serviceId:string,generation:string,root:string}} LegacyTarget */
@@ -81,6 +87,7 @@ async function sourcePacket(backend, source) {
   if (
     !record(metadata) ||
     !backend.metadata ||
+    !("token" in backend.metadata) ||
     !backend.connection ||
     !sameDesktop(metadata, source) ||
     !sameDesktop(backend.metadata, source) ||
@@ -188,8 +195,10 @@ async function inspect(backend) {
   let journal = control?.legacyRecovery
     ? validateJournal(control.legacyRecovery, backend)
     : undefined;
-  const source = journal?.source ?? backend.metadata;
-  if (!source) throw fail("原 Desktop 身份不可用");
+  const selected = journal?.source ?? backend.metadata;
+  if (!selected || !("endpoint" in selected) || typeof selected.endpoint !== "string")
+    throw fail("原外部 Desktop 身份不可用");
+  const source = { pid: selected.pid, identity: selected.identity, endpoint: selected.endpoint };
   const projects = [],
     blockers = [];
   let packet;
@@ -293,7 +302,7 @@ async function persist(backend, journal) {
   await mkdir(backend.app.getPath("userData"), { recursive: true, mode: 0o700 });
   await save(backend.controlPath, backend.legacyControl);
 }
-/** @param {Backend} backend @param {import("./resource-recovery.cjs").Notify} notify */
+/** @param {Backend} backend @param {import("@areal/workbench-service/desktop/core/resource-recovery.cjs").Notify} notify */
 async function recover(backend, notify) {
   const observed = await inspect(backend);
   const detail = observed.view.projects.map((p) => `${p.root}\n${p.message}`).join("\n\n");
@@ -426,7 +435,7 @@ async function recover(backend, notify) {
   backend.connection?.close();
   backend.connection = null;
   backend.status = { connected: false };
-  await backend.initialize(false);
+  await backend.initialize();
   if (
     backend.metadata?.identity !== journal.replacementIdentity ||
     backend.status.lifecycle?.version !== 2

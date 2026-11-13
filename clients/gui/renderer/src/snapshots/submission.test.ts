@@ -53,7 +53,7 @@ describe("screenshot submission acceptance", () => {
     });
     await expect(
       submitMessage(invoke as Action, "project", "thread", "Question", files, { appMessage: true }),
-    ).resolves.toBeUndefined();
+    ).resolves.toEqual({ queued: false });
     fault.mockRestore();
     expect(invoke).toHaveBeenLastCalledWith(
       "send",

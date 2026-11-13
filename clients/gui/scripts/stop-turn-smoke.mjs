@@ -4,13 +4,21 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
-import { captureSmokeFailure } from "./smoke-navigation.mjs";
+import {
+  captureSmokeFailure,
+  createProjectConversation,
+  openSideChat,
+} from "./smoke-navigation.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
@@ -20,6 +28,9 @@ const binary = process.env.AREAL_CORE_BIN;
 const snapshotCompletion = process.env.AREAL_STOP_SNAPSHOT_COMPLETION === "1";
 assert.ok(binary && isAbsolute(binary), "Set AREAL_CORE_BIN to an absolute fixed Core binary");
 const scratch = await makeTempDir("stop-turn-");
+const rust = process.argv.includes("--rust");
+if (snapshotCompletion) assert.ok(rust, "Snapshot completion requires --rust");
+if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const workspace = join(scratch, "workspace");
 await mkdir(workspace);
 execFileSync("git", ["init", "-b", "main"], { cwd: workspace, stdio: "ignore" });
@@ -37,6 +48,7 @@ Object.assign(env, {
   NO_PROXY: [env.NO_PROXY, "127.0.0.1,localhost,::1"].filter(Boolean).join(","),
   no_proxy: [env.no_proxy, "127.0.0.1,localhost,::1"].filter(Boolean).join(","),
 });
+if (rust) env.AREAL_TEST_HOST_KEYCHAIN = "1";
 const requests = [],
   held = new Set(),
   errors = [],
@@ -61,25 +73,10 @@ const server = createServer(async (request, response) => {
 });
 const commandLog = join(scratch, "commands.jsonl");
 const receiptGate = join(scratch, "receipt.gate");
+const omittedCompletionLog = join(scratch, "omitted-completions.jsonl");
 const bootstrap = `
-const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
 const { appendFileSync, existsSync } = require('node:fs');
-const connect = CoreBackend.prototype.connect;
-CoreBackend.prototype.connect = async function(project, ...args) {
-  const value = await connect.call(this, project, ...args);
-  if (${JSON.stringify(snapshotCompletion)}) {
-    const receive = project.client.receive.bind(project.client);
-    project.client.receive = bytes => {
-      if (JSON.parse(String(bytes)).method === 'turn/completed') {
-        appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ completionNotificationOmitted: true }) + '\\n');
-        return;
-      }
-      return receive(bytes);
-    };
-  }
-  return value;
-};
 const command = SharedCoreBackend.prototype.command;
 const accept = SharedCoreBackend.prototype.acceptLifecycleReceipt;
 SharedCoreBackend.prototype.command = async function(name, request) {
@@ -117,14 +114,72 @@ let application,
   app,
   page,
   metadata,
+  primaryThreadId,
   passed = false,
   failure,
   cleanup;
 const snapshot = () => page.evaluate(() => window.arealDesktop.snapshot());
+async function acceptedCompletionReads(projectId, threadId, completionId) {
+  const imports = join(env.AREAL_HARNESS_SERVICE_HOME, "host/imports");
+  const migrations = await readdir(imports).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const sources = (
+    await Promise.all(
+      migrations.map(async (name) => {
+        const record = await readFile(join(imports, name, "record.json"), "utf8")
+          .then(JSON.parse)
+          .catch((error) => {
+            if (error.code === "ENOENT") return null;
+            throw error;
+          });
+        return record?.phase === "committed" && record.source?.profile === env.AREAL_GUI_USER_DATA
+          ? record.sourceId
+          : null;
+      }),
+    )
+  ).filter(Boolean);
+  assert.equal(new Set(sources).size, 1, "Fixture profile has one committed Host source");
+  const params = {
+    completionId,
+    operation: "readThread",
+    projectId,
+    read: true,
+    sourceId: sources[0],
+    threadId,
+  };
+  const digest = createHash("sha256")
+    .update(JSON.stringify(["library.command", params]))
+    .digest("hex");
+  const directory = join(env.AREAL_HARNESS_SERVICE_HOME, "host/journals/records");
+  const records = await readdir(directory).catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const outcomes = await Promise.all(
+    records.map(async (name) => {
+      const record = JSON.parse(await readFile(join(directory, name), "utf8"));
+      return Object.values(record.snapshot?.outcomes ?? {});
+    }),
+  );
+  const key = `${projectId}:${threadId}`;
+  return outcomes.flat().filter((outcome) => {
+    const item = outcome.receipt?.threads?.[key];
+    return (
+      outcome.method === "library.command" &&
+      outcome.admissionState === "accepted" &&
+      outcome.submissionUnknown === false &&
+      /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(outcome.commandId) &&
+      outcome.semanticDigest === digest &&
+      item?.completionId === completionId &&
+      item.unread === false
+    );
+  });
+}
 const project = (value) => value.projects.find((item) => item.root === workspace);
 const current = (value) => {
-  const id = value.activeThreadId ?? Object.keys(project(value)?.state?.threads ?? {})[0];
-  return project(value)?.state?.threads[id];
+  return project(value)?.state?.threads[primaryThreadId];
 };
 const until = async (read, label) => {
   const deadline = Date.now() + 45000;
@@ -158,15 +213,200 @@ try {
   page.on("pageerror", (error) => errors.push(error.stack));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
   await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
-  metadata = JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"));
+  if (rust) {
+    const stop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    assert.equal(stop.state, "completed");
+    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    await closeSmokeApplication(app);
+    await assertApplicationStopped(binary, env, null);
+    app = await electron.launch({
+      executablePath: require("electron"),
+      args: [application.path],
+      env,
+      timeout: 120000,
+    });
+    app.process().stderr.on("data", (chunk) => {
+      void writeFile(join(scratch, "electron.log"), chunk, { flag: "a" });
+    });
+    page = await app.firstWindow();
+    page.setDefaultTimeout(20000);
+    page.on("pageerror", (error) => errors.push(error.stack));
+    await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+    await until(async () => (await snapshot()).connection?.state === "ready", "Rust desktop ready");
+    await until(async () => {
+      const record = await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "workbench/backend-launch.json"),
+        "utf8",
+      )
+        .then(JSON.parse)
+        .catch(() => null);
+      return record !== null;
+    }, "Host backend launch record");
+  }
+  if (snapshotCompletion) {
+    await page.addInitScript(() => {
+      const NativeWebSocket = window.WebSocket;
+      const fixture = (window.__stopSnapshotFixture = {
+        sessions: [],
+        target: null,
+        omitted: null,
+        recovered: null,
+        candidates: [],
+      });
+      window.WebSocket = class extends NativeWebSocket {
+        constructor(...args) {
+          super(...args);
+          const pending = new Map();
+          this.__stopPending = pending;
+          this.addEventListener("close", () => {
+            fixture.sessions = fixture.sessions.filter(
+              (entry) => entry.socket !== this.__stopSocket,
+            );
+          });
+          this.__stopSocket = crypto.randomUUID();
+          this.addEventListener(
+            "message",
+            (event) => {
+              if (typeof event.data !== "string") return;
+              let message;
+              try {
+                message = JSON.parse(event.data);
+              } catch {
+                return;
+              }
+              if (pending.has(String(message.id))) {
+                const request = pending.get(String(message.id));
+                pending.delete(String(message.id));
+                const result = message.result;
+                if (result?.view !== "conversation" || result.threadId !== request.threadId) return;
+                const identity = {
+                  projectId: result.projectId,
+                  serviceGeneration: result.serviceGeneration,
+                  connectionId: result.connectionId,
+                  subscriptionId: result.subscriptionId,
+                  threadId: result.threadId,
+                };
+                fixture.sessions.push({ ...identity, socket: this.__stopSocket });
+                const target = fixture.target;
+                const turn = result.snapshot?.thread?.turns?.find(
+                  (item) => item.id === target?.turnId,
+                );
+                if (
+                  fixture.omitted &&
+                  target &&
+                  identity.projectId === target.projectId &&
+                  identity.serviceGeneration === target.serviceGeneration &&
+                  identity.threadId === target.threadId &&
+                  identity.connectionId !== target.connectionId &&
+                  turn?.status === "interrupted"
+                ) {
+                  fixture.recovered = { ...identity, turnId: turn.id, status: turn.status };
+                }
+                return;
+              }
+              const value = message.params;
+              const target = fixture.target;
+              if (
+                target &&
+                message.method === "session.updated" &&
+                fixture.candidates.length < 64
+              ) {
+                fixture.candidates.push({
+                  projectId: value?.projectId,
+                  serviceGeneration: value?.serviceGeneration,
+                  connectionId: value?.connectionId,
+                  subscriptionId: value?.subscriptionId,
+                  threadId: value?.threadId,
+                  turns: value?.patch?.turns?.map((turn) => ({
+                    id: turn.id,
+                    status: turn.head?.status,
+                  })),
+                });
+              }
+              if (
+                !target ||
+                fixture.omitted ||
+                message.method !== "session.updated" ||
+                value?.projectId !== target.projectId ||
+                value.serviceGeneration !== target.serviceGeneration ||
+                value.connectionId !== target.connectionId ||
+                value.subscriptionId !== target.subscriptionId ||
+                value.threadId !== target.threadId
+              )
+                return;
+              const turn = value.patch?.turns?.find(
+                (item) => item.id === target.turnId && item.head?.status === "interrupted",
+              );
+              if (!turn) return;
+              fixture.omitted = {
+                ...target,
+                turnId: turn.id,
+                sequence: value.sequence,
+                status: turn.head.status,
+              };
+              event.stopImmediatePropagation();
+              this.close();
+            },
+            true,
+          );
+        }
+        send(data) {
+          if (typeof data === "string") {
+            try {
+              const request = JSON.parse(data);
+              if (request.method === "session.open" && request.params?.view === "conversation")
+                pendingFor(this).set(String(request.id), request.params);
+            } catch {
+              /* 非 Host 请求原样发送。 */
+            }
+          }
+          return super.send(data);
+        }
+      };
+      function pendingFor(socket) {
+        return socket.__stopPending;
+      }
+    });
+    await page.reload();
+    await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
+    await until(
+      async () => (await snapshot()).connection?.state === "ready",
+      "Snapshot Renderer ready",
+    );
+  }
+  // Rust Host 管理项目代际，旧桌面服务文件不是其身份。
+  metadata = rust
+    ? null
+    : JSON.parse(await readFile(join(env.AREAL_CORE_HOME, "service.json"), "utf8"));
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);
   await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
   await until(async () => project(await snapshot())?.state?.connected, "Project ready");
+  await createProjectConversation(page, "workspace");
+  await until(async () => {
+    const target = project(await snapshot());
+    return (
+      target &&
+      (await page.getByTestId("areal-workbench").getAttribute("data-project-id")) === target.id
+    );
+  }, "selected workspace conversation");
   await page.getByTestId("chat-input").fill("Keep streaming until I pause.");
   await page.getByTestId("chat-send-button").click();
+  primaryThreadId = await until(async () => {
+    const id = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    return id && project(await snapshot())?.state?.threads[id] ? id : null;
+  }, "submitted workspace thread identity");
   await until(
     async () =>
       current(await snapshot())
@@ -176,6 +416,63 @@ try {
         ),
     "Streaming reply",
   );
+  if (snapshotCompletion) {
+    const streaming = await snapshot();
+    const selected = project(streaming);
+    assert.equal(
+      current(streaming).turns.at(-1).status,
+      "inProgress",
+      "Original Turn is active before dropping its terminal update",
+    );
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
+    let binding;
+    try {
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      const source = await host.sourceState({
+        profile: env.AREAL_GUI_USER_DATA,
+        coreHome: env.AREAL_CORE_HOME,
+        legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
+      });
+      const matches = source.bindings.filter(
+        (entry) => entry.alias.legacyProjectId === selected.id && entry.workspace === workspace,
+      );
+      assert.equal(matches.length, 1, "Original workspace has one Host binding");
+      [binding] = matches;
+    } finally {
+      host.close();
+    }
+    const target = {
+      projectId: binding.projectId,
+      serviceGeneration: selected.core.serviceGeneration,
+      threadId: primaryThreadId,
+      turnId: current(streaming).turns.at(-1).id,
+    };
+    assert.ok(Object.values(target).every((value) => typeof value === "string" && value.length));
+    const armed = await until(
+      () =>
+        page.evaluate((identity) => {
+          const fixture = window.__stopSnapshotFixture;
+          const session = fixture?.sessions.findLast(
+            (entry) =>
+              entry.projectId === identity.projectId &&
+              entry.serviceGeneration === identity.serviceGeneration &&
+              entry.threadId === identity.threadId &&
+              entry.connectionId &&
+              entry.subscriptionId,
+          );
+          if (!session) return null;
+          fixture.target = {
+            ...identity,
+            connectionId: session.connectionId,
+            subscriptionId: session.subscriptionId,
+          };
+          return fixture.target;
+        }, target),
+      "Original Renderer session identity",
+    );
+    await writeFile(join(scratch, "snapshot-target.json"), JSON.stringify(armed, null, 2));
+  }
   await page.bringToFront();
   await page.getByRole("button", { name: "暂停执行", exact: true }).click();
   await until(
@@ -189,7 +486,10 @@ try {
   );
   await page.locator('section[data-turn-status="interrupted"]').waitFor();
   assert.equal(await page.getByText("执行已暂停", { exact: true }).count(), 0);
-  assert.equal(await page.locator(".turn-stop-heading").count(), 0);
+  await page
+    .locator(".turn-stop-heading[role='status']")
+    .getByText("你暂停了本轮执行", { exact: true })
+    .waitFor();
   assert.equal(await page.locator(".turn-execution [role='status']").count(), 0);
   assert.equal(await page.getByText(/^命令资源/).count(), 0);
   await page.evaluate(
@@ -208,6 +508,22 @@ try {
   const stoppedThread = current(pending);
   const projectId = project(pending).id;
   const turnId = stoppedThread.turns.at(-1).id;
+  if (snapshotCompletion) {
+    const evidence = await until(async () => {
+      const fixture = await page.evaluate(() => window.__stopSnapshotFixture);
+      return fixture?.omitted && fixture.recovered ? fixture : null;
+    }, "original terminal frame omitted and original session recovered");
+    await writeFile(omittedCompletionLog, `${JSON.stringify(evidence, null, 2)}\n`);
+    assert.equal(evidence.omitted.threadId, stoppedThread.id);
+    assert.equal(evidence.omitted.turnId, turnId);
+    assert.equal(evidence.recovered.threadId, stoppedThread.id);
+    assert.equal(evidence.recovered.turnId, turnId);
+    assert.equal(evidence.recovered.projectId, evidence.omitted.projectId);
+    assert.equal(evidence.recovered.serviceGeneration, evidence.omitted.serviceGeneration);
+    assert.notEqual(evidence.recovered.connectionId, evidence.omitted.connectionId);
+    assert.notEqual(evidence.recovered.subscriptionId, evidence.omitted.subscriptionId);
+  }
+
   assert.equal(pending.library.threads[`${projectId}:${stoppedThread.id}`].completionId, turnId);
   assert.equal(
     pending.lifecycle.operations.some(
@@ -314,14 +630,18 @@ try {
   await page.evaluate(
     () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   );
+  assert.equal(
+    (await page.getByTestId("chat-input").textContent()).trim(),
+    followup,
+    "Enter preserves the visible follow-up draft while interruption settlement is pending",
+  );
+  await openSideChat(page);
   const preservedDraft = await page.evaluate((key) => localStorage.getItem(key), draftKey);
   assert.equal(
     preservedDraft?.trim(),
     followup,
     "Enter preserves the follow-up draft while interruption settlement is pending",
   );
-  await page.getByRole("button", { name: "任务操作", exact: true }).click();
-  await page.getByRole("menuitem", { name: "旁路讨论", exact: true }).click();
   const sideDraft = page.getByTestId("side-chat-input");
   await sideDraft.fill("Side draft while the original project pause is pending.");
   assert.equal(
@@ -376,26 +696,44 @@ try {
     /此任务的原后台操作尚未结算/,
     "Waiting to send must not surface a lifecycle rejection",
   );
+  if (rust)
+    assert.equal(
+      (await acceptedCompletionReads(projectId, stoppedThread.id, turnId)).length,
+      0,
+      "No completion read is accepted before the original stop settles",
+    );
   await rm(receiptGate);
   await until(
     async () =>
-      (await readFile(commandLog, "utf8"))
-        .split("\n")
-        .filter(Boolean)
-        .map(JSON.parse)
-        .some(
-          (item) =>
-            item.name === "library" &&
-            item.request.operation === "readThread" &&
-            item.request.completionId &&
-            item.ok,
-        ),
+      rust
+        ? (await acceptedCompletionReads(projectId, stoppedThread.id, turnId)).length > 0 &&
+          (await snapshot()).library.threads[`${projectId}:${stoppedThread.id}`]?.unread === false
+        : (await readFile(commandLog, "utf8"))
+            .split("\n")
+            .filter(Boolean)
+            .map(JSON.parse)
+            .some(
+              (item) =>
+                item.name === "library" &&
+                item.request.operation === "readThread" &&
+                item.request.completionId &&
+                item.ok,
+            ),
     "Automatic read after settlement",
   );
   assert.equal(
     (await snapshot()).library.threads[`${projectId}:${stoppedThread.id}`].unread,
     false,
     "Settled completion becomes read",
+  );
+  assert.ok(
+    (await snapshot()).lifecycle.operations.some(
+      (operation) =>
+        operation.kind === "interruptTurn" &&
+        operation.turnId === turnId &&
+        operation.phase === "completed",
+    ),
+    "Original interruption has settled before the completion read",
   );
   const commands = (await readFile(commandLog, "utf8")).split("\n").filter(Boolean).map(JSON.parse);
   const stopCommands = commands.filter((item) => item.name === "stop");
@@ -494,7 +832,19 @@ try {
 } catch (error) {
   failure = error.stack;
   console.error(error.message);
-  if (page) await captureSmokeFailure(page, scratch, error);
+  if (page) {
+    if (snapshotCompletion) {
+      const fixture = await page.evaluate(() => window.__stopSnapshotFixture).catch(() => null);
+      await writeFile(omittedCompletionLog, `${JSON.stringify(fixture, null, 2)}\n`).catch(
+        () => {},
+      );
+    }
+    await writeFile(
+      join(scratch, "failure-snapshot.json"),
+      JSON.stringify(await snapshot(), null, 2),
+    ).catch(() => {});
+    await captureSmokeFailure(page, scratch, error);
+  }
 } finally {
   await rm(receiptGate, { force: true });
   if (app) {
@@ -511,11 +861,33 @@ try {
   }
   await application?.close();
   try {
-    await assertApplicationStopped(binary, env, metadata);
+    if (!rust) await assertApplicationStopped(binary, env, metadata);
     cleanup = "passed";
   } catch (error) {
     cleanup = error.stack;
     passed = false;
+  }
+  if (rust) {
+    try {
+      const stop = JSON.parse(
+        execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+          env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+          encoding: "utf8",
+        }),
+      );
+      await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
+      assert.equal(stop.state, "completed");
+      assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+      await assertApplicationStopped(binary, env, null);
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      await writeFile(
+        join(scratch, "synthetic-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    } catch (error) {
+      errors.push(`Rust cleanup: ${error.message}`);
+      passed = false;
+    }
   }
   for (const response of held) response.destroy();
   if (server.listening) await new Promise((resolve) => server.close(resolve));
@@ -535,7 +907,7 @@ try {
         cleanup,
         errors,
         boundaries:
-          "Source Electron and real Core. Deterministic loopback model. A file barrier holds the completed stop receipt through the paused UI render, then explicitly releases it. Optional client delivery fixture omits completion notifications to require authoritative snapshot recovery. History handler and unread checks also use the public bridge. Native folder picker stubbed. No packaged app or physical input.",
+          "Source Electron and real Core. Deterministic loopback model. A file barrier holds the completed stop receipt through the paused UI render, then explicitly releases it. Optional fixture drops the original terminal session update on the Renderer Host WebSocket, then verifies the same thread and turn in a reconnected authoritative snapshot. History handler and unread checks also use the public bridge. Native folder picker stubbed. No packaged app or physical input.",
       },
       null,
       2,

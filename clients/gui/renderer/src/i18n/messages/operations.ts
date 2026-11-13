@@ -447,8 +447,8 @@ export const operationMessages = {
   "operations.schedules.newLabel": { "zh-CN": "新建定时任务", en: "New scheduled task" },
   "operations.schedules.newTitle": { "zh-CN": "新建任务", en: "New task" },
   "operations.schedules.openLabel": {
-    "zh-CN": "打开自动化 {title}",
-    en: "Open automation {title}",
+    "zh-CN": "打开定时任务 {title}",
+    en: "Open scheduled task {title}",
   },
   "operations.schedules.retryCreation": {
     "zh-CN": "重试或核对原请求",
@@ -476,8 +476,8 @@ export const operationMessages = {
     en: "Let AReaL handle ongoing tasks on a schedule.",
   },
   "operations.schedules.backendUpdateRequired": {
-    "zh-CN": "后台版本过旧，无法读取任务目录。请在设置的“后台服务”中更新后重试。",
-    en: "The background service is too old to read the task catalog. Update it in Settings > Background service, then retry.",
+    "zh-CN": "当前版本无法读取任务目录。请在设置 → 常规 → 高级诊断中完成更新后重试。",
+    en: "This version cannot read the task catalog. Complete the update in Settings > General > Advanced diagnostics, then retry.",
   },
   "operations.schedules.partialLoad": {
     "zh-CN": "部分任务未能加载",
@@ -494,7 +494,8 @@ export const operationMessages = {
     en: "Task status is unconfirmed. Retry the update.",
   },
   "operations.schedules.finishedGroup": { "zh-CN": "已结束", en: "Finished" },
-  "operations.schedules.closeDetails": { "zh-CN": "关闭任务详情", en: "Close task details" },
+  "operations.schedules.backToList": { "zh-CN": "返回任务列表", en: "Back to task list" },
+  "operations.schedules.pinnedSummary": { "zh-CN": "定时安排摘要", en: "Schedule summary" },
   "operations.schedules.location": {
     "zh-CN": "工作目录与来源",
     en: "Working directory and source",
@@ -523,7 +524,7 @@ export const operationMessages = {
     "zh-CN": "打开项目以更新",
     en: "Open project to update",
   },
-  "operations.schedules.center": { "zh-CN": "自动化中心", en: "Automation center" },
+  "operations.schedules.center": { "zh-CN": "定时任务中心", en: "Scheduled tasks center" },
   "operations.schedules.forward": { "zh-CN": "前进", en: "Forward" },
   "operations.schedules.toggleSidebar": { "zh-CN": "切换任务侧栏", en: "Toggle task sidebar" },
   "operations.schedules.search": { "zh-CN": "搜索定时任务", en: "Search scheduled tasks" },
@@ -590,6 +591,19 @@ export const operationMessages = {
   "operations.schedules.nextShort": { "zh-CN": "下次 {time}", en: "Next {time}" },
   "operations.schedules.daySeparator": { "zh-CN": "、", en: ", " },
   "operations.schedules.running": { "zh-CN": "运行中", en: "Running" },
+  "operations.schedules.waitingToStart": { "zh-CN": "等待开始", en: "Waiting to start" },
+  "operations.schedules.runNotice": { "zh-CN": "定时运行 · {name}", en: "Scheduled run · {name}" },
+  "operations.schedules.objectivePlaceholder": { "zh-CN": "要做什么…", en: "What should it do…" },
+  "operations.schedules.advanced": { "zh-CN": "高级", en: "Advanced" },
+  "operations.schedules.model": { "zh-CN": "模型", en: "Model" },
+  "operations.schedules.modelDefault": { "zh-CN": "跟随当前默认", en: "Current default" },
+  "operations.schedules.effort": { "zh-CN": "推理强度", en: "Effort" },
+  "operations.schedules.newThreadEachRun": {
+    "zh-CN": "每次运行新开对话",
+    en: "Start each run in a new conversation",
+  },
+  "operations.schedules.create": { "zh-CN": "创建", en: "Create" },
+  "operations.schedules.revealFolder": { "zh-CN": "在文件夹中显示", en: "Show folder" },
   "operations.schedules.attention": { "zh-CN": "需要处理", en: "Needs attention" },
   "operations.schedules.reasonFailed": { "zh-CN": "上次运行失败", en: "Last run failed" },
   "operations.schedules.reasonInterrupted": {

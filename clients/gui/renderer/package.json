@@ -11,6 +11,7 @@
     "design:build": "vp build --mode design-system"
   },
   "dependencies": {
+    "@areal/client": "workspace:*",
     "@areal/provider-config": "workspace:*",
     "@areal/workbench": "workspace:*",
     "@base-ui/react": "1.8.0",

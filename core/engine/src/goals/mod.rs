@@ -173,6 +173,27 @@ impl Engine {
         }
         Ok(())
     }
+    /// 用 Goal 固定的模型替换本轮配置，Thread 默认配置保持不变。
+    pub(crate) fn goal_model_configuration(
+        &self,
+        base: &EffectiveConfig,
+        choice: &GoalModel,
+    ) -> Result<EffectiveConfig> {
+        let resolved = self.resolve_config(
+            None,
+            Some(choice.model.clone()),
+            choice.parameters.clone(),
+            base.revision,
+        )?;
+        let mut config = base.clone();
+        config.model = resolved.model;
+        config.provider = resolved.provider;
+        config.parameters = resolved.parameters;
+        config.context_window = resolved.context_window;
+        config.default_model_revision = None;
+        Ok(config)
+    }
+
     pub async fn goal_get(&self, thread_id: &str) -> Result<Value> {
         let cell = self.raw_cell(thread_id).await?;
         let state = cell.state.lock().await;
@@ -249,7 +270,11 @@ impl Engine {
             let max_turns = request.max_turns;
             let max_active_seconds = request.max_active_seconds;
             engine.validate_goal_limits(request.token_budget, max_turns, max_active_seconds)?;
+            if let Some(choice) = &request.model_override {
+                engine.goal_model_configuration(&data.configuration, choice)?;
+            }
             let goal = Goal {
+                model_override: request.model_override.clone(),
                 interaction_mode: request
                     .interaction_mode
                     .unwrap_or(data.configuration.options.interaction_mode),
@@ -615,6 +640,9 @@ impl Engine {
             return Err(Error::Exhausted("goal execution limit reached".into()));
         }
         let config = turn.configuration.get_or_insert_with(Default::default);
+        if let Some(choice) = &goal.model_override {
+            *config = self.goal_model_configuration(config, choice)?;
+        }
         config.options.interaction_mode = goal.interaction_mode;
         self.validate_goal_config(config)?;
         if goal.limits_pending

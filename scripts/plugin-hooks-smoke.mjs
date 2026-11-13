@@ -4,7 +4,8 @@
 // retains writes; repeated Stop stays in one Turn without prompt recursion; async output
 // reaches only safe points/next user Turn. Local model is the only simulated boundary.
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, access, realpath } from "node:fs/promises";
+import { mkdir, writeFile, readFile, access, realpath } from "node:fs/promises";
+import { trackedMkdtemp } from "../clients/gui/scripts/support/host-cleanup.cjs";
 import { join, resolve } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -49,7 +50,7 @@ for (const path of (
       .update(await readFile(join(sourceRoot, path)))
       .digest("hex");
 }
-const scratch = await realpath(await mkdtemp("/private/tmp/areal-plugin-hooks-"));
+const scratch = await realpath(await trackedMkdtemp("/private/tmp/areal-plugin-hooks-"));
 const workspace = join(scratch, "workspace"),
   home = join(scratch, "home"),
   config = join(home, "config.toml");

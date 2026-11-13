@@ -52,18 +52,10 @@ target/debug/areal --workspace ../areal-example-workspace
 
 需要审批时，启动前设置 `ASK_PERMISSIONS=1`，或配置 `[permissions] mode = "ASK_PERMISSIONS"`，见[权限配置](configuration.md#permissions)。TUI `/permissions` 可查看生效策略；已有共享服务在修改权限后需显式 restart。
 
-推荐通过共享服务入口打开 Web，自动登录后即可使用：
+打开网页：
 
 ```sh
-target/debug/areal web --workspace ../areal-example-workspace
+target/debug/areal web
 ```
 
-一次性链接过期或会话失效时，重新运行同一命令。若需要前台独占服务和固定端口：
-
-```sh
-target/debug/areal serve \
-  --workspace ../areal-example-workspace \
-  --data-dir ../areal-example-state --listen 127.0.0.1:4500
-```
-
-打开 `http://127.0.0.1:4500/ui`，在登录页填写 `../areal-example-state/security/auth.json` 中的本地 token；该凭据文件不要提交。终端 `Ctrl-C` 关闭服务与受管任务。更多操作见[客户端指南](clients.md)。
+它打开 Host 发布的界面，与桌面是同一份；浏览器第一次连接需要在本机批准。更多操作见[客户端指南](clients.md)。

@@ -1,10 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { mkdtemp, writeFile, readFile, rm } = require("node:fs/promises");
-const { tmpdir } = require("node:os");
-const { join } = require("node:path");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const {
   validateCommand,
   commandSemantics,
@@ -30,57 +27,55 @@ test("offline requests allow a projectless read and reject caller supplied files
       assert.throws(() => validateCommand("manage", { ...request, [field]: "/untrusted" }));
   }
   assert.throws(() => validateCommand("manage", { operation: "plugins" }));
+  // 直接添加的 MCP 是用户级插件：没有选中项目时也能读、存、删。
+  for (const request of [
+    { operation: "mcp" },
+    {
+      operation: "mcpSave",
+      name: "docs",
+      server: { url: "https://mcp.example.test" },
+      expectedRevision: 0,
+    },
+    { operation: "mcpRemove", name: "docs", expectedRevision: 1 },
+  ])
+    assert.doesNotThrow(() => validateCommand("manage", request));
 });
-test("Main runs only one-shot CLI with trusted roots before any project start", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "plugin-reader-"));
-  const executable = join(directory, "fixture-cli");
-  const receipt = join(directory, "args.json");
-  await writeFile(
-    executable,
-    `#!/usr/bin/python3\nimport json,sys\njson.dump(sys.argv[1:],open(${JSON.stringify(receipt)},'w'))\nprint(${JSON.stringify(JSON.stringify(snapshot))})\n`,
-    { mode: 0o755 },
-  );
+test("offline plugin reads use Host utility and do not start a project", async () => {
+  const calls = [];
   const backend = Object.assign(Object.create(CoreBackend.prototype), {
-    binary: executable,
-    saved: [{ id: "p", root: directory }],
-    projects: new Map(),
-    hooks: {
-      environment: () => ({
-        ...process.env,
-        HOME: directory,
-        AREAL_HARNESS_HOME: join(directory, "config"),
-      }),
+    hostCall: async (method, params) => {
+      calls.push({ method, params });
+      if (params.projectId === "missing") throw new Error("项目不存在");
+      return snapshot;
     },
     start: () => assert.fail("offline read started project Core"),
   });
-  try {
-    const user = await backend.executeCommand("manage", { operation: "pluginStoreSnapshot" });
-    assert.deepEqual(user, snapshot);
-    assert.deepEqual(JSON.parse(await readFile(receipt, "utf8")), [
-      "plugin",
-      "snapshot",
-      "--config-home",
-      join(directory, "config"),
-      "--json",
-    ]);
+  assert.deepEqual(
+    await backend.executeCommand("manage", { operation: "pluginStoreSnapshot" }),
+    snapshot,
+  );
+  assert.deepEqual(
     await backend.executeCommand("manage", {
       operation: "pluginStoreSnapshot",
       projectId: "p",
       id: "example@local",
-    });
-    assert.deepEqual(JSON.parse(await readFile(receipt, "utf8")).slice(-4), [
-      "--workspace",
-      directory,
-      "--id",
-      "example@local",
-    ]);
-    await assert.rejects(
-      backend.executeCommand("manage", { operation: "pluginStoreSnapshot", projectId: "missing" }),
-      /项目不存在/,
-    );
-  } finally {
-    await rm(directory, { recursive: true });
-  }
+    }),
+    snapshot,
+  );
+  assert.deepEqual(calls, [
+    { method: "workbench.utility", params: { operation: "pluginSnapshot" } },
+    {
+      method: "workbench.utility",
+      params: { operation: "pluginSnapshot", projectId: "p", pluginId: "example@local" },
+    },
+  ]);
+  await assert.rejects(
+    backend.executeCommand("manage", {
+      operation: "pluginStoreSnapshot",
+      projectId: "missing",
+    }),
+    /项目不存在/,
+  );
 });
 test("read failures and unobserved runtime cannot masquerade as an empty healthy result", () => {
   const request = { operation: "pluginStoreSnapshot" };

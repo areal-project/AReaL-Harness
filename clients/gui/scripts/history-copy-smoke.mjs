@@ -1,11 +1,16 @@
+import { until } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
-import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  cleanupSyntheticHostKeychain,
+} from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, readFile, writeFile, cp, readdir, lstat } from "node:fs/promises";
+import { mkdir, readFile, writeFile, cp, readdir, lstat, rename } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
 import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
@@ -15,6 +20,7 @@ import { withSmokeDeadline } from "./smoke-deadline.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
+const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { values } = parseArgs({
   options: {
     source: { type: "string" },
@@ -38,6 +44,8 @@ const hashes = new Map(),
   stateDirectories = new Map(),
   checks = [];
 let app,
+  historyOwner,
+  hostPid,
   env,
   page,
   failure,
@@ -117,6 +125,29 @@ async function stateEntries(root, relative) {
     throw error;
   }
   return (await readdir(join(root, relative))).sort();
+}
+
+// 这是全新隔离项目的历史读取夹具，不声称验证旧后台的迁移或清理。
+async function prepareHistorySource(owner, projects) {
+  const coreHome = owner.source.coreHome;
+  const staged = coreHome + "-history-staging";
+  await rename(coreHome, staged);
+  await mkdir(coreHome, { mode: 0o700 });
+  await writeFile(join(coreHome, "projects.json"), "[]", { mode: 0o600 });
+  await owner.init();
+  for (const project of projects) {
+    const binding = await owner.register(randomUUID(), project);
+    assert.equal(binding.dataDir, join(coreHome, project.id, "state"));
+    // 登记只创建归属，尚未启动 Core；复制前不得存在任何服务持锁文件。
+    for (const name of ["owner.lock", "service.lock"])
+      await assert.rejects(lstat(join(binding.dataDir, name)), { code: "ENOENT" });
+    await cp(join(staged, project.id), join(coreHome, project.id), {
+      recursive: true,
+      force: false,
+      errorOnExist: true,
+    });
+  }
+  await writeFile(join(coreHome, "projects.json"), JSON.stringify(projects), { mode: 0o600 });
 }
 
 async function call(name, params) {
@@ -267,6 +298,21 @@ try {
     AREAL_HISTORY_FIXTURE_KEY: "fixture-key",
   });
   if (!executablePath) env.AREAL_CORE_BIN = binary;
+  historyOwner = new GuiHostProjects({
+    binary,
+    home: env.AREAL_HARNESS_SERVICE_HOME,
+    singletonHeld: true,
+    source: {
+      profile: env.AREAL_GUI_USER_DATA,
+      coreHome: env.AREAL_CORE_HOME,
+      legacyServiceHome: env.AREAL_HARNESS_SERVICE_HOME,
+    },
+  });
+  await prepareHistorySource(historyOwner, isolatedProjects);
+  hostPid = JSON.parse(
+    await readFile(join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json"), "utf8"),
+  ).pid;
+  assert.equal(await unchanged(join(scratch, "core"), copyHashes), true);
   app = await electron.launch({
     ...(executablePath ? { executablePath, args: [] } : { args: [join(gui, "app")] }),
     env,
@@ -280,13 +326,18 @@ try {
     // 历史视图有界缓存；逐个确认打开结果，避免后续打开淘汰已验证的会话。
     for (const id of sessions.get(project.id)) {
       await call("open", { projectId: project.id, threadId: id });
-      await page.waitForFunction(
-        async ({ projectId, threadId }) =>
-          Boolean(
-            (await window.arealDesktop.snapshot()).projects.find((value) => value.id === projectId)
-              ?.state.threads[threadId],
+      await until(
+        () =>
+          page.evaluate(
+            async ({ projectId, threadId }) =>
+              Boolean(
+                (await window.arealDesktop.snapshot()).projects.find(
+                  (value) => value.id === projectId,
+                )?.state.threads[threadId],
+              ),
+            { projectId: project.id, threadId: id },
           ),
-        { projectId: project.id, threadId: id },
+        "history thread restored",
       );
     }
     const snapshot = await page.evaluate(() => window.arealDesktop.snapshot());
@@ -364,23 +415,20 @@ try {
         const user = page.locator(`[data-side-item-id="paged-user-${suffix}"]`);
         const answer = page.locator(`[data-side-item-id="paged-item-${suffix}"]`);
         if (suffix === "00") {
-          for (let attempt = 0; attempt < 10 && !(await user.count()); attempt++) {
-            const before = await read();
-            const first = before.turns[0]?.items[0]?.id;
+          // Host 按字节分页；旧后台已加载完整历史，不能用它判断当前阅读窗口的进展。
+          for (let attempt = 0; attempt < profile.turnCount && !(await user.count()); attempt++) {
+            const first = await page
+              .locator(".messages [data-turn-id]")
+              .first()
+              .getAttribute("data-turn-id");
             await page.locator(".messages").hover();
             await page.mouse.wheel(0, -1000000);
             await page.waitForFunction(
-              async ({ projectId, threadId, first }) => {
-                const thread = (await window.arealDesktop.snapshot()).projects.find(
-                  (value) => value.id === projectId,
-                )?.state.threads[threadId];
-                return (
-                  thread &&
-                  !thread.displayHistory.loadingOlder &&
-                  (thread.displayHistory.complete || thread.turns[0]?.items[0]?.id !== first)
-                );
-              },
-              { ...request, first },
+              (first) =>
+                Boolean(document.querySelector('[data-side-item-id="paged-user-00"]')) ||
+                document.querySelector(".messages [data-turn-id]")?.getAttribute("data-turn-id") !==
+                  first,
+              first,
               { timeout: 30000 },
             );
           }
@@ -556,18 +604,22 @@ try {
       node.dataset.historyProbe = "same-group";
     });
     await deferred.locator(".tool-summary-row").click();
-    await page.waitForFunction(
-      async ({ projectId, threadId, itemId }) => {
-        const snapshot = await window.arealDesktop.snapshot();
-        const thread = snapshot.projects.find((value) => value.id === projectId)?.state.threads[
-          threadId
-        ];
-        return (
-          thread?.turns.flatMap((turn) => turn.items).find((item) => item.id === itemId)?.type ===
-          "dynamicToolCall"
-        );
-      },
-      { projectId: project.id, threadId, itemId },
+    await until(
+      () =>
+        page.evaluate(
+          async ({ projectId, threadId, itemId }) => {
+            const snapshot = await window.arealDesktop.snapshot();
+            const thread = snapshot.projects.find((value) => value.id === projectId)?.state.threads[
+              threadId
+            ];
+            return (
+              thread?.turns.flatMap((turn) => turn.items).find((item) => item.id === itemId)
+                ?.type === "dynamicToolCall"
+            );
+          },
+          { projectId: project.id, threadId, itemId },
+        ),
+      "deferred tool detail restored",
       { timeout: 30000 },
     );
     assert.equal(await deferred.getByRole("alert").count(), 0);
@@ -633,24 +685,11 @@ try {
   if (page) await captureSmokeFailure(page, scratch, error);
 } finally {
   const cleanup = { errors: [], applicationStopped: false };
-  let meta;
-  let serviceMetadataVerified = false;
-  try {
-    meta = await readFile(join(scratch, "core/service.json"), "utf8")
-      .then(JSON.parse)
-      .catch((error) => {
-        if (error.code === "ENOENT") return null;
-        throw error;
-      });
-    serviceMetadataVerified = !app || (Number.isSafeInteger(meta?.pid) && meta.pid > 1);
-    if (!serviceMetadataVerified) {
-      cleanup.errors.push(
-        "service metadata: Desktop process PID is missing or invalid; shutdown cannot be verified",
-      );
-    }
-  } catch (error) {
-    cleanup.errors.push(`service metadata: ${error.message}`);
-  }
+  // 使用启动时持有的 Electron 进程，不依赖已退役的 Desktop service.json。
+  const meta = app ? { pid: app.process()?.pid } : undefined;
+  const serviceMetadataVerified = !app || (Number.isSafeInteger(meta?.pid) && meta.pid > 1);
+  if (!serviceMetadataVerified)
+    cleanup.errors.push("owned Electron process PID is missing or invalid");
   try {
     if (app) {
       await closeSmokeApplication(
@@ -669,11 +708,32 @@ try {
   } catch (error) {
     cleanup.errors.push(`Electron close: ${error.message}`);
   }
+  // GUI 退出保留 Host；显式停止同一代际后才核对后台库存。
+  try {
+    if (historyOwner?.client.generation) {
+      const receipt = await historyOwner.client.stop(
+        randomUUID(),
+        historyOwner.client.generation,
+        "ifIdle",
+      );
+      cleanup.hostStop = { state: receipt.state };
+      assert.equal(receipt.state, "completed", "isolated Host stop is not settled");
+    }
+  } catch (error) {
+    cleanup.errors.push(`Host stop: ${error.message}`);
+  }
+  historyOwner?.close();
   // 精确 Electron 子进程退出不代表私有 Desktop/Core 已退出，仍独立核验库存。
   try {
     if (env) {
       await assertApplicationStopped(binary, env, meta);
+      if (hostPid) await assertApplicationStopped(binary, env, { pid: hostPid });
       cleanup.applicationStopped = serviceMetadataVerified;
+      if (cleanup.hostStop?.state === "completed")
+        cleanup.keychain = await cleanupSyntheticHostKeychain(
+          env.AREAL_HARNESS_SERVICE_HOME,
+          scratch,
+        );
     }
   } catch (error) {
     cleanup.errors.push(`service inventory: ${error.message}`);
@@ -697,6 +757,7 @@ try {
     failure ??= { message: "Source changed or a model request was replayed" };
   const report = {
     passed: !failure && cleanup.errors.length === 0,
+    scope: "history reading in fresh isolated Host projects; not legacy ownership migration",
     sourceMode: fixtureMode ? "sanitized-fixture" : "local-copy",
     source,
     executablePath: executablePath || "development Electron",
@@ -715,6 +776,13 @@ try {
   };
   const evidence = join(scratch, "manifest.json");
   await writeFile(evidence, JSON.stringify(report, null, 2), { mode: 0o600 });
-  console.log(JSON.stringify({ passed: report.passed, evidence }));
+  // 证据文件留在临时目录，CI 上拿不到；失败时把原因直接打出来。
+  console.log(
+    JSON.stringify({
+      passed: report.passed,
+      evidence,
+      ...(report.passed ? {} : { failure: failure?.message, cleanupErrors: cleanup.errors }),
+    }),
+  );
   process.exitCode = report.passed ? 0 : 1;
 }

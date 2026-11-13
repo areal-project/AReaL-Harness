@@ -1,4 +1,6 @@
+import { bugReportMessages } from "./messages/bugReport.js";
 import { snapshotMessages } from "./messages/snapshots.js";
+import { browserHostMessages } from "./messages/browserHost.js";
 import { browserMessages } from "./messages/browser.js";
 import { composerPriorityMessages } from "./messages/composerPriority.js";
 import { resourceMessages } from "./messages/resources.js";
@@ -15,12 +17,17 @@ import { generalMessages } from "./messages/general.js";
 import { pluginMessages } from "./messages/plugins.js";
 import { remoteMessages } from "./messages/remote.js";
 import { worktreeMessages } from "./messages/worktrees.js";
+import { settingsSearchMessages } from "./messages/settingsSearch.js";
+import { errorMessages } from "./messages/errors.js";
+import { userStateMessages } from "./messages/userStates.js";
 
 export type AppLocale = "zh-CN" | "en";
 export type MessagePair = Record<AppLocale, string>;
 export const messages = {
+  ...bugReportMessages,
   ...snapshotMessages,
   ...browserMessages,
+  ...browserHostMessages,
   ...composerPriorityMessages,
   ...resourceMessages,
   ...timelineMessages,
@@ -36,6 +43,9 @@ export const messages = {
   ...pluginMessages,
   ...remoteMessages,
   ...worktreeMessages,
+  ...settingsSearchMessages,
+  ...errorMessages,
+  ...userStateMessages,
 } as const satisfies Record<string, MessagePair>;
 export type MessageId = keyof typeof messages;
 export const catalogs = Object.fromEntries(

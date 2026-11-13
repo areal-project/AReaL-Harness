@@ -10,6 +10,8 @@
 
 生产构建生成 `renderer/dist/bundle-analysis.json`，记录实际 chunk 的模块、静态依赖与哈希。`verify:bundle` 检查 HTML 入口的完整静态闭包、总 JS 及延迟 chunk 预算。`bundle-budget.json` 初始保留 5% 字节余量；`node clients/gui/scripts/bundle-budget.mjs --write` 只允许收紧预算。健康基线更新也只允许改善，CI 会检查相对基准提交的放宽。检查器和基线的限制见 [spec 源码核查](specs/implementation-decisions.md)。
 
+功能确实需要更大预算时，只手改超限的那一项，改到实测值加 5%，并在 PR 说明里写原因；不整体重写。基线分支也受同一组检查约束，红着不合并，否则后续每个 PR 都无法区分是谁造成的超限。
+
 使用情况设置在打开时按需加载，加载期间使用现有设置页的等待文案；它不属于桌面首屏静态依赖。
 
 Web/PWA Remote v2 的实施边界见[架构](../../docs/design/remote-control.md)、[API](../../docs/api/remote-control.md)、[连接与部署](../../docs/guides/remote-control.md)及[验收计划](../../docs/development/remote-control-testing.md)。源码已实现默认关闭的入口、浏览器申请与桌面确认、显式项目授权及设备撤销，以及工作概览、会话详情、创建与发送、精确轮次停止、审批和问题回复、任务暂停及结果审查。Direct 与独立 Relay 共用 Host 授权和加密协议；容器部署脚手架见 [Relay 部署](../../services/remote-relay/deploy/README.md)。源码实现不代表真实手机、生产浏览器 TLS、公网网络、系统钥匙串或安装包验收通过，各层仍需独立证据。
@@ -18,14 +20,18 @@ Web/PWA Remote v2 的实施边界见[架构](../../docs/design/remote-control.md
 
 GUI 工程化与设计系统的 P0/P1 整改任务拆分为可交接的 [整改 Spec 包](specs/README.md)，每份写明当前问题、架构决策、验收标准与防复发约束；Spec 描述整改目标，不代表已实现行为。
 
-真实Electron对话专项从仓库根运行 `node clients/gui/scripts/migration-smoke.mjs --conversation-journey`；先构建并核对Core/Runtime及renderer。覆盖命令、子代理、图片、阅读/收敛、暂停UNKNOWN核查与GUI历史恢复；外部模型为本地确定性SSE。证据与注入边界见[真实Electron专项](design-system/exercises/conversation-flow.md#真实-electron-专项-e1)。
+真实Electron对话专项从仓库根运行 `node clients/gui/scripts/migration-smoke.mjs --conversation-journey`；先构建并核对Core/Runtime及renderer。覆盖命令、子代理、图片、阅读/收敛、暂停UNKNOWN核查与GUI历史恢复；外部模型为本地确定性SSE。证据与注入边界见[真实Electron专项](../../design/archive/gui/exercises/conversation-flow.md#真实-electron-专项-e1)。
 生产UI包接入专项为 `node clients/gui/scripts/migration-smoke.mjs --conversation-production`：覆盖顶部任务卡片、Sources三项/全部、子代理列表与真实历史返回、工具图片/活动人工展开、窄桌面、暂停、Core返回UNKNOWN时的核查及Renderer历史重载不重放。沿相同隔离Electron/Core/Runtime与本地模型；它不代替完整专项末尾的活动任务退出后后台完成合同，也不代表安装包或真实供应商验收。
 
-连续动效专项沿用同一入口的 `--conversation-motion`，保留原始 CDP 帧、RAF/输入/阅读观测并验证展开反向、资源进退和减少动态效果；边界与复验要求见[E2 专项](design-system/exercises/conversation-flow.md#真实-electron-连续动效专项-e2)。
+连续动效专项沿用同一入口的 `--conversation-motion`，保留原始 CDP 帧、RAF/输入/阅读观测并验证展开反向、资源进退和减少动态效果；边界与复验要求见[E2 专项](../../design/archive/gui/exercises/conversation-flow.md#真实-electron-连续动效专项-e2)。
 
-宿主与新内容专项使用 `--conversation-host`，验证真实窗口尺寸/125%缩放、子代理与设置焦点返回、草稿和快捷键；原生中文输入法通过独立操作步骤取证。见[E3专项](design-system/exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)，[E4补充](design-system/exercises/conversation-flow.md#原生宿主补充-e4)通过 `AREAL_E4_NATIVE=1 AREAL_E4_OPERATOR=0` 复验同应用窗口往返、独立原生网页交互/隐藏与焦点返回。人工阶段需省略 `AREAL_E4_OPERATOR=0` 并保留实际操作证据；未触发的候选浮窗不计通过。
+宿主与新内容专项使用 `--conversation-host`，验证真实窗口尺寸/125%缩放、子代理与设置焦点返回、草稿和快捷键；原生中文输入法通过独立操作步骤取证。见[E3专项](../../design/archive/gui/exercises/conversation-flow.md#真实-electron-宿主与新内容专项-e3)，[E4补充](../../design/archive/gui/exercises/conversation-flow.md#原生宿主补充-e4)通过 `AREAL_E4_NATIVE=1 AREAL_E4_OPERATOR=0` 复验同应用窗口往返、独立原生网页交互/隐藏与焦点返回。人工阶段需省略 `AREAL_E4_OPERATOR=0` 并保留实际操作证据；未触发的候选浮窗不计通过。
 
-现有对话目录入口为 `design-system.html?conversation`，复用生产消息、输入区与可返回的资源面板；`pnpm --dir clients/gui test:design --conversation-demo` 专项检查该样板。迁移与旧新版同状态对照边界见[对话目录迁移](design-system/exercises/conversation-flow.md#现有对话目录迁移样板)。
+现有对话目录入口为 `design-system.html?conversation`，复用生产消息、输入区与可返回的资源面板；`pnpm --dir clients/gui test:design --conversation-demo` 专项检查该样板。迁移与旧新版同状态对照边界见[对话目录迁移](../../design/archive/gui/exercises/conversation-flow.md#现有对话目录迁移样板)。
+
+## 实验性 Host 读路径
+
+GUI 后台默认由 Host 监督，启动失败不会另起 Main 写者；已有 GUI 需退出重开，工作区与配置沿用原目录。Renderer 的项目导航、会话详情与写操作都经 Host，没有回退开关；手机与远程网页使用同一份界面。`areal web` 打开 Host 发布的同一 Renderer，浏览器首次使用需在本机批准；查看、提交与管理按已授予范围开放，不自动扩大旧授权。授权与撤销命令见[Host 契约](../../docs/api/host.md#回环-websocket-与共享读路径)。验收必须使用安装包与隔离的真实数据副本，不对原数据启动服务。
 
 ## 开发
 
@@ -65,7 +71,9 @@ macOS GUI 后台自动读取系统静态 HTTP、HTTPS 和 SOCKS 代理，供 Cor
 
 ## Composer
 
-发送普通消息后，输入内容立即移到对话区，并显示“正在启动聊天”或“正在发送消息”。提交期间保留恢复草稿并阻止重复发送；Core 历史到达后接替本地消息预览。未受理或结果未知时，内容恢复到 Composer，沿原回执核查流程处理，未知请求不自动重发。 现有会话通过 Enter 发送时复用同一编辑器，提交预览不重建输入框；受理完成后可继续在原光标行输入。
+新聊天和已有会话的草稿在刷新后保留粘贴文本全文；普通文件保存名称、类型、大小与修改时间，显示“重新添加”。缺失文件必须重新添加或明确移除才能发送，避免静默缺少上下文。普通文件正文不额外写入草稿存储，原生截图继续由原有 IndexedDB 草稿恢复。输入即时更新内存与发送状态，普通草稿写入按最长 150 ms 窗口合并，在失焦、隐藏、卸载或刷新前刷新待写内容；进程异常终止可能丢失该窗口内尚未落盘的文字。
+
+发送普通消息后，文本与附件一起移到对话区，图片显示缩略图，Composer 暂时隐藏本次提交的附件；对话区显示“正在启动聊天”或“正在发送消息”。提交期间保留恢复草稿并阻止重复发送；发送回执到达后恢复输入，本地消息预览继续保留到 Core 历史中的新用户消息接替，避免回执与历史分批到达时闪回上一轮结果。待发与正式消息复用同样的操作行和状态行布局，用户消息时间显示在操作行内，图片读取期间保留同尺寸占位，接替时保持消息位置。未受理或结果未知时，内容恢复到 Composer，沿原回执核查流程处理，未知请求不自动重发。 现有会话通过 Enter 发送时复用同一编辑器，提交预览不重建输入框；受理完成后可继续在原光标行输入。
 
 顶部“任务资源”弹窗使用紧凑分区：Changes 单行展示工作区未暂存增删统计，进入改动面板可核对文件与范围；Subagents 分行展示头像与运行、完成或待确认状态；Sources 默认展开，保留添加、折叠及查看全部。定时任务和后台进程沿用原入口。
 
@@ -171,7 +179,7 @@ Commands 通过当前普通任务的提交入口发送固定组件引用与原�
 
 跨越多个视口的正文选区将操作条锚定在当前可见部分，添加引用时保留完整选区，并沿用引用长度上限。
 
-侧边聊天创建期间不显示待确认提示。结果确实未知时使用顶部短时通知，主输入区不常驻操作横幅；通知关闭后，侧栏启动页的“核对首问结果”仍按原请求读取回执，确认后打开原侧边聊天，不重复创建。审查、终端、浏览器和文件的正常打开以面板切换反馈，加载和故障状态归所属面板。
+侧边聊天创建期间不显示待确认提示。结果确实未知时在来源聊天显示核对入口，并保留原请求身份；后台回执与手动核对共用恢复路径，确认后恢复原侧边聊天标签，明确失败则退出待确认状态，不重复创建。无关历史未决请求不禁用新聊天、插件管理或其他会话的操作。审查、终端、浏览器和文件的正常打开以面板切换反馈，加载和故障状态归所属面板。
 
 每轮完成回复下方的“分支”直接在窗口中央打开紧凑浮层，仅提供“在当前工作区中创建”，继承当前轮及之前的历史和当前轮的模型配置；点击外部或按 Esc 关闭。创建独立聊天，不提供之前/之后菜单或三个点入口；文件保持当前状态，不提供新工作树选项。未知创建结果先核对受理状态，不重发。
 
@@ -205,9 +213,9 @@ Commands 通过当前普通任务的提交入口发送固定组件引用与原�
 
 全局“新建任务”立即打开无项目的普通 Composer 草稿并带入创建意图，发送前不分配工作目录或创建会话。草稿可编辑、离开和重载；首次发送沿普通创建路径准备环境，保留输入和附件。模型目录在分配目录前只读获取，继续使用最近受理的模型与强度规则，发送前再校验目标 Core 的确切模型与强度。项目入口保留所选项目，当前会话“添加”只追加意图并聚焦。目录、模型和创建结果不触发迟到导航。
 
-普通项目会话创建的安排保留当前项目和工作目录，需要文件隔离时可在普通新会话中选择 Worktree。`sourceThreadId` 仅标记来源关系，执行锚点与每次 Run 的会话保持独立。来源会话仍在侧栏可见，删除来源会话不自动取消安排。安排保存完整说明和必要引用，后台不随来源会话持续增长读取新内容。每次 Run 跟随当前默认模型与环境配置；共用工作目录不代表文件隔离。执行要求 Core 和对应桌面 Host 在线，退出应用后不再触发。
+普通项目会话创建的安排保留当前项目和工作目录，需要文件隔离时可在普通新会话中选择 Worktree。`sourceThreadId` 仅标记来源关系，执行锚点与每次 Run 的会话保持独立。来源会话仍在侧栏可见，删除来源会话不自动取消安排。安排保存完整说明和必要引用，后台不随来源会话持续增长读取新内容。每次 Run 跟随当前默认模型与环境配置；共用工作目录不代表文件隔离。执行由 Rust Host 激活项目并交给 Core；普通 GUI 退出不取消保存的安排或停止 Host。
 
-若独立会话创建结果待确认，“检查操作状态”只核对原请求。核对后仍未确认时，可选择“保留原记录，返回任务列表”；确认后保留原记录、目录和可能已创建的会话，不重发或发送草稿。之后再次点击“新建任务”会启动另一笔创建。无关的历史会话创建记录集中在“设置 → 后台服务 → 待核对的会话创建”，按项目和原 requestId 核对；插件页只展示影响插件操作的待核对记录。这些记录不锁住新会话的工作区设置。缺少回执仍表示结果未知，不能推断为从未受理。新版创建请求另保存认证身份、日志覆盖、Core 启动代际及时间；仅在 Core 对已退役原代际返回匹配的明确未受理证明后，先保存结果再清理 pending，草稿仍保留。旧记录和受理后未结算的请求继续 UNKNOWN，均不自动重发。打开历史对话时，加载提示按项目连接状态区分“正在连接项目”和“正在读取对话”；提示不代表耗时瓶颈已定位。
+若独立会话创建结果待确认，“检查操作状态”只核对原请求。核对后仍未确认时，可选择“保留原记录，返回任务列表”；确认后保留原记录、目录和可能已创建的会话，不重发或发送草稿。之后再次点击“新建任务”会启动另一笔创建。无关的历史会话创建记录集中在“设置 → 常规 → 高级诊断 → 待核对的会话创建”，按项目和原 requestId 核对；插件页只展示影响插件操作的待核对记录。这些记录不锁住新会话的工作区设置。缺少回执仍表示结果未知，不能推断为从未受理。新版创建请求另保存认证身份、日志覆盖、Core 启动代际及时间；仅在 Core 对已退役原代际返回匹配的明确未受理证明后，先保存结果再清理 pending，草稿仍保留。旧记录和受理后未结算的请求继续 UNKNOWN，均不自动重发。打开历史对话时，加载提示按项目连接状态区分“正在连接项目”和“正在读取对话”；提示不代表耗时瓶颈已定位。
 
 App 运行期间，共享 Desktop 后端独立发现启用安排，并连接其执行 owner，无需用户先打开项目。Core 仍决定到期、漏执行与重叠受理。显式停止项目会持久抑制自动激活，只有明确重新连接或启动才能解除；普通列表读取、自动会话恢复和窗口切换不解除。退出 App 后不再调度，未结束执行仍按既有取消与清理契约结算。仅关闭窗口沿用当前后台生命周期。再次启动后按保存的漏执行策略处理，不自动重放 UNKNOWN 操作，也不自动恢复已中断 Run。
 
@@ -229,17 +237,23 @@ App 运行期间，共享 Desktop 后端独立发现启用安排，并连接其�
 
 ## 生命周期
 
-`AREAL_REOPEN_FORCE_GUI=1` 配合 `test:service-reopen` 强制结束隔离 Main，验证 owner 管道回收原引擎，随后新应用会话从原历史恢复。新代际不重放中断输入。`test:desktop-exit` 分别验证 Main、Desktop 强退和测试 runner 失败、SIGTERM、SIGKILL 的清理。浏览器与动态 ToolHost 的真实强退 UNKNOWN 仍需专项验收，既有宿主丢失与 generation 失效契约保持不变。
+普通 GUI 在原 singleton 内导入来源并恢复未完成的秘密退役，然后连接共享 Host。项目 ID 在界面中仍使用稳定本地别名，执行与 journal 路由使用 Host 绑定及原 `dataDir`。CLI 项目在 GUI 中保留其启动配置、模型和资源目录，不自动套用当前 GUI 的默认 profile 或订阅。凭据的非秘密未决操作保存在 `host-vault-operations.json`，后续配置迁移标记保存在 `model-config-migrations.json`。Remote 的非秘密未决操作保存在 `host-remote-operation.json`。这些记录只用于查询原回执。
 
-关闭窗口只隐藏界面，GUI 仍持有单实例锁；再次启动或从 Dock 激活会唤回原窗口。应用菜单、菜单栏和后台设置的“退出 AReaL Harness”（⌘Q / Ctrl+Q）共用安全退出。应用拥有 Desktop、每项目 Host、Core、Runtime 和监督桥，窗口不拥有引擎。每次普通退出都会显示原生确认，提供“取消”和“退出”，空闲时也需确认。有活动任务、已启用的定时安排或手机入口时，确认框简要提示退出影响。只有原引擎物理清理和 Desktop 退出已确认后才退出 Main。部分停止、结果未知或清理未完成保留恢复入口，不自动重复停止。退出后安排不再触发，手机入口断开；安排定义、历史与草稿保留。CLI 与其他 GUI profile 保持独立。
+来源迁移阻塞时，启动错误区分原单实例未持有、凭据尚未导入和旧后台清理证明未确认，并提示检查相应状态。未知阻塞显示通用原因；展示文本不包含原始迁移数据或凭据。
 
-普通退出先通过未保存修改检查，再显示原生确认。只有确认退出后，才显示带持续动画的进度弹窗，直到窗口真正退出。弹窗显示停止后台与完成退出，不显示百分比或预计时间；等待期间关闭窗口不会隐藏弹窗。取消原生确认或退出失败后恢复界面，原请求与未知结果仍由现有恢复入口核查。原生浏览器视图在确认退出后暂时隐藏，退出失败后恢复原页面。取消确认保留界面与原生页面的正常操作。`AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui run test:quit-progress` 使用隔离 Electron/Core 验证发送、暂停、退出反馈、取消、失败恢复、重复退出与实际进程清理；原生确认由 fixture 应答，不证明物理快捷键或安装包通过。
+Host 持有每项目 Core 的生命期管道。强退 GUI 不结束 Host-owned Core；重新打开通过原 Host 描述连接，不重放输入。`gui-host-lifecycle-smoke.mjs` 验证客户端断开、原停止回执、被动观察不重启和显式重新打开。真实 GUI/TUI 审批交接、桌面工具撤销与安装包需要各自验收。
+
+关闭窗口只隐藏界面，GUI 仍持有单实例锁；再次启动或从 Dock 激活会唤回原窗口。普通退出保留共享 Host 和 Core。空闲时直接退出；存在活动执行或状态未知时，默认选择“保持后台运行并退出”，也可选择“停止任务并退出”并再次确认。菜单显示全 Host 的活动任务或对话轮次，并提供同一“停止后台”入口，包含终端启动的项目。部分停止与未知结果保留原请求供核查。Gateway、定时激活和订阅传输由 Host 管理，普通 GUI 退出不停止它们。
+
+普通退出先通过未保存修改检查。批准退出后显示进度，区分停止后台与完成退出，不显示百分比或预计时间。等待期间关闭窗口不隐藏进度；取消或失败恢复界面与原生页面。保持后台退出不丢弃未决生命周期引用。安装退出继续核对旧生命周期与安装包占用，不提供绕过检查的保持后台选项。`AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui test:host-quit` 使用隔离 Electron、真实 Host/Core 与本地 SSE 模型覆盖空闲退出、草稿取消、保持同一 Turn 执行，以及二次确认后的全 Host 停止。原生对话框由 fixture 应答，不证明物理快捷键或原生确认框的视觉验收。
+
+该测试默认不配置 Remote。增加 `AREAL_TEST_REMOTE_KEYCHAIN=1` 可验证停止后显式重连恢复同一 Direct 身份与授权，并完成认证只读请求。此模式在 macOS 系统 Keychain 中写入隔离 Host home 对应的虚构测试凭据，需要事先授权；系统可能要求人工确认，测试条目不会自动删除。默认测试通过不表示此模式通过。
 
 `AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui run test:desktop-exit` 在隔离 Electron/Core/Runtime 中核对窗口重开、普通退出的取消与确认、隐藏项目引擎清理、独立 CLI 和其他 GUI profile、Main/Desktop 强退及 runner 清理。目录选择和原生确认由 fixture 应答。指定 `AREAL_GUI_EXECUTABLE` 可使用私有安装包，runner 强退夹具仍限源码入口；这不替代物理快捷键或 Finder 安装验收。
 
 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal node clients/gui/scripts/application-owner-smoke.mjs` 从仓库根验证真实 Host 尚未发布描述时丢失启动响应、原代际恢复、项目投影移除、同/异 profile 旧 owner 的只读边界及原回执清理。测试专用 CLI guard 仅管理隔离 registry 的原实例，runner 结束后通过公共 CLI 回收独立持久服务。
 
-设置存在未保存修改时，退出先复用“保存并继续／放弃修改并继续／继续编辑”确认。取消退出保留草稿、后台连接和正常操作；保存失败保留确认框与错误，成功保存或放弃修改后才清理资源并退出。`AREAL_CORE_BIN=/absolute/fixed-slot/areal pnpm --dir clients/gui run test:quit-draft` 使用隔离 Electron/Core 验证取消后编辑与保存、停止并退出的取消、保存失败恢复，以及保存或放弃后的配置内容和 GUI 进程退出；通过应用菜单回调触发退出，不代表物理快捷键或安装包验收。
+设置存在未保存修改时，退出先复用“保存并继续／放弃修改并继续／继续编辑”确认。取消退出保留草稿、后台连接和正常操作；保存失败保留确认框与错误，成功保存或放弃修改后才清理 GUI 资源并退出。旧 `test:quit-draft` 和 `test:quit-progress` 的停止式退出夹具保留为迁移对照，共享 Host 退出语义以 `test:host-quit` 为准。
 
 普通会话运行时的主要停止操作显示为“暂停执行”。暂停结算后，完整草稿为空时显示播放图标和“继续执行”；文本、附件、Skill、MCP 或评论草稿存在时显示普通发送。发送将输入作为新的用户消息追加到原会话。继续使用已保存历史和当前工作区，不复活旧模型调用或进程。重开 GUI、Core 或电脑后仅恢复历史，必须手动继续。排队输入保留并按现有顺序优先执行；正常回复完成后等待下一次用户输入，不自动创建 Goal。
 
@@ -257,13 +271,36 @@ Composer 的圆环打开上下文分类与组成占比，面板在整组输入�
 
 构建 Core 与 renderer 后，设置 `AREAL_CORE_BIN` 指向隔离构建的真实 CLI，运行 `pnpm --dir clients/gui run test:context-usage`。该专项用本地确定性 SSE 与真实 Electron/Core/Runtime，检查未发送的模型容量切换、Skills/CLI 来源、用量与速率覆盖、压缩后自动刷新、运行状态、布局、分支及重开不重发；隔离目录、进程/产物身份、截图和结果保存在脚本打印的 `/private/tmp/acu-*`。它不证明真实供应商、安装包或跨平台行为。
 
-设置中的“数据飞轮”页通过 `areal trajectory status/retry/set-enabled` 读取当前配置、上传进程、积压与最近上传记录，页面可见且连接正常时每 2.5 秒刷新，也可手动刷新和重试。记录分别显示 Turn、模型、Harness 版本、模型调用耗时、Agent 执行耗时与事件/创建/上传时间，汇总范围仅为最近 100 条记录；模型调用耗时包含网络与内部重试。会话可见时另以 15 秒间隔检查，在设置入口标记读取失败或导出异常，恢复后清除。轮询共享一个在途请求，隐藏、离开或断线后停止相应轮询并忽略过期响应，上传信息不进入聊天内容。状态读取不启动 Core 或上传器，也不解密 GUI 凭据；手动重试可能启动上传器，继承 Core 启动的凭据环境。编辑本页显示的配置文件中的 `[trajectory]`，通过 `areal trajectory sync-config` 应用本地上传控制；本页提供启停开关，就绪开启浅绿，关闭或待处理浅橙；只修改 enabled，保留其它配置。已有 Core 的采集参数在空闲后自动安全应用，不取消任务；其它配置变化或失败交由后台服务安全应用，本页不编辑地址或凭据。边界与耗时语义见[配置指南](../../docs/guides/configuration.md#持久轨迹导出)。
+设置中的“数据飞轮”页通过 `areal trajectory status/retry/set-enabled` 读取当前配置、上传进程、积压与最近上传记录，页面可见且连接正常时每 2.5 秒刷新，也可手动刷新和重试。记录分别显示 Turn、模型、Harness 版本、模型调用耗时、Agent 执行耗时与事件/创建/上传时间，汇总范围仅为最近 100 条记录；模型调用耗时包含网络与内部重试。会话可见时另以 15 秒间隔检查，在设置入口标记读取失败或导出异常，恢复后清除。轮询共享一个在途请求，隐藏、离开或断线后停止相应轮询并忽略过期响应，上传信息不进入聊天内容。状态读取不启动 Core 或上传器，也不解密 GUI 凭据；手动重试可能启动上传器，继承 Core 启动的凭据环境。编辑本页显示的配置文件中的 `[trajectory]`，通过 `areal trajectory sync-config` 应用本地上传控制；本页提供启停开关，就绪开启浅绿，关闭或待处理浅橙；只修改 enabled，保留其它配置。已有 Core 的采集参数在空闲后自动安全应用，不取消任务；其它配置变化或失败可在高级诊断中核查并安全应用，本页不编辑地址或凭据。边界与耗时语义见[配置指南](../../docs/guides/configuration.md#持久轨迹导出)。
 
-`pnpm --dir clients/gui run test:trajectory` 验证命令边界、凭据环境、状态投影，以及轮询时序、单一在途请求、可见性和过期结果隔离。`test:trajectory-config` 使用已构建 CLI，在隔离目录验证配置身份及跨项目一致性，不启动 Core 或上传器。构建 renderer 后，`test:trajectory-ui` 使用本机 Chrome 和隔离桌面服务 fixture 验证真实设置交互、自动刷新、耗时及异常恢复；`AREAL_GUI_TEST_BROWSER` 可指定浏览器。上述检查不替代 Electron/Core 集成验收。 `test:trajectory-native` 使用真实桌面后端、Core、Runtime 和本地模型/接收器，验证关闭启动、运行中启用、空闲安全重启、停用保留与失败副本自动补传，不替代正式远端或 Electron IPC 验收。
+`pnpm --dir clients/gui run test:trajectory` 验证命令边界、凭据环境、状态投影，以及轮询时序、单一在途请求、可见性和过期结果隔离。`test:trajectory-config` 使用已构建 CLI，在隔离目录验证配置身份及跨项目一致性，不启动 Core 或上传器。构建 renderer 后，`test:trajectory-ui` 使用本机 Chrome 和隔离桌面服务 fixture 验证真实设置交互、自动刷新、耗时及异常恢复；`AREAL_GUI_TEST_BROWSER` 可指定浏览器。上述检查不替代 Electron/Core 集成验收。
 
 macOS 桌面适配器通过系统 `/usr/bin/python3` 保留可信 Core 命令的父进程，与 Runtime 的原生启动方式一致。命令参数、环境和标准输入输出保持原样；超时、取消和强杀作用于真实 Core 子进程，适配器或桥退出时清理其仍运行的直接子进程。该路径不重放写入，也不终止 Core 已建立的持久服务。`pnpm --dir clients/gui run test:core-process` 验证信号退出、超时升级、取消、输出上限及进程清理。
 
-遇到 `Core disconnected` 时，在设置的“后台服务”页或应用菜单点击“导出诊断包…”，选择保存位置。后台离线或主界面渲染进程退出后，应用菜单仍可导出。界面到 Desktop 的连接和 Desktop 到工作区 Core 的连接分别记录；前者已连接不代表后者可用。
+
+### 本机问题反馈
+
+客户端运行观测覆盖启动、模型配置、任务发送、历史加载和断线恢复。诊断附带启动环境快照、操作/父操作关联、白名单失败原因与最近故障窗口，故障时补采 Main 内存样本；模型应用沿原请求关联读证明、应用与目录刷新。任务准入成功不表示模型执行完成，重连的异步历史恢复由后续读取结果分别确认。反馈预览进一步将关联身份统一转为报告内别名。`monitoring` 提供有版本的本地接入描述，尚未接入远端监控。字段、结果语义和保留缺口见[桌面观测契约](../../docs/api/desktop.md#客户端运行观测)。`test:observability` 检查并发关联与隐私投影；`test:observability-desktop` 使用隔离 Electron/Core、本地模型和受控故障验证反馈证据。
+
+右上角“任务操作 → 反馈问题”提供问题描述（必填，最多 4000 字符）、截图和可选诊断上下文，不采集联系方式。截图支持选择、粘贴和拖放 PNG/JPEG/WebP，最多 5 张；每张解码尺寸不超过 4096 × 4096，重编码 PNG 后不超过 2 MiB。保存前后均可查看图片，原图片元数据被移除，但像素内容和手动输入的文字不会自动脱敏，需要自行检查。
+
+“附带诊断上下文”默认关闭。勾选时冻结并展示将附带的 JSON，保存使用同一份快照；预览 30 分钟后过期，需重新勾选。它复用下述有界诊断读取，进一步移除供应商地址、模型名称、配置/程序路径指纹、服务身份与转储元信息，项目/请求/运行身份转换为报告内别名。保留运行版本、时间线、PID、连接状态、操作结果和耗时、资源样本、模型请求状态与错误分类，以及采集不完整和遗漏计数。采集范围是当前 GUI profile 和所选 Core home 的保留记录，可能跨工作区，不附聊天、源码、凭据、原始路径、原始日志或私有错误正文。
+
+“保存到本机”生成 `local-only` 记录，位于 GUI profile 的 `bug-reports/`，目录权限 0700、文件权限 0600（POSIX）。最多保留 20 条，由用户在“本机反馈”查看、导出或确认删除，不自动淘汰。关闭表单保留本次窗口内尚未保存的草稿；重启只恢复已保存记录。导出是包含描述、PNG data URL 和可选诊断 JSON 的单个 `.json` 文件，取消系统保存框不改变本机记录。删除本机记录不删除用户另存的导出副本。保存和导出仅改变本机副本，不触发提交。
+
+诊断事件沿用 `schemaVersion: 1`，新增固定枚举的 `level`、`component`、窗口就绪数量、GUI 观察到的服务状态/项目连接数量变化及桌面命令完成事件（操作名称白名单、结果、单调时钟耗时）。事件不记录命令参数、返回正文或异常文字；原有容量、重复合并和写入失败隔离继续生效。完整开发诊断导出与反馈附件共用采集所有者，但反馈附件采用上述更严格的隐私范围。
+
+模型配置额外记录 `model-configuration` 阶段事件：读取 Core 应用证明（`read-proof`）、热应用 RPC（`apply`）和刷新模型目录（`refresh-catalog`）的开始、结果、耗时、项目/代际别名及可用的原应用请求身份。失败仅保留白名单 RPC/系统错误码与 Core 原因分类。`apply` 成功只表示 RPC 返回通过解码，完整生效仍需证明核对、凭据可用性和目录刷新。获取供应商模型成功、配置保存成功、运行中 Core 生效是不同阶段；重启后恢复不能单独证明最初失败原因。排查“已保存但暂未生效”时，应在重启前导出诊断，并区分明确拒绝、未知回执和目录刷新失败。Core 已明确拒绝的失败保留具体脱敏原因并等待显式重试；未知回执按原请求核对。应用证明及凭据已确认后，目录刷新失败进入待确认状态，每两秒自动核对并刷新；成功后清除暂时错误。此时显式“重试应用”返回待确认状态，用户可以留在原页面等待恢复，无需重启或再次提交配置。
+
+“提交反馈”会先保存本机副本，再匿名发送至 PlayForge。发送内容为描述、截图和主动选中的诊断快照，用户可在提交前检查；不需要登录，不发送账号凭据。上报 JSON 总大小最多 15 MiB（含 Base64 编码），超限不截断并保留本机副本。成功后保存 `submitted` 状态、服务端反馈编号和提交时间；它表示已接收，不表示已修复。网络失败或回执丢失会保留原内容与 ID，再次提交由服务端去重。没有后台自动重试。删除本机副本不删除服务端记录，已提交副本不重复上传。开发者使用 PlayForge 管理员账号 Token 查询和维护生命周期，当前客户端不提供用户查进度入口。
+
+默认接收地址为 `https://playforge.alipay.com/api/public/bug-reports`；Electron Main 的 `AREAL_BUG_REPORT_URL` 环境变量可覆盖完整地址，支持 HTTPS 或仅回环地址的 HTTP，renderer 不能指定上报目标。服务端和数据库迁移需要先部署；源码检查通过不代表线上接收可用。
+
+验证：`pnpm --dir clients/gui test:bug-report` 覆盖真实本地存储、冻结、导出一致性、边界校验与隐私哨兵；构建后 `test:bug-report-ui` 检查生产表单；`test:bug-report-electron` 在 Core 缺席的隔离 Electron 中验证真实 Main IPC、PNG 重编码和文件导出，原生保存框使用注入。源码 Electron、真实 Core/Runtime、原生输入与发行包各自按实际运行结果判断。
+
+日常连接、模型配置应用与断线恢复由应用管理。设置导航不提供独立“后台服务”页；“常规 → 高级诊断”集中技术状态、手动维护、待核对操作与诊断导出，并可返回常规设置。只在打开高级诊断后轮询技术状态。短暂连接失败不立即弹出通知；持续不可用超过 8 秒或需要人工处理的操作失败时提供“查看详情”，具体原因保留在诊断页。任务中的审批、配置错误和结果未知仍由原任务入口处理，恢复连接不自动重发未知操作。
+
+遇到 `Core disconnected` 时，在设置 → 常规 → 高级诊断或应用菜单点击“导出诊断包…”，选择保存位置。后台离线或主界面渲染进程退出后，应用菜单仍可导出。界面到 Desktop 的连接和 Desktop 到工作区 Core 的连接分别记录；前者已连接不代表后者可用。
 
 诊断包包含固定结构的进程身份、连接错误码与关闭码、Electron 进程退出原因、未捕获异常类别、固定枚举的退出阶段与耗时，以及启动时和每 60 秒一次的内存与定时器延迟样本。项目与 Core 代际使用本次运行内的别名。不会包含对话、凭据、环境变量、命令参数、原始日志、异常消息或堆栈。记录分别保存在 GUI profile 的 `diagnostics/main` 和 GUI Core home 的 `diagnostics/desktop`；每个角色保留最多 8 次运行，每次最多 4 个 256 KiB 事件文件。导出最多读取 16 MiB，报告记录器健康、合并重复事件和文件缺失等遗漏。旧运行缺少退出记录只标为 `termination-unconfirmed`，不推断崩溃原因；观察到的 Core PID 也不证明进程仍存活。写入失败不会改变任务执行或未知提交状态。
 
@@ -304,7 +341,7 @@ Composer 保留所选及最后受理模型，目录确认中不显示不可用�
 
 通知遵循“看到后能做什么”的原则：只有需要用户决策或采取行动时才弹出，并提供必要的处理入口。后台连接、更新和已受理处理中保持安静；Worktree 保存与删除成功直接更新界面。字段校验和局部读取失败在原位置显示，历史失败提供重新加载入口；旧历史视图的迟到请求不再生成全局错误，新视图成功后清除旧错误。UNKNOWN 继续绑定原请求核对，关闭通知不会重发操作。
 
-Renderer 仅通过窄 preload IPC 访问桌面适配器。独立适配器使用 `areal service ensure/restart/stop --json` 连接 Core，不直接管理持久 Core 服务的 PID。关闭窗口保留应用与任务；退出应用先结算所有 GUI 引擎和终端，安排停止触发、手机入口断开。再次启动读取 Core 权威历史，不重放提交。
+Renderer 仅通过窄 preload IPC 访问桌面适配器。适配器在 Main 进程中连接共享 Rust Host，不启动独立 Desktop Service 或持有 Core 生命期管道。关闭窗口保留应用；退出应用关闭 GUI 连接与原生资源，已受理的 Core 工作、Host 定时激活和原生 Remote 入口继续由 Host 管理。桌面 Browser/Computer 连接撤销后，后续任务按当前可用工具准备。再次启动读取 Core 权威历史，不重放提交；停止后台使用单独的显式 Host 操作。
 
 用户可显式停止后台服务。空闲停止不取消工作；有活动轮次、目标、任务或待发输入时，只显示一次取消确认，确认范围绑定原 Desktop 和各 Core 代际。取消保留待发输入、安排、历史与草稿，暂停当前执行并等待资源结算。历史 UNKNOWN 保留原会话核查要求，但不代替活资源结算。结果分为已完成、已拒绝、仍在结算、部分完成或受理未确认；检查只读取原请求，既不重发停止，也不确认工具 UNKNOWN。旧后台未声明持久生命周期能力时保留兼容观察，不通过另一层 Core 连接代为取消。若已知旧 Desktop 留下部分停止记录，可在顶部或设置的“检查与恢复”入口检查原工作空间，再显式选择“恢复后台…”。检查读取原 Host 身份、准入与资源结算；已退出目标还需 Host 清理标记和实例／历史锁释放，不能仅凭 PID 或 socket 消失判断完成。仍未知、正在清理、忙碌或已换代时显示原因并保留记录。确认后只对核对为空闲的原代际发起新的安全停止；本次停止响应未知时只检查，不重发。全部原 Host 确认清理后才退出旧界面后台并启动当前版本；旧界面后台未响应退出时另行确认是否结束该管理进程，不向 Core/Runtime 发信号。模型配置、工作空间、历史与工具 UNKNOWN 保留，旧停止记录存档；恢复中断可重新检查并继续。`pnpm --dir clients/gui run test:legacy-recovery` 使用隔离历史 Desktop、当前 GUI/Core 与本地模型验证恢复；设置 `AREAL_RECOVERY_SCENARIO=exited` 覆盖停止已完成但响应未知的路径。
 
@@ -316,7 +353,7 @@ macOS 安装包将 Desktop 放在独立应用身份的 `AReaL Harness Service.ap
 
 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal pnpm --dir clients/gui run test:service-reopen` 验证 Renderer reload、强制崩溃后的显式刷新，以及两次窗口关闭与重开。Renderer 恢复后从权威快照重新挂接，保留 Main、Desktop、Host、Core 的进程身份、owner、代际和同一模型连接。脚本分别追加新的流片段，在生产 App 中检查历史、活动状态、草稿及新增回复，并完成原 Turn。随后用独立活动 Turn 验证应用退出与重启，要求新 owner 和代际、历史与草稿保留，且不重发中断输入。命名请求与用户执行请求分别计数；Runtime PID 按实际出现记录，不要求启动工具。`AREAL_REOPEN_FORCE_GUI=1` 将应用退出替换为 Main SIGKILL。源码 runner 的生命期连接在测试被杀后结束 Main，再由产品 owner 管道回收服务。可选 `AREAL_REOPEN_REPLACEMENT_BIN=/absolute/verified/areal` 用另一份真实 Mach-O 替换私有路径，验证同次应用窗口重开不隐式换代，随后恢复原字节和时间。未指定时验证文件时间变化不触发换代。
 
-同窗口 Renderer 阅读恢复已有隔离真实 Electron/Core 验证，运行与边界见 [E-RECOVERY](design-system/base-evidence.md#e-recovery)。构建匹配的 Core 与 renderer 后，从仓库根运行 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal node clients/gui/scripts/service-reopen-smoke.mjs --reading-slice`。Core 固定路径必须是该 checkout 内的私有普通副本。此模式核对重载、Renderer 崩溃后显式重载的已加载段落与偏移、阅读历史时的新输出、键盘返回最新以及再次重载后的跟随。原任务、草稿、执行身份与模型请求计数同时检查，不重放原提交。脚本使用隔离的源码 Electron/Core 与确定性本地模型，不证明完整应用重启后的阅读恢复、未加载历史获取、展开状态、真实供应商、其他平台或安装包验收。详细边界见 [Messages 阅读合同](renderer/src/Messages.md#同窗口-renderer-恢复阅读)。 加上 `--manual` 后，脚本先完成自动检查，再保留阅读样例与草稿供操作。看到 `Manual ready` 后可在同一窗口刷新、返回最新并比较；关闭该窗口会清理脚本自有服务。
+同窗口 Renderer 阅读恢复已有隔离真实 Electron/Core 验证，运行与边界见 [E-RECOVERY](../../design/archive/gui/base-evidence.md#e-recovery)。构建匹配的 Core 与 renderer 后，从仓库根运行 `AREAL_CORE_BIN=/absolute/path/to/private/.local/dev-bin/<slot>/areal node clients/gui/scripts/service-reopen-smoke.mjs --reading-slice`。Core 固定路径必须是该 checkout 内的私有普通副本。此模式核对重载、Renderer 崩溃后显式重载的已加载段落与偏移、阅读历史时的新输出、键盘返回最新以及再次重载后的跟随。原任务、草稿、执行身份与模型请求计数同时检查，不重放原提交。脚本使用隔离的源码 Electron/Core 与确定性本地模型，不证明完整应用重启后的阅读恢复、未加载历史获取、展开状态、真实供应商、其他平台或安装包验收。详细边界见 [Messages 阅读合同](renderer/src/Messages.md#同窗口-renderer-恢复阅读)。 加上 `--manual` 后，脚本先完成自动检查，再保留阅读样例与草稿供操作。看到 `Manual ready` 后可在同一窗口刷新、返回最新并比较；关闭该窗口会清理脚本自有服务。
 
 Core 观察连接意外关闭时，项目连接所有者以 500ms 起步、最长 30s 的退避重试，通过 `service status --instance` 发现兼容的运行中实例，并用原子 `areal/thread/observe` 恢复 Thread/Task 快照、订阅和通知基线。观察恢复不重绑工具宿主；用户显式认领原生页时，才读取权威状态并在 Thread 空闲时尝试 `thread/resume` 绑定，仍受 Core 宿主冲突检查约束。恢复不重新提交任务、不同步 Provider/MCP 配置，也不执行配置 revision 屏障。旧连接的消息与异步结果失去投影写入资格。显式停止、适配器关闭、停止中的 Core 或部署指纹不兼容会阻止自动恢复；重新连接需显式操作。
 
@@ -349,6 +386,8 @@ pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --
 pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg --signing adhoc
 pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing developer-id --identity "$CSC_NAME" --keychain-profile "$APPLE_KEYCHAIN_PROFILE"
 ```
+
+Relay 的 `node_modules` 通过独立资源映射打包，避免 electron-builder 的默认目录过滤丢失 `ws`。`test:relay-service` 包含真实打包复制回归检查，逐项核对 Relay 清单哈希并加载包内依赖；运行前须构建 GUI 静态资源。
 
 内部 Relay 测试包可在打包时设置 `AREAL_GUI_RELAY_CA_CERT=/absolute/ca.pem`，将自签名 CA 公共证书内置到应用。仅 Relay 的 HTTPS 登记与 WSS 连接额外信任该 CA，仍校验证书链、有效期和主机名；登记码由用户在客户端填写。CA 私钥不得进入包。手机端仍需自行安装并信任同一 CA，再扫码并在电脑确认设备授权。
 
@@ -388,7 +427,7 @@ Core 构建完成后再启动使用该二进制的桌面 smoke，验收期间不
 
 `pnpm --dir clients/gui run test:conversation-derivation` 验证 Fork、主聊选区及当前可执行 Side Chat 入口，核对显式发送、来源身份与配置隔离。`test:side-chat-parity` 覆盖当前 Side 的权限、历史、多标签、引用、Composer 和停止归属。旧只读旁路的授权、历史恢复与 UNKNOWN 契约由 Core 的 `side_access`、`side_history_recovery` 保留；`side_workspace_read` 在 macOS native 与 Linux 受控容器显式运行，验证真实沙箱下的只读文件访问。生产 GUI 回归不再寻找已移除的历史旁路菜单。
 
-`pnpm --dir clients/gui run test:connection` 验证真实 Core 断线恢复、并发操作、旧连接消息隔离及显式关闭；`pnpm --dir clients/gui run test:architecture` 通过真实 Electron IPC 验证契约拒绝、错误码透传及原生预览的驱逐、崩溃重建和归属释放。两者使用隔离目录并输出证据，不替代安装包验收。
+`pnpm --dir clients/gui run test:architecture` 通过真实 Electron IPC 验证契约拒绝、错误码透传及原生预览的驱逐、崩溃重建和归属释放。它使用隔离目录并输出证据，不替代安装包验收。
 
 第三方归属见 [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES.md)。运行时图标沿用源仓库版本；不迁入采集档案、开发 Skills/AGENTS 或来源 Git 历史。
 
@@ -396,7 +435,9 @@ Core 构建完成后再启动使用该二进制的桌面 smoke，验收期间不
 
 Cloud 使用 AReaL 原生 app-server WebSocket 接口。设置中填写固定 Arena 服务地址，例如 `https://host/openapi/v1/app-server/`，以及自己的 token；不填写 workspace。只填写主机时补全标准路径。保存和打开配置页只读写本机加密配置，不连接远端、不分配沙箱。旧 Arena 配置的 workspace 后缀会从服务地址投影中移除，已有会话保留原 endpoint。
 
-项目新聊天选择 Cloud 时只编辑本地草稿，不分配工作区；首次发送时生成并持久保存会话 UUID，以该 ID 作为 workspace 连接 `/openapi/v1/app-server/<session-id>/`，连接成功后指示变绿。不同 Cloud 会话使用独立沙箱和 UPFS 子路径；同一会话的 query 使用原生 `turn/start` 直接发往既有沙箱。冷启动最多等待三分钟。token 通过系统安全存储加密，改变目标服务地址需提供新 token。
+项目新聊天使用项目 Composer，项目栏不展示 Cloud/Local 标签或切换入口；已保存的云端配置和旧草稿环境选择不改变新聊天的执行位置。已有 Cloud 会话仍从历史打开，使用各自的沙箱和 UPFS 子路径，同一会话的 query 使用原生 `turn/start` 发往既有沙箱。冷启动最多等待三分钟。token 通过系统安全存储加密，改变目标服务地址需提供新 token。
+
+项目连接、工作区准备及 Composer 的失败提示统一使用顶部冒泡通知，详细原因按需展开；通知提供原流程可用的重试操作。已有 Cloud 会话的断线和提交结果未知也使用顶部通知，恢复连接和未知结果确认入口仍在 Composer 保留。关闭通知不清除草稿，也不确认或重放未知提交。正常连接和发送进度不额外弹出通知。
 
 会话保存 Session ID、endpoint 和原生 thread 身份。打开已断开的会话不唤醒沙箱，下一条消息会重新连接、读取权威历史，再提交新 query，不重放旧 query。若断线前显示运行中，点击“恢复连接”读取权威状态后再继续；恢复只接回原会话，不重发提交结果未知的消息。Arena 默认在连续空闲 15 分钟后安全排空并销毁沙箱；时长和默认 Harness 由服务端“Agent 与 Harness 演进”配置。运行中的推理、工具、队列、Goal 或未确认资源不回收。原 Session 和 UPFS 保留，后续消息启动新沙箱代际并挂回同一子路径。回收要求运行包支持 Core 的空闲判定与 writer 隔离；旧运行包不会被盲目销毁。关闭 GUI 只断开客户端。
 
@@ -404,10 +445,10 @@ Cloud 支持文本及图片、音频、文件附件；可选择文件、粘贴�
 
 Cloud 对话的已读标记保存在本地导航元数据中，不要求云端支持桌面整理命令。
 
-`pnpm --dir clients/gui run test:cloud-lifecycle` 使用构建后的真实 Renderer 和 Cloud 适配器，以及本地 WebSocket 协议替身，验证保存和打开新聊天不连接、首次发送后会话 workspace 隔离、连接指示与销毁后的同会话恢复，并输出截图和请求记录；不替代真实 ARCA、UPFS 或模型验收。
-交互设计从[用户交互模式](design-system/interactions.md)进入，页面是既有模式的组合；[设置页阶段一](design-system/exercises/settings-stage1.md)使用真实隔离Electron验证，第二阶段在审查后选择。
+`pnpm --dir clients/gui run test:cloud-lifecycle` 使用构建后的真实 Renderer 和 Cloud 适配器，以及本地 WebSocket 协议替身，验证保存配置和项目新聊天不分配云端会话，以及已有云端会话的顶部通知、沙箱回收后的恢复和未知提交草稿保留，并输出截图和请求记录；不替代真实 ARCA、UPFS 或模型验收。
+交互设计从[用户交互模式](design-system/interactions.md)进入，页面是既有模式的组合；[设置页阶段一](../../design/archive/gui/exercises/settings-stage1.md)使用真实隔离Electron验证，第二阶段在审查后选择。
 
-真实对话的发送、命令、子代理及面板返回迁移和同状态验证见[对话阶段二](design-system/exercises/conversation-stage2.md)。
+真实对话的发送、命令、子代理及面板返回迁移和同状态验证见[对话阶段二](../../design/archive/gui/exercises/conversation-stage2.md)。
 
 ## 界面语言与文案开发
 
@@ -445,6 +486,8 @@ test:i18n-native 使用同一隔离 runner，覆盖双语归档、会话与诊�
 检查更新遇到网络变化等错误时，点击蓝色更新按钮可重新检查。发现新版本后再次点击才会下载；若确认已是最新版，错误提示会消失。下载或原生校验失败后，同一按钮重试当前版本。
 
 正式 macOS arm64 包使用 DMG 首次安装、ZIP 自动更新，并保留 Developer ID 签名和 Apple 公证。下载后先校验同一 Release 的 `SHA256SUMS`；从 DMG 将应用拖入所选安装目录，再打开应用，按 macOS 提示处理安全与隐私权限。
+
+从旧版跨大版本升级时停机导入：在终端执行 `bash scripts/offline-upgrade-mac.sh`，它退出旧版、停止 Host 并完整备份数据目录，然后再安装新版；首次启动一次性导入项目、会话历史、资料库、凭据与模型设置、定时任务定义和工作区登记。手机需要重新配对，进行中的任务需要重新发起。新版不支持降级。
 
 升级前备份 GUI 数据（默认 `~/Library/Application Support/AReaL Harness GUI`）、共享配置 `~/.areal` 和自定义项目数据。下载不停止任务；原生校验完成后等待活动任务、队列和后台操作安全结算，再停止后台并交给系统替换/重开。停止受理结果未知时检查原后台资源，不重复提交安装。下载/校验失败可重试；交接系统后未重开时手动打开原安装位置并核对版本。程序回退不等于数据降级，恢复旧程序时可能需要同步恢复备份；凭据继续使用原安全存储，备份目录不代表可跨机器迁移钥匙串。
 

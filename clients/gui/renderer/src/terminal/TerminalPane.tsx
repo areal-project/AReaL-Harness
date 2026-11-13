@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { Button } from "@areal/ui";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Plus, X } from "lucide-react";
@@ -61,7 +62,7 @@ export function TerminalPane({
   const failure = terminalFailure(owner, id) ?? services.terminalService.creationFailure(key);
   const [processStatus, setProcessStatus] = useState<{
     key: string;
-    runtime?: import("@areal/workbench/desktop-contract/management").ManagementResponseMap["process"]["runtime"];
+    runtime?: import("../services.js").ManagementResponseMap["process"]["runtime"];
     cleanupConfirmed?: boolean;
     partialOutput?: boolean;
     error?: string;
@@ -149,7 +150,7 @@ export function TerminalPane({
         if (terminalLifecycle.snapshot(lifecycleOwner).generation !== generation)
           services.terminalService.forget(key);
       })
-      .catch((error) => onError(error.message));
+      .catch((error) => onError(currentErrorText(error)));
   };
   const close = async () => {
     try {
@@ -258,7 +259,7 @@ export function TerminalPane({
         )}
         {failure && (
           <div className="grid gap-2">
-            <p role="alert">{failure.message}</p>
+            <p role="alert">{failure.message /* raw-error-ok: 已是呈现后的文案 */}</p>
             {failure.unknown ? (
               <>
                 <p>创建结果尚未确认；核对原请求后连接已有终端，不会自动重建。</p>

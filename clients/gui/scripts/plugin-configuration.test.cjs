@@ -3,9 +3,8 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const {
   configurePluginValues,
-  reloadPluginCredentials,
-} = require("../app/src/core/plugin-configuration.cjs");
-const { snapshotProject } = require("../app/src/core/project-snapshot.cjs");
+} = require("@areal/workbench-service/desktop/core/plugin-configuration.cjs");
+const { snapshotProject } = require("@areal/workbench-service/desktop/core/project-snapshot.cjs");
 const { validateCommand } = require("../packages/workbench/client/desktop-contract.cjs");
 const requestId = "00000000-0000-4000-a000-000000000111";
 const baseRequest = {
@@ -59,7 +58,7 @@ function fixture() {
       async request(method, params, options) {
         calls.push({ method, params });
         if (method === "areal/plugin/read") return options.decode(detail);
-        if (method === "areal/server/drain") return { restartSafe: true };
+        if (method === "areal/plugin/credentials/register") return { registered: 1 };
         throw new Error(method);
       },
     },
@@ -74,6 +73,7 @@ function fixture() {
           calls.push({ credential: value });
           return "AREAL_CREDENTIAL_private_ref";
         },
+        key: () => "NORMALIZED_SECRET",
       },
     },
     async restartProject() {
@@ -107,17 +107,42 @@ test("empty secret edits preserve stored credentials, and clearKeys is an explic
   );
   assert.equal(submitted.options.requestId, requestId);
 });
-test("Main creates credential references with the existing owner and restarts before Core consumes them", async () => {
+test("new credentials reach running Cores by reference before saving, without a restart", async () => {
   const { backend, project, calls } = fixture();
+  const other = {
+    client: {
+      async request(method, params) {
+        calls.push({ other: method, params });
+        return { registered: 1 };
+      },
+    },
+  };
+  const offline = {
+    client: {
+      async request() {
+        throw new Error("offline");
+      },
+    },
+  };
+  backend.projects = new Map([
+    ["p", project],
+    ["other", other],
+    ["offline", offline],
+  ]);
   const result = await configurePluginValues(backend, project, {
     ...baseRequest,
     secrets: { TOKEN: "SECRET_CANARY" },
   });
+  const register = calls.findIndex((call) => call.method === "areal/plugin/credentials/register");
+  assert.ok(register >= 0);
+  assert.ok(register < calls.findIndex((call) => call.method === "areal/plugin/userConfig/set"));
+  assert.deepEqual(calls[register].params, { credentials: { private_ref: "NORMALIZED_SECRET" } });
+  assert.deepEqual(calls.find((call) => call.other)?.params, calls[register].params);
   assert.equal(
-    calls.findIndex((call) => call.restart) <
-      calls.findIndex((call) => call.method === "areal/plugin/userConfig/set"),
-    true,
+    calls.some((call) => call.restart),
+    false,
   );
+  assert.equal(result.reloadDeferred, true);
   assert.deepEqual(calls.at(-1).params.values, {
     TOKEN: { kind: "secretRef", value: "private_ref" },
   });
@@ -164,12 +189,15 @@ test("unresolved public snapshots keep original request identity and omit privat
     projects: new Map([["p", live]]),
     binary: "/trusted/areal",
     ownerTasks: { revision: () => 0 },
-    lifecycleOperations: { schedulingSuppressed: () => false },
+    host: {
+      scheduling: () => ({ suppressed: false, activationError: null }),
+      migrationError: () => undefined,
+    },
     cloudConversations: {
       mergeSnapshot: (_id, value) => value,
       projection: () => ({ summaries: [] }),
     },
-    providers: { catalog: () => [] },
+    providers: { catalog: () => [], manages: () => true },
     awaitingResponses: new Set(),
   };
   const published = snapshotProject(backend, { id: "p", root: "/workspace" }, new Set());
@@ -183,20 +211,7 @@ test("unresolved public snapshots keep original request identity and omit privat
   assert.equal(entry.params.values.TOKEN.value, "PRIVATE_REFERENCE_CANARY");
 });
 
-test("a project can explicitly reload shared credentials through the existing idle drain and restart", async () => {
-  const { backend, project, calls } = fixture();
-  assert.deepEqual(await reloadPluginCredentials(backend, project), { reloaded: true });
-  assert.deepEqual(
-    calls.map((call) => call.method ?? "restart"),
-    ["areal/server/drain", "restart"],
-  );
-  assert.equal(
-    calls.some((call) => call.credential || call.method === "areal/plugin/userConfig/set"),
-    false,
-  );
-});
-
-const { manage } = require("../app/src/core/management.cjs");
+const { manage } = require("@areal/workbench-service/desktop/core/management.cjs");
 const { pluginMutations } = require("../packages/workbench/client/desktop-contract/management.cjs");
 const recoverableOperations = {
   pluginUserConfigSave: "areal/plugin/userConfig/set",
@@ -277,12 +292,7 @@ test("every typed plugin mutation can reach original-receipt observation through
   }
 });
 test("plugin recovery rejects unrelated mutations before reaching the receipt owner", async () => {
-  for (const mutation of [
-    "providerSave",
-    "mcpSave",
-    "pluginCredentialsReload",
-    "unknownMutation",
-  ]) {
+  for (const mutation of ["providerSave", "pluginInstall", "unknownMutation"]) {
     const fixture = receiptFixture(mutation, { confirmed: false });
     await assert.rejects(manage(fixture.backend, fixture.project, fixture.request));
     assert.equal(fixture.reads.length, 0);
@@ -291,7 +301,9 @@ test("plugin recovery rejects unrelated mutations before reaching the receipt ow
 });
 
 test("confirmed plugin setup recovery refreshes its thread without replaying setup", async () => {
-  const { readPluginSubmission } = require("../app/src/core/plugin-submission.cjs");
+  const {
+    readPluginSubmission,
+  } = require("@areal/workbench-service/desktop/core/plugin-submission.cjs");
   const receipt = { confirmed: true, result: { thread: { id: "setup-thread" } } };
   const fixture = receiptFixture("pluginSetup", receipt);
   const events = [];

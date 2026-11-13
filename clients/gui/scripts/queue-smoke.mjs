@@ -21,6 +21,8 @@ const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const desktop = join(gui, "app");
 const require = createRequire(join(desktop, "package.json"));
 const { _electron: electron } = require("playwright-core");
+const { HostClient } = require("@areal/client/node");
+const { readHostReceipt, readOfflineHostReceipt } = require("../app/src/core/host-lifecycle.cjs");
 const root = resolve(gui, "../..");
 const binary = process.env.AREAL_GUI_EXECUTABLE
   ? resolve(dirname(process.env.AREAL_GUI_EXECUTABLE), "../Resources/areal-core/bin/areal")
@@ -97,6 +99,7 @@ const env = {
   AREAL_CORE_HOME: join(scratch, "core"),
   AREAL_CORE_USER_HOME: join(scratch, "user-home"),
   AREAL_HARNESS_HOME: join(scratch, "runtime"),
+  AREAL_HARNESS_SERVICE_HOME: join(scratch, "runtime"),
   AREAL_CORE_CONFIG: config,
   AREAL_CORE_DESKTOP_CONFIG: deployment,
   AREAL_GUI_USER_DATA: join(scratch, "electron"),
@@ -109,6 +112,59 @@ let app,
 const errors = [],
   frames = [],
   checks = [];
+const queueFaults = { drop: null, blocked: false, calls: [], dropped: [], sockets: [], held: [] };
+let droppedReply, confirmDrop;
+function dropQueueReply(operation) {
+  queueFaults.drop = operation;
+  droppedReply = new Promise((resolve) => {
+    confirmDrop = resolve;
+  });
+}
+function proxyHostSocket(socket) {
+  const server = socket.connectToServer();
+  queueFaults.sockets.push(socket, server);
+  const pending = new Map();
+  socket.onMessage((message) => {
+    const envelope = JSON.parse(message.toString());
+    if (envelope.method === "desktop.command" && envelope.params.command === "queueEdit") {
+      const { operation, requestId } = envelope.params.request;
+      const request = { method: `areal/queue/${operation}`, requestId };
+      queueFaults.calls.push(request);
+      if (queueFaults.drop === operation) {
+        queueFaults.drop = null;
+        pending.set(envelope.id, request);
+      }
+    }
+    const forward = () => server.send(message);
+    if (queueFaults.blocked) queueFaults.held.push(forward);
+    else forward();
+  });
+  server.onMessage((message) => {
+    const envelope = JSON.parse(message.toString());
+    const request = pending.get(envelope.id);
+    if (request && !envelope.error) {
+      pending.delete(envelope.id);
+      const revision = envelope.result.revision ?? envelope.result.queueRevision;
+      assert(Number.isSafeInteger(revision), "only discard a successful native queue reply");
+      queueFaults.dropped.push({ ...request, revision });
+      confirmDrop?.();
+      confirmDrop = null;
+      void Promise.allSettled([socket.close(), server.close()]);
+      return;
+    }
+    socket.send(message);
+  });
+}
+// 回复丢失后界面自动用原编号核对；这里只断言原请求只发过一次、没有重发。
+async function assertDropped(operation) {
+  await withSmokeDeadline(`discard accepted queue ${operation} reply`, () => droppedReply);
+  const dropped = queueFaults.dropped.at(-1);
+  assert.equal(dropped?.method, `areal/queue/${operation}`);
+  assert.equal(
+    queueFaults.calls.filter((entry) => entry.requestId === dropped.requestId).length,
+    1,
+  );
+}
 const button = (name) => page.getByRole("button", { name, exact: true });
 const state = () =>
   withSmokeDeadline("queue renderer snapshot", () =>
@@ -193,6 +249,7 @@ async function launch() {
     join(scratch, "main-exceptions.log"),
   );
   page = await app.firstWindow();
+  await page.routeWebSocket(/\/host\/socket$/, proxyHostSocket);
   page.setDefaultTimeout(15000);
   page.on("pageerror", (e) => errors.push(e.message));
   await page.locator("[data-testid=areal-workbench]").waitFor({ timeout: 120000 });
@@ -202,7 +259,9 @@ async function quit() {
   if (!app) return;
   await closeRecordedSmokeApplication(app, 20000, async () => {
     await app.evaluate(({ dialog }) => {
-      dialog.showMessageBox = async () => ({ response: 1 });
+      dialog.showMessageBox = async (...args) => ({
+        response: args.at(-1).message === "退出 AReaL Harness？" ? 0 : 1,
+      });
     });
   });
   app = null;
@@ -286,6 +345,20 @@ try {
       .getByRole("button", { name: /更多操作/ })
       .click();
   };
+  const projectedOrder = (texts) =>
+    page.waitForFunction((texts) => {
+      const rows = [...document.querySelectorAll(".composer-queue-row")];
+      return (
+        rows.map((row) => row.querySelector(".composer-queue-copy")?.textContent).join() ===
+          texts.join() && rows.every((row) => !row.querySelector(".composer-queue-grip")?.disabled)
+      );
+    }, texts);
+  const restoredDraft = async () => {
+    await page.waitForFunction((key) => !localStorage.getItem(`${key}:queue-edit`), key);
+    await page.waitForFunction(
+      () => document.querySelector('[data-testid="chat-input"]')?.textContent === "原未发送草稿",
+    );
+  };
   const startEdit = async (text) => {
     await more(text);
     await page.getByRole("menuitem", { name: "编辑消息", exact: true }).click();
@@ -318,6 +391,7 @@ try {
         .join() === "3,1,2",
     "pointer reorder",
   );
+  await projectedOrder(["3", "1", "2"]);
   await row("3")
     .getByRole("button", { name: /调整顺序/ })
     .press("ArrowDown");
@@ -328,6 +402,7 @@ try {
         .join() === "1,3,2",
     "keyboard reorder",
   );
+  await projectedOrder(["1", "3", "2"]);
   await more("3");
   await shot("02-menu");
   await page.getByRole("menuitem", { name: "上移", exact: true }).click();
@@ -338,6 +413,7 @@ try {
         .join() === "3,1,2",
     "menu reorder",
   );
+  await projectedOrder(["3", "1", "2"]);
   checks.push(
     "pointer, keyboard and menu reorder confirmed by real Core; full pending order and boundary controls",
   );
@@ -438,6 +514,7 @@ try {
     (s) => pending(s)[0]?.input[0]?.text === expectedEditedText && !queue(s).paused,
     "save original position and resume",
   );
+  await restoredDraft();
   assert.equal(await input().textContent(), "原未发送草稿");
   assert.equal(await button("移除附件 original.txt").count(), 1);
   assert.equal(await page.locator(".composer-skill-tag").count(), 1);
@@ -462,6 +539,7 @@ try {
   await input().fill("不保存的修改");
   await button("取消").click();
   await until((s) => !queue(s).paused, "cancel restores original unpaused state");
+  await restoredDraft();
   assert.equal(await input().textContent(), "原未发送草稿");
   assert.equal(pending(await state())[1].input[0].text, "1");
   checks.push(
@@ -486,6 +564,7 @@ try {
   assert.equal(await input().textContent(), "未提交外部冲突");
   assert.ok(await button("保存").isDisabled());
   await button("取消").click();
+  await restoredDraft();
   assert.equal(queue(await state()).paused, true);
   assert.equal(await input().textContent(), "原未发送草稿");
   await startEdit("1");
@@ -501,75 +580,54 @@ try {
   await page.getByRole("alert").filter({ hasText: "队列或消息已有更新" }).waitFor();
   assert.equal(await input().textContent(), "外部删除后保留");
   await button("取消").click();
+  await restoredDraft();
   checks.push(
     "external update/deletion blocks overwrite and retains edit draft; cancel preserves original paused state",
   );
-  // 真实 Core 已落盘后丢弃响应，验证对账与不自动重发。
-  await app.evaluate(
-    (_, clientPath) => {
-      const { ServiceConnection } = process.mainModule.require(clientPath);
-      globalThis.queueFixtureConnection = ServiceConnection;
-      const original = ServiceConnection.prototype.request;
-      ServiceConnection.prototype.fixtureCalls = [];
-      ServiceConnection.prototype.request = async function (method, params, mutation) {
-        const operation =
-          method === "command" && params.name === "queueEdit" ? params.request.operation : null;
-        if (operation)
-          this.fixtureCalls.push({
-            method: `areal/queue/${operation}`,
-            requestId: params.request.requestId,
-          });
-        globalThis.queueFixtureLiveConnection = this;
-        const result = await original.call(this, method, params, mutation);
-        if (operation && ServiceConnection.prototype.fixtureDrop === `areal/queue/${operation}`) {
-          ServiceConnection.prototype.fixtureDrop = null;
-          throw Object.assign(new Error("fixture dropped accepted response"), {
-            submissionUnknown: true,
-          });
-        }
-        return result;
-      };
-    },
-    join(desktop, "src/core/service-client.cjs"),
-  );
+  // 在真实 Host 传输上丢弃已完成响应，原 requestId 留给显式对账。
+  queueFaults.calls.length = 0;
   await call("queueEdit", {
     projectId: pid,
     threadId: tid,
     operation: "resume",
     expectedRevision: queue(await state()).revision,
   });
-  await app.evaluate(() => {
-    globalThis.queueFixtureConnection.prototype.fixtureDrop = "areal/queue/pause";
-  });
+  await page.locator(".composer-queue-pause").waitFor({ state: "hidden" });
+  dropQueueReply("pause");
   await more("2 外部更新");
   await page.getByRole("menuitem", { name: "编辑消息", exact: true }).click();
-  await button("核对编辑操作").waitFor();
-  assert.equal(await input().textContent(), "原未发送草稿");
-  await button("核对编辑操作").click();
+  await assertDropped("pause");
   await page.waitForFunction(
     (key) => JSON.parse(localStorage.getItem(`${key}:queue-edit`)).phase === "editing",
     key,
   );
   await input().fill("断线时保留的编辑");
   await call("queue", { projectId: pid, threadId: tid });
-  await app.evaluate(() => globalThis.queueFixtureLiveConnection.socket.terminate());
-  await until((s) => !project(s).state.connected, "GUI service disconnected");
+  queueFaults.blocked = true;
+  await Promise.allSettled(queueFaults.sockets.map((socket) => socket.close()));
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("button")].some(
+      (button) => button.textContent === "保存" && button.disabled,
+    ),
+  );
   assert.ok(await button("保存").isDisabled());
   assert.equal(await input().textContent(), "断线时保留的编辑");
-  await call("connectService", {});
-  await until((s) => project(s).state.connected, "explicit reconnect");
+  queueFaults.blocked = false;
+  for (const forward of queueFaults.held.splice(0)) forward();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll("button")].some(
+      (button) => button.textContent === "保存" && !button.disabled,
+    ),
+  );
   assert.equal(queue(await state()).paused, true);
-  await app.evaluate(() => {
-    globalThis.queueFixtureConnection.prototype.fixtureDrop = "areal/queue/resume";
-  });
+  dropQueueReply("resume");
   await button("取消").click();
-  await button("核对编辑操作").waitFor();
-  await button("核对编辑操作").click();
-  await page.waitForFunction((key) => !localStorage.getItem(`${key}:queue-edit`), key);
+  await assertDropped("resume");
+  await restoredDraft();
   assert.equal(await input().textContent(), "原未发送草稿");
   assert.equal(queue(await state()).paused, false);
   checks.push(
-    "pause/resume lost accepted responses reconcile explicitly; actual GUI/service disconnect preserves edit and disables save until reconnect",
+    "pause/resume lost accepted responses reconcile automatically; actual Host WebSocket disconnect preserves edit and disables save until reconnect",
   );
   await call("queueEdit", {
     projectId: pid,
@@ -577,39 +635,30 @@ try {
     operation: "pause",
     expectedRevision: queue(await state()).revision,
   });
+  await page.locator(".composer-queue-pause").waitFor();
   await startEdit("2 外部更新");
   await input().fill("2 对账更新");
-  await app.evaluate(() => {
-    globalThis.queueFixtureConnection.prototype.fixtureDrop = "areal/queue/update";
-  });
+  dropQueueReply("update");
   await button("保存").click();
-  await page.getByRole("alert").filter({ hasText: "编辑内容已保留，不会自动重发" }).waitFor();
-  assert.equal(await input().textContent(), "2 对账更新");
-  assert.ok(await button("保存").isDisabled());
-  await button("核对编辑操作").click();
+  await assertDropped("update");
   await until(
     (s) => !project(s).pending.length && pending(s).some((i) => i.input[0].text === "2 对账更新"),
     "update receipt reconciled",
   );
-  await page.waitForFunction((key) => !localStorage.getItem(`${key}:queue-edit`), key);
+  await restoredDraft();
   assert.equal(await input().textContent(), "原未发送草稿");
   assert.equal(queue(await state()).paused, true);
-  const mutations = await app.evaluate(
-    () => globalThis.queueFixtureConnection.prototype.fixtureCalls,
-  );
+  const mutations = queueFaults.calls;
   assert.equal(mutations.filter((entry) => entry.method === "areal/queue/update").length, 1);
   checks.push(
-    "accepted update response loss keeps edit draft locked; receipt reconciliation restores original draft without resubmission",
+    "accepted update response loss is reconciled automatically; original draft is restored without resubmission",
   );
   // 原子转为引导：当前轮次出现一条消息，队列退出 pending，未知响应只查收据。
-  await app.evaluate(() => {
-    globalThis.queueFixtureConnection.prototype.fixtureDrop = "areal/queue/steer";
-  });
+  dropQueueReply("steer");
   await row("2 对账更新")
-    .getByRole("button", { name: /引导/ })
+    .getByRole("button", { name: /立即发送/ })
     .click();
-  await button("核对队列操作").waitFor();
-  await button("核对队列操作").click();
+  await assertDropped("steer");
   await until(
     (s) => !project(s).pending.length && queue(s).items.some((i) => i.status === "steered"),
     "steer receipt",
@@ -621,12 +670,7 @@ try {
     .state.threads[tid].turns.flatMap((t) => t.items)
     .filter((i) => i.type === "userMessage" && i.content.some((p) => p.text === "2 对账更新"));
   assert.equal(messages.length, 1);
-  assert.equal(
-    (await app.evaluate(() => globalThis.queueFixtureConnection.prototype.fixtureCalls)).filter(
-      (entry) => entry.method === "areal/queue/steer",
-    ).length,
-    1,
-  );
+  assert.equal(queueFaults.calls.filter((entry) => entry.method === "areal/queue/steer").length, 1);
   checks.push(
     "atomic queued-to-steer reaches active Turn exactly once; lost accepted response reconciles one durable transfer",
   );
@@ -662,12 +706,55 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  const home = env.AREAL_HARNESS_SERVICE_HOME;
+  const originalHost = await readFile(join(home, "host/host.json"), "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    });
   try {
     await quit();
   } catch (error) {
     passed = false;
     process.exitCode = 1;
     errors.push(`Electron cleanup: ${error.message}`);
+  }
+  if (originalHost) {
+    const host = new HostClient();
+    const reference = {
+      kind: "stopHost",
+      requestId: randomUUID(),
+      home,
+      hostId: originalHost.hostId,
+      generation: originalHost.generation,
+      strategy: "cancel",
+    };
+    await writeFile(join(scratch, "host-stop-reference.json"), JSON.stringify(reference, null, 2));
+    try {
+      await host.connect(home);
+      assert.equal(host.hostId, reference.hostId);
+      assert.equal(host.generation, reference.generation);
+      let receipt;
+      try {
+        receipt = readHostReceipt(
+          reference,
+          await host.stop(reference.requestId, reference.generation, reference.strategy),
+        );
+      } catch {
+        host.close();
+        receipt = await readOfflineHostReceipt(binary, reference);
+      }
+      await writeFile(join(scratch, "host-stop.json"), JSON.stringify(receipt ?? null, null, 2));
+      assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
+      checks.push("explicit fixture Host stop completes with matching original project receipts");
+    } catch (error) {
+      passed = false;
+      process.exitCode = 1;
+      errors.push(`Host cleanup: ${error.message}`);
+    } finally {
+      host.close();
+    }
   }
   const mainFailures = await readFile(join(scratch, "main-exceptions.log"), "utf8").catch(
     (error) => {
@@ -682,9 +769,7 @@ try {
   }
   try {
     await assertApplicationStopped(binary, env, stoppingAdapter);
-    checks.push(
-      "application quit stops the isolated adapter and all Core generations, including projectless",
-    );
+    checks.push("explicit Host stop leaves the isolated adapter and all Core generations stopped");
   } catch (error) {
     console.error("Adapter fixture cleanup:", error.message);
     if (passed) {
@@ -692,26 +777,6 @@ try {
       process.exitCode = 1;
       errors.push(`Explicit safe stop failed: ${error.message}`);
     }
-    // 仅清理本次隔离 home 中的服务；失败不遗留模型任务或后台进程。
-    try {
-      const instances = JSON.parse(
-        execFileSync(binary, ["service", "list", "--json"], { env, encoding: "utf8" }),
-      );
-      for (const instance of instances)
-        if (instance.workspace === workspace && instance.state !== "stopped") {
-          execFileSync(
-            binary,
-            ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
-            { env, timeout: 120000, stdio: "pipe" },
-          );
-        }
-    } catch (failure) {
-      console.error("Core fixture cleanup:", failure.message);
-    }
-    try {
-      const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-      process.kill(metadata.pid, "SIGTERM");
-    } catch {}
   }
   server.closeAllConnections();
   await new Promise((r) => server.close(r));
@@ -724,9 +789,13 @@ try {
     .toString()
     .split("\0")
     .filter(Boolean)) {
-    sourceFiles[path] = createHash("sha256")
-      .update(await readFile(join(root, path)))
-      .digest("hex");
+    sourceFiles[path] = await readFile(join(root, path)).then(
+      (bytes) => createHash("sha256").update(bytes).digest("hex"),
+      (failure) => {
+        if (failure.code !== "ENOENT") throw failure;
+        return null;
+      },
+    );
   }
   const diff = execFileSync("git", ["diff", "--binary", "HEAD"], { cwd: root });
   await writeFile(
@@ -749,6 +818,7 @@ try {
         frames,
         checks,
         errors,
+        queueTransportFaults: { calls: queueFaults.calls, dropped: queueFaults.dropped },
       },
       null,
       2,

@@ -140,7 +140,7 @@ test("runner reports preserve failed attempts and separate Core from portable ev
   const bin = join(root, "bin");
   await mkdir(scripts, { recursive: true });
   await mkdir(bin);
-  for (const name of ["run-portable-tests.mjs", "test-manifest.mjs"])
+  for (const name of ["run-portable-tests.mjs", "test-manifest.mjs", "agent-capabilities.mjs"])
     await copyFile(new URL(name, import.meta.url), join(scripts, name));
   await writeFile(
     join(gui, "package.json"),

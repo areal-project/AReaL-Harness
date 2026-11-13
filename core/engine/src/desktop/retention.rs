@@ -25,6 +25,13 @@ impl Engine {
         .await
     }
     pub async fn archive_thread(self: &Arc<Self>, thread_id: String) -> Result<Value> {
+        let archived = thread_id.clone();
+        let result = self.archive_thread_inner(thread_id).await?;
+        self.pause_tasks_bound_to(&archived).await?;
+        Ok(result)
+    }
+
+    async fn archive_thread_inner(self: &Arc<Self>, thread_id: String) -> Result<Value> {
         self.mutate(move |engine| async move {
             // Turn admission and session close share one linearization gate. Do not
             // hold the thread lock across accepted hook cleanup/SessionEnd.

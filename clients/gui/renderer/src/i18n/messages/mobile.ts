@@ -182,7 +182,7 @@ export const mobileMessages = {
     "zh-CN": "请在电脑上查看此内容。",
     en: "View this content on your computer.",
   },
-  "mobile.task": { "zh-CN": "Task", en: "Task" },
+  "mobile.task": { "zh-CN": "任务", en: "Task" },
   "mobile.taskReadOnly": { "zh-CN": "这是 Task 的执行详情。", en: "Task execution details." },
   "mobile.openSession": { "zh-CN": "查看会话", en: "View conversation" },
   "mobile.status.attention": { "zh-CN": "等你确认", en: "Needs your attention" },

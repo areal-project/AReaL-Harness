@@ -1,15 +1,27 @@
 // @ts-check
 "use strict";
-const { modelRecord, count, isLifecycleReceipt, isLifecycleProjection } = require("./shared.cjs");
+const {
+  modelRecord,
+  count,
+  isLifecycleReceipt,
+  lifecycleViewOperation,
+  isLifecycleProjection,
+} = require("./shared.cjs");
+const bugReport = require("./bug-report.cjs");
 const { resourceInspection } = require("./desktop-control-resources.cjs");
 /** @typedef {'accessibility'|'screenRecording'|'inputMonitoring'} Capability */
+/** @typedef {{version:1,requestId:string,hostId:string,generation:string,action:'prepare'|'apply',targetVersion:string,state:'acceptedPending'|'prepared'|'blocked'|'partial'|'settlementIncomplete'|'admissionUnknown'|'completed',message?:string}} HostUpdateReceipt */
+/** @typedef {{restartPending:boolean,targetVersion:string|null,prepareRequestId:string|null,operation:HostUpdateReceipt|null}} HostUpdateStatus */
+/** @typedef {{operation:'status'|'install'|'uninstall'}} HostInstallationRequest */
+/** @typedef {{operation:'status'|'check'}|{operation:'prepare'|'apply',requestId:string,targetVersion:string}} HostUpdateRequest */
+/** @typedef {{installed:boolean,label?:string}} HostInstallation */
 /** @typedef {{operation:'status'|'restart'|'stop',capability?:never}|{operation:'requestAccess'|'openSettings',capability:Capability}} ComputerRequest */
-/** @typedef {{operation:'relayServiceStartLocal'|'relayServiceStopLocal'|'relayServiceUpgrade'|'relayServiceInspect'}|{operation:'relayUse',origin:string}|{operation:'relayServiceDeploy',target:string,port:number,address:string}|{operation:'relayServiceRemove',removeData:boolean}|{operation:'status'|'networkInspect'|'disable'|'enableDirect'|'disableDirect'|'cancelPair'|'forgetRevoked'}|{operation:'reject'|'revoke',id:string}|{operation:'renameDevice',id:string,name:string}|{operation:'approve'|'updateGrant',id:string,projects:string[],preset:'Observer'|'Operator'}|{operation:'pair',transport?:'direct'|'relay'}|{operation:'networkPropose',httpsPort?:number}|{operation:'networkProposeScope',scope:'private'|'public'}|{operation:'networkApply',proposalId:string,confirmed:true}|{operation:'networkChangeScope',proposalId:string,confirmed:true,publicConfirmed?:boolean}|{operation:'networkRecover'|'networkRemove',confirmed:true}|{operation:'networkConfigureOrganization',publicOrigin:string,visibility:'private'|'public',confirmed:true,publicConfirmed?:boolean}|{operation:'enable',relay:string,code?:string,confirmed:true}} RemoteRequest */
-/** @typedef {{serviceLifecycle:{operation:'check'}|{operation:'update'}|{operation:'stop'}|{operation:'recover'}|{operation:'quitInterface'}|{operation:'stopAndQuit'},serviceStatus:Record<string,never>,stopService:Record<string,never>,recoverResources:Record<string,never>,browserData:{operation:'status'}|{operation:'importChrome'}|{operation:'clearCache'}|{operation:'clearAll'},computerControl:ComputerRequest,exportDiagnostics:Record<string,never>,connectService:Record<string,never>,export:{projectId:string,threadId:string},remoteControl:RemoteRequest}} Requests */
+/** @typedef {{operation:'relayServiceStartLocal'|'relayServiceStopLocal'|'relayServiceUpgrade'|'relayServiceInspect'}|{operation:'relayUse',origin:string}|{operation:'relayServiceDeploy',target:string,port:number,address:string}|{operation:'relayServiceRemove',removeData:boolean}|{operation:'status'|'networkInspect'|'disable'|'enableDirect'|'disableDirect'|'cancelPair'|'forgetRevoked'}|{operation:'reject'|'revoke',id:string}|{operation:'renameDevice',id:string,name:string}|{operation:'approve'|'updateGrant',id:string,projects:string[],preset:'Observer'|'Operator',manage?:boolean}|{operation:'pair',transport?:'direct'|'relay'}|{operation:'networkPropose',httpsPort?:number}|{operation:'networkProposeScope',scope:'private'|'public'}|{operation:'networkApply',proposalId:string,confirmed:true}|{operation:'networkChangeScope',proposalId:string,confirmed:true,publicConfirmed?:boolean}|{operation:'networkRecover'|'networkRemove',confirmed:true}|{operation:'networkConfigureOrganization',publicOrigin:string,visibility:'private'|'public',confirmed:true,publicConfirmed?:boolean}|{operation:'enable',relay:string,code?:string,confirmed:true}} RemoteRequest */
+/** @typedef {{bugReport:import("./bug-report.cjs").Request,serviceLifecycle:{operation:'check'}|{operation:'update'}|{operation:'stop'}|{operation:'recover'}|{operation:'quitInterface'}|{operation:'stopAndQuit'},hostInstallation:HostInstallationRequest,hostUpdate:HostUpdateRequest,serviceStatus:Record<string,never>,stopService:Record<string,never>,recoverResources:Record<string,never>,browserData:{operation:'status'}|{operation:'importChrome'}|{operation:'clearCache'}|{operation:'clearAll'},computerControl:ComputerRequest,exportDiagnostics:Record<string,never>,connectService:Record<string,never>,remoteControl:RemoteRequest}} Requests */
 /** @typedef {keyof Requests} Name */
 /** @template {Name} N @typedef {Requests[N]} Request */
 /** @typedef {{canceled:true,kind?:string}} Canceled */
-/** @typedef {{stopped:boolean,operation:import('./shared.cjs').LifecycleReceipt,kind?:string}} LifecycleResult */
+/** @typedef {{stopped:boolean,operation:import('./shared.cjs').LifecycleReceipt|import('./shared.cjs').LifecycleViewOperation,kind?:string}} LifecycleResult */
 /** @typedef {{recovered:boolean,canceled?:boolean,lifecycle?:import('./shared.cjs').LifecycleProjection}|Canceled} RecoveryResult */
 /** @typedef {LifecycleResult|Canceled|{stopped:true,quitting:true}} QuitResult */
 /** @typedef {{canStop:boolean,connected:boolean,clients:number,busy:boolean,activeCommands:number,starting:number,providerUpdating:boolean,projects:Array<Omit<import('./desktop-control-resources.cjs').ResourceInspection,'serviceId'|'generation'|'lifecycle'> & {root:string,started:boolean}>}} ServiceStatus */
@@ -23,7 +35,7 @@ const { resourceInspection } = require("./desktop-control-resources.cjs");
 /** @typedef {{local:{phase:'stopped'|'starting'|'running'|'failed',address:string,error:string,version:string},deployment:{target:string,port:number,address:string,phase:'pending'|'ready'|'failed'|'removed',version:string,active:boolean,canReconfigure?:boolean}|null,job:{operation:string,phase:'running'|'done'|'failed'|'unknown',error:string}|null,profiles:Array<{origin:string,kind:'local'|'ssh'|'external',active:boolean}>}} RelayServiceStatus */
 /** @typedef {{relayService?:RelayServiceStatus,enabled:boolean,connected:boolean,relay:string,relayError:string,relayUrl:string,directEnabled:boolean,directUrl:string,network:{kind:'tailscale'|'organization'|null,scope:'private'|'public'|null,reconciliation:string|null,publicOrigin:string,diagnostic:string,policy:'unknown',phoneAccess:'unknown',inspection:NetworkInspection|null},directHostId:string,directError:string,migrationError:string,pushSupported?:boolean,deviceGrants:Array<{pushRegistered?:boolean,devicePeerId:string,displayName:string,clientKind?:'web'|'ios'|'android',projectIds:string[],capabilities:string[],revision:number,status:'active'|'revoked'|'reviewRequired',pairedAt?:number,revokedAt?:number,online?:boolean,lastSeenAt?:number|null}>,devices:[],pending:Array<{id:string,name:string,clientKind?:'web'|'ios'|'android',fingerprint:string,expiresAt:number}>}} RemoteStatus */
 /** @typedef {{proposalId:string,publicOrigin:string,confirmation:string}} NetworkProposal */
-/** @template {Name} N @template [P=Requests[N]] @typedef {N extends 'connectService' ? null : N extends 'export'|'exportDiagnostics' ? Canceled|{path:string} : N extends 'serviceStatus' ? ServiceStatus : N extends 'stopService' ? LifecycleResult|Canceled : N extends 'recoverResources' ? RecoveryResult : N extends 'computerControl' ? ComputerStatus : N extends 'browserData' ? P extends {operation:'status'} ? {persistent:true,shared:true,busy:boolean} : P extends {operation:'importChrome'} ? BrowserImportResult : {success:true} : N extends 'remoteControl' ? P extends {operation:'pair'} ? {payload:string,qr:string,expiresAt:number} : P extends {operation:'networkPropose'} ? NetworkProposal : P extends {operation:'networkProposeScope'} ? NetworkProposal & {sourceScope?:'private'|'public',scope:'private'|'public'} : RemoteStatus : N extends 'serviceLifecycle' ? P extends {operation:'check'} ? import('./shared.cjs').LifecycleProjection : P extends {operation:'recover'} ? RecoveryResult : P extends {operation:'quitInterface'|'stopAndQuit'} ? QuitResult : P extends {operation:'update'} ? LifecycleResult|Canceled|RecoveryResult : LifecycleResult|Canceled : never} Response */
+/** @template {Name} N @template [P=Requests[N]] @typedef {N extends 'bugReport' ? import('./bug-report.cjs').Response : N extends 'connectService' ? null : N extends 'exportDiagnostics' ? Canceled|{path:string} : N extends 'hostInstallation' ? HostInstallation : N extends 'hostUpdate' ? HostUpdateStatus & {supported:boolean} : N extends 'serviceStatus' ? ServiceStatus : N extends 'stopService' ? LifecycleResult|Canceled : N extends 'recoverResources' ? RecoveryResult : N extends 'computerControl' ? ComputerStatus : N extends 'browserData' ? P extends {operation:'status'} ? {persistent:true,shared:true,busy:boolean} : P extends {operation:'importChrome'} ? BrowserImportResult : {success:true} : N extends 'remoteControl' ? P extends {operation:'pair'} ? {payload:string,qr:string,expiresAt:number} : P extends {operation:'networkPropose'} ? NetworkProposal : P extends {operation:'networkProposeScope'} ? NetworkProposal & {sourceScope?:'private'|'public',scope:'private'|'public'} : RemoteStatus : N extends 'serviceLifecycle' ? P extends {operation:'check'} ? import('./shared.cjs').LifecycleProjection : P extends {operation:'recover'} ? RecoveryResult : P extends {operation:'quitInterface'|'stopAndQuit'} ? QuitResult : P extends {operation:'update'} ? LifecycleResult|Canceled|RecoveryResult : LifecycleResult|Canceled : never} Response */
 /** @param {unknown} value @returns {value is string[]} */
 function strings(value) {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -35,6 +47,7 @@ function only(value, keys) {
 /** @template {Name} N @param {N} name @param {unknown} value @returns {value is Requests[N]} */
 function isRequest(name, value) {
   if (!modelRecord(value)) return false;
+  if (name === "bugReport") return bugReport.isRequest(value);
   if (
     [
       "serviceStatus",
@@ -45,12 +58,22 @@ function isRequest(name, value) {
     ].includes(name)
   )
     return Object.keys(value).length === 0;
-  if (name === "export")
+  if (name === "hostInstallation")
     return (
-      typeof value.projectId === "string" &&
-      typeof value.threadId === "string" &&
-      only(value, ["projectId", "threadId"])
+      ["status", "install", "uninstall"].includes(String(value.operation)) &&
+      only(value, ["operation"])
     );
+  if (name === "hostUpdate") {
+    if (["status", "check"].includes(String(value.operation))) return only(value, ["operation"]);
+    return (
+      ["prepare", "apply"].includes(String(value.operation)) &&
+      typeof value.requestId === "string" &&
+      /^[a-f0-9-]{36}$/i.test(value.requestId) &&
+      typeof value.targetVersion === "string" &&
+      /^[0-9][a-z0-9.-]{0,95}$/i.test(value.targetVersion) &&
+      only(value, ["operation", "requestId", "targetVersion"])
+    );
+  }
   if (name === "serviceLifecycle")
     return (
       ["check", "update", "stop", "recover", "quitInterface", "stopAndQuit"].some(
@@ -137,7 +160,9 @@ function isRemoteRequest(value) {
         strings(value.projects) &&
         value.projects.length > 0 &&
         (value.preset === "Observer" || value.preset === "Operator") &&
-        only(value, ["operation", "id", "projects", "preset"])
+        (value.manage === undefined ||
+          (typeof value.manage === "boolean" && (!value.manage || value.preset === "Operator"))) &&
+        only(value, ["operation", "id", "projects", "preset", "manage"])
       );
     case "pair":
       return (
@@ -415,7 +440,10 @@ function lifecycleResult(value) {
   return (
     modelRecord(value) &&
     typeof value.stopped === "boolean" &&
-    isLifecycleReceipt(value.operation) &&
+    (isLifecycleReceipt(value.operation) ||
+      (modelRecord(value.operation) &&
+        value.operation.kind === "stopHost" &&
+        lifecycleViewOperation(value.operation))) &&
     (value.kind === undefined || typeof value.kind === "string")
   );
 }
@@ -437,10 +465,47 @@ function recoveryResult(value) {
       (value.lifecycle === undefined || isLifecycleProjection(value.lifecycle)))
   );
 }
+/** @param {unknown} value @returns {value is HostUpdateReceipt} */
+function hostUpdateReceipt(value) {
+  return (
+    modelRecord(value) &&
+    value.version === 1 &&
+    ["requestId", "hostId", "generation", "targetVersion"].every(
+      (key) => typeof value[key] === "string",
+    ) &&
+    ["prepare", "apply"].includes(String(value.action)) &&
+    [
+      "acceptedPending",
+      "prepared",
+      "blocked",
+      "partial",
+      "settlementIncomplete",
+      "admissionUnknown",
+      "completed",
+    ].includes(String(value.state)) &&
+    (value.message === undefined || typeof value.message === "string")
+  );
+}
 /** @param {Name} name @param {Record<string,unknown>} request @param {unknown} value */
 function response(name, request, value) {
+  if (name === "bugReport") return bugReport.isResponse(request, value);
+  if (name === "hostInstallation")
+    return (
+      modelRecord(value) &&
+      typeof value.installed === "boolean" &&
+      (value.label === undefined || typeof value.label === "string")
+    );
+  if (name === "hostUpdate")
+    return (
+      modelRecord(value) &&
+      typeof value.supported === "boolean" &&
+      typeof value.restartPending === "boolean" &&
+      (value.targetVersion === null || typeof value.targetVersion === "string") &&
+      (value.prepareRequestId === null || typeof value.prepareRequestId === "string") &&
+      (value.operation === null || hostUpdateReceipt(value.operation))
+    );
   if (name === "connectService") return value === null;
-  if (name === "export" || name === "exportDiagnostics")
+  if (name === "exportDiagnostics")
     return canceled(value) || (modelRecord(value) && typeof value.path === "string");
   if (name === "serviceStatus") return serviceStatus(value);
   if (name === "stopService") return lifecycleResult(value) || canceled(value);
@@ -496,6 +561,7 @@ function validateResponse(name, request, value) {
     });
 }
 module.exports = {
+  hostUpdateReceipt,
   isRequest,
   isRemoteRequest,
   validateResponse,

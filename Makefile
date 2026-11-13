@@ -21,12 +21,15 @@ endif
 	cordis-pin update-cordis sdk-test harness harness-smoke verify-harness \
 	setup setup-node sdk-build script-test launcher-test workgroup-smoke unified-execution-smoke delegation-permissions-smoke capacity-workgroup local-service-smoke upgrade-smoke tui-upgrade-smoke \
 	verify-native integration-boundaries ci-preflight ci-gui-static ci-gui-health \
-	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed
+	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size lazy-mcp-compare
 
 help: ## 显示常用操作（默认目标）
 	@printf '%s\n' '用法：make <target> [ARGS="..."]' ''
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / {printf "  %-22s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@printf '%s\n' '' "参数示例：make tui ARGS='--resume THREAD_ID'" "交互式性能测试：make perf"
+
+agent-setup: ## 云端 Agent 容器：固定工具链、系统依赖、预构建，写 target/agent-env.json
+	bash scripts/agent-setup.sh
 
 setup: fetch setup-node ## 安装锁定的格式工具和两套 SDK 开发依赖
 	uv sync --locked --only-group dev
@@ -62,10 +65,9 @@ fmt-check: ## 检查各语言格式，不修改文件
 	uv run --locked --only-group dev ruff format --check $(PYTHON_SOURCES)
 	npm run format:check
 
-lint: ## Rust / Python 静态检查和 Web 语法检查
+lint: ## Rust / Python 静态检查
 	cargo clippy --locked --workspace --all-targets -- -D warnings
 	uv run --locked --only-group dev ruff check $(PYTHON_SOURCES)
-	node --check clients/web/app.js
 
 test: build ## 构建匹配 Runtime 后运行 workspace 测试（不含显式容量测试）
 	AREAL_TEST_BIN_DIR="$${AREAL_TEST_BIN_DIR:-$(CURDIR)/target/debug}" cargo test --locked --workspace --no-fail-fast $(CARGO_TEST_ARGS)
@@ -116,7 +118,20 @@ workflow-lint: ## 校验 GitHub Actions workflow
 hooks-install: ## 显式安装仓库的推送前门禁
 	python3 scripts/git-hooks.py install --base "$(CI_BASE)"
 
-check-changed: ## 受影响快检加失败专项；显式 CI_BASE，ARGS=--plan 仅输出计划
+baseline-diff: ## 基准与当前各跑一遍 CMD，只报状态变化；BASE=<提交> CMD='<测试命令>' [PREPARE='<基准准备命令>']
+	@test -n "$(BASE)" -a -n "$(CMD)" || { echo "用法：make baseline-diff BASE=<提交> CMD='<测试命令>'" >&2; exit 2; }
+	python3 scripts/baseline-diff.py --base "$(BASE)" --command "$(CMD)" --prepare "$(PREPARE)"
+
+check-refs: ## 脚本、测试清单、CI、文档之间的名字一致性；无入口脚本只减不增
+	python3 scripts/check-references.py
+
+check-transitional: ## 名字带 legacy/compat 的代码要写“过渡：到 <版本> 删”，到期报错；存量只减不增
+	python3 scripts/check-transitional.py
+
+check-rust-size: ## Rust 单文件不超过 1500 行；存量超限文件不超过登记行数
+	python3 scripts/check-rust-size.py
+
+check-changed: check-refs check-transitional check-rust-size ## 受影响快检加失败专项；显式 CI_BASE，ARGS=--plan 仅输出计划
 	python3 scripts/check-changed.py --base "$(CI_BASE)" $(ARGS)
 
 ci-gui-static: ## 共享计划的 GUI 提交前静态、类型、生产构建与预算检查
@@ -129,8 +144,9 @@ ci-gui-health: ## 无依赖安装的 GUI 健康合同与基线检查
 	base="$$(git merge-base "$(CI_BASE)" HEAD)"; \
 	unset AREAL_DESIGN_BASE; \
 	mkdir -p target/ci/gui; \
-	node --test clients/gui/scripts/gui-health.test.mjs clients/gui/scripts/design-system-maturity.test.mjs; \
+	node --test clients/gui/scripts/gui-health.test.mjs clients/gui/scripts/design-system-maturity.test.mjs clients/gui/scripts/unknown-outcome-sources.test.mjs; \
 	node clients/gui/scripts/copy-budget.mjs; \
+	node clients/gui/scripts/ui-honesty-lint.mjs; \
 	if git cat-file -e "$$base:clients/gui/health-baseline.json" 2>/dev/null; then \
 		node clients/gui/scripts/gui-health.mjs --check --base="$$base"; \
 	else \
@@ -164,13 +180,11 @@ integration-boundaries: ## 检查独立构建、发行与产品代码不依赖�
 launcher-test: build ## 构建后验证真实 Rust launcher；缺二进制必须失败
 	python3 -m unittest discover -s scripts/launcher-tests
 
-script-test: integration-boundaries ## 无需产品二进制的脚本、Web 投影、perf 与文档离线回归
+script-test: integration-boundaries ## 无需产品二进制的脚本、perf 与文档离线回归
 	python3 scripts/check-docs.py
-	node --test scripts/web-progress.test.mjs
 	node --test scripts/local-service-wait.test.mjs
 	node --test scripts/persisted-state-fixture.test.mjs
 	node --test clients/gui/scripts/smoke-deadline.test.mjs
-	node --test clients/gui/scripts/update.test.cjs
 	python3 -m unittest discover -s scripts/tests
 	python3 tests/perf/perf.py self-test
 
@@ -273,6 +287,9 @@ capacity-workgroup: build ## 32 个真实 Runtime 的隔离写入与资源回收
 perf: ## 交互式运行 Docker E2E/perf 工作流
 	./scripts/perf interactive
 
+lazy-mcp-compare: ## MCP 按需加载关/开真实模型对照（用本机模型凭据，状态全在 --out）；ARGS='--repeats 3 --out <目录>'
+	python3 scripts/lazy-mcp-compare.py $(ARGS)
+
 .PHONY: examples-desktop-api desktop-schemas desktop-schema-check package
 examples-desktop-api: build sdk-build ## 真实 Core/Runtime 的桌面 API 与 CLI 确定性验收
 	node examples/desktop-api/run.mjs --all
@@ -287,6 +304,15 @@ desktop-schemas: ## 从 Rust 类型导出 AReaL 桌面契约
 
 desktop-schema-check: ## 临时生成并规范化比较三份桌面 schema，不修改已提交文件
 	python3 scripts/desktop-schemas.py
+
+.PHONY: host-protocol-check
+host-protocol-check: ## 检查 A0 协议生成物、桌面 IPC 冻结反例和要 GUI 依赖的用例（先装 clients/gui 依赖）
+	python3 scripts/generate-host-protocol.py --check
+	python3 -m unittest scripts.tests.test_host_protocol_schema
+	python3 -m unittest scripts/tests/host_protocol_typescript.py
+	node --test clients/gui/scripts/desktop-ipc-freeze.test.cjs
+	pnpm --dir clients/gui exec vp run desktop-build
+	cargo test --locked -p areal-host local_send_and_steer_freeze -- --ignored
 
 package: release ## 生成 macOS arm64 / Linux x86_64 发行产物及完整性清单；ARGS 指定 --output
 	python3 scripts/package.py $(ARGS)

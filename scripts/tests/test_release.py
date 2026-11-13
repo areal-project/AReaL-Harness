@@ -27,6 +27,7 @@ def load(name, filename):
 installer = load("release_installer", "install.py")
 release = load("release_artifacts", "release-artifacts.py")
 package = load("release_package", "package.py")
+versions = load("release_versions", "set-version.py")
 
 
 class ReleaseTests(unittest.TestCase):
@@ -181,6 +182,37 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 installer.extract_bundle(archive, self.root / mode)
         self.assertFalse((self.root / "outside").exists())
+
+    def test_set_version_unifies_cli_and_gui_and_never_moves_back(self):
+        (self.root / "clients/gui/app").mkdir(parents=True)
+        (self.root / "Cargo.toml").write_text(
+            '[workspace]\n\n[workspace.package]\nversion = "0.1.8"\n\n[workspace.dependencies]\nx = { version = "0.1.8" }\n'
+        )
+        (self.root / "Cargo.lock").write_text(
+            '[[package]]\nname = "areal-cli"\nversion = "0.1.8"\n\n'
+            '[[package]]\nname = "dep"\nversion = "0.1.8"\nsource = "registry+https://example"\n'
+        )
+        for path, version in (
+            ("clients/gui/package.json", "0.1.18"),
+            ("clients/gui/app/package.json", "0.1.18"),
+        ):
+            (self.root / path).write_text(json.dumps({"name": "x", "version": version}, indent=2))
+        with self.assertRaisesRegex(ValueError, "back"):
+            versions.set_version(self.root, "0.1.9")
+        for invalid in ("0.2.0-rc.1", "0.2.0-beta.0", "v0.2.0"):
+            with self.assertRaises(ValueError):
+                versions.set_version(self.root, invalid)
+        versions.set_version(self.root, "0.2.0-beta.1")
+        self.assertEqual(
+            versions.current(self.root), ("0.2.0-beta.1", ["0.2.0-beta.1", "0.2.0-beta.1"])
+        )
+        lock = (self.root / "Cargo.lock").read_text()
+        self.assertIn('name = "areal-cli"\nversion = "0.2.0-beta.1"', lock)
+        self.assertIn('name = "dep"\nversion = "0.1.8"', lock)
+        self.assertIn('x = { version = "0.1.8" }', (self.root / "Cargo.toml").read_text())
+        versions.set_version(self.root, "0.2.0")
+        with self.assertRaisesRegex(ValueError, "back"):
+            versions.set_version(self.root, "0.2.0-beta.2")
 
     def test_formula_uses_actual_archive_hash_and_full_bundle(self):
         archive = release.archive(self.bundle(target="darwin/arm64"), self.root / "assets")

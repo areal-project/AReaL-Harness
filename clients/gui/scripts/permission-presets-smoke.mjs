@@ -1,7 +1,9 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -35,7 +37,7 @@ assert.equal(
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const evidenceRoot = join(root, ".scratch/permission-presets-gui");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await mkdtemp(join(evidenceRoot, "run-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
 const stateRoot = await makeTempDir("app-");
 const owner = randomUUID();
 await writeFile(join(stateRoot, ".owner"), owner);
@@ -734,9 +736,23 @@ try {
   browser.release = null;
   const browserHistory = await completed(browserThread);
   await page.getByText("PERMISSION_BROWSER_OK", { exact: true }).waitFor();
-  const calls = browserHistory.turns
-    .at(-1)
-    .items.filter((item) => item.type === "dynamicToolCall" && item.tool === "browser_v1");
+  const browserTurn = await readTurnToolDetails({
+    command: async (name, params) => {
+      const result = await page.evaluate(
+        ({ name, params }) => window.arealDesktop.command(name, params),
+        { name, params },
+      );
+      assert.equal(result.ok, true, JSON.stringify(result));
+      return result.value;
+    },
+    readThread: async () => project(await state()).state.threads[browserThread],
+    projectId,
+    threadId: browserThread,
+    turnId: browserHistory.turns.at(-1).id,
+  });
+  const calls = browserTurn.items.filter(
+    (item) => item.type === "dynamicToolCall" && item.tool === "browser_v1",
+  );
   for (const id of [
     "browser-describe",
     "browser-navigate",
@@ -879,8 +895,8 @@ try {
     "clients/gui/renderer/src/settings/applicationPreferences.ts",
     "clients/gui/renderer/src/Composer.tsx",
     "clients/gui/renderer/src/DraftComposer.tsx",
-    "clients/gui/app/src/core/backend.cjs",
-    "clients/gui/app/src/core/service-protocol.cjs",
+    "services/workbench/src/desktop/core/backend.cjs",
+    "services/workbench/src/desktop/core/service-protocol.cjs",
     "clients/gui/app/src/core/main.cjs",
     "clients/gui/app/src/core/preview.cjs",
     "core/engine/src/permissions.rs",

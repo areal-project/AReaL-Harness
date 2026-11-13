@@ -167,11 +167,12 @@ async function planFramework(app, scratch, verifySignatures = true) {
   const service = await localDirectory(app, serviceRelative);
   const trees = [await frameworkTree(outer), await frameworkTree(service)];
   assert.deepEqual([...trees[0].keys()], [...trees[1].keys()], "Framework layout differs");
-  if (verifySignatures) assert.deepEqual(
-    signingPolicy(outer),
-    signingPolicy(service),
-    "Framework signing policy differs",
-  );
+  if (verifySignatures)
+    assert.deepEqual(
+      signingPolicy(outer),
+      signingPolicy(service),
+      "Framework signing policy differs",
+    );
   const pairs = [];
   for (const [rel, entry] of trees[0]) {
     const other = trees[1].get(rel);
@@ -181,7 +182,12 @@ async function planFramework(app, scratch, verifySignatures = true) {
       assert.equal(entry.target, other.target, `Framework symlink differs: ${rel}`);
     if (entry.type === "file") {
       const pair = { relative: rel, outer: entry.file, service: other.file };
-      if (!verifySignatures) assert.equal(pair.outer.sha256, pair.service.sha256, `Unsigned framework bytes differ: ${rel}`);
+      if (!verifySignatures)
+        assert.equal(
+          pair.outer.sha256,
+          pair.service.sha256,
+          `Unsigned framework bytes differ: ${rel}`,
+        );
       else if (rel !== envelope) await provePayload(pair, scratch);
       pairs.push(pair);
     }
@@ -190,10 +196,11 @@ async function planFramework(app, scratch, verifySignatures = true) {
     pairs.some((pair) => pair.relative === "Versions/A/Electron Framework"),
     "Missing framework executable",
   );
-  if (verifySignatures) assert.ok(
-    pairs.some((pair) => pair.relative === envelope),
-    "Missing framework signature envelope",
-  );
+  if (verifySignatures)
+    assert.ok(
+      pairs.some((pair) => pair.relative === envelope),
+      "Missing framework signature envelope",
+    );
   return pairs;
 }
 
@@ -227,7 +234,7 @@ async function sharedPairs(app, pairs) {
   }
 }
 
-/** Export HFS+ UDZO without changing or signing the source app.
+/** Export HFS+ UDBZ without changing or signing the source app.
  * No-new-signatures mode requires byte-identical framework copies, including envelopes.
  */
 export async function buildMacOSDmg({ app, destination, volumeName, verifySignatures = true }) {
@@ -283,7 +290,7 @@ export async function buildMacOSDmg({ app, destination, volumeName, verifySignat
       "-srcfolder",
       staging,
       "-format",
-      "UDZO",
+      "UDBZ",
       "-fs",
       "HFS+",
       image,

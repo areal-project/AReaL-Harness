@@ -1,3 +1,4 @@
+import { currentErrorText } from "../errors/currentErrorText.js";
 import {
   useI18n,
   type UiMessage,
@@ -29,8 +30,7 @@ export type PluginMcpResource = {
   state: string;
   owner: PackageOwner;
 };
-type InstalledPackage =
-  import("@areal/workbench/desktop-contract/management").ManagementResponseMap["plugin"];
+type InstalledPackage = import("../services.js").ManagementResponseMap["plugin"];
 type PluginConnection = {
   pluginId: string;
   installedDigest: string;
@@ -97,7 +97,9 @@ function issueText(issue: ResourceIssue, t: Translate): string {
       value1: diagnosticText(issue.diagnostic, t),
     });
   const text =
-    issue.cause instanceof Error ? issue.cause.message : t("settings.pluginResources.readFailed");
+    issue.cause instanceof Error
+      ? currentErrorText(issue.cause)
+      : t("settings.pluginResources.readFailed");
   return t(
     issue.kind === "catalog"
       ? "settings.pluginResources.pluginCatalogValue"
@@ -225,7 +227,9 @@ export function useInstalledPluginResources(
         setSnapshot({
           ...next,
           errors: [
-            cause instanceof Error ? cause.message : { id: "settings.pluginResources.readFailed" },
+            cause instanceof Error
+              ? currentErrorText(cause)
+              : { id: "settings.pluginResources.readFailed" },
           ],
         });
     }

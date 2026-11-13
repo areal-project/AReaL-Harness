@@ -1,23 +1,17 @@
 use super::*;
-use anyhow::{Context, bail};
-use areal_local_service::native_process::{TrustedChild, TrustedCommand};
+use anyhow::Context;
 use fs2::FileExt;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     fs::{File, OpenOptions},
-    process::Stdio,
-    time::Duration,
 };
 
 pub struct Local {
     pub endpoint: String,
     pub token: String,
     pub profile: Option<Value>,
-    pub mcp: Vec<(String, Value)>,
-    child: Option<TrustedChild>,
-    temporary: Option<tempfile::TempDir>,
     mapping: Option<PathBuf>,
     run_dir: Option<PathBuf>,
     _lock: Option<File>,
@@ -66,9 +60,6 @@ impl Local {
                     .map(areal_local_service::parse_agent_profile)
                     .transpose()?
                     .map(|profile| json!(profile)),
-                mcp: vec![],
-                child: None,
-                temporary: None,
                 mapping: None,
                 run_dir: None,
                 _lock: None,
@@ -127,7 +118,6 @@ impl Local {
         let temporary = tempfile::Builder::new()
             .prefix("launch-")
             .tempdir_in(&run_dir)?;
-        let ready = temporary.path().join("ready.json");
         let mut deployment = if let Some(path) = &args.desktop_config {
             let mut d: Value = serde_json::from_str(&read_text(path)?)?;
             if let Some(skills) = d.get_mut("skills").and_then(Value::as_array_mut) {
@@ -256,65 +246,97 @@ impl Local {
                     }
                     json!({"type":"streamableHttp","url":c["url"],"bearerTokenEnv":bearer})
                 };
-                mcp.push((id.clone(), json!({"transport":transport})));
+                mcp.push((
+                    id.clone(),
+                    json!({"transport":transport,"startupTimeoutMs":30000}),
+                ));
             }
         }
-        let binary = std::env::current_exe()?.canonicalize()?;
-        // exec 自派生的 launcher 也属于可信服务链，不能绕过已有 macOS 启动与回收适配。
-        let mut command = TrustedCommand::supervised(&binary, &[])?;
-        command
-            .arg("launcher")
-            .arg("--bin-dir")
-            .arg(binary.parent().unwrap())
-            .arg("--desktop");
-        command.parent_pid_arg();
-        command
-            .arg("--workspace")
-            .arg(&workspace)
-            .arg("--data-dir")
-            .arg(run_dir.join("state"))
-            .arg("--ready-metadata-file")
-            .arg(&ready)
-            .arg("--desktop-config")
-            .arg(&deployment_path)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .kill_on_drop(false)
-            .envs(env);
-        if let Some(mode) = &args.permissions {
-            command.arg("--permissions").arg(mode);
-        }
-        if let Some(path) = &args.scratch {
-            command.arg("--scratch").arg(path);
-        }
-        if let Some(path) = &args.config {
-            command.arg("--config").arg(path);
-        }
-        if let Some(path) = &args.workgroup_policy {
-            command.arg("--workgroup-policy").arg(path);
-        }
-        if let Some(path) = &args.workgroup_toolchain {
-            command.arg("--workgroup-toolchain").arg(path);
-        }
-        for path in &args.read_only_path {
-            command.arg("--read-only-path").arg(path.canonicalize()?);
-        }
-        for path in &args.task_credential_command {
-            command
-                .arg("--task-credential-command")
-                .arg(path.canonicalize()?);
-        }
-        for (flag, enabled) in [
-            ("--allow-write", args.allow_write),
-            ("--allow-network", args.allow_network),
-            ("--allow-concurrent-writes", args.allow_concurrent_writes),
-            ("--no-deployment-mcp", args.strict_mcp_config),
-        ] {
-            if enabled {
-                command.arg(flag);
+        let options = areal_local_service::LocalArgs {
+            workspace: Some(workspace),
+            data_dir: Some(run_dir.join("state")),
+            desktop_config: Some(deployment_path),
+            permissions: args.permissions.clone(),
+            scratch: args.scratch.clone(),
+            config: args.config.clone(),
+            workgroup_policy: args.workgroup_policy.clone(),
+            workgroup_toolchain: args.workgroup_toolchain.clone(),
+            read_only_path: args.read_only_path.clone(),
+            task_credential_command: args.task_credential_command.clone(),
+            allow_write: args.allow_write,
+            allow_network: args.allow_network,
+            allow_concurrent_writes: args.allow_concurrent_writes,
+            no_deployment_mcp: args.strict_mcp_config && mcp.is_empty(),
+            ..Default::default()
+        };
+        let resolve = || -> Result<areal_host::ResolveProject> {
+            let mut input = areal_host::ResolveProject::from_local_args(&options)?;
+            if !mcp.is_empty() {
+                // 单次运行的 MCP 合并进本次临时工具扩展文件，作为部署声明的服务，不写进用户插件库。
+                let mut extensions = match &input.tool_extensions_file {
+                    Some(path) => serde_json::from_slice(&std::fs::read(path)?)
+                        .context("invalid tool extensions JSON")?,
+                    None => json!({}),
+                };
+                let fields = extensions
+                    .as_object_mut()
+                    .context("tool extensions must be an object")?;
+                if args.strict_mcp_config {
+                    fields.remove("mcpServers");
+                }
+                let servers = fields
+                    .entry("mcpServers")
+                    .or_insert_with(|| json!({}))
+                    .as_object_mut()
+                    .context("tool extensions mcpServers must be an object")?;
+                for (id, config) in &mcp {
+                    ensure!(
+                        servers.insert(id.clone(), config.clone()).is_none(),
+                        "--mcp-config server duplicates a configured MCP server"
+                    );
+                }
+                let path = temporary.path().join("tool-extensions.json");
+                protected(&path, &serde_json::to_vec(&extensions)?)?;
+                input.launch_inputs.environment.insert(
+                    "AREAL_HARNESS_TOOL_EXTENSIONS".into(),
+                    path.to_string_lossy().into_owned(),
+                );
             }
-        }
+            for (name, value) in &env {
+                if let Some(old) = input.credentials.insert(name.clone(), value.clone()) {
+                    ensure!(&old == value, "conflicting model and MCP environment");
+                }
+                if !input.launch_inputs.credential_names.contains(name) {
+                    input.launch_inputs.credential_names.push(name.clone());
+                }
+            }
+            Ok(input)
+        };
+        // 启动参数先校验，无效时不拉起 Host。
+        let input = resolve()?;
+        let client = areal_host::Client::connect_or_start().await?;
+        // 任务凭据只在 Runtime 启动时接收：带任务凭据就重启空闲服务刷新成本次的；
+        // 服务正忙时直接报错，不让本次运行沿用上一个任务的身份。
+        let opened = match if !args.task_credential_command.is_empty() {
+            client
+                .restart(input, areal_host::StopStrategy::IfIdle)
+                .await
+        } else {
+            client.open(input).await
+        } {
+            // 续接时本进程独占这个会话（client.lock）；权限等启动参数变了，由它显式重启空闲的会话服务。
+            Err(error)
+                if args.resume.is_some()
+                    && format!("{error:#}")
+                        .contains(areal_local_service::CONFIGURATION_CONFLICT) =>
+            {
+                client
+                    .restart(resolve()?, areal_host::StopStrategy::IfIdle)
+                    .await?
+            }
+            opened => opened?,
+        };
+        let service = opened.service()?;
         let profile = args
             .agent
             .as_deref()
@@ -322,55 +344,15 @@ impl Local {
             .transpose()?
             .map(|profile| json!(profile))
             .or_else(|| Some(json!({"id":profile["id"],"revision":profile["revision"]})));
-        let child = command.spawn().await.context("launch Harness")?;
-        drop(command);
-        let mut result = Self {
-            endpoint: String::new(),
-            token: String::new(),
+        drop(temporary);
+        Ok(Self {
+            endpoint: service.endpoint.clone(),
+            token: token(&service.auth_file)?,
             profile,
-            mcp,
-            child: Some(child),
-            temporary: Some(temporary),
             mapping: Some(root.join("sessions")),
             run_dir: Some(run_dir),
             _lock: Some(lock),
-        };
-        result.wait_ready(&ready).await?;
-        Ok(result)
-    }
-    async fn wait_ready(&mut self, ready: &std::path::Path) -> Result<()> {
-        let startup: Result<()> = async {
-            let deadline = tokio::time::Instant::now() + Duration::from_secs(40);
-            while !ready.exists() {
-                if let Some(status) = self.child.as_mut().unwrap().try_wait()? {
-                    bail!("Harness startup failed ({status})");
-                }
-                if tokio::time::Instant::now() > deadline {
-                    bail!("Harness startup timed out");
-                }
-                tokio::time::sleep(Duration::from_millis(25)).await;
-            }
-            let meta: Value = serde_json::from_slice(&std::fs::read(ready)?)?;
-            self.endpoint = meta["endpoint"]
-                .as_str()
-                .context("invalid ready endpoint")?
-                .into();
-            self.token = token(std::path::Path::new(
-                meta["authFile"].as_str().context("invalid authFile")?,
-            ))?;
-            Ok(())
-        }
-        .await;
-        if let Err(error) = startup {
-            // 就绪文件损坏或认证解析失败也须等待 owned 服务回收，不能只丢弃句柄。
-            return match self.close().await {
-                Ok(()) => Err(error),
-                Err(cleanup) => Err(anyhow::anyhow!(
-                    "{error:#}; Harness cleanup failed: {cleanup:#}"
-                )),
-            };
-        }
-        Ok(())
+        })
     }
     pub fn record(&self, session: &str, workspace: &str) -> Result<()> {
         if let (Some(root), Some(run)) = (&self.mapping, &self.run_dir) {
@@ -385,146 +367,5 @@ impl Local {
             }
         }
         Ok(())
-    }
-    pub async fn close(&mut self) -> Result<()> {
-        if let Some(child) = &mut self.child {
-            let status = if let Some(status) = child.try_wait()? {
-                status
-            } else {
-                if let Some(pid) = child.id() {
-                    unsafe {
-                        libc::kill(pid as i32, libc::SIGTERM);
-                    }
-                }
-                tokio::time::timeout(Duration::from_secs(45), child.wait())
-                    .await
-                    .context("launcher cleanup unconfirmed")??
-            };
-            ensure!(status.success(), "launcher reported cleanup failure");
-        }
-        self.child = None;
-        self.temporary = None;
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    async fn fixture(directory: &std::path::Path, exit: &str) -> (Local, u32) {
-        let marker = directory.join("launcher-started.json");
-        let mut command =
-            TrustedCommand::supervised(std::path::Path::new("/usr/bin/python3"), &[]).unwrap();
-        command
-            .args([
-                "-I",
-                "-S",
-                "-c",
-                r#"import json,os,pathlib,signal,sys,time
-parent=int(sys.argv[sys.argv.index('--parent-pid')+1])
-assert os.getppid()==parent
-signal.signal(signal.SIGTERM,lambda s,f: sys.exit(0))
-marker=pathlib.Path(sys.argv[1]); temporary=marker.with_suffix('.tmp')
-temporary.write_text(json.dumps({'pid':os.getpid(),'parent':parent})); temporary.replace(marker)
-if sys.argv[2]!='wait': sys.exit(int(sys.argv[2]))
-while True: time.sleep(0.02)
-"#,
-            ])
-            .arg(&marker)
-            .arg(exit)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::inherit())
-            .kill_on_drop(false);
-        command.parent_pid_arg();
-        let mut child = command.spawn().await.unwrap();
-        drop(command);
-        let pid = child.id().unwrap();
-        let ready = tokio::time::timeout(Duration::from_secs(5), async {
-            while !marker.exists() {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await;
-        if ready.is_err() {
-            let _ = child.kill().await;
-            panic!("fixture launcher did not start");
-        }
-        let report: Value = serde_json::from_slice(&std::fs::read(marker).unwrap()).unwrap();
-        assert_eq!(report["pid"], pid);
-        (
-            Local {
-                endpoint: String::new(),
-                token: String::new(),
-                profile: None,
-                mcp: vec![],
-                child: Some(child),
-                temporary: None,
-                mapping: None,
-                run_dir: None,
-                _lock: None,
-            },
-            pid,
-        )
-    }
-
-    #[tokio::test]
-    async fn owned_launcher_term_waits_for_actual_process_and_close_is_idempotent() {
-        let directory = tempfile::tempdir().unwrap();
-        let (mut local, pid) = fixture(directory.path(), "wait").await;
-        local.close().await.unwrap();
-        assert!(local.child.is_none());
-        assert_ne!(unsafe { libc::kill(pid as i32, 0) }, 0);
-        local.close().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn already_failed_launcher_is_not_reported_as_successful_cleanup() {
-        let directory = tempfile::tempdir().unwrap();
-        let (mut local, _) = fixture(directory.path(), "7").await;
-        tokio::time::timeout(Duration::from_secs(5), async {
-            while local.child.as_mut().unwrap().try_wait().unwrap().is_none() {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
-        })
-        .await
-        .unwrap();
-        assert!(
-            local
-                .close()
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("cleanup failure")
-        );
-    }
-
-    #[tokio::test]
-    async fn invalid_ready_or_auth_reaps_owned_launcher_before_returning_error() {
-        for metadata in ["not-json", "{}", r#"{"endpoint":"ws://127.0.0.1:1"}"#] {
-            let directory = tempfile::tempdir().unwrap();
-            let (mut local, pid) = fixture(directory.path(), "wait").await;
-            let ready = directory.path().join("ready.json");
-            std::fs::write(&ready, metadata).unwrap();
-            assert!(local.wait_ready(&ready).await.is_err());
-            assert!(local.child.is_none());
-            assert_ne!(unsafe { libc::kill(pid as i32, 0) }, 0);
-        }
-    }
-
-    #[tokio::test]
-    async fn early_launcher_exit_preserves_its_actual_status() {
-        let directory = tempfile::tempdir().unwrap();
-        let (mut local, _) = fixture(directory.path(), "7").await;
-        let error = local
-            .wait_ready(&directory.path().join("missing-ready.json"))
-            .await
-            .unwrap_err();
-        let diagnostic = error.to_string();
-        assert!(
-            diagnostic.contains("Harness startup failed (exit status: 7)"),
-            "{diagnostic}"
-        );
     }
 }

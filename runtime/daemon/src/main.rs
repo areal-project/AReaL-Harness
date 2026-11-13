@@ -101,14 +101,7 @@ async fn main() -> Result<()> {
         config.task_credential_commands.push(path);
     }
     if !config.task_credential_commands.is_empty() {
-        for name in [
-            "MULTICA_TOKEN",
-            "MULTICA_TASK_ID",
-            "MULTICA_AGENT_ID",
-            "MULTICA_WORKSPACE_ID",
-            "MULTICA_SERVER_URL",
-            "MULTICA_RUNTIME_PROVIDER",
-        ] {
+        for name in areal_runtime_host_tools::TASK_CREDENTIAL_ENVIRONMENT {
             if let Ok(value) = std::env::var(name) {
                 anyhow::ensure!(
                     value.len() <= 4096 && !value.contains('\0'),

@@ -38,9 +38,9 @@ assert.equal(
 );
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 const sourceFiles = [
-  "app/src/core/providers.cjs",
-  "app/src/core/model-config.cjs",
-  "app/src/core/backend.cjs",
+  "../../services/workbench/src/desktop/core/providers.cjs",
+  "../../services/workbench/src/desktop/core/model-config.cjs",
+  "../../services/workbench/src/desktop/core/backend.cjs",
   "renderer/src/settings/ModelSettings.tsx",
   "scripts/provider-hot-apply-smoke.mjs",
   "renderer/dist/index.html",

@@ -23,6 +23,7 @@ description: 在 AReaL GUI 里新增或修改组件、页面、样式、Token �
 | 你的直觉 | 在这里的做法 |
 | --- | --- |
 | 在组件 CSS 里写 `16px`、`#888`、`300ms` | 引用 Token；缺 Token 时先加到 `tokens.json`，再运行 `pnpm --filter @areal/ui generate` |
+| 给 `@areal/ui` 组件传颜色、间距类或 `style`，或在页面 CSS 里选 `[data-slot=…]` | 页面只给布局类；外观差异加成组件的 variant 或 slot。`node scripts/restyle-lint.mjs` 拦截新增（R-CHECK-022） |
 | 在 `workbench.css` 里用 `.turn-execution .areal-activity-*` 调组件外观 | 给组件加部件或 Token，宿主只管布局 |
 | 给组件加 `kind="explore" \| "command"` 这类万能开关 | 用组合部件表达结构，如 `ActivityRow` + `ActivityRowText` + `ActivityRowStatus` |
 | 在 md 正文里写数值（如“列表限高 224px”） | 写 Token 名（`--activity-list-max-height`），数值只在 `tokens.json` |
@@ -31,6 +32,17 @@ description: 在 AReaL GUI 里新增或修改组件、页面、样式、Token �
 | 把外部画布或截图里的数值当来源 | 画布只用于讨论，定下的数值写进 `tokens.json` |
 | 行内按钮用宿主 CSS 随悬停显隐 | 一律用 [HoverActions](../../src/components/hover-actions/hover-actions.md)；打开态用 `[data-popup-open]`，不要写 `[data-state="open"]` |
 | 只跑 `verify:design` 就说界面没问题 | 再跑 `design:build` 和 `test:design`，视觉结论以浏览器检查为准 |
+
+## 规则放在哪里
+
+| 位置 | 放什么 |
+| --- | --- |
+| 仓库根 `AGENTS.md` | 八条全局判断，十几行以内 |
+| 本 skill 与 `areal-ui-critique` | 怎么做、怎么审；纠正先验和审查清单 |
+| 组件旁的 `*.md` 合同 | 只属于这个组件、需要判断的强制规则，每个组件不超过 10 条 |
+| CI（lint、基线脚本、`verify:design`） | 能机器判断的一切；新规则先尝试写成检查 |
+
+能写成检查的规则不再写进合同正文；写不成检查、只是“默认这样做”的建议直接删掉，靠组件本身的默认值表达。
 
 ## 迁移一个组件
 

@@ -2,6 +2,7 @@
 
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import plistlib
@@ -10,13 +11,14 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "artifact-cleanup.py"
 
 
-class TemporaryWorktreeCacheTest(unittest.TestCase):
+class CleanupFixture(unittest.TestCase):
     # 失败方式：删除主仓/可执行产物、忽略锁或打开文件、预算内全清、失效路径阻断。
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="worktree cache ")
@@ -28,6 +30,7 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
         (self.repo / "core/engine").mkdir(parents=True)
         (self.repo / "core/engine/Cargo.toml").write_text('[package]\nname = "areal-engine"\n')
         (self.repo / "Cargo.toml").write_text("[workspace]\n")
+        (self.repo / ".gitignore").write_text("/target/\n")
         self.git("init", "-q")
         self.git("add", ".")
         self.git(
@@ -54,8 +57,15 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
                 cache = profile / name
                 cache.mkdir()
                 (cache / "cache").write_bytes(b"x" * 16384)
+                os.utime(cache / "cache", (age, age))
                 os.utime(cache, (age, age))
+            os.utime(profile / ".cargo-lock", (age, age))
+            os.utime(profile / "areal", (age, age))
             os.utime(profile, (age, age))
+        for checkout in [self.old, self.new]:
+            gitdir = Path(self.git("-C", str(checkout), "rev-parse", "--absolute-git-dir").strip())
+            for name in ["index", "logs/HEAD"]:
+                os.utime(gitdir / name, (100, 100))
         self.report = self.root / "result.json"
 
     def git(self, *args):
@@ -64,6 +74,7 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
         )
 
     def run_cleanup(self, *args, budget="0"):
+        self.report = self.root / f"result-{time.time_ns()}.json"
         result = subprocess.run(
             [
                 sys.executable,
@@ -83,6 +94,131 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
+
+
+class TemporaryWorktreeCacheTest(CleanupFixture):
+    def test_managed_worktrees_collect_loose_intermediates_without_cache_directories(self):
+        for checkout, tool in [(self.old, "Codex"), (self.new, "T3 Code")]:
+            destination = self.root / tool / "worktrees" / checkout.name
+            destination.parent.mkdir(parents=True)
+            self.git("worktree", "move", str(checkout), str(destination))
+            profile = destination / "target/debug"
+            for name in ["deps", "incremental"]:
+                shutil.rmtree(profile / name)
+            loose = profile / "libareal_engine.rlib"
+            loose.write_bytes(b"old intermediate")
+            for path in [loose, profile]:
+                os.utime(path, (1000, 1000))
+            gitdir = Path(
+                self.git("-C", str(destination), "rev-parse", "--absolute-git-dir").strip()
+            )
+            for name in ["index", "logs/HEAD"]:
+                os.utime(gitdir / name, (100, 100))
+        report = self.run_cleanup("--apply")
+        for tool in ["Codex", "T3 Code"]:
+            profile = (
+                self.root
+                / tool
+                / "worktrees"
+                / ("old checkout" if tool == "Codex" else "new checkout")
+                / "target/debug"
+            )
+            self.assertFalse((profile / "libareal_engine.rlib").exists())
+            self.assertEqual((profile / "areal").read_bytes(), b"keep companion")
+        self.assertEqual(sum(i["status"] == "deleted" for i in report["items"]), 2)
+
+    def test_cold_cache_preserves_nested_executables_and_release_archives(self):
+        cache = self.old / "target/debug/deps"
+        protected = [cache / "test-binary", cache / "libplugin.dylib", cache / "release.tar.zst"]
+        for path in protected:
+            path.write_bytes(b"protected output")
+            os.utime(path, (1000, 1000))
+        protected[0].chmod(0o755)
+        (self.old / "target/debug/incremental/cache").unlink()
+        os.utime(self.old / "target/debug/incremental", (1000, 1000))
+        for path in [cache, cache.parent]:
+            os.utime(path, (1000, 1000))
+        self.run_cleanup("--apply")
+        self.assertFalse((cache / "cache").exists())
+        for path in protected:
+            self.assertTrue(
+                path.exists(), "Cold cache collection must preserve executable/package outputs"
+            )
+            self.assertEqual(path.read_bytes(), b"protected output")
+
+    def test_recent_nested_build_survives_pressure_and_repeated_runs(self):
+        cache = self.old / "target/debug/deps/cache"
+        cache.write_bytes(b"recent build")
+        report = self.run_cleanup("--apply", "--min-free-gib", "1000000")
+        self.assertTrue(cache.exists(), "Low free space must not evict a recent build")
+        self.assertFalse((self.new / "target/debug/deps/cache").exists())
+        self.assertEqual(
+            {i["status"] for i in report["items"] if i["scope"] == str(self.old)},
+            {"retained-recent"},
+        )
+        repeated = self.run_cleanup("--apply", "--min-free-gib", "1000000")
+        self.assertTrue(cache.exists())
+        self.assertFalse(any(i["status"] == "deleted" for i in repeated["items"]))
+
+    def test_developing_worktree_keeps_even_old_caches(self):
+        for checkout in [self.old, self.new]:
+            (checkout / "work-in-progress.rs").write_text("// pending work\n")
+            loose = checkout / "target/debug/libareal_engine.rlib"
+            loose.write_bytes(b"old intermediate")
+            os.utime(loose, (1000, 1000))
+        self.git("-C", str(self.old), "add", "work-in-progress.rs")
+        report = self.run_cleanup("--apply", "--min-free-gib", "1000000")
+        self.assertEqual({i["status"] for i in report["items"]}, {"retained-worktree-dirty"})
+        for checkout in [self.old, self.new]:
+            self.assertTrue((checkout / "target/debug/deps/cache").exists())
+            self.assertEqual(
+                (checkout / "target/debug/libareal_engine.rlib").read_bytes(), b"old intermediate"
+            )
+
+    def test_recent_clean_checkout_is_retained_without_refreshing_git_index(self):
+        gitdir = Path(self.git("-C", str(self.old), "rev-parse", "--absolute-git-dir").strip())
+        (gitdir / "logs/HEAD").touch()
+        before = (gitdir / "index").stat().st_mtime_ns
+        report = self.run_cleanup("--apply")
+        self.assertEqual((gitdir / "index").stat().st_mtime_ns, before)
+        self.assertEqual(
+            {i["status"] for i in report["items"] if i["scope"] == str(self.old)},
+            {"retained-recent"},
+        )
+        self.assertTrue((self.old / "target/debug/deps/cache").exists())
+        self.assertFalse((self.new / "target/debug/deps/cache").exists())
+
+    def test_unknown_worktree_state_blocks_deletion_and_reports_failure(self):
+        shim = self.root / "git shim"
+        shim.mkdir()
+        git = shim / "git"
+        git.write_text(
+            '#!/bin/sh\nfor arg in "$@"; do\n'
+            '  if [ "$arg" = status ]; then exit 1; fi\ndone\n'
+            'exec /usr/bin/git "$@"\n'
+        )
+        git.chmod(0o755)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(self.repo / "scripts/artifact-cleanup.py"),
+                "--temporary-worktrees",
+                "--cache-budget-gib",
+                "0",
+                "--apply",
+                "--report",
+                str(self.report),
+                "--json",
+            ],
+            env={**os.environ, "PATH": str(shim) + os.pathsep + os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads(self.report.read_text())
+        self.assertEqual({i["status"] for i in report["items"]}, {"blocked-reuse-unknown"})
+        for checkout in [self.old, self.new]:
+            self.assertTrue((checkout / "target/debug/deps/cache").exists())
 
     def test_preview_and_apply_only_touch_registered_secondary_caches(self):
         missing = self.root / "missing checkout"
@@ -171,6 +307,38 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
         finally:
             child.communicate(timeout=10)
 
+    def test_activity_matches_directory_boundaries_for_open_files(self):
+        sibling = self.root / "old checkout sibling"
+        sibling.mkdir()
+        outside = sibling / "areal"
+        outside.write_bytes(b"outside scanned worktrees")
+        inside = self.old / "target/debug/areal"
+        child = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; files=[open(p) for p in sys.argv[1:]]; "
+                "print('ready',flush=True); sys.stdin.read()",
+                str(inside),
+                str(outside),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "ready")
+            spec = importlib.util.spec_from_file_location("cleanup", SCRIPT)
+            cleanup = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cleanup)
+            observations, error = cleanup.activity([self.old])
+            self.assertIsNone(error)
+            self.assertEqual(
+                {o["path"] for o in observations if o["pid"] == child.pid}, {str(inside)}
+            )
+        finally:
+            child.communicate(timeout=10)
+
     def test_invalid_budget_rejects_before_effects(self):
         result = subprocess.run(
             [
@@ -188,6 +356,148 @@ class TemporaryWorktreeCacheTest(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue((self.old / "target/debug/deps/cache").exists())
+
+
+class RustIntermediatesTest(CleanupFixture):
+    def run_intermediates(self, *args):
+        self.report = self.root / f"intermediates-{time.time_ns()}.json"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(self.repo / "scripts/artifact-cleanup.py"),
+                "--rust-intermediates",
+                "--report",
+                str(self.report),
+                "--json",
+                *args,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_custom_target_preserves_executables_packages_sources_and_symlinks(self):
+        target = self.repo / "experiments/custom artifacts"
+        profile = target / "aarch64-apple-darwin/debug"
+        cache = profile / "deps"
+        cache.mkdir(parents=True)
+        (profile / ".cargo-lock").touch()
+        removable = cache / "libengine.rlib"
+        removable.write_bytes(b"intermediate")
+        keep = {
+            cache / "test-runner": b"executable",
+            cache / "plugin.dylib": b"shared library",
+            cache / "release.zip": b"package",
+            cache / "release.TAR.GZ": b"package",
+            cache / "release.tar.xz": b"package",
+            cache / "release.tar.zst": b"package",
+            cache / "release.tgz": b"package",
+            cache / "release.7z": b"package",
+            cache / "nested.app/data": b"app data",
+            cache / "bundle/manifest.json": b"{}",
+            cache / "bundle/data": b"bundle data",
+            profile / "areal": b"profile executable",
+            target / "delivery-keep/debug/deps/cache": b"delivery data",
+            target / "vendor/node_modules/pkg/debug/deps/cache": b"dependency data",
+            target / "source.rs": b"source",
+        }
+        for path, data in keep.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        (target / "delivery-keep/debug/.cargo-lock").touch()
+        (target / "vendor/node_modules/pkg/debug/.cargo-lock").touch()
+        (cache / "test-runner").chmod(0o755)
+        link = cache / "outside-link"
+        link.symlink_to(self.old / "target/debug/deps/cache")
+        options = ["--target-root", str(target)]
+        self.run_intermediates(*options)
+        self.assertTrue(removable.exists())
+        applied = self.run_intermediates(*options, "--apply")
+        self.assertFalse(removable.exists())
+        self.assertEqual(sum(i.get("deleted_files", 0) for i in applied["items"]), 1)
+        self.assertEqual(applied["target_roots"], [str(target)])
+        self.assertIn("free_before_bytes", applied)
+        self.assertIn("free_after_bytes", applied)
+        for path, data in keep.items():
+            self.assertEqual(path.read_bytes(), data)
+        self.assertTrue(link.is_symlink())
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
+        repeated = self.run_intermediates(*options, "--apply")
+        self.assertFalse(any(i["status"] == "deleted" for i in repeated["items"]))
+
+    def test_primary_profile_lock_and_open_companion_block_deletion(self):
+        companion = self.repo / "target/debug/areal"
+        child = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import sys; f=open(sys.argv[1]); print('ready',flush=True); sys.stdin.read()",
+                str(companion),
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            self.assertEqual(child.stdout.readline().strip(), "ready")
+            report = self.run_intermediates("--apply")
+            self.assertEqual({i["status"] for i in report["items"]}, {"blocked-in-use"})
+        finally:
+            child.communicate(timeout=10)
+        with (self.repo / "target/debug/.cargo-lock").open("r+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            report = self.run_intermediates("--apply")
+            self.assertEqual({i["status"] for i in report["items"]}, {"blocked-build-lock"})
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
+
+    def test_existing_receipt_and_symlink_target_are_rejected(self):
+        self.report.write_text("original receipt")
+        link = self.repo / "linked target"
+        link.symlink_to(self.repo / "target", target_is_directory=True)
+        for options in [["--report", str(self.report)], ["--target-root", str(link)]]:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(self.repo / "scripts/artifact-cleanup.py"),
+                    "--rust-intermediates",
+                    "--apply",
+                    "--report",
+                    str(self.report),
+                    *options,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.report.read_text(), "original receipt")
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
+
+    def test_process_inspection_failure_blocks_all_deletions_and_returns_failure(self):
+        shim = self.root / "inspection shim"
+        shim.mkdir()
+        ps = shim / "ps"
+        ps.write_text("#!/bin/sh\nexit 1\n")
+        ps.chmod(0o755)
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(self.repo / "scripts/artifact-cleanup.py"),
+                "--rust-intermediates",
+                "--apply",
+                "--report",
+                str(self.report),
+                "--json",
+            ],
+            env={**os.environ, "PATH": str(shim) + os.pathsep + os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual({i["status"] for i in report["items"]}, {"blocked-activity-unknown"})
+        self.assertEqual(report["deleted_estimated_bytes"], 0)
+        self.assertTrue((self.repo / "target/debug/deps/cache").exists())
 
 
 class ArtifactCleanupTest(unittest.TestCase):

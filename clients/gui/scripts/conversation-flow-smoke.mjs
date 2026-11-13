@@ -120,18 +120,26 @@ try {
       await reading.getByRole("button", { name: "追加长输出", exact: true }).click();
       await page.waitForTimeout(400);
     };
-    for (const scenario of ["mounted", "before-mount", "unknown", "history"]) {
+    for (const scenario of ["mounted", "before-mount", "unknown", "history", "short-history"]) {
       await reading.getByLabel("发送顺序", { exact: true }).selectOption(scenario);
       if (scenario === "history") {
         await messages.hover();
         await page.mouse.wheel(0, -500);
         await page.waitForTimeout(120);
       }
-      if (scenario === "unknown" || scenario === "history")
+      if (["unknown", "history", "short-history"].includes(scenario))
         await reading.getByRole("button", { name: "开始发送", exact: true }).click();
-      // 回看时发送也立即定位待发消息；受理后真实消息落在同一位置，不再跳动。
+      // 续发使用自然尾部，无响应占位；受理前后用户消息保持原位。
       let sentInset;
-      if (scenario === "history") {
+      if (["history", "short-history"].includes(scenario)) {
+        await atTail(`${scenario}-pending`);
+        assert.equal(
+          await messages
+            .locator(".message-response-space")
+            .evaluate((element) => element.getBoundingClientRect().height),
+          0,
+          `${scenario} does not reserve a blank response track`,
+        );
         const pendingInset = () =>
           messages.evaluate((element) => {
             const pending = element.querySelector(".pending-message .user-message");
@@ -143,15 +151,17 @@ try {
           const messages = document.querySelector("#first-turn-reading-preview .messages");
           const pending = messages?.querySelector(".pending-message .user-message");
           if (!messages || !pending) return false;
-          const inset = pending.getBoundingClientRect().top - messages.getBoundingClientRect().top;
-          return inset >= -1 && inset < 80;
+          return (
+            pending.getBoundingClientRect().bottom <= messages.getBoundingClientRect().bottom + 1
+          );
         });
         sentInset = await pendingInset();
       }
       if (scenario === "unknown")
         await reading.getByRole("button", { name: "响应丢失", exact: true }).click();
       await reading.getByRole("button", { name: "收到用户消息", exact: true }).click();
-      await nearTop(`${scenario}-accepted`);
+      if (["history", "short-history"].includes(scenario)) await atTail(`${scenario}-accepted`);
+      else await nearTop(`${scenario}-accepted`);
       if (sentInset !== undefined) {
         const { inset } = await geometry();
         assert.ok(

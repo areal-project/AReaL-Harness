@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useState, useSyncExternalStore } from "react";
 import { Button, Input } from "@areal/ui";
 import { Monitor, Settings } from "lucide-react";
 import { FeedbackNotice } from "@areal/ui/experimental";
@@ -15,22 +15,24 @@ import {
   scanPairingLink,
   minimizeApp,
 } from "./platform.js";
-import { MobileCommands } from "./mobile-commands.mjs";
-import { MobileWorkspace } from "./mobile-workspace.mjs";
-import { MobileWorkspaceView } from "./MobileWorkspace.js";
 import "../styles.css";
 import "../workbench.css";
 import "./mobile.layout.css";
 
-const client = new MobileClient({ keychain, clientKind });
-const workspace = new MobileWorkspace(client);
-const commands = new MobileCommands(client, workspace);
+const SharedPairedWorkbench = lazy(() =>
+  import("../SharedPairedWorkbench.js").then((module) => ({
+    default: module.SharedPairedWorkbench,
+  })),
+);
+const client = new MobileClient({
+  keychain,
+  clientKind,
+  capabilities: ["gui-read-v1", "gui-write-v1"],
+});
 
 function MobileApp() {
   const { t } = useI18n();
   const state = useSyncExternalStore(client.subscribe, client.snapshot);
-  const view = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
-  const dismissComposerSheet = useRef<(() => void) | null>(null);
   const [name, setName] = useState(t("mobile.deviceFallback"));
   const [link, setLink] = useState("");
   const [paste, setPaste] = useState(false);
@@ -62,24 +64,20 @@ function MobileApp() {
       window.removeEventListener("pagehide", close);
       void lifecycle.then((remove) => remove());
       theme.removeEventListener("change", update);
-      commands.dispose();
-      workspace.dispose();
       void client.setActive(false);
     };
   }, []);
   useEffect(() => {
     const listener = observeBack(() => {
-      if (dismissComposerSheet.current) dismissComposerSheet.current();
-      else if (clearConfirm) setClearConfirm(false);
+      if (clearConfirm) setClearConfirm(false);
       else if (settings) setSettings(false);
       else if (paste) setPaste(false);
-      else if (state.kind === "connected" && view.page.kind !== "projects") workspace.back();
       else void minimizeApp();
     });
     return () => {
       void listener.then((remove) => remove());
     };
-  }, [clearConfirm, settings, paste, state.kind, view.page]);
+  }, [clearConfirm, settings, paste]);
   const pair = (value: string) => {
     setError(null);
     setLink("");
@@ -123,63 +121,57 @@ function MobileApp() {
     <main
       className="mobile-page data-[state=connected]:h-dvh data-[state=connected]:min-h-0 data-[state=connected]:overflow-hidden data-[state=connected]:[&>.mobile-stack]:flex-1 data-[state=connected]:[&>.mobile-stack]:min-h-0 [&_h1]:[line-height:1.3] [&_h1]:font-semibold [&_h2]:[line-height:1.3] [&_h2]:font-semibold [&_h3]:[line-height:1.3] [&_h3]:font-semibold [&_[data-action=new-session]]:text-fixed-control [&_[data-action=new-session]]:font-semibold [&_[data-action=new-session]]:bg-primary [&_[data-action=new-session]]:text-primary-foreground flex flex-col gap-section [padding:calc(env(safe-area-inset-top)+var(--spacing-panel))_var(--spacing-panel)_calc(env(safe-area-inset-bottom)+var(--spacing-panel))] min-h-dvh box-border bg-background text-foreground font-sans text-fixed-body"
       data-state={state.kind}
-      data-workspace-page={state.kind === "connected" && !settings ? view.page.kind : undefined}
       data-remembered={state.kind === "connected" ? state.remembered : undefined}
     >
-      {(state.kind !== "connected" || settings || view.page.kind === "projects") && (
-        <header className="mobile-header shrink-0 min-h-[var(--size-touch-target)] flex items-center justify-between gap-inline">
-          {state.kind === "connected" && !settings && (
-            <Monitor
-              className="mobile-host-icon size-[var(--spacing-section)]"
-              aria-hidden="true"
-            />
-          )}
-          <div
+      <header className="mobile-header shrink-0 min-h-[var(--size-touch-target)] flex items-center justify-between gap-inline">
+        {state.kind === "connected" && !settings && (
+          <Monitor className="mobile-host-icon size-[var(--spacing-section)]" aria-hidden="true" />
+        )}
+        <div
+          className={
+            state.kind === "connected" && !settings
+              ? "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate [&_h1]:text-fixed-body"
+              : "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate"
+          }
+        >
+          <h1
             className={
               state.kind === "connected" && !settings
-                ? "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate [&_h1]:text-fixed-body"
-                : "mobile-host-copy flex-1 min-w-0 [&_h1]:block [&_h1]:min-w-0 [&_h1]:max-w-full [&_h1]:truncate"
+                ? "text-fixed-emphasis"
+                : "text-fixed-page-title"
             }
           >
-            <h1
-              className={
-                state.kind === "connected" && !settings
-                  ? "text-fixed-emphasis"
-                  : "text-fixed-page-title"
-              }
-            >
-              {t(
-                settings
-                  ? "mobile.settings"
-                  : state.kind === "unpaired"
-                    ? "mobile.connect"
-                    : state.kind === "pairing"
-                      ? "mobile.waiting"
-                      : state.kind === "connected"
-                        ? "mobile.computer"
-                        : "mobile.projects",
-              )}
-            </h1>
-            {state.kind === "connected" && !settings && (
-              <p className="mobile-host-status m-0 flex items-center gap-[calc(var(--spacing-inline)/2)] text-foreground-subtle text-fixed-caption">
-                <span className="bg-success mobile-status-dot inline-block size-[var(--size-status-dot)] [border-radius:var(--radius-pill)]" />
-                {t(statusKey)}
-              </p>
+            {t(
+              settings
+                ? "mobile.settings"
+                : state.kind === "unpaired"
+                  ? "mobile.connect"
+                  : state.kind === "pairing"
+                    ? "mobile.waiting"
+                    : state.kind === "connected"
+                      ? "mobile.computer"
+                      : "mobile.projects",
             )}
-          </div>
-          {state.kind !== "unpaired" && state.kind !== "pairing" && (
-            <Button
-              className="mobile-touch size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-inline"
-              variant="ghost"
-              data-action="settings"
-              aria-label={t(settings ? "mobile.back" : "mobile.settings")}
-              onClick={() => setSettings(!settings)}
-            >
-              {settings ? t("mobile.back") : <Settings aria-hidden="true" />}
-            </Button>
+          </h1>
+          {state.kind === "connected" && !settings && (
+            <p className="mobile-host-status m-0 flex items-center gap-[calc(var(--spacing-inline)/2)] text-foreground-subtle text-fixed-caption">
+              <span className="bg-success mobile-status-dot inline-block size-[var(--size-status-dot)] [border-radius:var(--radius-pill)]" />
+              {t(statusKey)}
+            </p>
           )}
-        </header>
-      )}
+        </div>
+        {state.kind !== "unpaired" && state.kind !== "pairing" && (
+          <Button
+            className="mobile-touch size-[var(--size-touch-target)] min-h-[var(--size-touch-target)] min-w-[var(--size-touch-target)] p-inline"
+            variant="ghost"
+            data-action="settings"
+            aria-label={t(settings ? "mobile.back" : "mobile.settings")}
+            onClick={() => setSettings(!settings)}
+          >
+            {settings ? t("mobile.back") : <Settings aria-hidden="true" />}
+          </Button>
+        )}
+      </header>
       {error && <FeedbackNotice tone="error" message={t(error)} />}
       {state.kind === "unpaired" && !settings ? (
         <section className="mobile-stack flex flex-col gap-field">
@@ -317,12 +309,9 @@ function MobileApp() {
             <FeedbackNotice tone="warning" message={t("mobile.storageFailed")} />
           )}
           {state.kind === "connected" && (
-            <MobileWorkspaceView
-              workspace={workspace}
-              client={client}
-              commands={commands}
-              dismissComposerSheet={dismissComposerSheet}
-            />
+            <Suspense fallback={null}>
+              <SharedPairedWorkbench client={client} />
+            </Suspense>
           )}
           {["offline", "blocked"].includes(state.kind) && (
             <Button

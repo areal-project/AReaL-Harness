@@ -37,10 +37,6 @@ exports: ["getMediaCategory", "getAttachmentLabel", "useAttachmentsContext", "us
 
 引用 [R-UI-COMMON-012](../../../README.md#共同合同)。
 
-## 规则
-
-`R-MESSAGEATTACHMENTS-001` 保留原AI Elements Apache-2.0来源说明。组件只展示宿主提供的已授权URL/元数据，权限与媒体读取不迁入包。
-
 ## 示例
 
 [组件目录与可操作实例](../../../../../renderer/design-system.html?ui-library#component-message-attachments)。真实业务路径沿原生产专项验证。

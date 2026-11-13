@@ -6,10 +6,10 @@ import { attachRelay, bucket } from './relay.mjs';
 import { createPush } from './push.mjs';
 
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf' };
-export async function serve(config, store, pushOptions) {
+export async function serve(config, store, pushOptions, logger) {
   const push = config.apns ? createPush(config.apns, pushOptions) : undefined;
   const enrollBudget = bucket(config.enrollPerSecond); const requestBudget = bucket(200);
-  const log = entry => console.log(JSON.stringify({ time: new Date().toISOString(), ...entry }));
+  const log = entry => { const record = { time: new Date().toISOString(), ...entry }; if (logger) logger(record); else console.log(JSON.stringify(record)); };
   const assets = config.assetsDir ? await realpath(config.assetsDir) : undefined;
   const headerTimers = new Map();
   const server = createServer({ maxHeaderSize: 8192, requestTimeout: 15000, headersTimeout: 10000, keepAliveTimeout: 5000 }, async (req, res) => {

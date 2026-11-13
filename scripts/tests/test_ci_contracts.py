@@ -172,11 +172,9 @@ class CiContracts(unittest.TestCase):
             "smoke:test:composer-files",
             "mobile-types",
             "mobile-relay-install",
-            "mobile-browser",
         }
         items = {item["id"]: item for item in plan["items"]}
         self.assertTrue(required <= items.keys(), required - items.keys())
-        self.assertEqual(items["mobile-browser"]["dependsOn"], ["mobile-relay-install"])
         self.assertEqual(scope.CI_PLATFORMS["mobile"], "linux")
         self.assertEqual(scope.JOB_GROUPS["gui"]["mobile"], {"mobile"})
         for name in required:
@@ -202,7 +200,6 @@ class CiContracts(unittest.TestCase):
             "macos:renderer",
             "macos:bundle",
             "computer-helper",
-            "mobile-browser",
             "smoke:test:composer-files",
         }
         self.assertTrue(expensive <= full)
@@ -368,7 +365,8 @@ class CiContracts(unittest.TestCase):
         result = timing.analyze([{"run": run, "jobs": jobs}])
         smoke = result["jobs"][1]
         self.assertEqual(smoke["dag_wait_estimate_s"], 300)
-        self.assertEqual(smoke["runner_wait_lower_bound_s"], 10)
+        self.assertEqual(smoke["post_dependency_delay_estimate_s"], 10)
+        self.assertIsNone(smoke["runner_wait_lower_bound_s"])
         self.assertEqual(smoke["unattributed_wait_s"], 0)
         self.assertEqual(result["runs"][0]["wall_s"], 360)
         self.assertEqual(
@@ -377,16 +375,49 @@ class CiContracts(unittest.TestCase):
         )
         self.assertEqual(timing.phase("Run actions/upload-artifact@revision"), "upload_cleanup")
         self.assertEqual(timing.phase("Build native backend tests"), "preparation")
+        self.assertIsNone(result["runs"][0]["first_failure_feedback_s"])
+        jobs[0]["steps"] = [
+            {
+                "name": "Test fixture prints failed result JSON",
+                "conclusion": "success",
+                "started_at": "2026-01-01T00:01:00Z",
+                "completed_at": "2026-01-01T00:02:00Z",
+            },
+            {
+                "name": "Run smoke",
+                "conclusion": "failure",
+                "started_at": "2026-01-01T00:02:00Z",
+                "completed_at": "2026-01-01T00:03:00Z",
+            },
+        ]
+        result = timing.analyze([{"run": run, "jobs": jobs}])
+        self.assertEqual(result["runs"][0]["first_failure_feedback_s"], 180)
+        self.assertEqual(result["runs"][0]["first_failure"]["step"], "Run smoke")
+        self.assertEqual(result["runs"][0]["first_failure"]["phase"], "validation")
 
     def test_markdown_runtime_inputs_are_not_documentation_only(self):
         for path in (
             "clients/gui/app/assets/builtin-skills/sample/SKILL.md",
             "core/config/prompt.md",
             "examples/plugin-marketplace/sample/skills/sample/SKILL.md",
+            "services/workbench/src/host-library-store.ts",
         ):
             with self.subTest(path=path):
-                self.assertTrue(scope.impact([path])["shared"] or scope.impact([path])["gui"])
-        for path in ("README.md", "docs/guides/configuration.md"):
+                impact = scope.impact([path])
+                self.assertTrue(impact["shared"] or impact["gui"])
+        self.assertEqual(
+            scope.impact(["services/workbench/src/host-library-store.ts"])["unknown"], []
+        )
+        for path in (
+            "README.md",
+            "AGENTS.md",
+            "REVIEW.md",
+            ".gitignore",
+            ".worktreeinclude",
+            "tests/guides/gui.md",
+            "docs/guides/configuration.md",
+            "website/src/App.tsx",
+        ):
             with self.subTest(path=path):
                 plan, _ = self.gate_fixture([path], workflow="verify")
                 self.assertEqual({item["group"] for item in plan["items"]}, {"early"})
@@ -491,6 +522,55 @@ class CiContracts(unittest.TestCase):
         ]
         self.assertEqual(timing.predecessors(jobs[-1], jobs), jobs[1:3])
 
+    def test_smoke_and_core_lanes_share_build_but_gate_requires_both(self):
+        workflow = (ROOT / ".github/workflows/gui.yml").read_text()
+        core = workflow.split("  core-contract-shards:\n", 1)[1].split("  core-contracts:\n", 1)[0]
+        smoke = workflow.split("  smoke:\n", 1)[1].split("  linux-feasibility:\n", 1)[0]
+        gate_job = workflow.split("  gate:\n", 1)[1]
+        self.assertIn("needs: [scope, gui]", core)
+        self.assertIn("max-parallel: 2", core)
+        self.assertIn("needs: [scope, gui]", smoke)
+        self.assertIn("--dependencies target/ci/checks/gui-build/report.json", smoke)
+        self.assertIn("core-contracts, smoke", gate_job.splitlines()[1])
+
+    def test_scheduling_experiment_cannot_raise_pr_or_main_parallelism(self):
+        workflow = (ROOT / ".github/workflows/gui.yml").read_text()
+        step = workflow.split("- name: Select measured smoke scheduling limit", 1)[1].split(
+            "      - uses:", 1
+        )[0]
+        command = textwrap.dedent(step.split("run: |\n", 1)[1])
+        self.assertIn("max-parallel: ${{ fromJSON(needs.scope.outputs.smoke_parallel) }}", workflow)
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "output"
+            for event, requested, expected in [
+                ("pull_request", "5", "4"),
+                ("push", "5", "4"),
+                ("workflow_dispatch", "", "4"),
+                ("workflow_dispatch", "4", "4"),
+                ("workflow_dispatch", "5", "5"),
+                ("workflow_dispatch", "6", None),
+                ("workflow_dispatch", "5; exit 0", None),
+            ]:
+                with self.subTest(event=event, requested=requested):
+                    output.unlink(missing_ok=True)
+                    result = subprocess.run(
+                        ["bash", "-e", "-o", "pipefail", "-c", command],
+                        env={
+                            **os.environ,
+                            "GITHUB_EVENT_NAME": event,
+                            "SMOKE_PARALLEL_INPUT": requested,
+                            "GITHUB_OUTPUT": str(output),
+                        },
+                        capture_output=True,
+                        text=True,
+                    )
+                    if expected is None:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertFalse(output.exists())
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        self.assertEqual(output.read_text(), f"parallel={expected}\n")
+
     def test_main_runs_cannot_replace_each_other_and_prs_cancel_superseded_runs(self):
         for name in ("ci", "gui", "workflow-lint", "provider-config"):
             workflow = (ROOT / f".github/workflows/{name}.yml").read_text()
@@ -539,6 +619,61 @@ class CiContracts(unittest.TestCase):
                 ]
             report["results"].append(result)
         return plan, list(grouped.values())
+
+    def test_shared_fixture_and_error_changes_select_their_contracts(self):
+        for path in (
+            "clients/gui/scripts/support/core-observation.mjs",
+            "clients/gui/scripts/support/host-transport-barrier.mjs",
+            "services/workbench/src/backend-main.cjs",
+            "core/host/src/gateway/session.rs",
+        ):
+            with self.subTest(path=path):
+                plan, reports = self.gate_fixture(paths=(path,))
+                portable = next(item for item in plan["items"] if item["id"] == "gui-portable")
+                for platform in ("darwin", "linux"):
+                    self.assertIn("test:script-units", portable["expectedTests"][platform])
+                    self.assertIn("test:workbench-errors", portable["expectedTests"][platform])
+                    self.assertNotIn("test:core-observation", portable["expectedTests"][platform])
+                    core = [
+                        script
+                        for item in plan["items"]
+                        if item["group"] == "core-contracts"
+                        for script in item["expectedTests"][platform]
+                    ]
+                    self.assertEqual(core.count("test:core-observation"), 1)
+                # 新合同即使未执行，也不能由剩余通过报告放行。
+                for report in reports:
+                    for result in report["results"]:
+                        if result["id"] == "gui-portable":
+                            result["tests"] = [
+                                test
+                                for test in result["tests"]
+                                if test["script"] != "test:workbench-errors"
+                            ]
+                self.assertIn(
+                    "missing or duplicate runner tests: gui-portable",
+                    gate.validate(plan, reports, scope.WORKFLOW_GROUPS["gui"], ("run", "2")),
+                )
+
+    def test_workbench_source_changes_require_the_core_boundary_check(self):
+        for path in (
+            "services/workbench/src/desktop/core/project-connections.cjs",
+            "services/workbench/src/new-owner.ts",
+        ):
+            with self.subTest(path=path):
+                plan, reports = self.gate_fixture(paths=(path,))
+                item = next(
+                    item for item in plan["items"] if item["id"] == "workbench-core-boundary"
+                )
+                self.assertEqual(item["phase"], "commit")
+                self.assertEqual(item["group"], "gui-portable")
+                self.assertTrue(
+                    any(
+                        result["id"] == item["id"]
+                        for report in reports
+                        for result in report["results"]
+                    )
+                )
 
     def test_core_shards_cover_the_manifest_once_and_keep_native_requirements(self):
         plan, _ = self.gate_fixture()
@@ -760,7 +895,6 @@ class CiContracts(unittest.TestCase):
         for path in (
             "clients/cli/src/main.rs",
             "clients/tui/src/lib.rs",
-            "clients/web/app.js",
             "core/server/build.rs",
             "runtime/daemon/src/main.rs",
             "schemas/native-host-v2.json",

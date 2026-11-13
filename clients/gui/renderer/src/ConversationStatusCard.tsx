@@ -1,16 +1,18 @@
 import { useI18n } from "./i18n/IntlProvider.js";
+import { errorText } from "./errors/errorCopy.js";
 import { TaskContext } from "@areal/ui/experimental";
 import { DelayedVisible } from "@areal/ui";
 import "@areal/ui/conversation.css";
 import { Button } from "./components/ui/button.js";
 import { useEffect, useRef, useState } from "react";
+import type { WorkspaceChanges } from "./useWorkspaceChanges.js";
 import { ScheduledTaskRow, ThreadScheduledTasks } from "./ScheduledTasks.js";
-import { processItems, toolPresentation } from "./conversationPresentation.js";
 import { ReviewPanelIcon, TerminalPanelIcon, DocumentPanelIcon } from "./app-shell/panelIcons.js";
 import { AgentsPane } from "./AgentsPane.js";
-import { SentAttachment } from "./MessageAttachment.js";
+import { mediaOwner, SentAttachment } from "./MessageAttachment.js";
+import type { MediaOwner } from "./PlatformReadContext.js";
 import { verifiedFileReceipts } from "./TurnFileSummary.js";
-import { LinkIcon, RefreshCwIcon } from "lucide-react";
+import { LinkIcon, PlusIcon, RefreshCwIcon } from "lucide-react";
 import { ProjectFolderIcon } from "./homeChromeIcons.js";
 import { ActivityIcon } from "./ActivityIcon.js";
 import type { Action, Data, PlatformServices } from "./services.js";
@@ -20,6 +22,7 @@ export function ConversationStatusCard({
   project,
   thread,
   action,
+  changes,
   onPanel,
   onAgent,
   onFile,
@@ -35,6 +38,7 @@ export function ConversationStatusCard({
   project: Data;
   thread: Data;
   action: Action;
+  changes: WorkspaceChanges;
   onPanel: (name: string) => void;
   onAgent: (id: string) => void;
   onFile: (path: string) => void;
@@ -49,53 +53,11 @@ export function ConversationStatusCard({
   const [workspaceError, setWorkspaceError] = useState("");
   const [openingWorkspace, setOpeningWorkspace] = useState(false);
   const [allSources, setAllSources] = useState(false);
-  const [git, setGit] = useState<Data>({ loading: true });
   const [processes, setProcesses] = useState<Data[]>([]);
   const [processError, setProcessError] = useState("");
-  const [revision, refresh] = useState(0);
   const request = useRef(action);
   request.current = action;
-  const turn = thread.turns?.at(-1);
-  const tools = processItems(turn?.items ?? [], turn?.status).filter(
-    (item: Data) => item.type === "dynamicToolCall" && !item.processOwnerId,
-  );
-  const checkpoint = JSON.stringify([
-    turn?.id,
-    turn?.status,
-    tools
-      .filter((item: Data) => !toolPresentation(item).running && !item.processUnsettled)
-      .map((item: Data) => item.id),
-  ]);
-  const connected = thread.executionConnected ?? !!project.state?.connected;
-  useEffect(() => {
-    if (!connected) return;
-    let live = true;
-    setGit((previous) => ({ ...previous, loading: true }));
-    void (async () => {
-      try {
-        const info = await request.current("workspace", {
-          projectId: project.id,
-          threadId: thread.id,
-          operation: "info",
-        });
-        const review =
-          !("git" in info) && info.head
-            ? await request.current("workspace", {
-                projectId: project.id,
-                threadId: thread.id,
-                operation: "review",
-                scope: "unstaged",
-              })
-            : undefined;
-        if (live) setGit({ info, review });
-      } catch (cause) {
-        if (live) setGit({ error: (cause as Error).message });
-      }
-    })();
-    return () => {
-      live = false;
-    };
-  }, [project.id, thread.id, connected, checkpoint, revision]);
+  const { git, connected, files, additions, deletions, refresh } = changes;
   useEffect(() => {
     if (!connected || project.core?.features?.processes === false) return;
     let live = true,
@@ -121,8 +83,7 @@ export function ConversationStatusCard({
       live = false;
       clearTimeout(timer);
     };
-  }, [project.id, thread.id, connected, revision, project.core?.features?.processes]);
-  const files: Data[] = git.review?.files ?? [];
+  }, [project.id, thread.id, connected, project.core?.features?.processes]);
   const sources = [
     ...verifiedFileReceipts(
       (thread.turns ?? []).flatMap((turn: Data) =>
@@ -130,24 +91,32 @@ export function ConversationStatusCard({
       ),
     ).values(),
   ];
-  const attachments: Data[] = [
-    ...new Map<string, Data>(
+  // 附件字节按“哪一轮的哪条消息”向 Host 读取，所以每个附件带着它的出处。
+  const attachments = [
+    ...new Map<string, { part: Data; owner: MediaOwner }>(
       (thread.turns ?? []).flatMap((turn: Data) =>
         (turn.items ?? [])
           .filter((item: Data) => item.type === "userMessage")
           .flatMap((item: Data) =>
-            (item.content ?? []).filter(
-              (part: Data) =>
-                ["image", "audio", "file"].includes(part.type) &&
-                typeof (part.url ?? part.uri) === "string",
-            ),
-          )
-          .map((part: Data) => [part.url ?? part.uri, part] as [string, Data]),
+            (item.content ?? [])
+              .filter(
+                (part: Data) =>
+                  ["image", "audio", "file"].includes(part.type) &&
+                  typeof (part.url ?? part.uri) === "string",
+              )
+              .map((part: Data) => {
+                const owner = mediaOwner(item, turn.id, thread.displayHistory?.viewGeneration);
+                return [part.url ?? part.uri, { part, owner }] as [
+                  string,
+                  { part: Data; owner: MediaOwner },
+                ];
+              }),
+          ),
       ),
     ).values(),
   ];
-  const total = (key: string) => files.reduce((sum, file) => sum + (file[key] ?? 0), 0);
-  const executionRoot = thread.worktree?.directory ?? project.root;
+  const executionRoot = thread.worktree?.directory ?? git.info?.root ?? project.root;
+  const worktree = !!(thread.worktree || git.info?.target);
   const workspaceName = project.projectless
     ? "独立任务"
     : project.name || project.root.split(/[\\/]/).pop();
@@ -162,9 +131,9 @@ export function ConversationStatusCard({
           links.add(match[0].replace(/[).,;，。；）]+$/, ""));
       }
     }
-  type Source = { id: string; part?: Data; path?: string; url?: string };
+  type Source = { id: string; part?: Data; owner?: MediaOwner; path?: string; url?: string };
   const entries: Source[] = [
-    ...attachments.map((part) => ({ id: `media:${part.url ?? part.uri}`, part })),
+    ...attachments.map(({ part, owner }) => ({ id: `media:${part.url ?? part.uri}`, part, owner })),
     ...sources.map((source) => ({ id: `file:${source.path}`, path: source.path })),
     ...[...links].map((url) => ({ id: `web:${url}`, url })),
   ];
@@ -176,6 +145,7 @@ export function ConversationStatusCard({
         threadId={thread.id}
         action={action}
         compact
+        mediaSource={entry.owner}
       />
     ) : entry.url ? (
       <TaskContext.Item
@@ -195,6 +165,7 @@ export function ConversationStatusCard({
     );
   return (
     <TaskContext
+      embedded
       title={allSources ? t("chat.context.allSources") : workspaceName}
       onBack={allSources ? () => setAllSources(false) : undefined}
       actions={
@@ -204,7 +175,7 @@ export function ConversationStatusCard({
           aria-label="刷新任务资源"
           title="刷新任务资源"
           disabled={!connected || git.loading}
-          onClick={() => refresh((n) => n + 1)}
+          onClick={refresh}
         >
           <RefreshCwIcon size={14} />
         </Button>
@@ -227,16 +198,16 @@ export function ConversationStatusCard({
           </p>
         </DelayedVisible>
         {git.review && (
-          <TaskContext.Section label="工作区变更">
+          <TaskContext.Section label={t("chat.context.changesRegion")}>
             <TaskContext.Item
               title={t("chat.context.changes")}
-              aria-label={`${t("chat.context.changes")} · ${t("chat.context.changeScope", { count: files.length })} · +${intl.formatNumber(total("additions"))} −${intl.formatNumber(total("deletions"))}`}
+              aria-label={`${t("chat.context.changes")} · ${t("chat.context.changeScope", { count: files.length })} · +${intl.formatNumber(additions)} −${intl.formatNumber(deletions)}`}
               icon={<ReviewPanelIcon />}
               onClick={() => onPanel("改动")}
               meta={
                 <span className="diff-count">
-                  <b>+{intl.formatNumber(total("additions"))}</b>
-                  <em>−{intl.formatNumber(total("deletions"))}</em>
+                  <b>+{intl.formatNumber(additions)}</b>
+                  <em>−{intl.formatNumber(deletions)}</em>
                 </span>
               }
             />
@@ -244,7 +215,13 @@ export function ConversationStatusCard({
         )}
         <TaskContext.Section label={t("resources.workspace")}>
           <p className="task-resource-note">
-            {t(thread.cloud ? "resources.cloud" : "resources.local")}
+            {t(
+              thread.cloud
+                ? "resources.cloud"
+                : worktree
+                  ? "resources.worktree"
+                  : "resources.local",
+            )}
           </p>
           <TaskContext.Item
             title={executionRoot}
@@ -262,11 +239,11 @@ export function ConversationStatusCard({
                 threadId: thread.id,
                 path: ".",
               })
-                .catch((cause: Error) => setWorkspaceError(cause.message))
+                .catch((cause: Error) => setWorkspaceError(errorText(t, cause)))
                 .finally(() => setOpeningWorkspace(false));
             }}
           />
-          {!git.loading && git.info?.branch && (
+          {git.info?.branch && (
             <TaskContext.Item
               title={`${t("resources.branch")} · ${git.info.branch}`}
               onClick={() => onPanel("改动")}
@@ -287,15 +264,17 @@ export function ConversationStatusCard({
           onOpen={onAgent}
           summary={{ onOpen: onAgents ?? (() => onPanel("子代理")) }}
         />
-        <TaskContext.Sources
-          collapseLabel={t("chat.context.collapseSources")}
-          expandLabel={t("chat.context.expandSources")}
-          items={entries}
-          onAdd={onAddSource}
-          onViewAll={() => setAllSources(true)}
-        >
-          {renderSource}
-        </TaskContext.Sources>
+        {entries.length > 0 && (
+          <TaskContext.Sources
+            title={t("chat.context.sources")}
+            collapseLabel={t("chat.context.collapseSources")}
+            expandLabel={t("chat.context.expandSources")}
+            items={entries}
+            onViewAll={() => setAllSources(true)}
+          >
+            {renderSource}
+          </TaskContext.Sources>
+        )}
         {scheduledTask ? (
           <section
             className="task-resources-section"
@@ -317,7 +296,7 @@ export function ConversationStatusCard({
             project={project}
             thread={thread}
             action={action}
-            onAdd={onAddSchedule}
+            hideWhenEmpty
             onOpen={onOpenSchedule}
           />
         )}
@@ -369,6 +348,22 @@ export function ConversationStatusCard({
               </Button>
             ))}
           </section>
+        )}
+        {(onAddSource || onAddSchedule) && (
+          <div className="task-resources-footer">
+            {onAddSource && (
+              <Button variant="ghost" size="sm" onClick={onAddSource}>
+                <PlusIcon size={14} />
+                {t("chat.context.addSource")}
+              </Button>
+            )}
+            {onAddSchedule && (
+              <Button variant="ghost" size="sm" onClick={onAddSchedule}>
+                <PlusIcon size={14} />
+                {t("chat.context.addSchedule")}
+              </Button>
+            )}
+          </div>
         )}
       </div>
       {allSources && (

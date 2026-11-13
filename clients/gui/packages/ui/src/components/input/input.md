@@ -21,14 +21,6 @@ exports: ["Input", "inputVariants"]
 
 本合同覆盖同模块导出的整组组件：Input, inputVariants。真实API读取生成的TypeScript声明。
 
-## 状态
-
-`R-INPUT-001` 默认、xs/sm/lg、只读、禁用、无效及文件字段。
-
-## 行为
-
-`R-INPUT-002` 原生输入事件、ref和输入法沿原控件，不因外观迁移改变提交。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。
@@ -40,8 +32,6 @@ exports: ["Input", "inputVariants"]
 ## 规则
 
 引用 [R-UI-COMMON-003](../../../README.md#共同合同)。
-
-`R-INPUT-003` `unstyled` 仅用于已经拥有完整外观的组合，如会话搜索与重命名弹层。它保留原生输入、输入法、事件、disabled 和 ref，不应用尺寸与外观 recipe。组合负责布局和可见焦点；普通字段仍使用原有 size。
 
 ## 示例
 

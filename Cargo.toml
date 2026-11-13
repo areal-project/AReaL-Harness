@@ -1,10 +1,10 @@
 [workspace]
-members = ["core/plugins", "core/mcp", "core/config", "core/protocol", "core/engine", "core/app-server", "core/server", "core/service-host", "core/local-service", "clients/tui", "clients/cli",
+members = ["core/host", "core/plugins", "core/mcp", "core/config", "core/protocol", "core/engine", "core/app-server", "core/server", "core/service-host", "core/local-service", "clients/tui", "clients/cli",
     "runtime/protocol", "runtime/host-tools", "runtime/client", "runtime/supervisor", "runtime/exec-native", "runtime/daemon", "runtime/fs-helper"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.8"
+version = "0.1.19"
 edition = "2024"
 rust-version = "1.94"
 license = "Apache-2.0"
@@ -54,6 +54,7 @@ areal-mcp = { path = "core/mcp" }
 areal-protocol = { path = "core/protocol" }
 areal-config = { path = "core/config" }
 areal-local-service = { path = "core/local-service" }
+areal-host = { path = "core/host" }
 areal-engine = { path = "core/engine" }
 areal-app-server = { path = "core/app-server" }
 areal-runtime-protocol = { path = "runtime/protocol" }
@@ -64,6 +65,7 @@ areal-runtime-exec-native = { path = "runtime/exec-native" }
 
 [profile.release]
 lto = "thin"
+strip = "symbols"
 
 [profile.dev.package.sha2]
 opt-level = 3

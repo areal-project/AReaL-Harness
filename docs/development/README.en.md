@@ -83,7 +83,7 @@ GUI acceptance cleanup checks reuse the product's native Core launcher and query
 |---|---|
 | Formatting | `make fmt` / `make fmt-check` |
 | Static analysis | `make lint` |
-| Change-scoped local checks | `make check-changed CI_BASE=<ref>`; `ARGS=--plan` prints the plan, with selected-check outcomes and unavailable prerequisites reported separately |
+| Change-scoped local checks | `make check-changed CI_BASE=<ref>`; `ARGS=--phase=push` runs push checks, `ARGS=--phase=full` runs the full plan, and `ARGS=--plan` only lists the plan; unexecuted checks are reported separately |
 | Rust / SDK / scripts | `make test` / `make sdk-test` / `make script-test` |
 | Regular regression | `make verify` |
 | Native integration | `make verify-harness`, including regular regression |
@@ -99,7 +99,7 @@ To test from a fixed artifact path, build and deploy Core and Runtime from the s
 
 `make integration-boundaries` checks that the product, release entry points and default Make dependency graph do not load optional platform adapters; `make script-test` includes it.
 
-See [testing](testing.en.md) for coverage. Pass arguments with `make tui ARGS='--prompt hello'`. `make release` writes to `target/release`; `make docs` generates Rust API documentation.
+See [testing](testing.en.md) for coverage, and [agent environment and verification layers](agent-environment.en.md) for what the cloud covers and what needs a Mac. Pass arguments with `make tui ARGS='--prompt hello'`. `make release` writes to `target/release`; `make docs` generates Rust API documentation.
 
 For request-projection changes, also run `cargo test --locked -p areal-engine --test runtime_context_projection --test http_model` to check chronology, counters and guidance changes, guidance restoration after compaction, original user/tool content, provider reasoning and default protocol behavior. Validate this separately from capture coverage above: a stable prefix or fewer bytes cannot replace actual returned tokens, task acceptance and source-isolated comparisons.
 
@@ -108,8 +108,6 @@ For request-projection changes, also run `cargo test --locked -p areal-engine --
 The project uses [Apache-2.0](../../LICENSE). Cargo workspace and npm packages declare the same license. Both SDKs include LICENSE; `scripts/package.py` copies it into desktop bundles and records its checksum. Third-party materials retain their original licenses and copyright notices.
 
 `make smoke` also verifies optional trajectory export: the Agent returns while the local receiver responds with 503, the independent worker drains the queue after Core exits, and disabling export stops the worker. It also covers re-enabling failed 401 records within the five-second automatic spawn throttle, the first explicit retry after killing the worker, and concurrent retries preserving one worker, serialized sends, and no duplicate acceptance. Run `node scripts/trajectory-smoke.mjs` separately; `AREAL_TRAJECTORY_FIXTURE_OUTPUT` saves real OTLP protobuf for receiver interoperability tests, containing only local fixture data. Set `AREAL_TRAJECTORY_SMOKE_OUTPUT` to save a JSON acceptance record with actual spawn timestamps, retry timing, and concurrency observations.
-
-`pnpm --dir clients/gui run test:trajectory-native` checks the real desktop backend, Core, Runtime and uploader with isolated local model/receiver fixtures: enabling a Core started with capture disabled waits for active work to finish before safe restart; disabling retains failed payloads; re-enabling resumes them. These tests prove control and delivery invariants without measuring general Agent capability.
 
 `node scripts/trajectory-semantics-smoke.mjs` uses a real owned Core/Runtime with local model and receiver fixtures, covering multi-round tools, child Agents, a model change between Turns in the same thread, failures, and streaming cancellation. `make smoke` includes this check. Actual HTTP model inputs and OTLP protobuf are saved to `out/trajectory-semantics/` by default; `AREAL_TRAJECTORY_SEMANTICS_OUTPUT` overrides the directory for receiver interoperability checks. The script uses isolated temporary home, state, and workspace directories without reading user configuration.
 
@@ -159,16 +157,31 @@ Do not recursively run `mbx adopt` over long-running Core processes, fixed-path 
 The shared cache does not bound ordinary `target` growth. Use the existing cleanup entry point's budget mode for temporary worktrees; the default is a preview:
 
 ```sh
-make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-free-gib 30 --report /private/tmp/worktree-cache-preview.json'
+make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-free-gib 30 --min-idle-hours 72 --report /private/tmp/worktree-cache-preview.json'
 ```
 
-After reviewing the preview, add `--apply` and choose a separate report path for each run. This mode selects existing secondary worktrees registered with this repository's Git checkout. It always excludes the primary worktree and rejects `--root` and `--no-worktrees` overrides. It only collects `deps`, `incremental`, `build` and `.fingerprint` under identified Cargo profiles. Profile executables, shells, complete bundles, delivery directories, dependencies and symlinks remain. Missing worktree registrations are skipped, not removed.
+After reviewing the preview, add `--apply` and choose a separate report path for each run. This mode selects existing secondary worktrees registered with this repository's Git checkout, including those created by Codex or T3 Code, without guessing scope from tool directory names. It always excludes the primary worktree and rejects `--root` and `--no-worktrees` overrides. It collects non-executable files in `deps`, `incremental`, `build` and `.fingerprint` under identified Cargo profiles, plus non-executable `.rlib`, `.rmeta`, `.o` and `.d` files directly in profiles with a `.cargo-lock`, even after cache directories have been emptied. Executables, dynamic libraries, shells, complete bundles, delivery directories, dependencies and symlinks remain, including inside cache directories. Missing worktree registrations are skipped, not removed. The report's `worktree_targets` lists each worktree's default target scan status and candidate path count; zero candidates does not mean the target occupies no space.
 
-The 40 GiB budget covers estimated allocated blocks across secondary worktree caches, separately from the mbx shared-cache budget. When over budget or below 30 GiB free, older caches are selected by profile-directory modification time; caches within budget remain to avoid clearing them on every run. Directory times are not exact LRU, and APFS shared blocks make estimates differ from recovered space. Each deletion holds Cargo locks and rechecks activity. Any open file in the same profile, or a build/debug process in that worktree, protects the entire group. A profile that cannot be measured is retained and reported without blocking other groups. Active caches and unrelated data can prevent meeting either threshold; the report records remaining pressure.
+The 40 GiB budget covers estimated allocated blocks across secondary worktree caches, separately from the mbx shared-cache budget. Reusable caches are protected first: worktrees with staged, unstaged or non-ignored untracked changes retain their entire cache group. Profiles in clean worktrees must be idle for at least 72 hours before budget collection; adjust this window with `--min-idle-hours`. Activity is the latest write time of files and directories within the profile and that worktree's Git index and HEAD reflog. This covers file rewrites that leave directory times unchanged, and recent commits or checkouts. Git inspection disables optional locks so the scan does not refresh the index itself. This is not an exact read LRU.
+
+Only when over budget or below 30 GiB free are eligible cold caches selected from oldest to newest activity. Disk pressure never overrides the idle window or worktree-change protection, preventing deletion of dependencies and fingerprints between builds that would force recompilation. Each deletion holds Cargo locks and rechecks reuse state and process activity. Any open file in the same profile, or a build/debug process in that worktree, protects the entire group. A profile that cannot be measured is retained and reported; unknown Git or file activity retains caches and returns nonzero. The report's `cache_policy.min_idle_hours` and `retained-recent` / `retained-worktree-dirty` statuses explain retention. Protected caches and unrelated data can prevent meeting either threshold; the report records remaining pressure. APFS shared blocks make allocation estimates differ from recovered space.
 
 In Codex, a heartbeat attached to this chat can run the command every 30 minutes with `--apply` and separate reports. Stay quiet when nothing is deleted or normal activity prevents collection; notify only for actual collection, failure or unresolved disk pressure. The automation reuses this mode, without invoking full bundle cleanup or stopping builds or services. It does not migrate targets. Primary-worktree caches and complete GUI/Core bundles continue to use the on-demand cleanup below.
 
 ## Validation artifact retention
+
+### Collect primary and custom targets on demand
+
+The temporary-worktree mode excludes primary targets, custom `CARGO_TARGET_DIR` directories and unregistered build copies. Preview these with the separate intermediate-file mode, which defaults to the cleanup script's primary checkout `target` only:
+
+```sh
+make artifact-cleanup ARGS='--rust-intermediates --report /private/tmp/rust-primary-preview.json'
+make artifact-cleanup ARGS='--rust-intermediates --target-root /path/to/checkout/custom-target --report /private/tmp/rust-custom-preview.json'
+```
+
+Repeat `--target-root` to select multiple real directories inside Cargo checkouts; only profiles with `.cargo-lock` are recognized. This mode skips GUI/Core bundle retention and loose-output deletion, does not implicitly scan other worktrees, and is mutually exclusive with `--temporary-worktrees`, `--root` and `--no-worktrees`. After review, add `--apply` with a new report path. It removes regular intermediate files individually from the four cache directories, retaining executable-bit files, dynamic/static libraries, shells, release archives, manifest-owned bundles, apps, dependency directories and symlinks. Profile-level files remain. Open files anywhere in the profile, build/debug processes and Cargo locks block collection. File identity is checked before deletion; changed retained entries or deletion failures stop execution and leave a partial receipt.
+
+Reports identify selected and excluded scopes and record `free_before_bytes` and `free_after_bytes`. Concurrent writes affect those readings; allocated-block estimates cannot replace them. Every mode refuses to overwrite an existing report. Automatic collection still uses temporary-worktree mode only. Primary/custom builds, Codex sessions/evidence, dependencies, installations and release packages require their own retention policies and explicit scope authorization.
 
 Run `make artifact-cleanup` to preview AReaL artifacts under `~/Documents/Codex` and this repository's registered worktrees. The default is read-only. GUI packaging evidence identifies rounds, with executable/Core completeness checks; matching app/ZIP copies belong to the same round. For standalone Core, the command retains the newest five complete, manifest-verified bundle versions, deduplicated by build identity and file hashes. Cargo profile directories are mutable build outputs and are never counted as historical rounds. Loose profile outputs are removed only when all three binaries match a known complete bundle and at least five verified bundle versions remain; unidentified outputs remain.
 

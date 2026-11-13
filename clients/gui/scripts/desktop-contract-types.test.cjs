@@ -11,6 +11,66 @@ const {
 } = require("../packages/workbench/client/desktop-contract.cjs");
 
 const cases = [
+  ["recovery", { operation: "inspect" }, { kind: "none" }, { kind: "none", projects: [] }],
+  [
+    "recovery",
+    {
+      operation: "importProvider",
+      requestId: "original",
+      providerId: "old",
+      templateDigest: "digest",
+    },
+    {
+      requestId: "original",
+      providerId: "restored",
+      templateDigest: "digest",
+      state: "admissionUnknown",
+    },
+    { requestId: "original", providerId: "restored", state: "failed" },
+  ],
+  [
+    "recovery",
+    { operation: "history", projectId: "project", threadId: "thread" },
+    {
+      projectId: "project",
+      threadId: "thread",
+      snapshotId: "digest",
+      serviceGeneration: "old",
+      capturedAt: 1,
+      readOnly: true,
+      attachments: "unavailable",
+      page: {},
+    },
+    { readOnly: false },
+  ],
+  [
+    "recovery",
+    { operation: "openWorkspace" },
+    { projectId: "space-project" },
+    { workspace: "/arbitrary" },
+  ],
+  [
+    "recovery",
+    { operation: "inspect" },
+    {
+      kind: "space",
+      spaceId: "space",
+      manifestDigest: "digest",
+      workspace: "/new",
+      hasExistingData: true,
+      providerCatalogState: "available",
+      scheduledTasks: [],
+      taskCatalogUnavailable: [],
+      tasksTruncated: false,
+      history: [],
+      historyTruncated: false,
+      previousHost: { hostId: null, generation: null, stopState: "admissionUnknown" },
+      projects: [],
+      providers: [],
+      tasks: "notImported",
+    },
+    { tasks: "imported" },
+  ],
   [
     "prepareCreator",
     { projectId: "project" },

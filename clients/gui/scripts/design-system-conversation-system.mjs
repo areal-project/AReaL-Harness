@@ -204,9 +204,9 @@ export async function runConversationSystem(page, scratch, checks) {
   );
   await preview.getByRole("button", { name: "展开关联项目 ZCode", exact: true }).click();
   await preview.getByText("/preview/workspace/ZCode", { exact: true }).waitFor();
-  await sources.getByRole("button", { name: "折叠来源 Sources 收起", exact: true }).click();
+  await sources.getByRole("button", { name: "来源 收起", exact: true }).click();
   assert.equal(await sources.getByRole("button", { name: /^查看来源：/ }).count(), 0);
-  await sources.getByRole("button", { name: "展开来源 Sources 展开", exact: true }).click();
+  await sources.getByRole("button", { name: "来源 展开", exact: true }).click();
   await preview.getByLabel("来源数量", { exact: true }).selectOption("3");
   assert.equal(await sources.getByRole("button", { name: /^查看来源：/ }).count(), 3);
   assert.equal(await sources.getByRole("button", { name: /查看全部来源/ }).count(), 0);

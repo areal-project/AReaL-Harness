@@ -2,7 +2,7 @@
 "use strict";
 const { desktopError } = require("@areal/workbench/desktop-contract");
 const { modelRecord } = require("@areal/workbench/core-model-contract");
-const { validToolInput } = require("./browser-tool.cjs");
+const { validToolInput } = require("@areal/workbench-service/desktop/core/browser-tool.cjs");
 /** @typedef {import('./preview-native/model.js').HostRequest|import('./preview-native/model.js').DiscoveryRequest} BrowserHostRequest */
 /** The Desktop service adds authenticated identity to the already validated Core browser tool input. */
 /** @param {unknown} value @returns {BrowserHostRequest} */
@@ -60,6 +60,20 @@ function browserHostFailure(request, error) {
             reason === "navigation_timeout" || reason === "navigation_interrupted"
               ? reason
               : "action_unconfirmed",
+        }
+      : {}),
+    ...(request.phase === "prepare" && /not_sent|target_unavailable/.test(message)
+      ? {
+          dispatch: "not_sent",
+          reason:
+            reason === "ax_target_invalid" ||
+            reason === "content_quads_unavailable" ||
+            reason === "target_outside_viewport" ||
+            reason === "hit_target_mismatch"
+              ? reason
+              : message === "target_unavailable"
+                ? "target_unavailable"
+                : "action_not_sent",
         }
       : {}),
     error:

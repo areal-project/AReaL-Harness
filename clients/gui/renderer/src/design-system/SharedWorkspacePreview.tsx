@@ -160,7 +160,6 @@ export function SharedWorkspacePreview({ dark }: { dark: boolean }) {
                   action={action}
                   dark={dark}
                   executionBlocked={false}
-                  onReturn={close}
                   onPanel={() => setSettings(true)}
                 />
               ) : (

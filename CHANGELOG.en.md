@@ -2,7 +2,7 @@
 
 # Changelog
 
-## GUI 0.1.18 (Unreleased)
+## GUI 0.1.18
 
 ### Fixed and changed
 
@@ -12,7 +12,9 @@
 - Show reasoning efforts allowed by the model configuration while keeping Fast independently selectable.
 - Show copy, branch and time together after a turn ends. Center pause, retry recovery, model change and compaction notices between separator lines. Align control tooltips, focus and motion feedback.
 
-Source preparation only; installation packages and update channels have not been published.
+### Install and upgrade
+
+macOS Apple Silicon users can update through the production in-app channel or download the signed, notarized DMG from the [release page](https://github.com/areal-project/AReaL-Harness/releases/tag/gui-v0.1.18) for manual installation. An isolated native update from 0.1.17 to 0.1.18 is verified. Back up configuration and history, and install once background work is idle. Before replacing the app manually, safely stop the backend and quit; confirm 0.1.18 in About after reopening. If older installation checks in 0.1.13/0.1.14 block the update, use the DMG once.
 
 ## GUI 0.1.17
 
@@ -61,14 +63,28 @@ This macOS Apple Silicon release is distributed as a Developer ID-signed, Apple-
 
 In very narrow Side panels, model controls can extend beyond the panel. Widen the panel if this occurs.
 
-## CLI / TUI 0.1.8 (Unreleased)
+## CLI / TUI 0.1.8
 
 ### Changes
 
 - Advance the shared source version for CLI, TUI and their bundled Core and Runtime.
 - Apply an explicit CLI `--model` before creating a session, so an unavailable default provider no longer causes a misleading “thread not found” error. Missing default providers report a model configuration error.
 
-Installation packages and Homebrew updates have not been published; installation instructions still refer to publicly available versions.
+### Install and upgrade
+
+[Download 0.1.8](https://github.com/areal-project/AReaL-Harness/releases/tag/v0.1.8), including the complete archive for your platform, installer and SHA256 checksums. Supports macOS Apple Silicon (macOS 15+) and Linux x86_64 (glibc 2.35+; restricted execution requires `/usr/bin/bwrap` and usable user namespaces). macOS CLI binaries retain ad-hoc signatures without Developer ID distribution signing or Apple notarization.
+
+Both platforms can install through the public Homebrew tap:
+
+```sh
+brew tap areal-project/tap
+brew install areal-project/tap/areal
+brew test areal-project/tap/areal
+areal --version
+areal
+```
+
+Expect `areal 0.1.8`; `areal` opens the TUI. Existing Homebrew users should finish tasks and safely stop the relevant services before running `brew update` and `brew upgrade --formula areal-project/tap/areal`. See the [installation guide](docs/guides/installation.en.md) for standalone installation and upgrades. Standalone entry updates retain complete old bundles and running tasks; explicitly hand over the backend once idle. This version writes history format 16. Back up configuration and history before upgrading; older Core versions may require restoring a compatible backup when rolling back.
 
 ## CLI / TUI 0.1.7
 

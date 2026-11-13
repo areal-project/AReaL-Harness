@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
-import type { Attachment } from "@areal/workbench/desktop-contract/conversation";
+import type { Attachment } from "./services.js";
 import type { Data } from "./services.js";
+import { executionGeneration } from "./serviceGeneration.js";
 
 export type ComposerUploadState =
   | { state: "pending" | "reading" | "uploading" }
@@ -15,8 +16,7 @@ type Preparation = {
 const preparations = new Map<string, Preparation>();
 const listeners = new Set<() => void>();
 export function composerUploadOwner(project: Data, threadId: string) {
-  const core = project.state?.threads?.[threadId]?.executionCore ?? project.core;
-  return JSON.stringify([project.id, threadId, core?.instanceId ?? null]);
+  return JSON.stringify([project.id, threadId, executionGeneration(project, threadId) ?? null]);
 }
 export function composerUploads(owner: string) {
   const current = preparations.get(owner);

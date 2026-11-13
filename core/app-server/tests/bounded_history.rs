@@ -889,6 +889,89 @@ impl Model for StreamingModel {
 }
 
 #[tokio::test]
+async fn bounded_observe_interrupt_delivers_terminal_across_observation_refresh() {
+    let dir = tempfile::tempdir().unwrap();
+    let (_sender, receiver) = tokio::sync::mpsc::channel(8);
+    let model = StreamingModel(tokio::sync::Mutex::new(Some(receiver)));
+    let engine = Engine::open(dir.path(), Arc::new(model), Limits::default()).unwrap();
+    let thread = engine
+        .create("/interrupt-observation".into())
+        .await
+        .unwrap();
+    let turn = engine
+        .start(&thread.id, vec![areal_protocol::Input::text("stream")])
+        .await
+        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let stop = CancellationToken::new();
+    let server = tokio::spawn(areal_app_server::serve(
+        listener,
+        engine.clone(),
+        stop.clone(),
+    ));
+    let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{address}"))
+        .await
+        .unwrap();
+    let (reply, _) = socket_call(
+        &mut socket,
+        1,
+        "initialize",
+        json!({"clientInfo":{"name":"interrupt-observation","version":"1"}}),
+    )
+    .await;
+    assert!(reply.get("error").is_none(), "{reply}");
+    socket
+        .send(Wire::Text(
+            json!({"method":"initialized"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    let params = json!({"threadId":thread.id,"mode":"conversation","maxBytes":65536});
+    let (reply, _) = socket_call(&mut socket, 2, "areal/thread/observe", params.clone()).await;
+    assert!(reply.get("error").is_none(), "{reply}");
+    let (reply, mut events) = socket_call(
+        &mut socket,
+        3,
+        "turn/interrupt",
+        json!({"threadId":thread.id,"turnId":turn.id}),
+    )
+    .await;
+    assert!(reply.get("error").is_none(), "{reply}");
+    let (reply, refreshed) = socket_call(&mut socket, 4, "areal/thread/observe", params).await;
+    assert!(reply.get("error").is_none(), "{reply}");
+    events.extend(refreshed);
+    let terminal = loop {
+        if let Some(index) = events
+            .iter()
+            .position(|event| event["method"] == "turn/completed")
+        {
+            break events.remove(index);
+        }
+        events.push(receive(&mut socket).await);
+    };
+    assert_eq!(terminal["params"]["threadId"], thread.id);
+    assert_eq!(terminal["params"]["turn"]["id"], turn.id);
+    assert_eq!(terminal["params"]["turn"]["status"], "interrupted");
+    assert_eq!(
+        engine
+            .read(&thread.id, true)
+            .await
+            .unwrap()
+            .turns
+            .last()
+            .unwrap()
+            .status,
+        areal_protocol::TurnStatus::Interrupted
+    );
+    socket.close(None).await.unwrap();
+    drop(socket);
+    engine.shutdown().await;
+    stop.cancel();
+    server.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn bounded_observe_during_stream_preserves_baseline_cut_and_subscription_replacement() {
     let dir = tempfile::tempdir().unwrap();
     let (sender, receiver) = tokio::sync::mpsc::channel(8);

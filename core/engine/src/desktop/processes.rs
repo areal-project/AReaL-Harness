@@ -3,6 +3,20 @@ use areal_runtime_protocol as rt;
 #[cfg(test)]
 mod tests;
 
+#[derive(Clone)]
+pub struct ProcessConnection {
+    id: String,
+    closed: CancellationToken,
+}
+impl ProcessConnection {
+    pub fn new(closed: CancellationToken) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            closed,
+        }
+    }
+}
+
 fn validate_process_admission(
     state: &State,
     identity: &str,
@@ -30,8 +44,8 @@ fn validate_process_admission(
         .and_then(|_| state.thread.turns.last())
         .and_then(|turn| turn.configuration.as_ref())
         .unwrap_or(&data.configuration);
-    if !matches!(request.lifetime.as_str(), "thread" | "turn") {
-        return Err(invalid("lifetime must be thread or turn"));
+    if !matches!(request.lifetime.as_str(), "thread" | "turn" | "connection") {
+        return Err(invalid("lifetime must be thread, turn or connection"));
     }
     if request.lifetime == "thread"
         && !config
@@ -41,10 +55,24 @@ fn validate_process_admission(
     {
         return Err(invalid("profile does not authorize thread resources"));
     }
-    if request.lifetime == "thread" && !config.read_only && !concurrent_writes {
-        return Err(invalid(
-            "thread services require trusted --allow-concurrent-writes to avoid holding the workspace write lock",
-        ));
+    if request.lifetime == "connection"
+        && !config
+            .profile
+            .as_ref()
+            .is_some_and(|p| p.allow_connection_processes)
+    {
+        return Err(Error::Rejected(Box::new(invalid(
+            "profile does not authorize connection resources",
+        ))));
+    }
+    if matches!(request.lifetime.as_str(), "thread" | "connection")
+        && !config.read_only
+        && !concurrent_writes
+    {
+        return Err(invalid(format!(
+            "{} services require trusted --allow-concurrent-writes to avoid holding the workspace write lock",
+            request.lifetime
+        )));
     }
     if request.lifetime == "turn"
         && state
@@ -139,6 +167,28 @@ impl Engine {
         identity: String,
         request: ProcessStart,
     ) -> Result<Value> {
+        self.start_managed_process(identity, request, None).await
+    }
+    pub async fn process_start_on_connection(
+        self: &Arc<Self>,
+        identity: String,
+        request: ProcessStart,
+        connection: ProcessConnection,
+    ) -> Result<Value> {
+        self.start_managed_process(identity, request, Some(connection))
+            .await
+    }
+    async fn start_managed_process(
+        self: &Arc<Self>,
+        identity: String,
+        request: ProcessStart,
+        connection: Option<ProcessConnection>,
+    ) -> Result<Value> {
+        if request.lifetime == "connection" && connection.is_none() {
+            return Err(invalid(
+                "connection resources require an authenticated connection",
+            ));
+        }
         self.mutate(move|engine|async move{
             // 启动与交付使用同一准入门；已启动进程仍由 Runtime 计数与收尾证明。
             let _workspace=tokio::select!{biased;
@@ -151,6 +201,7 @@ impl Engine {
             let cell=engine.cell(&request.thread_id).await?;
             if cell.state.lock().await.thread.is_read_only_side() { return Err(invalid("SIDE_POLICY_VIOLATION")); }
             let _resources=cell.resource_gate.lock().await;
+            if request.lifetime=="connection" && connection.as_ref().is_some_and(|lease|lease.closed.is_cancelled()) { return Err(Error::Closed); }
             let hash=digest(&request)?;
             let cwd=crate::tools::workspace_uri(&request.cwd,&runtime.workspace).map_err(invalid)?;
             if request.timeout_ms.is_some_and(|v|v==0||v>86400000)||request.argv.iter().map(|s|s.len()).sum::<usize>()>64*1024{return Err(invalid("invalid process budget"));}
@@ -171,9 +222,10 @@ impl Engine {
                 // Scope 查询期间 Turn 可以取消或更换；以当前状态重新检查准入，不回写旧快照。
                 if let Some(result)=validate_process_admission(&state,&identity,&request,&hash,concurrent_writes)?{return Ok(result);}
                 if process_admission_version(&state)!=version{return Err(Error::Conflict);}
+                if request.lifetime=="connection" && connection.as_ref().is_some_and(|lease|lease.closed.is_cancelled()) { return Err(Error::Closed); }
                 let turn=state.active.as_ref().map(|a|a.id.clone());
                 let mut candidate=state.thread.clone();let data=candidate.desktop.get_or_insert_with(Default::default);
-                let record=ManagedProcess{cleanup_attestation:None,id:id(),runtime_epoch:runtime.client.info().runtime_epoch.clone(),scope_operation_id:runtime.client.operation_id(),scope_id:None,operation_id:runtime.client.operation_id(),process_id:None,lifetime:request.lifetime.clone(),turn_id:if request.lifetime=="turn"{turn}else{None},owner:identity.clone(),argv:request.argv.clone(),state:"accepted".into(),cleanup_confirmed:false,error:None,inputs:Vec::new()};
+                let record=ManagedProcess{cleanup_attestation:None,id:id(),runtime_epoch:runtime.client.info().runtime_epoch.clone(),scope_operation_id:runtime.client.operation_id(),scope_id:None,operation_id:runtime.client.operation_id(),process_id:None,lifetime:request.lifetime.clone(),turn_id:if request.lifetime=="turn"{turn}else{None},connection_id:connection.as_ref().filter(|_|request.lifetime=="connection").map(|lease|lease.id.clone()),owner:identity.clone(),argv:request.argv.clone(),state:"accepted".into(),cleanup_confirmed:false,error:None,inputs:Vec::new()};
                 data.processes.push(record.clone());
                 remember(data,&identity,&request.request_id,"areal/process/start",hash,json!({"id":record.id,"runtimeEpoch":record.runtime_epoch}));
                 engine.persist(&candidate).await?;state.thread=candidate;
@@ -499,12 +551,59 @@ impl Engine {
         })
         .await
     }
+    pub async fn close_connection_processes(
+        self: &Arc<Self>,
+        connection: ProcessConnection,
+    ) -> Result<()> {
+        connection.closed.cancel();
+        self.mutate(move |engine| async move {
+            let cells: Vec<_> = engine.threads.read().await.values().cloned().collect();
+            let mut failure = None;
+            for cell in cells {
+                let owned = cell
+                    .state
+                    .lock()
+                    .await
+                    .thread
+                    .desktop
+                    .as_ref()
+                    .is_some_and(|data| {
+                        data.processes.iter().any(|process| {
+                            !process.cleanup_confirmed
+                                && process.connection_id.as_deref() == Some(&connection.id)
+                        })
+                    });
+                if !owned {
+                    continue;
+                }
+                if let Err(error) = engine
+                    .close_managed_for(&cell, None, Some(&connection.id))
+                    .await
+                {
+                    failure.get_or_insert(error);
+                }
+            }
+            failure.map_or(Ok(()), Err)
+        })
+        .await
+    }
     pub(crate) async fn close_managed(&self, cell: &Cell, turn: Option<&str>) -> Result<()> {
+        self.close_managed_for(cell, turn, None).await
+    }
+    async fn close_managed_for(
+        &self,
+        cell: &Cell,
+        turn: Option<&str>,
+        connection: Option<&str>,
+    ) -> Result<()> {
         let _resources = cell.resource_gate.lock().await;
         let processes = desktop(&cell.state.lock().await.thread).processes;
         let mut failure = None;
         for process in processes.into_iter().filter(|p| {
             !p.cleanup_confirmed
+                && connection.is_none_or(|id| {
+                    p.lifetime == "connection" && p.connection_id.as_deref() == Some(id)
+                })
                 && turn
                     .is_none_or(|turn| p.lifetime == "turn" && p.turn_id.as_deref() == Some(turn))
         }) {

@@ -1,3 +1,4 @@
+import { readTurnToolDetails } from "./support/tool-history.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -7,7 +8,12 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
+import { closeSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
+import {
+  selectConversation,
+  selectCreatedConversation,
+  captureSmokeFailure,
+} from "./smoke-navigation.mjs";
 
 // B-14–B-16: a local takeover fence and a lost native input receipt on one real Core turn.
 const faultMode = process.argv[2] ?? "full";
@@ -36,7 +42,9 @@ assert.ok(
 const executable = packaged ? resolve(process.env.AREAL_GUI_EXECUTABLE) : require("electron");
 const resources = packaged ? join(dirname(dirname(executable)), "Resources") : null;
 const bundled = packaged
-  ? require("../app/src/core/bundle.cjs").verifyCoreBundle(resources, { hashes: true })
+  ? require("../../../services/workbench/src/desktop/core/bundle.cjs").verifyCoreBundle(resources, {
+      hashes: true,
+    })
   : null;
 const coreBinary =
   bundled?.paths.areal ?? process.env.AREAL_CORE_BIN ?? resolve(root, "target/debug/areal");
@@ -249,6 +257,7 @@ const startedAt = new Date().toISOString(),
   errors = [];
 let app,
   page,
+  coreReader,
   passed = false,
   projectId,
   threadId,
@@ -266,6 +275,25 @@ async function command(name, params) {
   return result.value;
 }
 async function thread() {
+  if (faultMode === "navigation") {
+    if (!coreReader) {
+      const services = [];
+      for (const directory of await readdir(join(env.AREAL_HARNESS_SERVICE_HOME, "services"))) {
+        const descriptor = JSON.parse(
+          await readFile(
+            join(env.AREAL_HARNESS_SERVICE_HOME, "services", directory, "service.json"),
+            "utf8",
+          ),
+        );
+        if (descriptor.workspace === workspace && descriptor.state === "ready")
+          services.push(descriptor);
+      }
+      assert.equal(services.length, 1, "one isolated Core owns the browser workspace");
+      const { connect } = await import("../../../examples/desktop-api/client.mjs");
+      coreReader = await connect(services[0].endpoint, services[0].authFile);
+    }
+    return (await coreReader.call("thread/read", { threadId, includeTurns: true })).thread;
+  }
   return (await snapshot()).projects.find((item) => item.id === projectId)?.state?.threads?.[
     threadId
   ];
@@ -278,19 +306,9 @@ async function terminalTurn(previous) {
       ? last
       : null;
   }, `terminal ${phase} turn`);
-  const deferred = turn.items.filter(
-    (item) => item.type === "historyDeferred" && item.originalType === "dynamicToolCall",
-  );
-  if (!deferred.length) return turn;
-  const history = { projectId, threadId, viewId: "browser-human-tool-records" };
-  await command("history", { ...history, operation: "acquire" });
-  try {
-    for (const item of deferred)
-      await command("history", { ...history, operation: "loadItem", itemId: item.id });
-    return (await thread()).turns.find((item) => item.id === turn.id);
-  } finally {
-    await command("history", { ...history, operation: "release" });
-  }
+  if (faultMode === "navigation")
+    await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="${turn.status}"]`).waitFor();
+  return readTurnToolDetails({ command, readThread: thread, projectId, threadId, turnId: turn.id });
 }
 function browserItem(turn) {
   const item = turn.items.find(
@@ -329,9 +347,15 @@ try {
   await until(async () => (await snapshot()).connection?.state === "ready", "desktop ready");
   await app.evaluate(({ app, BrowserWindow }) => {
     const { createRequire } = process.getBuiltinModule("module");
-    const { CorePreview } = createRequire(app.getAppPath() + "/package.json")(
-      "./src/core/preview.cjs",
-    );
+    const appRequire = createRequire(app.getAppPath() + "/package.json");
+    const { CorePreview } = appRequire("./src/core/preview.cjs");
+    const { PageControl } = appRequire("./src/core/preview-native/control.cjs");
+    const revoke = PageControl.prototype.revoke;
+    const revocations = (globalThis.__browserHumanRevocations = []);
+    PageControl.prototype.revoke = function (page, options) {
+      if (page.control === "agent") revocations.push(new Error("browser control revoked").stack);
+      return revoke.call(this, page, options);
+    };
     const original = CorePreview.prototype.command;
     const receipts = (globalThis.__browserHumanReceipts = []);
     CorePreview.prototype.command = function (request) {
@@ -402,7 +426,7 @@ try {
         .configurations[threadId].revision,
       options: { permissionPreset: "fullAccess" },
     });
-  await selectConversation(page, threadId);
+  await selectCreatedConversation(page, projectId, threadId);
   await app.evaluate(({ app, BrowserWindow }) => {
     app.focus({ steal: true });
     const window = BrowserWindow.getAllWindows()[0];
@@ -483,6 +507,12 @@ try {
           (item) => item.tool === "browser_v1" && item.arguments.operation === "observe",
         )
       : browserItem(initialTurn);
+  assert.ok(initial, "Core history includes the initial browser observation");
+  assert.equal(
+    initial.success,
+    true,
+    `initial browser observation failed: ${JSON.stringify(initial)}`,
+  );
   const observed = JSON.parse(initial.contentItems[0].text);
   snapshotId = observed.observationId;
   targetRef = observed.nodes.find((node) => node.name === "Submit once" && node.ref)?.ref;
@@ -612,6 +642,8 @@ try {
     );
     phase = "navigationResume";
     issued = false;
+    // 核查回执先于 Renderer 投影；等原入口从“核对后发送”切回发送，再触发新请求。
+    await page.locator('[data-testid="chat-send-button"][aria-label="发送"]').waitFor();
     await page.getByTestId("chat-send-button").click();
     const resumed = await terminalTurn(previousTurns);
     assert.equal(resumed.status, "completed", JSON.stringify(resumed));
@@ -1591,7 +1623,7 @@ try {
       browserEnabled: true,
       profile: { id: "fixture", revision: "v1" },
     });
-    await selectConversation(page, second.threadId);
+    await selectCreatedConversation(page, projectId, second.threadId);
     await page.keyboard.press("Meta+t");
     const beforeSecondNativeIds = await app.evaluate(({ webContents }) =>
       webContents.getAllWebContents().map((item) => item.id),
@@ -1881,6 +1913,7 @@ try {
   if (page) await captureSmokeFailure(page, scratch, error);
   throw error;
 } finally {
+  await coreReader?.close();
   if (pausedHostPid) {
     try {
       process.kill(pausedHostPid, "SIGCONT");
@@ -1894,6 +1927,7 @@ try {
       .evaluate(() => ({
         keys: globalThis.__browserHumanKeys,
         receipts: globalThis.__browserHumanReceipts,
+        revocations: globalThis.__browserHumanRevocations,
       }))
       .catch((error) => ({ error: error.message }));
     await app
@@ -1901,8 +1935,17 @@ try {
         dialog.showMessageBox = async () => ({ response: 1 });
       })
       .catch(() => {});
-    await app.close();
+    await closeSmokeApplication(app).catch((error) => {
+      errors.push(`Electron cleanup: ${error.message}`);
+      passed = false;
+      process.exitCode = 1;
+    });
   }
+  await stopAndAssertFixtureHost(coreBinary, env, scratch, null).catch((error) => {
+    errors.push(`Host cleanup: ${error.message}`);
+    passed = false;
+    process.exitCode = 1;
+  });
   site.closeAllConnections();
   model.closeAllConnections();
   forbidden.closeAllConnections();
@@ -1914,7 +1957,7 @@ try {
   const files = [
     "app/src/core/preview.cjs",
     "app/src/core/main.cjs",
-    "app/src/core/service-protocol.cjs",
+    "../../services/workbench/src/desktop/core/service-protocol.cjs",
     "app/src/core/browser-navigation.cjs",
     "app/src/core/preview-native/navigation.cjs",
     "app/src/core/preview-native/read-session.cjs",

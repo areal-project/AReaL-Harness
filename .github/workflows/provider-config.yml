@@ -4,8 +4,8 @@ on:
     paths:
       - 'clients/gui/packages/chatgpt-provider/**'
       - 'clients/gui/packages/provider-config/**'
-      - 'clients/gui/app/src/core/providers.cjs'
-      - 'clients/gui/app/src/core/subscription.cjs'
+      - 'services/workbench/src/desktop/core/providers.cjs'
+      - 'services/workbench/src/desktop/core/subscription.cjs'
       - 'clients/gui/renderer/src/settings/**'
       - 'clients/gui/scripts/provider-*.test.mjs'
       - '.github/workflows/provider-config.yml'

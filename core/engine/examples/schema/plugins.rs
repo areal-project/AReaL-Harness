@@ -54,21 +54,8 @@ pub fn projections(responses: &mut Map<String, Value>, notifications: &mut Map<S
     );
     insert(
         &[
-            "marketplace/add",
-            "marketplace/addGit",
-            "marketplace/remove",
-            "marketplace/update",
-            "plugin/uninstall",
-        ],
-        json!({"oneOf":[catalog,object(json!({"revision":number,"catalogRefreshRequired":{"const":true}}))]}),
-    );
-    insert(
-        &[
             "plugin/read",
             "plugin/importArchive",
-            "plugin/resolve",
-            "plugin/install",
-            "plugin/configure",
             "plugin/component/configure",
         ],
         schema::<areal_plugins::PluginDetail>(),
@@ -122,10 +109,8 @@ pub fn projections(responses: &mut Map<String, Value>, notifications: &mut Map<S
         object(json!({"pluginId":string,"serverId":string,"state":{"const":"configured"}})),
     );
     insert(
-        &["plugin/connector/configure"],
-        object(
-            json!({"pluginId":string,"connectorId":string,"provider":string,"state":{"const":"mapped"}}),
-        ),
+        &["plugin/credentials/register"],
+        object(json!({"registered":number})),
     );
     let tool_metadata = object(json!({"name":string,"inputSchema":any_object}));
     let mut tool_result = object(json!({"content":array(object(json!({"type":string})))}));

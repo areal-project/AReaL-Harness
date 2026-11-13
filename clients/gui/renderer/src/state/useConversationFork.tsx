@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import { ForkTargetDialog } from "../ForkTargetDialog.js";
 import type { Action, Data } from "../services.js";
 
@@ -65,7 +66,7 @@ export function useConversationFork(
               setForkIntent((current) => (current === forkIntent ? null : current));
               if (activeConversation.current === forkIntent.route)
                 void open(forkIntent.projectId, result.threadId).catch((cause) =>
-                  setError(cause instanceof Error ? cause.message : String(cause)),
+                  setError(currentErrorText(cause)),
                 );
             }}
           />

@@ -36,6 +36,7 @@ export type SidebarNavigationProps = {
   open: (projectId: string, threadId: string) => Promise<void>;
   onOpenProjectTasks: (projectId: string) => void;
   closePanels: () => void;
+  onUpgradeHistory?: () => void;
 };
 const compareActivity = (a: Data, b: Data) =>
   b.updatedAt - a.updatedAt ||
@@ -110,7 +111,7 @@ export function useSidebarNavigation(props: SidebarNavigationProps) {
   const placementKey = (target: Data) => (target.id ? `${target.type}:${target.id}` : target.type);
   const dropRequest = (
     source: SidebarDragSource,
-    target: import("@areal/workbench/desktop-contract/library-media").SidebarItem,
+    target: import("../services.js").SidebarItem,
     edge: "before" | "after",
     anchor: string | null = null,
   ): Omit<

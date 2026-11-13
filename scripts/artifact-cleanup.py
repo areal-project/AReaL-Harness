@@ -10,8 +10,10 @@ import os
 import plistlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
+import time
 import zipfile
 from datetime import datetime, timezone
 from contextlib import contextmanager, nullcontext
@@ -76,6 +78,8 @@ def zip_identity(path):
 
 def activity(roots):
     observations = []
+    root_names = {str(root) for root in roots}
+    root_prefixes = tuple(name + "/" for name in root_names)
     try:
         ps = command(["ps", "-axo", "pid=,ppid=,comm=,args="])
         opened = command(["lsof", "-n", "-P", "-Fpcfn"])
@@ -106,7 +110,7 @@ def activity(roots):
                 value = line[1:]
                 if fd == "cwd" and pid in processes:
                     processes[pid]["cwd"] = value
-                elif any(within(Path(value), root) for root in roots):
+                elif value in root_names or value.startswith(root_prefixes):
                     observations.append({"pid": pid, "type": "open-file", "path": value})
         builders = {
             "cargo",
@@ -403,10 +407,9 @@ def rust_bundles(manifests, keep, roots, warnings):
     return public, items, len(retained_ids) >= keep
 
 
-def rust_plan(repos, roots, may_remove_loose, bundles):
+def rust_plan(repos, roots, may_remove_loose, bundles, targets=None, loose_intermediates=False):
     profiles, items = [], []
-    for repo in repos:
-        target = repo / "target"
+    for repo, target in targets if targets is not None else [(r, r / "target") for r in repos]:
         if not safe(target, roots):
             continue
         for base, dirs, _ in os.walk(target, followlinks=False):
@@ -417,13 +420,25 @@ def rust_plan(repos, roots, may_remove_loose, bundles):
                 if d not in PRUNE
                 and not (profile / d).is_symlink()
                 and not d.startswith("delivery-")
+                and not d.endswith(".app")
+                and not (profile / d / "manifest.json").is_file()
             ]
             caches = [profile / name for name in sorted(CACHE_DIRS) if safe(profile / name, roots)]
-            if not caches:
+            loose = []
+            if loose_intermediates and (profile / ".cargo-lock").is_file():
+                loose = [
+                    path
+                    for path in profile.iterdir()
+                    if safe(path, roots)
+                    and path.is_file()
+                    and not path.stat().st_mode & 0o111
+                    and path.suffix in {".rlib", ".rmeta", ".o", ".d"}
+                ]
+            if not caches and not loose:
                 continue
             dirs[:] = []
             profiles.append({"path": str(profile), "repo": str(repo)})
-            for path in caches:
+            for path in [*caches, *sorted(loose)]:
                 items.append(
                     {
                         "path": str(path),
@@ -473,9 +488,79 @@ def rust_plan(repos, roots, may_remove_loose, bundles):
     return profiles, items
 
 
+def file_identity(path):
+    info = path.lstat()
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode]
+
+
+def intermediate_files(path):
+    files, preserved = [], []
+
+    def scan_error(error):
+        raise error
+
+    entries = (
+        [(path.parent, [], [path.name])]
+        if path.is_file()
+        else os.walk(path, onerror=scan_error, followlinks=False)
+    )
+    for base, dirs, names in entries:
+        folder = Path(base)
+        for name in dirs[:]:
+            child = folder / name
+            if (
+                name in PRUNE
+                or child.is_symlink()
+                or name.endswith((".app", ".dSYM"))
+                or (child / "manifest.json").is_file()
+            ):
+                preserved.append({"path": str(child), "identity": file_identity(child)})
+                dirs.remove(name)
+        for name in names:
+            child = folder / name
+            info = child.lstat()
+            record = {
+                "path": str(child),
+                "identity": [
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_size,
+                    info.st_mtime_ns,
+                    info.st_mode,
+                ],
+            }
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_mode & 0o111
+                or child.suffix.lower()
+                in {".exe", ".dll", ".dylib", ".so", ".zip", ".dmg", ".pkg", ".a", ".sh"}
+                or name.lower().endswith(
+                    (
+                        ".tar",
+                        ".tar.gz",
+                        ".tgz",
+                        ".tar.bz2",
+                        ".tbz2",
+                        ".tar.xz",
+                        ".txz",
+                        ".tar.zst",
+                        ".tzst",
+                        ".7z",
+                    )
+                )
+                or ".so." in name
+                or name in {"manifest.json", "package-evidence.json"}
+            ):
+                preserved.append(record)
+            else:
+                record["estimated_bytes"] = info.st_blocks * 512
+                files.append(record)
+    return files, preserved
+
+
 def item_busy(item, observations):
     path = Path(item["path"])
-    if item.get("temporary_worktree"):
+    if item.get("temporary_worktree") or item.get("preserve_outputs"):
         # 定期回收保护整个 profile，直接启动的 Core/Runtime 也可能再加载伴随资源。
         return busy(Path(item["profile"]), observations, Path(item["scope"]))
     if item["kind"] == "rust-intermediate":
@@ -517,7 +602,15 @@ def remaining_cache_bytes(items):
 
 
 def measure_items(items, temporary, warnings):
-    groups = cache_groups(items).values() if temporary else [items]
+    measured = [i for i in items if i.get("preserve_outputs") and i["status"] == "eligible"]
+    for item in measured:
+        item["files"], item["preserved"] = intermediate_files(Path(item["path"]))
+        item["estimated_bytes"] = sum(f["estimated_bytes"] for f in item["files"])
+        item["size_known"] = True
+        if not item["files"]:
+            item["status"] = "retained-protected"
+    unmeasured = [i for i in items if i not in measured]
+    groups = cache_groups(unmeasured).values() if temporary else [unmeasured]
     for group in groups:
         if not group:
             continue
@@ -543,27 +636,88 @@ def free_bytes(path):
     return info.f_bavail * info.f_frsize
 
 
-def plan_cache_budget(items, budget, min_free):
+def reusable_cache_status(group, min_idle_ns, warnings):
+    repo = Path(group[0]["scope"])
+    try:
+        state = command(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(repo),
+                "status",
+                "--porcelain",
+                "--untracked-files=normal",
+            ]
+        )
+        if state.returncode:
+            raise RuntimeError("Cannot inspect worktree changes")
+        if state.stdout:
+            return "retained-worktree-dirty"
+        admin = command(
+            ["git", "--no-optional-locks", "-C", str(repo), "rev-parse", "--absolute-git-dir"]
+        )
+        if admin.returncode:
+            raise RuntimeError("Cannot inspect worktree activity")
+        latest = max(i["last_modified_ns"] for i in group)
+        for name in ["index", "logs/HEAD"]:
+            path = Path(admin.stdout.strip()) / name
+            if path.exists():
+                latest = max(latest, path.stat().st_mtime_ns)
+
+        def scan_error(error):
+            raise error
+
+        # 已有文件重写不改变父目录时间；逐文件检查避免误判刚完成的构建。
+        for base, dirs, files in os.walk(
+            group[0]["profile"], onerror=scan_error, followlinks=False
+        ):
+            for name in [".", *dirs, *files]:
+                latest = max(latest, (Path(base) / name).lstat().st_mtime_ns)
+        for item in group:
+            item["last_activity_ns"] = latest
+        if time.time_ns() - latest < min_idle_ns:
+            return "retained-recent"
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        warnings.append(
+            f"Reuse inspection unavailable; profile retained: {group[0]['profile']}: {error}"
+        )
+        return "blocked-reuse-unknown"
+    return None
+
+
+def plan_cache_budget(items, budget, min_free, min_idle_ns, warnings):
     remaining = remaining_cache_bytes(items)
     groups = cache_groups(items)
-    # 目录修改时间表示最近写入，不把复用过的缓存宣称为精确 LRU。
+    for group in groups.values():
+        if all(i["status"] in {"eligible", "retained-protected"} for i in group):
+            retained = reusable_cache_status(group, min_idle_ns, warnings)
+            if retained:
+                for item in group:
+                    item["status"] = retained
+    # 文件写入和 Git 活动只是复用信号，不把它们宣称为精确 LRU。
     ordered = sorted(
         groups.items(),
-        key=lambda pair: (max(i["last_modified_ns"] for i in pair[1]), pair[0]),
+        key=lambda pair: (
+            max(i.get("last_activity_ns", i["last_modified_ns"]) for i in pair[1]),
+            pair[0],
+        ),
     )
     selected = []
     for profile, group in ordered:
-        if any(i["status"] != "eligible" for i in group):
+        if any(i["status"] not in {"eligible", "retained-protected"} for i in group):
             for item in group:
                 if item["status"] == "eligible":
                     item["status"] = "blocked-profile"
             continue
         if remaining > budget or free_bytes(profile) < min_free:
-            selected.extend(group)
-            remaining -= sum(i["estimated_bytes"] for i in group)
+            eligible = [i for i in group if i["status"] == "eligible"]
+            selected.extend(eligible)
+            remaining -= sum(i["estimated_bytes"] for i in eligible)
         else:
             for item in group:
-                item["status"] = "retained-budget"
+                if item["status"] == "eligible":
+                    item["status"] = "retained-budget"
     return selected
 
 
@@ -585,11 +739,28 @@ def main():
     parser.add_argument(
         "--temporary-worktrees",
         action="store_true",
-        help="Only budget Rust intermediate caches in registered secondary worktrees",
+        help="Only budget non-executable Rust intermediates in registered secondary worktrees",
+    )
+    parser.add_argument(
+        "--rust-intermediates",
+        action="store_true",
+        help="Only remove non-executable Rust intermediates from explicitly selected targets",
+    )
+    parser.add_argument(
+        "--target-root",
+        action="append",
+        type=Path,
+        help="Cargo target directory for --rust-intermediates (repeatable; default: primary target)",
     )
     parser.add_argument("--cache-budget-gib", type=float, default=40, help="Secondary cache budget")
     parser.add_argument(
         "--min-free-gib", type=float, default=30, help="Free-space collection threshold"
+    )
+    parser.add_argument(
+        "--min-idle-hours",
+        type=float,
+        default=72,
+        help="Minimum idle age for temporary worktree caches; pressure never overrides this",
     )
     parser.add_argument("--json", action="store_true", help="Print the complete JSON preview")
     parser.add_argument(
@@ -601,17 +772,41 @@ def main():
     args = parser.parse_args()
     if args.keep < 1:
         parser.error("--keep must be at least 1")
-    if any(not math.isfinite(v) or v < 0 for v in [args.cache_budget_gib, args.min_free_gib]):
-        parser.error("Cache budget and free-space threshold must be finite and nonnegative")
+    if any(
+        not math.isfinite(v) or v < 0
+        for v in [args.cache_budget_gib, args.min_free_gib, args.min_idle_hours]
+    ):
+        parser.error(
+            "Cache budget, free-space threshold and idle age must be finite and nonnegative"
+        )
     if args.apply and not args.report:
         parser.error("--apply requires --report for a durable deletion receipt")
+    if args.rust_intermediates and (args.temporary_worktrees or args.root or args.no_worktrees):
+        parser.error("--rust-intermediates only accepts --target-root scope overrides")
+    if args.target_root and not args.rust_intermediates:
+        parser.error("--target-root requires --rust-intermediates")
     if args.temporary_worktrees and (args.root or args.no_worktrees):
         parser.error(
             "--temporary-worktrees selects registered worktrees; do not pass root overrides"
         )
     warnings = []
     roots = [p.expanduser().resolve() for p in (args.root or [Path.home() / "Documents/Codex"])]
-    if not args.no_worktrees:
+    targets = []
+    if args.rust_intermediates:
+        for target in args.target_root or [REPO / "target"]:
+            target = Path(os.path.abspath(target.expanduser()))
+            owner = next((p for p in target.parents if (p / "Cargo.toml").is_file()), None)
+            if not owner or not target.is_dir() or target.resolve() != target:
+                parser.error("Each target must be a real directory inside its Cargo checkout")
+            if any(
+                p.name.endswith(".app") or (p / "manifest.json").is_file()
+                for p in [target, *target.parents]
+                if within(p, owner)
+            ):
+                parser.error("Packaged targets are protected; select an independent Cargo target")
+            targets.append((owner, target))
+        roots = sorted({owner for owner, _ in targets})
+    elif not args.no_worktrees:
         primary, worktrees = registered_worktrees(warnings)
         if args.temporary_worktrees:
             roots = [p for p in worktrees if p != primary]
@@ -623,13 +818,22 @@ def main():
     if any(not p.is_dir() or p == Path("/") or p == Path.home() for p in roots):
         parser.error("Every scan root must be an existing dedicated directory")
     if args.report:
-        args.report = args.report.expanduser().resolve()
-        if any(within(args.report, r) for r in roots):
+        args.report = Path(os.path.abspath(args.report.expanduser()))
+        if os.path.lexists(args.report):
+            parser.error("--report already exists; inspect it and choose a new receipt path")
+        if any(within(args.report.resolve(), r) for r in roots):
             parser.error("--report must be outside scan roots")
+    free_before = free_bytes(REPO)
     observations, activity_error = activity(roots)
     if activity_error:
         warnings.append(activity_error + "; all deletions blocked")
-    if args.temporary_worktrees:
+    if args.rust_intermediates:
+        gui, bundles, gui_items, bundle_items = [], [], [], []
+        rust, rust_items = rust_plan([], roots, False, [], targets=targets)
+        rust_items = [i for i in rust_items if (Path(i["profile"]) / ".cargo-lock").is_file()]
+        for item in rust_items:
+            item["preserve_outputs"] = True
+    elif args.temporary_worktrees:
         print("Scanning registered secondary worktree caches...", file=sys.stderr)
         repos = [
             p
@@ -637,7 +841,7 @@ def main():
             if (p / "Cargo.toml").is_file() and (p / "core/engine/Cargo.toml").is_file()
         ]
         gui, bundles, gui_items, bundle_items = [], [], [], []
-        rust, rust_items = rust_plan(repos, roots, False, [])
+        rust, rust_items = rust_plan(repos, roots, False, [], loose_intermediates=True)
         rust_items = [
             i
             for i in rust_items
@@ -646,6 +850,7 @@ def main():
         ]
         for item in rust_items:
             item["temporary_worktree"] = True
+            item["preserve_outputs"] = True
             item["last_modified_ns"] = max(
                 Path(item["path"]).stat().st_mtime_ns,
                 Path(item["profile"]).stat().st_mtime_ns,
@@ -703,12 +908,25 @@ def main():
             item["status"] = "blocked-mounted"
         item["mtime_ns"] = path.stat().st_mtime_ns
         items.append(item)
+    min_idle_ns = int(args.min_idle_hours * 3600 * 10**9)
+    if args.temporary_worktrees:
+        # 热缓存只统计容量；冷缓存才枚举逐文件回执，避免为开发中的巨大 target 生成冗余清单。
+        for group in cache_groups(items).values():
+            if all(i["status"] == "eligible" for i in group):
+                retained = reusable_cache_status(group, min_idle_ns, warnings)
+                if retained:
+                    for item in group:
+                        item["status"] = retained
     if items:
         print(f"Measuring {len(items)} cleanup paths (allocated blocks)...", file=sys.stderr)
         measure_items(items, args.temporary_worktrees, warnings)
     budget = int(args.cache_budget_gib * 1024**3)
     min_free = int(args.min_free_gib * 1024**3)
-    selected = plan_cache_budget(items, budget, min_free) if args.temporary_worktrees else items
+    selected = (
+        plan_cache_budget(items, budget, min_free, min_idle_ns, warnings)
+        if args.temporary_worktrees
+        else items
+    )
     report = {
         "mode": "apply" if args.apply else "preview",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -719,25 +937,60 @@ def main():
         "rust_bundles": bundles,
         "items": items,
         "warnings": warnings,
+        "free_before_bytes": free_before,
+        "scope": "rust-intermediates"
+        if args.rust_intermediates
+        else "temporary-worktrees"
+        if args.temporary_worktrees
+        else "artifacts",
+        "target_roots": [str(target) for _, target in targets],
+        "excluded_scopes": [
+            "primary and custom targets",
+            "unregistered worktrees",
+            "executables and GUI/Core packages",
+        ]
+        if args.temporary_worktrees
+        else ["GUI/Core packages", "other targets"]
+        if args.rust_intermediates
+        else [],
         "eligible_bytes": sum(i["estimated_bytes"] for i in items if i["status"] == "eligible"),
         "pending_bytes": 0,
     }
     if args.temporary_worktrees:
+        report["worktree_targets"] = [
+            {
+                "repo": str(repo),
+                "target": str(repo / "target"),
+                "status": "scanned"
+                if safe(repo / "target", roots)
+                else "missing-or-symlink-skipped",
+                "cleanup_paths": sum(i["scope"] == str(repo) for i in items),
+            }
+            for repo in repos
+        ]
         report["cache_policy"] = {
             "budget_bytes": budget,
             "min_free_bytes": min_free,
+            "min_idle_hours": args.min_idle_hours,
             "before_bytes": remaining_cache_bytes(items),
             "unmeasured_profiles": sorted({i["profile"] for i in items if not i["size_known"]}),
         }
     if args.apply:
         if not args.report:
             parser.error("--apply requires --report for a durable deletion receipt")
-        args.report.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+        with args.report.open("x") as receipt:
+            receipt.write(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
         groups = cache_groups([i for i in selected if i["status"] == "eligible"])
         for key, group in groups.items():
             try:
                 profile = Path(key) if "profile" in group[0] else None
                 with build_locks(profile, create=True) if profile else nullcontext():
+                    if args.temporary_worktrees:
+                        retained = reusable_cache_status(group, min_idle_ns, warnings)
+                        if retained:
+                            for item in group:
+                                item["status"] = retained
+                            continue
                     if (
                         args.temporary_worktrees
                         and remaining_cache_bytes(items) <= budget
@@ -762,7 +1015,46 @@ def main():
                         args.report.write_text(
                             json.dumps(report, indent=2, ensure_ascii=False) + "\n"
                         )
-                        if path.is_dir():
+                        if item.get("preserve_outputs"):
+                            item["deleted_files"] = 0
+                            item["deleted_bytes"] = 0
+                            try:
+                                for record in item["files"]:
+                                    child = Path(record["path"])
+                                    if (
+                                        not safe(child, [path.parent if path.is_file() else path])
+                                        or file_identity(child) != record["identity"]
+                                    ):
+                                        raise RuntimeError(
+                                            f"Intermediate changed; deletion stopped: {child}"
+                                        )
+                                    child.unlink()
+                                    item["deleted_files"] += 1
+                                    item["deleted_bytes"] += record["estimated_bytes"]
+                                if any(
+                                    file_identity(Path(p["path"])) != p["identity"]
+                                    for p in item["preserved"]
+                                ):
+                                    raise RuntimeError(f"Preserved output changed: {path}")
+                                if args.temporary_worktrees and path.is_dir():
+                                    for base, dirs, _ in os.walk(
+                                        path, topdown=False, followlinks=False
+                                    ):
+                                        folder = Path(base)
+                                        if any(
+                                            within(folder, Path(p["path"]))
+                                            for p in item["preserved"]
+                                        ):
+                                            continue
+                                        if not any(folder.iterdir()):
+                                            folder.rmdir()
+                            except (OSError, RuntimeError):
+                                item["status"] = "failed"
+                                args.report.write_text(
+                                    json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+                                )
+                                raise
+                        elif path.is_dir():
                             shutil.rmtree(path)
                         else:
                             path.unlink()
@@ -784,17 +1076,23 @@ def main():
         available = [free_bytes(root) for root in roots if root.is_dir()]
         report["cache_policy"]["min_observed_free_bytes"] = min(available, default=free_bytes(REPO))
         if args.apply and remaining > budget:
-            warnings.append("Secondary cache budget remains exceeded; active or locked caches kept")
+            warnings.append(
+                "Secondary cache budget remains exceeded; reusable, active or locked caches kept"
+            )
         if args.apply and available and min(available) < min_free:
             warnings.append(
                 "Disk remains below free-space threshold; protected or unrelated data kept"
             )
+    report["free_after_bytes"] = free_bytes(REPO)
     if args.report:
-        args.report.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+        with args.report.open("w" if args.apply else "x") as receipt:
+            receipt.write(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
     else:
-        if args.temporary_worktrees:
+        if args.rust_intermediates:
+            print(f"{report['mode'].upper()}: non-executable Rust intermediates only")
+        elif args.temporary_worktrees:
             print(f"{report['mode'].upper()}: secondary cache budget {args.cache_budget_gib:g} GiB")
         else:
             print(
@@ -813,7 +1111,7 @@ def main():
         )
         for warning in warnings:
             print("WARNING: " + warning)
-    return 0
+    return 1 if activity_error or any(i["status"] == "blocked-reuse-unknown" for i in items) else 0
 
 
 if __name__ == "__main__":

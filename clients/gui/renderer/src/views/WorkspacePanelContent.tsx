@@ -1,4 +1,6 @@
 import React from "react";
+import { projectUserState } from "../state/userStates.js";
+import { errorText } from "../errors/errorCopy.js";
 import { AgentHistoryPane } from "../AgentHistoryPane.js";
 import { browserPageId, isBrowserTab } from "../app-shell/useBrowserWorkspace.js";
 import { ContextPane } from "../ContextPane.js";
@@ -96,7 +98,6 @@ export function WorkspacePanelContent({
     return (
       <SideChatPane
         onPanel={showPanel}
-        onReturn={hidePanel}
         key={`${project.core?.instanceId}:${project.id}:${thread.id}:side`}
         project={project}
         source={thread}
@@ -157,7 +158,7 @@ export function WorkspacePanelContent({
               }
               void mcpWorkspace
                 .openApp(server, tool, { kind: "file", filePath: panel.slice(5) })
-                .catch((cause) => setError(cause.message));
+                .catch((cause) => setError(errorText(t, cause)));
             }}
           />
         )}
@@ -204,7 +205,7 @@ export function WorkspacePanelContent({
             reviewRequest.threadId &&
             reviewRequest.threadId !== threadId
           ) ||
-          !project.state?.connected ||
+          !projectUserState(project).canAct ||
           !!thread?.desktop?.archived ||
           !!(thread?.source === "nativeTaskAgent" && thread?.goalOwner) ||
           !!pending ||
@@ -228,6 +229,16 @@ export function WorkspacePanelContent({
       <div className="utility-content">
         <panels.Providers {...props} />
       </div>
+    );
+  if (panel === "预览")
+    return (
+      <p role="status" className="p-3 text-ui-base text-foreground-subtle">
+        {t(
+          services.capabilities?.native === false
+            ? "browser.desktopRequired"
+            : "browser.chatRequired",
+        )}
+      </p>
     );
   if (isBrowserTab(panel))
     return (
@@ -327,7 +338,7 @@ export function WorkspacePanelContent({
         queue={queue}
         projectId={project.id}
         threadId={threadId}
-        disabled={!project.state?.connected || pending || thread.desktop?.archived}
+        disabled={!projectUserState(project).canAct || pending || thread.desktop?.archived}
         action={action}
       />
     ) : null;
@@ -344,7 +355,7 @@ export function WorkspacePanelContent({
           key={`${project.id}:${threadId}:${panel}`}
           {...threadProps}
           terminalId={panel}
-          canStart={!admitting && !pending && !!project.state?.connected}
+          canStart={!admitting && !pending && projectUserState(project).canAct}
           onError={setError}
           onLink={onLink}
         />

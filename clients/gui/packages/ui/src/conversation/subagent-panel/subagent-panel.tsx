@@ -24,6 +24,8 @@ export type SubagentPanelProps = {
   hasMore?: boolean;
   onSelect: (id: string | undefined) => void;
   onClose: () => void;
+  /** Inside a reader pane: no divider, and the history child owns its own insets. */
+  embedded?: boolean;
   children?: ReactNode;
 };
 const labels = { running: "运行中", completed: "已完成", attention: "需要确认" };
@@ -37,6 +39,7 @@ export function SubagentPanel({
   hasMore = false,
   onSelect,
   onClose,
+  embedded = false,
   children,
 }: SubagentPanelProps) {
   const [expanded, setExpanded] = useState(false);
@@ -57,7 +60,12 @@ export function SubagentPanel({
     }
   }, [open, selectedId]);
   return (
-    <section className="areal-subagent-panel" aria-label="子代理面板" hidden={!open}>
+    <section
+      className="areal-subagent-panel"
+      aria-label="子代理面板"
+      hidden={!open}
+      data-embedded={embedded || undefined}
+    >
       <header className="areal-subagent-header">
         {selectedId && (
           <Button

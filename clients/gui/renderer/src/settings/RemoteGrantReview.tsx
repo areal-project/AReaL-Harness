@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Input, Button } from "@areal/ui";
 import { useI18n } from "../i18n/IntlProvider.js";
 import type { CommandParams, Data } from "../services.js";
@@ -25,14 +25,17 @@ export function GrantReview({
   onCancel?: () => void;
 }) {
   const { t } = useI18n();
+  const fieldId = useId();
   const id = device.devicePeerId ?? device.id;
-  // 只有一个项目时默认勾选它；多个项目时由用户明确选择，不默认放开全部。
+  // 单项目默认勾选，多项目必须明确选择，不默认放开全部。
   const [selected, setSelected] = useState<string[]>(
     device.projectIds ?? (projects.length === 1 ? [projects[0].id] : []),
   );
+  // 新配对默认可查看、提交、审批；旧授权不变，管理需单独勾选。
   const [preset, setPreset] = useState<"Observer" | "Operator">(
-    device.capabilities?.includes("submit") ? "Operator" : "Observer",
+    pending || device.capabilities?.includes("submit") ? "Operator" : "Observer",
   );
+  const [manage, setManage] = useState(device.capabilities?.includes("manage") === true);
   return (
     <fieldset
       aria-label={t(
@@ -61,8 +64,13 @@ export function GrantReview({
       <div className="remote-project-scope">
         <p className="remote-field-label">{t("settings.mobileConnect.projects")}</p>
         {projects.map((project) => (
-          <label className="remote-project-choice" key={project.id}>
+          <label
+            className="remote-project-choice"
+            key={project.id}
+            htmlFor={`${fieldId}-${project.id}`}
+          >
             <Input
+              id={`${fieldId}-${project.id}`}
               unstyled
               data-slot={undefined}
               type="checkbox"
@@ -120,6 +128,25 @@ export function GrantReview({
             </label>
           ))}
         </div>
+        <label
+          className="remote-project-choice"
+          htmlFor={`${fieldId}-manage`}
+          aria-label={t("settings.mobileConnect.canManage")}
+        >
+          <Input
+            id={`${fieldId}-manage`}
+            unstyled
+            data-slot={undefined}
+            type="checkbox"
+            checked={manage && preset === "Operator"}
+            disabled={preset !== "Operator"}
+            onChange={(event) => setManage(event.target.checked)}
+          />
+          <span>
+            <strong>{t("settings.mobileConnect.canManage")}</strong>
+            <small>{t("settings.mobileConnect.canManageDescription")}</small>
+          </span>
+        </label>
       </fieldset>
       <div className="remote-grant-actions">
         {pending ? (
@@ -145,6 +172,7 @@ export function GrantReview({
               id,
               projects: selected,
               preset,
+              ...(preset === "Operator" && manage && { manage: true }),
             })
           }
         >

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { currentErrorText } from "../errors/currentErrorText.js";
 import {
   recoveryMessage,
   sameRecoveryOwner,
   type RecoveryFailure,
   type RecoveryOwner,
 } from "../recoveryPresentation.js";
-import { useCloudEnvironment } from "../cloudEnvironment.js";
 import { call, type Action, type PlatformServices, type Snapshot } from "../services.js";
 import { conversationCatalog } from "./conversationCatalog.js";
 type InitialLocation =
@@ -87,23 +87,29 @@ export function useSessionNavigation(
         }),
     [snapshot.projects, library],
   );
-  const summaries = useMemo(() => conversationCatalog(projects, library), [projects, library]);
+  const summaries = useMemo(
+    () => conversationCatalog(projects, library, { projectId, threadId }),
+    [projects, library, projectId, threadId],
+  );
   // Sidebar visibility must not change the owner of an explicitly opened resource.
   const logicalProject = noProject
     ? undefined
     : (snapshot.projects.find((p) => p.id === projectId) ??
       (snapshot.connection?.state === "ready" ? projects.find((p) => !p.projectless) : undefined));
-  const executionThread = logicalProject?.state?.threads[threadId];
+  const executionThread =
+    logicalProject?.state?.threads[threadId] ??
+    logicalProject?.summaries?.find((summary: { id: string }) => summary.id === threadId);
   const project =
-    logicalProject && executionThread?.worktree?.directory
+    logicalProject && (executionThread?.executionRoot || executionThread?.worktree?.directory)
       ? {
           ...logicalProject,
           logicalRoot: logicalProject.root,
-          root: executionThread.worktree.directory,
+          root: executionThread.executionRoot ?? executionThread.worktree.directory,
           core: { ...logicalProject.core, ...executionThread.executionCore },
           state: {
             ...logicalProject.state,
             connected: executionThread.executionConnected ?? logicalProject.state?.connected,
+            hostState: executionThread.executionHostState ?? logicalProject.state?.hostState,
           },
           error: executionThread.executionError ?? logicalProject.error,
         }
@@ -137,29 +143,17 @@ export function useSessionNavigation(
     },
     [services, project?.id, threadId],
   );
-  const { environment, ready: environmentReady } = useCloudEnvironment(
-    project ?? { id: "projectless" },
-    resourceAction,
-  );
   useEffect(() => {
     if (
+      services.reads ||
       resourceBrowsing.current ||
       !project?.id ||
       threadId ||
-      !environmentReady ||
-      environment !== "local" ||
       snapshot.connection?.state !== "ready"
     )
       return;
     void resourceAction("connect", { projectId: project.id }).catch(() => {});
-  }, [
-    project?.id,
-    threadId,
-    environmentReady,
-    environment,
-    snapshot.connection?.state,
-    resourceAction,
-  ]);
+  }, [project?.id, threadId, snapshot.connection?.state, resourceAction]);
   const restorationProjects = useRef(snapshot.projects);
   restorationProjects.current = snapshot.projects;
   const contextualFileOpen = useMemo<PlatformServices["fileOpen"]>(
@@ -230,15 +224,75 @@ export function useSessionNavigation(
         sameRecoveryOwner(selectedRestoration.current, owner);
       attempt.promise = (async () => {
         try {
+          if (services.recoverPersistedHistory) {
+            await services.recoverPersistedHistory(null);
+            if (restorationAttempt.current !== attempt) return;
+          }
+          if (services.reads && !services.recoverPersistedHistory) {
+            // Host 读取不启动项目；GUI 和网页都先由后台连接，再打开历史订阅。
+            const target = restorationProjects.current.find((item) => item.id === owner.projectId);
+            let persisted = false;
+            let connectError: unknown;
+            if (operation === "connect" && !target?.state?.connected) {
+              const connection = services.reads.status();
+              const canReadPersisted =
+                !!owner.threadId &&
+                !options.resumeScheduling &&
+                connection.connection === "ready" &&
+                connection.identity.persistedHistory === true;
+              try {
+                if (canReadPersisted && services.capabilities?.mutations === false)
+                  persisted = true;
+                else
+                  await resourceAction("connect", {
+                    projectId: owner.projectId,
+                    ...(options.resumeScheduling ? { resumeScheduling: true } : {}),
+                  });
+              } catch (error) {
+                const failure = error as RecoveryFailure;
+                if (
+                  !canReadPersisted ||
+                  failure?.submissionUnknown ||
+                  failure?.outcome?.kind === "admitted" ||
+                  failure?.outcome?.kind === "unconfirmed" ||
+                  !["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure?.code))
+                )
+                  throw error;
+                connectError = error;
+                persisted = true;
+              }
+            }
+            try {
+              await services.reads.selectSession(
+                owner.threadId
+                  ? {
+                      projectId: owner.projectId,
+                      threadId: owner.threadId,
+                      ...(persisted ? { persisted: true } : {}),
+                    }
+                  : null,
+              );
+            } catch (error) {
+              throw connectError ?? error;
+            }
+            if (current()) {
+              setRestoration({ ...owner, pending: false, error: "" });
+              if (owner.threadId && !persisted && services.capabilities?.mutations !== false)
+                void resourceAction("library", {
+                  operation: "readThread",
+                  projectId: owner.projectId,
+                  threadId: owner.threadId,
+                  read: true,
+                }).catch(() => {});
+            }
+            return;
+          }
           if (options.connectService) {
             await resourceAction("connectService", {});
             if (!current()) return;
           }
           const target = restorationProjects.current.find((item) => item.id === owner.projectId);
-          const cloud =
-            target?.state?.threads?.[owner.threadId]?.cloud ||
-            (!owner.threadId &&
-              localStorage.getItem(`areal-draft-environment:${owner.projectId}`) === "cloud");
+          const cloud = target?.state?.threads?.[owner.threadId]?.cloud;
           if (operation === "connect" && !cloud)
             await resourceAction("connect", {
               projectId: owner.projectId,
@@ -257,8 +311,29 @@ export function useSessionNavigation(
           }
           if (current()) setRestoration({ ...owner, pending: false, error: "" });
         } catch (cause) {
+          const failure = cause as RecoveryFailure;
+          if (
+            restorationAttempt.current === attempt &&
+            services.recoverPersistedHistory &&
+            owner.threadId &&
+            !options.resumeScheduling &&
+            !failure?.submissionUnknown &&
+            failure?.outcome?.kind !== "admitted" &&
+            failure?.outcome?.kind !== "unconfirmed" &&
+            ["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure?.code))
+          ) {
+            try {
+              await services.recoverPersistedHistory({
+                projectId: owner.projectId,
+                threadId: owner.threadId,
+              });
+              if (current()) setRestoration({ ...owner, pending: false, error: "" });
+              return;
+            } catch {
+              // 只读恢复失败仍展示原连接错误，原请求与未知事实不被替换。
+            }
+          }
           if (current()) {
-            const failure = cause as RecoveryFailure;
             setRestoration({
               ...owner,
               pending: false,
@@ -273,7 +348,7 @@ export function useSessionNavigation(
       })();
       return attempt.promise;
     },
-    [resourceAction],
+    [resourceAction, services.reads],
   );
   const subscribe = () => {
     const unsubscribe = services.onState(setSnapshot);
@@ -281,11 +356,12 @@ export function useSessionNavigation(
       .snapshot()
       .then(setSnapshot)
       .catch((e) => {
-        onError(e.message);
-        updateSnapshot((previous) =>
-          previous.connection?.state === "ready"
-            ? previous
-            : { ...previous, connection: { state: "unavailable", message: e.message } },
+        onError(currentErrorText(e));
+        updateSnapshot(
+          (previous) =>
+            previous.connection?.state === "ready"
+              ? previous
+              : { ...previous, connection: { state: "unavailable", message: e.message } }, // raw-error-ok: 连接说明只进详情
         );
       });
     return unsubscribe;
@@ -339,12 +415,21 @@ export function useSessionNavigation(
     const owner = {
       projectId: pid,
       threadId: id,
-      connectionGeneration: target?.core?.connectionGeneration ?? 0,
+      connectionGeneration:
+        target?.state?.threads?.[id]?.executionCore?.connectionGeneration ??
+        target?.summaries?.find((summary: { id: string }) => summary.id === id)?.executionCore
+          ?.connectionGeneration ??
+        target?.core?.connectionGeneration ??
+        0,
     };
     selectedRestoration.current = owner;
     await restoreConversation(owner, target?.state?.connected ? "open" : "connect");
   };
   const selectDraft = (pid: string | undefined) => {
+    if (services.recoverPersistedHistory) {
+      restorationAttempt.current = undefined;
+      void services.recoverPersistedHistory(null).catch(() => {});
+    }
     if (pid) localStorage.removeItem(`areal-gui:thread:${pid}`);
     setNoProject(!pid);
     setProjectId(pid ?? "");
@@ -353,6 +438,10 @@ export function useSessionNavigation(
   };
   return {
     resourceBrowsing,
+    services,
+    readOnly:
+      services.capabilities?.mutations === false ||
+      !!(thread && "persistedHistory" in thread && thread.persistedHistory === true),
     snapshot,
     library,
     projects,

@@ -7,12 +7,7 @@ import {
   type Ref,
 } from "react";
 import { cn } from "../../lib/utils.js";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "../tooltip/tooltip.js";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../tooltip/tooltip.js";
 import { isAppleKeyboardPlatform } from "../../lib/keyboard-shortcuts.js";
 
 interface ControlHintTooltipProps {
@@ -37,7 +32,7 @@ type TriggerChildProps = {
 };
 
 const shortcutKbdBaseClassName =
-  "rounded-md h-4 inline-flex items-center bg-tooltip-tag px-1.5 text-ui-xs font-medium text-tooltip-tag-foreground";
+  "rounded-(--radius-compact) h-(--icon-size-control) inline-flex items-center bg-tooltip-tag px-[calc(var(--spacing-inline)*3/4)] text-ui-xs font-medium text-tooltip-tag-foreground";
 
 export function ControlHintTooltip({
   children,
@@ -55,9 +50,7 @@ export function ControlHintTooltip({
   triggerRef,
 }: ControlHintTooltipProps) {
   const useAppleShortcutFont = isAppleKeyboardPlatform();
-  const shortcutFontClassName = useAppleShortcutFont
-    ? "tracking-normal"
-    : "font-mono";
+  const shortcutFontClassName = useAppleShortcutFont ? "tracking-normal" : "font-mono";
   const shortcutFontStyle = useAppleShortcutFont
     ? {
         fontFamily:
@@ -79,9 +72,7 @@ export function ControlHintTooltip({
       className: cn("shrink-0", children.props.className, triggerClassName),
     })
   ) : (
-    <span className={cn("inline-flex shrink-0", triggerClassName)}>
-      {children}
-    </span>
+    <span className={cn("inline-flex shrink-0", triggerClassName)}>{children}</span>
   );
 
   // 大会话会为每条消息动作渲染大量 ControlHintTooltip，逐个创建 Provider
@@ -95,24 +86,18 @@ export function ControlHintTooltip({
         sideOffset={sideOffset}
         className={cn(
           description
-            ? "max-w-72 flex-col items-start gap-1.5 px-3 py-2 text-left"
-            : "max-w-[min(28rem,calc(100vw-1rem))] items-center gap-2 px-2.5 py-1 text-left has-data-[slot=kbd]:pr-1",
+            ? "flex-col items-start gap-[calc(var(--spacing-inline)*3/4)] py-inline text-left"
+            : "text-left",
           className,
         )}
       >
         {description ? (
-          <div className="flex w-full items-start justify-between gap-3">
-            <span className="text-ui-sm font-medium leading-4 text-tooltip-foreground">
-              {title}
-            </span>
+          <div className="flex w-full items-start justify-between gap-inline">
+            <span>{title}</span>
             {shortcut ? (
               <kbd
                 data-slot="kbd"
-                className={cn(
-                  shortcutKbdBaseClassName,
-                  shortcutFontClassName,
-                  "shrink-0",
-                )}
+                className={cn(shortcutKbdBaseClassName, shortcutFontClassName, "shrink-0")}
                 style={shortcutFontStyle}
               >
                 {shortcut}
@@ -122,23 +107,15 @@ export function ControlHintTooltip({
         ) : (
           // 无描述的提示过去同时受 max-w-xs 和 nowrap 约束，长中英文文案会越界裁剪。
           // 短提示继续按内容宽度展示，超过视口安全宽度时允许自然换行；显式换行用于结构化提示。
-          <span className="text-ui-sm font-medium whitespace-pre-line break-words text-tooltip-foreground">
-            {title}
-          </span>
+          <span className="whitespace-pre-line break-words">{title}</span>
         )}
         {description ? (
-          <span className="max-w-64 text-ui-sm/relaxed text-tooltip-foreground/80">
-            {description}
-          </span>
+          <span className="font-normal text-tooltip-foreground/80">{description}</span>
         ) : null}
         {!description && shortcut ? (
           <kbd
             data-slot="kbd"
-            className={cn(
-              shortcutKbdBaseClassName,
-              shortcutFontClassName,
-              "shrink-0",
-            )}
+            className={cn(shortcutKbdBaseClassName, shortcutFontClassName, "shrink-0")}
             style={shortcutFontStyle}
           >
             {shortcut}

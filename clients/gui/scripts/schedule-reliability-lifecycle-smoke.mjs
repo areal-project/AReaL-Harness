@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { appendFile, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { makeTempDir } from "./support/temp.mjs";
 import { applicationFixture } from "./application-fixture.mjs";
 import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
@@ -19,14 +20,19 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const gui = resolve(process.env.AREAL_SCHEDULE_GUI_ROOT || join(root, "clients/gui"));
 const require = createRequire(join(root, "clients/gui/app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const { ServiceConnection, waitForServiceExit } = require(
-  join(gui, "app/src/core/service-client.cjs"),
+const { HostClient } = createRequire(join(gui, "app/package.json"))("@areal/client/node");
+const { readHostReceipt, readOfflineHostReceipt } = require(
+  join(gui, "app/src/core/host-lifecycle.cjs"),
+);
+assert.ok(
+  process.platform !== "darwin" || process.env.AREAL_TEST_HOST_KEYCHAIN === "1",
+  "GUI startup writes an isolated subscription transport token to macOS Keychain; set AREAL_TEST_HOST_KEYCHAIN=1 when authorized.",
 );
 const binary = resolve(process.env.AREAL_CORE_BIN || join(root, "target/debug/areal"));
 const mode = process.env.AREAL_SCHEDULE_MODE || "accept";
 assert.ok(["baseline", "accept"].includes(mode));
 const scratch = await makeTempDir("areal-sl-");
-const evidence = await mkdtemp(join(root, ".scratch/schedule-reliability-lifecycle-"));
+const evidence = await trackedMkdtemp(join(root, ".scratch/schedule-reliability-lifecycle-"));
 const requests = [],
   checks = [],
   errors = [],
@@ -125,11 +131,88 @@ const fixture = await applicationFixture(
   join(scratch, "app"),
   `
 const fs=require("node:fs");
-const {CoreBackend}=require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const record=value=>fs.appendFileSync(${JSON.stringify(traceFile)},JSON.stringify(value)+"\\n");
+globalThis.responses=[];
+require("electron").dialog.showMessageBox=async (...args)=>{
+ const options=args.at(-1);
+ if(options.title==="允许本地开发站点") return {response:1};
+ const response=globalThis.responses.shift();
+ record({kind:"dialog",options,response});
+ if(response===undefined) throw new Error("Unexpected native dialog");
+ return {response};
+};
+const {SharedCoreBackend}=require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
+const stop=SharedCoreBackend.prototype.requestHostStop;
+SharedCoreBackend.prototype.requestHostStop=async function(...args){const result=await stop.apply(this,args);record({kind:"stop-receipt",result});return result;};
+const {CoreBackend}=require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const start=CoreBackend.prototype.startProject;
-CoreBackend.prototype.startProject=function(projectId){fs.appendFileSync(${JSON.stringify(traceFile)},JSON.stringify({kind:"owner_start",projectId,at:Date.now(),pid:process.pid})+"\\n");return start.call(this,projectId);};
+CoreBackend.prototype.startProject=function(projectId,...args){fs.appendFileSync(${JSON.stringify(traceFile)},JSON.stringify({kind:"owner_start",projectId,at:Date.now(),pid:process.pid})+"\\n");return start.call(this,projectId,...args);};
 `,
 );
+const runId = randomUUID();
+const appName = `AReaL Schedule SafeStorage Test ${runId}`;
+const keychainService = `${appName} Safe Storage`;
+const hostService = `org.areal.host.v1.${digest(env.AREAL_HARNESS_SERVICE_HOME)}`;
+const electronBundle = join(scratch, "Electron.app");
+const electronBinary = join(electronBundle, "Contents/MacOS/Electron");
+const plist = join(electronBundle, "Contents/Info.plist");
+const installedElectron = process.env.AREAL_ELECTRON_EXECUTABLE || require("electron");
+execFileSync("/usr/bin/ditto", [resolve(installedElectron, "../../.."), electronBundle]);
+const appDirectory = join(electronBundle, "Contents/Resources/app");
+await mkdir(appDirectory, { recursive: true });
+execFileSync("/usr/bin/ditto", [
+  join(gui, "renderer/dist"),
+  join(electronBundle, "Contents/Resources/areal-gui"),
+]);
+await writeFile(
+  join(appDirectory, "package.json"),
+  JSON.stringify({ name: "areal-schedule-isolated-test", productName: appName, main: "main.cjs" }),
+);
+await writeFile(
+  join(appDirectory, "main.cjs"),
+  `const assert=require("node:assert/strict");
+const {app,safeStorage}=require("electron");
+assert.equal(app.isReady(),false);
+assert.equal(app.getName(),${JSON.stringify(appName)});
+assert.equal(process.defaultApp ?? false,false);
+const original={object:safeStorage,encrypt:safeStorage.encryptString,decrypt:safeStorage.decryptString};
+const setName=app.setName.bind(app);
+app.setName=name=>{assert(["AReaL Harness GUI",${JSON.stringify(appName)}].includes(name));setName(${JSON.stringify(appName)});};
+Object.defineProperty(app,"isPackaged",{value:false});
+app.setAppPath(${JSON.stringify(fixture.path)});
+app.once("ready",()=>{assert.equal(app.getName(),${JSON.stringify(appName)});assert.equal(require("electron").safeStorage,original.object);assert.equal(safeStorage.encryptString,original.encrypt);assert.equal(safeStorage.decryptString,original.decrypt);});
+require(${JSON.stringify(join(scratch, "app/bootstrap.cjs"))});\n`,
+);
+for (const [key, value] of [
+  ["CFBundleName", appName],
+  ["CFBundleDisplayName", appName],
+  ["CFBundleIdentifier", `org.areal.schedule.${runId}`],
+])
+  execFileSync("/usr/libexec/PlistBuddy", ["-c", `Set :${key} ${value}`, plist]);
+execFileSync("/usr/bin/codesign", ["--force", "--sign", "-", electronBundle]);
+execFileSync("/usr/bin/codesign", ["--verify", "--strict", electronBundle]);
+function security(args) {
+  return spawnSync("/usr/bin/security", args, { encoding: "utf8", env });
+}
+function missing(result) {
+  return result.status === 44 && result.stderr.includes("could not be found");
+}
+async function cleanEntry(service, account) {
+  const found = security(["find-generic-password", "-s", service, "-a", account]);
+  if (missing(found)) {
+    cleanup.push({ service, account, state: "absent" });
+    return;
+  }
+  assert.equal(found.status, 0, `Keychain lookup failed for ${service}/${account}`);
+  const keychain = /^keychain: "([^"\n]+)"/m.exec(found.stdout)?.[1];
+  assert.ok(keychain?.startsWith("/"));
+  const deleted = security(["delete-generic-password", "-s", service, "-a", account, keychain]);
+  assert.equal(deleted.status, 0);
+  assert.ok(missing(security(["find-generic-password", "-s", service, "-a", account, keychain])));
+  cleanup.push({ service, account, keychain, state: "removed" });
+}
+for (const account of [appName, `${appName} Key`])
+  assert.ok(missing(security(["find-generic-password", "-s", keychainService, "-a", account])));
 const identity = {
   sourceCommit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
   sourceStatus: execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" }),
@@ -138,10 +221,18 @@ const identity = {
   binary,
   binarySha256: digest(await readFile(binary)),
   gui,
+  electronBinary,
+  electronBinarySha256: digest(await readFile(electronBinary)),
+  electronPlistSha256: digest(await readFile(plist)),
+  safeStorageService: keychainService,
+  hostVaultService: hostService,
   node: process.version,
   electron: require("electron/package.json").version,
 };
-let app, page, failure, primaryId;
+let app, page, child, failure, primaryId;
+let stoppedMetadata,
+  hostStopped = false;
+const descriptorPath = join(env.AREAL_HARNESS_SERVICE_HOME, "host/host.json");
 async function until(read, label, timeout = 60000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
@@ -167,20 +258,37 @@ async function check(name, run) {
     checks.push({ name, passed: false, error: error.stack });
   }
 }
-async function launch() {
+async function launch({ reconnectStopped = false } = {}) {
+  stoppedMetadata = undefined;
+  hostStopped = false;
   app = await electron.launch({
-    executablePath: process.env.AREAL_ELECTRON_EXECUTABLE || require("electron"),
-    args: [fixture.path],
+    executablePath: electronBinary,
+    args: [],
     env,
     timeout: 120000,
   });
   app.process().stderr.on("data", (chunk) => {
     void appendFile(join(evidence, "electron.stderr.log"), chunk);
+    if (chunk.toString().includes("Waiting for the debugger to disconnect"))
+      cleanup.push({
+        kind: "debugger disconnect requested",
+        at: Date.now(),
+        pid: app?.process().pid,
+      });
   });
+  child = app.process();
   page = await app.firstWindow();
   page.on("pageerror", (error) => errors.push(error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await until(async () => (await snapshot()).connection?.state === "ready", "Desktop ready");
+  if (reconnectStopped) {
+    await until(async () => {
+      const connection = (await snapshot()).connection;
+      return connection?.state === "unavailable" && connection.recovery === "reconnect";
+    }, "completed Host stop offers explicit reconnect");
+    await page.getByRole("button", { name: "重新连接后台", exact: true }).click();
+    cleanup.push({ kind: "explicit UI reconnect", at: Date.now(), pid: child.pid });
+  }
+  await until(async () => (await snapshot()).connection?.state === "ready", "Main/Host ready");
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0];
     w.setSize(1488, 1056);
@@ -189,59 +297,144 @@ async function launch() {
   });
 }
 async function stopFixture() {
-  if (!app) return;
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  const connection = new ServiceConnection();
-  try {
-    await connection.connect(metadata);
-    await until(async () => {
-      const hello = await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      if (hello.service.activeCommands || hello.service.starting) return false;
-      try {
-        await connection.request(
-          "stopService",
-          {
-            protocol: metadata.protocol,
-            cancel: true,
-            expectedDesktopGeneration: metadata.desktopGeneration,
-            expectedTargets: hello.service.targets,
-          },
-          true,
-        );
-        return true;
-      } catch (error) {
-        if (!/请等待已提交操作完成|请等待项目启动完成/.test(error.message)) throw error;
-        return false;
-      }
-    }, "fixture stop accepted after commands settle");
-    await waitForServiceExit(join(scratch, "core"), metadata);
-  } finally {
-    connection.close();
+  const metadata = await readFile(descriptorPath, "utf8")
+    .then(JSON.parse)
+    .catch((error) => {
+      if (error.code !== "ENOENT" || !stoppedMetadata) throw error;
+      return null;
+    });
+  if (!metadata) {
+    await assertApplicationStopped(binary, env, stoppedMetadata);
+    hostStopped = true;
+    cleanup.push({ kind: "already confirmed Host stop", metadata: stoppedMetadata });
+    return;
   }
-  await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
-  await closeSmokeApplication(app);
-  app = null;
+  if (app) await quit();
+  const host = new HostClient();
+  try {
+    await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+    assert.equal(host.hostId, metadata.hostId);
+    assert.equal(host.generation, metadata.generation);
+    const directory = join(env.AREAL_HARNESS_SERVICE_HOME, "host/operations");
+    const unresolved = (receipt) =>
+      ["acceptedPending", "admissionUnknown", "settlementIncomplete"].includes(receipt.state) ||
+      receipt.migration?.phase === "draining" ||
+      receipt.projects?.some((target) => !["completed", "blocked"].includes(target.receipt?.state));
+    for (const name of await readdir(directory)) {
+      const { receipt: original } = JSON.parse(await readFile(join(directory, name), "utf8"));
+      if (!unresolved(original)) continue;
+      const observation = { kind: "prior lifecycle reconciliation", original };
+      cleanup.push(observation);
+      await until(async () => {
+        const { operation } = await host.operation(original.requestId);
+        observation.operation = operation;
+        assert.ok(operation, `UNKNOWN original lifecycle operation ${original.requestId}`);
+        assert.equal(operation.requestId, original.requestId);
+        assert.equal(operation.hostId, original.hostId);
+        assert.equal(operation.generation, original.generation);
+        return !unresolved(operation);
+      }, `settle original lifecycle operation ${original.requestId}`);
+    }
+    const reference = {
+      kind: "stopHost",
+      requestId: randomUUID(),
+      home: env.AREAL_HARNESS_SERVICE_HOME,
+      hostId: host.hostId,
+      generation: host.generation,
+      strategy: "cancel",
+    };
+    const observation = { kind: "fixture stop", reference };
+    cleanup.push(observation);
+    let receipt;
+    try {
+      receipt = readHostReceipt(
+        reference,
+        await host.stop(reference.requestId, reference.generation, reference.strategy),
+      );
+    } catch (error) {
+      observation.error = { code: error.code, message: error.message };
+      host.close();
+      receipt = await readOfflineHostReceipt(binary, reference);
+    }
+    observation.receipt = receipt ?? null;
+    assert.ok(
+      receipt,
+      `UNKNOWN fixture stop ${reference.requestId}; original request not replayed`,
+    );
+    assert.equal(receipt.state, "completed");
+  } finally {
+    host.close();
+  }
   await assertApplicationStopped(binary, env, metadata);
-  cleanup.push({ pid: metadata.pid, stopped: true, kind: "fixture teardown" });
+  stoppedMetadata = metadata;
+  hostStopped = true;
+  cleanup.push({
+    pid: metadata.pid,
+    hostId: metadata.hostId,
+    generation: metadata.generation,
+    stopped: true,
+    kind: "fixture teardown",
+  });
 }
-async function quit() {
-  const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  const closed = app.waitForEvent("close", { timeout: 60000 });
+async function quit(stopHost = false) {
+  const metadata = JSON.parse(await readFile(descriptorPath, "utf8"));
+  if (stopHost) {
+    await app.evaluate(({ Menu }) => {
+      globalThis.responses = [1];
+      const menu = Menu.getApplicationMenu().items[0].submenu;
+      const index = menu.items.findIndex((item) => item.id === "shared-host-activity");
+      if (index < 0) throw new Error("Missing Host menu");
+      menu.items[index + 1].click();
+    });
+    await until(async () => {
+      const events = (await readFile(traceFile, "utf8"))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map(JSON.parse);
+      return events.some(
+        (event) => event.kind === "stop-receipt" && event.result?.operation?.phase === "completed",
+      );
+    }, "menu Host stop completed");
+  }
+  const closed = page.waitForEvent("close", { timeout: 60000 });
+  cleanup.push({ kind: "application quit requested", at: Date.now(), pid: child.pid });
   await app
-    .evaluate(({ app, dialog }) => {
-      dialog.showMessageBox = async () => ({ response: 1 });
+    .evaluate(({ app }) => {
+      globalThis.responses = [0];
       app.quit();
     })
     .catch((error) => {
       if (!/closed|destroyed|Target/.test(error.message)) throw error;
     });
   await closed;
+  cleanup.push({ kind: "GUI window closed", at: Date.now(), pid: child.pid });
+  const driverClose = await Promise.race([
+    app.close().then(() => "completed"),
+    new Promise((resolve) => setTimeout(() => resolve("timeout"), 5000)),
+  ]);
+  cleanup.push({ kind: "Playwright close", state: driverClose, at: Date.now(), pid: child.pid });
+  await until(() => child.exitCode !== null || child.signalCode !== null, "GUI process exit");
+  assert.equal(child.exitCode, 0, "GUI process completely exited");
+  cleanup.push({
+    kind: "GUI process exited",
+    exitCode: child.exitCode,
+    at: Date.now(),
+    pid: child.pid,
+  });
   app = null;
-  await assertApplicationStopped(binary, env, metadata);
-  cleanup.push({ pid: metadata.pid, stopped: true, kind: "product app.quit" });
+  if (stopHost) {
+    await assertApplicationStopped(binary, env, metadata);
+    stoppedMetadata = metadata;
+    hostStopped = true;
+    cleanup.push({
+      pid: metadata.pid,
+      hostId: metadata.hostId,
+      generation: metadata.generation,
+      stopped: true,
+      kind: "menu Host stop and product app.quit",
+    });
+  }
 }
 async function persisted(owner) {
   const directory = join(scratch, "core", owner.projectId, "state/desktop");
@@ -393,35 +586,28 @@ try {
       "stopped owner would otherwise remain eligible for startup activation",
     );
     const beforeCount = task.runCount;
-    const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-    const connection = new ServiceConnection();
+    const host = new HostClient();
     try {
-      await connection.connect(metadata);
-      const hello = await connection.request("hello", {
-        protocol: metadata.protocol,
-        identity: metadata.identity,
-      });
-      const target = hello.service.targets.find((target) => target.projectId === owner.projectId);
-      assert.ok(target);
-      const receipt = await connection.request(
-        "lifecycleRequest",
-        {
-          protocol: metadata.protocol,
-          requestId: randomUUID(),
-          kind: "stopProject",
-          mode: "cancel",
-          expectedDesktopGeneration: metadata.desktopGeneration,
-          expectedTargets: [
-            {
-              projectId: target.projectId,
-              serviceId: target.serviceId,
-              generation: target.generation,
-            },
-          ],
-        },
-        true,
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      const target = (await host.status()).projects.find(
+        (item) => item.registration?.workspace === owner.root,
       );
-      assert.equal(receipt.phase, "completed");
+      assert.ok(target?.service);
+      const requestId = randomUUID();
+      let receipt;
+      try {
+        receipt = await host.stopProject(
+          requestId,
+          target.registration.projectId,
+          target.service.generation,
+          "cancel",
+        );
+      } catch {
+        host.close();
+        await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+        receipt = (await host.operation(requestId)).operation;
+      }
+      assert.equal(receipt.state, "completed");
       const stoppedAt = Date.now();
       assert.ok(
         stoppedAt < task.nextRunAt * 1000,
@@ -448,9 +634,42 @@ try {
       );
       return { receipt, stoppedAt, beforeCount };
     } finally {
-      connection.close();
+      host.close();
     }
   });
+  const backgroundAt = Math.floor(Date.now() / 1000) + 20;
+  const background = await newOwner("SCHEDULE_GUI_CLOSED", backgroundAt);
+  const backgroundHost = new HostClient();
+  await backgroundHost.connect(env.AREAL_HARNESS_SERVICE_HOME);
+  const backgroundGeneration = backgroundHost.generation;
+  backgroundHost.close();
+  await page.evaluate((id) => localStorage.setItem("areal-gui:project", id), primaryId);
+  await quit();
+  await check("host-admits-after-gui-exit", async () => {
+    const host = new HostClient();
+    try {
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      assert.equal(host.generation, backgroundGeneration);
+    } finally {
+      host.close();
+    }
+    const read = await until(
+      async () => {
+        const value = await persisted(background);
+        return value.task.runCount === 1 && value;
+      },
+      "Host admits scheduled occurrence after GUI exit",
+      Math.max(1000, backgroundAt * 1000 + 10000 - Date.now()),
+    );
+    assert.equal(read.task.runs[0].scheduledAt, backgroundAt);
+    return {
+      guiExitCode: child.exitCode,
+      hostGeneration: backgroundGeneration,
+      taskId: background.taskId,
+      rootDigest: read.rootDigest,
+    };
+  });
+  await launch();
   const quitAt = Math.floor(Date.now() / 1000) + 30;
   const offline = await newOwner("SCHEDULE_QUIT_COALESCE", quitAt);
   const skipped = await newOwner("SCHEDULE_QUIT_SKIP", quitAt, {
@@ -458,7 +677,7 @@ try {
     maxLatenessSeconds: 0,
   });
   await page.evaluate((id) => localStorage.setItem("areal-gui:project", id), primaryId);
-  await quit();
+  await quit(true);
   assert.ok(Date.now() < quitAt * 1000, "app quit before the scheduled occurrence");
   await until(
     () => Date.now() > quitAt * 1000 + 2500,
@@ -474,7 +693,7 @@ try {
       rootDigest: value.rootDigest,
     }));
   });
-  await launch();
+  await launch({ reconnectStopped: true });
   await check("reopen-applies-saved-misfire", async () => {
     const coalesced = await until(
       async () => {
@@ -506,7 +725,40 @@ try {
   await stopFixture().catch((error) => {
     failure ??= error.stack;
   });
+  if (app) {
+    await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
+    await closeSmokeApplication(app).catch((error) => {
+      failure ??= error.stack;
+    });
+    app = null;
+  }
   await fixture.close();
+  try {
+    if (!hostStopped)
+      cleanup.push({
+        kind: "credentials retained",
+        reason: "Host stop is not confirmed; inspect original lifecycle requests before cleanup",
+      });
+    else {
+      for (const account of [appName, `${appName} Key`]) await cleanEntry(keychainService, account);
+      const directory = join(env.AREAL_HARNESS_SERVICE_HOME, "host/vault-operations");
+      for (const name of await readdir(directory).catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      })) {
+        const receipt = JSON.parse(await readFile(join(directory, name), "utf8"));
+        assert.equal(name, `${receipt.requestId}.json`);
+        assert.equal(receipt.method, "vault.replace");
+        assert.match(
+          receipt.entryId,
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        );
+        await cleanEntry(hostService, receipt.entryId);
+      }
+    }
+  } catch (error) {
+    failure ??= error.stack;
+  }
   model.closeAllConnections();
   await new Promise((resolve) => model.close(resolve));
   if (digest(await readFile(binary)) !== identity.binarySha256)
@@ -525,7 +777,9 @@ try {
     errors,
     cleanup,
     boundaries: [
-      "Real source Electron/Desktop/Core with local deterministic model and public project/task/lifecycle commands.",
+      "Real source Electron/Main/Host/Core with local deterministic model and public bridge project/task/lifecycle commands; task dialog creation is not exercised.",
+      "Isolated Electron clone uses a distinct native safeStorage identity; HOME remains native and Core, GUI and Host homes are isolated.",
+      "Host stop uses the application menu; native confirmation and folder picker responses are injected.",
       "No task read command is issued while observing unopened-owner admission. Immutable body/root hashes are read without starting Core.",
       "Due latency is an upper bound from scheduled wall time to observer seeing a Run in committed root, including25ms observation polling.",
       "First5future owners have staggered due times8s apart to avoid concurrent model work.",

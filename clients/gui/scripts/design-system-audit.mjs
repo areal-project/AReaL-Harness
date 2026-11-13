@@ -65,20 +65,10 @@ const sharedFocus = await readFile(
   new URL("../../../design/tokens/focus.css", import.meta.url),
   "utf8",
 );
-const webStyle = await readFile(new URL("../../web/style.css", import.meta.url), "utf8");
-const coreServer = await readFile(
-  new URL("../../../core/app-server/src/lib.rs", import.meta.url),
-  "utf8",
-);
 assert.match(
   owners[0],
   /@import\s+["']\.\.\/\.\.\/\.\.\/\.\.\/design\/tokens\/focus\.css["'];/,
   "GUI imports the shared focus source",
-);
-assert.match(
-  coreServer,
-  /concat!\(\s*include_str!\("\.\.\/\.\.\/\.\.\/design\/tokens\/focus\.css"\),\s*"\\n",\s*include_str!\("\.\.\/\.\.\/\.\.\/clients\/web\/style\.css"\)\s*\)/,
-  "Core embeds shared focus CSS before Web CSS",
 );
 for (const token of ["--focus-width", "--focus-offset"]) {
   assert.equal(
@@ -93,12 +83,10 @@ for (const token of ["--focus-width", "--focus-offset"]) {
   );
   for (const [name, source] of [
     ["GUI", owners[0]],
-    ["Web", webStyle],
     ...files.map((name, index) => [name, sources[index]]),
   ]) {
     assert.doesNotMatch(source, new RegExp(`${token}\\s*:`), `${name} must not duplicate ${token}`);
   }
-  assert.ok(webStyle.includes(`var(${token})`), `Web consumes ${token}`);
 }
 // Token 单源：@areal/ui 生成的基础角色与默认调色板，不能在 renderer 的全局主题选择器里再定义一次。
 // 组件内的局部重映射（如消息正文把 --text-ui-base 指向内容字号）不受限制。

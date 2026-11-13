@@ -1,7 +1,7 @@
 import "fake-indexeddb/auto";
 import { IDBDatabase } from "fake-indexeddb";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { DesktopSnapShot } from "@areal/workbench/desktop-contract/snapshots";
+import type { DesktopSnapShot } from "../services.js";
 import { attachmentDrafts } from "../composerDraftAttachments.js";
 import {
   acceptSnapShot,
@@ -28,7 +28,15 @@ const capture = (): DesktopSnapShot => ({
     accessibleText: "Untrusted document text",
   },
 });
-beforeEach(() => attachmentDrafts.clear());
+beforeEach(() => {
+  attachmentDrafts.clear();
+  const values = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  });
+});
 
 describe("durable screenshot draft intake", () => {
   it("pins the requested draft even if the active chat changes and delivery repeats", async () => {
@@ -52,6 +60,7 @@ describe("durable screenshot draft intake", () => {
     await acceptSnapShot(item);
     attachmentDrafts.clear();
     await restoreSnapShotDrafts();
+    expect(attachmentDrafts.get(key)).toHaveLength(1);
     const file = attachmentDrafts.get(key)?.[0] as File;
     expect(file.name).toBe(item.name);
     expect([...new Uint8Array(await file.arrayBuffer())]).toEqual([1, 2, 3]);

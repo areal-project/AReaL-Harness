@@ -29,6 +29,7 @@ import {
   $getPromptMarkdown,
   $appendPromptTextLines,
   $createPromptParagraph,
+  createPromptMarkdownReader,
 } from "@/mentions/promptSerialization.js";
 import { PromptMentionTooltipPlugin } from "@/mentions/PromptMentionTooltipPlugin.js";
 import { PromptClipboardPlugin } from "@/mentions/PromptClipboardPlugin.js";
@@ -71,6 +72,7 @@ import {
   $isPromptMentionNode,
   PromptMentionNode,
 } from "./mentions/nodes/PromptMentionNode.js";
+import { registerPluginMentionMetadata } from "./mentions/pluginMentionMetadata.js";
 import { logger } from "./logger.js";
 
 import { navigatePromptHistory } from "./lib/promptHistory.js";
@@ -109,11 +111,15 @@ export interface LexicalChatInputHandle {
 }
 
 /** 提取编辑器内容；mention 节点会在这里输出 markdown */
+const markdownStates = new WeakMap<EditorState, string>();
 function getEditorMarkdown(editorState: EditorState): string {
+  const cached = markdownStates.get(editorState);
+  if (cached !== undefined) return cached;
   let text = "";
   editorState.read(() => {
     text = $getPromptMarkdown();
   });
+  markdownStates.set(editorState, text);
   return text;
 }
 
@@ -712,10 +718,12 @@ function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) 
   useEffect(() => {
     let composing = false;
     let disposed = false;
-    let previousText = getEditorMarkdown(editor.getEditorState());
+    const reader = createPromptMarkdownReader();
+    let previousText = reader.read(editor.getEditorState());
     const publish = (editorState: EditorState) => {
       if (disposed || composing || !onChangeRef.current) return;
-      const nextText = getEditorMarkdown(editorState);
+      const nextText = reader.read(editorState);
+      markdownStates.set(editorState, nextText);
       if (nextText === previousText) return;
       previousText = nextText;
       onChangeRef.current(nextText);
@@ -739,7 +747,9 @@ function TextContentPlugin({ onChange }: { onChange?: (text: string) => void }) 
       rootElement?.addEventListener("compositionend", handleCompositionEnd);
     });
     const unregisterUpdate = editor.registerUpdateListener(
-      ({ dirtyElements, dirtyLeaves, editorState }) => {
+      ({ dirtyElements, dirtyLeaves, editorState, prevEditorState }) => {
+        reader.invalidate(prevEditorState, dirtyElements.keys());
+        reader.invalidate(editorState, dirtyElements.keys());
         // 组词中间态由 Lexical/输入法即时展示，不序列化、保存草稿或刷新外层 Composer。
         if (dirtyElements.size || dirtyLeaves.size) publish(editorState);
       },
@@ -762,22 +772,9 @@ function PluginMentionMetadataPlugin({ catalog }: { catalog?: ComposerCatalogDat
   const [editor] = useLexicalComposerContext();
   useEffect(() => {
     if (!catalog) return;
-    editor.update(
-      () => {
-        for (const node of $getRoot().getAllTextNodes()) {
-          if (!$isPromptMentionNode(node) || node.getMention().category !== "plugins") continue;
-          const mention = catalog.entries.find(
-            (entry) => entry.mention?.value === node.getMention().value,
-          )?.mention;
-          if (
-            mention &&
-            (node.getMarkdown() !== mention.markdown ||
-              (node.getMention().description ?? "") !== (mention.description ?? ""))
-          )
-            node.replace($createPromptMentionNode(mention));
-        }
-      },
-      { tag: PROGRAMMATIC_UPDATE_TAG },
+    return registerPluginMentionMetadata(
+      editor,
+      catalog.entries.flatMap((entry) => (entry.mention ? [entry.mention] : [])),
     );
   }, [editor, catalog?.entries]);
   return null;
@@ -1284,6 +1281,7 @@ function PromptPredictionPlugin({ text, disabled }: { text?: string; disabled: b
 interface LexicalChatInputProps {
   nextPrompt?: string;
   placeholder?: string;
+  hidePlaceholder?: boolean;
   disabled?: boolean;
   submitDisabled?: boolean;
   allowSubmitWhenEmpty?: boolean;
@@ -1321,6 +1319,7 @@ const EDITOR_THEME = {
 
 export function LexicalChatInput({
   placeholder,
+  hidePlaceholder = false,
   nextPrompt,
   disabled = false,
   submitDisabled = false,
@@ -1365,7 +1364,7 @@ export function LexicalChatInput({
     ? {
         "aria-placeholder": placeholder,
         placeholder: () =>
-          nextPrompt ? null : (
+          nextPrompt || hidePlaceholder ? null : (
             <div
               className={`pointer-events-none absolute left-0 top-0 ${compactPlaceholder ? "line-clamp-2" : ""} ${touchInput ? "text-ui-xl" : "text-ui-base"} leading-5 text-foreground-subtle`}
             >

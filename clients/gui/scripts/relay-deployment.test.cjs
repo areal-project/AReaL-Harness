@@ -4,7 +4,7 @@ const { mkdtemp, mkdir, writeFile, readFile, rm } = require("node:fs/promises");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { execFileSync } = require("node:child_process");
-const { RelayDeployment } = require("../app/src/core/relay-deployment.cjs");
+const { RelayDeployment } = require("@areal/workbench-service/desktop/core/relay-deployment.cjs");
 const valid = {
   target: "root@relay.example",
   port: 22,

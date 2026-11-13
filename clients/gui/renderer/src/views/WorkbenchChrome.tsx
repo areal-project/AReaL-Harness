@@ -1,5 +1,7 @@
-import React from "react";
-import { Route } from "lucide-react";
+import { useReadOnly } from "../PlatformReadContext.js";
+import React, { useState } from "react";
+import { BugReportDialog } from "../BugReportDialog.js";
+import { Bug, Route } from "lucide-react";
 import { ApplicationRail } from "../app-shell/ApplicationNavigation.js";
 import { WorkspaceHeader } from "../app-shell/WorkbenchShell.js";
 import { Button } from "../components/ui/button.js";
@@ -57,6 +59,7 @@ export function WorkbenchRail({
   const { t } = useI18n();
   const { project, threadId, recordWorkspaceLocation } = session;
   const { settingsOpen, pluginsOpen, trajectoryAttention, rememberPluginTask } = surfaces;
+  const readOnly = useReadOnly();
   const taskCenterOpen = taskSurface !== null;
   return (
     <ApplicationRail
@@ -101,28 +104,35 @@ export function WorkbenchRail({
               surfaces.openMarketplace();
             }),
         },
-      ]}
+      ].filter(
+        (item) =>
+          !readOnly ||
+          item.id === "home" ||
+          (item.id === "tasks" && services.capabilities?.taskCatalog),
+      )}
       footer={
-        <>
-          <UpdateIndicator services={services} />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="application-rail-button relative"
-            aria-label={t("settings.title")}
-            title={t(trajectoryAttention ? "settings.attention" : "settings.title")}
-            aria-current={settingsOpen ? "page" : undefined}
-            onClick={() => showPanel("设置")}
-          >
-            <Settings />
-            {trajectoryAttention && (
-              <span
-                aria-label={t("settings.trajectory.attention")}
-                className="absolute top-1 right-1 size-2 rounded-full bg-[var(--color-settings-attention-indicator)]"
-              />
-            )}
-          </Button>
-        </>
+        readOnly && !services.capabilities?.settings?.length ? null : (
+          <>
+            <UpdateIndicator services={services} />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="application-rail-button relative"
+              aria-label={t("settings.title")}
+              title={t(trajectoryAttention ? "settings.attention" : "settings.title")}
+              aria-current={settingsOpen ? "page" : undefined}
+              onClick={() => showPanel("设置")}
+            >
+              <Settings />
+              {trajectoryAttention && (
+                <span
+                  aria-label={t("settings.trajectory.attention")}
+                  className="absolute top-1 right-1 size-2 rounded-full bg-[var(--color-settings-attention-indicator)]"
+                />
+              )}
+            </Button>
+          </>
+        )
       }
     />
   );
@@ -181,40 +191,55 @@ export function WorkspaceNavigation({
 export function WorkspaceTaskActions({
   session,
   workspacePanels,
+  services,
 }: {
   session: Session;
   workspacePanels: Panels;
+  services: PlatformServices;
 }) {
   const { t } = useI18n();
   const { project, thread } = session;
+  const [bugReportOpen, setBugReportOpen] = useState(false);
+  const readOnly = useReadOnly();
+  if (readOnly) return null;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            unstyled
-            aria-label={t("common.navigation.taskActions")}
-            className="icon-button"
-            disabled={!project}
-          >
-            <MoreOptionsIcon size={16} />
-          </Button>
-        }
+    <>
+      <BugReportDialog
+        open={bugReportOpen}
+        onClose={() => setBugReportOpen(false)}
+        services={services}
       />
-      <DropdownMenuContent align="end">
-        {thread && project && (
-          <DropdownMenuItem
-            onClick={() => {
-              workspacePanels.selectPanel("调用轨迹");
-              workspacePanels.exposePanel();
-            }}
-          >
-            <Route size={16} aria-hidden="true" />
-            {t("common.navigation.viewTrajectory")}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              unstyled
+              aria-label={t("common.navigation.taskActions")}
+              className="icon-button"
+            >
+              <MoreOptionsIcon size={16} />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setBugReportOpen(true)}>
+            <Bug size={16} aria-hidden="true" />
+            {t("bugReport.title")}
           </DropdownMenuItem>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {thread && project && (
+            <DropdownMenuItem
+              onClick={() => {
+                workspacePanels.selectPanel("调用轨迹");
+                workspacePanels.exposePanel();
+              }}
+            >
+              <Route size={16} aria-hidden="true" />
+              {t("common.navigation.viewTrajectory")}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
   );
 }
 export function ConversationHeader({
@@ -256,6 +281,7 @@ export function ConversationHeader({
   const { project, thread, threadId, resourceAction } = session;
   const { pluginsOpen, settingsOpen } = surfaces;
   const taskCenterOpen = false;
+  const readOnly = useReadOnly();
   const { panel } = workspacePanels.view;
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
   const { requestReview: setReviewRequest, openFile } = documents;
@@ -269,7 +295,7 @@ export function ConversationHeader({
         </div>
       )}
       <div className="header-tools">
-        {!pluginsOpen && !settingsOpen && !taskCenterOpen && (
+        {!readOnly && !pluginsOpen && !settingsOpen && !taskCenterOpen && (
           <>
             {thread && project && !empty && (
               <TaskResourcesPopover

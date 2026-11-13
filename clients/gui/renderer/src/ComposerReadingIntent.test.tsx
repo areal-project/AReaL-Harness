@@ -4,10 +4,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { Composer, attachmentDrafts, sending } from "./Composer.js";
 import type { ConversationComposer } from "./ConversationComposer.js";
 import { readingViews, cancelTurnStart } from "./readingViews.js";
-import { usePendingMessage } from "./pendingMessage.js";
+import { setPendingMessage, usePendingMessage } from "./pendingMessage.js";
 import { setApplicationPreferences } from "./settings/applicationPreferences.js";
 import { planModeOptions } from "./permissions.js";
 import type { Action } from "./services.js";
+import { PlatformReadProvider } from "./PlatformReadContext.js";
 
 const observed = vi.hoisted(() => {
   vi.stubGlobal("window", new EventTarget());
@@ -22,6 +23,7 @@ const observed = vi.hoisted(() => {
     submit: undefined as ((value: string) => unknown) | undefined,
     modifiedSubmit: undefined as ((value: string) => unknown) | undefined,
     approve: undefined as (() => void) | undefined,
+    composer: undefined as ComponentProps<typeof ConversationComposer> | undefined,
   };
 });
 vi.mock("react", async (importOriginal) => ({
@@ -30,9 +32,10 @@ vi.mock("react", async (importOriginal) => ({
 }));
 vi.mock("./ConversationComposer.js", () => ({
   ConversationComposer: (props: ComponentProps<typeof ConversationComposer>) => {
+    observed.composer = props;
     observed.submit = props.onSubmit;
     observed.modifiedSubmit = props.onModifiedSubmit;
-    return null;
+    return props.topContent;
   },
 }));
 vi.mock("./components/ui/button.js", () => ({
@@ -43,7 +46,7 @@ vi.mock("./components/ui/button.js", () => ({
 }));
 vi.mock("./i18n/IntlProvider.js", () => ({ useI18n: () => ({ t: (id: string) => id }) }));
 
-function fixture(plan = false, file = false, running = false) {
+function fixture(plan = false, file = false, running = false, empty = false, web = false) {
   const projectId = crypto.randomUUID();
   const key = `areal-gui:draft:${projectId}:thread`;
   const owner = JSON.stringify([projectId, "thread", false]);
@@ -51,14 +54,16 @@ function fixture(plan = false, file = false, running = false) {
   const config = { revision: 1, options: planModeOptions(plan) };
   const thread = {
     id: "thread",
-    turns: [
-      {
-        id: "old",
-        status: running ? "inProgress" : "completed",
-        configuration: config,
-        items: [{ id: "answer", type: "agentMessage", text: "Ready" }],
-      },
-    ],
+    turns: empty
+      ? []
+      : [
+          {
+            id: "old",
+            status: running ? "inProgress" : "completed",
+            configuration: config,
+            items: [{ id: "answer", type: "agentMessage", text: "Ready" }],
+          },
+        ],
   };
   const action = vi.fn<Action>().mockRejectedValue(
     Object.assign(new Error("response lost"), {
@@ -66,11 +71,13 @@ function fixture(plan = false, file = false, running = false) {
       requestId: "original-request",
     }),
   );
-  renderToStaticMarkup(
-    createElement(Composer, {
+  const render = () => {
+    observed.approve = undefined;
+    const composer = createElement(Composer, {
       project: {
         id: projectId,
         root: "/preview",
+        ...(web ? { desktopCapabilities: { currentCommands: false } } : {}),
         models: [],
         pending: [],
         configurations: { thread: config },
@@ -81,9 +88,19 @@ function fixture(plan = false, file = false, running = false) {
       executionBlocked: false,
       onPanel: () => {},
       onNew: () => {},
-    }),
-  );
-  return { key, owner, action };
+    });
+    return renderToStaticMarkup(
+      web
+        ? createElement(PlatformReadProvider, {
+            readOnly: true,
+            conversationSubmitReadOnly: false,
+            children: composer,
+          })
+        : composer,
+    );
+  };
+  render();
+  return { key, owner, action, render, thread };
 }
 
 describe("Composer reading intent across unknown boundaries", () => {
@@ -170,9 +187,116 @@ describe("Composer follow-up destination before acceptance", () => {
       else expect(pendingMessage).toMatchObject({ text: "follow-up message" });
       expect(intent).toBeUndefined();
       renderToStaticMarkup(createElement(Probe));
-      expect(pendingMessage).toBeUndefined();
+      if (queued) expect(pendingMessage).toBeUndefined();
+      else expect(pendingMessage).toMatchObject({ text: "follow-up message" });
+      setPendingMessage(f.key);
       readingViews.delete(f.owner);
       setApplicationPreferences({ followUp: "queue" });
     },
   );
+});
+
+describe("Composer pending attachment visibility", () => {
+  it("hides captured attachments during submission and restores them after rejection", async () => {
+    const f = fixture(false, true);
+    let reject!: (error: Error) => void;
+    f.action.mockReset().mockImplementation(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    observed.submit!("message with attachment");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    expect(f.render()).toContain('<div hidden="">');
+    expect(attachmentDrafts.get(f.key)).toHaveLength(1);
+    reject(new Error("upload rejected"));
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    expect(f.render()).not.toContain('<div hidden="">');
+    expect(attachmentDrafts.get(f.key)).toHaveLength(1);
+    attachmentDrafts.delete(f.key);
+    readingViews.delete(f.owner);
+  });
+});
+
+describe("Composer receipt before history projection", () => {
+  it("waits for the accepted turn projection before choosing the follow-up destination", async () => {
+    const f = fixture(false, false, false, true);
+    f.action.mockReset().mockResolvedValue({ threadId: "thread" });
+    observed.submit!("first message");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    localStorage.setItem(f.key, "follow-up message");
+    f.render();
+    expect(observed.composer?.disabled).toBe(false);
+    expect(observed.composer?.submitDisabled).toBe(true);
+    await observed.submit!("follow-up message");
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    expect(f.action).toHaveBeenCalledOnce();
+    // 对话列表未挂载、用户消息以历史占位出现时，投影本身也要解锁输入框。
+    const deferred = {
+      id: "accepted-user",
+      type: "historyDeferred",
+      originalType: "userMessage",
+      text: "",
+    };
+    f.thread.turns.push({
+      id: "accepted-turn",
+      status: "inProgress",
+      configuration: { revision: 1, options: planModeOptions(false) },
+      items: [deferred],
+    });
+    f.render();
+    expect(observed.composer?.submitDisabled).toBe(false);
+    await observed.submit!("follow-up message");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledTimes(2));
+    expect(f.action.mock.calls[1][1]).toMatchObject({
+      enqueue: true,
+      expectedTurnId: "accepted-turn",
+    });
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    setPendingMessage(f.key);
+    readingViews.delete(f.owner);
+  });
+
+  it.each([true, false])(
+    "keeps the outgoing message until history replaces it (first=%s)",
+    async (first) => {
+      const f = fixture(false, false, false, first);
+      f.action.mockReset().mockResolvedValue({ threadId: "thread" });
+      observed.submit!("second message");
+      await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+      let pendingMessage: unknown;
+      function Probe() {
+        pendingMessage = usePendingMessage(f.key);
+        return null;
+      }
+      renderToStaticMarkup(createElement(Probe));
+      expect(pendingMessage).toMatchObject({ text: "second message", accepted: true });
+      expect(f.render()).not.toContain('<div hidden="">');
+      setPendingMessage(f.key);
+      readingViews.delete(f.owner);
+    },
+  );
+});
+
+describe("Host conversation submit capability", () => {
+  it("submits from a Web Composer while existing configuration and plan approval stay closed", async () => {
+    const f = fixture(true, false, false, false, true);
+    expect(observed.approve).toBeUndefined();
+    expect(observed.composer?.modelDisabled).toBe(true);
+    expect(
+      observed.composer?.composerCatalog?.entries.some((entry) =>
+        ["plan", "goal"].includes(entry.value),
+      ),
+    ).toBe(false);
+    observed.submit!("web message");
+    await vi.waitFor(() => expect(f.action).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(sending.has(f.key)).toBe(false));
+    expect(f.action.mock.calls[0][0]).toBe("send");
+    expect(f.action.mock.calls[0][1]).toMatchObject({ text: "web message" });
+    readingViews.delete(f.owner);
+    setPendingMessage(f.key);
+  });
 });

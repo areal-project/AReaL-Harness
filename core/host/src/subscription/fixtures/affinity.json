@@ -1,0 +1,113 @@
+[
+  {
+    "headers": {
+      "x-areal-thread-id": "thread-a",
+      "x-areal-turn-id": "turn-a",
+      "x-areal-model-purpose": "solve"
+    },
+    "model": "m",
+    "epoch": 0,
+    "capture": "route-a",
+    "output": {
+      "session-id": "thread-a",
+      "thread-id": "thread-a"
+    }
+  },
+  {
+    "headers": {
+      "x-areal-thread-id": "thread-a",
+      "x-areal-turn-id": "turn-a",
+      "x-areal-model-purpose": "solve"
+    },
+    "model": "m",
+    "epoch": 0,
+    "capture": "route-b",
+    "output": {
+      "session-id": "thread-a",
+      "thread-id": "thread-a",
+      "x-codex-turn-state": "route-a"
+    }
+  },
+  {
+    "headers": {
+      "x-areal-thread-id": "b",
+      "x-areal-turn-id": "turn-a",
+      "x-areal-model-purpose": "solve"
+    },
+    "model": "m",
+    "epoch": 0,
+    "output": {
+      "session-id": "b",
+      "thread-id": "b"
+    }
+  },
+  {
+    "headers": {
+      "x-areal-thread-id": "c",
+      "x-areal-turn-id": "turn-a",
+      "x-areal-model-purpose": "solve"
+    },
+    "model": "m",
+    "epoch": 0,
+    "output": {
+      "session-id": "c",
+      "thread-id": "c"
+    }
+  },
+  {
+    "headers": {
+      "x-areal-thread-id": "thread-a",
+      "x-areal-turn-id": "turn-a",
+      "x-areal-model-purpose": "solve"
+    },
+    "model": "m",
+    "epoch": 0,
+    "output": {
+      "session-id": "thread-a",
+      "thread-id": "thread-a"
+    }
+  },
+  {
+    "headers": {
+      "x-areal-thread-id": "thread-a",
+      "x-areal-turn-id": "turn-a",
+      "x-areal-model-purpose": "solve"
+    },
+    "model": "m",
+    "epoch": 1,
+    "output": {
+      "session-id": "thread-a",
+      "thread-id": "thread-a"
+    }
+  },
+  {
+    "headers": {
+      "x-areal-thread-id": "thread-a",
+      "x-areal-turn-id": "turn-a",
+      "x-areal-model-purpose": "solve"
+    },
+    "model": "m",
+    "epoch": 1,
+    "now": 10,
+    "output": {
+      "session-id": "thread-a",
+      "thread-id": "thread-a"
+    }
+  },
+  {
+    "headers": {},
+    "model": "m",
+    "epoch": 0,
+    "output": null
+  },
+  {
+    "headers": {
+      "x-areal-thread-id": "a",
+      "x-areal-turn-id": "b",
+      "x-areal-model-purpose": "unknown"
+    },
+    "model": "m",
+    "epoch": 0,
+    "output": null
+  }
+]

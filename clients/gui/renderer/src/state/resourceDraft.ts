@@ -1,4 +1,5 @@
 import { UiMessageError } from "../i18n/IntlProvider.js";
+import { composerDraftStorage } from "../composerDraftStorage.js";
 import { readComposerSkills, type ComposerSkill } from "../ComposerSkills.js";
 import { profileKey, resolveDraftProfile } from "../ProfileDetails.js";
 import { type Data, type PlatformServices, type PreparedCreator } from "../services.js";
@@ -85,8 +86,8 @@ export async function prepareResourceDraft(
       throw new Error("当前任务配置未提供此 Skill 的确切版本，现有草稿已保留。");
   }
   const existingSkills = readComposerSkills(key);
-  const existingText = localStorage.getItem(key) || "";
-  localStorage.setItem(key, existingText.trim() ? `${existingText}\n\n${text}` : text);
+  const existingText = composerDraftStorage.getItem(key) || "";
+  composerDraftStorage.setItem(key, existingText.trim() ? `${existingText}\n\n${text}` : text);
   if (
     skill &&
     !existingSkills.some((item) => item.id === skill.id && item.revision === skill.revision)

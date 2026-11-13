@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const modulePath = join(gui, "app/src/core/core-process.cjs");
+const modulePath = join(gui, "scripts/support/core-process-fixture.cjs");
 const require = createRequire(import.meta.url);
 const { executeCore } = require(modulePath);
 const scratch = await makeTempDir("areal-core-process-");

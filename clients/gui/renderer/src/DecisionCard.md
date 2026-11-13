@@ -11,14 +11,3 @@
 `R-DECISIONCARD-011` [ApprovalRequest.tsx](ApprovalRequest.tsx) 由 [TaskRunConversations.tsx](TaskRunConversations.tsx) 挂载，负责当前请求的本地提交锁。可操作请求允许拒绝或仅允许一次。只有有效权限允许时，才展示可记住的授权范围。处理中、提交已受理与结果未知均锁定响应动作。收到回执后仍明确等待执行状态更新。明确失败可以重试；结果未知时提供原有 manage/interactions 核对动作，不自动重复提交响应。
 
 `R-DECISIONCARD-012` Tab 可到达可用动作；Enter 与 Space 沿用 Button 语义。Escape 仅在未锁定卡片内部触发拒绝，并尊重已经处理的事件。未知结果核对是独立动作。请求移除与执行进展仍以 Core 投影为准。
-
-## 证据与边界
-
-`R-DECISIONCARD-013` [E-DECISION](../../design-system/base-evidence.md#e-decision) 记录本地决策与长内容检查。列明状态是有限准入范围，不代表真实供应商、全部权限组合或安装包已验收。
-
-
-## Ask User与过程展示
-
-`R-DECISIONCARD-014` AskUserQuestion保留业务草稿、问题导航、输入法处理与提交锁，使用包内QuestionCard。单选/数字选择只修改草稿，明确发送才提交；多题回答一次提交。稍后回答与关闭只折叠并保留草稿，原Core请求保持pending。UNKNOWN核对不自动重发。
-
-`R-DECISIONCARD-015` TurnElapsed使用Core起始时间和终态durationMs，所有语言运行中均为`Working for …`、完成后为`Worked for …`。失败的工具步骤留在所在活动行并写明结果；TurnProgress标题只保留耗时与展开箭头，不展示任务状态和警示图标；具体活动中的结果待确认与恢复动作继续沿原所有者展示。

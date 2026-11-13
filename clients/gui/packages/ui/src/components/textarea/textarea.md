@@ -25,10 +25,6 @@ exports: ["Textarea"]
 
 空值、长正文、聚焦、禁用、无效。
 
-## 行为
-
-`R-TEXTAREA-001` 保持原生textarea事件与field-sizing，不承担草稿持久化或发送。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。
@@ -40,8 +36,6 @@ exports: ["Textarea"]
 ## 规则
 
 引用 [R-UI-COMMON-003](../../../README.md#共同合同)。
-
-`R-TEXTAREA-002` `unstyled` 用于已经由所属组合定义完整外观的编辑区，例如审批回复、标注笔记和配置文本。它保留原生 textarea、输入法、事件、disabled 与 ref，不应用尺寸、自动高度或外观 recipe。组合负责布局和可见焦点。普通多行字段继续使用默认外观。
 
 ## 示例
 

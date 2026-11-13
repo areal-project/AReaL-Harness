@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { createRequire } from "node:module";
 import { createIdentity, identityId, secureChannel } from "../packages/remote/src/channel.mjs";
 import { createRemoteWire } from "../packages/remote/src/wire.mjs";
-import { parseRemoteConfig } from "../app/src/core/remote-config.cjs";
-import { hostFixture, waitFor } from "./remote-relay-fixture.mjs";
+import { parseRemoteConfig } from "@areal/workbench-service/desktop/core/remote-config.cjs";
+import { nativeRelayHostFixture as hostFixture, waitFor } from "./remote-relay-fixture.mjs";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
 const WebSocket = require("ws");
@@ -27,7 +27,7 @@ async function next(messages) {
 
 async function connect(t, remote, { identity, inviteSecret, ...metadata } = {}) {
   identity ??= await createIdentity();
-  const origin = remote.direct.origin;
+  const origin = remote.state().directUrl;
   const socket = new WebSocket(origin.replace(/^http/, "ws") + "/remote/socket", { origin });
   t.after(() => socket.terminate());
   const { wire, ready } = createRemoteWire(socket);
@@ -57,24 +57,28 @@ for (const clientKind of [undefined, "web", "ios", "android"]) {
     const { remote } = f;
     await remote.control({ operation: "enableDirect" });
     const inviteSecret = await invitation(remote);
-    const writes = f.savedWrites.length;
+    const beforeHello = await f.client.request("remote.read", {});
     const client = await connect(t, remote, {
       inviteSecret,
       ...(clientKind ? { clientKind } : {}),
     });
     assert.equal(client.first.event, "pairing");
-    assert.equal(remote.state().pending[0].clientKind, clientKind);
-    assert.equal(f.savedWrites.length, writes, "hello does not persist pending metadata");
+    assert.equal((await remote.refresh()).pending[0].clientKind, clientKind);
+    assert.deepEqual(
+      await f.client.request("remote.read", {}),
+      beforeHello,
+      "pending metadata leaves the Host configuration and revision unchanged",
+    );
     assert.equal((await f.persisted()).deviceGrants?.length ?? 0, 0);
     await remote.control({
       operation: "approve",
       id: client.peer,
-      projects: ["project"],
+      projects: [f.projectAlias],
       preset: "Observer",
     });
     const active = await next(client.messages);
     assert.equal(active.event, "ready");
-    assert.equal(remote.state().pending.length, 0);
+    assert.equal((await remote.refresh()).pending.length, 0);
     const grant = (await f.persisted()).deviceGrants[0];
     assert.equal(grant.clientKind, clientKind);
     assert.equal(Object.hasOwn(grant, "clientKind"), clientKind !== undefined);
@@ -83,19 +87,28 @@ for (const clientKind of [undefined, "web", "ios", "android"]) {
     assert.deepEqual(parseRemoteConfig(await f.persisted()).deviceGrants[0], grant);
 
     client.socket.terminate();
-    await waitFor(() => remote.sessions.sockets.size === 0);
-    const approvedWrites = f.savedWrites.length;
+    await waitFor(
+      async () =>
+        client.socket.readyState === 3 &&
+        (await remote.refresh()).deviceGrants.find((value) => value.devicePeerId === client.peer)
+          .online === false,
+    );
+    const approved = await f.client.request("remote.read", {});
     const reconnect = await connect(t, remote, {
       identity: client.identity,
       clientKind: clientKind === "ios" ? "web" : "ios",
     });
     assert.equal(reconnect.first.event, "ready");
-    assert.equal(f.savedWrites.length, approvedWrites, "reconnect does not save client metadata");
+    assert.deepEqual(
+      await f.client.request("remote.read", {}),
+      approved,
+      "reconnect leaves persisted metadata and its Host revision unchanged",
+    );
     assert.deepEqual((await f.persisted()).deviceGrants[0], grant);
     await remote.control({
       operation: "updateGrant",
       id: client.peer,
-      projects: ["project"],
+      projects: [f.projectAlias],
       preset: "Operator",
     });
     const updated = (await f.persisted()).deviceGrants[0];
@@ -116,16 +129,23 @@ test("unknown hello client kinds fail before invitation consumption or persisten
   const f = await hostFixture(t);
   await f.remote.control({ operation: "enableDirect" });
   const inviteSecret = await invitation(f.remote);
-  const writes = f.savedWrites.length;
+  const beforeHello = await f.client.request("remote.read", {});
   for (const clientKind of ["desktop", "", null, 1, {}]) {
     const client = await connect(t, f.remote, { inviteSecret, clientKind });
     assert.equal(client.first.error.code, "INVALID_PARAMS");
-    assert.equal(f.remote.state().pending.length, 0);
-    assert.equal(f.remote.invite.secret, inviteSecret);
-    assert.equal(f.savedWrites.length, writes);
-    client.socket.terminate();
-    await waitFor(() => f.remote.sessions.sockets.size === 0);
+    assert.equal((await f.remote.refresh()).pending.length, 0);
+    assert.deepEqual(await f.client.request("remote.read", {}), beforeHello);
+    await waitFor(() => client.socket.readyState === 3);
   }
+  const valid = await connect(t, f.remote, { inviteSecret, clientKind: "web" });
+  assert.equal(valid.first.event, "pairing", "the original invitation remains usable");
+  await f.remote.control({
+    operation: "approve",
+    id: valid.peer,
+    projects: [f.projectAlias],
+    preset: "Observer",
+  });
+  assert.equal((await next(valid.messages)).event, "ready");
 });
 
 test("stored grants reject invalid client kinds and accept legacy absence", () => {

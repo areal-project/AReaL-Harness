@@ -60,19 +60,21 @@
       "0b3d55291ea17a89ec58938adccaa09c2a358e0ba49001b89600ba3bfd6117ae",
       "6149f3f68cf609876c065edfbe2013a511b10bae2605eb57876e4df37e7f1650",
       "ad9f3e08e3a18445e2686e80dd00641525b7f8599f4bd3f364690716719f42a0",
-      "3a5c443b0672cc0066e39619f598df02897f668f56564b6f45df62a88b84d7f5",
+      "c3da1a3a79e4d7c4d7f37ca2b7a80afc725403cbdb1d6683f7c207310e6f1614",
       "c43888c5ca5af715415b7e1146c7c7075b4abcb04db2e2117fc53425ecec4cb4",
       "d87e9762ad4bded445743ebe3c1990e8addf1af61f6e9958de4cf38e4fe42761",
-      "0dc1572ff7c86db161629fb3c8f59295413e5efd3cd3ab9aff15129fe9be34be"
+      "0dc1572ff7c86db161629fb3c8f59295413e5efd3cd3ab9aff15129fe9be34be",
+      "3787995016a7b91e30f22da67df4ce8df20c5ef2de5746c2ae80c29350d5037d"
     ],
     "nonNormativeNotes": {
       "0b3d55291ea17a89ec58938adccaa09c2a358e0ba49001b89600ba3bfd6117ae": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
       "6149f3f68cf609876c065edfbe2013a511b10bae2605eb57876e4df37e7f1650": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
       "ad9f3e08e3a18445e2686e80dd00641525b7f8599f4bd3f364690716719f42a0": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "3a5c443b0672cc0066e39619f598df02897f668f56564b6f45df62a88b84d7f5": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
+      "c3da1a3a79e4d7c4d7f37ca2b7a80afc725403cbdb1d6683f7c207310e6f1614": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
       "c43888c5ca5af715415b7e1146c7c7075b4abcb04db2e2117fc53425ecec4cb4": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
       "d87e9762ad4bded445743ebe3c1990e8addf1af61f6e9958de4cf38e4fe42761": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "0dc1572ff7c86db161629fb3c8f59295413e5efd3cd3ab9aff15129fe9be34be": "导航或已有生成实例的说明，事实由链接所有者定义"
+      "0dc1572ff7c86db161629fb3c8f59295413e5efd3cd3ab9aff15129fe9be34be": "导航或已有生成实例的说明，事实由链接所有者定义",
+      "3787995016a7b91e30f22da67df4ce8df20c5ef2de5746c2ae80c29350d5037d": "导航或已有生成实例的说明，事实由链接所有者定义"
     }
   },
   {
@@ -87,24 +89,6 @@
       "667a60523d394744b48c38a63dee8c0a610b6009fcb53bc7b12678d86727409f": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
       "401d2329bc9163a14da7e8d47e440364db02d5f9fc1266259e8bb958ad8aafd4": "现状或运行观察，描述该版本具备什么，不另定义设计义务"
     }
-  },
-  {
-    "path": "clients/gui/design-system/exercises/conversation-flow.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/exercises/conversation-flow.md"
-  },
-  {
-    "path": "clients/gui/design-system/exercises/conversation-stage2.en.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/exercises/conversation-stage2.en.md"
-  },
-  {
-    "path": "clients/gui/design-system/exercises/conversation-stage2.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/exercises/conversation-stage2.md"
   },
   {
     "path": "clients/gui/design-system/exercises/decision-transfer.md",
@@ -123,36 +107,6 @@
     "role": "process-evidence",
     "status": "redirect",
     "target": "design/archive/gui/exercises/settings-reflow.md"
-  },
-  {
-    "path": "clients/gui/design-system/exercises/settings-stage1.en.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/exercises/settings-stage1.en.md"
-  },
-  {
-    "path": "clients/gui/design-system/exercises/settings-stage1.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/exercises/settings-stage1.md"
-  },
-  {
-    "path": "clients/gui/design-system/exercises/shared-workspace.en.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/exercises/shared-workspace.en.md"
-  },
-  {
-    "path": "clients/gui/design-system/exercises/shared-workspace.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/exercises/shared-workspace.md"
-  },
-  {
-    "path": "clients/gui/design-system/exercises/worktrees.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/exercises/worktrees.md"
   },
   {
     "path": "clients/gui/design-system/foundations.md",
@@ -196,22 +150,16 @@
     "status": "active"
   },
   {
-    "path": "clients/gui/design-system/references.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/reference-observations.md"
-  },
-  {
     "path": "clients/gui/design-system/roadmap.md",
     "role": "maintainer",
     "status": "active",
     "nonNormative": [
       "9f1d0d9749d7d4b35248b25c6cd212cdadfe4a5b9ff91f005a8ba1d931979ffe",
-      "5706f40c318632b861f45395bf0155908e81ecfea90d960d19113e26e92cf577"
+      "9c78377c2cd540da7b90c89fca8e9e86e6a140067db4e22d3abcc9c89bdc4672"
     ],
     "nonNormativeNotes": {
       "9f1d0d9749d7d4b35248b25c6cd212cdadfe4a5b9ff91f005a8ba1d931979ffe": "现状或运行观察，描述该版本具备什么，不另定义设计义务",
-      "5706f40c318632b861f45395bf0155908e81ecfea90d960d19113e26e92cf577": "现状或运行观察，描述该版本具备什么，不另定义设计义务"
+      "9c78377c2cd540da7b90c89fca8e9e86e6a140067db4e22d3abcc9c89bdc4672": "现状或运行观察，描述该版本具备什么，不另定义设计义务"
     }
   },
   {
@@ -704,12 +652,6 @@
     "status": "active"
   },
   {
-    "path": "design/Raft 设计系统拆解.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/research/raft-design-analysis.md"
-  },
-  {
     "path": "design/architecture.md",
     "role": "cross-product",
     "status": "active"
@@ -865,6 +807,16 @@
     "status": "archived"
   },
   {
+    "path": "design/archive/research/codex-design-system-review.md",
+    "role": "process-evidence",
+    "status": "archived"
+  },
+  {
+    "path": "design/archive/research/conversation-dual-product-baseline.md",
+    "role": "process-evidence",
+    "status": "archived"
+  },
+  {
     "path": "design/archive/research/raft-design-analysis.md",
     "role": "process-evidence",
     "status": "archived"
@@ -905,21 +857,9 @@
     "target": "design/archive/gui/reuse-exercise.md"
   },
   {
-    "path": "design/components/reuse-result.md",
-    "role": "process-evidence",
-    "status": "redirect",
-    "target": "design/archive/gui/reuse-result.md"
-  },
-  {
     "path": "design/content/README.md",
     "role": "cross-product",
     "status": "active"
-  },
-  {
-    "path": "design/content/conversation-content-system.md",
-    "role": "maintainer",
-    "status": "redirect",
-    "target": "clients/gui/design-system/content-system.md"
   },
   {
     "path": "design/content/interface-copy.md",
@@ -957,6 +897,11 @@
     "status": "active"
   },
   {
+    "path": "design/decisions/005-reproducible-spec.md",
+    "role": "cross-product",
+    "status": "active"
+  },
+  {
     "path": "design/decisions/README.md",
     "role": "cross-product",
     "status": "active"
@@ -985,9 +930,9 @@
     "path": "design/patterns/feedback-and-recovery.md",
     "role": "cross-product",
     "status": "active",
-    "nonNormative": ["568ff283b88dce926b1044944b4bb024df330ba2a1183ab39b312ddab27238bd"],
+    "nonNormative": ["846ceeef22873705ffa7da8f9879dece6cf86d786fd137854aea29fc7909259c"],
     "nonNormativeNotes": {
-      "568ff283b88dce926b1044944b4bb024df330ba2a1183ab39b312ddab27238bd": "现状或运行观察，描述该版本具备什么，不另定义设计义务"
+      "846ceeef22873705ffa7da8f9879dece6cf86d786fd137854aea29fc7909259c": "现状或运行观察，描述该版本具备什么，不另定义设计义务"
     }
   },
   {
@@ -1059,27 +1004,19 @@
     "path": "design/products/README.md",
     "role": "cross-product",
     "status": "active",
-    "nonNormative": ["71210f7b4f771505a1990fc48621a0253614aa6e3540402580cfa43e39b235f9"],
+    "nonNormative": ["8f101fc37b5af905f9eb3c2a6ab2b3dc986879a18adcac75d69c06a5291af423"],
     "nonNormativeNotes": {
-      "71210f7b4f771505a1990fc48621a0253614aa6e3540402580cfa43e39b235f9": "导航或已有生成实例的说明，事实由链接所有者定义"
+      "8f101fc37b5af905f9eb3c2a6ab2b3dc986879a18adcac75d69c06a5291af423": "导航或已有生成实例的说明，事实由链接所有者定义"
     }
   },
   {
-    "path": "design/products/workbench/README.md",
-    "role": "maintainer",
-    "status": "redirect",
-    "target": "clients/gui/design-system/workbench.md"
+    "path": "design/spec/README.md",
+    "role": "cross-product",
+    "status": "active"
   },
   {
-    "path": "design/products/workbench/candidate.md",
-    "role": "maintainer",
-    "status": "redirect",
-    "target": "clients/gui/design-system/workbench-candidate.md"
-  },
-  {
-    "path": "design/roadmap.md",
-    "role": "maintainer",
-    "status": "redirect",
-    "target": "clients/gui/design-system/roadmap.md"
+    "path": "design/spec/quality.md",
+    "role": "cross-product",
+    "status": "active"
   }
 ]

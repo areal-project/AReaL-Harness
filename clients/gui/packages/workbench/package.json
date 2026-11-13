@@ -17,6 +17,10 @@
       "types": "./client/desktop-contract/mcp-page.cjs",
       "default": "./client/desktop-contract/mcp-page.cjs"
     },
+    "./desktop-contract/plugin-store": {
+      "types": "./client/desktop-contract/plugin-store.cjs",
+      "default": "./client/desktop-contract/plugin-store.cjs"
+    },
     "./model-selection": {
       "import": "./client/model-selection.js",
       "require": "./client/model-selection.cjs"
@@ -24,6 +28,11 @@
     "./state-projection": {
       "import": "./client/state-projection.js",
       "require": "./client/state-projection.cjs"
+    },
+    "./history-projection": {
+      "types": "./client/history-projection.cjs",
+      "import": "./client/history-projection.js",
+      "require": "./client/history-projection.cjs"
     },
     "./core-model": "./client/core-model.js",
     "./core-panels": "./client/core-panels.js",
@@ -62,6 +71,10 @@
     "./desktop-contract/feedback": {
       "types": "./client/desktop-contract/feedback.cjs",
       "default": "./client/desktop-contract/feedback.cjs"
+    },
+    "./desktop-contract/bug-report": {
+      "types": "./client/desktop-contract/bug-report.cjs",
+      "default": "./client/desktop-contract/bug-report.cjs"
     },
     "./desktop-contract/trajectory": {
       "types": "./client/desktop-contract/trajectory.cjs",

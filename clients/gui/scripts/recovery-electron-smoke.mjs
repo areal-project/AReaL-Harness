@@ -8,13 +8,13 @@ import {
   access,
   lstat,
   mkdir,
-  mkdtemp,
   readFile,
   readdir,
   realpath,
   rename,
   writeFile,
 } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createServer } from "node:http";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -420,7 +420,7 @@ if (command === "doctor") {
   const build = await preflight(),
     evidenceRoot = join(root, ".scratch/recovery-electron");
   await mkdir(evidenceRoot, { recursive: true });
-  const evidence = await mkdtemp(join(evidenceRoot, "run-")),
+  const evidence = await trackedMkdtemp(join(evidenceRoot, "run-")),
     state = await makeTempDir("arec-");
   const run = { evidence, state, owner: randomUUID() };
   await writeFile(join(state, ".owner"), run.owner);

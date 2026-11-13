@@ -1,7 +1,8 @@
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, readFile, writeFile, readdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, randomUUID } from "node:crypto";
@@ -34,7 +35,7 @@ if (seed) {
 const scratch = seed?.scratch ?? (await makeTempDir("areal-cold-red-"));
 const evidence = process.env.AREAL_COLD_EVIDENCE
   ? resolve(process.env.AREAL_COLD_EVIDENCE)
-  : await mkdtemp(join(root, ".scratch/task-catalog-cold-"));
+  : await trackedMkdtemp(join(root, ".scratch/task-catalog-cold-"));
 await mkdir(evidence, { recursive: true });
 const primary = join(scratch, "primary"),
   user = join(scratch, "user");
@@ -65,7 +66,7 @@ const fixture = await applicationFixture(
   gui,
   join(scratch, "app"),
   `
-const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const originalStart = CoreBackend.prototype.startProject;
 CoreBackend.prototype.startProject = function(id) {
   require("node:fs").appendFileSync(${JSON.stringify(startTrace)}, JSON.stringify({projectId:id,at:Date.now()})+"\\n");
@@ -293,7 +294,7 @@ try {
       const check = () => {
         if (timing.clickedAt === null || timing.visibleAt !== null) return;
         const row = [...document.querySelectorAll("button[aria-label]")].find(
-          (el) => el.getAttribute("aria-label") === "打开自动化 " + objective,
+          (el) => el.getAttribute("aria-label") === "打开定时任务 " + objective,
         );
         if (!row || frame) return;
         frame = requestAnimationFrame(() => {
@@ -335,7 +336,7 @@ try {
     { objective, taskOwner },
   );
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  const row = page.getByRole("button", { name: `打开自动化 ${objective}`, exact: true });
+  const row = page.getByRole("button", { name: `打开定时任务 ${objective}`, exact: true });
   await row.waitFor({ timeout: 60000 });
   await page.waitForFunction(() => window.__coldTaskTiming.visibleAt !== null);
   observation = await page.evaluate(() => window.__coldTaskTiming);

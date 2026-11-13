@@ -111,6 +111,8 @@ const bridge: DesktopBridge = {
   onUpdate: () => () => {},
   onQuitProgress: () => () => {},
   onQuitRequested: () => () => {},
+  onWindowClosing: () => () => {},
+  onWindowOpened: () => () => {},
   onNotificationOpen: () => () => {},
   onMcpAppDeepLink: () => () => {},
   updateState: async () => ({ state: "idle" }),

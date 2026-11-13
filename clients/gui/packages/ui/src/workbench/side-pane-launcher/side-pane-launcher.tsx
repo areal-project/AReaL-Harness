@@ -26,7 +26,7 @@ export function SidePaneLauncher({
               >
                 <Icon />
                 <span className="side-pane-launcher-label">{item.label}</span>
-                <kbd>{item.shortcut}</kbd>
+                {item.shortcut && <kbd>{item.shortcut}</kbd>}
               </button>
             </li>
           );

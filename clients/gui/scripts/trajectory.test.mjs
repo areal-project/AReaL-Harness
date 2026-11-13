@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { TrajectoryExport, publicStatus } = require("../app/src/core/trajectory.cjs");
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { TrajectoryExport, publicStatus } = require("@areal/workbench-service/trajectory");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
 const { validateCommand } = require("@areal/workbench/desktop-contract");
+const { hostCoreClient } = createRequire(import.meta.url)("./support/host-core-fixture.cjs");
 const status = {
   enabled: true,
   state: "degraded",
@@ -45,7 +47,7 @@ const status = {
 };
 
 async function fixture(t) {
-  const directory = await mkdtemp(join(tmpdir(), "areal-trajectory-gui-"));
+  const directory = await trackedMkdtemp(join(tmpdir(), "areal-trajectory-gui-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const binary = join(directory, "core fixture.cjs"),
     response = join(directory, "response.json"),
@@ -74,6 +76,7 @@ process.stdout.write(value);
       }),
     },
     providers: {
+      config: { refreshCredentials: async () => {} },
       environment: () => ({ AREAL_CREDENTIAL_fixture: "fixture-secret" }),
       redact: (text) => text.replaceAll("fixture-secret", "[redacted]"),
     },
@@ -155,7 +158,7 @@ test("capture restart fences configuration changes during original Host cleanup"
 });
 
 async function backendFixture(t) {
-  const home = await mkdtemp(join(tmpdir(), "areal-trajectory-backend-"));
+  const home = await trackedMkdtemp(join(tmpdir(), "areal-trajectory-backend-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   const backend = new CoreBackend({ binary: process.execPath, home });
   backend.saved = [];
@@ -236,7 +239,20 @@ test(
       },
     };
     backend.projects.set(project.id, project);
-    // 只替换 Core I/O，配置读取、准入、应用回执校验和结果投影仍走真实实现。
+    backend.host.sourceId = "fixture-source";
+    backend.host.client.sourceState = async () => ({
+      sourceId: backend.host.sourceId,
+      credentials: { references: [] },
+    });
+    backend.host.bindings.set(project.id, {
+      projectId: project.id,
+      sourceId: backend.host.sourceId,
+      workspace: project.root,
+      dataDir: join(backend.home, "project"),
+      scratchDir: join(backend.home, "scratch"),
+      alias: { profile: backend.home, legacyProjectId: project.id },
+    });
+    // Host/Core I/O 用无凭据夹具；配置准入、应用回执校验和结果投影仍走真实实现。
     backend.providers.config.execute = async (operation) => {
       assert.equal(operation, "read");
       return {
@@ -371,8 +387,7 @@ test("explicit retry and ordinary send still count as work and release admission
     id: "a".repeat(24),
     root: backend.home,
     model: { state: { threads: {} } },
-    client: {
-      ready: true,
+    client: await hostCoreClient({
       capabilities: { methods: ["areal/turn/submit"], features: { ordinaryTurnSubmit: true } },
       request: async (method, params) => {
         if (method === "thread/read") {
@@ -383,7 +398,7 @@ test("explicit retry and ordinary send still count as work and release admission
         assert.deepEqual(params, { limit: 100 });
         return { data: [], nextCursor: null };
       },
-    },
+    }),
     configurations: { thread: { revision: 0 } },
   };
   backend.start = async (id) => {
@@ -488,6 +503,35 @@ test("invalid CLI responses fail explicitly and stderr uses credential redaction
     exporter.command({ operation: "retry" }),
     (error) => error.message.includes("[redacted]") && !error.message.includes("fixture-secret"),
   );
+});
+
+test("retry refreshes Host credentials before constructing the upload environment", async (t) => {
+  const { exporter, calls } = await fixture(t);
+  let credential = "stale-fixture";
+  exporter.backend.providers.config.refreshCredentials = async () => {
+    credential = "rotated-fixture";
+  };
+  exporter.backend.providers.environment = () => ({ AREAL_CREDENTIAL_fixture: credential });
+  await exporter.command({ operation: "retry" });
+  assert.equal(JSON.parse(await readFile(calls, "utf8")).credential, "rotated-fixture");
+});
+
+test("credential refresh gates retry but never blocks read-only status", async (t) => {
+  const { exporter, calls } = await fixture(t);
+  let refreshes = 0;
+  exporter.backend.providers.config.refreshCredentials = async () => {
+    refreshes++;
+    throw new Error("Host 凭据来源已变化");
+  };
+  // 只读状态不解密凭据，刷新失败不能让用户看不到队列。
+  assert.deepEqual(await exporter.command({ operation: "status" }), status);
+  assert.equal(refreshes, 0);
+  const afterStatus = JSON.parse(await readFile(calls, "utf8"));
+  assert.deepEqual(afterStatus.args.slice(0, 2), ["trajectory", "status"]);
+  // 重试必须先用新凭据构造环境；刷新失败时不能启动上传 CLI。
+  await assert.rejects(exporter.command({ operation: "retry" }), /Host 凭据来源已变化/);
+  assert.equal(refreshes, 1);
+  assert.deepEqual(JSON.parse(await readFile(calls, "utf8")), afterStatus);
 });
 
 test("status remains readable when the GUI credential vault cannot be unlocked", async (t) => {

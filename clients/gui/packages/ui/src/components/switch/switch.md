@@ -21,14 +21,6 @@ exports: ["Switch"]
 
 本合同覆盖同模块导出的整组组件：Switch。真实API读取生成的TypeScript声明。
 
-## 状态
-
-`R-SWITCH-001` checked/unchecked、sm/default、disabled。
-
-## 行为
-
-`R-SWITCH-002` 由Base UI维护原生按钮语义与键盘，宿主提供受控值和真实写入。
-
 ## 内容
 
 引用 [R-UI-COMMON-001](../../../README.md#共同合同)。

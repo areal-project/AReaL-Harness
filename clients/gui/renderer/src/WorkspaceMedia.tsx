@@ -1,4 +1,5 @@
 import { TitleTooltip } from "@areal/ui";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useState } from "react";
 import { Button } from "./components/ui/button.js";
 import {
@@ -71,10 +72,7 @@ export function opensOutside(path: string) {
 }
 
 function errorText(cause: unknown) {
-  return (cause instanceof Error ? cause.message : String(cause)).replace(
-    /^Error invoking remote method '[^']+': (?:Error: )?/,
-    "",
-  );
+  return currentErrorText(cause).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "");
 }
 
 /** A workspace image read through the desktop host, never by a renderer file URL. */

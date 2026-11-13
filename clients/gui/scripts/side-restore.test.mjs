@@ -5,9 +5,15 @@ import test from "node:test";
 const require = createRequire(new URL("../renderer/package.json", import.meta.url));
 const ts = require("typescript");
 const source = await readFile(new URL("../renderer/src/side-restore.ts", import.meta.url), "utf8");
-const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
-}).outputText;
+// data: 模块解析不了相对导入；错误文案表有自己的测试，这里换成原样透传。
+const compiled = ts
+  .transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+  })
+  .outputText.replace(
+    'import { currentErrorText } from "./errors/currentErrorText.js";',
+    "const currentErrorText = (error) => (error instanceof Error ? error.message : String(error));",
+  );
 const { createSideRestore } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
 );

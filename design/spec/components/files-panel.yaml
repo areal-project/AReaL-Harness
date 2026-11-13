@@ -1,0 +1,74 @@
+id: files-panel
+name: 文件面板
+status: draft
+purpose: 右侧面板“文件”标签及从中打开的文件标签：浏览项目文件树，看出哪些文件改过，点开就读代码。
+why: 读代码时不离开对话；改动标记与审查面板一致，看改了什么和看改在哪是同一套记号。
+layout:
+    place: 右侧面板的标签内容区，从面板顶栏下沿到底；底色 color-background，只有这一层底色
+    tree-tab: “文件”标签里文件树占满整个内容区，没有工具行
+    file-tab: 打开文件后新增一个以文件名命名的标签并成为当前标签（标签图标 file-tab，颜色同其他标签图标）：上面是工具行，下面左边是代码，右边并排文件树
+    narrow: 面板窄于 reading-width 的八分之五时，打开的文件仍保留代码区，文件树改为浮在右侧的同宽一栏，不挤掉代码
+anatomy:
+    - part: tree
+      role: 文件树：搜索框加文件与目录行
+    - part: toolbar
+      role: 文件标签顶部一行：路径、切换文件树、打开按钮组
+    - part: code
+      role: 文件内容
+parts:
+    tree:
+        pane: 在文件标签里作为右栏时，左缘 border-width-default 的 color-border，默认宽度约为 reading-width 的三分之一，最多占内容区一半；在“文件”标签里占满
+        search: 顶部一行，四周留 spacing-inline（左右 spacing-inline 的一半，下方 border-width-default）；搜索框外观同审查面板 file-list 的筛选框，占位“搜索文件…”；框内右端有“文件树更多”按钮（more 图标，spacing-control-xs 见方，距右缘 spacing-inline 的四分之一），有输入时其前面多一个“清除搜索”按钮
+        more-menu: 文件树更多菜单：复制路径；仅显示更改 / 显示全部文件（项目有版本记录时才有）；刷新文件；关闭文件列表。打开“仅显示更改”时搜索框描边换成 color-input-border-focused，占位改为“搜索更改…”，树变成改动文件的平铺列表
+        rows: 行高 spacing-control，行高与文字行高相同；占满宽度，不留外边距；每深一层左缩进 spacing-inline，最外层缩进 spacing-inline 的四分之一；圆角 radius-compact；文字 text-ui-caption，foreground，单行省略
+        row-parts: 目录行先是一个 icon-size-control 见方的折叠箭头（foreground-subtle，展开时转向下）再是名称；文件行先是按文件类型的图标（icon-size-control：TypeScript 取 tree-file-typescript，JSON 取 tree-file-json，Markdown 取 tree-file-markdown，深色下 Markdown 换 tree-file-markdown-dark；认不出的类型用通用文件图标，颜色 foreground-subtle（示例数据里没有））再是名称，图标与名称间隔 spacing-inline 的四分之三
+        states: 悬停底色 color-surface-hover；当前文件底色 color-selected；键盘焦点为 border-width-default 的 color-input-border-focused 内描边
+        marks: 改过的文件右端一个等宽粗体字母，text-ui-base：A 新增与 U 未跟踪取 color-success，M 已修改取 color-warning，D 已删除取 color-destructive，R 已重命名取 color-change-renamed，C 冲突取 color-warning；目录里有改动时（收起和展开都一样），目录行右端是一个同色圆点，颜色取目录下第一个改动文件的记号色；“第一个”按改动列表（git 状态，即示例数据里改动的先后）的顺序，不是树里的显示顺序。记号与审查面板的增删一致
+        empty: 搜索没有结果时写“没有匹配的文件”，空目录写“此文件夹为空”，结果被截断时写“结果较多，已显示部分项目。请缩小搜索范围。”
+    toolbar:
+        height: spacing-inline 的五倍；左右内边距 spacing-inline，元素间隔 spacing-inline 的四分之三；不画下沿线
+        path: 左段是可横向滚动的路径：项目名、各级目录、文件名，之间用 submenu-chevron 分隔（foreground-subtlest）；text-ui-sm；目录与项目名 foreground-subtle，文件名 font-weight-medium、foreground；放不下时从前面滚出，文件名始终可见
+        buttons: 右段依次为“切换文件树”与打开按钮组；按钮高 spacing-control，圆角 radius-navigation，text-ui-caption；“切换文件树”是 spacing-control 见方的图标按钮（panel-files 图标，foreground-subtle），文件树显示时底色 color-selected
+        open-group: 打开按钮组是左右两段拼成的一个按钮：左段文字“打开”，右段向下箭头“文件更多”；整组 border-width-default 的 color-border 描边、color-viewer-control 底，左段左圆角、右段右圆角，中间不重复描边；悬停、获得焦点或菜单打开时那一段底色 color-hover；没有可用的打开方式时左段不可用
+        file-menu: 文件更多菜单：在默认应用中打开（或各个可选应用）；分隔线；在文件管理器中显示、另存为…；分隔线；自动换行（可勾选）、编辑代码 / 阅读代码；分隔线；复制绝对路径、复制相对路径、重新读取文件
+    code:
+        surface: 与面板同底色 color-background，深浅两种主题都不铺第二种底色；内容不满一屏时下方仍是同一种颜色
+        body: 左侧行号列，右侧代码；等宽字体 font-mono，代码字号 text-fixed-caption（设置里可改，示例为默认值），行高为代码字号加 spacing-inline；行号 foreground-subtle 一级的灰；长行默认不换行，可横向滚动
+        syntax: 语法着色同 review-panel 的 syntax：AReaL Light / AReaL Dark 的颜色取 color-syntax-* 用途变量
+icons:
+    source: 见 icons/ 目录，按名称引用，颜色取 currentColor；tree-file-* 自带文件类型的颜色（写在图标文件里），不随主题变，Markdown 另有深色版
+    used:
+        [
+            file-tab,
+            tree-file-typescript,
+            tree-file-json,
+            tree-file-markdown,
+            tree-file-markdown-dark,
+            search,
+            search-clear,
+            more,
+            panel-files,
+            disclosure-chevron,
+            submenu-chevron,
+            select-chevron,
+            copy,
+        ]
+content: 示例数据 workspace.files 是一个小项目的文件（一层源码目录与两个根文件）和其中两处改动（一个新增、一个修改）；files-open 打开的是被修改的那个源文件
+accessible-names:
+    tree: 侧栏区域“文件列表”；搜索框“搜索文件”；清除搜索；文件树更多；树“工作区文件”，每项是树节点，名称为相对路径，目录标为展开或收起，当前文件标为已选；改动字母另有读屏名称（新增、已修改、已删除、已重命名、未跟踪、存在冲突）
+    toolbar: 导航“文件路径”；切换文件树（按钮，标为按下或未按下）；分组“文件打开操作”；打开按钮读作“在默认应用中打开”或“在<应用>中打开”；文件更多
+    tab: 打开的文件标签名称为文件名
+keyboard:
+    - 文件树里上下方向键在节点之间移动，Home、End 到第一个与最后一个
+    - 目录上右方向键展开、左方向键收起，Enter 切换
+    - 文件上 Enter 打开文件
+    - 文件内容里 Ctrl+S（苹果电脑 ⌘S）保存编辑
+behavior:
+    - 点目录展开或收起它，子项紧跟其后、多缩进一层
+    - 点文件打开一个以文件名命名的标签并切过去，文件在树里选中；已经打开的文件只切过去
+    - 已删除的文件不能打开
+    - “切换文件树”收起或显示右栏文件树，代码区随之加宽或变窄，路径与按钮位置不变
+    - 在搜索框里输入文字，树改为平铺显示路径含这段文字的文件；点一个结果后清空搜索、回到层级树并选中它
+    - 在树里右键一行：复制绝对路径、复制相对路径、添加到对话；也可以把行拖进输入框引用它
+known-gaps:
+    - 文件类型图标的颜色来自图标集，没有进 Token 源

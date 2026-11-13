@@ -720,6 +720,14 @@ for line in sys.stdin:
     )
     .await
     .unwrap();
+    // 部署 MCP 是唯一不经插件登记的 MCP 来源；Side 同样不能调用它。
+    let mcp_log = root.join("mcp-calls.jsonl");
+    let stop_mcp = CancellationToken::new();
+    let mcp_servers: std::collections::BTreeMap<String, areal_mcp::ServerConfig> = [("fixture".into(),serde_json::from_value(json!({"transport":{"type":"stdio","command":"python3","args":[concat!(env!("CARGO_MANIFEST_DIR"),"/../../tests/fixtures/mcp-server.py"),mcp_log,"normal"]}})).unwrap())].into();
+    let mcp = areal_mcp::Connections::connect(&mcp_servers, &environment, root, stop_mcp.clone())
+        .await
+        .unwrap();
+    let mcp_tool = mcp.tools()[0].definition.name.clone();
     let engine = Engine::open_with_plugins(
         &root.join("trust-data"),
         Arc::new(AttemptModel),
@@ -731,9 +739,10 @@ for line in sys.stdin:
                 plugin_config("plugin_read_probe", &plugin_log),
             )]
             .into(),
+            mcp_servers,
             ..Default::default()
         },
-        vec![],
+        mcp.tools(),
         plugin.tools(),
     )
     .unwrap();
@@ -753,22 +762,6 @@ for line in sys.stdin:
             .contains("duplicate tool name"),
         "{collision}"
     );
-    let mcp_log = root.join("mcp-calls.jsonl");
-    let configured = call(&mut socket,3,"areal/mcp/configure",json!({"id":"fixture","expectedRevision":0,
-        "config":{"transport":{"type":"stdio","command":"python3","args":[concat!(env!("CARGO_MANIFEST_DIR"),"/../../tests/fixtures/mcp-server.py"),mcp_log,"normal"]}}})).await;
-    assert!(configured["error"].is_null(), "{configured}");
-    let connected = call(
-        &mut socket,
-        4,
-        "areal/mcp/connect",
-        json!({"id":"fixture","expectedRevision":1}),
-    )
-    .await;
-    assert!(connected["error"].is_null(), "{connected}");
-    let mcp_tool = connected["result"]["data"][0]["tools"][0]["name"]
-        .as_str()
-        .unwrap()
-        .to_owned();
     let host = Arc::new(CountingHost(AtomicUsize::new(0)));
     let source = engine.create_configured("owner".into(),serde_json::from_value(json!({"requestId":"source-with-host","cwd":workspace,"dynamicTools":[definition("client_read_probe")]})).unwrap(),host.clone()).await.unwrap();
     for tool in ["client_read_probe", "plugin_read_probe", &mcp_tool] {

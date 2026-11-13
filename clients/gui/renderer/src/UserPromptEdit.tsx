@@ -1,4 +1,5 @@
 import { useI18n } from "./i18n/IntlProvider.js";
+import { errorText } from "./errors/errorCopy.js";
 import "./UserPromptEdit.css";
 import { stripGenUiModelContext } from "@areal/gen-ui/contract";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -100,7 +101,7 @@ export function UserPromptEdit({
       close();
     } catch (cause) {
       const failure = cause as Error & { submissionUnknown?: boolean; requestId?: string };
-      setError(failure.message);
+      setError(errorText(t, failure));
       if (failure.submissionUnknown && failure.requestId) {
         localStorage.setItem(`${key}:pending`, failure.requestId);
         setUnknown(failure.requestId);
@@ -135,6 +136,7 @@ export function UserPromptEdit({
       {open && (
         <section role="region" aria-label="编辑用户消息" className="user-prompt-edit w-full">
           <ChatPromptEditor
+            surfacePlacement="inline"
             workspacePath={project.root}
             taskId={thread.id}
             initialValue={text}
@@ -189,7 +191,7 @@ export function UserPromptEdit({
               disabled={!project.state?.connected || busy}
               onClick={() =>
                 void action("reconcile", { projectId: project.id }).catch((cause) =>
-                  setError(cause.message),
+                  setError(errorText(t, cause)),
                 )
               }
             >

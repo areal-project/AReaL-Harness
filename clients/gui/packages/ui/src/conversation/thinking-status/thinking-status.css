@@ -32,7 +32,7 @@
 }
 .areal-thinking[data-animating="true"] .areal-thinking-band,
 .areal-thinking[data-animating="true"] .areal-thinking-band > span {
-  animation: areal-thinking-sweep 1.8s linear infinite;
+  animation: areal-thinking-sweep var(--motion-cycle-slow) linear var(--motion-loop);
 }
 .areal-thinking[data-animating="true"] .areal-thinking-band > span {
   animation-direction: reverse;

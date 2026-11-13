@@ -13,6 +13,10 @@ export const pluginMessages = {
     "zh-CN": "插件 Agent 配置已不可用，请刷新后选择。原草稿已保留。",
     en: "The plugin Agent profile is unavailable. Refresh and select it again. Your draft is preserved.",
   },
+  "settings.pluginCenter.credentialsReloadDeferred": {
+    "zh-CN": "配置已保存，正在运行的项目将在当前任务完成后自动应用新凭据。",
+    en: "Configuration saved. Running projects will apply the new credentials after their current tasks finish.",
+  },
   "settings.pluginCenter.sharedCredentialReloadRequired": {
     "zh-CN": "新凭据需要各项目重新载入，当前项目可在空闲时载入。",
     en: "Each project must reload the new credentials. Reload this project while it is idle.",
@@ -117,16 +121,16 @@ export const pluginMessages = {
     en: "This plugin is absent from the current snapshot. Return to the list and refresh.",
   },
   "settings.pluginCenter.snapshotScope": {
-    "zh-CN": "读取范围 {scope} · revision {revision} · {time}",
-    en: "Read scope {scope} \u00b7 revision {revision} \u00b7 {time}",
+    "zh-CN": "插件目录（{scope}）· 第 {revision} 版 · {time}",
+    en: "Plugin catalog ({scope}) \u00b7 version {revision} \u00b7 {time}",
   },
   "settings.pluginCenter.runtimeNotObserved": {
-    "zh-CN": "尚未观察当前项目的运行状态。目录与支持信息来自本地 Store 快照。",
-    en: "Runtime state for this project has not been observed. Catalog and support information come from the local Store snapshot.",
+    "zh-CN": "连接项目以查看插件状态并继续操作。",
+    en: "Connect a project to view plugin status and continue.",
   },
   "settings.pluginCenter.runtimeNotObservedTitle": {
-    "zh-CN": "已读取安装快照，运行状态未观察",
-    en: "Installation snapshot read. Runtime not observed",
+    "zh-CN": "连接项目以查看状态",
+    en: "Connect a project to view status",
   },
   "settings.pluginCenter.partiallyAvailable": {
     "zh-CN": "部分组件可用，其他组件需要处理",
@@ -147,8 +151,8 @@ export const pluginMessages = {
     en: "Plugin status and next step",
   },
   "settings.pluginCenter.componentFactsRemainIndependent": {
-    "zh-CN": "各组件的配置、认证与信任状态见下方详情。执行受当前任务权限约束。",
-    en: "See configuration, authentication, and trust for each component below. Execution remains subject to current task permissions.",
+    "zh-CN": "在下方查看组件配置和连接状态。",
+    en: "See component configuration and connection status below.",
   },
   "settings.pluginCenter.skillsInstalledAndEnabled": {
     "zh-CN": "Skills 已安装并在当前范围启用。",
@@ -311,14 +315,6 @@ export const pluginMessages = {
     "zh-CN": "来源已解析，可确认安装内容。",
     en: "Source resolved. Confirm the installation contents.",
   },
-  "settings.pluginCenter.savingCredentialsDidNotReturnAProtected": {
-    "zh-CN": "凭据保存未返回受保护引用。",
-    en: "Saving credentials did not return a protected reference.",
-  },
-  "settings.pluginCenter.githubConnectorConfigurationSavedConnectThePlugin": {
-    "zh-CN": "GitHub Connector 配置已保存，请明确连接该插件。",
-    en: "GitHub Connector configuration saved. Connect the plugin when ready.",
-  },
   "settings.pluginCenter.pluginsValue": {
     "zh-CN": "插件 · {value0}",
     en: "Plugin · {value0}",
@@ -350,6 +346,10 @@ export const pluginMessages = {
   "settings.pluginCenter.pluginMarketplace": {
     "zh-CN": "插件市场",
     en: "Plugin marketplace",
+  },
+  "settings.pluginCenter.featured": {
+    "zh-CN": "推荐",
+    en: "Featured",
   },
   "settings.pluginCenter.plugins": {
     "zh-CN": "插件",
@@ -799,34 +799,6 @@ export const pluginMessages = {
     "zh-CN": "请使用 {value0} 帮助我完成任务。",
     en: "Please use {value0} to help me complete my task.",
   },
-  "settings.pluginCenter.githubConnectorConfiguration": {
-    "zh-CN": "GitHub Connector 配置",
-    en: "GitHub Connector configuration",
-  },
-  "settings.pluginCenter.credentialsAreSavedInProtectedDesktopCredential": {
-    "zh-CN": "凭据保存在受保护的桌面凭据存储中。修改前请先断开连接。",
-    en: "Credentials are saved in protected desktop credential storage. Disconnect before making changes.",
-  },
-  "settings.pluginCenter.originalConnectorID": {
-    "zh-CN": "原始 Connector ID",
-    en: "Original Connector ID",
-  },
-  "settings.pluginCenter.selectADeclaredConnector": {
-    "zh-CN": "选择声明的 Connector",
-    en: "Select a declared Connector",
-  },
-  "settings.pluginCenter.githubAccessToken": {
-    "zh-CN": "GitHub 访问令牌",
-    en: "GitHub access token",
-  },
-  "settings.pluginCenter.saveSecurelyAndConfigureGitHub": {
-    "zh-CN": "安全保存并配置 GitHub",
-    en: "Save securely and configure GitHub",
-  },
-  "settings.pluginCenter.protectedCredentialsConfigured": {
-    "zh-CN": "受保护凭据已配置",
-    en: "Protected credentials configured",
-  },
   "settings.pluginCenter.enabledStatus": {
     "zh-CN": "启用状态",
     en: "Enabled status",
@@ -1012,8 +984,8 @@ export const pluginMessages = {
     en: "Authentication required",
   },
   "settings.pluginConnectionPanel.connectionConfigurationRequired": {
-    "zh-CN": "需要配置连接",
-    en: "Connection configuration required",
+    "zh-CN": "暂不支持",
+    en: "Not supported yet",
   },
   "settings.pluginConnectionPanel.connected": {
     "zh-CN": "已连接",
@@ -1060,8 +1032,8 @@ export const pluginMessages = {
     en: "Complete authentication, then confirm trust and connect the services.",
   },
   "settings.pluginConnectionPanel.configureTheConnectorsDeclaredByThisPlugin": {
-    "zh-CN": "请配置此插件声明的 Connector 后再连接。",
-    en: "Configure the Connectors declared by this plugin before connecting.",
+    "zh-CN": "插件市场还没有收录它需要的服务。",
+    en: "The marketplace does not list the services this plugin needs yet.",
   },
   "settings.pluginConnectionPanel.pluginServicesAreAvailableInConversations": {
     "zh-CN": "插件服务已可在对话中使用。",
@@ -1603,10 +1575,6 @@ export const pluginMessages = {
     "zh-CN": "MCP 配置不是有效的 JSON。",
     en: "The MCP configuration is not valid JSON.",
   },
-  "settings.resourceSettings.provideAnMCPConfigurationContainingTransport": {
-    "zh-CN": "请提供包含 transport 的 MCP 配置。",
-    en: "Provide an MCP configuration containing transport.",
-  },
   "settings.resourceSettings.commandCannotBeEmpty": {
     "zh-CN": "命令不能为空。",
     en: "Command cannot be empty.",
@@ -1623,18 +1591,6 @@ export const pluginMessages = {
     "zh-CN": "MCP 配置",
     en: "MCP configuration",
   },
-  "settings.resourceSettings.user": {
-    "zh-CN": "用户",
-    en: "User",
-  },
-  "settings.resourceSettings.currentProject": {
-    "zh-CN": "当前项目",
-    en: "Current project",
-  },
-  "settings.resourceSettings.standaloneResourcesValue": {
-    "zh-CN": "独立资源 · {value0}",
-    en: "Standalone resources · {value0}",
-  },
   "settings.resourceSettings.clearSearch": {
     "zh-CN": "清除搜索",
     en: "Clear search",
@@ -1647,61 +1603,29 @@ export const pluginMessages = {
     "zh-CN": "搜索 MCP 服务器",
     en: "Search MCP servers",
   },
-  "settings.resourceSettings.reusableAcrossAllProjectsTheConnectionToggle": {
-    "zh-CN": "供所有项目复用；连接开关仅影响当前项目。",
-    en: "Reusable across all projects. The connection toggle affects only the current project.",
+  "settings.resourceSettings.directMcpIsAPlugin": {
+    "zh-CN": "直接添加的 MCP 会作为插件保存，在插件页里按项目启用和连接。",
+    en: "MCP servers you add directly are saved as plugins. Enable and connect them per project from the plugin page.",
   },
-  "settings.resourceSettings.onlyForTheCurrentProject": {
-    "zh-CN": "仅用于当前项目。",
-    en: "Only for the current project.",
+  "settings.resourceSettings.addedDirectly": {
+    "zh-CN": "直接添加",
+    en: "Added directly",
+  },
+  "settings.resourceSettings.removeMCPValue": {
+    "zh-CN": "删除 MCP {value0}",
+    en: "Remove MCP {value0}",
+  },
+  "settings.resourceSettings.mcpRemoved": {
+    "zh-CN": "已删除 {value0}",
+    en: "Removed {value0}",
   },
   "settings.resourceSettings.addMCP": {
     "zh-CN": "新增 MCP",
     en: "Add MCP",
   },
-  "settings.resourceSettings.notApplied": {
-    "zh-CN": "未应用",
-    en: "Not applied",
-  },
-  "settings.resourceSettings.connected": {
-    "zh-CN": "已连接",
-    en: "Connected",
-  },
-  "settings.resourceSettings.disconnected": {
-    "zh-CN": "未连接",
-    en: "Disconnected",
-  },
-  "settings.resourceSettings.connectionFailed": {
-    "zh-CN": "连接失败",
-    en: "Connection failed",
-  },
-  "settings.resourceSettings.toolCatalogExpired": {
-    "zh-CN": "工具目录已过期",
-    en: "Tool catalog expired",
-  },
-  "settings.resourceSettings.connecting": {
-    "zh-CN": "连接中",
-    en: "Connecting",
-  },
   "settings.resourceSettings.editMCPValue": {
     "zh-CN": "编辑 MCP {value0}",
     en: "Edit MCP {value0}",
-  },
-  "settings.resourceSettings.connectValue": {
-    "zh-CN": "连接 {value0}",
-    en: "Connect {value0}",
-  },
-  "settings.resourceSettings.disconnectValue": {
-    "zh-CN": "断开 {value0}",
-    en: "Disconnect {value0}",
-  },
-  "settings.resourceSettings.connectionStatusRefreshedForValue": {
-    "zh-CN": "{value0} 连接状态已刷新",
-    en: "Connection status refreshed for {value0}",
-  },
-  "settings.resourceSettings.noToolsAvailableYetConnectAndRefresh": {
-    "zh-CN": "尚无可用工具，连接成功后刷新查看。",
-    en: "No tools available yet. Connect and refresh to view them.",
   },
   "settings.resourceSettings.enabledInCurrentProject": {
     "zh-CN": "当前项目已启用",
@@ -1728,8 +1652,8 @@ export const pluginMessages = {
     en: "Add MCP server",
   },
   "settings.resourceSettings.configureALocalCommandOrHTTPService": {
-    "zh-CN": "配置本地命令或 HTTP 服务。保存后点击列表开关连接，查看服务器提供的工具。",
-    en: "Configure a local command or HTTP service. After saving, use the list toggle to connect and view the server's tools.",
+    "zh-CN": "填写本地命令或 HTTP 地址，保存后到插件页连接。",
+    en: "Enter a local command or HTTP URL, then connect it from the plugin page.",
   },
   "settings.resourceSettings.serverID": {
     "zh-CN": "服务 ID",
@@ -2268,8 +2192,8 @@ export const pluginMessages = {
     en: "Current configuration unsupported",
   },
   "settings.pluginResources.missingMappingState": {
-    "zh-CN": "需要配置凭据映射",
-    en: "Credential mapping required",
+    "zh-CN": "暂不支持",
+    en: "Not supported yet",
   },
   "settings.pluginResources.configurationState": {
     "zh-CN": "服务配置无效，请在插件详情查看",
@@ -2381,10 +2305,6 @@ export const pluginMessages = {
   "settings.pluginHookSettings.windowsCommandValue": {
     "zh-CN": "Windows 命令：{command}",
     en: "Windows command: {command}",
-  },
-  "settings.resourceSettings.toolCount": {
-    "zh-CN": "工具 · {count, number}",
-    en: "Tools · {count, number}",
   },
   "settings.pluginCenter.installPlugin": {
     "zh-CN": "安装",

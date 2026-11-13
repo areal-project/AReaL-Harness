@@ -69,7 +69,14 @@ function Template({
     </button>
   );
 }
-type TaskState = "enabled" | "running" | "paused" | "attention" | "finished" | "deleted";
+type TaskState =
+  | "enabled"
+  | "running"
+  | "waiting"
+  | "paused"
+  | "attention"
+  | "finished"
+  | "deleted";
 function Status({
   state,
   label,

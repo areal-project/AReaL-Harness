@@ -1,5 +1,4 @@
 pub mod auth;
-mod browser_auth;
 mod codex_plugins;
 pub mod configuration;
 mod delegations;
@@ -7,6 +6,8 @@ mod desktop;
 mod dynamic_tools;
 mod plugin_runtime;
 mod processes;
+mod rpc_error;
+use rpc_error::{map_error, rejected};
 mod workgroups;
 use areal_engine::{Engine, Error};
 mod task_mode;
@@ -19,7 +20,7 @@ use axum::{
         ws::{CloseFrame, Message, WebSocket},
     },
     http::{HeaderMap, StatusCode, header},
-    response::{Html, IntoResponse, Response},
+    response::{IntoResponse, Response},
     routing::get,
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -41,33 +42,24 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use tracing::{Instrument, info_span};
 
 pub fn router(engine: Arc<Engine>) -> Router {
-    configured_router(engine, None, None, None, None)
+    configured_router(engine, None, None, None)
 }
 fn configured_router(
     engine: Arc<Engine>,
-    browser_origin: Option<String>,
     authentication: Option<auth::Authentication>,
     service: Option<areal_protocol::service::Identity>,
     configuration: Option<Arc<dyn configuration::ModelConfigurationControl>>,
 ) -> Router {
     engine.start_task_scheduler();
-    let authentication = authentication.map(|auth| {
-        browser_auth::BrowserAuth::new(auth, browser_origin.as_deref().unwrap_or_default())
-    });
     Router::new()
         .route("/", get(upgrade))
-        .route("/ui", get(|| async {
-            ([("content-security-policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"), ("x-content-type-options", "nosniff"), ("referrer-policy", "no-referrer")], Html(include_str!("../../../clients/web/index.html")))
-        }))
-        .route("/ui/app.js", get(|| async { ([("content-type", "text/javascript; charset=utf-8"), ("x-content-type-options", "nosniff")], include_str!("../../../clients/web/app.js")) }))
-        .route("/ui/style.css", get(|| async { ([("content-type", "text/css; charset=utf-8"), ("x-content-type-options", "nosniff")], concat!(include_str!("../../../design/tokens/focus.css"), "\n", include_str!("../../../clients/web/style.css"))) }))
-        .route("/areal/auth/session", axum::routing::post(browser_auth::session))
-        .route("/areal/auth/bootstrap", axum::routing::post(browser_auth::bootstrap))
-        .route("/areal/auth/bootstrap/exchange", axum::routing::post(browser_auth::exchange).layer(DefaultBodyLimit::max(1024)))
         .route("/healthz", get(|| async { "ok" }))
         .route("/areal/service", get(service_identity))
         .route("/areal/blobs/{id}", get(read_blob))
-        .route("/areal/blobs", axum::routing::post(upload_blob).layer(DefaultBodyLimit::max(16 * 1024 * 1024)))
+        .route(
+            "/areal/blobs",
+            axum::routing::post(upload_blob).layer(DefaultBodyLimit::max(16 * 1024 * 1024)),
+        )
         .route(
             "/readyz",
             get(|State(engine): State<Arc<Engine>>| async move {
@@ -79,25 +71,25 @@ fn configured_router(
             }),
         )
         .layer(Extension(authentication))
-        .layer(Extension(browser_origin))
         .layer(Extension(service))
         .layer(Extension(configuration))
         .with_state(engine)
 }
 
+/// Core 只服务本机进程；浏览器经 Host 发布的网页访问，带 Origin 的请求一律拒绝。
+fn from_browser(headers: &HeaderMap) -> bool {
+    headers.contains_key(header::ORIGIN)
+}
+
 async fn service_identity(
-    Extension(authentication): Extension<Option<browser_auth::BrowserAuth>>,
+    Extension(authentication): Extension<Option<auth::Authentication>>,
     Extension(service): Extension<Option<areal_protocol::service::Identity>>,
-    Extension(browser_origin): Extension<Option<String>>,
     headers: HeaderMap,
 ) -> Response {
-    if headers
-        .get("origin")
-        .is_some_and(|value| value.to_str().ok() != browser_origin.as_deref())
-    {
+    if from_browser(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let Some(principal) = authentication.and_then(|auth| auth.authenticate(&headers)) else {
+    let Some(principal) = authentication.and_then(|auth| auth.authenticate_bearer(&headers)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
     if !principal.allows(auth::Permission::Observe) {
@@ -118,13 +110,16 @@ struct BlobQuery {
 }
 async fn read_blob(
     State(engine): State<Arc<Engine>>,
-    Extension(authentication): Extension<Option<browser_auth::BrowserAuth>>,
+    Extension(authentication): Extension<Option<auth::Authentication>>,
     headers: HeaderMap,
     Query(query): Query<BlobQuery>,
     Path(id): Path<String>,
 ) -> Response {
+    if from_browser(&headers) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
     let bytes = if let Some(authentication) = authentication {
-        let Some(principal) = authentication.authenticate(&headers) else {
+        let Some(principal) = authentication.authenticate_bearer(&headers) else {
             return StatusCode::UNAUTHORIZED.into_response();
         };
         let Some(thread_id) = query.thread_id else {
@@ -149,20 +144,16 @@ async fn read_blob(
 }
 async fn upload_blob(
     State(engine): State<Arc<Engine>>,
-    Extension(authentication): Extension<Option<browser_auth::BrowserAuth>>,
-    Extension(browser_origin): Extension<Option<String>>,
+    Extension(authentication): Extension<Option<auth::Authentication>>,
     headers: HeaderMap,
     Query(query): Query<BlobQuery>,
     bytes: axum::body::Bytes,
 ) -> Response {
-    if headers
-        .get("origin")
-        .is_some_and(|origin| origin.to_str().ok() != browser_origin.as_deref())
-    {
+    if from_browser(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
     let principal = match authentication {
-        Some(auth) => match auth.authenticate(&headers) {
+        Some(auth) => match auth.authenticate_bearer(&headers) {
             Some(p) => p,
             None => return StatusCode::UNAUTHORIZED.into_response(),
         },
@@ -250,16 +241,9 @@ pub async fn serve_service_with_configuration(
         listener.local_addr()?.ip().is_loopback(),
         "Core listener must bind to loopback"
     );
-    let origin = format!("http://{}", listener.local_addr()?);
     axum::serve(
         listener,
-        configured_router(
-            engine,
-            Some(origin),
-            authentication,
-            identity,
-            configuration,
-        ),
+        configured_router(engine, authentication, identity, configuration),
     )
     .with_graceful_shutdown(stop.cancelled_owned())
     .await?;
@@ -269,26 +253,23 @@ pub async fn serve_service_with_configuration(
 async fn upgrade(
     State(engine): State<Arc<Engine>>,
     Extension(configuration): Extension<Option<Arc<dyn configuration::ModelConfigurationControl>>>,
-    Extension(browser_origin): Extension<Option<String>>,
-    Extension(authentication): Extension<Option<browser_auth::BrowserAuth>>,
+    Extension(authentication): Extension<Option<auth::Authentication>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    if let Some(origin) = headers.get("origin")
-        && (origin.to_str().ok() != browser_origin.as_deref() || browser_origin.is_none())
-    {
+    if from_browser(&headers) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let (principal, expires) = match authentication {
-        Some(authentication) => match authentication.connection(&headers) {
+    let principal = match authentication {
+        Some(authentication) => match authentication.authenticate_bearer(&headers) {
             Some(principal) => principal,
             None => return StatusCode::UNAUTHORIZED.into_response(),
         },
-        None => (auth::Principal::embedded(), None),
+        None => auth::Principal::embedded(),
     };
     ws.max_message_size(MAX_FRAME_BYTES)
         .max_frame_size(MAX_FRAME_BYTES)
-        .on_upgrade(move |socket| connection(socket, engine, principal, expires, configuration))
+        .on_upgrade(move |socket| connection(socket, engine, principal, configuration))
         .into_response()
 }
 
@@ -299,21 +280,34 @@ struct Connection {
     initialized: bool,
     experimental_api: bool,
     ready: bool,
-    subscriptions: HashMap<String, CancellationToken>,
+    subscriptions: HashMap<String, Subscription>,
     owner_subscription: Option<CancellationToken>,
     suppressed: HashSet<String>,
     tx: mpsc::Sender<Outbound>,
     stop: CancellationToken,
+    process_connection: areal_engine::desktop::ProcessConnection,
     tasks: TaskTracker,
     delivery: Arc<Mutex<()>>,
     rpc_permits: Arc<tokio::sync::Semaphore>,
+}
+
+#[derive(Clone)]
+struct Subscription {
+    receiver: CancellationToken,
+    delivery: CancellationToken,
+}
+impl Subscription {
+    fn cancel(&self) {
+        self.receiver.cancel();
+        self.delivery.cancel();
+    }
 }
 
 enum Outbound {
     Message(Value),
     Observation {
         value: Value,
-        subscription: CancellationToken,
+        subscription: Subscription,
     },
     Event {
         value: Value,
@@ -357,16 +351,8 @@ async fn connection(
     socket: WebSocket,
     engine: Arc<Engine>,
     principal: Arc<auth::Principal>,
-    expires: Option<tokio::time::Instant>,
     configuration: Option<Arc<dyn configuration::ModelConfigurationControl>>,
 ) {
-    let expired = async move {
-        match expires {
-            Some(deadline) => tokio::time::sleep_until(deadline).await,
-            None => std::future::pending::<()>().await,
-        }
-    };
-    tokio::pin!(expired);
     let (mut sink, mut stream) = socket.split();
     let (tx, mut rx) = mpsc::channel::<Outbound>(256);
     let stop = CancellationToken::new();
@@ -446,12 +432,13 @@ async fn connection(
         suppressed: HashSet::new(),
         tx,
         stop: stop.clone(),
+        process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
         tasks: TaskTracker::new(),
         delivery: Arc::new(Mutex::new(())),
         rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),
     };
     loop {
-        let message = tokio::select! { biased; _ = stop.cancelled() => break, _ = &mut expired => break, message = stream.next() => message };
+        let message = tokio::select! { biased; _ = stop.cancelled() => break, message = stream.next() => message };
         let Some(Ok(message)) = message else {
             break;
         };
@@ -499,6 +486,12 @@ async fn connection(
         let method = request["method"].as_str().unwrap();
         if id.is_none() {
             if method == "initialized" && conn.initialized {
+                if !conn.ready
+                    && conn.principal.thread_ids.is_none()
+                    && conn.principal.allows(auth::Permission::Observe)
+                {
+                    conn.forward("model-catalog", engine.subscribe_model_catalog());
+                }
                 conn.ready = true;
             }
             continue;
@@ -557,7 +550,6 @@ async fn connection(
             && params["decision"] == "allowProject")
             || method.starts_with("areal/permissions/")
             || method.starts_with("areal/plugin/")
-            || method.starts_with("areal/marketplace/")
             || codex_plugins::METHODS.contains(&method)
             || plugin_runtime::METHODS.contains(&method);
         if (method.starts_with("areal/mcp/app/tools/")
@@ -627,9 +619,9 @@ async fn connection(
                 || codex_plugins::METHODS.contains(&method)
                 || plugin_runtime::METHODS.contains(&method)
                 || method.starts_with("areal/plugin/")
-                || method.starts_with("areal/marketplace/")
                 || method.starts_with("areal/mcp/")
                 || method.starts_with("areal/server/")
+                || method == "areal/host/status"
                 || method == "areal/agent/wait"
                 || method == "areal/context/compact"
                 || matches!(
@@ -641,6 +633,8 @@ async fn connection(
                         | "areal/conversation/history"
                         | "areal/side/context/read"
                         | "areal/genUi/source"
+                        | "areal/task/create"
+                        | "areal/task/draft"
                         | "turn/interrupt"
                         | "turn/steer"
                         | "areal/queue/steer"
@@ -661,10 +655,8 @@ async fn connection(
                     | "areal/process/get"
                     | "areal/process/list"
                     | "areal/server/status"
+                    | "areal/host/status"
                     | "areal/server/modelConfiguration/read"
-                    | "areal/mcp/list"
-                    | "areal/mcp/read"
-                    | "areal/mcp/disconnect"
                     | "turn/interrupt"
                     | "areal/side/close"
                     | "areal/mcp/forms/list"
@@ -701,20 +693,27 @@ async fn connection(
             let engine = engine.clone();
             let tx = conn.tx.clone();
             let stop = conn.stop.clone();
+            let process_connection = conn.process_connection.clone();
             let id = id.unwrap();
             conn.tasks.spawn(async move {
                 let _permit = permit;
-                let durable_derivation = matches!(
+                let durable_write = matches!(
                     method.as_str(),
                     "areal/thread/fork"
                         | "areal/side/start"
                         | "areal/side/create"
                         | "areal/side/close"
+                        | "areal/task/create"
+                        | "areal/task/draft"
                 );
                 let dispatch = async {
                     check_side_policy(&engine, &method, &params).await?;
-                    if configuration::METHODS.contains(&method.as_str()) {
+                    if matches!(method.as_str(), "areal/task/create" | "areal/task/draft") {
+                        task_mode::dispatch(&engine, &principal, &method, params).await
+                    } else if configuration::METHODS.contains(&method.as_str()) {
                         configuration::dispatch(configuration, &principal, &method, params).await
+                    } else if method == "areal/host/status" {
+                        read_host_status(&engine, &principal, params).await
                     } else if method == "turn/interrupt" {
                         interrupt(&engine, params).await
                     } else if method == "turn/steer" {
@@ -734,7 +733,8 @@ async fn connection(
                     } else if delegations::METHODS.contains(&method.as_str()) {
                         delegations::dispatch(&engine, &method, params).await
                     } else if processes::METHODS.contains(&method.as_str()) {
-                        processes::dispatch(&engine, &identity, &method, params).await
+                        processes::dispatch(&engine, &identity, process_connection, &method, params)
+                            .await
                     } else if desktop::METHODS.contains(&method.as_str()) {
                         desktop::dispatch_with_budget(
                             &engine,
@@ -748,8 +748,8 @@ async fn connection(
                         workgroups::dispatch(engine, &identity, &method, params).await
                     }
                 };
-                // 已通过容量检查的派生写入必须进入 Core 的持久受理门；响应丢失不撤销它。
-                let result = if durable_derivation {
+                // 已通过容量检查的持久写入必须进入 Core 的受理门；响应丢失不撤销它。
+                let result = if durable_write {
                     dispatch.await
                 } else {
                     tokio::select! { biased; _=stop.cancelled()=>return, value=dispatch=>value }
@@ -811,6 +811,12 @@ async fn connection(
     stop.cancel();
     conn.tasks.close();
     conn.tasks.wait().await;
+    if let Err(error) = engine
+        .close_connection_processes(conn.process_connection)
+        .await
+    {
+        tracing::warn!(%error, "connection process cleanup remains unconfirmed");
+    }
     let _ = writer.await;
 }
 
@@ -982,11 +988,21 @@ impl Connection {
         let task_filter = id.strip_prefix("task:").map(str::to_owned);
         let principal = self.principal.clone();
         let subscription = self.stop.child_token();
-        if let Some(old) = self
+        let queued_delivery = self
             .subscriptions
-            .insert(id.to_owned(), subscription.clone())
-        {
-            old.cancel();
+            .get(id)
+            .filter(|old| !old.delivery.is_cancelled())
+            .map(|old| old.delivery.clone())
+            .unwrap_or_else(|| self.stop.child_token());
+        if let Some(old) = self.subscriptions.insert(
+            id.to_owned(),
+            Subscription {
+                receiver: subscription.clone(),
+                delivery: queued_delivery.clone(),
+            },
+        ) {
+            // 已入发送FIFO的旧事件先于新快照；替换只停止接收，显式remove才撤销交付。
+            old.receiver.cancel();
         }
         let tx = self.tx.clone();
         let stop = self.stop.clone();
@@ -999,13 +1015,13 @@ impl Connection {
                     Ok(event) => {
                         if task_filter.as_ref().is_some_and(|id| event["params"]["taskId"].as_str()!=Some(id)) { continue; }
                         if let Some(task_id)=&task_filter {
-                            let Some(engine)=task_engine.as_ref().and_then(|weak|weak.upgrade()) else {subscription.cancel();break;};
-                            if !engine.task_visible(task_id,principal.thread_ids.as_ref()).await.unwrap_or(false) {subscription.cancel();break;}
+                            let Some(engine)=task_engine.as_ref().and_then(|weak|weak.upgrade()) else {queued_delivery.cancel();subscription.cancel();break;};
+                            if !engine.task_visible(task_id,principal.thread_ids.as_ref()).await.unwrap_or(false) {queued_delivery.cancel();subscription.cancel();break;}
                         }
                         if event["method"].as_str().is_some_and(|m| suppressed.contains(m)) { continue; }
                         let _delivery = delivery.lock().await;
                         if subscription.is_cancelled() { break; }
-                        if tx.try_send(Outbound::Event { value: event, subscription: subscription.clone() }).is_err() { stop.cancel(); break; }
+                        if tx.try_send(Outbound::Event { value: event, subscription: queued_delivery.clone() }).is_err() { stop.cancel(); break; }
                     }
                     Err(_) => { stop.cancel(); break; }
                 }
@@ -1048,7 +1064,7 @@ impl Connection {
         method: &str,
         params: Value,
     ) -> Result<Value, RpcError> {
-        self.dispatch_response(engine, method, params, 0).await
+        Box::pin(self.dispatch_response(engine, method, params, 0)).await // 装箱：future 很大，连着 await 会撑爆测试线程栈
     }
     async fn dispatch_response(
         &mut self,
@@ -1092,10 +1108,8 @@ impl Connection {
                 .map(|page| json!(page))
                 .map_err(map_error);
         }
-        if method == "areal/task/host/ready" {
-            if !params.as_object().is_some_and(|p| p.is_empty()) {
-                return Err(RpcError::invalid("expected empty host readiness request"));
-            }
+        if method == "areal/task/tools/ready" {
+            let request: areal_protocol::tasks::TaskToolsReady = parse(params)?;
             if self.principal.thread_ids.is_some()
                 || !self.principal.allows(auth::Permission::Manage)
                 || !self.principal.allows(auth::Permission::Tools)
@@ -1107,10 +1121,40 @@ impl Connection {
                 });
             }
             engine
-                .register_schedule_host(self.tool_host.clone())
+                .register_schedule_tools(request, self.tool_host.clone())
                 .await
                 .map_err(map_error)?;
             return Ok(json!({"ready":true}));
+        }
+        if method == "areal/task/host/ready" {
+            let prepare_create = match params.as_object() {
+                Some(p) if p.keys().all(|key| key == "prepareCreate") => {
+                    match p.get("prepareCreate") {
+                        None => false,
+                        Some(Value::Bool(value)) => *value,
+                        _ => return Err(RpcError::invalid("invalid host readiness request")),
+                    }
+                }
+                _ => return Err(RpcError::invalid("invalid host readiness request")),
+            };
+            if self.principal.thread_ids.is_some()
+                || !self.principal.allows(auth::Permission::Manage)
+                || !self.principal.allows(auth::Permission::Tools)
+            {
+                return Err(RpcError {
+                    code: -32003,
+                    message: "unrestricted desktop host permission required".into(),
+                    data: None,
+                });
+            }
+            engine
+                .register_schedule_host_capabilities(self.tool_host.clone(), prepare_create)
+                .await
+                .map_err(map_error)?;
+            return Ok(json!({"ready":true}));
+        }
+        if method == "areal/host/status" {
+            return read_host_status(engine, &self.principal, params).await;
         }
         if task_mode::METHODS.contains(&method) {
             if matches!(method, "areal/owner/watch" | "areal/owner/unwatch") {
@@ -1367,8 +1411,13 @@ impl Connection {
                         "ordinaryTurnSubmit":true,"editLastMessage":true,"turnStartAdmissionGuard":true,"turnEnqueueAdmissionGuard":true,"turnInterruptAdmissionGuard":true,"threadStartAdmissionGuard":true,"taskPauseRunGuard":true,"taskModes":true,"taskChannels":true,"asyncQuestions":true,"headlessInteractions":true,"goals":true,"dynamicTools":true,"mediaOutput":true,"durableSubmissionDeduplication":true,"profiles":true,"skills":true,"plans":true,"interactions":true,"queue":true,"providerConfiguration":true,"modelReset":true,"toolMedia":true,"blobUpload":true}),
                     "limits":{"frameBytes":MAX_FRAME_BYTES,"responseBytes":MAX_RESPONSE_BYTES,"subscriptions":128,"sendQueue":256,"threadEventWindow":128},
                     "runtime":engine.runtime_capabilities()});
+                capabilities["features"]["submissionReceiptReconciliation"] = json!(true);
+                capabilities["features"]["taskDirectoryPreparation"] = json!(true);
+                capabilities["features"]["taskPrepareCreate"] = json!(true);
                 capabilities["features"]["threadCreationJournal"] = json!({"version":1,"binding":engine.creation_admission(&self.principal.id).await});
                 capabilities["features"]["sideExecutableV2"] = json!(true);
+                capabilities["features"]["hostUpdateStatus"] = json!(true);
+                capabilities["features"]["connectionProcesses"] = json!(true);
                 capabilities["desktopToolBundles"] = if can_attach_browser {
                     json!([{ "bundleId":areal_protocol::desktop::COMPUTER_V1_BUNDLE,
                         "definition":areal_protocol::desktop::computer_v1_tool() }])
@@ -1593,6 +1642,17 @@ impl Connection {
     }
 }
 
+async fn read_host_status(
+    engine: &Engine,
+    principal: &auth::Principal,
+    params: Value,
+) -> Result<Value, RpcError> {
+    if !params.as_object().is_some_and(|p| p.is_empty()) {
+        return Err(RpcError::invalid("expected empty Host status request"));
+    }
+    Ok(json!(engine.host_update_status(&principal.id).await))
+}
+
 fn validate_model(engine: &Engine, model: Option<&str>) -> Result<(), RpcError> {
     if model.is_some_and(|m| m != engine.model_name()) {
         return Err(RpcError::invalid("unknown model"));
@@ -1628,28 +1688,12 @@ fn parse<T: serde::de::DeserializeOwned>(value: Value) -> Result<T, RpcError> {
     serde_json::from_value(value)
         .map_err(|e| rejected(RpcError::invalid(e.to_string()), "INVALID_REQUEST"))
 }
-fn rejected(mut error: RpcError, reason: &str) -> RpcError {
-    let mut data = match error.data.take() {
-        Some(Value::Object(data)) => data,
-        _ => serde_json::Map::new(),
-    };
-    data.entry("reason").or_insert_with(|| json!(reason));
-    data.insert(
-        "outcome".into(),
-        json!(areal_protocol::desktop::FailureOutcome::Rejected),
-    );
-    data.insert(
-        "recovery".into(),
-        json!(areal_protocol::desktop::Recovery::None),
-    );
-    error.data = Some(Value::Object(data));
-    error
-}
 
 mod additional_methods {
     areal_protocol::method_catalog! {
         "areal/work/overview" => Read;
         "areal/task/host/ready" => Subscription;
+        "areal/task/tools/ready" => Subscription;
         "areal/workgroup/policy" => Read;
         "areal/workgroup/start" => Mutation;
         "areal/workgroup/list" => Read;
@@ -1683,96 +1727,12 @@ fn atomic_mutation_error(error: Error) -> Error {
 // storage failure can follow a partial write (or cancellation), so keep it unknown.
 fn control_mutation_error(error: Error) -> Error {
     match error {
-        Error::Conflict | Error::NotFound | Error::Invalid(_) | Error::Closed => {
-            Error::Rejected(Box::new(error))
-        }
+        Error::Conflict
+        | Error::NotFound
+        | Error::Invalid(_)
+        | Error::ToolHostUnavailable
+        | Error::Closed => Error::Rejected(Box::new(error)),
         error => error,
-    }
-}
-
-fn map_error(error: Error) -> RpcError {
-    if let Error::Rejected(error) = error {
-        return rejected(map_error(*error), "REQUEST_REJECTED");
-    }
-    if let Error::HistoryRead {
-        reason,
-        thread_id,
-        restart_cursor,
-    } = &error
-    {
-        return RpcError {
-            code: -32012,
-            message: "History view requires a fresh bounded read".into(),
-            data: Some(
-                json!({"reason":reason,"threadId":thread_id,"view":"own","reset":*reason == "HISTORY_CURSOR_STALE","restartCursor":restart_cursor,"retryable":false,"outcome":{"kind":"noMutation"},"recovery":{"kind":"none"}}),
-            ),
-        };
-    }
-    if let Error::OperationOutcome(failure) = &error {
-        return RpcError {
-            code: -32011,
-            message: "Operation outcome requires reconciliation".into(),
-            data: Some(json!(failure)),
-        };
-    }
-    if let Error::Invalid(reason) = &error
-        && let Some(code) = [
-            "CREDENTIAL_UNAVAILABLE",
-            "MODEL_CREDENTIAL_UNAVAILABLE",
-            "UNSUPPORTED_PROFILE",
-        ]
-        .into_iter()
-        .find(|code| reason == code || reason.starts_with(&format!("{code}:")))
-    {
-        return rejected(RpcError::invalid(error.to_string()), code);
-    }
-    if matches!(&error,Error::Invalid(reason) if reason=="TASK_PERMISSION_DENIED") {
-        return RpcError {
-            code: -32003,
-            message: "task permission denied".into(),
-            data: Some(
-                json!({"reason":"PERMISSION_DENIED","outcome":{"kind":"rejected"},"recovery":{"kind":"none"}}),
-            ),
-        };
-    }
-    if matches!(&error, Error::Invalid(reason) if reason == "SIDE_POLICY_VIOLATION") {
-        return RpcError {
-            code: -32010,
-            message: "SIDE_POLICY_VIOLATION".into(),
-            data: Some(
-                json!({"reason":"SIDE_POLICY_VIOLATION","retryable":false,"outcome":{"kind":"rejected"},"recovery":{"kind":"none"}}),
-            ),
-        };
-    }
-    let data = match &error {
-        Error::Exhausted(reason)
-            if reason.starts_with("task hot-state capacity")
-                || reason.starts_with("task preparation capacity") =>
-        {
-            Some(
-                json!({"reason":"taskHotStateCapacity","resource":"taskHotState","recovery":"settleOrCancelExistingWork","retryable":false}),
-            )
-        }
-        Error::Storage(reason) if reason.contains("Task persistence requires restart") => Some(
-            json!({"reason":"taskStorageRecoveryRequired","resource":"taskStorage","recovery":"restartCore","retryable":false}),
-        ),
-        _ => None,
-    };
-    let code = match &error {
-        Error::Invalid(_) => -32602,
-        Error::NotFound => -32004,
-        Error::Conflict => -32009,
-        Error::Exhausted(_) => -32001,
-        Error::Closed => -32000,
-        Error::Storage(_)
-        | Error::OperationOutcome(_)
-        | Error::Rejected(_)
-        | Error::HistoryRead { .. } => -32603,
-    };
-    RpcError {
-        code,
-        message: error.to_string(),
-        data,
     }
 }
 
@@ -1888,6 +1848,7 @@ mod tests {
             subscriptions: HashMap::new(),
             suppressed: HashSet::new(),
             tx,
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
             stop,
             tasks: TaskTracker::new(),
             delivery: Arc::new(Mutex::new(())),
@@ -1912,6 +1873,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn replacing_observation_preserves_already_queued_terminal_until_explicit_remove() {
+        let (tx, mut queued) = mpsc::channel(8);
+        let stop = CancellationToken::new();
+        let mut conn = Connection {
+            configuration: None,
+            principal: auth::Principal::embedded(),
+            tool_host: dynamic_tools::ToolHost::new(tx.clone(), stop.clone()),
+            initialized: true,
+            experimental_api: false,
+            ready: true,
+            owner_subscription: None,
+            subscriptions: HashMap::new(),
+            suppressed: HashSet::new(),
+            tx,
+            stop: stop.clone(),
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
+            tasks: TaskTracker::new(),
+            delivery: Arc::new(Mutex::new(())),
+            rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),
+        };
+        let (events, receiver) = broadcast::channel(8);
+        conn.forward("thread", receiver);
+        events.send(json!({"method":"turn/completed","params":{"threadId":"thread","turn":{"id":"turn","status":"interrupted"}}})).unwrap();
+        let terminal = tokio::time::timeout(Duration::from_secs(1), queued.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let Outbound::Event {
+            value,
+            subscription,
+        } = terminal
+        else {
+            panic!("expected queued event");
+        };
+        assert_eq!(value["method"], "turn/completed");
+        // 旧终态已在FIFO中，新观察响应排在它之后；替换接收器不能撤回已入队事实。
+        conn.forward("thread", events.subscribe());
+        assert!(
+            !subscription.is_cancelled(),
+            "replacing an observation must not discard its queued terminal event"
+        );
+        conn.subscriptions.remove("thread").unwrap().cancel();
+        assert!(
+            subscription.is_cancelled(),
+            "explicit removal must still revoke queued delivery"
+        );
+        stop.cancel();
+        conn.tasks.close();
+        conn.tasks.wait().await;
+    }
+
+    #[tokio::test]
     async fn slow_subscription_closes_connection_instead_of_dropping_events() {
         let (tx, _unread) = mpsc::channel(1);
         let stop = CancellationToken::new();
@@ -1927,6 +1940,7 @@ mod tests {
             suppressed: HashSet::new(),
             tx,
             stop: stop.clone(),
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
             tasks: TaskTracker::new(),
             delivery: Arc::new(Mutex::new(())),
             rpc_permits: Arc::new(tokio::sync::Semaphore::new(16)),
@@ -1965,10 +1979,19 @@ mod tests {
             ready: true,
             owner_subscription: None,
             subscriptions: (0..128)
-                .map(|n| (n.to_string(), CancellationToken::new()))
+                .map(|n| {
+                    (
+                        n.to_string(),
+                        Subscription {
+                            receiver: CancellationToken::new(),
+                            delivery: CancellationToken::new(),
+                        },
+                    )
+                })
                 .collect(),
             suppressed: HashSet::new(),
             tx,
+            process_connection: areal_engine::desktop::ProcessConnection::new(stop.clone()),
             stop,
             tasks: TaskTracker::new(),
             delivery: Arc::new(Mutex::new(())),

@@ -1,6 +1,15 @@
 import { memo, useRef, type ReactNode } from "react";
 import type { Data } from "./services.js";
 
+export function precedingTurnIssues(issues: readonly string[]) {
+  let first = "";
+  return issues.map((issue) => {
+    const previous = first;
+    if (!first && issue) first = issue;
+    return previous;
+  });
+}
+
 const merged = new WeakMap<Data, { topology: string; turn: Data }>();
 
 /** 把分页拓扑里的省略项与缺页提示并入本地轮次；投影保留未变轮次的引用，按轮次缓存后旧轮次不重算。 */

@@ -66,7 +66,7 @@ test("saved-key reveal accepts only a bounded provider/revision request and key 
 });
 
 test("remote control cannot reveal local provider credentials", async () => {
-  const { DesktopService } = require("../app/src/core/service-protocol.cjs");
+  const { DesktopService } = require("@areal/workbench-service/desktop/core/service-protocol.cjs");
   const service = {
     backend: { command: () => assert.fail("Remote reveal must not reach credentials") },
   };
@@ -140,8 +140,8 @@ test("Native directory metadata stats real external directories and preserves th
   await fs.mkdir(external);
   const file = path.join(root, "notes.txt");
   await fs.writeFile(file, "ordinary file");
-  const { workspaceCommand } = require("../app/src/core/workspace.cjs");
-  const backend = { saved: [{ id: "project", root: workspace }] };
+  const { workspaceCommand } = require("@areal/workbench-service/desktop/core/workspace.cjs");
+  const backend = { rustDomains: [], saved: [{ id: "project", root: workspace }] };
   const request = { projectId: "project", operation: "localDirectoryReference" };
   assert.deepEqual(await workspaceCommand(backend, { ...request, path: external }), {
     path: external,
@@ -173,4 +173,12 @@ test("Native directory metadata stats real external directories and preserves th
     workspaceCommand(backend, { projectId: "project", operation: "list", path: external }),
     /工作区内/,
   );
+});
+
+test("scheduled scratch keeps its fixed owner without injecting caller submission IDs", () => {
+  const request = { operation: "scratch" };
+  assert.doesNotThrow(() => validateCommand("projectless", request));
+  assert.deepEqual(commandSemantics("projectless", request), { effect: "mutation" });
+  for (const extra of [{ requestId: "caller" }, { directory: "/outside" }])
+    assert.throws(() => validateCommand("projectless", { ...request, ...extra }));
 });

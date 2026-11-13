@@ -18,11 +18,19 @@ const operations = (semantics, names) =>
   Object.fromEntries(names.split(" ").map((name) => [name, semantics]));
 /** @satisfies {Record<keyof Requests,readonly ['main'|'service','app'|'project'|'thread',CommandEffect|Record<string,CommandEffect>]>} */
 const commandDefinitions = Object.freeze({
+  recovery: [
+    "service",
+    "app",
+    { inspect: read, history: read, openWorkspace: mutation, importProvider: recoverable },
+  ],
   cloud: ["service", "app", { status: read, save: mutation }],
   cloudSession: [
     "service",
     "project",
-    { ...operations(subscription, "open"), ...operations(mutation, "create reconnect send stop") },
+    {
+      ...operations(subscription, "open"),
+      ...operations(mutation, "create reconnect send stop"),
+    },
   ],
   connect: ["service", "project", subscription],
   list: ["service", "project", read],
@@ -73,11 +81,11 @@ const commandDefinitions = Object.freeze({
       ...operations(subscription, "taskWatch taskUnwatch"),
       ...operations(
         recoverable,
-        "pluginUserConfigSave pluginDevelopmentLink pluginDevelopmentUnlink pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate pluginResolve pluginAuthConfigure pluginConnection connectorConfigure connectorCredential pluginInstall pluginConfigure pluginComponentConfigure pluginUninstall pluginSetup providerSave providerRemove mcpSave mcpConnect mcpDisconnect archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend",
+        "pluginUserConfigSave pluginDevelopmentLink pluginDevelopmentUnlink pluginArchiveImport mcpFormResourceStage pluginHooksConfigure hookAcknowledge pluginAuthConfigure pluginConnection pluginComponentConfigure pluginSetup providerSave providerRemove archive unarchive processCloseStdin processStart processWrite processResize processTerminate goalCreate goalUpdate goalPause goalResume goalClear workgroupStart workflowStart workgroupRevise agentSpawn taskCreate taskUpdate taskRunNow taskPause taskResume taskStopRun taskResumeRun taskCancel taskDelete taskReply taskDraftSend",
       ),
       ...operations(
         mutation,
-        "pluginCredentialsReload pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
+        "pluginInstall pluginUninstall pluginResolve pluginConfigure marketplaceAdd marketplaceAddGit marketplaceRemove marketplaceUpdate mcpSave pluginArchivePick pluginAuth pluginAuthCredential mcpAppOpen mcpAppOpenFromResult mcpAppRequest mcpAppClose mcpExtensionCall mcpFormRespond mcpFormPreview mcpFormResourcePrepare mcpFormResourceRelease executionCancel executionApply serverDrain serverGc workgroupApplyArtifact workgroupCancel closeResources planUpdate toolAcknowledge contextCompact permissionsForget providerProbe taskDraftConfirm",
       ),
       taskDraftStart: { effect: "mutation", requestId: "draftId" },
     },
@@ -125,11 +133,15 @@ const commandDefinitions = Object.freeze({
     "service",
     "app",
     {
-      ...operations(read, "hooks builtinSkill skills mcp skillRead"),
-      ...operations(mutation, "hooksSave skillToggle skillSave mcpSave mcpConnect mcpDisconnect"),
+      ...operations(read, "hooks builtinSkill skills skillRead"),
+      ...operations(mutation, "hooksSave skillToggle skillSave"),
     },
   ],
-  projectless: ["service", "app", { catalog: read, directory: mutation, prepare: recoverable }],
+  projectless: [
+    "service",
+    "app",
+    { catalog: read, directory: mutation, prepare: recoverable, scratch: mutation },
+  ],
   tasks: ["service", "app", operations(read, "list inbox preview observe")],
   trajectory: ["service", "app", { status: read, ...operations(mutation, "retry setEnabled") }],
   feedback: [
@@ -145,6 +157,8 @@ const commandDefinitions = Object.freeze({
     "app",
     { check: read, ...operations(mutation, "update stop recover quitInterface stopAndQuit") },
   ],
+  hostInstallation: ["main", "app", { status: read, install: mutation, uninstall: mutation }],
+  hostUpdate: ["main", "app", { status: read, check: read, prepare: mutation, apply: mutation }],
   serviceStatus: ["main", "app", read],
   stopService: ["main", "app", mutation],
   recoverResources: ["main", "app", mutation],
@@ -158,9 +172,13 @@ const commandDefinitions = Object.freeze({
     "app",
     { status: read, ...operations(mutation, "requestAccess openSettings restart stop") },
   ],
+  bugReport: [
+    "main",
+    "app",
+    { prepare: read, list: read, read, save: mutation, delete: mutation, export: read },
+  ],
   exportDiagnostics: ["main", "app", read],
   connectService: ["main", "app", subscription],
-  export: ["main", "thread", read],
   remoteControl: ["main", "app", mutation],
 });
 /** @param {string} name @param {Record<string,unknown>} request @returns {CommandEffect} */
@@ -241,7 +259,9 @@ function desktopError(error) {
   const recovery =
     record(rawRecovery) &&
     ["retryRead", "queryOriginal", "needsUser", "none"].includes(String(rawRecovery.kind))
-      ? { kind: /** @type {NonNullable<DesktopError['recovery']>['kind']} */ (rawRecovery.kind) }
+      ? {
+          kind: /** @type {NonNullable<DesktopError['recovery']>['kind']} */ (rawRecovery.kind),
+        }
       : undefined;
   const originalId = outcome && "operation" in outcome ? outcome.operation.requestId : requestId;
   const unknown = outcome

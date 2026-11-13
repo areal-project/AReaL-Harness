@@ -155,6 +155,12 @@ pub trait DynamicToolHost: Send + Sync {
         self.id()
     }
     fn is_closed(&self) -> bool;
+    async fn host_status(
+        &self,
+        _cancel: CancellationToken,
+    ) -> anyhow::Result<Option<areal_protocol::desktop::HostUpdateStatus>> {
+        Ok(None)
+    }
     async fn prepare_schedule(
         &self,
         _request: Value,

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { join, relative } from "node:path";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const skip = new Set(["node_modules", "dist", ".stage", "test-results", "playwright-report"]);
-const creatorRoot = "app/assets/builtin-skills/openai-skill-creator";
+const creatorRoot = "../../services/workbench/src/assets/builtin-skills/openai-skill-creator";
 const creatorManifest = JSON.parse(
   await readFile(join(root, `${creatorRoot}.source.json`), "utf8"),
 );
@@ -53,7 +53,8 @@ async function scan(dir) {
       const text = await readFile(path, "utf8");
       if (
         rel.startsWith("renderer/src/") &&
-        rel !== "renderer/src/main.tsx" &&
+        // 与 oxlint no-renderer-desktop-bridge 一致：只有 desktop-services.ts 读 preload。
+        rel !== "renderer/src/desktop-services.ts" &&
         /\barealDesktop\b/.test(text)
       )
         rendererBridgeBypasses.push(rel);
@@ -71,11 +72,12 @@ async function scan(dir) {
   }
 }
 await scan(root);
+await scan(join(root, "../../services/workbench/src"));
 await scan(join(root, "../../design/tokens"));
 assert.deepEqual(
   rendererBridgeBypasses,
   [],
-  `Renderer preload access belongs to main.tsx: ${rendererBridgeBypasses.join(", ")}`,
+  `Renderer preload access belongs to desktop-services.ts: ${rendererBridgeBypasses.join(", ")}`,
 );
 for (const path of [
   "app/LICENSE",

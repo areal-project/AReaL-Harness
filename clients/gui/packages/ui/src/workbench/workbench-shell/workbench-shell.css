@@ -1,16 +1,19 @@
 .areal-workbench {
   position: relative;
   --window-inset: 0px;
-  --shell-bar-height: max(44px, calc(var(--ui-font-size) + 30px));
-  --page-radius: 14px;
+  --shell-bar-height: max(
+    var(--height-toolbar),
+    calc(var(--ui-font-size) + var(--spacing-control-lg))
+  );
+  --page-radius: var(--radius-panel);
   --page-frame-left: 0px;
   --page-clip-start: 0px;
   --main-clip-end: 0px;
   height: 100dvh;
   display: flex;
   /* Page frame inset belongs to the shell, including every pane and footer. */
-  padding: 0 4px 4px 0;
-  background: var(--color-shell, var(--color-background));
+  padding: 0 calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) / 2) 0;
+  background: var(--color-shell);
   color: var(--color-foreground);
   overflow: hidden;
   border-radius: var(--radius-overlay);
@@ -24,7 +27,7 @@
   display: none;
 }
 .areal-workbench:has(.sidebar-with-rail) {
-  --page-frame-left: 52px;
+  --page-frame-left: var(--rail-width);
   --page-clip-start: calc(-1 * var(--page-radius));
 }
 .areal-workbench:has(.workspace-side-panel[data-open="true"]) {
@@ -34,8 +37,8 @@
   content: "";
   position: absolute;
   top: var(--shell-bar-height);
-  right: 4px;
-  bottom: 4px;
+  right: calc(var(--spacing-inline) / 2);
+  bottom: calc(var(--spacing-inline) / 2);
   left: var(--page-frame-left);
   border-radius: var(--page-radius);
   box-shadow: var(--shadow-page-surface);
@@ -50,7 +53,7 @@
 }
 .sidebar {
   position: relative;
-  width: var(--sidebar-width, 320px);
+  width: var(--sidebar-width, var(--sidebar-default-width));
   flex-shrink: 0;
   min-width: 0;
   display: flex;
@@ -78,22 +81,22 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  height: 52px;
+  gap: var(--spacing-inline);
+  height: var(--rail-width);
   flex-shrink: 0;
-  padding: 0 12px 0 16px;
+  padding: 0 calc(var(--spacing-inline) * 3 / 2) 0 var(--spacing-field);
 }
 .sidebar-workspace-header strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: var(--text-ui-xl);
-  line-height: 24px;
-  font-weight: 600;
+  line-height: var(--line-height-title);
+  font-weight: var(--font-weight-strong);
 }
 .sidebar-workspace-header button {
-  width: 28px;
-  height: 28px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
 }
 .sidebar-with-rail .sidebar-tools {
   padding-top: 0;
@@ -103,41 +106,42 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 12px 0 max(12px, var(--window-inset));
+  padding: 0 calc(var(--spacing-inline) * 3 / 2) 0
+    max(calc(var(--spacing-inline) * 3 / 2), var(--window-inset));
   -webkit-app-region: drag;
 }
 .sidebar-chrome {
-  border-right: 1px solid var(--color-border);
+  border-right: var(--border-width-default) solid var(--color-border);
 }
 .sidebar-chrome button {
   -webkit-app-region: no-drag;
 }
 .sidebar-tools {
-  padding: 4px 8px 8px;
+  padding: calc(var(--spacing-inline) / 2) var(--spacing-inline) var(--spacing-inline);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
 }
 .sidebar-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 0 8px;
+  padding: 0 var(--spacing-inline);
 }
 .sidebar-section-toggle {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   flex: 1;
   min-width: 0;
-  height: 25px;
+  height: var(--spacing-control-sm);
   padding: 0;
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
   color: inherit;
   font: inherit;
-  line-height: 1.5;
+  line-height: var(--line-height-toolbar);
   text-align: left;
   cursor: var(--interactive-cursor, pointer);
 }
@@ -205,7 +209,7 @@
   white-space: nowrap;
 }
 .sidebar-footer-settings:hover {
-  background: var(--color-sidebar-item, var(--color-hover));
+  background: var(--color-sidebar-item);
 }
 .sidebar-footer-settings:hover > svg {
   color: var(--color-foreground);
@@ -228,7 +232,7 @@
 }
 .sidebar-footer-help:hover {
   color: var(--color-foreground);
-  background: var(--color-sidebar-item, var(--color-hover));
+  background: var(--color-sidebar-item);
 }
 .work-surface {
   position: relative;
@@ -245,8 +249,8 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 10px 0 16px;
+  gap: var(--spacing-inline);
+  padding: 0 var(--spacing-inline) 0 var(--spacing-field);
   -webkit-app-region: drag;
 }
 .workspace-header button {
@@ -348,13 +352,13 @@
 .workspace-side-panel {
   position: relative;
   container: right-panel / inline-size;
-  min-width: 240px;
+  min-width: calc(var(--reading-width) * 5 / 16);
   max-width: 65%;
   overflow: visible;
   flex-shrink: 0;
   margin: 0;
   border: 0;
-  border-left: 1px solid var(--color-border);
+  border-left: var(--border-width-default) solid var(--color-border);
   border-radius: 0;
   background: transparent;
   box-shadow: var(--shadow-leading-panel);
@@ -393,20 +397,21 @@
     border: 0;
   }
 }
+/* 入口贴顶排列，像菜单一样从上往下读，不在大片空白中间悬着。 */
 .side-pane-launcher {
   display: flex;
   min-height: 0;
   flex: 1;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 8px;
+  padding: calc(var(--spacing-inline) * 1.5);
 }
 .side-pane-launcher-list {
   display: flex;
   width: 100%;
-  max-width: 36rem;
+  max-width: calc(var(--reading-width) * 3 / 4);
   flex-direction: column;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   margin: 0 auto;
   padding: 0;
   list-style: none;
@@ -414,25 +419,26 @@
 .side-pane-launcher-item {
   display: flex;
   width: 100%;
-  min-height: 40px;
+  min-height: calc(var(--spacing-control-lg) + var(--spacing-inline));
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: var(--spacing-inline);
+  padding: var(--spacing-inline) calc(var(--spacing-inline) * 1.25);
   border: 0;
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--color-foreground) 3%, transparent);
+  border-radius: var(--radius-button);
+  background: var(--color-surface-elevated);
   color: var(--color-foreground);
   font-size: var(--text-fixed-label);
-  font-weight: 400;
-  line-height: 24px;
+  font-weight: var(--ui-font-weight);
+  line-height: var(--line-height-ui);
   text-align: start;
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .side-pane-launcher-item:hover {
-  background: color-mix(in srgb, var(--color-foreground) 8%, transparent);
+  background: var(--color-surface-tertiary);
 }
 .side-pane-launcher-item > svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   flex-shrink: 0;
 }
 .side-pane-launcher-label {
@@ -445,22 +451,23 @@
 .side-pane-launcher-item kbd,
 .side-pane-launcher-shortcut {
   margin-inline-start: auto;
-  padding: 2px 6px;
-  border-radius: var(--radius-compact);
-  background: color-mix(in srgb, currentColor 10%, transparent);
-  color: color-mix(in srgb, var(--color-foreground) 65%, transparent);
+  padding: calc(var(--spacing-inline) / 4) calc(var(--spacing-inline) * 3 / 4);
+  border-radius: var(--radius-micro);
+  background: var(--color-surface-tertiary);
+  color: var(--color-foreground-subtle);
   font-family: var(--font-sans);
   font-size: var(--text-fixed-caption);
-  font-weight: 430;
+  font-weight: var(--font-weight-toolbar);
   line-height: 1;
 }
 .side-pane-tabbar {
-  height: var(--shell-bar-height, 44px);
+  height: var(--shell-bar-height, var(--height-toolbar));
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 0 8px;
+  gap: calc(var(--spacing-inline) / 4);
+  padding: 0 var(--spacing-inline);
+  backdrop-filter: var(--material-chrome-filter);
 }
 .side-pane-tabs-root {
   min-width: 0;
@@ -470,7 +477,7 @@
 .side-pane-tabs-scroll {
   display: flex;
   justify-content: flex-start;
-  gap: 2px;
+  gap: calc(var(--spacing-inline) / 4);
   width: 100%;
   min-width: 0;
   overflow-x: auto;
@@ -480,14 +487,14 @@
 .side-pane-tabs-scroll [role="tab"] {
   font-size: var(--text-ui-caption);
   font-weight: var(--ui-font-weight);
-  line-height: 1.42857143;
+  line-height: var(--line-height-ui-sm);
 }
 .side-pane-resize {
   position: absolute;
-  left: -8px;
+  left: calc(-1 * var(--spacing-inline));
   top: 0;
   bottom: 0;
-  width: 16px;
+  width: var(--spacing-field);
   cursor: col-resize;
   touch-action: none;
   z-index: 5;
@@ -495,10 +502,10 @@
 .side-pane-resize::after {
   content: "";
   position: absolute;
-  left: 7px;
+  left: calc(var(--spacing-inline) - var(--border-width-default));
   top: 0;
   bottom: 0;
-  width: 1px;
+  width: var(--border-width-default);
 }
 .side-pane-resize:hover::after,
 .side-pane-resize:focus-visible::after {
@@ -506,11 +513,11 @@
 }
 .side-pane-conversation-tab {
   flex: 0 1 auto;
-  min-width: 90px;
-  max-width: 238px;
-  gap: 8px;
-  padding: 4px 10px;
-  border-right: 1px solid var(--color-border);
+  min-width: calc(var(--spacing-control-lg) * 3);
+  max-width: calc(var(--reading-width) * 5 / 16 - var(--spacing-inline) / 4);
+  gap: var(--spacing-inline);
+  padding: calc(var(--spacing-inline) / 2) calc(var(--spacing-inline) * 1.25);
+  border-right: var(--border-width-default) solid var(--color-border);
   border-radius: 0;
 }
 .work-area[data-workspace-view] > :is(.work-surface, .workspace-side-panel) {
@@ -607,17 +614,20 @@
 }
 
 .navigation-task-row {
-  min-height: max(30px, calc(var(--ui-font-size) + 16px));
-  padding: 5px 5px 5px 8px;
+  min-height: var(--navigation-row-height);
+  padding: calc((var(--navigation-row-height) - var(--line-height-ui)) / 2)
+    calc((var(--navigation-row-height) - var(--line-height-ui)) / 2)
+    calc((var(--navigation-row-height) - var(--line-height-ui)) / 2) var(--spacing-inline);
   border-radius: var(--radius-navigation);
   font-size: var(--text-ui-base);
   font-weight: var(--ui-font-weight);
-  line-height: 1.42857;
+  line-height: var(--line-height-ui);
+  transition: background-color var(--motion-fast) var(--ease-standard);
 }
 .navigation-task-row:hover,
 .navigation-task-row:has([data-popup-open]),
 .navigation-task-row[aria-current="page"] {
-  background: var(--color-sidebar-item, var(--color-hover));
+  background: var(--color-sidebar-item);
 }
 .navigation-task-row[aria-current="page"] {
   background: var(--color-navigation-selected);
@@ -626,17 +636,17 @@
 /* 显隐交给 HoverActions；这里只负责定位，标题在操作区可见时让出空间。 */
 .task-row-actions {
   position: absolute;
-  right: 8px;
+  right: var(--spacing-inline);
   top: 50%;
   transform: translateY(-50%);
-  gap: 8px;
+  gap: var(--spacing-inline);
 }
 .navigation-task-row:is(:hover, :has(:focus-visible), :has([data-popup-open])) .task-row-title {
-  padding-right: 80px;
+  padding-right: calc(var(--spacing-control-xs) * 3 + var(--spacing-inline) * 2);
 }
 .navigation-task-title {
   font-size: var(--text-ui-base);
-  line-height: calc(var(--ui-font-size) + 6px);
+  line-height: var(--line-height-ui);
   color: color-mix(in oklab, var(--color-foreground) 85%, transparent);
 }
 .resource-scope {

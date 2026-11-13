@@ -1,0 +1,54 @@
+[package]
+name = "areal-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+areal-config.workspace = true
+areal-engine.workspace = true
+areal-plugins.workspace = true
+areal-mcp.workspace = true
+areal-local-service.workspace = true
+areal-protocol.workspace = true
+areal-runtime-host-tools.workspace = true
+fs2.workspace = true
+hmac = "=0.12.1"
+ring = "=0.17.14"
+sha2.workspace = true
+futures-util = { workspace = true, features = ["io"] }
+libc.workspace = true
+serde.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
+serde_yaml_ng = "0.10.0"
+tokio.workspace = true
+tokio-tungstenite = { workspace = true, features = ["rustls-tls-native-roots"] }
+url.workspace = true
+uuid.workspace = true
+unsafe-libyaml = "0.2.11"
+bytes = "=1.11.1"
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
+percent-encoding = "=2.3.2"
+http-body-util = "=0.1.3"
+hyper = { version = "=1.8.1", features = ["server", "http1"] }
+hyper-util = { version = "=0.1.20", features = ["tokio"] }
+jsonwebtoken = "=9.3.1"
+reqwest.workspace = true
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
+subtle = "=2.6.1"
+base64.workspace = true
+libp2p-core = "=0.43.1"
+libp2p-identity = { version = "=0.2.12", features = ["ed25519", "peerid"] }
+libp2p-noise = "=0.46.1"
+tokio-util = { workspace = true, features = ["compat", "rt"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7.0"
+
+[dev-dependencies]
+axum.workspace = true
+tempfile.workspace = true

@@ -92,48 +92,13 @@ Backgrounding closes the connection and releases subscriptions. Foregrounding re
 
 ```sh
 node --test clients/gui/scripts/mobile-device-store.test.mjs
-AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node node clients/gui/scripts/mobile-pairing-smoke.mjs
 ```
-
-The pairing runner uses an isolated simulator, a local Relay with strict TLS, and production RemoteControl. Its DEBUG driver operates actual DOM inputs and buttons through real protocol authorization and native Keychain. It checks pairing, restore after process termination, backgrounding through Settings and returning to the app, desktop revocation, explicit clearing, the unpaired state after another restart, and the dark appearance. Observations contain only state, Keychain presence, grant revision, and the public device fingerprint. Evidence is saved in `.scratch/ios-remote-v1/mobile-pairing/`; `AREAL_MOBILE_EVIDENCE` overrides the location. The native driver entry exists only in DEBUG builds.
 
 These gates are development checks. Physical QR scanning, iOS 17.4, real desktop confirmation, recovery from denied camera permission, VoiceOver, and TestFlight each require separate acceptance. Compare each UI state with the five-screen reference. The connection header uses the localized “Computer” because the Host contract does not return a computer display name. Screenshots do not replace VoiceOver, physical-keyboard, or minimum-OS checks.
 
-## Verify projects and read-only conversations
+## Verify the shared UI
 
-`MobileWorkspace` owns project navigation, conversation lists, and one foreground session. Online project summaries read the first `work.list` page. Conversation lists use 30-row pages with refresh and earlier-page controls. Polling refreshes the first page while retaining expanded rows. Task rows use `task.read` for execution details.
-
-Sessions reuse `Messages`, the atomic `session.open` baseline, and `acceptSessionMessage` for live updates. A new observation clears stale pagination state. Messages leaving the live window enter bounded history pages; three history pages retain content, with reloadable placeholders for evicted ranges. History cursors describe Core-accessible history, not complete archived history. `SessionBodyReader` supplies the shared body reader and identity checks. Leaving the session releases its subscription.
-
-```sh
-node --test clients/gui/scripts/mobile-workspace.test.mjs
-AREAL_CORE_BIN=/path/to/locked-slot/areal \
-AREAL_RUNTIME_BIN=/path/to/locked-slot/areal-runtime \
-AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node \
-node clients/gui/scripts/mobile-workspace-smoke.mjs
-```
-
-Run the real Core gate inside `slot_lock` from `scripts/verification.py`, holding the lock for the runner's entire lifetime. First deploy matching artifacts, including private shells, as described in the [testing guide](testing.en.md). The runner uses strict TLS Relay, real Core/Runtime, a deterministic local model, and native WKWebView. It creates two projects and history beyond the initial display budget, then checks the baseline, older history, a new desktop message, preservation of the old boundary, and subscription release on navigation. The DEBUG driver only clicks production DOM and scrolls the message view. Automatic older-history loading uses a synthetic `PointerEvent(pointerType: touch)` and actual scrolling; physical touch gestures still require device checks. Evidence in `.scratch/ios-remote-v1/mobile-workspace/` includes source revision, dirty paths, Core/Runtime hashes, and cleanup results. It does not qualify real providers.
-
-## Validate conversation commands
-
-New conversations read the desktop catalog through `project.models` and initially display “Computer default”. Unspecified permissions display “Computer permissions” and inherit the computer configuration. Model, reasoning, and permission selections remain an in-memory intent. The first send creates the session, reads its `session.open` baseline, applies the selection against its actual configuration revision, and sends the message. Unavailable or rejected configuration preserves the draft and the created session. Sending during a turn uses `enqueue` and the exact Turn ID; stopping targets the current Turn. Task sessions require their dedicated controls.
-
-The mobile UI reuses `ConversationComposer`, `ComposerQueue`, and the shared Dialog. The composer toolbar shows permissions on the left and the model and reasoning effort on the right. Each opens its own bottom sheet. Done applies the selection; dismissing the sheet discards unconfirmed edits. The model sheet offers quick effort selection from the catalog and advanced rows for choosing the model and reasoning level. The permission sheet shares the GUI’s Ask for approval, Review for me, and Full access semantics, icons, and descriptions. Existing read-only, custom, and other states reflect the actual configuration and remain constrained by desktop capabilities and locked read-only profiles. Settings remain view-only while a turn runs. Drafts stay in memory. Before a write, the same device identity must be saved successfully to Keychain, followed by the shared `ClientState` locator. Locators contain no message body or model selection. Lost replies, disconnection, and restart recover only through `command.read` for the original commandId. Recovering an accepted creation does not automatically send. An unknown stop retains its exact record while allowing a new message once Core confirms the session is idle.
-
-```sh
-node --test clients/gui/scripts/mobile-commands.test.mjs
-AREAL_CORE_BIN=/path/to/locked-slot/areal \
-AREAL_RUNTIME_BIN=/path/to/locked-slot/areal-runtime \
-AREAL_RELAY_NODE=/path/to/node-24.2.0/bin/node \
-node clients/gui/scripts/mobile-command-smoke.mjs
-```
-
-Hold `slot_lock` for the entire command gate. The runner uses real Core, two deterministic local models, DOM input, and native Keychain to check first send with a non-default model, queueing during a turn, stopping, loss of an admitted reply, and reconciliation after restart. Each attempt has a separate evidence directory under `.scratch/ios-remote-v1/mobile-commands/`, including measured CSS hit targets for visible buttons. `AREAL_MOBILE_DERIVED` can select a shared DerivedData cache; evidence does not overwrite previous attempts. DOM input checks do not replace physical keyboard or touch acceptance.
-
-Project and conversation lists use content-sized cards without shadows. Project names, conversation names, and navigation titles stay on one line within the available width, with an ellipsis on overflow. Full values remain in the DOM and `title` attribute. Refreshes update accessibility state and existing controls without inserting a loading row that shifts content. Message bodies remain complete.
-
-The touch Composer uses the existing 16px font token to avoid iOS focus zoom. Message copy, statistics, and execution disclosure controls use a 44pt minimum target. This build does not include approvals, synchronous or Task question replies, Task pause, edge-swipe navigation, or push. Task details remain read-only.
+After pairing, the phone loads the same UI as the desktop (`SharedPairedWorkbench`) and reads and writes the Host over the paired connection. There is no separate mobile workspace or command implementation. Projects, conversations, sending, stopping, and approvals are covered by the same desktop and Web tests; on the phone, additionally check touch target sizes, the keyboard, background/foreground switching, and reconnection.
 
 ## Choose later verification tools
 

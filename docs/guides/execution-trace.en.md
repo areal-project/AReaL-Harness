@@ -26,4 +26,4 @@ Copy a turn including its subagents, the entire conversation, or filtered result
 
 Everyday diagnostic records are retained with Core conversation history independently of optional trajectory capture and upload settings. Old records missing new fields display “Not recorded”. Trace details contain recorded content and call metadata; complete model request payloads remain separate diagnostic material.
 
-Durable state writes use format version 16 and continue reading versions 1–15. Rollback to an older Core requires a pre-upgrade backup; see [local service compatibility](../api/local-service.en.md).
+Durable state writes use format version 17 and continue reading versions 1–16. Rollback to an older Core requires a pre-upgrade backup; see [local service compatibility](../api/local-service.en.md).

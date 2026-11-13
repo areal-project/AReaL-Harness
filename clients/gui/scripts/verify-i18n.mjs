@@ -86,11 +86,16 @@ for (const entry of (await readdir(join(gui, "renderer/src/i18n/messages"))).sor
   visit(source);
 }
 
-const { nativeMessages } = require(join(gui, "app/src/core/native-i18n.cjs"));
+const { nativeMessages } = require(
+  join(gui, "../../services/workbench/src/desktop/core/native-i18n.cjs"),
+);
 const nativeExamples = {
   "browser.frameQuestion": { origin: "https://example.test:4317" },
   "browser.developmentQuestion": { origin: "http://localhost:4317" },
   "lifecycle.mobileConnections": { count: 7 },
+  "host.tasks": { count: 3 },
+  "host.turns": { count: 2 },
+  "host.unknownWithTasks": { count: 4 },
   "lifecycle.activeThread": { value: "thread-原文" },
   "lifecycle.goal": { value: "Keep 原始 objective" },
   "lifecycle.task": { value: "task-原文" },

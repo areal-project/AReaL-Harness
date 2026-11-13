@@ -2,13 +2,14 @@
 "use strict";
 const { modelRecord } = require("../core-model-contract.js");
 const { protocolFor } = require("./generated/management-protocol.cjs");
-/** @typedef {'pluginArchiveImport'|'marketplaceAdd'|'marketplaceAddGit'|'marketplaceRemove'|'marketplaceUpdate'|'pluginResolve'|'pluginConnection'|'pluginHooksConfigure'|'hookAcknowledge'|'pluginAuthConfigure'|'connectorConfigure'|'pluginInstall'|'pluginConfigure'|'pluginComponentConfigure'|'pluginUninstall'|'pluginSetup'|'pluginUserConfigSave'|'pluginDevelopmentLink'|'pluginDevelopmentUnlink'} PluginMutation */
+const pluginStore = require("./plugin-store.cjs");
+/** @typedef {'pluginArchiveImport'|'pluginConnection'|'pluginHooksConfigure'|'hookAcknowledge'|'pluginAuthConfigure'|'pluginComponentConfigure'|'pluginSetup'|'pluginUserConfigSave'|'pluginDevelopmentLink'|'pluginDevelopmentUnlink'} PluginMutation */
+/** @typedef {import('./plugin-store.cjs').PluginStoreOperation} PluginStoreOperation */
 /** @typedef {import('./generated/management-protocol.cjs').RequestMap} ProtocolRequestMap */
 /** @typedef {import('./generated/management-protocol.cjs').ResponseMap} ProtocolResponseMap */
 /** @typedef {{projectId:string,operation:'workgroupArtifactStatus'|'workgroupApplyArtifact',id:string,path:string,head:string}} ArtifactRequest */
 /** @typedef {{kind:'string',value:string}|{kind:'boolean',value:boolean}|{kind:'number',value:number}} PublicPluginConfigValue */
 /** @typedef {{
- * pluginCredentialsReload:{operation:'pluginCredentialsReload',projectId:string},
  * pluginUserConfigSave:{operation:'pluginUserConfigSave',projectId:string,requestId?:string,id:string,expectedRevision:number,expectedDigest:string,values:Record<string,PublicPluginConfigValue>,secrets:Record<string,string>,clearKeys?:string[]},
  * workgroupArtifactStatus:ArtifactRequest&{operation:'workgroupArtifactStatus'},workgroupApplyArtifact:ArtifactRequest&{operation:'workgroupApplyArtifact'},
  * workgroupCapabilities:{projectId:string,operation:'workgroupCapabilities'},pluginCapabilities:{projectId:string,operation:'pluginCapabilities'},
@@ -35,13 +36,12 @@ const { protocolFor } = require("./generated/management-protocol.cjs");
  * processSubmission:{confirmed:false}|{confirmed:true,result:ProtocolResponseMap['processStart']&TerminalPresentation&{argv:string[],closed:boolean,controls:number}},
  * agentSubmission:{confirmed:false}|({confirmed:true,accepted:true,method:'areal/agent/spawn',parentThreadId:string,threadId:string,turnId:string}&import('./shared.cjs').SubmissionOutcome),
  * mcpFormResourceSubmission:SubmissionRead<ProtocolResponseMap['mcpFormResourceStage']>,
- * pluginCredentialsReload:{reloaded:true},
- * pluginUserConfigSave:ProtocolResponseMap['pluginUserConfigSave'],
+ * pluginUserConfigSave:ProtocolResponseMap['pluginUserConfigSave']&{reloadDeferred?:boolean},
  * pluginStoreSnapshot:PluginStoreSnapshot,pluginStoreDoctor:PluginDoctorReport,
  * pluginArchivePick:{canceled:true}|{selectionToken:string,fileName:string}
  * }} LocalResponseMap */
-/** @typedef {Omit<ProtocolRequestMap,'pluginUserConfigSave'>&LocalRequestMap&import('./management-tasks.cjs').LocalTaskRequestMap} ManagementRequestMap */
-/** @typedef {ProtocolResponseMap&LocalResponseMap&import('./management-tasks.cjs').LocalTaskResponseMap} ManagementResponseMap */
+/** @typedef {Omit<ProtocolRequestMap,'pluginUserConfigSave'>&LocalRequestMap&import('./plugin-store.cjs').PluginStoreRequestMap&import('./management-tasks.cjs').LocalTaskRequestMap} ManagementRequestMap */
+/** @typedef {ProtocolResponseMap&LocalResponseMap&import('./plugin-store.cjs').PluginStoreResponseMap&import('./management-tasks.cjs').LocalTaskResponseMap} ManagementResponseMap */
 /** @typedef {ManagementRequestMap[keyof ManagementRequestMap]} ManagementRequest */
 /** @template {ManagementRequest} P @typedef {P extends {operation:'processStart',terminal:true} ? ProtocolResponseMap['processStart']&TerminalPresentation : P extends {operation:'pluginSubmission',mutation:infer M extends PluginMutation} ? SubmissionRead<ProtocolResponseMap[M]> : ManagementResponseMap[P['operation']]} ManagementResponse */
 /** @param {unknown} value @returns {value is string[]} */
@@ -49,20 +49,11 @@ const strings = (value) => Array.isArray(value) && value.every((item) => typeof 
 /** @type {Readonly<Record<PluginMutation,true>>} */
 const pluginMutations = Object.freeze({
   pluginArchiveImport: true,
-  marketplaceAdd: true,
-  marketplaceAddGit: true,
-  marketplaceRemove: true,
-  marketplaceUpdate: true,
-  pluginResolve: true,
   pluginConnection: true,
   pluginHooksConfigure: true,
   hookAcknowledge: true,
   pluginAuthConfigure: true,
-  connectorConfigure: true,
-  pluginInstall: true,
-  pluginConfigure: true,
   pluginComponentConfigure: true,
-  pluginUninstall: true,
   pluginSetup: true,
   pluginUserConfigSave: true,
   pluginDevelopmentLink: true,
@@ -75,6 +66,8 @@ function pluginMutation(value) {
 /** @param {unknown} value @returns {value is ManagementRequest} */
 function isManagementRequest(value) {
   if (!modelRecord(value) || typeof value.operation !== "string") return false;
+  if (pluginStore.pluginStoreOperation(value.operation))
+    return pluginStore.isPluginStoreRequest(value);
   if (["pluginStoreSnapshot", "pluginStoreDoctor"].includes(value.operation))
     return (
       (value.projectId === undefined ||
@@ -91,8 +84,6 @@ function isManagementRequest(value) {
       )
     );
   if (typeof value.projectId !== "string") return false;
-  if (value.operation === "pluginCredentialsReload")
-    return Object.keys(value).every((key) => ["operation", "projectId"].includes(key));
   if (value.operation === "pluginUserConfigSave")
     return (
       typeof value.id === "string" &&
@@ -221,6 +212,11 @@ function submissionRead(value, operation) {
 /** @param {ManagementRequest} request @param {unknown} value */
 function validateManagementResponse(request, value) {
   const operation = request.operation;
+  if (pluginStore.pluginStoreOperation(operation)) {
+    if (!pluginStore.isPluginStoreResponse(operation, value, protocolResponse))
+      throw new Error("插件库响应结构无效");
+    return;
+  }
   if (protocolFor(operation)) {
     if (
       !protocolResponse(operation, value) ||
@@ -255,10 +251,11 @@ function validateManagementResponse(request, value) {
           value.canceled === true ||
           (typeof value.selectionToken === "string" && typeof value.fileName === "string")
         );
-      case "pluginCredentialsReload":
-        return value.reloaded === true;
       case "pluginUserConfigSave":
-        return protocolResponse("pluginUserConfigSave", value);
+        return (
+          protocolResponse("pluginUserConfigSave", value) &&
+          (value.reloadDeferred === undefined || typeof value.reloadDeferred === "boolean")
+        );
       case "pluginStoreSnapshot":
         return (
           pluginStoreMetadata(value) &&

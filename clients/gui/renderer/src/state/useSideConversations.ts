@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { errorText } from "../errors/errorCopy.js";
 import { sending } from "../Composer.js";
 import {
   addConversationSelection,
@@ -9,6 +10,7 @@ import {
 import { useI18n } from "../i18n/IntlProvider.js";
 import type { RecoveryFailure } from "../recoveryPresentation.js";
 import type { Action, Data, Snapshot } from "../services.js";
+import { executionGeneration, serviceGeneration } from "../serviceGeneration.js";
 import { useSideChatTabs, type SideChatTab } from "../useSideChatTabs.js";
 import { projectExecutionBlocked } from "./projectExecution.js";
 import type { useWorkspacePanels } from "./useWorkspacePanels.js";
@@ -28,9 +30,10 @@ export function useSideConversations(
   const { t } = useI18n();
   const { panel, workspaceView } = workspacePanels.view;
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
-  const sideChats = useSideChatTabs(resourceAction);
-  const sideSource = useRef({ owner: panelOwner, instanceId: project?.core?.instanceId });
-  sideSource.current = { owner: panelOwner, instanceId: project?.core?.instanceId };
+  const sideChats = useSideChatTabs(resourceAction, snapshot.projects);
+  const coreGeneration = serviceGeneration(project?.core);
+  const sideSource = useRef({ owner: panelOwner, instanceId: coreGeneration });
+  sideSource.current = { owner: panelOwner, instanceId: coreGeneration };
   const canCreateSide =
     !!project &&
     !!thread &&
@@ -55,21 +58,32 @@ export function useSideConversations(
   const createSide = async (text = "") => {
     if (!canCreateSide || !project || !thread) throw new Error(t("chat.side.unavailable"));
     rememberPanelTrigger();
+    const owner = sideSource.current;
     const tab = await sideChats.create(project.id, thread.id, text);
-    revealSide(tab);
+    if (
+      sideSource.current.owner === owner.owner &&
+      owner.instanceId !== undefined &&
+      sideSource.current.instanceId === owner.instanceId
+    )
+      revealSide(tab);
     return tab;
   };
   const newSide = () => {
     if (!project || !thread) return;
+    const owner = sideSource.current;
     const recovering = sideChats.pendingCreation(project.id, thread.id);
     const operation = recovering
       ? sideChats.recoverCreation(project.id, thread.id).then((tab) => {
-          if (tab) revealSide(tab);
+          if (
+            tab &&
+            sideSource.current.owner === owner.owner &&
+            owner.instanceId !== undefined &&
+            sideSource.current.instanceId === owner.instanceId
+          )
+            revealSide(tab);
         })
       : createSide();
-    void operation.catch((cause) => {
-      if (!cause.submissionUnknown) setError(cause.message);
-    });
+    void operation.catch(() => {});
   };
   const removeSideTab = (tab: SideChatTab) => {
     sideChats.forget(tab);
@@ -130,11 +144,12 @@ export function useSideConversations(
     const owner = {
       projectId: project.id,
       parentId: thread.id,
-      coreInstanceId: project.core?.instanceId,
+      coreInstanceId: coreGeneration,
     };
     const sourceOwner = `${owner.projectId}:${owner.parentId}`;
     const sourceCurrent = () =>
       sideSource.current.owner === sourceOwner &&
+      owner.coreInstanceId !== undefined &&
       sideSource.current.instanceId === owner.coreInstanceId;
     const active =
       workspaceView !== "conversation" && !annotationVisible
@@ -163,8 +178,7 @@ export function useSideConversations(
             !current ||
             current.closeRequestId ||
             !sourceCurrent() ||
-            (observed?.executionCore?.instanceId ?? observedProject?.core?.instanceId) !==
-              owner.coreInstanceId ||
+            executionGeneration(observedProject, tab.childId) !== owner.coreInstanceId ||
             observed?.desktop?.archived ||
             (observed?.conversation?.origin &&
             typeof observed.conversation.origin === "object" &&
@@ -204,7 +218,7 @@ export function useSideConversations(
       );
       if (!result.ok) setError(selectionLimitMessage(t, result.reason));
       revealSide(tab);
-    })().catch((cause) => setError(cause.message));
+    })().catch((cause) => setError(errorText(t, cause)));
   };
   return {
     sideChats,

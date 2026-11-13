@@ -1,5 +1,7 @@
-import type { DesktopError } from "@areal/workbench/desktop-contract";
+import type { DesktopError } from "./services.js";
 import type { Data } from "./services.js";
+import { ERROR_CODES, errorCode, errorText, rawText } from "./errors/errorCopy.js";
+import { UiMessageError, type Translate } from "./i18n/uiMessage.js";
 
 export type RecoveryFailure = DesktopError;
 export type RecoveryOperation = Extract<
@@ -96,9 +98,16 @@ export function recoveredOutcome(
   if (!outcome.status && typeof outcome.accepted !== "boolean") return;
   return outcome;
 }
+// 经 Host 命令通道回来的失败只剩错误码和原文；Core 的拒绝原文以“原因码:”开头，从这里取回原因。
+function reasonAndCode(failure: RecoveryFailure) {
+  const reason = failure.reason ?? rawText(failure)?.match(/^([A-Z][A-Z_]+):/)?.[1] ?? "";
+  return `${reason} ${failure.code ?? ""}`;
+}
+/** 传入 t 时，已登记的错误码用错误文案表，未知错误不再原样显示后台文字。 */
 export function recoveryMessage(
   failure: RecoveryFailure,
   context: "operation" | "view" = "operation",
+  t?: Translate,
 ) {
   if (
     context === "operation" &&
@@ -107,18 +116,17 @@ export function recoveryMessage(
       failure.outcome?.kind === "unconfirmed")
   )
     return "操作结果待确认。";
-  if (
-    /auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(
-      `${failure.reason ?? ""} ${failure.code ?? ""}`,
-    )
-  )
+  if (["migrationBlocked", "MIGRATION_PENDING"].includes(String(failure.code)))
+    return "旧运行状态尚未确认，暂时无法打开项目。历史和草稿已保留，请先检查原任务的停止结果。";
+  if (t && failure instanceof UiMessageError) return errorText(t, failure);
+  const code = errorCode(failure);
+  if (t && context === "operation" && code && Object.hasOwn(ERROR_CODES, code))
+    return errorText(t, failure);
+  if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reasonAndCode(failure)))
     return "无法完成操作，请检查模型服务的登录或凭据设置后重试。";
-  if (
-    failure.code === -32003 ||
-    /permission|forbidden|权限|denied/i.test(`${failure.reason ?? ""} ${failure.code ?? ""}`)
-  )
+  if (failure.code === -32003 || /permission|forbidden|权限|denied/i.test(reasonAndCode(failure)))
     return "当前权限不允许此操作，请检查权限设置后重试。";
-  if (/config|配置/i.test(`${failure.reason ?? ""} ${failure.code ?? ""}`))
+  if (/config|配置/i.test(reasonAndCode(failure)))
     return "当前配置不可用，请检查会话或模型配置后重试。";
   if (
     context === "view" &&
@@ -129,7 +137,7 @@ export function recoveryMessage(
     context === "view" &&
     (failure.recovery?.kind === "retryRead" ||
       /disconnect|timeout|connection|transport|RESPONSE_UNKNOWN/i.test(
-        `${failure.message} ${failure.code ?? ""}`,
+        `${rawText(failure)} ${failure.code ?? ""}`,
       ))
   )
     return "暂时无法加载对话。连接恢复后可重新加载，历史和草稿已保留。";
@@ -141,24 +149,25 @@ export function recoveryMessage(
   if (
     context === "operation" &&
     /disconnect|timeout|connection|transport|RESPONSE_UNKNOWN/i.test(
-      `${failure.message} ${failure.code ?? ""}`,
+      `${rawText(failure)} ${failure.code ?? ""}`,
     )
   )
     return failure.outcome?.kind === "rejected" || failure.outcome?.kind === "noMutation"
       ? "操作尚未受理，输入已保留，请在连接恢复后重试。"
       : "暂时无法完成操作，请检查原操作结果后继续。";
-  return failure.message || "操作未完成，请重试。";
+  if (t) return t("errors.generic");
+  return failure.message || "操作未完成，请重试。"; // raw-error-ok: 未传 t 的旧调用
 }
 
 export function recoverySettings(failure: RecoveryFailure): RecoveryNotice["settings"] {
-  const reason = `${failure.reason ?? ""} ${failure.code ?? ""}`;
+  const reason = reasonAndCode(failure);
   if (/auth|credential|api.?key|unauthorized|鉴权|凭据/i.test(reason)) return "模型服务";
   if (failure.code === -32003 || /permission|forbidden|权限|denied|config|配置/i.test(reason))
     return "会话配置";
 }
 
 export function isTechnicalErrorMessage(message: string) {
-  return /Error invoking remote method|\bIPC\b|\b(?:ENOENT|ECONNREFUSED|ECONNRESET|EACCES)\b|control\.sock|service socket path|\n\s*at /i.test(
+  return /Error invoking remote method|\bIPC\b|\b(?:ENOENT|ECONNREFUSED|ECONNRESET|EACCES)\b|control\.sock|service socket path|service requires explicit lifecycle restart|Host disconnected|Project Core unavailable|\n\s*at /i.test(
     message,
   );
 }

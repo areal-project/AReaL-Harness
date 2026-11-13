@@ -10,7 +10,7 @@ Start with the [quickstart](guides/quickstart.en.md). [Capabilities and limitati
 
 | Category | Documents |
 |---|---|
-| Guides | [Quickstart](guides/quickstart.en.md) · [CLI, TUI and Web](guides/clients.en.md) · [Configuration](guides/configuration.en.md) · [Runtime deployment](guides/runtime.en.md) · [Desktop worktrees](guides/worktrees.en.md) |
+| Guides | [Quickstart](guides/quickstart.en.md) · [CLI/TUI download, installation, and usage](guides/cli-tui.en.md) · [CLI, TUI and Web](guides/clients.en.md) · [Configuration](guides/configuration.en.md) · [Runtime deployment](guides/runtime.en.md) · [Desktop worktrees](guides/worktrees.en.md) |
 | Extensions and collaboration | [Tools and hooks](guides/tools.en.md) · [MCP](guides/mcp.en.md) · [Skills](guides/skills.en.md) · [Workgroups](guides/workgroups.en.md) |
 | API contracts | [Core](api/core.en.md) · [Desktop](api/desktop.en.md) · [Task Mode and channels](api/tasks.en.md) · [Browser](api/browser.en.md) · [Computer control](api/computer.en.md) · [Runtime](api/runtime.en.md) · [TypeScript SDKs](api/typescript-sdk.en.md) · [Native Host](api/native-host.en.md) · [Claude CLI](api/claude-cli.en.md) · [Local services](api/local-service.en.md) |
 | Architecture | [Layers and repository](design/architecture.en.md) · [Context management](design/context-management.en.md) · [Agent delegation](design/multi-agent.en.md) · [Workgroups](design/workgroups.en.md) · [Plugins](design/plugins.en.md) · [TUI](design/tui.en.md) · [Diagram style](design/STYLE_GUIDE.en.md) |
@@ -24,7 +24,7 @@ Maintained pages pair a Chinese `.md` file with an English `.en.md` file in the 
 
 Remote v2 design and implementation boundaries: [architecture](design/remote-control.en.md) · [API](api/remote-control.en.md) · [connectivity and deployment](guides/remote-control.en.md) · [acceptance plan](development/remote-control-testing.en.md) · [Host ownership](adr/0008-remote-host-ownership.en.md) · [iOS v1 implementation spec](development/ios-remote-v1-spec.en.md). Each page distinguishes implemented slices from future design; these documents do not claim full P0 delivery.
 
-Shared Host (not implemented): [implementation spec](development/shared-host-spec.en.md). One Host per OS user, with CLI, TUI, GUI, Web and the phone as clients; supersedes the earlier [independent environment service design](design/environment-service.en.md) and [phased plan](development/environment-service-plan.en.md).
+Shared Host (implemented): [implementation spec](development/shared-host-spec.en.md) · [Host API](api/host.en.md) · [ADR 0016](adr/0016-shared-host.en.md). One protocol and one UI (implemented): [implementation spec](development/one-protocol-spec.en.md) · [ADR 0017](adr/0017-one-protocol-one-ui.en.md). One Host per OS user, with CLI, TUI, GUI, Web and the phone as clients; supersedes the earlier [independent environment service design](design/environment-service.en.md).
 
 Client UI implementation and design constraints: internal [design rules v1](../clients/gui/design-system/README.md) and [@areal/ui components and tokens](../clients/gui/packages/ui/README.en.md).
 

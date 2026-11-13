@@ -1,73 +1,46 @@
-use anyhow::{Context, Result};
-use std::process::Command;
+use anyhow::Result;
 
 pub use areal_local_service::LocalArgs;
 
-pub fn launch(args: &super::Args) -> Result<()> {
-    let binary = std::env::current_exe()
-        .context("locate TUI executable")?
-        .canonicalize()
-        .context("resolve installed TUI executable")?;
-    // exec 后由独立进程持有 Core/Runtime，终端退出仍能可靠清理。
-    let mut command = Command::new(&binary);
-    command
-        .arg("launcher")
-        .arg("--bin-dir")
-        .arg(binary.parent().context("locate sibling Harness binaries")?)
-        .arg("--tui");
-    // 客户端选项必须穿过 launcher，且不能进入 Core 配置参数。
-    if let Some(theme) = args.ui.theme {
-        command.arg(format!("--theme={}", theme.key()));
-    }
-    if let Some(color) = args.ui.color {
-        command.arg(format!("--color={}", color.key()));
-    }
-    if let Some(path) = &args.ui.tui_config {
-        let mut argument = std::ffi::OsString::from("--tui-config=");
-        argument.push(std::path::absolute(path).context("locate TUI preferences")?);
-        command.arg(argument);
-    }
-    for (flag, value) in [
-        ("--no-logo", args.ui.no_logo),
-        ("--ascii", args.ui.ascii),
-        ("--mouse", args.ui.mouse),
-    ] {
-        if let Some(value) = value {
-            command.arg(format!("{flag}={value}"));
+#[derive(Clone)]
+pub(crate) struct HostProject {
+    pub(crate) client: areal_host::Client,
+    pub(crate) project_id: String,
+}
+
+impl HostProject {
+    pub(crate) async fn update_notice(&self) -> Result<Option<String>> {
+        let client = areal_host::Client::connect_at(self.client.home().to_path_buf()).await?;
+        let version_notice = client.version_notice();
+        if !client
+            .status()
+            .await?
+            .capabilities
+            .iter()
+            .any(|c| c == "updates")
+        {
+            return Ok(version_notice);
         }
-    }
-    command.args(args.local.launcher_args());
-    if args.no_session_name {
-        command.arg("--no-session-name");
-    }
-    if let Some(agent) = &args.agent {
-        command.arg(format!("--agent={agent}"));
-    }
-    if let Some(value) = &args.input_file {
-        command.arg("--input-file").arg(value);
-    }
-    for (flag, value) in [
-        ("--resume", &args.resume),
-        ("--prompt", &args.prompt),
-        ("--goal", &args.goal),
-    ] {
-        if let Some(value) = value {
-            command.arg(format!("{flag}={value}"));
+        let state = client.update_status().await?;
+        let host = &client.identity().executable_version;
+        if state["restartPending"] == true {
+            let mut notice = format!(
+                "Host {host} · update {} pending · apply explicitly with areal host update apply",
+                state["targetVersion"].as_str().unwrap_or("unknown")
+            );
+            if let Some(version_notice) = version_notice {
+                notice.push_str(" · ");
+                notice.push_str(&version_notice);
+            }
+            return Ok(Some(notice));
         }
+        Ok(version_notice)
     }
-    if let Some(prompt) = &args.initial_prompt {
-        command.arg(format!("--initial-prompt={prompt}"));
+    pub(crate) async fn observe_service(&self) -> Result<areal_protocol::service::Service> {
+        let client = areal_host::Client::connect_at(self.client.home().to_path_buf()).await?;
+        let opened = client.reconnect(&self.project_id).await?;
+        Ok(opened.service()?.clone())
     }
-    if let Some(budget) = args.goal_token_budget {
-        command.arg(format!("--goal-token-budget={budget}"));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        Err(command.exec()).context("start local Harness")
-    }
-    #[cfg(not(unix))]
-    anyhow::bail!("local Harness requires Unix; use --endpoint to connect to an existing Core")
 }
 
 #[cfg(test)]
@@ -76,7 +49,7 @@ mod tests {
     use clap::Parser;
 
     #[test]
-    fn only_final_local_clients_monitor_trajectory() {
+    fn all_local_clients_monitor_trajectory() {
         let shared = Args::try_parse_from(["areal", "--config", "chosen.toml"]).unwrap();
         assert_eq!(
             shared.trajectory_monitor_config(),
@@ -85,12 +58,15 @@ mod tests {
         for args in [
             vec!["areal", "--local-mode", "owned"],
             vec!["areal", "--prompt", "hello"],
+            vec!["areal", "--local-mode", "shared", "--prompt", "hello"],
+            vec!["areal", "--goal", "finish"],
+            vec!["areal", "--input-file", "input.json"],
         ] {
-            assert!(
+            assert_eq!(
                 Args::try_parse_from(args)
                     .unwrap()
-                    .trajectory_monitor_config()
-                    .is_none()
+                    .trajectory_monitor_config(),
+                Some(None)
             );
         }
         let remote = ["areal", "--endpoint", "ws://localhost:1234"];
@@ -100,14 +76,14 @@ mod tests {
                 .trajectory_monitor_config()
                 .is_none()
         );
-        let owned = Args::try_parse_from(remote.into_iter().chain([
+        let child = Args::try_parse_from(remote.into_iter().chain([
             "--local-trajectory-monitor",
             "--local-trajectory-config",
             "/resolved/chosen.toml",
         ]))
         .unwrap();
         assert_eq!(
-            owned.trajectory_monitor_config(),
+            child.trajectory_monitor_config(),
             Some(Some("/resolved/chosen.toml".into()))
         );
         assert!(Args::try_parse_from(["areal", "--local-trajectory-monitor"]).is_err());
@@ -134,6 +110,29 @@ mod tests {
         .unwrap();
         assert_eq!(args.endpoint.as_deref(), Some("ws://127.0.0.1:4500"));
         assert_eq!(args.resume.as_deref(), Some("thread-id"));
+    }
+
+    #[test]
+    fn host_migration_preserves_default_profile_selection() {
+        for (arguments, expected) in [
+            (vec!["areal"], false),
+            (vec!["areal", "--local-mode", "owned"], true),
+            (vec!["areal", "--prompt", "hello"], true),
+            (vec!["areal", "--goal", "finish"], true),
+            (vec!["areal", "--input-file", "input.json"], true),
+            (
+                vec!["areal", "--local-mode", "shared", "--prompt", "hello"],
+                false,
+            ),
+            (vec!["areal", "--endpoint", "ws://localhost:1234"], true),
+        ] {
+            assert_eq!(
+                Args::try_parse_from(arguments)
+                    .unwrap()
+                    .selects_default_profile(),
+                expected
+            );
+        }
     }
 
     #[test]

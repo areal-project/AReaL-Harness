@@ -45,7 +45,7 @@ impl Engine {
         &self,
         thread: &mut Thread,
         configuration: &EffectiveConfig,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if thread.is_read_only_side()
             || thread.parent_thread_id.is_some()
             || thread.source == "nativeTaskAgent"
@@ -60,10 +60,10 @@ impl Engine {
                 .append_instructions
                 .starts_with("AREAL_TASK_DRAFT_V1\n")
         {
-            return Ok(());
+            return Ok(false);
         }
         let Some(data) = thread.desktop.as_mut() else {
-            return Ok(());
+            return Ok(false);
         };
         let model = self.configured_model(configuration)?;
         let parameters = if configuration.model.is_none() {
@@ -92,7 +92,7 @@ impl Engine {
             model_id: model.name().into(),
             reasoning_effort: parameters.reasoning_effort,
         });
-        Ok(())
+        Ok(true)
     }
 
     pub(super) async fn last_accepted_model(&self) -> Option<AcceptedModelSelection> {

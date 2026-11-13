@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { desktopError } from "@areal/workbench/desktop-contract/transport";
+import { commandSemantics, desktopError } from "@areal/workbench/desktop-contract/transport";
 import type { DesktopResult } from "@areal/workbench/desktop-contract";
 import type { FileOpenTargets, Snapshot, UpdateState, WorkspaceImage } from "./services.js";
 
@@ -38,7 +38,7 @@ const snapshotSchema: z.ZodType<Snapshot> = z.object({
     .object({
       state: z.enum(["connecting", "ready", "unavailable"]),
       message: z.string().optional(),
-      recovery: z.literal("check").optional(),
+      recovery: z.enum(["check", "reconnect"]).optional(),
       prerequisite: z
         .object({
           kind: z.literal("macos-command-line-tools"),
@@ -104,8 +104,8 @@ export function readPreviewResult(value: unknown): Record<string, unknown> {
   const result = readFields(value);
   if (!Object.hasOwn(result, "previewFailure")) return result;
   const error = readFields(result.previewFailure);
-  if (typeof error.message !== "string") throw new Error("Invalid Desktop preview failure");
-  throw Object.assign(new Error(error.message), desktopError(error));
+  if (typeof error.message !== "string") throw new Error("Invalid Desktop preview failure"); // raw-error-ok: 传输层解码，不上屏
+  throw Object.assign(new Error(error.message), desktopError(error)); // raw-error-ok: 传输层解码，不上屏
 }
 export function readCommandResult(value: unknown): DesktopResult<unknown> {
   const result = readFields(value);
@@ -113,7 +113,7 @@ export function readCommandResult(value: unknown): DesktopResult<unknown> {
     return { ok: true, value: result.value };
   if (result.ok === false) {
     const error = readFields(result.error);
-    if (typeof error.message === "string") return { ok: false, error: desktopError(error) };
+    if (typeof error.message === "string") return { ok: false, error: desktopError(error) }; // raw-error-ok: 传输层解码，不上屏
   }
   throw new Error("Invalid Desktop command envelope");
 }
@@ -124,6 +124,7 @@ const updateSchema: z.ZodType<UpdateState> = z
       "idle",
       "available",
       "downloading",
+      "ready",
       "validating",
       "deferred",
       "installing",
@@ -172,4 +173,32 @@ export function readFileOpenResult(
       z.record(z.string(), z.never()),
     ])
     .parse(value);
+}
+
+export { isLibraryState } from "@areal/workbench/desktop-contract/library-media";
+
+/**
+ * Host 命令通道的失败与桌面原通道同一份错误形状：保留错误码、受理结果与恢复方式。
+ * 没有错误码说明回复丢了，写操作按“不确定是否受理”处理。
+ */
+export function hostCommandError(name: string, params: Record<string, unknown>, error: unknown) {
+  const shaped = desktopError(error);
+  if (shaped.code !== undefined) return shaped;
+  let write = true;
+  let requestId: string | undefined;
+  try {
+    const semantics = commandSemantics(name, params);
+    write = semantics.effect !== "read";
+    const original = semantics.requestId ? params[semantics.requestId] : undefined;
+    if (typeof original === "string") requestId = original;
+  } catch {}
+  return write
+    ? {
+        ...shaped,
+        submissionUnknown: true,
+        ...(requestId === undefined ? {} : { requestId }),
+        outcome: { kind: "unconfirmed" },
+        recovery: { kind: "queryOriginal" },
+      }
+    : { ...shaped, code: "COMMAND_FAILED" };
 }

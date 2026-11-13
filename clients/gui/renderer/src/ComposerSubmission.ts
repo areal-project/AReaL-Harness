@@ -2,7 +2,11 @@ import { snapShotContext, snapShotAttachmentMeta } from "./snapshots/source.js";
 import { consumeSnapShotFiles } from "./snapshots/drafts.js";
 import { forgetComposerUploads } from "./ComposerUploadState.js";
 import { uploadComposerFiles } from "./ComposerUploads.js";
-import { composerInput, type ComposerDraftAttachment } from "./ComposerAttachments.js";
+import {
+  composerInput,
+  hasMissingComposerFiles,
+  type ComposerDraftAttachment,
+} from "./ComposerAttachments.js";
 import {
   conversationSelectionScope,
   readConversationSelections,
@@ -41,6 +45,8 @@ export async function submitMessage(
   files: ComposerDraftAttachment[],
   options: Data = {},
 ) {
+  if (hasMissingComposerFiles(files))
+    throw new Error("Missing draft attachment; reattach or remove it before sending.");
   const reviewKey = reviewCommentKey(projectId, threadId);
   const comments = options.appMessage ? [] : attachedReviewComments(readReviewComments(reviewKey));
   const key = `areal-gui:draft:${projectId}:${threadId}`;
@@ -113,9 +119,10 @@ export async function submitMessage(
     ]
       .filter(Boolean)
       .join("\n\n");
+    let sent: unknown;
     try {
       options.onSendStart?.();
-      await action(options.steer ? "steer" : "send", {
+      sent = await action(options.steer ? "steer" : "send", {
         projectId,
         threadId,
         text: feedback ? (input.text ? `${input.text}\n\n${feedback}` : feedback) : input.text,
@@ -135,7 +142,7 @@ export async function submitMessage(
         try {
           recordUnknownReviewSubmission(reviewKey, error.requestId, comments);
         } catch {
-          error.message += " 评论提交记录无法保存，原评论已保留。";
+          error.message += " 评论提交记录无法保存，原评论已保留。"; // raw-error-ok: 补充详情
         }
       }
       throw cause;
@@ -149,6 +156,10 @@ export async function submitMessage(
       consumeMcpDraft(key, capturedMcp);
       consumeConversationSelections(selectionScope, capturedReferences);
     }
+    // Host 可能把“立即发”改成排队（对话刚好开始了新一轮）；调用方据此撤掉乐观显示。
+    return {
+      queued: !!sent && typeof sent === "object" && "queued" in sent && sent.queued === true,
+    };
   } finally {
     if (options.appMessage) forgetComposerUploads(uploadOwner, imageFiles);
   }

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { ExtraProps } from "streamdown";
 import { MarkdownTable as View, type MarkdownTableProps } from "@areal/ui/experimental";
 import { useZCodeIntl } from "../../i18n/IntlProvider.js";
 import { toast } from "../ui/toast.js";
@@ -26,7 +27,7 @@ export type {
   MarkdownTableHeadProps,
   MarkdownTableCellProps,
 } from "@areal/ui/experimental";
-export function MarkdownTable(props: MarkdownTableProps) {
+export function MarkdownTable({ node, ...props }: MarkdownTableProps) {
   const { intl } = useZCodeIntl();
   const labels = useMemo(
     () => ({
@@ -42,8 +43,18 @@ export function MarkdownTable(props: MarkdownTableProps) {
       previewTitle: intl.formatMessage({ id: "markdownTable.previewTitle" }),
       previewDescription: intl.formatMessage({ id: "markdownTable.previewDescription" }),
       closeDialog: intl.formatMessage({ id: "common.closeDialog" }),
+      scrollHint: intl.formatMessage({ id: "markdownTable.scrollHint" }),
     }),
     [intl],
   );
-  return <View labels={labels} onNotify={toast} {...props} />;
+  const data = (node as ExtraProps["node"])?.data;
+  const source = data && "tableMarkdown" in data ? data.tableMarkdown : undefined;
+  return (
+    <View
+      labels={labels}
+      onNotify={toast}
+      sourceMarkdown={typeof source === "string" ? source : undefined}
+      {...props}
+    />
+  );
 }

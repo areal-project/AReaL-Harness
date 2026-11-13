@@ -23,6 +23,7 @@ mod request_meter;
 mod session_name;
 mod sessions;
 mod store;
+pub use store::persisted::PersistedConversation;
 mod task_mode;
 pub use areal_plugins::PluginComponentId;
 #[cfg(feature = "test-support")]
@@ -39,6 +40,7 @@ mod turns;
 mod watchdog;
 pub mod workgroup;
 mod workspace;
+mod worktrees;
 
 use areal_protocol::{Input, Item, Modality, Thread, ThreadStatus, Turn, TurnStatus, notification};
 use futures_util::{FutureExt, StreamExt};
@@ -207,6 +209,8 @@ pub enum Error {
     NotFound,
     #[error("{0}")]
     Invalid(String),
+    #[error("dynamic tools require a connected owner; resume this thread to attach its tool host")]
+    ToolHostUnavailable,
     #[error("thread is busy or the target turn is stale")]
     Conflict,
     #[error("{0}")]
@@ -488,6 +492,7 @@ fn restore_sessions(
                     registry.with_dynamic(&thread.dynamic_tools)?
                 },
                 host: None,
+                schedule_host: None,
             };
             let root_session = thread.parent_thread_id.is_none();
             let parent_scratch = thread
@@ -1052,9 +1057,6 @@ impl Engine {
         }
         if let Err(error) = self.desktop.plugin_mcp.shutdown().await {
             tracing::warn!(%error, "plugin MCP cleanup remains unconfirmed");
-        }
-        if let Err(error) = self.desktop.mcp.shutdown(&self.store).await {
-            tracing::error!(%error, "managed MCP cleanup failed");
         }
         let cells: Vec<_> = self.threads.read().await.values().cloned().collect();
         for cell in cells {

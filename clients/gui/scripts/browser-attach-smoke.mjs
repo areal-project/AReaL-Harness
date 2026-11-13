@@ -488,8 +488,8 @@ try {
     new Promise((resolve) => model.close(resolve)),
   ]);
   const files = [
-    "app/src/core/backend.cjs",
-    "app/src/core/core-capabilities.cjs",
+    "../../services/workbench/src/desktop/core/backend.cjs",
+    "../../services/workbench/src/desktop/core/core-capabilities.cjs",
     "packages/workbench/client/desktop-contract.cjs",
     "renderer/src/App.tsx",
     "renderer/src/Preview.tsx",

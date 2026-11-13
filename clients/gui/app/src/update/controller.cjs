@@ -1,10 +1,10 @@
 // @ts-check
 "use strict";
-const { newer, validateUpdate } = require("./config.cjs");
+const { newer, validateUpdate, channelFeedUrl } = require("./config.cjs");
 
-// 下载和摘要校验可保持后台运行；Squirrel 原生准备只在安全停止和占用检查后触发。
-/** @typedef {'idle'|'available'|'downloading'|'validating'|'deferred'|'installing'|'error'} UpdateStatus */
-/** @typedef {{enabled:boolean,checking:boolean,downloading:boolean,installing:boolean,downloaded?:string,status:UpdateStatus,version?:string,percent:number|null,detail:string}} UpdateState */
+// 下载和摘要校验可保持后台运行；重启安装只由用户发起，Squirrel 原生准备只在安全停止和占用检查后触发。
+/** @typedef {'idle'|'available'|'downloading'|'ready'|'validating'|'deferred'|'installing'|'error'} UpdateStatus */
+/** @typedef {{enabled:boolean,channel:'stable'|'beta',checking:boolean,downloading:boolean,installing:boolean,downloaded?:string,status:UpdateStatus,version?:string,percent:number|null,detail:string}} UpdateState */
 /** @typedef {{hasWork:()=>boolean|Promise<boolean>,prepareInstall:()=>Promise<unknown>,recoverInstall?:()=>Promise<unknown>,onState?:(state:UpdateState)=>void}} UpdateLifecycle */
 /** @param {UpdateLifecycle & {updater:import('electron-updater').AppUpdater,config?:import('./config.cjs').UpdateConfig|null,version:string,platform?:NodeJS.Platform,arch?:string,notify?:(options:import('electron').MessageBoxOptions)=>Promise<import('electron').MessageBoxReturnValue>,prepareNativeInstall?:()=>Promise<void>,log?:Pick<Console,'warn'>}} options */
 function createUpdater({
@@ -29,22 +29,27 @@ function createUpdater({
     installUnconfirmed = false,
     downloaded = /** @type {import('electron-updater').UpdateInfo|null} */ (null),
     available = /** @type {import('electron-updater').UpdateInfo|null} */ (null);
-  let highWater = version,
-    status = /** @type {UpdateStatus} */ ("idle"),
+  let status = /** @type {UpdateStatus} */ ("idle"),
     percent = /** @type {number|null} */ (null),
     detail = "";
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = false;
   updater.allowDowngrade = false;
   updater.allowPrerelease = false;
-  if (enabled)
+  /** @type {'stable'|'beta'} */ let channel = "stable";
+  /** @type {'stable'|'beta'} */ let wanted = "stable";
+  const useFeed = () =>
+    enabled &&
+    config &&
     updater.setFeedURL({
       provider: "generic",
-      url: config.feedUrl,
+      url: channelFeedUrl(config, channel),
       useMultipleRangeRequest: false,
     });
+  useFeed();
   const state = () => ({
     enabled,
+    channel: wanted,
     checking,
     downloading,
     installing,
@@ -64,6 +69,20 @@ function createUpdater({
   /** @param {string} message */
   const message = (message, detail = "") =>
     notify?.({ type: "info", message, detail, buttons: ["确定"] });
+  /** @param {'question'|'warning'} type @param {string} message @param {string} detail @param {string[]} buttons */
+  const question = (type, message, detail, buttons) =>
+    notify?.({ type, message, detail, buttons, defaultId: 0, cancelId: 0 });
+  async function offerDownload() {
+    if (onState || !available) return state();
+    const answer = await question(
+      "question",
+      `发现新版本 ${available.version}`,
+      "是否下载更新？下载不会中断当前任务。",
+      ["稍后", "下载更新"],
+    );
+    if (answer?.response === 1) await download();
+    return state();
+  }
   updater.on("download-progress", (progress) => {
     if (!downloading) return;
     percent = Number.isFinite(progress?.percent)
@@ -83,18 +102,16 @@ function createUpdater({
     let prepared = false;
     try {
       if (await hasWork()) {
-        set("deferred", "还有活动任务、排队消息或操作，空闲后将自动重启安装。");
+        set("deferred", "还有活动任务、排队消息或操作，完成后再重启安装。");
         return state();
       }
       if (!onState) {
-        const answer = await notify?.({
-          type: "question",
-          message: `版本 ${downloaded.version} 已下载`,
-          detail: "现在重启并安装更新？",
-          buttons: ["稍后", "重启安装"],
-          defaultId: 0,
-          cancelId: 0,
-        });
+        const answer = await question(
+          "question",
+          `版本 ${downloaded.version} 已下载`,
+          "现在重启并安装更新？",
+          ["稍后", "重启安装"],
+        );
         if (answer?.response !== 1) {
           set("deferred", "更新已下载，可在“检查更新…”中重试安装。");
           return state();
@@ -140,20 +157,16 @@ function createUpdater({
           "CONFIRMATION_STALE",
         ].includes("code" in error && typeof error.code === "string" ? error.code : "")
       ) {
-        set("deferred", `后台尚未就绪：${error.message}。处理后将自动重试。`);
+        set("deferred", `后台尚未就绪：${error.message}。检查后台后再重启安装。`);
         if (!onState) {
-          const answer = await notify?.({
-            type: "warning",
-            message: "需要先处理后台状态",
-            detail: error.message,
-            buttons: ["稍后", "检查后台资源"],
-            defaultId: 0,
-            cancelId: 0,
-          });
+          const answer = await question("warning", "需要先处理后台状态", error.message, [
+            "稍后",
+            "检查后台资源",
+          ]);
           if (answer?.response === 1) await recoverInstall?.();
         }
       } else if (/活动任务|其他操作|完成任务|仍有任务/.test(error.message)) {
-        set("deferred", `${error.message}。空闲后将自动重试。`);
+        set("deferred", `${error.message}。完成后再重启安装。`);
       } else {
         set("error", error.message);
         if (!onState) await message("暂时无法安装更新", error.message);
@@ -173,11 +186,12 @@ function createUpdater({
     set("downloading");
     try {
       await updater.downloadUpdate();
-      percent = 100;
       downloaded = available;
       downloading = false;
       percent = 100;
-      await install();
+      // 界面模式下重启时机交给用户；原生菜单路径在 install() 里用对话框确认。
+      if (onState) set("ready");
+      else await install();
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
       downloading = false;
@@ -186,7 +200,8 @@ function createUpdater({
     }
     return state();
   }
-  async function check(manual = false) {
+  /** @param {boolean} [manual] @param {{background?:boolean}} [options] 后台检查失败只记日志，不在界面上报错。 */
+  async function check(manual = false, { background = false } = {}) {
     if (checking || downloading || installing) {
       if (manual && !onState) await message("更新操作正在进行", "请等待当前更新操作完成。");
       return state();
@@ -196,64 +211,50 @@ function createUpdater({
         await message("更新不可用", "首版仅支持配置了产品更新源的 macOS Apple Silicon 安装包。");
       return state();
     }
+    // 只在没有下载或安装时换频道；已下载的更新仍按原频道校验结果安装。
+    if (wanted !== channel && !downloaded) {
+      channel = wanted;
+      available = null;
+      useFeed();
+      set("idle");
+    }
     if (downloaded) {
-      if (manual) await install();
+      if (manual && onState)
+        await message(`版本 ${downloaded.version} 已下载`, "点击侧栏的更新图标重启安装。");
+      else if (manual) await install();
       return state();
     }
     // electron-updater remembers the latest check target; keep it aligned with the displayed offer.
-    if (available) {
-      if (manual && !onState) {
-        const answer = await notify?.({
-          type: "question",
-          message: `发现新版本 ${available.version}`,
-          detail: "是否下载更新？下载不会中断当前任务。",
-          buttons: ["稍后", "下载更新"],
-          defaultId: 0,
-          cancelId: 0,
-        });
-        if (answer?.response === 1) await download();
-      }
-      return state();
-    }
+    if (available) return manual ? offerDownload() : state();
     checking = true;
     publish();
     try {
-      const result = await updater.checkForUpdates();
+      const result = await updater.checkForUpdates().catch((error) => {
+        if (wanted === channel) throw error;
+        return null;
+      });
+      // 检查期间设置可能已改变，旧频道的结果不能成为新频道的下载目标。
+      if (wanted !== channel) {
+        checking = false;
+        return await check(manual, { background });
+      }
       const info = result?.updateInfo;
-      if (
-        !info ||
-        !newer(info.version, version) ||
-        (info.version !== highWater && !newer(info.version, highWater))
-      ) {
+      if (!info || !newer(info.version, version)) {
         checking = false;
         set("idle");
         if (manual && !available)
           await message("暂未发现新版本", `当前版本 ${version}，当前更新频道尚无可用的更高版本。`);
         return state();
       }
-      validateUpdate(info, config.feedUrl, config);
-      highWater = info.version;
+      validateUpdate(info, channelFeedUrl(config, channel), config);
       available = info;
       checking = false;
       set("available");
-      if (!onState) {
-        const answer = await notify?.({
-          type: "question",
-          message: `发现新版本 ${info.version}`,
-          detail: "是否下载更新？下载不会中断当前任务。",
-          buttons: ["稍后", "下载更新"],
-          defaultId: 0,
-          cancelId: 0,
-        });
-        if (answer?.response === 1) {
-          checking = false;
-          await download();
-        }
-      }
+      await offerDownload();
     } catch (cause) {
       const error = cause instanceof Error ? cause : new Error(String(cause));
       log.warn("[areal-update]", error.message);
-      set("error", error.message);
+      if (!background) set("error", error.message);
       if (manual) await message("更新失败", error.message);
     } finally {
       checking = false;
@@ -261,6 +262,14 @@ function createUpdater({
     }
     return state();
   }
-  return { check, download, install, state };
+  /** @param {boolean} beta 来自用户设置；切换后立即检查，不降级。 */
+  function setChannel(beta) {
+    const next = beta ? "beta" : "stable";
+    if (next === wanted) return Promise.resolve(state());
+    wanted = next;
+    publish();
+    return enabled ? check(false, { background: true }) : Promise.resolve(state());
+  }
+  return { check, download, install, state, setChannel };
 }
 module.exports = { createUpdater };

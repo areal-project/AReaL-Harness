@@ -1,0 +1,131 @@
+id: navigation-sidebar
+name: 侧栏（应用导航栏与项目导航）
+status: draft
+purpose: 找到并切换对话。最左一列是应用级入口；右边按“置顶 / 项目 / 任务”分组列出对话，当前对话高亮，运行中、等待处理与未读一眼可见。
+why: 侧栏只回答“我有哪些对话、哪个需要我”，所以只有标题与一个状态位；整理操作平时藏起来，悬停才出现，不和标题抢位置。
+
+layout:
+  width: 整个侧栏（含应用导航栏）默认 sidebar-default-width，用户可拖动右缘调整
+  columns: 左列应用导航栏宽 rail-width；其余为导航内容
+  top-bar: 窗口顶栏与侧栏同宽的一段放前进后退与收起侧栏，见 parts.window-controls
+  surface: 导航内容底色 color-navigation-background，左侧两角 radius-panel；应用导航栏与顶栏直接落在窗口底色上
+  rail-only: 收起侧栏后只剩应用导航栏；顶栏左段随之缩成 rail-width 宽、里面不放按钮（右缘竖线仍在），前进、后退与展开按钮移到会话标题栏最前
+
+anatomy:
+  - part: window-controls
+    role: 顶栏左段，后退、前进、收起侧栏三个图标按钮
+  - part: application-rail
+    role: 应用级入口，竖排图标按钮；首页、定时任务、插件在上，设置贴底
+  - part: workspace-header
+    role: 工作区名称与搜索按钮
+  - part: new-chat
+    role: 一行“新聊天”入口
+  - part: section
+    role: 分组标题加分组内容；分组依次为置顶、项目、任务（没有置顶项时不出现置顶，没有独立任务时不出现任务）
+  - part: project-row
+    role: 项目一行，可展开收起它的对话
+  - part: task-row
+    role: 对话一行
+  - part: resize-handle
+    role: 侧栏右缘的拖动条
+
+parts:
+  window-controls:
+    height: 顶栏高度，即 height-toolbar 与 text-ui-base 加 spacing-control-lg 两者取大
+    padding: 左右 spacing-inline 的一倍半
+    divider: 这一段右缘一道 border-width-default 的 color-border 竖线
+    buttons: 从左缘起依次排后退、前进、收起侧栏，三个挨在一起；spacing-control 见方，间隔 spacing-inline 的一半，圆角 radius-control；图标 nav-back、nav-forward、sidebar-toggle，颜色 foreground-subtle；不可用时 opacity-disabled；悬停 foreground，底色 color-hover
+  application-rail:
+    padding: 上 spacing-inline，左右 spacing-inline，下 spacing-inline 的一半
+    gap: spacing-inline
+    button: rail-button-size 见方，圆角 radius-navigation；图标 icon-size-rail；颜色 foreground 一半不透明度
+    current: 当前入口底色 color-selected，图标 foreground；首页当前时用实心图标 rail-home，不是当前时用空心的 rail-home-outline
+    hover: 图标 foreground
+    footer: 设置按钮贴底
+  workspace-header:
+    height: rail-width
+    padding: 左 spacing-field，右 spacing-inline 的一倍半
+    title: 文字 text-ui-xl，字重 font-weight-strong，行高 line-height-title，颜色 foreground，过长省略
+    search: spacing-control 见方，圆角 radius-button，图标 search，颜色 foreground
+  new-chat:
+    container: 紧接工作区标题区，上方不再留白；左右与下 spacing-inline
+    row: 高 navigation-row-height，左右 spacing-inline，图标与文字间隔 spacing-inline，圆角 radius-navigation
+    icon: new-chat，颜色 foreground-subtle；悬停时 foreground
+    text: text-ui-caption，字重 font-weight-toolbar，行高 line-height-ui，颜色 foreground
+  list:
+    padding: 左右 spacing-inline；超出高度时在内部滚动
+  section:
+    gap-below: 每个分组下方 spacing-inline；项目分组里每个项目（项目行连同它的对话）也是一组，下方同样 spacing-inline；这段间隔与下一个分组标题上方的 spacing-inline 重合不叠加，所以上一组最后一行到下一个分组标题顶边总共 spacing-inline
+    heading: 高 spacing-control-sm，左 spacing-inline、右 spacing-inline 的一半；上 spacing-inline、下 spacing-inline 的四分之一；文字 text-ui-base、font-weight-medium、行高 line-height-toolbar、foreground-subtle，在标题高度内垂直居中；上下留白在这 spacing-control-sm 高度之外
+    chevron: 文字后 spacing-inline 的一半放 section-chevron；平时隐藏，悬停标题或键盘聚焦时出现；分组收起后常显，并转为朝右
+    actions: 仅项目分组：右侧“打开项目”（section-add）与“侧栏整理”（more）两个按钮，各为 spacing-control-xs 加 spacing-inline 的四分之一见方，圆角 radius-control，颜色 foreground-subtle；“侧栏整理”菜单打开期间按钮外观不变（不加底色）
+    pinned: 置顶分组下方不用上面的 gap-below，改为留 spacing-inline 的四分之三，画一道 border-width-default 的 color-border-subtle 线；线到下一个分组标题顶边总共 spacing-inline（标题上方的 spacing-inline 与线下的间隔重合，不叠加）
+  project-row:
+    height: navigation-row-height
+    padding: 左 spacing-inline，右 spacing-inline 的一半
+    radius: radius-navigation
+    icon: 展开时 folder-open，收起时 folder；icon-size-control，颜色 foreground-subtle；与名称间隔 spacing-inline
+    text: text-ui-base，颜色 foreground，单行省略
+    actions: 悬停或键盘聚焦时右侧出现“项目操作”（more）与“在项目中新建对话”（project-new-chat），各 spacing-control-xs 见方，间隔 spacing-inline；名称随之让出位置
+    rows: 展开时依次列出项目内未置顶的对话（置顶的只出现在置顶分组），最多五条；更多时末尾一行“显示更多”（text-ui-caption，foreground-subtle，高 spacing-control，文字与对话标题左对齐），每点一次多显示五条
+  task-row:
+    height: 最小 navigation-row-height
+    padding: 左 spacing-inline；上下与右为 navigation-row-height 减 line-height-ui 的一半
+    radius: radius-navigation
+    status-slot: 标题左侧 icon-size-control 见方的状态位，与标题间隔 spacing-inline；项目与任务分组里的对话总有这一位（无状态时留空），只有置顶分组里的对话在没有状态时不留这一位，标题直接与分组标题左对齐
+    status: 运行中显示 running 图标（foreground-subtle），匀速转动一圈接一圈，系统要求减少动态时静止；等待处理显示 spacing-inline 四分之三见方的圆点，color-warning；未读同样大小的圆点，color-primary；优先级依次为运行中、等待处理、未读
+    title: text-ui-base，行高 line-height-ui，颜色 foreground 的八成五不透明度，单行；放不下时直接裁掉，不加省略号，右端 spacing-control-sm 宽内渐隐为透明；放得下时不渐隐
+    current: 当前对话底色 color-navigation-selected
+    hover: 底色 color-sidebar-item；右侧出现置顶（pin）、归档（archive）、更多（more）三个按钮，标题让出三个按钮宽加两个间隔
+    hover-actions: 按钮各 spacing-control-xs 见方，圆角 radius-compact，图标 icon-size-control，颜色 foreground，底色透明；按钮间隔 spacing-inline，最右一个距行右缘 spacing-inline，在行内垂直居中；悬停某个按钮时它的底色 color-hover
+    menu-open: 任务菜单打开期间这一行保持悬停样子（三个按钮可见、行底色 color-sidebar-item，当前对话仍为 color-navigation-selected），“更多”按钮底色 color-hover；菜单收起后焦点回到“更多”按钮，按钮在获得焦点时保持可见（平时只能用透明度藏起，不能用让它无法获得焦点的隐藏方式）
+  resize-handle:
+    hit-area: 跨在侧栏右缘内外各 spacing-inline
+    hover: 悬停或聚焦时显出一道 border-width-default 的 color-border-hover 竖线
+
+order:
+  - 各分组内的对话按最近更新排在前
+  - 项目按资料库里的顺序
+
+accessible-names:
+  window-controls:
+    back: 后退
+    forward: 前进
+    toggle: 收起侧栏；收起后为 展开侧栏
+  rail: 应用导航
+  rail-items: [首页, 定时任务, 插件, 设置]
+  search: 搜索任务
+  new-chat: 新聊天
+  section-toggles:
+    pinned: 置顶分类
+    projects: 项目分类
+    tasks: 独立任务分类
+  open-project: 打开项目
+  organize: 侧栏整理
+  project-actions: 项目操作 {项目名}
+  project-new-chat: 在项目 {项目名} 中新建对话
+  task-actions:
+    pin: 置顶 {标题}（已置顶时为 取消置顶 {标题}）
+    archive: 归档 {标题}
+    more: 任务操作 {标题}
+  status:
+    running: 运行中
+    attention: 等待处理
+    unread: 未读
+  resize: 调整侧栏宽度
+
+states:
+  - expanded: 默认；各分组与项目展开
+  - project-collapsed: 某项目收起，只剩项目行，图标换成 folder
+  - section-collapsed: 某分组收起，只剩分组标题，箭头常显朝右
+  - rail-only: 侧栏收起，只剩应用导航栏
+
+icons:
+  source: 见 icons/ 目录，按名称引用，颜色取 currentColor
+  used: [nav-back, nav-forward, sidebar-toggle, rail-home, rail-schedule, rail-plugins, rail-settings, search, new-chat, section-chevron, section-add, more, folder, folder-open, project-new-chat, running, pin, archive, rail-home-outline]
+
+behavior:
+  - 点项目行展开或收起该项目；点分组标题展开或收起该分组；收起状态在下次打开时保留
+  - 点对话行打开该对话，它成为当前对话，会话标题栏换成它的标题
+  - 收起侧栏后焦点移到“展开侧栏”按钮；展开后焦点回到“收起侧栏”按钮
+  - 搜索打开时侧栏列表也按同一关键词过滤

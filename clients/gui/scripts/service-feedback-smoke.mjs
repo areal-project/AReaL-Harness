@@ -1,3 +1,4 @@
+import { until } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -11,6 +12,7 @@ const gui = resolve(import.meta.dirname, "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
 const { applicationFixture } = await import("./application-fixture.mjs");
+const { closeSmokeApplication } = await import("./application-cleanup.mjs");
 const { createProjectConversation } = await import("./smoke-navigation.mjs");
 const { ServiceConnection } = require("../app/src/core/service-client.cjs");
 const { DesktopLifecycle } = require("../app/src/core/lifecycle.cjs");
@@ -49,7 +51,7 @@ const fixture = await applicationFixture(
   gui,
   join(scratch, "app"),
   `
-const coreProcess = require(${JSON.stringify(join(gui, "app/src/core/core-process.cjs"))});
+const coreProcess = require(${JSON.stringify(join(gui, "scripts/support/core-process-fixture.cjs"))});
 const execute = coreProcess.executeCore;
 coreProcess.executeCore = (binary, args, options) => {
   if (args[0] === 'service' && args[1] === 'ensure' && args.includes(${JSON.stringify(rejectedWorkspace)})
@@ -61,7 +63,7 @@ coreProcess.executeCore = (binary, args, options) => {
   }
   return execute(binary, args, options);
 };
-const { CoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/backend.cjs"))});
+const { CoreBackend } = require(${JSON.stringify(join(gui, "../../services/workbench/src/desktop/core/backend.cjs"))});
 const startProject = CoreBackend.prototype.startProject;
 CoreBackend.prototype.startProject = async function (...args) {
   while (require('node:fs').existsSync(${JSON.stringify(preparationGate)})) await new Promise(resolve => setTimeout(resolve, 25));
@@ -124,10 +126,14 @@ try {
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);
-  await page.waitForFunction(async () => {
-    const s = await window.arealDesktop.snapshot();
-    return s.connection?.state === "ready" || s.projects.some((p) => p.error || p.state?.error);
-  });
+  await until(
+    () =>
+      page.evaluate(async () => {
+        const s = await window.arealDesktop.snapshot();
+        return s.connection?.state === "ready" || s.projects.some((p) => p.error || p.state?.error);
+      }),
+    "desktop ready or project error",
+  );
   const startup = await page.evaluate(() => window.arealDesktop.snapshot());
   const startupError = startup.projects.find((p) => p.error || p.state?.error);
   assert.ok(!startupError, startupError?.error || startupError?.state?.error);
@@ -147,6 +153,29 @@ try {
     project?.error || project?.state?.error || "Project must connect with a long service home",
   );
   checks.push("Long service home opens a connected project through the directory picker");
+  await createProjectConversation(page, "workspace");
+  const browserExplanation = page.getByText("发送第一条消息或打开已有聊天后，即可使用浏览器。", {
+    exact: true,
+  });
+  await page.keyboard.press("Meta+t");
+  await browserExplanation.waitFor();
+  assert.equal(await page.getByTestId("toast").count(), 0);
+  await page.screenshot({ path: join(scratch, "new-chat-browser-shortcut.png"), scale: "css" });
+  const addTab = page.getByRole("button", { name: "打开侧边面板标签页", exact: true });
+  await addTab.click();
+  await page.getByRole("menuitem", { name: /浏览器/ }).click();
+  await browserExplanation.waitFor();
+  assert.equal(await page.getByTestId("toast").count(), 0);
+  checks.push("New chat browser shortcut and menu show the local explanation without a top notice");
+  await addTab.click();
+  await page.getByRole("menuitem", { name: /审查/ }).click();
+  await page.getByRole("button", { name: "改动范围" }).click();
+  const lastTurn = page.getByRole("menuitem", { name: "上一轮", exact: true });
+  await lastTurn.waitFor();
+  assert.equal(await lastTurn.getAttribute("aria-disabled"), "true");
+  await page.screenshot({ path: join(scratch, "new-chat-review-scope.png"), scale: "css" });
+  await page.keyboard.press("Escape");
+  checks.push("Review scope disables last turn when the conversation has no turn");
   await writeFile(fault, "reject");
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
@@ -155,8 +184,9 @@ try {
   const failedProject = page.getByRole("button", { name: "unavailable-project", exact: true });
   await failedProject.waitFor();
   await createProjectConversation(page, "unavailable-project");
-  const status = page.getByTestId("workspace-preparation-status");
-  await page.getByRole("button", { name: "连接暂不可用", exact: true }).waitFor();
+  const status = page.getByTestId("toast").filter({ hasText: "连接暂不可用" });
+  await status.waitFor();
+  await status.hover();
   const visibleText = await page.locator("body").innerText();
   assert.ok(
     !visibleText.includes(technicalError),
@@ -166,11 +196,6 @@ try {
   assert.ok(!visibleText.includes("当前任务配置不可用"));
   assert.ok(!visibleText.includes("权限模式不受支持"), "Unloaded capability is not unsupported");
   assert.ok(!visibleText.includes("暂无可用模型"), "Unloaded catalog is not an empty catalog");
-  assert.equal(
-    await page.getByTestId("feedback-notice").count(),
-    0,
-    "Connection state creates no warning card",
-  );
   const offlineInput = page.getByTestId("chat-input");
   await offlineInput.focus();
   await page.keyboard.type("Draft while preparing");
@@ -183,30 +208,20 @@ try {
     "Enter neither submits nor clears the offline draft",
   );
   await page.screenshot({ path: join(scratch, "quiet-project-status.png"), scale: "css" });
-  await status.click();
-  const details = page.getByTestId("workspace-preparation-details");
-  assert.ok(!(await details.innerText()).includes(technicalError));
-  await details.locator("summary").click();
-  assert.ok((await details.innerText()).includes(technicalError));
+  await status.getByRole("button", { name: "查看详情", exact: true }).click();
+  assert.ok((await page.locator("body").innerText()).includes(technicalError));
   await page.screenshot({ path: join(scratch, "project-status-details.png"), scale: "css" });
-  await details.locator("summary").click();
-  await details.getByRole("button", { name: "重新连接项目", exact: true }).click();
+  await status.getByRole("button", { name: "查看详情", exact: true }).click();
+  await status.getByRole("button", { name: "重新连接项目", exact: true }).click();
   await page.waitForFunction(() => {
-    const button = [
-      ...document.querySelectorAll('[data-testid="workspace-preparation-details"] button'),
-    ].find((button) => button.textContent === "重新连接项目");
+    const button = [...document.querySelectorAll('[data-testid="toast"] button')].find(
+      (value) => value.textContent === "重新连接项目",
+    );
     return button && !button.disabled;
   });
-  assert.equal(
-    await page.getByTestId("feedback-notice").count(),
-    0,
-    "A rejected reconnect does not create another incident",
-  );
-  checks.push(
-    "Offline draft stays editable with no warning card or false capability errors; details are on demand",
-  );
+  checks.push("Offline draft stays editable; top notification exposes details and retry");
   await unlink(fault);
-  await details.getByRole("button", { name: "重新连接项目", exact: true }).click();
+  await status.getByRole("button", { name: "重新连接项目", exact: true }).click();
   const reconnectDeadline = Date.now() + 30000;
   let recovered;
   while (Date.now() < reconnectDeadline) {
@@ -240,16 +255,16 @@ try {
     join(scratch, "missing-directory"),
   );
   await page.getByRole("button", { name: "打开项目", exact: true }).first().click();
-  const operationNotice = page.getByTestId("feedback-notice");
-  await operationNotice.filter({ hasText: "暂时无法完成操作" }).waitFor();
+  const operationNotice = page.getByTestId("toast").filter({ hasText: "暂时无法完成操作" });
+  await operationNotice.waitFor();
   assert.equal(await operationNotice.count(), 1);
   assert.ok(!(await page.locator("body").innerText()).includes("Error invoking remote method"));
   assert.equal(await input.textContent(), "Draft retained after a failed action");
   await page.screenshot({ path: join(scratch, "friendly-action-error.png"), scale: "css" });
-  await operationNotice.locator("summary").click();
+  await operationNotice.getByRole("button", { name: "查看详情", exact: true }).click();
   assert.ok((await page.locator("body").innerText()).includes("ENOENT"));
   await operationNotice.getByRole("button", { name: "关闭提示", exact: true }).click();
-  assert.equal(await operationNotice.count(), 0);
+  await operationNotice.waitFor({ state: "hidden" });
   assert.equal(await input.textContent(), "Draft retained after a failed action");
   checks.push(
     "Header action feedback uses the same collapsed details and preserves the editable draft when dismissed",
@@ -305,8 +320,11 @@ try {
       if (error.code !== "ENOENT") throw error;
     });
   if (app) {
-    await app.evaluate(({ app }) => app.exit(0)).catch(() => {});
-    await app.close().catch(() => {});
+    await closeSmokeApplication(app).catch((error) => {
+      errors.push("Electron cleanup: " + error.message);
+      passed = false;
+      process.exitCode = 1;
+    });
   }
   const connection = new ServiceConnection();
   try {

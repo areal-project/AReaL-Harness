@@ -58,14 +58,17 @@ if (config && bridge) {
     );
 } else if (compatible) {
   void import("./mobile/MobileApp").then(async ({ mountMobileApp }) => {
-    mountMobileApp();
     const product = window.__AREAL_MOBILE_PRODUCT__;
     delete window.__AREAL_MOBILE_PRODUCT__;
     const output = window.webkit?.messageHandlers?.arealProduct;
     if (product && output) {
       const { runProduct } = await import("./mobile/product-driver");
-      await runProduct(product, output);
+      const running = runProduct(product, output);
+      mountMobileApp();
+      await running;
+      return;
     }
+    mountMobileApp();
   });
 }
 

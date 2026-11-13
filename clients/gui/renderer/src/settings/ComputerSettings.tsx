@@ -1,4 +1,4 @@
-import { readLibraryRequest } from "@areal/workbench/desktop-contract/library-media";
+import { readLibraryRequest } from "../services.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -269,7 +269,6 @@ export function ComputerSettings({
                       : "settings.computer.notReady",
             )}
             description={status?.message || status?.reason || undefined}
-            controlLayout="wide"
             control={
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button

@@ -4,8 +4,6 @@
 
 这是待执行的测试计划，不是本次已通过的测试报告。
 
-独立 Desktop Service 的新增验收见[环境服务实施计划](environment-service-plan.md)中的 ENV-01 至 ENV-15。复用本页传输与业务验证，另行验证独立 owner、真实 LaunchAgent、转换恢复和签名安装包；现有退出用例不能自动覆盖这些新增边界。
-
 ## Relay Host/PWA 源码与严格 TLS 夹具
 
 运行 `pnpm --dir clients/gui test:remote-relay`（需 Node 24.2.0、OpenSSL 与已安装的 Relay 锁定依赖）。真实 Relay CLI/SQLite、生产 Host、wire 工厂和 Noise 经过隔离 CA 的 HTTPS/WSS，证书验证与 hostname 检查保持启用；覆盖未信任 CA、错误 SAN、过期证书拒绝、加密登记持久化、pin/room/channel、双传输共享预算、撤销、观察器、重启/替换和真实 TCP 慢读隔离。静态资源测试用实际 Remote export 并检查 CSP/内容 hash。
@@ -26,8 +24,6 @@ AREAL_REMOTE_TRANSPORT=relay AREAL_REMOTE_NATIVE_ALLOWED=1 AREAL_CORE_BIN=/absol
 ```
 
 其余 RC05–RC10 selector 与 100 次默认竞争要求保持不变。manifest 按用例记录 requested/completed 次数、检查层、源码/二进制身份、CA/配置 hash、实际 Host/CLI 与原生后代进程观察、正常停止错误和清理回执。T18/T19/T22/T23/T25/T30 必须在每种传输实际完成至少 100 次；不同源码的历史 Direct 结果不能补作本轮双传输通过。`fullConformance` 始终为 false：单个入口不能证明整个发布矩阵。进程不存在或强制清理不等于 Runtime UNKNOWN 已结算，停止失败使整次运行失败。
-
-隔离生产浏览器 CA 夹具尚未提供。Relay RC10 先执行原有 Native T32/T33/T34 断言，再将生产 PWA/TLS 层标记为 `RELAY_BROWSER_TLS_UNRUN`，`passed`/`acceptance` 为 false，正常清理后退出 2；若业务或清理失败则退出 1。这三个 Native 用例不代表图片解码、布局、正文 hash 或其他浏览器子检查通过。其余五个依赖浏览器的 E2E 入口在 Relay 模式下于资源启动前输出 UNRUN manifest 并退出 2；Direct 浏览器业务断言保持执行。源码检查 `node clients/gui/scripts/remote-native-harness-contract.mjs` 验证 selector、原生计数与该限制边界，不启动原生或浏览器。
 
 ## RC-01 可重复验证
 
@@ -75,8 +71,6 @@ Browser 用例先核对确切页面、URL、加载状态和原生内容，修改
 
 T21 的受影响准入检查可单独运行：`RC05_PREFLIGHT_ONLY=1 AREAL_REMOTE_NATIVE_ALLOWED=1 AREAL_CORE_BIN=/absolute/path/to/areal pnpm --dir clients/gui run test:remote-command-e2e`。此模式跳过 T18/T19/T20/T22 竞态，manifest 的 selectedSuite 为 RC05_T21，成功后 coveredCases 仅包含 T21，requestedRepetitions/completedRaceIterations 均为 0，raceAcceptanceRequired 与 acceptanceRepetitionsMet 均为 false。保留此前成功的 100 次竞态证据，并把修复后的 T21 记录为组合证据，不能覆盖原失败制品。可信夹具 Profile 控制同时更新项目实际选择，T21 断言并记录真实 native create 参数中的 flow/v1。
 
-`node clients/gui/scripts/remote-native-harness-contract.mjs` 不启动原生进程，直接执行 harness 的模型与 worker 回调，并通过生产 Gateway 验证 Profile 派发。回归区分同一 Thread 的 A/B 用户轮次、历史工具结果与当前工具结果，防止历史标记抑制或替换新的审批。
-
 ## RC-06 可重复验证
 
 沿用 `test:remote-command` 与 `test:remote-session`：真实文件日志/Noise 与 fixture RPC 检查严格目标、不可变语义、interrupt 能力、双设备、重复、持久化与撤权竞态、Task 拒绝、已结束 A/当前 B、unknown 不查询原生收据或重放；生产 DOM 检查草稿、受理与结算分离、目标缺失/变化和丢失回应后终态不冒充因果确认。
@@ -98,8 +92,6 @@ T24 在 Stop 前读取原 Turn 与工具并确认 inProgress；Core 原子 guard
 `RC07_RACE_REPETITIONS` 少于 100 仅用于诊断。manifest 分开记录 requestedRepetitions 与 completedRaceIterations；只有所选 suite 成功且实际完成至少 100 轮时 acceptanceRepetitionsMet 才为 true。启动失败或零完成轮数不能满足门槛。此调用默认覆盖本机 Direct；Relay 使用上文传输 selector，并保留 Relay 浏览器 UNRUN 边界。公网、手机、系统钥匙串、发行包需各自证据。脚本语法检查、fixture 与 DOM 通过均不等同于原生 T25–T27 完成；受阻时保留原失败制品与未执行状态。
 
 ## RC-08 可重复验证
-
-`pnpm --dir clients/gui run test:remote-task-question` 通过生产 Gateway/SessionObservers/Backend、真实临时日志和 Noise/Direct 检查 Task 原始身份、完整性与分页预算、Core 选项、UTF-8 答案、深拷贝、同键语义冲突、双设备冲突、回执保存与 UNKNOWN、不重放、授权和服务替换。`test:remote-browser` 驱动生产页面验证 Task Inbox 可达、无需 Session、原定位信息先落盘、详情改变不发送以及恢复仅查询原命令。`node clients/gui/scripts/remote-native-harness-contract.mjs` 检查原生 harness 的 Task 模型序列和选择器计数，不启动原生进程。
 
 取得原生运行租约后执行 `RC08_TASK_QUESTIONS_ONLY=1 AREAL_REMOTE_NATIVE_ALLOWED=1 AREAL_CORE_BIN=/absolute/path/to/areal pnpm --dir clients/gui run test:remote-command-e2e`。复用现有 Host/Core/Runtime/Noise pipeline：T28 在原生问题待答时检查实际 Runtime 副作用与运行中状态，再回复同一 Run 并检查继续执行；覆盖暂停后回复不恢复、原标识/跨项目拼接、过期/取消/终态/已回答与双设备竞争。T29 保存已知回执后重启 Host，并分别丢失原生回应、失败 outcome 保存、在 Core 受理后结束 Host 进程，要求 UNKNOWN 加独立观察、无重放、原 Channel 仅一条回复和仅一次实际 Runtime 后续副作用。pending 落盘失败不得派发。
 

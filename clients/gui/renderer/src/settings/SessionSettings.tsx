@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { errorText, rawText } from "../errors/errorCopy.js";
 import { Textarea } from "@areal/ui";
 import { useI18n, UiMessageError, type UiMessage } from "../i18n/IntlProvider.js";
 import { SettingsSelect } from "./SettingsPageParts.js";
@@ -235,14 +236,14 @@ export function SessionSettings({
         setMessage("");
         return;
       }
-      if (/已变化|conflict/i.test(failure.message)) {
+      if (/已变化|conflict/i.test(rawText(failure) ?? "")) {
         setConflict(true);
         setError({
           id: "settings.sessionSettings.sessionSettingsChangedReloadBeforeDecidingWhether",
         });
         return;
       }
-      setError(cause instanceof UiMessageError ? cause.descriptor : failure.message);
+      setError(errorText(t, cause));
     } finally {
       setBusy(false);
     }
@@ -433,7 +434,7 @@ export function SessionSettings({
                           unstyled
                           data-slot={undefined}
                           type="checkbox"
-                          aria-label={`${skill.id} · ${skill.revision}`}
+                          aria-label={skill.name || skill.id}
                           checked={draft.skills.includes(key)}
                           onChange={(event) =>
                             update({
@@ -443,7 +444,7 @@ export function SessionSettings({
                             })
                           }
                         />
-                        {skill.id} · {skill.revision}
+                        {skill.name || skill.id}
                       </label>
                     );
                   })}
@@ -582,10 +583,6 @@ export function SessionSettings({
         {readback && (
           <section aria-label={t("settings.sessionSettings.reloadedSessionSettings")}>
             <p>
-              {t("settings.sessionSettings.revision")}
-              {readback.revision}
-            </p>
-            <p>
               {t("settings.sessionSettings.model2")}
               {readback.model
                 ? `${readback.model.providerId}/${readback.model.modelId}`
@@ -599,7 +596,7 @@ export function SessionSettings({
               {t("settings.sessionSettings.skills")}
               {readback.selectedSkills?.length
                 ? readback.selectedSkills
-                    .map((skill: Data) => `${skill.id} · ${skill.revision}`)
+                    .map((skill: Data) => skill.name || skill.id)
                     .join(locale === "zh-CN" ? "、" : ", ")
                 : t("settings.sessionSettings.allPresetSkills2")}
             </p>

@@ -1,4 +1,5 @@
 import { prepareTaskBenchmark } from "./browser-task-benchmark-driver.mjs";
+import { desktopBridge, until as waitFor } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -10,7 +11,11 @@ import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { arch, cpus, loadavg, platform, release } from "node:os";
-import { selectConversation, captureSmokeFailure } from "./smoke-navigation.mjs";
+import {
+  selectConversation,
+  selectCreatedConversation,
+  captureSmokeFailure,
+} from "./smoke-navigation.mjs";
 import { assertApplicationStopped, closeRecordedSmokeApplication } from "./application-cleanup.mjs";
 import { checkBrowserStartup } from "./browser-startup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
@@ -448,8 +453,8 @@ async function benchmarkSourceSnapshot() {
     ...Object.fromEntries(
       [
         "app/src/main.cjs",
-        "app/src/core/browser-tool.cjs",
-        "app/src/core/service-protocol.cjs",
+        "../../services/workbench/src/desktop/core/browser-tool.cjs",
+        "../../services/workbench/src/desktop/core/service-protocol.cjs",
         "app/src/core/preview-native/native-targets.cjs",
         "packages/browser-automation/src/upstream/browser/browserPlaywrightLocatorExecutor.ts",
         "app/src/core/preview.cjs",
@@ -478,26 +483,8 @@ async function benchmarkSourceSnapshot() {
     hashes,
   };
 }
-async function until(predicate, label, timeout = 60000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    const value = await predicate();
-    if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  throw Error(`Timeout waiting for ${label}`);
-}
-async function state() {
-  return page.evaluate(() => window.arealDesktop.snapshot());
-}
-async function command(name, params) {
-  const result = await page.evaluate(
-    ({ name, params }) => window.arealDesktop.command(name, params),
-    { name, params },
-  );
-  assert.equal(result.ok, true, JSON.stringify(result));
-  return result.value;
-}
+const until = (read, label, timeout = 60000) => waitFor(read, label, { timeout });
+const { state, call: command } = desktopBridge(() => page);
 async function preview(operation, extra = {}) {
   return page.evaluate((params) => window.arealDesktop.preview(params), {
     operation,
@@ -838,7 +825,7 @@ async function newThread(selectSkill = true) {
     profile: { id: "fixture", revision: "v1" },
   });
   threadId = created.threadId;
-  await selectConversation(page, threadId);
+  await selectCreatedConversation(page, projectId, threadId);
   return threadId;
 }
 async function computerSettings() {
@@ -2039,7 +2026,7 @@ try {
   if (!passed) process.exitCode ||= 1;
   const files = [
     "scripts/automation-core-smoke.mjs",
-    "app/src/core/browser-tool.cjs",
+    "../../services/workbench/src/desktop/core/browser-tool.cjs",
     "app/src/core/computer-control.cjs",
     "app/src/core/preview.cjs",
     "app/src/core/agent-dialog-presentation.cjs",

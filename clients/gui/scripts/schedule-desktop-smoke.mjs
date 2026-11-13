@@ -8,6 +8,11 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import {
+  assertApplicationStopped,
+  cleanupSyntheticHostKeychain,
+  closeSmokeApplication,
+} from "./application-cleanup.mjs";
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
@@ -16,6 +21,8 @@ const binarySha256 = createHash("sha256")
   .update(await readFile(binary))
   .digest("hex");
 const scratch = await makeTempDir("areal-schedule-desktop-");
+const rust = process.argv.includes("--rust");
+if (rust && process.platform === "darwin") assert.equal(process.env.AREAL_TEST_HOST_KEYCHAIN, "1");
 const workspace = join(scratch, "workspace"),
   userHome = join(scratch, "user");
 await mkdir(workspace);
@@ -241,6 +248,33 @@ async function launch() {
 }
 try {
   await launch();
+  if (rust) {
+    await until(async () => (await call("serviceStatus", {})).connected, "bootstrap backend ready");
+    const stop = JSON.parse(
+      execFileSync(binary, ["host", "stop", "--cancel", "--json"], {
+        env: { ...env, AREAL_HARNESS_HOME: env.AREAL_HARNESS_SERVICE_HOME },
+        encoding: "utf8",
+      }),
+    );
+    await writeFile(join(scratch, "rust-bootstrap-stop.json"), JSON.stringify(stop, null, 2));
+    assert.equal(stop.state, "completed");
+    assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+    await app.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+    });
+    await closeSmokeApplication(app);
+    await assertApplicationStopped(binary, env, null);
+    await launch();
+    await until(async () => {
+      const record = await readFile(
+        join(env.AREAL_HARNESS_SERVICE_HOME, "workbench/backend-launch.json"),
+        "utf8",
+      )
+        .then(JSON.parse)
+        .catch(() => null);
+      return record !== null;
+    }, "Host backend launch record");
+  }
   await app.evaluate(({ dialog, BrowserWindow }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
     BrowserWindow.getAllWindows()[0].setSize(1440, 960);
@@ -255,36 +289,55 @@ try {
   ).id;
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   await page.getByRole("button", { name: "新建定时任务", exact: true }).click();
-  const chat = page.getByTestId("chat-input");
-  await chat.waitFor();
-  assert.equal(await page.getByRole("dialog").count(), 0);
-  assert.equal(await page.locator("[data-v4-composer-dock]").count(), 1);
-  assert.equal(await page.getByLabel("任务执行方式").count(), 0);
-  assert.equal(await page.getByLabel("任务交互方式").count(), 0);
+  const dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("textbox", { name: "指令", exact: true })
+    .fill("SCHEDULE_FIXTURE_COMPLETE");
   await page.screenshot({ path: join(scratch, "schedule-create.png") });
-  checks.push(
-    "visible task creation uses the ordinary conversation Composer and selected project scope without a separate mode or interaction selector",
-  );
-  await chat.fill("从八秒后开始，每六秒回复检查结果，每次用新会话。");
-  await page.getByTestId("chat-send-button").click();
-  const schedule = await until(
+  await dialog.getByRole("button", { name: "创建", exact: true }).click();
+  let schedule = await until(
     async () =>
       (await call("tasks", { operation: "list" })).data.find(
-        (t) => t.objective === "SCHEDULE_FIXTURE_COMPLETE",
+        (t) => t.objectivePreview === "SCHEDULE_FIXTURE_COMPLETE" && t.objectiveTruncated === false,
       ),
-    "natural schedule saved through the conversation",
+    "task saved through scheduled task form",
   );
+  pid = schedule.executionProjectId ?? schedule.projectId;
+  assert.ok(pid, "catalog supplies the actual task owner");
+  const scheduleId = schedule.id;
+  schedule = await task(scheduleId);
+  assert.equal(schedule.id, scheduleId);
+  assert.equal(schedule.objective, "SCHEDULE_FIXTURE_COMPLETE");
+  assert.ok(schedule.scheduleV2, "form persists its schedule");
+  schedule = await call("manage", {
+    projectId: pid,
+    operation: "taskUpdate",
+    taskId: schedule.id,
+    expectedRevision: schedule.revision,
+    schedule: {
+      at: Math.floor(Date.now() / 1000) + 8,
+      intervalSeconds: 6,
+      timeZone: "Asia/Shanghai",
+    },
+    delivery: "newThread",
+  });
   assert.equal(schedule.interactionMode, "interactive");
   assert.equal(schedule.schedule.timeZone, "Asia/Shanghai");
   await page.getByLabel("定时任务会话").waitFor();
   await page.getByRole("button", { name: "任务资源", exact: true }).click();
   await page.getByLabel("任务资源面板").waitFor();
-  await page.getByText("运行记录", { exact: true }).click();
+  await page.getByLabel("定时任务安排").waitFor();
   assert.equal(await page.getByLabel("任务执行方式").count(), 0);
   const recurring = await until(async () => {
     const value = await task(schedule.id);
     return value.runs.filter((r) => r.status === "completed").length >= 2 && value;
   }, "two completed runs");
+  for (const run of recurring.runs.slice(0, 2)) {
+    const row = page.locator(`[data-task-run-id="${run.id}"]`);
+    await row.getByRole("status").filter({ hasText: "已完成" }).waitFor();
+    await row.getByText("SCHEDULE_FIXTURE_DONE", { exact: true }).waitFor();
+    assert.equal(await row.getByRole("alert").count(), 0, "run conversation projected");
+  }
   assert.notEqual(recurring.runs[0].threadId, recurring.runs[1].threadId);
   assert.notEqual(recurring.runs[0].threadId, schedule.threadId);
   await control(schedule.id, "taskPause");
@@ -317,7 +370,7 @@ try {
       .every((run) => value.library.threads[`${pid}:${run.threadId}`]?.unread);
   }, "unopened scheduled results marked unread");
   checks.push(
-    "natural draft, saved timezone, two new execution Threads with no inherited results, visible plan/history without focus switch",
+    "form creation, fixture short schedule, two new execution Threads with no inherited results, visible plan/history without focus switch",
   );
   const holding = await call("manage", {
     projectId: pid,
@@ -365,14 +418,11 @@ try {
   }, "approval run Thread");
   await call("open", { projectId: pid, threadId: approvalRun.threadId });
   // 用户明确打开运行会话，审批复用普通 Conversation UI。
-  await page.getByRole("button", { name: `打开自动化 ${approval.objective}`, exact: true }).click();
-  await page.getByRole("button", { name: "任务资源", exact: true }).click();
-  const approvalHistory = page.locator(".task-resource-history");
-  await approvalHistory.waitFor();
-  if ((await approvalHistory.getAttribute("open")) === null)
-    await approvalHistory.locator("summary").click();
-  await page.getByRole("button", { name: "打开执行会话", exact: true }).click();
-  await page.getByRole("button", { name: "允许一次", exact: true }).waitFor();
+  await page
+    .getByRole("button", { name: `打开定时任务 ${approval.objective}`, exact: true })
+    .click();
+  const approvalRow = page.locator(`[data-task-run-id="${approvalRun.id}"]`);
+  await approvalRow.getByRole("button", { name: "允许一次", exact: true }).waitFor();
   await page.screenshot({ path: join(scratch, "schedule-approval.png") });
   if (process.env.AREAL_SCHEDULE_APPROVAL_EXPIRY === "1") {
     await until(
@@ -408,7 +458,7 @@ try {
       "default 300-second approval expiry settles Turn, explicit same-run resume creates fresh approval",
     );
   }
-  await page
+  await approvalRow
     .getByRole("button", { name: "允许一次", exact: true })
     .and(page.locator(":enabled"))
     .click();
@@ -467,26 +517,18 @@ try {
     completionId: earlier,
   });
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
-  const adapter = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-  await app.close();
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBox = async () => ({ response: 0 });
+  });
+  await closeSmokeApplication(app);
   app = null;
   page = null;
-  process.kill(adapter.pid, "SIGKILL");
-  await until(async () => {
-    try {
-      process.kill(adapter.pid, 0);
-      return false;
-    } catch (error) {
-      if (error.code === "ESRCH") return true;
-      throw error;
-    }
-  }, "owned adapter stopped");
   await launch();
   await task(multi.id);
   assert.equal(
     (await snapshot()).library.threads[`${pid}:${multiRun.threadId}`].unread,
     false,
-    "earlier read survives adapter restart",
+    "earlier read survives app restart",
   );
   await control(multi.id, "taskResumeRun", multiRun.id);
   await until(
@@ -498,11 +540,12 @@ try {
     return meta.unread && meta.completionId !== earlier;
   }, "final Turn result becomes unread after restart");
   checks.push(
-    "read earlier Turn survives adapter restart; unopened same-Run resume marks its new final Turn unread",
+    "read earlier Turn survives app restart; unopened same-Run resume marks its new final Turn unread",
   );
   assert.deepEqual(errors, []);
   passed = true;
 } catch (error) {
+  console.error(error);
   if (page) {
     await writeFile(
       join(scratch, "failure-state.json"),
@@ -527,17 +570,70 @@ try {
         "fixture cleanup",
         20000,
       );
-      await app.evaluate(({ dialog }) => {
-        const old = dialog.showMessageBox;
-        dialog.showMessageBox = async (...args) =>
-          args.at(-1).message === "停止共享后台服务？" ? { response: 1 } : old(...args);
-      });
-      await call("stopService", {});
+      if (!rust) {
+        await app.evaluate(({ dialog }) => {
+          const old = dialog.showMessageBox;
+          dialog.showMessageBox = async (...args) =>
+            args.at(-1).message === "停止共享后台服务？" ? { response: 1 } : old(...args);
+        });
+        await call("stopService", {});
+      }
     } catch (error) {
       errors.push(`cleanup: ${error.message}`);
     }
   }
-  if (app) await app.close().catch(() => {});
+  let originalHost = null;
+  if (rust) {
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
+    try {
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      originalHost = { hostId: host.hostId, generation: host.generation };
+      if (app)
+        await app.evaluate(({ dialog }) => {
+          const old = dialog.showMessageBox;
+          dialog.showMessageBox = async (...args) =>
+            args.at(-1).message === "退出 AReaL Harness？" ? { response: 0 } : old(...args);
+        });
+    } catch (error) {
+      errors.push(`Host identity: ${error.message}`);
+      passed = false;
+    } finally {
+      host.close();
+    }
+  }
+  if (app)
+    await closeSmokeApplication(app).catch((error) => {
+      errors.push(`Electron cleanup: ${error.message}`);
+      passed = false;
+    });
+  if (rust) {
+    const { HostClient } = require("@areal/client/node");
+    const host = new HostClient();
+    try {
+      assert.ok(originalHost, "original Host identity was captured");
+      await host.connect(env.AREAL_HARNESS_SERVICE_HOME);
+      assert.equal(host.hostId, originalHost.hostId);
+      assert.equal(host.generation, originalHost.generation);
+      const stop = await host.stop(randomUUID(), originalHost.generation, "cancel");
+      await writeFile(join(scratch, "rust-final-stop.json"), JSON.stringify(stop, null, 2));
+      assert.equal(stop.state, "completed");
+      assert.equal(stop.hostId, originalHost.hostId);
+      assert.equal(stop.generation, originalHost.generation);
+      assert.ok(stop.projects.every((project) => project.receipt?.state === "completed"));
+      const entries = await cleanupSyntheticHostKeychain(env.AREAL_HARNESS_SERVICE_HOME, scratch);
+      await writeFile(
+        join(scratch, "synthetic-keychain-cleanup.json"),
+        JSON.stringify(entries, null, 2),
+      );
+    } catch (error) {
+      errors.push(`Rust cleanup: ${error.message}`);
+      passed = false;
+      process.exitCode = 1;
+    } finally {
+      host.close();
+    }
+  }
   model.closeAllConnections();
   await new Promise((resolve) => model.close(resolve));
   await writeFile(

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { SnapShotSource } from "@areal/workbench/desktop-contract/snapshots";
+import type { SnapShotSource } from "../services.js";
 import { ScanText, Image as ImageIcon, X } from "lucide-react";
 import { Button } from "../components/ui/button.js";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "../components/ui/popover.js";

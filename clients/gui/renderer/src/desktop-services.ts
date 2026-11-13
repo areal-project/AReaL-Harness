@@ -24,6 +24,104 @@ import {
 } from "./desktop-response.js";
 import type { McpFormOwner, McpFormResource } from "./mcp-app-services.js";
 export type { DesktopBridge } from "@areal/workbench/desktop-contract";
+export type {
+  CommandName,
+  CommandParams,
+  CommandResponse,
+  DesktopError,
+  DesktopResult,
+  McpAppDeepLink,
+  NotificationTarget,
+  OwnedPreviewRequest,
+  PreviewRequest,
+  PreviewViewport,
+  QuitProgress,
+  TrajectoryStatus,
+} from "@areal/workbench/desktop-contract";
+// 完整命令校验器包含管理协议；首次调用时加载，校验完成前不派发请求。
+export async function validateCommand(
+  ...args: Parameters<typeof import("@areal/workbench/desktop-contract").validateCommand>
+) {
+  const contract: typeof import("@areal/workbench/desktop-contract") =
+    await import("@areal/workbench/desktop-contract");
+  contract.validateCommand(...args);
+}
+export async function validateCommandResponse(
+  ...args: Parameters<typeof import("@areal/workbench/desktop-contract").validateCommandResponse>
+) {
+  const contract: typeof import("@areal/workbench/desktop-contract") =
+    await import("@areal/workbench/desktop-contract");
+  contract.validateCommandResponse(...args);
+}
+export type { ObservedCatalogOwner } from "@areal/workbench/desktop-contract/catalog";
+export type {
+  Attachment,
+  PluginCommandRef,
+  SideAnchor,
+  SideSelection,
+} from "@areal/workbench/desktop-contract/conversation";
+export {
+  isRequest,
+  sideAnchor,
+  sideSelection,
+} from "@areal/workbench/desktop-contract/conversation";
+export type { SidebarItem } from "@areal/workbench/desktop-contract/library-media";
+export { readLibraryRequest } from "@areal/workbench/desktop-contract/library-media";
+export {
+  hostPluginStoreParams,
+  pluginStoreOperation,
+} from "@areal/workbench/desktop-contract/plugin-store";
+export type {
+  ManagementRequest,
+  ManagementRequestMap,
+  ManagementResponse,
+  ManagementResponseMap,
+  PluginMutation,
+  PluginStoreOperation,
+} from "@areal/workbench/desktop-contract/management";
+export { generationStats, modelUsage } from "@areal/workbench/desktop-contract/management-context";
+export {
+  validateMcpPageCall,
+  validateMcpPageDeclaration,
+  validateMcpPageReply,
+} from "@areal/workbench/desktop-contract/mcp-page";
+export type {
+  ChatGPTStatus,
+  DiscoveryConnection,
+  ModelParameters,
+} from "@areal/workbench/desktop-contract/provider";
+export type { Hook, ResourceRequest, Scope } from "@areal/workbench/desktop-contract/resource";
+export { modelRecord } from "@areal/workbench/desktop-contract/shared";
+export type {
+  DesktopSnapShot,
+  DesktopSnapShotState,
+  SnapShotModifier,
+  SnapShotServices,
+  SnapShotSettings,
+  SnapShotShortcut,
+  SnapShotSource,
+} from "@areal/workbench/desktop-contract/snapshots";
+export {
+  isModifierPairShortcut,
+  isSnapShotSource,
+  readSnapShotSettings,
+  snapShotShortcutModifierPair,
+} from "@areal/workbench/desktop-contract/snapshots";
+export { commandResponseError } from "@areal/workbench/desktop-contract/transport";
+export type { WorktreeOptions } from "@areal/workbench/desktop-contract/workspace";
+
+export function initializeDesktopServices(
+  getLocale: () => string,
+  subscribeLocale: (listener: () => void) => () => void,
+): PlatformServices | undefined {
+  const bridge = (window as unknown as { arealDesktop?: DesktopBridge }).arealDesktop;
+  if (!bridge) return undefined;
+  const syncNativeLocale = () => bridge.setInterfaceLocale(getLocale());
+  const unsubscribeLocale = subscribeLocale(syncNativeLocale);
+  syncNativeLocale();
+  window.addEventListener("pagehide", unsubscribeLocale, { once: true });
+  return createDesktopServices(bridge);
+}
 
 let nativeDroppedFilePath: DesktopBridge["droppedFilePath"];
 
@@ -168,6 +266,7 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
       }
     : undefined;
   return {
+    getHostTicket: bridge.getHostTicket,
     snapShots,
     snapshot,
     onState(listener) {
@@ -185,6 +284,11 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     chooseProjectlessDirectory: async () =>
       readProjectlessDirectory(await bridge.chooseProjectlessDirectory()),
     fileOpen: async (request) => readFileOpenResult(await bridge.fileOpen(request)),
+    ...(bridge.openExternal && {
+      openExternal: async (url: string) => {
+        await bridge.openExternal!(url);
+      },
+    }),
     command: async (name, params) => {
       const value = await bridge.command(name, params);
       try {
@@ -202,6 +306,8 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     recoverUpdateResources: async () => readUpdateState(await bridge.recoverUpdateResources()),
     onUpdate: (listener) => bridge.onUpdate((value) => listener(readUpdateState(value))),
     onQuitRequested: bridge.onQuitRequested,
+    onWindowClosing: bridge.onWindowClosing,
+    onWindowOpened: bridge.onWindowOpened,
     onQuitProgress: bridge.onQuitProgress,
     onNotificationOpen: bridge.onNotificationOpen,
     onMcpAppDeepLink: bridge.onMcpAppDeepLink,

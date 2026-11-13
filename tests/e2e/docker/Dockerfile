@@ -24,8 +24,6 @@ COPY Cargo.toml Cargo.lock ./
 COPY core ./core
 COPY clients/cli ./clients/cli
 COPY clients/tui ./clients/tui
-COPY clients/web ./clients/web
-COPY design/tokens ./design/tokens
 COPY runtime ./runtime
 COPY scripts/launch.py ./scripts/launch.py
 COPY scripts/install.py ./scripts/install.py
@@ -42,8 +40,6 @@ COPY Cargo.toml Cargo.lock ./
 COPY core ./core
 COPY clients/cli ./clients/cli
 COPY clients/tui ./clients/tui
-COPY clients/web ./clients/web
-COPY design/tokens ./design/tokens
 COPY runtime ./runtime
 COPY scripts/launch.py ./scripts/launch.py
 COPY scripts/install.py ./scripts/install.py

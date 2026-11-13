@@ -4,9 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { TurnExecution } from "./TurnExecution.js";
 import { createRequire } from "node:module";
-const { pageTopology } = createRequire(import.meta.url)(
-  "../../app/src/core/history-projection.cjs",
-);
+const { pageTopology } = createRequire(import.meta.url)("@areal/workbench/history-projection");
 import type { Data } from "./services.js";
 import { rememberDisclosure } from "./conversationReading.js";
 

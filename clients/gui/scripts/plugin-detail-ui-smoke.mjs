@@ -30,7 +30,7 @@ import {setApplicationPreferences} from '${join(gui, "renderer/src/settings/appl
 import '${join(gui, "renderer/src/styles.css")}';
 let mode='uninstalled',digest='a'.repeat(64),installed=false,auth='notStarted',state='disconnected',revision=1,lose=false,disabledSkills=[],disabledMcpServers=[],configRevision=1,tokenConfigured=false,titleValue='';
 const skill={id:'github@official/review',revision:'skill-r1',name:'Review changes',description:'Review a proposed change.',onboarding:false,allowImplicitInvocation:true};
-const skillsOnly=()=>['skills-only','project-unknown','project-config-unknown'].includes(mode);
+const skillsOnly=()=>['skills-only','project-unknown','project-config-unknown','side-unknown'].includes(mode);
 const calls=[]; let receipt;
 const installedMetadata=()=>({name:'github',displayName:'GitHub',description:'Installed GitHub description.',version:'1.0.0',interface:{developerName:'Fixture developer',longDescription:'Read issues and review proposed changes.',defaultPrompt:['Review the current changes.'],category:'Development',websiteUrl:'https://example.com/plugin',privacyPolicyUrl:'https://example.com/privacy'},components:skillsOnly()?['skills']:['mcp']});
 const support=()=>({digest,manifestFormat:'portable1',compatibility:{state:'allowed',reasonCodes:[]},validation:{provider:'unverified',platform:'unverified',distribution:'unverified'},components:[{kind:'mcp',sourceField:'mcp.json',status:'supported',reasonCodes:[],supportedSchema:'areal-mcp-document-envelope-v1',activationRequirements:['explicitMcpTrust','mcpConnection']},{kind:'uiSurfaces',sourceField:'plugin.json#/ui/surfaces/panel',status:'unsupported',reasonCodes:['componentNotImplemented'],supportedSchema:null,activationRequirements:[]}]});
@@ -41,7 +41,7 @@ case'pluginStoreSnapshot':{const list={revision,data:[detail(),{...detail(),id:'
 case'pluginStoreDoctor':return {revision,scope:{kind:'user'},observedAt:Date.now(),runtimeObserved:false,data:[],errors:[]};
 case'pluginComponents':return {pluginId:p.id,installedDigest:digest,commands:mode==='templates'?[{componentId:'commands/review.md',name:'github:review',description:'Review a file',argumentHint:'file',installedDigest:digest}]:[],agents:mode==='templates'?[{componentId:'agents/reviewer.md',name:'github:reviewer',description:'Review profile',profile:{id:'plugin-profile',revision:'profile-v1'}}]:[],agentDiagnostics:[],developmentError:null,mcpServers:[],apps:[],appsNeedingAuth:[]};
 case'pluginUserConfigSave':if(p.values.TITLE)titleValue=p.values.TITLE.value;if(p.secrets.TOKEN)tokenConfigured=true;if(p.clearKeys?.includes('TOKEN'))tokenConfigured=false;configRevision++;revision++;return {revision,data:[detail()],marketplaces:[],errors:[]};
-case'pluginCredentialsReload':return {reloaded:true};
+
 case'pluginDevelopmentLink':case'pluginDevelopmentUnlink':return {revision,data:[detail()],marketplaces:[],errors:[]};
 case'pluginReadiness':if(!installed||p.expectedDigest!==digest||!['github@official','other@official'].includes(p.id))throw Error('STALE_READINESS_SNAPSHOT');return {pluginId:p.id,installedDigest:digest,requiredTools:[],missingTools:[],available:true};
 case'pluginCapabilities':return {enabled:true};
@@ -57,8 +57,8 @@ case'pluginAuth':if(mode==='auth-unknown'&&p.authOperation==='status')throw Erro
 case'pluginConnection':state=p.connect&&mode!=='failed'?'connected':'disconnected';if(!p.connect)auth='ready';receipt=mode==='failed'?{confirmed:true,accepted:true,status:'failed',operation:{requestId:p.requestId,method:'areal/plugin/connection',target:{kind:'project'}},error:{message:'PLUGIN_EXECUTION_FAILED_SENTINEL'},message:'PLUGIN_EXECUTION_FAILED_SENTINEL'}:{confirmed:true,accepted:true,status:'completed',result:{}};if(mode==='unresolved')receipt={confirmed:false};if(lose){lose=false;throw Object.assign(new Error('连接回执丢失'),{submissionUnknown:true,requestId:p.requestId});}return {data:[connection()]};
 case'pluginSubmission':return receipt;default:throw Error('Unexpected fixture operation '+p.operation);}};
 function assertComponent(p){if(p.expectedRevision!==revision||p.expectedDigest!==digest)throw Error('STALE_COMPONENT_GUARD');}
-function App(){const [epoch,setEpoch]=useState(0),[,setConnectionEpoch]=useState(0),[surface,setSurface]=useState('workspace');window.pluginFixture={calls,get digest(){return digest;},connected(){setConnectionEpoch(value=>value+1);},reset(next){mode=next;disabledSkills=[];disabledMcpServers=[];setSurface('workspace');installed=!['uninstalled','disconnected-uninstalled','offline-uninstalled'].includes(next);auth=next==='pending'?'pending':next==='ready'||next==='connected'||next==='unknown'||next==='failed'||next==='unresolved'?'ready':'notStarted';state=next==='connected'?'connected':'disconnected';lose=next==='unknown'||next==='failed'||next==='unresolved';tokenConfigured=false;titleValue='';configRevision++;revision++;setEpoch(x=>x+1);},swapDigest(){digest='b'.repeat(64);revision++;window.dispatchEvent(new Event('areal-plugins-changed'));},setReady(){auth='ready';mode='ready';},changeCatalog(){mode='catalog-changed';revision++;window.dispatchEvent(new Event('areal-plugins-changed'));},language(locale){setApplicationPreferences({locale});},};
-const project={id:'fixture',name:'workspace',root:'/fixture',state:{connected:!mode.startsWith('disconnected')},profiles:[{id:'standard',revision:1}],pending:mode==='project-unknown'?[{method:'areal/thread/start',params:{requestId:'00000000-0000-4000-a000-000000000111'},awaitingResponse:false}]:mode==='project-config-unknown'?[{method:'areal/mcp/configure',params:{requestId:'00000000-0000-4000-a000-000000000222'},awaitingResponse:false}]:[]};window.pluginFixture.pending=project.pending;return <UnsavedChangesProvider><div style={{height:'100vh',display:'flex',background:'var(--color-background)'}}><PluginCenter key={epoch} project={mode.startsWith('offline')?undefined:project} projects={mode.startsWith('offline')?[]:[project]} action={action} active surface={surface} marketRequest={0} onSettings={()=>setSurface("settings")} onMarket={()=>setSurface("workspace")} onChooseProject={()=>{calls.push({name:'chooseProject'});}} onSelectProject={()=>{}} onRunCommand={async(command)=>{calls.push({name:'send',command});}} onStartDraft={async(seed)=>{calls.push({operation:'startDraft',seed});}} /></div></UnsavedChangesProvider>;}
+function App(){const [epoch,setEpoch]=useState(0),[,setConnectionEpoch]=useState(0),[surface,setSurface]=useState('workspace');window.pluginFixture={calls,get digest(){return digest;},connected(){setConnectionEpoch(value=>value+1);},reset(next){mode=next;disabledSkills=[];disabledMcpServers=[];setSurface('workspace');installed=!['uninstalled','disconnected-uninstalled','offline-uninstalled','side-uninstalled'].includes(next);auth=next==='pending'?'pending':next==='ready'||next==='connected'||next==='unknown'||next==='failed'||next==='unresolved'?'ready':'notStarted';state=next==='connected'?'connected':'disconnected';lose=next==='unknown'||next==='failed'||next==='unresolved';tokenConfigured=false;titleValue='';configRevision++;revision++;setEpoch(x=>x+1);},swapDigest(){digest='b'.repeat(64);revision++;window.dispatchEvent(new Event('areal-plugins-changed'));},setReady(){auth='ready';mode='ready';},changeCatalog(){mode='catalog-changed';revision++;window.dispatchEvent(new Event('areal-plugins-changed'));},language(locale){setApplicationPreferences({locale});},};
+const project={id:'fixture',name:'workspace',root:'/fixture',state:{connected:!mode.startsWith('disconnected')},profiles:[{id:'standard',revision:1}],pending:mode==='project-unknown'?[{method:'areal/thread/start',params:{requestId:'00000000-0000-4000-a000-000000000111'},awaitingResponse:false}]:(mode==='side-unknown'||mode==='side-uninstalled')?[{method:'areal/side/create',params:{requestId:'00000000-0000-4000-a000-000000000333',sourceThreadId:'existing'},awaitingResponse:false}]:mode==='project-config-unknown'?[{method:'areal/mcp/configure',params:{requestId:'00000000-0000-4000-a000-000000000222'},awaitingResponse:false}]:[]};window.pluginFixture.pending=project.pending;return <UnsavedChangesProvider><div style={{height:'100vh',display:'flex',background:'var(--color-background)'}}><PluginCenter key={epoch} project={mode.startsWith('offline')?undefined:project} projects={mode.startsWith('offline')?[]:[project]} action={action} active surface={surface} marketRequest={0} onSettings={()=>setSurface("settings")} onMarket={()=>setSurface("workspace")} onChooseProject={()=>{calls.push({name:'chooseProject'});}} onSelectProject={()=>{}} onRunCommand={async(command)=>{calls.push({name:'send',command});}} onStartDraft={async(seed)=>{calls.push({operation:'startDraft',seed});}} /></div></UnsavedChangesProvider>;}
 createRoot(document.getElementById('root')).render(<ApplicationIntlProvider><ToastHost/><App/></ApplicationIntlProvider>);`,
 );
 const workbench = JSON.parse(await readFile(join(gui, "packages/workbench/package.json"), "utf8"));
@@ -123,6 +123,24 @@ async function capture(name) {
   await writeFile(join(evidence, name + ".aria.txt"), await page.locator("body").ariaSnapshot());
 }
 async function checkProjectRecovery() {
+  await open("side-unknown");
+  assert.equal(
+    await page
+      .getByRole("switch", { name: "在当前项目启用 Skill Review changes", exact: true })
+      .isEnabled(),
+    true,
+  );
+  assert.equal(await page.getByText(/areal\/side\/create/).count(), 0);
+  await capture("side-creation-independent-plugin");
+  checks.push(
+    "Unconfirmed side creation does not block plugin management or produce a plugin recovery notice",
+  );
+  await open("side-uninstalled");
+  assert.equal(await button("安装").isEnabled(), true);
+  await button("安装").click();
+  await button("安装到用户").waitFor();
+  assert.equal(await button("安装到用户").isEnabled(), true);
+  await capture("side-creation-independent-install");
   await open("project-unknown");
   const skillSwitch = page.getByRole("switch", {
     name: "在当前项目启用 Skill Review changes",

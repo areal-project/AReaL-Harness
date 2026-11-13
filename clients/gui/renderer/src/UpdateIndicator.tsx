@@ -37,7 +37,9 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
   const installationError =
     update.status === "error" && Boolean(update.downloaded || update.installing);
   const canDownload =
-    update.status === "available" || (update.status === "error" && !installationError);
+    update.status === "available" ||
+    update.status === "ready" ||
+    (update.status === "error" && !installationError);
   const needsResources = update.status === "deferred" && Boolean(update.downloaded);
   const errorDetail =
     !update.installing && !update.downloaded && update.detail?.includes("ERR_NETWORK_CHANGED")
@@ -62,6 +64,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
   const titles = {
     available: "common.update.available",
     downloading: "common.update.downloading",
+    ready: "common.update.ready",
     validating: "common.update.validating",
     deferred: "common.update.deferred",
     installing: "common.update.installing",
@@ -71,6 +74,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
   const descriptions = {
     available: "common.update.availableHelp",
     downloading: "common.update.downloadingHelp",
+    ready: "common.update.readyHelp",
     validating: "common.update.validatingHelp",
     deferred: "common.update.deferredHelp",
     installing: "common.update.installingHelp",
@@ -83,7 +87,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
   const icon =
     update.status === "error" ? (
       <CircleAlert size={18} />
-    ) : needsResources ? (
+    ) : needsResources || update.status === "ready" ? (
       <Check size={18} />
     ) : busy ? (
       <RefreshIcon size={16} />
@@ -138,7 +142,7 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
           ) : (
             icon
           )}
-          {update.status === "available" && (
+          {(update.status === "available" || update.status === "ready") && (
             <span
               className="absolute top-1 right-1 size-[5px] rounded-pill bg-brand"
               aria-hidden="true"
@@ -219,22 +223,30 @@ export function UpdateIndicator({ services }: { services: PlatformServices }) {
               className="w-full"
               data-testid="areal-update-download"
               aria-label={
-                update.version
-                  ? t(
-                      update.status === "error"
-                        ? "common.update.retryVersion"
-                        : "common.update.downloadVersion",
-                      { version: update.version },
-                    )
-                  : t("common.update.retryCheck")
+                update.status === "ready"
+                  ? t("common.update.restartVersion", { version: update.version ?? "" })
+                  : update.version
+                    ? t(
+                        update.status === "error"
+                          ? "common.update.retryVersion"
+                          : "common.update.downloadVersion",
+                        { version: update.version },
+                      )
+                    : t("common.update.retryCheck")
               }
               onClick={() => {
                 if (services.downloadUpdate)
                   void performUpdate(services.downloadUpdate, t("common.update.downloadFailed"));
               }}
             >
-              {update.status === "error" ? <RefreshIcon size={16} /> : <Download size={16} />}
-              {update.status === "error" ? t("common.update.retry") : t("common.update.download")}
+              {update.status === "available" ? <Download size={16} /> : <RefreshIcon size={16} />}
+              {t(
+                update.status === "error"
+                  ? "common.update.retry"
+                  : update.status === "ready"
+                    ? "common.update.restart"
+                    : "common.update.download",
+              )}
             </Button>
           ) : needsResources && services.recoverUpdateResources ? (
             <Button

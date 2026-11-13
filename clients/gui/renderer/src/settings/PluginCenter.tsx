@@ -1,4 +1,5 @@
 import { DelayedVisible } from "@areal/ui";
+import { projectUserState } from "../state/userStates.js";
 import { TitleTooltip } from "@areal/ui";
 import { SettingsGroupCard, SettingsRow } from "@areal/ui/compositions";
 import { Textarea } from "@areal/ui";
@@ -40,19 +41,18 @@ import { SettingsSearchInput } from "./SettingsSearchInput.js";
 import { SettingsSegmentedTabs } from "./SettingsSegmentedTabs.js";
 import { ResourceScope, type ScopedProps } from "./ScopedSkillsSettings.js";
 import type { Data } from "../services.js";
-import { isIndependentCreation, recoveredOutcome } from "../recoveryPresentation.js";
+import { recoveredOutcome } from "../recoveryPresentation.js";
 import { buildPluginMentionMarkdown } from "../mentions/mentionMarkdown.js";
 import { presentPlugin, type PluginConnectionFacts } from "./pluginPresentation.js";
 import { PluginConfiguration } from "./PluginConfiguration.js";
 import { PluginTemplateActions } from "./PluginTemplateActions.js";
-import { PluginDoctorSummary } from "./PluginDoctorSummary.js";
 import { PluginInstallReview } from "./PluginInstallReview.js";
 import { PluginOverview } from "./PluginOverview.js";
 import { usePluginSubmission, failure, failureText } from "./usePluginSubmission.js";
 import { usePluginCenter } from "./usePluginCenter.js";
 import { pluginMcpStateLabel } from "./pluginResources.js";
 
-import type { ManagementRequest } from "@areal/workbench/desktop-contract/management";
+import type { ManagementRequest } from "../services.js";
 import type {
   PluginDetail,
   PluginReadiness,
@@ -62,21 +62,12 @@ import type {
 export type { PluginDetail, PluginCommand, PluginMutate } from "./pluginTypes.js";
 const pluginMethods: Record<string, PluginOperation["mutation"]> = {
   "areal/plugin/importArchive": "pluginArchiveImport",
-  "areal/marketplace/add": "marketplaceAdd",
-  "areal/plugin/install": "pluginInstall",
-  "areal/plugin/configure": "pluginConfigure",
   "areal/plugin/component/configure": "pluginComponentConfigure",
-  "areal/plugin/uninstall": "pluginUninstall",
   "areal/plugin/setup": "pluginSetup",
-  "areal/plugin/resolve": "pluginResolve",
-  "areal/marketplace/addGit": "marketplaceAddGit",
-  "areal/marketplace/remove": "marketplaceRemove",
-  "areal/marketplace/update": "marketplaceUpdate",
   "areal/plugin/connection": "pluginConnection",
   "areal/plugin/hooks/configure": "pluginHooksConfigure",
   "areal/plugin/auth": "pluginAuth",
   "areal/plugin/auth/configure": "pluginAuthConfigure",
-  "areal/plugin/connector/configure": "connectorConfigure",
   "areal/plugin/userConfig/set": "pluginUserConfigSave",
   "areal/plugin/development/link": "pluginDevelopmentLink",
   "areal/plugin/development/unlink": "pluginDevelopmentUnlink",
@@ -178,13 +169,16 @@ export type PluginCenterProps = ScopedProps & {
   onChooseProject: () => void;
   onSelectProject: (id: string) => void;
   onStartDraft: (seed: ResourceDraftSeed) => Promise<void>;
-  onRunCommand?: (
-    command: import("@areal/workbench/desktop-contract/conversation").PluginCommandRef,
-  ) => Promise<void>;
+  onRunCommand?: (command: import("../services.js").PluginCommandRef) => Promise<void>;
   onReturnToTask?: () => void;
 };
+const FEATURED = "\u0000featured";
+const featured = (item: PluginDetail) =>
+  (item.interface as { featured?: unknown } | null | undefined)?.featured === true;
+// 官方市场：内置默认市场与 OpenAI 示例市场。
 const officialMarket = (url?: string | null) =>
-  !!url && /^https:\/\/github\.com\/openai\/plugins(?:\.git)?\/?$/i.test(url);
+  !!url &&
+  /^https:\/\/github\.com\/(?:openai\/plugins|sailfishc\/areal-plugin)(?:\.git)?\/?$/i.test(url);
 export function PluginCenter({
   project: selectedProject,
   projects,
@@ -210,7 +204,7 @@ export function PluginCenter({
   const projectId = project?.id;
   const currentProject = useRef(projectId);
   currentProject.current = projectId;
-  const connected = !!project?.state?.connected;
+  const connected = projectUserState(project).canAct;
   const [route, setRoute] = useState<CenterRoute>({ kind: "market", audience: "public" });
   const listReturn = useRef<PluginListReturn | null>(null);
   const restoringList = useRef(false);
@@ -243,8 +237,7 @@ export function PluginCenter({
     });
   };
   const writes = usePluginSubmission();
-  const { error, setError, message, setMessage, submission, setSubmission, activity, active } =
-    writes;
+  const { error, setError, message, setMessage, submission, activity, active } = writes;
   const [setupThreadId, setSetupThreadId] = useState<string | null>(null);
   const [checkingProjectOperation, setCheckingProjectOperation] = useState(false);
   const [projectCheckMessages, setProjectCheckMessages] = useState<
@@ -252,7 +245,7 @@ export function PluginCenter({
   >({});
   const pendingEntries: Data[] = project?.pending ?? [];
   const blockingPending = pendingEntries.filter(
-    (entry) => !isIndependentCreation(entry, [submission?.requestId, error?.requestId]),
+    (entry) => pluginMethods[entry.method] || entry.method === "areal/mcp/configure",
   );
   const [connectingProject, setConnectingProject] = useState(false);
   const pending = !!blockingPending.length;
@@ -266,7 +259,6 @@ export function PluginCenter({
   const [sparsePaths, setSparsePaths] = useState("");
   const [archive, setArchive] = useState<{ selectionToken: string; fileName: string } | null>(null);
   const [mcpAddRequest, setMcpAddRequest] = useState(0);
-  const [mcpScope, setMcpScope] = useState("user");
   useEffect(() => {
     if (route.kind !== "installed" || route.tab !== "mcp") setMcpAddRequest(0);
   }, [route]);
@@ -307,10 +299,6 @@ export function PluginCenter({
   const [connectionReadKey, setConnectionReadKey] = useState(0);
   const [connections, setConnections] = useState<Data[]>([]);
   const [connectionError, setConnectionError] = useState<UiMessage | string>("");
-  const [connectorId, setConnectorId] = useState("");
-  const [connectorToken, setConnectorToken] = useState("");
-  const [credentialRef, setCredentialRef] = useState("");
-  const [credentialBusy, setCredentialBusy] = useState(false);
   const panelActiveRef = useRef(panelActive);
   panelActiveRef.current = panelActive;
   const panelGeneration = useRef(0);
@@ -353,7 +341,6 @@ export function PluginCenter({
     catalog,
     components,
     componentError,
-    snapshot: storeSnapshot,
     supported,
     loading,
     readError,
@@ -387,8 +374,6 @@ export function PluginCenter({
     setCopiedDigest(false);
     setMetadataCopy(null);
     setConnections([]);
-    setConnectorToken("");
-    setCredentialRef("");
   }, [selected]);
   useEffect(() => {
     setInstallReview(false);
@@ -473,8 +458,8 @@ export function PluginCenter({
     },
     onAccepted: (
       result:
-        | import("@areal/workbench/desktop-contract/management").ManagementResponseMap[
-            | import("@areal/workbench/desktop-contract/management").PluginMutation
+        | import("../services.js").ManagementResponseMap[
+            | import("../services.js").PluginMutation
             | "pluginAuth"]
         | undefined,
       original: PluginOperation,
@@ -747,46 +732,6 @@ export function PluginCenter({
       expectedRevision: preview.revision,
     });
   };
-  const saveConnectorCredential = async () => {
-    if (!detail?.installedDigest || !connectorId.trim() || !connectorToken || credentialBusy)
-      return;
-    const requestId = crypto.randomUUID();
-    const secret = connectorToken;
-    setConnectorToken("");
-    setCredentialBusy(true);
-    setError(null);
-    try {
-      const saved = await api({
-        projectId,
-        operation: "connectorCredential",
-        id: detail.id,
-        connectorId: connectorId.trim(),
-        provider: "github",
-        expectedDigest: detail.installedDigest,
-        secret,
-        requestId,
-      });
-      if (typeof saved.credentialRef !== "string" || !saved.credentialRef)
-        throw new UiMessageError({
-          id: "settings.pluginCenter.savingCredentialsDidNotReturnAProtected",
-        });
-      setCredentialRef(saved.credentialRef);
-      setMessage({ id: "settings.pluginCenter.githubConnectorConfigurationSavedConnectThePlugin" });
-      window.dispatchEvent(new Event("areal-plugins-changed"));
-      await refresh();
-    } catch (cause) {
-      const error = failure(cause);
-      if (error.submissionUnknown)
-        setSubmission({
-          mutation: "connectorConfigure",
-          projectId: projectId!,
-          requestId: error.requestId ?? requestId,
-        });
-      setError(error);
-    } finally {
-      setCredentialBusy(false);
-    }
-  };
   const copyMetadataLink = async (url: string | undefined, name: string) => {
     if (url === undefined) return;
     try {
@@ -885,6 +830,37 @@ export function PluginCenter({
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const defaultMarketSynced = useRef(false);
+  // 打开官方市场时让 Host 登记或拉新内置默认市场；失败沿用上次快照，不打扰用户。
+  useEffect(() => {
+    if (
+      defaultMarketSynced.current ||
+      !panelActive ||
+      !connected ||
+      !projectId ||
+      !catalog ||
+      listRoute.kind !== "market" ||
+      audience !== "public"
+    )
+      return;
+    defaultMarketSynced.current = true;
+    void api({ operation: "marketplaceSyncDefault", projectId, expectedRevision: catalog.revision })
+      .then(() => window.dispatchEvent(new Event("areal-plugins-changed")))
+      .catch(() => {});
+  }, [panelActive, connected, projectId, catalog, listRoute.kind, audience, api]);
+  // 卡片“添加”：后端判定可直接安装的一键装好；还要配置、核对或登录的进详情页。
+  const quickAdd = async (item: PluginDetail) => {
+    if (item.status?.nextAction !== "install") return setSelected(item.id);
+    const result = await mutate({
+      operation: "pluginInstall",
+      id: item.id,
+      source: item.source,
+      expectedDigest: reviewDigest(item),
+      expectedRevision: item.revision,
+    });
+    const installed = result as PluginDetail | undefined;
+    if (installed?.status?.nextAction !== "none") setSelected(item.id);
+  };
   const openSkill = (skill: CenterSkill) =>
     navigateRoute({ kind: "skill", skill, returnTo: listRoute });
   const createSkill = async () => {
@@ -1267,40 +1243,21 @@ export function PluginCenter({
               })}
             />
           )}
-          <Feedback
-            message={
-              storeSnapshot
-                ? t("settings.pluginCenter.snapshotScope", {
-                    scope:
-                      storeSnapshot.scope.kind === "user"
-                        ? t("settings.pluginCenter.user")
-                        : storeSnapshot.scope.workspace,
-                    revision: storeSnapshot.revision,
-                    time: new Date(storeSnapshot.observedAt).toLocaleString(),
-                  })
-                : ""
-            }
-          />
-          {(!project || !connected) && (
-            <>
-              <Feedback message={t("settings.pluginCenter.runtimeNotObserved")} />
-              {(!isDetail || pendingKind === "unknown" || pendingKind === "active") && (
-                <Button
-                  variant="outline"
-                  disabled={connectingProject}
-                  onClick={() => {
-                    if (projectId) void connectProject();
-                    else onChooseProject();
-                  }}
-                >
-                  {t(
-                    projectId
-                      ? "settings.pluginCenter.connectProjectBackend"
-                      : "settings.pluginCenter.chooseProjectToInstall",
-                  )}
-                </Button>
+          {(!project || !connected) && (pendingKind === "unknown" || pendingKind === "active") && (
+            <Button
+              variant="outline"
+              disabled={connectingProject}
+              onClick={() => {
+                if (projectId) void connectProject();
+                else onChooseProject();
+              }}
+            >
+              {t(
+                projectId
+                  ? "settings.pluginCenter.connectProjectBackend"
+                  : "settings.pluginCenter.chooseProjectToInstall",
               )}
-            </>
+            </Button>
           )}
           {supported === false && (
             <Feedback error={t("settings.pluginCenter.thisCoreDoesNotSupportThePlugin")} />
@@ -1377,9 +1334,6 @@ export function PluginCenter({
                 ))}
               </SettingsDisclosure>
             )}
-          {!isDetail && (
-            <PluginDoctorSummary key={projectId ?? "user"} command={api} projectId={projectId} />
-          )}
           {!isDetail && !adding && recoveryButton}
           {!isDetail && setupThreadId && onOpenThread && (
             <Button onClick={() => onOpenThread(projectId, setupThreadId)}>
@@ -1404,6 +1358,7 @@ export function PluginCenter({
               {(listRoute.kind === "installed"
                 ? [{ key: "installed", value: null, label: t("settings.pluginCenter.installed") }]
                 : [
+                    ...(audience === "public" && items.some(featured) ? [FEATURED] : []),
                     ...new Set(
                       items.map((item) =>
                         audience === "personal"
@@ -1415,23 +1370,27 @@ export function PluginCenter({
                     key: JSON.stringify([audience, value]),
                     value,
                     label:
-                      value ||
-                      t(
-                        audience === "personal"
-                          ? "settings.pluginCenter.importedPluginPackage"
-                          : "settings.pluginCenter.plugins",
-                      ),
+                      value === FEATURED
+                        ? t("settings.pluginCenter.featured")
+                        : value ||
+                          t(
+                            audience === "personal"
+                              ? "settings.pluginCenter.importedPluginPackage"
+                              : "settings.pluginCenter.plugins",
+                          ),
                   }))
               ).map((group) => {
                 const rows =
                   listRoute.kind === "installed"
                     ? items
-                    : items.filter(
-                        (item) =>
-                          (audience === "personal"
-                            ? marketFor(item)?.name || null
-                            : pluginInterface(item.interface).category || null) === group.value,
-                      );
+                    : group.value === FEATURED
+                      ? items.filter(featured)
+                      : items.filter(
+                          (item) =>
+                            (audience === "personal"
+                              ? marketFor(item)?.name || null
+                              : pluginInterface(item.interface).category || null) === group.value,
+                        );
                 return (
                   <section className="plugin-market-group" key={group.key}>
                     <h2>{group.label}</h2>
@@ -1508,8 +1467,10 @@ export function PluginCenter({
                                   : t("settings.pluginCenter.add"),
                                 value1: item.id,
                               })}
-                              disabled={busy}
-                              onClick={() => setSelected(item.id)}
+                              disabled={busy || (!item.installed && disabled)}
+                              onClick={() =>
+                                item.installed ? setSelected(item.id) : void quickAdd(item)
+                              }
                             >
                               {item.installed ? (
                                 t("settings.pluginCenter.added")
@@ -1548,7 +1509,9 @@ export function PluginCenter({
                       onClick={() => {
                         setAddKind(audience === "public" ? "git" : "local");
                         setRoot(
-                          audience === "public" ? "https://github.com/openai/plugins.git" : "",
+                          audience === "public"
+                            ? "https://github.com/Sailfishc/areal-plugin.git"
+                            : "",
                         );
                         setAdding(true);
                       }}
@@ -1583,8 +1546,6 @@ export function PluginCenter({
               project={project}
               thread={thread}
               action={action}
-              scope={mcpScope}
-              onScopeChange={setMcpScope}
               pluginServers={pluginServers}
               onManagePlugin={setSelected}
               onRefreshPlugins={refresh}
@@ -1873,7 +1834,12 @@ export function PluginCenter({
                 <p role="status">{t("settings.pluginCenter.loadingPluginDetails")}</p>
               </DelayedVisible>
               <Feedback
-                error={detailError || (pendingKind !== "unknown" ? displayedError?.message : "")}
+                error={
+                  detailError ||
+                  (pendingKind !== "unknown"
+                    ? displayedError?.message // raw-error-ok: failure() 已呈现
+                    : "")
+                }
               />
               {isDetail && projectRecovery}
               {detailError && (
@@ -2071,70 +2037,6 @@ export function PluginCenter({
                       onAuthActivity={onAuthActivity}
                       onComponentChange={(id, enabled) =>
                         configureComponent("mcpServer", id, enabled)
-                      }
-                      connectorConfiguration={
-                        <SettingsDisclosure
-                          title={t("settings.pluginCenter.githubConnectorConfiguration")}
-                        >
-                          <p>
-                            {t(
-                              "settings.pluginCenter.credentialsAreSavedInProtectedDesktopCredential",
-                            )}
-                          </p>
-                          <label>
-                            {t("settings.pluginCenter.originalConnectorID")}
-                            <SettingsSelect
-                              value={connectorId}
-                              onValueChange={(value) => {
-                                setConnectorId(value);
-                                setCredentialRef("");
-                              }}
-                              disabled={disabled || credentialBusy}
-                              aria-label={t("settings.pluginCenter.originalConnectorID")}
-                            >
-                              <option value="">
-                                {t("settings.pluginCenter.selectADeclaredConnector")}
-                              </option>
-                              {connections.flatMap((row) =>
-                                (row.connectors ?? []).map((item: Data) => (
-                                  <option key={item.id} value={item.id}>
-                                    {item.id}
-                                  </option>
-                                )),
-                              )}
-                            </SettingsSelect>
-                          </label>
-                          <label>
-                            {t("settings.pluginCenter.githubAccessToken")}
-                            <Input
-                              type="password"
-                              autoComplete="new-password"
-                              value={connectorToken}
-                              onChange={(event) => setConnectorToken(event.target.value)}
-                              disabled={disabled || credentialBusy}
-                            />
-                          </label>
-                          <Button
-                            variant="outline"
-                            disabled={
-                              disabled ||
-                              credentialBusy ||
-                              !connectorId ||
-                              !connectorToken ||
-                              connections.some(
-                                (row) => row.state === "connected" || row.state === "partial",
-                              )
-                            }
-                            onClick={() => void saveConnectorCredential()}
-                          >
-                            {t("settings.pluginCenter.saveSecurelyAndConfigureGitHub")}
-                          </Button>
-                          {credentialRef && (
-                            <p role="status">
-                              {t("settings.pluginCenter.protectedCredentialsConfigured")}
-                            </p>
-                          )}
-                        </SettingsDisclosure>
                       }
                     />
                   ) : null}
@@ -2753,8 +2655,6 @@ export function PluginCenter({
                         mutate={mutate}
                         disabled={disabled}
                         active={panelActive}
-                        command={api}
-                        projectId={projectId}
                       />
                       <PluginTemplateActions
                         key={`${detail.id}:${detail.installedDigest}`}

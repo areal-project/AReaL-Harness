@@ -22,7 +22,7 @@ assert.ok(binary?.startsWith(join(root, ".local/dev-bin/")), "use an explicit fi
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const sourcePaths = [
   "app/src/core/legacy-desktop-recovery.cjs",
-  "app/src/core/local-service.cjs",
+  "../../services/workbench/src/desktop/core/local-service.cjs",
   "app/src/core/service-client.cjs",
   "app/src/core/main.cjs",
   "renderer/src/App.tsx",
@@ -117,7 +117,7 @@ const scenario = process.env.AREAL_RECOVERY_SCENARIO || "open";
 assert.ok(["open", "exited"].includes(scenario));
 const marker = join(scratch, "fail-once");
 await writeFile(marker, "1");
-const oldLocal = join(legacyGui, "app/src/core/local-service.cjs");
+const oldLocal = join(legacyGui, "../../services/workbench/src/desktop/core/local-service.cjs");
 let oldSource = await readFile(oldLocal, "utf8");
 const fault = `if (project.root.endsWith('workspace-b') && require('node:fs').existsSync(${JSON.stringify(marker)})) { require('node:fs').unlinkSync(${JSON.stringify(marker)}); throw new Error('fixture: original stop response unconfirmed'); }`;
 oldSource =
@@ -261,7 +261,8 @@ try {
     if (await startupSettings.isVisible()) await startupSettings.click();
     else {
       await page.getByRole("button", { name: "设置", exact: true }).click();
-      await page.getByRole("button", { name: "后台服务", exact: true }).click();
+      await page.getByRole("button", { name: "常规", exact: true }).click();
+      await page.getByRole("button", { name: "打开高级诊断", exact: true }).click();
     }
   };
   await launchCurrent();
@@ -442,7 +443,7 @@ try {
   connection?.close();
   if (old && alive(old.pid)) {
     try {
-      const { executeCore } = require("../app/src/core/core-process.cjs");
+      const { executeCore } = createRequire(import.meta.url)("./support/core-process-fixture.cjs");
       const run = async (args) =>
         JSON.parse(
           (await executeCore(binary, ["service", ...args, "--json"], { env, timeout: 120000 }))

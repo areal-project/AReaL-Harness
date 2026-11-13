@@ -23,6 +23,7 @@ document.addEventListener("areal:toast", (event) => {
 function render(attempt: number) {
   const markup = renderToStaticMarkup(
     createElement(FeedbackNotice, {
+      transient: true,
       id: `upload-attempt-${attempt}`,
       tone: "error",
       message: "document.txt: Upload failed",
@@ -39,6 +40,19 @@ beforeEach(() => {
   observed.notices = [];
 });
 describe("transient feedback details", () => {
+  it("keeps local failures and their recovery action at the owning surface by default", () => {
+    const markup = renderToStaticMarkup(
+      createElement(FeedbackNotice, {
+        tone: "error",
+        message: "Attachment unavailable",
+        actions: createElement("button", {}, "Retry attachment"),
+      }),
+    );
+    for (const effect of observed.effects.splice(0)) effect();
+    expect(markup).toContain("Attachment unavailable");
+    expect(markup).toContain("Retry attachment");
+    expect(observed.notices).toHaveLength(0);
+  });
   it("emits one top notification and opens technical detail separately from its summary", () => {
     expect(render(1)).toBe("");
     expect(observed.notices).toHaveLength(1);

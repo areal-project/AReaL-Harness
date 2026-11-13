@@ -1,10 +1,12 @@
 import { useState } from "react";
-import type { ManagementResponseMap } from "@areal/workbench/desktop-contract/management";
+import { currentErrorText } from "../errors/currentErrorText.js";
+import type { ManagementResponseMap } from "../services.js";
 import type { PluginCommand } from "./pluginTypes.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { Button } from "../components/ui/button.js";
 import { SettingsDisclosure } from "./SettingsDisclosure.js";
 import { Feedback } from "./common.js";
+import { pluginStateMessages } from "./PluginOverview.js";
 export function PluginDoctorSummary({
   command,
   projectId,
@@ -12,7 +14,7 @@ export function PluginDoctorSummary({
   command: PluginCommand;
   projectId?: string;
 }) {
-  const { t } = useI18n();
+  const { t, intl } = useI18n();
   const [report, setReport] = useState<ManagementResponseMap["pluginStoreDoctor"] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -25,7 +27,9 @@ export function PluginDoctorSummary({
       );
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : t("settings.pluginCenter.pluginOperationFailed"),
+        cause instanceof Error
+          ? currentErrorText(cause)
+          : t("settings.pluginCenter.pluginOperationFailed"),
       );
     } finally {
       setBusy(false);
@@ -47,16 +51,16 @@ export function PluginDoctorSummary({
                   ? t("settings.pluginCenter.user")
                   : report.scope.workspace,
               revision: report.revision,
-              time: new Date(report.observedAt).toLocaleString(),
+              time: intl.formatDate(report.observedAt, { dateStyle: "medium", timeStyle: "short" }),
             })}
           </p>
           <ul>
             {report.data.map((row) => (
               <li key={row.id}>
                 <strong>{row.id}</strong>
-                <p>
-                  {row.state} · {row.nextAction}
-                </p>
+                {row.state in pluginStateMessages && (
+                  <p>{t(pluginStateMessages[row.state as keyof typeof pluginStateMessages])}</p>
+                )}
                 <p>{row.availableComponents.join(", ")}</p>
                 {row.developmentStatus && <p>{row.developmentStatus}</p>}
               </li>

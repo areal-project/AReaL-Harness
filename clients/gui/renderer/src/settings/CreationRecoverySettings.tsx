@@ -1,4 +1,5 @@
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
+import { errorText } from "../errors/errorCopy.js";
 import { useRef, useState } from "react";
 import { Button } from "../components/ui/button.js";
 import { useI18n } from "../i18n/IntlProvider.js";
@@ -72,7 +73,7 @@ function CreationRecord({
         ),
       );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
+      setMessage(errorText(t, error));
     } finally {
       checking.current = false;
       setBusy(false);

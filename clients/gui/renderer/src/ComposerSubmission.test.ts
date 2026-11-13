@@ -17,6 +17,15 @@ vi.hoisted(() => {
 const media = { uri: "areal://blob/receipt", mimeType: "text/plain" };
 
 describe("composer submission upload lifetime", () => {
+  it("blocks restored missing files before uploads or admission", async () => {
+    const action = vi.fn<Action>();
+    await expect(
+      submitMessage(action as Action, "project", "thread", "keep my context", [
+        { kind: "missing-file", name: "diagram.png", size: 10, type: "image/png", lastModified: 0 },
+      ]),
+    ).rejects.toThrow("Missing draft attachment");
+    expect(action).not.toHaveBeenCalled();
+  });
   it("releases prepared file references after explicit acceptance", async () => {
     const owner = crypto.randomUUID();
     const file = new File(["content"], "document.txt");

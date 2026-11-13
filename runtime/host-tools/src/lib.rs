@@ -8,6 +8,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// 任务凭据的环境变量名（Multica daemon 约定）；只交给 `--task-credential-command` 指定的程序。
+pub const TASK_CREDENTIAL_ENVIRONMENT: [&str; 6] = [
+    "MULTICA_TOKEN",
+    "MULTICA_TASK_ID",
+    "MULTICA_AGENT_ID",
+    "MULTICA_WORKSPACE_ID",
+    "MULTICA_SERVER_URL",
+    "MULTICA_RUNTIME_PROVIDER",
+];
+
 /// Network configuration for explicitly authorized host network access.
 pub fn network_environment() -> std::collections::BTreeMap<String, std::ffi::OsString> {
     [

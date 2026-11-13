@@ -1,7 +1,8 @@
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -33,7 +34,7 @@ const sha = (value) => createHash("sha256").update(value).digest("hex");
 const evidenceRoot =
   process.env.AREAL_THREAD_SCHEDULE_EVIDENCE || join(root, ".scratch/thread-schedules/acceptance");
 await mkdir(evidenceRoot, { recursive: true });
-const evidence = await mkdtemp(join(evidenceRoot, "run-"));
+const evidence = await trackedMkdtemp(join(evidenceRoot, "run-"));
 const stateRoot = await makeTempDir("ts-");
 const owner = randomUUID();
 await writeFile(join(stateRoot, ".owner"), owner);
@@ -786,10 +787,10 @@ async function verifyGlobalDraftAndRun(existingTasks = []) {
   await page.getByRole("button", { name: "定时任务", exact: true }).click();
   for (const entry of [...existingTasks, C])
     await page
-      .getByRole("button", { name: `打开自动化 ${entry.objective}`, exact: true })
+      .getByRole("button", { name: `打开定时任务 ${entry.objective}`, exact: true })
       .waitFor();
   await shot("03-global-project-and-independent");
-  await page.getByRole("button", { name: `打开自动化 ${C.objective}`, exact: true }).click();
+  await page.getByRole("button", { name: `打开定时任务 ${C.objective}`, exact: true }).click();
   const count = requests.length;
   const detail = page.locator(".scheduled-task-header");
   assert.equal(await detail.getByRole("button", { name: "暂停", exact: true }).count(), 0);
@@ -1053,7 +1054,7 @@ try {
     await page.getByRole("button", { name: "定时任务", exact: true }).click();
     for (const entry of [A, B])
       await page
-        .getByRole("button", { name: `打开自动化 ${entry.objective}`, exact: true })
+        .getByRole("button", { name: `打开定时任务 ${entry.objective}`, exact: true })
         .waitFor();
     await verifyGlobalDraftAndRun([A, B]);
 
@@ -1113,9 +1114,9 @@ try {
     assert.equal(await resourceRow(A.id).count(), 1);
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "定时任务", exact: true }).click();
-    await page.getByRole("button", { name: `打开自动化 ${A.objective}`, exact: true }).waitFor();
+    await page.getByRole("button", { name: `打开定时任务 ${A.objective}`, exact: true }).waitFor();
     assert.equal(
-      await page.getByRole("button", { name: `打开自动化 ${B.objective}`, exact: true }).count(),
+      await page.getByRole("button", { name: `打开定时任务 ${B.objective}`, exact: true }).count(),
       0,
     );
     checks.push(

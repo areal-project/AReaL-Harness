@@ -1,4 +1,5 @@
 import type { ImageAnnotationTarget } from "./imageAnnotations.js";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import { useEffect, useState } from "react";
 import {
   WorkspacePreparationStatus,
@@ -65,7 +66,7 @@ export function ProjectlessDraft({
     if (!ready || ownerId || deferred) return;
     let active = true;
     void prepare().catch((cause) => {
-      if (active) setError(cause.message);
+      if (active) setError(currentErrorText(cause));
     });
     return () => {
       active = false;
@@ -79,7 +80,7 @@ export function ProjectlessDraft({
         if (active) setCatalog(result);
       })
       .catch((cause) => {
-        if (active) setError(cause.message);
+        if (active) setError(currentErrorText(cause));
       });
     return () => {
       active = false;

@@ -1,5 +1,6 @@
-export { modelUsage, generationStats } from "@areal/workbench/desktop-contract/management-context";
+export { modelUsage, generationStats } from "./services.js";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { currentErrorText } from "./errors/currentErrorText.js";
 import type {
   ContextPartKind,
   ContextUsageResponse,
@@ -25,8 +26,8 @@ export function useContextUsage(
   enabled = true,
 ) {
   const [result, setResult] = useState<ContextUsageResponse | null>(null),
-    [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false);
   const acceptedVersion = useRef<string | null>(null);
   const sequence = useRef(0),
     inFlight = useRef<{ version: string; request: number } | null>(null);
@@ -98,7 +99,7 @@ export function useContextUsage(
       setResult(value);
     } catch (cause) {
       if (request === sequence.current && requestedVersion === current.current)
-        setError(cause instanceof Error ? cause.message : "读取上下文失败");
+        setError(currentErrorText(cause));
     } finally {
       if (inFlight.current?.request === request) inFlight.current = null;
       if (request === sequence.current) setBusy(false);
@@ -112,11 +113,7 @@ export function useContextUsage(
     setError("");
     if (!enabled) return;
     void read();
-    const timer = active
-      ? window.setInterval(() => {
-          void read();
-        }, 1500)
-      : undefined;
+    const timer = active ? window.setInterval(() => void read(), 1500) : undefined;
     return () => {
       sequence.current++;
       window.clearInterval(timer);

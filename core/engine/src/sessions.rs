@@ -129,10 +129,10 @@ impl Engine {
         } else {
             desktop
         };
-        let parent_registry = if let Some(parent) = parent {
+        let parent_bindings = if let Some(parent) = parent {
             let cell = self.threads.read().await.get(&parent.id).cloned();
             if let Some(cell) = cell {
-                Some(cell.bindings.read().await.registry.clone())
+                Some(cell.bindings.read().await.clone())
             } else {
                 None
             }
@@ -142,22 +142,22 @@ impl Engine {
         let bindings = tools::Bindings {
             registry: if research {
                 self.registry.clone().research_only()
-            } else if let Some(registry) = parent_registry {
-                registry
+            } else if let Some(bindings) = &parent_bindings {
+                bindings.registry.clone()
             } else {
                 self.registry
                     .with_dynamic(&dynamic_tools)
                     .map_err(|e| Error::Invalid(e.to_string()))?
             },
             host,
+            schedule_host: parent_bindings.and_then(|bindings| bindings.schedule_host),
         };
         if initial.is_some()
             && !dynamic_tools.is_empty()
+            && !bindings.can_start_without_tool_host()
             && bindings.host.as_ref().is_none_or(|host| host.is_closed())
         {
-            return Err(Error::Invalid(
-                "dynamic tools require a connected owner".into(),
-            ));
+            return Err(Error::ToolHostUnavailable);
         }
         let thread_id = id();
         let mut thread = Thread {

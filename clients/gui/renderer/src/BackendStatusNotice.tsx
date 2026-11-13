@@ -119,6 +119,8 @@ function backendPresentation({
       "backend.stoppedConfirmed",
       "backend.updating",
       "backend.operationPending",
+      // 发送按钮处已说明原因；用户去发送时才需要知道。
+      "backend.updateRequired",
     ].includes(message);
   return { message, diagnostic, tone, action, retryUpdate, notify };
 }
@@ -140,13 +142,14 @@ export function BackendStatusNotice(props: BackendStatusProps) {
         key: `backend:${key}`,
         actions: (
           <Button variant="ghost" size="sm" onClick={() => onAction.current("status")}>
-            {t("recovery.checkSettings")}
+            {t("recovery.details")}
           </Button>
         ),
       });
     };
     if (message === "backend.unavailable") {
-      const timer = window.setTimeout(announce, 1200);
+      // 短暂断线交给现有连接所有者恢复，仅持续不可用时打断用户。
+      const timer = window.setTimeout(announce, 8000);
       return () => {
         window.clearTimeout(timer);
         dismissToast(`backend:${key}`);

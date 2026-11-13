@@ -1,6 +1,6 @@
 # 设置页第一阶段：交互分类迁移
 
-目标：验证按用户交互归纳的规范能否指导既有生产页面，减少临时样式和组合决策。不是逐像素复制 Codex，也不是整个设置中心、全平台或冻结 Base 的验收。English: [stage one](../../../../clients/gui/design-system/exercises/settings-stage1.en.md)。
+目标：验证按用户交互归纳的规范能否指导既有生产页面，减少临时样式和组合决策。不是逐像素复制 Codex，也不是整个设置中心、全平台或冻结 Base 的验收。English: [stage one](settings-stage1.en.md)。
 
 ## 设计输入
 
@@ -45,7 +45,7 @@ AREAL_CORE_BIN=/absolute/verified/areal node clients/gui/scripts/migration-smoke
 
 规则/目录检查、交互正确、视觉效果和平台行为分别评判。对照重点是常用项发现、分组可理解性、细节可达性和窄窗可读性，不用断言数量代替审美判断。本次不新增全局颜色、字体或动效参数。
 
-首个试点由同一实现会话完成，不能称为独立泛化。保存失败/UNKNOWN 全矩阵、真实通知送达、原生候选浮窗、跨应用窗口切换、安装包和其他 OS 均不在本次通过范围。Base 0.1.3 准入不扩大。用户已批准以生产对话作为第二阶段，见[对话阶段二](../../../../clients/gui/design-system/exercises/conversation-stage2.md)；不自动扩展其他迁移。
+首个试点由同一实现会话完成，不能称为独立泛化。保存失败/UNKNOWN 全矩阵、真实通知送达、原生候选浮窗、跨应用窗口切换、安装包和其他 OS 均不在本次通过范围。Base 0.1.3 准入不扩大。用户已批准以生产对话作为第二阶段，见[对话阶段二](conversation-stage2.md)；不自动扩展其他迁移。
 
 ## 首阶段执行结果
 

@@ -95,6 +95,8 @@ test("JSON report counts production code and keeps report-only counts separate",
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.counts.mainSourceLines, 1);
+  assert.equal(report.metrics.mainSourceLines.value, report.counts.mainSourceLines);
+  assert.equal(report.metrics.mainSourceLines.direction, "down");
   assert.equal(report.metrics.appLines.value, 2);
   assert.equal(report.metrics.appHooks.value, 2);
   assert.equal(report.metrics.literalDebt.value, 6);
@@ -156,9 +158,56 @@ test("per-path caps reject growth, rename, and debt restored after deletion", as
   assert.notEqual(f.run("--check").status, 0);
 });
 
+test("Main aggregate rejects new small files and permits business removal", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/business.cjs", "business();\n".repeat(3));
+  assert.equal(f.run("--write").status, 0);
+  await f.put("app/src/business.cjs", "business();\n");
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  assert.equal(baseline.mainSourceLines.value, 2);
+  await f.put("app/src/new-business.cjs", "newBusiness();\n");
+  const added = f.run("--check");
+  assert.notEqual(added.status, 0);
+  assert.match(added.stderr, /mainSourceLines/);
+  assert.notEqual(f.run("--write").status, 0);
+  assert.equal((await f.baseline()).mainSourceLines.value, 2);
+});
+
+test("Main cannot regrow against base using unused baseline headroom", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/business.cjs", "business();\n".repeat(3));
+  assert.equal(f.run("--write").status, 0);
+  await f.put("app/src/business.cjs", "business();\n");
+  const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
+  assert.equal(git("init", "-q").status, 0);
+  assert.equal(git("add", ".").status, 0);
+  assert.equal(
+    git(
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.test",
+      "commit",
+      "-qm",
+      "reduced Main",
+    ).status,
+    0,
+  );
+  const stale = f.run("--check", "--base=HEAD");
+  assert.notEqual(stale.status, 0);
+  assert.match(stale.stderr, /mainSourceLines.*baseline exceeds actual Main lines at base/);
+  await f.put("app/src/business.cjs", "business();\n".repeat(2));
+  const grown = f.run("--check", "--base=HEAD");
+  assert.notEqual(grown.status, 0);
+  assert.match(grown.stderr, /mainSourceLines.*Main source grew against base/);
+  assert.notEqual(f.run("--write", "--base=HEAD").status, 0);
+  assert.equal((await f.baseline()).mainSourceLines.value, 4);
+});
+
 test("reviewed document transition matches only its exact values and unchanged ownership", () => {
-  const before = { value: 262924, direction: "down", owner: "design/ clients/gui/design-system" };
-  const current = { ...before, value: 269714 };
+  const before = { value: 184954, direction: "down", owner: "design/ clients/gui/design-system" };
+  const current = { ...before, value: 193947 };
   assert.ok(reviewedBaselineTransition("activeDesignDocBytes", before, current));
   for (const [name, old, next] of [
     ["appLines", before, current],
@@ -177,7 +226,7 @@ test("reviewed document transition never waives actual growth or other caps", as
   const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
   assert.equal(f.run("--write").status, 0);
   const baseline = await f.baseline();
-  baseline.activeDesignDocBytes.value = 262924;
+  baseline.activeDesignDocBytes.value = 184954;
   await f.put("health-baseline.json", JSON.stringify(baseline));
   assert.equal(git("init", "-q").status, 0);
   assert.equal(git("add", ".").status, 0);
@@ -193,15 +242,15 @@ test("reviewed document transition never waives actual growth or other caps", as
     ).status,
     0,
   );
-  baseline.activeDesignDocBytes.value = 269714;
+  baseline.activeDesignDocBytes.value = 193947;
   await f.put("health-baseline.json", JSON.stringify(baseline));
-  await f.put("../../design/principles.md", "x".repeat(269714));
+  await f.put("../../design/principles.md", "x".repeat(193947));
   const accepted = f.run("--check", "--base=HEAD");
   assert.equal(accepted.status, 0, accepted.stderr);
   assert.equal(JSON.parse(accepted.stdout).reviewedTransitions.length, 1);
   await f.put("../../design/principles.md", "x".repeat(269715));
   assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
-  await f.put("../../design/principles.md", "x".repeat(269714));
+  await f.put("../../design/principles.md", "x".repeat(193947));
   baseline.appLines.value++;
   await f.put("health-baseline.json", JSON.stringify(baseline));
   assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
@@ -213,7 +262,7 @@ test("reviewed document transition never waives actual growth or other caps", as
 
 test("an explicit base detects baseline relaxation in the same change", async (t) => {
   const f = await fixture(t);
-  const git = (...args) => spawnSync("git", args, { cwd: f.root, encoding: "utf8" });
+  const git = (...args) => spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
   assert.equal(f.run("--write").status, 0);
   assert.equal(git("init", "-q").status, 0);
   assert.equal(git("add", ".").status, 0);
@@ -236,7 +285,152 @@ test("an explicit base detects baseline relaxation in the same change", async (t
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /appLines/);
   assert.match(result.stderr, /baseline/i);
+  const head = git("rev-parse", "HEAD").stdout.trim();
+  baseline.$rebaseline = { base: head, reason: "architecture move" };
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.equal(f.run("--check", "--base=HEAD").status, 0);
+  baseline.$rebaseline.base = "0".repeat(40);
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.notEqual(f.run("--check", "--base=HEAD").status, 0);
+  delete baseline.$rebaseline.reason;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.match(f.run("--check").stderr, /rebaseline/);
 });
+
+async function commitFixture(f) {
+  const git = (...args) =>
+    spawnSync("git", args, {
+      cwd: join(f.root, "../.."),
+      encoding: "utf8",
+    });
+  assert.equal(git("init", "-q").status, 0);
+  assert.equal(git("add", ".").status, 0);
+  const result = git(
+    "-c",
+    "user.name=Fixture",
+    "-c",
+    "user.email=fixture@example.test",
+    "commit",
+    "-qm",
+    "baseline",
+  );
+  assert.equal(result.status, 0, result.stderr);
+}
+
+test("Main business budget counts new and renamed modules and rejects restored debt", async (t) => {
+  const f = await fixture(t);
+  assert.equal(f.run("--write").status, 0);
+  const check = () => f.run("--check", "--metric=mainBusinessLines");
+  await f.put("app/src/business.cjs", "module.exports = {};\n");
+  assert.match(check().stderr, /mainBusinessLines/);
+  await rm(join(f.root, "app/src/business.cjs"));
+  await rename(join(f.root, "app/src/main.cjs"), join(f.root, "app/src/renamed.cjs"));
+  assert.equal(check().status, 0);
+  await f.put("app/src/renamed.cjs", "module.exports = {};\n\n");
+  assert.notEqual(check().status, 0);
+  assert.notEqual(f.run("--write", "--allow-regression=mainBusinessLines").status, 0);
+  await rm(join(f.root, "app/src/renamed.cjs"));
+  await f.put("app/src/main.cjs", "");
+  assert.equal(f.run("--write").status, 0);
+  assert.equal((await f.baseline()).mainBusinessLines.value, 0);
+  await f.put("app/src/main.cjs", "module.exports = {};\n");
+  assert.notEqual(check().status, 0);
+  await rm(join(f.root, "app/src/main.cjs"));
+  assert.equal(check().status, 0);
+});
+
+test("native shell exemptions are exact paths and cannot reclassify business against base", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/preload.cjs", "module.exports = {};\n");
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  baseline.$mainNativeSources = { "app/src/preload.cjs": "Electron contextBridge adapter" };
+  baseline.mainBusinessLines.value = 1;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await commitFixture(f);
+  const check = () => f.run("--check", "--metric=mainBusinessLines", "--base=HEAD");
+  await f.put("app/src/preload.cjs", "module.exports = {};\n\n");
+  const green = check();
+  assert.equal(green.status, 0, green.stderr);
+  const total = f.run("--check", "--metric=mainSourceLines", "--base=HEAD");
+  assert.notEqual(total.status, 0);
+  assert.match(total.stderr, /mainSourceLines/);
+  assert.match(total.stderr, /Main source grew against base/);
+  assert.deepEqual(JSON.parse(green.stdout).mainBusinessSources, { "app/src/main.cjs": 1 });
+  baseline.$mainNativeSources["app/src/main.cjs"] = "Reclassified as native";
+  baseline.mainBusinessLines.value = 0;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.match(check().stderr, /native exemption added against base/);
+  delete baseline.$mainNativeSources["app/src/main.cjs"];
+  baseline.mainBusinessLines.value = 1;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await rename(join(f.root, "app/src/preload.cjs"), join(f.root, "app/src/new-preload.cjs"));
+  assert.match(check().stderr, /mainBusinessLines/);
+});
+
+for (const metric of ["mainSourceLines", "mainBusinessLines"]) {
+  test(`${metric} first baseline is measured against actual current and base sources`, async (t) => {
+    const f = await fixture(t);
+    assert.equal(f.run("--write").status, 0);
+    const baseline = await f.baseline();
+    const legacy = { ...baseline };
+    delete legacy.mainBusinessLines;
+    delete legacy.mainSourceLines;
+    delete legacy.$mainNativeSources;
+    await f.put("health-baseline.json", JSON.stringify(legacy));
+    await commitFixture(f);
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    const check = () => f.run("--check", `--metric=${metric}`, "--base=HEAD");
+    assert.equal(check().status, 0);
+    baseline[metric].value = 2;
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    assert.match(check().stderr, /initial baseline must equal actual Main lines/);
+    await f.put("app/src/main.cjs", "module.exports = {};\n\n");
+    const grown = check();
+    assert.notEqual(grown.status, 0);
+    assert.match(grown.stderr, /Main source grew against base/);
+    await f.put("app/src/main.cjs", "module.exports = {};\n");
+    baseline[metric].value = 1;
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    assert.equal(check().status, 0);
+  });
+
+  test(`${metric} baseline cannot increase or reuse old headroom against actual base`, async (t) => {
+    const f = await fixture(t);
+    assert.equal(f.run("--write").status, 0);
+    await commitFixture(f);
+    const baseline = await f.baseline();
+    baseline[metric].value++;
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    const relaxed = f.run("--check", `--metric=${metric}`, "--base=HEAD");
+    assert.notEqual(relaxed.status, 0);
+    assert.match(relaxed.stderr, /baseline relaxed against base/);
+    assert.match(relaxed.stderr, /baseline exceeds actual Main lines at base/);
+    baseline[metric].value--;
+    await f.put("health-baseline.json", JSON.stringify(baseline));
+    await f.put("app/src/main.cjs", "");
+    const git = (...args) =>
+      spawnSync("git", args, { cwd: join(f.root, "../.."), encoding: "utf8" });
+    assert.equal(git("add", ".").status, 0);
+    assert.equal(
+      git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.test",
+        "commit",
+        "-qm",
+        "remove business source without refreshing cap",
+      ).status,
+      0,
+    );
+    await f.put("app/src/main.cjs", "module.exports = {};\n");
+    const restored = f.run("--check", `--metric=${metric}`, "--base=HEAD");
+    assert.notEqual(restored.status, 0);
+    assert.match(restored.stderr, /Main source grew against base/);
+    assert.notEqual(f.run("--write", `--metric=${metric}`).status, 0);
+  });
+}
 
 test("an explicit base classifies inherited regressions without waiving the reviewed baseline", async (t) => {
   const f = await fixture(t);
@@ -326,6 +520,25 @@ test("Main coverage detects a new unchecked file even when checked file count is
   assert.notEqual(f.run("--check").status, 0);
 });
 
+test("moving checked backend source keeps coverage enforced outside Main", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/main.cjs", "// @ts-check\nmodule.exports = {};\n");
+  await f.put("app/src/backend.cjs", "// @ts-check\nmodule.exports = {};\n");
+  assert.equal(f.run("--write").status, 0);
+  await f.put("../../services/workbench/src/desktop/core/backend.cjs", "");
+  await rename(
+    join(f.root, "app/src/backend.cjs"),
+    join(f.root, "../../services/workbench/src/desktop/core/backend.cjs"),
+  );
+  const moved = JSON.parse(f.run().stdout);
+  assert.equal(moved.metrics.mainCheckedFiles.value, 2);
+  assert.equal(moved.metrics.mainTypeCoverage.value, 1);
+  assert.equal(moved.counts.mainSourceLines, 2);
+  assert.equal(f.run("--check", "--metric=mainTypeCoverage").status, 0);
+  await f.put("../../services/workbench/src/desktop/core/backend.cjs", "module.exports = {};\n");
+  assert.notEqual(f.run("--check", "--metric=mainTypeCoverage").status, 0);
+});
+
 test("active design document growth is tracked while the user entry has a separate ceiling", async (t) => {
   const f = await fixture(t);
   assert.equal(f.run("--write").status, 0);
@@ -337,4 +550,67 @@ test("active design document growth is tracked while the user entry has a separa
   assert.ok(after.metrics.activeDesignDocBytes.value > before.metrics.activeDesignDocBytes.value);
   assert.equal(after.counts.userEntryDocBytes, before.counts.userEntryDocBytes);
   assert.notEqual(f.run("--check").status, 0);
+});
+
+test("workbench convergence counts new and renamed files and retains unrelated JS", async (t) => {
+  const f = await fixture(t);
+  const library = "../../services/workbench/src/desktop/core/library.cjs";
+  const retained = "../../services/workbench/src/pages.cjs";
+  await f.put(library, "library();\n".repeat(3));
+  await f.put(retained, "pages();\n");
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  baseline.$workbenchRetainedSources = [retained];
+  baseline.workbenchConvergeLines.value = 3;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await commitFixture(f);
+  const check = () => f.run("--check", "--metric=workbenchConvergeLines", "--base=HEAD");
+  await f.put(retained, "pages();\n".repeat(20));
+  assert.equal(check().status, 0);
+  const added = "../../services/workbench/src/renamed-library.ts";
+  await f.put(added, "export {};\n");
+  assert.match(check().stderr, /workbenchConvergeLines/);
+  assert.notEqual(f.run("--write", "--allow-regression=workbenchConvergeLines").status, 0);
+  await rm(join(f.root, added));
+  await rename(join(f.root, library), join(f.root, added));
+  assert.equal(check().status, 0);
+  await f.put(added, "library();\n".repeat(4));
+  assert.match(check().stderr, /workbenchConvergeLines/);
+  baseline.$workbenchRetainedSources.push(added);
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.match(check().stderr, /retained exemption added against base/);
+});
+
+test("workbench first baseline measures service sources at base and prevents restored debt", async (t) => {
+  const f = await fixture(t);
+  const library = "../../services/workbench/src/desktop/core/library.cjs";
+  await f.put(library, "library();\n");
+  assert.equal(f.run("--write").status, 0);
+  const baseline = await f.baseline();
+  const legacy = { ...baseline };
+  delete legacy.workbenchConvergeLines;
+  delete legacy.$workbenchRetainedSources;
+  await f.put("health-baseline.json", JSON.stringify(legacy));
+  await commitFixture(f);
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  const check = () => f.run("--check", "--metric=workbenchConvergeLines", "--base=HEAD");
+  assert.equal(check().status, 0);
+  await f.put(library, "");
+  assert.equal(
+    check().status,
+    0,
+    "initial migration may shrink below the measured pre-migration budget",
+  );
+  await f.put(library, "library();\n");
+  baseline.workbenchConvergeLines.value++;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  assert.match(check().stderr, /initial baseline must equal actual workbench lines/);
+  await f.put(library, "library();\n\n");
+  assert.match(check().stderr, /grew against actual base/);
+  await f.put(library, "");
+  baseline.workbenchConvergeLines.value = 0;
+  await f.put("health-baseline.json", JSON.stringify(baseline));
+  await commitFixture(f);
+  await f.put(library, "library();\n");
+  assert.match(check().stderr, /workbenchConvergeLines/);
 });

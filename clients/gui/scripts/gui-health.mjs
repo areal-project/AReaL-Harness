@@ -8,15 +8,16 @@ import { collectUiAdoption } from "./design-system-maturity.mjs";
 import { readTestManifest } from "./test-manifest.mjs";
 import { collectDesignRuleMetrics } from "./design-rules.mjs";
 
-// PR #128 的人工审阅声明，不是授权验证。新基线进入 base 后自然失效，可移除此迁移记录。
+// D-005 规格包与 R-CHECK-024 的人工审阅声明，不是授权验证。新基线进入 base 后自然失效，可移除此迁移记录。
 const reviewedDocBudgetTransition = Object.freeze({
   metric: "activeDesignDocBytes",
-  from: 262924,
-  to: 269714,
+  from: 184954,
+  to: 193947,
   direction: "down",
   owner: "design/ clients/gui/design-system",
-  reason: "Bilingual plugin resource specifications and disclosure/copy rules; no extra headroom",
-  review: "PR #128: owner-approved document-only budget adjustment",
+  reason:
+    "Reproducible design spec package (D-005, design/spec) and layer check rule; no extra headroom",
+  review: "Owner-approved architecture in the project thread; document-only budget adjustment",
 });
 
 export function reviewedBaselineTransition(name, before, current) {
@@ -56,7 +57,7 @@ async function filesAt(root, dir) {
     .map((file) => `${dir}/${file}`);
 }
 
-export async function collectHealth({ root = gui } = {}) {
+export async function collectHealth({ root = gui, nativeSources, retainedWorkbenchSources } = {}) {
   const paths = (
     await Promise.all(["app/src", "renderer/src", "packages"].map((dir) => filesAt(root, dir)))
   ).flat();
@@ -68,6 +69,17 @@ export async function collectHealth({ root = gui } = {}) {
   );
   const main = files.filter(
     (file) => file.path.startsWith("app/src/") && !file.path.endsWith(".css"),
+  );
+  const storedBaseline = JSON.parse(
+    await readFile(resolve(root, "health-baseline.json"), "utf8").catch((error) => {
+      if (error.code === "ENOENT") return "{}";
+      throw error;
+    }),
+  );
+  const mainNativeSources = nativeSources ?? storedBaseline.$mainNativeSources ?? {};
+  validateNativeSources(mainNativeSources);
+  const mainBusinessSources = Object.fromEntries(
+    main.filter((file) => !(file.path in mainNativeSources)).map((file) => [file.path, file.lines]),
   );
   const renderer = files.filter((file) => file.path.startsWith("renderer/src/"));
   const app = renderer.find((file) => file.path === "renderer/src/App.tsx");
@@ -114,21 +126,83 @@ export async function collectHealth({ root = gui } = {}) {
   });
   const accessibility = accessibilitySource === null ? null : JSON.parse(accessibilitySource);
   const lintSources = [...files.map((file) => file.source), ...scriptSources];
-  const checkedMainFiles = main.filter(
+  // Main 业务搬到服务后仍在同一类型检查中，不能因搬迁丢掉覆盖率约束。
+  const servicePaths = await filesAt(root, "../../services/workbench/src").catch((error) => {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  });
+  const serviceSources = await Promise.all(
+    servicePaths
+      .filter((path) =>
+        /\/src\/(?:desktop\/core\/|domains\/|desktop\/workspace-files\.js$|host-library-store\.ts$)/.test(
+          path,
+        ),
+      )
+      .map(async (path) => ({
+        path,
+        source: await readFile(resolve(root, path), "utf8"),
+      })),
+  );
+  // 已有的非收口模块按精确路径保留；新增或改名模块默认计入，不能靠拆文件逃逸。
+  const retainedWorkbench =
+    retainedWorkbenchSources ?? storedBaseline.$workbenchRetainedSources ?? [];
+  if (
+    !Array.isArray(retainedWorkbench) ||
+    new Set(retainedWorkbench).size !== retainedWorkbench.length ||
+    !retainedWorkbench.every(
+      (path) =>
+        typeof path === "string" &&
+        path.startsWith("../../services/workbench/src/") &&
+        sourceExtension.test(path) &&
+        !path
+          .slice("../../".length)
+          .split("/")
+          .some((part) => part === ".." || part === "."),
+    )
+  )
+    throw new Error("Invalid retained workbench source classification");
+  const workbenchConvergeSources = Object.fromEntries(
+    await Promise.all(
+      servicePaths
+        .filter((path) => !retainedWorkbench.includes(path))
+        .map(async (path) => [path, lines(await readFile(resolve(root, path), "utf8"))]),
+    ),
+  );
+  const checkedSources = [...main, ...serviceSources];
+  const checkedMainFiles = checkedSources.filter(
     (file) => /@ts-check\b/.test(file.source) || /\.tsx?$/.test(file.path),
   ).length;
+  const mainSourceLines = sum(main);
   const metrics = {
+    workbenchConvergeLines: row(
+      Object.values(workbenchConvergeSources).reduce((total, count) => total + count, 0),
+      "down",
+      "services/workbench/src",
+      "R1/R2/R4/R5 convergence source lines; exact retained paths in $workbenchRetainedSources; new paths count by default",
+    ),
+    mainSourceLines: row(
+      mainSourceLines,
+      "down",
+      "app/src",
+      "Physical lines of all owned Main source, including native shell; same scope as counts.mainSourceLines",
+    ),
+    mainBusinessLines: row(
+      Object.values(mainBusinessSources).reduce((total, count) => total + count, 0),
+      "down",
+      "app/src",
+      "Physical lines of Host/workbench/Core business and mixed Main modules; exact native-shell exemptions in $mainNativeSources; new paths count by default",
+    ),
     mainCheckedFiles: row(
       checkedMainFiles,
       "up",
       "app/src",
-      "Files with @ts-check or TypeScript extension",
+      "Main and migrated workbench desktop/core, domains, workspace-files and host-library-store files with @ts-check or TypeScript extension; retains the historical metric name",
     ),
     mainTypeCoverage: row(
-      main.length ? checkedMainFiles / main.length : null,
+      checkedSources.length ? checkedMainFiles / checkedSources.length : null,
       "up",
       "app/src",
-      "Checked Main source files / all owned Main source files; native typecheck separately validates the program",
+      "Checked Main and migrated workbench source files / all owned source files in that scope; native typecheck separately validates the program",
     ),
     appLines: row(
       app ? app.lines : null,
@@ -289,8 +363,12 @@ export async function collectHealth({ root = gui } = {}) {
     scope:
       "GUI production app/src, renderer/src, packages/*/{src,client}, and package-root implementations; excludes package build/config/declaration tooling, vendor/generated/design previews/i18n messages/tests; manifest covers GUI root package only",
     metrics,
+    workbenchConvergeSources,
+    workbenchRetainedSources: retainedWorkbench,
+    mainBusinessSources,
+    mainNativeSources,
     counts: {
-      mainSourceLines: sum(main),
+      mainSourceLines,
       uiCssLines: sum(
         files.filter(
           (file) => file.path.startsWith("packages/ui/src/") && file.path.endsWith(".css"),
@@ -318,19 +396,27 @@ function execFileSyncResult(args, root) {
 }
 
 // 继承问题单独归因，但仍按已审核基准判定失败，不能借比较基点自动豁免。
-async function baseHealth(base, root) {
+async function baseHealth(base, root, nativeSources, retainedWorkbenchSources) {
   const gitRoot = execFileSyncResult(["rev-parse", "--show-toplevel"], root);
   if (!gitRoot) throw new Error(`Unavailable baseline base ${base}`);
   const gui = relative(gitRoot, root).replaceAll("\\", "/");
   const design = relative(gitRoot, resolve(root, "../../design")).replaceAll("\\", "/");
   const directory = await mkdtemp(join(tmpdir(), "areal-health-base-"));
   try {
-    const archive = execFileSync("git", ["archive", "--format=tar", base, "--", gui, design], {
+    const workbench = "services/workbench/src";
+    const paths = [gui, design];
+    if (execFileSyncResult(["ls-tree", "--name-only", base, "--", workbench], gitRoot))
+      paths.push(workbench);
+    const archive = execFileSync("git", ["archive", "--format=tar", base, "--", ...paths], {
       cwd: gitRoot,
       maxBuffer: 1 << 30,
     });
     execFileSync("tar", ["-x", "-C", directory], { input: archive });
-    return await collectHealth({ root: join(directory, gui) });
+    return await collectHealth({
+      root: join(directory, gui),
+      nativeSources,
+      retainedWorkbenchSources,
+    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -342,6 +428,24 @@ function inheritedFrom(failure, before) {
     : before.metrics[failure.metric]?.value;
   if (!Number.isFinite(old)) return false;
   return failure.direction === "up" ? failure.current >= old : failure.current <= old;
+}
+
+function validateNativeSources(sources) {
+  if (
+    !sources ||
+    typeof sources !== "object" ||
+    Array.isArray(sources) ||
+    !Object.entries(sources).every(
+      ([path, reason]) =>
+        path.startsWith("app/src/") &&
+        sourceExtension.test(path) &&
+        !path.endsWith(".css") &&
+        !path.split("/").some((part) => part === ".." || part === ".") &&
+        typeof reason === "string" &&
+        reason.trim().length > 0,
+    )
+  )
+    throw new Error("Invalid Main native source classification");
 }
 
 function validateBaseline(baseline) {
@@ -362,6 +466,12 @@ function validateBaseline(baseline) {
   }
   if (!Object.values(baseline.$sourceCaps).every((value) => Number.isFinite(value) && value >= 0))
     throw new Error("Invalid source path caps");
+  if (
+    baseline.$rebaseline &&
+    !(/^[0-9a-f]{40}$/.test(baseline.$rebaseline.base) && baseline.$rebaseline.reason)
+  )
+    throw new Error("Invalid rebaseline record: needs a full base commit and a reason");
+  if (baseline.mainBusinessLines) validateNativeSources(baseline.$mainNativeSources);
   return baseline;
 }
 
@@ -414,6 +524,8 @@ function baselineFrom(report, previous) {
   return {
     $schemaVersion: 1,
     $revision: report.revision,
+    $mainNativeSources: report.mainNativeSources,
+    $workbenchRetainedSources: report.workbenchRetainedSources,
     ...Object.fromEntries(
       Object.entries(report.metrics).map(([name, metric]) => [
         name,
@@ -442,6 +554,9 @@ async function main() {
   );
   const report = await collectHealth({ root });
   const write = args.includes("--write");
+  const metric = value("--metric");
+  if (metric && (!(metric in report.metrics) || write))
+    throw new Error("--metric requires a known metric and cannot write a partial baseline");
   if (!write && !args.includes("--check")) {
     console.log(JSON.stringify(report, null, 2));
     return;
@@ -463,10 +578,21 @@ async function main() {
   ]);
   for (const name of allowed)
     if (!names.has(name)) throw new Error(`Unknown regression exception ${name}`);
+  if (allowed.has("workbenchConvergeLines"))
+    throw new Error("Workbench convergence growth cannot be waived with --allow-regression");
+  if (allowed.has("mainBusinessLines") || allowed.has("mainSourceLines"))
+    throw new Error("Main source growth cannot be waived with --allow-regression");
   const failures = baseline ? compare(report, baseline) : [];
   const base = value("--base") ?? process.env.AREAL_DESIGN_BASE;
   const reviewedTransitions = [];
-  if (base && baseline) {
+  let measuredBase;
+  // 架构迁移一次性换基线：只对登记的那一个基点提交免去“相对基点只降不升”，合入后的下一次比较自动恢复。
+  const rebaselined =
+    base && baseline?.$rebaseline
+      ? execFileSyncResult(["rev-parse", "--verify", `${base}^{commit}`], root) ===
+        baseline.$rebaseline.base
+      : false;
+  if (base && baseline && !rebaselined) {
     const gitRoot = execFileSyncResult(["rev-parse", "--show-toplevel"], root);
     if (!gitRoot) throw new Error(`Unavailable baseline base ${base}`);
     const before = JSON.parse(
@@ -476,6 +602,66 @@ async function main() {
       }),
     );
     validateBaseline(before);
+    // 首次引入也从基点源码实测，不能靠新指标缺席或当前文件改名获得余量。
+    measuredBase = await baseHealth(
+      base,
+      root,
+      before.$mainNativeSources ?? report.mainNativeSources,
+      before.$workbenchRetainedSources ?? report.workbenchRetainedSources,
+    );
+    for (const name of ["mainSourceLines", "mainBusinessLines"]) {
+      const measured = measuredBase.metrics[name].value;
+      if (!before[name] && baseline[name]?.value !== report.metrics[name].value)
+        failures.push({ metric: name, reason: "initial baseline must equal actual Main lines" });
+      if (baseline[name]?.value > measured)
+        failures.push({
+          metric: name,
+          baseline: measured,
+          current: baseline[name].value,
+          direction: "down",
+          reason: "baseline exceeds actual Main lines at base",
+        });
+      if (report.metrics[name].value > measured)
+        failures.push({
+          metric: name,
+          baseline: measured,
+          current: report.metrics[name].value,
+          direction: "down",
+          reason: "Main source grew against base",
+        });
+    }
+    const convergence = "workbenchConvergeLines";
+    const actual = report.metrics[convergence].value;
+    const measured = measuredBase.metrics[convergence].value;
+    if (!before[convergence] && baseline[convergence]?.value !== measured)
+      failures.push({
+        metric: convergence,
+        reason: "initial baseline must equal actual workbench lines at base",
+      });
+    if (actual > measured || baseline[convergence]?.value > measured)
+      failures.push({
+        metric: convergence,
+        reason: "workbench source or baseline grew against actual base",
+        current: actual,
+        baseline: measured,
+        direction: "down",
+      });
+    if (before[convergence])
+      for (const path of report.workbenchRetainedSources)
+        if (!(before.$workbenchRetainedSources ?? []).includes(path))
+          failures.push({
+            metric: convergence,
+            path,
+            reason: "retained exemption added against base",
+          });
+    if (before.mainBusinessLines)
+      for (const path of Object.keys(report.mainNativeSources))
+        if (!(path in before.$mainNativeSources))
+          failures.push({
+            metric: "mainBusinessLines",
+            path,
+            reason: "native exemption added against base",
+          });
     for (const [name, current] of Object.entries(baseline).filter(
       ([name]) => !name.startsWith("$"),
     )) {
@@ -516,10 +702,12 @@ async function main() {
         });
   }
   const regressions = failures.filter(
-    (failure) => !failure.reason?.includes("relaxed") && Number.isFinite(failure.current),
+    (failure) =>
+      (!metric || failure.metric === metric) &&
+      !failure.reason?.includes("relaxed") &&
+      Number.isFinite(failure.current),
   );
-  const before =
-    !write && base && baseline && regressions.length ? await baseHealth(base, root) : null;
+  const before = !write && base && baseline && regressions.length ? measuredBase : null;
   const inherited = before ? regressions.filter((failure) => inheritedFrom(failure, before)) : [];
   inherited.forEach((failure) =>
     console.warn(
@@ -529,7 +717,9 @@ async function main() {
       }),
     ),
   );
-  const rejected = failures.filter((failure) => !allowed.has(failure.metric));
+  const rejected = failures.filter(
+    (failure) => (!metric || failure.metric === metric) && !allowed.has(failure.metric),
+  );
   if (rejected.length) {
     rejected.forEach((failure) => console.error(JSON.stringify(failure)));
     process.exitCode = 1;
@@ -544,9 +734,13 @@ async function main() {
       passed: true,
       written: write,
       reviewedTransitions,
+      rebaselinedFrom: rebaselined ? baseline.$rebaseline : null,
       allowedRegressions: failures.filter((failure) => allowed.has(failure.metric)),
       inheritedRegressions: inherited,
-      metrics: report.metrics,
+      metrics: metric ? { [metric]: report.metrics[metric] } : report.metrics,
+      workbenchConvergeSources: report.workbenchConvergeSources,
+      mainBusinessSources: report.mainBusinessSources,
+      mainNativeSources: report.mainNativeSources,
     }),
   );
 }

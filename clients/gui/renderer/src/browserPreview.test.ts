@@ -6,10 +6,10 @@ describe("browser operation failures", () => {
   it("uses an explicit permission rejection instead of inferring it from page text", () => {
     expect(
       previewFailure(Object.assign(new Error("denied"), { code: "BROWSER_PERMISSION_DENIED" })),
-    ).toEqual({ kind: "permission", message: "denied" });
+    ).toEqual({ kind: "permission", message: "操作没有完成，请重试。" });
     expect(previewFailure(new Error("permission denied by page"))).toEqual({
       kind: "operation",
-      message: "permission denied by page",
+      message: "操作没有完成，请重试。",
     });
   });
   it("retains an unknown action outcome for inspection", () => {
@@ -27,7 +27,10 @@ describe("desktop preview failure transport", () => {
       readPreviewResult(result);
       expect.fail("expected permission rejection");
     } catch (error) {
-      expect(previewFailure(error)).toEqual({ kind: "permission", message: "denied" });
+      expect(previewFailure(error)).toEqual({
+        kind: "permission",
+        message: "操作没有完成，请重试。",
+      });
     }
     expect(
       readPreviewResult({ error: "ERR_CONNECTION_REFUSED", url: "http://localhost:1234" }),

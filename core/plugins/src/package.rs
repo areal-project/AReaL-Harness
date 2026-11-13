@@ -720,6 +720,8 @@ pub(crate) fn parse_context(
         skills: vec![],
         required_tools: vec![],
         onboarding_skill: None,
+        connector_servers: Default::default(),
+        status: None,
     };
     if portable && let Some(value) = manifest.pointer("/extensions/org.areal/hostRequirements") {
         #[derive(serde::Deserialize)]
@@ -946,7 +948,7 @@ pub(crate) fn parse_context(
         if present {
             d.components.push(label.into());
             d.diagnostics
-                .push("Connector IDs require explicit mapping and account authentication".into());
+                .push("Connector IDs resolve through the marketplace connectors.json; unlisted IDs are unsupported".into());
         }
     }
     if let Ok(schema) = crate::configuration::schema(overlay.get("userConfig")) {

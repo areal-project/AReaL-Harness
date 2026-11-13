@@ -131,14 +131,16 @@ impl Engine {
                 candidate = prepared;
                 activation = Some((turn, permit));
             }
+            let mut model_changed = false;
             if let Some(configuration) = accepted_configuration {
-                engine.remember_accepted_model(&mut candidate, &configuration)?;
+                model_changed = engine.remember_accepted_model(&mut candidate, &configuration)?;
                 result["lastAcceptedModel"] = json!(candidate.desktop.as_ref().unwrap().last_accepted_model);
             }
             if let Some(command) = command { result["command"] = json!(command); }
             remember(candidate.desktop.as_mut().unwrap(), &identity, &request.request_id, method, hash, result.clone());
             engine.persist(&candidate).await?;
             state.thread = candidate;
+            if model_changed { engine.emit_model_catalog_changed(); }
             if edit_source.is_some() {
                 // A deletion is explicit, unlike partial turn/completed events.
                 cell.emit("areal/thread/edited", json!({"threadId": request.thread_id, "thread": state.thread}));
@@ -236,8 +238,9 @@ impl Engine {
                 let mut result = json!({"queueItemId":item.id,"queueRevision":data.queue.revision,"configRevision":item.configuration.revision});
                 data.queue.items.push(item);
                 let mut candidate=state.thread.clone();candidate.desktop=Some(data);
+                let mut model_changed = false;
                 if skill.is_none() {
-                    engine.remember_accepted_model(&mut candidate, &accepted_configuration)?;
+                    model_changed = engine.remember_accepted_model(&mut candidate, &accepted_configuration)?;
                     result["lastAcceptedModel"] = json!(candidate.desktop.as_ref().unwrap().last_accepted_model);
                 }
                 remember(candidate.desktop.as_mut().unwrap(),&identity,&request.request_id,method,hash,result.clone());
@@ -249,6 +252,7 @@ impl Engine {
                     candidate.goals.event_sequence += 1;
                 }
                 engine.persist(&candidate).await?;state.thread=candidate;
+                if model_changed { engine.emit_model_catalog_changed(); }
                 engine.goal_emit(&cell, &state.thread);
                 cell.emit("areal/queue/updated",json!({"threadId":request.thread_id,"queue":state.thread.desktop.as_ref().unwrap().queue}));
                 drop(state);
@@ -270,12 +274,14 @@ impl Engine {
                 if skill.is_some() { candidate.desktop.as_mut().unwrap().configuration = original_configuration; }
                 let permit=engine.reserve_active_turn()?;
                 let mut result=json!({"turn":turn});
+                let mut model_changed = false;
                 if skill.is_none() {
-                    engine.remember_accepted_model(&mut candidate, &accepted_configuration)?;
+                    model_changed = engine.remember_accepted_model(&mut candidate, &accepted_configuration)?;
                     result["lastAcceptedModel"] = json!(candidate.desktop.as_ref().unwrap().last_accepted_model);
                 }
                 remember(candidate.desktop.as_mut().unwrap(),&identity,&request.request_id,method,hash,result.clone());
                 engine.persist(&candidate).await?;state.thread=candidate;
+                if model_changed { engine.emit_model_catalog_changed(); }
                 engine.activate(&cell,&mut state,&turn,engine.shutdown.child_token(),permit);
                 Ok(result)
             }
@@ -339,18 +345,12 @@ impl Engine {
                 "thread requires restart after persistence or cleanup failure".into(),
             ));
         }
-        if !state.thread.dynamic_tools.is_empty()
-            && cell
-                .bindings
-                .read()
-                .await
-                .host
-                .as_ref()
-                .is_none_or(|host| host.is_closed())
-        {
-            return Err(invalid(
-                "tool host unavailable; resume with its owner before dispatch",
-            ));
+        if !state.thread.dynamic_tools.is_empty() && {
+            let bindings = cell.bindings.read().await;
+            !bindings.can_start_without_tool_host()
+                && bindings.host.as_ref().is_none_or(|host| host.is_closed())
+        } {
+            return Err(Error::ToolHostUnavailable);
         }
         if state.thread.turns.iter().flat_map(|t|&t.items).any(|i|matches!(i,Item::DynamicToolCall{execution,..} if execution.inspection.is_none() && (execution.outcome==areal_protocol::ToolOutcome::Unknown || execution.hooks.iter().any(|h|h.outcome==areal_protocol::ToolOutcome::Unknown)))){return Err(invalid("UNKNOWN requires operator inspection"));}
         if state.thread.turns.iter().flat_map(|turn| &turn.items).any(|item| matches!(item,
@@ -390,7 +390,9 @@ impl Engine {
             }
             let mut candidate = state.thread.clone();
             let data = candidate.desktop.get_or_insert_with(Default::default);
-            if data.queue.revision != expected {
+            // 只有会覆盖内容或顺序的操作才比对版本；暂停、继续、删除按目标本身判断，
+            // 队列在别处刚变过也照常执行，不让人为一次无害的并发重试。
+            if matches!(action.as_str(), "update" | "reorder") && data.queue.revision != expected {
                 return Err(Error::Conflict);
             }
             match action.as_str() {

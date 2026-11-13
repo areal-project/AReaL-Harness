@@ -266,7 +266,7 @@ artifactRef 必须是 Host 从已验证 Thread/Turn/Item 或 Review 记录产生
 | 配对 | 120 秒；Host 最多一个活跃邀请，最多 8 个待处理握手 |
 | Noise/hello 等待 | 15 秒；本地审批等待不超过邀请截止 |
 | 活跃设备连接 | Host 最多 16；单设备最多 2（页面切换可重连） |
-| 应用 JSON 消息 | 256 KiB；超大历史或制品必须分页/分段 |
+| 应用 JSON 消息 | 未授权阶段（hello/配对）256 KiB；授权后 8 MiB，超大历史或制品必须分页/分段 |
 | 原始传输帧 | 最多 512 KiB；base64 转发需计入膨胀，客户端正确拆帧 |
 | 发送积压 | 每连接 2 MiB；超限发 RESYNC_REQUIRED 或断连，不阻塞 Core |
 | 收取积压 | 每连接 2 MiB；超限关闭 |
@@ -278,9 +278,9 @@ artifactRef 必须是 Host 从已验证 Thread/Turn/Item 或 Review 记录产生
 
 `ready` 与 `host.describe` 的 `limits` 保留 `readRequestsPerSecond:20` 字段以兼容现有客户端；此值实际约束读写合计。新增 `writeRequestsPerSecond:5` 与 `writeBurst:10` 如实声明连接级写令牌桶。`session.create`、`session.send`、`turn.stop`、`interaction.respond`、`task.question.reply` 与 `task.pause` 共用写额度，`command.read` 只计入合计请求窗口。额度由 Host 时间连续补充，不能超过 10；Direct/Relay 共用此检查路径，各连接独立，重连建立新桶。当前设备授权检查先于速率检查；写额度不足在 journal、观察准入与 Core 派发前返回脱敏 `LIMIT_EXCEEDED`，不保存 pending、不自动重放，也不因该拒绝关闭健康连接。
 
-限制保护 HTTP/WebSocket/Noise 和投影各层，不只保护最后的业务处理。安全通道长度前缀解码器在JSON解析前就必须应用256 KiB上限，不能保留旧24 MiB解码上限后才做业务校验；外层帧与base64大小也在解码前受限。慢消费者不能拖慢桌面或其他设备。Limits 回传真实有效值，UI 禁止按更大限制提交。
+限制保护 HTTP/WebSocket/Noise 和投影各层，不只保护最后的业务处理。安全通道长度前缀解码器在正文分配与 JSON 解析前就必须按当前授权状态应用上限（未授权阶段 256 KiB，授权后 8 MiB），不能保留旧 24 MiB 解码上限后才做业务校验；外层帧与 base64 大小也在解码前受限。慢消费者不能拖慢桌面或其他设备。Limits 回传真实有效值，UI 禁止按更大限制提交。
 
-错误为 `{id,error:{code,message,coreCode?,commandId?,submissionUnknown,observedState?}}`。message 脱敏，Client 按 code 行为，不解析文字。核心 code：PROTOCOL_UNSUPPORTED、FORBIDDEN、GRANT_CHANGED、AUTH_REVOKED、PAIRING_EXPIRED、PAIRING_USED、CORE_UNAVAILABLE、CORE_INCOMPATIBLE、TURN_BUSY、TASK_CONTROL_REQUIRED、TARGET_CHANGED、INTERACTION_EXPIRED、COMMAND_CONFLICT、SUBMISSION_UNKNOWN、INVALID_PARAMS、LIMIT_EXCEEDED、CAPACITY_EXCEEDED、RESOURCE_UNAVAILABLE、UNSUPPORTED_PROFILE、RESYNC_REQUIRED。
+错误为 `{id,error:{code,message,coreCode?,commandId?,submissionUnknown,observedState?}}`。message 脱敏，Client 按 code 行为，不解析文字。核心 code：PROTOCOL_UNSUPPORTED、FORBIDDEN、GRANT_CHANGED、AUTH_REVOKED、PAIRING_EXPIRED、PAIRING_USED、CORE_UNAVAILABLE、CORE_INCOMPATIBLE、TURN_BUSY、TASK_CONTROL_REQUIRED、TARGET_CHANGED、INTERACTION_EXPIRED、COMMAND_CONFLICT、SUBMISSION_UNKNOWN、INVALID_PARAMS、ATTACHMENT_UNSUPPORTED、LIMIT_EXCEEDED、CAPACITY_EXCEEDED、RESOURCE_UNAVAILABLE、UNSUPPORTED_PROFILE、RESYNC_REQUIRED。
 
 ## C10. 网络/进程恢复
 

@@ -1,0 +1,69 @@
+{
+  "source": "provider-contracts.test.mjs secure session directory fixture",
+  "legacy": {
+    "kind": "grant",
+    "payload": {
+      "hostId": "urn:uuid:fixture",
+      "clientId": "client-one",
+      "email": "same@fixture.invalid",
+      "access": "fixture-one",
+      "refresh": "refresh-one"
+    }
+  },
+  "record": {
+    "kind": "directory",
+    "payload": {
+      "version": 1,
+      "hostId": "urn:uuid:fixture",
+      "activeId": "second",
+      "records": {
+        "primary": {
+          "label": "ChatGPT 1",
+          "record": {
+            "kind": "grant",
+            "payload": {
+              "hostId": "urn:uuid:fixture",
+              "clientId": "client-one",
+              "email": "same@fixture.invalid",
+              "access": "fixture-one",
+              "refresh": "refresh-one"
+            }
+          }
+        },
+        "second": {
+          "label": "ChatGPT 2",
+          "record": {
+            "kind": "grant",
+            "payload": {
+              "clientId": "client-two",
+              "email": "same@fixture.invalid",
+              "access": "fixture-two",
+              "refresh": "refresh-two"
+            }
+          }
+        }
+      }
+    }
+  },
+  "public": {
+    "activeAccountId": "second",
+    "accounts": [
+      {
+        "id": "primary",
+        "label": "ChatGPT 1",
+        "email": "same@fixture.invalid",
+        "active": false,
+        "state": "saved",
+        "billing": "subscription"
+      },
+      {
+        "id": "second",
+        "label": "ChatGPT 2",
+        "email": "same@fixture.invalid",
+        "active": true,
+        "state": "saved",
+        "billing": "subscription"
+      }
+    ]
+  }
+}

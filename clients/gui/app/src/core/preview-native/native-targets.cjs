@@ -213,7 +213,9 @@ class NativePageTargets {
   async actionTarget(page, c, ref) {
     const { identity, backendNodeId } = this.refNode(page, ref);
     /** @type {import("./model.js").CdpResult<"Accessibility.getPartialAXTree">} */
-    const ax = await c.debugger.sendCommand("Accessibility.getPartialAXTree", { backendNodeId });
+    const ax = await c.debugger.sendCommand("Accessibility.getPartialAXTree", {
+      backendNodeId,
+    });
     /** @type {import("./model.js").CdpResult<"DOM.describeNode">} */
     const dom = await c.debugger.sendCommand("DOM.describeNode", { backendNodeId, depth: 2 });
     /** @param {import("./model.js").DomNode|undefined} value */
@@ -235,29 +237,29 @@ class NativePageTargets {
         (property) => property.name === "disabled" && property.value?.value === true,
       )
     )
-      throw new Error("target_unavailable");
+      throw Object.assign(new Error("target_unavailable"), { reason: "ax_target_invalid" });
     /** @type {import("./model.js").CdpResult<"DOM.getContentQuads">} */
-    const { quads = [] } = await c.debugger.sendCommand("DOM.getContentQuads", { backendNodeId });
+    const { quads = [] } = await c.debugger.sendCommand("DOM.getContentQuads", {
+      backendNodeId,
+    });
     const viewport = await readViewport(c);
+    let reason = "content_quads_unavailable";
     for (const quad of quads) {
       if (quad.length !== 8) continue;
       const x = (quad[0] + quad[2] + quad[4] + quad[6]) / 4;
       const y = (quad[1] + quad[3] + quad[5] + quad[7]) / 4;
-      if (
-        !Number.isFinite(x) ||
-        !Number.isFinite(y) ||
-        x < 0 ||
-        y < 0 ||
-        x >= viewport.width ||
-        y >= viewport.height
-      )
-        continue;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      if (reason !== "hit_target_mismatch") reason = "target_outside_viewport";
+      if (x < 0 || y < 0 || x >= viewport.width || y >= viewport.height) continue;
       const hit = await c.debugger.sendCommand("DOM.getNodeForLocation", {
         x: Math.round(x),
         y: Math.round(y),
         includeUserAgentShadowDOM: false,
       });
-      if (hit.backendNodeId !== backendNodeId) continue;
+      if (hit.backendNodeId !== backendNodeId) {
+        reason = "hit_target_mismatch";
+        continue;
+      }
       return {
         identity,
         backendNodeId,
@@ -268,7 +270,7 @@ class NativePageTargets {
         name: safeText(node.name?.value, 256),
       };
     }
-    throw new Error("target_unavailable");
+    throw Object.assign(new Error("target_unavailable"), { reason });
   }
 
   /**

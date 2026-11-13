@@ -1003,7 +1003,7 @@ async fn app_file_receipt_and_close_context_race() {
 }
 
 #[tokio::test]
-async fn long_mcp_aliases_are_valid_distinct_and_preserve_connector_id() {
+async fn long_mcp_aliases_are_valid_distinct_and_connectors_resolve_from_marketplace() {
     let workspace = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();
     write(
@@ -1025,7 +1025,17 @@ async fn long_mcp_aliases_are_valid_distinct_and_preserve_connector_id() {
     write(
         workspace.path(),
         "pkg/.app.json",
-        &json!({"apps":[{"id":original,"name":"GitHub"}]}).to_string(),
+        &json!({"apps":[{"id":original,"name":"GitHub"},{"id":"unlisted-app","name":"Other"}]})
+            .to_string(),
+    );
+    // 市场收录的连接器在安装时变成普通远程 MCP；未收录的 ID 只报告为不支持。
+    write(
+        workspace.path(),
+        "connectors.json",
+        &json!({"version":1,"services":[{"id":"gh","aliases":[original],
+            "mcp":{"type":"streamable-http","url":"https://connector.invalid/mcp"},
+            "auth":{"type":"api_key","headerScheme":"bearer"}}]})
+        .to_string(),
     );
     let config = json!({"command":"python3","args":["server.py"]});
     let mut servers = serde_json::Map::new();
@@ -1078,17 +1088,32 @@ async fn long_mcp_aliases_are_valid_distinct_and_preserve_connector_id() {
     e.plugin_connection(d.id.clone(), digest.clone(), false)
         .await
         .unwrap();
-    let mapping = e
-        .connector_configure(
-            d.id.clone(),
-            original.into(),
-            "github".into(),
-            "fixture-reference".into(),
-            digest,
-        )
-        .await
+    let rows = e.plugin_mcp_list().await.unwrap();
+    let row = rows["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["pluginId"] == d.id.as_str())
         .unwrap();
-    assert_eq!(mapping["connectorId"], original);
+    let states: std::collections::BTreeMap<_, _> = row["connectors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| (c["id"].as_str().unwrap(), c["state"].as_str().unwrap()))
+        .collect();
+    assert_eq!(states[original], "mapped");
+    assert_eq!(states["unlisted-app"], "missingMapping");
+    let remote = row["servers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["config"]["transport"] == "streamable-http")
+        .expect("connector resolved into a plugin MCP server");
+    assert_eq!(
+        remote["config"]["authenticationRequirements"]["mode"],
+        "api_key"
+    );
+    assert_eq!(remote["state"], "authRequired");
     assert_eq!(
         e.plugin_component_summary(d.id).await.unwrap()["apps"][0]["id"],
         original

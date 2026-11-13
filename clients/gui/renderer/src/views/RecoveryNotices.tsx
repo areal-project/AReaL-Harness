@@ -1,4 +1,5 @@
 import { Button } from "../components/ui/button.js";
+import { rawText } from "../errors/errorCopy.js";
 import { FeedbackNotice } from "../FeedbackNotice.js";
 import { useI18n } from "../i18n/IntlProvider.js";
 import { isTechnicalErrorMessage, recoverySettings } from "../recoveryPresentation.js";
@@ -27,7 +28,11 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
           transient
           message={
             notice.kind === "unconfirmed"
-              ? t("recovery.operationUnconfirmed")
+              ? t(
+                  /turn\/(start|enqueue|submit)$/.test(notice.operation?.method ?? "")
+                    ? "recovery.sendUnresolved"
+                    : "recovery.operationUnresolved",
+                )
               : isTechnicalErrorMessage(notice.message)
                 ? t("recovery.operationFailed")
                 : notice.message
@@ -66,12 +71,14 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() =>
+                  onClick={() => {
+                    const target = { projectId: notice.projectId };
                     void resourceAction("reconcile", {
-                      projectId: notice.projectId,
+                      ...target,
                       requestId: notice.requestId,
-                    }).catch(() => {})
-                  }
+                    }).catch(() => {});
+                    void resourceAction("reconcile", target).catch(() => {});
+                  }}
                 >
                   {t("recovery.checkOriginal")}
                 </Button>
@@ -80,13 +87,14 @@ export function RecoveryNotices({ recovery, startup, session, surfaces }: Recove
           }
         />
       ))}
-      {restorationFailed && !dismissedNotices.has(restorationNoticeId) && (
+      {/* 对话区读不出来时原位已有说明和重试；只有对话仍显示旧内容时才提醒。 */}
+      {restorationFailed && session.thread && !dismissedNotices.has(restorationNoticeId) && (
         <FeedbackNotice
           tone="error"
           message={restorationError}
           detail={
-            viewFailure && viewFailure.message !== restorationError
-              ? viewFailure.message
+            viewFailure && rawText(viewFailure) !== restorationError
+              ? rawText(viewFailure)
               : undefined
           }
           onDismiss={() => dismissNotice(restorationNoticeId)}

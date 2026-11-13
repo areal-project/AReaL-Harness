@@ -7,71 +7,72 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  padding: 16px 8px 12px;
+  padding: var(--spacing-field) var(--spacing-inline) calc(var(--spacing-inline) * 1.5);
 }
 
 .settings-sidebar .settings-sidebar-title {
-  font-size: 18px;
-  line-height: 24px;
-  font-weight: 600;
+  font-size: var(--text-ui-xl);
+  line-height: var(--line-height-title);
+  font-weight: var(--font-weight-strong);
   color: var(--color-foreground);
-  margin: 0 8px 12px;
-  letter-spacing: -0.01em;
+  margin: 0 var(--spacing-inline) calc(var(--spacing-inline) * 1.5);
+  letter-spacing: var(--tracking-heading-tight);
 }
 
 .settings-sidebar .settings-navigation-search input {
-  height: 36px;
+  height: var(--spacing-control-lg);
   border-radius: var(--radius-full);
   background: var(--color-sidebar-item);
-  border: 1px solid transparent;
+  border: var(--border-width-default) solid transparent;
   font-size: var(--text-ui-base);
-  line-height: calc(var(--ui-font-size) + 4px);
-  padding-left: 36px;
+  line-height: var(--line-height-ui);
+  padding-left: calc(var(--spacing-inline) * 2.5 + var(--icon-size-control));
   color: var(--color-foreground);
   transition:
     border-color var(--motion-normal) var(--ease-standard),
-    background-color var(--motion-normal) var(--ease-standard);
+    background-color var(--motion-normal) var(--ease-standard),
+    box-shadow var(--motion-normal) var(--ease-standard);
 }
 
 .settings-sidebar .settings-navigation-search input:focus {
   outline: none;
-  border-color: var(--color-brand);
-  background: var(--color-background);
+  border-color: var(--color-input-border-focused);
+  background: var(--color-input-focused);
+  box-shadow: none;
 }
 
 .settings-sidebar .settings-category-navigation {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--spacing-field);
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  padding: 8px;
+  padding: var(--spacing-inline);
 }
 
 .settings-sidebar .settings-category-navigation section {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: calc(var(--spacing-inline) / 4);
 }
 
 .settings-sidebar .settings-group-label {
   font-size: var(--text-ui-base);
-  font-weight: 500;
-  line-height: 21px;
-  color: var(--color-settings-secondary);
-  padding: 0 8px 4px;
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-ui);
+  color: var(--color-foreground-subtle);
+  padding: 0 var(--spacing-inline) calc(var(--spacing-inline) / 2);
   margin: 0;
 }
 
 .settings-sidebar .settings-navigation-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-inline);
   width: 100%;
-  height: max(30px, calc(var(--ui-font-size) + 16px));
-  min-height: 30px;
-  padding: 5px 8px;
+  height: var(--navigation-row-height);
+  padding: 0 var(--spacing-inline);
   margin: 0;
   border-radius: var(--radius-navigation);
   border: none !important;
@@ -79,8 +80,8 @@
   box-shadow: none !important;
   background: transparent;
   color: var(--color-foreground);
-  font-size: var(--text-ui-caption);
-  font-weight: 400;
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-normal);
   text-align: left;
   cursor: var(--interactive-cursor, pointer);
   transition:
@@ -89,8 +90,8 @@
 }
 
 .settings-sidebar .settings-navigation-item svg {
-  width: 16px;
-  height: 16px;
+  width: var(--icon-size-control);
+  height: var(--icon-size-control);
   flex-shrink: 0;
   color: currentColor;
   opacity: 1;
@@ -98,7 +99,7 @@
 
 .settings-sidebar .settings-navigation-item span {
   font-size: var(--text-ui-base);
-  line-height: 1.5;
+  line-height: var(--line-height-ui);
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -106,15 +107,14 @@
 }
 
 .settings-sidebar .settings-navigation-item:hover {
-  background-color: var(--color-sidebar-item, var(--color-hover));
+  background-color: var(--color-sidebar-item);
   color: var(--color-foreground);
 }
 
 .settings-sidebar .settings-navigation-item[aria-pressed="true"],
 .settings-sidebar .settings-navigation-item[aria-current="page"] {
-  background-color: var(--color-sidebar-item, var(--color-selected)) !important;
+  background-color: var(--color-navigation-selected) !important;
   color: var(--color-foreground) !important;
-  font-weight: 400;
 }
 
 .settings-sidebar .settings-navigation-item[aria-pressed="true"] svg,
@@ -124,9 +124,9 @@
 }
 
 .settings-sidebar .settings-navigation-empty {
-  padding: 12px 10px;
+  padding: calc(var(--spacing-inline) * 1.5);
   font-size: var(--text-ui-caption);
-  color: var(--color-muted-foreground);
+  color: var(--color-foreground-subtle);
   text-align: center;
 }
 
@@ -190,16 +190,16 @@
 .workspace-navigation {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: calc(var(--spacing-inline) / 2);
   flex-shrink: 0;
 }
 .workspace-navigation button:disabled {
-  opacity: 0.4;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 .icon-button {
-  width: 28px;
-  height: 28px;
+  width: var(--spacing-control);
+  height: var(--spacing-control);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -220,4 +220,25 @@
 .icon-button.active {
   color: var(--color-foreground);
   background: var(--color-selected);
+}
+.settings-sidebar .settings-navigation-item .settings-navigation-match {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-ui-xs);
+  color: var(--color-foreground-subtle);
+}
+
+/* 带计数的图标按钮：胶囊形，常驻显示数字。 */
+.icon-button[data-variant="count"] {
+  width: auto;
+  gap: 6px;
+  padding: 0 8px 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-elevated);
+}
+.icon-button[data-variant="count"]:hover:not(:disabled) {
+  background: var(--color-surface-tertiary);
 }

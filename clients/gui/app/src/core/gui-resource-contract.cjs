@@ -1,6 +1,5 @@
 // @ts-check
 "use strict";
-/** @typedef {Record<string,unknown> & {threadId?:string,requestId?:string}} SideResponse */
 /** @param {unknown} value @returns {value is Record<string,unknown>} */
 function record(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -20,20 +19,6 @@ function readGuiThreadIdentity(value) {
   if (typeof value.projectId !== "string" || typeof value.threadId !== "string")
     throw Object.assign(new Error("无效桌面任务身份"), { code: "INVALID_DESKTOP_REQUEST" });
   return { projectId: value.projectId, threadId: value.threadId };
-}
-/** @param {unknown} value @param {unknown} requestId @param {boolean} mutation @param {boolean} [requireThread] @returns {SideResponse} */
-function readSideResponse(value, requestId, mutation, requireThread = false) {
-  if (!sideResponse(value) || (requireThread && typeof value.threadId !== "string"))
-    invalidResponse(requestId, mutation);
-  return value;
-}
-/** @param {unknown} value @returns {value is SideResponse} */
-function sideResponse(value) {
-  return (
-    record(value) &&
-    (value.threadId === undefined || typeof value.threadId === "string") &&
-    (value.requestId === undefined || typeof value.requestId === "string")
-  );
 }
 /** @param {unknown} value @param {unknown} requestId @param {boolean} recovery @returns {{confirmed:true,id:string}|{confirmed:false}} */
 function readGuiProcessResponse(value, requestId, recovery) {
@@ -58,6 +43,5 @@ function guiProcess(value) {
 module.exports = {
   readGuiProcesses,
   readGuiThreadIdentity,
-  readSideResponse,
   readGuiProcessResponse,
 };

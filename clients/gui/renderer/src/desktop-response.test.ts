@@ -1,5 +1,62 @@
 import { describe, expect, it } from "vite-plus/test";
-import { readFileOpenResult } from "./desktop-response.js";
+import { hostCommandError, readFileOpenResult, readSnapshot } from "./desktop-response.js";
+
+describe("Host command response loss", () => {
+  it.each([
+    {
+      name: "queueEdit",
+      params: { operation: "pause", requestId: "original-queue" },
+      id: "original-queue",
+    },
+    {
+      name: "manage",
+      params: { operation: "taskDraftStart", draftId: "original-draft" },
+      id: "original-draft",
+    },
+  ])(
+    "retains the original $name business identity for receipt reconciliation",
+    ({ name, params, id }) => {
+      expect(hostCommandError(name, params, new Error("connection closed"))).toMatchObject({
+        submissionUnknown: true,
+        requestId: id,
+        outcome: { kind: "unconfirmed" },
+        recovery: { kind: "queryOriginal" },
+      });
+    },
+  );
+
+  it("keeps domain response IDs distinct from recoverable mutation IDs", () => {
+    expect(
+      hostCommandError("respond", { requestId: "interaction" }, new Error("connection closed")),
+    ).not.toHaveProperty("requestId");
+  });
+});
+
+describe("desktop Host recovery snapshots", () => {
+  it.each([
+    { recovery: "check", phase: "admissionUnconfirmed" },
+    { recovery: "reconnect", phase: "completed" },
+  ])("preserves $recovery for a $phase Host stop", ({ recovery, phase }) => {
+    const snapshot = {
+      projects: [],
+      connection: { state: "unavailable", recovery },
+      lifecycle: {
+        supported: false,
+        kind: "stopHost",
+        phase,
+        operations: [{ requestId: "original-stop", kind: "stopHost", phase, targets: [] }],
+      },
+    };
+
+    expect(readSnapshot(snapshot)).toMatchObject(snapshot);
+  });
+
+  it("rejects an unknown recovery action", () => {
+    expect(() =>
+      readSnapshot({ projects: [], connection: { state: "unavailable", recovery: "restart" } }),
+    ).toThrow();
+  });
+});
 
 describe("desktop file-open responses", () => {
   it("accepts PDF bytes returned for the in-app viewer", () => {

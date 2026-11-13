@@ -20,8 +20,7 @@ export const goalControlError = (cause: unknown) => {
 import type { Action, Data } from "./services.js";
 import "./Goal.css";
 
-type GoalState =
-  import("@areal/workbench/desktop-contract/management").ManagementResponseMap["goal"];
+type GoalState = import("./services.js").ManagementResponseMap["goal"];
 type Goal = NonNullable<GoalState["goal"]>;
 type GoalStatus = Goal["status"];
 type Props = { project: Data; thread: Data; action: Action };

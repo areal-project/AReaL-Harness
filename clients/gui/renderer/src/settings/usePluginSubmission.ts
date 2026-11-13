@@ -1,14 +1,13 @@
 import { useRef, useState, type RefObject } from "react";
-import type {
-  ManagementResponseMap,
-  PluginMutation,
-} from "@areal/workbench/desktop-contract/management";
+import { currentErrorText } from "../errors/currentErrorText.js";
+import { pluginStoreOperation, type ManagementResponseMap } from "../services.js";
 import type {
   PluginCommand,
   PluginMutationRequest,
   PluginOperation,
   PluginActivity,
   PluginReceipt,
+  PluginWrite,
 } from "./pluginTypes.js";
 import {
   UiMessageError,
@@ -28,11 +27,11 @@ export type PluginFailure = {
 };
 export function failure(cause: unknown): PluginFailure {
   if (cause instanceof UiMessageError) return { message: cause.descriptor };
-  if (cause instanceof Error) return cause;
+  if (cause instanceof Error) return Object.assign({}, cause, { message: currentErrorText(cause) });
   return { message: { id: "settings.pluginCenter.pluginOperationFailed" } };
 }
 export function failureText(error: PluginFailure | null, t: Translate) {
-  const text = error ? formatUiMessage(t, error.message) : "";
+  const text = error ? formatUiMessage(t, error.message) : ""; // raw-error-ok: failure() 已呈现
   if (!error) return "";
   return [
     error.submissionUnknown ? t("settings.pluginCenter.submissionResultUnconfirmed") : "",
@@ -45,7 +44,7 @@ export function failureText(error: PluginFailure | null, t: Translate) {
     .join(" ");
 }
 
-type Result = ManagementResponseMap[PluginMutation | "pluginAuth"];
+type Result = ManagementResponseMap[PluginWrite];
 type Context = {
   projectId?: string;
   connected: boolean;
@@ -98,11 +97,13 @@ export function usePluginSubmission() {
       if (context.mounted.current) {
         const error = failure(cause);
         const originalFailure = { ...original, requestId: error.requestId ?? requestId };
-        if (error.submissionUnknown && values.operation !== "pluginAuth")
-          setSubmission(originalFailure);
+        // 登记写入没有可查的项目回执：随后重读的登记就是结果，不进入“核对原提交”。
+        const checkable =
+          values.operation !== "pluginAuth" && !pluginStoreOperation(values.operation);
+        if (error.submissionUnknown && checkable) setSubmission(originalFailure);
         setError({
           ...error,
-          ...(values.operation === "pluginAuth" ? { submissionUnknown: false } : {}),
+          ...(checkable ? {} : { submissionUnknown: false }),
           ...(error.submissionUnknown ? { requestId: originalFailure.requestId } : {}),
           operation: originalFailure,
         });
@@ -113,7 +114,13 @@ export function usePluginSubmission() {
     }
   };
   const recover = async (original: PluginOperation, context: Context) => {
-    if (original.mutation === "pluginAuth" || active.current || !context.connected) return;
+    if (
+      original.mutation === "pluginAuth" ||
+      pluginStoreOperation(original.mutation) ||
+      active.current ||
+      !context.connected
+    )
+      return;
     active.current = true;
     setActivity({ ...original, kind: "check" });
     setMessage("");
@@ -143,9 +150,11 @@ export function usePluginSubmission() {
       setSubmission(null);
       if (receipt.status === "failed" || receipt.error) {
         setError({
-          message: receipt.error?.message ?? {
-            id: "settings.pluginCenter.theOriginalPluginOperationIsConfirmedFailed",
-          },
+          message: receipt.error
+            ? currentErrorText(receipt.error)
+            : {
+                id: "settings.pluginCenter.theOriginalPluginOperationIsConfirmedFailed",
+              },
           code: receipt.error?.code,
           reason: receipt.error?.reason,
           requestId: original.requestId,

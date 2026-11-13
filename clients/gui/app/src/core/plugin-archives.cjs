@@ -2,7 +2,7 @@
 "use strict";
 const { basename } = require("node:path");
 const { randomUUID } = require("node:crypto");
-const { record } = require("./resource-contract.cjs");
+const { record } = require("@areal/workbench-service/desktop/core/resource-contract.cjs");
 
 class PluginArchives {
   /** @param {{backend:Pick<InstanceType<typeof import("./service-client.cjs").SharedCoreBackend>,"snapshot"|"command">,choose:(options:import("electron").OpenDialogOptions)=>Promise<import("electron").OpenDialogReturnValue>}} options */

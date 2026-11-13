@@ -1,3 +1,5 @@
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
+import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 // M1/M2 公开路径：集成且 GUI、Core 构建完成后运行一次。
@@ -6,12 +8,17 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, writeFile, readdir, stat, cp, rm } from "node:fs/promises";
+import { mkdir, readFile, writeFile, readdir, stat, cp, rm } from "node:fs/promises";
+import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { captureSmokeFailure, selectConversation } from "./smoke-navigation.mjs";
 import { withSmokeDeadline } from "./smoke-deadline.mjs";
-import { closeRecordedSmokeApplication } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeRecordedSmokeApplication,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 
 const gui = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const root = resolve(gui, "../..");
@@ -21,7 +28,7 @@ const { _electron: electron } = require("playwright-core");
 const binary = process.env.AREAL_CORE_BIN || join(root, "target/debug/areal");
 const evidenceRoot = join(root, ".scratch", "gui-evidence");
 await mkdir(evidenceRoot, { recursive: true });
-const scratch = await mkdtemp(join(evidenceRoot, "conversation-derivation-"));
+const scratch = await trackedMkdtemp(join(evidenceRoot, "conversation-derivation-"));
 // Unix socket 注册路径使用短的隔离目录；录屏和日志仍留在持久证据目录。
 const serviceRegistry = await makeTempDir("scf-svc-");
 const workspace = join(scratch, "workspace");
@@ -433,9 +440,7 @@ async function composeText(input, text, label, append = false) {
   }
 }
 async function send(text, threadId) {
-  const previousCount = threadId
-    ? (project(await state())?.state?.threads?.[threadId]?.turns?.length ?? 0)
-    : 0;
+  const previousCount = threadId ? ((await readCoreThread(threadId))?.turns?.length ?? 0) : 0;
   const previousRequests = requests.length;
   await page.getByTestId("chat-input").fill(text);
   await page
@@ -449,22 +454,33 @@ async function send(text, threadId) {
   const activeId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
   assert.ok(activeId);
   if (threadId) assert.equal(activeId, threadId);
-  const snapshot = await until((s) => {
-    const turns = project(s)?.state?.threads?.[activeId]?.turns;
+  let turns;
+  await until(async () => {
+    turns = (await readCoreThread(activeId))?.turns;
     return (
       turns?.length > previousCount &&
       turns.at(-1)?.status === "completed" &&
       requests.length > previousRequests
     );
   }, `completed send ${text}`);
-  const turns = project(snapshot).state.threads[activeId].turns;
   assert.ok(turns.at(-1)?.id);
+  await page.locator(`[data-turn-id="${turns.at(-1).id}"][data-turn-status="completed"]`).waitFor();
   return { threadId: activeId, turnId: turns.at(-1).id };
+}
+async function readCoreThread(threadId) {
+  return observeCoreThread({
+    binary,
+    env,
+    gui,
+    threadId,
+    project: project(await state()),
+    workspace,
+  });
 }
 async function stopService(env) {
   const { ServiceConnection } = require(join(desktop, "src/core/service-client.cjs"));
   const { DesktopLifecycle } = require(join(desktop, "src/core/lifecycle.cjs"));
-  const { executeCore } = require(join(desktop, "src/core/core-process.cjs"));
+  const { executeCore } = require(join(gui, "scripts/support/core-process-fixture.cjs"));
   const service = async (args) =>
     JSON.parse(
       (
@@ -799,94 +815,63 @@ try {
   await page.getByRole("tab", { name: "fixture", exact: true }).click();
   await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
   await page.keyboard.press("Escape");
-  // 共享后台独立运行；在真实连接的返回边界记录 Core 已确认的创建键。
-  await app.evaluate(
-    ({ app }, connectionPath) => {
-      const read = process
-        .getBuiltinModule("module")
-        .createRequire(app.getAppPath() + "/package.json");
-      const { ServiceConnection } = read(connectionPath);
-      const original = ServiceConnection.prototype.request;
-      globalThis.__scfMutations = [];
-      ServiceConnection.prototype.request = async function (method, parameters, mutation) {
-        globalThis.__scfConnection = this;
-        if (method !== "command") {
-          return original.call(this, method, parameters, mutation);
-        }
-        // 一次性修改出站参数，拒绝结果仍由真实 Core 产生。
-        const fixture = globalThis.__scfRejectNext;
-        if (fixture === "workflow" && parameters.name === "fork") {
-          parameters = {
-            ...parameters,
-            request: {
-              ...parameters.request,
-              target: { agentProfile: { id: "zz-scf-automatic", revision: "v1" } },
-            },
-          };
-          globalThis.__scfRejectNext = null;
-        } else if (
-          fixture === "selection" &&
-          parameters.name === "side" &&
-          parameters.request.operation === "start"
-        ) {
-          parameters = {
-            ...parameters,
-            request: {
-              ...parameters.request,
-              selection: { ...parameters.request.selection, textSha256: "0".repeat(64) },
-            },
-          };
-          globalThis.__scfRejectNext = null;
-        } else if (
-          fixture === "workspace-read" &&
-          parameters.name === "side" &&
-          parameters.request.operation === "start"
-        ) {
-          parameters = {
-            ...parameters,
-            request: { ...parameters.request, workspaceAccess: "readOnly" },
-          };
-          globalThis.__scfRejectNext = null;
-        }
-        const entry = {
-          command: parameters.name,
-          parameters: parameters.request,
-          mutation: mutation === true,
-          accepted: false,
+  // 在实际 Host 通道注入参数并记录真实回执；提交后只丢弃客户端收到的结果。
+  await page.evaluate(installHostTransportBarrier);
+  await page.evaluate(() => {
+    globalThis.__scfMutations = [];
+    globalThis.__scfBarrier = globalThis.createHostTransportBarrier((frame) => {
+      if (frame.method !== "desktop.command") return null;
+      const command = frame.params?.command;
+      let request = frame.params?.request;
+      const fixture = globalThis.__scfRejectNext;
+      if (fixture === "workflow" && command === "fork") {
+        request = {
+          ...request,
+          target: { agentProfile: { id: "zz-scf-automatic", revision: "v1" } },
         };
-        if (fixture && !globalThis.__scfRejectNext) entry.fixture = fixture;
-        globalThis.__scfMutations.push(entry);
-        try {
-          const result = await original.call(this, method, parameters, mutation);
-          entry.accepted = true;
-          entry.requestId = result?.requestId ?? parameters.request?.requestId ?? null;
-          entry.resultThreadId = result?.threadId ?? result?.thread?.id ?? null;
-          if (parameters.name === "media" && result?.bytes) {
-            const bytes = Buffer.from(result.bytes, "base64");
-            entry.resultSha256 = process
-              .getBuiltinModule("crypto")
-              .createHash("sha256")
-              .update(bytes)
-              .digest("hex");
-            entry.resultLength = bytes.length;
-          }
-          if (parameters.name === "fork" && globalThis.__scfLoseNextForkResponse) {
+        frame.params.request = request;
+        globalThis.__scfRejectNext = null;
+      } else if (fixture === "selection" && command === "side" && request.operation === "start") {
+        request = { ...request, selection: { ...request.selection, textSha256: "0".repeat(64) } };
+        frame.params.request = request;
+        globalThis.__scfRejectNext = null;
+      } else if (
+        fixture === "workspace-read" &&
+        command === "side" &&
+        request.operation === "start"
+      ) {
+        request = { ...request, workspaceAccess: "readOnly" };
+        frame.params.request = request;
+        globalThis.__scfRejectNext = null;
+      }
+      const record = { command, parameters: request, accepted: false };
+      if (fixture && !globalThis.__scfRejectNext) record.fixture = fixture;
+      const loseResponse = command === "fork" && globalThis.__scfLoseNextForkResponse;
+      const gate = {
+        data: JSON.stringify(frame),
+        ...(loseResponse
+          ? { response: "replace", error: { message: "SCF fixture: committed GUI response lost" } }
+          : {}),
+        onResponse(reply) {
+          record.responseId = reply.id;
+          record.accepted = !reply.error;
+          record.error = reply.error?.message;
+          record.errorCode = reply.error?.code;
+          record.requestId = reply.result?.requestId ?? record.parameters?.requestId ?? null;
+          record.resultThreadId = reply.result?.threadId ?? reply.result?.thread?.id ?? null;
+          if (command === "media" && typeof reply.result?.bytes === "string")
+            record.resultBytes = reply.result.bytes;
+          if (loseResponse && record.accepted) {
             globalThis.__scfLoseNextForkResponse = false;
-            entry.fixture = "committed GUI response lost";
-            throw Object.assign(new Error("SCF fixture: committed GUI response lost"), {
-              submissionUnknown: true,
-              requestId: entry.requestId,
-            });
+            record.fixture = "committed GUI response lost";
           }
-          return result;
-        } catch (error) {
-          entry.error = error.message;
-          throw error;
-        }
+        },
       };
-    },
-    join(desktop, "src/core/service-client.cjs"),
-  );
+      record.transport = gate;
+      globalThis.__scfMutations.push(record);
+      return gate;
+    });
+  });
   const first = await send(`${head} ${unicodeExcerpt}`);
   sourceThreadId = first.threadId;
   anchorTurnId = first.turnId;
@@ -936,11 +921,16 @@ try {
   await forkDialog.waitFor({ state: "hidden" });
   await anchor.getByRole("button", { name: "从此轮创建聊天分支", exact: true }).click();
   await forkDialog.waitFor();
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.__scfRejectNext = "workflow";
   });
   await forkDialog.getByRole("button", { name: "创建分支", exact: true }).click();
   await forkDialog.getByRole("alert").filter({ hasText: "PROFILE_NOT_SUPPORTED" }).waitFor();
+  const rejectedFork = (await page.evaluate(() => globalThis.__scfMutations)).find(
+    (entry) => entry.fixture === "workflow",
+  );
+  assert.ok(rejectedFork?.transport.requestId != null && rejectedFork.accepted === false);
+  assert.equal(rejectedFork.responseId, rejectedFork.transport.requestId);
   assert.equal(
     await forkDialog.getByRole("button", { name: "创建分支", exact: true }).isEnabled(),
     true,
@@ -951,19 +941,24 @@ try {
   checks.push(
     "AC15/61: compact Fork offers one inherited-config action, dismisses via Escape/outside click, and preserves retry after actual Core Workflow rejection without a target or model request",
   );
-  await app.evaluate(() => {
+  await page.evaluate(() => {
     globalThis.__scfLoseNextForkResponse = true;
   });
   await forkDialog.getByRole("button", { name: "创建分支", exact: true }).click();
   await forkDialog.getByRole("button", { name: "核对受理结果", exact: true }).waitFor();
   await forkDialog.getByRole("alert").filter({ hasText: "请先核对原提交" }).waitFor();
   assert.equal(await forkDialog.getByRole("button", { name: "创建分支", exact: true }).count(), 0);
-  const lostResult = (await app.evaluate(() => globalThis.__scfMutations)).find(
+  const lostResult = (await page.evaluate(() => globalThis.__scfMutations)).find(
     (entry) => entry.fixture === "committed GUI response lost",
   );
   assert.ok(lostResult?.accepted && lostResult.resultThreadId && lostResult.requestId);
+  assert.ok(lostResult.transport.requestId != null);
+  assert.equal(lostResult.transport.responseHit, lostResult.transport.requestId);
   assert.equal(requests.length, beforeCreation.modelRequests);
-  assert.equal(Object.keys(project(await state()).state.threads).length, 2);
+  const storedThreads = (await readdir(join(scratch, "core", projectId, "state")))
+    .filter((name) => /^[a-f0-9-]{36}\.json$/i.test(name))
+    .map((name) => name.slice(0, -5));
+  assert.deepEqual(storedThreads.sort(), [sourceThreadId, lostResult.resultThreadId].sort());
   await shot("01b-fork-response-unknown.png");
   await page.keyboard.press("Escape");
   await forkDialog.waitFor({ state: "hidden" });
@@ -1026,10 +1021,11 @@ try {
     return current && current !== id;
   }, targetThreadId);
   nestedThreadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-  const nestedFork = project(await state()).state.threads[nestedThreadId];
+  const nestedFork = await readCoreThread(nestedThreadId);
   assert.equal(nestedFork.conversation.origin.sourceThreadId, targetThreadId);
   assert.equal(nestedFork.conversation.historySeed.turnCount, 1);
   assert.equal(nestedFork.turns.length, 0);
+  await page.locator(`[data-turn-id="${anchorTurnId}"] .user-bubble`).waitFor();
   assert.equal(requests.length, requestsBeforeNested);
   await selectConversation(page, targetThreadId);
   checks.push(
@@ -1148,7 +1144,7 @@ try {
       unicodeExcerpt,
     );
   await selectSideExcerpt();
-  let sideTrigger = page.getByRole("button", { name: "在旁路中询问所选内容", exact: true });
+  let sideTrigger = page.getByRole("button", { name: "在侧边聊天中询问所选内容", exact: true });
   const selectionActions = page.getByTestId("transcript-selection-actions");
   const addToChat = selectionActions.getByRole("button", { name: "添加到聊天", exact: true });
   await selectionActions.waitFor();
@@ -1157,7 +1153,7 @@ try {
   assert.equal(
     await page
       .locator(".message-actions")
-      .getByRole("button", { name: "在旁路中询问所选内容", exact: true })
+      .getByRole("button", { name: "在侧边聊天中询问所选内容", exact: true })
       .count(),
     0,
   );
@@ -1261,14 +1257,18 @@ try {
     "selection creates an idle child without model execution",
   );
   await sidePane.locator("[data-conversation-selection-reference-count]").waitFor();
-  const sideInput = sidePane.getByRole("textbox", { name: "随心输入", exact: true });
+  const sideInput = sidePane.getByRole("textbox", {
+    name: "描述要做的事，@ 引用文件，/ 查看命令",
+    exact: true,
+  });
   await sideInput.fill(sideQuestion);
   await sidePane.getByRole("button", { name: "发送", exact: true }).click();
-  const sideAnswered = await until(
-    (snapshot) =>
-      project(snapshot).state.threads[sideThreadId]?.turns.at(-1)?.status === "completed",
-    "current Side answer completed",
-  );
+  let sideTurn;
+  const sideAnswered = await until(async () => {
+    sideTurn = (await readCoreThread(sideThreadId))?.turns.at(-1);
+    return sideTurn?.status === "completed";
+  }, "current Side answer completed");
+  await sidePane.locator(`[data-turn-id="${sideTurn.id}"][data-turn-status="completed"]`).waitFor();
   const sourceAfter = project(sideAnswered).state.threads[sourceThreadId];
   assert.deepEqual(
     sourceAfter.turns.map((turn) => turn.id),
@@ -1293,11 +1293,11 @@ try {
   );
   await shot("05-current-side-answered.png");
   await writeFile(toolRelease, "release\n");
-  await until(
-    (snapshot) =>
-      project(snapshot).state.threads[sourceThreadId].turns.at(-1)?.status === "completed",
-    "source Runtime command settled",
-  );
+  await until(async () => {
+    const thread = await readCoreThread(sourceThreadId);
+    return thread?.turns.find((turn) => turn.id === activeTurnId)?.status === "completed";
+  }, "source Runtime command settled");
+  await page.locator(`[data-turn-id="${activeTurnId}"][data-turn-status="completed"]`).waitFor();
   checks.push(
     "current selection-to-Side creates an idle executable child, sends verified Unicode context only on explicit send, and preserves source identity/configuration while its real Runtime command is active",
   );
@@ -1336,19 +1336,51 @@ try {
   await writeFile(toolRelease, "cleanup\n");
   for (const release of heldResponses.values()) release();
   heldResponses.clear();
+  let originalAdapter = null;
+  try {
+    originalAdapter = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      events.push({ adapterIdentityError: error.message });
+      failure ??= error.stack ?? String(error);
+      passed = false;
+      process.exitCode = 1;
+    }
+  }
   if (app) {
     if (!firstMutations.length)
       try {
         firstMutations = await withSmokeDeadline("mutation evidence", () =>
-          app.evaluate(() => globalThis.__scfMutations ?? []),
+          page.evaluate(() => globalThis.__scfMutations ?? []),
         );
+        for (const entry of firstMutations) {
+          try {
+            entry.mutation = commandSemantics(entry.command, entry.parameters).effect !== "read";
+          } catch {
+            entry.mutation = null;
+          }
+          if (entry.resultBytes) {
+            const bytes = Buffer.from(entry.resultBytes, "base64");
+            entry.resultSha256 = createHash("sha256").update(bytes).digest("hex");
+            entry.resultLength = bytes.length;
+            delete entry.resultBytes;
+          }
+        }
       } catch (error) {
         events.push({ requestCaptureError: error.message });
       }
     try {
+      await page?.evaluate(() => globalThis.__scfBarrier?.restore());
+    } catch (error) {
+      events.push({ transportCleanupError: error.message });
+      failure ??= error.stack ?? String(error);
+      passed = false;
+      process.exitCode = 1;
+    }
+    try {
       await closeRecordedSmokeApplication(app, 20000, async () => {
         await app.evaluate(({ dialog }) => {
-          dialog.showMessageBox = async () => ({ response: 1 });
+          dialog.showMessageBox = async () => ({ response: 0 });
         });
         if (videoPath) restartVideoPath = await page?.video()?.path();
         else videoPath = await page?.video()?.path();
@@ -1360,19 +1392,23 @@ try {
       process.exitCode = 1;
     }
   }
+  let cleanupConfirmed = true;
   try {
+    const receipt = await stopFixtureHost(binary, serviceRegistry, scratch);
+    assert.ok(receipt, "the original fixture Host stop is confirmed");
+    await assertApplicationStopped(binary, env, originalAdapter);
     await stopService(env);
-    await cp(serviceRegistry, join(scratch, "service-registry"), { recursive: true });
-    await rm(serviceRegistry, { recursive: true, force: true });
   } catch (error) {
-    events.push({ cleanupFailed: error.message, retainedRegistry: serviceRegistry });
+    cleanupConfirmed = false;
+    events.push({ hostCleanupFailed: error.message, retainedRegistry: serviceRegistry });
     failure ??= error.stack ?? String(error);
     passed = false;
     process.exitCode = 1;
-    await cp(serviceRegistry, join(scratch, "service-registry"), { recursive: true }).catch(
-      (copyError) => events.push({ registryEvidenceCopyError: copyError.message }),
-    );
   }
+  await cp(serviceRegistry, join(scratch, "service-registry"), { recursive: true }).catch((error) =>
+    events.push({ registryEvidenceCopyError: error.message }),
+  );
+  if (cleanupConfirmed) await rm(serviceRegistry, { recursive: true, force: true });
   if (server) {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));

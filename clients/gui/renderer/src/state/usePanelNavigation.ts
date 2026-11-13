@@ -81,8 +81,27 @@ export function usePanelNavigation(
             ?.focus({ preventScroll: true });
       });
   };
+  const openSettings = (target: string) => {
+    if (!initialReleased) return;
+    const supported = session.services.capabilities?.settings;
+    if (session.readOnly && !supported?.includes(target)) return;
+    if (!session.readOnly) workspacePanels.exposePanel();
+    setSettingsTab(target);
+    setSettingsOpen(true);
+  };
   const showPanel = (name: string) => {
     if (!initialReleased) return;
+    if (
+      ["设置", "Skills", "MCP", "高级诊断", "后台服务", "会话配置"].includes(name) &&
+      !(name === "Skills" && thread)
+    ) {
+      const supported = session.services.capabilities?.settings;
+      openSettings(
+        name === "设置" ? (supported?.[0] ?? "模型服务") : name === "后台服务" ? "高级诊断" : name,
+      );
+      return;
+    }
+    if (session.readOnly) return;
     if (name === "预览") {
       void openBrowser();
       return;
@@ -112,11 +131,6 @@ export function usePanelNavigation(
       workspacePanels.selectPanel("Skills");
       return;
     }
-    if (["设置", "Skills", "MCP", "后台服务", "会话配置"].includes(name)) {
-      setSettingsTab(name === "设置" ? "模型服务" : name);
-      setSettingsOpen(true);
-      return;
-    }
     if (name === "终端") {
       if (isTerminalTab(panel) || panel === "终端") workspacePanels.selectPanel("功能");
       setTerminalOpen((value) => !value);
@@ -143,6 +157,15 @@ export function usePanelNavigation(
   const subscribeShortcuts = () => {
     const listener = (event: KeyboardEvent) => {
       if (!initialReleased || event.isComposing) return;
+      if (
+        session.readOnly &&
+        !(
+          (event.metaKey || event.ctrlKey) &&
+          (event.key.toLowerCase() === "k" ||
+            (event.key === "," && session.services.capabilities?.settings?.length))
+        )
+      )
+        return;
       if (
         (event.metaKey || event.ctrlKey) &&
         !event.altKey &&
@@ -210,6 +233,7 @@ export function usePanelNavigation(
     openTerminal,
     hidePanel,
     showPanel,
+    openSettings,
     subscribeNarrowLayout,
     subscribeShortcuts,
   };

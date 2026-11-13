@@ -18,6 +18,8 @@ export type TaskContextProps = {
   headingRef?: Ref<HTMLHeadingElement>;
   actions?: ReactNode;
   onBack?: () => void;
+  /** Inside a popover that already draws the frame. */
+  embedded?: boolean;
   children: ReactNode;
 };
 function TaskContextRoot({
@@ -28,6 +30,7 @@ function TaskContextRoot({
   headingRef,
   actions,
   onBack,
+  embedded = false,
   children,
 }: TaskContextProps) {
   return (
@@ -36,6 +39,7 @@ function TaskContextRoot({
       hidden={hidden}
       onKeyDown={onKeyDown}
       className="areal-task-context"
+      data-embedded={embedded || undefined}
       aria-label="任务上下文"
     >
       <header className="areal-context-top">
@@ -112,6 +116,7 @@ type ContextSourcesProps<T> = {
   onAdd?: () => void;
   collapseLabel?: string;
   expandLabel?: string;
+  title?: string;
 };
 function ContextSources<T extends { id: string }>({
   items,
@@ -120,6 +125,7 @@ function ContextSources<T extends { id: string }>({
   onAdd,
   collapseLabel = "收起",
   expandLabel = "展开",
+  title = "来源",
 }: ContextSourcesProps<T>) {
   const [open, setOpen] = useState(true);
   const id = useId();
@@ -129,10 +135,10 @@ function ContextSources<T extends { id: string }>({
         <div className="areal-sources-heading">
           <Collapsible.Trigger
             render={<Button variant="ghost" className="areal-sources-trigger" />}
-            aria-label={`${open ? "折叠来源" : "展开来源"} Sources ${open ? collapseLabel : expandLabel}`}
+            aria-label={`${title} ${open ? collapseLabel : expandLabel}`}
             aria-controls={id}
           >
-            <span>Sources</span>
+            <span>{title}</span>
             <span className="areal-sources-toggle-label">{open ? collapseLabel : expandLabel}</span>
           </Collapsible.Trigger>
           {onAdd && (

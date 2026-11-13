@@ -40,6 +40,7 @@ const {
  * "areal-core:choose-task-directory":[],
  * "areal-core:command":[name:unknown,params:unknown],
  * "areal-core:file-open":[request:unknown],
+ * "areal-core:open-external":[url:unknown],
  * "areal-core:install-command-line-tools":[],
  * "areal-core:mcp-app":[request:unknown],
  * "areal-core:mcp-app-deep-link-consumed":[id:unknown],
@@ -69,6 +70,7 @@ const {
 /** @typedef {{
  * "areal-core:interface-locale":[locale:unknown],
  * "areal-core:projection-request":[requestId:unknown],
+ * "areal-core:window-close-decision":[decision:unknown],
  * "areal-core:quit-decision":[decision:unknown]
  * }} DesktopSendArguments */
 /** @typedef {{
@@ -80,6 +82,8 @@ const {
  * "areal-core:projection":[message:unknown],
  * "areal-core:quit-progress":[progress:unknown],
  * "areal-core:quit-request":[id:unknown],
+ * "areal-core:window-closing":[id:unknown],
+ * "areal-core:window-opened":[],
  * "areal-core:theme-changed":[theme:unknown],
  * "areal-core:update-changed":[state:unknown]
  * }} DesktopEventArguments */
@@ -108,8 +112,10 @@ const {
  * onSnapShotEvent?:(listener:(event:unknown)=>void)=>()=>void,
  * command:BridgeInvoke<'areal-core:command'>,snapshot:BridgeInvoke<'areal-core:snapshot'>,
  * presentReady:BridgeInvoke<'areal-core:present-ready'>,installCommandLineTools:BridgeInvoke<'areal-core:install-command-line-tools'>,
+ * getHostTicket?:()=>Promise<unknown>,
  * chooseProject:BridgeInvoke<'areal-core:choose-project'>,chooseTaskDirectory:BridgeInvoke<'areal-core:choose-task-directory'>,
  * chooseProjectlessDirectory:BridgeInvoke<'areal-core:choose-projectless-directory'>,fileOpen:BridgeInvoke<'areal-core:file-open'>,
+ * openExternal?:BridgeInvoke<'areal-core:open-external'>,
  * theme:BridgeInvoke<'areal-core:theme'>,preview:BridgeInvoke<'areal-core:preview'>,
  * updateState:BridgeInvoke<'areal-core:update-state'>,downloadUpdate:BridgeInvoke<'areal-core:update-download'>,
  * recoverUpdateResources:BridgeInvoke<'areal-core:update-recover-resources'>,
@@ -120,6 +126,8 @@ const {
  * onUpdate:(listener:(value:unknown)=>void)=>()=>void,onMcpAppEvent:(listener:(value:unknown)=>void)=>()=>void,
  * onQuitProgress:(listener:(value:QuitProgress)=>void)=>()=>void,
  * onQuitRequested:(listener:()=>boolean|Promise<boolean>)=>()=>void,
+ * onWindowClosing:(listener:()=>boolean|Promise<boolean>)=>()=>void,
+ * onWindowOpened:(listener:()=>void)=>()=>void,
  * onNotificationOpen:(listener:(value:NotificationTarget)=>void)=>()=>void,
  * onMcpAppDeepLink:(listener:(value:McpAppDeepLink)=>void|Promise<void>)=>()=>void
  * }} DesktopBridge */
@@ -142,6 +150,7 @@ const {
 /** @typedef {import("./desktop-contract/transport.cjs").CommandEffect} CommandEffect */
 /** @typedef {keyof typeof commandDefinitions} CommandName */
 /** @typedef {import('./desktop-contract/conversation.cjs').Requests & import('./desktop-contract/desktop-control.cjs').Requests & {
+ * recovery:({operation:"importProvider"}&import("../../remote-client/generated/host-protocol").RecoveryProviderImportParams)|{operation:"inspect",spaceId?:string}|{operation:"openWorkspace",spaceId?:string}|({operation:"history"}&import("../../remote-client/generated/host-protocol").RecoveryHistoryParams),
  * providers:import('./desktop-contract/provider.cjs').Request<'providers'>,
  * chatgpt:import('./desktop-contract/provider.cjs').Request<'chatgpt'>,
  * resources:import('./desktop-contract/resource.cjs').Request<'resources'>,
@@ -177,6 +186,7 @@ function isCommandInvocation(invocation, options) {
  * @typedef {N extends import('./desktop-contract/conversation.cjs').Name ? import('./desktop-contract/conversation.cjs').Response<N,P>
  * : N extends import('./desktop-contract/desktop-control.cjs').Name ? import('./desktop-contract/desktop-control.cjs').Response<N,P>
  * : N extends 'providers'|'chatgpt' ? import('./desktop-contract/provider.cjs').Response<N,P>
+ * : N extends 'recovery' ? P extends {operation:'importProvider'} ? import('../../remote-client/generated/host-protocol').RecoveryProviderImportResult : P extends {operation:'openWorkspace'} ? {projectId:string} : P extends {operation:'history'} ? import('../../remote-client/generated/host-protocol').RecoveryHistoryResult : import('../../remote-client/generated/host-protocol').RecoveryInspectResult
  * : N extends 'resources' ? import('./desktop-contract/resource.cjs').Response<N,P>
  * : N extends 'analytics'|'projectless'|'tasks' ? import('./desktop-contract/catalog.cjs').Response<N,P>
  * : N extends 'trajectory' ? import('./desktop-contract/trajectory.cjs').Response<N,P>
@@ -217,7 +227,10 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     scope !== "app" &&
     !(
       name === "manage" &&
-      ["pluginStoreSnapshot", "pluginStoreDoctor"].includes(String(params.operation))
+      // 直接添加的 MCP 是用户级插件，不属于某个项目。
+      ["pluginStoreSnapshot", "pluginStoreDoctor", "mcp", "mcpSave", "mcpRemove"].includes(
+        String(params.operation),
+      )
     ) &&
     !(
       name === "workspace" &&
@@ -228,6 +241,44 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
     invalid();
   if (scope === "thread" && !identifier(params.threadId)) invalid();
   switch (name) {
+    case "recovery":
+      if (params.operation === "importProvider") {
+        if (
+          ![params.requestId, params.providerId, params.templateDigest].every(identifier) ||
+          (params.spaceId !== undefined && !identifier(params.spaceId)) ||
+          Object.keys(params).some(
+            (key) =>
+              !["operation", "requestId", "providerId", "templateDigest", "spaceId"].includes(key),
+          )
+        )
+          invalid();
+        return;
+      }
+      if (params.operation === "history") {
+        if (
+          !identifier(params.projectId) ||
+          !identifier(params.threadId) ||
+          ["spaceId", "snapshotId", "cursor"].some(
+            (key) => params[key] !== undefined && !identifier(params[key]),
+          ) ||
+          (params.cursor !== undefined && params.snapshotId === undefined) ||
+          Object.keys(params).some(
+            (key) =>
+              !["operation", "spaceId", "projectId", "threadId", "snapshotId", "cursor"].includes(
+                key,
+              ),
+          )
+        )
+          invalid();
+        return;
+      }
+      if (
+        !["inspect", "openWorkspace"].includes(String(params.operation)) ||
+        (params.spaceId !== undefined && !identifier(params.spaceId)) ||
+        Object.keys(params).some((key) => !["operation", "spaceId"].includes(key))
+      )
+        invalid();
+      return;
     case "cloud":
     case "cloudSession":
       cloud.validateRequest(name, params);
@@ -256,14 +307,16 @@ function validateCommand(name, params, { serviceOnly = false } = {}) {
       if (!conversation.isRequest(name, params)) invalid();
       return;
     case "serviceLifecycle":
+    case "hostInstallation":
+    case "hostUpdate":
     case "serviceStatus":
     case "stopService":
     case "recoverResources":
     case "browserData":
     case "computerControl":
+    case "bugReport":
     case "exportDiagnostics":
     case "connectService":
-    case "export":
     case "remoteControl":
       if (!desktopControl.isRequest(name, params)) invalid();
       return;
@@ -487,6 +540,93 @@ const validatePreview = (request) => {
 function validateCommandResponse(name, params, value) {
   const invocation = readCommandInvocation(name, params, { serviceOnly: false });
   switch (invocation.name) {
+    case "recovery": {
+      if (invocation.request.operation === "importProvider") {
+        if (
+          !record(value) ||
+          ![value.requestId, value.providerId, value.templateDigest].every(identifier) ||
+          !["completed", "admissionUnknown"].includes(String(value.state))
+        )
+          invalid();
+        return;
+      }
+      if (invocation.request.operation === "history") {
+        if (
+          !record(value) ||
+          ![value.projectId, value.threadId, value.snapshotId, value.serviceGeneration].every(
+            identifier,
+          ) ||
+          typeof value.capturedAt !== "number" ||
+          value.readOnly !== true ||
+          value.attachments !== "unavailable" ||
+          !record(value.page)
+        )
+          invalid();
+        return;
+      }
+      if (invocation.request.operation === "openWorkspace") {
+        if (!record(value) || !identifier(value.projectId)) invalid();
+        return;
+      }
+      if (record(value) && value.kind === "none" && Object.keys(value).length === 1) return;
+      if (!record(value) || value.kind !== "space") invalid();
+      const nullable = (/** @type {unknown} */ item) => item === null || typeof item === "string";
+      if (
+        !record(value) ||
+        !identifier(value.spaceId) ||
+        !identifier(value.manifestDigest) ||
+        typeof value.workspace !== "string" ||
+        typeof value.hasExistingData !== "boolean" ||
+        !["available", "partial", "unavailable"].includes(String(value.providerCatalogState)) ||
+        !Array.isArray(value.scheduledTasks) ||
+        !value.scheduledTasks.every(
+          (row) =>
+            record(row) &&
+            [row.projectId, row.taskId, row.title].every((item) => typeof item === "string") &&
+            row.imported === false &&
+            (row.schedule === null || record(row.schedule)) &&
+            (row.scheduleV2 === null || record(row.scheduleV2)),
+        ) ||
+        !Array.isArray(value.taskCatalogUnavailable) ||
+        !value.taskCatalogUnavailable.every((item) => typeof item === "string") ||
+        typeof value.tasksTruncated !== "boolean" ||
+        typeof value.historyTruncated !== "boolean" ||
+        !Array.isArray(value.history) ||
+        !value.history.every(
+          (row) =>
+            record(row) &&
+            [row.projectId, row.threadId, row.title].every((item) => typeof item === "string"),
+        ) ||
+        value.tasks !== "notImported" ||
+        !record(value.previousHost) ||
+        ![
+          value.previousHost.hostId,
+          value.previousHost.generation,
+          value.previousHost.stopState,
+        ].every(nullable) ||
+        !Array.isArray(value.projects) ||
+        !value.projects.every(
+          (item) =>
+            record(item) &&
+            nullable(item.id) &&
+            typeof item.name === "string" &&
+            typeof item.root === "string" &&
+            item.execution === "unverified",
+        ) ||
+        !Array.isArray(value.providers) ||
+        !value.providers.every(
+          (item) =>
+            record(item) &&
+            nullable(item.id) &&
+            nullable(item.name) &&
+            item.credentials === "notImported" &&
+            Array.isArray(item.models) &&
+            item.models.every((model) => typeof model === "string"),
+        )
+      )
+        invalid();
+      return;
+    }
     case "connect":
     case "list":
     case "open":
@@ -511,14 +651,16 @@ function validateCommandResponse(name, params, value) {
       validateConversationResponse(invocation.name, invocation.request, value);
       return;
     case "serviceLifecycle":
+    case "hostInstallation":
+    case "hostUpdate":
     case "serviceStatus":
     case "stopService":
     case "recoverResources":
     case "browserData":
     case "computerControl":
+    case "bugReport":
     case "exportDiagnostics":
     case "connectService":
-    case "export":
     case "remoteControl":
       validateDesktopControlResponse(invocation.name, invocation.request, value);
       return;

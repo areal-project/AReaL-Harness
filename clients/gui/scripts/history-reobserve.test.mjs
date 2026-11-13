@@ -4,7 +4,8 @@ import { createRequire } from "node:module";
 import { CoreTaskModel } from "../packages/workbench/client/core-model.js";
 
 const require = createRequire(new URL("../app/package.json", import.meta.url));
-const { CoreBackend } = require("../app/src/core/backend.cjs");
+const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+const { CoreLibrary } = require("@areal/workbench-service/desktop/core/library.cjs");
 
 // 最新一轮超过一页：补全时最后一页带上一轮的尾部条目，与真实 Core 的分页边界一致。
 const latest = () => ({
@@ -201,7 +202,9 @@ test(
   async (t) => {
     const { once } = await import("node:events");
     const { WebSocketServer } = require("ws");
-    const { ProjectConnections } = require("../app/src/core/project-connections.cjs");
+    const {
+      ProjectConnections,
+    } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
     const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     await once(server, "listening");
     t.after(async () => {
@@ -225,7 +228,7 @@ test(
       interactionRevision: 1,
     };
     const capabilities = {
-      methods: ["areal/thread/observe", "areal/task/host/ready"],
+      methods: ["areal/thread/observe", "areal/task/host/ready", "areal/task/tools/ready"],
       features: { boundedObservation: true, boundedHistory: true },
     };
     server.on("connection", (socket) =>
@@ -292,6 +295,8 @@ test(
       starting: new Map(),
       saved: [project],
       closing: false,
+      desktopToolOwner: () => host,
+      desktopTools: () => [],
       worktrees: { assertAvailable() {}, async observeProject() {} },
       lifecycleOperations: {
         assertProject() {},
@@ -300,6 +305,7 @@ test(
         activeTargets: new Set(),
       },
       providers: {
+        manages: () => true,
         async reconcileProject() {
           // 两个 WebSocket 帧可能分属不同事件循环；等待可观察事件，不假设帧与 RPC 同步到达。
           await liveDelta;
@@ -313,11 +319,6 @@ test(
         async acceptModelSelection() {},
         async refreshSubscription() {},
         redact: (value) => value,
-      },
-      resources: {
-        async syncMcp() {
-          calls.push("mcp");
-        },
       },
       analytics: { async syncProject() {} },
       library: { async recordThreadActivity() {}, async recordThreadSummaries() {} },
@@ -348,9 +349,231 @@ test(
     assert.deepEqual(first.interactions.selected, { revision: 1, data: [] });
     assert.equal(calls.filter((method) => method === "areal/thread/observe").length, 1);
     assert.ok(calls.indexOf("areal/thread/observe") < calls.indexOf("provider"));
-    assert.ok(calls.indexOf("mcp") < calls.indexOf("areal/task/host/ready"));
-    assert.ok(calls.indexOf("areal/task/host/ready") < calls.indexOf("thread/list"));
+    assert.ok(calls.indexOf("areal/task/tools/ready") < calls.indexOf("thread/list"));
+    assert.equal(calls.includes("areal/task/host/ready"), false);
     for (const finish of held) finish();
     await project.summaryReads;
+  },
+);
+
+test(
+  "live settings refresh schedule tools while ownerless and stale Main connections cannot publish",
+  { timeout: 5000 },
+  async (t) => {
+    const { once } = await import("node:events");
+    const { WebSocketServer } = require("ws");
+    const {
+      ProjectConnections,
+    } = require("@areal/workbench-service/desktop/core/project-connections.cjs");
+    const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+    await once(server, "listening");
+    t.after(async () => {
+      for (const socket of server.clients) socket.terminate();
+      await new Promise((resolve) => server.close(resolve));
+    });
+    const calls = [],
+      publications = [],
+      responses = new Map();
+    let browserAvailable = true;
+    let socket,
+      requestId = 0;
+    server.on("connection", (connected) => {
+      socket = connected;
+      connected.on("message", (raw) => {
+        const message = JSON.parse(raw);
+        if (!message.method) {
+          responses.get(message.id)?.(message);
+          responses.delete(message.id);
+          return;
+        }
+        if (message.id === undefined) return;
+        calls.push(message.method);
+        if (message.method === "areal/task/tools/ready") publications.push(message.params);
+        const result =
+          message.method === "areal/capabilities"
+            ? {
+                methods: [
+                  "areal/thread/observe",
+                  "areal/thread/tools/attach",
+                  "areal/task/host/ready",
+                  "areal/task/tools/ready",
+                ],
+                features: {
+                  browserToolAttachment: browserAvailable,
+                  computerToolAttachment: true,
+                  computerToolPreparation: true,
+                },
+                browserToolBundles: [{ bundleId: "areal.browser.v1" }],
+                desktopToolBundles: [{ bundleId: "areal.computer.v1" }],
+              }
+            : ["areal/model/list", "areal/profile/list"].includes(message.method)
+              ? { data: [] }
+              : {};
+        connected.send(JSON.stringify({ id: message.id, result }));
+      });
+    });
+    const call = (method, params) =>
+      new Promise((resolve) => {
+        const id = `server-${++requestId}`;
+        responses.set(id, resolve);
+        socket.send(JSON.stringify({ id, method, params }));
+      });
+    let owner = {},
+      managed = true;
+    const project = {
+      id: "project",
+      root: "/tmp",
+      model: new CoreTaskModel(),
+      endpoint: `ws://127.0.0.1:${server.address().port}`,
+      token: "fixture",
+    };
+    let catalogReads = 0;
+    const host = Object.assign(Object.create(CoreBackend.prototype), {
+      projects: new Map([[project.id, project]]),
+      starting: new Map(),
+      saved: [project],
+      closing: false,
+      desktopToolOwner: () => owner,
+      providers: {
+        manages: () => managed,
+        value: { defaultModel: "fixture-model" },
+        async reconcileProject() {},
+        async acceptModelSelection() {},
+        async refreshSubscription() {},
+      },
+      resources: { async beforeCreate() {} },
+      scheduleAdmission: { async prepare() {} },
+      library: {
+        value: { settings: { computerControlEnabled: true, computerControlProvider: "lcu" } },
+      },
+      browserRead: async () => {
+        catalogReads++;
+        return { success: true, contentItems: [] };
+      },
+      lifecycleOperations: { assertProject() {}, schedulingSuppressed: () => false },
+      onChange() {},
+      stopReconciliation() {},
+      scheduleReconciliation() {},
+      async startTaskMonitor() {},
+      async listThreads() {},
+      async openThread() {},
+      async save() {},
+    });
+    const settings = host.library.value.settings;
+    host.library = new CoreLibrary(host);
+    Object.assign(host.library.value.settings, settings);
+    host._connections = new ProjectConnections(host);
+    t.after(() => {
+      host.closing = true;
+      project.client?.close();
+    });
+    await host.connections.connect(project, { observeOnly: true });
+    assert.deepEqual(publications, [{ bundles: ["areal.browser.v1"] }]);
+    const tool = {
+      tool: "browser_v1",
+      threadId: "thread",
+      arguments: { operation: "describe", parameters: {} },
+    };
+    assert.equal((await call("item/tool/call", tool)).result.success, true);
+    assert.equal(catalogReads, 1);
+    const prepared = await call("areal/task/prepare", { intent: "start" });
+    assert.equal(prepared.error.code, -32603);
+    assert.equal(prepared.result, undefined);
+
+    const liveClient = project.client;
+    const setting = (key, value) =>
+      host.executeCommand("library", { operation: "settings", key, value });
+    await setting("computerControlProvider", "native");
+    assert.deepEqual(publications.at(-1), {
+      bundles: ["areal.browser.v1", "areal.computer.v1"],
+    });
+    await setting("computerControlEnabled", false);
+    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
+    await setting("computerControlEnabled", true);
+    assert.deepEqual(publications.at(-1), {
+      bundles: ["areal.browser.v1", "areal.computer.v1"],
+    });
+    await setting("computerControlProvider", "lcu");
+    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
+    await setting("computerControlProvider", "native");
+    assert.deepEqual(publications.at(-1), {
+      bundles: ["areal.browser.v1", "areal.computer.v1"],
+    });
+    await setting("computerControlEnabled", false);
+    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
+    const settingsPublications = publications.length;
+    await setting("taskNotifications", false);
+    assert.equal(publications.length, settingsPublications);
+    managed = false;
+    await setting("computerControlProvider", "lcu");
+    assert.deepEqual(publications.at(-1), { bundles: [] });
+    managed = true;
+    await setting("computerControlProvider", "native");
+    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
+    assert.equal(project.client, liveClient);
+    assert.equal(liveClient.closed, false);
+    browserAvailable = false;
+    await host.connections.connect(project, { observeOnly: true });
+    assert.deepEqual(publications.at(-1), { bundles: [] });
+    const publishedBeforeForeign = publications.length;
+    managed = false;
+    await host.connections.connect(project, { observeOnly: true });
+    assert.equal(publications.length, publishedBeforeForeign);
+    managed = true;
+    browserAvailable = true;
+    const firstOwner = owner,
+      firstClient = project.client;
+
+    owner = null;
+    host.connections.revokeDesktopToolHost(firstOwner);
+    assert.equal(firstClient.closed, true);
+    await host.connections.connect(project, { observeOnly: true });
+    const observer = project.client;
+    const noMain = await call("areal/task/prepare", { intent: "start" });
+    assert.equal(noMain.error.code, -32603);
+    assert.equal(noMain.result, undefined);
+    assert.equal(publications.length, publishedBeforeForeign);
+    assert.deepEqual(host.desktopTools(project), []);
+    assert.equal((await call("item/tool/call", tool)).result.success, false);
+    assert.equal(catalogReads, 1);
+
+    owner = {};
+    host.connections.revokeDesktopToolHost(null);
+    assert.equal(observer.closed, true);
+    await host.connections.connect(project, { observeOnly: true });
+    const successor = project.client;
+    assert.deepEqual(publications.at(-1), { bundles: ["areal.browser.v1"] });
+    assert.equal(publications.length, publishedBeforeForeign + 1);
+    host.connections.revokeDesktopToolHost(firstOwner);
+    assert.equal(successor.closed, false);
+    await host.connections.publishScheduleTools(project, successor, firstOwner);
+    assert.equal(publications.length, publishedBeforeForeign + 1);
+    const successorOwner = owner;
+    let saved, finishSave;
+    const saving = new Promise((resolve) => {
+      saved = resolve;
+    });
+    host.save = () =>
+      new Promise((resolve) => {
+        finishSave = resolve;
+        saved();
+      });
+    const oldMainSettings = setting("computerControlEnabled", true);
+    await saving;
+    owner = {};
+    finishSave();
+    await oldMainSettings;
+    assert.equal(publications.length, publishedBeforeForeign + 1);
+    owner = successorOwner;
+    assert.equal(calls.includes("areal/task/host/ready"), false);
+    const late = host.connections.connect(project, { observeOnly: true });
+    owner = {};
+    await assert.rejects(late, /owner changed/);
+    assert.equal(project.client, successor);
+    assert.equal(successor.closed, false);
+    assert.equal(
+      calls.some((method) => method.includes("resume") || method.includes("attach")),
+      false,
+    );
   },
 );

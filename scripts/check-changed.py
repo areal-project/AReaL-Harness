@@ -100,8 +100,28 @@ def failure_checks(plan, root, extra_reports=(), platform=None):
 
 
 def select_checks(plan, phase, failures):
-    names = {item["id"] for item in plan["items"] if phase == "full" or item["phase"] == "commit"}
-    names.update(failures)
+    push_checks = {
+        "format",
+        "workflow",
+        "docs",
+        "schema",
+        "gui-health",
+        "workbench-core-boundary",
+        "manifest",
+        "gui-check",
+        "gui-types",
+        "mobile-types",
+        "rust-lint",
+    }
+    names = {
+        item["id"]
+        for item in plan["items"]
+        if phase == "full"
+        or (phase == "commit" and item["phase"] == "commit")
+        or (phase == "push" and item["id"] in push_checks)
+    }
+    if phase != "push":
+        names.update(failures)
     while True:
         expanded = names | {
             dependency
@@ -118,7 +138,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True)
     parser.add_argument("--plan", action="store_true")
-    parser.add_argument("--phase", choices=("commit", "full"), default="commit")
+    parser.add_argument("--phase", choices=("push", "commit", "full"), default="commit")
     parser.add_argument("--failure-report", type=Path, action="append", default=[])
     args = parser.parse_args(argv)
     plan = ci_scope.repository_plan(ROOT, args.base)
@@ -156,6 +176,7 @@ def main(argv=None):
 
 if __name__ == "__main__":
     try:
+        preflight.bootstrap_local_runtime(ROOT)
         raise SystemExit(main())
     except (OSError, subprocess.CalledProcessError, ValueError) as error:
         print(str(error), file=sys.stderr)
