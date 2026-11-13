@@ -244,6 +244,8 @@ Object.assign(env, {
   LANG: "zh_CN.UTF-8",
 });
 const commandLog = join(evidence, "commands.jsonl");
+const transportTrace = [];
+const composerTrace = [];
 const fixture = await applicationFixture(
   gui,
   join(stateRoot, "app"),
@@ -417,6 +419,38 @@ async function launch() {
     );
   page = await app.firstWindow();
   ctx.page = page;
+  page.on("websocket", (socket) => {
+    const pending = new Set();
+    socket.on("framesent", ({ payload }) => {
+      try {
+        const frame = JSON.parse(String(payload));
+        const side = frame.method === "desktop.command" && frame.params?.command === "side";
+        if (frame.method !== "session.send" && !side) return;
+        pending.add(frame.id);
+        transportTrace.push({
+          direction: "sent",
+          id: frame.id,
+          method: frame.method,
+          ...(side ? { operation: frame.params?.request?.operation } : {}),
+          commandId: frame.commandId,
+          projectId: frame.context?.projectId,
+          threadId: frame.params?.threadId,
+        });
+      } catch {}
+    });
+    socket.on("framereceived", ({ payload }) => {
+      try {
+        const frame = JSON.parse(String(payload));
+        if (!pending.delete(frame.id)) return;
+        transportTrace.push({
+          direction: "received",
+          id: frame.id,
+          errorCode: frame.error?.code ?? null,
+          settled: frame.result?.settled,
+        });
+      } catch {}
+    });
+  });
   page.setDefaultTimeout(12000);
   page.on("pageerror", (error) => errors.push(error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
@@ -600,7 +634,37 @@ async function sendSide(text, complete = true) {
     assert.ok(originalId, "the Side owns a Core thread before sending");
     const before = new Set((await readCoreThread(originalId)).turns.map((turn) => turn.id));
     await sideInput().fill(text);
+    if (text === "PARITY:P1_WRITE") {
+      composerTrace.push(
+        await sidePane().evaluate((pane, expected) => {
+          const input = pane.querySelector('[data-testid="side-chat-input"]');
+          const button = pane.querySelector('[data-testid="side-chat-send"]');
+          if (input) input.dataset.sideDiagnostic = "before-click";
+          return {
+            phase: "before",
+            threadId: pane.getAttribute("data-thread-id"),
+            matches: input?.textContent === expected,
+            disabled: button?.disabled,
+          };
+        }, text),
+      );
+    }
     await sidePane().getByRole("button", { name: "发送", exact: true }).click();
+    if (text === "PARITY:P1_WRITE") {
+      composerTrace.push(
+        await sidePane().evaluate((pane, expected) => {
+          const input = pane.querySelector('[data-testid="side-chat-input"]');
+          const button = pane.querySelector('[data-testid="side-chat-send"]');
+          return {
+            phase: "after",
+            threadId: pane.getAttribute("data-thread-id"),
+            matches: input?.textContent === expected,
+            sameInput: input?.dataset.sideDiagnostic === "before-click",
+            disabled: button?.disabled,
+          };
+        }, text),
+      );
+    }
     let turn;
     await until(async () => {
       assert.equal(await sidePane().getAttribute("data-thread-id"), originalId);
@@ -1027,10 +1091,18 @@ async function multipleTabs() {
     "child never appears as a normal sidebar conversation",
   );
   assert.equal(requests.length, countBefore + 1, "tab entries and drafts make no model requests");
-  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
-  await until(
-    () => app.evaluate(({ BrowserWindow }) => !BrowserWindow.getAllWindows()[0].isVisible()),
+  await withSmokeDeadline(
     "window closes to background",
+    () =>
+      app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        if (!window.isVisible()) throw new Error("window must be visible before close");
+        return new Promise((resolve) => {
+          window.once("hide", () => resolve());
+          window.close();
+        });
+      }),
+    30000,
   );
   const closed = await readCoreThread(second);
   assert.equal(closed.desktop.archived, true, "window close fences owned child");
@@ -1041,10 +1113,18 @@ async function multipleTabs() {
     ),
     "window close confirms owned child cleanup",
   );
-  await app.evaluate(({ app }) => app.emit("activate"));
-  await until(
-    () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()),
+  await withSmokeDeadline(
     "same window reopens",
+    () =>
+      app.evaluate(({ app, BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        if (window.isVisible()) throw new Error("window must be hidden before reopening");
+        return new Promise((resolve) => {
+          window.once("show", () => resolve());
+          app.emit("activate");
+        });
+      }),
+    30000,
   );
   await until(
     async () => (await sideTabs().count()) === 0,
@@ -1652,6 +1732,10 @@ try {
   facts.error = error.stack ?? String(error);
   if (page) await captureSmokeFailure(page, evidence, error);
 } finally {
+  await writeFile(
+    join(evidence, "transport-trace.json"),
+    JSON.stringify({ transportTrace, composerTrace }, null, 2),
+  );
   await writeFile(release, "release");
   for (const settle of Array.from(streams.values())) settle();
   await closeOwned().catch((error) => {

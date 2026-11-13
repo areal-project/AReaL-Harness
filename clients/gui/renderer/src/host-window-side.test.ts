@@ -157,4 +157,61 @@ describe("Side window ownership", () => {
     await vi.waitFor(() => expect(f.workbench).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(() => f.run("side", { operation: "create" })).not.toThrow());
   });
+  it("waits for the original owner to reopen before dispatching a create once", async () => {
+    const f = fixture();
+    await f.run("side", { operation: "create" });
+    expect(await f.close()).toBe(true);
+    let release!: (value: { settled: boolean; connection: string; closed: [] }) => void;
+    f.workbench.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    f.open();
+    const create = f.run("side", { operation: "create" });
+    expect(f.host).toHaveBeenCalledTimes(1);
+    release({ settled: true, connection: "first", closed: [] });
+    await create;
+    expect(f.host).toHaveBeenCalledTimes(2);
+  });
+  it("does not dispatch after reopening fails or the connection changes", async () => {
+    for (const changed of [false, true]) {
+      const f = fixture();
+      await f.run("side", { operation: "create" });
+      expect(await f.close()).toBe(true);
+      let release!: (value: { settled: boolean; connection: string; closed: [] }) => void;
+      f.workbench.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+      f.open();
+      const create = f.run("side", { operation: "create" });
+      if (changed) f.connect("second");
+      release({ settled: changed, connection: "first", closed: [] });
+      await expect(create).rejects.toThrow();
+      expect(f.host).toHaveBeenCalledTimes(1);
+    }
+  });
+  it("does not dispatch a waiting create after another close begins", async () => {
+    const f = fixture();
+    await f.run("side", { operation: "create" });
+    expect(await f.close()).toBe(true);
+    let release!: (value: { settled: boolean; connection: string; closed: [] }) => void;
+    f.workbench.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    f.open();
+    const create = f.run("side", { operation: "create" });
+    const closing = f.close();
+    release({ settled: true, connection: "first", closed: [] });
+    await expect(create).rejects.toThrow();
+    await closing;
+    expect(f.host).toHaveBeenCalledTimes(1);
+  });
 });

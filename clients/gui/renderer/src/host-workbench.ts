@@ -177,13 +177,15 @@ export function windowSideOwnership(
   let connection: string | undefined;
   let settledConnection: string | undefined;
   let emptySettled = false;
-  let reopening = false;
+  let reopening: Promise<void> | undefined;
   let openedEpoch = 0;
+  let closeEpoch = 0;
   const current = () => {
     const state = client.snapshot();
     return state.connection === "ready" ? state.identity.connectionId : undefined;
   };
   desktop.onWindowClosing?.(async () => {
+    closeEpoch++;
     const epoch = openedEpoch;
     const original = current();
     if (!connection) {
@@ -224,11 +226,11 @@ export function windowSideOwnership(
       emptySettled = false;
       return;
     }
-    if (!settledConnection || settledConnection !== current()) return;
+    if (reopening || !settledConnection || settledConnection !== current()) return;
     const original = current();
     if (!original) return;
-    reopening = true;
-    void client
+    const epoch = closeEpoch;
+    const pending = client
       .workbench("desktop.command", {
         command: "side",
         request: { operation: "openOwned" },
@@ -236,6 +238,7 @@ export function windowSideOwnership(
       .then((result) => {
         if (
           current() === original &&
+          closeEpoch === epoch &&
           object(result) &&
           result.settled === true &&
           result.connection === original
@@ -246,8 +249,9 @@ export function windowSideOwnership(
       })
       .catch(() => {})
       .finally(() => {
-        reopening = false;
+        if (reopening === pending) reopening = undefined;
       });
+    reopening = pending;
   };
   desktop.onWindowOpened?.(() => {
     openedEpoch++;
@@ -256,6 +260,16 @@ export function windowSideOwnership(
   return (name, params) => {
     if (name === "side" && ["create", "recover", "close"].includes(String(params.operation))) {
       const active = current();
+      if (reopening && active && connection === active) {
+        const original = active;
+        const epoch = closeEpoch;
+        return reopening.then(() => {
+          if (current() !== original || closeEpoch !== epoch || settledConnection || !hostReady())
+            throw new Error("Side Chat 的原连接尚未结算，请重新连接并核对。");
+          if (params.operation === "create") connection ??= original;
+          return host(name, params);
+        });
+      }
       if (
         !active ||
         !hostReady() ||
