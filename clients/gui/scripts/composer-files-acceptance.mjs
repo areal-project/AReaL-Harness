@@ -784,9 +784,15 @@ export async function runComposerFilesAcceptance({
     "Responses model catalog",
   );
   const configureModel = async (model) => {
-    const expectedRevision = project(await state()).configurations[tid].revision;
-    assert(Number.isSafeInteger(expectedRevision));
-    await call("configure", { projectId: pid, threadId: tid, expectedRevision, model });
+    const trigger = page.getByTestId("composer-model-trigger");
+    await trigger.click();
+    await page.getByRole("tab", { name: model.providerId, exact: true }).click();
+    await page.getByRole("radio", { name: model.modelId, exact: true }).click();
+    await page.keyboard.press("Escape");
+    await until(async () => {
+      const label = await trigger.innerText();
+      return label.includes(model.modelId) && (await trigger.isEnabled());
+    }, `Composer applies ${model.modelId}`);
   };
   await configureModel({ providerId: "files-responses", modelId: "files-responses" });
   await page.locator("input[type=file]").setInputFiles({
