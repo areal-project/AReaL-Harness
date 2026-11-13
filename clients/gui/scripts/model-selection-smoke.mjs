@@ -510,6 +510,21 @@ async function readCoreThread(threadId) {
     workspace,
   });
 }
+async function waitForCoreTurn(threadId, { text, status = "completed", count, label = text }) {
+  let turn;
+  await until(async () => {
+    const thread = await readCoreThread(threadId);
+    turn = thread.turns.at(-1);
+    return (
+      (count === undefined || thread.turns.length === count) &&
+      turn?.status === status &&
+      turn.items.some(
+        (item) => item.type === "userMessage" && JSON.stringify(item.content).includes(text),
+      )
+    );
+  }, label);
+  return turn;
+}
 async function launch() {
   console.log("[model-selection] launching GUI");
   app = await electron.launch({
@@ -739,21 +754,19 @@ async function verifyModelCapabilities() {
   const send = async (text, expected) => {
     const before = modelRequests.length;
     const currentId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    const beforeTurns =
-      fixtureProject(await state())?.state?.threads?.[currentId]?.turns?.length ?? 0;
+    const beforeTurns = currentId ? (await readCoreThread(currentId)).turns.length : 0;
     await page.getByTestId("chat-input").fill(text);
     await button("发送").click();
     await page.waitForFunction(
       () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
     );
     const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    await until(
-      (snapshot) =>
-        fixtureProject(snapshot)?.state?.threads?.[threadId]?.turns?.length === beforeTurns + 1 &&
-        fixtureProject(snapshot).state.threads[threadId].turns.at(-1).status === "completed" &&
-        modelRequests.length === before + 1,
-      text,
-    );
+    if (currentId) assert.equal(threadId, currentId, "send remains bound to the original thread");
+    const completedTurn = await waitForCoreTurn(threadId, { text, count: beforeTurns + 1 });
+    assert.equal(modelRequests.length, before + 1);
+    await page
+      .locator(`[data-turn-id="${completedTurn.id}"][data-turn-status="completed"]`)
+      .waitFor();
     assert.deepEqual(modelRequests.at(-1), expected);
   };
   await button("选择思考强度").click();
@@ -1069,18 +1082,19 @@ async function verifyModelDefaults(projectId) {
   };
   const send = async (text, expected) => {
     const before = modelRequests.length;
+    const originalThreadId = await page
+      .getByTestId("areal-workbench")
+      .getAttribute("data-thread-id");
     await page.getByTestId("chat-input").fill(text);
     await button("发送").click();
     await page.waitForFunction(
       () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
     );
     const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    await until(
-      (snapshot) =>
-        snapshotProject(snapshot)?.state?.threads?.[threadId]?.turns?.at(-1)?.status ===
-          "completed" && modelRequests.length === before + 1,
-      text,
-    );
+    if (originalThreadId) assert.equal(threadId, originalThreadId);
+    const turn = await waitForCoreTurn(threadId, { text });
+    await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+    assert.equal(modelRequests.length, before + 1);
     assert.deepEqual(modelRequests.at(-1), expected);
     return threadId;
   };
@@ -1212,11 +1226,11 @@ async function verifyModelDefaults(projectId) {
     "admission records selection before model success",
   );
   assert.equal(failed.lastAcceptedModel.reasoningEffort, "none");
-  await until(
-    (snapshot) =>
-      snapshotProject(snapshot)?.state?.threads?.[switched]?.turns?.at(-1)?.status === "failed",
-    "model failure after admission",
-  );
+  await waitForCoreTurn(switched, {
+    text: "LAST_MODEL_ACCEPTED_FAILURE",
+    status: "failed",
+    label: "model failure after admission",
+  });
   await createProjectConversation(page, "workspace");
   await expectModel("Beta", "无");
   const held = await call("send", { projectId, threadId: alpha, text: "LAST_MODEL_HOLD_REPLY" });
@@ -1242,18 +1256,10 @@ async function verifyModelDefaults(projectId) {
   const beforeQueueExecution = snapshotProject(await state()).lastAcceptedModel;
   releaseHeldReply();
   releaseHeldReply = undefined;
-  await until(
-    (snapshot) =>
-      snapshotProject(snapshot)?.state?.threads?.[alpha]?.turns?.at(-1)?.status === "completed" &&
-      snapshotProject(snapshot)
-        .state.threads[alpha].turns.at(-1)
-        .items.some(
-          (item) =>
-            item.type === "userMessage" &&
-            JSON.stringify(item.content).includes("Queued preference admission"),
-        ),
-    "queued Alpha executes",
-  );
+  await waitForCoreTurn(alpha, {
+    text: "Queued preference admission",
+    label: "queued Alpha executes",
+  });
   assert.deepEqual(
     snapshotProject(await state()).lastAcceptedModel,
     beforeQueueExecution,
@@ -1338,24 +1344,21 @@ async function verifyModelDefaults(projectId) {
     model: { providerId: provider.id, modelId: "beta-default" },
     parameters: { reasoningEffort: "none" },
   });
-  await until(
-    (snapshot) =>
-      snapshotProject(snapshot)?.state?.threads?.[side.threadId]?.turns?.at(-1)?.status ===
-      "completed",
-    "side first reply",
-  );
+  await waitForCoreTurn(side.threadId, {
+    text: "Side preference isolation",
+    label: "side first reply",
+  });
   await call("side", {
     projectId,
     threadId: side.threadId,
     operation: "send",
     text: "Side follow-up cannot update main preference",
   });
-  await until(
-    (snapshot) =>
-      snapshotProject(snapshot)?.state?.threads?.[side.threadId]?.turns?.length === 2 &&
-      snapshotProject(snapshot).state.threads[side.threadId].turns.at(-1).status === "completed",
-    "side follow-up reply",
-  );
+  await waitForCoreTurn(side.threadId, {
+    text: "Side follow-up cannot update main preference",
+    count: 2,
+    label: "side follow-up reply",
+  });
   assert.deepEqual(
     snapshotProject(await state()).lastAcceptedModel,
     preference,
@@ -1585,14 +1588,12 @@ async function verifyComposerPicker() {
   await slider.fill("4");
   await page.keyboard.press("Escape");
   await button("发送").click();
-  await until(
-    (s) =>
-      modelRequests.length === before + 1 &&
-      Object.values(fixtureProject(s).state.threads).some(
-        (thread) => thread.turns?.at(-1)?.status === "completed",
-      ),
-    "valid effort reaches provider",
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
   );
+  const effortThread = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+  await waitForCoreTurn(effortThread, { text: draft, label: "valid effort reaches provider" });
+  assert.equal(modelRequests.length, before + 1);
   assert.deepEqual(modelRequests.at(-1), { model: "beta-model", effort: "high", hasEffort: true });
   for (const theme of ["dark", "light"]) {
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1440, 960));
@@ -1654,18 +1655,19 @@ async function verifyComposerFast() {
   };
   const send = async (text, model, effort, tier, present = true) => {
     const before = modelRequests.length;
+    const originalThreadId = await page
+      .getByTestId("areal-workbench")
+      .getAttribute("data-thread-id");
     await page.getByTestId("chat-input").fill(text);
     await button("发送").click();
     await page.waitForFunction(
       () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
     );
     const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-    await until(
-      (s) =>
-        fixtureProject(s)?.state?.threads?.[threadId]?.turns?.at(-1)?.status === "completed" &&
-        modelRequests.length === before + 1,
-      text,
-    );
+    if (originalThreadId) assert.equal(threadId, originalThreadId);
+    const turn = await waitForCoreTurn(threadId, { text });
+    await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+    assert.equal(modelRequests.length, before + 1);
     assert.deepEqual(modelRequests.at(-1), { model, effort, hasEffort: effort !== null });
     assert.deepEqual(wireTiers.at(-1), { value: tier, present });
     return threadId;
@@ -1811,10 +1813,11 @@ async function verifyComposerFast() {
   const beforeFailure = modelRequests.length;
   await page.getByTestId("chat-input").first().fill("FAST_UNSUPPORTED_TIER");
   await page.getByRole("button", { name: "发送", exact: true }).first().click();
-  await until(
-    (s) => fixtureProject(s)?.state?.threads?.[thread]?.turns?.at(-1)?.status === "failed",
-    "unsupported tier reaches failed state",
-  );
+  await waitForCoreTurn(thread, {
+    text: "FAST_UNSUPPORTED_TIER",
+    status: "failed",
+    label: "unsupported tier reaches failed state",
+  });
   assert.equal(modelRequests.length, beforeFailure + 1, "unsupported tier is not retried");
   assert.deepEqual(wireTiers.at(-1), { value: "fast", present: true });
   recordCheck(
@@ -2167,13 +2170,19 @@ async function runFullModelSelection() {
   assert.equal(requests.length, 0, "model selection does not create or send a task");
   await page.getByTestId("chat-input").fill("Use the configured model");
   await button("发送").click();
-  await until(
-    (s) =>
-      Object.values(fixtureProject(s).state.threads).some(
-        (t) => t.turns?.at(-1)?.status === "completed",
-      ),
-    "model turn completes",
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
   );
+  const configuredThreadId = await page
+    .getByTestId("areal-workbench")
+    .getAttribute("data-thread-id");
+  const configuredTurn = await waitForCoreTurn(configuredThreadId, {
+    text: "Use the configured model",
+    label: "model turn completes",
+  });
+  await page
+    .locator(`[data-turn-id="${configuredTurn.id}"][data-turn-status="completed"]`)
+    .waitFor();
   assert.deepEqual(requests, [
     { model: "theta-model", authenticated: true, authorizationPresent: true },
   ]);
@@ -2431,13 +2440,12 @@ async function runFullModelSelection() {
   );
   await page.getByTestId("chat-input").fill("Use an environment credential");
   await button("发送").click();
-  await until(
-    (s) =>
-      Object.values(fixtureProject(s).state.threads).some(
-        (t) => t.turns?.length === 4 && t.turns.at(-1).status === "completed",
-      ),
-    "environment turn completes",
-  );
+  const envTurn = await waitForCoreTurn(selectedThreadId, {
+    text: "Use an environment credential",
+    count: 4,
+    label: "environment turn completes",
+  });
+  await page.locator(`[data-turn-id="${envTurn.id}"][data-turn-status="completed"]`).waitFor();
   assert.deepEqual(requests.at(-1), {
     model: "env-model",
     authenticated: true,
