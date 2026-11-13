@@ -1,3 +1,4 @@
+import { recordItems } from "../data-shapes.js";
 import { SettingsGroupCard, SettingsRow, SettingsSection } from "@areal/ui/compositions";
 import { errorText, rawText } from "../errors/errorCopy.js";
 import { Textarea } from "@areal/ui";
@@ -26,8 +27,8 @@ const parseSkill = (value: string) => {
   const slash = value.indexOf("/");
   return { id: value.slice(0, slash), revision: value.slice(slash + 1) };
 };
-const fromConfig = (configuration: Data): Data => {
-  const skills = (configuration.selectedSkills ?? []).map(skillKey);
+export const sessionConfigurationDraft = (configuration: Data): Data => {
+  const skills = recordItems(configuration.selectedSkills).filter((skill) => typeof skill.id === "string" && typeof skill.revision === "string").map(skillKey);
   return {
     baseRevision: configuration.revision,
     model: configuration.model
@@ -111,7 +112,7 @@ export function SessionSettings({
     if (ready.current || !configuration) return;
     ready.current = true;
     const stored = readStored(storageKey);
-    const opened = fromConfig(configuration);
+    const opened = sessionConfigurationDraft(configuration);
     clean.current = JSON.stringify(opened);
     if (stored && (stored.unknown || stored.baseRevision !== configuration.revision)) {
       setDraft(stored);
@@ -134,7 +135,7 @@ export function SessionSettings({
     discard: () => {
       localStorage.removeItem(storageKey);
       if (configuration) {
-        const next = fromConfig(configuration);
+        const next = sessionConfigurationDraft(configuration);
         clean.current = JSON.stringify(next);
         setDraft(next);
       }
@@ -186,7 +187,7 @@ export function SessionSettings({
   const selectedSkills =
     draft.skillMode === "profile" ? [] : (draft.skills as string[]).map(parseSkill);
   const applyLatest = (latest: Data, notice: UiMessage) => {
-    const next = fromConfig(latest);
+    const next = sessionConfigurationDraft(latest);
     clean.current = JSON.stringify(next);
     setDraft(next);
     setConflict(false);

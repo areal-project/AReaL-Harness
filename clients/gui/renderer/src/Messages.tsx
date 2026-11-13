@@ -1407,13 +1407,11 @@ export function Messages({
                                         item={approval.mark(entry)}
                                         mediaGeneration={localThread.displayHistory?.viewGeneration}
                                         onLoadDetails={
-                                          (entry.processRecords ?? [entry]).some(
+                                          recordItems(entry.processRecords ?? [entry]).some(
                                             (record: Data) => record.deferredHistory,
                                           )
                                             ? async () => {
-                                                for (const record of entry.processRecords ?? [
-                                                  entry,
-                                                ]) {
+                                                for (const record of recordItems(entry.processRecords ?? [entry])) {
                                                   if (
                                                     record.deferredHistory &&
                                                     !(await live.loadHistory?.(record.id))
@@ -1423,12 +1421,12 @@ export function Messages({
                                               }
                                             : undefined
                                         }
-                                        detailsLoading={(entry.processRecords ?? [entry]).some(
+                                        detailsLoading={recordItems(entry.processRecords ?? [entry]).some(
                                           (record: Data) =>
                                             localThread.displayHistory?.loadingItems?.[record.id],
                                         )}
                                         detailsError={
-                                          (entry.processRecords ?? [entry]).some(
+                                          recordItems(entry.processRecords ?? [entry]).some(
                                             (record: Data) => record.id === history.failure?.itemId,
                                           )
                                             ? history.failure?.message // raw-error-ok: 已是词条
