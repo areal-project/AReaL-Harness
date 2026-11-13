@@ -744,7 +744,7 @@ async function addReference(body, text, target = "main", keyboard = false) {
     await page.keyboard.press("Enter");
   } else await action.click();
   record.stage = "activated";
-  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  if (target === "main") await page.evaluate(() => window.getSelection()?.removeAllRanges());
 }
 async function toolAndPermission() {
   const parent = await newParent("PARITY:P1_PARENT");
@@ -937,6 +937,7 @@ async function multipleTabs() {
     async () => (await referenceCount(sidePane())) === 1,
     "selection attaches to active child after public read",
   );
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   assert.equal(
     await sideTabs().count(),
     2,
@@ -953,6 +954,7 @@ async function multipleTabs() {
     async () => (await sideTabs().count()) === 3 && (await referenceCount(sidePane())) === 1,
     "resource-tab selection creates and reveals child",
   );
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   assert.equal(
     await sideTabs().count(),
     3,
