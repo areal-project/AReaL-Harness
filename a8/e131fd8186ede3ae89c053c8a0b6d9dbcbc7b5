@@ -1,0 +1,21 @@
+integrations/gameagent/skills/game-delivery/SKILL.md
+  s_bd8d5bb07c65e6::t_c24db561d6e59a 6,8,10,12-15,17,19-21
+integrations/gameagent/runtime/skills/game-delivery/SKILL.md
+  s_bd8d5bb07c65e6::t_c24db561d6e59a 6,8,10,12-15,17,19-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a8e131fd8186ede3ae89c053c8a0b6d9dbcbc7b5",
+  "prompts": {},
+  "sessions": {
+    "s_bd8d5bb07c65e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d317-71d1-7e23-8f31-132818788694",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
