@@ -1847,6 +1847,7 @@ pub(super) fn reverse(host: &Rc<Host>) -> Reverse {
                             method,
                             params["params"].clone(),
                             params["remember"] == true,
+                            params["rejectKnown"] == true,
                         )
                         .await
                     } else {

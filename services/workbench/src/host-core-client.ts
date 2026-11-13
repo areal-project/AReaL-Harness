@@ -126,7 +126,7 @@ export class HostCoreClient {
         ...this.scope(),
         method,
         params,
-        ...(options.hostMethod ? { remember: options.remember === true } : {}),
+        ...(options.hostMethod ? { remember: options.remember === true, rejectKnown: true } : {}),
       });
       if (this.closed || this.lease !== lease)
         throw Object.assign(new Error("Host Core attachment changed; outcome unknown"), {

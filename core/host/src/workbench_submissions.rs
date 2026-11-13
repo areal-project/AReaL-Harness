@@ -604,6 +604,7 @@ pub(super) async fn submit(
     method: &str,
     params: Value,
     remember: bool,
+    reject_known: bool,
 ) -> Result<Value> {
     ensure!(METHODS.contains(&method) && params.is_object(), "FORBIDDEN");
     host.schedules
@@ -622,6 +623,11 @@ pub(super) async fn submit(
         if result["confirmed"] != true {
             return Ok(
                 json!({"error":{"code":-32011,"message":"原提交结果未知，不会重放","data":{"outcome":{"kind":"unconfirmed","operation":entry["operation"]},"recovery":{"kind":"queryOriginal"},"requestId":id}}}),
+            );
+        }
+        if reject_known {
+            return Ok(
+                json!({"error":{"code":-32602,"message":"请求标识已使用，请核对原提交；不会重复执行。","data":{"outcome":{"kind":"rejected"},"recovery":{"kind":"none"},"requestId":id}},"sequence":0}),
             );
         }
         // 已结算的关联事实不等于原结果正文仍可读取，不能伪造成功返回值。

@@ -233,6 +233,7 @@ test("Host submission and reconciliation preserve original identity and admissio
     lease: "lease",
     method: "areal/turn/submit",
     params,
+    rejectKnown: true,
     remember: true,
   });
   assert.equal(calls[2].params.params.requestId, "original");

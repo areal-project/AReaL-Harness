@@ -8,6 +8,7 @@ import { randomUUID, generateKeyPairSync, sign, createHash } from "node:crypto";
 import { once } from "node:events";
 import { execFileSync, spawnSync } from "node:child_process";
 import { CoreClient } from "../packages/runtime-client/core.js";
+import { until } from "./support/desktop-fixture.mjs";
 
 const require = createRequire(import.meta.url);
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
@@ -141,6 +142,56 @@ try {
   assert.equal(backend.connectionState.state, "ready");
   assert.equal(backend.computerHostOwned, true);
   checks.push("Main attaches with Host ownership and native capability lease");
+  if (selected("manage")) {
+    const first = await backend.command("create", { projectId, requestId: randomUUID() });
+    const send = {
+      projectId,
+      threadId: first.threadId,
+      requestId: randomUUID(),
+      text: "Journal identity fixture",
+    };
+    const admitted = await backend.command("send", send);
+    await assert.rejects(backend.command("send", send), /请求标识已使用/);
+    assert.ok(first.threadId);
+    const started = await projects.status(projectId);
+    const auth = JSON.parse(await readFile(started.service.authFile, "utf8"));
+    const core = new CoreClient({
+      createSocket: () =>
+        new WebSocket(started.service.endpoint, {
+          headers: { Authorization: `Bearer ${auth.principals[0].token}` },
+        }),
+    });
+    try {
+      await core.connect();
+      const before = (
+        await core.request("thread/read", { threadId: first.threadId, includeTurns: true })
+      ).thread;
+      assert.equal(before.turns.length, 1);
+      assert.equal(before.turns[0].id, admitted.turn.id);
+      if (before.turns[0].status === "inProgress")
+        await core.request("turn/interrupt", {
+          threadId: first.threadId,
+          turnId: before.turns[0].id,
+        });
+      const thread = await until(
+        async () =>
+          (await core.request("thread/read", { threadId: first.threadId, includeTurns: true }))
+            .thread,
+        "original turn settles before cleanup",
+        {
+          accept: (value) =>
+            value.turns.some(
+              (turn) => turn.id === admitted.turn.id && turn.status !== "inProgress",
+            ),
+        },
+      );
+      assert.equal(thread.turns.length, 1);
+      assert.equal(thread.turns[0].id, admitted.turn.id);
+    } finally {
+      core.close();
+    }
+    checks.push("Desktop rejects an already settled request identity without redispatch");
+  }
   const endpoint = await projects.client.request("web.endpoint", {});
   // 使用普通浏览器的持久公钥授权；不以桌面一次性票据代替 Web 写权限。
   const keys = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
