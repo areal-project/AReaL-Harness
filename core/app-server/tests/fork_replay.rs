@@ -385,7 +385,7 @@ async fn fork_keeps_inherited_media_readable_without_copying_execution() {
 // 验收真实 HTTP 适配器、持久快照和公开工具回调的连接处，不构造历史 Item。
 #[tokio::test]
 async fn fork_replays_actual_adapter_tool_batches_without_reexecuting_source() {
-    use areal_engine::model::{HttpModel, ModelProtocol};
+    use areal_engine::model::{HistoryThinking, HttpModel, ModelOptions, ModelProtocol};
     use axum::{
         Json, Router,
         response::sse::{Event, Sse},
@@ -399,8 +399,14 @@ async fn fork_replays_actual_adapter_tool_batches_without_reexecuting_source() {
     unsafe {
         std::env::set_var("AREAL_DEV_CONVERSATION_DERIVATION", "1");
     }
-    for protocol in [ModelProtocol::ChatCompletions, ModelProtocol::Responses] {
+    for (protocol, policy) in [
+        (ModelProtocol::ChatCompletions, HistoryThinking::Preserve),
+        (ModelProtocol::ChatCompletions, HistoryThinking::Omit),
+        (ModelProtocol::Responses, HistoryThinking::Preserve),
+        (ModelProtocol::Responses, HistoryThinking::Omit),
+    ] {
         let responses = protocol == ModelProtocol::Responses;
+        let preserve = policy == HistoryThinking::Preserve;
         let requests = Arc::new(Mutex::new(Vec::<Value>::new()));
         let captured = requests.clone();
         let context = json!({"type":"reasoning","id":"rs_anchor","summary":[],"encrypted_content":"ANCHOR_ENCRYPTED_REASONING"});
@@ -447,10 +453,20 @@ async fn fork_replays_actual_adapter_tool_batches_without_reexecuting_source() {
         let endpoint = format!("http://{}/", http_listener.local_addr().unwrap());
         let http_server =
             tokio::spawn(async move { axum::serve(http_listener, app).await.unwrap() });
-        let model = Arc::new(
+        let model =
             HttpModel::with_protocol(endpoint.clone(), "replay-fixture".into(), None, protocol)
-                .unwrap(),
-        );
+                .unwrap();
+        // preserve 同时验默认值，omit 验显式配置；两者都从真实归档分叉。
+        let model = Arc::new(if preserve {
+            model
+        } else {
+            model
+                .with_options(ModelOptions {
+                    history_thinking: policy,
+                    ..Default::default()
+                })
+                .unwrap()
+        });
         let dir = tempfile::tempdir().unwrap();
         let engine = Engine::open(dir.path(), model, Limits::default()).unwrap();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -630,15 +646,20 @@ async fn fork_replays_actual_adapter_tool_batches_without_reexecuting_source() {
                     )
                 })
                 .collect();
-            assert_eq!(replay.len(), 5, "{request}");
-            assert_eq!(replay[0], &context);
-            assert_eq!(replay[1], &calls[0]);
-            assert_eq!(replay[2], &calls[1]);
+            assert_eq!(replay.len(), if preserve { 5 } else { 4 }, "{request}");
+            let offset = usize::from(preserve);
+            if preserve {
+                assert_eq!(replay[0], &context);
+            } else {
+                assert!(!request.to_string().contains("ANCHOR_ENCRYPTED_REASONING"));
+            }
+            assert_eq!(replay[offset], &calls[0]);
+            assert_eq!(replay[offset + 1], &calls[1]);
             for i in 0..2 {
-                assert_eq!(replay[i + 3]["type"], "function_call_output");
-                assert_eq!(replay[i + 3]["call_id"], format!("call_{i}"));
+                assert_eq!(replay[i + offset + 2]["type"], "function_call_output");
+                assert_eq!(replay[i + offset + 2]["call_id"], format!("call_{i}"));
                 assert!(
-                    replay[i + 3]["output"]
+                    replay[i + offset + 2]["output"]
                         .as_str()
                         .unwrap()
                         .contains(&format!("ACTUAL_RESULT_value_{i}"))
@@ -653,8 +674,12 @@ async fn fork_replays_actual_adapter_tool_batches_without_reexecuting_source() {
                 .collect();
             assert_eq!(batches.len(), 1, "{request}");
             let (at, batch) = batches[0];
-            // Chat 的 reasoning 是可展示历史，适配器没有声明其为可重放 ProviderContext。
-            assert!(batch.get("reasoning_content").is_none());
+            if preserve {
+                assert_eq!(batch["reasoning_content"], "ANCHOR_CHAT_REASONING");
+            } else {
+                assert!(batch.get("reasoning_content").is_none());
+                assert!(!request.to_string().contains("ANCHOR_CHAT_REASONING"));
+            }
             let history = call(
                 &mut socket,
                 71,
