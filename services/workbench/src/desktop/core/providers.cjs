@@ -1828,17 +1828,47 @@ class AppProviders {
       },
     );
   }
-  /** @param {ProviderRequest} request */
-  async saveAndApply(request) {
+  /** @param {string} message */
+  async acquireUpdate(message) {
+    const reads = this.backend.activeReadCommands ?? new Map();
+    const starts = this.backend.starting;
+    const ownedStarts = new Set([...reads.values()].flatMap((read) => [...read.starts]));
     if (
       this.backend.providerUpdating ||
       this.backend.resourcesUpdating ||
-      this.backend.activeCommands ||
-      this.backend.starting.size ||
-      this.backend.hasWork()
+      this.backend.hasWork() ||
+      this.backend.activeCommands !== reads.size ||
+      [...starts.values()].some((task) => !ownedStarts.has(task))
     )
-      throw new Error("任务或操作正在进行，完成后再保存；修改仍保留。");
+      throw new Error(message);
     this.backend.providerUpdating = true;
+    try {
+      let timer;
+      try {
+        await Promise.race([
+          Promise.allSettled([...reads.keys(), ...starts.values()]),
+          new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(message)), 30000);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timer);
+      }
+      if (
+        this.backend.resourcesUpdating ||
+        this.backend.activeCommands ||
+        starts.size ||
+        this.backend.hasWork()
+      )
+        throw new Error(message);
+    } catch (error) {
+      this.backend.providerUpdating = false;
+      throw error;
+    }
+  }
+  /** @param {ProviderRequest} request */
+  async saveAndApply(request) {
+    await this.acquireUpdate("任务或操作正在进行，完成后再保存；修改仍保留。");
     /** @type {ModelSnapshot|undefined} */ let previous;
     /** @type {{revision:string}|undefined} */ let written;
     /** @type {ModelSnapshot|undefined} */ let candidate;
@@ -1922,15 +1952,7 @@ class AppProviders {
   }
   /** @param {ProviderRequest} request */
   async apply(request) {
-    if (
-      this.backend.providerUpdating ||
-      this.backend.resourcesUpdating ||
-      this.backend.activeCommands ||
-      this.backend.starting.size ||
-      this.backend.hasWork()
-    )
-      throw new Error("请等待任务和操作完成，并处理排队消息后再应用模型配置");
-    this.backend.providerUpdating = true;
+    await this.acquireUpdate("请等待任务和操作完成，并处理排队消息后再应用模型配置");
     try {
       const current = await this.config.current();
       if (request.expectedRevision !== current.revision)

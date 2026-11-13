@@ -191,6 +191,33 @@ test("invalid response budget is rejected before a mutation reaches Host", async
   client.close();
 });
 
+test("a reverse Host error without outcome keeps the original submission unknown", async () => {
+  const calls = [];
+  const client = new HostCoreClient({
+    sourceId: "source",
+    projectId: "project",
+    host: async (method, params) => {
+      calls.push({ method, params });
+      if (method === "core.attach") return attached;
+      throw Object.assign(new Error("Host call failed"), { code: "FORBIDDEN" });
+    },
+  });
+  await client.connect();
+  await assert.rejects(
+    client.submit("areal/turn/start", { requestId: "original", threadId: "side" }, true),
+    (error) => {
+      assert.equal(error.code, "RESPONSE_UNKNOWN");
+      assert.equal(error.outcome.kind, "unconfirmed");
+      assert.equal(error.outcome.operation.requestId, "original");
+      assert.equal(error.recovery.kind, "queryOriginal");
+      assert.equal(error.cause.code, "FORBIDDEN");
+      return true;
+    },
+  );
+  assert.equal(calls.filter((call) => call.method === "execution.submit").length, 1);
+  client.close();
+});
+
 test("Host submission and reconciliation preserve original identity and admission errors", async () => {
   const calls = [];
   const client = new HostCoreClient({

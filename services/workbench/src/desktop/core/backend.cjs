@@ -1,5 +1,6 @@
 // @ts-check
 "use strict";
+/** @typedef {{promise:Promise<void>,resolve:()=>void,starts:Set<Promise<import('./project-state.cjs').CoreProject>>}} ReadCommandOwner */
 const {
   commandSemantics,
   desktopError,
@@ -173,6 +174,7 @@ class CoreBackend {
     this.cloud = new CloudSettings(this, encryption);
     this.cloudConversations = new CloudConversations(this);
     this.activeCommands = 0;
+    /** @type {Map<Promise<void>, ReadCommandOwner>} */ this.activeReadCommands = new Map();
     /** @type {boolean|undefined} */
     this.providerUpdating = undefined;
     /** @type {boolean|undefined} */
@@ -483,9 +485,12 @@ class CoreBackend {
     };
   }
 
-  /** @param {Parameters<InstanceType<typeof ProjectConnections>['start']>} args */
-  start(...args) {
-    return this.connections.start(...args);
+  /** @param {string} id @param {{threadId?:string,resumeScheduling?:boolean,readOwner?:ReadCommandOwner}} [options] */
+  start(id, options) {
+    const previous = this.starting.get(id);
+    const task = this.connections.start(id, options);
+    if (!previous && this.starting.get(id) === task) options?.readOwner?.starts.add(task);
+    return task;
   }
 
   /** @param {Parameters<InstanceType<typeof ProjectConnections>['readConnection']>} args */
@@ -1539,10 +1544,23 @@ class CoreBackend {
     if (name === "resources") return this.resources.command(request);
     if (this.providerUpdating || this.resourcesUpdating)
       throw new Error("配置正在应用，请稍后重试");
+    /** @type {ReadCommandOwner|null} */ let read = null;
+    if (commandSemantics(name, request).effect === "read") {
+      /** @type {()=>void} */ let resolve = () => {};
+      const promise = new Promise((done) => {
+        resolve = () => done(undefined);
+      });
+      read = { promise, resolve, starts: new Set() };
+    }
     this.activeCommands++;
+    if (read) this.activeReadCommands.set(read.promise, read);
     try {
-      return await this.dispatchCommand(invocation, context);
+      return await this.dispatchCommand(invocation, context, read);
     } finally {
+      if (read) {
+        this.activeReadCommands.delete(read.promise);
+        read.resolve();
+      }
       this.activeCommands--;
     }
   }
@@ -1670,8 +1688,8 @@ class CoreBackend {
     return this.dispatchCommand(readCommandInvocation(commandName, rawRequest), context);
   }
 
-  /** @param {import("@areal/workbench/desktop-contract").CommandInvocation} invocation @param {NonNullable<Parameters<CoreBackend["command"]>[2]>} context */
-  async dispatchCommand(invocation, context) {
+  /** @param {import("@areal/workbench/desktop-contract").CommandInvocation} invocation @param {NonNullable<Parameters<CoreBackend["command"]>[2]>} context @param {ReadCommandOwner|null} [readOwner] */
+  async dispatchCommand(invocation, context, readOwner) {
     const { name, request } = invocation;
     const projectId = "projectId" in request ? request.projectId : undefined;
     if (this.closing) throw new Error("应用正在退出");
@@ -1743,10 +1761,10 @@ class CoreBackend {
           : projectId,
       ))
         await this.lifecycleOperations.resumeScheduling(owner.id);
-    const project = await this.start(
-      projectId,
-      name === "connect" || name === "open" ? { threadId: request.threadId } : undefined,
-    );
+    const project = await this.start(projectId, {
+      ...(name === "connect" || name === "open" ? { threadId: request.threadId } : {}),
+      ...(readOwner ? { readOwner } : {}),
+    });
     if (this.closing) throw new Error("应用正在退出");
     await this.worktreeAdmission.admit(project, name, request);
     if (
