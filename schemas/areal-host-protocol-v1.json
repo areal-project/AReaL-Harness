@@ -16948,7 +16948,11 @@
         "configurationError": { "type": "boolean" }
       },
       "required": ["names"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        { "names": ["FIXTURE_MODEL_API_KEY"] },
+        { "names": [], "configurationError": true }
+      ]
     },
     "LocalBackendCredentialNamesRequest": {
       "type": "object",
@@ -16959,7 +16963,24 @@
         "params": { "$ref": "#/$defs/LocalBackendEnsureParams" }
       },
       "required": ["version", "id", "method", "params"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "examples": [
+        {
+          "version": 1,
+          "id": "fixture",
+          "method": "backend.credentialNames",
+          "params": {
+            "profile": "/isolated/profile",
+            "options": {
+              "binary": "/isolated/bin/areal",
+              "home": "/isolated/data",
+              "guiProfile": "/isolated/profile",
+              "hostHome": "/isolated/host",
+              "harnessHome": "/isolated/services"
+            }
+          }
+        }
+      ]
     },
     "LocalBackendEnsureRequest": {
       "type": "object",
