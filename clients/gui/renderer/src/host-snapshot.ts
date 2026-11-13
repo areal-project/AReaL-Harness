@@ -273,7 +273,10 @@ export function createHostSnapshotProjector(
   threadTargets: Map<string, string>,
   creationTargets: Map<string, string>,
   catalogs: Map<string, { identity: string; value?: Record<string, unknown> }>,
-  inspections: Map<string, { identity: string; value?: Record<string, unknown> }> = new Map(),
+  inspections: Map<
+    string,
+    { identity: string; scope?: string; value?: Record<string, unknown> }
+  > = new Map(),
 ) {
   let revision = 0;
   const projectViews = new Map<
@@ -281,6 +284,7 @@ export function createHostSnapshotProjector(
     {
       source: ShellProject;
       auxiliary: unknown;
+      inspection: unknown;
       bound: boolean;
       session?: SessionRead;
       historyVersion: number;
@@ -356,6 +360,17 @@ export function createHostSnapshotProjector(
           currentSession.access?.kind === "persisted")
           ? currentSession
           : undefined;
+      const inspectedThread = selectedSession ? native?.thread : undefined;
+      const configuration = inspectedThread?.desktop?.configuration;
+      const inspectionEntry = inspectedThread && inspections.get(`${id}:${inspectedThread.id}`);
+      const inspection =
+        connection.connection === "ready" &&
+        inspectionEntry &&
+        inspectionEntry.scope ===
+          JSON.stringify([connection.identity.connectionId, project.serviceGeneration]) &&
+        inspectionEntry.identity === configurationIdentity(configuration)
+          ? inspectionEntry.value
+          : undefined;
       const cached = projectViews.get(project.projectId);
       const outcomes =
         connection.connection === "ready"
@@ -367,6 +382,7 @@ export function createHostSnapshotProjector(
         cached &&
         cached.source === project &&
         cached.auxiliary === auxiliary &&
+        cached.inspection === inspection &&
         cached.bound === bound &&
         cached.session === selectedSession &&
         cached.historyVersion === displayVersion &&
@@ -546,10 +562,7 @@ export function createHostSnapshotProjector(
                 [thread.id]: {
                   ...desktop.configuration,
                   // 会话配置不带解析后的模型名；网页经后台 inspect 补上，与桌面一致。
-                  ...(inspections.get(`${id}:${thread.id}`)?.identity ===
-                  configurationIdentity(desktop.configuration)
-                    ? inspections.get(`${id}:${thread.id}`)?.value
-                    : {}),
+                  ...inspection,
                 },
               }
             : {}),
@@ -566,6 +579,7 @@ export function createHostSnapshotProjector(
       projectViews.set(project.projectId, {
         source: project,
         auxiliary,
+        inspection,
         bound,
         session: selectedSession,
         historyVersion: displayVersion,

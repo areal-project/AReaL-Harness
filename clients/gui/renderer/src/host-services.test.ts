@@ -3,7 +3,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { HostClientOptions, ShellProject, SourceNavigation } from "@areal/client";
 import { createHostReadServices } from "./host-services.js";
-import { settleHostCommand } from "./host-snapshot.js";
+import {
+  configurationIdentity,
+  createHostSnapshotProjector,
+  settleHostCommand,
+} from "./host-snapshot.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import type { Action, PlatformServices, Snapshot } from "./services.js";
 import { PlatformReadProvider } from "./PlatformReadContext.js";
@@ -1495,4 +1499,63 @@ describe("Host renderer read authority", () => {
     expect(writes.filter((entry) => entry.method === "attention.read")).toHaveLength(2);
     expect(native_).toHaveBeenCalledTimes(1);
   });
+});
+
+it("reprojects completed inspection and fences its connection and Core generation", () => {
+  let connectionId = "connection";
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: { ...connection, connectionId } }),
+    readsSnapshot: () => ({ session: { state: "fresh" } }),
+  };
+  const config = { revision: 1, defaultModelRevision: "v1" };
+  const inspections = new Map([
+    [
+      "alias:thread",
+      {
+        identity: configurationIdentity(config),
+        scope: JSON.stringify([connectionId, "core-gen"]),
+        value: undefined as Record<string, unknown> | undefined,
+      },
+    ],
+  ]);
+  const projectSnapshot = createHostSnapshotProjector(
+    client as never,
+    undefined,
+    options(transport().factory),
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    inspections,
+  );
+  const shell = { snapshot: { projects: [project], navigation: [navigation] } };
+  const session = { ...identity, access: { kind: "live" } };
+  const native = { thread: { ...observation.thread, desktop: { configuration: config } } };
+  const extras = {
+    watched: new Map(),
+    tasks: new Map(),
+    historyVersion: 0,
+    commandOutcomes: new Map(),
+  };
+  const read = (shellValue = shell) =>
+    projectSnapshot(shellValue as never, true, session as never, native as never, extras).snapshot
+      .projects[0].configurations.thread as Record<string, unknown>;
+  expect(read().modelName).toBeUndefined();
+  inspections.get("alias:thread")!.value = { modelName: "resolved" };
+  expect(read().modelName).toBe("resolved");
+  connectionId = "replacement";
+  expect(read().modelName).toBeUndefined();
+  connectionId = "connection";
+  const next = {
+    snapshot: { ...shell.snapshot, projects: [{ ...project, serviceGeneration: "next" }] },
+  };
+  const nextSession = { ...session, serviceGeneration: "next" };
+  const replacement = projectSnapshot(
+    next as never,
+    true,
+    nextSession as never,
+    native as never,
+    extras,
+  ).snapshot.projects[0].configurations.thread as Record<string, unknown>;
+  expect(replacement.modelName).toBeUndefined();
 });
