@@ -52,6 +52,13 @@ export async function stopFixtureHost(binary, home, evidence) {
   }
 }
 
+export async function stopAndAssertFixtureHost(binary, env, evidence, metadata) {
+  const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, evidence);
+  assert.ok(receipt, "the original fixture Host stop is confirmed");
+  await assertApplicationStopped(binary, env, metadata);
+  return receipt;
+}
+
 export async function cleanupSyntheticHostKeychain(hostHome, isolatedRoot) {
   if (process.platform !== "darwin") return [];
   const root = await realpath(isolatedRoot);

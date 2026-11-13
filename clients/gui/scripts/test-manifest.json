@@ -1,5 +1,21 @@
 [
   {
+    "script": "test:workbench-errors",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["protocol", "provider"],
+    "requires": ["gui-build"],
+    "notes": "Actual Workbench process framing and typed error mapping, including the Host error-code inventory."
+  },
+  {
+    "script": "test:core-observation",
+    "layer": "contract",
+    "platforms": ["darwin", "linux"],
+    "areas": ["testing", "conversation"],
+    "requires": ["core-binary", "native-runtime"],
+    "notes": "Create and observe a real isolated Core thread, then verify cleanup of its original service generation."
+  },
+  {
     "script": "test:workbench-backend",
     "layer": "e2e",
     "platforms": ["darwin", "linux"],
@@ -830,7 +846,7 @@
     "platforms": ["darwin", "linux"],
     "areas": ["testing"],
     "requires": [],
-    "notes": "脚本自身的单测：任务目录、隔离 Electron 身份、打包使用者、开发服务路由、性能夹具；外部命令全部注入。"
+    "notes": "脚本单测覆盖任务目录、隔离 Electron 身份、打包、开发服务路由、性能、Core 观察与 Host 传输屏障；不启动应用或调用供应商。"
   },
   {
     "script": "test:manifest",

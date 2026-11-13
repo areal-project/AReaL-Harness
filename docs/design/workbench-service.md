@@ -22,6 +22,7 @@ Host 复用 `workbench_route.rs` 与 `workbench.rs` 的监督机制，分别监�
 
 - 本机认证控制方法 `backend.ensure` 启动或复用后台，`backend.status` 返回 Host 代次、PID 与后台身份，不返回私有连接令牌。浏览器不能调用这两个控制方法。
 - 启动参数经私有管道传入；子进程清空环境后仅保留运行所需变量。后台使用原用户 home，数据目录以显式 options 为准。
+- GUI 通过本机 `backend.credentialNames` 查询配置声明的普通环境凭据名，排除安全存储专用的 `AREAL_CREDENTIAL_` 前缀，再以 `backend.ensure.environmentCredentials` 交接值。凭据只保存在匹配来源和后台身份的 Host 内存中，不进入启动记录；同代接入也更新凭据，省略字段保留原值，显式空映射清除原值。配置解析失败返回 `configurationError:true`，GUI 不提交凭据变更，仍可启动后台进入设置修复；模型配置读取继续报告原错误。
 - 发行布局从签名应用的 `Resources/areal-workbench` 发现入口，验证签名与清单，使用包内 Electron 的 Node 模式。源码 debug 布局可从相邻仓库发现服务并使用 PATH 中的 Node，无须构建 GUI 安装包；发行构建不接受此发现路径。
 - 子进程以 `ready` 帧报告方法和身份；启动超时为 20 秒。首次观察到的异常退出允许立即恢复，10 分钟窗口内的后续失败按 1、2、4…秒退避，累计 5 次失败后不再自动重启。
 - Main detach 不结束 Host 后台。Host 停止时关闭管道，后台等在途操作结束后退出；5 秒仍不退出则终止本次子进程。

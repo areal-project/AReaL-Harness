@@ -1,3 +1,4 @@
+import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { desktopBridge } from "./support/desktop-fixture.mjs";
 import {
   createFolderVisionFixture,
@@ -11,7 +12,11 @@ import {
   composerReferencesResponse,
   runComposerReferencesAcceptance,
 } from "./composer-references-acceptance.mjs";
-import { assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  assertApplicationStopped,
+  closeSmokeApplication,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
   captureSmokeFailure,
@@ -270,23 +275,8 @@ require(${JSON.stringify(join(desktop, "src/main.cjs"))});
 let app,
   page,
   passed = false;
-const pasteCores = new Map();
 async function readPasteThread(threadId, executionWorkspace = workspace) {
-  if (!pasteCores.has(executionWorkspace)) {
-    const services = [];
-    const root = join(env.AREAL_HARNESS_SERVICE_HOME, "services");
-    for (const directory of await readdir(root)) {
-      const service = JSON.parse(await readFile(join(root, directory, "service.json"), "utf8"));
-      if (service.workspace === executionWorkspace && service.state === "ready")
-        services.push(service);
-    }
-    assert.equal(services.length, 1, "folded paste reads its single isolated native Core");
-    const { connect } = await import("../../../examples/desktop-api/client.mjs");
-    pasteCores.set(executionWorkspace, await connect(services[0].endpoint, services[0].authFile));
-  }
-  return (
-    await pasteCores.get(executionWorkspace).call("thread/read", { threadId, includeTurns: true })
-  ).thread;
+  return observeCoreThread({ binary, env, gui, threadId, workspace: executionWorkspace });
 }
 const errors = [],
   frames = [],
@@ -421,17 +411,7 @@ async function quit() {
       response: args.at(-1).message === "退出 AReaL Harness？" ? 0 : 1,
     });
   });
-  const child = app.process();
-  const closed = await Promise.race([
-    app.close().then(() => true),
-    new Promise((resolve) => setTimeout(() => resolve(false), 10000)),
-  ]);
-  if (!closed && child.exitCode === null && child.signalCode === null) {
-    const exited = new Promise((resolve) => child.once("exit", resolve));
-    child.kill("SIGKILL");
-    await exited;
-    checks.push("bounded cleanup ended the owned Electron process");
-  }
+  await closeSmokeApplication(app, 10000);
   app = null;
 }
 console.log("GUI evidence:", scratch);
@@ -2157,7 +2137,6 @@ try {
   throw error;
 } finally {
   await writeFile(join(scratch, "model-requests.json"), JSON.stringify(received, null, 2));
-  for (const core of pasteCores.values()) await core.close();
   if (filesRegression && page)
     await page.evaluate(() => {
       globalThis.filesReleaseList?.();
@@ -2174,55 +2153,21 @@ try {
       if (error.code === "ENOENT") return null;
       throw error;
     });
-  const hostHome = join(scratch, "registry");
-  const descriptor = await readFile(join(hostHome, "host", "host.json"), "utf8")
-    .then(JSON.parse)
-    .catch((error) => {
-      if (error.code === "ENOENT") return null;
-      throw error;
-    });
-  await quit();
-  if (descriptor) {
-    const { HostClient } = require("@areal/client/node");
-    const { randomUUID } = require("node:crypto");
-    const {
-      readHostReceipt,
-      readOfflineHostReceipt,
-    } = require("../app/src/core/host-lifecycle.cjs");
-    const host = new HostClient();
-    const reference = {
-      kind: "stopHost",
-      requestId: randomUUID(),
-      home: hostHome,
-      hostId: descriptor.hostId,
-      generation: descriptor.generation,
-      strategy: "cancel",
-    };
-    await writeFile(join(scratch, "host-stop-reference.json"), JSON.stringify(reference, null, 2));
-    try {
-      await host.connect(hostHome);
-      assert.equal(host.hostId, descriptor.hostId);
-      assert.equal(host.generation, descriptor.generation);
-      let receipt;
-      try {
-        receipt = readHostReceipt(
-          reference,
-          await host.stop(reference.requestId, reference.generation, reference.strategy),
-        );
-      } catch {
-        host.close();
-        receipt = await readOfflineHostReceipt(binary, reference);
-      }
-      await writeFile(join(scratch, "host-stop.json"), JSON.stringify(receipt ?? null, null, 2));
-      assert.equal(receipt?.state, "completed", "original fixture Host stop remains UNKNOWN");
-      checks.push("explicit fixture Host stop completes with matching original project receipts");
-    } catch (error) {
-      passed = false;
-      process.exitCode = 1;
-      errors.push(`Host cleanup: ${error.message}`);
-    } finally {
-      host.close();
-    }
+  try {
+    await quit();
+  } catch (error) {
+    passed = false;
+    process.exitCode = 1;
+    errors.push(`Electron cleanup: ${error.message}`);
+  }
+  try {
+    const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, scratch);
+    assert.ok(receipt, "the original fixture Host stop is confirmed");
+    checks.push("explicit fixture Host stop completes with matching original project receipts");
+  } catch (error) {
+    passed = false;
+    process.exitCode = 1;
+    errors.push(`Host cleanup: ${error.message}`);
   }
   const authoritativeHistory = [];
   const coreEntries = await readdir(join(scratch, "core"), { withFileTypes: true }).catch(
@@ -2252,11 +2197,9 @@ try {
     checks.push("explicit Host stop leaves the isolated adapter and all Core generations stopped");
   } catch (error) {
     console.error("Adapter fixture cleanup:", error.message);
-    if (passed) {
-      passed = false;
-      process.exitCode = 1;
-      errors.push(`Explicit safe stop failed: ${error.message}`);
-    }
+    passed = false;
+    process.exitCode = 1;
+    errors.push(`Explicit safe stop failed: ${error.message}`);
   }
   server.closeAllConnections();
   await new Promise((r) => server.close(r));

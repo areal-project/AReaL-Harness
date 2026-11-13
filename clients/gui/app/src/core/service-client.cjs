@@ -769,13 +769,7 @@ class SharedCoreBackend {
     try {
       if (recover) await source.client.connect(options.hostHome);
       else await source.init({ deferCredentials: true });
-      const owner = await source.client.request("backend.ensure", {
-        profile: options.guiProfile,
-        options: {
-          ...options,
-          applicationOwner: undefined,
-        },
-      });
+      const owner = await source.ensureBackend(options, process.env);
       if (this.disposed) throw new Error("GUI 连接已关闭");
       if (!(await this.attach({ expectedIdentity: owner.identity })))
         throw new Error("Host 后台尚未就绪");

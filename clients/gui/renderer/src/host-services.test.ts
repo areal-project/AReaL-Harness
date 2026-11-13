@@ -1205,6 +1205,7 @@ describe("Host renderer read authority", () => {
     });
     const thread = (await services.snapshot()).projects[0].state.threads.thread;
     expect(thread.executionRoot).toBe("/worktree");
+    expect(thread.executionCore.serviceGeneration).toBe("execution-gen");
     expect(thread.worktree.branch).toBe("feature");
   });
   it("retains unrelated project projections during a native session delta", async () => {

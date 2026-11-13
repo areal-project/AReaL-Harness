@@ -609,6 +609,41 @@ class CiContracts(unittest.TestCase):
             report["results"].append(result)
         return plan, list(grouped.values())
 
+    def test_shared_fixture_and_error_changes_select_their_contracts(self):
+        for path in (
+            "clients/gui/scripts/support/core-observation.mjs",
+            "clients/gui/scripts/support/host-transport-barrier.mjs",
+            "services/workbench/src/backend-main.cjs",
+            "core/host/src/gateway/session.rs",
+        ):
+            with self.subTest(path=path):
+                plan, reports = self.gate_fixture(paths=(path,))
+                portable = next(item for item in plan["items"] if item["id"] == "gui-portable")
+                for platform in ("darwin", "linux"):
+                    self.assertIn("test:script-units", portable["expectedTests"][platform])
+                    self.assertIn("test:workbench-errors", portable["expectedTests"][platform])
+                    self.assertNotIn("test:core-observation", portable["expectedTests"][platform])
+                    core = [
+                        script
+                        for item in plan["items"]
+                        if item["group"] == "core-contracts"
+                        for script in item["expectedTests"][platform]
+                    ]
+                    self.assertEqual(core.count("test:core-observation"), 1)
+                # 新合同即使未执行，也不能由剩余通过报告放行。
+                for report in reports:
+                    for result in report["results"]:
+                        if result["id"] == "gui-portable":
+                            result["tests"] = [
+                                test
+                                for test in result["tests"]
+                                if test["script"] != "test:workbench-errors"
+                            ]
+                self.assertIn(
+                    "missing or duplicate runner tests: gui-portable",
+                    gate.validate(plan, reports, scope.WORKFLOW_GROUPS["gui"], ("run", "2")),
+                )
+
     def test_workbench_source_changes_require_the_core_boundary_check(self):
         for path in (
             "services/workbench/src/desktop/core/project-connections.cjs",

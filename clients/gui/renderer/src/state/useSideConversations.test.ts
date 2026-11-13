@@ -18,6 +18,7 @@ vi.mock("../useSideChatTabs.js", () => {
 it.each([
   ["same generation", "generation", true],
   ["replaced generation", "replacement", false],
+  ["missing generation", undefined, false],
 ])(
   "attaches a selection only to the %s after public read",
   async (_label, generation, accepted) => {
@@ -26,7 +27,11 @@ it.each([
     mocks.reveal.mockReset();
     const project = {
       id: "project",
-      core: { instanceId: "generation", features: { sideExecutableV2: true } },
+      core: {
+        instanceId: "generation",
+        serviceGeneration: "generation",
+        features: { sideExecutableV2: true },
+      },
       state: { connected: true },
       pending: [],
     };
@@ -35,7 +40,10 @@ it.each([
       projects: [
         {
           id: "project",
-          core: { instanceId: "service-id", serviceGeneration: generation },
+          core: {
+            instanceId: generation === undefined ? "generation" : "service-id",
+            serviceGeneration: generation,
+          },
           state: { threads: { child: { conversation: { origin: { sourceThreadId: "parent" } } } } },
         },
       ],

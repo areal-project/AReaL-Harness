@@ -47,6 +47,34 @@ class GuiHostProjects {
     /** @type {Promise<void>|undefined} */
     this.migrating = undefined;
   }
+  /** @param {Record<string,unknown> & {guiProfile?:string}} options @param {NodeJS.ProcessEnv} environment */
+  async ensureBackend(options, environment) {
+    const backendOptions = { ...options, applicationOwner: undefined };
+    const params = { profile: options.guiProfile, options: backendOptions };
+    const result = await this.client.request("backend.credentialNames", params);
+    if (
+      !result ||
+      typeof result !== "object" ||
+      !Array.isArray(result.names) ||
+      result.names.some((/** @type {unknown} */ name) => typeof name !== "string" || !name) ||
+      (result.configurationError !== undefined && typeof result.configurationError !== "boolean")
+    )
+      throw new Error("环境凭据引用无效");
+    const credentials = Object.fromEntries(
+      result.names.flatMap((/** @type {string} */ name) =>
+        typeof environment[name] === "string" ? [[name, environment[name]]] : [],
+      ),
+    );
+    return this.client.request(
+      "backend.ensure",
+      result.configurationError
+        ? params
+        : {
+            ...params,
+            environmentCredentials: credentials,
+          },
+    );
+  }
   /** @param {{deferCredentials?:boolean}} [options] */
   async init({ deferCredentials = false } = {}) {
     for (const path of Object.values(this.source))

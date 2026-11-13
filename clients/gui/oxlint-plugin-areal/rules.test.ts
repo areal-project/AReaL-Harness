@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "vitest";
 import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, mkdirSync, symlinkSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,6 +79,56 @@ describe("no-raw-resize-observer", () => {
       expect(lint("no-raw-resize-observer", source).status).toBe(0);
     },
   );
+});
+
+describe("no-smoke-transport-patch", () => {
+  test.each([
+    "ServiceConnection.prototype.request = async function () {};",
+    "WebSocket.prototype.send = function () {};",
+    'WebSocket["prototype"]["send"] = original;',
+    'Object.defineProperty(WebSocket.prototype, "send", { value: replacement });',
+    'const { ServiceConnection } = process.mainModule.require("./core/service-client.cjs");',
+    "delete ServiceConnection.prototype.request;",
+  ])("rejects transport patch: %s", (source) => {
+    const result = lint("no-smoke-transport-patch", source, "fixture.mjs");
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("areal(no-smoke-transport-patch)");
+  });
+  test.each([
+    "const original = WebSocket.prototype.send;",
+    "new ServiceConnection();",
+    "fixture.send = replacement;",
+    "globalThis.createHostTransportBarrier(match);",
+  ])("allows normal use: %s", (source) => {
+    expect(lint("no-smoke-transport-patch", source, "fixture.mjs").status).toBe(0);
+  });
+  test("the project lint configuration guards the migrated scripts", () => {
+    const project = join(scratch, "smoke-config");
+    mkdirSync(join(project, "scripts"), { recursive: true });
+    writeFileSync(
+      join(project, "package.json"),
+      '{"name":"smoke-lint-fixture","private":true,"type":"module"}',
+    );
+    copyFileSync(join(root, "vite.config.mts"), join(project, "vite.config.mts"));
+    symlinkSync(join(root, "node_modules"), join(project, "node_modules"));
+    symlinkSync(join(root, "oxlint-plugin-areal"), join(project, "oxlint-plugin-areal"));
+    const files = [
+      "composer-files-acceptance.mjs",
+      "model-selection-smoke.mjs",
+      "conversation-derivation-smoke.mjs",
+    ];
+    for (const file of files)
+      writeFileSync(join(project, "scripts", file), "WebSocket.prototype.send = replacement;\n");
+    const vp = join(root, "node_modules/vite-plus/bin/vp");
+    const result = spawnSync(
+      process.execPath,
+      [vp, "lint", ...files.map((file) => `scripts/${file}`)],
+      { cwd: project, encoding: "utf8" },
+    );
+    expect(result.status, result.stdout + result.stderr).toBe(1);
+    for (const file of files) expect(result.stdout + result.stderr).toContain(file);
+    expect(result.stdout + result.stderr).toContain("no-smoke-transport-patch");
+  });
 });
 
 describe("no-raw-disclosure", () => {

@@ -4,6 +4,8 @@
 
 共享业务优先在 Web 与真实 Host 服务上用隔离数据验收，不以 GUI 打包为常规前置。窗口、系统加密、浏览器视图和电脑控制等 Electron 专属能力才启动桌面；发行资源、签名与升级仍在对应发行任务单独验证。协议测试、页面交互、原生与发行包证据分别记录，不互相替代。
 
+共享 smoke 夹具位于 `clients/gui/scripts/support/`：`core-observation.mjs` 按目标工作区与服务代际读取 Core，`host-transport-barrier.mjs` 在 Host 传输边界控制本次请求与响应。注入须断言命中的请求 ID，权威结算与 UI 呈现分别验证；清理复用 `application-cleanup.mjs` 核对原 Host 停止回执及实际退出，保留原失败。`test:script-units` 验证夹具，`test:core-observation` 验证真实隔离 Core；`test:workbench-errors` 在 GUI 构建后验证后台进程和 Host 错误码映射，依赖均登记在 manifest。
+
 工作台后台冒烟可按领域运行，例如 `pnpm --dir clients/gui test:workbench-backend --domain=providers`。支持 library、trajectory、feedback、tasks、manage、worktree、providers、lifecycle，可组合；省略参数运行完整链路。每次运行使用独立数据目录；停机任务目录和运行中任务管理分别初始化不同项目。开发时选择目标领域及受影响回归，收尾运行完整链路。协议冒烟不替代真实 Web 页面操作。
 
 高频操作基线 `pnpm --dir clients/gui test:ux-journeys` 在真实 Electron、后台和 Core 上走三条旅程：没配模型时去配置、打开项目发消息并在审批中继续排队、右上角摘要。外部模型是脚本内的假模型。每步截图并做 6 项确定性检查（400ms 内有反馈、无原始错误、中文界面不混英文、浮层不互相遮挡、等审批时不显示“运行中”、用户没操作时不弹提示）；检查逻辑在 `scripts/ux-checks.mjs`，由 `test:ux-checks` 单测。修一个体验问题时，往这里加一条检查防止回退。

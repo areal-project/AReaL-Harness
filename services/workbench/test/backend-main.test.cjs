@@ -165,7 +165,12 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
     ],
   ])
     assert.deepEqual((await call(id, params)).error, { code: "COMMAND_FAILED", message }, id);
-  for (const code of ["MIGRATION_PENDING", "migrationBlocked"]) {
+  for (const code of [
+    "MIGRATION_PENDING",
+    "migrationBlocked",
+    "PROVIDER_CREDENTIAL_REQUIRED",
+    "PROFILE_NOT_SUPPORTED",
+  ]) {
     assert.deepEqual((await call(code, { command: "list", request: { errorCode: code } })).error, {
       code,
     });
@@ -198,10 +203,12 @@ test("本机网页的桌面命令只放行命令表内、合同通过的请求�
       { code: "SUBMISSION_UNKNOWN" },
     );
   assert.deepEqual(
-    (await call("profile-without-outcome", {
-      command: "fork",
-      request: { coreFailure: { code: -32010, reason: "PROFILE_NOT_SUPPORTED" } },
-    })).error,
+    (
+      await call("profile-without-outcome", {
+        command: "fork",
+        request: { coreFailure: { code: -32010, reason: "PROFILE_NOT_SUPPORTED" } },
+      })
+    ).error,
     { code: "COMMAND_FAILED", message: "PROFILE_NOT_SUPPORTED" },
   );
   f.child.stdin.end();
@@ -320,4 +327,43 @@ test("恢复工作区只登记 Host 清单的目录，不接受调用者路径",
   assert.equal(JSON.parse((await rejected)[0]).error.code, "INVALID_PARAMS");
   f.child.stdin.end();
   await f.exited;
+});
+
+test("Workbench and Host error classifications stay in sync", async () => {
+  const { businessErrorCodes, mapBackendError } = require("../src/backend-main.cjs");
+  const source = await readFile(
+    join(__dirname, "../../../core/host/src/gateway/session.rs"),
+    "utf8",
+  );
+  const section = source.match(
+    /pub\(crate\) fn error_code\(message: &str\) -> &str \{([\s\S]*?)\n\}/,
+  );
+  assert.ok(section, "Host error classification must remain inspectable");
+  const host = [...section[1].matchAll(/"([A-Za-z0-9_]+)"\s*(?:\||=>)/g)].map((match) => match[1]);
+  const fallbackAtHost = ["CORE_UNAVAILABLE", "RESOURCE_BUSY", "PERSISTED_HISTORY_UNAVAILABLE"];
+  assert.deepEqual(
+    [...businessErrorCodes].filter((code) => !fallbackAtHost.includes(code)).sort(),
+    host.sort(),
+  );
+  for (const code of businessErrorCodes)
+    assert.deepEqual(mapBackendError({ code }, false), { code });
+  for (const kind of ["admitted", "unconfirmed"]) {
+    assert.deepEqual(
+      mapBackendError({ code: "PROVIDER_CREDENTIAL_REQUIRED", outcome: { kind } }, false),
+      { code: "SUBMISSION_UNKNOWN" },
+    );
+  }
+  for (const kind of ["rejected", "noMutation"]) {
+    assert.deepEqual(
+      mapBackendError({ code: -32010, reason: "PROFILE_NOT_SUPPORTED", outcome: { kind } }, false),
+      { code: "PROFILE_NOT_SUPPORTED" },
+    );
+    assert.deepEqual(mapBackendError({ code: -32009, outcome: { kind } }, false), {
+      code: "TARGET_CHANGED",
+    });
+  }
+  assert.deepEqual(mapBackendError({ code: -32009 }, false), { code: "CORE_UNAVAILABLE" });
+  assert.deepEqual(mapBackendError({ code: "NEW_INTERNAL", message: "private detail" }, false), {
+    code: "CORE_UNAVAILABLE",
+  });
 });

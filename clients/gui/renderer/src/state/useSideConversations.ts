@@ -10,6 +10,7 @@ import {
 import { useI18n } from "../i18n/IntlProvider.js";
 import type { RecoveryFailure } from "../recoveryPresentation.js";
 import type { Action, Data, Snapshot } from "../services.js";
+import { executionGeneration, serviceGeneration } from "../serviceGeneration.js";
 import { useSideChatTabs, type SideChatTab } from "../useSideChatTabs.js";
 import { projectExecutionBlocked } from "./projectExecution.js";
 import type { useWorkspacePanels } from "./useWorkspacePanels.js";
@@ -30,7 +31,7 @@ export function useSideConversations(
   const { panel, workspaceView } = workspacePanels.view;
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
   const sideChats = useSideChatTabs(resourceAction, snapshot.projects);
-  const coreGeneration = project?.core?.serviceGeneration ?? project?.core?.instanceId;
+  const coreGeneration = serviceGeneration(project?.core);
   const sideSource = useRef({ owner: panelOwner, instanceId: coreGeneration });
   sideSource.current = { owner: panelOwner, instanceId: coreGeneration };
   const canCreateSide =
@@ -61,6 +62,7 @@ export function useSideConversations(
     const tab = await sideChats.create(project.id, thread.id, text);
     if (
       sideSource.current.owner === owner.owner &&
+      owner.instanceId !== undefined &&
       sideSource.current.instanceId === owner.instanceId
     )
       revealSide(tab);
@@ -75,6 +77,7 @@ export function useSideConversations(
           if (
             tab &&
             sideSource.current.owner === owner.owner &&
+            owner.instanceId !== undefined &&
             sideSource.current.instanceId === owner.instanceId
           )
             revealSide(tab);
@@ -146,6 +149,7 @@ export function useSideConversations(
     const sourceOwner = `${owner.projectId}:${owner.parentId}`;
     const sourceCurrent = () =>
       sideSource.current.owner === sourceOwner &&
+      owner.coreInstanceId !== undefined &&
       sideSource.current.instanceId === owner.coreInstanceId;
     const active =
       workspaceView !== "conversation" && !annotationVisible
@@ -174,10 +178,7 @@ export function useSideConversations(
             !current ||
             current.closeRequestId ||
             !sourceCurrent() ||
-            (observed?.executionCore?.serviceGeneration ??
-              observed?.executionCore?.instanceId ??
-              observedProject?.core?.serviceGeneration ??
-              observedProject?.core?.instanceId) !== owner.coreInstanceId ||
+            executionGeneration(observedProject, tab.childId) !== owner.coreInstanceId ||
             observed?.desktop?.archived ||
             (observed?.conversation?.origin &&
             typeof observed.conversation.origin === "object" &&

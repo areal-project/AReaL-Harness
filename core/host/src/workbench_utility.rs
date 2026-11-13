@@ -16,7 +16,7 @@ fn extensions(text: &[u8]) -> Result<()> {
         serde_json::from_slice(text).context("invalid tool extensions JSON")?;
     value.validate()
 }
-fn inputs(options: &Value) -> Result<ConfigInputs> {
+pub(super) fn inputs(options: &Value) -> Result<ConfigInputs> {
     let user_home = options["userHome"]
         .as_str()
         .map(PathBuf::from)
@@ -83,6 +83,11 @@ pub(super) async fn execute_with_options(
         operation,
         "modelsRead" | "modelsWrite" | "feedbackStatus" | "feedbackSubmit"
     ) {
+        if matches!(operation, "modelsRead" | "modelsWrite") {
+            for (name, value) in host.gateway.workbench.environment_credentials(source) {
+                inputs.env.insert(name.into(), value.into());
+            }
+        }
         let references = host.migration.vault.provider_references(source)?;
         for reference in references {
             inputs.env.remove(OsString::from(&reference).as_os_str());

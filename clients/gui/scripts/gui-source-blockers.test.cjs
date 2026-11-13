@@ -7,6 +7,33 @@ const { join } = require("node:path");
 const { GuiHostProjects } = require("@areal/workbench-service/desktop/core/gui-host-projects.cjs");
 const { GuiSourceAdapter } = require("@areal/workbench-service/desktop/core/gui-source.cjs");
 
+test("backend setup sends only configured environment credentials and preserves config errors", async () => {
+  const owner = new GuiHostProjects({
+    binary: "/unused",
+    home: "/unused",
+    singletonHeld: true,
+    source: { profile: "/profile", coreHome: "/core", legacyServiceHome: "/legacy" },
+  });
+  const calls = [];
+  owner.client.request = async (method, params) => {
+    calls.push({ method, params });
+    if (method === "backend.credentialNames") return { names: ["FIXTURE_KEY"] };
+    return { identity: "owner" };
+  };
+  const options = { guiProfile: "/profile" };
+  await owner.ensureBackend(options, { FIXTURE_KEY: "secret", OTHER: "hidden" });
+  assert.deepEqual(calls[1].params.environmentCredentials, { FIXTURE_KEY: "secret" });
+  calls.length = 0;
+  owner.client.request = async (method, params) => {
+    calls.push({ method, params });
+    return method === "backend.credentialNames"
+      ? { names: [], configurationError: true }
+      : { identity: "owner" };
+  };
+  await owner.ensureBackend(options, { FIXTURE_KEY: "secret" });
+  assert.equal("environmentCredentials" in calls[1].params, false);
+});
+
 test("source migration reports safe actionable blockers without exposing source data", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "areal-source-blockers-"));
   t.after(() => rm(root, { recursive: true, force: true }));

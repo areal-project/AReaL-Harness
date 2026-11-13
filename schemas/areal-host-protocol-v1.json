@@ -16845,6 +16845,10 @@
         },
         "options": {
           "$ref": "#/$defs/DesktopBackendOptions"
+        },
+        "environmentCredentials": {
+          "$ref": "#/$defs/StringMap",
+          "x-sensitive": true
         }
       },
       "required": [
@@ -16936,6 +16940,26 @@
           "service": null
         }
       ]
+    },
+    "LocalBackendCredentialNamesResult": {
+      "type": "object",
+      "properties": {
+        "names": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "configurationError": { "type": "boolean" }
+      },
+      "required": ["names"],
+      "additionalProperties": false
+    },
+    "LocalBackendCredentialNamesRequest": {
+      "type": "object",
+      "properties": {
+        "version": { "type": "integer", "const": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "method": { "type": "string", "const": "backend.credentialNames" },
+        "params": { "$ref": "#/$defs/LocalBackendEnsureParams" }
+      },
+      "required": ["version", "id", "method", "params"],
+      "additionalProperties": false
     },
     "LocalBackendEnsureRequest": {
       "type": "object",
@@ -66157,6 +66181,11 @@
         "backend.ensure": {
           "request": "#/$defs/LocalBackendEnsureRequest",
           "result": "#/$defs/LocalBackendOwnership",
+          "source": "core/host/src/workbench_route.rs"
+        },
+        "backend.credentialNames": {
+          "request": "#/$defs/LocalBackendCredentialNamesRequest",
+          "result": "#/$defs/LocalBackendCredentialNamesResult",
           "source": "core/host/src/workbench_route.rs"
         },
         "backend.status": {

@@ -82,13 +82,19 @@ describe("composer attachment preparation", () => {
     const createdProject = {
       id: "logical-project",
       root: "/source",
-      core: { instanceId: "source-core" },
-      state: { threads: { thread: { executionCore: { instanceId: "worktree-core" } } } },
+      core: { instanceId: "source-core", serviceGeneration: "source-core" },
+      state: {
+        threads: {
+          thread: {
+            executionCore: { instanceId: "worktree-core", serviceGeneration: "worktree-core" },
+          },
+        },
+      },
     };
     const openedProject = {
       ...createdProject,
       root: "/new-worktree",
-      core: { instanceId: "worktree-core" },
+      core: { instanceId: "worktree-core", serviceGeneration: "worktree-core" },
     };
     const action = vi.fn<Action>();
     action.mockResolvedValueOnce(receipt("worktree"));
@@ -120,7 +126,7 @@ describe("composer attachment preparation", () => {
     const file = new File(["content"], "document.txt");
     const createdProject = {
       id: "project",
-      core: { instanceId: "source" },
+      core: { instanceId: "source", serviceGeneration: "source" },
       state: {
         threads: {
           thread: { executionCore: { instanceId: "service", serviceGeneration: "generation" } },
@@ -129,8 +135,12 @@ describe("composer attachment preparation", () => {
     };
     const openedProject = {
       id: "project",
-      core: { instanceId: "generation" },
-      state: { threads: { thread: { executionCore: { instanceId: "generation" } } } },
+      core: { instanceId: "generation", serviceGeneration: "generation" },
+      state: {
+        threads: {
+          thread: { executionCore: { instanceId: "generation", serviceGeneration: "generation" } },
+        },
+      },
     };
     const action = vi.fn<Action>().mockResolvedValue(receipt("worktree"));
     const initialOwner = composerUploadOwner(createdProject, "thread");
@@ -156,7 +166,13 @@ describe("composer attachment preparation", () => {
       composerUploadOwner(
         {
           ...openedProject,
-          state: { threads: { thread: { executionCore: { instanceId: "replacement" } } } },
+          state: {
+            threads: {
+              thread: {
+                executionCore: { instanceId: "replacement", serviceGeneration: "replacement" },
+              },
+            },
+          },
         },
         "thread",
       ),
@@ -198,11 +214,19 @@ describe("composer attachment preparation", () => {
   it("does not reuse an old Core instance's media receipt", async () => {
     const file = new File(["content"], "document.txt");
     const firstOwner = composerUploadOwner(
-      { id: "project", root: "/worktree", core: { instanceId: "first" } },
+      {
+        id: "project",
+        root: "/worktree",
+        core: { instanceId: "first", serviceGeneration: "first" },
+      },
       "thread",
     );
     const secondOwner = composerUploadOwner(
-      { id: "project", root: "/worktree", core: { instanceId: "second" } },
+      {
+        id: "project",
+        root: "/worktree",
+        core: { instanceId: "second", serviceGeneration: "second" },
+      },
       "thread",
     );
     const action = vi.fn<Action>();

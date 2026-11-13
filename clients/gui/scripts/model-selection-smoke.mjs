@@ -1,9 +1,11 @@
+import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { desktopBridge } from "./support/desktop-fixture.mjs";
 import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
@@ -113,7 +115,7 @@ await writeFile(
 await writeFile(
   config,
   (await readFile(config, "utf8")) +
-    `\n[model.providers.env]\nname="env"\nenabled=false\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\napi_key_env="AREAL_CREDENTIAL_fixture_env"\nmodels=[{id="env-model",enabled=true}]\n`,
+    `\n[model.providers.env]\nname="env"\nenabled=false\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\napi_key_env="AREAL_MODEL_FIXTURE_KEY"\nmodels=[{id="env-model",enabled=true}]\n`,
 );
 if (composerPicker || composerFast) {
   await writeFile(
@@ -152,7 +154,7 @@ env.NO_PROXY = noProxy;
 env.no_proxy = noProxy;
 // 非法凭据也不能被 Core 启动时的引用注入误标为可用。
 env.AREAL_CREDENTIAL_MISSING_arena = "   ";
-env.AREAL_CREDENTIAL_fixture_env = "fixture-key";
+env.AREAL_MODEL_FIXTURE_KEY = "fixture-key";
 if (process.env.AREAL_GUI_EXECUTABLE) delete env.AREAL_CORE_BIN;
 const coreBinary = process.env.AREAL_GUI_EXECUTABLE
   ? join(process.env.AREAL_GUI_EXECUTABLE, "../../Resources/areal-core/bin/areal")
@@ -162,7 +164,6 @@ const coreSha256 = createHash("sha256")
   .digest("hex");
 let app,
   page,
-  coreReader,
   stoppingAdapter,
   stoppingHost,
   failure = null,
@@ -421,8 +422,6 @@ async function showModel(name) {
 }
 async function stopService() {
   console.log("[model-selection] stopping isolated Host");
-  await coreReader?.close();
-  coreReader = undefined;
   if (!stoppingHost) return;
   const home = env.AREAL_HARNESS_SERVICE_HOME;
   const reference = {
@@ -467,19 +466,14 @@ async function stopService() {
   }
 }
 async function readCoreThread(threadId) {
-  if (!coreReader) {
-    const root = join(env.AREAL_HARNESS_SERVICE_HOME, "services");
-    const services = [];
-    for (const directory of await readdir(root)) {
-      const descriptor = JSON.parse(await readFile(join(root, directory, "service.json"), "utf8"));
-      if (descriptor.workspace === workspace && descriptor.state === "ready")
-        services.push(descriptor);
-    }
-    assert.equal(services.length, 1, "one isolated Core owns the workspace");
-    const { connect } = await import("../../../examples/desktop-api/client.mjs");
-    coreReader = await connect(services[0].endpoint, services[0].authFile);
-  }
-  return (await coreReader.call("thread/read", { threadId, includeTurns: true })).thread;
+  return observeCoreThread({
+    binary: coreBinary,
+    env,
+    gui,
+    threadId,
+    project: fixtureProject(await state()),
+    workspace,
+  });
 }
 async function launch() {
   console.log("[model-selection] launching GUI");
@@ -2210,12 +2204,7 @@ async function runFullModelSelection() {
     "the default provider's saved credential survives a cold GUI/backend reopen without replaying a request",
   );
   // 默认凭据恢复已验收；后续启停用例沿用无全局默认项的独立目录前置条件。
-  const withoutDefault = await call("providers", {
-    operation: "default",
-    model: null,
-    expectedRevision: reopened.revision,
-  });
-  // 冷启动的目录可见不代表后台操作已结算；写入默认项后的刷新也需完成。
+  // 默认项与 Core 应用由同一操作结算，避免两次写操作之间出现新的准入竞争。
   await page.waitForFunction(async () => {
     const reply = await window.arealDesktop.command("serviceStatus", {});
     return (
@@ -2226,7 +2215,13 @@ async function runFullModelSelection() {
       !reply.value.providerUpdating
     );
   });
-  await call("providers", { operation: "apply", expectedRevision: withoutDefault.revision });
+  const withoutDefault = await call("providers", {
+    operation: "defaultAndApply",
+    model: null,
+    expectedRevision: reopened.revision,
+  });
+  assert.equal(withoutDefault.defaultModel, null);
+  assert.equal(withoutDefault.pendingApply, false);
   await until(
     (s) => fixtureProject(s).models.length === 2,
     "explicit default cleared for catalog enablement checks",
@@ -2250,50 +2245,27 @@ async function runFullModelSelection() {
   await page.locator(".provider-catalog-row").filter({ hasText: "arena" }).click();
   await page.getByRole("textbox", { name: "API Key", exact: true }).fill("fixture-key");
   // 真实 Core 完成保存/同步后暂留回执，稳定覆盖目录已刷新但设置操作尚未结算的窗口。
+  await page.evaluate(installHostTransportBarrier);
   await page.evaluate(() => {
-    const send = WebSocket.prototype.send;
-    const gate = (globalThis.modelApplyReceipt = { ready: false });
-    let socket, onmessage;
-    gate.restore = () => {
-      WebSocket.prototype.send = send;
-      if (socket) socket.onmessage = onmessage;
-    };
-    WebSocket.prototype.send = function (data) {
-      let frame;
-      try {
-        frame = JSON.parse(data);
-      } catch {
-        return send.call(this, data);
-      }
-      if (frame.method === "providers.command" && frame.params?.operation === "save") {
-        WebSocket.prototype.send = send;
-        socket = this;
-        onmessage = this.onmessage;
-        this.onmessage = (event) => {
-          let reply;
-          try {
-            reply = JSON.parse(event.data);
-          } catch {
-            return onmessage?.call(this, event);
-          }
-          if (reply.id !== frame.id) return onmessage?.call(this, event);
-          gate.ready = true;
-          gate.release = () => {
-            gate.release = null;
-            gate.restore();
-            onmessage?.call(this, event);
-          };
-        };
-      }
-      return send.call(this, data);
-    };
+    const gate = (globalThis.modelApplyReceipt = {});
+    const barrier = globalThis.createHostTransportBarrier((frame) => {
+      if (gate.entry || frame.method !== "providers.command" || frame.params?.operation !== "save")
+        return null;
+      return (gate.entry = { response: "hold" });
+    });
+    gate.restore = () => barrier.restore();
   });
   await button("保存").click();
   await until(
     (s) => fixtureProject(s).models.every((m) => m.available === true),
     "both models available",
   );
-  await page.waitForFunction(() => globalThis.modelApplyReceipt?.ready);
+  await page.waitForFunction(
+    () =>
+      globalThis.modelApplyReceipt?.entry?.responseHit ===
+        globalThis.modelApplyReceipt?.entry?.requestId &&
+      globalThis.modelApplyReceipt?.entry?.requestId != null,
+  );
   assert.equal(
     await button("返回应用").isDisabled(),
     true,
@@ -2309,7 +2281,7 @@ async function runFullModelSelection() {
     animations: "disabled",
   });
   await page.evaluate(() => {
-    globalThis.modelApplyReceipt.release();
+    globalThis.modelApplyReceipt.entry.releaseResponse();
     globalThis.modelApplyReceipt.restore();
     delete globalThis.modelApplyReceipt;
   });
@@ -2431,7 +2403,11 @@ async function runFullModelSelection() {
   await page.getByRole("switch", { name: "启用供应商", exact: true }).click();
   await saveProvider();
   await until(
-    (s) => fixtureProject(s).models.length === 3,
+    (s) =>
+      fixtureProject(s).models.length === 3 &&
+      fixtureProject(s).models.some(
+        (model) => model.providerId === "env" && model.available === true,
+      ),
     "environment model available after apply",
   );
   assert.equal(
@@ -2649,7 +2625,7 @@ try {
   if (app) {
     await page
       ?.evaluate(() => {
-        globalThis.modelApplyReceipt?.release?.();
+        globalThis.modelApplyReceipt?.entry?.releaseResponse?.();
         globalThis.modelApplyReceipt?.restore?.();
       })
       .catch((error) => cleanupFailure("release receipt", error));

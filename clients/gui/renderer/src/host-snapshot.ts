@@ -142,7 +142,11 @@ export function windowIdentity(observation: Observation) {
 type ExecutionView = {
   executionProjectId: string;
   executionRoot: string;
-  executionCore: { connectionGeneration: string; instanceId: string };
+  executionCore: {
+    connectionGeneration: string;
+    instanceId: string;
+    serviceGeneration: string | null;
+  };
   executionConnected: boolean;
   executionHostState?: ShellProject["state"];
   executionError: null;
@@ -417,6 +421,7 @@ export function createHostSnapshotProjector(
       const executionCore = {
         connectionGeneration: project.serviceGeneration ?? "",
         instanceId: project.serviceGeneration ?? "",
+        serviceGeneration: project.serviceGeneration ?? null,
       };
       const execution = {
         executionProjectId: id,

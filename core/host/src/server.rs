@@ -1227,6 +1227,15 @@ impl Host {
             )?;
             return workbench_route::backend_command(self,"local",&json!({"method":method,"commandId":params["commandId"],"params":params["request"]})).await;
         }
+        if method == "backend.credentialNames" {
+            serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
+                params.clone(),
+            )?;
+            return self
+                .gateway
+                .workbench
+                .credential_names(self, serde_json::from_value(params)?);
+        }
         if method == "backend.ensure" {
             serde_json::from_value::<areal_protocol::host::LocalBackendEnsureParams>(
                 params.clone(),
@@ -1769,6 +1778,11 @@ impl Host {
         let credential_source = self
             .migration
             .shared_credential_source(&registration, uses_shared_host_config)?;
+        let environment_credentials = self.gateway.workbench.project_environment_credentials(
+            &registration,
+            credential_source.as_deref(),
+            &mut inputs.credential_names,
+        );
         if let Some(source) = &credential_source
             && self.migration.vault.subscription_owner(source)?.is_some()
             && !inputs
@@ -1840,6 +1854,9 @@ impl Host {
                 };
                 imported_credentials.insert(name.clone(), credential);
             }
+        }
+        for (name, value) in environment_credentials {
+            imported_credentials.insert(name, Some(value));
         }
         let credentials = {
             let mut slots = self.slots.borrow_mut();

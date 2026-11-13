@@ -10,7 +10,17 @@ import {
   assertApplicationStopped,
   closeRecordedSmokeApplication,
   closeSmokeApplication,
+  stopAndAssertFixtureHost,
 } from "./application-cleanup.mjs";
+
+test("GUI exit without a Host receipt cannot prove fixture cleanup", async (t) => {
+  const home = await mkdtemp(join(tmpdir(), "areal-no-host-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  await assert.rejects(
+    stopAndAssertFixtureHost("unused", { AREAL_HARNESS_SERVICE_HOME: home }, home, null),
+    /original fixture Host stop is confirmed/,
+  );
+});
 
 test("cleanup observes the owned child exit while Playwright close is pending", async (t) => {
   const child = spawn(process.execPath, ["-e", "process.on('message', () => process.exit(0))"], {

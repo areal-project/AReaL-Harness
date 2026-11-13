@@ -1,3 +1,4 @@
+import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -7,7 +8,7 @@ import { createRequire } from "node:module";
 import { mkdir, readFile, writeFile, readdir, stat, rm } from "node:fs/promises";
 import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
 import {
   closeSmokeApplication,
@@ -30,8 +31,6 @@ const gui = process.env.AREAL_GUI_SOURCE_ROOT
   : runnerGui;
 const require = createRequire(join(gui, "app/package.json"));
 const { _electron: electron } = require("playwright-core");
-const WebSocket = require("ws");
-const { CoreClient } = await import(pathToFileURL(join(gui, "packages/runtime-client/core.js")));
 const { ServiceConnection, waitForServiceExit } = require(
   join(gui, "app/src/core/service-client.cjs"),
 );
@@ -397,36 +396,16 @@ async function shot(name) {
   await writeFile(join(evidence, `${name}.aria.txt`), await page.locator("body").ariaSnapshot());
 }
 async function readCoreThread(threadId) {
-  const owner = project(await state());
-  const execution = owner.state?.threads?.[threadId];
-  const instance = execution?.executionCore?.instanceId ?? owner.core.instanceId;
-  const descriptor = JSON.parse(
-    execFileSync(binary, ["service", "status", "--instance", instance, "--json"], {
-      env,
-      encoding: "utf8",
-      timeout: 20000,
-    }),
-  );
-  assert.equal(descriptor.state, "ready");
-  assert.equal(descriptor.workspace, execution?.worktree?.directory ?? workspace);
-  const auth = JSON.parse(await readFile(descriptor.authFile, "utf8"));
-  const principal = auth.principals.find((item) => item.permissions.includes("observe"));
-  assert.ok(principal?.token);
-  const client = new CoreClient({
-    createSocket: () =>
-      new WebSocket(descriptor.endpoint, {
-        headers: { Authorization: `Bearer ${principal.token}` },
-        followRedirects: false,
-      }),
+  const thread = await observeCoreThread({
+    binary,
+    env,
+    gui,
+    threadId,
+    project: project(await state()),
+    workspace,
   });
-  try {
-    await client.connect();
-    const thread = (await client.request("thread/read", { threadId, includeTurns: true })).thread;
-    coreReads.push({ at: new Date().toISOString(), threadId, thread });
-    return thread;
-  } finally {
-    client.close();
-  }
+  coreReads.push({ at: new Date().toISOString(), threadId, thread });
+  return thread;
 }
 async function launch() {
   app = await electron.launch({
@@ -486,13 +465,19 @@ async function closeOwned() {
       if (error.code === "ENOENT") return null;
       throw error;
     });
+  let closeError;
   if (app) {
     await app
       .evaluate(({ dialog }, isBaseline) => {
         dialog.showMessageBox = async () => ({ response: isBaseline ? 1 : 0 });
       }, baseline)
       .catch(() => {});
-    await closeSmokeApplication(app);
+    try {
+      await closeSmokeApplication(app);
+    } catch (error) {
+      closeError = error;
+      facts.electronCleanupError = error.stack ?? String(error);
+    }
     app = null;
     ctx.app = null;
   }
@@ -513,6 +498,7 @@ async function closeOwned() {
     }
     await assertApplicationStopped(binary, env, metadata);
     facts.cleanup.push({ pid: metadata?.pid ?? null, serviceExited: true, hostStop: receipt });
+    if (closeError) throw closeError;
     return;
   }
   try {
@@ -534,6 +520,7 @@ async function closeOwned() {
     await assertApplicationStopped(binary, env, metadata);
   }
   facts.cleanup.push({ pid: metadata?.pid ?? null, serviceExited: true });
+  if (closeError) throw closeError;
 }
 async function sendMain(text, complete = true) {
   const previous = await currentId();

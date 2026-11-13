@@ -1,3 +1,4 @@
+// @ts-check
 "use strict";
 // Host 持有进程和私有管道；桌面后台复用原模块，原生能力仍由已认证的 Main 提供。
 const { createRequire } = require("node:module");
@@ -55,6 +56,7 @@ const privateMethods = [
   "creation.read",
   "creation.catalog",
 ];
+/** @type {Record<string,string>} */
 const domains = {
   "library.command": "library",
   "worktree.read": "workspace",
@@ -70,18 +72,8 @@ const domains = {
   "manage.command": "manage",
 };
 
-// Core 保证没有变更的拒绝（outcome 为 rejected/noMutation）按原因给业务码，界面不必按“结果未知”核对。
-const coreRejectionCodes = { [-32009]: "TARGET_CHANGED", [-32004]: "RESOURCE_UNAVAILABLE" };
-/** @param {any} error */
-const rejectedCoreCode = (error) =>
-  ["rejected", "noMutation"].includes(error?.outcome?.kind) ? error.code : undefined;
-const rejectedCoreReason = (error) =>
-  rejectedCoreCode(error) === -32010 && error?.reason === "PROFILE_NOT_SUPPORTED"
-    ? "PROFILE_NOT_SUPPORTED"
-    : undefined;
-
-// 与 Host 的 error_code 白名单一致；未知内部错误仍使用原来的兜底，不回传异常详情。
-const businessErrorCodes = new Set([
+// 与 Host 显式认可的业务码对照；新增码须同时检查跨层处理和准入语义。
+const businessErrorCodes = /** @type {const} */ ([
   "INVALID_PARAMS",
   "ATTACHMENT_UNSUPPORTED",
   "PROVIDER_CREDENTIAL_REQUIRED",
@@ -89,6 +81,7 @@ const businessErrorCodes = new Set([
   "GRANT_CHANGED",
   "RESYNC_REQUIRED",
   "REVIEW_INCOMPLETE",
+  "PROFILE_NOT_SUPPORTED",
   "TARGET_CHANGED",
   "COMMAND_CONFLICT",
   "CAPABILITY_UNAVAILABLE",
@@ -105,7 +98,38 @@ const businessErrorCodes = new Set([
   "MIGRATION_PENDING",
   "migrationBlocked",
 ]);
+/** @typedef {(typeof businessErrorCodes)[number]} BusinessErrorCode */
+/** @type {ReadonlySet<string>} */
+const businessCodes = new Set(businessErrorCodes);
+/** @type {Readonly<Partial<Record<number, BusinessErrorCode>>>} */
+const coreRejections = { [-32009]: "TARGET_CHANGED", [-32004]: "RESOURCE_UNAVAILABLE" };
+/** @param {unknown} value @param {boolean} desktopCommand
+ * @returns {{code:BusinessErrorCode | "COMMAND_FAILED",message?:string}} */
+function mapBackendError(value, desktopCommand) {
+  const error =
+    /** @type {Partial<import('../../../clients/gui/packages/runtime-client/core.js').CoreRpcError>} */ (
+      value && typeof value === "object" ? value : {}
+    );
+  if (
+    error.submissionUnknown ||
+    error.outcome?.kind === "admitted" ||
+    error.outcome?.kind === "unconfirmed"
+  )
+    return { code: "SUBMISSION_UNKNOWN" };
+  if (typeof error.code === "string" && businessCodes.has(error.code))
+    return { code: /** @type {BusinessErrorCode} */ (error.code) };
+  if (error.outcome?.kind === "rejected" || error.outcome?.kind === "noMutation") {
+    if (error.code === -32010 && error.reason === "PROFILE_NOT_SUPPORTED")
+      return { code: "PROFILE_NOT_SUPPORTED" };
+    const mapped = typeof error.code === "number" ? coreRejections[error.code] : undefined;
+    if (mapped) return { code: mapped };
+  }
+  return desktopCommand
+    ? { code: "COMMAND_FAILED", message: String(error.message ?? "").slice(0, 512) }
+    : { code: "CORE_UNAVAILABLE" };
+}
 
+/** @param {{input:import("node:stream").Readable,output:import("node:stream").Writable}} streams */
 async function start({ input, output }) {
   const lines = createInterface({ input, crlfDelay: Infinity });
   const iterator = lines[Symbol.asyncIterator]();
@@ -116,6 +140,7 @@ async function start({ input, output }) {
   const { appRoot, options, retired } = frame.params;
   const calls = new Map();
   let callSequence = 0;
+  /** @param {string} call @param {unknown} params */
   const hostCall = (call, params) =>
     new Promise((resolve, reject) => {
       const id = `backend-${++callSequence}`;
@@ -129,6 +154,7 @@ async function start({ input, output }) {
       output.write(line + "\n");
     });
   // 初始化也可能反向读 Host；不能等 createMainDesktop 完成后才消费回复。
+  /** @param {string} line */
   const reply = (line) => {
     if (Buffer.byteLength(line) >= MAX_FRAME) return;
     let frame;
@@ -151,7 +177,9 @@ async function start({ input, output }) {
   lines.once("close", () => {
     for (const pending of calls.values())
       pending.reject(
-        Object.assign(new Error("Host channel closed; outcome unknown"), { code: "DISCONNECTED" }),
+        Object.assign(new Error("Host channel closed; outcome unknown"), {
+          code: "DISCONNECTED",
+        }),
       );
     calls.clear();
   });
@@ -159,11 +187,13 @@ async function start({ input, output }) {
   const { createMainDesktop } = appRequire(
     "@areal/workbench-service/desktop/core/service-main.cjs",
   );
-  let desktop,
-    metadata,
+  /** @type {Awaited<ReturnType<typeof import("./desktop/core/service-main.cjs").createMainDesktop>> | undefined} */
+  let cleanupDesktop;
+  let metadata,
     claimed = false;
   const pages = new Map();
   const retiredPages = new Set();
+  /** @param {string} connection */
   const closePages = async (connection) => {
     retiredPages.add(connection);
     const opening = pages.get(connection);
@@ -199,15 +229,19 @@ async function start({ input, output }) {
     claimed = true;
     const encryption = {
       isEncryptionAvailable: () => true,
+      /** @param {string} value */
       encryptString: async (value) =>
         Buffer.from(await desktop.adapter.encryptionRequest("encrypt", value), "base64"),
+      /** @param {Buffer} value */
       decryptString: (value) =>
         desktop.adapter.encryptionRequest("decrypt", value.toString("base64")),
     };
-    desktop = await createMainDesktop(
+    /** @type {NonNullable<typeof cleanupDesktop>} */
+    const desktop = await createMainDesktop(
       { ...options, applicationOwner: undefined, sourceSingletonHeld: false },
       { onClose: () => lines.close(), hostCall },
     );
+    cleanupDesktop = desktop;
     desktop.backend.cloud.encryption = encryption;
     metadata = await desktop.adapter.listen({ initialized: true });
     await writeFile(path, JSON.stringify(metadata), { mode: 0o600 });
@@ -308,7 +342,10 @@ async function start({ input, output }) {
               (row) =>
                 typeof row.projectId === "string" && typeof row.binding?.threadId === "string",
             )
-            .map((row) => ({ projectId: row.projectId, threadId: row.binding.threadId }));
+            .map((row) => ({
+              projectId: row.projectId,
+              threadId: row.binding.threadId,
+            }));
           const pendingProjects = [...desktop.backend.projects.values()]
             .filter((project) => project.pending.length > 0)
             .map((project) => project.id);
@@ -330,14 +367,19 @@ async function start({ input, output }) {
           const project = desktop.backend.projects.get(request.params.projectId);
           if (!project?.client) throw Error("Creation catalog unavailable");
           const client = project.client;
-          const coreModels = await client.request("areal/model/list", {}, {
-            decode: require("./desktop/core/provider-contract.cjs").models,
-          });
+          const coreModels = await client.request(
+            "areal/model/list",
+            {},
+            {
+              decode: require("./desktop/core/provider-contract.cjs").models,
+            },
+          );
           if (
             desktop.backend.projects.get(request.params.projectId) !== project ||
             project.client !== client
           )
             throw Error("Creation catalog connection changed");
+          /** @param {Record<string,unknown>} value @param {string[]} fields */
           const pick = (value, fields) =>
             Object.fromEntries(
               fields.filter((key) => value?.[key] !== undefined).map((key) => [key, value[key]]),
@@ -366,7 +408,7 @@ async function start({ input, output }) {
             .map((model) => {
               const value = pick(model, modelFields);
               if (value.parameters)
-                value.parameters = pick(value.parameters, [
+                value.parameters = pick(/** @type {Record<string,unknown>} */ (value.parameters), [
                   "temperature",
                   "maxOutputTokens",
                   "contextWindowTokens",
@@ -375,12 +417,10 @@ async function start({ input, output }) {
                   "serviceTier",
                 ]);
               if (value.capabilities)
-                value.capabilities = pick(value.capabilities, [
-                  "tools",
-                  "vision",
-                  "reasoning",
-                  "reasoningEffortOptions",
-                ]);
+                value.capabilities = pick(
+                  /** @type {Record<string,unknown>} */ (value.capabilities),
+                  ["tools", "vision", "reasoning", "reasoningEffortOptions"],
+                );
               return value;
             });
           const profiles = (Array.isArray(project.profiles) ? project.profiles : []).map(
@@ -439,7 +479,9 @@ async function start({ input, output }) {
               (params.spaceId !== undefined && typeof params.spaceId !== "string") ||
               Object.keys(params).some((key) => !["operation", "spaceId"].includes(key))
             )
-              throw Object.assign(new Error("Invalid recovery query"), { code: "INVALID_PARAMS" });
+              throw Object.assign(new Error("Invalid recovery query"), {
+                code: "INVALID_PARAMS",
+              });
             const catalog = await hostCall(
               "recovery.inspect",
               params.spaceId === undefined ? {} : { spaceId: params.spaceId },
@@ -471,11 +513,11 @@ async function start({ input, output }) {
           const contract = appRequire("@areal/workbench/desktop-contract");
           contract.validateCommand(command, params);
           // 手机连接在桌面窗口里也不经后台命令表，而是直接交给连接管理。
-          if (command === "remoteControl" && !desktop.adapter.remote)
-            throw Error("手机连接未初始化");
+          const remote = desktop.adapter.remote;
+          if (command === "remoteControl" && !remote) throw Error("手机连接未初始化");
           const result =
-            command === "remoteControl"
-              ? await desktop.adapter.remote.control(params)
+            command === "remoteControl" && remote
+              ? await remote.control(params)
               : await desktop.adapter.executeRemote(command, params);
           contract.validateCommandResponse(command, params, result);
           return result ?? null;
@@ -565,22 +607,7 @@ async function start({ input, output }) {
             JSON.stringify({
               version: 1,
               id: request.id,
-              error:
-                error?.submissionUnknown ||
-                ["admitted", "unconfirmed"].includes(error?.outcome?.kind)
-                  ? { code: "SUBMISSION_UNKNOWN" }
-                  : businessErrorCodes.has(error?.code)
-                    ? { code: error.code }
-                    : rejectedCoreReason(error)
-                      ? { code: rejectedCoreReason(error) }
-                      : coreRejectionCodes[rejectedCoreCode(error)]
-                        ? { code: coreRejectionCodes[rejectedCoreCode(error)] }
-                        : request.method === "desktop.command"
-                          ? {
-                              code: "COMMAND_FAILED",
-                              message: String(error?.message ?? "").slice(0, 512),
-                            }
-                          : { code: "CORE_UNAVAILABLE" },
+              error: mapBackendError(error, request.method === "desktop.command"),
             }) + "\n",
           ),
       );
@@ -595,7 +622,7 @@ async function start({ input, output }) {
     await Promise.allSettled(pending);
   } finally {
     await Promise.allSettled([...pages.keys()].map(closePages));
-    await desktop?.close();
+    await cleanupDesktop?.close();
     const current = JSON.parse(await readFile(path, "utf8").catch(() => "null"));
     if (
       claimed &&
@@ -608,7 +635,7 @@ async function start({ input, output }) {
   }
 }
 
-module.exports = { start };
+module.exports = { start, businessErrorCodes, mapBackendError };
 if (require.main === module) {
   // 业务模块的 console 输出不能混入 Host 协议，错误也不能打印原始凭据。
   console.log = console.info = () => {};

@@ -156,6 +156,7 @@ fn backend_launch_only_accepts_the_gui_profile_and_the_host_core() {
         Ensure {
             profile: profile.clone(),
             options: options(root.path(), &bin),
+            environment_credentials: Default::default(),
         },
     )
     .unwrap();
@@ -182,6 +183,7 @@ fn backend_launch_only_accepts_the_gui_profile_and_the_host_core() {
             Ensure {
                 profile: profile.clone(),
                 options: other_core,
+                environment_credentials: Default::default(),
             },
         )),
         "invalidRequest"
@@ -196,6 +198,7 @@ fn backend_launch_only_accepts_the_gui_profile_and_the_host_core() {
             Ensure {
                 profile,
                 options: other_host,
+                environment_credentials: Default::default(),
             },
         )),
         "invalidRequest"

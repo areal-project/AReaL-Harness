@@ -1993,7 +1993,19 @@ try {
           if (error.code === "ENOENT") return null;
           throw error;
         });
-      await quit();
+      let quitFailed = false;
+      try {
+        await quit();
+      } catch (error) {
+        quitFailed = true;
+        passed = false;
+        process.exitCode = 1;
+        errors.push(`Electron cleanup: ${error.message}`);
+      }
+      assert.ok(
+        originalHost || originalServices.length === 0,
+        "live services require their Host identity",
+      );
       if (originalHost) await stopFixtureHost(originalHost, originalServices);
       if (metadata)
         assert.throws(
@@ -2001,32 +2013,15 @@ try {
           (error) => error.code === "ESRCH",
           "the GUI adapter exits with its application",
         );
-      checks.push("application lifecycle cleanup leaves no live adapter or original Core service");
+      if (!quitFailed)
+        checks.push(
+          "application lifecycle cleanup leaves no live adapter or original Core service",
+        );
     } catch (error) {
       console.error("Adapter fixture cleanup:", error.message);
-      if (passed) {
-        passed = false;
-        process.exitCode = 1;
-        errors.push(`Explicit safe stop failed: ${error.message}`);
-      }
-      // 仅清理本次隔离 home 中的服务；失败不遗留模型任务或后台进程。
-      try {
-        const instances = await services();
-        for (const instance of instances)
-          if (instance.state !== "stopped") {
-            await executeCore(
-              binary,
-              ["service", "stop", "--instance", instance.serviceId, "--cancel", "--json"],
-              { env, timeout: 120000 },
-            );
-          }
-      } catch (failure) {
-        console.error("Core fixture cleanup:", failure.message);
-      }
-      try {
-        const metadata = JSON.parse(await readFile(join(scratch, "core/service.json"), "utf8"));
-        process.kill(metadata.pid, "SIGTERM");
-      } catch {}
+      passed = false;
+      process.exitCode = 1;
+      errors.push(`Explicit safe stop failed: ${error.message}`);
     }
   }
   server.closeAllConnections();

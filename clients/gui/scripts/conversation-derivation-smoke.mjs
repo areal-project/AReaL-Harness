@@ -1,3 +1,5 @@
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
+import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 // M1/M2 公开路径：集成且 GUI、Core 构建完成后运行一次。
@@ -466,14 +468,14 @@ async function send(text, threadId) {
   return { threadId: activeId, turnId: turns.at(-1).id };
 }
 async function readCoreThread(threadId) {
-  try {
-    return JSON.parse(
-      await readFile(join(scratch, "core", projectId, "state", `${threadId}.json`), "utf8"),
-    ).thread;
-  } catch (error) {
-    if (error.code === "ENOENT") return undefined;
-    throw error;
-  }
+  return observeCoreThread({
+    binary,
+    env,
+    gui,
+    threadId,
+    project: project(await state()),
+    workspace,
+  });
 }
 async function stopService(env) {
   const { ServiceConnection } = require(join(desktop, "src/core/service-client.cjs"));
@@ -814,57 +816,11 @@ try {
   await page.locator('[data-model-value="fixture/fixture"]').getByRole("radio").click();
   await page.keyboard.press("Escape");
   // 在实际 Host 通道注入参数并记录真实回执；提交后只丢弃客户端收到的结果。
+  await page.evaluate(installHostTransportBarrier);
   await page.evaluate(() => {
-    const send = WebSocket.prototype.send;
-    const pendingBySocket = new WeakMap();
-    const wrapped = new WeakSet();
     globalThis.__scfMutations = [];
-    WebSocket.prototype.send = function (data) {
-      let frame;
-      try {
-        frame = JSON.parse(data);
-      } catch {
-        return send.call(this, data);
-      }
-      if (frame.method !== "desktop.command") return send.call(this, data);
-      if (!wrapped.has(this)) {
-        wrapped.add(this);
-        const pending = new Map();
-        pendingBySocket.set(this, pending);
-        const onmessage = this.onmessage;
-        this.onmessage = function (event) {
-          let reply;
-          try {
-            reply = JSON.parse(event.data);
-          } catch {
-            return onmessage?.call(this, event);
-          }
-          const entry = pending.get(reply.id);
-          if (!entry) return onmessage?.call(this, event);
-          pending.delete(reply.id);
-          entry.accepted = !reply.error;
-          entry.error = reply.error?.message;
-          entry.errorCode = reply.error?.code;
-          entry.requestId = reply.result?.requestId ?? entry.parameters?.requestId ?? null;
-          entry.resultThreadId = reply.result?.threadId ?? reply.result?.thread?.id ?? null;
-          if (entry.command === "media" && typeof reply.result?.bytes === "string")
-            entry.resultBytes = reply.result.bytes;
-          if (entry.command === "fork" && globalThis.__scfLoseNextForkResponse && entry.accepted) {
-            globalThis.__scfLoseNextForkResponse = false;
-            entry.fixture = "committed GUI response lost";
-            const lost = {
-              version: 1,
-              id: reply.id,
-              error: { message: "SCF fixture: committed GUI response lost" },
-            };
-            return onmessage?.call(
-              this,
-              new MessageEvent("message", { data: JSON.stringify(lost) }),
-            );
-          }
-          return onmessage?.call(this, event);
-        };
-      }
+    globalThis.__scfBarrier = globalThis.createHostTransportBarrier((frame) => {
+      if (frame.method !== "desktop.command") return null;
       const command = frame.params?.command;
       let request = frame.params?.request;
       const fixture = globalThis.__scfRejectNext;
@@ -888,12 +844,33 @@ try {
         frame.params.request = request;
         globalThis.__scfRejectNext = null;
       }
-      const entry = { command, parameters: request, accepted: false };
-      if (fixture && !globalThis.__scfRejectNext) entry.fixture = fixture;
-      globalThis.__scfMutations.push(entry);
-      pendingBySocket.get(this).set(frame.id, entry);
-      return send.call(this, JSON.stringify(frame));
-    };
+      const record = { command, parameters: request, accepted: false };
+      if (fixture && !globalThis.__scfRejectNext) record.fixture = fixture;
+      const loseResponse = command === "fork" && globalThis.__scfLoseNextForkResponse;
+      const gate = {
+        data: JSON.stringify(frame),
+        ...(loseResponse
+          ? { response: "replace", error: { message: "SCF fixture: committed GUI response lost" } }
+          : {}),
+        onResponse(reply) {
+          record.responseId = reply.id;
+          record.accepted = !reply.error;
+          record.error = reply.error?.message;
+          record.errorCode = reply.error?.code;
+          record.requestId = reply.result?.requestId ?? record.parameters?.requestId ?? null;
+          record.resultThreadId = reply.result?.threadId ?? reply.result?.thread?.id ?? null;
+          if (command === "media" && typeof reply.result?.bytes === "string")
+            record.resultBytes = reply.result.bytes;
+          if (loseResponse && record.accepted) {
+            globalThis.__scfLoseNextForkResponse = false;
+            record.fixture = "committed GUI response lost";
+          }
+        },
+      };
+      record.transport = gate;
+      globalThis.__scfMutations.push(record);
+      return gate;
+    });
   });
   const first = await send(`${head} ${unicodeExcerpt}`);
   sourceThreadId = first.threadId;
@@ -949,6 +926,11 @@ try {
   });
   await forkDialog.getByRole("button", { name: "创建分支", exact: true }).click();
   await forkDialog.getByRole("alert").filter({ hasText: "PROFILE_NOT_SUPPORTED" }).waitFor();
+  const rejectedFork = (await page.evaluate(() => globalThis.__scfMutations)).find(
+    (entry) => entry.fixture === "workflow",
+  );
+  assert.ok(rejectedFork?.transport.requestId != null && rejectedFork.accepted === false);
+  assert.equal(rejectedFork.responseId, rejectedFork.transport.requestId);
   assert.equal(
     await forkDialog.getByRole("button", { name: "创建分支", exact: true }).isEnabled(),
     true,
@@ -970,6 +952,8 @@ try {
     (entry) => entry.fixture === "committed GUI response lost",
   );
   assert.ok(lostResult?.accepted && lostResult.resultThreadId && lostResult.requestId);
+  assert.ok(lostResult.transport.requestId != null);
+  assert.equal(lostResult.transport.responseHit, lostResult.transport.requestId);
   assert.equal(requests.length, beforeCreation.modelRequests);
   const storedThreads = (await readdir(join(scratch, "core", projectId, "state")))
     .filter((name) => /^[a-f0-9-]{36}\.json$/i.test(name))
@@ -1386,6 +1370,14 @@ try {
         events.push({ requestCaptureError: error.message });
       }
     try {
+      await page?.evaluate(() => globalThis.__scfBarrier?.restore());
+    } catch (error) {
+      events.push({ transportCleanupError: error.message });
+      failure ??= error.stack ?? String(error);
+      passed = false;
+      process.exitCode = 1;
+    }
+    try {
       await closeRecordedSmokeApplication(app, 20000, async () => {
         await app.evaluate(({ dialog }) => {
           dialog.showMessageBox = async () => ({ response: 0 });
@@ -1403,10 +1395,9 @@ try {
   let cleanupConfirmed = true;
   try {
     const receipt = await stopFixtureHost(binary, serviceRegistry, scratch);
-    if (receipt) {
-      await assertApplicationStopped(binary, env, originalAdapter);
-      await stopService(env);
-    } else cleanupConfirmed = false;
+    assert.ok(receipt, "the original fixture Host stop is confirmed");
+    await assertApplicationStopped(binary, env, originalAdapter);
+    await stopService(env);
   } catch (error) {
     cleanupConfirmed = false;
     events.push({ hostCleanupFailed: error.message, retainedRegistry: serviceRegistry });

@@ -8,11 +8,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  assertApplicationStopped,
-  closeSmokeApplication,
-  stopFixtureHost,
-} from "./application-cleanup.mjs";
+import { closeSmokeApplication, stopAndAssertFixtureHost } from "./application-cleanup.mjs";
 import {
   selectConversation,
   selectCreatedConversation,
@@ -1930,15 +1926,11 @@ try {
       process.exitCode = 1;
     });
   }
-  await stopFixtureHost(coreBinary, env.AREAL_HARNESS_SERVICE_HOME, scratch)
-    .then(async (receipt) => {
-      if (receipt) await assertApplicationStopped(coreBinary, env, null);
-    })
-    .catch((error) => {
-      errors.push(`Host cleanup: ${error.message}`);
-      passed = false;
-      process.exitCode = 1;
-    });
+  await stopAndAssertFixtureHost(coreBinary, env, scratch, null).catch((error) => {
+    errors.push(`Host cleanup: ${error.message}`);
+    passed = false;
+    process.exitCode = 1;
+  });
   site.closeAllConnections();
   model.closeAllConnections();
   forbidden.closeAllConnections();

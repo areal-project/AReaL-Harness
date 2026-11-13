@@ -1,3 +1,4 @@
+import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, symlink } from "node:fs/promises";
@@ -709,6 +710,12 @@ export async function runComposerFilesAcceptance({
   const edited = (await pending()).items.find((item) => item.id === queued.id);
   assert(edited.input.some((part) => part.type === "file" && part.url === originalQueueFile.url));
   assert(edited.input.some((part) => part.name === "edit.yaml"));
+  await page.waitForFunction(
+    (key) => !localStorage.getItem(`${key}:queue-edit`),
+    `areal-gui:draft:${pid}:${tid}`,
+  );
+  const savedQueue = await call("queue", { projectId: pid, threadId: tid });
+  assert.equal(savedQueue.paused, false, "saving the edit resumes its queue");
   const active = (await current()).turns.at(-1);
   await call("steer", {
     projectId: pid,
@@ -886,102 +893,58 @@ export async function runComposerFilesAcceptance({
   checks.push(
     "real Git worktree file search uses the active thread root, distinguishes same-name files by parent path, sends the selected relative path, and rejects old-worktree responses after switching",
   );
+  await page.evaluate(installHostTransportBarrier);
   await page.evaluate(() => {
-    const original = WebSocket.prototype.send;
-    const pending = new WeakMap();
-    const wrapped = new WeakSet();
-    const fixture = {
+    const fixture = (globalThis.composerUploadFixture = {
       uploads: [],
       sends: [],
       rejectSecond: true,
       dropSend: false,
       dropUpload: false,
-    };
-    globalThis.composerUploadFixture = fixture;
-    fixture.restore = () => {
-      WebSocket.prototype.send = original;
-    };
-    WebSocket.prototype.send = function (data) {
-      let frame;
-      try {
-        frame = JSON.parse(data);
-      } catch {
-        return original.call(this, data);
-      }
+    });
+    const barrier = globalThis.createHostTransportBarrier((frame) => {
       const upload = frame.method === "attachment.upload" && frame.params?.offset === 0;
       const send = frame.method === "session.send" && frame.params?.text?.includes("FILES_UPLOAD_");
-      if (!upload && !send) return original.call(this, data);
-      if (!wrapped.has(this)) {
-        wrapped.add(this);
-        const requests = new Map();
-        pending.set(this, requests);
-        const onmessage = this.onmessage;
-        this.onmessage = function (event) {
-          let reply;
-          try {
-            reply = JSON.parse(event.data);
-          } catch {
-            return onmessage?.call(this, event);
-          }
-          const entry = requests.get(reply.id);
-          if (!entry) return onmessage?.call(this, event);
-          requests.delete(reply.id);
-          if (entry.upload && reply.result?.attachment?.uri)
-            entry.upload.uri = reply.result.attachment.uri;
-          if (!reply.error && ((entry.upload && fixture.dropUpload) || entry.lostSend)) {
-            if (entry.upload) fixture.dropUpload = false;
-            if (entry.lostSend) fixture.dropSend = false;
-            return onmessage?.call(
-              this,
-              new MessageEvent("message", {
-                data: JSON.stringify({
-                  version: 1,
-                  id: reply.id,
-                  error: {
-                    ...(entry.upload ? { code: "FIXTURE_LOST" } : { clientCode: "DISCONNECTED" }),
-                    message: "fixture dropped accepted response",
-                    submissionUnknown: true,
-                  },
-                }),
-              }),
-            );
-          }
-          return onmessage?.call(this, event);
-        };
-      }
+      if (!upload && !send) return null;
       const entry = {};
       if (upload) {
-        entry.upload = { threadId: frame.params.threadId };
-        fixture.uploads.push(entry.upload);
+        const record = { threadId: frame.params.threadId, id: frame.id };
+        fixture.uploads.push(record);
+        entry.onResponse = (reply) => {
+          if (reply.result?.attachment?.uri) record.uri = reply.result.attachment.uri;
+        };
         if (fixture.rejectSecond && fixture.uploads.length === 2) {
           fixture.rejectSecond = false;
-          queueMicrotask(() =>
-            this.onmessage?.(
-              new MessageEvent("message", {
-                data: JSON.stringify({
-                  version: 1,
-                  id: frame.id,
-                  error: { code: "FIXTURE_REJECTED", message: "fixture second upload denied" },
-                }),
-              }),
-            ),
-          );
-          return;
+          entry.reject = { code: "FIXTURE_REJECTED", message: "fixture second upload denied" };
+          fixture.rejected = entry;
+        } else if (fixture.dropUpload) {
+          fixture.dropUpload = false;
+          entry.response = "replace";
+          entry.error = {
+            code: "FIXTURE_LOST",
+            message: "fixture dropped accepted response",
+            submissionUnknown: true,
+          };
+          fixture.lostUpload = entry;
         }
       }
-      if (send) fixture.sends.push({ ...frame.params, requestId: frame.commandId });
-      pending.get(this).set(frame.id, entry);
-      if (send && fixture.dropSend) {
-        fixture.sendResponseHeld = true;
-        entry.lostSend = true;
-        fixture.releaseSendResponse = () => {
-          delete fixture.releaseSendResponse;
-          return original.call(this, data);
-        };
-        return;
+      if (send) {
+        fixture.sends.push({ ...frame.params, requestId: frame.commandId, id: frame.id });
+        if (fixture.dropSend) {
+          fixture.dropSend = false;
+          entry.holdRequest = true;
+          entry.response = "replace";
+          entry.error = {
+            clientCode: "DISCONNECTED",
+            message: "fixture dropped accepted response",
+            submissionUnknown: true,
+          };
+          fixture.heldSend = entry;
+        }
       }
-      return original.call(this, data);
-    };
+      return entry;
+    });
+    fixture.restore = () => barrier.restore();
   });
   try {
     await createProjectConversation(page, "workspace");
@@ -1021,6 +984,10 @@ export async function runComposerFilesAcceptance({
     );
     await send(undefined, uploadWorkspace);
     const uploaded = await page.evaluate(() => globalThis.composerUploadFixture.uploads);
+    assert.equal(
+      await page.evaluate(() => globalThis.composerUploadFixture.rejected.rejectHit),
+      uploaded[1].id,
+    );
     assert.equal(uploaded.length, 3, "retry and final Send reuse the first worktree receipt");
     assert.equal(uploaded.filter((entry) => entry.uri).length, 2);
     assert(uploaded.every((entry) => entry.threadId === uploadThreadId));
@@ -1065,7 +1032,8 @@ export async function runComposerFilesAcceptance({
       () =>
         page.evaluate(() => {
           const fixture = globalThis.composerUploadFixture;
-          return fixture.sendResponseHeld && fixture.sends.at(-1)?.requestId
+          return fixture.heldSend?.requestHit === fixture.sends.at(-1)?.id &&
+            fixture.sends.at(-1)?.requestId
             ? fixture.sends.at(-1)
             : null;
         }),
@@ -1085,7 +1053,7 @@ export async function runComposerFilesAcceptance({
     );
     await call("reconcile", { projectId: pid });
     await call("open", { projectId: pid, threadId: uploadThreadId });
-    await page.evaluate(() => globalThis.composerUploadFixture.releaseSendResponse());
+    await page.evaluate(() => globalThis.composerUploadFixture.heldSend.releaseRequest());
     try {
       await until(async () => {
         const snapshot = await state();
@@ -1169,6 +1137,10 @@ export async function runComposerFilesAcceptance({
       throw error;
     }
     await page.evaluate(() => globalThis.__stopComposerRecoveryChanges());
+    assert.equal(
+      await page.evaluate(() => globalThis.composerUploadFixture.heldSend.responseHit),
+      heldSend.id,
+    );
     const unknownSends = await page.evaluate(() => globalThis.composerUploadFixture.sends);
     assert.equal(
       unknownSends.filter((entry) => entry.text.includes("FILES_UPLOAD_UNKNOWN")).length,
@@ -1205,6 +1177,10 @@ export async function runComposerFilesAcceptance({
     );
     await button("发送").click();
     await until(async () => !(await button("发送").isDisabled()), "unknown upload draft unlocked");
+    assert.equal(
+      await page.evaluate(() => globalThis.composerUploadFixture.lostUpload.responseHit),
+      await page.evaluate(() => globalThis.composerUploadFixture.uploads.at(-1).id),
+    );
     assert.equal((await page.evaluate(() => globalThis.composerUploadFixture.uploads)).length, 5);
     assert.equal((await page.evaluate(() => globalThis.composerUploadFixture.sends)).length, 2);
     assert.equal(await input().textContent(), "FILES_UPLOAD_UNKNOWN_MEDIA");

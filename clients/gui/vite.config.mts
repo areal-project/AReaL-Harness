@@ -20,6 +20,14 @@ export default defineConfig({
     overrides: [
       {
         files: [
+          "scripts/composer-files-acceptance.mjs",
+          "scripts/model-selection-smoke.mjs",
+          "scripts/conversation-derivation-smoke.mjs",
+        ],
+        rules: { "areal/no-smoke-transport-patch": "error" },
+      },
+      {
+        files: [
           "renderer/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
           "packages/{app,client,remote,remote-client,ui}/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
         ],
