@@ -30,8 +30,9 @@ export function useSideConversations(
   const { panel, workspaceView } = workspacePanels.view;
   const panelOwner = `${project?.id ?? ""}:${threadId}`;
   const sideChats = useSideChatTabs(resourceAction, snapshot.projects);
-  const sideSource = useRef({ owner: panelOwner, instanceId: project?.core?.instanceId });
-  sideSource.current = { owner: panelOwner, instanceId: project?.core?.instanceId };
+  const coreGeneration = project?.core?.serviceGeneration ?? project?.core?.instanceId;
+  const sideSource = useRef({ owner: panelOwner, instanceId: coreGeneration });
+  sideSource.current = { owner: panelOwner, instanceId: coreGeneration };
   const canCreateSide =
     !!project &&
     !!thread &&
@@ -140,7 +141,7 @@ export function useSideConversations(
     const owner = {
       projectId: project.id,
       parentId: thread.id,
-      coreInstanceId: project.core?.instanceId,
+      coreInstanceId: coreGeneration,
     };
     const sourceOwner = `${owner.projectId}:${owner.parentId}`;
     const sourceCurrent = () =>
@@ -173,8 +174,10 @@ export function useSideConversations(
             !current ||
             current.closeRequestId ||
             !sourceCurrent() ||
-            (observed?.executionCore?.instanceId ?? observedProject?.core?.instanceId) !==
-              owner.coreInstanceId ||
+            (observed?.executionCore?.serviceGeneration ??
+              observed?.executionCore?.instanceId ??
+              observedProject?.core?.serviceGeneration ??
+              observedProject?.core?.instanceId) !== owner.coreInstanceId ||
             observed?.desktop?.archived ||
             (observed?.conversation?.origin &&
             typeof observed.conversation.origin === "object" &&
