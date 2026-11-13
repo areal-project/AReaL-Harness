@@ -246,6 +246,8 @@ Object.assign(env, {
 const commandLog = join(evidence, "commands.jsonl");
 const transportTrace = [];
 const composerTrace = [];
+const escapeTrace = [];
+let traceSocket = 0;
 const fixture = await applicationFixture(
   gui,
   join(stateRoot, "app"),
@@ -420,21 +422,24 @@ async function launch() {
   page = await app.firstWindow();
   ctx.page = page;
   page.on("websocket", (socket) => {
+    const socketId = ++traceSocket;
     const pending = new Set();
     socket.on("framesent", ({ payload }) => {
       try {
         const frame = JSON.parse(String(payload));
         const side = frame.method === "desktop.command" && frame.params?.command === "side";
-        if (frame.method !== "session.send" && !side) return;
+        if (!["session.send", "turn.stop"].includes(frame.method) && !side) return;
         pending.add(frame.id);
         transportTrace.push({
           direction: "sent",
+          socketId,
           id: frame.id,
           method: frame.method,
           ...(side ? { operation: frame.params?.request?.operation } : {}),
           commandId: frame.commandId,
           projectId: frame.context?.projectId,
           threadId: frame.params?.threadId,
+          turnId: frame.params?.expectedTurnId,
         });
       } catch {}
     });
@@ -444,6 +449,7 @@ async function launch() {
         if (!pending.delete(frame.id)) return;
         transportTrace.push({
           direction: "received",
+          socketId,
           id: frame.id,
           errorCode: frame.error?.code ?? null,
           settled: frame.result?.settled,
@@ -1497,7 +1503,27 @@ async function escapeOwnership() {
   const parent = await newParent("PARITY:P6_PARENT");
   await openSide();
   const commandRecords = async () =>
-    (await readFile(commandLog, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
+    baseline
+      ? (await readFile(commandLog, "utf8"))
+          .trim()
+          .split("\n")
+          .filter(Boolean)
+          .map(JSON.parse)
+          .filter((entry) => entry.name === "stop")
+          .map((entry) => ({ ...entry, response: { errorCode: entry.ok ? null : "error" } }))
+      : transportTrace
+          .filter((entry) => entry.direction === "sent" && entry.method === "turn.stop")
+          .map((entry) => ({
+            name: "stop",
+            request: { turnId: entry.turnId },
+            id: entry.id,
+            response: transportTrace.find(
+              (item) =>
+                item.direction === "received" &&
+                item.socketId === entry.socketId &&
+                item.id === entry.id,
+            ),
+          }));
   const turnText = (turn) =>
     (turn?.items ?? [])
       .filter((item) => item.type === "agentMessage")
@@ -1532,7 +1558,41 @@ async function escapeOwnership() {
       childTurn = threads(both)[child].turns.at(-1).id;
     const beforeStops = (await commandRecords()).filter((item) => item.name === "stop").length;
     await sideInput().focus();
+    await page.evaluate(() => {
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key !== "Escape") return;
+          const path = event.composedPath();
+          const element = document.activeElement;
+          const entry = {
+            activeRole: element?.getAttribute("role"),
+            activeInSide: !!element?.closest(".side-chat-pane"),
+            pathInSide: path.some(
+              (item) => item instanceof Element && item.matches(".side-chat-pane"),
+            ),
+            visibleOverlay: [
+              ...document.querySelectorAll(
+                '[role="dialog"], [data-slot="dialog-content"], [data-slot="select-content"], [data-slot="popover-content"], [data-slot="dropdown-menu-content"], [data-slot="context-menu-content"]',
+              ),
+            ].some((item) => item.getClientRects().length > 0),
+            defaultPreventedBefore: event.defaultPrevented,
+          };
+          window.__sideEscapeTrace = entry;
+        },
+        { capture: true, once: true },
+      );
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          if (event.key === "Escape" && window.__sideEscapeTrace)
+            window.__sideEscapeTrace.defaultPreventedAfter = event.defaultPrevented;
+        },
+        { once: true },
+      );
+    });
     await page.keyboard.press("Escape");
+    escapeTrace.push(await page.evaluate(() => window.__sideEscapeTrace));
     await until(async () => {
       const turn = (await readCoreThread(child)).turns.find((item) => item.id === childTurn);
       return turn && turn.status !== "inProgress";
@@ -1544,9 +1604,13 @@ async function escapeOwnership() {
       const turn = threads(await state())[parent]?.turns.at(-1);
       return turn?.status === "inProgress" && turnText(turn).length > growth.length;
     }, "main survivor keeps growing after repeated idle Side Esc");
-    let stops = (await commandRecords()).filter((item) => item.name === "stop").slice(beforeStops);
+    let stops = await until(async () => {
+      const records = (await commandRecords()).slice(beforeStops);
+      return records.length === 1 && records[0].response ? records : null;
+    }, "focused child stop response");
     assert.equal(stops.length, 1, "repeated idle child Esc never stops main or replays stop");
     assert.equal(stops[0].request.turnId, childTurn);
+    assert.equal(stops[0].response?.errorCode, null);
     await page.getByRole("button", { name: "收起侧栏", exact: true }).focus();
     await page.keyboard.press("Escape");
     await grows(parent, "outside focus with panel open preserves growing main stream");
@@ -1561,14 +1625,14 @@ async function escapeOwnership() {
       const turn = (await readCoreThread(parent)).turns.find((item) => item.id === parentTurn);
       return turn && turn.status !== "inProgress";
     }, "focused main stopped");
-    await until(
-      async () =>
-        (await commandRecords()).filter((item) => item.name === "stop").length === beforeStops + 2,
-      "both original stop receipts observed",
-    );
+    await until(async () => {
+      const records = (await commandRecords()).slice(beforeStops);
+      return records.length === 2 && records.every((item) => item.response);
+    }, "both original stop receipts observed");
     stops = (await commandRecords()).filter((item) => item.name === "stop").slice(beforeStops);
     assert.equal(stops.length, 2);
     assert.equal(stops[1].request.turnId, parentTurn);
+    assert.equal(stops[1].response?.errorCode, null);
     const finalChild = await readCoreThread(child),
       finalParent = await readCoreThread(parent);
     assert.notEqual(finalChild.turns.at(-1).status, "inProgress");
@@ -1642,12 +1706,10 @@ async function escapeOwnership() {
       const turn = (await readCoreThread(child)).turns.find((item) => item.id === sideSecond);
       return turn && turn.status !== "inProgress";
     }, "Side survivor explicitly stopped");
-    await until(
-      async () =>
-        (await commandRecords()).filter((item) => item.name === "stop").length ===
-        beforeMainStop + 3,
-      "focused and fallback stop receipts observed",
-    );
+    await until(async () => {
+      const records = (await commandRecords()).slice(beforeMainStop);
+      return records.length === 3 && records.every((item) => item.response);
+    }, "focused and fallback stop receipts observed");
     const secondStops = (await commandRecords())
       .filter((item) => item.name === "stop")
       .slice(beforeMainStop);
@@ -1656,6 +1718,7 @@ async function escapeOwnership() {
       [mainSecond, closedMainTurn, sideSecond],
       "focused and fallback stops keep exact original turn ownership without replay",
     );
+    assert.ok(secondStops.every((item) => item.response?.errorCode === null));
   }
   await shot("P6-focus-scoped-stop");
   await closeMotion.evaluate((element) => element.remove());
@@ -1765,7 +1828,7 @@ try {
 } finally {
   await writeFile(
     join(evidence, "transport-trace.json"),
-    JSON.stringify({ transportTrace, composerTrace }, null, 2),
+    JSON.stringify({ transportTrace, composerTrace, escapeTrace }, null, 2),
   );
   await writeFile(release, "release");
   for (const settle of Array.from(streams.values())) settle();
