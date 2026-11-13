@@ -601,6 +601,12 @@ impl Engine {
             _ => Err(invalid("MODEL_NOT_CONFIGURED")),
         }?;
         model.check_work().map_err(|error| {
+            if matches!(
+                error.downcast_ref::<model::ModelConfigurationError>(),
+                Some(model::ModelConfigurationError::ReasoningEffort { .. })
+            ) {
+                return invalid("MODEL_REASONING_EFFORT_UNSUPPORTED");
+            }
             invalid(format!(
                 "{}: {error}",
                 configuration

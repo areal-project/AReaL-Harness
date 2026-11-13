@@ -26,6 +26,7 @@ export const ERROR_CODES = {
   INVALID_RESPONSE: { action: "retry", retryable: true },
   LIMIT_EXCEEDED: { action: "none", retryable: false },
   INPUT_LIMIT_EXCEEDED: { action: "none", retryable: false },
+  MODEL_REASONING_EFFORT_UNSUPPORTED: { action: "none", retryable: false },
   CAPACITY_EXCEEDED: { action: "retry", retryable: true },
   COMMAND_CONFLICT: { action: "retry", retryable: false },
   RESOURCE_UNAVAILABLE: { action: "refresh", retryable: false },

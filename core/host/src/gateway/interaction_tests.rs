@@ -47,6 +47,13 @@ fn unavailable_tool_host_retains_determinate_rejection() {
     assert_eq!(unavailable["error"]["code"], "CAPABILITY_UNAVAILABLE");
     assert_eq!(unavailable["nativeRequestId"], "native-request");
     assert!(!unavailable.to_string().contains("private diagnostic"));
+    record["error"]["data"]["reason"] = json!("MODEL_REASONING_EFFORT_UNSUPPORTED");
+    let effort = Session::command_view(Some(&record), "original-command");
+    assert_eq!(
+        effort["error"]["code"],
+        "MODEL_REASONING_EFFORT_UNSUPPORTED"
+    );
+    assert!(!effort.to_string().contains("private diagnostic"));
     record["error"]["data"]["reason"] = json!("REQUEST_REJECTED");
     assert_eq!(
         Session::command_view(Some(&record), "original-command")["error"]["code"],

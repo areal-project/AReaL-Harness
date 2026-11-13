@@ -31,6 +31,23 @@ it("presents a rejected oversized input with its actionable limit", () => {
   });
   expect(currentErrorText(failure)).toContain("1 MiB");
 });
+it("presents a rejected unsupported reasoning effort without marking it unknown", () => {
+  let failure: unknown;
+  try {
+    settleHostCommand({
+      commandId: "original",
+      admissionState: "rejected",
+      error: { code: "MODEL_REASONING_EFFORT_UNSUPPORTED" },
+    });
+  } catch (error) {
+    failure = error;
+  }
+  expect(failure).toMatchObject({
+    submissionUnknown: false,
+    code: "MODEL_REASONING_EFFORT_UNSUPPORTED",
+  });
+  expect(currentErrorText(failure)).toContain("推理强度");
+});
 const connection = {
   hostId: "host",
   hostGeneration: "host-gen",

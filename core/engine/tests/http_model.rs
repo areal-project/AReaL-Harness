@@ -1568,6 +1568,7 @@ async fn explicit_model_capabilities_control_catalog_admission_and_wire() {
                     .to_string()
                     .contains("MODEL_REASONING_EFFORT_UNSUPPORTED")
             );
+            assert_eq!(error.to_string(), "MODEL_REASONING_EFFORT_UNSUPPORTED");
             let configuration = engine
                 .read(&thread.id, false)
                 .await

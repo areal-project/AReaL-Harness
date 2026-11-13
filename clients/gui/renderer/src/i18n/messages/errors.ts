@@ -129,6 +129,10 @@ export const errorMessages = {
     "zh-CN": "当前的模型设置不支持这个操作，请在会话设置里换一个模型。",
     en: "The current model settings don't support this. Choose another model in conversation settings.",
   },
+  "errors.MODEL_REASONING_EFFORT_UNSUPPORTED": {
+    "zh-CN": "当前模型不支持所选推理强度，请选择支持的强度或服务默认值。",
+    en: "The model does not support this reasoning effort. Choose a supported effort or the service default.",
+  },
   "errors.PROFILE_NOT_SUPPORTED": {
     "zh-CN": "所选执行配置不支持此操作，请选择兼容的配置。（PROFILE_NOT_SUPPORTED）",
     en: "The selected profile does not support this operation. Choose a compatible profile. (PROFILE_NOT_SUPPORTED)",

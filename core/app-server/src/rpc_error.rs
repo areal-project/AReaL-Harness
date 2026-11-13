@@ -48,6 +48,7 @@ pub(super) fn map_error(error: Error) -> RpcError {
             "CREDENTIAL_UNAVAILABLE",
             "MODEL_CREDENTIAL_UNAVAILABLE",
             "UNSUPPORTED_PROFILE",
+            "MODEL_REASONING_EFFORT_UNSUPPORTED",
         ]
         .into_iter()
         .find(|code| reason == code || reason.starts_with(&format!("{code}:")))
@@ -121,6 +122,18 @@ mod tests {
         assert_eq!(
             error.data.as_ref().unwrap()["reason"],
             "INPUT_LIMIT_EXCEEDED"
+        );
+        assert_eq!(error.data.as_ref().unwrap()["outcome"]["kind"], "rejected");
+    }
+
+    #[test]
+    fn unsupported_reasoning_effort_is_a_determinate_rejection() {
+        let error = map_error(Error::Rejected(Box::new(Error::Invalid(
+            "MODEL_REASONING_EFFORT_UNSUPPORTED".into(),
+        ))));
+        assert_eq!(
+            error.data.as_ref().unwrap()["reason"],
+            "MODEL_REASONING_EFFORT_UNSUPPORTED"
         );
         assert_eq!(error.data.as_ref().unwrap()["outcome"]["kind"], "rejected");
     }

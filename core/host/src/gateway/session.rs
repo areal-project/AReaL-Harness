@@ -1412,6 +1412,8 @@ impl Session {
                 .or_else(|| error["code"].as_i64());
             let code = if error["data"]["reason"] == "INPUT_LIMIT_EXCEEDED" {
                 "INPUT_LIMIT_EXCEEDED"
+            } else if error["data"]["reason"] == "MODEL_REASONING_EFFORT_UNSUPPORTED" {
+                "MODEL_REASONING_EFFORT_UNSUPPORTED"
             } else if error["data"]["reason"] == "TOOL_HOST_UNAVAILABLE" {
                 "CAPABILITY_UNAVAILABLE"
             } else if matches!(
