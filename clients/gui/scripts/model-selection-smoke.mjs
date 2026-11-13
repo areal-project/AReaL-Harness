@@ -413,17 +413,35 @@ async function waitForServiceIdle({ canStop = false } = {}) {
   await untilValue(
     async () => {
       const reply = await page.evaluate(() => window.arealDesktop.command("serviceStatus", {}));
-      return (
-        reply.ok &&
-        (canStop
-          ? reply.value.canStop
-          : !reply.value.busy &&
-            !reply.value.activeCommands &&
-            !reply.value.starting &&
-            !reply.value.providerUpdating)
-      );
+      if (!reply.ok) return { ok: false };
+      const { busy, activeCommands, starting, providerUpdating, canStop, clients, projects } =
+        reply.value;
+      return {
+        ok: true,
+        busy,
+        activeCommands,
+        starting,
+        providerUpdating,
+        canStop,
+        clients,
+        projects: projects.map((project) => ({
+          observation: project.observation,
+          restartSafe: project.restartSafe,
+          activeTasks: project.activeTasks,
+          waitingMessages: project.waitingMessages,
+          goals: project.goalThreads?.length,
+          tasks: project.tasks?.map((task) => ({ paused: task.paused })),
+        })),
+      };
     },
     canStop ? "service can stop" : "service operations settled",
+    {
+      accept: (status) =>
+        status.ok &&
+        (canStop
+          ? status.canStop
+          : !status.busy && !status.activeCommands && !status.starting && !status.providerUpdating),
+    },
   );
 }
 const fixtureProject = (snapshot) =>
@@ -2196,8 +2214,14 @@ async function runFullModelSelection() {
     model: null,
     expectedRevision: reopened.revision,
   });
+  assert.equal(withoutDefault.defaultModel, null);
   await waitForServiceIdle();
-  await call("providers", { operation: "apply", expectedRevision: withoutDefault.revision });
+  const appliedDefault = await call("providers", {
+    operation: "apply",
+    expectedRevision: withoutDefault.revision,
+  });
+  assert.equal(appliedDefault.defaultModel, null);
+  assert.equal(appliedDefault.pendingApply, false);
   await until(
     (s) => fixtureProject(s).models.length === 2,
     "explicit default cleared for catalog enablement checks",

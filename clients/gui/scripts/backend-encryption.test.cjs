@@ -81,3 +81,59 @@ test("service status counts backend commands until their real operation settles"
   assert.equal(await pending, "done");
   assert.equal(service.packet().service.activeCommands, 0);
 });
+
+test("service status excludes its own inspection while retaining other GUI blockers", async (t) => {
+  const { SharedCoreBackend } = require("../app/src/core/service-client.cjs");
+  const backend = {
+    projects: new Map(),
+    starting: new Map(),
+    activeCommands: 0,
+    connections: { revokeDesktopToolHost() {} },
+    analytics: { sample() {}, async flush() {} },
+    providers: { redact: (value) => value },
+    library: { value: { settings: {} } },
+    hasWork: () => false,
+    refreshHostProjects: async () => {},
+    snapshot: () => ({
+      library: {
+        projects: {},
+        threads: {},
+        projectOrder: [],
+        sections: [],
+        sidebarThreadOrder: [],
+        sidebarRevision: 0,
+        settings: {},
+      },
+      projects: [],
+    }),
+  };
+  const service = new DesktopService(backend, "fixture");
+  t.after(() => service.close());
+  const owner = service.connectMain(
+    () => {},
+    () => {},
+  );
+  await owner.request("hello", { protocol: PROTOCOL, identity: "fixture", capabilities: {} });
+  const client = {
+    status: { connected: true },
+    connection: owner,
+    metadata: owner.metadata,
+    requireConnection() {
+      return this.connection;
+    },
+    resources: SharedCoreBackend.prototype.resources,
+  };
+  const status = () => SharedCoreBackend.prototype.serviceStatus.call(client);
+  const idle = await status();
+  assert.equal(idle.activeCommands, 0);
+  assert.equal(idle.clients, 1);
+  assert.equal(idle.canStop, true);
+  const peer = service.connectMain(
+    () => {},
+    () => {},
+  );
+  await peer.request("hello", { protocol: PROTOCOL, identity: "fixture", capabilities: {} });
+  assert.equal((await status()).canStop, false);
+  peer.close();
+  assert.equal((await status()).canStop, true);
+});
