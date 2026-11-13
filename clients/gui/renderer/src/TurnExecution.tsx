@@ -22,6 +22,7 @@ import {
   toolPresentation,
 } from "./conversationPresentation.js";
 import type { Data } from "./services.js";
+import { dataItems, stringItems } from "./data-shapes.js";
 
 function ReadingActivityGroup({
   readingKey,
@@ -79,7 +80,7 @@ export function TurnActivity({
     (entry) => entry.state === "waiting" || entry.state === "retrying",
   );
   const animate = canAnimateTurn(project, threadId, turn) && !retry;
-  const items = processItems(turn.items ?? [], turn.status);
+  const items = processItems(dataItems(turn.items), turn.status);
   const currentTool =
     animate &&
     items.findLast((item) => item.type === "dynamicToolCall" && toolPresentation(item).running);
@@ -90,8 +91,8 @@ export function TurnActivity({
   const last = items.filter((item) => item.type !== "modelContext").at(-1);
   const summary =
     last?.type === "reasoning"
-      ? (last.summary ?? [])
-          .filter((part: unknown) => typeof part === "string" && part.trim())
+      ? stringItems(last.summary)
+          .filter((part) => part.trim())
           .at(-1)
       : undefined;
   const retrying =
@@ -151,7 +152,7 @@ export function TurnExecution({
   const { t } = useI18n();
   const { unfinished } = executionOutcome(items);
   // 失败的步骤留在原位，由所在活动行写明结果（CONV-ACTIVITY-01），过程标题不另作提示。
-  const visibleItems = items.filter((item) => !item.historyOmitted);
+  const visibleItems = dataItems(items).filter((item) => !item.historyOmitted);
   const tools = visibleItems.filter((item) => item.type === "dynamicToolCall");
   const unconfirmed = tools.some((item) => toolPresentation(item).state === "unsettled");
   const rows = timelineItems(items);
@@ -173,7 +174,7 @@ export function TurnExecution({
       ...run,
       items: run.items.flatMap((item) => {
         if (item.type === "reasoningGroup") {
-          const resident = item.items.filter((entry: Data) => !entry.historyOmitted);
+          const resident = dataItems(item.items).filter((entry: Data) => !entry.historyOmitted);
           return resident.length ? [{ ...item, items: resident }] : [];
         }
         return item.historyOmitted ? [] : [item];

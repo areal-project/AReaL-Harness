@@ -57,6 +57,7 @@ import type { Action, Data } from "./services.js";
 import type { ObservedCatalogOwner } from "./services.js";
 import { GoalUsageSummary } from "./GoalUsage.js";
 import { goalBudgetMessage } from "./conversationPresentation.js";
+import { channelQuestionOptions, channelQuestions } from "./data-shapes.js";
 
 type HistoryReadMode = "head" | "more" | "refresh";
 type RunHistory = {
@@ -549,39 +550,42 @@ export function ChannelQuestion({
       {message.status === "answered" && message.answers && (
         <p>已接受的回答：{Object.values(message.answers).join("；")}</p>
       )}
-      {message.questions.map((q: Data) => (
-        <label key={q.id} className="grid gap-1">
-          {q.title}
-          {q.allowFreeText ? (
-            <Textarea
-              aria-label={q.title}
-              value={answers[q.id] ?? ""}
-              disabled={busy || submitted || unknown || disabled || expired || inactive}
-              onChange={(e) => change(q.id, e.target.value)}
-              placeholder={q.options?.join(" / ")}
-            />
-          ) : (
-            <Select
-              value={answers[q.id] ?? ""}
-              disabled={busy || submitted || unknown || disabled || expired || inactive}
-              onValueChange={(v) => {
-                if (v) change(q.id, v);
-              }}
-            >
-              <SelectTrigger aria-label={q.title}>
-                <SelectValue placeholder="请选择" />
-              </SelectTrigger>
-              <SelectContent>
-                {q.options.map((v: string) => (
-                  <SelectItem key={v} value={v}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </label>
-      ))}
+      {channelQuestions(message).map((q: Data) => {
+        const options = channelQuestionOptions(q);
+        return (
+          <label key={q.id} className="grid gap-1">
+            {q.title}
+            {q.allowFreeText ? (
+              <Textarea
+                aria-label={q.title}
+                value={answers[q.id] ?? ""}
+                disabled={busy || submitted || unknown || disabled || expired || inactive}
+                onChange={(e) => change(q.id, e.target.value)}
+                placeholder={options.join(" / ")}
+              />
+            ) : (
+              <Select
+                value={answers[q.id] ?? ""}
+                disabled={busy || submitted || unknown || disabled || expired || inactive}
+                onValueChange={(v) => {
+                  if (v) change(q.id, v);
+                }}
+              >
+                <SelectTrigger aria-label={q.title}>
+                  <SelectValue placeholder="请选择" />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((v: string) => (
+                    <SelectItem key={v} value={v}>
+                      {v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </label>
+        );
+      })}
       {unknown && <p role="alert">回答提交结果尚未确认，不会重复发送。</p>}
       {error && (
         <p role="alert" className="text-destructive">
@@ -598,7 +602,7 @@ export function ChannelQuestion({
             disabled ||
             expired ||
             inactive ||
-            message.questions.some(
+            channelQuestions(message).some(
               (q: Data) =>
                 !answers[q.id]?.trim() || new TextEncoder().encode(answers[q.id]).length > 4096,
             )

@@ -43,6 +43,7 @@ import { useForkHistory } from "./ForkHistory.js";
 import { DeferredHistoryItem, useConversationHistory } from "./ConversationHistory.js";
 import { UnknownToolInspection } from "./UnknownToolInspection.js";
 import { showTurnStatus } from "./toolInspection.js";
+import { dataItems } from "./data-shapes.js";
 import { TurnNavigation } from "./TurnNavigation.js";
 import {
   executionOutcome,
@@ -1282,7 +1283,7 @@ export function Messages({
                               >
                                 <div className="user-message-content">
                                   <div className="user-bubble question-answer-bubble">
-                                    {item.questions.map((question: Data) => (
+                                    {dataItems(item.questions).map((question: Data) => (
                                       <div key={question.id}>
                                         <p className="question-answer-title">{question.title}</p>
                                         <p>{item.answers[question.id]}</p>

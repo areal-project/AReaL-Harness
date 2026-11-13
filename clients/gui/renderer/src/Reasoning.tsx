@@ -2,17 +2,14 @@ import { Button } from "@areal/ui";
 import { useId, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { Data } from "./services.js";
+import { stringItems } from "./data-shapes.js";
 
 /** 只展示 Core 明确返回的公开文本，默认折叠，不读取 provider context。 */
 export function Reasoning({ item }: { item: Data }) {
   const [open, setOpen] = useState(false);
   const id = useId();
-  const summary = (item.summary ?? []).filter(
-    (part: unknown) => typeof part === "string" && part.trim(),
-  );
-  const content = (item.content ?? []).filter(
-    (part: unknown) => typeof part === "string" && part.trim(),
-  );
+  const summary = stringItems(item.summary).filter((part) => part.trim());
+  const content = stringItems(item.content).filter((part) => part.trim());
   if (!summary.length && !content.length) return null;
   return (
     <div className="tool-group reasoning" data-testid="reasoning">
