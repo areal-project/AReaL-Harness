@@ -7,6 +7,7 @@ import {
   executionSegments,
   timelineItems,
   toolActionText,
+  toolPresentation,
   agentSettlements,
 } from "./conversationPresentation.js";
 import { hasUnknownToolOutcome } from "./toolInspection.js";
@@ -41,8 +42,9 @@ describe("opaque tool extensions accepted by the history boundary", () => {
     (contentItems) => {
       const item = tool({ contentItems });
       expect(
-        readObservationResult({ thread: { id: "thread", turns: [{ id: "turn", items: [item] }] } })
-          .thread.turns[0].items[0],
+        readObservationResult({
+          thread: { id: "thread", turns: [{ id: "turn", items: [item] }] },
+        }).thread.turns[0].items[0],
       ).toEqual(item);
       expect(commandResult(item)).toEqual({});
       expect(render(CommandDetails, item)).toContain("echo ok");
@@ -127,5 +129,14 @@ describe("task directory extensions", () => {
         ),
       ).not.toThrow();
     },
+  );
+});
+
+it("renders command argument arrays only after validating their shape", () => {
+  const item = tool({ arguments: { argv: { value: "echo" } } });
+  expect(toolPresentation(item).detail).toBe("");
+  expect(render(CommandDetails, item)).toBeTruthy();
+  expect(toolPresentation(tool({ arguments: { argv: [null, "echo", "ok"] } })).detail).toBe(
+    "echo ok",
   );
 });

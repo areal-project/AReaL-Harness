@@ -1,4 +1,4 @@
-import { queueInput } from "./data-shapes.js";
+import { recordItems } from "./data-shapes.js";
 import { composerUploadOwner, forgetComposerUploads } from "./ComposerUploadState.js";
 import { currentErrorText } from "./errors/currentErrorText.js";
 import { useAutoReconcile } from "./errors/autoReconcile.js";
@@ -226,7 +226,7 @@ export function useComposerQueueEdit({
       revision: queue.revision,
       wasPaused: queue.paused,
       phase: "opening",
-      attachments: queueInput(target).filter((part: Data) => part.type !== "text"),
+      attachments: recordItems(target.input).filter((part: Data) => part.type !== "text"),
       original: {
         text: api.current?.getMarkdown() ?? composerDraftStorage.getItem(draftKey) ?? "",
         skills: composerDraftStorage.getItem(`${draftKey}:skills`),

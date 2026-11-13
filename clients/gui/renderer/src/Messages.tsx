@@ -102,7 +102,6 @@ import { latestScheduleItems, ScheduledTaskCards } from "./ScheduledTasks.js";
 import { TurnFileSummary } from "./TurnFileSummary.js";
 import type { Data, Action, PlatformServices } from "./services.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
-// Queue pauseReason "stopped" is Core's stop receipt. It stays separate from the turn status.
 export function Messages({
   project,
   thread: localThread,
@@ -1400,18 +1399,20 @@ export function Messages({
                                       {t("chat.history.reloadPage")}
                                     </Button>
                                   );
-                                if (entry.type === "dynamicToolCall")
+                                if (entry.type === "dynamicToolCall") {
+                                  // prettier-ignore
+                                  const processRecords = recordItems(entry.processRecords ?? [entry]);
                                   return (
                                     <div data-side-item-id={entry.id} key={entry.id}>
                                       <ToolEvent
                                         item={approval.mark(entry)}
                                         mediaGeneration={localThread.displayHistory?.viewGeneration}
                                         onLoadDetails={
-                                          recordItems(entry.processRecords ?? [entry]).some(
+                                          processRecords.some(
                                             (record: Data) => record.deferredHistory,
                                           )
                                             ? async () => {
-                                                for (const record of recordItems(entry.processRecords ?? [entry])) {
+                                                for (const record of processRecords) {
                                                   if (
                                                     record.deferredHistory &&
                                                     !(await live.loadHistory?.(record.id))
@@ -1421,17 +1422,10 @@ export function Messages({
                                               }
                                             : undefined
                                         }
-                                        detailsLoading={recordItems(entry.processRecords ?? [entry]).some(
-                                          (record: Data) =>
-                                            localThread.displayHistory?.loadingItems?.[record.id],
-                                        )}
-                                        detailsError={
-                                          recordItems(entry.processRecords ?? [entry]).some(
-                                            (record: Data) => record.id === history.failure?.itemId,
-                                          )
-                                            ? history.failure?.message // raw-error-ok: 已是词条
-                                            : undefined
-                                        }
+                                        // prettier-ignore
+                                        detailsLoading={processRecords.some((record: Data) => localThread.displayHistory?.loadingItems?.[record.id])}
+                                        // prettier-ignore
+                                        detailsError={processRecords.some((record: Data) => record.id === history.failure?.itemId) ? history.failure?.message : undefined}
                                         {...disclosure}
                                         onOpenResult={
                                           (ordinary ||
@@ -1469,6 +1463,7 @@ export function Messages({
                                       />
                                     </div>
                                   );
+                                }
                                 if (entry.type === "modelContext") return null;
                                 return (
                                   <SettingsDisclosure

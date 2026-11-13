@@ -57,11 +57,8 @@ import { WorkspacePanels } from "./views/WorkspacePanels.js";
 import { WorkspaceFileTree } from "./workspace-file-tree/WorkspaceFileTree.js";
 import { usePendingMessage } from "./pendingMessage.js";
 export function App({ services }: { services: PlatformServices }) {
-  return (
-    <AppProviders services={services}>
-      <AppContent services={services} />
-    </AppProviders>
-  );
+  // prettier-ignore
+  return React.createElement(AppProviders, { services }, React.createElement(AppContent, { services }));
 }
 function AppContent({ services }: { services: PlatformServices }) {
   const { t } = useI18n();

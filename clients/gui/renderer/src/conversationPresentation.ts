@@ -311,7 +311,7 @@ export function toolPresentation(item: Data) {
         : (args.path ??
           args.file_path ??
           args.command ??
-          args.argv?.join(" ") ??
+          (Array.isArray(args.argv) ? stringItems(args.argv).join(" ") : undefined) ??
           args.query ??
           args.pattern ??
           "");
