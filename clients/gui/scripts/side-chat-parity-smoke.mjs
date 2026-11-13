@@ -9,7 +9,11 @@ import { trackedMkdtemp } from "./support/host-cleanup.cjs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { applicationFixture } from "./application-fixture.mjs";
-import { closeSmokeApplication, assertApplicationStopped } from "./application-cleanup.mjs";
+import {
+  closeSmokeApplication,
+  assertApplicationStopped,
+  stopFixtureHost,
+} from "./application-cleanup.mjs";
 import { respondToSessionName } from "./model-fixture.mjs";
 import {
   captureSmokeFailure,
@@ -484,13 +488,32 @@ async function closeOwned() {
     });
   if (app) {
     await app
-      .evaluate(({ dialog }) => {
-        dialog.showMessageBox = async () => ({ response: 1 });
-      })
+      .evaluate(({ dialog }, isBaseline) => {
+        dialog.showMessageBox = async () => ({ response: isBaseline ? 1 : 0 });
+      }, baseline)
       .catch(() => {});
     await closeSmokeApplication(app);
     app = null;
     ctx.app = null;
+  }
+  if (!baseline) {
+    const receipt = await stopFixtureHost(binary, env.AREAL_HARNESS_SERVICE_HOME, evidence);
+    assert.ok(receipt, "the original fixture Host stop is confirmed");
+    assert.equal(receipt.state, "completed");
+    for (const item of receipt.projects) {
+      assert.equal(item.receipt?.state, "completed");
+      const cleanup = JSON.parse(
+        await readFile(
+          join(env.AREAL_HARNESS_SERVICE_HOME, "services", item.serviceId, "cleanup.json"),
+          "utf8",
+        ),
+      );
+      assert.equal(cleanup.identity.generation, item.serviceGeneration);
+      assert.equal(cleanup.cleanupConfirmed, true);
+    }
+    await assertApplicationStopped(binary, env, metadata);
+    facts.cleanup.push({ pid: metadata?.pid ?? null, serviceExited: true, hostStop: receipt });
+    return;
   }
   try {
     await assertApplicationStopped(binary, env, metadata);
