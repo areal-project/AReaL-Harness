@@ -1268,7 +1268,7 @@ export function Messages({
                                 loading={localThread.displayHistory?.loadingItems?.[item.id]}
                                 error={
                                   history.failure?.itemId === item.id
-                                    ? history.failure?.message // raw-error-ok: 已是词条
+                                    ? /* raw-error-ok: 已是词条 */ history.failure?.message
                                     : undefined
                                 }
                                 onLoad={() => {
@@ -1425,8 +1425,7 @@ export function Messages({
                                         // prettier-ignore
                                         detailsLoading={processRecords.some((record: Data) => localThread.displayHistory?.loadingItems?.[record.id])}
                                         // prettier-ignore
-                                        // raw-error-ok: 历史读取错误已在 ConversationHistory 中转为词条
-                                        detailsError={processRecords.some((record: Data) => record.id === history.failure?.itemId) ? history.failure?.message : undefined}
+                                        detailsError={processRecords.some((record: Data) => record.id === history.failure?.itemId) ? /* raw-error-ok: 历史读取错误已在 ConversationHistory 中转为词条 */ history.failure?.message : undefined}
                                         {...disclosure}
                                         onOpenResult={
                                           (ordinary ||
