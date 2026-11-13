@@ -79,7 +79,7 @@
   "core/host/src/migration/retirement.rs": 1,
   "core/host/src/migration/retirement/tests.rs": 8,
   "core/host/src/remote_state.rs": 2,
-  "core/host/src/schedule_admission.rs": 32,
+  "core/host/src/schedule_admission.rs": 31,
   "core/host/src/schedule_connection.rs": 2,
   "core/host/src/schedule_resources.rs": 3,
   "core/host/src/schedules.rs": 4,
