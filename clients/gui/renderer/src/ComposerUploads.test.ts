@@ -116,6 +116,55 @@ describe("composer attachment preparation", () => {
     forgetComposerUploads(openedOwner, [file]);
   });
 
+  it("keeps worktree upload receipts across public and shared Core projections", async () => {
+    const file = new File(["content"], "document.txt");
+    const createdProject = {
+      id: "project",
+      core: { instanceId: "source" },
+      state: {
+        threads: {
+          thread: { executionCore: { instanceId: "service", serviceGeneration: "generation" } },
+        },
+      },
+    };
+    const openedProject = {
+      id: "project",
+      core: { instanceId: "generation" },
+      state: { threads: { thread: { executionCore: { instanceId: "generation" } } } },
+    };
+    const action = vi.fn<Action>().mockResolvedValue(receipt("worktree"));
+    const initialOwner = composerUploadOwner(createdProject, "thread");
+    const openedOwner = composerUploadOwner(openedProject, "thread");
+    await uploadComposerFiles(
+      action as Action,
+      "project",
+      "thread",
+      [file],
+      undefined,
+      initialOwner,
+    );
+    await uploadComposerFiles(
+      action as Action,
+      "project",
+      "thread",
+      [file],
+      undefined,
+      openedOwner,
+    );
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(
+      composerUploadOwner(
+        {
+          ...openedProject,
+          state: { threads: { thread: { executionCore: { instanceId: "replacement" } } } },
+        },
+        "thread",
+      ),
+    ).not.toBe(openedOwner);
+    forgetComposerUploads(initialOwner, [file]);
+    forgetComposerUploads(openedOwner, [file]);
+  });
+
   it("does not retain a file removed while its individual retry is uploading", async () => {
     const owner = crypto.randomUUID();
     const file = new File(["content"], "document.txt");

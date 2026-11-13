@@ -16,7 +16,11 @@ const preparations = new Map<string, Preparation>();
 const listeners = new Set<() => void>();
 export function composerUploadOwner(project: Data, threadId: string) {
   const core = project.state?.threads?.[threadId]?.executionCore ?? project.core;
-  return JSON.stringify([project.id, threadId, core?.instanceId ?? null]);
+  return JSON.stringify([
+    project.id,
+    threadId,
+    core?.serviceGeneration ?? core?.instanceId ?? null,
+  ]);
 }
 export function composerUploads(owner: string) {
   const current = preparations.get(owner);
