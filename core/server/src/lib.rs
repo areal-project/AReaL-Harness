@@ -736,6 +736,7 @@ fn configured_models(
     };
     let mut result = areal_engine::desktop::ConfiguredModels {
         responses_prompt_cache: config.model.responses_prompt_cache,
+        history_thinking: config.model.history_thinking,
         ..Default::default()
     };
     let mut credentials = std::collections::BTreeMap::new();

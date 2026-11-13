@@ -9,6 +9,11 @@ use std::{
 
 const ENV: &[(&str, &str, &str)] = &[
     (
+        "AREAL_HARNESS_HISTORY_THINKING",
+        "",
+        "model.history_thinking",
+    ),
+    (
         "AREAL_HARNESS_SUMMARY_QUOTED_RETRY",
         "",
         "model.summary_quoted_retry",
@@ -37,11 +42,6 @@ const ENV: &[(&str, &str, &str)] = &[
         "AREAL_HARNESS_SUMMARY_PRESERVE_PREFIX",
         "",
         "model.summary_preserve_prefix",
-    ),
-    (
-        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT",
-        "",
-        "model.replay_chat_reasoning_content",
     ),
     (
         "AREAL_HARNESS_CONTEXT_TARGET_TOKENS",
@@ -404,6 +404,11 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
                 return Err(reject("expected an environment variable name"));
             }
         }
+        "history_thinking" => {
+            if !matches!(value.as_str(), "preserve" | "omit") {
+                return Err(reject("history_thinking must be preserve or omit"));
+            }
+        }
         "reasoning_summary" => {
             if !matches!(value.as_str(), "auto" | "concise" | "detailed") {
                 return Err(reject("unsupported reasoning summary"));
@@ -482,7 +487,6 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
         | "responses_websocket"
         | "responses_prompt_cache"
         | "summary_preserve_prefix"
-        | "replay_chat_reasoning_content"
         | "summary_quoted_retry"
         | "command_stdin_closed"
         | "goal_recover_unknown_model_usage" => {
@@ -739,6 +743,7 @@ pub(crate) fn load_mode(
         ("model.max_request_bytes", "16777216"),
         ("model.responses_websocket", "false"),
         ("model.responses_prompt_cache", "false"),
+        ("model.history_thinking", "preserve"),
         ("limits.max_completion_retries", "3"),
         ("limits.max_goal_report_rounds", "0"),
         ("limits.goal_recover_unknown_model_usage", "false"),
@@ -1050,6 +1055,10 @@ pub(crate) fn load_mode(
             .get("tools.extensions_file")
             .map(|v| PathBuf::from(&v.value)),
         model: SelectedModelConfig {
+            history_thinking: match values["model.history_thinking"].value.as_str() {
+                "omit" => HistoryThinking::Omit,
+                _ => HistoryThinking::Preserve,
+            },
             capabilities: selected_capabilities,
             reported_context_window_tokens,
             context_window_tokens: values
@@ -1066,9 +1075,6 @@ pub(crate) fn load_mode(
                 .map(|e| matches!(e.value.as_str(), "true" | "1")),
             summary_preserve_prefix: values
                 .get("model.summary_preserve_prefix")
-                .map(|e| matches!(e.value.as_str(), "true" | "1")),
-            replay_chat_reasoning_content: values
-                .get("model.replay_chat_reasoning_content")
                 .map(|e| matches!(e.value.as_str(), "true" | "1")),
             responses_websocket: matches!(
                 values["model.responses_websocket"].value.as_str(),

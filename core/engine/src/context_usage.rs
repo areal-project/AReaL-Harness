@@ -154,8 +154,9 @@ impl Engine {
         messages: &[Message],
         schemas: &[Value],
         registry: Option<&tools::Registry>,
+        model: &dyn Model,
     ) -> anyhow::Result<ContextEstimate> {
-        let original = history(thread, &self.store)?;
+        let original = crate::history::history_for(thread, &self.store, model)?;
         let logical = crate::history::logical_history(thread, &self.store)?;
         let attachments: Vec<_> = logical
             .turns
@@ -285,17 +286,6 @@ impl Engine {
                     context::text_tokens(&value.to_string()),
                 ));
             }
-            if let Some(text) = message
-                .reasoning_content
-                .as_deref()
-                .filter(|text| !text.is_empty())
-            {
-                parts.push(part(
-                    Kind::Conversation,
-                    "助手思考",
-                    context::text_tokens(text),
-                ));
-            }
             for content in &message.content {
                 if !matches!(content, ContentPart::Text(_)) {
                     parts.push(part(
@@ -387,6 +377,7 @@ impl Engine {
                 .active
                 .as_ref()
                 .and_then(|active| active.registry.as_ref().ok()),
+            model,
         )?;
         let basis = basis(configuration, Some(model), state.thread.turns.last());
         let active = state
@@ -496,9 +487,19 @@ impl Engine {
                 .last()
                 .and_then(|turn| turn.instruction_snapshot.as_deref()),
         );
-        messages.extend(history(thread, &self.store)?);
+        messages.extend(crate::history::history_for(
+            thread,
+            &self.store,
+            model.as_ref(),
+        )?);
         let registry = self.managed_registry(thread, cell.research).ok();
-        let estimate = self.context_estimate(thread, &messages, &schemas, registry.as_ref())?;
+        let estimate = self.context_estimate(
+            thread,
+            &messages,
+            &schemas,
+            registry.as_ref(),
+            model.as_ref(),
+        )?;
         Ok(ContextUsage::Ready {
             basis,
             budget,

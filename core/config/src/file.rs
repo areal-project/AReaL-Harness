@@ -396,6 +396,7 @@ fn walk(
                     | "name"
                     | "reasoning_effort"
                     | "service_tier"
+                    | "history_thinking"
                     | "reasoning_summary"
                     | "summary_reasoning_effort"
             ]
@@ -433,7 +434,6 @@ fn walk(
             | ["model", "responses_websocket"]
             | ["model", "responses_prompt_cache"]
             | ["model", "summary_preserve_prefix"]
-            | ["model", "replay_chat_reasoning_content"]
             | ["model", "summary_quoted_retry"]
     );
     if !numeric && !string && !decimal && !boolean {

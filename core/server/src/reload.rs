@@ -60,8 +60,8 @@ pub fn model(
             summary_reasoning_effort: config.summary_reasoning_effort.clone(),
             summary_max_output_tokens: config.summary_max_output_tokens,
             summary_preserve_prefix: config.summary_preserve_prefix,
-            replay_chat_reasoning_content: config.replay_chat_reasoning_content,
             summary_quoted_retry: config.summary_quoted_retry,
+            history_thinking: config.history_thinking,
             reasoning_summary: config.reasoning_summary.clone(),
             max_output_tokens: config.max_output_tokens,
             max_request_bytes: config.max_request_bytes,
@@ -214,6 +214,39 @@ mod tests {
     use super::*;
 
     #[test]
+    fn history_policy_reaches_default_and_catalog_models_from_one_configuration() {
+        let temp = tempfile::tempdir().unwrap();
+        for policy in [
+            areal_config::HistoryThinking::Preserve,
+            areal_config::HistoryThinking::Omit,
+        ] {
+            let mut inputs = ConfigInputs {
+                cwd: temp.path().into(),
+                homedir: Some(temp.path().into()),
+                ..Default::default()
+            };
+            inputs.overrides.model = Some("fixture".into());
+            inputs.overrides.model_endpoint = Some("http://127.0.0.1:9/".into());
+            inputs.env.insert(
+                "AREAL_HARNESS_HISTORY_THINKING".into(),
+                policy.as_str().into(),
+            );
+            let config = areal_config::load_management_config(&inputs).unwrap();
+            let selected = model(&config.model, &inputs, temp.path(), false).unwrap();
+            assert_eq!(selected.history_thinking(), policy);
+            assert_eq!(
+                selected
+                    .configure(&Default::default())
+                    .unwrap()
+                    .history_thinking(),
+                policy
+            );
+            let (catalog, _) = crate::configured_models(&config, &BTreeMap::new()).unwrap();
+            assert_eq!(catalog.history_thinking, policy);
+        }
+    }
+
+    #[test]
     fn management_model_rejects_missing_credential_before_network() {
         let mut inputs = ConfigInputs::default();
         inputs.cwd = std::env::current_dir().unwrap();
@@ -281,7 +314,6 @@ mod tests {
             let mut encoded = serde_json::to_string(&config.model).unwrap();
             assert!(!encoded.contains("summary_reasoning_effort"));
             assert!(!encoded.contains("summary_preserve_prefix"));
-            assert!(!encoded.contains("replay_chat_reasoning_content"));
             assert!(!encoded.contains("responses_websocket"));
             assert!(!encoded.contains("responses_prompt_cache"));
             if variant == 1 || variant == 2 {

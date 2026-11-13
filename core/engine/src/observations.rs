@@ -109,6 +109,16 @@ pub(super) fn checkpoint_references(thread: &Thread, count: usize, budget: usize
 fn opaque_context(value: &Value) -> bool {
     // Chat→Responses 桥会携带完全可见的推理摘要。只放行已知的纯文本结构，
     // 保留其顺序与内容；任何密文、签名、未知扩展或仅有 ID 的上下文仍禁止改写。
+    if value["type"] == "chat_reasoning"
+        && value["reasoning_content"].is_string()
+        && value.as_object().is_some_and(|object| {
+            object
+                .keys()
+                .all(|key| matches!(key.as_str(), "type" | "id" | "reasoning_content"))
+        })
+    {
+        return false;
+    }
     !(value["type"] == "reasoning"
         && value.as_object().is_some_and(|object| {
             object
@@ -135,7 +145,7 @@ pub(super) fn project(
     limits: &Limits,
     model: &dyn model::Model,
 ) -> anyhow::Result<(Vec<Message>, Option<Value>)> {
-    let mut messages = history(thread, store)?;
+    let mut messages = crate::history::history_for(thread, store, model)?;
     let allowed = thread
         .turns
         .last()

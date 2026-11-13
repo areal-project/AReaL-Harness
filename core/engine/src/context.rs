@@ -104,6 +104,7 @@ struct ContextPlan<'a> {
     byte_target: Option<usize>,
     store: &'a store::Store,
     reference_tokens: usize,
+    history_thinking: model::HistoryThinking,
 }
 impl ContextPlan<'_> {
     fn checkpoint(
@@ -119,6 +120,7 @@ impl ContextPlan<'_> {
             byte_target,
             store,
             reference_tokens,
+            history_thinking,
         } = *self;
         let items: Vec<_> = thread.turns.iter().flat_map(|t| &t.items).collect();
         let inputs = crate::history::checkpoint_inputs(thread, count);
@@ -140,7 +142,7 @@ impl ContextPlan<'_> {
         };
         let mut projection = thread.clone();
         projection.context_checkpoint = Some(checkpoint.clone());
-        let projected = history(&projection, store)?;
+        let projected = model::project_history(history(&projection, store)?, history_thinking);
         let mut tokens = estimate_tokens(&projected).saturating_add(overhead_tokens);
         let mut bytes = message_bytes(&projected);
         // 软目标不能丢弃最新请求，也不能截断已通过验证的摘要。
@@ -166,7 +168,6 @@ impl ContextPlan<'_> {
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_context: None,
-            reasoning_content: None,
         };
         let mut retained = mandatory.cloned().into_iter().collect::<Vec<_>>();
         for input in inputs
@@ -275,7 +276,6 @@ pub(crate) fn message_bytes(messages: &[Message]) -> usize {
                     + 64;
             }
             message.text_content().len()
-                + message.reasoning_content.as_ref().map_or(0, String::len)
                 + message
                     .content
                     .iter()
@@ -300,66 +300,6 @@ pub(crate) fn message_bytes(messages: &[Message]) -> usize {
 }
 
 // 保守增量估算，不把 UTF-8 字节或缓存折扣当作模型实际输入 token。
-
-fn item_is_user_message(item: &Item) -> bool {
-    matches!(item, Item::UserMessage { .. })
-}
-
-fn responses_reasoning_in_round(items: &[&Item], index: usize) -> bool {
-    let start = items[..index]
-        .iter()
-        .rposition(|item| item_is_user_message(item))
-        .map_or(0, |position| position + 1);
-    let end = items[index + 1..]
-        .iter()
-        .position(|item| item_is_user_message(item))
-        .map_or(items.len(), |position| index + 1 + position);
-    items[start..end].iter().any(|item| match item {
-        Item::ModelContext { value, .. } => {
-            value["type"] == "areal_response_output" || value["type"] == "reasoning"
-        }
-        _ => false,
-    })
-}
-
-fn round_has_display_reasoning_content(items: &[&Item], index: usize) -> bool {
-    let start = items[..index]
-        .iter()
-        .rposition(|item| item_is_user_message(item))
-        .map_or(0, |position| position + 1);
-    let end = items[index + 1..]
-        .iter()
-        .position(|item| item_is_user_message(item))
-        .map_or(items.len(), |position| index + 1 + position);
-    items[start..end]
-        .iter()
-        .any(|item| matches!(item, Item::Reasoning { content, .. } if !content.concat().is_empty()))
-}
-
-/// Chat-origin thinking that will be attached to the assistant message for possible replay.
-/// Responses display reasoning is excluded so encrypted/summary items are not double-counted.
-fn chat_origin_replay_text(items: &[&Item], index: usize) -> Option<String> {
-    if responses_reasoning_in_round(items, index) {
-        return None;
-    }
-    match items[index] {
-        Item::Reasoning { content, .. } => {
-            let text = content.concat();
-            if text.is_empty() { None } else { Some(text) }
-        }
-        Item::ModelContext { value, .. } if value["type"] == "chat_reasoning" => {
-            if round_has_display_reasoning_content(items, index) {
-                return None;
-            }
-            value["reasoning_content"]
-                .as_str()
-                .filter(|text| !text.is_empty())
-                .map(str::to_owned)
-        }
-        _ => None,
-    }
-}
-
 pub(crate) fn text_tokens(text: &str) -> usize {
     let ascii = text.bytes().filter(u8::is_ascii).count();
     ascii.div_ceil(3) + text.chars().filter(|c| !c.is_ascii()).count() * 2
@@ -376,7 +316,6 @@ pub(crate) fn estimate_tokens(messages: &[Message]) -> usize {
                     + 16;
             }
             text_tokens(&m.text_content())
-                + m.reasoning_content.as_deref().map_or(0, text_tokens)
                 + 16
                 + m.tool_calls
                     .iter()
@@ -983,15 +922,10 @@ impl Engine {
         // Cut only before a model round or a new user message. A round's opaque
         // reasoning, function calls and results always remain in the same group.
         for index in (previous..items.len()).rev() {
-            if let Some(text) = chat_origin_replay_text(&items, index) {
-                recent_bytes += text.len();
-                recent_tokens += text_tokens(&text);
-                continue;
-            }
-            if matches!(items[index], Item::Reasoning { .. })
-                || matches!(items[index], Item::ModelContext { value, .. } if value["type"] == "chat_reasoning")
+            if model.history_thinking() == model::HistoryThinking::Omit
+                && (matches!(items[index], Item::Reasoning { .. })
+                    || matches!(items[index], Item::ModelContext { value, .. } if value["type"] == "chat_reasoning"))
             {
-                // Responses 展示思考或已被同一轮 display 内容覆盖的 legacy 归档不重复计费。
                 continue;
             }
             let encoded = serde_json::to_string(items[index])?;
@@ -1044,6 +978,7 @@ impl Engine {
             byte_target,
             store: &self.store,
             reference_tokens: self.limits.context_reference_tokens,
+            history_thinking: model.history_thinking(),
         };
         // 用共享预算定位保留最多近期完整轮次的边界，最多进行对数次投影。
         let mut low = 0;
@@ -1179,7 +1114,7 @@ impl Engine {
                 turn.items.truncate(take);
                 left -= take;
             }
-            let summary_history = history(&prefix, &self.store)?;
+            let summary_history = crate::history::history_for(&prefix, &self.store, model.as_ref())?;
             let mut input = summary_input(&summary_history);
             if writing_target < 8000 {
                 // 这是写作目标而非硬截断；原有净缩减验证仍决定能否保存摘要。
@@ -1230,6 +1165,7 @@ impl Engine {
                         areal.capture.truncated = tracing::field::Empty,
                         areal.model.request.id = tracing::field::Empty,
                         areal.model.request.protocol = tracing::field::Empty,
+                        areal.model.request.history_thinking = tracing::field::Empty,
                         areal.model.request.transport = tracing::field::Empty,
                         areal.model.request.body = tracing::field::Empty,
                         areal.model.request.wire = tracing::field::Empty,
@@ -1417,7 +1353,7 @@ impl Engine {
             trajectory::record_text(&tracing::Span::current(), "gen_ai.output.messages", "assistant", &summary);
             let mut state = cell.state.lock().await;
             // 摘要等待期间允许 steer；净缩减必须与同一时刻的历史比较。
-            let commit_before_bytes = message_bytes(&history(&state.thread, &self.store)?);
+            let commit_before_bytes = message_bytes(&crate::history::history_for(&state.thread, &self.store, model.as_ref())?);
             let mut candidate = state.thread.clone();
             let mut cumulative_usage = snapshot
                 .context_checkpoint
@@ -1441,7 +1377,7 @@ impl Engine {
             checkpoint.usage = cumulative_usage;
             checkpoint.compactions = snapshot.context_checkpoint.as_ref().map_or(1, |c| c.compactions + 1);
             candidate.context_checkpoint = Some(checkpoint);
-            let after_history = history(&candidate, &self.store)?;
+            let after_history = crate::history::history_for(&candidate, &self.store, model.as_ref())?;
             let after_bytes = message_bytes(&after_history);
             let after_tokens = estimate_tokens(&after_history) + overhead_tokens;
             if budget.window > 0 && after_tokens > budget.input_limit {
@@ -2000,111 +1936,4 @@ mod project_instruction_tests {
 }
 
 #[cfg(test)]
-mod reference_tests {
-    use super::*;
-    struct FixtureModel;
-    #[async_trait::async_trait]
-    impl Model for FixtureModel {
-        fn name(&self) -> &str {
-            "checkpoint-reference-fixture"
-        }
-        async fn stream(&self, _: Vec<Message>) -> anyhow::Result<model::ModelStream> {
-            unreachable!()
-        }
-    }
-
-    #[tokio::test]
-    async fn checkpoint_reference_opt_in_respects_shared_allocation() {
-        let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::open(dir.path(), Arc::new(FixtureModel), Limits::default()).unwrap();
-        let mut thread = engine.create("/fixture".into()).await.unwrap();
-        let raw = json!({"path":"workspace://repo/reference.txt","sha256":"a".repeat(64),"source":"untrusted-protocol-middle".repeat(100)}).to_string();
-        thread.turns.push(serde_json::from_value(json!({"id":"turn","status":"completed","error":null,"usage":null,"items":[
-            {"type":"userMessage","id":"request","content":[{"type":"text","text":"preserve current requirements"}]},
-            {"type":"dynamicToolCall","id":"read","callId":"read-call","tool":"read_file","arguments":{"path":"reference.txt"},"status":"completed","success":true,
-            "execution":{"runtimeEpoch":"e","scopeId":"s","operationId":"read","outcome":"succeeded"},"contentItems":[{"type":"inputText","text":raw}]}
-        ]})).unwrap());
-        let original = serde_json::to_value(&thread).unwrap();
-        let budget = ContextBudget {
-            window: 16000,
-            reserve: 2000,
-            input_limit: 14000,
-            target: 10000,
-        };
-        for reference_tokens in [0, 4096] {
-            let planner = ContextPlan {
-                budget: &budget,
-                overhead_tokens: 128,
-                byte_target: None,
-                store: &engine.store,
-                reference_tokens,
-            };
-            let (checkpoint, tokens, _) = planner
-                .checkpoint(&thread, 2, "fallible summary", true)
-                .unwrap();
-            assert_eq!(
-                checkpoint
-                    .evidence
-                    .iter()
-                    .any(|s| s.contains("untrusted-protocol-middle")),
-                reference_tokens > 0
-            );
-            assert!(tokens <= budget.target);
-            assert_eq!(serde_json::to_value(&thread).unwrap(), original);
-            let tiny = ContextBudget {
-                target: 1,
-                ..budget
-            };
-            let planner = ContextPlan {
-                budget: &tiny,
-                ..planner
-            };
-            let (checkpoint, _, _) = planner
-                .checkpoint(&thread, 2, "fallible summary", true)
-                .unwrap();
-            assert!(
-                !checkpoint
-                    .evidence
-                    .iter()
-                    .any(|s| s.contains("untrusted-protocol-middle")),
-                "实验预算不能绕过共享请求分配器"
-            );
-        }
-        engine.shutdown().await;
-    }
-}
-
-#[cfg(test)]
-mod chat_reasoning_budget_tests {
-    use super::chat_origin_replay_text;
-    use areal_protocol::Item;
-    use serde_json::json;
-
-    fn items(values: Vec<serde_json::Value>) -> Vec<Item> {
-        values
-            .into_iter()
-            .map(|value| serde_json::from_value(value).unwrap())
-            .collect()
-    }
-
-    #[test]
-    fn budget_counts_chat_origin_text_once_and_skips_responses_display() {
-        let chat = items(vec![
-            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"ask"}]}),
-            json!({"type":"agentMessage","id":"a1","text":"ok"}),
-            json!({"type":"reasoning","id":"r1","content":["abc"],"summary":["sum"]}),
-            json!({"type":"modelContext","id":"c1","value":{"type":"chat_reasoning","reasoning_content":"legacy-dup"}}),
-        ]);
-        let refs: Vec<&Item> = chat.iter().collect();
-        assert_eq!(chat_origin_replay_text(&refs, 2).as_deref(), Some("abc"));
-        assert_eq!(chat_origin_replay_text(&refs, 3), None);
-
-        let responses = items(vec![
-            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"ask"}]}),
-            json!({"type":"reasoning","id":"r1","content":["display-only"]}),
-            json!({"type":"modelContext","id":"ctx","value":{"type":"areal_response_output","items":[{"type":"reasoning","encrypted_content":"enc"}]}}),
-        ]);
-        let refs: Vec<&Item> = responses.iter().collect();
-        assert_eq!(chat_origin_replay_text(&refs, 1), None);
-    }
-}
+mod reference_tests;

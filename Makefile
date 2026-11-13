@@ -21,7 +21,8 @@ endif
 	cordis-pin update-cordis sdk-test harness harness-smoke verify-harness \
 	setup setup-node sdk-build script-test launcher-test workgroup-smoke unified-execution-smoke delegation-permissions-smoke capacity-workgroup local-service-smoke upgrade-smoke tui-upgrade-smoke \
 	verify-native integration-boundaries ci-preflight ci-gui-static ci-gui-health \
-	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size lazy-mcp-compare
+	ci-gui-portable ci-core-contracts workflow-lint hooks-install check-changed baseline-diff agent-setup check-refs check-transitional check-rust-size lazy-mcp-compare \
+	training-export training-check training-smoke
 
 help: ## 显示常用操作（默认目标）
 	@printf '%s\n' '用法：make <target> [ARGS="..."]' ''
@@ -187,6 +188,15 @@ script-test: integration-boundaries ## 无需产品二进制的脚本、perf 与
 	node --test clients/gui/scripts/smoke-deadline.test.mjs
 	python3 -m unittest discover -s scripts/tests
 	python3 tests/perf/perf.py self-test
+
+training-export: ## 离线导出逐请求候选或 AReaL token SFT 样本；ARGS 指定来源与新输出目录
+	python3 scripts/export-training-data.py $(ARGS)
+
+training-check: ## 使用现有 AReaL Python 环境检查 SFT 数据集；PYTHON 指定解释器
+	$(or $(PYTHON),python3) scripts/train-trajectory-sft.py --check-only $(ARGS)
+
+training-smoke: ## CPU 验证 AReaL concat、导出、collator 与反向传播；PYTHON 指定训练环境
+	$(or $(PYTHON),python3) scripts/training-data-smoke.py $(ARGS)
 
 harness: ## 通过可信独立启动器启动工具 Harness；ARGS 指定工作区与数据目录
 	python3 scripts/launch.py $(ARGS)

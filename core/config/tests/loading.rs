@@ -15,6 +15,43 @@ fn inputs(root: &Path) -> ConfigInputs {
 }
 
 #[test]
+fn history_thinking_defaults_preserves_and_validates_file_and_env() {
+    let root = tempfile::tempdir().unwrap();
+    let mut i = inputs(root.path());
+    let default = load_config(&i).unwrap();
+    assert_eq!(default.model.history_thinking, HistoryThinking::Preserve);
+    write(
+        &mut i,
+        "schema_version=2\n[model]\nhistory_thinking='omit'\n",
+    );
+    let omitted = load_config(&i).unwrap();
+    assert_eq!(omitted.model.history_thinking, HistoryThinking::Omit);
+    assert_ne!(default.model.fingerprint(), omitted.model.fingerprint());
+    assert_eq!(
+        omitted.diagnostic(false)["model"]["history_thinking"],
+        "omit"
+    );
+    i.env
+        .insert("AREAL_HARNESS_HISTORY_THINKING".into(), "preserve".into());
+    assert_eq!(
+        load_config(&i).unwrap().model.history_thinking,
+        HistoryThinking::Preserve
+    );
+    i.env
+        .insert("AREAL_HARNESS_HISTORY_THINKING".into(), "typo".into());
+    assert!(load_config(&i).is_err());
+    i.env
+        .remove(&OsString::from("AREAL_HARNESS_HISTORY_THINKING"));
+    for value in ["false", "all", "none", "", "PRESERVE"] {
+        write(
+            &mut i,
+            &format!("schema_version=2\n[model]\nhistory_thinking='{value}'\n"),
+        );
+        assert!(load_config(&i).is_err());
+    }
+}
+
+#[test]
 fn observation_and_empty_recovery_budgets_have_independent_validated_controls() {
     let root = tempfile::tempdir().unwrap();
     let mut i = inputs(root.path());
@@ -1326,44 +1363,6 @@ fn summary_prefix_reuse_is_explicit_and_preserves_legacy_config() {
         Some(true)
     );
     set(&mut i, "AREAL_HARNESS_SUMMARY_PRESERVE_PREFIX", "automatic");
-    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
-}
-
-#[test]
-fn replay_chat_reasoning_content_is_explicit_and_preserves_legacy_config() {
-    let temp = tempfile::tempdir().unwrap();
-    let mut i = inputs(temp.path());
-    let original = load_config(&i).unwrap().model;
-    assert_eq!(original.replay_chat_reasoning_content, None);
-    let legacy = serde_json::to_value(&original).unwrap();
-    assert!(legacy.get("replay_chat_reasoning_content").is_none());
-    let restored: areal_config::SelectedModelConfig = serde_json::from_value(legacy).unwrap();
-    assert_eq!(restored.fingerprint(), original.fingerprint());
-    write(
-        &mut i,
-        "schema_version=1\n[model]\nreplay_chat_reasoning_content=false\n",
-    );
-    let configured = load_config(&i).unwrap();
-    assert_eq!(configured.model.replay_chat_reasoning_content, Some(false));
-    assert_eq!(
-        configured.diagnostic(false)["model"]["replay_chat_reasoning_content"],
-        false
-    );
-    assert_ne!(configured.model.fingerprint(), original.fingerprint());
-    set(
-        &mut i,
-        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT",
-        "true",
-    );
-    assert_eq!(
-        load_config(&i).unwrap().model.replay_chat_reasoning_content,
-        Some(true)
-    );
-    set(
-        &mut i,
-        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT",
-        "automatic",
-    );
     assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
 }
 

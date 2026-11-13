@@ -1,5 +1,26 @@
 use super::*;
 
+#[tokio::test]
+async fn default_chat_request_replays_historical_thinking() {
+    let model = HttpModel::new("http://127.0.0.1:9/".into(), "fixture".into(), None).unwrap();
+    let mut assistant = Message::text("assistant", "checked");
+    assistant.provider_context =
+        Some(json!({"type":"chat_reasoning","reasoning_content":"inspect carefully"}));
+    let body = model
+        .request_body(vec![
+            Message::text("user", "start"),
+            assistant,
+            Message::text("user", "continue"),
+        ])
+        .await
+        .unwrap();
+    assert_eq!(
+        body["messages"][1]["reasoning_content"],
+        "inspect carefully"
+    );
+    assert_eq!(body["messages"][1]["content"], "checked");
+}
+
 fn function(status: Option<Value>, arguments: &str) -> Value {
     let mut item = json!({"type":"function_call","id":"item-terminal",
         "call_id":"call-terminal","name":"fs_write","arguments":arguments});
@@ -373,21 +394,35 @@ async fn canonical_output_wire_preserves_phase_and_hook_arguments_without_duplic
             ModelProtocol::Responses,
         )
         .unwrap()
-        .project_request_body(vec![m.clone()], false)
+        .request_body(vec![m.clone()])
         .await
         .unwrap();
         assert_eq!(responses["input"], json!(output));
         assert!(!responses.to_string().contains("local-only"));
-        let chat = HttpModel::with_protocol(
+        let chat_model = HttpModel::with_protocol(
             "http://127.0.0.1:1/".into(),
             "fixture".into(),
             None,
             ModelProtocol::ChatCompletions,
         )
-        .unwrap()
-        .project_request_body(vec![m], false)
-        .await
         .unwrap();
+        assert!(
+            chat_model
+                .request_body(vec![m.clone()])
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("encrypted Responses thinking")
+        );
+        let chat = chat_model
+            .with_options(ModelOptions {
+                history_thinking: HistoryThinking::Omit,
+                ..Default::default()
+            })
+            .unwrap()
+            .request_body(vec![m])
+            .await
+            .unwrap();
         let entries = chat["messages"].as_array().unwrap();
         let assistant = entries.iter().find(|v| v["role"] == "assistant").unwrap();
         assert_eq!(assistant["content"], "Inspect");

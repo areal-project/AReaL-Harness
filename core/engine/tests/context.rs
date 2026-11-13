@@ -264,8 +264,107 @@ async fn cancelling_compaction_keeps_the_original_history_and_no_checkpoint() {
 }
 
 struct ArchivedChatReasoning;
+
+struct ThinkingHistory {
+    policy: areal_engine::model::HistoryThinking,
+    requests: Mutex<Vec<Vec<Message>>>,
+}
+#[async_trait]
+impl Model for ThinkingHistory {
+    fn name(&self) -> &str {
+        "thinking-compaction"
+    }
+    fn history_thinking(&self) -> areal_engine::model::HistoryThinking {
+        self.policy
+    }
+    async fn stream(&self, _: Vec<Message>) -> anyhow::Result<ModelStream> {
+        unreachable!()
+    }
+    async fn chat(&self, messages: Vec<Message>, tools: Vec<Value>) -> anyhow::Result<ModelStream> {
+        self.chat_for(messages, tools, RequestPurpose::Solve).await
+    }
+    async fn chat_for(
+        &self,
+        messages: Vec<Message>,
+        _: Vec<Value>,
+        purpose: RequestPurpose,
+    ) -> anyhow::Result<ModelStream> {
+        if purpose == RequestPurpose::Summary {
+            return Ok(Box::pin(stream::iter([Ok(ModelEvent::text(
+                "Verified earlier observations. Continue the requested checks.",
+            ))])));
+        }
+        self.requests.lock().unwrap().push(messages);
+        Ok(Box::pin(stream::iter([
+            Ok(ModelEvent::reasoning("PRIVATE_THOUGHT ".repeat(100))),
+            Ok(ModelEvent::text("verified observation ".repeat(90))),
+        ])))
+    }
+}
+
+#[tokio::test]
+async fn both_thinking_modes_compact_and_restart_without_losing_archive_or_recent_context() {
+    use areal_engine::model::HistoryThinking;
+    for policy in [HistoryThinking::Preserve, HistoryThinking::Omit] {
+        let data = tempfile::tempdir().unwrap();
+        let model = Arc::new(ThinkingHistory {
+            policy,
+            requests: Mutex::new(Vec::new()),
+        });
+        let limits = Limits {
+            context_window_bytes: 20000,
+            context_recent_bytes: 4096,
+            ..Limits::default()
+        };
+        let engine = Engine::open(data.path(), model.clone(), limits.clone()).unwrap();
+        let thread = engine.create("/workspace".into()).await.unwrap();
+        for _ in 0..4 {
+            let result = turn(&engine, &thread.id, "Preserve the original requirements").await;
+            assert_eq!(result.turns.last().unwrap().status, TurnStatus::Completed);
+        }
+        engine.context_compact(thread.id.clone()).await.unwrap();
+        let result = turn(&engine, &thread.id, "Continue after compaction").await;
+        assert_eq!(result.turns.last().unwrap().status, TurnStatus::Completed);
+        assert!(result.context_checkpoint.is_some());
+        engine.shutdown().await;
+        drop(engine);
+        let restored = Engine::open(data.path(), model.clone(), limits).unwrap();
+        let result = turn(&restored, &thread.id, "Continue after restart").await;
+        assert_eq!(result.turns.last().unwrap().status, TurnStatus::Completed);
+        {
+            let requests = model.requests.lock().unwrap();
+            for messages in &requests[1..] {
+                let has_thinking = messages.iter().any(|m| {
+                    m.provider_context.as_ref().is_some_and(|context| {
+                        context["reasoning_content"]
+                            .as_str()
+                            .is_some_and(|text| text.contains("PRIVATE_THOUGHT"))
+                    })
+                });
+                assert_eq!(has_thinking, policy == HistoryThinking::Preserve);
+                assert!(
+                    messages
+                        .iter()
+                        .any(|m| m.text_content().contains("verified observation"))
+                );
+            }
+        }
+        let full = restored.read(&thread.id, true).await.unwrap();
+        assert_eq!(
+            full.turns.iter().flat_map(|t| &t.items).filter(|item| matches!(item,
+                areal_protocol::Item::Reasoning { content, .. } if content.concat().contains("PRIVATE_THOUGHT")
+            )).count(),
+            6
+        );
+        restored.shutdown().await;
+    }
+}
+
 #[async_trait]
 impl Model for ArchivedChatReasoning {
+    fn history_thinking(&self) -> areal_engine::model::HistoryThinking {
+        areal_engine::model::HistoryThinking::Omit
+    }
     fn name(&self) -> &str {
         "archived-chat-reasoning"
     }
@@ -289,34 +388,20 @@ impl Model for ArchivedChatReasoning {
 }
 
 #[tokio::test]
-async fn archived_chat_reasoning_counts_toward_compaction_and_remains_in_history() {
+async fn archived_chat_reasoning_does_not_trigger_compaction_or_disappear_from_history() {
     let data = tempfile::tempdir().unwrap();
     let engine = Engine::open(data.path(), Arc::new(ArchivedChatReasoning), limits()).unwrap();
     let thread = engine.create("/workspace".into()).await.unwrap();
-    let mut saw_checkpoint = false;
     for _ in 0..3 {
         let completed = turn(&engine, &thread.id, "Continue implementation").await;
         assert_eq!(
             completed.turns.last().unwrap().status,
             TurnStatus::Completed
         );
+        assert!(completed.context_checkpoint.is_none());
         assert!(completed.turns.last().unwrap().items.iter().any(|item| matches!(item, areal_protocol::Item::Reasoning { content, .. } if content[0].len() > 16 * 1024)));
         assert!(completed.turns.last().unwrap().items.iter().any(|item| matches!(item, areal_protocol::Item::ModelContext { value, .. } if value["reasoning_content"].as_str().unwrap().len() > 16*1024)));
-        saw_checkpoint |= completed.context_checkpoint.is_some();
     }
-    let full = engine.read(&thread.id, true).await.unwrap();
-    assert!(
-        saw_checkpoint || full.context_checkpoint.is_some(),
-        "replayable chat reasoning should count toward the 2200-byte window"
-    );
-    assert_eq!(
-        full.turns
-            .iter()
-            .flat_map(|turn| &turn.items)
-            .filter(|item| matches!(item, areal_protocol::Item::Reasoning { .. }))
-            .count(),
-        3
-    );
     engine.shutdown().await;
 }
 

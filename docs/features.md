@@ -41,6 +41,7 @@
 | 观测与验证           | 标准 OpenTelemetry Traces 与 Events/Logs，通过标准 OTEL 配置导出模型和工具轨迹（OTLP HTTP/protobuf）；确定性模型回归、原生 smoke、Docker lite/pro 评测。[配置](guides/configuration.md) · [测试](development/testing.md)                                                                        |
 | 执行轨迹排查 | 每轮耗时、模型尝试与重试、工具及等待记录，沿委派关系读取共享、嵌套与隔离子代理；完整已保存历史搜索、异常和耗时筛选、定位、原文按需读取及 JSON 复制。[使用指南](guides/execution-trace.md) |
 | 持久轨迹导出 | 可选 `[trajectory]` 配置、跨本地 run 的有界磁盘队列、独立 OTLP Logs 上传进程、退避与手动重试；CLI 状态、会话内一次异常提示和 GUI 数据飞轮启停开关与实时状态；区分模型调用、Agent 执行与上传时间。上传不改变 Turn 结果；平台分析登记由接收端完成。[配置](guides/configuration.md#持久轨迹导出) |
+| 训练制样 | 离线逐请求 HTTP 候选、AReaL 原始 token/mask SFT 导出与真实训练入口；区分客户端消息和引擎条件，缺证据单独记录 UNKNOWN。[指南](guides/training-data.md) |
 
 Remote 的 Direct 与 Relay 已接入共同 Host 授权和 PWA 协议，Direct 提供 Serve/组织 HTTPS 配置及可选 Funnel 范围切换。源码能力不等于路线或平台已认证；本机严格 TLS 夹具不代表 Native/Core、浏览器 TLS、真实手机或公网部署验收。配置、迁移与路线矩阵见 [Remote 指南](guides/remote-control.md)，独立验证要求见[测试与发布门槛](development/remote-control-testing.md)。
 

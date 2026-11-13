@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     body::{Body, Bytes},
+    extract::DefaultBodyLimit,
     routing::post,
 };
 use futures_util::{StreamExt, stream};
@@ -195,7 +196,9 @@ impl Fixture {
                     ([("content-type", "text/event-stream")], body)
                 }
             }),
-        );
+        )
+        // 长历史用例会回传 >2 MiB thinking；夹具上限与该用例的上下文预算一致。
+        .layer(DefaultBodyLimit::max(8 * 1024 * 1024));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}/", listener.local_addr().unwrap());
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -1102,6 +1105,17 @@ async fn unspecified_budgets_allow_long_tool_runs_and_large_durable_history() {
     );
     assert_eq!(writes.ids.lock().unwrap().len(), calls);
     assert!(serde_json::to_vec(&result).unwrap().len() > 2 * 1024 * 1024);
+    {
+        let requests = fixture.requests.lock().unwrap();
+        let replayed: usize = requests.last().unwrap()["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|message| message["reasoning_content"].as_str())
+            .map(str::len)
+            .sum();
+        assert_eq!(replayed, calls * 16 * 1024);
+    }
     engine.shutdown().await;
     drop(engine);
     let restored = Engine::open(

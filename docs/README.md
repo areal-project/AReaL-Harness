@@ -31,3 +31,5 @@ Remote v2 设计与实施边界：[架构](design/remote-control.md) · [API](ap
 - [回答评价](guides/user-feedback.md)
 
 - [程序化工具调用](guides/programmatic-tools.md)：默认组合入口、数据依赖、观察选择与恢复边界。
+
+- [轨迹制样与 SFT](guides/training-data.md)：按实际请求或引擎 tokens 制样，接入已有 AReaL 训练。

@@ -178,6 +178,17 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 
 例如 Chat Completions 通常填写 `https://model.example.com/v1/chat/completions`，Responses 填写 `https://model.example.com/v1/responses`，以供应商实际接口为准。仅填 `/v1` 可能得到 HTTP 200 的 HTML 网页，触发 `model response must use text/event-stream`；Goal 模式还会因未知用量显示 `GOAL_USAGE_UNKNOWN`，并保留原始错误。修改非模型启动配置后须[停止并重新启动共享服务](../api/local-service.md#公共入口)，只重开客户端不会重新加载配置。
 
+`model.history_thinking` 统一控制 Chat Completions 与 Responses 的历史思考回放，只接受 `preserve`（默认）或 `omit`；环境变量为 `AREAL_HARNESS_HISTORY_THINKING`。例如：
+
+```toml
+[model]
+history_thinking = "omit"
+```
+
+`preserve` 将已记录的 Chat 明文思考放入对应 assistant 的 `reasoning_content`，Responses 原生 reasoning 按原顺序回传一次，保留加密字段；显示摘要不充当完整 thinking。`omit` 只从请求投影中移除历史思考，正文、工具调用和结果继续保留，完整输出仍存档。预算、压缩候选和实际发送使用同一策略；压缩仍可用摘要替换较早的完整轮次。它不要求模型生成 thinking，也不控制训练 loss。默认保留会增加 Chat 的实际上下文，不能继承旧策略的效果或成本结论。该全局设置覆盖共享 Core 构造的模型、子任务和 Workgroup；各客户端无需另设开关。该设置在 Core 启动时读取，修改后应在服务空闲时按原部署参数重启。
+
+AReaL 训练使用配套 OpenAI proxy 实现，并透传 `x-areal-history-thinking` 请求头。`preserve` 允许合法父 token 续接，并检查模板没有丢失已提供的明文 thinking；`omit` 重新编码完整请求，不续接父 token，concat 导出将各请求保留为独立根。两种模式都保存本轮完整输出 tokens 和真实 loss mask；omit 的 Responses WebSocket 禁用服务端响应续接并发送完整输入。中间代理也必须保留该请求头；其他模型服务是否消费 `reasoning_content` 由其接口与模板决定，精确制样仍应取实际引擎 tokens。详见[轨迹制样与 SFT](training-data.md)。
+
 `reasoning_effort` 可为 none/minimal/low/medium/high/xhigh/max，供应商需支持；配置值 `default` 明确使用服务默认，出站时省略此参数；`model.max_output_tokens` 默认 16384（16k），映射到协议对应字段；这是单次请求的可覆盖默认值，需大于零，不是整个 Turn 的累计预算。全局显式值、模型和供应商默认参数、环境变量仍按既有优先级覆盖；省略值（含旧模型快照中的空值）使用新默认。OpenAI 推理模型的额度包含推理与可见输出，复杂任务可按模型调大，例如 32768，并确保窗口留有输入空间。`max_retries` 为 0–8，控制接受流之前的有限 HTTP 重试，涵盖传输错误、HTTP 408/429 和全部 5xx。该额度耗尽后，默认启用的 Core watchdog 仍会继续网络恢复。
 
 可选 `model.reasoning_summary = "auto"`（也可为 `concise` / `detailed`）仅适用于 `responses`，映射到请求的 `reasoning.summary`；环境变量为 `AREAL_HARNESS_REASONING_SUMMARY`。默认省略，不向 Chat Completions 或未选择此功能的模型附加摘要参数。端点/模型必须支持所选摘要模式；是否返回摘要取决于供应商，不保证始终有思考文本。
@@ -185,8 +196,6 @@ endpoint 是完整 HTTP(S) 请求 URL；Core 只支持 `chat-completions` / `res
 可选采样参数不配置时省略，显式 0 保留。`temperature` 为有限数 [0,2]，`top_p` / `min_p` 为 [0,1]，`top_k` 为正整数或 -1，`presence_penalty` 为 [-2,2]，`repetition_penalty` 大于 0。Chat 与 Responses 均接受 temperature/top_p；其余四项只支持 Chat，Responses 配置时拒绝。参数发送不证明供应商实际采纳。摘要默认继承求解采样/推理配置并禁用工具。可单独设置 `model.summary_reasoning_effort` 和 `model.summary_max_output_tokens`（环境变量 `AREAL_HARNESS_SUMMARY_REASONING_EFFORT` / `AREAL_HARNESS_SUMMARY_MAX_OUTPUT_TOKENS`），不会修改后续求解参数。摘要输出上限为全局输出上限、摘要专用上限、Goal 剩余额度与 16384 中的最小值；专用上限需大于零。未配置时兼容原行为；例如可在求解 high 时显式选择摘要 low/4096，需验证供应商支持和任务保留效果。
 
 `model.summary_preserve_prefix` 是可选的摘要输入策略（环境变量 `AREAL_HARNESS_SUMMARY_PRESERVE_PREFIX`）。省略时保持原行为：Responses 尝试复用求解前缀与工具定义，Chat 使用引用式历史。显式 `false` 让 Responses 从首次摘要就使用引用式历史，省去已知不保真网关上的前缀尝试；普通求解的工具、缓存和预算不变。`true` 不会为 Chat 开启前缀复用。应按端点实际是否保留 system / developer 顺序、工具 schema 与缓存身份配置，不按模型名称猜测；关闭可能损失真实可复用的缓存。引用式摘要仍须通过原检查点提交校验，较少请求不能单独证明任务效果提升。旧配置继续兼容；旧版本不识别新增字段。
-
-`model.replay_chat_reasoning_content`（环境变量 `AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT`）控制 Chat Completions 是否把同一轮思考原文写入非标准字段 `reasoning_content`。省略时为自动策略：仅 Chat Completions 生效；`capabilities.reasoning = false` 时不自动发送；官方 `api.openai.com` Chat 不自动发送；DeepSeek（`api.deepseek.com` 与 `*.deepseek.com`）以及通义 DashScope（主机标签为 `dashscope` / `dashscope-*` 且域名为 `aliyuncs.com`）仅在**即将发出的请求包含 `tools`** 时自动回放——这覆盖同一轮工具循环，跨用户轮次若该次请求不再带 tools 则不自动回放。其他自定义端点默认关闭，避免只因“请求带 tools”就给所有 OpenAI Chat 兼容接口塞入不兼容字段。显式 `true` / `false` 覆盖自动策略。Responses 不使用该字段，仍按原始 `output` / `modelContext` 回放 reasoning，包括 `encrypted_content`。当前不支持 Anthropic Messages 原生协议，因此不会回放 `thinking`、`redacted_thinking` 或 `signature`。上下文压缩会统计实际可回放的 Chat 来源思考；这只保证请求前缀的连续性，不保证供应商 KV 缓存命中。旧配置省略该字段时保持兼容。
 
 `model.context_window_tokens` 设置当前模型的用户工作预算（1–2000000），Provider/模型参数及 `parameters.contextWindowTokens` 同样支持。工作窗口依次取用户显式配置、当前账号/渠道报告的默认值、渠道与完整型号对应的内置默认值、全局 `limits.context_window_tokens`（默认 131072）。用户值无论大于或小于报告值都优先；清空用户参数后恢复默认解析。报告值和用户值分别保留，目录更新不改写用户参数。它们控制本地预检，不能改变供应商服务端上限。
 
