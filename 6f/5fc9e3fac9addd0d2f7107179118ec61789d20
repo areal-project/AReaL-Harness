@@ -1,0 +1,38 @@
+integrations/gameagent/test_adapter_integration.py
+  s_bd8d5bb07c65e6::t_506e7fdd232c0b 8,71-77
+  s_268edd80c1d6f5::t_59b604d9f9edca 78
+integrations/gameagent/skills/film-game/SKILL.md
+  s_bd8d5bb07c65e6::t_e119688ef3d7dc 1-22
+integrations/gameagent/runtime/gameharness/core/prompts/interactive.md
+  s_bd8d5bb07c65e6::t_4de47a2333f2ba 24
+integrations/gameagent/adapter_integration.py
+  s_bd8d5bb07c65e6::t_d22c83bfbfd518 10-29
+integrations/gameagent/skills/3d-game/SKILL.md
+  s_bd8d5bb07c65e6::t_e119688ef3d7dc 1-15
+integrations/gameagent/skills/game-01-pipeline/SKILL.md
+  s_bd8d5bb07c65e6::t_e119688ef3d7dc 1-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6f5fc9e3fac9addd0d2f7107179118ec61789d20",
+  "prompts": {},
+  "sessions": {
+    "s_268edd80c1d6f5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1c42f-76bd-7823-b31b-e0f525676b40",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    },
+    "s_bd8d5bb07c65e6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1d317-71d1-7e23-8f31-132818788694",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "IF007 <44497574+IF007@users.noreply.github.com>"
+    }
+  }
+}
