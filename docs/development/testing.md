@@ -4,7 +4,7 @@
 
 共享业务优先在 Web 与真实 Host 服务上用隔离数据验收，不以 GUI 打包为常规前置。窗口、系统加密、浏览器视图和电脑控制等 Electron 专属能力才启动桌面；发行资源、签名与升级仍在对应发行任务单独验证。协议测试、页面交互、原生与发行包证据分别记录，不互相替代。
 
-共享 smoke 夹具位于 `clients/gui/scripts/support/`：`core-observation.mjs` 按目标工作区与服务代际读取 Core，`host-transport-barrier.mjs` 在 Host 传输边界控制本次请求与响应。注入须断言命中的请求 ID，权威结算与 UI 呈现分别验证；清理复用 `application-cleanup.mjs` 核对原 Host 停止回执及实际退出，保留原失败。`test:script-units` 验证夹具，`test:core-observation` 验证真实隔离 Core；`test:workbench-errors` 在 GUI 构建后验证后台进程和 Host 错误码映射，依赖均登记在 manifest。
+共享 smoke 夹具位于 `clients/gui/scripts/support/`：`core-observation.mjs` 统一解析原 Thread 的执行工作区与服务代际，并校验返回的 Thread 身份；显式 worktree 与已有投影冲突时直接失败，尚未投影的 worktree 不借用父项目代际。`host-transport-barrier.mjs` 在 Host 传输边界控制本次请求与响应。注入须断言命中的请求 ID，权威结算与 UI 呈现分别验证；清理复用 `application-cleanup.mjs` 核对原 Host 停止回执及实际退出，保留原失败。`test:script-units` 验证夹具，`test:core-observation` 验证真实隔离 Core；`test:workbench-errors` 在 GUI 构建后验证后台进程和 Host 错误码映射，依赖均登记在 manifest。
 
 工作台后台冒烟可按领域运行，例如 `pnpm --dir clients/gui test:workbench-backend --domain=providers`。支持 library、trajectory、feedback、tasks、manage、worktree、providers、lifecycle，可组合；省略参数运行完整链路。每次运行使用独立数据目录；停机任务目录和运行中任务管理分别初始化不同项目。开发时选择目标领域及受影响回归，收尾运行完整链路。协议冒烟不替代真实 Web 页面操作。
 
@@ -442,7 +442,7 @@ cargo test --locked -p areal-engine --lib plugin_host_inherits_proxies_without_o
 
 `make host-protocol-check` 检查生成物、生成器回归和桌面 IPC 冻结反例，并运行需要 GUI 依赖的两条用例（生成的 TypeScript 声明、Host 经工作台后台冻结上下文），所以要先装 `clients/gui` 的依赖。CI 还以 PR 基线的完整提交 SHA 运行 `node clients/gui/scripts/check-desktop-ipc-freeze.cjs --base <SHA>`，拒绝新增顶层命令或已有命令下的业务 operation，原生 bridge 通道不在冻结范围内。
 
-Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric=mainBusinessLines --base=<SHA>` 和 `--metric=mainSourceLines` 检查。业务统计默认包含所有 Main 文件，仅排除基线逐路径注明职责的原生文件；混合文件整计为业务的保守上界。两项同时比较基线值和 PR 基点实测，不允许提高基线或通过重新分类隐藏增长。Renderer 的平台边界通过 `pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui` 检查，规则单测与其他 oxlint 规则放在同一测试文件中。
+Main 的业务行数与源码总行数分别由 `gui-health.mjs --check --metric=mainBusinessLines --base=<SHA>` 和 `--metric=mainSourceLines` 检查。业务统计默认包含所有 Main 文件，仅排除基线逐路径注明职责的原生文件；混合文件整计为业务的保守上界。两项及 Main 逐文件上限按现有 `vite-plus/fmt` 的固定格式化口径计数（宽度 100、缩进 2），压行不能减少预算。基线用 `$mainLineCounting` 标识计数口径；切换口径时以同一算法重测 PR 基点源码，不把旧物理行数与新计数直接比较。两项同时比较基线值和 PR 基点实测，不允许提高基线或通过重新分类隐藏增长。Renderer 的平台边界通过 `pnpm --dir clients/gui exec vp lint --config oxlint.renderer-boundary.json renderer packages/remote packages/remote-client packages/ui` 检查，规则单测与其他 oxlint 规则放在同一测试文件中。
 
 `cargo test --locked -p areal-host --test host_protocol_conformance` 编译生成类型并调用真实本机 wire。准备匹配的固定路径 Core/Runtime 后，运行 `AREAL_TEST_HOST_KEYCHAIN=1 AREAL_CORE_BIN=/absolute/verified/areal pnpm --dir clients/gui test:host-protocol-conformance`，通过隔离 Host、Core、Relay 和 Noise 对照实际收发及资源边界。macOS 的钥匙串仅使用夹具合成项；该检查不代表安装包、真实数据或手机真机验收。
 

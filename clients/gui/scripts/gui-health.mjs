@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { format } from "vite-plus/fmt";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -34,6 +35,8 @@ export function reviewedBaselineTransition(name, before, current) {
 }
 
 const gui = fileURLToPath(new URL("../", import.meta.url));
+const mainLineCounting = "oxfmt-v1";
+const mainSource = (path) => path.startsWith("app/src/") && !path.endsWith(".css");
 const sourceExtension = /\.(?:cjs|mjs|js|jsx|ts|tsx|css)$/;
 const excluded =
   /(?:^|\/)(?:vendor|generated|dist|node_modules|design-system)(?:\/|$)|(?:^|\/)app\/src\/core\/snapshots\/build\/|(?:^|\/)i18n\/messages\/|\.(?:test|spec)\./;
@@ -64,7 +67,17 @@ export async function collectHealth({ root = gui, nativeSources, retainedWorkben
   const files = await Promise.all(
     paths.map(async (path) => {
       const source = await readFile(resolve(root, path), "utf8");
-      return { path, source, lines: lines(source) };
+      // 两侧使用同一格式化口径，压行、空行和仓外配置不改变职责预算。
+      let measured = source;
+      if (mainSource(path)) {
+        const formatted = await format(path, source, { printWidth: 100, tabWidth: 2 });
+        if (formatted.errors.length)
+          throw new Error(
+            `Cannot measure Main source ${path}: ${formatted.errors.map((error) => error.message).join("; ")}`,
+          );
+        measured = formatted.code;
+      }
+      return { path, source, lines: lines(measured) };
     }),
   );
   const main = files.filter(
@@ -184,13 +197,13 @@ export async function collectHealth({ root = gui, nativeSources, retainedWorkben
       mainSourceLines,
       "down",
       "app/src",
-      "Physical lines of all owned Main source, including native shell; same scope as counts.mainSourceLines",
+      "Canonical formatted lines of all owned Main source, including native shell; same scope as counts.mainSourceLines",
     ),
     mainBusinessLines: row(
       Object.values(mainBusinessSources).reduce((total, count) => total + count, 0),
       "down",
       "app/src",
-      "Physical lines of Host/workbench/Core business and mixed Main modules; exact native-shell exemptions in $mainNativeSources; new paths count by default",
+      "Canonical formatted lines of Host/workbench/Core business and mixed Main modules; exact native-shell exemptions in $mainNativeSources; new paths count by default",
     ),
     mainCheckedFiles: row(
       checkedMainFiles,
@@ -523,6 +536,7 @@ function compare(report, baseline) {
 function baselineFrom(report, previous) {
   return {
     $schemaVersion: 1,
+    $mainLineCounting: mainLineCounting,
     $revision: report.revision,
     $mainNativeSources: report.mainNativeSources,
     $workbenchRetainedSources: report.workbenchRetainedSources,
@@ -665,7 +679,11 @@ async function main() {
     for (const [name, current] of Object.entries(baseline).filter(
       ([name]) => !name.startsWith("$"),
     )) {
-      const old = before[name];
+      const old =
+        before.$mainLineCounting !== mainLineCounting &&
+        ["mainSourceLines", "mainBusinessLines"].includes(name)
+          ? measuredBase.metrics[name]
+          : before[name];
       if (
         old &&
         (old.direction !== current.direction ||
@@ -685,7 +703,11 @@ async function main() {
           });
       }
     }
-    for (const [path, cap] of Object.entries(before.$sourceCaps))
+    for (const [path, storedCap] of Object.entries(before.$sourceCaps)) {
+      const cap =
+        before.$mainLineCounting !== mainLineCounting && mainSource(path)
+          ? (measuredBase.sourceLines[path] ?? 0)
+          : storedCap;
       if (
         !(path in baseline.$sourceCaps) ||
         Math.max(800, baseline.$sourceCaps[path]) > Math.max(800, cap)
@@ -694,6 +716,7 @@ async function main() {
           metric: `source:${path}`,
           reason: "baseline source cap relaxed against base",
         });
+    }
     for (const [path, cap] of Object.entries(baseline.$sourceCaps))
       if (!(path in before.$sourceCaps) && cap > 800)
         failures.push({

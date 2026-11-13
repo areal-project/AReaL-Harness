@@ -326,7 +326,7 @@ test("Main business budget counts new and renamed modules and rejects restored d
   await rm(join(f.root, "app/src/business.cjs"));
   await rename(join(f.root, "app/src/main.cjs"), join(f.root, "app/src/renamed.cjs"));
   assert.equal(check().status, 0);
-  await f.put("app/src/renamed.cjs", "module.exports = {};\n\n");
+  await f.put("app/src/renamed.cjs", "module.exports = {};\nadded();\n");
   assert.notEqual(check().status, 0);
   assert.notEqual(f.run("--write", "--allow-regression=mainBusinessLines").status, 0);
   await rm(join(f.root, "app/src/renamed.cjs"));
@@ -349,7 +349,7 @@ test("native shell exemptions are exact paths and cannot reclassify business aga
   await f.put("health-baseline.json", JSON.stringify(baseline));
   await commitFixture(f);
   const check = () => f.run("--check", "--metric=mainBusinessLines", "--base=HEAD");
-  await f.put("app/src/preload.cjs", "module.exports = {};\n\n");
+  await f.put("app/src/preload.cjs", "module.exports = {};\nadded();\n");
   const green = check();
   assert.equal(green.status, 0, green.stderr);
   const total = f.run("--check", "--metric=mainSourceLines", "--base=HEAD");
@@ -385,7 +385,7 @@ for (const metric of ["mainSourceLines", "mainBusinessLines"]) {
     baseline[metric].value = 2;
     await f.put("health-baseline.json", JSON.stringify(baseline));
     assert.match(check().stderr, /initial baseline must equal actual Main lines/);
-    await f.put("app/src/main.cjs", "module.exports = {};\n\n");
+    await f.put("app/src/main.cjs", "module.exports = {};\nadded();\n");
     const grown = check();
     assert.notEqual(grown.status, 0);
     assert.match(grown.stderr, /Main source grew against base/);
@@ -613,4 +613,37 @@ test("workbench first baseline measures service sources at base and prevents res
   await commitFixture(f);
   await f.put(library, "library();\n");
   assert.match(check().stderr, /workbenchConvergeLines/);
+});
+
+test("Main compression cannot hide growth or change the measured base", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/main.cjs", "first();\nsecond();\n");
+  assert.equal(f.run("--write").status, 0);
+  await commitFixture(f);
+  await f.put("app/src/main.cjs", "first(); second();\n");
+  const same = f.run("--check", "--metric=mainSourceLines", "--base=HEAD");
+  assert.equal(same.status, 0, same.stderr);
+  assert.equal(JSON.parse(same.stdout).metrics.mainSourceLines.value, 2);
+  await f.put("app/src/main.cjs", "first(); second(); third();\n");
+  const grown = f.run("--check", "--metric=mainSourceLines", "--base=HEAD");
+  assert.notEqual(grown.status, 0);
+  assert.match(grown.stderr, /Main source grew against base/);
+});
+
+test("physical-line baseline upgrades by measuring the same base, without growth allowance", async (t) => {
+  const f = await fixture(t);
+  await f.put("app/src/main.cjs", "first(); second();\n");
+  assert.equal(f.run("--write").status, 0);
+  const normalized = await f.baseline();
+  const physical = structuredClone(normalized);
+  delete physical.$mainLineCounting;
+  physical.mainSourceLines.value = physical.mainBusinessLines.value = 1;
+  physical.$sourceCaps["app/src/main.cjs"] = 1;
+  await f.put("health-baseline.json", JSON.stringify(physical));
+  await commitFixture(f);
+  await f.put("health-baseline.json", JSON.stringify(normalized));
+  const check = () => f.run("--check", "--base=HEAD");
+  assert.equal(check().status, 0, check().stderr);
+  await f.put("app/src/main.cjs", "first(); second(); third();\n");
+  assert.match(check().stderr, /Main source grew against base/);
 });

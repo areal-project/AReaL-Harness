@@ -277,7 +277,6 @@ Composer 的圆环打开上下文分类与组成占比，面板在整组输入�
 
 macOS 桌面适配器通过系统 `/usr/bin/python3` 保留可信 Core 命令的父进程，与 Runtime 的原生启动方式一致。命令参数、环境和标准输入输出保持原样；超时、取消和强杀作用于真实 Core 子进程，适配器或桥退出时清理其仍运行的直接子进程。该路径不重放写入，也不终止 Core 已建立的持久服务。`pnpm --dir clients/gui run test:core-process` 验证信号退出、超时升级、取消、输出上限及进程清理。
 
-
 ### 本机问题反馈
 
 客户端运行观测覆盖启动、模型配置、任务发送、历史加载和断线恢复。诊断附带启动环境快照、操作/父操作关联、白名单失败原因与最近故障窗口，故障时补采 Main 内存样本；模型应用沿原请求关联读证明、应用与目录刷新。任务准入成功不表示模型执行完成，重连的异步历史恢复由后续读取结果分别确认。反馈预览进一步将关联身份统一转为报告内别名。`monitoring` 提供有版本的本地接入描述，尚未接入远端监控。字段、结果语义和保留缺口见[桌面观测契约](../../docs/api/desktop.md#客户端运行观测)。`test:observability` 检查并发关联与隐私投影；`test:observability-desktop` 使用隔离 Electron/Core、本地模型和受控故障验证反馈证据。
@@ -334,7 +333,6 @@ Composer 保留所选及最后受理模型，目录确认中不显示不可用�
 
 `AREAL_CORE_BIN=/absolute/path/to/areal AREAL_PERFORMANCE_BASELINE_GUI=/absolute/path/to/baseline/clients/gui pnpm --dir clients/gui measure:gui` 为固定基线与当前源码各构建隔离测量产物，交替执行五轮。报告包含真实 React Profiler 的 200 段流式 Turn、浏览器大型 DOM/多 iframe 并发读取、Main 事件循环延迟、Renderer 键盘事件到下一帧、首次重内容和清理证据。正式 `dist` 保持原样。执行前停止其他构建和桌面验证，按 manifest 的通过、清理和源/二进制哈希解释数据；有界本地夹具不能证明真实供应商、物理输入或安装包表现。启动的十轮前后对比另设 `AREAL_STARTUP_BASELINE_GUI` 与 `AREAL_STARTUP_ROUNDS=10`，报告进程冷启动的 p50/p90、Main RSS/heap 和 Renderer heap，不清除系统页缓存。
 
-
 `AREAL_STARTUP_MODEL_COUNT` 设置合成配置中的可执行模型数，默认为 9；目录另含默认别名和两个缺凭据模型。`AREAL_STARTUP_CATALOG_READS` 可在完整恢复后采样认证的只读模型目录请求，默认为 0。这些请求单独计时，不计入启动耗时，并验证不会调用模型供应商。
 
 首次启动先显示已应用主题的图标与加载提示，再恢复后台和原会话。初始恢复完成前不挂载首页、侧栏、输入框或面板；恢复成功后一次性显示完整工作台。失败时在加载页提供现有恢复与重试入口。等待超过 15 秒时显示进一步操作，但不据此判定后台失败或重放操作。关闭窗口后，迟到的恢复不会重新打开窗口。启动对比可设置 `AREAL_STARTUP_BASELINE_GUI=/absolute/path/to/clients/gui`，交替使用两个已构建的 GUI 和同一 Core；`AREAL_STARTUP_CHECK_HIDE=1` 另验收恢复期间关闭及主动重开。报告分别保留原生首次显示和完整历史恢复时间。
@@ -387,11 +385,13 @@ pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg --sign
 pnpm --dir clients/gui run dist --platform mac --arch arm64 --formats dmg,zip --signing developer-id --identity "$CSC_NAME" --keychain-profile "$APPLE_KEYCHAIN_PROFILE"
 ```
 
+打包按输入与输出内容摘要复用 GUI 构建；回执缺失、输入变化或产物损坏时自动重建。依赖仍按锁文件同步一次。`dist --signing none` 可复用输入一致且全部二进制通过原构建回执校验的 release Core；`package-evidence.json` 分别记录整包源码与 Core 实际构建提交，不将旧 Core 标成新提交。正式签名保留严格提交校验。`package-timings.json` 记录各阶段耗时、缓存命中与总耗时；本次暂存目录在成功或异常退出时清理。同一工作树的并行打包被锁拒绝，异常强杀后需先核对锁的所有者再清理。
+
 Relay 的 `node_modules` 通过独立资源映射打包，避免 electron-builder 的默认目录过滤丢失 `ws`。`test:relay-service` 包含真实打包复制回归检查，逐项核对 Relay 清单哈希并加载包内依赖；运行前须构建 GUI 静态资源。
 
 内部 Relay 测试包可在打包时设置 `AREAL_GUI_RELAY_CA_CERT=/absolute/ca.pem`，将自签名 CA 公共证书内置到应用。仅 Relay 的 HTTPS 登记与 WSS 连接额外信任该 CA，仍校验证书链、有效期和主机名；登记码由用户在客户端填写。CA 私钥不得进入包。手机端仍需自行安装并信任同一 CA，再扫码并在电脑确认设备授权。
 
-`--formats` 可选 `dmg`、`zip` 或 `dmg,zip`；`--output` 指定全新目录，默认生成独立时间戳目录，拒绝覆盖。`none` 不新增签名，保留输入已有签名，不保证应用签名有效或可启动；DMG 仅对字节完全一致的双份 Framework 去重。`adhoc` 是本地签名，不做公证。`developer-id` 复用现有签名、公证及安装包验收，要求两种格式；最终产物位于输出的 `signed/`，Apple 尚在处理时退出 2，使用 `pnpm --dir clients/gui run sign:mac --resume --output /absolute/output/signed` 恢复，不能重新提交未知状态的请求。此命令不发布。
+`--formats` 可选 `dmg`、`zip` 或 `dmg,zip`；`--output` 指定全新目录，默认生成独立时间戳目录，拒绝覆盖。`none` 不做分发签名，保留输入已有签名；原生 Helper 构建仍使用 ad-hoc 签名，不保证应用签名有效或可启动；DMG 仅对字节完全一致的双份 Framework 去重。`adhoc` 是本地签名，不做公证。`developer-id` 复用现有签名、公证及安装包验收，要求两种格式；最终产物位于输出的 `signed/`，Apple 尚在处理时退出 2，使用 `pnpm --dir clients/gui run sign:mac --resume --output /absolute/output/signed` 恢复，不能重新提交未知状态的请求。此命令不发布。
 
 仅需签名、公证和归档时，Developer ID 命令可加 `--skip-tests`；恢复同一公证时也可用 `sign:mac --resume --skip-tests --output ...`。它跳过签名后的桌面 smoke 与模型专项，回执标记为 `skipped-by-request`；签名、Apple 公证、stapling、Gatekeeper、Core 完整性及 DMG 体积检查仍执行。签名前的历史输入预检保留。此模式不能宣称功能验收通过，正式发布整理仍要求测试通过。
 

@@ -9,12 +9,22 @@ import { pathToFileURL } from "node:url";
 const execute = promisify(execFile);
 
 async function withCore(
-  { binary, env, gui, threadId, project, workspace, inventory, connect },
+  { binary, env, gui, threadId, project, workspace, executionWorkspace, inventory, connect },
   observe,
 ) {
   const execution = project?.state?.threads?.[threadId];
-  const generation = (execution?.executionCore ?? project?.core)?.serviceGeneration;
-  const expectedWorkspace = execution?.worktree?.directory ?? workspace;
+  const projectedWorkspace = execution?.worktree?.directory;
+  if (executionWorkspace && projectedWorkspace)
+    assert.equal(
+      executionWorkspace,
+      projectedWorkspace,
+      "execution workspace disagrees with the original thread projection",
+    );
+  const expectedWorkspace = executionWorkspace ?? projectedWorkspace ?? workspace;
+  // 未投影的新 worktree 不能借用父项目代际；已有执行身份则必须严格匹配。
+  const core =
+    execution?.executionCore ?? (expectedWorkspace === workspace ? project?.core : undefined);
+  const generation = core?.serviceGeneration;
   const records =
     inventory ??
     JSON.parse(
@@ -63,12 +73,14 @@ async function withCore(
 }
 
 export async function readCoreThread(options) {
-  return withCore(
-    options,
-    async (client) =>
-      (await client.request("thread/read", { threadId: options.threadId, includeTurns: true }))
-        .thread,
-  );
+  return withCore(options, async (client) => {
+    const { thread } = await client.request("thread/read", {
+      threadId: options.threadId,
+      includeTurns: true,
+    });
+    assert.equal(thread?.id, options.threadId, "Core observation must return the original thread");
+    return thread;
+  });
 }
 
 export async function listCoreSides(options) {

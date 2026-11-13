@@ -275,22 +275,15 @@ require(${JSON.stringify(join(desktop, "src/main.cjs"))});
 let app,
   page,
   passed = false;
-async function readPasteThread(threadId, executionWorkspace = workspace) {
-  const source = project(await state());
-  const execution = source?.state?.threads?.[threadId];
-  const binding =
-    executionWorkspace === workspace ||
-    (execution?.worktree?.directory === executionWorkspace &&
-      execution.executionCore?.serviceGeneration)
-      ? source
-      : undefined;
+async function readPasteThread(threadId, executionWorkspace) {
   return observeCoreThread({
     binary,
     env,
     gui,
     threadId,
-    project: binding,
-    workspace: executionWorkspace,
+    project: project(await state()),
+    workspace,
+    executionWorkspace,
   });
 }
 const errors = [],
