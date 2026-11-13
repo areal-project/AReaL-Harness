@@ -130,9 +130,9 @@ jobs:
           elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$PUSH_BASE" ] && [[ ! "$PUSH_BASE" =~ ^0+$ ]]; then
             design_base="$PUSH_BASE"
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "$COMPARISON_BASE" ]; then
-            if design_base="$(git rev-parse --verify --end-of-options "$COMPARISON_BASE^{commit}" 2>/dev/null)"; then
+            if design_base="$(git merge-base "$COMPARISON_BASE" HEAD 2>/dev/null)"; then
               :
-            elif design_base="$(git rev-parse --verify --end-of-options "origin/$COMPARISON_BASE^{commit}" 2>/dev/null)"; then
+            elif design_base="$(git merge-base "origin/$COMPARISON_BASE" HEAD 2>/dev/null)"; then
               :
             else
               design_base="$(git rev-parse HEAD^)"
@@ -251,9 +251,9 @@ jobs:
           elif [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$PUSH_BASE" ] && [[ ! "$PUSH_BASE" =~ ^0+$ ]]; then
             design_base="$PUSH_BASE"
           elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ -n "$COMPARISON_BASE" ]; then
-            if design_base="$(git rev-parse --verify --end-of-options "$COMPARISON_BASE^{commit}" 2>/dev/null)"; then
+            if design_base="$(git merge-base "$COMPARISON_BASE" HEAD 2>/dev/null)"; then
               :
-            elif design_base="$(git rev-parse --verify --end-of-options "origin/$COMPARISON_BASE^{commit}" 2>/dev/null)"; then
+            elif design_base="$(git merge-base "origin/$COMPARISON_BASE" HEAD 2>/dev/null)"; then
               :
             else
               design_base="$(git rev-parse HEAD^)"
