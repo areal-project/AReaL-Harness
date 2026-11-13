@@ -614,6 +614,31 @@ async function closeTab(id) {
   );
 }
 async function sendSide(text, complete = true) {
+  if (!baseline) {
+    const originalId = await sidePane().getAttribute("data-thread-id");
+    assert.ok(originalId, "the Side owns a Core thread before sending");
+    const before = new Set((await readCoreThread(originalId)).turns.map((turn) => turn.id));
+    await sideInput().fill(text);
+    await sidePane().getByRole("button", { name: "发送", exact: true }).click();
+    let turn;
+    await until(async () => {
+      assert.equal(await sidePane().getAttribute("data-thread-id"), originalId);
+      const thread = await readCoreThread(originalId);
+      turn = thread.turns.find((candidate) => !before.has(candidate.id));
+      if (turn && complete && turn.status !== "inProgress")
+        assert.equal(
+          turn.status,
+          "completed",
+          `child ${text} must complete successfully: ${JSON.stringify(turn.error)}`,
+        );
+      return turn && (!complete || turn.status === "completed");
+    }, `child ${text}`);
+    if (complete)
+      await sidePane()
+        .locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`)
+        .waitFor();
+    return originalId;
+  }
   const before = new Map(
     Object.values(threads(await state()))
       .filter((thread) => thread.conversation?.kind === "side")
@@ -868,6 +893,7 @@ async function hiddenStableHistory() {
   release = join(executionRoot, "release-parent-tool");
   await sendMain("PARITY:P2_ACTIVE", false);
   await until(() => exists(marker), "held Runtime parent tool started");
+  const parentTurnId = !baseline ? (await readCoreThread(parent)).turns.at(-1).id : null;
   const before = requests.length;
   await openSide();
   assert.equal(requests.length, before, "empty Side makes no model request");
@@ -908,10 +934,15 @@ async function hiddenStableHistory() {
     "inherited parent content is hidden from the child timeline",
   );
   await writeFile(release, "release");
-  await until(
-    async () => threads(await state())[parent]?.turns.at(-1).status === "completed",
-    "parent tool completes",
-  );
+  await until(async () => {
+    if (baseline) return threads(await state())[parent]?.turns.at(-1).status === "completed";
+    return (
+      (await readCoreThread(parent)).turns.find((turn) => turn.id === parentTurnId)?.status ===
+      "completed"
+    );
+  }, "parent tool completes");
+  if (!baseline)
+    await page.locator(`[data-turn-id="${parentTurnId}"][data-turn-status="completed"]`).waitFor();
   const childTurns = (await readCoreThread(child)).turns.length;
   await sendMain("PARITY:P2_LATER_PARENT");
   assert.equal(
@@ -1592,10 +1623,23 @@ try {
       await writeFile(release, "release");
       for (const settle of Array.from(streams.values())) settle();
       await until(
-        async () =>
-          !Object.values(threads(await state())).some(
-            (thread) => thread.turns?.at(-1)?.status === "inProgress",
-          ),
+        async () => {
+          if (baseline)
+            return !Object.values(threads(await state())).some(
+              (thread) => thread.turns?.at(-1)?.status === "inProgress",
+            );
+          const directory = join(env.AREAL_CORE_HOME, projectId, "state");
+          const names = (await readdir(directory)).filter((name) =>
+            /^[a-f0-9-]{36}\.json$/i.test(name),
+          );
+          if (!names.length) return false;
+          const stored = await Promise.all(
+            names.map(
+              async (name) => JSON.parse(await readFile(join(directory, name), "utf8")).thread,
+            ),
+          );
+          return stored.every((thread) => thread.turns?.at(-1)?.status !== "inProgress");
+        },
         "scenario streams and tools settled",
         20000,
       ).catch((error) => {
