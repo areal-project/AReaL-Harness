@@ -19,6 +19,10 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ["scripts/**/*.{js,jsx,cjs,mjs,ts,tsx,cts,mts}"],
+        rules: { "areal/no-async-wait-for-function": "error" },
+      },
+      {
         files: [
           "scripts/composer-files-acceptance.mjs",
           "scripts/model-selection-smoke.mjs",

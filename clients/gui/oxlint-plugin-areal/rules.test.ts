@@ -128,6 +128,32 @@ describe("no-smoke-transport-patch", () => {
     expect(result.status, result.stdout + result.stderr).toBe(1);
     for (const file of files) expect(result.stdout + result.stderr).toContain(file);
     expect(result.stdout + result.stderr).toContain("no-smoke-transport-patch");
+    const asyncFile = join(project, "scripts", "async-predicate.mjs");
+    writeFileSync(asyncFile, "page.waitForFunction(async () => false);\n");
+    const asyncResult = spawnSync(process.execPath, [vp, "lint", "scripts/async-predicate.mjs"], {
+      cwd: project,
+      encoding: "utf8",
+    });
+    expect(asyncResult.status, asyncResult.stdout + asyncResult.stderr).toBe(1);
+    expect(asyncResult.stdout + asyncResult.stderr).toContain("no-async-wait-for-function");
+  });
+});
+
+describe("no-async-wait-for-function", () => {
+  test.each([
+    "page.waitForFunction(async () => false);",
+    "page['waitForFunction'](async function () { return false; });",
+  ])("rejects async polling predicate: %s", (source) => {
+    const result = lint("no-async-wait-for-function", source, "fixture.mjs");
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("areal(no-async-wait-for-function)");
+  });
+  test.each([
+    "page.waitForFunction(() => document.readyState === 'complete');",
+    "page.evaluate(async () => false);",
+    "const text = 'page.waitForFunction(async () => false)';",
+  ])("allows other expressions: %s", (source) => {
+    expect(lint("no-async-wait-for-function", source, "fixture.mjs").status).toBe(0);
   });
 });
 

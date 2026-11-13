@@ -1,3 +1,4 @@
+import { until } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -125,10 +126,14 @@ try {
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);
-  await page.waitForFunction(async () => {
-    const s = await window.arealDesktop.snapshot();
-    return s.connection?.state === "ready" || s.projects.some((p) => p.error || p.state?.error);
-  });
+  await until(
+    () =>
+      page.evaluate(async () => {
+        const s = await window.arealDesktop.snapshot();
+        return s.connection?.state === "ready" || s.projects.some((p) => p.error || p.state?.error);
+      }),
+    "desktop ready or project error",
+  );
   const startup = await page.evaluate(() => window.arealDesktop.snapshot());
   const startupError = startup.projects.find((p) => p.error || p.state?.error);
   assert.ok(!startupError, startupError?.error || startupError?.state?.error);

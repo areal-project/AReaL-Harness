@@ -1,3 +1,4 @@
+import { until as untilObservation } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -478,16 +479,20 @@ async function verifyAccountCapacity() {
       },
     });
     const refreshCatalog = async () => {
-      await page.waitForFunction(async () => {
-        const reply = await window.arealDesktop.command("serviceStatus", {});
-        return (
-          reply.ok &&
-          !reply.value.busy &&
-          !reply.value.activeCommands &&
-          !reply.value.starting &&
-          !reply.value.providerUpdating
-        );
-      });
+      await untilObservation(
+        () =>
+          page.evaluate(async () => {
+            const reply = await window.arealDesktop.command("serviceStatus", {});
+            return (
+              reply.ok &&
+              !reply.value.busy &&
+              !reply.value.activeCommands &&
+              !reply.value.starting &&
+              !reply.value.providerUpdating
+            );
+          }),
+        "service ready to apply provider catalog",
+      );
       const current = await call("providers", { operation: "list" });
       await call("providers", { operation: "apply", expectedRevision: current.revision });
     };

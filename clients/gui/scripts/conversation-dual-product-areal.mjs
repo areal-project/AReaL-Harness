@@ -1,3 +1,4 @@
+import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
@@ -142,28 +143,43 @@ try {
     loadavg: loadavg(),
   };
   await writeFile(join(evidence, "environment.json"), JSON.stringify(environment, null, 2));
-  await page.waitForFunction(
-    async () => (await window.arealDesktop.snapshot()).connection?.state === "ready",
+  await until(
+    () =>
+      page.evaluate(
+        async () => (await window.arealDesktop.snapshot()).connection?.state === "ready",
+      ),
+    "desktop connection ready",
   );
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] });
   }, workspace);
   await page.getByRole("button", { name: "不在项目中工作", exact: true }).click();
   await page.getByRole("menuitem", { name: "新建项目", exact: true }).click();
-  await page.waitForFunction(
-    async (root) =>
-      (await window.arealDesktop.snapshot()).projects.some(
-        (p) => p.root === root && p.state?.connected,
+  await until(
+    () =>
+      page.evaluate(
+        async (root) =>
+          (await window.arealDesktop.snapshot()).projects.some(
+            (p) => p.root === root && p.state?.connected,
+          ),
+        workspace,
       ),
-    workspace,
+    "workspace connected",
   );
-  await page.waitForFunction(async (root) => {
-    const project = (await window.arealDesktop.snapshot()).projects.find((p) => p.root === root);
-    return (
-      project &&
-      document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId === project.id
-    );
-  }, workspace);
+  await until(
+    () =>
+      page.evaluate(async (root) => {
+        const project = (await window.arealDesktop.snapshot()).projects.find(
+          (p) => p.root === root,
+        );
+        return (
+          project &&
+          document.querySelector('[data-testid="areal-workbench"]')?.dataset.projectId ===
+            project.id
+        );
+      }, workspace),
+    "workspace selected",
+  );
   await createProjectConversation(page, "workspace");
   const preInput = page.getByTestId("chat-input");
   await preInput.fill(baselineContent.shortDraft);

@@ -271,6 +271,28 @@ describe("unavailable model guidance", () => {
     }
   });
 
+  it("shows empty model guidance and opens settings from the indicator", () => {
+    const openSettings = vi.fn();
+    menu.actions.clear();
+    const markup = renderToStaticMarkup(
+      createElement(
+        OpenSettingsContext.Provider,
+        { value: openSettings },
+        createElement(ComposerModelMenu, {
+          options: [],
+          value: "",
+          onChange: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      ),
+    );
+    expect(markup).toContain("chat.composer.noModels");
+    expect(markup).toContain('aria-label="chat.composer.noModelsGuidance"');
+    menu.actions.get("chat.composer.noModelsGuidance")?.();
+    expect(openSettings).toHaveBeenCalledWith("模型服务");
+    menu.actions.clear();
+  });
+
   it("keeps the empty catalog fallback", () => {
     const markup = renderToStaticMarkup(
       createElement(ComposerModelMenu, {

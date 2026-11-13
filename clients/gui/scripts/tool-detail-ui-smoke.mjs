@@ -1,3 +1,4 @@
+import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { mkdir, writeFile } from "node:fs/promises";
@@ -76,8 +77,9 @@ try {
   await page.waitForFunction(() =>
     document.querySelector('[data-tool-id="tool-base"] [aria-busy="true"]'),
   );
-  await page.waitForFunction(
-    async () => (await (await fetch("/__reading/state")).json()).pending === 1,
+  await until(
+    () => page.evaluate(async () => (await (await fetch("/__reading/state")).json()).pending === 1),
+    "tool detail request held",
   );
   assert.equal(fixture.snapshot().detailCalls.length, 1);
   assert.equal(await summary.getAttribute("aria-expanded"), "true");

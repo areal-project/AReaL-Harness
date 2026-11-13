@@ -1,7 +1,7 @@
 import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
 import { installHostTransportBarrier } from "./support/host-transport-barrier.mjs";
 import { makeTempDir } from "./support/temp.mjs";
-import { desktopBridge } from "./support/desktop-fixture.mjs";
+import { desktopBridge, until as untilValue } from "./support/desktop-fixture.mjs";
 import { assertApplicationStopped, closeSmokeApplication } from "./application-cleanup.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -409,6 +409,23 @@ async function saveProvider() {
 const bridge = desktopBridge(() => page);
 const { state, call } = bridge;
 const until = (predicate, label) => bridge.untilState(predicate, label, { interval: 80 });
+async function waitForServiceIdle({ canStop = false } = {}) {
+  await untilValue(
+    async () => {
+      const reply = await page.evaluate(() => window.arealDesktop.command("serviceStatus", {}));
+      return (
+        reply.ok &&
+        (canStop
+          ? reply.value.canStop
+          : !reply.value.busy &&
+            !reply.value.activeCommands &&
+            !reply.value.starting &&
+            !reply.value.providerUpdating)
+      );
+    },
+    canStop ? "service can stop" : "service operations settled",
+  );
+}
 const fixtureProject = (snapshot) =>
   snapshot.projects.find((project) => project.root === workspace);
 async function showModel(name) {
@@ -532,10 +549,7 @@ async function closeGui() {
               });
             if (!failure) {
               // 模型回合完成后仍可能结算后台读取与配置更新；确认可空闲停止后只发起一次退出。
-              await page.waitForFunction(async () => {
-                const reply = await window.arealDesktop.command("serviceStatus", {});
-                return reply.ok && reply.value.canStop;
-              });
+              await waitForServiceIdle({ canStop: true });
             }
             if (failure) {
               await current
@@ -576,16 +590,7 @@ async function closeGui() {
 async function verifyModelCapabilities() {
   console.log("[model-selection] verifying model capabilities");
   const previous = await call("providers", { operation: "list" });
-  await page.waitForFunction(async () => {
-    const reply = await window.arealDesktop.command("serviceStatus", {});
-    return (
-      reply.ok &&
-      !reply.value.busy &&
-      !reply.value.activeCommands &&
-      !reply.value.starting &&
-      !reply.value.providerUpdating
-    );
-  });
+  await waitForServiceIdle();
   const seeded = await call("providers", {
     operation: "saveAndApply",
     expectedRevision: previous.revision,
@@ -934,16 +939,7 @@ async function verifyModelCapabilities() {
   );
   await openModelSettings();
   await page.locator(".provider-catalog-row").filter({ hasText: "Capabilities" }).waitFor();
-  await page.waitForFunction(async () => {
-    const reply = await window.arealDesktop.command("serviceStatus", {});
-    return (
-      reply.ok &&
-      !reply.value.busy &&
-      !reply.value.activeCommands &&
-      !reply.value.starting &&
-      !reply.value.providerUpdating
-    );
-  });
+  await waitForServiceIdle();
   const current = await call("providers", { operation: "list" });
   await call("providers", {
     operation: "removeAndApply",
@@ -954,16 +950,7 @@ async function verifyModelCapabilities() {
 }
 async function verifyModelDefaults(projectId) {
   console.log("[model-selection] verifying model defaults and recovery");
-  await page.waitForFunction(async () => {
-    const reply = await window.arealDesktop.command("serviceStatus", {});
-    return (
-      reply.ok &&
-      !reply.value.busy &&
-      !reply.value.activeCommands &&
-      !reply.value.starting &&
-      !reply.value.providerUpdating
-    );
-  });
+  await waitForServiceIdle();
   const previous = await call("providers", { operation: "list" });
   const seeded = await call("providers", {
     operation: "saveAndApply",
@@ -2204,24 +2191,13 @@ async function runFullModelSelection() {
     "the default provider's saved credential survives a cold GUI/backend reopen without replaying a request",
   );
   // 默认凭据恢复已验收；后续启停用例沿用无全局默认项的独立目录前置条件。
-  // 默认项与 Core 应用由同一操作结算，避免两次写操作之间出现新的准入竞争。
-  await page.waitForFunction(async () => {
-    const reply = await window.arealDesktop.command("serviceStatus", {});
-    return (
-      reply.ok &&
-      !reply.value.busy &&
-      !reply.value.activeCommands &&
-      !reply.value.starting &&
-      !reply.value.providerUpdating
-    );
-  });
   const withoutDefault = await call("providers", {
-    operation: "defaultAndApply",
+    operation: "default",
     model: null,
     expectedRevision: reopened.revision,
   });
-  assert.equal(withoutDefault.defaultModel, null);
-  assert.equal(withoutDefault.pendingApply, false);
+  await waitForServiceIdle();
+  await call("providers", { operation: "apply", expectedRevision: withoutDefault.revision });
   await until(
     (s) => fixtureProject(s).models.length === 2,
     "explicit default cleared for catalog enablement checks",
@@ -2512,16 +2488,7 @@ async function runFullModelSelection() {
   // 空目录是后续场景的夹具准备；离开设置页后再写入，避免其目录刷新与管理命令竞争。
   let providers = await call("providers", { operation: "list" });
   for (const provider of providers.data) {
-    await page.waitForFunction(async () => {
-      const reply = await window.arealDesktop.command("serviceStatus", {});
-      return (
-        reply.ok &&
-        !reply.value.busy &&
-        !reply.value.activeCommands &&
-        !reply.value.starting &&
-        !reply.value.providerUpdating
-      );
-    });
+    await waitForServiceIdle();
     providers = await call("providers", {
       operation: "removeAndApply",
       id: provider.id,

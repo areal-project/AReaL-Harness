@@ -1,3 +1,4 @@
+import { until } from "./support/desktop-fixture.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import {
   assertApplicationStopped,
@@ -325,13 +326,18 @@ try {
     // 历史视图有界缓存；逐个确认打开结果，避免后续打开淘汰已验证的会话。
     for (const id of sessions.get(project.id)) {
       await call("open", { projectId: project.id, threadId: id });
-      await page.waitForFunction(
-        async ({ projectId, threadId }) =>
-          Boolean(
-            (await window.arealDesktop.snapshot()).projects.find((value) => value.id === projectId)
-              ?.state.threads[threadId],
+      await until(
+        () =>
+          page.evaluate(
+            async ({ projectId, threadId }) =>
+              Boolean(
+                (await window.arealDesktop.snapshot()).projects.find(
+                  (value) => value.id === projectId,
+                )?.state.threads[threadId],
+              ),
+            { projectId: project.id, threadId: id },
           ),
-        { projectId: project.id, threadId: id },
+        "history thread restored",
       );
     }
     const snapshot = await page.evaluate(() => window.arealDesktop.snapshot());
@@ -598,18 +604,22 @@ try {
       node.dataset.historyProbe = "same-group";
     });
     await deferred.locator(".tool-summary-row").click();
-    await page.waitForFunction(
-      async ({ projectId, threadId, itemId }) => {
-        const snapshot = await window.arealDesktop.snapshot();
-        const thread = snapshot.projects.find((value) => value.id === projectId)?.state.threads[
-          threadId
-        ];
-        return (
-          thread?.turns.flatMap((turn) => turn.items).find((item) => item.id === itemId)?.type ===
-          "dynamicToolCall"
-        );
-      },
-      { projectId: project.id, threadId, itemId },
+    await until(
+      () =>
+        page.evaluate(
+          async ({ projectId, threadId, itemId }) => {
+            const snapshot = await window.arealDesktop.snapshot();
+            const thread = snapshot.projects.find((value) => value.id === projectId)?.state.threads[
+              threadId
+            ];
+            return (
+              thread?.turns.flatMap((turn) => turn.items).find((item) => item.id === itemId)
+                ?.type === "dynamicToolCall"
+            );
+          },
+          { projectId: project.id, threadId, itemId },
+        ),
+      "deferred tool detail restored",
       { timeout: 30000 },
     );
     assert.equal(await deferred.getByRole("alert").count(), 0);

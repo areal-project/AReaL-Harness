@@ -218,8 +218,12 @@ async function launch() {
   page.setDefaultTimeout(20000);
   page.on("pageerror", (error) => errors.push(error.message));
   await page.getByTestId("areal-workbench").waitFor({ timeout: 120000 });
-  await page.waitForFunction(
-    async () => (await window.arealDesktop.snapshot()).connection?.state === "ready",
+  await until(
+    () =>
+      page.evaluate(
+        async () => (await window.arealDesktop.snapshot()).connection?.state === "ready",
+      ),
+    "desktop connection ready",
   );
   await app.evaluate(({ BrowserWindow, dialog }) => {
     BrowserWindow.getAllWindows()[0].setSize(1440, 960);

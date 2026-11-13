@@ -167,8 +167,15 @@ export function ComposerModelMenu({
   );
   if (!availableOptions.length && !unavailableOptions.length && !model)
     return openSettings ? (
-      <Button type="button" variant="secondary" size="sm" onClick={() => openSettings("模型服务")}>
-        {t("chat.composer.configureModels")}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="composer-model-trigger composer-model-empty"
+        aria-label={emptyGuidance}
+        onClick={() => openSettings("模型服务")}
+      >
+        {t("chat.composer.noModels")}
       </Button>
     ) : (
       <TitleTooltip title={emptyGuidance}>

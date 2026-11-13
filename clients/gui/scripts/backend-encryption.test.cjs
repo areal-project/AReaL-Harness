@@ -54,3 +54,30 @@ test("安全存储回调绑定原外壳，其他客户端不能结算，断开�
   assert.equal(requests.length, 2);
   assert.equal(service.encryptionPending.size, 0);
 });
+
+test("service status counts backend commands until their real operation settles", async (t) => {
+  const { CoreBackend } = require("@areal/workbench-service/desktop/core/backend.cjs");
+  let release;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const backend = {
+    projects: new Map(),
+    starting: new Map(),
+    activeCommands: 0,
+    lifecycleOperations: { assertRegistration() {}, attach() {} },
+    analytics: { sample() {}, async flush() {} },
+    providers: { redact: (value) => value },
+    library: { value: { settings: {} } },
+    hasWork: () => false,
+    snapshot: () => ({ projects: [] }),
+    addProjectPath: () => held,
+  };
+  const service = new DesktopService(backend, "fixture");
+  t.after(() => service.close());
+  const pending = CoreBackend.prototype.addProject.call(backend, "/fixture");
+  assert.equal(service.packet().service.activeCommands, 1);
+  release("done");
+  assert.equal(await pending, "done");
+  assert.equal(service.packet().service.activeCommands, 0);
+});

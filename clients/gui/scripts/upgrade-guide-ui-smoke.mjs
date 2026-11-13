@@ -1,3 +1,4 @@
+import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { spawn, execFile } from "node:child_process";
@@ -316,10 +317,14 @@ try {
   }
   await page.getByText("空工作区已准备好。", { exact: true }).waitFor();
   await page.getByRole("button", { name: "进入新版", exact: true }).click();
-  await page.waitForFunction(async () => {
-    const snapshot = await window.arealDesktop.snapshot();
-    return snapshot.connection?.state === "ready";
-  });
+  await until(
+    () =>
+      page.evaluate(async () => {
+        const snapshot = await window.arealDesktop.snapshot();
+        return snapshot.connection?.state === "ready";
+      }),
+    "desktop connection ready",
+  );
   await page.getByRole("button", { name: "查看旧历史", exact: true }).click();
   await page
     .getByRole("button", { name: "Old fixture · Old fixture history", exact: true })

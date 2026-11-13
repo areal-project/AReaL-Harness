@@ -1,3 +1,4 @@
+import { until } from "./support/desktop-fixture.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFile, writeFile } from "node:fs/promises";
@@ -360,8 +361,10 @@ try {
   await page.getByRole("button", { name: "Return to conversation", exact: true }).click();
   const ensureHttp = await ensureRequest;
   const ensure = ensureHttp.postDataJSON();
-  await page.waitForFunction(
-    async () => (await (await fetch("/__reading/state")).json()).held.length > 0,
+  await until(
+    () =>
+      page.evaluate(async () => (await (await fetch("/__reading/state")).json()).held.length > 0),
+    "history restore request held",
   );
   report.heldRestore = fixture.snapshot().held;
   await page.locator(".messages").hover();

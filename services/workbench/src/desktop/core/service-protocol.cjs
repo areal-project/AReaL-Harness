@@ -541,7 +541,7 @@ class DesktopService {
         selectedThreadObservation: true,
         clients: this.clients.size,
         busy: this.backend.hasWork({ includePausedQueues: false }),
-        activeCommands: this.inflight,
+        activeCommands: Math.max(this.inflight, this.backend.activeCommands ?? 0),
         providerUpdating: !!this.backend.providerUpdating,
         starting: this.backend.starting.size,
         pid: process.pid,

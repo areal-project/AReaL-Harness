@@ -8,6 +8,7 @@ import noWorkbenchCoreOwner from "./rules/no-workbench-core-owner.ts";
 import noTransitionAll from "./rules/no-transition-all.ts";
 import noRestyle from "./rules/no-restyle.ts";
 import noSmokeTransportPatch from "./rules/no-smoke-transport-patch.ts";
+import noAsyncWaitForFunction from "./rules/no-async-wait-for-function.ts";
 
 export default definePlugin({
   meta: { name: "areal" },
@@ -21,5 +22,6 @@ export default definePlugin({
     "no-renderer-desktop-bridge": noRendererDesktopBridge,
     "no-restyle": noRestyle,
     "no-smoke-transport-patch": noSmokeTransportPatch,
+    "no-async-wait-for-function": noAsyncWaitForFunction,
   },
 });
