@@ -461,6 +461,26 @@ describe("no-restyle", () => {
 });
 
 describe("no-unchecked-array-method", () => {
+  test("project configuration enables a warning for Renderer sources", () => {
+    const project = join(scratch, "array-method-config");
+    mkdirSync(join(project, "renderer/src"), { recursive: true });
+    writeFileSync(join(project, "package.json"), '{"private":true,"type":"module"}');
+    copyFileSync(join(root, "vite.config.mts"), join(project, "vite.config.mts"));
+    symlinkSync(join(root, "node_modules"), join(project, "node_modules"));
+    symlinkSync(join(root, "oxlint-plugin-areal"), join(project, "oxlint-plugin-areal"));
+    writeFileSync(
+      join(project, "renderer/src/fixture.ts"),
+      "export function view(item: Data) { return (item.input ?? []).filter(Boolean); }",
+    );
+    const result = spawnSync(
+      process.execPath,
+      [join(root, "node_modules/vite-plus/bin/vp"), "lint", "renderer/src/fixture.ts"],
+      { cwd: project, encoding: "utf8" },
+    );
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout + result.stderr).toContain("warning areal(no-unchecked-array-method)");
+  });
+
   test.each([
     "function view(item: Data) { return (item.input ?? []).filter(Boolean); }",
     "function view(item: any) { return item.input.map(render); }",
