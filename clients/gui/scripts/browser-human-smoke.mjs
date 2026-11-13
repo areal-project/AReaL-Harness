@@ -347,9 +347,15 @@ try {
   await until(async () => (await snapshot()).connection?.state === "ready", "desktop ready");
   await app.evaluate(({ app, BrowserWindow }) => {
     const { createRequire } = process.getBuiltinModule("module");
-    const { CorePreview } = createRequire(app.getAppPath() + "/package.json")(
-      "./src/core/preview.cjs",
-    );
+    const appRequire = createRequire(app.getAppPath() + "/package.json");
+    const { CorePreview } = appRequire("./src/core/preview.cjs");
+    const { PageControl } = appRequire("./src/core/preview-native/control.cjs");
+    const revoke = PageControl.prototype.revoke;
+    const revocations = (globalThis.__browserHumanRevocations = []);
+    PageControl.prototype.revoke = function (page, options) {
+      if (page.control === "agent") revocations.push(new Error("browser control revoked").stack);
+      return revoke.call(this, page, options);
+    };
     const original = CorePreview.prototype.command;
     const receipts = (globalThis.__browserHumanReceipts = []);
     CorePreview.prototype.command = function (request) {
@@ -501,6 +507,12 @@ try {
           (item) => item.tool === "browser_v1" && item.arguments.operation === "observe",
         )
       : browserItem(initialTurn);
+  assert.ok(initial, "Core history includes the initial browser observation");
+  assert.equal(
+    initial.success,
+    true,
+    `initial browser observation failed: ${JSON.stringify(initial)}`,
+  );
   const observed = JSON.parse(initial.contentItems[0].text);
   snapshotId = observed.observationId;
   targetRef = observed.nodes.find((node) => node.name === "Submit once" && node.ref)?.ref;
@@ -1913,6 +1925,7 @@ try {
       .evaluate(() => ({
         keys: globalThis.__browserHumanKeys,
         receipts: globalThis.__browserHumanReceipts,
+        revocations: globalThis.__browserHumanRevocations,
       }))
       .catch((error) => ({ error: error.message }));
     await app

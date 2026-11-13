@@ -307,7 +307,7 @@ async function assertEmptyModelIndicator() {
 async function assertCompactEffort() {
   const menu = page.getByRole("dialog", { name: "选择思考强度", exact: true });
   await menu.getByRole("button", { name: "服务默认", exact: true }).focus();
-  await page.getByRole("tooltip").waitFor({ state: "hidden" });
+  await page.waitForFunction(() => document.querySelectorAll('[role="tooltip"]').length === 0);
   assert.equal(
     await menu
       .getByRole("button", { name: /^(无|最少|低|中|高|极高|最高)$/ })
