@@ -60,6 +60,8 @@ pub(crate) struct ShellProject {
     /// 任务目录变化标记：Core 每发一次任务更新就换值，客户端据此重读任务，不轮询。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_revision: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_catalog_revision: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -304,6 +306,7 @@ pub(crate) fn snapshot(
                     summaries: Summaries::Unknown { items: Vec::new() },
                     attention: Attention::Unknown,
                     task_revision: None,
+                    model_catalog_revision: None,
                 },
             )
         })

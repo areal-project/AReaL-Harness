@@ -191,6 +191,16 @@ async fn lifecycle_completion(snapshot_only: bool, library_failure: bool) {
         let changes = host.changes.subscribe();
         publish_event(&host,&session,json!({"method":"item/agentMessage/delta","params":{"threadId":"thread","delta":"text"}}));
         assert!(!changes.has_changed().unwrap(),"流delta不唤醒Host全局观察");
+        let before_catalog = host.schedules.connections.model_catalog_revision(&host, "project").unwrap();
+        publish_event(&host, &session, json!({"method":"areal/model/catalogChanged","params":{"revision":1}}));
+        assert_ne!(host.schedules.connections.model_catalog_revision(&host, "project").unwrap(), before_catalog);
+        assert!(changes.has_changed().unwrap(), "模型目录变化唤醒共享观察者");
+        let original_generation = host.slots.borrow()["project"].service.as_ref().unwrap().identity.generation.clone();
+        host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().identity.generation = "replacement".into();
+        let current_revision = session.model_revision.get();
+        publish_event(&host, &session, json!({"method":"areal/model/catalogChanged","params":{"revision":2}}));
+        assert_eq!(session.model_revision.get(), current_revision, "旧代事件不能推进目录版本");
+        host.slots.borrow_mut().get_mut("project").unwrap().service.as_mut().unwrap().identity.generation = original_generation;
         let snapshot = super::super::workbench_lifecycle::read_request(&host,&source_id,"snapshot",&json!({"ownerNonce":uuid::Uuid::new_v4().to_string()})).await.unwrap();
         let request = uuid::Uuid::new_v4().to_string();
         let result = super::super::workbench_lifecycle::command(&host,&source_id,json!({"requestId":request,"kind":"interruptTurn","mode":"cancel","expectedDesktopGeneration":snapshot["desktopGeneration"],"expectedTargets":[{"projectId":alias,"serviceId":"fixture","generation":"first"}],"threadId":"thread","turnId":"turn"})).await.unwrap();

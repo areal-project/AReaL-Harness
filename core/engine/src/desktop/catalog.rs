@@ -427,6 +427,7 @@ impl Engine {
                 .await
                 .map_err(invalid)?;
             *engine.desktop.catalog.write().unwrap() = candidate;
+            engine.emit_model_catalog_changed();
             Ok(provider)
         })
         .await
@@ -478,6 +479,7 @@ impl Engine {
                 .await
                 .map_err(invalid)?;
             *engine.desktop.catalog.write().unwrap() = candidate;
+            engine.emit_model_catalog_changed();
             Ok(())
         })
         .await
@@ -1499,6 +1501,29 @@ mod request_audit_tests {
 #[cfg(test)]
 mod refresh_transaction_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn provider_changes_notify_after_commit_without_threads() {
+        let root = tempfile::tempdir().unwrap();
+        let model = Arc::new(
+            model::HttpModel::with_protocol(
+                "http://127.0.0.1:1/".into(),
+                "fixture".into(),
+                None,
+                model::ModelProtocol::Responses,
+            )
+            .unwrap(),
+        );
+        let engine = Engine::open(root.path(), model, Limits::default()).unwrap();
+        let mut events = engine.subscribe_model_catalog();
+        let provider = serde_json::from_value(json!({"id":"fixture","revision":0,"endpoint":"http://127.0.0.1:1/","protocol":"responses","models":["fixture"]})).unwrap();
+        engine.upsert_provider(provider, 0).await.unwrap();
+        assert_eq!(events.try_recv().unwrap()["params"]["revision"], 1);
+        assert!(engine.provider("fixture").is_ok());
+        engine.remove_provider("fixture".into(), 1).await.unwrap();
+        assert_eq!(events.try_recv().unwrap()["params"]["revision"], 2);
+        assert!(engine.provider("fixture").is_err());
+    }
 
     #[tokio::test]
     async fn provider_save_and_runtime_catalog_refresh_preserve_both_updates() {

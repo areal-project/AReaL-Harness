@@ -102,6 +102,11 @@ impl ReadModels {
                 .connections
                 .task_revision(host, &project.project_id)
                 .ok();
+            project.model_catalog_revision = host
+                .schedules
+                .connections
+                .model_catalog_revision(host, &project.project_id)
+                .ok();
             let cached = self
                 .online
                 .borrow()

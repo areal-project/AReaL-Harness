@@ -13605,6 +13605,10 @@
         "taskRevision": {
           "type": "string",
           "minLength": 1
+        },
+        "modelCatalogRevision": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [

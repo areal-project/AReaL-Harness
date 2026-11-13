@@ -606,6 +606,10 @@ pub fn projections() -> (Value, Value) {
     notifications.insert("areal/server/configurationChanged".into(), object(json!({"threadId":string,"configuration":object(json!({"modelRevision":string,"restartRequired":boolean,"error":nullable(string.clone())}))})));
     notifications.insert("areal/task/updated".into(), task_event);
     notifications.insert(
+        "areal/model/catalogChanged".into(),
+        object(json!({"revision":{"type":"integer","minimum":1}})),
+    );
+    notifications.insert(
         "areal/owner/invalidated".into(),
         schema::<areal_protocol::tasks::OwnerInvalidation>(),
     );

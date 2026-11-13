@@ -169,6 +169,7 @@ function shellProject(p: unknown): p is ShellProject {
     Array.isArray(p.summaries.items) &&
     p.summaries.items.every(summary) &&
     (p.taskRevision === undefined || typeof p.taskRevision === "string") &&
+    (p.modelCatalogRevision === undefined || typeof p.modelCatalogRevision === "string") &&
     record(p.attention) &&
     (p.attention.state === "unknown" ||
       (p.attention.state === "fresh" &&

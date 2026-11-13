@@ -486,6 +486,12 @@ async fn connection(
         let method = request["method"].as_str().unwrap();
         if id.is_none() {
             if method == "initialized" && conn.initialized {
+                if !conn.ready
+                    && conn.principal.thread_ids.is_none()
+                    && conn.principal.allows(auth::Permission::Observe)
+                {
+                    conn.forward("model-catalog", engine.subscribe_model_catalog());
+                }
                 conn.ready = true;
             }
             continue;

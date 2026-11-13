@@ -193,6 +193,8 @@ thread/configure 使用 expectedRevision，仅空闲且不压缩时生效。rese
 
 `areal/provider/upsert` 接受可选 `Provider.modelParameters`，以目录中的模型 ID 映射既有 `ModelParameters`。原 `models` 仍为字符串数组。未知映射键或无效参数拒绝整次更新。生成参数依次采用显式 Thread 配置、已配置模型默认、Provider 模型元数据、Provider 全局默认；上下文报告与用户预算按下文单独解析。选定的 Provider 快照保留该元数据；省略映射保持原契约。端点 `context_window` 表示默认容量，`max_context_window` 不会自动启用更大窗口。 `contextSource:"account"` 标明账号目录，其余报告默认为 `provider`。
 
+模型目录提交后，Core 向有项目观察权限的连接发送 `areal/model/catalogChanged {revision}`；版本只在当前 Core 代内有效。客户端应重新读取 `areal/model/list`，不能把通知当作目录快照。
+
 自定义模型可声明可选 `capabilities:{tools,vision,reasoning,reasoningEffortOptions?}`，经 `Provider.modelCapabilities` 按模型 ID 传入；未知模型键或无效声明拒绝更新。省略声明保留原协议行为。关闭工具后不发送工具定义，也不受理返回的工具调用；关闭视觉后拒绝图片输入；关闭推理后不发送推理参数。`reasoningEffortOptions` 为不重复的允许值子集，可选 `none/minimal/low/medium/high/xhigh/max`。空列表或省略采用原有六档，关闭推理时目录选项为空。
 
 `areal/model/list` 的供应商模型项可附带 `displayName`，取自 Core 已应用配置中同一 `providerId` 与 `modelId` 的非空显示名。启动安装和模型配置热应用同步更新此字段；仅修改配置文件不改变当前目录。未配置显示名时省略该字段，客户端仍以 `modelId` 回退。旧 Core 可省略此加法字段。

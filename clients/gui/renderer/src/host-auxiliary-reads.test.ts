@@ -5,6 +5,36 @@ import { modelServiceObserved, refreshModelCatalogs } from "./host-auxiliary-rea
 afterEach(() => vi.useRealTimers());
 
 describe("model catalog refresh", () => {
+  it("refreshes a project catalog when another client changes its revision", async () => {
+    const pending: ((value: unknown) => void)[] = [];
+    const client = {
+      snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+      query: () => new Promise((resolve) => pending.push(resolve)),
+    } as unknown as HostClient;
+    const catalogs = new Map<string, { identity: string; value?: Record<string, unknown> }>();
+    const project = {
+      projectId: "host",
+      state: "ready",
+      serviceGeneration: "generation",
+      modelCatalogRevision: "1",
+    };
+    const refresh = (revision: string) =>
+      refreshModelCatalogs(
+        client,
+        [{ ...project, modelCatalogRevision: revision }] as unknown as ShellProject[],
+        catalogs,
+        () => {},
+      );
+    refresh("1");
+    refresh("2");
+    expect(pending).toHaveLength(2);
+    pending[1]({ models: ["new"] });
+    await Promise.resolve();
+    pending[0]({ models: ["old"] });
+    await Promise.resolve();
+    expect(catalogs.get("host")?.value).toEqual({ models: ["new"] });
+  });
+
   it("retries a failed read after the back-off instead of keeping the generation empty", async () => {
     vi.useFakeTimers();
     let calls = 0;

@@ -2824,6 +2824,19 @@
       ],
       "type": "object"
     },
+    "areal/model/catalogChanged": {
+      "additionalProperties": true,
+      "properties": {
+        "revision": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "revision"
+      ],
+      "type": "object"
+    },
     "areal/model/completionDiscarded": {
       "additionalProperties": true,
       "properties": {

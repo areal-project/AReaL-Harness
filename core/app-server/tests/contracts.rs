@@ -271,6 +271,52 @@ async fn call(socket: &mut Socket, id: u64, method: &str, params: Value) -> (Val
 }
 
 #[tokio::test]
+async fn initialized_observer_receives_model_catalog_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let engine = Engine::open(dir.path(), Arc::new(TextModel), Limits::default()).unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let stop = CancellationToken::new();
+    let server = tokio::spawn(areal_app_server::serve(
+        listener,
+        engine.clone(),
+        stop.clone(),
+    ));
+    let (mut socket, _) = tokio_tungstenite::connect_async(format!("ws://{addr}"))
+        .await
+        .unwrap();
+    let _ = call(
+        &mut socket,
+        1,
+        "initialize",
+        json!({"clientInfo":{"name":"catalog-observer","version":"1"}}),
+    )
+    .await;
+    socket
+        .send(Wire::Text(
+            json!({"method":"initialized"}).to_string().into(),
+        ))
+        .await
+        .unwrap();
+    let _ = call(&mut socket, 2, "areal/model/list", json!({})).await;
+    let provider = serde_json::from_value(json!({"id":"other-client","revision":0,"endpoint":"http://127.0.0.1:1/","protocol":"responses","models":["fixture"]})).unwrap();
+    engine.upsert_provider(provider, 0).await.unwrap();
+    let event = receive(&mut socket).await;
+    assert_eq!(event["method"], "areal/model/catalogChanged");
+    assert_eq!(event["params"]["revision"], 1);
+    let (models, _) = call(&mut socket, 3, "areal/model/list", json!({})).await;
+    assert!(
+        models["result"]["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|model| model["providerId"] == "other-client")
+    );
+    stop.cancel();
+    server.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn websocket_lifecycle_matches_pinned_upstream_schemas() {
     let dir = tempfile::tempdir().unwrap();
     let engine = Engine::open(dir.path(), Arc::new(TextModel), Limits::default()).unwrap();

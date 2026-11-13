@@ -180,6 +180,16 @@ impl Connections {
             session.task_revision.get()
         ))
     }
+    pub(super) fn model_catalog_revision(&self, host: &Host, id: &str) -> Result<String> {
+        let sessions = self.sessions.borrow();
+        let session = sessions.get(id).ok_or_else(unavailable)?;
+        ensure!(session.shared_current(host), unavailable());
+        Ok(format!(
+            "{}:{}",
+            session.connection_id,
+            session.model_revision.get()
+        ))
+    }
     pub(super) async fn remote_request(
         &self,
         host: &Host,
@@ -389,6 +399,22 @@ fn emit_workbench_event(host: &Host, project: &str, lease: &str, event: &Value) 
 }
 
 fn publish_event(host: &Rc<Host>, connection: &Rc<CoreSession>, value: Value) {
+    if value["method"] == "areal/model/catalogChanged" && connection.shared_current(host) {
+        connection
+            .model_revision
+            .set(connection.model_revision.get() + 1);
+        if connection.terminal
+            && let Some(shared) = host
+                .schedules
+                .connections
+                .sessions
+                .borrow()
+                .get(&connection.project_id)
+            && shared.service.identity == connection.service.identity
+        {
+            shared.model_revision.set(shared.model_revision.get() + 1);
+        }
+    }
     if value["method"] == "areal/task/updated" {
         connection
             .task_revision
@@ -512,6 +538,7 @@ fn changes_shell(event: &Value) -> bool {
                 | "areal/thread/archived"
                 | "areal/thread/unarchived"
                 | "areal/task/updated"
+                | "areal/model/catalogChanged"
                 | "areal/queue/updated"
                 | "areal/interaction/requested"
                 | "areal/interaction/resolved"
@@ -540,6 +567,7 @@ struct CoreSession {
     event_sequence: Cell<u64>,
     shell_revision: Cell<u64>,
     task_revision: Cell<u64>,
+    model_revision: Cell<u64>,
     observed: RefCell<BTreeMap<String, usize>>,
     workbench_observed: RefCell<BTreeMap<String, (String, u64)>>,
     workbench_claim_sequence: Cell<u64>,
@@ -865,6 +893,7 @@ async fn connect_authorized(
         event_sequence: Cell::new(0),
         shell_revision: Cell::new(0),
         task_revision: Cell::new(0),
+        model_revision: Cell::new(0),
         observed: RefCell::new(BTreeMap::new()),
         workbench_observed: RefCell::new(BTreeMap::new()),
         workbench_claim_sequence: Cell::new(0),

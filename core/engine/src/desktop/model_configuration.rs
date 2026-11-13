@@ -76,6 +76,7 @@ impl Engine {
             self.register_default_model(prepared.default_revision, prepared.default_model, true);
             *self.configuration_status.write().unwrap() = prepared.status.clone();
         }
+        self.emit_model_catalog_changed();
         for cell in self.threads.read().await.values() {
             cell.emit(
                 "areal/server/configurationChanged",

@@ -329,6 +329,15 @@ async function start({ input, output }) {
           await desktop.backend.providers.settled();
           const project = desktop.backend.projects.get(request.params.projectId);
           if (!project?.client) throw Error("Creation catalog unavailable");
+          const client = project.client;
+          const coreModels = await client.request("areal/model/list", {}, {
+            decode: require("./desktop/core/provider-contract.cjs").models,
+          });
+          if (
+            desktop.backend.projects.get(request.params.projectId) !== project ||
+            project.client !== client
+          )
+            throw Error("Creation catalog connection changed");
           const pick = (value, fields) =>
             Object.fromEntries(
               fields.filter((key) => value?.[key] !== undefined).map((key) => [key, value[key]]),
@@ -352,7 +361,7 @@ async function start({ input, output }) {
             "unavailableReason",
           ];
           const models = desktop.backend.providers
-            .catalog(project.models ?? [], project)
+            .catalog(coreModels.data, project)
             .slice(0, 200)
             .map((model) => {
               const value = pick(model, modelFields);

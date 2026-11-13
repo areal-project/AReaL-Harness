@@ -2,7 +2,12 @@ import type { HostClient } from "@areal/client";
 import { configurationIdentity, type ReadProject } from "./host-snapshot.js";
 
 type Cache = Map<string, { identity: string; scope?: string; value?: Record<string, unknown> }>;
-type ShellProject = { projectId: string; state: string; serviceGeneration?: unknown };
+type ShellProject = {
+  projectId: string;
+  state: string;
+  serviceGeneration?: unknown;
+  modelCatalogRevision?: unknown;
+};
 
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -48,7 +53,7 @@ export function refreshModelCatalogs(
   for (const project of projects) {
     if (project.state !== "ready") continue;
     const scope = JSON.stringify([connection.identity.connectionId, project.serviceGeneration]);
-    const identity = `${scope}#${stale.epoch}`;
+    const identity = `${scope}#${stale.epoch}#${String(project.modelCatalogRevision ?? "")}`;
     const previous = catalogs.get(project.projectId);
     if (previous?.identity === identity) continue;
     const entry: NonNullable<ReturnType<Cache["get"]>> = {
