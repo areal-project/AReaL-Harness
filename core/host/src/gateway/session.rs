@@ -28,7 +28,7 @@ pub(super) mod tasks;
 #[path = "uploads.rs"]
 mod uploads;
 use super::wire;
-use crate::server::{Host, gateway_owner};
+use crate::server::{Host, gateway_owner, workbench_route};
 use anyhow::{Context, Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use futures_util::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
@@ -1133,9 +1133,7 @@ impl Session {
             ensure!(self.local && self.gui_write, "FORBIDDEN");
             self.authorize(None, "manage")?;
             // 提交、中断类管理操作按语义另需各自能力；本机桌面连接不受影响。
-            if let Some(capability) =
-                crate::server::workbench_route::manage_capability(method, params)
-            {
+            if let Some(capability) = workbench_route::manage_capability(method, params) {
                 self.authorize(None, capability)?;
             }
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
@@ -1149,15 +1147,9 @@ impl Session {
             }
             if method.ends_with(".read") {
                 ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
-                return crate::server::workbench_route::backend_read(
-                    &self.host, &self.peer, &request,
-                )
-                .await;
+                return workbench_route::backend_read(&self.host, &self.peer, &request).await;
             }
-            return crate::server::workbench_route::backend_command(
-                &self.host, &self.peer, &request,
-            )
-            .await;
+            return workbench_route::backend_command(&self.host, &self.peer, &request).await;
         }
         if method == "desktop.command" || crate::server::plugins::METHODS.contains(&method) {
             ensure!(self.local && self.gui_write, "FORBIDDEN");
@@ -1165,19 +1157,14 @@ impl Session {
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
             let (host, peer) = (&self.host, &self.peer);
             if method == "desktop.command" {
-                return crate::server::workbench_route::desktop_command(
-                    host,
-                    peer,
-                    &self.connection,
-                    request,
-                )
-                .await;
+                return workbench_route::desktop_command(host, peer, &self.connection, request)
+                    .await;
             }
             return crate::server::plugins::gateway(host, method, request).await;
         }
         if method == "command.read" && self.local && request.get("context").is_none() {
             ensure!(exact(params, &["commandId"]), "INVALID_PARAMS");
-            if let Some(mut receipt) = crate::server::workbench_route::backend_receipt(
+            if let Some(mut receipt) = workbench_route::backend_receipt(
                 &self.host,
                 &self.peer,
                 text(params, "commandId")?,
@@ -1186,7 +1173,7 @@ impl Session {
                 return Ok(receipt);
             }
         }
-        if crate::server::workbench_route::METHODS.contains(&method) {
+        if workbench_route::METHODS.contains(&method) {
             ensure!(self.local, "FORBIDDEN");
             ensure!(
                 request.get("context").is_none() && request.get("commandId").is_none(),
