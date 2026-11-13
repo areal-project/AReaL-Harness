@@ -30,6 +30,8 @@ const {
 const { realpath, stat } = require("node:fs/promises");
 const { join, resolve } = require("node:path");
 const { randomUUID } = require("node:crypto");
+/** @type {typeof import("../ipc/window-close.js")} */
+const { WindowCloseGate } = require("../ipc/generated/window-close.cjs");
 const { ProjectionEncoder } = require("@areal/workbench/state-projection");
 const { createOwner } = require("@areal/workbench-service/desktop/core/application-owner.cjs");
 const { setupUpdater } = require("../update/electron.cjs");
@@ -173,6 +175,18 @@ function startDesktop() {
   let browserWindowClosed = false;
   /** @type {Promise<void>|null} */
   let windowClosePromise = null;
+  const windowCloseGate = new WindowCloseGate((owner, id) =>
+    sendDesktopEvent(owner, "areal-core:window-closing", id),
+  );
+  function announceWindowOpened() {
+    if (window && !window.isDestroyed())
+      sendDesktopEvent(window.webContents, "areal-core:window-opened");
+  }
+  /** @param {Electron.BrowserWindow} owner */
+  async function settleWindow(owner) {
+    if (!(await windowCloseGate.request(owner.webContents)))
+      throw new Error("窗口资源尚未确认清理，请保留窗口并核对原操作");
+  }
   /** @type {Map<string,()=>void>} */
   const previewSubscriptions = new Map();
   /** @type {WeakMap<Electron.WebContents,{frame:Electron.WebFrameMain,encoder:InstanceType<typeof ProjectionEncoder>}>} */
@@ -205,7 +219,6 @@ function startDesktop() {
       return;
     startupPresentation = "presented";
     browserWindowClosed = false;
-    if (backend) backend.guiWindowClosed = false;
     window.show();
     if (focusRequested) {
       focusRequested = false;
@@ -232,7 +245,6 @@ function startDesktop() {
       return;
     }
     browserWindowClosed = false;
-    if (backend) backend.guiWindowClosed = false;
     if (window.isMinimized()) window.restore();
     window.show();
     window.focus();
@@ -333,7 +345,8 @@ function startDesktop() {
         recordQuitStage(attempt, "canceled");
         return { canceled: true };
       }
-      await backend.closeWindowSideChats();
+      if (!window || window.isDestroyed()) return { canceled: true };
+      await settleWindow(window);
       if (intent === "install") {
         beginQuit("checking");
         recordQuitStage(attempt, "checking");
@@ -418,7 +431,7 @@ function startDesktop() {
       })
       .finally(() => {
         if (!exitReady && quitAttempt === attempt) {
-          if (backend) backend.guiWindowClosed = false;
+          announceWindowOpened();
           if (attempt.approved) quitting = false;
           setQuitProgress(attempt, null);
           if (intent !== "install") preview?.setPresentationSuppressed(false);
@@ -584,6 +597,9 @@ function startDesktop() {
     }
     setNativeLocale(locale);
   });
+  onDesktopIpc("areal-core:window-close-decision", (event, decision) => {
+    windowCloseGate.decide(event, decision);
+  });
   onDesktopIpc("areal-core:quit-decision", (event, decision) => {
     const attempt = quitAttempt;
     if (
@@ -727,7 +743,7 @@ function startDesktop() {
       });
       createdWindow.on("show", () => {
         browserWindowClosed = false;
-        if (backend) backend.guiWindowClosed = false;
+        announceWindowOpened();
       });
       createdWindow.on("close", (event) => {
         if (exitReady) return;
@@ -742,8 +758,7 @@ function startDesktop() {
         }
         const owner = createdWindow;
         void stopComputer("window_closed").catch(() => {});
-        windowClosePromise = backend
-          .closeWindowSideChats()
+        windowClosePromise = settleWindow(owner)
           .then(async () => {
             await preview?.dispose();
             mcpApps?.dispose();
@@ -751,7 +766,7 @@ function startDesktop() {
           })
           .catch((error) => {
             browserWindowClosed = false;
-            if (backend) backend.guiWindowClosed = false;
+            announceWindowOpened();
             backend.reportLifecycleError(error);
           })
           .finally(() => {

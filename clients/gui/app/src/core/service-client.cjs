@@ -27,7 +27,6 @@ const {
 const {
   readGuiProcesses,
   readGuiThreadIdentity,
-  readSideResponse,
   readGuiProcessResponse,
 } = require("./gui-resource-contract.cjs");
 const lifecycleControl = require("./service-control.cjs");
@@ -97,7 +96,6 @@ async function waitForProcessExit(pid) {
 /** @typedef {import('./lifecycle.cjs').RecoveryObservation} Observation */
 /** @typedef {import('@areal/workbench-service/desktop/core/resource-recovery.cjs').Notify} Notify */
 /** @typedef {{projectId:string,threadId:string,id:string}} GuiTerminal */
-/** @typedef {{projectId:string,sourceThreadId:string,requestId:string,threadId?:string,closeRequestId?:string}} GuiSideChat */
 /** @typedef {{focused:boolean,idleSeconds:number,suspended?:boolean}} Activity */
 /** @typedef {{kind:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleKind,mode?:import('@areal/workbench-service/desktop/core/lifecycle-operations.cjs').LifecycleMode,observed?:Observation,projectId?:string,threadId?:string,turnId?:string,requestId?:string,migration?:unknown}} LifecycleOptions */
 /** @typedef {{stopped:boolean,operation:Receipt,kind?:string}} LifecycleResult */
@@ -150,8 +148,6 @@ class SharedCoreBackend {
     this.backendUpdate = undefined;
     /** @type {Promise<void>|undefined} */
     this.referenceWrite = undefined;
-    /** @type {Promise<void>|null|undefined} */
-    this.guiSideClosing = undefined;
     /** @type {Promise<void>|undefined} */
     this.shutdownPromise = undefined;
     /** @type {Promise<unknown>|null|undefined} */
@@ -207,11 +203,6 @@ class SharedCoreBackend {
     this.terminalConnections = NativeTerminalOwners.forOwner(this);
     /** @type {Set<Promise<unknown>>} */
     this.guiTerminalStarts = new Set();
-    /** @type {Map<string,GuiSideChat>} */
-    this.guiSideChats = new Map();
-    /** @type {Set<Promise<unknown>>} */
-    this.guiSideStarts = new Set();
-    this.guiWindowClosed = false;
     /** @type {Map<string,Reference>} */
     this.lifecycleReferences = new Map();
     /** @type {Map<string,import('./host-lifecycle.cjs').HostReference>} */
@@ -878,42 +869,6 @@ class SharedCoreBackend {
     // 队列业务键跨 GUI/共享服务连接保留，外层丢失响应后也能只读核对。
     const semantics = commandSemantics(name, params);
     if (semantics.requestId) params[semantics.requestId] ??= randomUUID();
-    const sideCreate = name === "side" && params.operation === "create";
-    if (sideCreate && this.guiWindowClosed)
-      throw Object.assign(new Error("窗口正在关闭，请重新打开后创建 Side Chat"), {
-        code: "WINDOW_CLOSED",
-      });
-    if (sideCreate) {
-      if (
-        typeof params.requestId !== "string" ||
-        typeof params.projectId !== "string" ||
-        typeof params.sourceThreadId !== "string"
-      )
-        throw Object.assign(new Error("无效 Side Chat 创建身份"), {
-          code: "INVALID_DESKTOP_REQUEST",
-        });
-      if (!this.guiSideChats.has(params.requestId))
-        this.guiSideChats.set(params.requestId, {
-          projectId: params.projectId,
-          sourceThreadId: params.sourceThreadId,
-          requestId: params.requestId,
-        });
-    }
-    const sideKey = typeof params.requestId === "string" ? params.requestId : undefined;
-    const sideOwner =
-      name === "side"
-        ? ((sideKey ? this.guiSideChats.get(sideKey) : undefined) ??
-          [...this.guiSideChats.values()].find(
-            (entry) => entry.projectId === params.projectId && entry.threadId === params.threadId,
-          ))
-        : undefined;
-    if (sideOwner && params.operation === "close") {
-      if (!sideKey)
-        throw Object.assign(new Error("无效 Side Chat 关闭身份"), {
-          code: "INVALID_DESKTOP_REQUEST",
-        });
-      sideOwner.closeRequestId ??= sideKey;
-    }
     if (
       ["send", "steer", "editMessage"].includes(name) ||
       (name === "side" && request.operation === "send")
@@ -947,29 +902,6 @@ class SharedCoreBackend {
         semantics.effect === "mutation",
       )
       .then((value) => {
-        if (
-          sideOwner &&
-          (sideCreate ||
-            params.operation === "recover" ||
-            params.operation === "close" ||
-            params.method === "areal/side/close")
-        ) {
-          const response = readSideResponse(
-            value,
-            params.requestId,
-            semantics.effect === "mutation",
-            sideCreate || (params.operation === "recover" && record(value) && !!value.confirmed),
-          );
-          if (sideCreate || (params.operation === "recover" && response.confirmed))
-            sideOwner.threadId = response.threadId;
-          if (params.operation === "close" && response.requestId)
-            sideOwner.closeRequestId = response.requestId;
-          if (
-            (params.operation === "close" || params.method === "areal/side/close") &&
-            response.cleanupConfirmed === true
-          )
-            this.guiSideChats.delete(sideOwner.requestId);
-        }
         if (ownedScope) {
           const response = readGuiProcessResponse(value, params.requestId, ownedRecovery);
           if (response.confirmed)
@@ -978,23 +910,10 @@ class SharedCoreBackend {
         return name === "media" ? decodeMedia(value) : value;
       });
     if (ownedStart || ownedRecovery) this.guiTerminalStarts.add(pending);
-    if (sideCreate || (sideOwner && params.operation === "recover"))
-      this.guiSideStarts.add(pending);
     try {
       return await pending;
     } catch (error) {
       const details = desktopError(error);
-      const rejected = details.outcome
-        ? ["noMutation", "rejected"].includes(details.outcome.kind)
-        : typeof details.code === "number" && details.code !== -32603;
-      if (sideCreate && rejected && sideKey) this.guiSideChats.delete(sideKey);
-      if (
-        sideOwner &&
-        params.operation === "close" &&
-        rejected &&
-        sideOwner.closeRequestId === params.requestId
-      )
-        delete sideOwner.closeRequestId;
       if (semantics.requestId && record(error)) {
         error.requestId ??= params[semantics.requestId];
         if (
@@ -1023,60 +942,6 @@ class SharedCoreBackend {
       throw error;
     } finally {
       this.guiTerminalStarts.delete(pending);
-      this.guiSideStarts.delete(pending);
-    }
-  }
-  /** @returns {Promise<void>} */
-  async closeWindowSideChats() {
-    this.guiWindowClosed = true;
-    if (this.guiSideClosing) return this.guiSideClosing;
-    this.guiSideClosing = (async () => {
-      await Promise.allSettled(this.guiSideStarts);
-      const failures = [];
-      for (const entry of Array.from(this.guiSideChats.values())) {
-        try {
-          if (!entry.threadId) {
-            const original = readSideResponse(
-              await this.command("side", {
-                operation: "recover",
-                method: "areal/side/create",
-                projectId: entry.projectId,
-                sourceThreadId: entry.sourceThreadId,
-                requestId: entry.requestId,
-              }),
-              entry.requestId,
-              false,
-            );
-            if (!original.confirmed) throw new Error("Side Chat 创建结果待核对；原请求不会重发");
-            entry.threadId = original.threadId;
-          }
-          const result = entry.closeRequestId
-            ? await this.command("side", {
-                operation: "recover",
-                method: "areal/side/close",
-                projectId: entry.projectId,
-                threadId: entry.threadId,
-                requestId: entry.closeRequestId,
-              })
-            : await this.command("side", {
-                operation: "close",
-                projectId: entry.projectId,
-                threadId: entry.threadId,
-                requestId: randomUUID(),
-              });
-          if (readSideResponse(result, entry.closeRequestId, false).cleanupConfirmed !== true)
-            throw new Error("Side Chat 已停止受理，资源清理仍待核对；原请求不会重发");
-          this.guiSideChats.delete(entry.requestId);
-        } catch (error) {
-          failures.push(error);
-        }
-      }
-      if (failures.length) throw failures[0];
-    })();
-    try {
-      await this.guiSideClosing;
-    } finally {
-      this.guiSideClosing = null;
     }
   }
   /** @param {Record<string,unknown>} request @returns {Promise<unknown>} */

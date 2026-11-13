@@ -7,6 +7,191 @@ const { readFile, realpath, stat, writeFile, unlink } = require("node:fs/promise
 const { createInterface } = require("node:readline");
 const { MAX_FRAME } = require("./channel.cjs");
 const { createPageSession, prepareInput } = require("./pages.cjs");
+const { randomUUID } = require("node:crypto");
+const { desktopError } = require("@areal/workbench/desktop-contract");
+/** @typedef {{operation:string,requestId?:string,projectId?:string,sourceThreadId?:string,threadId?:string,method?:string,[key:string]:unknown}} SideParams */
+/** @typedef {{threadId?:string,requestId?:string,cleanupConfirmed?:boolean,confirmed?:boolean,status?:string,accepted?:boolean,[key:string]:unknown}} SideResult */
+/** @typedef {{requestId:string,projectId:string,sourceThreadId:string,threadId?:string,closeRequestId?:string}} SideEntry */
+/** @typedef {{closing:boolean,entries:Map<string,SideEntry>,pending:Set<Promise<SideResult>>,settlement?:Promise<{settled:true,connection:string}>}} SideOwner */
+/** @typedef {(params:SideParams)=>Promise<SideResult>} ExecuteSide */
+
+// 每个 owner 是 Host 注入的连接身份，不能由客户端参数指定。
+class SideWindowOwners {
+  constructor() {
+    /** @type {Map<string,SideOwner>} */
+    this.owners = new Map();
+  }
+  /** @param {string} connection @returns {SideOwner} */
+  owner(connection) {
+    if (!this.owners.has(connection))
+      this.owners.set(connection, { closing: false, entries: new Map(), pending: new Set() });
+    return /** @type {SideOwner} */ (this.owners.get(connection));
+  }
+  /** @param {string} connection @param {SideParams} params @param {ExecuteSide} execute */
+  async command(connection, params, execute) {
+    const owner = this.owner(connection);
+    const { operation, requestId, projectId, sourceThreadId, threadId } = params;
+    if (operation === "openOwned") {
+      if (owner.pending.size || owner.entries.size || owner.settlement)
+        throw new Error("窗口资源仍在结算");
+      owner.closing = false;
+      return { settled: true, connection };
+    }
+    if (operation === "closeOwned") {
+      if (!owner.settlement) {
+        const pending = this.close(connection, execute);
+        owner.settlement = pending;
+        void pending
+          .finally(() => {
+            if (owner.settlement === pending) delete owner.settlement;
+          })
+          .catch(() => {});
+      }
+      return owner.settlement;
+    }
+    const create = operation === "create";
+    if (["create", "close", "recover"].includes(operation) && owner.closing)
+      throw Object.assign(new Error("窗口正在关闭"), { code: "WINDOW_CLOSED" });
+    let entry;
+    if (create) {
+      if (
+        typeof requestId !== "string" ||
+        typeof projectId !== "string" ||
+        typeof sourceThreadId !== "string"
+      )
+        throw new Error("无效 Side Chat 创建身份");
+      entry = owner.entries.get(requestId);
+      if (entry && (entry.projectId !== projectId || entry.sourceThreadId !== sourceThreadId))
+        throw Object.assign(new Error("Side Chat 创建身份不匹配"), { code: "COMMAND_CONFLICT" });
+      if (!entry) {
+        entry = { requestId, projectId, sourceThreadId };
+        owner.entries.set(requestId, entry);
+      }
+    } else if (operation === "recover" && requestId) entry = owner.entries.get(requestId);
+    else if (operation === "close")
+      entry = [...owner.entries.values()].find(
+        (item) => item.projectId === projectId && item.threadId === threadId,
+      );
+    if (entry && operation === "close") {
+      if (entry.closeRequestId && entry.closeRequestId !== requestId)
+        throw Object.assign(new Error("Side Chat 原关闭请求尚未结算"), {
+          code: "SUBMISSION_UNKNOWN",
+        });
+      entry.closeRequestId ??= requestId;
+    }
+    const pending = Promise.resolve().then(() => execute(params));
+    if (create || (entry && ["recover", "close"].includes(operation))) owner.pending.add(pending);
+    try {
+      const result = await pending;
+      if (
+        entry &&
+        !(operation === "recover" && result?.confirmed === false) &&
+        result?.requestId !== requestId
+      )
+        throw Object.assign(new Error("Side Chat 回执身份不匹配"), { submissionUnknown: true });
+      if (
+        entry &&
+        operation === "recover" &&
+        params.method === "areal/side/create" &&
+        result.confirmed === true &&
+        (result.status === "failed" || result.accepted === false)
+      )
+        owner.entries.delete(entry.requestId);
+      if (entry && (create || operation === "recover") && typeof result?.threadId === "string")
+        entry.threadId = result.threadId;
+      if (entry && operation === "close" && result?.cleanupConfirmed === true)
+        if (result.threadId !== entry.threadId) throw new Error("Side Chat 关闭目标不匹配");
+      if (entry && operation === "close" && result?.cleanupConfirmed === true)
+        owner.entries.delete(entry.requestId);
+      if (
+        entry &&
+        operation === "recover" &&
+        params.method === "areal/side/close" &&
+        result?.cleanupConfirmed === true
+      )
+        owner.entries.delete(entry.requestId);
+      return result;
+    } catch (error) {
+      const details = desktopError(error);
+      const rejected = details.outcome
+        ? ["noMutation", "rejected"].includes(details.outcome.kind)
+        : typeof details.code === "number" && details.code !== -32603;
+      if (entry && create && rejected) owner.entries.delete(entry.requestId);
+      if (entry && operation === "close" && rejected) delete entry.closeRequestId;
+      throw error;
+    } finally {
+      owner.pending.delete(pending);
+    }
+  }
+  /** @param {string} connection @param {ExecuteSide} execute @returns {Promise<{settled:true,connection:string}>} */
+  async close(connection, execute) {
+    const owner = this.owner(connection);
+    owner.closing = true;
+    await Promise.allSettled([...owner.pending]);
+    for (const entry of owner.entries.values()) {
+      if (!entry.threadId) {
+        const original = await execute({
+          operation: "recover",
+          method: "areal/side/create",
+          projectId: entry.projectId,
+          sourceThreadId: entry.sourceThreadId,
+          requestId: entry.requestId,
+        });
+        if (
+          original?.confirmed &&
+          original.requestId === entry.requestId &&
+          (original.status === "failed" || original.accepted === false)
+        ) {
+          owner.entries.delete(entry.requestId);
+          continue;
+        }
+        if (
+          !original?.confirmed ||
+          original.requestId !== entry.requestId ||
+          typeof original.threadId !== "string"
+        )
+          throw new Error("Side Chat 创建结果待核对；原请求不会重发");
+        entry.threadId = original.threadId;
+      }
+      const recovery = !!entry.closeRequestId;
+      entry.closeRequestId ??= randomUUID();
+      const result = await execute(
+        recovery
+          ? {
+              operation: "recover",
+              method: "areal/side/close",
+              projectId: entry.projectId,
+              threadId: entry.threadId,
+              requestId: entry.closeRequestId,
+            }
+          : {
+              operation: "close",
+              projectId: entry.projectId,
+              threadId: entry.threadId,
+              requestId: entry.closeRequestId,
+            },
+      );
+      if (
+        result?.cleanupConfirmed !== true ||
+        result.requestId !== entry.closeRequestId ||
+        result.threadId !== entry.threadId
+      )
+        throw new Error("Side Chat 清理仍待核对；原请求不会重发");
+      owner.entries.delete(entry.requestId);
+    }
+    return { settled: true, connection };
+  }
+  /** @param {string} connection @param {ExecuteSide} execute */
+  disconnect(connection, execute) {
+    const owner = this.owners.get(connection);
+    if (!owner) return;
+    void this.command(connection, { operation: "closeOwned" }, execute)
+      .then(() => {
+        if (!owner.entries.size && !owner.pending.size) this.owners.delete(connection);
+      })
+      .catch(() => {});
+  }
+}
 const pageMethods = ["pages.command", "pages.resource"];
 // 本机网页的桌面命令；与 Host 协议的 DesktopCommandParams.command 一致。
 const desktopCommands = new Set([
@@ -192,6 +377,7 @@ async function start({ input, output }) {
   let metadata,
     claimed = false;
   const pages = new Map();
+  const sideOwners = new SideWindowOwners();
   const retiredPages = new Set();
   /** @param {string} connection */
   const closePages = async (connection) => {
@@ -300,6 +486,9 @@ async function start({ input, output }) {
         continue;
       }
       if (request.event === "pages.disconnect" && typeof request.connection === "string") {
+        sideOwners.disconnect(request.connection, (side) =>
+          desktop.adapter.executeRemote("side", side),
+        );
         desktop.adapter.disconnectHostExecution(request.connection);
         const closing = closePages(request.connection).catch(() => {});
         pending.add(closing);
@@ -316,7 +505,9 @@ async function start({ input, output }) {
       const execute = async () => {
         if (request.method === "lifecycle.dependencies")
           return {
-            clients: [...desktop.adapter.clients].filter((client) => !("kind" in client && client.kind === "main" && client.internal)).length,
+            clients: [...desktop.adapter.clients].filter(
+              (client) => !("kind" in client && client.kind === "main" && client.internal),
+            ).length,
             inflight: Math.max(desktop.adapter.inflight, desktop.backend.activeCommands ?? 0),
             providerUpdating:
               desktop.backend.providerUpdating === true ||
@@ -467,6 +658,13 @@ async function start({ input, output }) {
             Array.isArray(params)
           )
             throw Error("Invalid desktop command");
+          if (command === "side" && ["closeOwned", "openOwned"].includes(params.operation)) {
+            if (Object.keys(params).length !== 1 || typeof request.context?.connection !== "string")
+              throw Error("INVALID_PARAMS");
+            return sideOwners.command(request.context.connection, params, (side) =>
+              desktop.adapter.executeRemote("side", side),
+            );
+          }
           if (command === "recovery") {
             if (["history", "importProvider"].includes(params.operation)) {
               const contract = appRequire("@areal/workbench/desktop-contract");
@@ -512,13 +710,19 @@ async function start({ input, output }) {
             throw Error("Desktop only");
           const contract = appRequire("@areal/workbench/desktop-contract");
           contract.validateCommand(command, params);
+          if (command === "side" && typeof request.context?.connection !== "string")
+            throw Error("INVALID_PARAMS");
           // 手机连接在桌面窗口里也不经后台命令表，而是直接交给连接管理。
           const remote = desktop.adapter.remote;
           if (command === "remoteControl" && !remote) throw Error("手机连接未初始化");
           const result =
             command === "remoteControl" && remote
               ? await remote.control(params)
-              : await desktop.adapter.executeRemote(command, params);
+              : command === "side"
+                ? await sideOwners.command(request.context.connection, params, (side) =>
+                    desktop.adapter.executeRemote(command, side),
+                  )
+                : await desktop.adapter.executeRemote(command, params);
           contract.validateCommandResponse(command, params, result);
           return result ?? null;
         }
@@ -635,7 +839,7 @@ async function start({ input, output }) {
   }
 }
 
-module.exports = { start, businessErrorCodes, mapBackendError };
+module.exports = { start, businessErrorCodes, mapBackendError, SideWindowOwners };
 if (require.main === module) {
   // 业务模块的 console 输出不能混入 Host 协议，错误也不能打印原始凭据。
   console.log = console.info = () => {};

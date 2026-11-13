@@ -163,6 +163,122 @@ type Run = (
   params: Record<string, unknown>,
 ) => ReturnType<PlatformServices["command"]>;
 
+/** 窗口仅结算原 Host 连接创建的 Side，重连后不能以新连接冒充原 owner。 */
+export function windowSideOwnership(
+  client: HostClient,
+  desktop: PlatformServices | undefined,
+  hostReady: () => boolean,
+  run: Run,
+  host: Run,
+): Run {
+  if (!desktop) return run;
+  let connection: string | undefined;
+  let settledConnection: string | undefined;
+  let emptySettled = false;
+  let reopening = false;
+  let openedEpoch = 0;
+  const current = () => {
+    const state = client.snapshot();
+    return state.connection === "ready" ? state.identity.connectionId : undefined;
+  };
+  desktop.onWindowClosing?.(async () => {
+    const epoch = openedEpoch;
+    const original = current();
+    if (!connection) {
+      emptySettled = true;
+      return true;
+    }
+    if (!original || connection !== original) return false;
+    try {
+      const result = await client.workbench("desktop.command", {
+        command: "side",
+        request: { operation: "closeOwned" },
+      });
+      if (
+        current() !== original ||
+        !object(result) ||
+        result.settled !== true ||
+        result.connection !== original
+      )
+        return false;
+      settledConnection = original;
+      if (openedEpoch !== epoch) reopen();
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  const reopen = () => {
+    if (emptySettled) {
+      emptySettled = false;
+      return;
+    }
+    if (!settledConnection || settledConnection !== current()) return;
+    const original = current();
+    if (!original) return;
+    reopening = true;
+    void client
+      .workbench("desktop.command", {
+        command: "side",
+        request: { operation: "openOwned" },
+      })
+      .then((result) => {
+        if (
+          current() === original &&
+          object(result) &&
+          result.settled === true &&
+          result.connection === original
+        ) {
+          settledConnection = undefined;
+          connection = undefined;
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        reopening = false;
+      });
+  };
+  desktop.onWindowOpened?.(() => {
+    openedEpoch++;
+    reopen();
+  });
+  return (name, params) => {
+    if (name === "side" && ["create", "recover", "close"].includes(String(params.operation))) {
+      const active = current();
+      if (
+        !active ||
+        !hostReady() ||
+        reopening ||
+        emptySettled ||
+        settledConnection ||
+        (connection && connection !== active)
+      )
+        throw new Error("Side Chat 的原连接尚未结算，请重新连接并核对。");
+      if (params.operation === "create") connection ??= active;
+      return host(name, params);
+    }
+    return run(name, params);
+  };
+}
+
+export function desktopWindowCommand(
+  client: HostClient,
+  desktop: PlatformServices | undefined,
+  hostCommand: PlatformServices["command"],
+  sourceId?: string,
+): Run {
+  const hostReady = () => Boolean(sourceId && client.writable("desktop.command"));
+  const routed = routeDesktopCommand(desktop, hostCommand, hostReady);
+  const open = desktop?.openExternal ?? openInBrowser;
+  return windowSideOwnership(
+    client,
+    desktop,
+    hostReady,
+    openingAuthorization(routed, open),
+    hostCommand as Run,
+  );
+}
+
 /**
  * 插件授权和 ChatGPT 登录返回授权页地址，由界面交给系统浏览器打开；桌面与网页同一处理。
  * 打不开 ChatGPT 登录页时取消这次登录，避免后台一直等回调。

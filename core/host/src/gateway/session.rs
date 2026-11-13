@@ -1165,7 +1165,13 @@ impl Session {
             ensure!(request.get("context").is_none(), "INVALID_PARAMS");
             let (host, peer) = (&self.host, &self.peer);
             if method == "desktop.command" {
-                return crate::server::workbench_route::desktop_command(host, peer, request).await;
+                return crate::server::workbench_route::desktop_command(
+                    host,
+                    peer,
+                    &self.connection,
+                    request,
+                )
+                .await;
             }
             return crate::server::plugins::gateway(host, method, request).await;
         }

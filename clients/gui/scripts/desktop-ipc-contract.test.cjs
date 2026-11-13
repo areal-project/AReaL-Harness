@@ -406,3 +406,81 @@ test("Desktop commands map to their own dispatch layer and Core catalog through 
     "areal/provider/read",
   ]);
 });
+
+test("window close confirmation belongs to the original frame and request", async () => {
+  const { EventEmitter } = require("node:events");
+  const { runInNewContext } = require("node:vm");
+  const compiled = ts.transpileModule(
+    readFileSync(resolve("app/src/ipc/window-close.ts"), "utf8"),
+    {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    },
+  ).outputText;
+  const exports = {};
+  runInNewContext(compiled, { exports, setTimeout, clearTimeout });
+  const owner = Object.assign(new EventEmitter(), {
+    mainFrame: { url: "areal-ui://app/" },
+    isDestroyed: () => false,
+  });
+  const sent = [];
+  const gate = new exports.WindowCloseGate((_owner, id) => sent.push(id), 30);
+  const first = gate.request(owner);
+  assert.equal(gate.request(owner), first);
+  gate.decide({ sender: {}, senderFrame: owner.mainFrame }, { id: sent[0], allowed: true });
+  gate.decide({ sender: owner, senderFrame: {} }, { id: sent[0], allowed: true });
+  owner.emit("did-start-navigation", {}, "areal-ui://app/", false, true);
+  assert.equal(await first, false);
+  const second = gate.request(owner);
+  gate.decide({ sender: owner, senderFrame: owner.mainFrame }, { id: sent[0], allowed: true });
+  gate.decide({ sender: owner, senderFrame: owner.mainFrame }, { id: sent[1], allowed: true });
+  assert.equal(await second, true);
+  assert.deepEqual(owner.eventNames(), []);
+  assert.equal(await gate.request(owner), false, "an unacknowledged window stays open");
+  assert.deepEqual(owner.eventNames(), []);
+});
+
+test("preload window close rejects detached listeners and ignores their late success", async () => {
+  const { EventEmitter } = require("node:events");
+  const { runInNewContext } = require("node:vm");
+  const ipc = new EventEmitter();
+  const replies = [];
+  ipc.send = (channel, value) => replies.push({ channel, ...value });
+  let bridge;
+  runInNewContext(readFileSync(preloadPath, "utf8"), {
+    require: (name) => {
+      assert.equal(name, "electron");
+      return {
+        ipcRenderer: ipc,
+        contextBridge: {
+          exposeInMainWorld(_name, api) {
+            bridge = api;
+          },
+        },
+      };
+    },
+  });
+  let complete;
+  const stop = bridge.onWindowClosing(
+    () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  );
+  ipc.emit("areal-core:window-closing", {}, 1);
+  await Promise.resolve();
+  stop();
+  complete(true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(replies, [
+    { channel: "areal-core:window-close-decision", id: 1, allowed: false },
+  ]);
+  bridge.onWindowClosing(() => true);
+  ipc.emit("areal-core:window-closing", {}, 2);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(replies.at(-1), {
+    channel: "areal-core:window-close-decision",
+    id: 2,
+    allowed: true,
+  });
+});

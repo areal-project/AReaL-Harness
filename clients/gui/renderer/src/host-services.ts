@@ -36,9 +36,8 @@ import {
   jsonObject,
   object,
   openInBrowser,
-  routeDesktopCommand,
   hostPlatformCapabilities,
-  openingAuthorization,
+  desktopWindowCommand,
 } from "./host-workbench.js";
 import { createHostPages } from "./host-pages.js";
 import { createWatchedHistory } from "./host-watched-history.js";
@@ -764,10 +763,12 @@ export function createHostReadServices(
     publish();
   });
   const openExternal = desktop?.openExternal ?? openInBrowser;
-  const routed = routeDesktopCommand(desktop, hostCommand, () =>
-    Boolean(librarySourceId && client.writable("desktop.command")),
-  );
-  const command = openingAuthorization(routed, openExternal) as PlatformServices["command"];
+  const command = desktopWindowCommand(
+    client,
+    desktop,
+    hostCommand,
+    librarySourceId,
+  ) as PlatformServices["command"];
   return {
     ...(desktop ?? {
       chooseProject: () => chooseHostProject(client),

@@ -14,8 +14,6 @@ function onDesktopEvent(channel, listener) {
 /** @typedef {import("@areal/workbench/desktop-contract").McpAppDeepLink} McpAppDeepLink */
 /** @typedef {import("@areal/workbench/desktop-contract").NotificationTarget} NotificationTarget */
 /** @typedef {{pending:number|null,listener:()=>boolean|Promise<boolean>}} QuitSubscription */
-/** @type {QuitSubscription|null} */
-let quitSubscription = null;
 /** @type {QuitProgress} */
 let quitProgress = { state: "idle" };
 /** @type {Set<(progress:QuitProgress)=>void>} */
@@ -35,31 +33,54 @@ onDesktopEvent(
     for (const listener of quitProgressListeners) listener(quitProgress);
   },
 );
-/** @param {QuitSubscription} subscription @param {boolean} allowed */
-function answerQuitRequest(subscription, allowed) {
-  if (subscription.pending === null) return;
-  const id = subscription.pending;
-  subscription.pending = null;
-  sendDesktop("areal-core:quit-decision", { id, allowed });
+/** @param {(id:number,allowed:boolean)=>void} reply */
+function decisionSubscription(reply) {
+  /** @type {QuitSubscription|null} */
+  let current = null;
+  /** @param {QuitSubscription} subscription @param {boolean} allowed */
+  const answer = (subscription, allowed) => {
+    if (subscription.pending === null) return;
+    const id = subscription.pending;
+    subscription.pending = null;
+    reply(id, allowed);
+  };
+  return {
+    /** @param {unknown} id */
+    request(id) {
+      if (typeof id !== "number") return;
+      const subscription = current;
+      if (!subscription || subscription.pending !== null) {
+        reply(id, false);
+        return;
+      }
+      subscription.pending = id;
+      void Promise.resolve()
+        .then(() => (subscription === current ? subscription.listener() : false))
+        .then(
+          (allowed) => answer(subscription, allowed === true),
+          () => answer(subscription, false),
+        );
+    },
+    /** @param {QuitSubscription["listener"]} listener */
+    subscribe(listener) {
+      if (current) answer(current, false);
+      const subscription = { listener, pending: /** @type {number|null} */ (null) };
+      current = subscription;
+      return () => {
+        if (current === subscription) current = null;
+        answer(subscription, false);
+      };
+    },
+  };
 }
-onDesktopEvent(
-  "areal-core:quit-request",
-  /** @param {unknown} id */ (_event, id) => {
-    if (typeof id !== "number") return;
-    const subscription = quitSubscription;
-    if (!subscription || subscription.pending !== null) {
-      sendDesktop("areal-core:quit-decision", { id, allowed: false });
-      return;
-    }
-    subscription.pending = id;
-    void Promise.resolve()
-      .then(() => (subscription === quitSubscription ? subscription.listener() : false))
-      .then(
-        (allowed) => answerQuitRequest(subscription, allowed === true),
-        () => answerQuitRequest(subscription, false),
-      );
-  },
+const quitDecision = decisionSubscription((id, allowed) =>
+  sendDesktop("areal-core:quit-decision", { id, allowed }),
 );
+const closeDecision = decisionSubscription((id, allowed) =>
+  sendDesktop("areal-core:window-close-decision", { id, allowed }),
+);
+onDesktopEvent("areal-core:quit-request", (_event, id) => quitDecision.request(id));
+onDesktopEvent("areal-core:window-closing", (_event, id) => closeDecision.request(id));
 /** @satisfies {import("@areal/workbench/desktop-contract").DesktopBridge} */
 const desktopBridge = {
   getSnapShotState: () => invokeDesktop("areal-core:snap-shot-state"),
@@ -108,16 +129,13 @@ const desktopBridge = {
     listener(quitProgress);
     return () => quitProgressListeners.delete(listener);
   },
-  /** @param {QuitSubscription["listener"]} listener */
-  onQuitRequested: (listener) => {
-    if (quitSubscription) answerQuitRequest(quitSubscription, false);
-    /** @type {QuitSubscription} */
-    const subscription = { listener, pending: null };
-    quitSubscription = subscription;
-    return () => {
-      if (quitSubscription === subscription) quitSubscription = null;
-      answerQuitRequest(subscription, false);
-    };
+  onQuitRequested: quitDecision.subscribe,
+  onWindowClosing: closeDecision.subscribe,
+  /** @param {()=>void} listener */
+  onWindowOpened: (listener) => {
+    const handler = () => listener();
+    onDesktopEvent("areal-core:window-opened", handler);
+    return () => ipcRenderer.removeListener("areal-core:window-opened", handler);
   },
   /** @returns {Promise<unknown>} */
   updateState: () => invokeDesktop("areal-core:update-state"),

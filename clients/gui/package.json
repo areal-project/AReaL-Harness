@@ -38,7 +38,7 @@
     "test:state-projection": "node scripts/state-projection-smoke.mjs",
     "test:recovery": "node --test scripts/desktop-reconciliation.test.cjs",
     "test:creation-recovery": "node scripts/pending-project-smoke.mjs --recovery-notices",
-    "test:service-connection": "node --test ../../services/workbench/test/pages.test.cjs scripts/backend-encryption.test.cjs scripts/service-connection-recovery.test.mjs scripts/gui-terminal-connections.test.cjs scripts/host-lifecycle.test.cjs scripts/host-quit.test.cjs scripts/host-home-permissions.test.cjs scripts/gui-source-blockers.test.cjs scripts/space-bootstrap.test.cjs",
+    "test:service-connection": "node --test ../../services/workbench/test/pages.test.cjs ../../services/workbench/test/side-window-owner.test.cjs scripts/backend-encryption.test.cjs scripts/service-connection-recovery.test.mjs scripts/gui-terminal-connections.test.cjs scripts/host-lifecycle.test.cjs scripts/host-quit.test.cjs scripts/host-home-permissions.test.cjs scripts/gui-source-blockers.test.cjs scripts/space-bootstrap.test.cjs",
     "test:service-feedback": "node scripts/service-feedback-smoke.mjs",
     "test:backend-toast-ui": "node scripts/backend-toast-ui-smoke.mjs",
     "test:task-conversation": "node scripts/task-conversation-smoke.mjs",

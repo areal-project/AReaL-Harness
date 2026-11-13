@@ -27,6 +27,7 @@ add("shell", "原生菜单与对话框语言", "setInterfaceLocale");
 add("shell", "窗口首帧显示", "presentReady");
 add("shell", "安装命令行工具到系统路径", "installCommandLineTools");
 add("shell", "退出流程与进度", "onQuitProgress onQuitRequested");
+add("shell", "原生窗口关闭确认与重新显示", "onWindowClosing onWindowOpened");
 add("shell", "桌面自动更新", "updateState downloadUpdate recoverUpdateResources onUpdate");
 add("shell", "系统深链接", "onMcpAppDeepLink");
 add("shell", "内嵌预览窗口", "preview onPreviewEvent");

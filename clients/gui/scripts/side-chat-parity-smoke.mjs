@@ -250,11 +250,6 @@ const fixture = await applicationFixture(
   `
 const { appendFileSync } = require('node:fs');
 const { SharedCoreBackend } = require(${JSON.stringify(join(gui, "app/src/core/service-client.cjs"))});
-const closeWindow = SharedCoreBackend.prototype.closeWindowSideChats;
-SharedCoreBackend.prototype.closeWindowSideChats = async function(...args) {
-  appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ observed: 'windowSideClose', stack: new Error().stack }) + '\\n');
-  return closeWindow.apply(this, args);
-};
 require('electron').app.on('browser-window-created', (_event, window) => {
   for (const event of ['show', 'hide', 'close']) window.on(event, () => {
     appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ observed: event, at: Date.now() }) + '\\n');
@@ -263,7 +258,6 @@ require('electron').app.on('browser-window-created', (_event, window) => {
 const original = SharedCoreBackend.prototype.command;
 SharedCoreBackend.prototype.command = async function(name, request) {
   try {
-    if (name === 'side' && request.operation === 'create') appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ observed: 'sideCreateGate', closed: this.guiWindowClosed, at: Date.now() }) + '\\n');
     const value = await original.call(this, name, request);
     appendFileSync(${JSON.stringify(commandLog)}, JSON.stringify({ name, request, ok: true }) + '\\n');
     return value;

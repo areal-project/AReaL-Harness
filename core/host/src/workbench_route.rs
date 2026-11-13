@@ -1154,6 +1154,7 @@ pub(super) async fn backend_command(
 pub(super) async fn desktop_command(
     host: &Rc<Host>,
     principal: &str,
+    connection: &str,
     request: &Value,
 ) -> Result<Value> {
     ensure!(request.get("commandId").is_none(), "INVALID_PARAMS");
@@ -1180,7 +1181,7 @@ pub(super) async fn desktop_command(
             host,
             "desktop.command",
             params,
-            json!({"principal":principal}),
+            json!({"principal":principal,"connection":connection}),
         )
         .await
 }

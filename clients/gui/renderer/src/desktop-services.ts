@@ -306,6 +306,8 @@ export function createDesktopServices(bridge: DesktopBridge): PlatformServices {
     recoverUpdateResources: async () => readUpdateState(await bridge.recoverUpdateResources()),
     onUpdate: (listener) => bridge.onUpdate((value) => listener(readUpdateState(value))),
     onQuitRequested: bridge.onQuitRequested,
+    onWindowClosing: bridge.onWindowClosing,
+    onWindowOpened: bridge.onWindowOpened,
     onQuitProgress: bridge.onQuitProgress,
     onNotificationOpen: bridge.onNotificationOpen,
     onMcpAppDeepLink: bridge.onMcpAppDeepLink,

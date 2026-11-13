@@ -232,6 +232,8 @@ export interface PlatformServices {
   presentReady?(): Promise<void>;
   installCommandLineTools?(): Promise<{ started: boolean; message?: string }>;
   onQuitRequested?(listener: () => Promise<boolean>): () => void;
+  onWindowClosing?(listener: () => Promise<boolean>): () => void;
+  onWindowOpened?(listener: () => void): () => void;
   onQuitProgress?(listener: (progress: QuitProgress) => void): () => void;
   onNotificationOpen?(listener: (target: NotificationTarget) => void): () => void;
   updateState?(): Promise<UpdateState>;

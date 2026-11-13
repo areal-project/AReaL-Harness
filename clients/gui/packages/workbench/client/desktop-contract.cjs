@@ -70,6 +70,7 @@ const {
 /** @typedef {{
  * "areal-core:interface-locale":[locale:unknown],
  * "areal-core:projection-request":[requestId:unknown],
+ * "areal-core:window-close-decision":[decision:unknown],
  * "areal-core:quit-decision":[decision:unknown]
  * }} DesktopSendArguments */
 /** @typedef {{
@@ -81,6 +82,8 @@ const {
  * "areal-core:projection":[message:unknown],
  * "areal-core:quit-progress":[progress:unknown],
  * "areal-core:quit-request":[id:unknown],
+ * "areal-core:window-closing":[id:unknown],
+ * "areal-core:window-opened":[],
  * "areal-core:theme-changed":[theme:unknown],
  * "areal-core:update-changed":[state:unknown]
  * }} DesktopEventArguments */
@@ -123,6 +126,8 @@ const {
  * onUpdate:(listener:(value:unknown)=>void)=>()=>void,onMcpAppEvent:(listener:(value:unknown)=>void)=>()=>void,
  * onQuitProgress:(listener:(value:QuitProgress)=>void)=>()=>void,
  * onQuitRequested:(listener:()=>boolean|Promise<boolean>)=>()=>void,
+ * onWindowClosing:(listener:()=>boolean|Promise<boolean>)=>()=>void,
+ * onWindowOpened:(listener:()=>void)=>()=>void,
  * onNotificationOpen:(listener:(value:NotificationTarget)=>void)=>()=>void,
  * onMcpAppDeepLink:(listener:(value:McpAppDeepLink)=>void|Promise<void>)=>()=>void
  * }} DesktopBridge */
