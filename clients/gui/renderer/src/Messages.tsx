@@ -43,7 +43,7 @@ import { useForkHistory } from "./ForkHistory.js";
 import { DeferredHistoryItem, useConversationHistory } from "./ConversationHistory.js";
 import { UnknownToolInspection } from "./UnknownToolInspection.js";
 import { showTurnStatus } from "./toolInspection.js";
-import { dataItems } from "./data-shapes.js";
+import { dataItems, recordItems } from "./data-shapes.js";
 import { TurnNavigation } from "./TurnNavigation.js";
 import {
   executionOutcome,
@@ -253,12 +253,16 @@ export function Messages({
         item.type === "dynamicToolCall" &&
         (item.status === "inProgress" ||
           item.execution?.outcome === "running" ||
-          item.execution?.hooks?.some((hook: Data) => hook.outcome === "running") ||
-          item.execution?.plugin?.operations?.some((op: Data) => op.outcome === "running") ||
+          recordItems(item.execution?.hooks).some((hook: Data) => hook.outcome === "running") ||
+          recordItems(item.execution?.plugin?.operations).some(
+            (op: Data) => op.outcome === "running",
+          ) ||
           (!item.execution?.inspection &&
             (item.execution?.outcome === "unknown" ||
-              item.execution?.hooks?.some((hook: Data) => hook.outcome === "unknown") ||
-              item.execution?.plugin?.operations?.some((op: Data) => op.outcome === "unknown")))),
+              recordItems(item.execution?.hooks).some((hook: Data) => hook.outcome === "unknown") ||
+              recordItems(item.execution?.plugin?.operations).some(
+                (op: Data) => op.outcome === "unknown",
+              )))),
     );
   const prefixIssue = (thread.turns ?? []).map((turn: Data) =>
     turn.status === "inProgress" || unresolved(turn) ? turn.id : "",

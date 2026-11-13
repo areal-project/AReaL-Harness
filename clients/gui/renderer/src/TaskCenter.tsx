@@ -7,7 +7,12 @@ import { observeResize } from "@areal/ui/observe-resize";
 import { Input } from "@areal/ui";
 import { recoveredOutcome, recoveryMessage, type RecoveryFailure } from "./recoveryPresentation.js";
 import { FeedbackNotice } from "./FeedbackNotice.js";
-import { activeScheduledTask, scheduledTaskStatus, ScheduledWorkspace } from "./ScheduledTasks.js";
+import {
+  activeScheduledTask,
+  scheduledTaskStatus,
+  ScheduledWorkspace,
+  hasUnsettledWorkers,
+} from "./ScheduledTasks.js";
 import { SettingsDisclosure } from "./settings/SettingsDisclosure.js";
 import {
   describeMoment,
@@ -57,7 +62,7 @@ import type { Action, Data } from "./services.js";
 import type { ObservedCatalogOwner } from "./services.js";
 import { GoalUsageSummary } from "./GoalUsage.js";
 import { goalBudgetMessage } from "./conversationPresentation.js";
-import { channelQuestionOptions, channelQuestions } from "./data-shapes.js";
+import { channelQuestionOptions, channelQuestions, recordItems } from "./data-shapes.js";
 
 type HistoryReadMode = "head" | "more" | "refresh";
 type RunHistory = {
@@ -152,8 +157,7 @@ const stopping = (task: Data) =>
   (task.hasUnsettledWork ??
     (task.runs ?? []).some(
       (run: Data) =>
-        run.workers?.some((worker: Data) => !worker.settled) ||
-        (!terminal(run) && (task.cancelled || run.status !== "paused")),
+        hasUnsettledWorkers(run) || (!terminal(run) && (task.cancelled || run.status !== "paused")),
     ));
 const RUN_PREVIEW = 5;
 const date = (seconds: number | null, zone?: string) => {
@@ -1829,7 +1833,7 @@ export function TaskCenter({
                     onReplied={() => void refresh()}
                   />
                 ))}
-              {run.workers?.map((worker: Data) => (
+              {recordItems(run.workers).map((worker: Data) => (
                 <WorkerParticipant
                   key={`${worker.threadId}:${worker.turnId}`}
                   task={task}

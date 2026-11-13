@@ -1,3 +1,4 @@
+import { recordItems } from "./data-shapes.js";
 import { TitleTooltip } from "@areal/ui";
 import { errorText } from "./errors/errorCopy.js";
 import { FileChanges } from "./interfaceIcons.js";
@@ -32,7 +33,7 @@ export function verifiedFileReceipts(items: Data[]): Map<string, { path: string;
       item.success !== true
     )
       continue;
-    for (const part of item.contentItems ?? []) {
+    for (const part of recordItems(item.contentItems)) {
       if (!["inputText", "text"].includes(part.type)) continue;
       try {
         const result = JSON.parse(part.text);

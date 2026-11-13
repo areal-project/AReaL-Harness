@@ -194,7 +194,8 @@
     "test:desktop-ipc-freeze": "node --test scripts/desktop-ipc-freeze.test.cjs",
     "test:host-client": "node --test scripts/host-client.test.mjs",
     "test:host-seed-copy": "node --test scripts/seed-host-copy.test.mjs scripts/seed-navigation-fixture.test.mjs",
-    "lint:workbench-boundary": "node scripts/workbench-boundary.mjs"
+    "lint:workbench-boundary": "node scripts/workbench-boundary.mjs",
+    "report:knip": "knip --no-progress --no-exit-code --reporter compact"
   },
   "devDependencies": {
     "@areal/remote-client": "workspace:*",
@@ -202,6 +203,7 @@
     "@axe-core/playwright": "4.14.0",
     "ajv": "8.20.0",
     "fake-indexeddb": "6.2.4",
+    "knip": "6.45.1",
     "vite-plus": "1.4.0"
   },
   "engines": {

@@ -1,3 +1,4 @@
+import { dataItems } from "./data-shapes.js";
 import type { Translate } from "./i18n/IntlProvider.js";
 import type { Data } from "./services.js";
 
@@ -41,7 +42,9 @@ export function describeSchedule(task: Data, t: Translate) {
   const interval = rule.interval ?? 1;
   const separator = t("operations.schedules.daySeparator");
   if (rule.frequency === "weekly") {
-    const days = [...(rule.weekdays ?? [])]
+    const days = [
+      ...dataItems(rule.weekdays).filter((day) => Number.isInteger(day) && day >= 1 && day <= 7),
+    ]
       .sort((a: number, b: number) => a - b)
       .map((day: number) => (weekdayIds[day - 1] ? t(weekdayIds[day - 1]) : String(day)))
       .join(separator);
@@ -50,7 +53,8 @@ export function describeSchedule(task: Data, t: Translate) {
       : t("operations.schedules.everyNWeeksAt", { interval, days, time });
   }
   if (rule.frequency === "monthly") {
-    const days = (rule.monthDays ?? [])
+    const days = dataItems(rule.monthDays)
+      .filter((day) => day === "last" || (Number.isInteger(day) && day >= 1 && day <= 31))
       .map((day: number | string) =>
         day === "last"
           ? t("operations.schedules.lastDay")

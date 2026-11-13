@@ -2,6 +2,11 @@ import type { Data } from "./services.js";
 
 export const dataItems = (value: unknown): Data[] => (Array.isArray(value) ? value : []);
 
+export const recordItems = (value: unknown): Data[] =>
+  dataItems(value).filter(
+    (item) => item !== null && typeof item === "object" && !Array.isArray(item),
+  );
+
 export const stringItems = (value: unknown): string[] =>
   dataItems(value).filter((item) => typeof item === "string") as string[];
 

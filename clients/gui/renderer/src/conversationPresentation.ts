@@ -1,3 +1,4 @@
+import { recordItems, stringItems } from "./data-shapes.js";
 import type { Translate } from "./i18n/IntlProvider.js";
 import type { Data } from "./services.js";
 
@@ -47,7 +48,7 @@ function hasToolImage(item: Data): boolean {
   return (
     item.status === "completed" &&
     item.success === true &&
-    !!item.contentItems?.some(
+    !!recordItems(item.contentItems).some(
       (part: Data) => part.type === "arealMedia" && part.modality === "image" && part.media?.uri,
     )
   );
@@ -392,7 +393,9 @@ export function timelineItems(items: Data[]): Data[] {
     if (item.type === "reasoning") {
       if (
         !item.historyOmitted &&
-        ![...(item.summary ?? []), ...(item.content ?? [])].some((text: string) => text.trim())
+        ![...stringItems(item.summary), ...stringItems(item.content)].some((text: string) =>
+          text.trim(),
+        )
       )
         continue;
       if (!reasoningGroup) {
@@ -412,7 +415,7 @@ export function timelineItems(items: Data[]): Data[] {
 export function commandResult(item: Data): Data {
   if (!["run_command", "verify_command", "read_process", "terminate_process"].includes(item.tool))
     return {};
-  for (const part of item.contentItems ?? []) {
+  for (const part of recordItems(item.contentItems)) {
     try {
       const value = JSON.parse(part.text);
       if (value && typeof value === "object" && !Array.isArray(value)) return value;
@@ -571,14 +574,14 @@ export function executionSegments(items: Data[], turnStatus: string): Data[] {
       item.status === "completed" &&
       item.success === true
     ) {
-      for (const part of item.contentItems ?? []) {
+      for (const part of recordItems(item.contentItems)) {
         let value;
         try {
           value = JSON.parse(part.text);
         } catch {
           continue;
         }
-        const questions: Data[] = item.arguments?.questions ?? [];
+        const questions = recordItems(item.arguments?.questions);
         if (
           !questions.length ||
           !questions.every((q) => typeof value?.answers?.[q.id] === "string")
@@ -704,7 +707,7 @@ export function agentSettlements(item: Data): { threadId: string; label: string 
   )
     return [];
   const found: { threadId: string; label: string }[] = [];
-  for (const part of item.contentItems ?? []) {
+  for (const part of recordItems(item.contentItems)) {
     if (!["inputText", "text"].includes(part.type)) continue;
     let value: Data;
     try {

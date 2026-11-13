@@ -1,3 +1,4 @@
+import { recordItems } from "./data-shapes.js";
 import { DelayedVisible, Skeleton, TitleTooltip } from "@areal/ui";
 import { errorText } from "./errors/errorCopy.js";
 import { useI18n } from "./i18n/IntlProvider.js";
@@ -143,7 +144,7 @@ export function ToolEvent({
   };
   const images: Data[] =
     item.status === "completed" && item.success === true
-      ? (item.contentItems ?? []).filter(
+      ? recordItems(item.contentItems).filter(
           (part: Data) =>
             part.type === "arealMedia" && part.modality === "image" && part.media?.uri,
         )
@@ -504,14 +505,15 @@ export function ToolEvent({
               </div>
               <pre aria-label="工具参数">{JSON.stringify(item.arguments, null, 2)}</pre>
               <pre aria-label="工具结果">
-                {(item.contentItems ?? []).map((c: Data) => c.text ?? "").join("\n") ||
-                  (view.running ? "等待工具输出…" : "无文本输出")}
+                {recordItems(item.contentItems)
+                  .map((c: Data) => c.text ?? "")
+                  .join("\n") || (view.running ? "等待工具输出…" : "无文本输出")}
               </pre>
               {!images.length &&
                 action &&
                 projectId &&
                 threadId &&
-                (item.contentItems ?? [])
+                recordItems(item.contentItems)
                   .filter((c: Data) => c.type === "arealMedia" && c.modality === "image")
                   .map((c: Data) => (
                     <SentAttachment
