@@ -316,7 +316,7 @@ async function start({ input, output }) {
       const execute = async () => {
         if (request.method === "lifecycle.dependencies")
           return {
-            clients: desktop.adapter.clients.size,
+            clients: [...desktop.adapter.clients].filter((client) => !("kind" in client && client.kind === "main" && client.internal)).length,
             inflight: Math.max(desktop.adapter.inflight, desktop.backend.activeCommands ?? 0),
             providerUpdating:
               desktop.backend.providerUpdating === true ||

@@ -37,6 +37,7 @@ async function createPageSession({ appRequire, desktop, notify }) {
       closed = true;
       host?.dispose();
     },
+    true,
   );
   try {
     // 只建立业务会话，不登记 computerHost、通知展示或原生工具能力。

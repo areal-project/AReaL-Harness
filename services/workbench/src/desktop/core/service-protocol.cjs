@@ -44,7 +44,7 @@ const {
 /** @typedef {PacketEntry|{kind:'message',value:Fields,bytes:number}} OutboundEntry */
 /** @typedef {{queue:OutboundEntry[],bytes:number,active:boolean,state:PacketEntry|null,closed:boolean,timer?:NodeJS.Timeout}} Outbound */
 /** @typedef {import('ws') & {outbound?:Outbound,projection?:InstanceType<typeof ProjectionEncoder>|null,notifications?:boolean,activity?:{time:number,windowFocused:boolean,focused:boolean},lastFocused?:number,historyViews?:Map<string,Fields & {viewId:string}>,mcpPageOwnerId?:string}} RemoteServiceSocket */
-/** @typedef {Pick<RemoteServiceSocket,'notifications'|'activity'|'lastFocused'|'historyViews'|'mcpPageOwnerId'> & {kind:'main',closed:boolean,onMessage:(message:Fields)=>void,onClose:()=>void}} MainClient */
+/** @typedef {Pick<RemoteServiceSocket,'notifications'|'activity'|'lastFocused'|'historyViews'|'mcpPageOwnerId'> & {kind:'main',internal:boolean,closed:boolean,onMessage:(message:Fields)=>void,onClose:()=>void}} MainClient */
 /** @typedef {RemoteServiceSocket|MainClient} ServiceSocket */
 /** @param {ServiceSocket|null|undefined} client @returns {client is MainClient} */
 const mainClient = (client) => !!client && "kind" in client && client.kind === "main";
@@ -539,7 +539,7 @@ class DesktopService {
         connected: true,
         commandContract: COMMAND_CONTRACT,
         selectedThreadObservation: true,
-        clients: this.clients.size,
+        clients: [...this.clients].filter((client) => !(mainClient(client) && client.internal)).length,
         busy: this.backend.hasWork({ includePausedQueues: false }),
         activeCommands: Math.max(this.inflight, this.backend.activeCommands ?? 0),
         providerUpdating: !!this.backend.providerUpdating,
@@ -821,10 +821,10 @@ class DesktopService {
     this.schedule();
     if (mainClient(socket)) socket.onClose();
   }
-  /** @param {(message:Fields)=>void} onMessage @param {()=>void} onClose */
-  connectMain(onMessage, onClose) {
+  /** @param {(message:Fields)=>void} onMessage @param {()=>void} onClose @param {boolean} [internal] */
+  connectMain(onMessage, onClose, internal = false) {
     /** @type {MainClient} */
-    const owner = { kind: "main", closed: false, onMessage, onClose };
+    const owner = { kind: "main", internal, closed: false, onMessage, onClose };
     return {
       metadata: {
         protocol: PROTOCOL,

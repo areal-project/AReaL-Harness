@@ -401,3 +401,25 @@ test("元数据图片只取 Core 当前声明过的公网 https 地址", async (
   );
   assert.deepEqual(calls, ["mcpApps", "mcpApps", "mcpForms"]);
 });
+
+test("页面会话不冒充第二个 GUI，但真实第二个 GUI 仍阻止空闲停止", async (t) => {
+  const f = await fixture(t);
+  const { PROTOCOL } = appRequire("@areal/workbench-service/desktop/core/service-protocol.cjs");
+  const main = f.adapter.connectMain(
+    () => {},
+    () => {},
+  );
+  t.after(() => main.close());
+  await main.request("hello", { protocol: PROTOCOL, identity: "fixture", capabilities: {} });
+  await f.open();
+  assert.equal(f.adapter.packet().service.clients, 1);
+  const second = f.adapter.connectMain(
+    () => {},
+    () => {},
+  );
+  t.after(() => second.close());
+  await second.request("hello", { protocol: PROTOCOL, identity: "fixture", capabilities: {} });
+  assert.equal(f.adapter.packet().service.clients, 2);
+  second.close();
+  assert.equal(f.adapter.packet().service.clients, 1);
+});
