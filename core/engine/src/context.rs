@@ -166,6 +166,7 @@ impl ContextPlan<'_> {
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_context: None,
+            reasoning_content: None,
         };
         let mut retained = mandatory.cloned().into_iter().collect::<Vec<_>>();
         for input in inputs
@@ -274,6 +275,7 @@ pub(crate) fn message_bytes(messages: &[Message]) -> usize {
                     + 64;
             }
             message.text_content().len()
+                + message.reasoning_content.as_ref().map_or(0, String::len)
                 + message
                     .content
                     .iter()
@@ -298,6 +300,66 @@ pub(crate) fn message_bytes(messages: &[Message]) -> usize {
 }
 
 // 保守增量估算，不把 UTF-8 字节或缓存折扣当作模型实际输入 token。
+
+fn item_is_user_message(item: &Item) -> bool {
+    matches!(item, Item::UserMessage { .. })
+}
+
+fn responses_reasoning_in_round(items: &[&Item], index: usize) -> bool {
+    let start = items[..index]
+        .iter()
+        .rposition(|item| item_is_user_message(item))
+        .map_or(0, |position| position + 1);
+    let end = items[index + 1..]
+        .iter()
+        .position(|item| item_is_user_message(item))
+        .map_or(items.len(), |position| index + 1 + position);
+    items[start..end].iter().any(|item| match item {
+        Item::ModelContext { value, .. } => {
+            value["type"] == "areal_response_output" || value["type"] == "reasoning"
+        }
+        _ => false,
+    })
+}
+
+fn round_has_display_reasoning_content(items: &[&Item], index: usize) -> bool {
+    let start = items[..index]
+        .iter()
+        .rposition(|item| item_is_user_message(item))
+        .map_or(0, |position| position + 1);
+    let end = items[index + 1..]
+        .iter()
+        .position(|item| item_is_user_message(item))
+        .map_or(items.len(), |position| index + 1 + position);
+    items[start..end]
+        .iter()
+        .any(|item| matches!(item, Item::Reasoning { content, .. } if !content.concat().is_empty()))
+}
+
+/// Chat-origin thinking that will be attached to the assistant message for possible replay.
+/// Responses display reasoning is excluded so encrypted/summary items are not double-counted.
+fn chat_origin_replay_text(items: &[&Item], index: usize) -> Option<String> {
+    if responses_reasoning_in_round(items, index) {
+        return None;
+    }
+    match items[index] {
+        Item::Reasoning { content, .. } => {
+            let text = content.concat();
+            if text.is_empty() { None } else { Some(text) }
+        }
+        Item::ModelContext { value, .. } if value["type"] == "chat_reasoning" => {
+            if round_has_display_reasoning_content(items, index) {
+                return None;
+            }
+            value["reasoning_content"]
+                .as_str()
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned)
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn text_tokens(text: &str) -> usize {
     let ascii = text.bytes().filter(u8::is_ascii).count();
     ascii.div_ceil(3) + text.chars().filter(|c| !c.is_ascii()).count() * 2
@@ -314,6 +376,7 @@ pub(crate) fn estimate_tokens(messages: &[Message]) -> usize {
                     + 16;
             }
             text_tokens(&m.text_content())
+                + m.reasoning_content.as_deref().map_or(0, text_tokens)
                 + 16
                 + m.tool_calls
                     .iter()
@@ -920,9 +983,15 @@ impl Engine {
         // Cut only before a model round or a new user message. A round's opaque
         // reasoning, function calls and results always remain in the same group.
         for index in (previous..items.len()).rev() {
+            if let Some(text) = chat_origin_replay_text(&items, index) {
+                recent_bytes += text.len();
+                recent_tokens += text_tokens(&text);
+                continue;
+            }
             if matches!(items[index], Item::Reasoning { .. })
                 || matches!(items[index], Item::ModelContext { value, .. } if value["type"] == "chat_reasoning")
             {
+                // Responses 展示思考或已被同一轮 display 内容覆盖的 legacy 归档不重复计费。
                 continue;
             }
             let encoded = serde_json::to_string(items[index])?;
@@ -2002,5 +2071,40 @@ mod reference_tests {
             );
         }
         engine.shutdown().await;
+    }
+}
+
+#[cfg(test)]
+mod chat_reasoning_budget_tests {
+    use super::chat_origin_replay_text;
+    use areal_protocol::Item;
+    use serde_json::json;
+
+    fn items(values: Vec<serde_json::Value>) -> Vec<Item> {
+        values
+            .into_iter()
+            .map(|value| serde_json::from_value(value).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn budget_counts_chat_origin_text_once_and_skips_responses_display() {
+        let chat = items(vec![
+            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"ask"}]}),
+            json!({"type":"agentMessage","id":"a1","text":"ok"}),
+            json!({"type":"reasoning","id":"r1","content":["abc"],"summary":["sum"]}),
+            json!({"type":"modelContext","id":"c1","value":{"type":"chat_reasoning","reasoning_content":"legacy-dup"}}),
+        ]);
+        let refs: Vec<&Item> = chat.iter().collect();
+        assert_eq!(chat_origin_replay_text(&refs, 2).as_deref(), Some("abc"));
+        assert_eq!(chat_origin_replay_text(&refs, 3), None);
+
+        let responses = items(vec![
+            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"ask"}]}),
+            json!({"type":"reasoning","id":"r1","content":["display-only"]}),
+            json!({"type":"modelContext","id":"ctx","value":{"type":"areal_response_output","items":[{"type":"reasoning","encrypted_content":"enc"}]}}),
+        ]);
+        let refs: Vec<&Item> = responses.iter().collect();
+        assert_eq!(chat_origin_replay_text(&refs, 1), None);
     }
 }

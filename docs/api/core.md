@@ -155,7 +155,7 @@ Responses 摘要通过可选 `reasoning_summary` / `reasoningSummary` 显式开�
 
 `thread/read` 和 `thread/resume` 的快照包含已收到的思考前缀；resume 后以快照替换客户端基线，再接增量，不能把快照再次追加。停止或 steer 保留已收到内容；失败响应被重试时，`areal/model/completionDiscarded.itemIds` 同时移除其思考与正文。`item/completed` 只表示该 Item 不再更新，成功与否以 Turn 终态为准。
 
-思考文本计入现有 Turn 文本输出字节上限，不拼入 `agentMessage`，不算最终答案；仅有思考而没有正文、媒体或工具调用仍按空回复处理。展示用 `reasoning` Item 不回放为模型输入。Chat 原有不回放思考的行为保留；旧 `modelContext.value.type=chat_reasoning` 继续可读，新 Chat 请求不再重复归档这份内部上下文。Responses 原始 reasoning 对象仍独立存入 `modelContext` 并完整回放一次，保留 summary、encrypted_content 等供应商字段；客户端只展示明文段，不解密或显示加密内容。
+思考文本计入现有 Turn 文本输出字节上限，不拼入 `agentMessage`，不算最终答案；仅有思考而没有正文、媒体或工具调用仍按空回复处理。展示用 `reasoning` Item 仍不作为独立请求消息回放，也不把摘要拼进正文。Chat 来源的思考内容会附着在同一轮 assistant 消息上，由 Chat Completions 适配器按端点/能力或显式配置决定是否写入非标准字段 `reasoning_content`；官方 OpenAI 普通 Chat 默认不发送该字段。旧 `modelContext.value.type=chat_reasoning` 继续可读，并在没有展示用 `reasoning` 内容时作为兼容来源；新 Chat 请求不再重复归档这份内部上下文。Responses 原始 reasoning 对象仍独立存入 `modelContext` 并完整回放一次，保留 summary、encrypted_content 等供应商字段，不额外写入 Chat 的 `reasoning_content`；客户端只展示明文段，不解密或显示加密内容。当前 HTTP 适配器只支持 Chat Completions 与 Responses，不包含 Anthropic Messages 原生 `thinking` / `redacted_thinking` / `signature` 回放。开启方式见[配置](../guides/configuration.md)。
 
 这是新增的 Item 类型和通知，客户端须识别或忽略 `reasoning`，Rust 的 `Item` / `ModelEvent` 穷尽匹配需增加对应分支，`ModelOptions` / `ModelParameters` / `SelectedModelConfig` 新增可选摘要字段。字段见 [Core schema](../../schemas/areal-core-v1.json)，本地客户端显示行为见[客户端指南](../guides/clients.md)。
 

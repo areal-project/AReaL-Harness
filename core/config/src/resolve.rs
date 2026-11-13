@@ -39,6 +39,11 @@ const ENV: &[(&str, &str, &str)] = &[
         "model.summary_preserve_prefix",
     ),
     (
+        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT",
+        "",
+        "model.replay_chat_reasoning_content",
+    ),
+    (
         "AREAL_HARNESS_CONTEXT_TARGET_TOKENS",
         "",
         "limits.context_target_tokens",
@@ -477,6 +482,7 @@ pub(crate) fn valid(field: &str, entry: &Entry) -> Result<()> {
         | "responses_websocket"
         | "responses_prompt_cache"
         | "summary_preserve_prefix"
+        | "replay_chat_reasoning_content"
         | "summary_quoted_retry"
         | "command_stdin_closed"
         | "goal_recover_unknown_model_usage" => {
@@ -1060,6 +1066,9 @@ pub(crate) fn load_mode(
                 .map(|e| matches!(e.value.as_str(), "true" | "1")),
             summary_preserve_prefix: values
                 .get("model.summary_preserve_prefix")
+                .map(|e| matches!(e.value.as_str(), "true" | "1")),
+            replay_chat_reasoning_content: values
+                .get("model.replay_chat_reasoning_content")
                 .map(|e| matches!(e.value.as_str(), "true" | "1")),
             responses_websocket: matches!(
                 values["model.responses_websocket"].value.as_str(),

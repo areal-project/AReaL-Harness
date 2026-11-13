@@ -285,6 +285,17 @@ impl Engine {
                     context::text_tokens(&value.to_string()),
                 ));
             }
+            if let Some(text) = message
+                .reasoning_content
+                .as_deref()
+                .filter(|text| !text.is_empty())
+            {
+                parts.push(part(
+                    Kind::Conversation,
+                    "助手思考",
+                    context::text_tokens(text),
+                ));
+            }
             for content in &message.content {
                 if !matches!(content, ContentPart::Text(_)) {
                     parts.push(part(

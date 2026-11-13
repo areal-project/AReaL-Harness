@@ -1330,6 +1330,44 @@ fn summary_prefix_reuse_is_explicit_and_preserves_legacy_config() {
 }
 
 #[test]
+fn replay_chat_reasoning_content_is_explicit_and_preserves_legacy_config() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut i = inputs(temp.path());
+    let original = load_config(&i).unwrap().model;
+    assert_eq!(original.replay_chat_reasoning_content, None);
+    let legacy = serde_json::to_value(&original).unwrap();
+    assert!(legacy.get("replay_chat_reasoning_content").is_none());
+    let restored: areal_config::SelectedModelConfig = serde_json::from_value(legacy).unwrap();
+    assert_eq!(restored.fingerprint(), original.fingerprint());
+    write(
+        &mut i,
+        "schema_version=1\n[model]\nreplay_chat_reasoning_content=false\n",
+    );
+    let configured = load_config(&i).unwrap();
+    assert_eq!(configured.model.replay_chat_reasoning_content, Some(false));
+    assert_eq!(
+        configured.diagnostic(false)["model"]["replay_chat_reasoning_content"],
+        false
+    );
+    assert_ne!(configured.model.fingerprint(), original.fingerprint());
+    set(
+        &mut i,
+        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT",
+        "true",
+    );
+    assert_eq!(
+        load_config(&i).unwrap().model.replay_chat_reasoning_content,
+        Some(true)
+    );
+    set(
+        &mut i,
+        "AREAL_HARNESS_REPLAY_CHAT_REASONING_CONTENT",
+        "automatic",
+    );
+    assert_eq!(failure(&i).kind, ConfigErrorKind::InvalidValue);
+}
+
+#[test]
 fn quoted_summary_retry_requires_explicit_configuration() {
     let temp = tempfile::tempdir().unwrap();
     let mut i = inputs(temp.path());

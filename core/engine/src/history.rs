@@ -576,6 +576,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                     tool_calls: Vec::new(),
                     tool_call_id: None,
                     provider_context: None,
+                    reasoning_content: None,
                 });
             }
         } else {
@@ -605,6 +606,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                         tool_calls: Vec::new(),
                         tool_call_id: None,
                         provider_context: None,
+                        reasoning_content: None,
                     });
                 }
             }
@@ -629,6 +631,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
     // its text and all calls, followed by all results. Do not make a batch look
     // like the model observed call 1's result before deciding to make call 2.
     let mut assistant_index: Option<usize> = None;
+    let mut pending_chat_reasoning: Option<String> = None;
     let mut visuals = Vec::new();
     let mut response_calls = BTreeMap::<String, Value>::new();
     let canonical_messages: HashSet<_> = items
@@ -651,6 +654,9 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
         ) {
             messages.append(&mut visuals);
             assistant_index = None;
+            if matches!(item, Item::UserMessage { .. }) {
+                pending_chat_reasoning = None;
+            }
         }
         let message = match item {
             Item::UserMessage { content, .. } => Message {
@@ -662,10 +668,21 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                 tool_calls: Vec::new(),
                 tool_call_id: None,
                 provider_context: None,
+                reasoning_content: None,
             },
-            Item::Reasoning { .. } => continue,
+            Item::Reasoning { content, .. } => {
+                attach_chat_origin_reasoning(
+                    &mut messages,
+                    assistant_index,
+                    &mut pending_chat_reasoning,
+                    &content.concat(),
+                    false,
+                );
+                continue;
+            }
             Item::ModelContext { value, .. } => {
                 if value["type"] == "areal_response_output" {
+                    pending_chat_reasoning = None;
                     messages.append(&mut visuals);
                     let output = value["items"]
                         .as_array()
@@ -708,9 +725,16 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                     }
                     continue;
                 }
-                // Chat reasoning is archived for inspection, not replayed to
-                // either HTTP protocol or charged to its input context window.
+                // Legacy Chat reasoning archive: use only when this round has
+                // no display `reasoning` content, and never for Responses items.
                 if value["type"] == "chat_reasoning" {
+                    attach_chat_origin_reasoning(
+                        &mut messages,
+                        assistant_index,
+                        &mut pending_chat_reasoning,
+                        value["reasoning_content"].as_str().unwrap_or(""),
+                        true,
+                    );
                     continue;
                 }
                 // Keep opaque Responses context in its recorded order.
@@ -722,7 +746,9 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
             Item::AgentMessage { id, .. } if canonical_messages.contains(id.as_str()) => continue,
             Item::AgentMessage { text, .. } if !text.is_empty() => {
                 assistant_index = Some(messages.len());
-                Message::text("assistant", text.clone())
+                let mut message = Message::text("assistant", text.clone());
+                message.reasoning_content = pending_chat_reasoning.take();
+                message
             }
             Item::DynamicToolCall {
                 tool,
@@ -770,7 +796,9 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                     json!({"_rejected_arguments": effective})
                 };
                 let index = *assistant_index.get_or_insert_with(|| {
-                    messages.push(Message::text("assistant", ""));
+                    let mut message = Message::text("assistant", "");
+                    message.reasoning_content = pending_chat_reasoning.take();
+                    messages.push(message);
                     messages.len() - 1
                 });
                 // JSON 解析后的语义没有变化时保留原始参数字节；hook 改写仍按生效参数回放。
@@ -920,6 +948,7 @@ pub(super) fn history(thread: &Thread, store: &store::Store) -> anyhow::Result<V
                     tool_calls: Vec::new(),
                     tool_call_id: None,
                     provider_context: None,
+                    reasoning_content: None,
                 }
             }
             _ => continue,
@@ -1018,6 +1047,212 @@ pub(crate) fn uploaded_content_with_media(
         }
     }
     Ok(content)
+}
+
+fn assistant_uses_responses_reasoning(message: &Message) -> bool {
+    message.provider_context.as_ref().is_some_and(|value| {
+        value["type"] == "areal_response_output" || value["type"] == "reasoning"
+    })
+}
+
+fn push_reasoning_text(target: &mut Option<String>, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    match target {
+        Some(existing) => existing.push_str(text),
+        None => *target = Some(text.to_owned()),
+    }
+}
+
+/// Attach Chat-origin thinking to the current assistant message or pending buffer.
+/// `legacy` skips the text when display `reasoning` content is already present.
+fn attach_chat_origin_reasoning(
+    messages: &mut [Message],
+    assistant_index: Option<usize>,
+    pending: &mut Option<String>,
+    text: &str,
+    legacy: bool,
+) {
+    if text.is_empty() {
+        return;
+    }
+    if let Some(index) = assistant_index {
+        if assistant_uses_responses_reasoning(&messages[index]) {
+            return;
+        }
+        if legacy
+            && messages[index]
+                .reasoning_content
+                .as_ref()
+                .is_some_and(|value| !value.is_empty())
+        {
+            return;
+        }
+        push_reasoning_text(&mut messages[index].reasoning_content, text);
+        return;
+    }
+    if legacy && pending.as_ref().is_some_and(|value| !value.is_empty()) {
+        return;
+    }
+    push_reasoning_text(pending, text);
+}
+
+#[cfg(test)]
+mod chat_reasoning_history_tests {
+    use super::*;
+
+    fn fixture(items: Vec<Value>) -> (Thread, store::Store, tempfile::TempDir) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = store::Store::open(directory.path()).unwrap();
+        let thread = serde_json::from_value(json!({
+            "id":"thread-1","sessionId":"thread-1","parentThreadId":null,"preview":"",
+            "modelProvider":"fixture","createdAt":0,"updatedAt":0,"status":{"type":"idle"},
+            "cwd":"/tmp","cliVersion":"test","source":"appServer","ephemeral":false,
+            "turns":[{"id":"turn-1","status":"completed","error":null,"items":items}]
+        }))
+        .unwrap();
+        (thread, store, directory)
+    }
+
+    fn tool_call(id: &str, call_id: &str) -> Value {
+        json!({
+            "type":"dynamicToolCall","id":id,"tool":"read_file","arguments":{"path":"a.rs"},
+            "status":"completed","success":true,"callId":call_id,
+            "contentItems":[{"type":"inputText","text":"ok"}],
+            "execution":{"runtimeEpoch":"test","scopeId":"scope","operationId":id,"outcome":"succeeded"}
+        })
+    }
+
+    #[test]
+    fn chat_reasoning_attaches_to_same_round_assistant_and_does_not_duplicate_across_tool_rounds() {
+        let (thread, store, _dir) = fixture(vec![
+            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"use the tool"}]}),
+            json!({"type":"agentMessage","id":"a1","text":""}),
+            json!({"type":"reasoning","id":"r1","content":["think-one"],"summary":["ignore-summary"]}),
+            tool_call("c1", "call-1"),
+            json!({"type":"agentMessage","id":"a2","text":"done"}),
+            json!({"type":"reasoning","id":"r2","content":["think-two"]}),
+        ]);
+        let messages = history(&thread, &store).unwrap();
+        let assistants: Vec<_> = messages.iter().filter(|m| m.role == "assistant").collect();
+        assert_eq!(assistants.len(), 2);
+        assert_eq!(
+            assistants[0].reasoning_content.as_deref(),
+            Some("think-one")
+        );
+        assert!(
+            assistants[0]
+                .tool_calls
+                .iter()
+                .any(|call| call["id"] == "call-1")
+        );
+        assert_eq!(assistants[0].text_content(), "");
+        assert_eq!(assistants[1].text_content(), "done");
+        assert_eq!(
+            assistants[1].reasoning_content.as_deref(),
+            Some("think-two")
+        );
+        assert!(
+            !assistants[1]
+                .reasoning_content
+                .as_deref()
+                .unwrap()
+                .contains("think-one")
+        );
+        assert!(
+            !assistants[0]
+                .reasoning_content
+                .as_deref()
+                .unwrap()
+                .contains("think-two")
+        );
+    }
+
+    #[test]
+    fn legacy_chat_reasoning_is_used_only_when_display_content_is_absent() {
+        let (thread, store, _dir) = fixture(vec![
+            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"ask"}]}),
+            json!({"type":"agentMessage","id":"a1","text":"ok"}),
+            json!({"type":"reasoning","id":"r1","content":["display-text"]}),
+            json!({"type":"modelContext","id":"c1","value":{"type":"chat_reasoning","reasoning_content":"legacy-text"}}),
+        ]);
+        let messages = history(&thread, &store).unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .find(|m| m.role == "assistant")
+                .unwrap()
+                .reasoning_content
+                .as_deref(),
+            Some("display-text")
+        );
+
+        let (thread, store, _dir) = fixture(vec![
+            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"ask"}]}),
+            json!({"type":"agentMessage","id":"a1","text":"ok"}),
+            json!({"type":"modelContext","id":"c1","value":{"type":"chat_reasoning","reasoning_content":"legacy-only"}}),
+        ]);
+        let messages = history(&thread, &store).unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .find(|m| m.role == "assistant")
+                .unwrap()
+                .reasoning_content
+                .as_deref(),
+            Some("legacy-only")
+        );
+    }
+
+    #[test]
+    fn responses_output_does_not_receive_chat_reasoning_content() {
+        let (thread, store, _dir) = fixture(vec![
+            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"ask"}]}),
+            json!({"type":"reasoning","id":"r1","content":["display-only"],"summary":["public-summary"]}),
+            json!({"type":"modelContext","id":"ctx","value":{
+                "type":"areal_response_output",
+                "visibleMessageId":"a1",
+                "items":[
+                    {"type":"reasoning","id":"rr","encrypted_content":"enc-blob","summary":[{"type":"summary_text","text":"public-summary"}]},
+                    {"type":"message","role":"assistant","content":[{"type":"output_text","text":"visible"}]}
+                ]
+            }}),
+            json!({"type":"agentMessage","id":"a1","text":"visible"}),
+        ]);
+        let messages = history(&thread, &store).unwrap();
+        let assistant = messages.iter().find(|m| m.role == "assistant").unwrap();
+        assert_eq!(assistant.text_content(), "visible");
+        assert!(assistant.reasoning_content.is_none());
+        assert_eq!(
+            assistant.provider_context.as_ref().unwrap()["type"],
+            "areal_response_output"
+        );
+        assert!(
+            assistant
+                .provider_context
+                .as_ref()
+                .unwrap()
+                .to_string()
+                .contains("enc-blob")
+        );
+    }
+
+    #[test]
+    fn persistence_round_trip_restores_the_same_reasoning_projection() {
+        let items = vec![
+            json!({"type":"userMessage","id":"u1","content":[{"type":"text","text":"ask"}]}),
+            json!({"type":"agentMessage","id":"a1","text":"ok"}),
+            json!({"type":"reasoning","id":"r1","content":["persist-me"]}),
+        ];
+        let (thread, store, _dir) = fixture(items);
+        let first = history(&thread, &store).unwrap();
+        let encoded = serde_json::to_value(&thread).unwrap();
+        let restored: Thread = serde_json::from_value(encoded).unwrap();
+        let second = history(&restored, &store).unwrap();
+        assert_eq!(first[1].reasoning_content, second[1].reasoning_content);
+        assert_eq!(second[1].reasoning_content.as_deref(), Some("persist-me"));
+    }
 }
 
 #[cfg(test)]

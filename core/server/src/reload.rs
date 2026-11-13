@@ -60,6 +60,7 @@ pub fn model(
             summary_reasoning_effort: config.summary_reasoning_effort.clone(),
             summary_max_output_tokens: config.summary_max_output_tokens,
             summary_preserve_prefix: config.summary_preserve_prefix,
+            replay_chat_reasoning_content: config.replay_chat_reasoning_content,
             summary_quoted_retry: config.summary_quoted_retry,
             reasoning_summary: config.reasoning_summary.clone(),
             max_output_tokens: config.max_output_tokens,
@@ -280,6 +281,7 @@ mod tests {
             let mut encoded = serde_json::to_string(&config.model).unwrap();
             assert!(!encoded.contains("summary_reasoning_effort"));
             assert!(!encoded.contains("summary_preserve_prefix"));
+            assert!(!encoded.contains("replay_chat_reasoning_content"));
             assert!(!encoded.contains("responses_websocket"));
             assert!(!encoded.contains("responses_prompt_cache"));
             if variant == 1 || variant == 2 {

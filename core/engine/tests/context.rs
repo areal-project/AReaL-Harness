@@ -289,20 +289,34 @@ impl Model for ArchivedChatReasoning {
 }
 
 #[tokio::test]
-async fn archived_chat_reasoning_does_not_trigger_compaction_or_disappear_from_history() {
+async fn archived_chat_reasoning_counts_toward_compaction_and_remains_in_history() {
     let data = tempfile::tempdir().unwrap();
     let engine = Engine::open(data.path(), Arc::new(ArchivedChatReasoning), limits()).unwrap();
     let thread = engine.create("/workspace".into()).await.unwrap();
+    let mut saw_checkpoint = false;
     for _ in 0..3 {
         let completed = turn(&engine, &thread.id, "Continue implementation").await;
         assert_eq!(
             completed.turns.last().unwrap().status,
             TurnStatus::Completed
         );
-        assert!(completed.context_checkpoint.is_none());
         assert!(completed.turns.last().unwrap().items.iter().any(|item| matches!(item, areal_protocol::Item::Reasoning { content, .. } if content[0].len() > 16 * 1024)));
         assert!(completed.turns.last().unwrap().items.iter().any(|item| matches!(item, areal_protocol::Item::ModelContext { value, .. } if value["reasoning_content"].as_str().unwrap().len() > 16*1024)));
+        saw_checkpoint |= completed.context_checkpoint.is_some();
     }
+    let full = engine.read(&thread.id, true).await.unwrap();
+    assert!(
+        saw_checkpoint || full.context_checkpoint.is_some(),
+        "replayable chat reasoning should count toward the 2200-byte window"
+    );
+    assert_eq!(
+        full.turns
+            .iter()
+            .flat_map(|turn| &turn.items)
+            .filter(|item| matches!(item, areal_protocol::Item::Reasoning { .. }))
+            .count(),
+        3
+    );
     engine.shutdown().await;
 }
 

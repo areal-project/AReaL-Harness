@@ -373,7 +373,7 @@ async fn canonical_output_wire_preserves_phase_and_hook_arguments_without_duplic
             ModelProtocol::Responses,
         )
         .unwrap()
-        .request_body(vec![m.clone()])
+        .project_request_body(vec![m.clone()], false)
         .await
         .unwrap();
         assert_eq!(responses["input"], json!(output));
@@ -385,7 +385,7 @@ async fn canonical_output_wire_preserves_phase_and_hook_arguments_without_duplic
             ModelProtocol::ChatCompletions,
         )
         .unwrap()
-        .request_body(vec![m])
+        .project_request_body(vec![m], false)
         .await
         .unwrap();
         let entries = chat["messages"].as_array().unwrap();

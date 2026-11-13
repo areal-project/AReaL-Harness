@@ -7,6 +7,7 @@ mod capacity;
 pub(crate) use capacity::{RequestCapacity, RequestPhase};
 mod context_windows;
 pub(crate) use context_windows::{known_context_window, subscription_context_window};
+mod chat_reasoning_replay;
 #[cfg(test)]
 mod prompt_cache_tests;
 mod request_budget;
@@ -450,6 +451,9 @@ pub struct Message {
     pub tool_call_id: Option<String>,
     /// 原始供应商输出（含有序 Responses 完成输出），不是新增用户输入。
     pub provider_context: Option<Value>,
+    /// Chat 来源的思考原文，仅供 Chat Completions 按策略写入非标准 `reasoning_content`。
+    /// Responses 回放仍使用 `provider_context` 中的原始 item，不读此字段。
+    pub reasoning_content: Option<String>,
 }
 
 // 展示流和 Chat 兼容投影使用可见文字；Responses 回放使用完整原始 item。
@@ -522,6 +526,7 @@ impl Message {
             tool_calls: Vec::new(),
             tool_call_id: None,
             provider_context: None,
+            reasoning_content: None,
         }
     }
 
@@ -832,6 +837,8 @@ pub struct ModelOptions {
     pub summary_max_output_tokens: Option<u64>,
     /// 显式禁用会改写前缀的兼容网关上的摘要复用；不改变普通求解缓存。
     pub summary_preserve_prefix: Option<bool>,
+    /// 是否在 Chat Completions 请求中回放 `reasoning_content`。None 表示按端点自动策略。
+    pub replay_chat_reasoning_content: Option<bool>,
     pub summary_quoted_retry: Option<bool>,
     pub reasoning_summary: Option<String>,
     pub responses_websocket: bool,
@@ -858,6 +865,7 @@ impl Default for ModelOptions {
             summary_reasoning_effort: None,
             summary_max_output_tokens: None,
             summary_preserve_prefix: None,
+            replay_chat_reasoning_content: None,
             summary_quoted_retry: None,
             reasoning_summary: None,
             responses_websocket: false,
@@ -1079,14 +1087,20 @@ impl HttpModel {
         Ok(self)
     }
 
-    async fn request_body(&self, messages: Vec<Message>) -> Result<Value> {
+    async fn project_request_body(&self, messages: Vec<Message>, has_tools: bool) -> Result<Value> {
         let mut media_budget = request_budget::MediaBudget::new(self.materialization_limit());
         match self.protocol {
             ModelProtocol::ChatCompletions => {
+                let replay = chat_reasoning_replay::should_replay_chat_reasoning_content(
+                    self.protocol,
+                    &self.endpoint,
+                    &self.options,
+                    has_tools,
+                );
                 let mut output: Vec<Value> = Vec::with_capacity(messages.len());
                 let mut system_text = Vec::new();
                 let has_runtime_context = messages.iter().any(|m| m.role == "areal_context");
-                for message in messages {
+                for mut message in messages {
                     if message.provider_context.is_some() && message.responses_output().is_none() {
                         continue;
                     }
@@ -1095,6 +1109,7 @@ impl HttpModel {
                     } else {
                         &message.role
                     };
+                    let reasoning_content = message.reasoning_content.take();
                     let mut content = chat_content(message.content, &mut media_budget).await?;
                     if message.role == "areal_context" {
                         content = json!(format!(
@@ -1113,6 +1128,11 @@ impl HttpModel {
                         continue;
                     }
                     let mut item = json!({"role": role, "content": content});
+                    chat_reasoning_replay::apply_chat_reasoning_content(
+                        &mut item,
+                        reasoning_content.as_deref(),
+                        replay,
+                    );
                     if !message.tool_calls.is_empty() {
                         item["tool_calls"] = json!(
                             message
@@ -1354,13 +1374,16 @@ impl Model for HttpModel {
             "required model tool call is unavailable under current permissions or budget"
         );
         self.preflight_media(&messages, purpose).await?;
-        let mut body = self.request_body(messages).await.map_err(|error| {
-            if let Some(size) = error.downcast_ref::<request_budget::RequestTooLarge>() {
-                self.reject_request(size.actual, size.limit, size.stage, purpose)
-            } else {
-                error
-            }
-        })?;
+        let mut body = self
+            .project_request_body(messages, !tools.is_empty())
+            .await
+            .map_err(|error| {
+                if let Some(size) = error.downcast_ref::<request_budget::RequestTooLarge>() {
+                    self.reject_request(size.actual, size.limit, size.stage, purpose)
+                } else {
+                    error
+                }
+            })?;
         if let Some(tier) = &self.options.service_tier {
             body["service_tier"] = json!(tier);
         }

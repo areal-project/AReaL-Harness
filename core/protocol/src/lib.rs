@@ -266,7 +266,7 @@ pub enum Item {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         phase: Option<AgentMessagePhase>,
     },
-    /// 模型显式返回的思考文本，独立于正文且不回放为模型输入。
+    /// 模型显式返回的思考文本，独立于正文。展示 Item 本身不作为独立请求消息回放；Chat 来源的 content 可附着到同一轮 assistant 消息，由适配器按协议与配置决定是否发送。
     Reasoning {
         id: String,
         #[serde(default)]
