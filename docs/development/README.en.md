@@ -83,7 +83,7 @@ GUI acceptance cleanup checks reuse the product's native Core launcher and query
 |---|---|
 | Formatting | `make fmt` / `make fmt-check` |
 | Static analysis | `make lint` |
-| Change-scoped local checks | `make check-changed CI_BASE=<ref>`; `ARGS=--plan` prints the plan, with selected-check outcomes and unavailable prerequisites reported separately |
+| Change-scoped local checks | `make check-changed CI_BASE=<ref>`; `ARGS=--phase=push` runs push checks, `ARGS=--phase=full` runs the full plan, and `ARGS=--plan` only lists the plan; unexecuted checks are reported separately |
 | Rust / SDK / scripts | `make test` / `make sdk-test` / `make script-test` |
 | Regular regression | `make verify` |
 | Native integration | `make verify-harness`, including regular regression |

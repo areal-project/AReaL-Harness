@@ -276,7 +276,22 @@ let app,
   page,
   passed = false;
 async function readPasteThread(threadId, executionWorkspace = workspace) {
-  return observeCoreThread({ binary, env, gui, threadId, workspace: executionWorkspace });
+  const source = project(await state());
+  const execution = source?.state?.threads?.[threadId];
+  const binding =
+    executionWorkspace === workspace ||
+    (execution?.worktree?.directory === executionWorkspace &&
+      execution.executionCore?.serviceGeneration)
+      ? source
+      : undefined;
+  return observeCoreThread({
+    binary,
+    env,
+    gui,
+    threadId,
+    project: binding,
+    workspace: executionWorkspace,
+  });
 }
 const errors = [],
   frames = [],
@@ -498,26 +513,39 @@ try {
     await openCatalog();
     await page.getByRole("option", { name: /Deterministic test skill/ }).click();
   };
-  const sendAndWait = async () => {
-    const count = received.length;
-    const previous = new Set(
-      Object.values(project(await state()).state.threads).flatMap((thread) =>
-        (thread.turns ?? []).map((turn) => turn.id),
-      ),
+  const acceptedTurn = (thread, turn) =>
+    thread.desktop?.receipts?.some(
+      (receipt) => receipt.method === "areal/turn/start" && receipt.result?.turn?.id === turn.id,
     );
-    await button("发送").click();
+  const waitForSend = async (threadId, previous, count, label, expectedText) => {
     try {
       let accepted;
       await until(async () => {
-        const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-        if (!threadId || received.length <= count) return null;
-        const thread = await readPasteThread(threadId);
+        const active = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+        if (!active || (threadId && active !== threadId) || received.length <= count) return null;
+        const thread = await readPasteThread(active);
         accepted = thread.turns.find(
-          (turn) => !previous.has(turn.id) && turn.status === "completed",
+          (turn) =>
+            !previous.has(turn.id) &&
+            turn.status === "completed" &&
+            (!expectedText ||
+              turn.items.some(
+                (item) =>
+                  item.type === "userMessage" &&
+                  item.content?.some((part) => part.type === "text" && part.text === expectedText),
+              )) &&
+            acceptedTurn(thread, turn),
         );
         return accepted;
-      }, "send completed");
+      }, label);
       await page.locator(`[data-turn-id="${accepted.id}"][data-turn-status="completed"]`).waitFor();
+      await page.waitForFunction(() => {
+        const input = document.querySelector(
+          '[data-testid="chat-view"] [data-testid="chat-input"]',
+        );
+        return input?.getAttribute("contenteditable") === "true" && input.textContent === "";
+      });
+      return accepted;
     } catch (error) {
       await writeFile(
         join(scratch, "send-timeout-state.json"),
@@ -538,6 +566,15 @@ try {
       );
       throw error;
     }
+  };
+  const sendAndWait = async () => {
+    const count = received.length;
+    const threadId = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    const previous = new Set(
+      threadId ? (await readPasteThread(threadId)).turns.map((turn) => turn.id) : [],
+    );
+    await button("发送").click();
+    return waitForSend(threadId, previous, count, "send completed");
   };
   if (folderVisionRegression) {
     await runComposerFolderVisionAcceptance({
@@ -1177,7 +1214,6 @@ try {
     const tid = await page.locator("[data-testid=areal-workbench]").getAttribute("data-thread-id");
     assert.equal(project(await state()).configurations[tid].profile.id, "standard");
     assert.equal(project(await state()).configurations[tid].profile.revision, "v1");
-    const current = (s) => project(s).state.threads[tid];
     const sentBody = received.at(-1);
     assert.equal(sentBody.model, "fixture-alt");
     assert.equal(sentBody.reasoning_effort, "high");
@@ -1185,7 +1221,6 @@ try {
     assert.ok(sentText.includes("PAGED_SKILL_END"));
     assert.ok(sentText.includes("SECOND_SKILL_CONTENT"));
     assert.ok(sentText.includes("正文保留"));
-    await until((s) => !project(s).pending.length, "submission settled");
     assert.equal(await tags().count(), 0);
     checks.push(
       "real paged Core Skill read (multibyte >8192 bytes) reaches model request; independent model/effort selection reaches provider",
@@ -1365,11 +1400,17 @@ try {
           received.length === beforePaste.requests + 1 &&
           native?.turns.length === beforePaste.turns + 1 &&
           native?.turns.at(-1)?.status === "completed" &&
-          !project(s).pending.length
+          acceptedTurn(native, native.turns.at(-1))
         );
       }, `${label}: folded paste direct Send completes as Text`);
       const turn = acceptedThread.turns.at(-1);
       await page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`).waitFor();
+      await page.waitForFunction(() => {
+        const editor = document.querySelector(
+          '[data-testid="chat-view"] [data-testid="chat-input"]',
+        );
+        return editor?.getAttribute("contenteditable") === "true" && editor.textContent === "";
+      });
       const userMessages = turn.items.filter((item) => item.type === "userMessage");
       assert.equal(userMessages.length, 1);
       assert.deepEqual(
@@ -1425,14 +1466,9 @@ try {
         mimeType: "application/typescript",
         buffer: Buffer.from(uploadedText),
       });
-    await sendAndWait();
-    await until(
-      (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
-      "text file accepted",
-    );
-    const filePart = current(await state())
-      .turns.at(-1)
-      .items.find((item) => item.type === "userMessage")
+    const fileTurn = await sendAndWait();
+    const filePart = fileTurn.items
+      .find((item) => item.type === "userMessage")
       .content.find((part) => part.type === "file");
     assert.equal(filePart.name, "中文源文件.ts");
     assert.equal(filePart.mime_type, "text/plain");
@@ -1625,10 +1661,6 @@ try {
     });
     await page.evaluate(() => window.dispatchEvent(new Event("areal-plugins-changed")));
     await sendAndWait();
-    await until(
-      (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
-      "plugin mention sent",
-    );
     const pluginMessage = received
       .at(-1)
       .messages.filter(
@@ -1735,15 +1767,8 @@ try {
     await input().locator('[data-mention-category="plugins"]').waitFor();
     await shot("plugin-mention-new-draft-reloaded");
     await sendAndWait();
-    let firstPluginTid;
-    await until(async (s) => {
-      firstPluginTid = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
-      return (
-        firstPluginTid &&
-        project(s).state.threads[firstPluginTid]?.turns.at(-1)?.status === "completed" &&
-        !project(s).pending.length
-      );
-    }, "first plugin message accepted in created Thread");
+    const firstPluginTid = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    assert.ok(firstPluginTid, "first plugin message has a created Thread");
     const firstPluginMessage = received
       .at(-1)
       .messages.filter(
@@ -1757,11 +1782,15 @@ try {
       .at(-1).content;
     assert.equal(firstPluginMessage.split("COMPOSER_PLUGIN_EXACT_BODY").length - 1, 1);
     await selectConversation(page, tid);
-    const parentConfiguration = project(await state()).configurations[tid];
+    const parentConfiguration = (await readPasteThread(tid)).desktop?.configuration;
+    assert.ok(parentConfiguration, "parent Core configuration is present");
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1024, 768));
     await page.waitForFunction(() => innerWidth <= 1024);
     await openSideChat(page);
     const sidePane = page.getByTestId("side-chat-pane").filter({ visible: true });
+    const sideId = await sidePane.getAttribute("data-thread-id");
+    assert.ok(sideId, "Side has an original Core thread");
+    const sideBefore = new Set((await readPasteThread(sideId)).turns.map((turn) => turn.id));
     const sideInput = sidePane.getByRole("textbox", {
       name: "描述要做的事，@ 引用文件，/ 查看命令",
       exact: true,
@@ -1784,11 +1813,20 @@ try {
     await shot("plugin-mention-side-draft");
     await sidePane.getByRole("button", { name: "发送", exact: true }).click();
     let sidePluginThread;
-    const sideCompleted = await until(async (s) => {
-      const sideId = await sidePane.getAttribute("data-thread-id");
-      if (!sideId || received.length <= beforeSidePlugin) return false;
+    await until(async () => {
+      if (
+        (await sidePane.getAttribute("data-thread-id")) !== sideId ||
+        received.length <= beforeSidePlugin
+      )
+        return false;
       sidePluginThread = await readPasteThread(sideId);
-      return sidePluginThread.turns.at(-1)?.status === "completed" && !project(s).pending.length;
+      const turn = sidePluginThread.turns.at(-1);
+      return (
+        turn &&
+        !sideBefore.has(turn.id) &&
+        turn.status === "completed" &&
+        acceptedTurn(sidePluginThread, turn)
+      );
     }, "Side plugin intent completed");
     const sidePluginMessage = received
       .at(-1)
@@ -1811,7 +1849,7 @@ try {
       .locator(`[data-turn-id="${sidePluginThread.turns.at(-1).id}"][data-turn-status="completed"]`)
       .waitFor();
     assert.equal(sidePluginThread.conversation.policy.kind, "sideExecutableV2");
-    assert.deepEqual(project(sideCompleted).configurations[tid], parentConfiguration);
+    assert.deepEqual((await readPasteThread(tid)).desktop?.configuration, parentConfiguration);
     await page.waitForFunction(
       (editor) => editor.getAttribute("contenteditable") === "true" && editor.textContent === "",
       await sideInput.elementHandle(),
@@ -1825,13 +1863,13 @@ try {
     await sideInput.locator('[data-mention-category="plugins"]').waitFor();
     await sidePane.getByRole("button", { name: "发送", exact: true }).click();
     let sideFollowUpTurn;
-    const sideFollowUpCompleted = await until(async (s) => {
+    await until(async () => {
       const authoritative = await readPasteThread(sidePluginThread.id);
       if (
         received.length <= beforeSideFollowUp ||
         authoritative.turns.length !== sideTurnsBefore + 1 ||
         authoritative.turns.at(-1)?.status !== "completed" ||
-        project(s).pending.length
+        !acceptedTurn(authoritative, authoritative.turns.at(-1))
       )
         return false;
       sideFollowUpTurn = authoritative.turns.at(-1);
@@ -1840,6 +1878,10 @@ try {
     await sidePane
       .locator(`[data-turn-id="${sideFollowUpTurn.id}"][data-turn-status="completed"]`)
       .waitFor();
+    await page.waitForFunction(
+      (editor) => editor.getAttribute("contenteditable") === "true" && editor.textContent === "",
+      await sideInput.elementHandle(),
+    );
     const sideFollowUpMessage = received
       .at(-1)
       .messages.filter(
@@ -1860,10 +1902,10 @@ try {
       "executable Side follow-up retains its inherited Profile Skill without duplication",
     );
     assert.equal(
-      project(sideFollowUpCompleted).state.threads[sidePluginThread.id].conversation.policy.kind,
+      (await readPasteThread(sidePluginThread.id)).conversation.policy.kind,
       "sideExecutableV2",
     );
-    assert.deepEqual(project(sideFollowUpCompleted).configurations[tid], parentConfiguration);
+    assert.deepEqual((await readPasteThread(tid)).desktop?.configuration, parentConfiguration);
 
     // 完整视图和分屏共用标签关闭键；窄窗中的面板按钮只负责切换视图。
     await page
@@ -1890,10 +1932,6 @@ try {
     await page.getByRole("button", { name: "在文本框中显示 ›" }).waitFor();
     await checkAttachmentReload("existing-thread", /已有会话正文/, existingPasted, tid);
     await sendAndWait();
-    await until(
-      (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
-      "reattached file send",
-    );
     checks.push(
       "new and existing drafts restore missing-file notices and folded text; removal and reattachment unblock sending",
     );
@@ -1913,16 +1951,20 @@ try {
       );
       await button("返回应用").click();
       const requestCount = received.length;
+      const previous = new Set((await readPasteThread(tid)).turns.map((turn) => turn.id));
       await input().focus();
       await page.keyboard.type(`Enter caret ${theme}`);
       await input().press("Enter");
-      await until(
-        (s) =>
-          received.length > requestCount &&
-          current(s).turns.at(-1)?.status === "completed" &&
-          !project(s).pending.length,
+      const turn = await waitForSend(
+        tid,
+        previous,
+        requestCount,
         `${theme}: Enter send completed`,
+        `Enter caret ${theme}`,
       );
+      const rendered = page.locator(`[data-turn-id="${turn.id}"][data-turn-status="completed"]`);
+      await rendered.getByText(`Enter caret ${theme}`, { exact: true }).waitFor();
+      await rendered.getByText("COMPOSER_OK", { exact: true }).waitFor();
       await page.waitForFunction(() => {
         const element = document.querySelector('[data-testid="chat-input"]');
         return element?.getAttribute("contenteditable") === "true" && element.textContent === "";
@@ -2007,10 +2049,6 @@ try {
     }
     assert.ok((await readSkill()).dataBase64, "Core reads the same restored resource");
     await sendAndWait();
-    await until(
-      (s) => current(s).turns.at(-1)?.status === "completed" && !project(s).pending.length,
-      "second send",
-    );
     assert.equal(received.length, requestCount + 1, "retry sends exactly once");
     checks.push(
       "existing Composer Skill failure blocks send and retains draft; retry reads real resource",

@@ -172,7 +172,7 @@ class GitHooks(unittest.TestCase):
         makefile = self.root / "Makefile"
         makefile.write_text(
             makefile.read_text().replace(
-                "check-changed:\n", 'check-changed:\n\t@test "$(ARGS)" = ""\n'
+                "check-changed:\n", 'check-changed:\n\t@test "$(ARGS)" = "--phase push"\n'
             )
         )
         self.git("add", "Makefile")

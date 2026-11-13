@@ -23,11 +23,11 @@ description: 为 AReaL Harness 的改动选择并运行合适的测试（Core/Ho
 ## 怎么跑
 
 1. 环境不全先跑 `make agent-setup`；`target/agent-env.json` 列出本机具备的能力，测试清单按 `requires` 跳过缺的项。
-2. 从最低一层开始：单元测试 → 契约 → 真实进程。低层能失败就不往上加。
+2. 从最低能复现的一层验证，再覆盖必要的真实边界。
 3. 可复现的 bug 先证明旧代码因目标行为失败，再修；同类失败先核对共享边界、观察点与夹具。
 4. 等本次请求的权威事件、回执或退出；夹具入口见 [测试指南](../../../docs/development/testing.md)，保留权威结果与 UI 断言。
 5. 业务旅程跑 `pnpm --dir clients/gui run test:web-journeys`；Linux 无显示时用 `xvfb-run`。
-6. 推送前跑 `make check-changed`。不跑仓库全量检查。
+6. 推送运行仓库快检；完整验收入口见上述指南。
 
 ## 失败是不是你的
 

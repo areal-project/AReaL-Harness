@@ -948,6 +948,8 @@ export async function runComposerFilesAcceptance({
   });
   try {
     await createProjectConversation(page, "workspace");
+    // 执行工作树使用同一启动配置；此前直接写入源 Core 的测试供应商不会随之复制。
+    await configureModel({ providerId: "fixture", modelId: "fixture" });
     await button("新会话工作区").click();
     const worktreeToggle = page.getByRole("switch", {
       name: "在新工作树中工作",
@@ -963,6 +965,12 @@ export async function runComposerFilesAcceptance({
     ]);
     await input().fill("FILES_UPLOAD_TRANSFER");
     await button("发送").click();
+    await page.waitForFunction(() => {
+      const fixture = globalThis.composerUploadFixture;
+      return (
+        fixture.rejected?.rejectHit != null && fixture.rejected.rejectHit === fixture.uploads[1]?.id
+      );
+    });
     await page.locator('[data-upload-state="failed"]').waitFor();
     assert.equal(await page.locator('[data-upload-state="ready"]').count(), 1);
     const uploadThreadId = await activeId();
@@ -971,6 +979,13 @@ export async function runComposerFilesAcceptance({
     assert(
       (await current()).worktree?.directory,
       "first send created an actual execution worktree",
+    );
+    assert.deepEqual(
+      (await readCoreThread(uploadThreadId, uploadWorkspace)).desktop.configuration.model,
+      {
+        providerId: "fixture",
+        modelId: "fixture",
+      },
     );
     assert.equal((await page.evaluate(() => globalThis.composerUploadFixture.sends)).length, 0);
     await shot("files-upload-partial-failure-worktree");

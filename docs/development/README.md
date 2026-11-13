@@ -83,7 +83,7 @@ GUI 验收的服务清理检查复用产品的原生 Core 启动适配，并异�
 |---|---|
 | 格式 | `make fmt` / `make fmt-check` |
 | 静态检查 | `make lint` |
-| 本地改动快检 | `make check-changed CI_BASE=<ref>`；`ARGS=--plan` 仅输出计划，所选检查的结果与未执行条件分别报告 |
+| 本地改动检查 | `make check-changed CI_BASE=<ref>`；`ARGS=--phase=push` 运行推送快检，`ARGS=--phase=full` 运行完整计划，`ARGS=--plan` 仅列计划；未执行项单独报告 |
 | Rust / SDK / 脚本 | `make test` / `make sdk-test` / `make script-test` |
 | 常规回归 | `make verify` |
 | 原生集成 | `make verify-harness`，包含常规回归 |

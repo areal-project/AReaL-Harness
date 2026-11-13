@@ -362,7 +362,19 @@ async fn backend_business_errors_preserve_only_codes_supported_by_the_host() {
         "#).unwrap();
         let runtime = std::env::split_paths(&std::env::var_os("PATH").unwrap())
             .map(|path| path.join("node")).find(|path| path.is_file()).unwrap();
-        let runner = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../services/workbench/src/backend-main.cjs");
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+        let runner_root = root.path().join("runner");
+        let contract = runner_root.join("node_modules/@areal/workbench");
+        std::fs::create_dir_all(&contract).unwrap();
+        for file in ["backend-main.cjs", "channel.cjs", "pages.cjs"] {
+            std::fs::copy(repository.join("services/workbench/src").join(file), runner_root.join(file)).unwrap();
+        }
+        std::fs::write(contract.join("package.json"), r#"{"exports":{"./desktop-contract":"./contract.cjs","./desktop-contract/shared":"./shared.cjs"}}"#).unwrap();
+        for (shim, source) in [("contract.cjs", "desktop-contract.cjs"), ("shared.cjs", "desktop-contract/shared.cjs")] {
+            let path = repository.join("clients/gui/packages/workbench/client").join(source);
+            std::fs::write(contract.join(shim), format!("module.exports = require({});", serde_json::to_string(&path).unwrap())).unwrap();
+        }
+        let runner = runner_root.join("backend-main.cjs");
         let data = root.path().join("data");
         std::fs::create_dir(&data).unwrap();
         let (backend, _) = Workbench::start_with(&runtime, &runner, root.path(), reverse(&host), Some(("backend.start", json!({

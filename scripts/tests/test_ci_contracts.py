@@ -522,6 +522,17 @@ class CiContracts(unittest.TestCase):
         ]
         self.assertEqual(timing.predecessors(jobs[-1], jobs), jobs[1:3])
 
+    def test_smoke_and_core_lanes_share_build_but_gate_requires_both(self):
+        workflow = (ROOT / ".github/workflows/gui.yml").read_text()
+        core = workflow.split("  core-contract-shards:\n", 1)[1].split("  core-contracts:\n", 1)[0]
+        smoke = workflow.split("  smoke:\n", 1)[1].split("  linux-feasibility:\n", 1)[0]
+        gate_job = workflow.split("  gate:\n", 1)[1]
+        self.assertIn("needs: [scope, gui]", core)
+        self.assertIn("max-parallel: 2", core)
+        self.assertIn("needs: [scope, gui]", smoke)
+        self.assertIn("--dependencies target/ci/checks/gui-build/report.json", smoke)
+        self.assertIn("core-contracts, smoke", gate_job.splitlines()[1])
+
     def test_scheduling_experiment_cannot_raise_pr_or_main_parallelism(self):
         workflow = (ROOT / ".github/workflows/gui.yml").read_text()
         step = workflow.split("- name: Select measured smoke scheduling limit", 1)[1].split(

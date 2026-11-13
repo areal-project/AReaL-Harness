@@ -465,8 +465,8 @@ jobs:
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      # 避免两条 Core lane 和 GUI smoke 同时竞争容量不足的 arm64 runner。
-      max-parallel: 1
+      # 每条 lane 使用独立 runner 和临时目录。
+      max-parallel: 2
       matrix: ${{ fromJSON(needs.scope.outputs.core_matrix) }}
     steps:
       - name: Prepare isolated contract temporary root
@@ -575,13 +575,13 @@ jobs:
 
   smoke:
     name: macOS GUI smoke (${{ matrix.scenario }})
-    needs: [scope, gui, core-contracts]
+    needs: [scope, gui]
     if: ${{ always() && !cancelled() && needs.scope.outputs.gui_build == 'true' && needs.gui.outputs.artifact_ready == 'true' }}
     runs-on: macos-15
     timeout-minutes: 15
     strategy:
       fail-fast: false
-      # Core lane 结算后再派发；本矩阵仍按 scope 限流，与其他 workflow 共享 macOS 配额。
+      # 本矩阵按 scope 限流，与其他 workflow 共享 macOS 配额。
       max-parallel: ${{ fromJSON(needs.scope.outputs.smoke_parallel) }}
       matrix: ${{ fromJSON(needs.scope.outputs.smoke_matrix) }}
     steps:

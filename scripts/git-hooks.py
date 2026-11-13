@@ -203,7 +203,7 @@ def prepush():
     # Git hooks 继承调用者的仓库定位变量；不能把它们传给会创建独立仓库的检查。
     local_variables = git("rev-parse", "--local-env-vars").splitlines()
     environment = {key: value for key, value in os.environ.items() if key not in local_variables}
-    run(["make", "check-changed", f"CI_BASE={revision}", "ARGS="], env=environment)
+    run(["make", "check-changed", f"CI_BASE={revision}", "ARGS=--phase push"], env=environment)
     require_clean_head(head)
 
 
