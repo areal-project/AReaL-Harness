@@ -48,6 +48,10 @@ impl Model for Fixture {
         }
         self.requests.lock().unwrap().push(messages.clone());
         if *self.side.lock().unwrap() {
+            assert!(tools.iter().all(|tool| matches!(
+                tool["function"]["name"].as_str(),
+                Some("side_context_read" | "gen_ui_publish")
+            )));
             assert!(
                 !tools
                     .iter()
@@ -370,6 +374,11 @@ async fn side_conversations_keep_their_frozen_source_boundary() {
         engine.model_catalog().await["lastAcceptedModel"],
         remembered
     );
+    let invalid = engine.start_durable("fixture".into(), serde_json::from_value(json!({"threadId":side.id,"requestId":"side-image","input":[{"type":"image","url":"https://example.invalid/image.png"}]})).unwrap(), false).await.unwrap_err();
+    assert!(invalid.to_string().contains("SIDE_POLICY_VIOLATION"));
+    engine.start_durable("fixture".into(), serde_json::from_value(json!({"threadId":side.id,"requestId":"side-followup","input":[{"type":"text","text":"Follow up"}]})).unwrap(), false).await.unwrap();
+    let followup = engine.wait(&side.id).await.unwrap();
+    assert_eq!(followup.turns.last().unwrap().status, TurnStatus::Completed);
     *fixture.side.lock().unwrap() = false;
     let caller = engine.create(cwd).await.unwrap();
     *fixture.calls.lock().unwrap() = [json!({"threadId":side.id})].into();
