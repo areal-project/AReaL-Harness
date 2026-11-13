@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { HostClient, ShellProject } from "@areal/client";
-import { modelServiceObserved, refreshModelCatalogs } from "./host-auxiliary-reads.js";
+import {
+  modelServiceObserved,
+  refreshInspections,
+  refreshModelCatalogs,
+} from "./host-auxiliary-reads.js";
 
 afterEach(() => vi.useRealTimers());
 
@@ -75,4 +79,61 @@ describe("model catalog refresh", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(calls).toBe(3);
   });
+});
+
+it("retries a failed configuration inspection for the same revision", async () => {
+  vi.useFakeTimers();
+  let calls = 0;
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: { connectionId: "connection" } }),
+    workbench: async () => {
+      if (++calls === 1) throw new Error("busy");
+      return { modelName: "legacy-alpha" };
+    },
+  } as unknown as HostClient;
+  const projects = [
+    {
+      id: "p",
+      state: {
+        threads: {
+          t: { desktop: { configuration: { revision: 2, defaultModelRevision: "original" } } },
+        },
+      },
+    },
+  ];
+  const inspections = new Map<string, { identity: string; value?: Record<string, unknown> }>();
+  const refresh = () => refreshInspections(client, projects as never, inspections, refresh);
+  refresh();
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(calls).toBe(2);
+  expect(inspections.get("p:t")?.value).toEqual({ modelName: "legacy-alpha" });
+});
+
+it("does not install an inspection from an older revision or connection", async () => {
+  let connectionId = "first";
+  const replies: ((value: unknown) => void)[] = [];
+  const client = {
+    snapshot: () => ({ connection: "ready", identity: { connectionId } }),
+    workbench: () => new Promise((resolve) => replies.push(resolve)),
+  } as unknown as HostClient;
+  const project = {
+    id: "p",
+    core: { serviceGeneration: "g" },
+    state: { threads: { t: { desktop: { configuration: { revision: 1 } } } } },
+  };
+  const inspections = new Map<
+    string,
+    { identity: string; scope?: string; value?: Record<string, unknown> }
+  >();
+  const refresh = () => refreshInspections(client, [project] as never, inspections, () => {});
+  refresh();
+  project.state.threads.t.desktop.configuration.revision = 2;
+  refresh();
+  connectionId = "second";
+  refresh();
+  replies[0]({ modelName: "old revision" });
+  replies[1]({ modelName: "old connection" });
+  replies[2]({ modelName: "current" });
+  await Promise.resolve();
+  expect(inspections.get("p:t")?.value).toEqual({ modelName: "current" });
 });

@@ -88,14 +88,24 @@ export function refreshInspections(
   inspections: Cache,
   publish: () => void,
 ) {
+  const connection = client.snapshot();
+  if (connection.connection !== "ready") return;
   for (const project of projects) {
     for (const threadId of Object.keys(project.state.threads)) {
       const configuration = project.state.threads[threadId]?.desktop?.configuration;
       if (!object(configuration)) continue;
       const key = `${project.id}:${threadId}`;
       const identity = configurationIdentity(configuration);
-      if (inspections.get(key)?.identity === identity) continue;
-      const entry: { identity: string; value?: Record<string, unknown> } = { identity };
+      const scope = JSON.stringify([
+        connection.identity.connectionId,
+        project.core?.serviceGeneration,
+      ]);
+      if (inspections.get(key)?.identity === identity && inspections.get(key)?.scope === scope)
+        continue;
+      const entry: { identity: string; scope: string; value?: Record<string, unknown> } = {
+        identity,
+        scope,
+      };
       inspections.set(key, entry);
       void client
         .workbench("desktop.command", {
@@ -103,7 +113,14 @@ export function refreshInspections(
           request: { projectId: project.id, threadId, operation: "inspect" },
         })
         .then((value) => {
-          if (inspections.get(key) !== entry || !object(value)) return;
+          if (!object(value)) throw new Error("INVALID_RESPONSE");
+          const current = client.snapshot();
+          if (
+            inspections.get(key) !== entry ||
+            current.connection !== "ready" ||
+            current.identity.connectionId !== connection.identity.connectionId
+          )
+            return;
           entry.value = {
             ...(typeof value.modelName === "string" ? { modelName: value.modelName } : {}),
             ...(object(value.resolvedParameters)
@@ -112,7 +129,13 @@ export function refreshInspections(
           };
           publish();
         })
-        .catch(() => {});
+        .catch(() => {
+          setTimeout(() => {
+            if (inspections.get(key) !== entry) return;
+            inspections.delete(key);
+            publish();
+          }, RETRY_MS);
+        });
     }
   }
 }

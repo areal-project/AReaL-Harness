@@ -1328,11 +1328,27 @@ async function verifyModelDefaults(projectId) {
   });
   await createProjectConversation(page, "workspace");
   await expectModel("Alpha", "高");
-  await send("Cold new conversation inherits last accepted Alpha despite history navigation", {
-    model: "alpha-default",
-    effort: "high",
-    hasEffort: true,
-  });
+  const coldThread = await send(
+    "Cold new conversation inherits last accepted Alpha despite history navigation",
+    {
+      model: "alpha-default",
+      effort: "high",
+      hasEffort: true,
+    },
+  );
+  const accepted = (await readCoreThread(coldThread)).desktop.lastAcceptedModel;
+  assert.equal(accepted.modelId, "alpha-default");
+  assert.equal(accepted.reasoningEffort, "high");
+  await until((snapshot) => {
+    const projected = snapshotProject(snapshot)?.lastAcceptedModel;
+    return (
+      projected?.acceptedAt === accepted.acceptedAt &&
+      projected.modelId === accepted.modelId &&
+      projected.model?.providerId === accepted.model?.providerId &&
+      projected.model?.modelId === accepted.model?.modelId &&
+      projected.reasoningEffort === accepted.reasoningEffort
+    );
+  }, "the cold main submission's accepted model reaches the shared projection");
   const preference = snapshotProject(await state()).lastAcceptedModel;
   assert.equal(preference.modelId, "alpha-default");
   assert.equal(preference.reasoningEffort, "high");
