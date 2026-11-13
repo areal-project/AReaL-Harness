@@ -214,7 +214,10 @@ test("mismatched close receipt preserves original owner for reconciliation", asy
     { operation: "create", projectId: "p", sourceThreadId: "parent", requestId: "create" },
     execute,
   );
-  await assert.rejects(owners.command("window", { operation: "closeOwned" }, execute), /待核对/);
+  await assert.rejects(
+    owners.command("window", { operation: "closeOwned" }, execute),
+    (error) => error.code === "ADMISSION_RESULT_INVALID" && error.submissionUnknown === true,
+  );
   assert.equal(owners.owner("window").entries.size, 1);
 });
 

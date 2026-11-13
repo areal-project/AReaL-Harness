@@ -539,7 +539,8 @@ class DesktopService {
         connected: true,
         commandContract: COMMAND_CONTRACT,
         selectedThreadObservation: true,
-        clients: [...this.clients].filter((client) => !(mainClient(client) && client.internal)).length,
+        clients: [...this.clients].filter((client) => !(mainClient(client) && client.internal))
+          .length,
         busy: this.backend.hasWork({ includePausedQueues: false }),
         activeCommands: Math.max(this.inflight, this.backend.activeCommands ?? 0),
         providerUpdating: !!this.backend.providerUpdating,

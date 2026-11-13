@@ -72,9 +72,13 @@ function readConfigured(value) {
 
 /** Consumed identities from Core thread/turn admission receipts; payload extensions stay opaque. */
 /** @typedef {Record<string,unknown> & {thread?:import("../core-model-contract.js").CoreThread,turn?:import("../core-model-contract.js").CoreTurn|null,threadId?:string,turnId?:string,requestId?:string,queueItemId?:string|null,queueRevision?:number,configRevision?:number,accepted?:boolean,cleanupConfirmed?:boolean}} Admission */
-/** @param {unknown} value @returns {Admission} */
-function readAdmission(value) {
-  if (!admission(value))
+/** @param {unknown} value @param {{requestId?:string,threadId?:string}} [expected] @returns {Admission} */
+function readAdmission(value, expected) {
+  if (
+    !admission(value) ||
+    (expected?.requestId !== undefined && value.requestId !== expected.requestId) ||
+    (expected?.threadId !== undefined && (value.threadId ?? value.thread?.id) !== expected.threadId)
+  )
     throw Object.assign(new Error("Core 受理结果不完整，请查询原请求"), {
       code: "ADMISSION_RESULT_INVALID",
       submissionUnknown: true,

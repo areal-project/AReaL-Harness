@@ -346,6 +346,8 @@ async fn side_conversations_keep_their_frozen_source_boundary() {
     let cwd = workspace.path().to_string_lossy().into_owned();
     let source = engine.create(cwd.clone()).await.unwrap();
     finish(&engine, &source.id, "SIDE_SOURCE").await;
+    let mut catalog_events = engine.subscribe_model_catalog();
+    let remembered = engine.model_catalog().await["lastAcceptedModel"].clone();
     *fixture.side.lock().unwrap() = true;
     let (side, _) = engine
         .side_start(
@@ -363,6 +365,11 @@ async fn side_conversations_keep_their_frozen_source_boundary() {
         .unwrap()
         .unwrap();
     assert_eq!(settled.turns.last().unwrap().status, TurnStatus::Completed);
+    assert!(catalog_events.try_recv().is_err());
+    assert_eq!(
+        engine.model_catalog().await["lastAcceptedModel"],
+        remembered
+    );
     *fixture.side.lock().unwrap() = false;
     let caller = engine.create(cwd).await.unwrap();
     *fixture.calls.lock().unwrap() = [json!({"threadId":side.id})].into();

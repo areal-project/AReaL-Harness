@@ -30,6 +30,12 @@ async function fixture(t, retired, projectionFixture = false) {
       if (typeof lifetime.hostCall !== "function") throw Error("Host ownership must precede backend initialization");
       if (options.sourceSingletonHeld !== false || options.applicationOwner) throw Error('wrong owner');
       const backend = { home: options.home, hostCall: lifetime.hostCall, host: { sourceId: 'fixture-source' }, cloud: {}, useHostLibrary: async () => {}, addProject: async (path) => 'project:' + path };
+      if (options.retired === 'catalog') {
+        const accepted = { acceptedAt: 2, model: { providerId: 'p', modelId: 'm' }, modelId: 'm', reasoningEffort: 'xhigh' };
+        backend.starting = new Map();
+        backend.projects = new Map([['p', { client: { request: async () => ({ data: [], lastAcceptedModel: accepted }) }, profiles: [] }]]);
+        backend.providers = { lastAcceptedModel: null, settled: async () => {}, manages: () => true, catalog: () => [], acceptModelSelection: async (value) => { backend.providers.lastAcceptedModel = value; } };
+      }
       if (options.projectionFixture) {
         const { CoreWorktrees } = require(${JSON.stringify(require.resolve("../src/desktop/core/worktrees.cjs"))});
         backend.worktrees = new CoreWorktrees(backend);
@@ -81,11 +87,25 @@ async function fixture(t, retired, projectionFixture = false) {
         JSON.stringify({
           version: 1,
           method: "backend.start",
-          params: { appRoot, options: { home, projectionFixture }, retired },
+          params: { appRoot, options: { home, projectionFixture, retired }, retired },
         }) + "\n",
       ),
   };
 }
+
+test("creation catalog publishes the latest Core accepted model", async (t) => {
+  const f = await fixture(t, "catalog");
+  const ready = once(f.lines, "line");
+  f.start();
+  await ready;
+  const reply = once(f.lines, "line");
+  f.child.stdin.write(JSON.stringify({ version: 1, id: "catalog", method: "creation.catalog", params: { projectId: "p" } }) + "\n");
+  const frame = JSON.parse((await reply)[0]);
+  assert.equal(frame.result.lastAcceptedModel.modelId, "m");
+  assert.equal(frame.result.lastAcceptedModel.reasoningEffort, "xhigh");
+  f.child.stdin.end();
+  assert.deepEqual(await f.exited, [0, null]);
+});
 
 test("后台发布身份但不泄露票据，Host EOF 等待关闭并清理本代元数据", async (t) => {
   const f = await fixture(t);

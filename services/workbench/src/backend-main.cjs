@@ -9,6 +9,7 @@ const { MAX_FRAME } = require("./channel.cjs");
 const { createPageSession, prepareInput } = require("./pages.cjs");
 const { randomUUID } = require("node:crypto");
 const { desktopError } = require("@areal/workbench/desktop-contract");
+const { readAdmission } = require("@areal/workbench/desktop-contract/shared");
 /** @typedef {{operation:string,requestId?:string,projectId?:string,sourceThreadId?:string,threadId?:string,method?:string,[key:string]:unknown}} SideParams */
 /** @typedef {{threadId?:string,requestId?:string,cleanupConfirmed?:boolean,confirmed?:boolean,status?:string,accepted?:boolean,[key:string]:unknown}} SideResult */
 /** @typedef {{requestId:string,projectId:string,sourceThreadId:string,threadId?:string,closeRequestId?:string}} SideEntry */
@@ -75,7 +76,7 @@ class SideWindowOwners {
     if (entry && operation === "close") {
       if (entry.closeRequestId && entry.closeRequestId !== requestId)
         throw Object.assign(new Error("Side Chat 原关闭请求尚未结算"), {
-          code: "SUBMISSION_UNKNOWN",
+          code: "COMMAND_CONFLICT",
         });
       entry.closeRequestId ??= requestId;
     }
@@ -83,12 +84,14 @@ class SideWindowOwners {
     if (create || (entry && ["recover", "close"].includes(operation))) owner.pending.add(pending);
     try {
       const result = await pending;
-      if (
-        entry &&
-        !(operation === "recover" && result?.confirmed === false) &&
-        result?.requestId !== requestId
-      )
-        throw Object.assign(new Error("Side Chat 回执身份不匹配"), { submissionUnknown: true });
+      if (entry && !(operation === "recover" && result?.confirmed === false))
+        readAdmission(result, {
+          requestId,
+          ...(operation === "close" ||
+          (operation === "recover" && params.method === "areal/side/close")
+            ? { threadId: entry.threadId }
+            : {}),
+        });
       if (
         entry &&
         operation === "recover" &&
@@ -99,8 +102,6 @@ class SideWindowOwners {
         owner.entries.delete(entry.requestId);
       if (entry && (create || operation === "recover") && typeof result?.threadId === "string")
         entry.threadId = result.threadId;
-      if (entry && operation === "close" && result?.cleanupConfirmed === true)
-        if (result.threadId !== entry.threadId) throw new Error("Side Chat 关闭目标不匹配");
       if (entry && operation === "close" && result?.cleanupConfirmed === true)
         owner.entries.delete(entry.requestId);
       if (
@@ -137,6 +138,7 @@ class SideWindowOwners {
           sourceThreadId: entry.sourceThreadId,
           requestId: entry.requestId,
         });
+        if (original?.confirmed) readAdmission(original, { requestId: entry.requestId });
         if (
           original?.confirmed &&
           original.requestId === entry.requestId &&
@@ -171,11 +173,9 @@ class SideWindowOwners {
               requestId: entry.closeRequestId,
             },
       );
-      if (
-        result?.cleanupConfirmed !== true ||
-        result.requestId !== entry.closeRequestId ||
-        result.threadId !== entry.threadId
-      )
+      if (result?.confirmed !== false)
+        readAdmission(result, { requestId: entry.closeRequestId, threadId: entry.threadId });
+      if (result?.cleanupConfirmed !== true)
         throw new Error("Side Chat 清理仍待核对；原请求不会重发");
       owner.entries.delete(entry.requestId);
     }
@@ -565,6 +565,12 @@ async function start({ input, output }) {
               decode: require("./desktop/core/provider-contract.cjs").models,
             },
           );
+          if (
+            desktop.backend.projects.get(request.params.projectId) !== project ||
+            project.client !== client
+          )
+            throw Error("Creation catalog connection changed");
+          await desktop.backend.providers.acceptModelSelection(coreModels.lastAcceptedModel);
           if (
             desktop.backend.projects.get(request.params.projectId) !== project ||
             project.client !== client

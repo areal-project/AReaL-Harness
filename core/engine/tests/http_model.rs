@@ -1576,7 +1576,12 @@ async fn explicit_model_capabilities_control_catalog_admission_and_wire() {
                 .unwrap()
                 .configuration;
             engine.configure_thread(serde_json::from_value(json!({"threadId":thread.id,"expectedRevision":configuration.revision,"parameters":{"reasoningEffort":"default"}})).unwrap()).await.unwrap();
+            let mut catalog_events = engine.subscribe_model_catalog();
             engine.start_durable("fixture".into(), serde_json::from_value(json!({"threadId":thread.id,"requestId":"service-default","input":[{"type":"text","text":prompt}]})).unwrap(), false).await.unwrap();
+            assert_eq!(
+                catalog_events.try_recv().unwrap()["method"],
+                "areal/model/catalogChanged"
+            );
             engine.wait(&thread.id).await.unwrap();
             assert!(
                 request_for(&mut rx, &prompt)
