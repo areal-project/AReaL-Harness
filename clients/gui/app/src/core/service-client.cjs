@@ -228,34 +228,16 @@ class SharedCoreBackend {
       flush: async () => {},
     };
   }
-  /** @param {import("@areal/workbench-service/desktop/core/gen-ui-state.cjs").GenUiProject} project @param {string} threadId */
-  genUiScope(project, threadId) {
-    return genUiScope(this.home, project, threadId);
-  }
-  requireConnection() {
-    if (!this.status.connected || !this.connection)
-      throw new Error("后台尚未连接，请先处理后台连接提示");
-    return this.connection;
-  }
+  /** @param {import("@areal/workbench-service/desktop/core/gen-ui-state.cjs").GenUiProject} project @param {string} threadId */ genUiScope(project, threadId) { return genUiScope(this.home, project, threadId); }
+  requireConnection() { if (!this.status.connected || !this.connection) throw new Error("后台尚未连接，请先处理后台连接提示"); return this.connection; }
   get saved() {
     return this.value.projects;
   }
-  get activeCommands() {
-    return this.status.activeCommands ?? 0;
-  }
-  get providerUpdating() {
-    return this.status.providerUpdating;
-  }
-  get starting() {
-    return { size: this.status.starting ?? 0 };
-  }
-  hasWork() {
-    return !this.status.connected || this.status.busy === true;
-  }
-  /** @param {string} projectId @param {string} threadId */
-  ownsThread(projectId, threadId) {
-    return ownsThread(this.value, projectId, threadId);
-  }
+  get activeCommands() { return this.status.activeCommands ?? 0; }
+  get providerUpdating() { return this.status.providerUpdating; }
+  get starting() { return { size: this.status.starting ?? 0 }; }
+  hasWork() { return !this.status.connected || this.status.busy === true; }
+  /** @param {string} projectId @param {string} threadId */ ownsThread(projectId, threadId) { return ownsThread(this.value, projectId, threadId); }
   /** @param {string} projectId @param {string} threadId */ async ensureBrowserThread(projectId, threadId) {
     if (!this.status.connected) await this.init(); if (this.ownsThread(projectId, threadId)) return; const connection = this.requireConnection(); await this.command("open", { projectId, threadId }); const packet = await connection.request("snapshot"); if (connection !== this.connection || !this.status.connected) throw new Error("后台连接已变化，请重试"); this.accept(packet); if (!this.ownsThread(projectId, threadId)) throw new Error("请选择已连接 Core 的有效任务");
   }
