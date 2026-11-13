@@ -1,4 +1,4 @@
-import { readCoreThread as observeCoreThread } from "./support/core-observation.mjs";
+import { readCoreThread as observeCoreThread, listCoreSides } from "./support/core-observation.mjs";
 import { makeTempDir } from "./support/temp.mjs";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -595,7 +595,19 @@ async function newParent(prompt) {
   return sendMain(prompt);
 }
 async function openSide() {
-  const before = new Set(Object.keys(threads(await state())));
+  const parent = await currentId();
+  const before = baseline
+    ? new Set(Object.keys(threads(await state())))
+    : new Set(
+        await listCoreSides({
+          binary,
+          env,
+          gui,
+          threadId: parent,
+          project: project(await state()),
+          workspace,
+        }),
+      );
   if (!baseline) {
     await openSideChat(page);
     await until(async () => {
@@ -603,7 +615,15 @@ async function openSide() {
       return id && !before.has(id);
     }, "new empty child becomes the active pane");
     await sideInput().waitFor();
-    return { before, id: await sidePane().getAttribute("data-thread-id") };
+    const id = await sidePane().getAttribute("data-thread-id");
+    const created = await readCoreThread(id);
+    assert.equal(
+      created.conversation?.origin?.sourceThreadId,
+      parent,
+      "new Side belongs to the original parent",
+    );
+    assert.equal(created.turns.length, 0, "new Side has no turns");
+    return { before, id };
   }
   const launcher = page.locator(
     baseline
@@ -880,7 +900,7 @@ async function toolAndPermission() {
     "real parent configuration enables the approvalTools fixture",
   );
   await until(
-    async () => project(await state()).configurations[parent]?.profile?.id === "standard",
+    async () => (await readCoreThread(parent)).desktop?.configuration?.profile?.id === "standard",
     "fixture profile configured",
   );
   const before = await readCoreThread(parent);
@@ -952,7 +972,7 @@ async function toolAndPermission() {
   await page.keyboard.press("Escape");
   await until(
     async () =>
-      project(await state()).configurations[child]?.model?.modelId === "fixture-alternate",
+      (await readCoreThread(child)).desktop?.configuration?.model?.modelId === "fixture-alternate",
     "independent child model",
   );
   const parentAfter = await readCoreThread(parent);
@@ -1054,7 +1074,7 @@ async function multipleTabs() {
   const opened = await openSide();
   const first = await sidePane().getAttribute("data-thread-id");
   assert.ok(first && !opened.before.has(first), "panel entry creates a distinct empty Core child");
-  assert.equal(threads(await state())[first].turns.length, 0);
+  assert.equal((await readCoreThread(first)).turns.length, 0);
   await sideInput().fill("FIRST_CHILD_DRAFT");
   await openSide();
   const second = await sidePane().getAttribute("data-thread-id");
@@ -1432,7 +1452,8 @@ async function normalComposerAndSideCommands() {
       );
     }
     const parentBefore = await readCoreThread(parent);
-    const queueBefore = structuredClone(project(await state()).state.queues[parent]);
+    const queueBefore = parentBefore.desktop?.queue;
+    assert.ok(queueBefore && Array.isArray(queueBefore.items), "parent Core queue is present");
     const count = requests.length,
       tabs = await sideTabs().count();
     if (command === "side") {
@@ -1468,7 +1489,7 @@ async function normalComposerAndSideCommands() {
       "app command creates no parent turn",
     );
     assert.deepEqual(
-      project(await state()).state.queues[parent],
+      parentAfter.desktop?.queue,
       queueBefore,
       "app command never queues or steers the running parent",
     );
@@ -1543,6 +1564,59 @@ async function escapeOwnership() {
       return turn?.status === "inProgress" && turnText(turn).length > before.length;
     }, label);
   };
+  const stopReady = async (messages, composer, turnId, buttonName) => {
+    await messages.locator(`[data-turn-id="${turnId}"][data-turn-status="inProgress"]`).waitFor();
+    const button = composer.getByRole("button", { name: buttonName, exact: true });
+    await button.waitFor();
+    await until(() => button.isEnabled(), `${buttonName} available`);
+  };
+  const traceEscape = async (label, threadId, turnId) => {
+    await page.evaluate(
+      ({ label, threadId, turnId }) => {
+        window.__sideEscapeTrace = undefined;
+        const capture = (event) => {
+          if (event.key !== "Escape") return;
+          const path = event.composedPath();
+          const element = document.activeElement;
+          const entry = {
+            label,
+            threadId,
+            turnId,
+            activeRole: element?.getAttribute("role"),
+            activeInSide: !!element?.closest(".side-chat-pane"),
+            pathInSide: path.some(
+              (item) => item instanceof Element && item.matches(".side-chat-pane"),
+            ),
+            visibleOverlay: [
+              ...document.querySelectorAll(
+                '[role="dialog"], [data-slot="dialog-content"], [data-slot="select-content"], [data-slot="popover-content"], [data-slot="dropdown-menu-content"], [data-slot="context-menu-content"]',
+              ),
+            ].some((item) => item.getClientRects().length > 0),
+            defaultPreventedBefore: event.defaultPrevented,
+          };
+          window.__sideEscapeTrace = entry;
+        };
+        const bubble = (event) => {
+          if (event.key === "Escape" && window.__sideEscapeTrace)
+            window.__sideEscapeTrace.defaultPreventedAfter = event.defaultPrevented;
+        };
+        window.__sideEscapeCleanup = () => {
+          window.removeEventListener("keydown", capture, true);
+          window.removeEventListener("keydown", bubble);
+        };
+        window.addEventListener("keydown", capture, true);
+        window.addEventListener("keydown", bubble);
+      },
+      { label, threadId, turnId },
+    );
+    await page.keyboard.press("Escape");
+    escapeTrace.push(
+      await page.evaluate(() => {
+        window.__sideEscapeCleanup();
+        return window.__sideEscapeTrace;
+      }),
+    );
+  };
   for (const order of ["MAIN_FIRST", "SIDE_FIRST"]) {
     let child;
     if (order === "MAIN_FIRST") {
@@ -1560,58 +1634,17 @@ async function escapeOwnership() {
         (await readTurn(child, childTurn))?.status === "inProgress",
       "both independent streams active",
     );
-    await sidePane()
-      .locator(`[data-turn-id="${childTurn}"][data-turn-status="inProgress"]`)
-      .waitFor();
-    await sidePane().getByRole("button", { name: "停止", exact: true }).waitFor();
-    await until(
-      () => sidePane().getByRole("button", { name: "停止", exact: true }).isEnabled(),
-      "Side stop available",
-    );
+    await stopReady(sidePane(), sidePane(), childTurn, "停止");
     await shot(`P6-concurrent-${order}`);
     const beforeStops = (await commandRecords()).filter((item) => item.name === "stop").length;
     await sideInput().focus();
-    await page.evaluate(() => {
-      window.addEventListener(
-        "keydown",
-        (event) => {
-          if (event.key !== "Escape") return;
-          const path = event.composedPath();
-          const element = document.activeElement;
-          const entry = {
-            activeRole: element?.getAttribute("role"),
-            activeInSide: !!element?.closest(".side-chat-pane"),
-            pathInSide: path.some(
-              (item) => item instanceof Element && item.matches(".side-chat-pane"),
-            ),
-            visibleOverlay: [
-              ...document.querySelectorAll(
-                '[role="dialog"], [data-slot="dialog-content"], [data-slot="select-content"], [data-slot="popover-content"], [data-slot="dropdown-menu-content"], [data-slot="context-menu-content"]',
-              ),
-            ].some((item) => item.getClientRects().length > 0),
-            defaultPreventedBefore: event.defaultPrevented,
-          };
-          window.__sideEscapeTrace = entry;
-        },
-        { capture: true, once: true },
-      );
-      window.addEventListener(
-        "keydown",
-        (event) => {
-          if (event.key === "Escape" && window.__sideEscapeTrace)
-            window.__sideEscapeTrace.defaultPreventedAfter = event.defaultPrevented;
-        },
-        { once: true },
-      );
-    });
-    await page.keyboard.press("Escape");
-    escapeTrace.push(await page.evaluate(() => window.__sideEscapeTrace));
+    await traceEscape(`${order}: focused child`, child, childTurn);
     await until(async () => {
       const turn = (await readCoreThread(child)).turns.find((item) => item.id === childTurn);
       return turn && turn.status !== "inProgress";
     }, "focused child stopped");
     await sideInput().focus();
-    await page.keyboard.press("Escape");
+    await traceEscape(`${order}: idle child`, child, childTurn);
     const growth = turnText(await readTurn(parent, parentTurn));
     await until(async () => {
       const turn = await readTurn(parent, parentTurn);
@@ -1625,15 +1658,16 @@ async function escapeOwnership() {
     assert.equal(stops[0].request.turnId, childTurn);
     assert.equal(stops[0].response?.errorCode, null);
     await page.getByRole("button", { name: "收起侧栏", exact: true }).focus();
-    await page.keyboard.press("Escape");
+    await traceEscape(`${order}: outside with panel`, parent, parentTurn);
     await grows(parent, parentTurn, "outside focus with panel open preserves growing main stream");
     assert.equal(
       (await readCoreThread(parent)).turns.at(-1).status,
       "inProgress",
       "outside focus with panel open stops neither pane",
     );
+    await stopReady(mainMessages(), mainComposer(), parentTurn, "暂停执行");
     await mainComposer().getByTestId("chat-input").focus();
-    await page.keyboard.press("Escape");
+    await traceEscape(`${order}: focused main`, parent, parentTurn);
     await until(async () => {
       const turn = (await readCoreThread(parent)).turns.find((item) => item.id === parentTurn);
       return turn && turn.status !== "inProgress";
@@ -1655,8 +1689,9 @@ async function escapeOwnership() {
     const beforeMainStop = (await commandRecords()).filter((item) => item.name === "stop").length;
     const mainSecond = (await readCoreThread(parent)).turns.at(-1).id;
     const sideSecond = (await readCoreThread(child)).turns.at(-1).id;
+    await stopReady(mainMessages(), mainComposer(), mainSecond, "暂停执行");
     await mainComposer().getByTestId("chat-input").focus();
-    await page.keyboard.press("Escape");
+    await traceEscape(`${order}: second main`, parent, mainSecond);
     await until(async () => {
       const turn = (await readCoreThread(parent)).turns.find((item) => item.id === mainSecond);
       return turn && turn.status !== "inProgress";
@@ -1676,7 +1711,7 @@ async function escapeOwnership() {
           .evaluate((element) => getComputedStyle(element).opacity === "1"),
       "resources open transition completed",
     );
-    await page.keyboard.press("Escape");
+    await traceEscape(`${order}: dismiss resources`, parent, closedMainTurn);
     await resources.waitFor({ state: "hidden" });
     (facts.resourceInnerHiddenProbes ??= []).push(
       await page.locator(".task-resources-popup").evaluate((element) => ({
@@ -1703,8 +1738,9 @@ async function escapeOwnership() {
         opacity: getComputedStyle(element).opacity,
       })),
     );
+    await stopReady(mainMessages(), mainComposer(), closedMainTurn, "暂停执行");
     await page.getByRole("button", { name: "收起侧栏", exact: true }).focus();
-    await page.keyboard.press("Escape");
+    await traceEscape(`${order}: panel closed fallback`, parent, closedMainTurn);
     await until(async () => {
       const turn = (await readCoreThread(parent)).turns.find((item) => item.id === closedMainTurn);
       return turn && turn.status !== "inProgress";
@@ -1713,8 +1749,9 @@ async function escapeOwnership() {
     await page.getByRole("button", { name: "展开侧边面板", exact: true }).click();
     await sideInput().waitFor();
     await grows(child, sideSecond, "reopened Side is still streaming");
+    await stopReady(sidePane(), sidePane(), sideSecond, "停止");
     await sideInput().focus();
-    await page.keyboard.press("Escape");
+    await traceEscape(`${order}: Side survivor`, child, sideSecond);
     await until(async () => {
       const turn = (await readCoreThread(child)).turns.find((item) => item.id === sideSecond);
       return turn && turn.status !== "inProgress";

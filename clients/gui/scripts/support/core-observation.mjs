@@ -8,16 +8,10 @@ import { pathToFileURL } from "node:url";
 
 const execute = promisify(execFile);
 
-export async function readCoreThread({
-  binary,
-  env,
-  gui,
-  threadId,
-  project,
-  workspace,
-  inventory,
-  connect,
-}) {
+async function withCore(
+  { binary, env, gui, threadId, project, workspace, inventory, connect },
+  observe,
+) {
   const execution = project?.state?.threads?.[threadId];
   const generation = (execution?.executionCore ?? project?.core)?.serviceGeneration;
   const expectedWorkspace = execution?.worktree?.directory ?? workspace;
@@ -62,8 +56,47 @@ export async function readCoreThread({
   }
   const client = await connect(descriptor);
   try {
-    return (await client.request("thread/read", { threadId, includeTurns: true })).thread;
+    return await observe(client);
   } finally {
     client.close();
   }
+}
+
+export async function readCoreThread(options) {
+  return withCore(
+    options,
+    async (client) =>
+      (await client.request("thread/read", { threadId: options.threadId, includeTurns: true }))
+        .thread,
+  );
+}
+
+export async function listCoreSides(options) {
+  return withCore(options, async (client) => {
+    const ids = [];
+    const cursors = new Set();
+    let cursor;
+    do {
+      const page = await client.request("areal/conversation/list", {
+        view: "side",
+        includeArchived: true,
+        limit: 100,
+        ...(cursor ? { cursor } : {}),
+      });
+      assert.ok(Array.isArray(page.data), "Core side list data must be an array");
+      for (const item of page.data) {
+        assert.ok(typeof item.id === "string" && item.id, "Core side list identity is required");
+        ids.push(item.id);
+      }
+      cursor = page.nextCursor;
+      if (cursor) {
+        assert.ok(
+          typeof cursor === "string" && !cursors.has(cursor),
+          "Core side list cursor must advance",
+        );
+        cursors.add(cursor);
+      }
+    } while (cursor);
+    return ids;
+  });
 }

@@ -1,6 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readCoreThread } from "./core-observation.mjs";
+import { listCoreSides, readCoreThread } from "./core-observation.mjs";
+
+test("lists every Side including archived pages on the target Core", async () => {
+  const calls = [];
+  const ids = await listCoreSides({
+    threadId: "parent",
+    workspace: "/main",
+    inventory: [{ state: "ready", workspace: "/main" }],
+    connect: async () => ({
+      request: async (method, params) => {
+        calls.push([method, params]);
+        return params.cursor
+          ? { data: [{ id: "archived" }], nextCursor: null }
+          : { data: [{ id: "open" }], nextCursor: "next" };
+      },
+      close: () => calls.push("closed"),
+    }),
+  });
+  assert.deepEqual(ids, ["open", "archived"]);
+  assert.deepEqual(calls, [
+    ["areal/conversation/list", { view: "side", includeArchived: true, limit: 100 }],
+    [
+      "areal/conversation/list",
+      { view: "side", includeArchived: true, limit: 100, cursor: "next" },
+    ],
+    "closed",
+  ]);
+});
 
 test("observes the target thread in its execution worktree and closes the client", async () => {
   const target = {

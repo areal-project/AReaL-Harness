@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readCoreThread } from "./core-observation.mjs";
+import { listCoreSides, readCoreThread } from "./core-observation.mjs";
 
 const gui = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const require = createRequire(import.meta.url);
@@ -65,6 +65,7 @@ test("real Core observation reads the created thread", { timeout: 120000 }, asyn
       },
     });
     assert.equal(observed.id, thread.id);
+    assert.deepEqual(await listCoreSides({ binary, env, gui, threadId: thread.id, workspace }), []);
   } finally {
     await client?.close();
     if (service) {
