@@ -807,6 +807,7 @@ async function toolAndPermission() {
     "child-owned real fs_read returns seeded bytes",
   );
   await sendSide("PARITY:P1_WRITE", false);
+  const writeTurnId = (await readCoreThread(child)).turns.at(-1).id;
   const pending = await until(
     async () =>
       (project(await state()).state.interactions?.[child]?.data ?? []).find(
@@ -823,14 +824,17 @@ async function toolAndPermission() {
   await shot("P1-approval");
   await sidePane().getByRole("button", { name: "允许一次", exact: true }).click();
   await until(
-    async () => threads(await state())[child]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(child)).turns.find((turn) => turn.id === writeTurnId)?.status ===
+      "completed",
     "approved Runtime completion",
   );
+  await sidePane().getByText("DONE PARITY:P1_WRITE", { exact: true }).waitFor();
   assert.equal(await readFile(join(workspace, "approved.txt"), "utf8"), "CHILD_APPROVED_BYTES\n");
   const written = await readCoreThread(child);
   assert.ok(
     written.turns
-      .at(-1)
+      .find((turn) => turn.id === writeTurnId)
       .items.some(
         (item) =>
           item.type === "dynamicToolCall" &&
@@ -840,9 +844,12 @@ async function toolAndPermission() {
     "authoritative child history records successful fs_create",
   );
   await sendSide("PARITY:P1_DENY", false);
+  const denyTurnId = (await readCoreThread(child)).turns.at(-1).id;
   await sidePane().getByRole("button", { name: "拒绝 Esc", exact: true }).click();
   await until(
-    async () => threads(await state())[child]?.turns.at(-1).status === "completed",
+    async () =>
+      (await readCoreThread(child)).turns.find((turn) => turn.id === denyTurnId)?.status ===
+      "completed",
     "denied operation settled",
   );
   assert.equal(await exists(join(workspace, "denied.txt")), false);
