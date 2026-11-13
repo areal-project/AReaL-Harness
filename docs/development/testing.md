@@ -652,3 +652,20 @@ GUI 的仓库规则位于 `clients/gui/oxlint-plugin-areal`，由 `vite.config.m
 无障碍专项只收集四条 JSX-a11y 规则，仓库插件诊断交由常规增量检查；两类检查分别执行，避免存量仓库规则混入无障碍基线。规则正反例和增量检查仍必须通过。
 
 `python3 scripts/runtime-image-smoke.py --bin-dir target/debug --evidence /tmp/runtime-image-evidence.json` 使用真实 Runtime 和文件助手验证大源图在传输前缩小、派生输出计量、只读来源、分页回取与小额度失败，不调用模型。可用 `--image /path/to/existing.png --dimension 1500` 复用既有原图；运行记录必须区分原始文件与 observer 导出的缩略图。
+
+### 有限真实模型场景
+
+`npm run test:model-live -- /absolute/model.toml` 使用配置中的模型和端点，经真实 Core/Runtime 执行对话文件读取、后台 Task 写文件和正常重启后的原 Thread/Task 恢复。对话要求成功的读取工具和回复包含输入；后台要求原 Run 完成且文件字节一致；重启后重新检查原 Turn、Run 和文件。它不覆盖运行中崩溃、UNKNOWN 恢复、GUI 或真机，也不代表模型整体能力。
+
+先在供应商控制台创建独立、限额的测试 Key，配置 TOML 使用 [模型配置](../guides/configuration.md) 中的端点与模型，不将 Key 写入配置。只在本地交互终端输入，不发送到聊天：
+
+```bash
+read -rs 'AREAL_LIVE_API_KEY?Model API key: '; echo
+export AREAL_LIVE_API_KEY
+npm run test:model-live -- /absolute/model.toml
+unset AREAL_LIVE_API_KEY
+```
+
+上述 `read` 语法适用于 zsh。脚本以 `--api-key-env AREAL_LIVE_API_KEY` 指定变量名，真实请求会产生费用。可用 `AREAL_LIVE_BIN_DIR` 指向已构建的固定二进制目录；默认使用 `target/debug`。确保产物与待验源码匹配。
+
+每次输出一个权限为 0700 的临时目录，其中 `evidence/result.json` 记录源码版本、配置摘要、已完成阶段、身份、用量和清理结果；失败退出非零，不将未到达阶段计为通过。`state/` 含认证令牌与模型历史，整个运行目录均视为私有，不上传；分享摘要前仍需审阅。脚本不保存原始服务日志。验证后可按输出的确切目录手动删除。不要对生产数据运行，也不要把凭据放入 shell 历史、命令参数或证据。

@@ -32,6 +32,30 @@ const { serviceIdentity } = require("../app/src/core/service-config.cjs");
 const { WebSocketServer } = require("../app/node_modules/ws");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test("browser access observes an existing Host conversation before checking its owner", async () => {
+  const backend = Object.create(SharedCoreBackend.prototype);
+  let observed = false;
+  const connection = {
+    request: async (method) => {
+      assert.equal(method, "snapshot");
+      return { observed: true };
+    },
+  };
+  backend.status = { connected: true };
+  backend.connection = connection;
+  backend.ownsThread = () => observed;
+  backend.command = async (name, request) => {
+    assert.equal(name, "open");
+    assert.deepEqual(request, { projectId: "p", threadId: "t" });
+  };
+  backend.requireConnection = () => connection;
+  backend.accept = (packet) => {
+    observed = packet.observed;
+  };
+  await backend.ensureBrowserThread("p", "t");
+  assert.equal(observed, true);
+});
+
 test("default GUI selects Host before initializing any in-process writer", async (t) => {
   const f = await startupOwnerFixture(t);
   let starts = 0;

@@ -43,6 +43,8 @@ import type { useWorkspaceDocuments } from "../state/useWorkspaceDocuments.js";
 import { useWorkspacePanels } from "../state/useWorkspacePanels.js";
 import type { useWorkspacePreview } from "../state/useWorkspacePreview.js";
 import { WorktreeStarter } from "../WorktreeStarter.js";
+import { usePendingMessage } from "../pendingMessage.js";
+import { PendingMessageView } from "../UserMessageBody.js";
 
 import { createContext, useContext } from "react";
 
@@ -93,6 +95,7 @@ function ConversationContent() {
   const {
     session,
     action,
+    dark,
     empty,
     admitting,
     mainPane,
@@ -105,6 +108,7 @@ function ConversationContent() {
     setError,
   } = useConversationContext();
   const { project, thread, threadId, retryRestoration } = session;
+  const pendingMessage = usePendingMessage(`areal-gui:draft:${project?.id}:${threadId}`);
   const conversationSubmitReadOnly = useConversationSubmitReadOnly();
   const conversationCreateReadOnly = useConversationCreateReadOnly();
 
@@ -134,12 +138,29 @@ function ConversationContent() {
               role="status"
               aria-busy={loadState.kind !== "failed"}
             >
-              <div className="settings-empty conversation-loading-body">
-                <p>
-                  {loadState.kind === "failed" && loadState.detail
-                    ? loadState.detail
-                    : t(loadState.message)}
-                </p>
+              <div
+                className={
+                  pendingMessage
+                    ? "messages conversation-loading-body"
+                    : "settings-empty conversation-loading-body"
+                }
+              >
+                {pendingMessage && (
+                  <div className="message-column">
+                    <PendingMessageView
+                      message={pendingMessage}
+                      fileReferenceRoot={project?.root}
+                      theme={dark ? "dark" : "light"}
+                    />
+                  </div>
+                )}
+                {(!pendingMessage || loadState.kind === "failed") && (
+                  <p>
+                    {loadState.kind === "failed" && loadState.detail
+                      ? loadState.detail
+                      : t(loadState.message)}
+                  </p>
+                )}
                 {loadState.kind === "failed" && (
                   <Button
                     variant="outline"

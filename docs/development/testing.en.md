@@ -652,3 +652,20 @@ Use `@areal/ui/observe-resize` for size notifications and its cleanup function o
 The accessibility-specific scan collects only its four JSX-a11y rules and leaves repository-plugin diagnostics to the regular changed-file check. Run both checks separately so legacy repository-rule findings do not enter the accessibility baseline. Rule examples and changed-file enforcement must still pass.
 
 `python3 scripts/runtime-image-smoke.py --bin-dir target/debug --evidence /tmp/runtime-image-evidence.json` uses the real Runtime and file helper to check resizing before transfer, derived-output accounting, read-only source handling, paged retrieval and small-quota failure without model calls. Use `--image /path/to/existing.png --dimension 1500` to replay an existing source; evidence must distinguish original files from observer-exported thumbnails.
+
+### Limited live model scenarios
+
+`npm run test:model-live -- /absolute/model.toml` uses the configured model and endpoint with real Core/Runtime to check a conversation file read, a background Task that writes a file, and the original Thread and Task after a clean restart. It checks the successful read tool and response, exact output bytes, Run completion, and persisted identities. This does not cover a crash during execution, UNKNOWN recovery, GUI or physical devices, or establish general model performance.
+
+Create a separate spending-limited test key in the provider console and configure the endpoint and model as described in [model configuration](../guides/configuration.en.md); do not put the key in TOML. Enter it in a local interactive terminal, not in chat:
+
+```bash
+read -rs 'AREAL_LIVE_API_KEY?Model API key: '; echo
+export AREAL_LIVE_API_KEY
+npm run test:model-live -- /absolute/model.toml
+unset AREAL_LIVE_API_KEY
+```
+
+The `read` syntax above is for zsh. The script passes only the environment variable name via `--api-key-env`; real requests incur charges. Set `AREAL_LIVE_BIN_DIR` to a fixed built binary directory, or use the default `target/debug`. Ensure the binaries match the source under test.
+
+Each run prints a private 0700 temporary directory. `evidence/result.json` records revision, configuration digest, reached stages, identities, usage and cleanup; failures exit nonzero and unreached stages do not pass. `state/` contains authentication tokens and model history: treat the entire directory as private, and review the summary before sharing it. Raw server logs are not saved. Delete the exact printed directory manually when finished. Do not run against production data or put credentials in shell history, command arguments or evidence.

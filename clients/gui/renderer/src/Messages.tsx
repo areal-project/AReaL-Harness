@@ -18,6 +18,7 @@ import {
   settleReadingRestore,
 } from "./conversationReading.js";
 import { observeResize } from "@areal/ui/observe-resize";
+import { DelayedVisible } from "@areal/ui";
 import { PendingMessageView } from "./UserMessageBody.js";
 import {
   readingViews,
@@ -1042,13 +1043,18 @@ export function Messages({
             )}
           {beforeTurns}
           <ModelChanges changes={thread.desktop?.modelChanges} />
-          {inherited.loading && <p role="status">正在加载继承历史…</p>}
+          <DelayedVisible key={`inherited:${owner}`} active={inherited.loading}>
+            <p role="status">正在加载继承历史…</p>
+          </DelayedVisible>
           {inherited.error && <p role="alert">继承历史读取失败：{inherited.error}</p>}
           {localThread.displayHistory?.supported && (
             <div ref={olderSentinel} className="message-history-controls" aria-live="polite">
-              {localThread.displayHistory.loadingLatest ? (
+              <DelayedVisible
+                key={`latest:${owner}`}
+                active={!!localThread.displayHistory.loadingLatest}
+              >
                 <span role="status">{t("chat.history.loadingLatest")}</span>
-              ) : null}
+              </DelayedVisible>
             </div>
           )}
           {history.failure && !history.failure.itemId && (

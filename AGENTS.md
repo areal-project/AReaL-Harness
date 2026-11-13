@@ -103,7 +103,7 @@ push 到受保护分支、发布、使用真实凭据、写外部系统、破坏
 
 ## 仓库技能
 
-`.agents/skills/` 下按任务选用：`testing`（选测试、判断是否回归）、`remove-compat`（删过渡代码）、`cross-surface-feature`（加跨端功能）、`mac-acceptance`（交 Mac 验收）。
+`.agents/skills/` 下按任务选用：`testing`（选测试、判断是否回归和报告未执行阶段）、`ci`（检查计划、并行调度、证据和门禁）、`remove-compat`（删过渡代码）、`cross-surface-feature`（加跨端功能）、`mac-acceptance`（交 Mac 验收）。
 
 ## 风格
 

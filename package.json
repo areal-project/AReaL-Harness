@@ -15,7 +15,8 @@
   },
   "scripts": {
     "format": "prettier --write \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json",
-    "format:check": "prettier --check \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json"
+    "format:check": "prettier --check \"{core,runtime}/sdk-typescript/**/*.{ts,mjs,json}\" \"scripts/*.mjs\" \"examples/**/*.mjs\" package.json .prettierrc.json",
+    "test:model-live": "node scripts/model-live-scenarios.mjs"
   },
   "devDependencies": {
     "ajv": "8.20.0",

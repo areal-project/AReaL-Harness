@@ -409,8 +409,13 @@ try {
     assert.equal(await older.count(), 0, "history states never expose an ordinary page button");
     const status = page.locator(".message-history-controls [role=status]");
     if (displayHistory.loadingLatest) {
+      assert.equal(await status.count(), 0, "a fast history read does not flash a loading notice");
+      await status.waitFor();
       assert.equal(await status.textContent(), labels.latestLoading);
-    } else assert.equal(await status.count(), 0, "older-page loading and idle history stay silent");
+    } else {
+      await status.waitFor({ state: "detached" });
+      assert.equal(await status.count(), 0, "older-page loading and idle history stay silent");
+    }
     assert.equal(await page.getByText(labels.olderLoading, { exact: true }).count(), 0);
   }
   await page.screenshot({ path: join(scratch, "00-history-controls.png"), animations: "disabled" });

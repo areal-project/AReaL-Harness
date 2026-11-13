@@ -8,8 +8,6 @@ const { createInterface } = require("node:readline");
 const { MAX_FRAME } = require("./channel.cjs");
 const { createPageSession, prepareInput } = require("./pages.cjs");
 const { randomUUID } = require("node:crypto");
-const { desktopError } = require("@areal/workbench/desktop-contract");
-const { readAdmission } = require("@areal/workbench/desktop-contract/shared");
 /** @typedef {{operation:string,requestId?:string,projectId?:string,sourceThreadId?:string,threadId?:string,method?:string,[key:string]:unknown}} SideParams */
 /** @typedef {{threadId?:string,requestId?:string,cleanupConfirmed?:boolean,confirmed?:boolean,status?:string,accepted?:boolean,[key:string]:unknown}} SideResult */
 /** @typedef {{requestId:string,projectId:string,sourceThreadId:string,threadId?:string,closeRequestId?:string}} SideEntry */
@@ -19,7 +17,10 @@ const { readAdmission } = require("@areal/workbench/desktop-contract/shared");
 
 // 每个 owner 是 Host 注入的连接身份，不能由客户端参数指定。
 class SideWindowOwners {
-  constructor() {
+  /** @param {NodeRequire} [appRequire] */
+  constructor(appRequire = require) {
+    this.desktopError = appRequire("@areal/workbench/desktop-contract").desktopError;
+    this.readAdmission = appRequire("@areal/workbench/desktop-contract/shared").readAdmission;
     /** @type {Map<string,SideOwner>} */
     this.owners = new Map();
   }
@@ -94,7 +95,7 @@ class SideWindowOwners {
     try {
       const result = await pending;
       if (entry && !(operation === "recover" && result?.confirmed === false))
-        readAdmission(result, {
+        this.readAdmission(result, {
           requestId,
           ...(operation === "close" ||
           (operation === "recover" && params.method === "areal/side/close")
@@ -122,7 +123,7 @@ class SideWindowOwners {
         owner.entries.delete(entry.requestId);
       return result;
     } catch (error) {
-      const details = desktopError(error);
+      const details = this.desktopError(error);
       const rejected = details.outcome
         ? ["noMutation", "rejected"].includes(details.outcome.kind)
         : typeof details.code === "number" && details.code !== -32603;
@@ -147,7 +148,7 @@ class SideWindowOwners {
           sourceThreadId: entry.sourceThreadId,
           requestId: entry.requestId,
         });
-        if (original?.confirmed) readAdmission(original, { requestId: entry.requestId });
+        if (original?.confirmed) this.readAdmission(original, { requestId: entry.requestId });
         if (
           original?.confirmed &&
           original.requestId === entry.requestId &&
@@ -183,7 +184,7 @@ class SideWindowOwners {
             },
       );
       if (result?.confirmed !== false)
-        readAdmission(result, {
+        this.readAdmission(result, {
           requestId: entry.closeRequestId,
           threadId: entry.threadId,
         });
@@ -394,7 +395,7 @@ async function start({ input, output }) {
   let metadata,
     claimed = false;
   const pages = new Map();
-  const sideOwners = new SideWindowOwners();
+  const sideOwners = new SideWindowOwners(appRequire);
   const retiredPages = new Set();
   /** @param {string} connection */
   const closePages = async (connection) => {
@@ -579,7 +580,7 @@ async function start({ input, output }) {
             "areal/model/list",
             {},
             {
-              decode: require("./desktop/core/provider-contract.cjs").models,
+              decode: appRequire("@areal/workbench/desktop-contract/provider").models,
             },
           );
           if (

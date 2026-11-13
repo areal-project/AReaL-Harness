@@ -102,6 +102,7 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const config = join(userHome, ".areal", "config.toml");
 const composerPicker = process.argv.includes("--composer-picker");
 const composerFast = process.argv.includes("--composer-fast");
+const sendContinuity = process.argv.includes("--send-continuity");
 await writeFile(
   config,
   `schema_version=1\n[model]\ncatalog_version=1\nprovider="theta"\nname="theta-model"\n` +
@@ -117,7 +118,7 @@ await writeFile(
   (await readFile(config, "utf8")) +
     `\n[model.providers.env]\nname="env"\nenabled=false\nendpoint="http://127.0.0.1:${server.address().port}/v1/chat/completions"\nprotocol="chat-completions"\napi_key_env="AREAL_MODEL_FIXTURE_KEY"\nmodels=[{id="env-model",enabled=true}]\n`,
 );
-if (composerPicker || composerFast) {
+if (composerPicker || composerFast || sendContinuity) {
   await writeFile(
     config,
     `schema_version=1\n[model]\ncatalog_version=1\nprovider="alpha"\nname="alpha-model"\n` +
@@ -2628,13 +2629,131 @@ async function runFullModelSelection() {
   await verifyModelCapabilities();
   await verifyModelDefaults(projectId);
 }
+async function verifyFirstSendContinuity() {
+  await until(
+    (snapshot) =>
+      fixtureProject(snapshot)?.state?.connected &&
+      fixtureProject(snapshot).models.some((model) => model.available),
+    "fixture ready",
+  );
+  const input = page.getByTestId("chat-input");
+  const previous = [];
+  for (const text of ["EXISTING ONE", "EXISTING TWO"]) {
+    if (previous.length) await createProjectConversation(page, "workspace");
+    await input.fill(text);
+    await button("发送").click();
+    await page.waitForFunction(
+      () => !!document.querySelector('[data-testid="areal-workbench"]')?.dataset.threadId,
+    );
+    const id = await page.getByTestId("areal-workbench").getAttribute("data-thread-id");
+    await waitForCoreTurn(id, { text });
+    previous.push(id);
+  }
+  const secondProject = join(scratch, "other-project");
+  await mkdir(secondProject);
+  execFileSync("git", ["init", "-b", "main"], { cwd: secondProject, stdio: "ignore" });
+  await app.evaluate(({ dialog }, root) => {
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [root] });
+  }, secondProject);
+  await button("打开项目").click();
+  await createProjectConversation(page, "other-project");
+  await until(
+    (snapshot) =>
+      snapshot.projects.find((project) => project.root === secondProject)?.state?.connected,
+    "other project ready",
+  );
+  const text = "FIRST NEW PROJECT MESSAGE";
+  await input.fill(text);
+  await page.evaluate((text) => {
+    window.__sendContinuity = [];
+    window.__sendContinuityPhase = "send";
+    const record = () => {
+      const main = document.querySelector('[data-testid="chat-view"]')?.innerText ?? "";
+      window.__sendContinuity.push({
+        phase: window.__sendContinuityPhase,
+        message: main.includes(text),
+        starting: main.includes("正在启动聊天"),
+        draft: main.includes("你想让我们在"),
+        reading: main.includes("正在读取对话"),
+        historyError: main.includes("历史内容加载失败"),
+      });
+    };
+    window.__recordSendContinuity = record;
+    new MutationObserver(record).observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["data-thread-id", "data-project-id"],
+    });
+    record();
+  }, text);
+  await button("发送").click();
+  await until((snapshot) => {
+    const project = snapshot.projects.find((item) => item.root === secondProject);
+    return (
+      project &&
+      Object.values(project.state?.threads ?? {}).some((thread) =>
+        thread.turns?.some((turn) =>
+          turn.items?.some((item) => JSON.stringify(item).includes(text)),
+        ),
+      )
+    );
+  }, "new project message projection");
+  const project = (await state()).projects.find((item) => item.root === secondProject);
+  const thread = Object.values(project.state.threads).find((item) =>
+    item.turns?.some((turn) => turn.items?.some((entry) => JSON.stringify(entry).includes(text))),
+  );
+  let completedTurn;
+  await until(async () => {
+    const current = await observeCoreThread({
+      binary: coreBinary,
+      env,
+      gui,
+      threadId: thread.id,
+      project,
+      workspace: secondProject,
+    });
+    completedTurn = current.turns.at(-1);
+    return completedTurn?.status === "completed" && JSON.stringify(completedTurn).includes(text);
+  }, "new project Core turn completed");
+  await page
+    .locator(`[data-turn-id="${completedTurn.id}"][data-turn-status="completed"]`)
+    .waitFor();
+  await page.evaluate(() => {
+    window.__sendContinuityPhase = "switch";
+    window.__recordSendContinuity();
+  });
+  await selectConversation(page, previous[0]);
+  await selectConversation(page, previous[1]);
+  await page.getByText("EXISTING TWO").first().waitFor();
+  const observed = await page.evaluate(() => window.__sendContinuity);
+  const sent = observed.filter((sample) => sample.phase === "send");
+  const preview = sent.findIndex((sample) => sample.starting && sample.message);
+  assert.ok(preview >= 0, "first pending preview is shown");
+  assert.deepEqual(
+    sent.slice(preview).filter((sample) => !sample.message || sample.draft || sample.reading),
+    [],
+    "first message remains visible until Core projection",
+  );
+  assert.ok(
+    observed.filter((sample) => sample.phase === "switch").every((sample) => !sample.historyError),
+    "switching cached conversations does not flash a history error",
+  );
+  recordCheck(
+    "first message stays visible through Core projection and cached conversation switches",
+  );
+}
+
 try {
   console.log(`[model-selection] evidence: ${scratch}`);
   await launch();
   console.log("[model-selection] creating project conversation");
   await button("打开项目").click();
   await createProjectConversation(page, "workspace");
-  if (composerFast) {
+  if (sendContinuity) {
+    await verifyFirstSendContinuity();
+  } else if (composerFast) {
     await verifyComposerFast();
   } else if (composerPicker) {
     await verifyComposerPicker();

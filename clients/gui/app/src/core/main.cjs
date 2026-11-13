@@ -1203,9 +1203,10 @@ function startDesktop() {
             }
             if (!preview) throw new Error(nativeText("browser.previewUnavailable"));
             const activePreview = preview;
+            if (request.operation === "newPage" || request.operation === "openLink")
+              await serviceBackend.ensureBrowserThread(request.projectId, request.threadId);
             if (request?.operation === "subscribe") {
-              if (!serviceBackend.ownsThread(request.projectId, request.threadId))
-                throw new Error(nativeText("browser.selectTask"));
+              await serviceBackend.ensureBrowserThread(request.projectId, request.threadId);
               const key = JSON.stringify([request.projectId, request.threadId]);
               previewSubscriptions.get(key)?.();
               const subscription = activePreview.subscribe(
