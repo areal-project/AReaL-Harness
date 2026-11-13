@@ -92,7 +92,6 @@
   "core/host/src/task_catalog.rs": 7,
   "core/host/src/vault.rs": 1,
   "core/host/src/workbench_frontend.rs": 2,
-  "core/host/src/workbench_route.rs": 3,
   "core/host/src/worktree_catalog.rs": 7,
   "core/local-service/src/gui_owner.rs": 6,
   "core/local-service/src/gui_owner/tests.rs": 3,
