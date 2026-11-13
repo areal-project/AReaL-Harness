@@ -98,10 +98,16 @@ pub(super) struct Backend {
     ownership: RefCell<Option<(String, Value)>>,
     source: RefCell<Option<String>>,
     utility_options: RefCell<Option<Value>>,
-    environment_credentials:
-        RefCell<Option<(String, String, std::collections::BTreeMap<String, String>)>>,
+    environment_credentials: RefCell<Option<EnvironmentCredentials>>,
     events: RefCell<Vec<Value>>,
     worktree_cleaning: Cell<bool>,
+}
+
+#[derive(Clone)]
+struct EnvironmentCredentials {
+    source_id: String,
+    launch_key: String,
+    values: std::collections::BTreeMap<String, String>,
 }
 
 /// Main 传来的桌面后台启动参数。`options` 是界面 Main 的启动选项，Host 只读取并校验路径字段：
@@ -802,8 +808,8 @@ impl Supervisor {
             .environment_credentials
             .borrow()
             .as_ref()
-            .filter(|(owner, _, _)| owner == source)
-            .map(|(_, _, credentials)| credentials.clone())
+            .filter(|credentials| credentials.source_id == source)
+            .map(|credentials| credentials.values.clone())
             .unwrap_or_default()
     }
 
@@ -1314,8 +1320,11 @@ impl Backend {
                     ensure!(current == key, "CONFLICT");
                     if let Some(credentials) = &input.environment_credentials {
                         let source = launch.source_id.clone().context("GUI_SOURCE_PENDING")?;
-                        *self.environment_credentials.borrow_mut() =
-                            Some((source, key.clone(), credentials.clone()));
+                        *self.environment_credentials.borrow_mut() = Some(EnvironmentCredentials {
+                            source_id: source,
+                            launch_key: key.clone(),
+                            values: credentials.clone(),
+                        });
                     }
                     // 旧版本启动的后台没有留下记录；桌面再次接上时补记，网页之后才能自行拉起。
                     let _ = areal_local_service::storage::write(&launch_record(host), &input);
@@ -1338,11 +1347,17 @@ impl Backend {
             credentials.clone()
         } else {
             previous
-                .filter(|(owner, identity, _)| owner == &source_id && identity == &key)
-                .map(|(_, _, credentials)| credentials)
+                .filter(|credentials| {
+                    credentials.source_id == source_id && credentials.launch_key == key
+                })
+                .map(|credentials| credentials.values)
                 .unwrap_or_default()
         };
-        *self.environment_credentials.borrow_mut() = Some((source_id, key.clone(), credentials));
+        *self.environment_credentials.borrow_mut() = Some(EnvironmentCredentials {
+            source_id,
+            launch_key: key.clone(),
+            values: credentials,
+        });
         *self.source.borrow_mut() = source.clone();
         *self.utility_options.borrow_mut() = Some(launch.options.clone());
         match self.start(host, launch).await {
