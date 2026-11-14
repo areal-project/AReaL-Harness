@@ -169,6 +169,12 @@ make artifact-cleanup ARGS='--temporary-worktrees --cache-budget-gib 40 --min-fr
 仅在超预算或磁盘低于 30 GiB 时，按最近活动从旧到新选择符合条件的冷缓存。磁盘压力不覆盖闲置窗口或开发改动保护，避免在构建间隙删除依赖与 fingerprint、导致下次完整重编译。删除前持有 Cargo 锁并再次检查复用状态和占用；同一 profile 内任何打开文件或该工作树中的构建/调试进程都会阻止整组回收。单个 profile 无法统计时保留并记录；无法确认 Git 或文件活动时保留并以非零退出。报告的 `cache_policy.min_idle_hours` 和 `retained-recent`、`retained-worktree-dirty` 状态说明保留原因。受保护缓存和范围外数据可能使预算或空闲线无法满足，报告会列出剩余压力。APFS 共享块使分配块估算不同于实际释放量。
 
 
+### 跨项目工作树与验证副本
+
+`--temporary-worktrees` 可重复传入 `--project /absolute/git-project`，未指定时仅选择本仓。每个项目通过 Git 枚举工作树，不依赖创建工具；仅查找受 Git 跟踪的 `Cargo.toml` 旁的真实 `target`，支持 `daemon/target` 等嵌套布局，保留相同的改动、闲置、占用和锁保护。`--include-primary` 对所有所选项目生效。Node 依赖、Gradle/Android SDK、未知自定义 target 和未登记源码副本不自动加入；`worktree_targets` 报告实际扫描的目标。
+
+`.scratch` 使用独立模式：`make artifact-cleanup ARGS='--validation-artifacts --root /absolute/repo/.scratch --keep 2 --min-idle-hours 72 --report /private/tmp/UNIQUE-validation-report.json'`。每个 root 的一级子目录是独立验证任务，分别保留最近两轮可识别 GUI 包和独立 Core 包。保留 GUI 包会校验包内 Core 清单哈希，未知、损坏、不完整或回执路径不匹配的产物保留；不会按目录名猜测重新归属。旧包还必须超过闲置窗口、没有任务目录内进程/打开文件占用；已登记任务工作树有改动时保留。删除前复核候选整个目录树的文件身份和修改时间，保留源码、截图、视频、运行数据及 JSON 回执，不清 Cargo 缓存、不删除整个验证任务目录。首次预览后才追加 `--apply`；每次运行使用新的报告路径。
+
 ### 定时清理建议
 
 每天运行一次 `make artifact-cleanup ARGS='--temporary-worktrees --include-primary --cache-budget-gib 40 --min-free-gib 30 --min-idle-hours 72 --report /private/tmp/UNIQUE-cache-report.json --apply'`，每次替换 `UNIQUE`，报告不得覆盖。首次去掉 `--apply` 审阅。主仓持续开发或有未提交修改时会保留缓存；预算和空闲线是目标而非强制配额，不能保证释放到指定空间。定时任务应汇报实际回收、保护原因和仍存压力，不自动降低闲置窗口或清空正在用的 target。
