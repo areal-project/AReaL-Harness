@@ -143,31 +143,45 @@ watchdog_disable=true
                 NO_PROXY="127.0.0.1,localhost",
                 no_proxy="127.0.0.1,localhost",
             )
-            result = subprocess.run(
-                [
-                    str(executable),
-                    "--config",
-                    str(config),
-                    "--workspace",
-                    str(workspace),
-                    "--data-dir",
-                    str(root / "state"),
-                    "--local-mode",
-                    "owned",
-                    "--prompt",
-                    "Write and read release-check.txt using tools.",
-                ],
-                cwd=root,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            assert not errors, errors
-            assert result.returncode == 0, result.stderr[-4000:]
-            assert "RELEASE_RW_OK" in result.stdout, result.stdout
-            assert (workspace / "release-check.txt").read_text() == "RELEASE_RW_OK\n"
-            assert calls == [0, 1, 2, 3], calls
+            try:
+                result = subprocess.run(
+                    [
+                        str(executable),
+                        "--config",
+                        str(config),
+                        "--workspace",
+                        str(workspace),
+                        "--data-dir",
+                        str(root / "state"),
+                        "--local-mode",
+                        "owned",
+                        "--prompt",
+                        "Write and read release-check.txt using tools.",
+                    ],
+                    cwd=root,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                assert not errors, errors
+                assert result.returncode == 0, result.stderr[-4000:]
+                assert "RELEASE_RW_OK" in result.stdout, result.stdout
+                assert (workspace / "release-check.txt").read_text() == "RELEASE_RW_OK\n"
+                assert calls == [0, 1, 2, 3], calls
+            finally:
+                # CLI 退出后共享 Host 仍持有状态目录，必须先完成本轮后台清理。
+                stopped = subprocess.run(
+                    [str(executable), "host", "stop", "--cancel", "--json"],
+                    cwd=root,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                assert stopped.returncode == 0, stopped.stderr[-4000:]
+                receipt = json.loads(stopped.stdout)
+                assert receipt["state"] == "completed", receipt
             print(
                 json.dumps(
                     {
