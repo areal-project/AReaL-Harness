@@ -19,23 +19,6 @@ enum ProjectionKind {
 }
 
 impl Engine {
-    pub(super) fn prepare_complete_skill_result(&self, value: &Value) -> anyhow::Result<Prepared> {
-        let encoded = serde_json::to_string(value)?;
-        anyhow::ensure!(
-            encoded.len() <= crate::desktop::skill_loading::MAX_SKILL_LOAD_BYTES,
-            "SKILL_NOT_LOADED: complete result exceeds its bounded budget"
-        );
-        let tokens = context::text_tokens(&encoded);
-        // 原文随 ToolCall 持久化；不经过 16 KiB 预览，也不进入旧观察折叠。
-        Ok(Prepared {
-            value: value.clone(),
-            snapshot: None,
-            metrics: json!({"version":1,"transform":"skill-body-v1","reason":"completeBody",
-                "rawBytes":encoded.len(),"displayedBytes":encoded.len(),
-                "estimatedRawTokens":tokens,"estimatedDisplayedTokens":tokens,"storageBytes":0}),
-        })
-    }
-
     pub(crate) async fn read_history(&self, cell: &Cell, args: &Value) -> anyhow::Result<Value> {
         let thread = cell.state.lock().await.thread.clone();
         let Some(item_id) = args["itemId"].as_str() else {

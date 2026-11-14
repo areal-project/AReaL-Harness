@@ -372,6 +372,7 @@ pub(crate) use registry::Backend;
 mod program;
 mod scheduling;
 pub(crate) use program::recovered_program_content;
+mod skill;
 mod verification;
 pub(crate) use registry::Registry;
 pub use registry::{
@@ -821,38 +822,8 @@ fn creates_child_execution(name: &str, backend: &Backend) -> bool {
 
 impl Engine {
     pub(super) async fn tool_output_budget(&self, cell: &Cell, call: &ToolCall) -> usize {
-        let plugin_budget = if cell
-            .bindings
-            .read()
-            .await
-            .registry
-            .get(&call.name)
-            .is_ok_and(|entry| matches!(entry.backend, Backend::Plugin(_)))
-        {
-            plugins::MAX_JOURNAL
-        } else {
-            0
-        };
-        let skill_load = call.name == "skill_load"
-            && cell
-                .bindings
-                .read()
-                .await
-                .registry
-                .get(&call.name)
-                .is_ok_and(|entry| matches!(entry.backend, Backend::Core));
-        let result_budget = if skill_load {
-            crate::desktop::skill_loading::MAX_SKILL_LOAD_BYTES * 2 + 4096
-        } else {
-            MIN_TOOL_OUTPUT_BUDGET
-        };
-        call.arguments
-            .len()
-            .saturating_mul(2)
-            .saturating_add(result_budget)
-            .saturating_add(plugin_budget)
+        skill::output_budget(cell, call).await
     }
-
     pub(crate) async fn tool(
         self: &Arc<Self>,
         cell: &Arc<Cell>,
@@ -1008,10 +979,7 @@ impl Engine {
         };
         let bindings = cell.bindings.read().await.clone();
         let entry = bindings.registry.get(&call.name);
-        let skill_load = call.name == "skill_load"
-            && entry
-                .as_ref()
-                .is_ok_and(|entry| matches!(entry.backend, Backend::Core));
+        let skill_load = skill::is_core_skill_load(&bindings, &call.name);
         let native_metadata = entry
             .as_ref()
             .is_ok_and(|tool| matches!(tool.backend, Backend::Builtin));
@@ -1580,16 +1548,8 @@ impl Engine {
                 }
             }
         }
-        // 通用预算元数据也计入完整响应；最终超限必须是显式失败，不能裁剪成成功前缀。
-        if skill_load
-            && success
-            && (!crate::desktop::skill_loading::is_complete_body(&result)
-                || result.to_string().len() > crate::desktop::skill_loading::MAX_SKILL_LOAD_BYTES)
-        {
-            success = false;
-            outcome = ToolOutcome::Failed;
-            result = json!({"error":rt::Error::new(rt::ErrorCode::InvalidArgument,
-                "SKILL_NOT_LOADED: complete result including tool metadata exceeds 64 KiB or failed integrity validation; shorten SKILL.md and move details to references")});
+        if skill_load {
+            skill::validate_result(&mut result, &mut success, &mut outcome);
         }
         trajectory::record_json(
             &tracing::Span::current(),
@@ -1609,10 +1569,9 @@ impl Engine {
         {
             content.push(json!({"type":"inputText","text":format!("previousMatchingFailures={}: {note}", result["previousMatchingFailures"])}));
         }
-        let complete_skill =
-            skill_load && success && crate::desktop::skill_loading::is_complete_body(&result);
+        let complete_skill = skill::is_complete_result(skill_load, success, &result);
         let prepared = if complete_skill {
-            self.prepare_complete_skill_result(&result)?
+            skill::prepare_complete_skill_result(&result)?
         } else if coordination && call.name == "agent_wait_any" {
             self.prepare_coordination_result(cell, &item_id, &call.name, &result)
                 .await?
@@ -1642,14 +1601,8 @@ impl Engine {
             && result["mcpServer"]["source"]["version"] == 1
             && crate::desktop::mcp_apps::tool_uri(&result["mcpServer"]["toolMetadata"]).is_some())
         .then_some(true);
-        let result = serde_json::to_string(&prepared.value)?;
-        let result = if complete_skill {
-            result
-        } else {
-            bounded_result(result)
-        };
-        let pending_skill =
-            (complete_skill && parent_call_id.is_none()).then(|| (call.id.clone(), result.clone()));
+        let result = skill::serialize_result(complete_skill, &prepared.value)?;
+        let pending_skill = skill::pend(complete_skill, parent_call_id.is_none(), &call, &result);
         let projection_ms = projection_started.elapsed().as_secs_f64() * 1000.0;
         let commit_started = std::time::Instant::now();
         let mut state = cell.state.lock().await;
