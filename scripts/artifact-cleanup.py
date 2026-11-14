@@ -742,6 +742,11 @@ def main():
         help="Only budget non-executable Rust intermediates in registered secondary worktrees",
     )
     parser.add_argument(
+        "--include-primary",
+        action="store_true",
+        help="Include the primary checkout in idle worktree cache budgeting",
+    )
+    parser.add_argument(
         "--rust-intermediates",
         action="store_true",
         help="Only remove non-executable Rust intermediates from explicitly selected targets",
@@ -752,7 +757,9 @@ def main():
         type=Path,
         help="Cargo target directory for --rust-intermediates (repeatable; default: primary target)",
     )
-    parser.add_argument("--cache-budget-gib", type=float, default=40, help="Secondary cache budget")
+    parser.add_argument(
+        "--cache-budget-gib", type=float, default=40, help="Selected worktree cache budget"
+    )
     parser.add_argument(
         "--min-free-gib", type=float, default=30, help="Free-space collection threshold"
     )
@@ -770,6 +777,8 @@ def main():
         "--apply", action="store_true", help="Delete eligible paths; default is preview only"
     )
     args = parser.parse_args()
+    if args.include_primary and not args.temporary_worktrees:
+        parser.error("--include-primary requires --temporary-worktrees")
     if args.keep < 1:
         parser.error("--keep must be at least 1")
     if any(
@@ -809,7 +818,7 @@ def main():
     elif not args.no_worktrees:
         primary, worktrees = registered_worktrees(warnings)
         if args.temporary_worktrees:
-            roots = [p for p in worktrees if p != primary]
+            roots = [p for p in worktrees if args.include_primary or p != primary]
         else:
             roots.extend(worktrees)
     temporary_repos = list(roots)
@@ -834,7 +843,7 @@ def main():
         for item in rust_items:
             item["preserve_outputs"] = True
     elif args.temporary_worktrees:
-        print("Scanning registered secondary worktree caches...", file=sys.stderr)
+        print("Scanning selected registered worktree caches...", file=sys.stderr)
         repos = [
             p
             for p in temporary_repos
@@ -945,7 +954,7 @@ def main():
         else "artifacts",
         "target_roots": [str(target) for _, target in targets],
         "excluded_scopes": [
-            "primary and custom targets",
+            "custom targets" if args.include_primary else "primary and custom targets",
             "unregistered worktrees",
             "executables and GUI/Core packages",
         ]
@@ -969,6 +978,7 @@ def main():
             for repo in repos
         ]
         report["cache_policy"] = {
+            "include_primary": args.include_primary,
             "budget_bytes": budget,
             "min_free_bytes": min_free,
             "min_idle_hours": args.min_idle_hours,
@@ -1077,7 +1087,7 @@ def main():
         report["cache_policy"]["min_observed_free_bytes"] = min(available, default=free_bytes(REPO))
         if args.apply and remaining > budget:
             warnings.append(
-                "Secondary cache budget remains exceeded; reusable, active or locked caches kept"
+                "Selected worktree cache budget remains exceeded; reusable, active or locked caches kept"
             )
         if args.apply and available and min(available) < min_free:
             warnings.append(
@@ -1093,7 +1103,7 @@ def main():
         if args.rust_intermediates:
             print(f"{report['mode'].upper()}: non-executable Rust intermediates only")
         elif args.temporary_worktrees:
-            print(f"{report['mode'].upper()}: secondary cache budget {args.cache_budget_gib:g} GiB")
+            print(f"{report['mode'].upper()}: worktree cache budget {args.cache_budget_gib:g} GiB")
         else:
             print(
                 f"{report['mode'].upper()}: keep {args.keep} complete GUI/Core bundle versions; caches are independent"

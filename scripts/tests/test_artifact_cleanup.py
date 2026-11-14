@@ -97,6 +97,27 @@ class CleanupFixture(unittest.TestCase):
 
 
 class TemporaryWorktreeCacheTest(CleanupFixture):
+    def test_primary_opt_in_retains_recent_dirty_and_active_profiles(self):
+        profile = self.repo / "target/debug"
+        preview = self.run_cleanup("--include-primary")
+        self.assertIn(str(self.repo), preview["roots"])
+        primary = [i for i in preview["items"] if i["scope"] == str(self.repo)]
+        self.assertTrue(primary)
+        self.assertTrue(all(i["status"] == "retained-recent" for i in primary))
+        (self.repo / "uncommitted.txt").write_text("keep")
+        dirty = self.run_cleanup("--include-primary", "--min-idle-hours", "0", "--apply")
+        primary = [i for i in dirty["items"] if i["scope"] == str(self.repo)]
+        self.assertTrue(all(i["status"] == "retained-worktree-dirty" for i in primary))
+        self.assertTrue((profile / "deps/cache").exists())
+        (self.repo / "uncommitted.txt").unlink()
+        with (profile / ".cargo-lock").open("r+") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            self.run_cleanup("--include-primary", "--min-idle-hours", "0", "--apply")
+            self.assertTrue((profile / "deps/cache").exists())
+        self.run_cleanup("--include-primary", "--min-idle-hours", "0", "--apply")
+        self.assertFalse((profile / "deps/cache").exists())
+        self.assertTrue((profile / "areal").exists())
+
     def test_managed_worktrees_collect_loose_intermediates_without_cache_directories(self):
         for checkout, tool in [(self.old, "Codex"), (self.new, "T3 Code")]:
             destination = self.root / tool / "worktrees" / checkout.name
