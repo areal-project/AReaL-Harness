@@ -242,17 +242,23 @@ const creatorResources = await Promise.all(
     };
   }),
 );
-const creatorReadSteps = creatorResources.flatMap((file) =>
-  Array.from({ length: Math.ceil(file.size / 8192) }, (_, index) => [
-    "skill_read",
-    {
-      skill: { id: fixture.creatorId, revision: `builtin-${creatorSource.contentDigest}` },
-      resource: file.resource,
-      offset: index * 8192,
-      maxBytes: 8192,
-    },
-  ]),
-);
+const creatorReadSteps = [
+  [
+    "skill_load",
+    { skill: { id: fixture.creatorId, revision: `builtin-${creatorSource.contentDigest}` } },
+  ],
+  ...creatorResources.flatMap((file) =>
+    Array.from({ length: Math.ceil(file.size / 8192) }, (_, index) => [
+      "skill_resource_read",
+      {
+        skill: { id: fixture.creatorId, revision: `builtin-${creatorSource.contentDigest}` },
+        resource: file.resource,
+        offset: index * 8192,
+        maxBytes: 8192,
+      },
+    ]),
+  ),
+];
 const creatorToolCount = creatorReadSteps.length + 8;
 function creatorResourceText(payload, file) {
   const calls = new Map(
@@ -263,7 +269,8 @@ function creatorResourceText(payload, file) {
   const pages = (payload.messages ?? [])
     .filter(
       (message) =>
-        message.role === "tool" && calls.get(message.tool_call_id)?.function.name === "skill_read",
+        message.role === "tool" &&
+        calls.get(message.tool_call_id)?.function.name === "skill_resource_read",
     )
     .map((message) => ({
       args: JSON.parse(calls.get(message.tool_call_id).function.arguments),
@@ -1903,7 +1910,7 @@ try {
       if (enabled) {
         assert.match(
           await approval.innerText(),
-          /run_command|fs_create|fs_write|fs_read|skill_read/,
+          /run_command|fs_create|fs_write|fs_read|skill_resource_read/,
         );
         await allow.click();
         assert.ok(
@@ -1926,7 +1933,7 @@ try {
       "Runtime script copy retains the pinned official bytes",
     );
   checks.push(
-    "official Creator resources are paginated through skill_read and copied by Runtime with pinned SHA-256 equality",
+    "official Creator resources are paginated through skill_resource_read and copied by Runtime with pinned SHA-256 equality",
   );
   assert.equal(
     await readFile(join(creatorWorkspace, ".agents/skills", createdSkillId, "SKILL.md"), "utf8"),
@@ -2091,7 +2098,7 @@ try {
       : "source Electron/Main/Core plugin workspace, reviewed portable local and ZIP plugins, standalone resources, stdio MCP, native App iframe before and after cold Desktop/Core restart, official bundled Creator ordinary chat turn in a separate unoccupied project; deterministic loopback model; no packaged or remote-provider acceptance",
     creatorPython,
     injectedBoundary:
-      "native directory and ZIP selection return isolated fixture paths; explicit Python with PyYAML; auxiliary model requests are fixtures; deterministic loopback model reads official resources with skill_read, materializes those returned bytes through Runtime into authorized workspace scratch, then emits official Creator init, project read/write and validation tool calls, then the literal response",
+      "native directory and ZIP selection return isolated fixture paths; explicit Python with PyYAML; auxiliary model requests are fixtures; deterministic loopback model reads official resources with skill_resource_read, materializes those returned bytes through Runtime into authorized workspace scratch, then emits official Creator init, project read/write and validation tool calls, then the literal response",
   };
   await json(join(scratch, "manifest.json"), manifest);
   await json(join(scratch, "model-requests.json"), requests);

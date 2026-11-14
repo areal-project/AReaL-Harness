@@ -17,6 +17,7 @@ mod queue;
 mod retention;
 mod server;
 mod side;
+pub(crate) mod skill_loading;
 mod skills;
 mod state;
 mod submissions;

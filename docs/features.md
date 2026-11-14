@@ -30,7 +30,7 @@
 | 桌面 Worktree | 普通新会话使用当前目录、分支与 Core，多个会话可共享目录；只有本次创建明确选择 Worktree 才创建独立 checkout 与 Core/Runtime，线程仍归原逻辑项目。创建和绑定可恢复，保留已有目录、未提交改动和旧请求身份。任务按实际宿主路由，定时任务家庭继续预约自动分配的项目外目录并核对执行锚点；共享目录与无预约的旧安排不能启用。直接 Core/CLI、原生自主任务及 full-access 外部写入的边界见[指南](guides/worktrees.md)。 |
 | 会话选区与轮次导航 | 主会话划词可添加到主 Composer 或当前辅助对话，保留正文与附件。引用可逐条移除、按来源去重，最多 8 条、单条 8,000 字符、合计 16,000 字符。辅助对话使用独立临时标签和完整 Composer，继承稳定来源历史，支持工具、附件与权限交互。`/side`、`/btw` 可创建空对话或发送文字首问。主、辅会话共用独立滚动的轮次导航；Esc 按焦点所属面板停止。旧版只读 Side 保留原权限。[GUI](../clients/gui/README.md) |
 | 客户端 | 统一 `areal` 命令（默认 TUI、exec、version、upgrade、app-server、config、workgroup、service、web）与本地 Web；TUI 支持 Unicode 光标编辑与常用输入快捷键、持久错误提示、默认分组折叠、鼠标/键盘展开及过程/最终正文分级；CLI 实现选定 Claude Code 非交互参数与消息。[CLI 契约](api/claude-cli.md) |
-| Skills | 自动发现与显式 Profile 共用元信息登记、正文/附件按需读取；单个无效全局 Skill 告警隔离，不创建内容快照。[Skill 指南](guides/skills.md) |
+| Skills | 自动发现与显式 Profile 共用元信息登记；主体有界完整加载、附件按需分页，明确超限和未读完状态；单个无效全局 Skill 告警隔离。[Skill 指南](guides/skills.md) |
 | Task Mode 与独立频道 | foreground/scheduled/background、持久 TaskRun、独立 Inbox 回复、headless 无人工等待；统一委派的 TaskRun worker 跨协调 Turn 存活并共享预算。Web 提供任务控制、定时创建和独立收件箱。[接口](api/tasks.md) 计划支持显式“立即运行”，创建独立 manual Run，保留暂停和下次计划时间，使用原总预算；响应丢失时只读核对原收据。 |
 | 插件组件支持 | 无项目或 Core 未连接时可读取安装快照与静态诊断；组件报告区分候选和安装摘要。支持受限 Markdown Commands、Agent Profile、用户配置与本地开发链接。MCP 连接、认证和 Hook 信任独立。[插件](guides/plugins.md) |
 | 浏览器自动化 | 复用 ZCode 已实现命令，包括定位器、iframe、CUA、截图、alert/confirm、下载和 WebM。在项目新草稿打开浏览器会创建聊天并保留草稿，发送后继续使用同一页面。全部项目共享持久登录态，设置提供显式 Chrome 导入及数据清理；页面控制和审批仍绑定聊天，UNKNOWN 不重放。预览支持手机、平板与桌面设备宽高、旋转和自适应显示，并区分页面加载失败、权限拒绝与原动作结果未确认。[Browser](api/browser.md) |

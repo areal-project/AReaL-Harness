@@ -296,6 +296,7 @@ impl Engine {
             tool_exposure: Default::default(),
             native_tool_exposure: Default::default(),
             observation_results: Default::default(),
+            pending_skill_loads: Default::default(),
             context_usage: None,
             context_sequence: 0,
             generation: Default::default(),

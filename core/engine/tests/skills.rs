@@ -949,8 +949,8 @@ impl areal_engine::model::Model for ReadSkillPages {
         use areal_engine::model::{ModelEvent, ToolCall};
         let results: Vec<_> = messages.iter().filter(|m| m.role == "tool").collect();
         let events = if results.is_empty() {
-            ["SKILL.md","binary.bin"].into_iter().map(|resource|ModelEvent::ToolCall(ToolCall {
-                id:resource.into(),name:"skill_read".into(),arguments:json!({"skill":{"id":"fireworks-tech-graph","revision":"local-v1"},"resource":resource}).to_string()
+            ["reference.md","binary.bin"].into_iter().map(|resource|ModelEvent::ToolCall(ToolCall {
+                id:resource.into(),name:"skill_resource_read".into(),arguments:json!({"skill":{"id":"fireworks-tech-graph","revision":"local-v1"},"resource":resource}).to_string()
             })).chain(std::iter::once(ModelEvent::ToolCall(ToolCall {
                 id: "list".into(), name: "skill_list".into(), arguments: "{}".into(),
             }))).collect::<Vec<_>>()
@@ -981,6 +981,7 @@ async fn model_skill_reads_avoid_duplicate_text_bytes_while_public_api_retains_b
     let root = tempfile::tempdir().unwrap();
     fs::write(root.path().join("SKILL.md"), "完整技能页").unwrap();
     fs::write(root.path().join("binary.bin"), [0xff, 0]).unwrap();
+    fs::write(root.path().join("reference.md"), "完整技能页").unwrap();
     let engine = Engine::open(state.path(), Arc::new(ReadSkillPages), Limits::default()).unwrap();
     engine
         .set_permissions(

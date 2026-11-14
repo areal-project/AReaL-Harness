@@ -261,9 +261,13 @@ Desktop 首先按相同 generation 查询状态并尝试重连。仅在 `status 
 
 `areal/skill/list` 接受 `{threadId}`；新草稿可用 `{agentProfile:{id,revision}}` 观察已登记 Profile 的技能，两者互斥。Profile 目录查询不创建 Thread、不读取正文；`areal/skill/read` 同样接受两种互斥上下文，以便草稿预览当前 Profile 允许的资源。Profile 读取不登记 Thread 加载状态，发送前仍在所属 Thread 中重新读取。Composer 保存技能引用与来源，发送前读取 SKILL.md 并附加到当前消息；读取失败保留草稿。
 
-`areal/skill/list` 的 data 条目增加 name/description，resources 统一为 null（不再返回完整资源清单），available 和 resourceRoot 保持原意。模型初始提示只注入名称和有界描述；需要正文时调用 skill_read。
+`areal/skill/list` 的 data 条目增加 name/description，resources 统一为 null（不再返回完整资源清单），available 和 resourceRoot 保持原意。模型初始提示只注入名称和有界描述；应用 Skill 前通过模型工具 `skill_load` 完整加载主体。
 
-`areal/skill/read` / `skill_read` 每次从当前磁盘读取，maxBytes 为 1–8192，使用 offset/nextOffset 分页；sizeBytes 表示该次打开文件时的大小。资源允许超过 256 KiB，二进制返回 dataBase64；并发修改下不保证跨页一致性。资源路径限制与发现告警见[Skill 指南](../guides/skills.md)。
+`areal/skill/read` 每次从当前磁盘读取，maxBytes 为 1–8192，使用 offset/nextOffset 分页；sizeBytes 表示该次打开文件时的大小。资源允许超过 256 KiB，二进制返回 dataBase64；并发修改下不保证跨页一致性。资源路径限制与发现告警见[Skill 指南](../guides/skills.md)。
+
+模型新增 `skill_load {skill:{id,revision}}`，返回 `{id,revision,resource:"SKILL.md",resourceRoot,text,sizeBytes,sha256,complete:true}`。完整 JSON 响应上限 64 KiB，超限或无效 UTF-8 明确失败；成功主体不经通用 16 KiB 预览，仍计入原有输出和上下文预算，首次求解消费前不摘要。它不新增公共 `areal/skill/load` RPC，也不自动加载附件。显式工具允许列表需加入该模型工具。
+
+模型 `skill_resource_read` 读取附件并保留分页，新增 `expectedVersion?` 输入以及 `offset/resourceVersion` 输出；它拒绝 `SKILL.md`，主体必须由 `skill_load` 完整交付。非末页有 `notice` 和包含版本的 `nextRead`。每页最多 8192 字节，但 JSON 转义开销较大时会为通用结果预算自动缩短，并保留续读游标。普通文件变更拒绝版本化续读；有效 UTF-8 的页尾按字符边界收窄，二进制及无法容纳单字符的页仍返回 Base64。公共 `areal/skill/read` 与 Rust `read_skill` 保持原字段与偏移。`areal/skill/list` 的 Thread 视图及模型 `skill_list` 新增 `loadedMain:{[id]:{revision,sha256,sourceItemId}}`，列出当前历史投影保留的完整主体回执；旧 `loaded` 只表示访问过，两个字段都不证明模型理解或当前磁盘内容不变。加载、压缩及版本限制见[Skill 指南](../guides/skills.md)。
 
 兼容性：Skill revision 不再是内容不可变保证，旧 skillHashes 被忽略；现有 `{id,revision,root}` 清单仍可使用。历史引用必须由可信启动器登记，否则标为不可用。自动发现 revision 改为元信息摘要；Profile/Workflow 定义与会话历史的持久化语义不变。
 

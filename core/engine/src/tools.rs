@@ -7,12 +7,12 @@ use model::ToolCall;
 use serde::Deserialize;
 use std::path::PathBuf;
 
-const MAX_RESULT: usize = 16 * 1024;
+pub(crate) const MAX_RESULT: usize = 16 * 1024;
 pub(super) const MIN_TOOL_OUTPUT_BUDGET: usize = MAX_RESULT * 2 + 4096;
 pub(super) const HANDOFF_OUTPUT_RESERVE: usize = 8 * 1024;
 // Leave room for process metadata and JSON framing after stdout/stderr are
 // escaped. Control-heavy output can expand several times in the model payload.
-const MODEL_OUTPUT_HEADROOM: usize = 4096;
+pub(crate) const MODEL_OUTPUT_HEADROOM: usize = 4096;
 
 fn unexecuted_workspace_conflict(item: &Item) -> bool {
     let Item::DynamicToolCall {
@@ -372,6 +372,7 @@ pub(crate) use registry::Backend;
 mod program;
 mod scheduling;
 pub(crate) use program::recovered_program_content;
+mod skill;
 mod verification;
 pub(crate) use registry::Registry;
 pub use registry::{
@@ -821,25 +822,8 @@ fn creates_child_execution(name: &str, backend: &Backend) -> bool {
 
 impl Engine {
     pub(super) async fn tool_output_budget(&self, cell: &Cell, call: &ToolCall) -> usize {
-        let plugin_budget = if cell
-            .bindings
-            .read()
-            .await
-            .registry
-            .get(&call.name)
-            .is_ok_and(|entry| matches!(entry.backend, Backend::Plugin(_)))
-        {
-            plugins::MAX_JOURNAL
-        } else {
-            0
-        };
-        call.arguments
-            .len()
-            .saturating_mul(2)
-            .saturating_add(MIN_TOOL_OUTPUT_BUDGET)
-            .saturating_add(plugin_budget)
+        skill::output_budget(cell, call).await
     }
-
     pub(crate) async fn tool(
         self: &Arc<Self>,
         cell: &Arc<Cell>,
@@ -995,6 +979,7 @@ impl Engine {
         };
         let bindings = cell.bindings.read().await.clone();
         let entry = bindings.registry.get(&call.name);
+        let skill_load = skill::is_core_skill_load(&bindings, &call.name);
         let native_metadata = entry
             .as_ref()
             .is_ok_and(|tool| matches!(tool.backend, Backend::Builtin));
@@ -1563,6 +1548,9 @@ impl Engine {
                 }
             }
         }
+        if skill_load {
+            skill::validate_result(&mut result, &mut success, &mut outcome);
+        }
         trajectory::record_json(
             &tracing::Span::current(),
             "gen_ai.tool.call.result",
@@ -1581,7 +1569,10 @@ impl Engine {
         {
             content.push(json!({"type":"inputText","text":format!("previousMatchingFailures={}: {note}", result["previousMatchingFailures"])}));
         }
-        let prepared = if coordination && call.name == "agent_wait_any" {
+        let complete_skill = skill::is_complete_result(skill_load, success, &result);
+        let prepared = if complete_skill {
+            skill::prepare_complete_skill_result(&result)?
+        } else if coordination && call.name == "agent_wait_any" {
             self.prepare_coordination_result(cell, &item_id, &call.name, &result)
                 .await?
         } else if call.name == "tool_program" {
@@ -1610,7 +1601,8 @@ impl Engine {
             && result["mcpServer"]["source"]["version"] == 1
             && crate::desktop::mcp_apps::tool_uri(&result["mcpServer"]["toolMetadata"]).is_some())
         .then_some(true);
-        let result = bounded_result(serde_json::to_string(&prepared.value)?);
+        let result = skill::serialize_result(complete_skill, &prepared.value)?;
+        let pending_skill = skill::pend(complete_skill, parent_call_id.is_none(), &call, &result);
         let projection_ms = projection_started.elapsed().as_secs_f64() * 1000.0;
         let commit_started = std::time::Instant::now();
         let mut state = cell.state.lock().await;
@@ -1669,6 +1661,14 @@ impl Engine {
             commit_ms = commit_started.elapsed().as_secs_f64() * 1000.0,
             total_ms = started.elapsed().as_secs_f64() * 1000.0, "tool stages settled");
         state.thread = candidate;
+        if let Some(pending) = pending_skill {
+            state
+                .active
+                .as_mut()
+                .unwrap()
+                .pending_skill_loads
+                .insert(item_id.clone(), pending);
+        }
         if let Some((process, cursor)) = cursor {
             state
                 .active

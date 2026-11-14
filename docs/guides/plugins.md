@@ -48,7 +48,7 @@ Claude 市场允许由条目定义没有独立 manifest 的插件。例如 `sour
 
 独立技能支持内容页和范围启停；“创建 Skill”先核对所选项目当前部署的任务配置，再进入该项目的普通聊天草稿并加载产品内固定版本的官方 Skill Creator。旧任务保留原配置；产品默认部署下保存的基础配置会使用当前资源版本，自定义受限配置不会获得额外权限。用户发送需求后，Agent 按 Creator 流程在该项目的 `.agents/skills/<skill-name>/` 中创建并校验技能。该资源保留上游版本、许可证与内容摘要，不读取其他 Agent 应用的本机配置。范围选择只筛选独立技能。包内组件显示当前项目的选择；详情页“管理”打开同一插件的设置，保留整包范围、摘要信任、认证和提交核对流程。每个 Skill 与 MCP 服务都有当前项目开关。关闭选择跨更新保留，卸载清除；包声明和会话 Profile 继续限制实际准入。包内组件不通过独立资源接口修改，目录展示不扩大当前聊天的有效技能或工具范围。
 
-官方 Creator 的初始化和校验脚本需要 Python 3 与 PyYAML。选择 Skill 本身不扩大 Runtime 文件权限。受限任务通过 `skill_read` 分页读取脚本，再由 Runtime 将返回的原始字节写入授权工作区的临时目录后执行；不会直接执行 Desktop 私有缓存中的文件。`clients/gui/scripts/plugin-concepts-smoke.mjs --creator-only` 验证空项目普通首轮中的资源读取、项目内创建和官方校验，可用 `AREAL_TEST_PYTHON` 指定解释器；该解释器须在隔离 HOME、禁用用户 site-packages 的环境中仍能导入 `yaml`。
+官方 Creator 的初始化和校验脚本需要 Python 3 与 PyYAML。选择 Skill 本身不扩大 Runtime 文件权限。受限任务通过 `skill_resource_read` 分页读取脚本，再由 Runtime 将返回的原始字节写入授权工作区的临时目录后执行；不会直接执行 Desktop 私有缓存中的文件。`clients/gui/scripts/plugin-concepts-smoke.mjs --creator-only` 验证空项目普通首轮中的资源读取、项目内创建和官方校验，可用 `AREAL_TEST_PYTHON` 指定解释器；该解释器须在隔离 HOME、禁用用户 site-packages 的环境中仍能导入 `yaml`。
 
 交互应用和 Hooks 位于插件详情或已有工作区入口。GitHub 等远程服务在界面中作为插件管理，不单独出现“Connector”。
 
