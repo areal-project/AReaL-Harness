@@ -139,7 +139,7 @@ ci-gui-static: ## 共享计划的 GUI 提交前静态、类型、生产构建与
 	@test -n "$(CI_BASE)" || { echo 'CI_BASE is required' >&2; exit 1; }
 	python3 scripts/ci-preflight.py --base "$(CI_BASE)" --groups gui-portable --phase commit
 
-ci-gui-health: ## 无依赖安装的 GUI 健康合同与基线检查
+ci-gui-health: ## GUI 健康合同与基线检查（使用已安装的固定格式化器）
 	@set -eu; \
 	test -n "$(CI_BASE)" || { echo 'CI_BASE is required' >&2; exit 1; }; \
 	base="$$(git merge-base "$(CI_BASE)" HEAD)"; \

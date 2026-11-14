@@ -143,7 +143,11 @@ jobs:
           git cat-file -e "$design_base^{commit}"
           git merge-base --is-ancestor "$design_base" HEAD
           echo "AREAL_DESIGN_BASE=$design_base" >> "$GITHUB_ENV"
-      - name: Check dependency-free health contracts and reviewed baseline
+      - name: Install pinned health dependencies
+        run: |
+          npm install --global pnpm@11.7.0
+          pnpm --dir clients/gui install --frozen-lockfile --ignore-scripts
+      - name: Check health contracts and reviewed baseline
         run: python3 scripts/ci-preflight.py --groups gui-health --output target/ci/checks/gui-health
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
