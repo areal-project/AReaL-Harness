@@ -249,6 +249,8 @@ fn common_native(name: &str) -> bool {
     matches!(
         name,
         "tool_search"
+            | "skill_load"
+            | "skill_resource_read"
             | "tool_program"
             | "read_file"
             | "search_files"

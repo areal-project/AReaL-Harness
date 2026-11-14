@@ -34,7 +34,7 @@ impl Model for Fixture {
             return Ok(Box::pin(futures_util::stream::iter([Ok(
                 ModelEvent::ToolCall(ToolCall {
                     id: "read-old".into(),
-                    name: "skill_read".into(),
+                    name: "skill_load".into(),
                     arguments: json!({"skill":reference}).to_string(),
                 }),
             )])));

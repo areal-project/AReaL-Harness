@@ -176,14 +176,11 @@ const server = createServer(async (request, response) => {
     if (mode === "TOOLS") {
       const tools = body.messages.slice(userIndex + 1).filter((m) => m.role === "tool");
       if (tools.length < 2) {
-        const name = tools.length === 0 ? "skill_read" : "fs_read";
+        const name = tools.length === 0 ? "skill_load" : "fs_read";
         const args =
           tools.length === 0
             ? {
                 skill: { id: "usage-skill", revision: "v1" },
-                resource: "SKILL.md",
-                offset: 0,
-                maxBytes: 8192,
               }
             : { path: "workspace://repo/evidence.txt", offset: 0, maxBytes: 4096 };
         write(response, {

@@ -695,6 +695,17 @@ impl Engine {
                     // 仅摘要失败可沿用仍能容纳的旧投影；存储、计量和取消错误不能绕过。
                     tracing::warn!(error = %error, "keeping previous checkpoint after failed compaction");
                 }
+                // 检查最终请求而非磁盘读取结果；保护正文不被投影或压缩提前丢弃。
+                if let Some(active) = state.active.as_ref() {
+                    for (call_id, text) in active.pending_skill_loads.values() {
+                        anyhow::ensure!(
+                            messages.iter().any(|m| m.role == "tool"
+                                && m.tool_call_id.as_ref() == Some(call_id)
+                                && m.text_content() == *text),
+                            "SKILL_NOT_DELIVERED: complete skill body is missing from the model request"
+                        );
+                    }
+                }
                 if !live_context.is_empty() {
                     let mut candidate = state.thread.clone();
                     let context = Item::ModelContext {
@@ -977,6 +988,10 @@ impl Engine {
                         ) => match next { Ok(next) => next, Err(_) => Some(Err(response_deadline.idle_error("model"))) },
                     };
                     let Some(delta) = next else {
+                        // 只有成功消费本请求之后才允许常规历史压缩；网络失败不能视为已读。
+                        if let Some(active) = cell.state.lock().await.active.as_mut() {
+                            active.pending_skill_loads.clear();
+                        }
                         self.trace_finish(cell, &mut request_trace, None).await?;
                         // 等待整个成功流结算 usage 后再拒绝非法报告工具，绝不执行其参数。
                         if goal_report_only

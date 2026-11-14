@@ -150,7 +150,7 @@ try {
       displayName: "Profile tool agent fixture",
       instructions: "DESKTOP_PROFILE_FIXTURE",
       skills: [{ id: "game", revision: "v1" }],
-      toolAllowlist: ["skill_read", "plan_update", "run_command"],
+      toolAllowlist: ["skill_load", "plan_update", "run_command"],
     },
     {
       id: "approval",
@@ -402,7 +402,7 @@ try {
       assert.deepEqual(inspection.tools.map((tool) => tool.function.name).sort(), [
         "plan_update",
         "run_command",
-        "skill_read",
+        "skill_load",
       ]);
       assert.equal(
         (await c.call("areal/plan/read", { threadId: target.threadId })).steps[0].status,

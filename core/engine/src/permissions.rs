@@ -320,7 +320,8 @@ impl Engine {
                     "ask_user_question"
                         | "development_service_inspect"
                         | "skill_list"
-                        | "skill_read"
+                        | "skill_resource_read"
+                        | "skill_load"
                         | "read_tool_result"
                         | "read_history"
                         | "read_conversation_context"
@@ -583,12 +584,12 @@ mod tests {
                 if rule == "client" {
                     config.options.approval_tools = vec!["*".into()];
                 } else if rule == "profile" {
-                    config.profile = Some(serde_json::from_value(json!({"id":"test","revision":"1","displayName":"test","instructions":"","approvalTools":["skill_list","skill_read"]})).unwrap());
+                    config.profile = Some(serde_json::from_value(json!({"id":"test","revision":"1","displayName":"test","instructions":"","approvalTools":["skill_list","skill_resource_read","skill_load"]})).unwrap());
                     config.options.preapproved_tools = vec!["*".into()];
                 }
                 cell.state.lock().await.thread.turns[0].configuration = Some(config);
-                for tool in ["skill_list", "skill_read"] {
-                    let args = if tool == "skill_read" {
+                for tool in ["skill_list", "skill_resource_read", "skill_load"] {
+                    let args = if matches!(tool, "skill_resource_read" | "skill_load") {
                         json!({"skill":{"id":"fixture","revision":"v1"}})
                     } else {
                         json!({})
