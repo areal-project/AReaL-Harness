@@ -261,10 +261,28 @@ async function recordMainFailures(application) {
 }
 const project = (snapshot) => snapshot.projects.find((p) => p.root === workspace && !p.projectless);
 async function selectMessageExcerpt(body, excerpt, keyboard = false) {
-  await body.evaluate(async (element) => {
-    element.scrollIntoView({ block: "center", behavior: "instant" });
+  await body.evaluate(async (element, text) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let node;
+    while ((node = walker.nextNode())) nodes.push(node);
+    let offset = nodes
+      .map((item) => item.textContent)
+      .join("")
+      .indexOf(text);
+    if (offset < 0 || !text.length) throw Error("source excerpt missing");
+    const start = nodes.find((item) => {
+      if (offset < item.textContent.length) return true;
+      offset -= item.textContent.length;
+      return false;
+    });
+    const target = start?.parentElement;
+    if (!target) throw Error("source excerpt has no selectable element");
+    target.scrollIntoView({ block: "center", behavior: "instant" });
+    // 滚动后让阅读位置所有者确认选区所在位置，避免后续重绘恢复旧锚点。
+    target.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }));
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  });
+  }, excerpt);
   if (keyboard) {
     await page.bringToFront();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus());
@@ -316,6 +334,17 @@ async function selectMessageExcerpt(body, excerpt, keyboard = false) {
         }
       }
       const selection = window.getSelection();
+      const viewport = (element.closest(".messages") ?? element).getBoundingClientRect();
+      if (
+        ![...range.getClientRects()].some(
+          (rect) =>
+            rect.bottom > Math.max(0, viewport.top) &&
+            rect.top < Math.min(innerHeight, viewport.bottom) &&
+            rect.right > Math.max(0, viewport.left) &&
+            rect.left < Math.min(innerWidth, viewport.right),
+        )
+      )
+        throw Error("Selection fixture must start inside the visible transcript");
       selection.removeAllRanges();
       selection.addRange(range);
       if (!keyboard) element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));

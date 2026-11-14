@@ -135,7 +135,8 @@ impl OwnerLifetime {
             flags >= 0 && unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } >= 0,
             "could not configure service lifetime descriptor"
         );
-        Ok(Self(AsyncFd::new(file)?))
+        // SAFETY: File 移入 AsyncFd 后独占该描述符，注册期间不会替换或提前关闭。
+        Ok(Self(unsafe { AsyncFd::register(file)? }))
     }
 
     pub fn as_raw_fd(&self) -> RawFd {

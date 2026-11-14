@@ -11,9 +11,9 @@
       "operation projectless.scratch"
     ]
   },
-  "$revision": "5d310769777646ae292ea509a1c5b59d4d683ae7",
+  "$revision": "0378a5253cc93b2915a7fa7f620ae836220d31e5",
   "mainSourceLines": {
-    "value": 24266,
+    "value": 24236,
     "direction": "down",
     "owner": "app/src"
   },
@@ -132,7 +132,7 @@
     "app/src/core/legacy-desktop-recovery.cjs": 458,
     "app/src/core/legacy-service-cancel.cjs": 546,
     "app/src/core/lifecycle.cjs": 149,
-    "app/src/core/main.cjs": 1838,
+    "app/src/core/main.cjs": 1834,
     "app/src/core/mcp-apps-images.cjs": 198,
     "app/src/core/mcp-form-resources.cjs": 245,
     "app/src/core/menu-bar.cjs": 68,
@@ -173,7 +173,7 @@
     "app/src/core/preview/tool-contract.cjs": 21,
     "app/src/core/preview/urls.cjs": 23,
     "app/src/core/proxy-relay.cjs": 97,
-    "app/src/core/service-client.cjs": 1601,
+    "app/src/core/service-client.cjs": 1575,
     "app/src/core/service-config.cjs": 85,
     "app/src/core/service-connection.cjs": 432,
     "app/src/core/service-control.cjs": 676,
@@ -872,7 +872,7 @@
     "app/src/update/package-users.cjs": "Electron application update installation, Squirrel readiness and package occupancy"
   },
   "mainBusinessLines": {
-    "value": 7587,
+    "value": 7557,
     "direction": "down",
     "owner": "app/src"
   },
